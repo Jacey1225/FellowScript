@@ -1,0 +1,814 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FellowScript</title>
+  <link rel="icon" type="image/svg+xml" href="../data/tab_logo.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400;1,700&family=Lora:ital,wght@0,400;0,600;1,400&family=IM+Fell+English:ital@0;1&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --gold:       #C8861A;
+      --gold-light: #E8A83A;
+      --gold-dim:   #8A5C0E;
+      --slate:      #5C5C72;
+      --ink:        #1A100A;
+      --parchment:  #F4E4C1;
+      --parchment-dark: #E8D4A8;
+      --cream:      #FDF6E3;
+      --shadow:     rgba(20, 10, 0, 0.55);
+      --nav-h:      64px;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'Lora', Georgia, serif;
+      background: #0a0703;
+      color: var(--parchment);
+      overflow-x: hidden;
+    }
+
+    /* ── Video Background ── */
+    #bg-video {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      object-fit: cover;
+      z-index: -2;
+      filter: brightness(0.45) sepia(0.3);
+    }
+
+    /* Grain overlay for aged look */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      z-index: -1;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+      background-repeat: repeat;
+      background-size: 256px;
+      pointer-events: none;
+      opacity: 0.6;
+    }
+
+    /* ── Navigation ── */
+    nav {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 1.2rem 3rem;
+      background: linear-gradient(to bottom, rgba(10,7,3,0.85) 0%, transparent 100%);
+      backdrop-filter: blur(2px);
+    }
+
+    .nav-logo {
+      display: flex;
+      align-items: baseline;
+      gap: 0;
+      text-decoration: none;
+      line-height: 1;
+    }
+
+    .nav-logo .fellow {
+      font-family: 'Playfair Display', serif;
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: #c8c0b8;
+      letter-spacing: -0.01em;
+    }
+
+    .nav-logo .script {
+      font-family: 'IM Fell English', serif;
+      font-size: 1.6rem;
+      font-style: italic;
+      color: var(--gold);
+      letter-spacing: 0.01em;
+    }
+
+    .nav-links {
+      display: flex;
+      gap: 2.5rem;
+      list-style: none;
+    }
+
+    .nav-links a {
+      font-family: 'Lora', serif;
+      font-size: 0.8rem;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: rgba(244, 228, 193, 0.7);
+      text-decoration: none;
+      transition: color 0.3s;
+    }
+
+    .nav-links a:hover { color: var(--gold); }
+
+    /* ── Hamburger ── */
+    .hamburger { display: none; flex-direction: column; justify-content: center; gap: 5px; width: 38px; height: 38px; background: none; border: none; cursor: pointer; padding: 6px; z-index: 110; }
+    .hamburger span { display: block; width: 100%; height: 2px; background: var(--gold); border-radius: 2px; transition: transform 0.25s, opacity 0.25s; transform-origin: center; }
+    .hamburger.open span:nth-child(1) { transform: translateY(7px) rotate(45deg); }
+    .hamburger.open span:nth-child(2) { opacity: 0; transform: scaleX(0); }
+    .hamburger.open span:nth-child(3) { transform: translateY(-7px) rotate(-45deg); }
+
+    .mobile-nav-drawer { display: none; position: fixed; top: var(--nav-h); left: 0; right: 0; z-index: 98; background: rgba(8,5,2,0.97); border-bottom: 1px solid rgba(200,134,26,0.2); backdrop-filter: blur(12px); padding: 0.8rem 0; transform: translateY(-100%); transition: transform 0.28s ease; }
+    .mobile-nav-drawer.open { transform: translateY(0); }
+    .mobile-nav-drawer a { display: block; padding: 0.85rem 2rem; font-family: 'Lora', serif; font-size: 0.82rem; letter-spacing: 0.18em; text-transform: uppercase; color: rgba(244,228,193,0.75); text-decoration: none; border-bottom: 1px solid rgba(200,134,26,0.08); transition: color 0.2s, background 0.2s; }
+    .mobile-nav-drawer a:last-child { border-bottom: none; }
+    .mobile-nav-drawer a:hover, .mobile-nav-drawer a.active { color: var(--gold); background: rgba(200,134,26,0.06); }
+
+    /* ── Hero ── */
+    .hero {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 8rem 2rem 6rem;
+      position: relative;
+    }
+
+    .hero-eyebrow {
+      font-family: 'Lora', serif;
+      font-size: 0.75rem;
+      letter-spacing: 0.35em;
+      text-transform: uppercase;
+      color: var(--gold);
+      margin-bottom: 1.8rem;
+      opacity: 0;
+      transform: translateY(20px);
+      animation: fadeUp 1s ease 0.4s forwards;
+    }
+
+    .hero-title {
+      font-family: 'Playfair Display', serif;
+      font-size: clamp(4rem, 10vw, 9rem);
+      font-weight: 900;
+      line-height: 0.95;
+      letter-spacing: -0.02em;
+      margin-bottom: 0.2rem;
+      opacity: 0;
+      transform: translateY(30px);
+      animation: fadeUp 1.1s ease 0.65s forwards;
+    }
+
+    .hero-title .fellow-hero {
+      display: block;
+      color: #d8cfc4;
+    }
+
+    .hero-title .script-hero {
+      display: block;
+      color: var(--gold);
+      font-style: italic;
+    }
+
+    .hero-divider {
+      width: 60px;
+      height: 1px;
+      background: var(--gold-dim);
+      margin: 2rem auto;
+      opacity: 0;
+      animation: fadeUp 1s ease 0.9s forwards;
+    }
+
+    .hero-tagline {
+      font-size: 0.72rem;
+      letter-spacing: 0.3em;
+      text-transform: uppercase;
+      color: rgba(244, 228, 193, 0.55);
+      margin-bottom: 3.5rem;
+      opacity: 0;
+      animation: fadeUp 1s ease 1.1s forwards;
+    }
+
+    .hero-cta {
+      display: inline-block;
+      padding: 1rem 3rem;
+      border: 1px solid var(--gold);
+      color: var(--gold);
+      font-family: 'Lora', serif;
+      font-size: 0.8rem;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      text-decoration: none;
+      position: relative;
+      overflow: hidden;
+      transition: color 0.4s;
+      opacity: 0;
+      animation: fadeUp 1s ease 1.35s forwards;
+    }
+
+    .hero-cta::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: var(--gold);
+      transform: scaleX(0);
+      transform-origin: left;
+      transition: transform 0.4s ease;
+      z-index: -1;
+    }
+
+    .hero-cta:hover { color: var(--ink); }
+    .hero-cta:hover::before { transform: scaleX(1); }
+
+    .scroll-hint {
+      position: absolute;
+      bottom: 2.5rem;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.5rem;
+      opacity: 0;
+      animation: fadeUp 1s ease 2s forwards;
+    }
+
+    .scroll-hint span {
+      font-size: 0.6rem;
+      letter-spacing: 0.25em;
+      text-transform: uppercase;
+      color: rgba(244, 228, 193, 0.35);
+    }
+
+    .scroll-mouse {
+      width: 22px;
+      height: 34px;
+      border: 1px solid rgba(200, 134, 26, 0.4);
+      border-radius: 11px;
+      position: relative;
+    }
+
+    .scroll-mouse::after {
+      content: '';
+      width: 3px;
+      height: 7px;
+      background: var(--gold);
+      border-radius: 2px;
+      position: absolute;
+      top: 5px;
+      left: 50%;
+      transform: translateX(-50%);
+      animation: scrollDot 1.8s ease infinite;
+    }
+
+    /* ── Scroll Section ── */
+    .scroll-section {
+      position: relative;
+      z-index: 10;
+      padding: 6rem 2rem 12rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10rem;
+    }
+
+    /* ── Sticky Notes ── */
+    .note-wrap {
+      width: 100%;
+      max-width: 900px;
+      display: flex;
+      justify-content: center;
+      opacity: 0;
+      transform: translateY(60px);
+      transition: opacity 0.9s ease, transform 0.9s ease;
+    }
+
+    .note-wrap.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .note-wrap:nth-child(odd)  { justify-content: flex-start; padding-left: 5%; }
+    .note-wrap:nth-child(even) { justify-content: flex-end;   padding-right: 5%; }
+
+    .note {
+      background: var(--parchment);
+      color: var(--ink);
+      padding: 2.8rem 3.2rem;
+      max-width: 520px;
+      width: 100%;
+      position: relative;
+      box-shadow:
+        2px 3px 6px rgba(0,0,0,0.35),
+        6px 8px 24px rgba(0,0,0,0.25),
+        0 0 0 1px rgba(180,140,60,0.15) inset;
+    }
+
+    /* Aged paper texture via gradient */
+    .note::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(ellipse at 10% 10%, rgba(255,240,200,0.6) 0%, transparent 60%),
+        radial-gradient(ellipse at 90% 90%, rgba(180,140,80,0.25) 0%, transparent 50%);
+      pointer-events: none;
+    }
+
+    /* Tape strip on top */
+    .note::after {
+      content: '';
+      position: absolute;
+      top: -14px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 70px;
+      height: 28px;
+      background: rgba(200, 134, 26, 0.18);
+      border: 1px solid rgba(200, 134, 26, 0.25);
+      backdrop-filter: blur(1px);
+    }
+
+    /* Per-note rotations for scattered feel */
+    .note-wrap:nth-child(1) .note { transform: rotate(-1.5deg); }
+    .note-wrap:nth-child(2) .note { transform: rotate(1.2deg); }
+    .note-wrap:nth-child(3) .note { transform: rotate(-0.8deg); }
+    .note-wrap:nth-child(4) .note { transform: rotate(2deg); }
+    .note-wrap:nth-child(5) .note { transform: rotate(-1.2deg); }
+    .note-wrap:nth-child(6) .note { transform: rotate(0.6deg); }
+
+    .note-label {
+      font-size: 0.62rem;
+      letter-spacing: 0.28em;
+      text-transform: uppercase;
+      color: var(--gold-dim);
+      margin-bottom: 1rem;
+      font-family: 'Lora', serif;
+    }
+
+    .note-heading {
+      font-family: 'Playfair Display', serif;
+      font-size: clamp(1.6rem, 3.5vw, 2.2rem);
+      font-weight: 700;
+      line-height: 1.15;
+      color: #1a100a;
+      margin-bottom: 1.2rem;
+    }
+
+    .note-heading em {
+      color: var(--gold-dim);
+      font-style: italic;
+    }
+
+    .note-body {
+      font-family: 'Lora', serif;
+      font-size: 0.97rem;
+      line-height: 1.85;
+      color: #3a2510;
+    }
+
+    .note-verse {
+      display: block;
+      margin-top: 1.4rem;
+      padding-top: 1.2rem;
+      border-top: 1px solid rgba(180, 130, 30, 0.3);
+      font-family: 'IM Fell English', serif;
+      font-style: italic;
+      font-size: 0.88rem;
+      color: var(--gold-dim);
+      line-height: 1.6;
+    }
+
+    /* Feature note icon chips */
+    .note-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.6rem;
+      margin-top: 1.4rem;
+    }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.35rem 0.85rem;
+      background: rgba(200, 134, 26, 0.12);
+      border: 1px solid rgba(200, 134, 26, 0.35);
+      border-radius: 2px;
+      font-size: 0.72rem;
+      letter-spacing: 0.08em;
+      color: var(--gold-dim);
+      font-family: 'Lora', serif;
+    }
+
+    /* Highlight color swatches on the highlight note */
+    .highlight-swatches {
+      display: flex;
+      gap: 0.75rem;
+      margin-top: 1.4rem;
+    }
+
+    .swatch {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      border: 2px solid rgba(255,255,255,0.4);
+      box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+    }
+
+    /* ── Final CTA Note ── */
+    .note-cta-wrap {
+      width: 100%;
+      max-width: 600px;
+      display: flex;
+      justify-content: center;
+      opacity: 0;
+      transform: translateY(60px);
+      transition: opacity 0.9s ease, transform 0.9s ease;
+    }
+
+    .note-cta-wrap.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .note-cta {
+      background: var(--parchment);
+      color: var(--ink);
+      padding: 3.5rem 4rem;
+      text-align: center;
+      position: relative;
+      box-shadow:
+        3px 4px 10px rgba(0,0,0,0.4),
+        10px 14px 40px rgba(0,0,0,0.3);
+    }
+
+    .note-cta::after {
+      content: '';
+      position: absolute;
+      top: -14px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 80px;
+      height: 28px;
+      background: rgba(200, 134, 26, 0.18);
+      border: 1px solid rgba(200, 134, 26, 0.25);
+    }
+
+    .note-cta .note-heading { margin-bottom: 0.8rem; }
+
+    .note-cta .note-body { margin-bottom: 2rem; }
+
+    .cta-button {
+      display: inline-block;
+      padding: 1rem 3.2rem;
+      background: var(--gold);
+      color: var(--ink);
+      font-family: 'Lora', serif;
+      font-size: 0.82rem;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      text-decoration: none;
+      font-weight: 600;
+      transition: background 0.3s, transform 0.2s;
+      box-shadow: 2px 4px 14px rgba(200, 134, 26, 0.4);
+    }
+
+    .cta-button:hover {
+      background: var(--gold-light);
+      transform: translateY(-2px);
+    }
+
+    /* ── Footer ── */
+    footer {
+      position: relative;
+      z-index: 10;
+      text-align: center;
+      padding: 3rem 2rem;
+      border-top: 1px solid rgba(200, 134, 26, 0.15);
+      color: rgba(244, 228, 193, 0.3);
+      font-size: 0.72rem;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+    }
+
+    /* ── Animations ── */
+    @keyframes fadeUp {
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes scrollDot {
+      0%   { opacity: 1; transform: translateX(-50%) translateY(0); }
+      100% { opacity: 0; transform: translateX(-50%) translateY(14px); }
+    }
+
+    /* ── Mobile ── */
+    @media (max-width: 640px) {
+      :root { --nav-h: 58px; }
+      nav { padding: 1rem 1.5rem; }
+      .nav-links { display: none; }
+      .hamburger { display: flex; }
+      .mobile-nav-drawer { display: block; }
+
+      .hero {
+        padding: 6rem 1.5rem 5rem;
+        min-height: 100svh;
+      }
+      .hero-cta { padding: 1rem 2rem; }
+
+      .scroll-section { gap: 5rem; padding: 4rem 1rem 8rem; }
+
+      .note-wrap,
+      .note-wrap:nth-child(odd),
+      .note-wrap:nth-child(even) {
+        justify-content: center;
+        padding: 0 1rem;
+        width: 100%;
+      }
+
+      /* Remove rotations on mobile — they cause horizontal overflow */
+      .note-wrap:nth-child(1) .note,
+      .note-wrap:nth-child(2) .note,
+      .note-wrap:nth-child(3) .note,
+      .note-wrap:nth-child(4) .note,
+      .note-wrap:nth-child(5) .note,
+      .note-wrap:nth-child(6) .note { transform: none !important; }
+
+      .note {
+        padding: 2rem 1.6rem;
+        max-width: 100%;
+        width: 100%;
+      }
+
+      .note-cta-wrap {
+        padding: 0 1rem;
+        width: 100%;
+      }
+
+      .note-cta {
+        padding: 2.5rem 1.8rem;
+        width: 100%;
+      }
+
+      .note-chips { gap: 0.5rem; }
+      .chip { font-size: 0.68rem; padding: 0.3rem 0.7rem; }
+
+      .cta-button { padding: 1rem 2rem; }
+
+      /* Keep scroll hint above iOS home indicator */
+      .scroll-hint { bottom: calc(2.5rem + env(safe-area-inset-bottom, 0px)); }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Fixed video background -->
+  <video id="bg-video" autoplay muted loop playsinline>
+    <source src="../data/bg.mp4" type="video/mp4" />
+  </video>
+
+  <!-- Navigation -->
+  <nav>
+    <a class="nav-logo" href="index.html">
+      <span class="fellow">Fellow</span><span class="script">Script</span>
+    </a>
+    <ul class="nav-links">
+      <li><a href="index.html">Home</a></li>
+      <li><a href="reader.html">Read</a></li>
+      <li><a href="signin.html">Sign In</a></li>
+    </ul>
+    <button class="hamburger" id="hamburger" aria-label="Menu">
+      <span></span><span></span><span></span>
+    </button>
+  </nav>
+
+  <div class="mobile-nav-drawer" id="mobile-nav-drawer">
+    <a href="index.html" class="active">Home</a>
+    <a href="reader.html">Read</a>
+    <a href="signin.html">Sign In</a>
+  </div>
+
+  <!-- Hero -->
+  <section class="hero">
+    <p class="hero-eyebrow">A Digital Scripture Community</p>
+    <h1 class="hero-title">
+      <span class="fellow-hero">Fellow</span>
+      <span class="script-hero">Script</span>
+    </h1>
+    <div class="hero-divider"></div>
+    <p class="hero-tagline">Read &nbsp;·&nbsp; Reflect &nbsp;·&nbsp; Connect</p>
+    <a href="reader.html" class="hero-cta">Start Reading</a>
+
+    <div class="scroll-hint">
+      <div class="scroll-mouse"></div>
+      <span>Scroll</span>
+    </div>
+  </section>
+
+  <!-- Sticky Notes Scroll Section -->
+  <main class="scroll-section">
+
+    <!-- Note 1: Mission -->
+    <div class="note-wrap">
+      <div class="note">
+        <p class="note-label">Our Mission</p>
+        <h2 class="note-heading">Fan into flame <em>the gift of God.</em></h2>
+        <p class="note-body">
+          FellowScript is built to spark meaningful and impactful connections
+          among those who seek to grow in their faith — side by side, in the Word,
+          together.
+        </p>
+        <span class="note-verse">
+          "For this reason I remind you to fan into flame the gift of God,
+          which is in you through the laying on of my hands."
+          <br/>— 2 Timothy 1:6
+        </span>
+      </div>
+    </div>
+
+    <!-- Note 2: Digital Bible -->
+    <div class="note-wrap">
+      <div class="note">
+        <p class="note-label">Feature</p>
+        <h2 class="note-heading">A Living, <em>Breathing</em> Bible</h2>
+        <p class="note-body">
+          Navigate the full scripture by book and chapter. Every word of the
+          ESV and NIV — clean, readable, and always one search away.
+          Jump to any passage in seconds.
+        </p>
+        <div class="note-chips">
+          <span class="chip">66 Books</span>
+          <span class="chip">ESV &amp; NIV</span>
+          <span class="chip">Chapter Search</span>
+          <span class="chip">Verse Navigation</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Note 3: Highlighting -->
+    <div class="note-wrap">
+      <div class="note">
+        <p class="note-label">Feature</p>
+        <h2 class="note-heading">Mark What <em>Moves You.</em></h2>
+        <p class="note-body">
+          Highlight scripture in five colors. See where your study group
+          has marked the same verses — and discover what the Spirit is
+          speaking to others in your community.
+        </p>
+        <div class="highlight-swatches">
+          <span class="swatch" style="background:#F5C842;" title="Yellow"></span>
+          <span class="swatch" style="background:#E8861A;" title="Orange"></span>
+          <span class="swatch" style="background:#4CAF78;" title="Green"></span>
+          <span class="swatch" style="background:#E0607E;" title="Pink"></span>
+          <span class="swatch" style="background:#5B9BD5;" title="Blue"></span>
+        </div>
+        <span class="note-verse">
+          "Your word is a lamp to my feet and a light to my path."
+          <br/>— Psalm 119:105
+        </span>
+      </div>
+    </div>
+
+    <!-- Note 4: Notes -->
+    <div class="note-wrap">
+      <div class="note">
+        <p class="note-label">Feature</p>
+        <h2 class="note-heading">Write in the <em>Margins.</em></h2>
+        <p class="note-body">
+          Add notes to any verse — public reflections that build up the group,
+          or private thoughts just between you and God. Every insight is anchored
+          directly to the Word.
+        </p>
+        <div class="note-chips">
+          <span class="chip">Public Notes</span>
+          <span class="chip">Private Notes</span>
+          <span class="chip">Filter by Verse</span>
+          <span class="chip">Filter by Author</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Note 5: Community -->
+    <div class="note-wrap">
+      <div class="note">
+        <p class="note-label">Feature</p>
+        <h2 class="note-heading">Study Together, <em>In Real Time.</em></h2>
+        <p class="note-body">
+          See your study group reading alongside you. Message the group, send
+          a direct word to a fellow believer, and watch the Word come alive
+          through shared eyes.
+        </p>
+        <div class="note-chips">
+          <span class="chip">Live Activity</span>
+          <span class="chip">Group Chat</span>
+          <span class="chip">Direct Messages</span>
+          <span class="chip">Online Presence</span>
+        </div>
+        <span class="note-verse">
+          "As iron sharpens iron, so one person sharpens another."
+          <br/>— Proverbs 27:17
+        </span>
+      </div>
+    </div>
+
+    <!-- Note 6: Vision -->
+    <div class="note-wrap">
+      <div class="note">
+        <p class="note-label">The Vision</p>
+        <h2 class="note-heading">Built for <em>Community.</em> Grounded in <em>Scripture.</em></h2>
+        <p class="note-body">
+          FellowScript is not just a Bible app. It is a gathering place —
+          a table around the Word where believers encourage, challenge,
+          and build one another up in faith, day by day.
+        </p>
+        <span class="note-verse">
+          "Let us consider how to stir up one another to love and good works,
+          not neglecting to meet together."
+          <br/>— Hebrews 10:24–25
+        </span>
+      </div>
+    </div>
+
+    <!-- Final CTA Note -->
+    <div class="note-cta-wrap">
+      <div class="note-cta">
+        <p class="note-label">Ready?</p>
+        <h2 class="note-heading">Open the Word <em>Together.</em></h2>
+        <p class="note-body">
+          Join a community of believers reading, reflecting, and connecting
+          through scripture.
+        </p>
+        <a href="reader.html" class="cta-button">Start Reading &rarr;</a>
+      </div>
+    </div>
+
+  </main>
+
+  <footer>
+    &copy; 2026 FellowScript &nbsp;·&nbsp; A Digital Scripture Community
+  </footer>
+
+  <script>
+    // Intersection Observer — fade notes in as they enter the viewport
+    const notes = document.querySelectorAll('.note-wrap, .note-cta-wrap');
+
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          // Stagger slightly based on position
+          entry.target.classList.add('visible');
+          observer.unobserve(entry.target);
+        }
+      });
+    }, {
+      threshold: 0.18,
+      rootMargin: '0px 0px -60px 0px'
+    });
+
+    notes.forEach(note => observer.observe(note));
+
+    // Parallax-lite: subtle vertical drift on the notes as you scroll
+    const noteEls = document.querySelectorAll('.note, .note-cta');
+
+    function onScroll() {
+      if (window.innerWidth <= 640) return;
+      const scrollY = window.scrollY;
+      noteEls.forEach((el, i) => {
+        const dir = i % 2 === 0 ? 1 : -1;
+        const rect = el.getBoundingClientRect();
+        const center = rect.top + rect.height / 2;
+        const viewCenter = window.innerHeight / 2;
+        const offset = ((center - viewCenter) / window.innerHeight) * 18 * dir;
+        el.style.transform = el.closest('.note-cta-wrap')
+          ? `translateY(${offset * 0.4}px)`
+          : `rotate(${getBaseRotation(i)}deg) translateY(${offset}px)`;
+      });
+    }
+
+    function getBaseRotation(i) {
+      const rotations = [-1.5, 1.2, -0.8, 2, -1.2, 0.6];
+      return rotations[i % rotations.length];
+    }
+
+    window.addEventListener('scroll', onScroll, { passive: true });
+
+    // ── Hamburger ──────────────────────────────────────────────────────────────
+    (function() {
+      const hamburger = document.getElementById('hamburger');
+      const drawer    = document.getElementById('mobile-nav-drawer');
+      if (!hamburger || !drawer) return;
+      hamburger.addEventListener('click', () => {
+        const open = hamburger.classList.toggle('open');
+        drawer.classList.toggle('open', open);
+      });
+      document.addEventListener('click', e => {
+        if (!hamburger.contains(e.target) && !drawer.contains(e.target)) {
+          hamburger.classList.remove('open');
+          drawer.classList.remove('open');
+        }
+      });
+    })();
+  </script>
+</body>
+</html>
