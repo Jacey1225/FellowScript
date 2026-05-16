@@ -21,6 +21,7 @@ async def fetch_group(user_id: str, group_id: str):
     result = manager.fetch_group()
     if "error" in result:
         raise HTTPException(status_code=404, detail=result["error"])
+    
     return result
 
 
@@ -29,9 +30,15 @@ async def fetch_group_notes(user_id: str, group_id: str):
     manager = GroupsManager(user_id, group_id)
     return manager.fetch_notes()
 
+@group_router.get("/{user_id}/{note_id}/{group_id}/replies")
+async def fetch_group_replies(user_id: str, note_id: str, group_id: str) -> list[dict] | dict[str, str]:
+    manager = GroupsManager(user_id, group_id)
+    return manager.fetch_replies(note_id)
+
 
 @group_router.get("/{user_id}/{group_id}/highlights")
 async def fetch_group_highlights(user_id: str, group_id: str):
+
     manager = GroupsManager(user_id, group_id)
     return manager.fetch_highlights()
 

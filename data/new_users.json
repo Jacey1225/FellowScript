@@ -1,0 +1,55 @@
+{
+  "60aa9553-b147-4e09-9a6e-b3e3abcf57f0": {
+    "username": "jaceysimpson",
+    "email": "jaceysimps@gmail.com",
+    "hash_pass": "$2b$12$M0bJPwSeP0o2kH/j0AL/5eLx.NaB0eMj0Sp.drqIRbDPls9jeS8/6",
+    "friends": [
+      "3abbfaad-6ace-40a7-8e97-ec399ee350e7",
+      "066a5e8c-b77c-42e9-80d6-86bbfdd30ad5"
+    ],
+    "friend_requests": [
+    ],
+    "groups": [
+      "082efb16-8605-4dbb-81a5-bb2a4bf7cb56",
+      "bf0ee831-8ad8-48e8-bac5-cdb8105db86f"
+    ],
+    "highlights": {
+      "Jeremiah-42-10": "#E8861A",
+      "Jeremiah-41-10": "#F5C842",
+      "Exodus-10-1": "#F5C842",
+      "Ephesians-2-8": "#E8861A",
+      "Ephesians-2-9": "#E8861A",
+      "Ephesians-2-10": "#E8861A"
+    }
+  },
+  "3abbfaad-6ace-40a7-8e97-ec399ee350e7": {
+    "username": "timjkim",
+    "email": "timjkim210@gmail.com",
+    "hash_pass": "$2b$12$ienJfAFn9nOeEwo3dlMBOOyCP51B3Ia4z1rrIzkJHXHRbvTb7itHu",
+    "friends": [
+      "60aa9553-b147-4e09-9a6e-b3e3abcf57f0"
+    ],
+    "friend_requests": [],
+    "groups": [
+      "082efb16-8605-4dbb-81a5-bb2a4bf7cb56"
+    ],
+    "highlights": {
+      "Ephesians-1-4": "#F5C842",
+      "Ephesians-1-20": "#F5C842",
+      "Ephesians-1-19": "#F5C842"
+    }
+  },
+  "066a5e8c-b77c-42e9-80d6-86bbfdd30ad5": {
+    "username": "juliethiluna",
+    "email": "julietbatzorig1@gmail.com",
+    "hash_pass": "$2b$12$aPsXOpf67vNvrd6euDstVejBH0liAa3FKO/2zGCttO8ea6CggLXh6",
+    "friends": [
+      "60aa9553-b147-4e09-9a6e-b3e3abcf57f0"
+    ],
+    "friend_requests": [],
+    "groups": [
+      "bf0ee831-8ad8-48e8-bac5-cdb8105db86f"
+    ],
+    "highlights": {}
+  }
+}
