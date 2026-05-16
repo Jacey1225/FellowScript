@@ -397,7 +397,10 @@
 
     .verse-span {
       display: inline;
+      cursor: pointer;
     }
+
+    .verse-span:hover { background: rgba(200,134,26,0.07); border-radius: 2px; }
 
     .verse-span.active {
       background: rgba(200,134,26,0.13);
@@ -694,7 +697,14 @@
     .note-form input::placeholder,
     .note-form textarea::placeholder { color: rgba(244,228,193,0.18); }
 
-    .note-form textarea { min-height: 72px; }
+    .note-form textarea { min-height: 180px; }
+
+    .note-resize-hint {
+      font-size: 0.62rem;
+      color: rgba(244,228,193,0.22);
+      letter-spacing: 0.06em;
+      margin-top: -0.3rem;
+    }
 
     .verse-range {
       display: grid;
@@ -778,6 +788,7 @@
       background: rgba(20,12,4,0.5);
       padding: 0.85rem 0.95rem;
       transition: border-color 0.2s;
+      cursor: pointer;
     }
 
     .note-card:hover { border-color: rgba(200,134,26,0.35); }
@@ -851,6 +862,88 @@
       display: block;
       -webkit-line-clamp: unset;
     }
+
+    /* Note replies */
+    .note-card-footer {
+      margin-top: 0.5rem;
+      padding-top: 0.4rem;
+      border-top: 1px solid rgba(200,134,26,0.1);
+    }
+
+    .note-reply-btn {
+      background: none;
+      border: none;
+      color: rgba(200,134,26,0.45);
+      font-size: 0.68rem;
+      cursor: pointer;
+      padding: 0;
+      letter-spacing: 0.04em;
+      transition: color 0.18s;
+    }
+
+    .note-reply-btn:hover { color: var(--gold); }
+
+    .note-replies-section {
+      margin-top: 0.5rem;
+      padding-top: 0.4rem;
+      border-top: 1px solid rgba(200,134,26,0.1);
+    }
+
+    .note-reply-item {
+      padding: 0.35rem 0.5rem;
+      border-left: 2px solid rgba(200,134,26,0.2);
+      margin-bottom: 0.4rem;
+    }
+
+    .note-reply-author {
+      font-size: 0.62rem;
+      color: var(--gold);
+      opacity: 0.7;
+      display: block;
+      margin-bottom: 0.1rem;
+    }
+
+    .note-reply-text {
+      font-size: 0.75rem;
+      color: rgba(244,228,193,0.6);
+      line-height: 1.5;
+      margin: 0;
+    }
+
+    .note-reply-form {
+      margin-top: 0.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.3rem;
+    }
+
+    .note-reply-input {
+      background: rgba(20,12,4,0.6);
+      border: 1px solid rgba(200,134,26,0.2);
+      color: var(--parchment);
+      font-family: 'Lora', serif;
+      font-size: 0.75rem;
+      padding: 0.4rem 0.5rem;
+      resize: none;
+      outline: none;
+      transition: border-color 0.18s;
+    }
+
+    .note-reply-input:focus { border-color: rgba(200,134,26,0.45); }
+
+    .note-reply-submit {
+      align-self: flex-end;
+      background: rgba(200,134,26,0.12);
+      border: 1px solid rgba(200,134,26,0.3);
+      color: var(--gold);
+      font-family: 'Lora', serif;
+      font-size: 0.72rem;
+      cursor: pointer;
+      padding: 0.3rem 0.75rem;
+      transition: background 0.18s;
+    }
+
+    .note-reply-submit:hover { background: rgba(200,134,26,0.22); }
 
     /* Not signed in */
     .notes-signin {
@@ -1104,6 +1197,10 @@
       /* Reserve space above the 40px tab bar for both sidebars */
       .msg-sidebar   { padding-bottom: 44px; }
       .notes-sidebar { padding-bottom: 44px; }
+
+      /* Hide desktop-only elements on mobile */
+      .msg-back-to-notes        { display: none; }
+      .sidebar-head-msgs-btn    { display: none; }
     }
 
     .msg-inner {
@@ -1221,6 +1318,19 @@
 
     .msg-remove-btn:hover { color: rgba(220,80,80,0.8); }
 
+    .msg-edit-group-btn {
+      background: none;
+      border: none;
+      color: rgba(200,134,26,0.3);
+      font-size: 0.7rem;
+      cursor: pointer;
+      padding: 0.2rem 0.3rem;
+      flex-shrink: 0;
+      transition: color 0.18s;
+    }
+
+    .msg-edit-group-btn:hover { color: var(--gold); }
+
     .msg-contact-item {
       display: flex;
       align-items: center;
@@ -1250,10 +1360,26 @@
       flex-shrink: 0;
     }
 
+    .msg-contact-info {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 0.1rem;
+    }
+
     .msg-contact-name {
       font-family: 'Lora', serif;
       font-size: 0.82rem;
       color: rgba(244,228,193,0.75);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .msg-contact-preview {
+      font-size: 0.68rem;
+      color: rgba(244,228,193,0.32);
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -1302,6 +1428,66 @@
       color: var(--parchment);
     }
 
+    .msg-chat-name.clickable {
+      cursor: pointer;
+      transition: color 0.18s;
+    }
+
+    .msg-chat-name.clickable:hover { color: var(--gold); }
+
+    .msg-group-info {
+      border-bottom: 1px solid rgba(200,134,26,0.15);
+      background: rgba(12,7,2,0.6);
+      padding: 0.85rem 1.1rem;
+      flex-shrink: 0;
+      overflow-y: auto;
+      max-height: 220px;
+    }
+
+    .msg-group-info-label {
+      font-size: 0.6rem;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: rgba(200,134,26,0.45);
+      margin-bottom: 0.55rem;
+    }
+
+    .msg-group-members {
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+    }
+
+    .msg-group-member {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .msg-group-member-avatar {
+      width: 26px; height: 26px;
+      border-radius: 50%;
+      background: rgba(200,134,26,0.12);
+      border: 1px solid rgba(200,134,26,0.25);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'Playfair Display', serif;
+      font-size: 0.65rem;
+      color: var(--gold);
+      flex-shrink: 0;
+    }
+
+    .msg-group-member-name {
+      font-family: 'Lora', serif;
+      font-size: 0.78rem;
+      color: rgba(244,228,193,0.7);
+    }
+
+    .msg-group-member-name.is-you {
+      color: var(--gold);
+    }
+
     .msg-messages {
       flex: 1;
       overflow-y: auto;
@@ -1335,6 +1521,14 @@
       background: rgba(255,255,255,0.05);
       border: 1px solid rgba(255,255,255,0.08);
       color: rgba(244,228,193,0.75);
+    }
+
+    .msg-bubble-sender {
+      font-size: 0.63rem;
+      color: var(--gold);
+      opacity: 0.7;
+      margin-bottom: 0.15rem;
+      font-family: 'Lora', serif;
     }
 
     .msg-bubble-meta {
@@ -1504,7 +1698,321 @@
       width: 13px; height: 13px;
       cursor: pointer;
     }
+
+    /* ── Note detail panel ── */
+    .sidebar-inner { position: relative; }
+
+    .note-detail {
+      position: absolute;
+      inset: 0;
+      background: rgba(6,4,1,0.98);
+      display: flex;
+      flex-direction: column;
+      z-index: 3;
+      overflow: hidden;
+    }
+
+    .note-detail-header {
+      display: flex;
+      align-items: center;
+      gap: 0.65rem;
+      padding: 0.85rem 1.1rem;
+      border-bottom: 1px solid rgba(200,134,26,0.15);
+      flex-shrink: 0;
+    }
+
+    .note-detail-back {
+      background: none;
+      border: none;
+      color: rgba(200,134,26,0.6);
+      font-size: 1.1rem;
+      cursor: pointer;
+      padding: 0 0.2rem;
+      line-height: 1;
+      transition: color 0.18s;
+    }
+
+    .note-detail-back:hover { color: var(--gold); }
+
+    .note-detail-title {
+      font-family: 'Playfair Display', serif;
+      font-size: 0.95rem;
+      color: var(--parchment);
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .note-detail-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 1.2rem 1.1rem 2rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.9rem;
+    }
+
+    .note-detail-body::-webkit-scrollbar { width: 4px; }
+    .note-detail-body::-webkit-scrollbar-thumb { background: rgba(200,134,26,0.25); border-radius: 2px; }
+
+    .note-detail-ref {
+      font-family: 'IM Fell English', serif;
+      font-style: italic;
+      font-size: 0.78rem;
+      color: var(--gold);
+    }
+
+    .note-detail-text {
+      font-size: 0.88rem;
+      color: rgba(244,228,193,0.75);
+      line-height: 1.8;
+      white-space: pre-wrap;
+    }
+
+    .note-detail-divider {
+      border: none;
+      border-top: 1px solid rgba(200,134,26,0.12);
+    }
+
+    .note-detail-replies-label {
+      font-size: 0.58rem;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: rgba(200,134,26,0.45);
+    }
+
+    .note-detail-reply-form {
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+      margin-top: 0.3rem;
+    }
+
+    /* ── Desktop layout (≥ 641px) ── */
+    @media (min-width: 641px) {
+      :root {
+        --sidebar-w: clamp(440px, 44vw, 680px);
+      }
+
+      /* Notes sidebar always open — no transform, no toggle */
+      .notes-sidebar {
+        transform: none !important;
+      }
+
+      .sidebar-toggle { display: none !important; }
+
+      /* Bible centered within its left portion */
+      .reader-main {
+        padding-right: var(--sidebar-w);
+        padding-left:  0;
+        align-items:   center;
+      }
+
+      body.sidebar-open .reader-main {
+        padding-right: var(--sidebar-w);
+      }
+
+      /* Chapter card wider to fill left half better */
+      .chapter-card {
+        max-width: 820px;
+        margin-left:  2rem;
+        margin-right: 2rem;
+      }
+
+      /* Larger textarea for note creation */
+      .note-form textarea { min-height: 300px; }
+
+      /* Sidebar inner content: cap width and center within the wider panel */
+      .sidebar-inner,
+      .msg-inner {
+        max-width: 600px;
+        width: 100%;
+        margin-left:  auto;
+        margin-right: auto;
+      }
+
+      /* "Messages" nav button in sidebar header */
+      .sidebar-head-msgs-btn {
+        background: none;
+        border: 1px solid rgba(200,134,26,0.3);
+        color: rgba(200,134,26,0.7);
+        font-family: 'Lora', serif;
+        font-size: 0.68rem;
+        letter-spacing: 0.1em;
+        padding: 0.28rem 0.65rem;
+        cursor: pointer;
+        transition: background 0.2s, color 0.2s;
+        white-space: nowrap;
+      }
+
+      .sidebar-head-msgs-btn:hover {
+        background: rgba(200,134,26,0.1);
+        color: var(--gold);
+      }
+
+      /* Messages sidebar overlays notes sidebar on desktop */
+      .msg-sidebar {
+        left:      auto;
+        right:     0;
+        width:     var(--sidebar-w);
+        border-right: none;
+        border-left:  1px solid rgba(200,134,26,0.2);
+        transform: translateX(100%);
+        z-index:   85;
+      }
+
+      .msg-sidebar.open { transform: translateX(0); }
+
+      body.msg-open .reader-main { padding-left: 0; }
+
+      /* Hide old left-tab toggle on desktop */
+      .msg-toggle { display: none !important; }
+
+      /* "← Notes" back button in messages panel */
+      .msg-back-to-notes {
+        display:     flex;
+        align-items: center;
+        gap:         0.45rem;
+        padding:     0.7rem 1.1rem 0.5rem;
+        border-bottom: 1px solid rgba(200,134,26,0.12);
+        flex-shrink: 0;
+      }
+
+      .msg-back-to-notes-btn {
+        background: none;
+        border:     none;
+        color:      rgba(200,134,26,0.6);
+        font-family: 'Lora', serif;
+        font-size:  0.72rem;
+        letter-spacing: 0.12em;
+        cursor:     pointer;
+        padding:    0;
+        transition: color 0.18s;
+      }
+
+      .msg-back-to-notes-btn:hover { color: var(--gold); }
+    }
+
+    /* ── Light mode ── */
+    .theme-toggle {
+      background: none;
+      border: 1px solid rgba(200,134,26,0.3);
+      border-radius: 4px;
+      color: var(--gold);
+      font-size: 1rem;
+      cursor: pointer;
+      padding: 0.2rem 0.45rem;
+      line-height: 1.4;
+      transition: border-color 0.18s;
+      margin-left: 0.75rem;
+    }
+    .theme-toggle:hover { border-color: var(--gold); }
+
+    html.light-mode body {
+      background: #f0e2c8;
+      color: #1a0d00;
+    }
+    html.light-mode #bg-video { display: none; }
+    html.light-mode body::before { opacity: 0.15; }
+    html.light-mode .main-nav {
+      background: linear-gradient(to bottom, rgba(230,210,172,0.97) 0%, rgba(230,210,172,0.9) 100%);
+      border-bottom-color: rgba(200,134,26,0.3);
+    }
+    html.light-mode .nav-links a { color: #4a2800; }
+    html.light-mode .nav-links a:hover,
+    html.light-mode .nav-links a.active { color: var(--gold-dim); }
+    html.light-mode .nav-logo .fellow { color: #4a2800; }
+    html.light-mode .mobile-nav-drawer {
+      background: rgba(230,210,172,0.99);
+      border-color: rgba(200,134,26,0.2);
+    }
+    html.light-mode .mobile-nav-drawer a { color: #3a1a05; border-bottom-color: rgba(200,134,26,0.15); }
+    html.light-mode .chapter-card {
+      background: rgba(255,250,238,0.96);
+      border-color: rgba(200,134,26,0.25);
+      box-shadow: 0 2px 24px rgba(100,60,10,0.1);
+    }
+    html.light-mode .chapter-title { color: #3a1a00; }
+    html.light-mode .chapter-subtitle { color: rgba(58,26,0,0.5); }
+    html.light-mode .verse-span { color: #1a0d00; }
+    html.light-mode .verse-span:hover { background: rgba(200,134,26,0.12) !important; }
+    html.light-mode .verse-num { color: rgba(140,80,20,0.45); }
+    html.light-mode .notes-sidebar {
+      background: rgba(242,229,200,0.99);
+      border-left-color: rgba(200,134,26,0.2);
+    }
+    html.light-mode .sidebar-header {
+      background: rgba(232,215,180,0.99);
+      border-bottom-color: rgba(200,134,26,0.2);
+    }
+    html.light-mode .sidebar-title { color: #3a1a00; }
+    html.light-mode .stab { color: rgba(42,21,5,0.45); }
+    html.light-mode .stab.active { color: var(--gold-dim); border-bottom-color: var(--gold-dim); }
+    html.light-mode .note-card {
+      background: rgba(255,252,242,0.97);
+      border-color: rgba(200,134,26,0.15);
+    }
+    html.light-mode .note-card:hover { border-color: rgba(200,134,26,0.45); }
+    html.light-mode .note-card-title { color: #1a0d00; }
+    html.light-mode .note-card-text { color: rgba(42,21,5,0.65); }
+    html.light-mode .note-verse-ref { color: var(--gold-dim); }
+    html.light-mode .note-empty { color: rgba(42,21,5,0.3); }
+    html.light-mode .note-form { background: rgba(242,229,200,0.99); }
+    html.light-mode .note-form-field,
+    html.light-mode input[type="text"],
+    html.light-mode textarea,
+    html.light-mode select {
+      background: rgba(255,252,242,0.95);
+      color: #1a0d00;
+      border-color: rgba(200,134,26,0.3);
+    }
+    html.light-mode .note-form-field::placeholder,
+    html.light-mode textarea::placeholder { color: rgba(42,21,5,0.3); }
+    html.light-mode .note-detail {
+      background: rgba(242,229,200,0.99);
+    }
+    html.light-mode .note-detail-title { color: #1a0d00; }
+    html.light-mode .note-detail-text { color: rgba(42,21,5,0.7); }
+    html.light-mode .msg-sidebar {
+      background: rgba(242,229,200,0.99);
+      border-color: rgba(200,134,26,0.2);
+    }
+    html.light-mode .msg-section-head { color: rgba(42,21,5,0.38); }
+    html.light-mode .msg-contact-item {
+      background: rgba(255,252,242,0.9);
+      border-color: rgba(200,134,26,0.12);
+    }
+    html.light-mode .msg-contact-item:hover { background: rgba(255,252,242,1); }
+    html.light-mode .msg-contact-name { color: #1a0d00; }
+    html.light-mode .msg-contact-preview { color: rgba(42,21,5,0.45); }
+    html.light-mode .msg-avatar { background: rgba(200,134,26,0.2); color: var(--gold-dim); }
+    html.light-mode .msg-chat { background: rgba(245,234,210,0.99); }
+    html.light-mode .msg-chat-header { background: rgba(232,215,180,0.99); border-bottom-color: rgba(200,134,26,0.2); }
+    html.light-mode .msg-chat-name { color: #1a0d00; }
+    html.light-mode .msg-bubble.received {
+      background: rgba(232,215,180,0.85);
+      color: #1a0d00;
+    }
+    html.light-mode .msg-bubble.sent {
+      background: rgba(200,134,26,0.22);
+      color: #1a0d00;
+    }
+    html.light-mode .msg-input-row { background: rgba(232,215,180,0.99); border-top-color: rgba(200,134,26,0.2); }
+    html.light-mode .msg-input { background: rgba(255,252,242,0.9); color: #1a0d00; border-color: rgba(200,134,26,0.3); }
+    html.light-mode .msg-empty { color: rgba(42,21,5,0.3); }
+    html.light-mode .hl-picker {
+      background: rgba(232,215,180,0.99);
+      border-color: rgba(200,134,26,0.3);
+    }
+    html.light-mode .sc-nav {
+      background: rgba(230,210,172,0.97);
+      border-bottom-color: rgba(200,134,26,0.2);
+    }
+    html.light-mode .sc-nav select { background: rgba(255,252,242,0.9); color: #1a0d00; }
+    html.light-mode .sidebar-resize-handle { background: rgba(200,134,26,0.15); }
   </style>
+  <script>if (localStorage.getItem('theme') === 'light') document.documentElement.classList.add('light-mode');</script>
 </head>
 <body>
 
@@ -1522,6 +2030,7 @@
       <li><a href="reader.html" class="active">Read</a></li>
       <li><a href="account.html" id="nav-account">Account</a></li>
     </ul>
+    <button class="theme-toggle" id="theme-toggle" aria-label="Toggle theme"></button>
     <button class="hamburger" id="hamburger" aria-label="Menu">
       <span></span><span></span><span></span>
     </button>
@@ -1603,62 +2112,80 @@
     <button class="sidebar-toggle" id="sidebar-toggle">Notes</button>
 
     <div class="sidebar-inner">
-      <div class="sidebar-head">
-        <h3>Study Notes</h3>
-        <button class="new-note-btn" id="new-note-btn">+ New</button>
-      </div>
 
-      <div class="group-filter">
-        <select class="group-sel" id="group-sel">
-          <option value="">Personal</option>
-        </select>
-      </div>
-
-      <div class="stabs">
-        <button class="stab active" data-tab="verse">Verse</button>
-        <button class="stab" data-tab="general">General</button>
-        <button class="stab" data-tab="public">Public</button>
-      </div>
-
-      <!-- New / Edit note form -->
-      <div class="note-form" id="note-form" style="display:none">
-        <p class="note-form-title" id="note-form-title">New Note</p>
-
-        <input id="nf-title" type="text" placeholder="Title" />
-        <textarea id="nf-text" placeholder="Your note…"></textarea>
-
-        <div class="verse-range">
-          <span class="verse-range-label">Verse range (optional)</span>
-          <input id="nf-vs-book-s"  type="text"   placeholder="Book"    />
-          <input id="nf-vs-ch-s"    type="number"  placeholder="Ch"     min="1" />
-          <input id="nf-vs-v-s"     type="number"  placeholder="Vs"     min="1" />
-          <span class="verse-range-label">End (leave blank for single verse)</span>
-          <input id="nf-vs-book-e"  type="text"   placeholder="Book"    />
-          <input id="nf-vs-ch-e"    type="number"  placeholder="Ch"     min="1" />
-          <input id="nf-vs-v-e"     type="number"  placeholder="Vs"     min="1" />
+      <!-- Main notes view -->
+      <div id="notes-main" style="display:flex;flex-direction:column;height:100%;overflow:hidden">
+        <div class="sidebar-head">
+          <h3>Study Notes</h3>
+          <div style="display:flex;align-items:center;gap:0.5rem">
+            <button class="sidebar-head-msgs-btn" id="sidebar-open-msgs-btn">Messages</button>
+            <button class="new-note-btn" id="new-note-btn">+ New</button>
+          </div>
         </div>
 
-        <div class="public-row">
-          <input type="checkbox" id="nf-public" />
-          <label for="nf-public">Visible to group (public)</label>
+        <div class="group-filter">
+          <select class="group-sel" id="group-sel">
+            <option value="">Personal</option>
+          </select>
         </div>
 
-        <div class="form-btns">
-          <button class="form-btn save"   id="nf-save">Save</button>
-          <button class="form-btn cancel" id="nf-cancel">Cancel</button>
+        <div class="stabs">
+          <button class="stab active" data-tab="verse">Verse</button>
+          <button class="stab" data-tab="general">General</button>
+          <button class="stab" data-tab="public">Public</button>
+        </div>
+
+        <!-- New / Edit note form -->
+        <div class="note-form" id="note-form" style="display:none">
+          <p class="note-form-title" id="note-form-title">New Note</p>
+
+          <input id="nf-title" type="text" placeholder="Title" />
+          <textarea id="nf-text" placeholder="Your note…"></textarea>
+          <p class="note-resize-hint">Hold the bottom-right corner to resize</p>
+
+          <div class="verse-range">
+            <span class="verse-range-label">Verse range (optional)</span>
+            <input id="nf-vs-book-s"  type="text"   placeholder="Book"  />
+            <input id="nf-vs-ch-s"    type="number"  placeholder="Ch"   min="1" />
+            <input id="nf-vs-v-s"     type="number"  placeholder="Vs"   min="1" />
+            <span class="verse-range-label">End (leave blank for single verse)</span>
+            <input id="nf-vs-book-e"  type="text"   placeholder="Book"  />
+            <input id="nf-vs-ch-e"    type="number"  placeholder="Ch"   min="1" />
+            <input id="nf-vs-v-e"     type="number"  placeholder="Vs"   min="1" />
+          </div>
+
+          <div class="public-row">
+            <input type="checkbox" id="nf-public" />
+            <label for="nf-public">Visible to group (public)</label>
+          </div>
+
+          <div class="form-btns">
+            <button class="form-btn save"   id="nf-save">Save</button>
+            <button class="form-btn cancel" id="nf-cancel">Cancel</button>
+          </div>
+        </div>
+
+        <!-- Note lists -->
+        <div class="notes-list" id="list-verse"></div>
+        <div class="notes-list" id="list-general" style="display:none"></div>
+        <div class="notes-list" id="list-public"  style="display:none"></div>
+
+        <!-- Not signed in -->
+        <div class="notes-signin" id="notes-signin" style="display:none">
+          <p>Sign in to write and save your study notes.</p>
+          <a href="signin.html">Sign In</a>
         </div>
       </div>
 
-      <!-- Note lists -->
-      <div class="notes-list" id="list-verse"></div>
-      <div class="notes-list" id="list-general" style="display:none"></div>
-      <div class="notes-list" id="list-public"  style="display:none"></div>
-
-      <!-- Not signed in -->
-      <div class="notes-signin" id="notes-signin" style="display:none">
-        <p>Sign in to write and save your study notes.</p>
-        <a href="signin.html">Sign In</a>
+      <!-- Note detail panel (overlays main view when a note is opened) -->
+      <div class="note-detail" id="note-detail" style="display:none">
+        <div class="note-detail-header">
+          <button class="note-detail-back" id="note-detail-back">&#8592;</button>
+          <span class="note-detail-title" id="note-detail-title"></span>
+        </div>
+        <div class="note-detail-body" id="note-detail-body"></div>
       </div>
+
     </div>
   </aside>
 
@@ -1668,6 +2195,11 @@
     <button class="msg-toggle" id="msg-toggle">Messages</button>
 
     <div class="msg-inner">
+      <!-- Desktop back-to-notes bar (hidden on mobile) -->
+      <div class="msg-back-to-notes" id="msg-back-to-notes">
+        <button class="msg-back-to-notes-btn" id="msg-back-to-notes-btn">&#8592; Notes</button>
+      </div>
+
       <!-- Contacts list -->
       <div class="msg-contacts" id="msg-contacts">
         <div class="msg-head"><h3>Messages</h3></div>
@@ -1705,6 +2237,10 @@
           <button class="msg-back-btn" id="msg-back">&#8592;</button>
           <span class="msg-chat-name" id="msg-chat-name"></span>
         </div>
+        <div class="msg-group-info" id="msg-group-info" style="display:none">
+          <div class="msg-group-info-label">Members</div>
+          <div class="msg-group-members" id="msg-group-members"></div>
+        </div>
         <div class="msg-messages" id="msg-messages"></div>
         <div class="msg-input-row">
           <input class="msg-input" id="msg-input" type="text" placeholder="Type a message…" />
@@ -1728,1162 +2264,7 @@
 
   <footer>&copy; 2026 FellowScript &nbsp;·&nbsp; A Digital Scripture Community</footer>
 
-  <script>
-    const API  = 'https://fellowscript.com/api';
-    const user = JSON.parse(sessionStorage.getItem('user') || 'null');
+  <script type="module" src="js/reader.js"></script>
 
-    // Update nav account link (desktop + drawer)
-    (function() {
-      const navAccount    = document.getElementById('nav-account');
-      const drawerAccount = document.getElementById('drawer-account');
-      const label = !user ? 'Sign In' : (user.username || 'Account');
-      const href  = !user ? 'signin.html' : 'account.html';
-      if (navAccount)    { navAccount.textContent    = label; navAccount.href    = href; }
-      if (drawerAccount) { drawerAccount.textContent = label; drawerAccount.href = href; }
-    })();
-
-    // ── Hamburger menu ─────────────────────────────────────────────────────────
-    (function() {
-      const hamburger = document.getElementById('hamburger');
-      const drawer    = document.getElementById('mobile-nav-drawer');
-      if (!hamburger || !drawer) return;
-      hamburger.addEventListener('click', () => {
-        const open = hamburger.classList.toggle('open');
-        drawer.classList.toggle('open', open);
-      });
-      document.addEventListener('click', e => {
-        if (!hamburger.contains(e.target) && !drawer.contains(e.target)) {
-          hamburger.classList.remove('open');
-          drawer.classList.remove('open');
-        }
-      });
-    })();
-
-    // ── Mobile bottom tab bar (wired up after loadContactList/connectWS defined) ──
-    const _mobileMsgBtn   = document.getElementById('mobile-msg-btn');
-    const _mobileNotesBtn = document.getElementById('mobile-notes-btn');
-    function _wireMobileTabs() {
-      if (!_mobileMsgBtn || !_mobileNotesBtn) return;
-      _mobileMsgBtn.addEventListener('click', () => {
-        const sidebar  = document.getElementById('msg-sidebar');
-        const notesSb  = document.getElementById('notes-sidebar');
-        const isOpen   = sidebar.classList.contains('open');
-        if (notesSb.classList.contains('open')) {
-          notesSb.classList.remove('open');
-          document.body.classList.remove('sidebar-open');
-          _mobileNotesBtn.classList.remove('active');
-        }
-        sidebar.classList.toggle('open', !isOpen);
-        document.body.classList.toggle('msg-open', !isOpen);
-        _mobileMsgBtn.classList.toggle('active', !isOpen);
-        if (!isOpen && user) {
-          loadContactList();
-          if (!msgWs || msgWs.readyState > 1) connectWS();
-        }
-      });
-      _mobileNotesBtn.addEventListener('click', () => {
-        const sidebar = document.getElementById('notes-sidebar');
-        const msgSb   = document.getElementById('msg-sidebar');
-        const isOpen  = sidebar.classList.contains('open');
-        if (msgSb.classList.contains('open')) {
-          msgSb.classList.remove('open');
-          document.body.classList.remove('msg-open');
-          _mobileMsgBtn.classList.remove('active');
-        }
-        sidebar.classList.toggle('open', !isOpen);
-        document.body.classList.toggle('sidebar-open', !isOpen);
-        _mobileNotesBtn.classList.toggle('active', !isOpen);
-        if (!isOpen && user) { loadNotes(); populateGroupSelector(); }
-      });
-    }
-
-    let bible = null;
-    let curBook = null;
-    let curChapter = null;
-
-    const bookSel    = document.getElementById('book-sel');
-    const chSel      = document.getElementById('ch-sel');
-    const vsSel      = document.getElementById('vs-sel');
-    const stateLoad  = document.getElementById('state-loading');
-    const stateWelc  = document.getElementById('state-welcome');
-    const card       = document.getElementById('chapter-card');
-    const cardLabel  = document.getElementById('card-book-label');
-    const cardTitle  = document.getElementById('card-title');
-    const cardHead   = document.getElementById('card-section-head');
-    const cardBody   = document.getElementById('card-body');
-    const cardLoc    = document.getElementById('card-loc');
-    const prevBtn    = document.getElementById('prev-btn');
-    const nextBtn    = document.getElementById('next-btn');
-
-    // ── Data loading ──────────────────────────────────────────────────────────
-
-    async function init() {
-      try {
-        const res = await fetch('../data/bible.json');
-        if (!res.ok) throw new Error(res.status);
-        bible = await res.json();
-
-        Object.keys(bible).forEach(book => {
-          const o = document.createElement('option');
-          o.value = o.textContent = book;
-          bookSel.appendChild(o);
-        });
-
-        stateLoad.style.display = 'none';
-        stateWelc.style.display = 'block';
-
-        await loadHighlights();
-        applyHash();
-      } catch (e) {
-        stateLoad.innerHTML =
-          '<p style="color:rgba(200,134,26,0.65);font-size:.8rem;letter-spacing:.15em;text-transform:uppercase">' +
-          'Could not load scripture data.</p>';
-      }
-    }
-
-    // ── Hash-based navigation ──────────────────────────────────────────────────
-    // Format: #BookName-ChapterNum   or   #BookName-ChapterNum-VerseNum
-    // Spaces in book names replaced with underscores.
-
-    function applyHash() {
-      const h = location.hash.slice(1);
-      if (!h || !bible) return;
-      const parts = h.split('-');
-      if (parts.length < 2) return;
-      const book = parts[0].replace(/_/g, ' ');
-      const ch   = parseInt(parts[1]);
-      const vs   = parts[2] ? parseInt(parts[2]) : null;
-      if (bible[book] && ch >= 1) {
-        setBook(book);
-        setChapter(ch);
-        if (vs) setVerse(vs);
-      }
-    }
-
-    function pushHash(book, ch, vs) {
-      const b = book.replace(/ /g, '_');
-      location.hash = vs ? `${b}-${ch}-${vs}` : `${b}-${ch}`;
-    }
-
-    // ── Selectors ─────────────────────────────────────────────────────────────
-
-    function setBook(book) {
-      if (!bible[book]) return;
-      curBook = book;
-      curChapter = null;
-      bookSel.value = book;
-
-      const chapters = bible[book].slice(1);
-      chSel.innerHTML = '<option value="">— Chapter —</option>';
-      chapters.forEach((_, i) => {
-        const o = document.createElement('option');
-        o.value = i + 1;
-        o.textContent = `Chapter ${i + 1}`;
-        chSel.appendChild(o);
-      });
-      chSel.disabled = false;
-
-      vsSel.innerHTML = '<option value="">—</option>';
-      vsSel.disabled = true;
-
-      stateWelc.style.display = 'block';
-      card.style.display = 'none';
-    }
-
-    function setChapter(chNum) {
-      if (!curBook) return;
-      const chapters = bible[curBook].slice(1);
-      if (chNum < 1 || chNum > chapters.length) return;
-
-      curChapter = chNum;
-      chSel.value = chNum;
-
-      const chStr = chapters[chNum - 1];
-      renderCard(chStr, chNum);
-      populateVerses(chStr);
-
-      prevBtn.disabled = chNum <= 1;
-      nextBtn.disabled = chNum >= chapters.length;
-      cardLoc.textContent = `${curBook}  ·  ${chNum}`;
-
-      stateWelc.style.display = 'none';
-      card.style.display = 'block';
-      // Re-trigger animation
-      card.style.animation = 'none';
-      requestAnimationFrame(() => { card.style.animation = ''; });
-
-      card.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      applyHighlights();
-    }
-
-    function setVerse(vNum) {
-      if (!curBook || !curChapter) return;
-      vsSel.value = vNum;
-
-      // Clear previous highlight
-      document.querySelectorAll('.verse-span.active').forEach(el => el.classList.remove('active'));
-
-      const span = document.getElementById(`vs${vNum}`);
-      if (span) {
-        span.classList.add('active');
-        span.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }
-
-      pushHash(curBook, curChapter, vNum);
-    }
-
-    // ── Verse population ──────────────────────────────────────────────────────
-
-    function populateVerses(chStr) {
-      const nums = extractVerseNums(chStr);
-      vsSel.innerHTML = '<option value="">— Verse —</option>';
-      nums.forEach(n => {
-        const o = document.createElement('option');
-        o.value = n;
-        o.textContent = `Verse ${n}`;
-        vsSel.appendChild(o);
-      });
-      vsSel.disabled = nums.length === 0;
-    }
-
-    function extractVerseNums(chStr) {
-      const text = chStr.replace(/\[\d+\]/g, '');
-      const nums = new Set();
-
-      const first = text.match(/^(\d+):(\d+)/);
-      if (first) nums.add(parseInt(first[2]));
-
-      const remaining = text.replace(/^\d+:\d+\s*/, '');
-      const re = /(?<!\d)(\d+)(?=[A-Za-z])/g;
-      let m;
-      while ((m = re.exec(remaining)) !== null) {
-        const n = parseInt(m[1]);
-        if (n >= 1 && n <= 250) nums.add(n);
-      }
-
-      return [...nums].sort((a, b) => a - b);
-    }
-
-    // ── Chapter rendering ─────────────────────────────────────────────────────
-
-    function renderCard(chStr, chNum) {
-      const preamble = (bible[curBook][0] || '').replace('HEAD::', '').trim();
-      cardLabel.textContent = curBook.toUpperCase();
-      cardTitle.textContent = `Chapter ${chNum}`;
-      cardHead.textContent  = chNum === 1 && preamble ? preamble : '';
-      cardBody.innerHTML    = buildHTML(chStr);
-    }
-
-    function buildHTML(chStr) {
-      // Strip footnote markers
-      let text = chStr.replace(/\[\d+\]/g, '');
-
-      // Split on embedded HEAD:: section markers
-      const parts = text.split('HEAD::');
-      let html = '';
-
-      parts.forEach((part, idx) => {
-        if (!part.trim()) return;
-
-        if (idx > 0) {
-          // Everything before the next verse pattern is the section heading
-          const vIdx = Math.min(
-            part.search(/\d+:\d/) === -1 ? Infinity : part.search(/\d+:\d/),
-            part.search(/(?<!\d)\d+(?=[A-Za-z])/) === -1 ? Infinity : part.search(/(?<!\d)\d+(?=[A-Za-z])/)
-          );
-          if (isFinite(vIdx) && vIdx > 0) {
-            html += `<span class="section-head">${part.slice(0, vIdx).trim()}</span>`;
-            html += versesToHTML(part.slice(vIdx));
-          } else {
-            html += `<span class="section-head">${part.trim()}</span>`;
-          }
-        } else {
-          html += versesToHTML(part);
-        }
-      });
-
-      return html;
-    }
-
-    function versesToHTML(text) {
-      if (!text.trim()) return '';
-
-      // Replace leading "chapter:verse " with a [[N]] marker
-      text = text.replace(/^\s*\d+:(\d+)\s*/, '[[V$1]]');
-
-      // Replace inline verse numbers (digit directly before a letter, no space)
-      text = text.replace(/(?<!\d)(\d+)(?=[A-Za-z])/g, '[[V$1]]');
-
-      // Split on verse markers — capture group keeps the verse number in the array
-      const tokens = text.split(/\[\[V(\d+)\]\]/);
-      // tokens: [ pre-text, verseNum, verseText, verseNum, verseText, ... ]
-
-      let html = '';
-      if (tokens[0].trim()) html += tokens[0];
-
-      for (let i = 1; i < tokens.length; i += 2) {
-        const vNum    = tokens[i];
-        const vText   = tokens[i + 1] || '';
-        html +=
-          `<span class="verse-span" id="vs${vNum}">` +
-          `<sup class="vnum" data-v="${vNum}">${vNum}</sup>` +
-          ` ${vText}` +
-          `</span>`;
-      }
-
-      return html;
-    }
-
-    // ── Events ────────────────────────────────────────────────────────────────
-
-    bookSel.addEventListener('change', () => {
-      if (bookSel.value) { setBook(bookSel.value); pushHash(bookSel.value, 1, null); }
-    });
-
-    chSel.addEventListener('change', () => {
-      if (chSel.value) { setChapter(parseInt(chSel.value)); pushHash(curBook, curChapter, null); }
-    });
-
-    vsSel.addEventListener('change', () => {
-      if (vsSel.value) setVerse(parseInt(vsSel.value));
-    });
-
-    prevBtn.addEventListener('click', () => {
-      if (curChapter > 1) { setChapter(curChapter - 1); pushHash(curBook, curChapter, null); }
-    });
-
-    nextBtn.addEventListener('click', () => {
-      const total = bible[curBook].slice(1).length;
-      if (curChapter < total) { setChapter(curChapter + 1); pushHash(curBook, curChapter, null); }
-    });
-
-    // Click a verse number — select verse AND open highlight picker
-    document.addEventListener('click', e => {
-      const sup = e.target.closest('.vnum');
-      if (sup && sup.dataset.v) {
-        setVerse(parseInt(sup.dataset.v));
-        openHlPicker(sup, parseInt(sup.dataset.v));
-        e.stopPropagation();
-        return;
-      }
-      // Click anywhere else closes the picker
-      closeHlPicker();
-    });
-
-    window.addEventListener('hashchange', applyHash);
-
-    init();
-
-    // ── Highlights ────────────────────────────────────────────────────────────
-
-    const hlPicker    = document.getElementById('hl-picker');
-    let   hlTargetV   = null;
-    let   localHl     = {};     // { "Book-ch-vs": "#hexcolor" }
-
-    let currentGroupId  = null;
-    let groupNotes      = {};   // { username: { note_id: note } }
-    let groupHighlights = {};   // { user_id: { key: color } }
-    let groupUsernames  = {};   // { user_id: username }
-
-    async function loadHighlights() {
-      if (!user) return;
-      try {
-        const res = await fetch(`${API}/notes/highlight/${user.user_id}`);
-        if (res.ok) localHl = await res.json();
-      } catch { /* offline */ }
-    }
-
-    function applyHighlights() {
-      // Clear highlights and group badges
-      document.querySelectorAll('.verse-span').forEach(el => {
-        el.removeAttribute('data-hl');
-        el.style.background = '';
-        el.querySelectorAll('.hl-badge').forEach(b => b.remove());
-      });
-
-      // Personal highlights
-      Object.entries(localHl).forEach(([key, color]) => {
-        const [book, ch, vs] = key.split('-');
-        if (book === curBook && parseInt(ch) === curChapter) {
-          const span = document.getElementById(`vs${vs}`);
-          if (span) {
-            span.dataset.hl = color;
-            span.style.background = hexWithAlpha(color, 0.28);
-          }
-        }
-      });
-
-      // Group highlights with user badges
-      if (currentGroupId) {
-        Object.entries(groupHighlights).forEach(([uid, highlights]) => {
-          const uname   = groupUsernames[uid] || uid.slice(0, 3);
-          const initial = uname[0].toUpperCase();
-          Object.entries(highlights).forEach(([key, color]) => {
-            const [book, ch, vs] = key.split('-');
-            if (book === curBook && parseInt(ch) === curChapter) {
-              const span = document.getElementById(`vs${vs}`);
-              if (span) {
-                if (!span.dataset.hl) span.style.background = hexWithAlpha(color, 0.2);
-                const badge = document.createElement('span');
-                badge.className   = 'hl-badge';
-                badge.title       = uname;
-                badge.style.background = color;
-                badge.textContent = initial;
-                span.appendChild(badge);
-              }
-            }
-          });
-        });
-      }
-    }
-
-    function hexWithAlpha(hex, alpha) {
-      const r = parseInt(hex.slice(1,3),16);
-      const g = parseInt(hex.slice(3,5),16);
-      const b = parseInt(hex.slice(5,7),16);
-      return `rgba(${r},${g},${b},${alpha})`;
-    }
-
-    function openHlPicker(anchorEl, vNum) {
-      hlTargetV = vNum;
-      const rect = anchorEl.getBoundingClientRect();
-      hlPicker.style.left = `${rect.left}px`;
-      hlPicker.style.top  = `${rect.bottom + 6}px`;
-      hlPicker.classList.add('visible');
-      // Clamp horizontally so picker never overflows the viewport
-      requestAnimationFrame(() => {
-        const pw      = hlPicker.offsetWidth;
-        const maxLeft = window.innerWidth - pw - 8;
-        hlPicker.style.left = `${Math.max(8, Math.min(rect.left, maxLeft))}px`;
-      });
-    }
-
-    function closeHlPicker() {
-      hlPicker.classList.remove('visible');
-      hlTargetV = null;
-    }
-
-    hlPicker.querySelectorAll('.hl-swatch').forEach(swatch => {
-      swatch.addEventListener('click', async e => {
-        e.stopPropagation();
-        if (!user || !hlTargetV || !curBook || !curChapter) return;
-        const color   = swatch.dataset.color;
-        const verseNum = hlTargetV;
-        const key     = `${curBook}-${curChapter}-${verseNum}`;
-        localHl[key] = color;
-        applyHighlights();
-        closeHlPicker();
-        try {
-          await fetch(`${API}/notes/highlight/${user.user_id}`, {
-            method:  'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body:    JSON.stringify({ book: curBook, chapter: curChapter, verse: verseNum, color }),
-          });
-        } catch { /* offline — highlight applied locally */ }
-      });
-    });
-
-    hlPicker.querySelector('.hl-clear').addEventListener('click', async e => {
-      e.stopPropagation();
-      if (!user || !hlTargetV || !curBook || !curChapter) return;
-      const key = `${curBook}-${curChapter}-${hlTargetV}`;
-      delete localHl[key];
-      applyHighlights();
-      closeHlPicker();
-      try {
-        await fetch(`${API}/notes/highlight/${user.user_id}/${encodeURIComponent(key)}`, {
-          method: 'DELETE',
-        });
-      } catch { /* offline */ }
-    });
-
-    // ── Notes Sidebar ─────────────────────────────────────────────────────────
-
-    const sidebar    = document.getElementById('notes-sidebar');
-    const sidebarTgl = document.getElementById('sidebar-toggle');
-    const newNoteBtn = document.getElementById('new-note-btn');
-    const noteForm   = document.getElementById('note-form');
-    const nfTitle    = document.getElementById('note-form-title');
-    const nfSave     = document.getElementById('nf-save');
-    const nfCancel   = document.getElementById('nf-cancel');
-
-    let allNotes    = {};   // { id: { title, text, public, verses } }
-    let editingId   = null; // null = new note, string = editing existing
-    let activeTab   = 'verse';
-
-    // ── Sidebar toggle ────────────────────────────────────────────────────────
-
-    sidebarTgl.addEventListener('click', () => {
-      const open = sidebar.classList.toggle('open');
-      document.body.classList.toggle('sidebar-open', open);
-      if (open && user) { loadNotes(); populateGroupSelector(); }
-    });
-
-    // ── Auth gate ─────────────────────────────────────────────────────────────
-
-    function initSidebar() {
-      if (!user) {
-        document.getElementById('notes-signin').style.display = 'flex';
-        newNoteBtn.style.display = 'none';
-        document.querySelectorAll('.stab, .notes-list').forEach(el => el.style.display = 'none');
-      }
-    }
-    initSidebar();
-
-    // ── Group selector ────────────────────────────────────────────────────────
-
-    const groupSel = document.getElementById('group-sel');
-
-    async function populateGroupSelector() {
-      if (!user || groupSel.options.length > 1) return;
-      try {
-        const res = await fetch(`${API}/user/${user.user_id}`);
-        if (!res.ok) return;
-        const data = await res.json();
-        const ids  = Array.isArray(data.groups) ? data.groups : [];
-        await Promise.all(ids.map(async gid => {
-          try {
-            const r = await fetch(`${API}/groups/${user.user_id}/${gid}`);
-            if (r.ok) {
-              const d = await r.json();
-              const opt = document.createElement('option');
-              opt.value = gid;
-              opt.textContent = d.group?.title || gid.slice(0, 8);
-              groupSel.appendChild(opt);
-            }
-          } catch { /* skip */ }
-        }));
-      } catch { /* offline */ }
-    }
-
-    groupSel.addEventListener('change', async () => {
-      currentGroupId  = groupSel.value || null;
-      groupNotes      = {};
-      groupHighlights = {};
-      groupUsernames  = {};
-
-      if (currentGroupId) {
-        await Promise.all([loadGroupNotes(currentGroupId), loadGroupHighlights(currentGroupId)]);
-      }
-
-      renderAllLists();
-      applyHighlights();
-    });
-
-    async function loadGroupNotes(groupId) {
-      try {
-        const res = await fetch(`${API}/groups/${user.user_id}/${groupId}/notes`);
-        if (res.ok) groupNotes = await res.json();
-      } catch { /* offline */ }
-    }
-
-    async function loadGroupHighlights(groupId) {
-      try {
-        const res = await fetch(`${API}/groups/${user.user_id}/${groupId}/highlights`);
-        if (!res.ok) return;
-        groupHighlights = await res.json();
-        await Promise.all(Object.keys(groupHighlights).map(async uid => {
-          if (uid === user.user_id) { groupUsernames[uid] = user.username || 'Me'; return; }
-          if (friendCache[uid])     { groupUsernames[uid] = friendCache[uid]; return; }
-          try {
-            const r = await fetch(`${API}/user/${uid}`);
-            if (r.ok) { const d = await r.json(); groupUsernames[uid] = d.username || uid.slice(0, 4); }
-          } catch { groupUsernames[uid] = uid.slice(0, 4); }
-        }));
-      } catch { /* offline */ }
-    }
-
-    // ── Tab switching ─────────────────────────────────────────────────────────
-
-    document.querySelectorAll('.stab').forEach(btn => {
-      btn.addEventListener('click', () => {
-        document.querySelectorAll('.stab').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        activeTab = btn.dataset.tab;
-        document.getElementById('list-verse').style.display   = activeTab === 'verse'   ? 'flex' : 'none';
-        document.getElementById('list-general').style.display = activeTab === 'general' ? 'flex' : 'none';
-        document.getElementById('list-public').style.display  = activeTab === 'public'  ? 'flex' : 'none';
-        noteForm.style.display = 'none';
-      });
-    });
-
-    // ── Load notes from API ───────────────────────────────────────────────────
-
-    async function loadNotes() {
-      if (!user) return;
-      try {
-        const res = await fetch(`${API}/notes/${user.user_id}`);
-        if (!res.ok) return;
-        allNotes = await res.json();
-        renderAllLists();
-      } catch { /* server may not be running */ }
-    }
-
-    // ── Render lists ──────────────────────────────────────────────────────────
-
-    function renderAllLists() {
-      const verse   = [];
-      const general = [];
-      const pub     = [];
-
-      Object.entries(allNotes).forEach(([id, note]) => {
-        const hasVerse = note.verses && note.verses[0] && note.verses[0].length > 0;
-        if (hasVerse)  verse.push([id, note, null]);
-        if (!hasVerse) general.push([id, note, null]);
-        // In group view, pub is handled entirely by groupNotes to avoid duplicates
-        if (!currentGroupId && note.public) pub.push([id, note, null]);
-      });
-
-      // Group public tab: all members' public notes including host's own
-      if (currentGroupId) {
-        const myUsername = user?.username || '';
-        Object.entries(groupNotes).forEach(([uname, notes]) => {
-          Object.entries(notes).forEach(([id, note]) => {
-            if (note.public) pub.push([id, note, uname, uname === myUsername]);
-          });
-        });
-      }
-
-      renderList('list-verse',   verse,   'No verse notes yet.');
-      renderList('list-general', general, 'No general notes yet.');
-      renderList('list-public',  pub,     currentGroupId ? 'No public notes in this group.' : 'No public notes yet.');
-    }
-
-    function renderList(listId, entries, emptyMsg) {
-      const el = document.getElementById(listId);
-      if (entries.length === 0) {
-        el.innerHTML = `<p class="note-empty">${emptyMsg}</p>`;
-        return;
-      }
-      el.innerHTML = entries.map(([id, note, owner, isOwn]) => noteCardHTML(id, note, owner, isOwn)).join('');
-    }
-
-    function verseRefLabel(verses) {
-      if (!verses || !verses[0] || verses[0].length === 0) return '';
-      const [bs, cs, vs] = verses[0];
-      const [be, ce, ve] = verses[1] || [];
-      const start = `${bs} ${cs}:${vs}`;
-      const end   = be ? ` – ${be} ${ce}:${ve}` : '';
-      return start + end;
-    }
-
-    function noteCardHTML(id, note, owner, isOwn = false) {
-      const ref        = verseRefLabel(note.verses);
-      const pubBadge   = note.public ? '<span class="note-public-badge">Public</span>' : '';
-      const ownerBadge = owner ? `<span class="note-owner-badge">${escHtml(owner)}</span>` : '';
-      const canEdit    = !owner || isOwn;
-      const actions    = canEdit ? `
-            <div class="note-card-actions">
-              <button class="note-action-btn" title="Edit"   onclick="openEdit('${id}')">✎</button>
-              <button class="note-action-btn" title="Delete" onclick="deleteNote('${id}')">✕</button>
-            </div>` : '';
-      return `
-        <div class="note-card" id="nc-${id}">
-          <div class="note-card-head">
-            <span class="note-card-title">${escHtml(note.title)}${pubBadge}${ownerBadge}</span>
-            ${actions}
-          </div>
-          ${ref ? `<span class="note-verse-ref">${escHtml(ref)}</span>` : ''}
-          <p class="note-card-text" id="nt-${id}">${escHtml(note.text)}</p>
-        </div>`;
-    }
-
-    function escHtml(s) {
-      return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-    }
-
-    // ── New note ──────────────────────────────────────────────────────────────
-
-    newNoteBtn.addEventListener('click', () => {
-      editingId = null;
-      nfTitle.textContent = 'New Note';
-      clearForm();
-      // Pre-fill verse from current reader position
-      if (curBook)    document.getElementById('nf-vs-book-s').value = curBook;
-      if (curChapter) document.getElementById('nf-vs-ch-s').value   = curChapter;
-      const vNum = vsSel.value;
-      if (vNum)       document.getElementById('nf-vs-v-s').value    = vNum;
-      noteForm.style.display = 'flex';
-      noteForm.scrollIntoView({ block: 'nearest' });
-    });
-
-    // ── Edit note ─────────────────────────────────────────────────────────────
-
-    function openEdit(id) {
-      editingId = id;
-      const note = allNotes[id];
-      nfTitle.textContent = 'Edit Note';
-      document.getElementById('nf-title').value   = note.title  || '';
-      document.getElementById('nf-text').value    = note.text   || '';
-      document.getElementById('nf-public').checked = !!note.public;
-      const [s, e] = note.verses || [[], []];
-      document.getElementById('nf-vs-book-s').value = s[0] || '';
-      document.getElementById('nf-vs-ch-s').value   = s[1] || '';
-      document.getElementById('nf-vs-v-s').value    = s[2] || '';
-      document.getElementById('nf-vs-book-e').value = e[0] || '';
-      document.getElementById('nf-vs-ch-e').value   = e[1] || '';
-      document.getElementById('nf-vs-v-e').value    = e[2] || '';
-      noteForm.style.display = 'flex';
-      noteForm.scrollIntoView({ block: 'nearest' });
-    }
-
-    nfCancel.addEventListener('click', () => {
-      noteForm.style.display = 'none';
-      editingId = null;
-      clearForm();
-    });
-
-    // ── Save (create or update) ───────────────────────────────────────────────
-
-    nfSave.addEventListener('click', async () => {
-      if (!user) return;
-      const bookS = document.getElementById('nf-vs-book-s').value.trim();
-      const chS   = parseInt(document.getElementById('nf-vs-ch-s').value) || null;
-      const vsS   = parseInt(document.getElementById('nf-vs-v-s').value)  || null;
-      const bookE = document.getElementById('nf-vs-book-e').value.trim();
-      const chE   = parseInt(document.getElementById('nf-vs-ch-e').value) || null;
-      const vsE   = parseInt(document.getElementById('nf-vs-v-e').value)  || null;
-
-      const hasStart = bookS && chS && vsS;
-      const hasEnd   = bookE && chE && vsE;
-
-      const body = {
-        title:  document.getElementById('nf-title').value.trim() || 'Note',
-        text:   document.getElementById('nf-text').value.trim(),
-        public: document.getElementById('nf-public').checked,
-        verses: hasStart
-          ? [[bookS, chS, vsS], hasEnd ? [bookE, chE, vsE] : [bookS, chS, vsS]]
-          : [[], []],
-      };
-
-      if (editingId) body._id = editingId;
-
-      try {
-        const res = await fetch(`${API}/notes/${user.user_id}`, {
-          method:  editingId ? 'PUT' : 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body:    JSON.stringify(body),
-        });
-        if (!res.ok) return;
-        const saved = await res.json();
-        const id = editingId || saved.id;
-        allNotes[id] = { title: body.title, text: body.text, public: body.public, verses: body.verses };
-        renderAllLists();
-        noteForm.style.display = 'none';
-        editingId = null;
-        clearForm();
-      } catch { /* server error */ }
-    });
-
-    // ── Delete ────────────────────────────────────────────────────────────────
-
-    async function deleteNote(id) {
-      if (!user || !confirm('Delete this note?')) return;
-      try {
-        await fetch(`${API}/notes/${user.user_id}`, {
-          method:  'DELETE',
-          headers: { 'Content-Type': 'application/json' },
-          body:    JSON.stringify([id]),
-        });
-        delete allNotes[id];
-        renderAllLists();
-      } catch { /* server error */ }
-    }
-
-    // ── Sidebar resize ────────────────────────────────────────────────────────
-
-    const resizeHandle = document.getElementById('sidebar-resize-handle');
-    const MIN_W = 220;
-    const MAX_W = 600;
-
-    resizeHandle.addEventListener('mousedown', e => {
-      e.preventDefault();
-      resizeHandle.classList.add('dragging');
-      document.body.style.userSelect = 'none';
-      document.body.style.cursor = 'ew-resize';
-
-      const onMove = e => {
-        const newW = Math.min(MAX_W, Math.max(MIN_W, window.innerWidth - e.clientX));
-        sidebar.style.width = newW + 'px';
-        document.documentElement.style.setProperty('--sidebar-w', newW + 'px');
-      };
-
-      const onUp = () => {
-        resizeHandle.classList.remove('dragging');
-        document.body.style.userSelect = '';
-        document.body.style.cursor = '';
-        document.removeEventListener('mousemove', onMove);
-        document.removeEventListener('mouseup', onUp);
-      };
-
-      document.addEventListener('mousemove', onMove);
-      document.addEventListener('mouseup', onUp);
-    });
-
-    // ── Messaging sidebar resize ──────────────────────────────────────────────
-
-    const msgResizeHandle = document.getElementById('msg-resize-handle');
-    const MIN_MSG_W = 200;
-    const MAX_MSG_W = 520;
-
-    msgResizeHandle.addEventListener('mousedown', e => {
-      e.preventDefault();
-      msgResizeHandle.classList.add('dragging');
-      document.body.style.userSelect = 'none';
-      document.body.style.cursor = 'ew-resize';
-
-      const onMove = ev => {
-        const newW = Math.min(MAX_MSG_W, Math.max(MIN_MSG_W, ev.clientX));
-        msgSidebar.style.width = newW + 'px';
-        document.documentElement.style.setProperty('--msg-sidebar-w', newW + 'px');
-      };
-
-      const onUp = () => {
-        msgResizeHandle.classList.remove('dragging');
-        document.body.style.userSelect = '';
-        document.body.style.cursor = '';
-        document.removeEventListener('mousemove', onMove);
-        document.removeEventListener('mouseup', onUp);
-      };
-
-      document.addEventListener('mousemove', onMove);
-      document.addEventListener('mouseup', onUp);
-    });
-
-    // ── Messaging Sidebar ─────────────────────────────────────────────────────
-
-    const msgSidebar  = document.getElementById('msg-sidebar');
-    const msgToggle   = document.getElementById('msg-toggle');
-    const msgContacts = document.getElementById('msg-contacts');
-    const msgChat     = document.getElementById('msg-chat');
-    const msgChatName = document.getElementById('msg-chat-name');
-    const msgMessages = document.getElementById('msg-messages');
-    const msgInput    = document.getElementById('msg-input');
-    const msgSend     = document.getElementById('msg-send');
-    const msgBack     = document.getElementById('msg-back');
-
-    const WS_BASE = API.replace('https://', 'wss://').replace('http://', 'ws://');
-
-    let msgWs          = null;
-    let currentContact = null;
-    let friendCache    = {};
-    let friendsData    = [];  // [{ id, name }] — used by group member picker
-
-    msgToggle.addEventListener('click', () => {
-      const open = msgSidebar.classList.toggle('open');
-      document.body.classList.toggle('msg-open', open);
-      if (open && user) {
-        loadContactList();
-        if (!msgWs || msgWs.readyState > 1) connectWS();
-      }
-    });
-
-    (function initMsgSidebar() {
-      if (!user) {
-        document.getElementById('msg-signin').style.display = 'flex';
-        msgContacts.style.display = 'none';
-      }
-    })();
-
-    // ── WebSocket ──────────────────────────────────────────────────────────────
-
-    function connectWS() {
-      if (!user) return;
-      msgWs = new WebSocket(`${WS_BASE}/message/ws/${user.user_id}`);
-      msgWs.onmessage = e => {
-        try {
-          const data = JSON.parse(e.data);
-          if (currentContact &&
-              data.from_user !== user.user_id &&
-              (data.group_id || '') === (currentContact.group_id || '')) {
-            appendBubble(data.text || JSON.stringify(data), false, data.timestamp);
-          }
-        } catch { /* non-JSON frame */ }
-      };
-      msgWs.onclose = () => {
-        if (msgSidebar.classList.contains('open')) setTimeout(connectWS, 3000);
-      };
-    }
-
-    // ── Load contacts ──────────────────────────────────────────────────────────
-
-    async function loadContactList() {
-      if (!user) return;
-      let freshUser = user;
-      try {
-        const res = await fetch(`${API}/user/${user.user_id}`);
-        if (res.ok) freshUser = await res.json();
-      } catch { /* use session data */ }
-
-      const friendsList = document.getElementById('msg-friends-list');
-      const friends = freshUser.friends || [];
-      friendsData = [];
-      if (friends.length === 0) {
-        friendsList.innerHTML = '<p class="msg-empty">No friends yet.</p>';
-      } else {
-        friendsList.innerHTML = '';
-        await Promise.all(friends.map(async fid => {
-          if (!friendCache[fid]) {
-            try {
-              const r = await fetch(`${API}/user/${fid}`);
-              if (r.ok) { const d = await r.json(); friendCache[fid] = d.username; }
-            } catch { friendCache[fid] = fid.slice(0, 8); }
-          }
-          const name = friendCache[fid] || fid.slice(0, 8);
-          friendsData.push({ id: fid, name });
-          friendsList.appendChild(contactItem(name, 'friend', fid, [fid]));
-        }));
-      }
-
-      const groupsList = document.getElementById('msg-groups-list');
-      const groupIds = Array.isArray(freshUser.groups) ? freshUser.groups : [];
-      if (groupIds.length === 0) {
-        groupsList.innerHTML = '<p class="msg-empty">No groups yet.</p>';
-      } else {
-        groupsList.innerHTML = '';
-        await Promise.all(groupIds.map(async gid => {
-          try {
-            const r = await fetch(`${API}/groups/${user.user_id}/${gid}`);
-            if (r.ok) {
-              const data = await r.json();
-              const g = data.group || {};
-              groupsList.appendChild(contactItem(g.title || gid, 'group', gid, g.users || []));
-            }
-          } catch { groupsList.appendChild(contactItem(gid.slice(0, 8), 'group', gid, [])); }
-        }));
-      }
-    }
-
-    function contactItem(name, type, id, toUsers) {
-      const div = document.createElement('div');
-      div.className = 'msg-contact-item';
-      div.innerHTML =
-        `<div class="msg-avatar">${escHtml(name[0].toUpperCase())}</div>` +
-        `<span class="msg-contact-name">${escHtml(name)}</span>` +
-        (type === 'friend'
-          ? `<button class="msg-remove-btn" title="Remove friend">✕</button>`
-          : `<button class="msg-remove-btn" title="Leave group">✕</button>`);
-      div.querySelector('.msg-avatar, .msg-contact-name').addEventListener('click', () => openChat(name, type, id, toUsers));
-      div.querySelector('.msg-remove-btn')?.addEventListener('click', e => {
-        e.stopPropagation();
-        if (type === 'friend') removeFriend(id, div);
-        else leaveGroup(id, div);
-      });
-      return div;
-    }
-
-    async function leaveGroup(groupId, itemEl) {
-      if (!user) return;
-      try {
-        const res = await fetch(`${API}/groups/${user.user_id}/${groupId}`, { method: 'DELETE' });
-        if (res.ok || res.status === 204) {
-          itemEl.remove();
-          const groupsList = document.getElementById('msg-groups-list');
-          if (!groupsList.querySelector('.msg-contact-item')) {
-            groupsList.innerHTML = '<p class="msg-empty">No groups yet.</p>';
-          }
-          if (groupSel) {
-            const opt = groupSel.querySelector(`option[value="${groupId}"]`);
-            if (opt) opt.remove();
-            if (groupSel.value === groupId) {
-              groupSel.value = '';
-              groupSel.dispatchEvent(new Event('change'));
-            }
-          }
-        }
-      } catch { /* offline */ }
-    }
-
-    // ── Add / Remove friend ────────────────────────────────────────────────────
-
-    const addFriendBtn    = document.getElementById('msg-add-friend-btn');
-    const addFriendForm   = document.getElementById('msg-add-friend-form');
-    const addFriendInput  = document.getElementById('msg-add-friend-input');
-    const addFriendSubmit = document.getElementById('msg-add-friend-submit');
-
-    addFriendBtn.addEventListener('click', () => {
-      const visible = addFriendForm.style.display !== 'none';
-      addFriendForm.style.display = visible ? 'none' : 'flex';
-      if (!visible) addFriendInput.focus();
-    });
-
-    async function submitAddFriend() {
-      const username = addFriendInput.value.trim();
-      if (!username || !user) return;
-      try {
-        const res = await fetch(
-          `${API}/friends/${user.user_id}/request?friend_username=${encodeURIComponent(username)}`,
-          { method: 'POST' }
-        );
-        if (res.ok || res.status === 204) {
-          addFriendInput.value = '';
-          addFriendForm.style.display = 'none';
-          // Request sent — friend will see it on their Account page
-        } else if (res.status === 404) {
-          addFriendInput.style.borderColor = 'rgba(220,80,80,0.6)';
-          setTimeout(() => { addFriendInput.style.borderColor = ''; }, 1500);
-        }
-      } catch { /* server unreachable */ }
-    }
-
-    addFriendSubmit.addEventListener('click', submitAddFriend);
-    addFriendInput.addEventListener('keydown', e => { if (e.key === 'Enter') submitAddFriend(); });
-
-    // ── Create Group ───────────────────────────────────────────────────────────
-
-    const newGroupBtn     = document.getElementById('msg-new-group-btn');
-    const groupForm       = document.getElementById('msg-group-form');
-    const groupTitleInput = document.getElementById('msg-group-title');
-    const memberListEl    = document.getElementById('msg-member-list');
-    const groupSubmit     = document.getElementById('msg-group-submit');
-    const groupCancel     = document.getElementById('msg-group-cancel');
-
-    newGroupBtn.addEventListener('click', () => {
-      const visible = groupForm.style.display !== 'none';
-      groupForm.style.display = visible ? 'none' : 'block';
-      if (!visible) {
-        memberListEl.innerHTML = '';
-        friendsData.forEach(f => {
-          const label = document.createElement('label');
-          const cb = document.createElement('input');
-          cb.type = 'checkbox'; cb.value = f.id;
-          label.appendChild(cb);
-          label.append(' ' + f.name);
-          memberListEl.appendChild(label);
-        });
-        if (friendsData.length === 0) {
-          memberListEl.innerHTML = '<span style="font-size:0.72rem;color:rgba(244,228,193,0.3)">Add friends first</span>';
-        }
-        groupTitleInput.focus();
-      }
-    });
-
-    groupCancel.addEventListener('click', () => {
-      groupForm.style.display = 'none';
-      groupTitleInput.value = '';
-    });
-
-    async function submitCreateGroup() {
-      const title = groupTitleInput.value.trim();
-      if (!title || !user) return;
-      const checked   = Array.from(memberListEl.querySelectorAll('input:checked'));
-      const memberIds = checked.map(cb => cb.value);
-      const allUsers  = [...new Set([user.user_id, ...memberIds])];
-      const groupId   = crypto.randomUUID();
-      try {
-        const res = await fetch(`${API}/groups/${user.user_id}`, {
-          method:  'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body:    JSON.stringify({ group_id: groupId, title, users: allUsers }),
-        });
-        if (res.ok || res.status === 201) {
-          groupTitleInput.value = '';
-          groupForm.style.display = 'none';
-          loadContactList();
-        }
-      } catch { /* server unreachable */ }
-    }
-
-    groupSubmit.addEventListener('click', submitCreateGroup);
-    groupTitleInput.addEventListener('keydown', e => { if (e.key === 'Enter') submitCreateGroup(); });
-
-    async function removeFriend(friendId, rowEl) {
-      if (!user) return;
-      try {
-        const res = await fetch(
-          `${API}/friends/${user.user_id}/${encodeURIComponent(friendId)}`,
-          { method: 'DELETE' }
-        );
-        if (res.ok || res.status === 204) rowEl.remove();
-      } catch { /* server unreachable */ }
-    }
-
-    // ── Open chat ──────────────────────────────────────────────────────────────
-
-    async function openChat(name, type, id, toUsers) {
-      currentContact = { type, id, name, toUsers, group_id: type === 'group' ? id : '' };
-      msgChatName.textContent = name;
-      msgMessages.innerHTML = '';
-      msgContacts.style.display = 'none';
-      msgChat.style.display     = 'flex';
-
-      try {
-        let res;
-        if (type === 'friend') {
-          // DM — group_id defaults to "" on the backend
-          res = await fetch(`${API}/friends/${user.user_id}/${id}`);
-        } else {
-          // Group chat — passes group_id to read_messages on the backend
-          res = await fetch(`${API}/groups/${user.user_id}/${id}`);
-        }
-        if (res.ok) {
-          const data = await res.json();
-          const all = [
-            ...(data.host_msgs  || []).map(m => ({ ...m, mine: true  })),
-            ...(data.other_msgs || []).map(m => ({ ...m, mine: false })),
-          ].sort((a, b) => (a.timestamp > b.timestamp ? 1 : -1));
-          all.forEach(m => appendBubble(m.text, m.mine, m.timestamp));
-        }
-      } catch {
-        msgMessages.innerHTML = '<p class="msg-empty">Could not load messages.</p>';
-      }
-
-      msgMessages.scrollTop = msgMessages.scrollHeight;
-    }
-
-    // ── Render bubbles ─────────────────────────────────────────────────────────
-
-    function appendBubble(text, mine, timestamp) {
-      const div = document.createElement('div');
-      div.className = `msg-bubble ${mine ? 'sent' : 'received'}`;
-      const time = timestamp
-        ? new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-        : '';
-      div.innerHTML =
-        escHtml(String(text)) +
-        (time ? `<div class="msg-bubble-meta">${time}</div>` : '');
-      msgMessages.appendChild(div);
-      msgMessages.scrollTop = msgMessages.scrollHeight;
-    }
-
-    // ── Send ───────────────────────────────────────────────────────────────────
-
-    function sendMsg() {
-      if (!user || !currentContact || !msgWs || msgWs.readyState !== 1) return;
-      const text = msgInput.value.trim();
-      if (!text) return;
-      const payload = {
-        from_user: user.user_id,
-        timestamp: new Date().toISOString(),
-        to_users:  currentContact.toUsers,
-        group_id:  currentContact.group_id,
-        text,
-      };
-      msgWs.send(JSON.stringify(payload));
-      appendBubble(text, true, payload.timestamp);
-      msgInput.value = '';
-    }
-
-    msgSend.addEventListener('click', sendMsg);
-    msgInput.addEventListener('keydown', e => { if (e.key === 'Enter') sendMsg(); });
-
-    msgBack.addEventListener('click', () => {
-      currentContact = null;
-      msgChat.style.display     = 'none';
-      msgContacts.style.display = 'flex';
-    });
-
-    // ── Sidebar resize ─────────────────────────────────────────────────────────
-
-    function clearForm() {
-      ['nf-title','nf-text','nf-vs-book-s','nf-vs-ch-s','nf-vs-v-s',
-       'nf-vs-book-e','nf-vs-ch-e','nf-vs-v-e'].forEach(id => {
-        document.getElementById(id).value = '';
-      });
-      document.getElementById('nf-public').checked = false;
-    }
-
-    _wireMobileTabs();
-  </script>
 </body>
 </html>

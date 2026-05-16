@@ -1,12 +1,12 @@
 from fastapi import WebSocket
 from schemas.message import Message, Group
-from schemas.users import User
+from schemas.users import User, Note
 import os
 import json
 
 main_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../..")
 
-# ── Messages ───────────────────────────────────────────────────────────────────
+# MARK:Messages ───────────────────────────────────────────────────────────────────
 
 message_path = "data/messages.json"
 
@@ -42,7 +42,19 @@ def read_messages(host_user: str, users: list[str], group_id: str="") -> tuple[l
             other_msgs.append(msg)
     return host_msgs, other_msgs
 
-# ── Users ──────────────────────────────────────────────────────────────────────
+def format_messages(messages: list[dict]):
+        new_messages = []
+        for msg in messages:
+            if isinstance(msg.get("from_user"), str):
+                new_msg = Message(**msg)
+                uid: str = msg.get("from_user") #type: ignore
+                users = fetch_users([uid])
+                if users:
+                    new_msg.from_user = users[-1].username
+                new_messages.append(new_msg.model_dump())
+        return new_messages
+
+# MARK:Users ──────────────────────────────────────────────────────────────────────
 
 user_path = "data/users.json"
 
@@ -77,7 +89,7 @@ def find_by_username(username: str) -> tuple[str, dict] | None:
             return uid, data
     return None
 
-# ── Groups ─────────────────────────────────────────────────────────────────────
+# MARK:Groups ─────────────────────────────────────────────────────────────────────
 
 groups_path = "data/groups.json"
 
@@ -95,6 +107,24 @@ def save_groups(groups: dict) -> None:
     with open(os.path.join(main_path, groups_path), 'w') as f:
         json.dump(groups, f, indent=2)
 
+
+# MARK:Notes ─────────────────────────────────────────────────────────────────────
+notes_path = "data/notes.json"
+
+def load_notes():
+    path = os.path.join(main_path, notes_path)
+    if not os.path.exists(path):
+        return {}
+    
+    try:
+        with open(path, 'r') as f:
+            return json.load(f)
+    except json.JSONDecodeError:
+        return {}
+    
+def save_notes(notes: dict):
+    with open(os.path.join(main_path, notes_path), 'w') as f:
+        json.dump(notes, f, indent=2)
 
 class ConnectionManager:
     def __init__(self):
@@ -132,7 +162,8 @@ class GroupsManager:
     def __init__(self, user_id: str, group_id: str = ""):
         self.user_id  = user_id
         self.group_id = group_id
-        self.user: User = fetch_users([user_id])[0]
+        result = fetch_users([user_id])
+        self.user: User = result[-1] if result else User()
 
     def create_group(self, users: list[str], group: Group):
         groups = load_groups()
@@ -143,7 +174,7 @@ class GroupsManager:
         for member in members:
             if group.group_id not in member.groups:
                 member.groups.append(group.group_id)
-        update_users(members)
+        update_users(members)       
 
     def fetch_group(self) -> dict:
         groups = load_groups()
@@ -151,18 +182,58 @@ class GroupsManager:
         if not group:
             return {"error": "Group not found"}
         other_users = [u for u in group["users"] if u != self.user_id]
+        usernames = fetch_users(other_users)
         host_msgs, other_msgs = read_messages(self.user_id, other_users, self.group_id)
+
         return {
             "group":      group,
-            "host_msgs":  host_msgs,
-            "other_msgs": other_msgs,
+            "members":    usernames,
+            "host_msgs":  format_messages(host_msgs),
+            "other_msgs": format_messages(other_msgs),
         }
 
     def fetch_notes(self) -> dict:
-        groups = load_groups()
-        group = groups.get(self.group_id, {})
-        members = fetch_users(group.get("users", []))
-        return {u.username: u.notes for u in members}
+        notes = load_notes()
+        group_notes = {}
+
+        for note_id, data in notes.items():
+            note = Note(**data)
+            if note.group_id != self.group_id or note.is_reply:
+                continue
+            users = fetch_users([note.user])
+            if not users:
+                continue
+            username = users[-1].username
+            if username not in group_notes:
+                group_notes[username] = {}
+            group_notes[username][note_id] = note.model_dump(exclude={"user"})
+
+        return group_notes
+    
+    def fetch_replies(self, note_id: str):
+        notes = load_notes()
+        note_info = notes.get(note_id)
+        note_replies = []
+
+        if not note_info:
+            return {"error": "cannot find note"}
+        note = Note(**note_info)
+        reply_ids = note.replies
+        for _id in reply_ids:
+            reply_info = notes.get(_id)
+            if not reply_info:
+                continue
+            reply = Note(**reply_info)
+            reply_uid = reply.user
+            user_info = fetch_users([reply_uid])
+            if not user_info:
+                continue
+            user = user_info[-1]
+            username = user.username
+            reply.user = username
+            note_replies.append(reply.model_dump())
+
+        return note_replies
 
     def fetch_highlights(self) -> dict:
         groups  = load_groups()
@@ -191,9 +262,12 @@ class GroupsManager:
         if self.group_id not in groups:
             return
         groups[self.group_id] = {"title": group.title, "users": group.users}
+        users = fetch_users(group.users)
+        for user in users:
+            if self.group_id not in user.groups:
+                user.groups.append(self.group_id)
         save_groups(groups)
-
-
+        update_users(users)
 class FriendsManager:
     def __init__(self, user_id: str):
         self.user_id = user_id
@@ -208,6 +282,8 @@ class FriendsManager:
         if result is None:
             return {"error": "User not found"}
         friend_id, friend_data = result
+        if friend_id == self.user_id:
+            return {"error": "Cannot add yourself"}
         friend = User.model_validate({"user_id": friend_id, **friend_data})
         if self.user_id not in friend.friend_requests:
             friend.friend_requests.append(self.user_id)
@@ -221,6 +297,7 @@ class FriendsManager:
         friend = User.model_validate({"user_id": friend_id, **friend_data})
         if friend_id not in self.user.friends:
             self.user.friends.append(friend_id)
+        if friend_id in self.user.friend_requests:
             self.user.friend_requests.remove(friend_id)
         if self.user_id not in friend.friends:
             friend.friends.append(self.user_id)
@@ -237,11 +314,18 @@ class FriendsManager:
         host_msgs, other_msgs = read_messages(self.user_id, [friend_id])
         return {
             "friend":     friends[0].model_dump(exclude={"hash_pass"}),
-            "host_msgs":  host_msgs,
-            "other_msgs": other_msgs,
+            "host_msgs":  format_messages(host_msgs),
+            "other_msgs": format_messages(other_msgs),
         }
 
     def remove_friend(self, friend_id: str):
         if friend_id in self.user.friends:
             self.user.friends.remove(friend_id)
-        update_users([self.user])
+        friends = fetch_users([friend_id])
+        if friends:
+            other = friends[0]
+            if self.user_id in other.friends:
+                other.friends.remove(self.user_id)
+            update_users([self.user, other])
+        else:
+            update_users([self.user])
