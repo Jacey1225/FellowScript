@@ -75,7 +75,10 @@ document.addEventListener('click', e => {
   closeHlPicker();
 });
 
-window.addEventListener('hashchange', applyHash);
+window.addEventListener('hashchange', () => {
+  applyHash();
+  localStorage.setItem('last_page', location.hash.slice(1));
+});
 
 // ── Desktop "Messages" button in notes header ─────────────────────────────────
 
@@ -131,7 +134,6 @@ function _wireMobileTabs() {
 async function init() {
   const ok = await loadBible();
   if (!ok) return;
-
   // Desktop: notes sidebar always visible
   if (window.innerWidth >= 641) {
     document.getElementById('notes-sidebar').classList.add('open');
@@ -140,6 +142,13 @@ async function init() {
   }
 
   await loadHighlights();
+
+  if (!location.hash) {
+    const lastPage = localStorage.getItem('last_page');
+    location.hash = lastPage ? `#${lastPage}` : '#Genesis-1';
+    return; // hashchange fires applyHash + saves last_page
+  }
+
   applyHash();
 }
 

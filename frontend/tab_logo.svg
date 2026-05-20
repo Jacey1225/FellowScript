@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <!-- White rounded background -->
+  <rect width="32" height="32" rx="6" fill="#ffffff"/>
+  <!-- Serif "F" in gray -->
+  <text x="4" y="24" font-family="Georgia, 'Times New Roman', serif" font-size="26" font-weight="700" fill="#5a5a5a">F</text>
+  <!-- Script curl accent in gold -->
+  <text x="16" y="26" font-family="'Brush Script MT', 'Palatino Linotype', cursive" font-size="16" font-style="italic" font-weight="700" fill="#c87f0a">S</text>
+</svg>

@@ -128,7 +128,7 @@ async def get_notes(user_id: str):
     result = {}
     for note_id, data in notes.items():
         note = Note(**data)
-        if note.user == user_id and not note.group_id and not note.is_reply:
+        if note.user == user_id and not note.is_reply:
             result[note_id] = data
     return result
 

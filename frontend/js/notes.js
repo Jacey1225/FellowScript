@@ -27,10 +27,199 @@ const detailBodyEl  = document.getElementById('note-detail-body');
 
 export let allNotes = {};
 
-let editingId = null;
-let activeTab = 'verse';
+const notesCache = {}; // keyed by group_id; '' = personal notes
 
-// ── Sidebar init ────────────────────────────────────────────────────────────
+let editingId          = null;
+let activeTab          = 'verse';
+let filteredNotes      = null;
+let filteredGroupNotes = null;
+
+// ── Filter panel ─────────────────────────────────────────────────────────────
+
+function _openFilterPanel()  { document.getElementById('filter-panel').classList.add('open');    }
+function _closeFilterPanel() { document.getElementById('filter-panel').classList.remove('open'); }
+
+// Ensure every field the Note schema expects is present before sending to the backend.
+// Falls back to safe defaults so Pydantic never sees missing required fields.
+function _normalizeNote(n, username = '') {
+  return {
+    title:     n.title     ?? '',
+    user:      username    || n.user || '',
+    text:      n.text      ?? '',
+    public:    n.public    ?? false,
+    group_id:  n.group_id  ?? '',
+    verses:    n.verses    ?? [[], []],
+    replies:   n.replies   ?? [],
+    is_reply:  n.is_reply  ?? false,
+    timestamp: n.timestamp ?? '',
+  };
+}
+
+function _syncFilterInput() {
+  const type     = document.querySelector('input[name="fs-filter"]:checked')?.value || '';
+  const wrap     = document.getElementById('fs-input-wrap');
+  const inp      = document.getElementById('fs-input');
+  const userList = document.getElementById('fs-user-list');
+
+  wrap.style.display     = 'none';
+  userList.style.display = 'none';
+  inp.value = '';
+
+  if (!type) return;
+
+  if (type === 'user') {
+    const names = Object.keys(groupNotes);
+    if (!names.length) return;
+    userList.innerHTML = names
+      .map(n => `<label class="filter-radio-row">
+        <input type="radio" name="fs-user" value="${n}" />
+        <span>${n}</span>
+      </label>`)
+      .join('');
+    userList.style.display = 'flex';
+    userList.style.flexDirection = 'column';
+  } else {
+    wrap.style.display = 'block';
+    if (type === 'date') { inp.type = 'date'; inp.placeholder = ''; }
+    else {
+      inp.type = 'text';
+      inp.placeholder = type === 'book' ? 'e.g. Genesis' : 'Search…';
+    }
+  }
+}
+
+function _updateFilterBtn() {
+  const isActive = filteredNotes !== null || filteredGroupNotes !== null;
+  document.getElementById('sidebar-open-filter-btn')?.classList.toggle('active', isActive);
+  const badge = document.getElementById('filter-active-badge');
+  if (badge) badge.style.display = isActive ? '' : 'none';
+}
+
+async function _applyFiltersAndSort() {
+  const sortVal    = document.querySelector('input[name="fs-sort"]:checked')?.value   || '';
+  const filterType = document.querySelector('input[name="fs-filter"]:checked')?.value || '';
+  const filterVal  = filterType === 'user'
+    ? (document.querySelector('#fs-user-list input[name="fs-user"]:checked')?.value || '')
+    : document.getElementById('fs-input').value.trim();
+
+  const hasFilter  = !!(filterType && filterVal);
+  const hasSort    = !!sortVal;
+  const isGroupTab = activeTab === 'public' && !!currentGroupId;
+
+  if (!hasFilter && !hasSort) {
+    filteredNotes      = null;
+    filteredGroupNotes = null;
+    _updateFilterBtn();
+    renderAllLists();
+    _closeFilterPanel();
+    return;
+  }
+
+  const toFilter = { users: null, date: null, book: null, title: null };
+  if (filterType === 'book')  toFilter.book  = filterVal;
+  if (filterType === 'title') toFilter.title = filterVal;
+  if (filterType === 'date')  toFilter.date  = filterVal;
+  if (filterType === 'user')  toFilter.users = [filterVal];
+  const toSort = { date: sortVal === 'desc', alpha: false, num_replies: false };
+
+  try {
+    // Build payload as new objects via _normalizeNote — originals (allNotes, groupNotes,
+    // notesCache) are never mutated, so changing filter type always re-reads the full set.
+    let payload;
+    if (isGroupTab) {
+      // Group tab: all members' notes from the cached group snapshot.
+      const src = notesCache[currentGroupId] || groupNotes;
+      payload = {};
+      for (const [uname, notes] of Object.entries(src)) {
+        payload[uname] = {};
+        for (const [nid, n] of Object.entries(notes)) {
+          payload[uname][nid] = _normalizeNote(n, uname);
+        }
+      }
+    } else {
+      // Personal tab: only notes without a group_id, scoped to the active tab type.
+      const hv = n => n.verses?.[0]?.length > 0;
+      const subset = {};
+      for (const [nid, n] of Object.entries(allNotes)) {
+        if (n.group_id) continue;
+        const norm = _normalizeNote(n, user.username);
+        if (activeTab === 'verse'   && !hv(norm))    continue;
+        if (activeTab === 'general' &&  hv(norm))    continue;
+        if (activeTab === 'public'  && !norm.public) continue;
+        subset[nid] = norm;
+      }
+      payload = { [user.user_id]: subset };
+    }
+
+    const totalNotes = Object.values(payload).reduce((s, v) => s + Object.keys(v).length, 0);
+    console.log(`[filter] tab=${activeTab} isGroupTab=${isGroupTab} groupId=${currentGroupId}`);
+    console.log(`[filter] payload: ${Object.keys(payload).length} user(s), ${totalNotes} note(s)`);
+
+    let result = payload;
+
+    if (hasFilter) {
+      console.log('[filter] sending to /filter/ →', toFilter);
+      const res = await fetch(`${API}/filter/`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ notes: result, to_filter: toFilter }),
+      });
+      if (res.ok) {
+        result = await res.json();
+        const n = Object.values(result).reduce((s, v) => s + Object.keys(v).length, 0);
+        console.log('[filter] /filter/ response:', n, 'note(s) across', Object.keys(result).length, 'user(s)');
+      } else {
+        console.warn('[filter] /filter/ failed', res.status);
+      }
+    }
+
+    if (hasSort) {
+      // Sort endpoint takes a flat {nid: note} dict; sort each key's notes independently.
+      console.log('[filter] sending to /sort/ →', toSort);
+      const sortedResult = {};
+      for (const [key, notes] of Object.entries(result)) {
+        const res = await fetch(`${API}/sort/`, {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ notes, to_sort: toSort }),
+        });
+        sortedResult[key] = res.ok ? await res.json() : notes;
+        if (!res.ok) console.warn('[filter] /sort/ failed for key', key, res.status);
+      }
+      result = sortedResult;
+      console.log('[filter] /sort/ done');
+    }
+
+    if (isGroupTab) {
+      filteredGroupNotes = result;
+      filteredNotes      = null;
+    } else {
+      filteredNotes      = result[user.user_id] || {};
+      filteredGroupNotes = null;
+    }
+  } catch (err) {
+    console.error('[filter] error:', err);
+  }
+
+  _updateFilterBtn();
+  renderAllLists();
+  _closeFilterPanel();
+}
+
+function _clearFilter() {
+  document.querySelectorAll('input[name="fs-sort"]').forEach((r, i)   => { r.checked = i === 0; });
+  document.querySelectorAll('input[name="fs-filter"]').forEach((r, i) => { r.checked = i === 0; });
+  document.getElementById('fs-input').value              = '';
+  document.getElementById('fs-input-wrap').style.display = 'none';
+  document.querySelectorAll('#fs-user-list input[name="fs-user"]').forEach(r => { r.checked = false; });
+  document.getElementById('fs-user-list').style.display  = 'none';
+  filteredNotes      = null;
+  filteredGroupNotes = null;
+  _updateFilterBtn();
+  renderAllLists();
+}
+
+// ── Sidebar init ─────────────────────────────────────────────────────────────
 
 export function initNotesSidebar() {
   sidebarTgl.addEventListener('click', () => {
@@ -43,6 +232,8 @@ export function initNotesSidebar() {
     document.getElementById('notes-signin').style.display = 'flex';
     newNoteBtn.style.display = 'none';
     document.querySelectorAll('.stab, .notes-list').forEach(el => el.style.display = 'none');
+    const filterBtn = document.getElementById('sidebar-open-filter-btn');
+    if (filterBtn) filterBtn.style.display = 'none';
     return;
   }
 
@@ -68,9 +259,9 @@ export function initNotesSidebar() {
     editingId = null;
     nfTitle.textContent = 'New Note';
     clearForm();
-    if (curBook)    document.getElementById('nf-vs-book-s').value = curBook;
-    if (curChapter) document.getElementById('nf-vs-ch-s').value   = curChapter;
-    if (vsSel.value) document.getElementById('nf-vs-v-s').value   = vsSel.value;
+    if (curBook)     document.getElementById('nf-vs-book-s').value = curBook;
+    if (curChapter)  document.getElementById('nf-vs-ch-s').value   = curChapter;
+    if (vsSel.value) document.getElementById('nf-vs-v-s').value    = vsSel.value;
     noteForm.style.display = 'flex';
     noteForm.scrollIntoView({ block: 'nearest' });
   });
@@ -88,6 +279,9 @@ export function initNotesSidebar() {
     setCurrentGroupId(groupSel.value || null);
     setGroupNotes({});
     setGroupHighlightData({}, {});
+    filteredGroupNotes = null;
+    filteredNotes      = null;
+    _updateFilterBtn();
 
     if (currentGroupId) {
       await Promise.all([_loadGroupNotes(currentGroupId), _loadGroupHighlights(currentGroupId)]);
@@ -96,6 +290,14 @@ export function initNotesSidebar() {
     renderAllLists();
     applyHighlights();
   });
+
+  // Filter panel
+  document.getElementById('sidebar-open-filter-btn')?.addEventListener('click', _openFilterPanel);
+  document.getElementById('filter-back-btn')?.addEventListener('click', _closeFilterPanel);
+  document.querySelectorAll('input[name="fs-filter"]').forEach(r =>
+    r.addEventListener('change', _syncFilterInput));
+  document.getElementById('fs-apply')?.addEventListener('click', _applyFiltersAndSort);
+  document.getElementById('fs-clear')?.addEventListener('click', _clearFilter);
 }
 
 // ── Group selector population ───────────────────────────────────────────────
@@ -129,6 +331,8 @@ export async function loadNotes() {
     const res = await fetch(`${API}/notes/${user.user_id}`);
     if (!res.ok) return;
     allNotes = await res.json();
+    notesCache[''] = allNotes;
+    console.log('[notes] personal notes loaded:', Object.keys(allNotes).length, allNotes);
     renderAllLists();
   } catch { /* server may not be running */ }
 }
@@ -136,7 +340,13 @@ export async function loadNotes() {
 async function _loadGroupNotes(groupId) {
   try {
     const res = await fetch(`${API}/groups/${user.user_id}/${groupId}/notes`);
-    if (res.ok) setGroupNotes(await res.json());
+    if (res.ok) {
+      const data = await res.json();
+      setGroupNotes(data);
+      notesCache[groupId] = data;
+      const total = Object.values(data).reduce((s, u) => s + Object.keys(u).length, 0);
+      console.log(`[notes] group ${groupId} loaded: ${total} notes across`, Object.keys(data).length, 'users', data);
+    }
   } catch { /* offline */ }
 }
 
@@ -161,11 +371,14 @@ async function _loadGroupHighlights(groupId) {
 // ── Render ──────────────────────────────────────────────────────────────────
 
 export function renderAllLists() {
+  const _src      = filteredNotes ?? allNotes;
+  const _filtered = filteredNotes !== null;
   const verse   = [];
   const general = [];
   const pub     = [];
 
-  Object.entries(allNotes).forEach(([id, note]) => {
+  Object.entries(_src).forEach(([id, note]) => {
+    if (note.group_id) return; // group notes are rendered separately via groupNotes
     const hasVerse = note.verses && note.verses[0] && note.verses[0].length > 0;
     if (hasVerse)  verse.push([id, note, null]);
     if (!hasVerse) general.push([id, note, null]);
@@ -174,15 +387,16 @@ export function renderAllLists() {
 
   if (currentGroupId) {
     const myUsername = user?.username || '';
-    Object.entries(groupNotes).forEach(([uname, notes]) => {
+    const groupSrc   = filteredGroupNotes ?? groupNotes;
+    Object.entries(groupSrc).forEach(([uname, notes]) => {
       Object.entries(notes).forEach(([id, note]) => {
         if (note.public) pub.push([id, note, uname, uname === myUsername, true]);
       });
     });
   }
 
-  _renderList('list-verse',   verse,   'No verse notes yet.');
-  _renderList('list-general', general, 'No general notes yet.');
+  _renderList('list-verse',   verse,   _filtered ? 'No notes match this filter.' : 'No verse notes yet.');
+  _renderList('list-general', general, _filtered ? 'No notes match this filter.' : 'No general notes yet.');
   _renderList('list-public',  pub,     currentGroupId ? 'No public notes in this group.' : 'No public notes yet.');
 }
 
@@ -281,6 +495,7 @@ async function _saveNote() {
     if (!res.ok) return;
     const saved = await res.json();
     allNotes[editingId || saved.id] = body;
+    if (body.group_id) await _loadGroupNotes(body.group_id);
     renderAllLists();
     noteForm.style.display = 'none';
     editingId = null;
@@ -292,7 +507,9 @@ export async function deleteNote(id) {
   if (!user || !confirm('Delete this note?')) return;
   try {
     await fetch(`${API}/notes/${user.user_id}?note_id=${encodeURIComponent(id)}`, { method: 'DELETE' });
+    const deletedGroupId = allNotes[id]?.group_id;
     delete allNotes[id];
+    if (deletedGroupId) await _loadGroupNotes(deletedGroupId);
     renderAllLists();
   } catch { /* server error */ }
 }
