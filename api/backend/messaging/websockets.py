@@ -200,10 +200,10 @@ class GroupsManager:
             note = Note(**data)
             if note.group_id != self.group_id or note.is_reply:
                 continue
-            users = fetch_users([note.user])
-            if not users:
+            user = fetch_users([note.user])
+            if not user:
                 continue
-            username = users[-1].username
+            username = user[-1].username
             if username not in group_notes:
                 group_notes[username] = {}
             group_notes[username][note_id] = note.model_dump(exclude={"user"})

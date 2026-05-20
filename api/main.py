@@ -1,8 +1,9 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from routes.notes import notes_router
 from routes.messaging import ws_router
 from routes.community import group_router, friend_router
+from routes.filtering import filter_router, sorting_router
 from schemas.users import SignUp, Login, UpdateUser, User
 import uvicorn
 import bcrypt
@@ -26,6 +27,8 @@ app.include_router(notes_router)
 app.include_router(ws_router)
 app.include_router(group_router)
 app.include_router(friend_router)
+app.include_router(filter_router)
+app.include_router(sorting_router)
 
 main_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 user_path = "data/users.json"
@@ -58,7 +61,7 @@ def find_by_username(users: dict, username: str) -> tuple[str, dict] | None:
 # ── Routes ────────────────────────────────────────────────────────────────────
 
 @app.post("/signup", status_code=201)
-async def signup(info: SignUp):
+async def signup(info: SignUp, response: Response):
     users = load_users()
     if find_by_username(users, info.username):
         raise HTTPException(status_code=409, detail="username already registered")
@@ -70,11 +73,12 @@ async def signup(info: SignUp):
     )
     users[user.user_id] = user.model_dump(exclude={"user_id"})
     save_users(users)
+    response.set_cookie(key="user_id", value=user.user_id, httponly=False, secure=True, max_age=60 * 60 * 24 * 30, samesite="lax")
     return user.model_dump(exclude={"hash_pass"})
 
 
 @app.post("/login")
-async def login(info: Login):
+async def login(info: Login, response: Response):
     users = load_users()
     result = find_by_username(users, info.username)
     if not result:
@@ -82,6 +86,8 @@ async def login(info: Login):
     uid, data = result
     if not bcrypt.checkpw(info.plain_pass.encode(), data["hash_pass"].encode()):
         raise HTTPException(status_code=401, detail="Incorrect password")
+    
+    response.set_cookie(key="user_id", value=uid, httponly=False, secure=True, max_age=60 * 60 * 24 * 30, samesite="lax")
     return {"user_id": uid, **{k: v for k, v in data.items() if k != "hash_pass"}}
 
 

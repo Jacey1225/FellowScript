@@ -1,0 +1,195 @@
+:root {
+  --nav-h: 68px;
+}
+
+body {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+#bg-video {
+  position: fixed;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  object-fit: cover;
+  z-index: -2;
+  filter: brightness(0.3) sepia(0.4);
+}
+
+/* ── Page layout ── */
+main {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: calc(var(--nav-h) + 3rem) 1.5rem 4rem;
+}
+
+/* ── Auth card ── */
+.auth-card {
+  width: 100%;
+  max-width: 420px;
+  background: rgba(8, 5, 2, 0.88);
+  border: 1px solid rgba(200,134,26,0.2);
+  backdrop-filter: blur(14px);
+  padding: 3.2rem 3.2rem 2.8rem;
+  animation: fadeUp 0.5s ease both;
+}
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.card-logo {
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.card-logo .fellow {
+  font-family: 'Playfair Display', serif;
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: #c8c0b8;
+}
+
+.card-logo .script {
+  font-family: 'IM Fell English', serif;
+  font-size: 1.5rem;
+  font-style: italic;
+  color: var(--gold);
+}
+
+.card-divider {
+  width: 40px;
+  height: 1px;
+  background: rgba(200,134,26,0.3);
+  margin: 0 auto 1.8rem;
+}
+
+/* ── Tab toggle ── */
+.tab-row {
+  display: flex;
+  margin-bottom: 2rem;
+  border-bottom: 1px solid rgba(200,134,26,0.18);
+}
+
+.tab {
+  flex: 1;
+  background: none;
+  border: none;
+  padding: 0.65rem 0;
+  font-family: 'Lora', serif;
+  font-size: 0.75rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: rgba(244,228,193,0.35);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  transition: color 0.2s, border-color 0.2s;
+}
+
+.tab.active {
+  color: var(--gold);
+  border-bottom-color: var(--gold);
+}
+
+/* ── Forms ── */
+.auth-form { display: none; flex-direction: column; gap: 1.2rem; }
+.auth-form.visible { display: flex; }
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.field label {
+  font-size: 0.65rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: rgba(200,134,26,0.65);
+}
+
+.field input {
+  background: rgba(20,12,4,0.6);
+  border: 1px solid rgba(200,134,26,0.25);
+  border-radius: 2px;
+  color: var(--parchment);
+  font-family: 'Lora', serif;
+  font-size: 0.92rem;
+  padding: 0.65rem 0.9rem;
+  outline: none;
+  transition: border-color 0.2s;
+  width: 100%;
+}
+
+.field input:focus { border-color: var(--gold); }
+
+.field input::placeholder { color: rgba(244,228,193,0.2); }
+
+/* ── Submit button ── */
+.submit-btn {
+  margin-top: 0.4rem;
+  padding: 0.9rem;
+  background: var(--gold);
+  color: var(--ink);
+  border: none;
+  font-family: 'Lora', serif;
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 0.25s, transform 0.15s;
+  width: 100%;
+}
+
+.submit-btn:hover { background: var(--gold-light); transform: translateY(-1px); }
+.submit-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+/* ── Feedback message ── */
+.msg {
+  font-size: 0.78rem;
+  letter-spacing: 0.05em;
+  line-height: 1.55;
+  padding: 0.7rem 0.9rem;
+  border-radius: 2px;
+  display: none;
+}
+
+.msg.error {
+  display: block;
+  background: rgba(180,50,50,0.15);
+  border: 1px solid rgba(180,50,50,0.35);
+  color: #e89090;
+}
+
+.msg.success {
+  display: block;
+  background: rgba(60,160,80,0.12);
+  border: 1px solid rgba(60,160,80,0.3);
+  color: #90d4a0;
+}
+
+/* ── Footer ── */
+footer {
+  text-align: center;
+  padding: 2rem;
+  border-top: 1px solid rgba(200,134,26,0.1);
+  color: rgba(244,228,193,0.25);
+  font-size: 0.68rem;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+}
+
+/* ── Mobile ── */
+@media (max-width: 480px) {
+  .main-nav { padding: 0 1.5rem; }
+  .nav-links { display: none; }
+  .hamburger { display: flex; }
+  .mobile-nav-drawer { display: block; }
+  .auth-card { padding: 2.4rem 1.6rem 2rem; }
+}
