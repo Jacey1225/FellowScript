@@ -62,7 +62,7 @@ class Sorting:
         self.notes = notes
         self.date_format = "%Y-%m-%d %H:%M:%S.%f"
 
-    def quicksort(self, notes_arr: list[tuple], descending: bool):
+    def quicksort(self, notes_arr: list[tuple]) -> list:
         if len(notes_arr) <= 1:
             return notes_arr
 
@@ -70,9 +70,9 @@ class Sorting:
         left:   list = [[x, y] for x, y in notes_arr if y < pivot]
         middle: list = [[x, y] for x, y in notes_arr if y == pivot]
         right:  list = [[x, y] for x, y in notes_arr if y > pivot]
-        return (self.quicksort(left, descending) +
-                self.quicksort(middle, descending) +
-                self.quicksort(right, descending))
+        return (self.quicksort(left) +
+                self.quicksort(middle) +
+                self.quicksort(right))
 
     def sort_date(self, descending: bool):
         date_list = []
@@ -80,11 +80,14 @@ class Sorting:
             note = Note(**data)
             date_list.append([nid, datetime.strptime(note.timestamp, self.date_format)])
 
-        sorted_list = self.quicksort(date_list, descending)
+        print(f"sorting list of {len(date_list)} dates: {date_list}")
+        sorted_list = self.quicksort(date_list)
+        print(f"length of sorted list: {len(sorted_list)}")
         if descending:
             sorted_list = sorted_list[::-1]
 
         note_sorted = {}
         for nid, _ in sorted_list:
+            print(f"note in order: {self.notes[nid].get("title")}, {self.notes[nid].get("timestamp")}")
             note_sorted[nid] = self.notes[nid]
         return note_sorted

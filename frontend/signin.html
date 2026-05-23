@@ -190,6 +190,7 @@
 
         sessionStorage.setItem('user', JSON.stringify(data));
         localStorage.setItem('fs_user', JSON.stringify(data));
+        localStorage.setItem('fs_tour', 'reader'); // start onboarding tour for new users
         window.location.href = 'reader.html';
       } catch {
         showMsg('su-msg', 'Could not reach the server. Is the API running?', 'error');

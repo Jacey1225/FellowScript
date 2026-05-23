@@ -7,6 +7,7 @@ class Message(BaseModel):
     group_id: str | None
     text: str
 
+
 class Group(BaseModel):
     group_id: str
     title: str
