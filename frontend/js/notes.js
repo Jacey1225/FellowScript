@@ -138,14 +138,11 @@ async function _applyFiltersAndSort() {
       }
     } else {
       // Personal tab: only notes without a group_id, scoped to the active tab type.
-      const hv = n => n.verses?.[0]?.length > 0;
       const subset = {};
       for (const [nid, n] of Object.entries(allNotes)) {
         if (n.group_id) continue;
         const norm = _normalizeNote(n, user.username);
-        if (activeTab === 'verse'   && !hv(norm))    continue;
-        if (activeTab === 'general' &&  hv(norm))    continue;
-        if (activeTab === 'public'  && !norm.public) continue;
+        if (activeTab === 'public' && !norm.public) continue;
         subset[nid] = norm;
       }
       payload = { [user.user_id]: subset };
@@ -174,19 +171,35 @@ async function _applyFiltersAndSort() {
     }
 
     if (hasSort) {
-      // Sort endpoint takes a flat {nid: note} dict; sort each key's notes independently.
+      // Flatten all users' notes into one dict so a single sort call produces a
+      // globally ordered result instead of independent per-user sorted blocks.
       console.log('[filter] sending to /sort/ →', toSort);
-      const sortedResult = {};
+      const flatNotes  = {};
+      const noteToUser = {};
       for (const [key, notes] of Object.entries(result)) {
-        const res = await fetch(`${API}/sort/`, {
-          method:  'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body:    JSON.stringify({ notes, to_sort: toSort }),
-        });
-        sortedResult[key] = res.ok ? await res.json() : notes;
-        if (!res.ok) console.warn('[filter] /sort/ failed for key', key, res.status);
+        for (const [nid, data] of Object.entries(notes)) {
+          flatNotes[nid]  = data;
+          noteToUser[nid] = key;
+        }
       }
-      result = sortedResult;
+      const res = await fetch(`${API}/sort/`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ notes: flatNotes, to_sort: toSort }),
+      });
+      if (res.ok) {
+        const sortedFlat = await res.json();
+        // Rebuild nested structure in globally-sorted insertion order.
+        const sortedResult = {};
+        for (const [nid, data] of Object.entries(sortedFlat)) {
+          const key = noteToUser[nid];
+          if (!sortedResult[key]) sortedResult[key] = {};
+          sortedResult[key][nid] = data;
+        }
+        result = sortedResult;
+      } else {
+        console.warn('[filter] /sort/ failed', res.status);
+      }
       console.log('[filter] /sort/ done');
     }
 
@@ -247,10 +260,10 @@ export function initNotesSidebar() {
       document.querySelectorAll('.stab').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       activeTab = btn.dataset.tab;
-      document.getElementById('list-verse').style.display   = activeTab === 'verse'   ? 'flex' : 'none';
-      document.getElementById('list-general').style.display = activeTab === 'general' ? 'flex' : 'none';
-      document.getElementById('list-public').style.display  = activeTab === 'public'  ? 'flex' : 'none';
+      document.getElementById('list-verse').style.display  = activeTab === 'verse'  ? 'flex' : 'none';
+      document.getElementById('list-public').style.display = activeTab === 'public' ? 'flex' : 'none';
       noteForm.style.display = 'none';
+      renderAllLists();
     });
   });
 
@@ -373,16 +386,13 @@ async function _loadGroupHighlights(groupId) {
 export function renderAllLists() {
   const _src      = filteredNotes ?? allNotes;
   const _filtered = filteredNotes !== null;
-  const verse   = [];
-  const general = [];
-  const pub     = [];
+  const verse = [];
+  const pub   = [];
 
   Object.entries(_src).forEach(([id, note]) => {
-    if (note.group_id) return; // group notes are rendered separately via groupNotes
-    const hasVerse = note.verses && note.verses[0] && note.verses[0].length > 0;
-    if (hasVerse)  verse.push([id, note, null]);
-    if (!hasVerse) general.push([id, note, null]);
-    if (!currentGroupId && note.public) pub.push([id, note, null]);
+    if (note.group_id) return; // group notes rendered separately via groupNotes
+    verse.push([id, note, null]); // all personal notes go to the Notes tab
+    if (note.public) pub.push([id, note, null]);
   });
 
   if (currentGroupId) {
@@ -393,11 +403,21 @@ export function renderAllLists() {
         if (note.public) pub.push([id, note, uname, uname === myUsername, true]);
       });
     });
+    // Re-sort pub globally after building from nested per-user structure,
+    // so notes from different users are interleaved in the correct date order.
+    if (filteredGroupNotes !== null) {
+      const dir = document.querySelector('input[name="fs-sort"]:checked')?.value || '';
+      if (dir) {
+        pub.sort((a, b) => {
+          const da = new Date(a[1].timestamp), db = new Date(b[1].timestamp);
+          return dir === 'desc' ? db - da : da - db;
+        });
+      }
+    }
   }
 
-  _renderList('list-verse',   verse,   _filtered ? 'No notes match this filter.' : 'No verse notes yet.');
-  _renderList('list-general', general, _filtered ? 'No notes match this filter.' : 'No general notes yet.');
-  _renderList('list-public',  pub,     currentGroupId ? 'No public notes in this group.' : 'No public notes yet.');
+  _renderList('list-verse',  verse, _filtered ? 'No notes match this filter.' : 'No notes yet.');
+  _renderList('list-public', pub,   currentGroupId ? 'No public notes in this group.' : 'No public notes yet.');
 }
 
 function _renderList(listId, entries, emptyMsg) {

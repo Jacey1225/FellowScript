@@ -558,11 +558,22 @@ body.sidebar-open .reader-main {
   gap: 0.4rem;
 }
 
+.verse-row {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.verse-row input[type="text"]   { flex: 2; min-width: 0; width: auto; }
+.verse-row input[type="number"] { flex: 1; min-width: 0; width: auto; }
+
 .verse-range-label {
   font-size: 0.58rem;
   letter-spacing: 0.15em;
   text-transform: uppercase;
   color: rgba(200,134,26,0.4);
+  flex-shrink: 0;
+  min-width: 28px;
 }
 
 /* ── Filter & Sort panel ── */
@@ -983,6 +994,7 @@ html.light-mode .fs-value-input {
 
   /* Nav */
   .main-nav { padding: 0 1.1rem; height: var(--nav-h); }
+  .nav-logo { flex: 1; }
   .nav-logo .fellow { font-size: 1.25rem; }
   .nav-logo .script { font-size: 1.3rem; }
   .nav-links { display: none; }
@@ -1195,9 +1207,39 @@ body.msg-open .reader-main {
   .msg-sidebar   { padding-bottom: 44px; }
   .notes-sidebar { padding-bottom: 44px; }
 
-  /* Hide desktop-only elements on mobile */
-  .msg-back-to-notes        { display: none; }
-  .sidebar-head-msgs-btn    { display: none; }
+  /* Messages opens over notes as a sub-panel on mobile */
+  .msg-sidebar { z-index: 82; }
+
+  /* Show Messages button in notes header and back button in messages */
+  .sidebar-head-msgs-btn { display: inline-flex; }
+  .msg-back-to-notes {
+    display:     flex;
+    align-items: center;
+    padding:     0.7rem 1.1rem 0.5rem;
+    border-bottom: 1px solid rgba(200,134,26,0.12);
+    flex-shrink: 0;
+  }
+  .msg-back-to-notes-btn {
+    background: none;
+    border:     none;
+    color:      rgba(200,134,26,0.6);
+    font-family: 'Lora', serif;
+    font-size:  0.72rem;
+    letter-spacing: 0.12em;
+    cursor:     pointer;
+    padding:    0;
+    transition: color 0.18s;
+  }
+  .msg-back-to-notes-btn:hover { color: var(--gold); }
+
+  /* Messages is now accessed from within Notes — hide its tab button */
+  #mobile-msg-btn { display: none; }
+
+  /* Notes tab button stays solid dark even when active */
+  .mobile-tab-btn.active { background: rgba(6,4,1,0.93); color: var(--gold); }
+
+  /* Reduce textarea height to keep Save/Cancel visible */
+  .note-form textarea { min-height: 110px; }
 }
 
 .msg-inner {
@@ -1894,17 +1936,18 @@ body.msg-open .reader-main {
 /* ── Light mode ── */
 .theme-toggle {
   background: none;
-  border: 1px solid rgba(200,134,26,0.3);
-  border-radius: 4px;
+  border: none;
   color: var(--gold);
-  font-size: 1rem;
   cursor: pointer;
-  padding: 0.2rem 0.45rem;
-  line-height: 1.4;
-  transition: border-color 0.18s;
+  padding: 0.2rem;
   margin-left: 0.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+  transition: opacity 0.2s;
 }
-.theme-toggle:hover { border-color: var(--gold); }
+.theme-toggle:hover { opacity: 0.65; }
 
 html.light-mode body {
   background: #f0e2c8;
@@ -1960,7 +2003,7 @@ html.light-mode .note-form-field,
 html.light-mode input[type="text"],
 html.light-mode textarea,
 html.light-mode select {
-  background: rgba(255,252,242,0.95);
+  background-color: rgba(255,252,242,0.95);
   color: #1a0d00;
   border-color: rgba(200,134,26,0.3);
 }
@@ -2002,9 +2045,198 @@ html.light-mode .hl-picker {
   background: rgba(232,215,180,0.99);
   border-color: rgba(200,134,26,0.3);
 }
-html.light-mode .sc-nav {
-  background: rgba(230,210,172,0.97);
+html.light-mode .scripture-nav {
+  background: rgba(228,207,165,0.98);
+  border-bottom-color: rgba(160,100,20,0.3);
+}
+html.light-mode .sc-label { color: rgba(100,60,10,0.75); }
+html.light-mode .sc-select {
+  color: #1a0d00;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%238A5C0E'/%3E%3C/svg%3E");
+}
+html.light-mode .sc-select option { background: #f5e8c8; color: #1a0d00; }
+html.light-mode .sidebar-resize-handle { background: rgba(200,134,26,0.15); }
+
+/* ── Light mode — comprehensive additional fixes ── */
+
+/* Sidebar vertical tab buttons */
+html.light-mode .sidebar-toggle,
+html.light-mode .msg-toggle {
+  background: rgba(220,198,155,0.98);
+  border-color: rgba(160,100,20,0.25);
+  color: var(--gold-dim);
+}
+html.light-mode .sidebar-toggle:hover,
+html.light-mode .msg-toggle:hover { background: rgba(210,185,135,0.98); }
+
+/* Mobile bottom tab bar */
+html.light-mode .mobile-tab-btn {
+  background: rgba(228,207,165,0.98);
+  border-color: rgba(160,100,20,0.3);
+  color: var(--gold-dim);
+}
+html.light-mode .mobile-tab-btn.active {
+  background: rgba(210,185,135,0.99);
+  color: var(--gold-dim);
+}
+
+/* Footer */
+html.light-mode footer {
+  color: rgba(60,30,10,0.5);
+  border-top-color: rgba(160,100,20,0.2);
+}
+
+/* Sidebar & messaging headers/titles */
+html.light-mode .sidebar-head h3,
+html.light-mode .msg-head h3,
+html.light-mode .msg-chat-name { color: #1a0d00; }
+
+html.light-mode .msg-head {
+  background: rgba(228,207,165,0.99);
   border-bottom-color: rgba(200,134,26,0.2);
 }
-html.light-mode .sc-nav select { background: rgba(255,252,242,0.9); color: #1a0d00; }
-html.light-mode .sidebar-resize-handle { background: rgba(200,134,26,0.15); }
+
+/* Group selector dropdown */
+html.light-mode .group-sel {
+  color: #1a0d00;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%238A5C0E'/%3E%3C/svg%3E");
+}
+html.light-mode .group-sel option { background: #f5e8c8; color: #1a0d00; }
+
+/* Note form faint labels */
+html.light-mode .note-form { background: rgba(235,218,185,0.99); }
+html.light-mode .note-form-title { color: rgba(100,60,10,0.75); }
+html.light-mode .note-resize-hint { color: rgba(60,30,10,0.45); }
+html.light-mode .verse-range-label { color: rgba(100,60,10,0.65); }
+html.light-mode .public-row label { color: rgba(42,21,5,0.7); }
+html.light-mode .form-btn.cancel {
+  background: rgba(150,100,40,0.15);
+  color: rgba(60,30,10,0.65);
+}
+
+/* Note card actions & badges */
+html.light-mode .note-action-btn { color: rgba(130,92,14,0.7); }
+html.light-mode .note-action-btn:hover { color: var(--gold-dim); }
+html.light-mode .note-public-badge,
+html.light-mode .note-owner-badge {
+  color: rgba(100,60,10,0.75);
+  border-color: rgba(150,90,20,0.35);
+}
+
+/* Note replies */
+html.light-mode .note-reply-text { color: rgba(42,21,5,0.65); }
+html.light-mode .note-reply-btn { color: rgba(130,92,14,0.6); }
+html.light-mode .note-reply-btn:hover { color: var(--gold-dim); }
+html.light-mode .note-reply-input {
+  background-color: rgba(255,252,242,0.95);
+  color: #1a0d00;
+  border-color: rgba(200,134,26,0.3);
+}
+html.light-mode .note-reply-input::placeholder { color: rgba(42,21,5,0.3); }
+html.light-mode .note-reply-submit {
+  background: rgba(130,92,14,0.15);
+  border-color: rgba(130,92,14,0.35);
+  color: var(--gold-dim);
+}
+
+/* State views */
+html.light-mode .state-loading { color: rgba(60,30,10,0.5); }
+html.light-mode .state-welcome h2 { color: #1a0d00; }
+html.light-mode .state-welcome p { color: rgba(42,21,5,0.55); }
+
+/* Sign-in prompts */
+html.light-mode .notes-signin p,
+html.light-mode .msg-signin p { color: rgba(42,21,5,0.6); }
+html.light-mode .notes-signin a,
+html.light-mode .msg-signin a {
+  color: var(--gold-dim);
+  border-color: rgba(130,92,14,0.45);
+}
+
+/* Filter panel icons */
+html.light-mode .sidebar-head-filter-btn { color: rgba(130,92,14,0.7); }
+html.light-mode .sidebar-head-filter-btn:hover,
+html.light-mode .sidebar-head-filter-btn.active { color: var(--gold-dim); }
+html.light-mode .filter-back-btn { color: rgba(130,92,14,0.75); }
+html.light-mode .filter-back-btn:hover { color: var(--gold-dim); }
+html.light-mode .filter-active-badge { color: var(--gold-dim); border-color: rgba(130,92,14,0.45); }
+
+/* Note detail panel */
+html.light-mode .note-detail-back { color: rgba(130,92,14,0.75); }
+html.light-mode .note-detail-back:hover { color: var(--gold-dim); }
+html.light-mode .note-detail-ref { color: var(--gold-dim); }
+
+/* Chapter card details */
+html.light-mode .vnum { color: rgba(130,92,14,0.75); }
+html.light-mode .section-head { color: var(--gold-dim); }
+html.light-mode .card-book-label { color: var(--gold-dim); }
+html.light-mode .card-section-head { color: var(--gold-dim); }
+html.light-mode .stab { color: rgba(60,30,10,0.45); }
+
+/* Theme toggle button */
+html.light-mode .theme-toggle { color: var(--gold-dim); }
+
+/* Messaging — group info panel */
+html.light-mode .msg-group-info {
+  background: rgba(220,198,155,0.85);
+  border-bottom-color: rgba(200,134,26,0.2);
+}
+html.light-mode .msg-group-info-label { color: rgba(100,60,10,0.65); }
+html.light-mode .msg-group-member-name { color: rgba(42,21,5,0.75); }
+html.light-mode .msg-group-member-name.is-you { color: var(--gold-dim); }
+
+/* Messaging — member list in group create form */
+html.light-mode .msg-member-list label { color: rgba(42,21,5,0.65); }
+
+/* Messaging — various text */
+html.light-mode .msg-section-label { color: rgba(100,60,10,0.65); }
+html.light-mode .msg-add-btn {
+  color: var(--gold-dim);
+  border-color: rgba(130,92,14,0.35);
+}
+html.light-mode .msg-add-submit {
+  color: var(--gold-dim);
+  border-color: rgba(130,92,14,0.35);
+  background: rgba(130,92,14,0.12);
+}
+html.light-mode .msg-send-btn {
+  color: var(--gold-dim);
+  border-color: rgba(130,92,14,0.35);
+  background: rgba(130,92,14,0.12);
+}
+html.light-mode .msg-add-input::placeholder,
+html.light-mode .msg-input::placeholder { color: rgba(42,21,5,0.35); }
+html.light-mode .msg-bubble.received {
+  background: rgba(225,207,165,0.85);
+  border-color: rgba(200,134,26,0.15);
+}
+html.light-mode .msg-bubble-sender { color: var(--gold-dim); opacity: 1; }
+html.light-mode .msg-bubble-meta { color: rgba(100,60,10,0.55); }
+html.light-mode .msg-back-btn { color: rgba(130,92,14,0.75); }
+html.light-mode .msg-back-btn:hover { color: var(--gold-dim); }
+html.light-mode .msg-back-to-notes-btn { color: rgba(100,60,10,0.7); }
+html.light-mode .msg-back-to-notes-btn:hover { color: var(--gold-dim); }
+html.light-mode .msg-empty { color: rgba(42,21,5,0.35); }
+html.light-mode .msg-input-row {
+  background: rgba(228,207,165,0.99);
+  border-top-color: rgba(200,134,26,0.2);
+}
+
+/* Highlight picker */
+html.light-mode .hl-clear { color: rgba(60,30,10,0.55); }
+html.light-mode .hl-clear:hover { color: rgba(60,30,10,0.9); }
+
+/* New note & messages buttons in sidebar header */
+html.light-mode .new-note-btn {
+  color: var(--gold-dim);
+  border-color: rgba(130,92,14,0.45);
+}
+html.light-mode .new-note-btn:hover { background: rgba(130,92,14,0.1); }
+html.light-mode .sidebar-head-msgs-btn {
+  color: rgba(100,60,10,0.8);
+  border-color: rgba(130,92,14,0.35);
+}
+html.light-mode .sidebar-head-msgs-btn:hover {
+  background: rgba(130,92,14,0.1);
+  color: var(--gold-dim);
+}

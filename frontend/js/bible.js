@@ -25,6 +25,13 @@ export function setChapterRenderedCallback(fn) {
   _onChapterRendered = fn;
 }
 
+// Single-chapter books store their content in entry[0] (no separate heading entry).
+// Multi-chapter books store a heading in entry[0] and chapters in entry[1..n].
+function _getChapters(book) {
+  const entries = bible[book];
+  return entries.length === 1 ? entries : entries.slice(1);
+}
+
 // ── Load ────────────────────────────────────────────────────────────────────
 
 export async function loadBible() {
@@ -78,7 +85,7 @@ export function setBook(book) {
   curChapter = null;
   bookSel.value = book;
 
-  const chapters = bible[book].slice(1);
+  const chapters = _getChapters(book);
   chSel.innerHTML = '<option value="">— Chapter —</option>';
   chapters.forEach((_, i) => {
     const o = document.createElement('option');
@@ -97,7 +104,7 @@ export function setBook(book) {
 
 export function setChapter(chNum) {
   if (!curBook) return;
-  const chapters = bible[curBook].slice(1);
+  const chapters = _getChapters(curBook);
   if (chNum < 1 || chNum > chapters.length) return;
 
   curChapter = chNum;
@@ -164,7 +171,9 @@ function _extractVerseNums(chStr) {
 // ── Rendering ───────────────────────────────────────────────────────────────
 
 function _renderCard(chStr, chNum) {
-  const preamble = (bible[curBook][0] || '').replace('HEAD::', '').trim();
+  // Single-chapter books have no separate heading entry; skip preamble extraction.
+  const isSingle = bible[curBook].length === 1;
+  const preamble = isSingle ? '' : (bible[curBook][0] || '').replace('HEAD::', '').trim();
   cardLabel.textContent = curBook.toUpperCase();
   cardTitle.textContent = `Chapter ${chNum}`;
   cardHead.textContent  = chNum === 1 && preamble ? preamble : '';
@@ -236,7 +245,7 @@ export function initBibleEvents() {
   });
 
   nextBtn.addEventListener('click', () => {
-    const total = bible[curBook].slice(1).length;
+    const total = _getChapters(curBook).length;
     if (curChapter < total) { setChapter(curChapter + 1); pushHash(curBook, curChapter, null); }
   });
 }

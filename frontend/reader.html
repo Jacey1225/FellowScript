@@ -10,6 +10,8 @@
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400;1,700&family=Lora:ital,wght@0,400;0,600;1,400&family=IM+Fell+English:ital@0;1&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="css/base.css" />
   <link rel="stylesheet" href="css/reader.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/driver.js@1.3.1/dist/driver.css" />
+  <link rel="stylesheet" href="css/tour.css" />
   <script>if (localStorage.getItem('theme') === 'light') document.documentElement.classList.add('light-mode');</script>
 </head>
 <body>
@@ -135,8 +137,7 @@
         </div>
 
         <div class="stabs">
-          <button class="stab active" data-tab="verse">Verse</button>
-          <button class="stab" data-tab="general">General</button>
+          <button class="stab active" data-tab="verse">Notes</button>
           <button class="stab" data-tab="public">Public</button>
         </div>
 
@@ -149,14 +150,18 @@
           <p class="note-resize-hint">Hold the bottom-right corner to resize</p>
 
           <div class="verse-range">
-            <span class="verse-range-label">Verse range (optional)</span>
-            <input id="nf-vs-book-s" type="text"   placeholder="Book" />
-            <input id="nf-vs-ch-s"   type="number" placeholder="Ch"  min="1" />
-            <input id="nf-vs-v-s"    type="number" placeholder="Vs"  min="1" />
-            <span class="verse-range-label">End (leave blank for single verse)</span>
-            <input id="nf-vs-book-e" type="text"   placeholder="Book" />
-            <input id="nf-vs-ch-e"   type="number" placeholder="Ch"  min="1" />
-            <input id="nf-vs-v-e"    type="number" placeholder="Vs"  min="1" />
+            <div class="verse-row">
+              <span class="verse-range-label">Start</span>
+              <input id="nf-vs-book-s" type="text"   placeholder="Book" />
+              <input id="nf-vs-ch-s"   type="number" placeholder="Ch"  min="1" />
+              <input id="nf-vs-v-s"    type="number" placeholder="Vs"  min="1" />
+            </div>
+            <div class="verse-row">
+              <span class="verse-range-label">End</span>
+              <input id="nf-vs-book-e" type="text"   placeholder="Book" />
+              <input id="nf-vs-ch-e"   type="number" placeholder="Ch"  min="1" />
+              <input id="nf-vs-v-e"    type="number" placeholder="Vs"  min="1" />
+            </div>
           </div>
 
           <div class="public-row">
@@ -172,7 +177,6 @@
 
         <!-- Note lists -->
         <div class="notes-list" id="list-verse"></div>
-        <div class="notes-list" id="list-general" style="display:none"></div>
         <div class="notes-list" id="list-public"  style="display:none"></div>
 
         <!-- Not signed in -->

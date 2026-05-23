@@ -66,14 +66,14 @@ class ConvertBibleToDict:
         start, end = (0, 0)
         print(f"num lines in df: {len(book_lines)}")
         while idx < len(book_lines):
-            line = book_lines.iloc[idx]
+            line: str = book_lines.iloc[idx]
             if book.lower() in line.lower():
                 if idx + 1 > len(book_lines) - 1:
                     idx += 1
                     continue
-                next_line = book_lines[idx+1]
+                next_line: str = book_lines[idx+1]
                 start_idx = idx
-                if "chapter" in next_line.lower():
+                if "chapter" in next_line.lower() or (line.lower() == book.lower() and not next_line.isupper()):
                     start = self.get_start(start_idx, next_line, book_lines)
                     end = self.get_end(start, "footnotes", book_lines)
                     break
