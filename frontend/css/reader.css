@@ -62,7 +62,7 @@ body {
   appearance: none;
   background: transparent;
   border: 1px solid rgba(200,134,26,0.3);
-  border-radius: 2px;
+  border-radius: 6px;
   color: var(--parchment);
   font-family: 'Lora', serif;
   font-size: 0.82rem;
@@ -165,6 +165,7 @@ body {
   color: var(--ink);
   padding: 4rem 5rem;
   position: relative;
+  border-radius: 14px;
   box-shadow:
     4px 6px 18px rgba(0,0,0,0.55),
     14px 22px 60px rgba(0,0,0,0.38);
@@ -337,7 +338,7 @@ footer {
   border: 1px solid rgba(200,134,26,0.3);
   backdrop-filter: blur(10px);
   padding: 0.45rem 0.6rem;
-  border-radius: 3px;
+  border-radius: 10px;
   box-shadow: 0 4px 20px rgba(0,0,0,0.5);
 }
 
@@ -527,7 +528,7 @@ body.sidebar-open .reader-main {
   width: 100%;
   background: rgba(20,12,4,0.7);
   border: 1px solid rgba(200,134,26,0.22);
-  border-radius: 2px;
+  border-radius: 6px;
   color: var(--parchment);
   font-family: 'Lora', serif;
   font-size: 0.82rem;
@@ -680,7 +681,7 @@ body.sidebar-open .reader-main {
   width: 100%;
   background: rgba(20,12,4,0.7);
   border: 1px solid rgba(200,134,26,0.22);
-  border-radius: 2px;
+  border-radius: 6px;
   color: var(--parchment);
   font-family: 'Lora', serif;
   font-size: 0.82rem;
@@ -795,6 +796,7 @@ html.light-mode .fs-value-input {
   border: 1px solid rgba(200,134,26,0.18);
   background: rgba(20,12,4,0.5);
   padding: 0.85rem 0.95rem;
+  border-radius: 10px;
   transition: border-color 0.2s;
   cursor: pointer;
 }
@@ -985,6 +987,27 @@ html.light-mode .fs-value-input {
 
 .notes-signin a:hover { background: rgba(200,134,26,0.1); }
 
+/* ── Messages button in notes header ── */
+.sidebar-head-msgs-btn {
+  background: none;
+  border: 1px solid rgba(200,134,26,0.3);
+  color: rgba(200,134,26,0.7);
+  font-family: 'Lora', serif;
+  font-size: 0.68rem;
+  letter-spacing: 0.1em;
+  padding: 0.28rem 0.65rem;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+  white-space: nowrap;
+}
+.sidebar-head-msgs-btn:hover {
+  background: rgba(200,134,26,0.1);
+  color: var(--gold);
+}
+
+/* ── Notes drag handle (mobile only) ── */
+.notes-drag-handle { display: none; }
+
 /* ── Mobile ── */
 @media (max-width: 640px) {
   :root {
@@ -1085,17 +1108,36 @@ html.light-mode .fs-value-input {
     font-size: 0.78rem;
   }
 
-  /* Notes sidebar — bottom sheet */
+  /* Notes sidebar — full-screen sheet */
   .notes-sidebar {
-    top: auto;
+    top: 0;
     bottom: 0;
     left: 0;
     right: 0;
     width: 100%;
-    height: 72vh;
+    height: 100%;
     transform: translateY(100%);
     border-left: none;
-    border-top: 1px solid rgba(200,134,26,0.25);
+    border-top: none;
+    z-index: 110;
+  }
+
+  .notes-drag-handle {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 0.65rem 0 0.35rem;
+    flex-shrink: 0;
+    cursor: grab;
+    touch-action: none;
+  }
+
+  .notes-drag-handle::before {
+    content: '';
+    width: 36px;
+    height: 4px;
+    background: rgba(200,134,26,0.35);
+    border-radius: 2px;
   }
 
   .notes-sidebar.open { transform: translateY(0); }
@@ -1191,24 +1233,20 @@ body.msg-open .reader-main {
   .msg-toggle { display: none; }
 
   .msg-sidebar {
-    top: auto;
+    top: 0;
     left: 0; right: 0; bottom: 0;
     width: 100%;
-    height: 72vh;
+    height: 100%;
     transform: translateY(100%);
     border-right: none;
-    border-top: 1px solid rgba(200,134,26,0.25);
+    border-top: none;
   }
 
   .msg-sidebar.open { transform: translateY(0); }
   body.msg-open .reader-main { padding-left: 0; }
 
-  /* Reserve space above the 40px tab bar for both sidebars */
-  .msg-sidebar   { padding-bottom: 44px; }
-  .notes-sidebar { padding-bottom: 44px; }
-
   /* Messages opens over notes as a sub-panel on mobile */
-  .msg-sidebar { z-index: 82; }
+  .msg-sidebar { z-index: 115; }
 
   /* Show Messages button in notes header and back button in messages */
   .sidebar-head-msgs-btn { display: inline-flex; }
@@ -1245,7 +1283,8 @@ body.msg-open .reader-main {
 .msg-inner {
   display: flex;
   flex-direction: column;
-  height: 100%;
+  flex: 1;
+  min-height: 0;
   overflow: hidden;
 }
 
@@ -1265,7 +1304,8 @@ body.msg-open .reader-main {
 .msg-contacts {
   display: flex;
   flex-direction: column;
-  height: 100%;
+  flex: 1;
+  min-height: 0;
   overflow: hidden;
 }
 
@@ -1318,7 +1358,7 @@ body.msg-open .reader-main {
   flex: 1;
   background: rgba(20,12,4,0.7);
   border: 1px solid rgba(200,134,26,0.22);
-  border-radius: 2px;
+  border-radius: 6px;
   color: var(--parchment);
   font-family: 'Lora', serif;
   font-size: 0.75rem;
@@ -1435,7 +1475,8 @@ body.msg-open .reader-main {
 /* Chat view */
 .msg-chat {
   flex-direction: column;
-  height: 100%;
+  flex: 1;
+  min-height: 0;
 }
 
 .msg-chat-header {
@@ -1542,7 +1583,7 @@ body.msg-open .reader-main {
 .msg-bubble {
   max-width: 85%;
   padding: 0.5rem 0.75rem;
-  border-radius: 3px;
+  border-radius: 12px;
   font-family: 'Lora', serif;
   font-size: 0.8rem;
   line-height: 1.5;
@@ -1588,7 +1629,7 @@ body.msg-open .reader-main {
   flex: 1;
   background: rgba(20,12,4,0.7);
   border: 1px solid rgba(200,134,26,0.22);
-  border-radius: 2px;
+  border-radius: 6px;
   color: var(--parchment);
   font-family: 'Lora', serif;
   font-size: 0.8rem;
@@ -1654,7 +1695,7 @@ body.msg-open .reader-main {
   appearance: none;
   background: rgba(20,12,4,0.7);
   border: 1px solid rgba(200,134,26,0.22);
-  border-radius: 2px;
+  border-radius: 6px;
   color: var(--parchment);
   font-family: 'Lora', serif;
   font-size: 0.74rem;

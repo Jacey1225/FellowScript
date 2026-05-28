@@ -37,6 +37,7 @@ body {
 .account-section {
   background: rgba(6,4,1,0.72);
   border: 1px solid rgba(200,134,26,0.18);
+  border-radius: 14px;
   backdrop-filter: blur(8px);
   padding: 1.6rem 1.8rem;
   margin-bottom: 1.6rem;
@@ -75,7 +76,7 @@ body {
 .edit-input {
   background: rgba(20,12,4,0.65);
   border: 1px solid rgba(200,134,26,0.22);
-  border-radius: 2px;
+  border-radius: 6px;
   color: var(--parchment);
   font-family: 'Lora', serif;
   font-size: 0.9rem;
@@ -104,6 +105,7 @@ body {
 .save-btn {
   background: var(--gold);
   border: none;
+  border-radius: 8px;
   color: var(--ink);
   font-family: 'Lora', serif;
   font-size: 0.78rem;
@@ -122,7 +124,7 @@ body {
 .feedback {
   font-size: 0.78rem;
   padding: 0.55rem 0.8rem;
-  border-radius: 2px;
+  border-radius: 8px;
   display: none;
   line-height: 1.5;
 }
@@ -211,6 +213,7 @@ body {
 .request-accept-btn {
   background: rgba(200,134,26,0.15);
   border: 1px solid rgba(200,134,26,0.4);
+  border-radius: 8px;
   color: var(--gold);
   font-family: 'Lora', serif;
   font-size: 0.7rem;
@@ -237,6 +240,7 @@ body {
 .danger-section {
   background: rgba(6,4,1,0.72);
   border: 1px solid rgba(180,50,50,0.25);
+  border-radius: 14px;
   backdrop-filter: blur(8px);
   padding: 1.6rem 1.8rem;
   margin-bottom: 1.6rem;
@@ -276,6 +280,7 @@ body {
 .delete-btn {
   background: rgba(180,50,50,0.15);
   border: 1px solid rgba(180,50,50,0.4);
+  border-radius: 8px;
   color: #e89090;
   font-family: 'Lora', serif;
   font-size: 0.78rem;
@@ -294,6 +299,7 @@ body {
 .signout-btn {
   background: none;
   border: 1px solid rgba(200,134,26,0.3);
+  border-radius: 8px;
   color: rgba(244,228,193,0.5);
   font-family: 'Lora', serif;
   font-size: 0.75rem;

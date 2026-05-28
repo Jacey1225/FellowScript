@@ -1,4 +1,5 @@
 from pydantic import BaseModel, Field
+import uuid
 
 class Session(BaseModel):
     title: str
@@ -8,6 +9,7 @@ class Session(BaseModel):
     scripture: list[str] = Field(default_factory=list, description="link -- eg. fellowcsript.com/reader.html#Exodus-12")
     
 class DevotionPlan(BaseModel):
+    _id: str = Field(default=str(uuid.uuid4))
     time_start: str
     time_end: str
     title: str

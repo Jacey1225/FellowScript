@@ -1,26 +1,52 @@
-from schemas.users import Note, User
+from schemas.users import Note
 from schemas.filter import Sort, Filter
-import os
-import json
+from typing import Generator
 import logging
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
+
 class Filters:
-    def __init__(self, notes: dict): #takes pre-processed notes with usernames instead of uids
+    """Applies predicate-based filters to a nested notes structure.
+
+    Expects notes pre-processed so that the top-level keys are usernames
+    (not user IDs), matching the format returned by ``GroupsManager.fetch_notes()``.
+    """
+
+    def __init__(self, notes: dict) -> None:
+        """Initialise with a username-keyed notes mapping.
+
+        Args:
+            notes: Mapping of username -> {note_id -> note data dict}.
+        """
         self.notes = notes
         self.date_format = "%Y-%m-%d %H:%M:%S.%f"
 
-    def filter_note(self):
-        
+    def filter_note(self) -> Generator[tuple[str, str, Note, dict], None, None]:
+        """Yield each note as a (username, note_id, Note, raw_data) tuple.
+
+        Iterates over the nested notes structure and constructs a ``Note``
+        model for each entry, skipping any malformed top-level values.
+
+        Yields:
+            tuple: ``(username, note_id, Note instance, raw note data dict)``
+        """
         for uid, n_data in self.notes.items():
             if not isinstance(n_data, dict):
                 continue
             for nid, data in n_data.items():
                 yield uid, nid, Note(**data), data
 
-    def _collect(self, predicate):
+    def _collect(self, predicate) -> dict:
+        """Return all notes for which ``predicate(note)`` is truthy.
+
+        Args:
+            predicate: Callable that accepts a ``Note`` and returns bool.
+
+        Returns:
+            dict: Filtered notes in the same nested structure as ``self.notes``.
+        """
         result = {}
         logger.info("filtering %d uid(s): %s", len(self.notes), list(self.notes.keys()))
         for uid, nid, note, data in self.filter_note():
@@ -33,18 +59,48 @@ class Filters:
         logger.info("filter result: %d notes", sum(len(v) for v in result.values()))
         return result
 
-    def filter_users(self, users: list):
+    def filter_users(self, users: list[str]) -> dict:
+        """Keep only notes authored by users in the given list.
+
+        Args:
+            users: List of user identifiers to match against ``note.user``.
+
+        Returns:
+            dict: Notes whose ``user`` field is in ``users``.
+        """
         logger.info("filter_users: %s", users)
         return self._collect(lambda note: note.user in users)
 
-    def filter_date(self, date: str):
+    def filter_date(self, date: str) -> dict:
+        """Keep only notes whose timestamp matches the given date (YYYY-MM-DD).
+
+        Comparison is performed on the first 10 characters of the stored
+        timestamp so that time-of-day is ignored.
+
+        Args:
+            date: Target date string in ``YYYY-MM-DD`` format.
+
+        Returns:
+            dict: Notes whose timestamp falls on the specified date.
+        """
         logger.info("filter_date: %s", date)
-        target = date[:10]  # compare YYYY-MM-DD only
+        target = date[:10]
         return self._collect(
             lambda note: note.timestamp[:10] == target
         )
 
-    def filter_book(self, book: str):
+    def filter_book(self, book: str) -> dict:
+        """Keep only notes whose verse range references the given book.
+
+        Performs a case-insensitive substring match against both the start
+        and end book fields of each note's verse range.
+
+        Args:
+            book: Book name or partial name to search for (case-insensitive).
+
+        Returns:
+            dict: Notes whose start or end verse references the given book.
+        """
         logger.info("filter_book: %s", book)
         return self._collect(
             lambda note: (
@@ -53,20 +109,49 @@ class Filters:
             )
         )
 
-    def filter_title(self, title: str):
+    def filter_title(self, title: str) -> dict:
+        """Keep only notes whose title contains the given substring.
+
+        Comparison is case-insensitive.
+
+        Args:
+            title: Substring to search for within note titles.
+
+        Returns:
+            dict: Notes whose title contains the given string.
+        """
         logger.info("filter_title: %s", title)
         return self._collect(lambda note: title.lower() in note.title.lower())
-            
+
+
 class Sorting:
-    def __init__(self, notes: dict):
+    """Sorts a flat note collection by various criteria using quicksort."""
+
+    def __init__(self, notes: dict) -> None:
+        """Initialise with a flat note mapping.
+
+        Args:
+            notes: Flat mapping of note_id -> note data dict (not nested by user).
+        """
         self.notes = notes
         self.date_format = "%Y-%m-%d %H:%M:%S.%f"
 
-    def quicksort(self, notes_arr: list[tuple]) -> list:
+    def quicksort(self, notes_arr: list[list]) -> list[list]:
+        """Sort a list of ``[note_id, datetime]`` pairs in ascending date order.
+
+        Uses a median-pivot quicksort. Equal timestamps are grouped in the
+        middle partition.
+
+        Args:
+            notes_arr: List of ``[note_id, datetime]`` pairs to sort.
+
+        Returns:
+            list[list]: The input list sorted ascending by datetime value.
+        """
         if len(notes_arr) <= 1:
             return notes_arr
 
-        pivot = notes_arr[len(notes_arr) // 2][1]  # compare by datetime, not the whole pair
+        pivot = notes_arr[len(notes_arr) // 2][1]
         left:   list = [[x, y] for x, y in notes_arr if y < pivot]
         middle: list = [[x, y] for x, y in notes_arr if y == pivot]
         right:  list = [[x, y] for x, y in notes_arr if y > pivot]
@@ -74,7 +159,19 @@ class Sorting:
                 self.quicksort(middle) +
                 self.quicksort(right))
 
-    def sort_date(self, descending: bool):
+    def sort_date(self, descending: bool) -> dict:
+        """Return notes sorted by their timestamp.
+
+        Parses each note's ``timestamp`` field, sorts ascending via quicksort,
+        then reverses if ``descending`` is ``True``.
+
+        Args:
+            descending: If ``True``, newest notes appear first; if ``False``,
+                oldest notes appear first.
+
+        Returns:
+            dict: Notes mapping in sorted order (note_id -> note data).
+        """
         date_list = []
         for nid, data in self.notes.items():
             note = Note(**data)
@@ -88,6 +185,6 @@ class Sorting:
 
         note_sorted = {}
         for nid, _ in sorted_list:
-            print(f"note in order: {self.notes[nid].get("title")}, {self.notes[nid].get("timestamp")}")
+            print(f"note in order: {self.notes[nid].get('title')}, {self.notes[nid].get('timestamp')}")
             note_sorted[nid] = self.notes[nid]
         return note_sorted
