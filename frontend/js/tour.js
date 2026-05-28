@@ -42,12 +42,12 @@ export function startIndexTour() {
         },
       },
       {
-        element:     '.hero-cta',
+        element:     '#start-reading-btn',
         popover: {
           title:       'Head to the Reader',
           description: 'Everything starts on the Read page. Click next and we\'ll take you there.',
           side:        'top',
-          align:       'center',
+          align:       'start',
           nextBtnText: 'Open the Reader →',
           onNextClick: () => { window.location.href = 'reader.html'; },
         },

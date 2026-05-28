@@ -1,0 +1,456 @@
+/* ── CSS variables ── */
+:root {
+  --gold:      #C8861A;
+  --gold-dim:  #A67015;
+  --gold-light:#E09A30;
+  --ink:       #1A100A;
+  --parchment: #F4E4C1;
+  --nav-h:     64px;
+  --scnav-h:   56px;
+  --sidebar-w: 360px;
+  --msg-sidebar-w: 280px;
+}
+
+/* ── Reset & base ── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body, #root {
+  height: 100%;
+  overflow-x: hidden;
+}
+
+body {
+  background: #060401;
+  color: #F4E4C1;
+  font-family: 'Lora', serif;
+}
+
+/* ── Background video ── */
+#bg-video {
+  position: fixed;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  object-fit: cover;
+  z-index: -2;
+  pointer-events: none;
+  filter: brightness(0.28) sepia(0.4);
+}
+
+/* ── Nav bar ── */
+.fs-nav.ant-layout-header {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  z-index: 100;
+  height: var(--nav-h);
+  line-height: var(--nav-h);
+  padding: 0 2.5rem;
+  background: rgba(6,4,1,0.94) !important;
+  backdrop-filter: blur(6px);
+  border-bottom: 1px solid rgba(200,134,26,0.14);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.nav-logo {
+  font-family: 'Playfair Display', serif;
+  font-size: 1.45rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-decoration: none;
+  display: flex;
+  align-items: baseline;
+  gap: 0;
+}
+.nav-logo .fellow { color: #F4E4C1; }
+.nav-logo .script { color: var(--gold); font-style: italic; }
+
+/* ── Ant Design Menu overrides for nav ── */
+.fs-nav .ant-menu {
+  background: transparent !important;
+  border: none !important;
+  line-height: var(--nav-h) !important;
+}
+.fs-nav .ant-menu-item {
+  font-family: 'Lora', serif;
+  font-size: 0.8rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+/* ── Scripture nav bar ── */
+.scripture-nav-bar {
+  position: fixed;
+  top: var(--nav-h);
+  left: 0; right: 0;
+  z-index: 90;
+  height: var(--scnav-h);
+  background: rgba(6,4,1,0.92);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid rgba(200,134,26,0.22);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+}
+
+/* ── Chapter card (parchment look — Ant Card overridden) ── */
+.chapter-card.ant-card {
+  background: var(--parchment) !important;
+  color: var(--ink) !important;
+  border-radius: 14px !important;
+  border: none !important;
+  box-shadow: 4px 6px 18px rgba(0,0,0,0.55), 14px 22px 60px rgba(0,0,0,0.38);
+  position: relative;
+  overflow: hidden;
+  animation: fadeUp 0.45s ease both;
+}
+
+.chapter-card.ant-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse at 8% 6%, rgba(255,246,212,0.55) 0%, transparent 48%),
+    radial-gradient(ellipse at 94% 94%, rgba(175,135,75,0.2) 0%, transparent 45%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.chapter-card .ant-card-body {
+  color: var(--ink) !important;
+  position: relative;
+  z-index: 1;
+}
+
+.card-book-label {
+  font-family: 'Lora', serif;
+  font-size: 0.62rem;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--gold-dim);
+  margin-bottom: 0.55rem;
+}
+
+.card-title {
+  font-family: 'Playfair Display', serif;
+  font-size: clamp(1.7rem, 4vw, 2.5rem);
+  font-weight: 700;
+  color: var(--ink);
+  line-height: 1.15;
+}
+
+.card-section-head {
+  font-family: 'IM Fell English', serif;
+  font-style: italic;
+  font-size: 0.92rem;
+  color: var(--gold-dim);
+  margin-top: 0.45rem;
+  line-height: 1.5;
+}
+
+/* ── Chapter body text ── */
+.card-body {
+  font-family: 'Lora', serif;
+  font-size: 1.04rem;
+  line-height: 2.15;
+  color: #28160a;
+  margin-top: 1.5rem;
+}
+
+.section-head {
+  display: block;
+  font-family: 'Playfair Display', serif;
+  font-size: 0.9rem;
+  font-weight: 700;
+  font-style: italic;
+  color: var(--gold-dim);
+  margin: 1.8rem 0 0.6rem;
+}
+
+/* ── Verse spans ── */
+.verse-span {
+  display: inline;
+  cursor: pointer;
+}
+
+.verse-span:hover { background: rgba(200,134,26,0.07); border-radius: 2px; }
+
+.verse-span.active {
+  background: rgba(200,134,26,0.13);
+  border-radius: 2px;
+  box-shadow: 0 0 0 3px rgba(200,134,26,0.1);
+  outline: 1px solid rgba(200,134,26,0.25);
+  padding: 0.05em 0.2em;
+}
+
+.vnum {
+  font-size: 0.6rem;
+  font-weight: 600;
+  color: var(--gold);
+  vertical-align: super;
+  line-height: 0;
+  margin-right: 0.12em;
+  cursor: pointer;
+  user-select: none;
+}
+
+.verse-span[data-hl] { border-radius: 2px; padding: 0.05em 0.1em; }
+
+/* ── Highlight badge ── */
+.hl-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 13px; height: 13px;
+  border-radius: 50%;
+  font-size: 0.42rem;
+  font-family: 'Playfair Display', serif;
+  font-weight: 700;
+  color: rgba(10,7,3,0.85);
+  vertical-align: super;
+  margin-left: 1px;
+  cursor: default;
+  line-height: 1;
+  border: 1px solid rgba(255,255,255,0.25);
+}
+
+/* ── Highlight picker ── */
+.hl-picker {
+  position: fixed;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: rgba(6,4,1,0.95);
+  border: 1px solid rgba(200,134,26,0.3);
+  backdrop-filter: blur(10px);
+  padding: 0.45rem 0.6rem;
+  border-radius: 10px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+}
+
+.hl-swatch {
+  width: 20px; height: 20px;
+  border-radius: 50%;
+  border: 2px solid rgba(255,255,255,0.25);
+  cursor: pointer;
+  transition: transform 0.15s, border-color 0.15s;
+}
+.hl-swatch:hover { transform: scale(1.25); border-color: rgba(255,255,255,0.7); }
+
+.hl-divider { width: 1px; height: 16px; background: rgba(200,134,26,0.25); }
+
+.hl-clear {
+  font-size: 0.7rem;
+  color: rgba(244,228,193,0.4);
+  cursor: pointer;
+  padding: 0 0.2rem;
+  line-height: 1;
+  transition: color 0.15s;
+  border: none;
+  background: none;
+}
+.hl-clear:hover { color: rgba(244,228,193,0.9); }
+
+/* ── Notes sidebar ── */
+.notes-sidebar {
+  position: fixed;
+  top: calc(var(--nav-h) + var(--scnav-h));
+  right: 0; bottom: 0;
+  width: var(--sidebar-w);
+  background: rgba(6,4,1,0.96);
+  border-left: 1px solid rgba(200,134,26,0.2);
+  backdrop-filter: blur(12px);
+  z-index: 80;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ── Messaging sidebar ── */
+.msg-sidebar {
+  position: fixed;
+  top: calc(var(--nav-h) + var(--scnav-h));
+  left: 0; bottom: 0;
+  width: var(--msg-sidebar-w);
+  background: rgba(6,4,1,0.96);
+  border-right: 1px solid rgba(200,134,26,0.2);
+  backdrop-filter: blur(12px);
+  z-index: 80;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ── Sidebar resize handle ── */
+.sidebar-resize-handle {
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 5px;
+  cursor: ew-resize;
+  z-index: 10;
+  transition: background 0.2s;
+}
+.sidebar-resize-handle:hover,
+.sidebar-resize-handle.dragging { background: rgba(200,134,26,0.35); }
+
+.msg-resize-handle {
+  position: absolute;
+  right: 0; top: 0; bottom: 0;
+  width: 5px;
+  cursor: ew-resize;
+  z-index: 10;
+  transition: background 0.2s;
+}
+.msg-resize-handle:hover,
+.msg-resize-handle.dragging { background: rgba(200,134,26,0.35); }
+
+/* ── Reader main area ── */
+.reader-main {
+  padding-top: calc(var(--nav-h) + var(--scnav-h) + 3rem);
+  padding-bottom: 6rem;
+  padding-right: var(--sidebar-w);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: 100vh;
+  transition: padding-left 0.3s ease, padding-right 0.3s ease;
+}
+
+.reader-main.msg-open {
+  padding-left: calc(var(--msg-sidebar-w) + 1.5rem);
+}
+
+/* ── Animations ── */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Note card override ── */
+.note-card.ant-card {
+  border-color: rgba(200,134,26,0.18) !important;
+  background: rgba(20,12,4,0.5) !important;
+  border-radius: 10px !important;
+  cursor: pointer;
+  transition: border-color 0.2s;
+}
+.note-card.ant-card:hover { border-color: rgba(200,134,26,0.35) !important; }
+.note-card .ant-card-body { padding: 0.85rem 0.95rem !important; }
+
+/* ── Message bubble ── */
+.msg-bubble {
+  max-width: 85%;
+  padding: 0.5rem 0.75rem;
+  border-radius: 12px;
+  font-family: 'Lora', serif;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.msg-bubble.sent {
+  align-self: flex-end;
+  background: rgba(200,134,26,0.18);
+  border: 1px solid rgba(200,134,26,0.3);
+  color: var(--parchment);
+}
+
+.msg-bubble.received {
+  align-self: flex-start;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.08);
+  color: rgba(244,228,193,0.75);
+}
+
+.msg-bubble-sender {
+  font-size: 0.63rem;
+  color: var(--gold);
+  opacity: 0.7;
+  margin-bottom: 0.15rem;
+}
+
+.msg-bubble-meta {
+  font-size: 0.58rem;
+  color: rgba(200,134,26,0.4);
+  margin-top: 0.2rem;
+}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(200,134,26,0.25); border-radius: 2px; }
+
+/* ── Dashboard widget ── */
+.dash-widget.ant-card {
+  background: rgba(6,4,1,0.88) !important;
+  border-color: rgba(200,134,26,0.16) !important;
+  backdrop-filter: blur(14px);
+  animation: fadeUp 0.6s ease forwards;
+  opacity: 0;
+}
+
+/* ── Feature chips ── */
+.feature-chips { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+
+/* ── Footer ── */
+.fs-footer {
+  text-align: center;
+  padding: 2rem;
+  border-top: 1px solid rgba(200,134,26,0.1);
+  color: rgba(244,228,193,0.2);
+  font-size: 0.66rem;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+}
+
+/* ── Mobile ── */
+@media (max-width: 640px) {
+  :root {
+    --nav-h:     52px;
+    --scnav-h:   68px;
+    --sidebar-w: 100%;
+  }
+
+  .fs-nav.ant-layout-header { padding: 0 1.1rem; }
+
+  .scripture-nav-bar {
+    justify-content: stretch;
+    align-items: stretch;
+    padding: 0.45rem 0.6rem;
+    gap: 0;
+  }
+
+  .reader-main {
+    padding-right: 0 !important;
+    padding-left: 0 !important;
+    padding-top: calc(var(--nav-h) + var(--scnav-h) + 1.5rem);
+    align-items: stretch;
+  }
+
+  .chapter-card.ant-card {
+    border-radius: 0 !important;
+    box-shadow: none !important;
+  }
+
+  .notes-sidebar,
+  .msg-sidebar {
+    top: 0; left: 0; right: 0; bottom: 0;
+    width: 100%;
+    height: 100%;
+    border: none;
+    z-index: 110;
+    transform: translateY(100%);
+    transition: transform 0.3s ease;
+  }
+
+  .notes-sidebar.open,
+  .msg-sidebar.open { transform: translateY(0); }
+}
+
+@media (min-width: 641px) {
+  .notes-sidebar { transform: none !important; }
+}

@@ -163,6 +163,48 @@ async function init() {
   applyHash();
 }
 
+// ── Notes swipe-to-dismiss (mobile) ──────────────────────────────────────────
+
+function _initNotesSwipeDismiss() {
+  const sidebar = document.getElementById('notes-sidebar');
+  const handle  = document.getElementById('notes-drag-handle');
+  if (!sidebar || !handle) return;
+
+  let dragging = false, startY = 0, currentDelta = 0;
+
+  handle.addEventListener('touchstart', e => {
+    if (window.innerWidth > 640) return;
+    dragging = true;
+    startY = e.touches[0].clientY;
+    currentDelta = 0;
+    sidebar.style.transition = 'none';
+  }, { passive: true });
+
+  document.addEventListener('touchmove', e => {
+    if (!dragging) return;
+    const delta = e.touches[0].clientY - startY;
+    if (delta >= 0) {
+      currentDelta = delta;
+      sidebar.style.transform = `translateY(${delta}px)`;
+    }
+  }, { passive: true });
+
+  document.addEventListener('touchend', () => {
+    if (!dragging) return;
+    dragging = false;
+    sidebar.style.transition = '';
+
+    if (currentDelta > 80) {
+      sidebar.classList.remove('open');
+      document.body.classList.remove('sidebar-open');
+      const btn = document.getElementById('mobile-notes-btn');
+      if (btn) btn.classList.remove('active');
+    }
+    sidebar.style.transform = '';
+    currentDelta = 0;
+  });
+}
+
 // Wire everything up, then boot
 setChapterRenderedCallback(applyHighlights);
 initHighlightPicker();
@@ -171,5 +213,6 @@ initSidebarResize();
 initMessaging();
 initBibleEvents();
 _wireMobileTabs();
+_initNotesSwipeDismiss();
 init();
 checkAndResumeTour();
