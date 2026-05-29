@@ -96,10 +96,6 @@ export default function SignIn() {
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem' }}>
-      <video id="bg-video" autoPlay muted loop playsInline>
-        <source src="/data/bg.mp4" type="video/mp4" />
-      </video>
-
       <Card style={{ width: '100%', maxWidth: 420, background: 'rgba(10,6,2,0.88)', border: '1px solid rgba(200,134,26,0.2)', backdropFilter: 'blur(12px)' }}>
         <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
           <Title level={3} style={{ margin: 0, fontFamily: "'Playfair Display', serif" }}>

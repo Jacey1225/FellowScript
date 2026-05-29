@@ -7,17 +7,23 @@ export function useMessaging({ user }) {
   const [currentContact, setCurrentContact] = useState(null);
   const [messages,       setMessages]       = useState([]);
   const [groupMembers,   setGroupMembers]   = useState([]);
-  const wsRef       = useRef(null);
-  const friendCache = useRef({});
+  const wsRef              = useRef(null);
+  const friendCache        = useRef({});
+  const sessionSignalCbRef = useRef(null);
 
   // ── WebSocket ──────────────────────────────────────────────────────────────
 
   const connectWS = useCallback(() => {
     if (!user) return;
     wsRef.current = new WebSocket(`${WS_BASE}/message/ws/${user.user_id}`);
+    const SESSION_TYPES = new Set(['offer', 'answer', 'ice-candidate', 'session-created', 'session-joined', 'session-left', 'talking']);
     wsRef.current.onmessage = e => {
       try {
         const data = JSON.parse(e.data);
+        if (SESSION_TYPES.has(data.type)) {
+          sessionSignalCbRef.current?.(data);
+          return;
+        }
         setCurrentContact(cc => {
           if (cc && data.from_user !== user.user_id &&
               (data.group_id || '') === (cc.group_id || '')) {
@@ -41,6 +47,8 @@ export function useMessaging({ user }) {
   const disconnectWS = useCallback(() => {
     if (wsRef.current) { wsRef.current.onclose = null; wsRef.current.close(); wsRef.current = null; }
   }, []);
+
+  const setOnSessionSignal = useCallback((cb) => { sessionSignalCbRef.current = cb; }, []);
 
   useEffect(() => () => disconnectWS(), [disconnectWS]);
 
@@ -222,7 +230,7 @@ export function useMessaging({ user }) {
   return {
     friends, groups, currentContact, messages, groupMembers,
     wsRef, friendCache,
-    connectWS, disconnectWS,
+    connectWS, disconnectWS, setOnSessionSignal,
     loadContacts, openChat, closeChat, sendMessage,
     addFriend, removeFriend, createGroup, updateGroup, leaveGroup,
   };

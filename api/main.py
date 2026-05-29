@@ -4,6 +4,7 @@ from routes.notes import notes_router
 from routes.messaging import ws_router
 from routes.community import group_router, friend_router
 from routes.filtering import filter_router, sorting_router
+from routes.devotion import devo_router
 from schemas.users import SignUp, Login, UpdateUser, User
 import uvicorn
 import bcrypt
@@ -29,6 +30,7 @@ app.include_router(group_router)
 app.include_router(friend_router)
 app.include_router(filter_router)
 app.include_router(sorting_router)
+app.include_router(devo_router)
 
 main_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 user_path = "data/users.json"

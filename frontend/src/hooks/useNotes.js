@@ -23,7 +23,6 @@ export function useNotes({ user, curBook, curChapter, vsValue }) {
   const [groups,          setGroups]          = useState([]);
   const [filteredNotes,   setFilteredNotes]   = useState(null);
   const [filteredGroup,   setFilteredGroup]   = useState(null);
-  const [activeTab,       setActiveTab]       = useState('verse');
   const [filterActive,    setFilterActive]    = useState(false);
   const notesCache = useRef({});
 
@@ -141,7 +140,7 @@ export function useNotes({ user, curBook, curChapter, vsValue }) {
 
   // ── Filter / sort ─────────────────────────────────────────────────────────
 
-  const applyFilter = useCallback(async ({ sortVal, filterType, filterVal }) => {
+  const applyFilter = useCallback(async ({ sortVal, filterType, filterVal, activeTab }) => {
     const isGroupTab = activeTab === 'public' && !!currentGroupId;
     const hasFilter  = !!(filterType && filterVal);
     const hasSort    = !!sortVal;
@@ -175,9 +174,7 @@ export function useNotes({ user, curBook, curChapter, vsValue }) {
         const subset = {};
         for (const [nid, n] of Object.entries(allNotes)) {
           if (n.group_id) continue;
-          const norm = normalizeNote(n, user.username);
-          if (activeTab === 'public' && !norm.public) continue;
-          subset[nid] = norm;
+          subset[nid] = normalizeNote(n, user.username);
         }
         payload = { [user.user_id]: subset };
       }
@@ -226,7 +223,7 @@ export function useNotes({ user, curBook, curChapter, vsValue }) {
       }
       setFilterActive(true);
     } catch {}
-  }, [user, allNotes, groupNotes, activeTab, currentGroupId]);
+  }, [user, allNotes, groupNotes, currentGroupId]);
 
   const clearFilter = useCallback(() => {
     setFilteredNotes(null);
@@ -244,8 +241,7 @@ export function useNotes({ user, curBook, curChapter, vsValue }) {
 
   return {
     allNotes, groupNotes, currentGroupId, groups,
-    filteredNotes, filteredGroup, filterActive, activeTab,
-    setActiveTab,
+    filteredNotes, filteredGroup, filterActive,
     loadNotes, loadGroupNotes, loadGroups, selectGroup,
     saveNote, deleteNote, postReply, loadDetailReplies,
     applyFilter, clearFilter, getNoteRef, getVerse,

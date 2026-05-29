@@ -1,14 +1,50 @@
-/* ── CSS variables ── */
-:root {
-  --gold:      #C8861A;
-  --gold-dim:  #A67015;
-  --gold-light:#E09A30;
-  --ink:       #1A100A;
-  --parchment: #F4E4C1;
-  --nav-h:     64px;
-  --scnav-h:   56px;
-  --sidebar-w: 360px;
-  --msg-sidebar-w: 280px;
+/* ── CSS variables — dark mode (default) ── */
+:root,
+[data-theme="dark"] {
+  --gold:          #C8861A;
+  --gold-dim:      #A67015;
+  --gold-light:    #E09A30;
+  --ink:           #1A100A;
+  --parchment:     #F4E4C1;
+  --nav-h:         64px;
+  --scnav-h:       44px;
+  --right-panel-w: 540px;
+  --contacts-w:    210px;
+  --island-radius: 18px;
+
+  /* Theme-aware */
+  --bg-page:         #060401;
+  --nav-bg:          rgba(6,4,1,0.97);
+  --island-bg:       rgba(8,5,2,0.92);
+  --island-border:   rgba(200,134,26,0.18);
+  --widget-bg:       rgba(8,5,2,0.99);
+  --widget-border:   rgba(200,134,26,0.24);
+  --pill-bg:         rgba(200,134,26,0.1);
+  --pill-border:     rgba(200,134,26,0.28);
+  --pill-text:       rgba(244,228,193,0.85);
+  --bib-book-text:   rgba(244,228,193,0.6);
+  --bib-section-c:   rgba(200,134,26,0.5);
+  --bib-divider:     rgba(200,134,26,0.18);
+  --bib-ch-border:   rgba(200,134,26,0.22);
+  --bib-ch-text:     rgba(244,228,193,0.55);
+}
+
+/* ── Light mode overrides ── */
+[data-theme="light"] {
+  --bg-page:         #EDE0C4;
+  --nav-bg:          rgba(235,222,196,0.98);
+  --island-bg:       rgba(10,6,2,0.88);
+  --island-border:   rgba(160,100,18,0.28);
+  --widget-bg:       rgba(246,238,220,0.99);
+  --widget-border:   rgba(160,100,18,0.3);
+  --pill-bg:         rgba(160,100,18,0.1);
+  --pill-border:     rgba(160,100,18,0.35);
+  --pill-text:       rgba(30,18,8,0.85);
+  --bib-book-text:   rgba(30,18,8,0.65);
+  --bib-section-c:   rgba(130,80,15,0.6);
+  --bib-divider:     rgba(130,80,15,0.2);
+  --bib-ch-border:   rgba(130,80,15,0.28);
+  --bib-ch-text:     rgba(30,18,8,0.6);
 }
 
 /* ── Reset & base ── */
@@ -20,20 +56,10 @@ html, body, #root {
 }
 
 body {
-  background: #060401;
+  background: var(--bg-page);
   color: #F4E4C1;
   font-family: 'Lora', serif;
-}
-
-/* ── Background video ── */
-#bg-video {
-  position: fixed;
-  top: 0; left: 0;
-  width: 100%; height: 100%;
-  object-fit: cover;
-  z-index: -2;
-  pointer-events: none;
-  filter: brightness(0.28) sepia(0.4);
+  transition: background 0.25s ease;
 }
 
 /* ── Nav bar ── */
@@ -44,8 +70,8 @@ body {
   height: var(--nav-h);
   line-height: var(--nav-h);
   padding: 0 2.5rem;
-  background: rgba(6,4,1,0.94) !important;
-  backdrop-filter: blur(6px);
+  background: var(--nav-bg) !important;
+  backdrop-filter: blur(8px);
   border-bottom: 1px solid rgba(200,134,26,0.14);
   display: flex;
   align-items: center;
@@ -78,21 +104,167 @@ body {
   text-transform: uppercase;
 }
 
-/* ── Scripture nav bar ── */
+/* ── Scripture nav bar — now a slim pill-button row ── */
 .scripture-nav-bar {
   position: fixed;
   top: var(--nav-h);
   left: 0; right: 0;
   z-index: 90;
   height: var(--scnav-h);
-  background: rgba(6,4,1,0.92);
-  backdrop-filter: blur(10px);
-  border-bottom: 1px solid rgba(200,134,26,0.22);
+  background: var(--nav-bg);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid rgba(200,134,26,0.14);
+  display: flex;
+  align-items: center;
+  padding: 0 1.5rem;
+}
+
+/* ── Pill button ── */
+.nav-pill-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.38rem 1.05rem;
+  background: var(--pill-bg);
+  border: 1px solid var(--pill-border);
+  border-radius: 100px;
+  color: var(--pill-text);
+  font-family: 'Lora', serif;
+  font-size: 0.78rem;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  transition: background 0.18s, border-color 0.18s;
+  white-space: nowrap;
+}
+.nav-pill-btn:hover,
+.nav-pill-btn.open {
+  background: rgba(200,134,26,0.2);
+  border-color: rgba(200,134,26,0.55);
+}
+
+/* ── Bible nav dropdown widget ── */
+.bib-nav-widget {
+  position: absolute;
+  top: calc(100% + 2px);
+  left: 0;
+  z-index: 200;
+  width: 600px;
+  max-height: 460px;
+  background: var(--widget-bg);
+  border: 1px solid var(--widget-border);
+  border-radius: 16px;
+  backdrop-filter: blur(20px);
+  box-shadow: 0 16px 56px rgba(0,0,0,0.6);
+  display: flex;
+  overflow: hidden;
+  animation: bibWidgetIn 0.18s ease forwards;
+}
+
+@keyframes bibWidgetIn {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Books panel (left 55%) */
+.bib-nav-books {
+  width: 55%;
+  border-right: 1px solid var(--bib-divider);
+  overflow-y: auto;
+  padding: 0.8rem;
+}
+
+/* OT / NT section dividers */
+.bib-section-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: 'Lora', serif;
+  font-size: 0.52rem;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: var(--bib-section-c);
+  padding: 0.65rem 0 0.4rem;
+}
+.bib-section-label::before,
+.bib-section-label::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--bib-divider);
+}
+
+/* 2-column book grid */
+.bib-books-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px;
+}
+
+.bib-book-btn {
+  padding: 0.48rem 0.75rem;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: var(--bib-book-text);
+  font-family: 'Lora', serif;
+  font-size: 0.82rem;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.14s, color 0.14s;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.4;
+}
+.bib-book-btn:hover { background: rgba(200,134,26,0.1); color: var(--parchment); }
+[data-theme="light"] .bib-book-btn:hover { background: rgba(130,80,15,0.1); color: #1a100a; }
+.bib-book-btn.active { background: rgba(200,134,26,0.18); color: var(--gold); font-weight: 600; }
+
+/* Chapters panel (right 45%) */
+.bib-nav-chapters {
+  flex: 1;
+  padding: 0.8rem 0.7rem;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.bib-ch-book-label {
+  font-family: 'Lora', serif;
+  font-size: 0.55rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--bib-section-c);
+  margin-bottom: 0.65rem;
+  padding-bottom: 0.4rem;
+  border-bottom: 1px solid var(--bib-divider);
+}
+
+.bib-ch-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.bib-ch-btn {
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--bib-ch-border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--bib-ch-text);
+  font-family: 'Lora', serif;
+  font-size: 0.7rem;
+  cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 0;
+  transition: background 0.14s, color 0.14s, border-color 0.14s;
+  flex-shrink: 0;
 }
+.bib-ch-btn:hover { background: rgba(200,134,26,0.12); color: var(--parchment); border-color: rgba(200,134,26,0.5); }
+[data-theme="light"] .bib-ch-btn:hover { color: #1a100a; }
+.bib-ch-btn.active { background: rgba(200,134,26,0.22); color: var(--gold); border-color: rgba(200,134,26,0.65); font-weight: 700; }
 
 /* ── Chapter card (parchment look — Ant Card overridden) ── */
 .chapter-card.ant-card {
@@ -253,73 +425,86 @@ body {
 }
 .hl-clear:hover { color: rgba(244,228,193,0.9); }
 
-/* ── Notes sidebar ── */
-.notes-sidebar {
-  position: fixed;
-  top: calc(var(--nav-h) + var(--scnav-h));
-  right: 0; bottom: 0;
-  width: var(--sidebar-w);
-  background: rgba(6,4,1,0.96);
-  border-left: 1px solid rgba(200,134,26,0.2);
-  backdrop-filter: blur(12px);
-  z-index: 80;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-/* ── Messaging sidebar ── */
-.msg-sidebar {
-  position: fixed;
-  top: calc(var(--nav-h) + var(--scnav-h));
-  left: 0; bottom: 0;
-  width: var(--msg-sidebar-w);
-  background: rgba(6,4,1,0.96);
-  border-right: 1px solid rgba(200,134,26,0.2);
-  backdrop-filter: blur(12px);
-  z-index: 80;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-/* ── Sidebar resize handle ── */
-.sidebar-resize-handle {
-  position: absolute;
-  left: 0; top: 0; bottom: 0;
-  width: 5px;
-  cursor: ew-resize;
-  z-index: 10;
-  transition: background 0.2s;
-}
-.sidebar-resize-handle:hover,
-.sidebar-resize-handle.dragging { background: rgba(200,134,26,0.35); }
-
-.msg-resize-handle {
-  position: absolute;
-  right: 0; top: 0; bottom: 0;
-  width: 5px;
-  cursor: ew-resize;
-  z-index: 10;
-  transition: background 0.2s;
-}
-.msg-resize-handle:hover,
-.msg-resize-handle.dragging { background: rgba(200,134,26,0.35); }
-
-/* ── Reader main area ── */
+/* ── Reader main area — Bible takes left half ── */
 .reader-main {
   padding-top: calc(var(--nav-h) + var(--scnav-h) + 3rem);
   padding-bottom: 6rem;
-  padding-right: var(--sidebar-w);
+  padding-right: 50vw;
+  padding-left: 2rem;
   display: flex;
   flex-direction: column;
   align-items: center;
   min-height: 100vh;
-  transition: padding-left 0.3s ease, padding-right 0.3s ease;
 }
 
-.reader-main.msg-open {
-  padding-left: calc(var(--msg-sidebar-w) + 1.5rem);
+/* ── Right panel — fills the right 50% of screen ── */
+.reader-right-panel {
+  position: fixed;
+  top: calc(var(--nav-h) + var(--scnav-h) + 0.75rem);
+  right: 0.75rem;
+  bottom: 0.75rem;
+  width: calc(50vw - 1.5rem);
+  z-index: 80;
+}
+
+/* ── Single combined island: notes (left) + contacts column (right) ── */
+.notes-island {
+  width: 100%;
+  height: 100%;
+  background: var(--island-bg);
+  border: 1px solid var(--island-border);
+  border-radius: var(--island-radius);
+  backdrop-filter: blur(16px);
+  box-shadow: 0 8px 40px rgba(0,0,0,0.5);
+  overflow: hidden;
+  display: flex;
+  flex-direction: row;
+}
+
+/* Notes column — takes 2/3 of the island */
+.notes-section {
+  flex: 2;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+  border-right: 1px solid rgba(200,134,26,0.14);
+}
+
+/* Notes sidebar fills its column */
+.notes-sidebar {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  position: relative;
+}
+
+/* ── Chat overlay — only rendered when a contact is active, slides in from right ── */
+@keyframes slideInFromRight {
+  from { transform: translateX(102%); }
+  to   { transform: translateX(0); }
+}
+
+.chat-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(8,5,2,0.99);
+  animation: slideInFromRight 0.28s cubic-bezier(0.4,0,0.2,1) forwards;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ── Contacts column — takes 1/3 of the island ── */
+.contacts-section {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 /* ── Animations ── */
@@ -407,12 +592,21 @@ body {
   text-transform: uppercase;
 }
 
+/* ── Mobile tab bar ── */
+.mobile-tab-bar {
+  display: none;
+}
+
+.mobile-overlay {
+  display: none;
+}
+
 /* ── Mobile ── */
-@media (max-width: 640px) {
+@media (max-width: 768px) {
   :root {
     --nav-h:     52px;
     --scnav-h:   68px;
-    --sidebar-w: 100%;
+    --contacts-w: 130px;
   }
 
   .fs-nav.ant-layout-header { padding: 0 1.1rem; }
@@ -428,6 +622,7 @@ body {
     padding-right: 0 !important;
     padding-left: 0 !important;
     padding-top: calc(var(--nav-h) + var(--scnav-h) + 1.5rem);
+    padding-bottom: 5rem !important;
     align-items: stretch;
   }
 
@@ -436,21 +631,207 @@ body {
     box-shadow: none !important;
   }
 
-  .notes-sidebar,
-  .msg-sidebar {
-    top: 0; left: 0; right: 0; bottom: 0;
-    width: 100%;
-    height: 100%;
-    border: none;
-    z-index: 110;
-    transform: translateY(100%);
-    transition: transform 0.3s ease;
+  /* Hide desktop right panel on mobile */
+  .reader-right-panel { display: none; }
+
+  /* Mobile bottom tab bar */
+  .mobile-tab-bar {
+    display: flex;
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    z-index: 120;
+    background: rgba(6,4,1,0.97);
+    border-top: 1px solid rgba(200,134,26,0.2);
+    backdrop-filter: blur(12px);
   }
 
-  .notes-sidebar.open,
-  .msg-sidebar.open { transform: translateY(0); }
+  .mobile-tab {
+    flex: 1;
+    padding: 0.85rem 0 0.7rem;
+    background: transparent;
+    border: none;
+    color: rgba(244,228,193,0.4);
+    font-family: 'Lora', serif;
+    font-size: 0.6rem;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.28rem;
+    transition: color 0.15s, background 0.15s;
+  }
+
+  .mobile-tab.active {
+    color: var(--gold);
+    background: rgba(200,134,26,0.08);
+  }
+
+  /* Mobile fullscreen overlays */
+  .mobile-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 115;
+    background: rgba(6,4,1,0.98);
+    display: flex;
+    flex-direction: column;
+    transform: translateY(100%);
+    transition: transform 0.3s cubic-bezier(0.4,0,0.2,1);
+  }
+
+  .mobile-overlay.open { transform: translateY(0); }
 }
 
-@media (min-width: 641px) {
-  .notes-sidebar { transform: none !important; }
+/* ── Note editor (Apple Notes style) ── */
+.note-editor {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+}
+
+.note-editor-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 1rem;
+  border-bottom: 1px solid rgba(200,134,26,0.15);
+  flex-shrink: 0;
+}
+
+.note-editor-back {
+  background: none;
+  border: none;
+  color: rgba(200,134,26,0.65);
+  cursor: pointer;
+  padding: 0.28rem 0.45rem;
+  border-radius: 6px;
+  line-height: 1;
+  transition: background 0.15s, color 0.15s;
+}
+.note-editor-back:hover { background: rgba(200,134,26,0.1); color: var(--gold); }
+
+.note-public-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  cursor: pointer;
+  font-size: 0.7rem;
+  color: rgba(200,134,26,0.6);
+  font-family: 'Lora', serif;
+  user-select: none;
+}
+
+/* Verse bar */
+.note-editor-verse-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  padding: 0.42rem 1rem;
+  border-bottom: 1px solid rgba(200,134,26,0.12);
+  flex-shrink: 0;
+  min-height: 38px;
+}
+
+.note-verse-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.14rem 0.48rem 0.14rem 0.55rem;
+  background: rgba(200,134,26,0.1);
+  border: 1px solid rgba(200,134,26,0.25);
+  border-radius: 100px;
+  font-family: 'IM Fell English', serif;
+  font-style: italic;
+  font-size: 0.72rem;
+  color: var(--gold);
+  white-space: nowrap;
+}
+
+.note-verse-remove {
+  background: none;
+  border: none;
+  color: rgba(200,134,26,0.45);
+  cursor: pointer;
+  font-size: 0.9rem;
+  padding: 0;
+  line-height: 1;
+  transition: color 0.14s;
+}
+.note-verse-remove:hover { color: var(--gold); }
+
+/* Add Verse button */
+.vs-add-btn {
+  background: none;
+  border: 1px dashed rgba(200,134,26,0.3);
+  border-radius: 100px;
+  color: rgba(200,134,26,0.5);
+  cursor: pointer;
+  font-family: 'Lora', serif;
+  font-size: 0.68rem;
+  padding: 0.15rem 0.62rem;
+  transition: border-color 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+.vs-add-btn:hover { border-color: rgba(200,134,26,0.6); color: rgba(200,134,26,0.85); }
+
+/* Writing area */
+.note-editor-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow-y: auto;
+  padding: 1.3rem 1.3rem 2rem;
+  gap: 0;
+}
+
+.note-title-input {
+  width: 100%;
+  background: transparent;
+  border: none;
+  outline: none;
+  resize: none;
+  overflow: hidden;
+  font-family: 'Playfair Display', serif;
+  font-size: 1.52rem;
+  font-weight: 700;
+  color: var(--parchment);
+  line-height: 1.3;
+  padding: 0;
+  margin-bottom: 0.85rem;
+  min-height: 2rem;
+}
+.note-title-input::placeholder { color: rgba(244,228,193,0.2); }
+
+.note-body-textarea {
+  width: 100%;
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  resize: none;
+  font-family: 'Lora', serif;
+  font-size: 0.9rem;
+  color: rgba(244,228,193,0.72);
+  line-height: 1.88;
+  padding: 0;
+  min-height: 220px;
+}
+.note-body-textarea::placeholder { color: rgba(244,228,193,0.18); }
+
+/* ── Verse selector widget (3 columns) ── */
+.verse-sel-widget {
+  width: 780px;
+  max-height: 450px;
+}
+
+.bib-nav-verses {
+  flex: 1;
+  padding: 0.8rem 0.7rem;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--bib-divider);
 }

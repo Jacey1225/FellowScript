@@ -90,24 +90,24 @@ class Filters:
         )
 
     def filter_book(self, book: str) -> dict:
-        """Keep only notes whose verse range references the given book.
+        """Keep only notes that reference the given book in any verse entry.
 
-        Performs a case-insensitive substring match against both the start
-        and end book fields of each note's verse range.
+        Performs a case-insensitive substring match against the book field
+        of every verse in the note's verses list.
 
         Args:
             book: Book name or partial name to search for (case-insensitive).
 
         Returns:
-            dict: Notes whose start or end verse references the given book.
+            dict: Notes that reference the given book in at least one verse.
         """
         logger.info("filter_book: %s", book)
-        return self._collect(
-            lambda note: (
-                (bool(note.verses[0]) and book.lower() in note.verses[0][0].lower()) or
-                (bool(note.verses[1]) and book.lower() in note.verses[1][0].lower())
+        def predicate(note):
+            return any(
+                v and book.lower() in str(v[0]).lower()
+                for v in (note.verses or [])
             )
-        )
+        return self._collect(predicate)
 
     def filter_title(self, title: str) -> dict:
         """Keep only notes whose title contains the given substring.
@@ -175,7 +175,11 @@ class Sorting:
         date_list = []
         for nid, data in self.notes.items():
             note = Note(**data)
-            date_list.append([nid, datetime.strptime(note.timestamp, self.date_format)])
+            try:
+                dt = datetime.strptime(note.timestamp, self.date_format)
+            except (ValueError, AttributeError):
+                dt = datetime.min
+            date_list.append([nid, dt])
 
         print(f"sorting list of {len(date_list)} dates: {date_list}")
         sorted_list = self.quicksort(date_list)

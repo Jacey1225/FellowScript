@@ -1,39 +1,34 @@
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
-from backend.interactions.websockets import ConnectionManager
-from backend.interactions.friends import FriendsManager
+from api.backend.interactions.websockets import ConnectionManager
+from api.backend.interactions.friends import FriendsManager
 ws_router = APIRouter(prefix="/message")
 manager = ConnectionManager()
 
 
+_SIGNAL_TYPES = frozenset({
+    "call-invite", "call-accept", "call-reject", "call-end",
+    "offer", "answer", "ice-candidate",
+    "session-created", "session-joined", "session-left", "talking",
+})
+
+
 @ws_router.websocket("/ws/{user_id}")
-async def websocket_endpoint(websocket: WebSocket, user_id: str, msg_type: str) -> None:
+async def websocket_endpoint(websocket: WebSocket, user_id: str, msg_type: str = "chat") -> None:
     """Handle a persistent WebSocket connection for a single user.
 
-    Registers the connection in the ``ConnectionManager``, then listens for
-    incoming JSON frames. Each frame is dispatched based on ``msg_type``:
-
-    - ``"chat"``: persisted to the messages store and relayed to recipients.
-    - Signaling types (``"call-invite"``, ``"call-accept"``, ``"call-reject"``,
-      ``"offer"``, ``"answer"``, ``"ice-candidate"``, ``"call-end"``): relayed
-      only — not persisted — to support WebRTC signaling flows.
-
-    The connection is cleaned up automatically on disconnect.
-
-    Args:
-        websocket: The active WebSocket connection.
-        user_id: UUID of the connecting user; used to key the connection.
-        msg_type: Message category for the session, provided as a query param.
+    Dispatches incoming frames based on the payload's ``type`` field (falling
+    back to the ``msg_type`` query param). Chat messages are persisted and
+    relayed; signaling frames are relayed only.
     """
     await manager.connect(user_id, websocket)
     try:
         while True:
             payload = await websocket.receive_json()
-
-            if msg_type == "chat":
-                await manager.send_msg(payload)
-            elif msg_type in ("call-invite", "call-accept", "call-reject",
-                              "offer", "answer", "ice-candidate", "call-end"):
+            effective_type = payload.get("type") or msg_type
+            if effective_type in _SIGNAL_TYPES:
                 await manager.send_sig(payload)
+            else:
+                await manager.send_msg(payload)
     except WebSocketDisconnect:
         await manager.disconnect(user_id)
 

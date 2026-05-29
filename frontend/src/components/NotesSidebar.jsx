@@ -1,80 +1,114 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
-  Button, Tabs, Input, Select, Form, Checkbox, Typography,
-  Empty, Spin, Space, Divider, Tag, Avatar,
+  Button, Tabs, Input, Select, Typography,
+  Spin, Divider, Tag, Switch,
 } from 'antd';
 import {
   PlusOutlined, EditOutlined, DeleteOutlined, FilterOutlined,
   ArrowLeftOutlined, ReloadOutlined,
 } from '@ant-design/icons';
 import { verseRefLabel } from '../utils.js';
+import VerseSelector from './VerseSelector.jsx';
 
 const { TextArea } = Input;
 const { Text, Title } = Typography;
 
-// ── Note form ─────────────────────────────────────────────────────────────────
+// ── Note editor (Apple Notes style) ──────────────────────────────────────────
 
-function NoteForm({ note, onSave, onCancel, curBook, curChapter, curVerse, groups, currentGroupId }) {
-  const [form] = Form.useForm();
-  const [saving, setSaving] = useState(false);
+function NoteEditor({ note, noteId, user, currentGroupId, books, chapterCount, verseCount, onSave, onBack }) {
+  const [titleVal,  setTitleVal]  = useState(note?.title || '');
+  const [bodyVal,   setBodyVal]   = useState(note?.text  || '');
+  const [isPublic,  setIsPublic]  = useState(!noteId ? true : (note?.public || false));
+  const [verseList, setVerseList] = useState(() => {
+    if (!note?.verses) return [];
+    return note.verses
+      .filter(v => Array.isArray(v) && v.length >= 3 && v[0])
+      .map(([b, c, v]) => ({ book: b, chapter: c, verse: v }));
+  });
+  const titleRef = useRef(null);
 
-  const initialValues = note
-    ? {
-        title:  note.title || '',
-        text:   note.text  || '',
-        public: !!note.public,
-        bookS:  note.verses?.[0]?.[0] || '',
-        chS:    note.verses?.[0]?.[1]  || '',
-        vsS:    note.verses?.[0]?.[2]  || '',
-        bookE:  note.verses?.[1]?.[0] || '',
-        chE:    note.verses?.[1]?.[1]  || '',
-        vsE:    note.verses?.[1]?.[2]  || '',
-      }
-    : {
-        bookS: curBook    || '',
-        chS:   curChapter || '',
-        vsS:   curVerse   || '',
-        public: false,
-      };
+  // Auto-resize title textarea
+  useEffect(() => {
+    if (titleRef.current) {
+      titleRef.current.style.height = 'auto';
+      titleRef.current.style.height = titleRef.current.scrollHeight + 'px';
+    }
+  }, [titleVal]);
 
-  const handleSave = async () => {
-    const vals = form.getFieldsValue();
-    setSaving(true);
-    await onSave(vals);
-    setSaving(false);
+  useEffect(() => { titleRef.current?.focus(); }, []);
+
+  const addVerse    = (book, chapter, verse) => setVerseList(p => [...p, { book, chapter, verse }]);
+  const removeVerse = (i) => setVerseList(p => p.filter((_, j) => j !== i));
+
+  const handleBack = async () => {
+    const hasContent = titleVal.trim() || bodyVal.trim() || verseList.length > 0;
+    if (hasContent || noteId) {
+      await onSave({
+        user:     user.user_id,
+        group_id: isPublic && currentGroupId ? currentGroupId : '',
+        replies:  note?.replies || [],
+        title:    titleVal.trim() || 'Untitled',
+        text:     bodyVal.trim(),
+        public:   isPublic,
+        verses:   verseList.map(v => [v.book, v.chapter, v.verse]),
+      }, noteId || null);
+    }
+    onBack();
   };
 
   return (
-    <div style={{ padding: '0.9rem 1.1rem', borderBottom: '1px solid rgba(200,134,26,0.12)', background: 'rgba(200,134,26,0.04)' }}>
-      <Text style={{ fontSize: '0.62rem', letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(200,134,26,0.55)', display: 'block', marginBottom: '0.65rem' }}>
-        {note ? 'Edit Note' : 'New Note'}
-      </Text>
-      <Form form={form} layout="vertical" initialValues={initialValues} size="small">
-        <Form.Item name="title" style={{ marginBottom: 8 }}>
-          <Input placeholder="Title" />
-        </Form.Item>
-        <Form.Item name="text" style={{ marginBottom: 8 }}>
-          <TextArea placeholder="Your note…" autoSize={{ minRows: 4, maxRows: 14 }} style={{ resize: 'vertical' }} />
-        </Form.Item>
-        <Text style={{ fontSize: '0.58rem', letterSpacing: '0.15em', textTransform: 'uppercase', color: 'rgba(200,134,26,0.4)' }}>Verse range</Text>
-        <div style={{ display: 'flex', gap: 4, marginTop: 4, marginBottom: 4 }}>
-          <Form.Item name="bookS" style={{ flex: 2, marginBottom: 0 }}><Input placeholder="Book" /></Form.Item>
-          <Form.Item name="chS"   style={{ flex: 1, marginBottom: 0 }}><Input placeholder="Ch" /></Form.Item>
-          <Form.Item name="vsS"   style={{ flex: 1, marginBottom: 0 }}><Input placeholder="Vs" /></Form.Item>
+    <div className="note-editor">
+      {/* Header */}
+      <div className="note-editor-header">
+        <button className="note-editor-back" onClick={handleBack} title="Save and go back">
+          <ArrowLeftOutlined style={{ fontSize: '0.85rem' }} />
+        </button>
+        <span style={{ flex: 1 }} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+          <Switch
+            size="small"
+            checked={isPublic}
+            onChange={setIsPublic}
+            style={{ background: isPublic ? 'rgba(200,134,26,0.8)' : undefined }}
+          />
+          <span style={{ fontSize: '0.72rem', color: 'rgba(244,228,193,0.55)', fontFamily: "'Lora', serif" }}>Public</span>
         </div>
-        <div style={{ display: 'flex', gap: 4, marginBottom: 8 }}>
-          <Form.Item name="bookE" style={{ flex: 2, marginBottom: 0 }}><Input placeholder="Book" /></Form.Item>
-          <Form.Item name="chE"   style={{ flex: 1, marginBottom: 0 }}><Input placeholder="Ch" /></Form.Item>
-          <Form.Item name="vsE"   style={{ flex: 1, marginBottom: 0 }}><Input placeholder="Vs" /></Form.Item>
-        </div>
-        <Form.Item name="public" valuePropName="checked" style={{ marginBottom: 8 }}>
-          <Checkbox style={{ color: 'rgba(244,228,193,0.55)', fontSize: '0.72rem' }}>Public (share with group)</Checkbox>
-        </Form.Item>
-      </Form>
-      <Space style={{ width: '100%' }}>
-        <Button type="primary" onClick={handleSave} loading={saving} style={{ flex: 1 }}>Save</Button>
-        <Button onClick={onCancel} style={{ flex: 1 }}>Cancel</Button>
-      </Space>
+      </div>
+
+      {/* Verse bar */}
+      <div className="note-editor-verse-bar">
+        {verseList.map((v, i) => (
+          <span key={i} className="note-verse-tag">
+            <em>{v.book} {v.chapter}:{v.verse}</em>
+            <button className="note-verse-remove" onClick={() => removeVerse(i)}>×</button>
+          </span>
+        ))}
+        {books?.length > 0 && (
+          <VerseSelector
+            books={books}
+            chapterCount={chapterCount}
+            verseCount={verseCount}
+            onSelect={addVerse}
+          />
+        )}
+      </div>
+
+      {/* Writing area */}
+      <div className="note-editor-body">
+        <textarea
+          ref={titleRef}
+          className="note-title-input"
+          placeholder="Title"
+          value={titleVal}
+          onChange={e => setTitleVal(e.target.value)}
+        />
+        <textarea
+          className="note-body-textarea"
+          placeholder="Start writing…"
+          value={bodyVal}
+          onChange={e => setBodyVal(e.target.value)}
+        />
+      </div>
     </div>
   );
 }
@@ -82,7 +116,7 @@ function NoteForm({ note, onSave, onCancel, curBook, curChapter, curVerse, group
 // ── Note card ─────────────────────────────────────────────────────────────────
 
 function NoteCard({ id, note, owner, isOwn, onEdit, onDelete, onOpen }) {
-  const ref = verseRefLabel(note.verses);
+  const ref    = verseRefLabel(note.verses);
   const canEdit = !owner || isOwn;
 
   return (
@@ -98,12 +132,12 @@ function NoteCard({ id, note, owner, isOwn, onEdit, onDelete, onOpen }) {
           {owner && <Tag color="gold" style={{ marginLeft: 4, fontSize: '0.52rem' }}>{owner}</Tag>}
         </Text>
         {canEdit && (
-          <Space size={2} onClick={e => e.stopPropagation()}>
+          <div style={{ display: 'flex', gap: 2, flexShrink: 0 }} onClick={e => e.stopPropagation()}>
             <Button type="text" size="small" icon={<EditOutlined />} onClick={() => onEdit(id)}
               style={{ color: 'rgba(200,134,26,0.45)', padding: '0 4px' }} />
             <Button type="text" size="small" icon={<DeleteOutlined />} onClick={() => onDelete(id)}
               style={{ color: 'rgba(200,134,26,0.45)', padding: '0 4px' }} />
-          </Space>
+          </div>
         )}
       </div>
       {ref && <Text style={{ fontFamily: "'IM Fell English', serif", fontStyle: 'italic', fontSize: '0.72rem', color: 'var(--gold)', display: 'block', marginBottom: '0.45rem' }}>{ref}</Text>}
@@ -118,7 +152,7 @@ function NoteCard({ id, note, owner, isOwn, onEdit, onDelete, onOpen }) {
 
 function NoteDetail({ note, noteId, onBack, canReply, onReply, replies, repliesLoading }) {
   const [replyText, setReplyText] = useState('');
-  const [replying, setReplying]   = useState(false);
+  const [replying,  setReplying]  = useState(false);
   const ref = verseRefLabel(note?.verses);
 
   const handleReply = async () => {
@@ -155,10 +189,7 @@ function NoteDetail({ note, noteId, onBack, canReply, onReply, replies, repliesL
                     </div>
                   ))
             }
-            <TextArea
-              rows={2} value={replyText} onChange={e => setReplyText(e.target.value)}
-              placeholder="Write a reply…" style={{ resize: 'none' }}
-            />
+            <TextArea rows={2} value={replyText} onChange={e => setReplyText(e.target.value)} placeholder="Write a reply…" style={{ resize: 'none' }} />
             <Button type="default" size="small" onClick={handleReply} loading={replying} style={{ alignSelf: 'flex-end' }}>Reply</Button>
           </>
         )}
@@ -170,9 +201,9 @@ function NoteDetail({ note, noteId, onBack, canReply, onReply, replies, repliesL
 // ── Filter panel ──────────────────────────────────────────────────────────────
 
 function FilterPanel({ onApply, onClear, onClose, groupUsernames }) {
-  const [sortVal,     setSortVal]     = useState('');
-  const [filterType,  setFilterType]  = useState('');
-  const [filterVal,   setFilterVal]   = useState('');
+  const [sortVal,    setSortVal]    = useState('');
+  const [filterType, setFilterType] = useState('');
+  const [filterVal,  setFilterVal]  = useState('');
 
   return (
     <div style={{ position: 'absolute', inset: 0, background: 'rgba(6,4,1,0.98)', zIndex: 4, display: 'flex', flexDirection: 'column' }}>
@@ -183,48 +214,21 @@ function FilterPanel({ onApply, onClear, onClose, groupUsernames }) {
       <div style={{ flex: 1, overflowY: 'auto', padding: '1.1rem', display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
         <div>
           <Text style={{ fontSize: '0.58rem', letterSpacing: '0.22em', textTransform: 'uppercase', color: 'rgba(200,134,26,0.5)', display: 'block', marginBottom: 8 }}>Sort by date</Text>
-          <Select
-            value={sortVal || undefined}
-            placeholder="— No sort —"
-            onChange={setSortVal}
-            style={{ width: '100%' }}
-            options={[
-              { value: '',     label: '— No sort —' },
-              { value: 'desc', label: 'Newest first' },
-              { value: 'asc',  label: 'Oldest first' },
-            ]}
+          <Select value={sortVal || undefined} placeholder="— No sort —" onChange={setSortVal} style={{ width: '100%' }}
+            options={[{ value: '', label: '— No sort —' }, { value: 'desc', label: 'Newest first' }, { value: 'asc', label: 'Oldest first' }]}
           />
         </div>
         <div>
           <Text style={{ fontSize: '0.58rem', letterSpacing: '0.22em', textTransform: 'uppercase', color: 'rgba(200,134,26,0.5)', display: 'block', marginBottom: 8 }}>Filter by</Text>
-          <Select
-            value={filterType || undefined}
-            placeholder="— No filter —"
-            onChange={v => { setFilterType(v); setFilterVal(''); }}
+          <Select value={filterType || undefined} placeholder="— No filter —" onChange={v => { setFilterType(v); setFilterVal(''); }}
             style={{ width: '100%', marginBottom: 8 }}
-            options={[
-              { value: '',      label: '— No filter —' },
-              { value: 'book',  label: 'Book' },
-              { value: 'title', label: 'Title' },
-              { value: 'date',  label: 'Date' },
-              { value: 'user',  label: 'User' },
-            ]}
+            options={[{ value: '', label: '— No filter —' }, { value: 'book', label: 'Book' }, { value: 'title', label: 'Title' }, { value: 'date', label: 'Date' }, { value: 'user', label: 'User' }]}
           />
           {filterType === 'user'
-            ? <Select
-                value={filterVal || undefined}
-                placeholder="Select user"
-                onChange={setFilterVal}
-                style={{ width: '100%' }}
-                options={groupUsernames.map(n => ({ value: n, label: n }))}
-              />
+            ? <Select value={filterVal || undefined} placeholder="Select user" onChange={setFilterVal} style={{ width: '100%' }}
+                options={groupUsernames.map(n => ({ value: n, label: n }))} />
             : filterType
-              ? <Input
-                  type={filterType === 'date' ? 'date' : 'text'}
-                  placeholder={filterType === 'book' ? 'e.g. Genesis' : 'Search…'}
-                  value={filterVal}
-                  onChange={e => setFilterVal(e.target.value)}
-                />
+              ? <Input type={filterType === 'date' ? 'date' : 'text'} placeholder={filterType === 'book' ? 'e.g. Genesis' : 'Search…'} value={filterVal} onChange={e => setFilterVal(e.target.value)} />
               : null
           }
         </div>
@@ -240,20 +244,21 @@ function FilterPanel({ onApply, onClear, onClose, groupUsernames }) {
 // ── Main NotesSidebar ─────────────────────────────────────────────────────────
 
 export default function NotesSidebar({
-  user, notes, onClose, curBook, curChapter, curVerse,
+  user, notes, curBook, curChapter, curVerse,
   groups, currentGroupId, onGroupChange,
   onSaveNote, onDeleteNote, onReply, onLoadReplies,
   applyFilter, clearFilter, filterActive,
-  allNotes, groupNotes, groupUsernames,
+  allNotes, groupNotes,
+  books, chapterCount, verseCount,
 }) {
-  const [showForm,    setShowForm]    = useState(false);
-  const [editingId,   setEditingId]   = useState(null);
-  const [detailNote,  setDetailNote]  = useState(null);
-  const [detailId,    setDetailId]    = useState(null);
-  const [showFilter,  setShowFilter]  = useState(false);
-  const [replies,     setReplies]     = useState([]);
+  const [editorOpen,   setEditorOpen]   = useState(false);
+  const [editorNoteId, setEditorNoteId] = useState(null);
+  const [detailNote,   setDetailNote]   = useState(null);
+  const [detailId,     setDetailId]     = useState(null);
+  const [showFilter,   setShowFilter]   = useState(false);
+  const [replies,      setReplies]      = useState([]);
   const [repliesLoading, setRepliesLoading] = useState(false);
-  const [activeTab,   setActiveTab]   = useState('verse');
+  const [activeTab,    setActiveTab]    = useState('verse');
 
   // Derive lists
   const { verse: verseList, pub: pubList } = React.useMemo(() => {
@@ -262,7 +267,6 @@ export default function NotesSidebar({
     Object.entries(src).forEach(([id, note]) => {
       if (note.group_id) return;
       verse.push([id, note, null, false]);
-      if (note.public) pub.push([id, note, null, false]);
     });
     if (currentGroupId) {
       const myUsername = user?.username || '';
@@ -275,6 +279,13 @@ export default function NotesSidebar({
     }
     return { verse, pub };
   }, [notes, currentGroupId, user]);
+
+  const openEditor = (id = null) => { setEditorNoteId(id); setEditorOpen(true); };
+  const closeEditor = () => { setEditorOpen(false); setEditorNoteId(null); };
+
+  const handleEditorSave = async (body, noteId) => {
+    return await onSaveNote(body, noteId);
+  };
 
   const openDetail = async (id) => {
     const note = notes.all[id]
@@ -292,56 +303,41 @@ export default function NotesSidebar({
 
   const closeDetail = () => { setDetailId(null); setDetailNote(null); setReplies([]); };
 
-  const openEdit = (id) => {
-    setEditingId(id);
-    setShowForm(true);
-  };
-
-  const handleSave = async (vals) => {
-    const note = editingId ? (notes.all[editingId] || null) : null;
-    const bookS = vals.bookS?.trim() || '';
-    const chS   = parseInt(vals.chS) || null;
-    const vsS   = parseInt(vals.vsS) || null;
-    const bookE = vals.bookE?.trim() || '';
-    const chE   = parseInt(vals.chE) || null;
-    const vsE   = parseInt(vals.vsE) || null;
-    const hasStart = bookS && chS && vsS;
-    const hasEnd   = bookE && chE && vsE;
-
-    const body = {
-      user:     user.user_id,
-      group_id: editingId
-        ? (note?.group_id || '')
-        : (vals.public && currentGroupId ? currentGroupId : ''),
-      replies:  editingId ? (note?.replies || []) : [],
-      title:    vals.title?.trim() || 'Note',
-      text:     vals.text?.trim() || '',
-      public:   !!vals.public,
-      verses:   hasStart
-        ? [[bookS, chS, vsS], hasEnd ? [bookE, chE, vsE] : [bookS, chS, vsS]]
-        : [[], []],
-    };
-
-    const ok = await onSaveNote(body, editingId || null);
-    if (ok) { setShowForm(false); setEditingId(null); }
-  };
-
   const handleDelete = async (id) => {
     if (!window.confirm('Delete this note?')) return;
     await onDeleteNote(id);
   };
+
+  const verseEmpty = (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1, padding: '2.5rem 1.5rem', textAlign: 'center', gap: '1rem' }}>
+      <div style={{ fontFamily: "'IM Fell English', serif", fontStyle: 'italic', fontSize: '2rem', color: 'rgba(200,134,26,0.25)', lineHeight: 1 }}>✦</div>
+      <Text style={{ fontFamily: "'Playfair Display', serif", fontSize: '0.95rem', color: 'rgba(244,228,193,0.55)', display: 'block', lineHeight: 1.4 }}>
+        Your study begins here
+      </Text>
+      <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.72rem', color: 'rgba(244,228,193,0.28)', lineHeight: 1.65, display: 'block' }}>
+        Tap <strong style={{ color: 'rgba(200,134,26,0.55)' }}>New</strong> to capture your first note.
+      </Text>
+      <Button
+        size="small" icon={<PlusOutlined />}
+        onClick={() => openEditor(null)}
+        style={{ marginTop: '0.2rem', borderColor: 'rgba(200,134,26,0.4)', color: 'var(--gold)', borderRadius: 8 }}
+      >
+        New Note
+      </Button>
+    </div>
+  );
 
   const tabItems = [
     {
       key: 'verse',
       label: 'Notes',
       children: (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', padding: '0.7rem' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', padding: verseList.length ? '0.7rem' : 0, flex: 1 }}>
           {verseList.length === 0
-            ? <Empty description={<span style={{ color: 'rgba(244,228,193,0.25)', fontSize: '0.75rem' }}>No notes yet.</span>} image={Empty.PRESENTED_IMAGE_SIMPLE} />
+            ? verseEmpty
             : verseList.map(([id, note, owner, isOwn]) => (
                 <NoteCard key={id} id={id} note={note} owner={owner} isOwn={isOwn}
-                  onEdit={openEdit} onDelete={handleDelete} onOpen={openDetail} />
+                  onEdit={openEditor} onDelete={handleDelete} onOpen={openDetail} />
               ))
           }
         </div>
@@ -353,10 +349,14 @@ export default function NotesSidebar({
       children: (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', padding: '0.7rem' }}>
           {pubList.length === 0
-            ? <Empty description={<span style={{ color: 'rgba(244,228,193,0.25)', fontSize: '0.75rem' }}>{currentGroupId ? 'No public notes in this group.' : 'No public notes yet.'}</span>} image={Empty.PRESENTED_IMAGE_SIMPLE} />
+            ? <div style={{ textAlign: 'center', padding: '2rem 1rem' }}>
+                <Text style={{ fontSize: '0.75rem', color: 'rgba(244,228,193,0.25)', fontFamily: "'Lora', serif" }}>
+                  {currentGroupId ? 'No public notes in this group yet.' : 'Join a group to see shared notes.'}
+                </Text>
+              </div>
             : pubList.map(([id, note, owner, isOwn]) => (
                 <NoteCard key={id} id={id} note={note} owner={owner} isOwn={isOwn}
-                  onEdit={openEdit} onDelete={handleDelete} onOpen={openDetail} />
+                  onEdit={openEditor} onDelete={handleDelete} onOpen={openDetail} />
               ))
           }
         </div>
@@ -366,21 +366,40 @@ export default function NotesSidebar({
 
   if (!user) {
     return (
-      <div className="notes-sidebar" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '1.2rem', padding: '2rem', textAlign: 'center' }}>
+      <div className="notes-sidebar" style={{ alignItems: 'center', justifyContent: 'center', gap: '1.2rem', padding: '2rem', textAlign: 'center' }}>
         <Text style={{ fontSize: '0.82rem', color: 'rgba(244,228,193,0.4)', lineHeight: 1.6 }}>Sign in to take notes while you read.</Text>
         <Button href="#/signin" style={{ padding: '0.6rem 1.6rem', letterSpacing: '0.15em', textTransform: 'uppercase' }}>Sign In</Button>
       </div>
     );
   }
 
+  // Editor view — takes over the full notes section
+  if (editorOpen) {
+    const editorNote = editorNoteId ? (notes.all[editorNoteId] || null) : null;
+    return (
+      <div className="notes-sidebar">
+        <NoteEditor
+          note={editorNote}
+          noteId={editorNoteId}
+          user={user}
+          currentGroupId={currentGroupId}
+          books={books || []}
+          chapterCount={chapterCount || (() => 0)}
+          verseCount={verseCount || (() => 0)}
+          onSave={handleEditorSave}
+          onBack={closeEditor}
+        />
+      </div>
+    );
+  }
+
   return (
-    <div className="notes-sidebar" style={{ position: 'relative' }}>
-      <div className="sidebar-resize-handle" />
+    <div className="notes-sidebar">
 
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '1.2rem 1.2rem 0.8rem', borderBottom: '1px solid rgba(200,134,26,0.15)', flexShrink: 0 }}>
         <Title level={5} style={{ margin: 0, fontFamily: "'Playfair Display', serif", color: 'var(--parchment)' }}>Notes</Title>
-        <Space size={4}>
+        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
           <Button
             type="text" size="small" icon={<FilterOutlined />}
             onClick={() => setShowFilter(true)}
@@ -388,12 +407,12 @@ export default function NotesSidebar({
           />
           <Button
             size="small" icon={<PlusOutlined />}
-            onClick={() => { setEditingId(null); setShowForm(v => !v); }}
+            onClick={() => openEditor(null)}
             style={{ borderColor: 'rgba(200,134,26,0.4)', color: 'var(--gold)' }}
           >
             New
           </Button>
-        </Space>
+        </div>
       </div>
 
       {/* Group selector */}
@@ -412,17 +431,6 @@ export default function NotesSidebar({
         </div>
       )}
 
-      {/* Form */}
-      {showForm && (
-        <NoteForm
-          note={editingId ? notes.all[editingId] : null}
-          onSave={handleSave}
-          onCancel={() => { setShowForm(false); setEditingId(null); }}
-          curBook={curBook} curChapter={curChapter} curVerse={curVerse}
-          groups={groups} currentGroupId={currentGroupId}
-        />
-      )}
-
       {/* Notes list or detail */}
       {detailNote
         ? <NoteDetail
@@ -438,7 +446,7 @@ export default function NotesSidebar({
               onChange={setActiveTab}
               items={tabItems}
               size="small"
-              style={{ padding: '0 0.6rem' }}
+              style={{ padding: '0 0.6rem', display: 'flex', flexDirection: 'column', height: '100%' }}
             />
           </div>
       }
@@ -446,7 +454,7 @@ export default function NotesSidebar({
       {/* Filter panel */}
       {showFilter && (
         <FilterPanel
-          onApply={(params) => { applyFilter(params); setShowFilter(false); }}
+          onApply={(params) => { applyFilter({ ...params, activeTab }); setShowFilter(false); }}
           onClear={() => { clearFilter(); setShowFilter(false); }}
           onClose={() => setShowFilter(false)}
           groupUsernames={Object.keys(notes.group || {})}

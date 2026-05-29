@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Layout, Menu, Drawer, Button } from 'antd';
 import { MenuOutlined, ReadOutlined, HomeOutlined, UserOutlined } from '@ant-design/icons';
 import { useAuth } from '../context/AuthContext.jsx';
+import { useTheme } from '../hooks/useTheme.js';
 
 const { Header } = Layout;
 
@@ -11,6 +12,7 @@ export default function AppNav() {
   const location = useLocation();
   const navigate = useNavigate();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const { isDark, toggleTheme } = useTheme();
 
   const accountLabel = user ? (user.username || 'Account') : 'Sign In';
   const accountHref  = user ? '/account' : '/signin';
@@ -50,6 +52,21 @@ export default function AppNav() {
         style={{ flex: 1, justifyContent: 'flex-end', minWidth: 0 }}
         className="desktop-menu"
       />
+
+      {/* Theme toggle */}
+      <button
+        onClick={toggleTheme}
+        title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+        style={{
+          background: 'none', border: '1px solid rgba(200,134,26,0.25)', borderRadius: '100px',
+          color: 'rgba(200,134,26,0.7)', cursor: 'pointer', padding: '0.3rem 0.65rem',
+          fontSize: '0.82rem', lineHeight: 1, marginRight: '0.5rem', transition: 'border-color 0.2s',
+        }}
+        onMouseEnter={e => e.currentTarget.style.borderColor = 'rgba(200,134,26,0.6)'}
+        onMouseLeave={e => e.currentTarget.style.borderColor = 'rgba(200,134,26,0.25)'}
+      >
+        {isDark ? '☀' : '☾'}
+      </button>
 
       {/* Mobile hamburger */}
       <Button

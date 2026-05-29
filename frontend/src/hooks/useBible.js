@@ -61,6 +61,12 @@ export function useBible() {
     return getChapters(book || curBook, bibleData).length;
   }, [getChapters, curBook]);
 
+  const verseCount = useCallback((book, chapter) => {
+    const chapters = getChapters(book, null);
+    if (!chapters.length || chapter < 1 || chapter > chapters.length) return 0;
+    return extractVerseNums(chapters[chapter - 1]).length;
+  }, [getChapters]);
+
   const getPreamble = useCallback((book, bibleData) => {
     const src = bibleData || bible;
     if (!src || !book) return '';
@@ -71,7 +77,7 @@ export function useBible() {
   return {
     bible, loading, loadError, curBook, curChapter,
     chapterHTML, verseNums, books,
-    loadBible, setBook, setChapter, getChapters, chapterCount, getPreamble,
+    loadBible, setBook, setChapter, getChapters, chapterCount, verseCount, getPreamble,
     setChapterRenderedCallback,
   };
 }
