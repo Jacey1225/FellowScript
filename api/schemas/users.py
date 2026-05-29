@@ -20,15 +20,15 @@ class Note(BaseModel):
     text: str = Field(default_factory=str)
     public: bool = Field(default_factory=bool)
     group_id: str = Field(default_factory=str)
-    verses: tuple[tuple, tuple] = Field(
-        description="(book_start, chapter_start, verse_start), "
-        "(book_end, chapter_end, verse_end)")
+    verses: list = Field(
+        default_factory=list,
+        description="list of [book, chapter, verse] references")
     replies: list[str] = Field(
         default_factory=list, 
         description="list of note IDs that were sent as replies to a " \
         "note")
     is_reply: bool = Field(default=False)
-    timestamp: str = Field(default=str(datetime.now()))
+    timestamp: str = Field(default_factory=lambda: str(datetime.now()))
 
 class SignUp(BaseModel):
     user_id: str = Field(default_factory=lambda: str(uuid.uuid4()))

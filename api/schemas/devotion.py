@@ -1,22 +1,18 @@
 from pydantic import BaseModel, Field
 import uuid
 
-class Session(BaseModel):
-    title: str
-    time_start: str
-    time_end: str
-    prompts: list[str]
-    scripture: list[str] = Field(default_factory=list, description="link -- eg. fellowcsript.com/reader.html#Exodus-12")
-    
 class DevotionPlan(BaseModel):
-    _id: str = Field(default=str(uuid.uuid4))
-    time_start: str
-    time_end: str
-    title: str
-    group_id: str
-    sessions: list[Session]
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    title: str = ""
+    time_start: str = ""
+    time_end: str = ""
+    group_id: str = ""
+    creator_id: str = ""
+    participants: list[str] = Field(default_factory=list)
+    verses: list[str] = Field(default_factory=list)
+    prompts: list[str] = Field(default_factory=list)
 
 class DevotionRequest(BaseModel):
-    devo_id: str
+    devotion_id: str
     user_id: str
     devotion: DevotionPlan

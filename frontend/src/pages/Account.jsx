@@ -149,9 +149,6 @@ export default function Account() {
 
   return (
     <Layout style={{ minHeight: '100vh', background: 'transparent' }}>
-      <video id="bg-video" autoPlay muted loop playsInline>
-        <source src="/data/bg.mp4" type="video/mp4" />
-      </video>
       <AppNav />
 
       <Content style={{ paddingTop: 'calc(var(--nav-h) + 2.5rem)', paddingBottom: '5rem', paddingLeft: '2rem', paddingRight: '2rem', maxWidth: 680, margin: '0 auto', width: '100%' }}>

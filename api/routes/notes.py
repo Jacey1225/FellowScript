@@ -265,6 +265,8 @@ async def update_note(user_id: str, note_id: str, note_dict: dict) -> None:
         raise HTTPException(status_code=404, detail="Note not found")
     if notes[note_id].get("user") != user_id:
         raise HTTPException(status_code=403, detail="Not authorized")
+    if "timestamp" not in note_dict and "timestamp" in notes[note_id]:
+        note_dict["timestamp"] = notes[note_id]["timestamp"]
     notes[note_id] = note_dict
     save_notes(notes)
 
