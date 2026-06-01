@@ -1,10 +1,10 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+import React, { useEffect, useLayoutEffect, useState, useRef, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Layout, Input, Button, Avatar, Typography, Divider, Modal, Form, Checkbox, Spin } from 'antd';
 import {
   SendOutlined, ArrowLeftOutlined, PlusOutlined,
   MessageOutlined, BookOutlined, TeamOutlined,
-  EditOutlined, DeleteOutlined, UserAddOutlined, PhoneOutlined,
+  EditOutlined, DeleteOutlined, UserAddOutlined,
 } from '@ant-design/icons';
 
 import AppNav           from '../components/AppNav.jsx';
@@ -23,8 +23,15 @@ import { useMessaging }  from '../hooks/useMessaging.js';
 import { useSessions }   from '../hooks/useSessions.js';
 
 const { Text, Title } = Typography;
-const MOBILE_BP = 768;
+const MOBILE_BP = 900;
 function isMobile() { return window.innerWidth <= MOBILE_BP; }
+
+const FONT_SIZES = [
+  { size: '1.04rem', lineHeight: '2.15' },
+  { size: '1.2rem',  lineHeight: '2.05' },
+  { size: '1.38rem', lineHeight: '1.9'  },
+];
+const FONT_SIZE_LABELS = ['Default', 'Large', 'Largest'];
 
 // ── Contacts island ───────────────────────────────────────────────────────────
 
@@ -64,6 +71,7 @@ function ContactsPanel({
 }) {
   const [friendInput,    setFriendInput]    = useState('');
   const [showAddFriend,  setShowAddFriend]  = useState(false);
+  const [friendMsg,      setFriendMsg]      = useState(null); // { type: 'success'|'error', text }
   const [groupModal,     setGroupModal]     = useState(false);
   const [editingGroup,   setEditingGroup]   = useState(null);
   const [form]                              = Form.useForm();
@@ -72,8 +80,15 @@ function ContactsPanel({
 
   const handleAddFriend = async () => {
     if (!friendInput.trim()) return;
-    const ok = await onAddFriend(friendInput.trim());
-    if (ok) { setFriendInput(''); setShowAddFriend(false); await onLoad(); }
+    const result = await onAddFriend(friendInput.trim());
+    if (result.ok) {
+      setFriendInput('');
+      setFriendMsg({ type: 'success', text: 'Friend request sent!' });
+      await onLoad();
+      setTimeout(() => { setShowAddFriend(false); setFriendMsg(null); }, 1800);
+    } else {
+      setFriendMsg({ type: 'error', text: result.detail || 'Request failed.' });
+    }
   };
 
   const handleGroupOk = async () => {
@@ -121,11 +136,26 @@ function ContactsPanel({
           <div style={{ padding: '0.25rem 0.7rem 0.4rem' }}>
             <Input
               size="small" placeholder="Username"
-              value={friendInput} onChange={e => setFriendInput(e.target.value)}
+              value={friendInput}
+              onChange={e => { setFriendInput(e.target.value); if (friendMsg) setFriendMsg(null); }}
               onPressEnter={handleAddFriend}
               suffix={<Button type="link" size="small" onClick={handleAddFriend} style={{ padding: 0, fontSize: '0.6rem' }}>Add</Button>}
               style={{ fontSize: '0.72rem' }}
             />
+            {friendMsg && (
+              <div style={{
+                marginTop: '0.3rem',
+                fontSize: '0.63rem',
+                fontFamily: "'Lora', serif",
+                color: friendMsg.type === 'success' ? '#6dbf7e' : '#e07070',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.3rem',
+              }}>
+                <span>{friendMsg.type === 'success' ? '✓' : '✕'}</span>
+                {friendMsg.text}
+              </div>
+            )}
           </div>
         )}
         {!loaded
@@ -209,13 +239,6 @@ function ChatPanel({
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.8rem 1rem', borderBottom: '1px solid rgba(200,134,26,0.15)', flexShrink: 0 }}>
         <Button type="text" icon={<ArrowLeftOutlined />} onClick={onBack}
           style={{ color: 'rgba(200,134,26,0.65)', padding: '0 4px' }} />
-        <Button
-          type="text"
-          icon={<PhoneOutlined />}
-          onClick={onOpenSessionCreator}
-          title="Schedule a session"
-          style={{ color: 'rgba(200,134,26,0.55)', padding: '0 4px' }}
-        />
         <Text
           strong
           style={{ fontFamily: "'Lora', serif", fontSize: '0.88rem', color: 'var(--parchment)', flex: 1, cursor: contact?.type === 'group' ? 'pointer' : 'default' }}
@@ -224,6 +247,26 @@ function ChatPanel({
           {contact?.name}
           {contact?.type === 'group' && <TeamOutlined style={{ marginLeft: 6, fontSize: '0.72rem', color: 'rgba(200,134,26,0.5)' }} />}
         </Text>
+        <button
+          onClick={onOpenSessionCreator}
+          style={{
+            background: 'rgba(200,134,26,0.08)',
+            border: '1px solid rgba(200,134,26,0.28)',
+            borderRadius: 6,
+            color: 'rgba(200,134,26,0.75)',
+            cursor: 'pointer',
+            fontSize: '0.62rem',
+            letterSpacing: '0.06em',
+            fontFamily: "'Lora', serif",
+            padding: '0.22rem 0.55rem',
+            whiteSpace: 'nowrap',
+            transition: 'background 0.15s, border-color 0.15s, color 0.15s',
+          }}
+          onMouseEnter={e => { e.currentTarget.style.background = 'rgba(200,134,26,0.16)'; e.currentTarget.style.borderColor = 'rgba(200,134,26,0.55)'; e.currentTarget.style.color = 'var(--gold)'; }}
+          onMouseLeave={e => { e.currentTarget.style.background = 'rgba(200,134,26,0.08)'; e.currentTarget.style.borderColor = 'rgba(200,134,26,0.28)'; e.currentTarget.style.color = 'rgba(200,134,26,0.75)'; }}
+        >
+          + Session
+        </button>
       </div>
 
       {/* Session island widgets */}
@@ -324,6 +367,7 @@ export default function Reader() {
   const lastSpanRef = useRef(null);
 
   const {
+    localHl, groupHighlights, groupUsernames,
     loadHighlights, applyHighlights,
     setHighlight, clearHighlight,
     loadGroupHighlights, clearGroupHighlights,
@@ -360,6 +404,21 @@ export default function Reader() {
   const [mobileSidebar, setMobileSidebar] = useState(null); // 'notes' | 'messages' | null
   const isMob = isMobile();
 
+  // Bible font size
+  const [fontSizeIdx, setFontSizeIdx] = useState(() => {
+    try { return Math.min(parseInt(localStorage.getItem('fs_font_size') || '0', 10), FONT_SIZES.length - 1); }
+    catch { return 0; }
+  });
+
+  useEffect(() => {
+    const { size, lineHeight } = FONT_SIZES[fontSizeIdx];
+    document.documentElement.style.setProperty('--bible-font-size', size);
+    document.documentElement.style.setProperty('--bible-line-height', lineHeight);
+    try { localStorage.setItem('fs_font_size', fontSizeIdx); } catch {}
+  }, [fontSizeIdx]);
+
+  const cycleFontSize = useCallback(() => setFontSizeIdx(i => (i + 1) % FONT_SIZES.length), []);
+
   // ── Init ────────────────────────────────────────────────────────────────────
   useEffect(() => {
     loadBible().then(data => {
@@ -368,9 +427,23 @@ export default function Reader() {
       const chNum = parseInt(searchParams.get('ch') || '') || null;
       const vsNum = parseInt(searchParams.get('vs') || '') || null;
       if (book && data[book]) {
+        // Deep-link from URL params (e.g. verse navigation from sessions)
         setBook(book);
-        if (chNum) setChapter(chNum, book, data);
+        setChapter(chNum || 1, book, data);
         if (vsNum) setCurVerse(vsNum);
+      } else {
+        // Restore last visited position, fall back to Genesis 1
+        try {
+          const saved = JSON.parse(localStorage.getItem('fs_bible_pos') || 'null');
+          if (saved?.book && data[saved.book]) {
+            setBook(saved.book);
+            setChapter(saved.chapter || 1, saved.book, data);
+            return;
+          }
+        } catch {}
+        const firstBook = Object.keys(data)[0];
+        setBook(firstBook);
+        setChapter(1, firstBook, data);
       }
     });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -382,6 +455,19 @@ export default function Reader() {
 
   useEffect(() => { setOnSessionSignal(handleSignal); }, [setOnSessionSignal, handleSignal]);
 
+  // Restore last selected notes group once the groups list is loaded
+  const groupRestoredRef = useRef(false);
+  useEffect(() => {
+    if (!user || groups.length === 0 || groupRestoredRef.current) return;
+    groupRestoredRef.current = true;
+    try {
+      const saved = localStorage.getItem('fs_notes_group');
+      if (saved && groups.find(g => g.id === saved)) {
+        handleGroupChange(saved);
+      }
+    } catch {}
+  }, [user, groups]); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     if (!curBook) return;
     const params = { book: curBook };
@@ -392,9 +478,28 @@ export default function Reader() {
 
   useEffect(() => { setChapterRenderedCallback(() => loadHighlights()); }, [setChapterRenderedCallback, loadHighlights]);
 
+  // Disable browser scroll restoration so it can't fight our programmatic scrolls
+  useEffect(() => {
+    if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
+  }, []);
+
+  // Scroll to top synchronously before paint whenever a new chapter loads without a target verse.
+  // #root is the real scroll container (height:100% + overflow-x:hidden forces overflow-y:auto).
+  useLayoutEffect(() => {
+    if (!chapterHTML || curVerse) return;
+    const root = document.getElementById('root');
+    if (root) root.scrollTop = 0;
+  }, [chapterHTML]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Scroll to a specific verse after paint (needs the element in the DOM first)
   useEffect(() => {
     if (!chapterHTML || !curVerse) return;
-    document.getElementById(`vs${curVerse}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    const el = document.getElementById(`vs${curVerse}`);
+    if (!el) return;
+    const root = document.getElementById('root');
+    const offset = el.getBoundingClientRect().top + (root ? root.scrollTop : window.scrollY) - 120;
+    if (root) root.scrollTop = offset;
+    else window.scrollTo({ top: offset, behavior: 'smooth' });
   }, [chapterHTML]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -461,8 +566,9 @@ export default function Reader() {
 
   const handleOpenChat = useCallback(async (contact) => {
     await openChat(contact);
+    loadSessions(contact);
     if (isMobile()) setMobileSidebar('messages');
-  }, [openChat]);
+  }, [openChat, loadSessions]);
 
   const handleCloseChat = useCallback(() => { closeChat(); }, [closeChat]);
 
@@ -480,6 +586,8 @@ export default function Reader() {
     applyFilter, clearFilter, filterActive,
     allNotes, groupNotes,
     books, chapterCount: getChapterCount, verseCount,
+    localHl, groupHighlights, groupUsernames,
+    onNavigateVerse: handleNavigateVerse,
   };
 
   // Shared contacts props
@@ -500,6 +608,20 @@ export default function Reader() {
           books={books} curBook={curBook} curChapter={curChapter}
           onNavigate={handleNavigate} chapterCount={getChapterCount}
         />
+        <button
+          className={`nav-pill-btn${fontSizeIdx > 0 ? ' open' : ''}`}
+          onClick={cycleFontSize}
+          title={`Text size: ${FONT_SIZE_LABELS[fontSizeIdx]} — click to cycle`}
+          style={{ marginLeft: '0.5rem', gap: '0.25rem', letterSpacing: 0 }}
+        >
+          <span style={{ fontSize: '0.72rem', opacity: 0.7, lineHeight: 1 }}>A</span>
+          <span style={{ fontSize: '1rem', lineHeight: 1 }}>A</span>
+          {fontSizeIdx > 0 && (
+            <span style={{ fontSize: '0.42rem', color: 'var(--gold)', letterSpacing: '0.05em', marginLeft: '0.1rem' }}>
+              {'●'.repeat(fontSizeIdx)}
+            </span>
+          )}
+        </button>
       </div>
 
       {/* ── Bible reading area ── */}

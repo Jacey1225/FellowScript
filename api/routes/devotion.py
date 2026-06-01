@@ -8,7 +8,14 @@ from backend.interactions.helpers import (
     add_session_participant,
     remove_session_participant,
     update_devotion_data,
+    save_chime_meeting,
+    load_devotions,
 )
+import boto3
+import uuid
+from botocore.exceptions import ClientError
+
+chime = boto3.client("chime-sdk-meetings", region_name="us-east-1")
 
 devo_router = APIRouter(prefix="/devotions")
 
@@ -57,3 +64,42 @@ async def leave_devotion(user_id: str, session_id: str) -> dict:
 async def delete_devotion(req: DevotionRequest) -> dict:
     remove_devotion(req.devotion_id)
     return {"ok": True}
+
+
+@devo_router.post("/join-call")
+async def join_call(session_id: str, user_id: str) -> dict:
+    devotions = load_devotions()
+    session = devotions.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    chime_meeting_id = session.get("chime_meeting_id", "")
+    meeting_data     = session.get("chime_meeting", {})
+
+    # Create the Chime meeting once — all subsequent joiners reuse it
+    if not chime_meeting_id:
+        try:
+            resp = chime.create_meeting(
+                ClientRequestToken=str(uuid.uuid4()),
+                MediaRegion="us-east-1",
+                ExternalMeetingId=session_id,
+            )
+            meeting_data     = resp["Meeting"]
+            chime_meeting_id = meeting_data["MeetingId"]
+            save_chime_meeting(session_id, chime_meeting_id, meeting_data)
+        except ClientError as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+    # Each joiner gets their own attendee token
+    try:
+        attendee_resp = chime.create_attendee(
+            MeetingId=chime_meeting_id,
+            ExternalUserId=user_id,
+        )
+    except ClientError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    return {
+        "Meeting":  meeting_data,
+        "Attendee": attendee_resp["Attendee"],
+    }

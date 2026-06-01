@@ -1,8 +1,20 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
+import {
+  ConsoleLogger,
+  DefaultDeviceController,
+  DefaultMeetingSession,
+  LogLevel,
+  MeetingSessionConfiguration,
+} from 'amazon-chime-sdk-js';
 import { API } from '../config.js';
 
-const STUN = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
-const TALK_THRESHOLD = 18;
+// For 1-on-1 friend chats the two users each see the other as currentContact,
+// so contact.id differs per side. Sorting both IDs gives a stable shared key.
+function roomKey(contact, userId) {
+  if (!contact) return null;
+  if (contact.type === 'friend') return [userId, contact.id].sort().join('|');
+  return contact.id;
+}
 
 export function useSessions({ user, wsRef, currentContact }) {
   const [sessions,        setSessions]        = useState([]);
@@ -11,16 +23,18 @@ export function useSessions({ user, wsRef, currentContact }) {
   const [showCreator,     setShowCreator]     = useState(false);
   const [editingSession,  setEditingSession]  = useState(null);
 
-  const sessionsRef   = useRef([]);
-  const activeIdRef   = useRef(null);
-  const peerConns     = useRef({});
-  const localStream   = useRef(null);
-  const analyserRef   = useRef(null);
-  const talkInterval  = useRef(null);
-  const talkStopTimer = useRef(null);
+  const sessionsRef       = useRef([]);
+  const activeIdRef       = useRef(null);
+  const currentContactRef = useRef(currentContact);
+  const chimeSession      = useRef(null);   // DefaultMeetingSession instance
+  const chimeAudioEl      = useRef(null);   // <audio> element Chime binds to
+  const talkStopTimer     = useRef(null);
 
-  useEffect(() => { sessionsRef.current = sessions; }, [sessions]);
-  useEffect(() => { activeIdRef.current = activeSessionId; }, [activeSessionId]);
+  useEffect(() => { sessionsRef.current = sessions; },         [sessions]);
+  useEffect(() => { activeIdRef.current = activeSessionId; },  [activeSessionId]);
+  useEffect(() => { currentContactRef.current = currentContact; }, [currentContact]);
+
+  const loadSessionsRef = useRef(null);
 
   // ── Creator open/close ────────────────────────────────────────────────────
 
@@ -36,23 +50,45 @@ export function useSessions({ user, wsRef, currentContact }) {
 
   // ── Load ──────────────────────────────────────────────────────────────────
 
-  const loadSessions = useCallback(async () => {
-    if (!user || !currentContact) return;
+  const loadSessions = useCallback(async (contactOverride) => {
+    const contact = (contactOverride && typeof contactOverride === 'object')
+      ? contactOverride
+      : currentContact;
+    const contactId = roomKey(contact, user?.user_id);
+    if (!user || !contactId) return;
     try {
-      const res = await fetch(`${API}/devotions/contact/${encodeURIComponent(currentContact.id)}`);
+      const res = await fetch(`${API}/devotions/contact/${encodeURIComponent(contactId)}`);
       if (res.ok) setSessions((await res.json()).sessions || []);
     } catch {}
   }, [user, currentContact]);
+
+  useEffect(() => { loadSessionsRef.current = loadSessions; }, [loadSessions]);
 
   useEffect(() => {
     if (currentContact) loadSessions();
     else setSessions([]);
   }, [currentContact]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    const TWELVE_HOURS = 12 * 60 * 60 * 1000;
+    let hiddenAt = null;
+    const handleVisibility = () => {
+      if (document.visibilityState === 'hidden') {
+        hiddenAt = Date.now();
+      } else if (document.visibilityState === 'visible' && hiddenAt) {
+        if (Date.now() - hiddenAt >= TWELVE_HOURS) loadSessionsRef.current?.();
+        hiddenAt = null;
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, []);
+
   // ── Create ────────────────────────────────────────────────────────────────
 
-  const createSession = useCallback(async ({ title, timeStart, timeEnd, verses }) => {
+  const createSession = useCallback(async ({ title, timeStart, timeEnd, verses, prompts = [], recurring = false }) => {
     if (!user || !currentContact) return false;
+    const gid = roomKey(currentContact, user.user_id);
     try {
       const res = await fetch(`${API}/devotions/`, {
         method: 'POST',
@@ -64,10 +100,12 @@ export function useSessions({ user, wsRef, currentContact }) {
             title,
             time_start: timeStart,
             time_end: timeEnd || '',
-            group_id: currentContact.id,
+            group_id: gid,
             creator_id: user.user_id,
             participants: [],
             verses,
+            prompts,
+            recurring,
           },
         }),
       });
@@ -80,7 +118,7 @@ export function useSessions({ user, wsRef, currentContact }) {
           from_user: user.user_id,
           to_users: others,
           session_id: id,
-          group_id: currentContact.id,
+          group_id: gid,
         }));
       }
       await loadSessions();
@@ -90,7 +128,7 @@ export function useSessions({ user, wsRef, currentContact }) {
 
   // ── Update ────────────────────────────────────────────────────────────────
 
-  const updateSession = useCallback(async (sessionId, { title, timeStart, timeEnd, verses }) => {
+  const updateSession = useCallback(async (sessionId, { title, timeStart, timeEnd, verses, prompts = [], recurring = false }) => {
     if (!user) return false;
     const existing = sessionsRef.current.find(s => s.id === sessionId) || {};
     try {
@@ -109,6 +147,8 @@ export function useSessions({ user, wsRef, currentContact }) {
             creator_id: existing.creator_id || user.user_id,
             participants: existing.participants || [],
             verses,
+            prompts,
+            recurring,
           },
         }),
       });
@@ -139,111 +179,105 @@ export function useSessions({ user, wsRef, currentContact }) {
     } catch { return false; }
   }, [user, loadSessions]);
 
-  // ── Peer connection helpers ────────────────────────────────────────────────
-
-  const initPeer = useRef(null);
-  initPeer.current = async (peerId, sessionId, isInitiator) => {
-    if (peerConns.current[peerId]) return;
-    const pc = new RTCPeerConnection(STUN);
-    peerConns.current[peerId] = pc;
-
-    if (localStream.current) {
-      localStream.current.getTracks().forEach(t => pc.addTrack(t, localStream.current));
-    }
-
-    pc.ontrack = ({ streams }) => {
-      const audio = new Audio();
-      audio.srcObject = streams[0];
-      audio.play().catch(() => {});
-    };
-
-    pc.onicecandidate = ({ candidate }) => {
-      if (candidate && wsRef.current?.readyState === 1) {
-        wsRef.current.send(JSON.stringify({
-          type: 'ice-candidate',
-          from_user: user.user_id,
-          to_users: [peerId],
-          candidate,
-          session_id: sessionId,
-        }));
-      }
-    };
-
-    if (isInitiator) {
-      const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
-      if (wsRef.current?.readyState === 1) {
-        wsRef.current.send(JSON.stringify({
-          type: 'offer',
-          from_user: user.user_id,
-          to_users: [peerId],
-          sdp: offer.sdp,
-          session_id: sessionId,
-        }));
-      }
-    }
-  };
-
   // ── Join ──────────────────────────────────────────────────────────────────
 
   const joinSession = useCallback(async (sessionId) => {
     if (!user || activeIdRef.current) return;
 
+    // 1. Add user to participants list on the backend
     try {
-      await fetch(`${API}/devotions/join?user_id=${encodeURIComponent(user.user_id)}&session_id=${encodeURIComponent(sessionId)}`, { method: 'POST' });
+      await fetch(
+        `${API}/devotions/join?user_id=${encodeURIComponent(user.user_id)}&session_id=${encodeURIComponent(sessionId)}`,
+        { method: 'POST' }
+      );
     } catch {}
 
+    // 2. Get or create the Chime meeting for this session
+    let meetingData, attendeeData;
     try {
-      localStream.current = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-    } catch {
-      localStream.current = null;
+      const meetingRes = await fetch(`${API}/chime/${encodeURIComponent(sessionId)}`, { method: 'POST' });
+      if (!meetingRes.ok) return;
+      meetingData = (await meetingRes.json()).Meeting;
+    } catch { return; }
+
+    // 3. Create an attendee token for this user
+    try {
+      const attendeeRes = await fetch(
+        `${API}/chime/${encodeURIComponent(sessionId)}/${encodeURIComponent(user.user_id)}/attend`,
+        { method: 'POST' }
+      );
+      if (!attendeeRes.ok) return;
+      attendeeData = (await attendeeRes.json()).Attendee;
+    } catch { return; }
+
+    // 4. Build the Chime meeting session
+    const logger           = new ConsoleLogger('FellowScript', LogLevel.WARN);
+    const deviceController = new DefaultDeviceController(logger);
+    const config           = new MeetingSessionConfiguration(meetingData, attendeeData);
+    const session          = new DefaultMeetingSession(config, logger, deviceController);
+    chimeSession.current   = session;
+
+    // 5. Select default mic input
+    try {
+      const inputs = await session.audioVideo.listAudioInputDevices();
+      if (inputs.length) await session.audioVideo.startAudioInput(inputs[0].deviceId);
+    } catch {}
+
+    // 6. Bind a hidden <audio> element for speaker output
+    if (!chimeAudioEl.current) {
+      chimeAudioEl.current = document.createElement('audio');
+      document.body.appendChild(chimeAudioEl.current);
     }
+    session.audioVideo.bindAudioElement(chimeAudioEl.current);
 
-    if (localStream.current) {
-      const ctx = new AudioContext();
-      const analyser = ctx.createAnalyser();
-      analyser.fftSize = 512;
-      ctx.createMediaStreamSource(localStream.current).connect(analyser);
-      analyserRef.current = analyser;
-      const buf = new Uint8Array(analyser.frequencyBinCount);
-
-      talkInterval.current = setInterval(() => {
-        if (!analyserRef.current) return;
-        analyserRef.current.getByteFrequencyData(buf);
-        const avg = buf.reduce((s, v) => s + v, 0) / buf.length;
-        if (avg > TALK_THRESHOLD) {
+    // 7. Subscribe to volume indicator to drive the "talking" UI
+    session.audioVideo.realtimeSubscribeToVolumeIndicator(
+      attendeeData.AttendeeId,
+      (attId, volume) => {
+        if (volume !== null && volume > 0) {
           setTalkingUserId(user.user_id);
           clearTimeout(talkStopTimer.current);
           talkStopTimer.current = setTimeout(() => setTalkingUserId(null), 1500);
-          const sesh = sessionsRef.current.find(s => s.id === sessionId);
+
+          // Broadcast to others so their UI shows the talking indicator too
+          const sesh   = sessionsRef.current.find(s => s.id === sessionId);
           const others = (sesh?.participants || []).filter(id => id !== user.user_id);
           if (others.length && wsRef.current?.readyState === 1) {
-            wsRef.current.send(JSON.stringify({ type: 'talking', from_user: user.user_id, to_users: others, session_id: sessionId }));
+            wsRef.current.send(JSON.stringify({
+              type: 'talking', from_user: user.user_id, to_users: others, session_id: sessionId,
+            }));
           }
         }
-      }, 200);
-    }
+      }
+    );
 
-    const existingParticipants = (sessionsRef.current.find(s => s.id === sessionId)?.participants || [])
-      .filter(id => id !== user.user_id);
-
+    // 8. Start the Chime audio session
+    session.audioVideo.start();
     setActiveSessionId(sessionId);
 
-    if (existingParticipants.length && wsRef.current?.readyState === 1) {
-      wsRef.current.send(JSON.stringify({
-        type: 'session-joined',
-        from_user: user.user_id,
-        to_users: existingParticipants,
-        session_id: sessionId,
-      }));
-    }
-
-    for (const peerId of existingParticipants) {
-      await initPeer.current(peerId, sessionId, true);
-    }
-
-    await loadSessions();
-  }, [user, wsRef, loadSessions]);
+    // 9. Fetch fresh session data and notify existing participants so their UI updates
+    try {
+      const contact   = currentContactRef.current;
+      const contactId = roomKey(contact, user.user_id);
+      if (contactId) {
+        const res = await fetch(`${API}/devotions/contact/${encodeURIComponent(contactId)}`);
+        if (res.ok) {
+          const data  = await res.json();
+          const sesh  = (data.sessions || []).find(s => s.id === sessionId);
+          const others = (sesh?.participants || []).filter(id => id !== user.user_id);
+          setSessions(data.sessions || []);
+          if (others.length && wsRef.current?.readyState === 1) {
+            wsRef.current.send(JSON.stringify({
+              type: 'session-joined',
+              from_user: user.user_id,
+              to_users: others,
+              session_id: sessionId,
+            }));
+          }
+        }
+      }
+    } catch {}
+  }, [user, wsRef]);
 
   // ── Leave ─────────────────────────────────────────────────────────────────
 
@@ -251,27 +285,32 @@ export function useSessions({ user, wsRef, currentContact }) {
     const sessionId = activeIdRef.current;
     if (!sessionId || !user) return;
 
-    clearInterval(talkInterval.current);
     clearTimeout(talkStopTimer.current);
-    talkInterval.current = null;
-    analyserRef.current = null;
 
-    if (localStream.current) {
-      localStream.current.getTracks().forEach(t => t.stop());
-      localStream.current = null;
+    // Stop the Chime session
+    if (chimeSession.current) {
+      try { chimeSession.current.audioVideo.stop(); } catch {}
+      chimeSession.current = null;
     }
-
-    for (const pc of Object.values(peerConns.current)) pc.close();
-    peerConns.current = {};
+    if (chimeAudioEl.current) {
+      chimeAudioEl.current.srcObject = null;
+      chimeAudioEl.current.remove();
+      chimeAudioEl.current = null;
+    }
 
     const others = (sessionsRef.current.find(s => s.id === sessionId)?.participants || [])
       .filter(id => id !== user.user_id);
     if (others.length && wsRef.current?.readyState === 1) {
-      wsRef.current.send(JSON.stringify({ type: 'session-left', from_user: user.user_id, to_users: others, session_id: sessionId }));
+      wsRef.current.send(JSON.stringify({
+        type: 'session-left', from_user: user.user_id, to_users: others, session_id: sessionId,
+      }));
     }
 
     try {
-      await fetch(`${API}/devotions/leave?user_id=${encodeURIComponent(user.user_id)}&session_id=${encodeURIComponent(sessionId)}`, { method: 'POST' });
+      await fetch(
+        `${API}/devotions/leave?user_id=${encodeURIComponent(user.user_id)}&session_id=${encodeURIComponent(sessionId)}`,
+        { method: 'POST' }
+      );
     } catch {}
 
     setActiveSessionId(null);
@@ -280,61 +319,44 @@ export function useSessions({ user, wsRef, currentContact }) {
   }, [user, wsRef, loadSessions]);
 
   // ── Signal handler ────────────────────────────────────────────────────────
+  // offer/answer/ice-candidate are gone — Chime handles all WebRTC internally.
+  // These signals now only drive UI state (participant list, talking indicator).
 
   const handleSignal = useCallback(async (payload) => {
-    const { type, from_user, sdp, candidate, session_id } = payload;
-    const activeId = activeIdRef.current;
+    const { type, from_user, session_id, group_id } = payload;
 
     if (type === 'session-created') {
+      const localKey = roomKey(currentContact, user?.user_id);
+      if (!group_id || !currentContact || group_id === localKey) {
+        await loadSessions();
+      }
+      return;
+    }
+
+    if (type === 'session-joined' || type === 'session-left') {
       await loadSessions();
       return;
     }
 
-    if (!activeId) return;
-
-    if (type === 'session-joined' && session_id === activeId) {
-      await initPeer.current(from_user, activeId, true);
-    } else if (type === 'offer' && session_id === activeId) {
-      await initPeer.current(from_user, activeId, false);
-      const pc = peerConns.current[from_user];
-      if (!pc) return;
-      await pc.setRemoteDescription({ type: 'offer', sdp });
-      const answer = await pc.createAnswer();
-      await pc.setLocalDescription(answer);
-      if (wsRef.current?.readyState === 1) {
-        wsRef.current.send(JSON.stringify({
-          type: 'answer',
-          from_user: user.user_id,
-          to_users: [from_user],
-          sdp: answer.sdp,
-          session_id: activeId,
-        }));
-      }
-    } else if (type === 'answer') {
-      const pc = peerConns.current[from_user];
-      if (pc) await pc.setRemoteDescription({ type: 'answer', sdp });
-    } else if (type === 'ice-candidate') {
-      const pc = peerConns.current[from_user];
-      if (pc && candidate) await pc.addIceCandidate(candidate);
-    } else if (type === 'talking') {
+    if (type === 'talking') {
       setTalkingUserId(from_user);
       clearTimeout(talkStopTimer.current);
       talkStopTimer.current = setTimeout(() => setTalkingUserId(null), 1500);
-    } else if (type === 'session-left') {
-      const pc = peerConns.current[from_user];
-      if (pc) { pc.close(); delete peerConns.current[from_user]; }
-      await loadSessions();
     }
-  }, [user, wsRef, loadSessions]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [user, currentContact, loadSessions]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Cleanup ───────────────────────────────────────────────────────────────
 
   useEffect(() => {
     return () => {
-      clearInterval(talkInterval.current);
       clearTimeout(talkStopTimer.current);
-      if (localStream.current) localStream.current.getTracks().forEach(t => t.stop());
-      for (const pc of Object.values(peerConns.current)) pc.close();
+      if (chimeSession.current) {
+        try { chimeSession.current.audioVideo.stop(); } catch {}
+      }
+      if (chimeAudioEl.current) {
+        chimeAudioEl.current.srcObject = null;
+        chimeAudioEl.current.remove();
+      }
     };
   }, []);
 

@@ -1,0 +1,3 @@
+import VideoFrameProcessorPipelineObserver from './VideoFrameProcessorPipelineObserver';
+export default interface DefaultVideoTransformDeviceObserver extends VideoFrameProcessorPipelineObserver {
+}

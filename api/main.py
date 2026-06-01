@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from routes.notes import notes_router
-from routes.messaging import ws_router
+from routes.messaging import ws_router, chime_router
 from routes.community import group_router, friend_router
 from routes.filtering import filter_router, sorting_router
 from routes.devotion import devo_router
@@ -26,6 +26,7 @@ app.add_middleware(
 
 app.include_router(notes_router)
 app.include_router(ws_router)
+app.include_router(chime_router)
 app.include_router(group_router)
 app.include_router(friend_router)
 app.include_router(filter_router)

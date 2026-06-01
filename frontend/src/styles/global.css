@@ -6,14 +6,17 @@
   --gold-light:    #E09A30;
   --ink:           #1A100A;
   --parchment:     #F4E4C1;
-  --nav-h:         64px;
-  --scnav-h:       44px;
-  --right-panel-w: 540px;
-  --contacts-w:    210px;
-  --island-radius: 18px;
+  --nav-h:            64px;
+  --scnav-h:          44px;
+  --right-panel-w:    540px;
+  --contacts-w:       210px;
+  --island-radius:    18px;
+  --bible-font-size:    1.04rem;
+  --bible-line-height:  2.15;
+  --bible-card-max-w:   820px;
 
   /* Theme-aware */
-  --bg-page:         #060401;
+  --bg-page:         #1c1c1c;
   --nav-bg:          rgba(6,4,1,0.97);
   --island-bg:       rgba(8,5,2,0.92);
   --island-border:   rgba(200,134,26,0.18);
@@ -32,7 +35,7 @@
 /* ── Light mode overrides ── */
 [data-theme="light"] {
   --bg-page:         #EDE0C4;
-  --nav-bg:          rgba(235,222,196,0.98);
+  --nav-bg:          rgba(108, 68, 20, 0.97);
   --island-bg:       rgba(10,6,2,0.88);
   --island-border:   rgba(160,100,18,0.28);
   --widget-bg:       rgba(246,238,220,0.99);
@@ -103,6 +106,9 @@ body {
   letter-spacing: 0.12em;
   text-transform: uppercase;
 }
+
+/* Hamburger hidden on desktop; shown via mobile media query */
+.hamburger-btn.ant-btn { display: none; }
 
 /* ── Scripture nav bar — now a slim pill-button row ── */
 .scripture-nav-bar {
@@ -324,8 +330,8 @@ body {
 /* ── Chapter body text ── */
 .card-body {
   font-family: 'Lora', serif;
-  font-size: 1.04rem;
-  line-height: 2.15;
+  font-size: var(--bible-font-size, 1.04rem);
+  line-height: var(--bible-line-height, 2.15);
   color: #28160a;
   margin-top: 1.5rem;
 }
@@ -425,11 +431,11 @@ body {
 }
 .hl-clear:hover { color: rgba(244,228,193,0.9); }
 
-/* ── Reader main area — Bible takes left half ── */
+/* ── Reader main area — Bible takes left portion ── */
 .reader-main {
   padding-top: calc(var(--nav-h) + var(--scnav-h) + 3rem);
   padding-bottom: 6rem;
-  padding-right: 50vw;
+  padding-right: calc(56vw + 1rem);
   padding-left: 2rem;
   display: flex;
   flex-direction: column;
@@ -437,13 +443,13 @@ body {
   min-height: 100vh;
 }
 
-/* ── Right panel — fills the right 50% of screen ── */
+/* ── Right panel — wider, with breathing room top + bottom ── */
 .reader-right-panel {
   position: fixed;
-  top: calc(var(--nav-h) + var(--scnav-h) + 0.75rem);
-  right: 0.75rem;
-  bottom: 0.75rem;
-  width: calc(50vw - 1.5rem);
+  top: calc(var(--nav-h) + var(--scnav-h) + 1rem);
+  right: 0.4rem;
+  bottom: 0.8rem;
+  width: 56vw;
   z-index: 80;
 }
 
@@ -461,9 +467,9 @@ body {
   flex-direction: row;
 }
 
-/* Notes column — takes 2/3 of the island */
+/* Notes column — fills all island space left over after the fixed contacts strip */
 .notes-section {
-  flex: 2;
+  flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
@@ -498,10 +504,10 @@ body {
   overflow: hidden;
 }
 
-/* ── Contacts column — takes 1/3 of the island ── */
+/* ── Contacts column — fixed width so notes section gets all extra space ── */
 .contacts-section {
-  flex: 1;
-  min-width: 0;
+  flex: none;
+  width: 190px;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -601,21 +607,22 @@ body {
   display: none;
 }
 
-/* ── Mobile ── */
-@media (max-width: 768px) {
+/* ── Mobile / portrait tablet (≤900px) ── */
+@media (max-width: 900px) {
   :root {
-    --nav-h:     52px;
-    --scnav-h:   68px;
+    --nav-h:      52px;
+    --scnav-h:    44px;
     --contacts-w: 130px;
   }
 
   .fs-nav.ant-layout-header { padding: 0 1.1rem; }
 
+  /* Swap desktop menu for hamburger */
+  .desktop-menu { display: none !important; }
+  .hamburger-btn.ant-btn { display: inline-flex; }
+
   .scripture-nav-bar {
-    justify-content: stretch;
-    align-items: stretch;
-    padding: 0.45rem 0.6rem;
-    gap: 0;
+    padding: 0 0.8rem;
   }
 
   .reader-main {
@@ -629,10 +636,36 @@ body {
   .chapter-card.ant-card {
     border-radius: 0 !important;
     box-shadow: none !important;
+    margin: 0 !important;
   }
 
-  /* Hide desktop right panel on mobile */
+  /* Hide desktop right panel — use bottom tab bar instead */
   .reader-right-panel { display: none; }
+
+  /* ── Widget sizing ── */
+  .bib-nav-widget {
+    width: calc(100vw - 1.2rem);
+    max-height: 65vh;
+  }
+
+  .verse-sel-widget {
+    width: calc(100vw - 1.2rem);
+  }
+
+  .bib-books-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .bib-book-btn {
+    font-size: 0.74rem;
+    padding: 0.38rem 0.48rem;
+  }
+
+  .bib-ch-btn {
+    width: 30px;
+    height: 30px;
+    font-size: 0.65rem;
+  }
 
   /* Mobile bottom tab bar */
   .mobile-tab-bar {
@@ -680,7 +713,69 @@ body {
     transition: transform 0.3s cubic-bezier(0.4,0,0.2,1);
   }
 
-  .mobile-overlay.open { transform: translateY(0); }
+  .mobile-overlay.open { transform: translateY(0); z-index: 125; }
+}
+
+/* ── Tablet / small desktop (901–1299px) ── */
+@media (min-width: 901px) and (max-width: 1299px) {
+  /* Fixed 420px right panel — keeps the Bible reading area wide enough */
+  .reader-right-panel {
+    width: 420px;
+    right: 0.75rem;
+    bottom: 0.75rem;
+    top: calc(var(--nav-h) + var(--scnav-h) + 0.75rem);
+  }
+
+  /* Narrow the fixed contacts strip on the smaller tablet panel */
+  .contacts-section { width: 150px; }
+
+  .reader-main {
+    padding-right: calc(420px + 1.5rem);
+    padding-left: 1.5rem;
+  }
+
+  /* Keep bible-nav widget from spilling over the right panel */
+  .bib-nav-widget {
+    max-width: min(600px, calc(100vw - 444px));
+  }
+
+  .verse-sel-widget {
+    max-width: min(780px, calc(100vw - 444px));
+  }
+
+  /* Slightly tighter chapter/verse buttons so more fit in the narrower panel */
+  .bib-ch-btn {
+    width: 30px;
+    height: 30px;
+    font-size: 0.65rem;
+  }
+}
+
+/* ── Ultrawide (≥1600px) ── */
+@media (min-width: 1600px) {
+  :root {
+    /* Panel: generous width centered in right half, capped at 960px */
+    --uw-panel-w:       min(calc(50vw - 1.5rem), 960px);
+    --bible-card-max-w: 960px;
+  }
+
+  .reader-main {
+    padding-right: 50vw;
+    padding-left:  1.5rem;
+  }
+
+  /* Right panel: centered in the right half with top/bottom breathing room */
+  .reader-right-panel {
+    width: var(--uw-panel-w);
+    right: auto;
+    left: calc(75vw - var(--uw-panel-w) / 2);
+    top: calc(var(--nav-h) + var(--scnav-h) + 1rem);
+    bottom: 0.8rem;
+  }
+
+  .fs-nav.ant-layout-header {
+    padding: 0 4rem;
+  }
 }
 
 /* ── Note editor (Apple Notes style) ── */
@@ -695,22 +790,34 @@ body {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  padding: 0.6rem 1rem;
+  padding: 0.55rem 0.6rem;
   border-bottom: 1px solid rgba(200,134,26,0.15);
   flex-shrink: 0;
 }
 
-.note-editor-back {
+.note-editor-action-btn {
   background: none;
   border: none;
-  color: rgba(200,134,26,0.65);
   cursor: pointer;
-  padding: 0.28rem 0.45rem;
+  font-family: 'Lora', serif;
+  font-size: 0.8rem;
+  padding: 0.35rem 0.7rem;
   border-radius: 6px;
   line-height: 1;
   transition: background 0.15s, color 0.15s;
+  flex-shrink: 0;
 }
-.note-editor-back:hover { background: rgba(200,134,26,0.1); color: var(--gold); }
+
+.note-editor-cancel {
+  color: rgba(244,228,193,0.45);
+}
+.note-editor-cancel:hover { background: rgba(255,255,255,0.06); color: rgba(244,228,193,0.7); }
+
+.note-editor-save {
+  color: var(--gold);
+  font-weight: 600;
+}
+.note-editor-save:hover { background: rgba(200,134,26,0.12); }
 
 .note-public-toggle {
   display: flex;
@@ -728,11 +835,11 @@ body {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 0.35rem;
-  padding: 0.42rem 1rem;
+  gap: 0.3rem;
+  padding: 0.28rem 0.6rem;
   border-bottom: 1px solid rgba(200,134,26,0.12);
   flex-shrink: 0;
-  min-height: 38px;
+  min-height: 32px;
 }
 
 .note-verse-tag {
@@ -783,7 +890,7 @@ body {
   flex-direction: column;
   flex: 1;
   overflow-y: auto;
-  padding: 1.3rem 1.3rem 2rem;
+  padding: 0.9rem 0.7rem 1.5rem;
   gap: 0;
 }
 
