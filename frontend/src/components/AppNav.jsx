@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Layout, Menu, Drawer, Button } from 'antd';
-import { MenuOutlined, ReadOutlined, HomeOutlined, UserOutlined } from '@ant-design/icons';
+import { Layout, Menu, Drawer, Button, Tooltip } from 'antd';
+import { MenuOutlined, ReadOutlined, HomeOutlined, UserOutlined, BulbOutlined, BulbFilled } from '@ant-design/icons';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useTheme } from '../hooks/useTheme.js';
 
@@ -53,29 +53,26 @@ export default function AppNav() {
         className="desktop-menu"
       />
 
-      {/* Theme toggle */}
-      <button
-        onClick={toggleTheme}
-        title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
-        style={{
-          background: 'none', border: '1px solid rgba(200,134,26,0.25)', borderRadius: '100px',
-          color: 'rgba(200,134,26,0.7)', cursor: 'pointer', padding: '0.3rem 0.65rem',
-          fontSize: '0.82rem', lineHeight: 1, marginRight: '0.5rem', transition: 'border-color 0.2s',
-        }}
-        onMouseEnter={e => e.currentTarget.style.borderColor = 'rgba(200,134,26,0.6)'}
-        onMouseLeave={e => e.currentTarget.style.borderColor = 'rgba(200,134,26,0.25)'}
-      >
-        {isDark ? '☀' : '☾'}
-      </button>
+      {/* Right-side controls */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', flexShrink: 0 }}>
+        <Tooltip title={isDark ? 'Light mode' : 'Dark mode'} placement="bottom">
+          <Button
+            type="text"
+            icon={isDark ? <BulbOutlined /> : <BulbFilled />}
+            onClick={toggleTheme}
+            style={{ color: 'var(--gold)', fontSize: '1rem' }}
+            className="theme-toggle-btn"
+          />
+        </Tooltip>
 
-      {/* Mobile hamburger */}
-      <Button
-        type="text"
-        icon={<MenuOutlined />}
-        onClick={() => setDrawerOpen(true)}
-        style={{ color: 'var(--gold)', display: 'none' }}
-        className="hamburger-btn"
-      />
+        <Button
+          type="text"
+          icon={<MenuOutlined />}
+          onClick={() => setDrawerOpen(true)}
+          style={{ color: 'var(--gold)' }}
+          className="hamburger-btn"
+        />
+      </div>
 
       <Drawer
         title={<Link to="/" className="nav-logo" onClick={() => setDrawerOpen(false)}>

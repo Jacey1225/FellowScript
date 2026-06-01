@@ -7,7 +7,15 @@ import {
   PlusOutlined, EditOutlined, DeleteOutlined, FilterOutlined,
   ArrowLeftOutlined, ReloadOutlined,
 } from '@ant-design/icons';
-import { verseRefLabel } from '../utils.js';
+// Format a single [book, chapter, verse] triple into a display string
+function fmtVerse([b, c, v]) { return `${b} ${c}:${v}`; }
+
+// Return an array of valid verse triples from a note's verses field.
+// Handles both the old [start, end] range format and the new per-verse list.
+function validVerses(verses) {
+  if (!Array.isArray(verses)) return [];
+  return verses.filter(v => Array.isArray(v) && v.length >= 3 && v[0]);
+}
 import VerseSelector from './VerseSelector.jsx';
 
 const { TextArea } = Input;
@@ -40,31 +48,27 @@ function NoteEditor({ note, noteId, user, currentGroupId, books, chapterCount, v
   const addVerse    = (book, chapter, verse) => setVerseList(p => [...p, { book, chapter, verse }]);
   const removeVerse = (i) => setVerseList(p => p.filter((_, j) => j !== i));
 
-  const handleBack = async () => {
-    const hasContent = titleVal.trim() || bodyVal.trim() || verseList.length > 0;
-    if (hasContent || noteId) {
-      await onSave({
-        user:     user.user_id,
-        group_id: isPublic && currentGroupId ? currentGroupId : '',
-        replies:  note?.replies || [],
-        title:    titleVal.trim() || 'Untitled',
-        text:     bodyVal.trim(),
-        public:   isPublic,
-        verses:   verseList.map(v => [v.book, v.chapter, v.verse]),
-      }, noteId || null);
-    }
+  const handleSave = async () => {
+    await onSave({
+      user:     user.user_id,
+      group_id: isPublic && currentGroupId ? currentGroupId : '',
+      replies:  note?.replies || [],
+      title:    titleVal.trim() || 'Untitled',
+      text:     bodyVal.trim(),
+      public:   isPublic,
+      verses:   verseList.map(v => [v.book, v.chapter, v.verse]),
+    }, noteId || null);
     onBack();
   };
 
   return (
     <div className="note-editor">
-      {/* Header */}
+      {/* Header — Cancel left, Save right, always visible above keyboard */}
       <div className="note-editor-header">
-        <button className="note-editor-back" onClick={handleBack} title="Save and go back">
-          <ArrowLeftOutlined style={{ fontSize: '0.85rem' }} />
+        <button className="note-editor-action-btn note-editor-cancel" onClick={onBack}>
+          Cancel
         </button>
-        <span style={{ flex: 1 }} />
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flex: 1, justifyContent: 'center' }}>
           <Switch
             size="small"
             checked={isPublic}
@@ -73,6 +77,9 @@ function NoteEditor({ note, noteId, user, currentGroupId, books, chapterCount, v
           />
           <span style={{ fontSize: '0.72rem', color: 'rgba(244,228,193,0.55)', fontFamily: "'Lora', serif" }}>Public</span>
         </div>
+        <button className="note-editor-action-btn note-editor-save" onClick={handleSave}>
+          Save
+        </button>
       </div>
 
       {/* Verse bar */}
@@ -115,14 +122,14 @@ function NoteEditor({ note, noteId, user, currentGroupId, books, chapterCount, v
 
 // ── Note card ─────────────────────────────────────────────────────────────────
 
-function NoteCard({ id, note, owner, isOwn, onEdit, onDelete, onOpen }) {
-  const ref    = verseRefLabel(note.verses);
+function NoteCard({ id, note, owner, isOwn, onEdit, onDelete, onOpen, onNavigateVerse }) {
+  const verses  = validVerses(note.verses);
   const canEdit = !owner || isOwn;
 
   return (
     <div
       className="note-card ant-card"
-      style={{ border: '1px solid rgba(200,134,26,0.18)', background: 'rgba(20,12,4,0.5)', padding: '0.85rem 0.95rem', borderRadius: 10, cursor: 'pointer', marginBottom: 0, transition: 'border-color 0.2s' }}
+      style={{ border: '1px solid rgba(200,134,26,0.18)', background: 'rgba(20,12,4,0.5)', padding: '0.6rem 0.65rem', borderRadius: 10, cursor: 'pointer', marginBottom: 0, transition: 'border-color 0.2s' }}
       onClick={() => onOpen(id)}
     >
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '0.5rem', marginBottom: '0.4rem' }}>
@@ -140,20 +147,45 @@ function NoteCard({ id, note, owner, isOwn, onEdit, onDelete, onOpen }) {
           </div>
         )}
       </div>
-      {ref && <Text style={{ fontFamily: "'IM Fell English', serif", fontStyle: 'italic', fontSize: '0.72rem', color: 'var(--gold)', display: 'block', marginBottom: '0.45rem' }}>{ref}</Text>}
-      <Text style={{ fontSize: '0.8rem', color: 'rgba(244,228,193,0.55)', lineHeight: 1.6, display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+      {verses.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem', marginBottom: '0.45rem' }} onClick={e => e.stopPropagation()}>
+          {verses.map((v, i) => (
+            <button
+              key={i}
+              onClick={() => { if (onNavigateVerse) onNavigateVerse(v[0], v[1], v[2]); }}
+              style={{
+                background: 'rgba(200,134,26,0.1)',
+                border: '1px solid rgba(200,134,26,0.28)',
+                borderRadius: 4,
+                padding: '0.1rem 0.5rem',
+                cursor: onNavigateVerse ? 'pointer' : 'default',
+                fontFamily: "'IM Fell English', serif",
+                fontStyle: 'italic',
+                fontSize: '0.68rem',
+                color: 'var(--gold)',
+                transition: 'background 0.15s, border-color 0.15s',
+              }}
+              onMouseEnter={e => { if (onNavigateVerse) { e.currentTarget.style.background = 'rgba(200,134,26,0.2)'; e.currentTarget.style.borderColor = 'rgba(200,134,26,0.55)'; } }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'rgba(200,134,26,0.1)'; e.currentTarget.style.borderColor = 'rgba(200,134,26,0.28)'; }}
+            >
+              {fmtVerse(v)}
+            </button>
+          ))}
+        </div>
+      )}
+      <p style={{ margin: 0, fontSize: '0.8rem', color: 'rgba(244,228,193,0.55)', lineHeight: 1.6, display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden', maxHeight: '3.84rem' }}>
         {note.text}
-      </Text>
+      </p>
     </div>
   );
 }
 
 // ── Note detail ───────────────────────────────────────────────────────────────
 
-function NoteDetail({ note, noteId, onBack, canReply, onReply, replies, repliesLoading }) {
+function NoteDetail({ note, noteId, onBack, canReply, onReply, replies, repliesLoading, onNavigateVerse }) {
   const [replyText, setReplyText] = useState('');
   const [replying,  setReplying]  = useState(false);
-  const ref = verseRefLabel(note?.verses);
+  const verses = validVerses(note?.verses);
 
   const handleReply = async () => {
     if (!replyText.trim()) return;
@@ -165,15 +197,40 @@ function NoteDetail({ note, noteId, onBack, canReply, onReply, replies, repliesL
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', padding: '0.85rem 1.1rem', borderBottom: '1px solid rgba(200,134,26,0.15)', flexShrink: 0 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', padding: '0.55rem 0.6rem', borderBottom: '1px solid rgba(200,134,26,0.15)', flexShrink: 0 }}>
         <Button type="text" icon={<ArrowLeftOutlined />} onClick={onBack} style={{ color: 'rgba(200,134,26,0.6)', padding: '0 4px' }} />
         <Text strong style={{ fontFamily: "'Playfair Display', serif", fontSize: '0.95rem', color: 'var(--parchment)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {note?.title || 'Note'}
         </Text>
       </div>
-      <div style={{ flex: 1, overflowY: 'auto', padding: '1.2rem 1.1rem', display: 'flex', flexDirection: 'column', gap: '0.9rem' }}>
-        {ref && <Text style={{ fontFamily: "'IM Fell English', serif", fontStyle: 'italic', fontSize: '0.78rem', color: 'var(--gold)' }}>{ref}</Text>}
+      <div style={{ flex: 1, overflowY: 'auto', padding: '0.85rem 0.6rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
         <Text style={{ fontSize: '0.88rem', color: 'rgba(244,228,193,0.75)', lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>{note?.text}</Text>
+        {verses.length > 0 && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem' }}>
+            {verses.map((v, i) => (
+              <button
+                key={i}
+                onClick={() => { if (onNavigateVerse) onNavigateVerse(v[0], v[1], v[2]); }}
+                style={{
+                  background: 'rgba(200,134,26,0.1)',
+                  border: '1px solid rgba(200,134,26,0.28)',
+                  borderRadius: 4,
+                  padding: '0.1rem 0.5rem',
+                  cursor: onNavigateVerse ? 'pointer' : 'default',
+                  fontFamily: "'IM Fell English', serif",
+                  fontStyle: 'italic',
+                  fontSize: '0.68rem',
+                  color: 'var(--gold)',
+                  transition: 'background 0.15s, border-color 0.15s',
+                }}
+                onMouseEnter={e => { if (onNavigateVerse) { e.currentTarget.style.background = 'rgba(200,134,26,0.2)'; e.currentTarget.style.borderColor = 'rgba(200,134,26,0.55)'; } }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'rgba(200,134,26,0.1)'; e.currentTarget.style.borderColor = 'rgba(200,134,26,0.28)'; }}
+              >
+                {fmtVerse(v)}
+              </button>
+            ))}
+          </div>
+        )}
         {canReply && (
           <>
             <Divider />
@@ -198,6 +255,43 @@ function NoteDetail({ note, noteId, onBack, canReply, onReply, replies, repliesL
   );
 }
 
+// ── Highlight card ────────────────────────────────────────────────────────────
+
+function HighlightCard({ book, chapter, verse, color, username, onNavigate }) {
+  return (
+    <div
+      onClick={() => onNavigate(book, chapter, verse)}
+      style={{
+        display: 'flex', alignItems: 'center', gap: '0.6rem',
+        padding: '0.5rem 0.7rem',
+        background: 'rgba(20,12,4,0.5)',
+        border: '1px solid rgba(200,134,26,0.18)',
+        borderRadius: 10, cursor: 'pointer',
+        transition: 'border-color 0.15s',
+      }}
+      onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(200,134,26,0.38)'; }}
+      onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(200,134,26,0.18)'; }}
+    >
+      <span style={{
+        width: 10, height: 10, borderRadius: '50%',
+        background: color, flexShrink: 0,
+        boxShadow: `0 0 0 2px rgba(0,0,0,0.3)`,
+      }} />
+      <Text style={{
+        fontFamily: "'IM Fell English', serif", fontStyle: 'italic',
+        fontSize: '0.82rem', color: 'var(--gold)', flex: 1,
+      }}>
+        {book} {chapter}:{verse}
+      </Text>
+      {username && (
+        <Tag color="gold" style={{ fontSize: '0.52rem', margin: 0, letterSpacing: '0.06em' }}>
+          {username}
+        </Tag>
+      )}
+    </div>
+  );
+}
+
 // ── Filter panel ──────────────────────────────────────────────────────────────
 
 function FilterPanel({ onApply, onClear, onClose, groupUsernames }) {
@@ -207,11 +301,11 @@ function FilterPanel({ onApply, onClear, onClose, groupUsernames }) {
 
   return (
     <div style={{ position: 'absolute', inset: 0, background: 'rgba(6,4,1,0.98)', zIndex: 4, display: 'flex', flexDirection: 'column' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', padding: '0.85rem 1.1rem', borderBottom: '1px solid rgba(200,134,26,0.15)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', padding: '0.55rem 0.6rem', borderBottom: '1px solid rgba(200,134,26,0.15)' }}>
         <Button type="text" icon={<ArrowLeftOutlined />} onClick={onClose} style={{ color: 'rgba(200,134,26,0.6)' }} />
         <Text strong style={{ fontFamily: "'Playfair Display', serif", fontSize: '0.95rem', color: 'var(--parchment)', flex: 1 }}>Filter & Sort</Text>
       </div>
-      <div style={{ flex: 1, overflowY: 'auto', padding: '1.1rem', display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
+      <div style={{ flex: 1, overflowY: 'auto', padding: '0.85rem 0.6rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
         <div>
           <Text style={{ fontSize: '0.58rem', letterSpacing: '0.22em', textTransform: 'uppercase', color: 'rgba(200,134,26,0.5)', display: 'block', marginBottom: 8 }}>Sort by date</Text>
           <Select value={sortVal || undefined} placeholder="— No sort —" onChange={setSortVal} style={{ width: '100%' }}
@@ -233,7 +327,7 @@ function FilterPanel({ onApply, onClear, onClose, groupUsernames }) {
           }
         </div>
       </div>
-      <div style={{ padding: '0.9rem 1.1rem', borderTop: '1px solid rgba(200,134,26,0.12)', display: 'flex', gap: '0.5rem' }}>
+      <div style={{ padding: '0.6rem 0.6rem', borderTop: '1px solid rgba(200,134,26,0.12)', display: 'flex', gap: '0.5rem' }}>
         <Button type="primary" onClick={() => onApply({ sortVal, filterType, filterVal })} style={{ flex: 1 }}>Apply</Button>
         <Button onClick={() => { setSortVal(''); setFilterType(''); setFilterVal(''); onClear(); }} style={{ flex: 1 }}>Clear</Button>
       </div>
@@ -250,6 +344,8 @@ export default function NotesSidebar({
   applyFilter, clearFilter, filterActive,
   allNotes, groupNotes,
   books, chapterCount, verseCount,
+  localHl, groupHighlights, groupUsernames,
+  onNavigateVerse,
 }) {
   const [editorOpen,   setEditorOpen]   = useState(false);
   const [editorNoteId, setEditorNoteId] = useState(null);
@@ -258,7 +354,9 @@ export default function NotesSidebar({
   const [showFilter,   setShowFilter]   = useState(false);
   const [replies,      setReplies]      = useState([]);
   const [repliesLoading, setRepliesLoading] = useState(false);
-  const [activeTab,    setActiveTab]    = useState('verse');
+  const [activeTab,    setActiveTab]    = useState(() => {
+    try { return localStorage.getItem('fs_notes_tab') || 'verse'; } catch { return 'verse'; }
+  });
 
   // Derive lists
   const { verse: verseList, pub: pubList } = React.useMemo(() => {
@@ -327,17 +425,43 @@ export default function NotesSidebar({
     </div>
   );
 
+  // Build flat sorted list of highlights for the Highlights tab
+  const hlList = React.useMemo(() => {
+    const parseKey = (key) => {
+      const parts = key.split('-');
+      const vs    = parseInt(parts.pop());
+      const ch    = parseInt(parts.pop());
+      const book  = parts.join('-');
+      return { book, chapter: ch, verse: vs };
+    };
+    const list = currentGroupId
+      ? Object.entries(groupHighlights || {}).flatMap(([uid, hl]) =>
+          Object.entries(hl).map(([key, color]) => ({
+            ...parseKey(key), color,
+            username: groupUsernames?.[uid] || uid.slice(0, 4),
+            sortKey: key,
+          }))
+        )
+      : Object.entries(localHl || {}).map(([key, color]) => ({
+          ...parseKey(key), color, username: null, sortKey: key,
+        }));
+    return list.sort((a, b) =>
+      a.book.localeCompare(b.book) || a.chapter - b.chapter || a.verse - b.verse
+    );
+  }, [localHl, groupHighlights, groupUsernames, currentGroupId]);
+
   const tabItems = [
     {
       key: 'verse',
       label: 'Notes',
       children: (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', padding: verseList.length ? '0.7rem' : 0, flex: 1 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem', padding: verseList.length ? '0.5rem 0.4rem' : 0, flex: 1 }}>
           {verseList.length === 0
             ? verseEmpty
             : verseList.map(([id, note, owner, isOwn]) => (
                 <NoteCard key={id} id={id} note={note} owner={owner} isOwn={isOwn}
-                  onEdit={openEditor} onDelete={handleDelete} onOpen={openDetail} />
+                  onEdit={openEditor} onDelete={handleDelete} onOpen={openDetail}
+                  onNavigateVerse={onNavigateVerse} />
               ))
           }
         </div>
@@ -347,7 +471,7 @@ export default function NotesSidebar({
       key: 'public',
       label: 'Group',
       children: (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', padding: '0.7rem' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem', padding: '0.5rem 0.4rem' }}>
           {pubList.length === 0
             ? <div style={{ textAlign: 'center', padding: '2rem 1rem' }}>
                 <Text style={{ fontSize: '0.75rem', color: 'rgba(244,228,193,0.25)', fontFamily: "'Lora', serif" }}>
@@ -356,7 +480,31 @@ export default function NotesSidebar({
               </div>
             : pubList.map(([id, note, owner, isOwn]) => (
                 <NoteCard key={id} id={id} note={note} owner={owner} isOwn={isOwn}
-                  onEdit={openEditor} onDelete={handleDelete} onOpen={openDetail} />
+                  onEdit={openEditor} onDelete={handleDelete} onOpen={openDetail}
+                  onNavigateVerse={onNavigateVerse} />
+              ))
+          }
+        </div>
+      ),
+    },
+    {
+      key: 'highlights',
+      label: 'Highlights',
+      children: (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', padding: '0.5rem 0.4rem' }}>
+          {hlList.length === 0
+            ? <div style={{ textAlign: 'center', padding: '2rem 1rem' }}>
+                <Text style={{ fontSize: '0.75rem', color: 'rgba(244,228,193,0.25)', fontFamily: "'Lora', serif" }}>
+                  {currentGroupId ? 'No highlights in this group yet.' : 'No highlights yet — mark a verse while reading.'}
+                </Text>
+              </div>
+            : hlList.map((h, i) => (
+                <HighlightCard
+                  key={`${h.sortKey}-${i}`}
+                  book={h.book} chapter={h.chapter} verse={h.verse}
+                  color={h.color} username={h.username}
+                  onNavigate={onNavigateVerse || (() => {})}
+                />
               ))
           }
         </div>
@@ -397,7 +545,7 @@ export default function NotesSidebar({
     <div className="notes-sidebar">
 
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '1.2rem 1.2rem 0.8rem', borderBottom: '1px solid rgba(200,134,26,0.15)', flexShrink: 0 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.75rem 0.6rem 0.6rem', borderBottom: '1px solid rgba(200,134,26,0.15)', flexShrink: 0 }}>
         <Title level={5} style={{ margin: 0, fontFamily: "'Playfair Display', serif", color: 'var(--parchment)' }}>Notes</Title>
         <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
           <Button
@@ -417,7 +565,7 @@ export default function NotesSidebar({
 
       {/* Group selector */}
       {groups.length > 0 && (
-        <div style={{ padding: '0.45rem 1.1rem', borderBottom: '1px solid rgba(200,134,26,0.1)' }}>
+        <div style={{ padding: '0.3rem 0.55rem', borderBottom: '1px solid rgba(200,134,26,0.1)' }}>
           <Select
             value={currentGroupId || ''}
             onChange={onGroupChange}
@@ -439,14 +587,15 @@ export default function NotesSidebar({
             canReply={!!currentGroupId}
             onReply={onReply}
             replies={replies} repliesLoading={repliesLoading}
+            onNavigateVerse={onNavigateVerse}
           />
         : <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
             <Tabs
               activeKey={activeTab}
-              onChange={setActiveTab}
+              onChange={key => { try { localStorage.setItem('fs_notes_tab', key); } catch {} setActiveTab(key); }}
               items={tabItems}
               size="small"
-              style={{ padding: '0 0.6rem', display: 'flex', flexDirection: 'column', height: '100%' }}
+              style={{ padding: '0 0.25rem', display: 'flex', flexDirection: 'column', height: '100%' }}
             />
           </div>
       }

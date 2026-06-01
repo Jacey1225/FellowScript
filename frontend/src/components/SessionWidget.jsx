@@ -66,7 +66,8 @@ function IconBtn({ icon, onClick, title, danger }) {
   );
 }
 
-function UpcomingCard({ session, onEdit, onDelete }) {
+function UpcomingCard({ session, activeSessionId, onJoin, onLeave, onEdit, onDelete }) {
+  const isJoined = activeSessionId === session.id;
   return (
     <div style={islandStyle}>
       <div style={{
@@ -81,9 +82,25 @@ function UpcomingCard({ session, onEdit, onDelete }) {
           <Text style={{ fontSize: '0.62rem', color: 'rgba(244,228,193,0.4)', fontFamily: "'Lora', serif" }}>
             {formatTime(session.time_start)}
             {session.time_end ? ` – ${formatTime(session.time_end)}` : ''}
+            {session.recurring && <span style={{ marginLeft: '0.4rem', color: 'rgba(200,134,26,0.55)' }}>· Weekly</span>}
           </Text>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.1rem', flexShrink: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', flexShrink: 0 }}>
+          {isJoined ? (
+            <Button
+              size="small" danger onClick={onLeave}
+              style={{ fontSize: '0.62rem', height: 20, padding: '0 7px' }}
+            >
+              Leave
+            </Button>
+          ) : (
+            <Button
+              size="small" onClick={() => onJoin(session.id)}
+              style={{ fontSize: '0.62rem', height: 20, padding: '0 7px', background: 'rgba(200,134,26,0.7)', borderColor: 'transparent', color: '#fff' }}
+            >
+              Join
+            </Button>
+          )}
           <IconBtn icon={<EditOutlined />} title="Edit session" onClick={() => onEdit(session)} />
           <IconBtn icon={<DeleteOutlined />} title="Delete session" onClick={() => onDelete(session.id)} danger />
         </div>
@@ -92,7 +109,7 @@ function UpcomingCard({ session, onEdit, onDelete }) {
   );
 }
 
-function ActiveCard({ session, user, activeSessionId, talkingUserId, onJoin, onLeave, onEdit, onNavigateVerse }) {
+function ActiveCard({ session, user, activeSessionId, talkingUserId, onJoin, onLeave, onEdit, onDelete, onNavigateVerse }) {
   const isJoined = activeSessionId === session.id;
   const names    = useUsernames(session.participants || []);
   const talkingName = talkingUserId
@@ -110,6 +127,7 @@ function ActiveCard({ session, user, activeSessionId, talkingUserId, onJoin, onL
               {session.title}
             </Text>
             <IconBtn icon={<EditOutlined />} title="Edit session" onClick={() => onEdit(session)} />
+            <IconBtn icon={<DeleteOutlined />} title="Delete session" onClick={() => onDelete(session.id)} danger />
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexShrink: 0 }}>
@@ -135,6 +153,15 @@ function ActiveCard({ session, user, activeSessionId, talkingUserId, onJoin, onL
               </Button>
             )}
           </div>
+        </div>
+
+        {/* Row 1b: time + recurring */}
+        <div style={{ marginBottom: '0.35rem' }}>
+          <Text style={{ fontSize: '0.6rem', color: 'rgba(244,228,193,0.35)', fontFamily: "'Lora', serif" }}>
+            {formatTime(session.time_start)}
+            {session.time_end ? ` – ${formatTime(session.time_end)}` : ''}
+            {session.recurring && <span style={{ marginLeft: '0.4rem', color: 'rgba(200,134,26,0.5)' }}>· Weekly</span>}
+          </Text>
         </div>
 
         {/* Row 2: participants */}
@@ -175,7 +202,7 @@ function ActiveCard({ session, user, activeSessionId, talkingUserId, onJoin, onL
 
         {/* Row 3: verse links */}
         {(session.verses || []).length > 0 && (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.28rem' }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.28rem', marginBottom: (isJoined && (session.prompts || []).length) ? '0.5rem' : 0 }}>
             {(session.verses || []).map(ref => {
               const { label, book, ch, vs } = parseVerseRef(ref);
               return (
@@ -196,6 +223,22 @@ function ActiveCard({ session, user, activeSessionId, talkingUserId, onJoin, onL
                 </button>
               );
             })}
+          </div>
+        )}
+
+        {/* Row 4: discussion prompts (only when joined) */}
+        {isJoined && (session.prompts || []).length > 0 && (
+          <div style={{ marginTop: '0.4rem', paddingTop: '0.4rem', borderTop: '1px solid rgba(200,134,26,0.12)' }}>
+            <Text style={{ display: 'block', fontSize: '0.55rem', letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(200,134,26,0.45)', fontFamily: "'Lora', serif", marginBottom: '0.3rem' }}>
+              Discussion Prompts
+            </Text>
+            <ol style={{ margin: 0, padding: '0 0 0 1.1rem', display: 'flex', flexDirection: 'column', gap: '0.28rem' }}>
+              {(session.prompts || []).map((p, i) => (
+                <li key={i} style={{ fontSize: '0.7rem', color: 'rgba(244,228,193,0.75)', fontFamily: "'Lora', serif", lineHeight: 1.55 }}>
+                  {p}
+                </li>
+              ))}
+            </ol>
           </div>
         )}
       </div>
@@ -236,12 +279,16 @@ export default function SessionWidget({
             onJoin={onJoin}
             onLeave={onLeave}
             onEdit={onEdit}
+            onDelete={onDelete}
             onNavigateVerse={onNavigateVerse}
           />
         ) : (
           <UpcomingCard
             key={session.id}
             session={session}
+            activeSessionId={activeSessionId}
+            onJoin={onJoin}
+            onLeave={onLeave}
             onEdit={onEdit}
             onDelete={onDelete}
           />

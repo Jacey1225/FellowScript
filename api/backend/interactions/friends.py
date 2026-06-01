@@ -1,5 +1,5 @@
 from schemas.users import User
-from helpers import (
+from backend.interactions.helpers import (
     fetch_users,
     find_by_username,
     update_users,

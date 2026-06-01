@@ -1,7 +1,7 @@
 from fastapi import WebSocket
 from schemas.message import Message
 import os
-from helpers import save_message
+from backend.interactions.helpers import save_message
 
 main_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../..")
 class ConnectionManager:

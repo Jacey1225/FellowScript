@@ -9,7 +9,7 @@ function normalizeNote(n, username = '') {
     text:      n.text      ?? '',
     public:    n.public    ?? false,
     group_id:  n.group_id  ?? '',
-    verses:    n.verses    ?? [[], []],
+    verses:    n.verses    ?? [],
     replies:   n.replies   ?? [],
     is_reply:  n.is_reply  ?? false,
     timestamp: n.timestamp ?? '',
@@ -19,7 +19,9 @@ function normalizeNote(n, username = '') {
 export function useNotes({ user, curBook, curChapter, vsValue }) {
   const [allNotes,        setAllNotes]        = useState({});
   const [groupNotes,      setGroupNotes]      = useState({});
-  const [currentGroupId,  setCurrentGroupId]  = useState(null);
+  const [currentGroupId,  setCurrentGroupId]  = useState(() => {
+    try { return localStorage.getItem('fs_notes_group') || null; } catch { return null; }
+  });
   const [groups,          setGroups]          = useState([]);
   const [filteredNotes,   setFilteredNotes]   = useState(null);
   const [filteredGroup,   setFilteredGroup]   = useState(null);
@@ -72,6 +74,7 @@ export function useNotes({ user, curBook, curChapter, vsValue }) {
   }, [user]);
 
   const selectGroup = useCallback(async (groupId, onHighlightsNeeded) => {
+    try { localStorage.setItem('fs_notes_group', groupId || ''); } catch {}
     setCurrentGroupId(groupId || null);
     setGroupNotes({});
     setFilteredGroup(null);

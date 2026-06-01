@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Modal, Input, Button, Typography, DatePicker, Select } from 'antd';
-import { CloseOutlined } from '@ant-design/icons';
+import { Modal, Input, Button, Typography, DatePicker, Select, Switch } from 'antd';
+import { CloseOutlined, PlusOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import VerseSelector from './VerseSelector.jsx';
 
 const { Text } = Typography;
+const { TextArea } = Input;
 
 function parseVerseRef(ref) {
   const parts = ref.split('-');
@@ -27,6 +28,9 @@ export default function SessionCreator({
   const [timeStartDay, setTimeStartDay] = useState(null);
   const [duration,     setDuration]     = useState(30);
   const [verses,       setVerses]       = useState([]);
+  const [prompts,      setPrompts]      = useState([]);
+  const [promptInput,  setPromptInput]  = useState('');
+  const [recurring,    setRecurring]    = useState(false);
   const [loading,      setLoading]      = useState(false);
 
   // Populate or reset when modal opens
@@ -43,9 +47,12 @@ export default function SessionCreator({
         setDuration(30);
       }
       setVerses(editSession.verses || []);
+      setPrompts(editSession.prompts || []);
+      setRecurring(editSession.recurring || false);
     } else {
       setTitle(''); setTimeStart(''); setTimeEnd('');
       setTimeStartDay(null); setDuration(30); setVerses([]);
+      setPrompts([]); setPromptInput(''); setRecurring(false);
     }
   }, [open, editSession]);
 
@@ -62,7 +69,7 @@ export default function SessionCreator({
   const handleSubmit = async () => {
     if (!title.trim() || !timeStart) return;
     setLoading(true);
-    const data = { title: title.trim(), timeStart, timeEnd, verses };
+    const data = { title: title.trim(), timeStart, timeEnd, verses, prompts, recurring };
     const ok = isEditing
       ? await onUpdate(editSession.id, data)
       : await onCreate(data);
@@ -76,6 +83,15 @@ export default function SessionCreator({
   };
 
   const removeVerse = (ref) => setVerses(prev => prev.filter(v => v !== ref));
+
+  const addPrompt = () => {
+    const trimmed = promptInput.trim();
+    if (!trimmed) return;
+    setPrompts(prev => [...prev, trimmed]);
+    setPromptInput('');
+  };
+
+  const removePrompt = (idx) => setPrompts(prev => prev.filter((_, i) => i !== idx));
 
   const labelStyle = {
     display: 'block', fontSize: '0.72rem',
@@ -160,6 +176,59 @@ export default function SessionCreator({
             </div>
           )}
           <VerseSelector books={books} chapterCount={chapterCount} verseCount={verseCount} onSelect={handleVerseSelect} />
+        </div>
+
+        {/* Discussion Prompts */}
+        <div>
+          <Text style={labelStyle}>Discussion Prompts</Text>
+          {prompts.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', marginBottom: '0.5rem' }}>
+              {prompts.map((p, i) => (
+                <span
+                  key={i}
+                  style={{
+                    display: 'flex', alignItems: 'flex-start', gap: '0.4rem',
+                    padding: '0.3rem 0.5rem',
+                    background: 'rgba(200,134,26,0.07)', border: '1px solid rgba(200,134,26,0.2)',
+                    borderRadius: 4, fontSize: '0.78rem', color: 'var(--parchment)', fontFamily: "'Lora', serif",
+                    lineHeight: 1.5,
+                  }}
+                >
+                  <span style={{ flex: 1 }}>{p}</span>
+                  <CloseOutlined
+                    style={{ fontSize: '0.58rem', cursor: 'pointer', color: 'rgba(200,134,26,0.5)', marginTop: '0.2rem', flexShrink: 0 }}
+                    onClick={() => removePrompt(i)}
+                  />
+                </span>
+              ))}
+            </div>
+          )}
+          <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'flex-end' }}>
+            <TextArea
+              placeholder="Add a discussion question or prompt…"
+              value={promptInput}
+              onChange={e => setPromptInput(e.target.value)}
+              autoSize={{ minRows: 1, maxRows: 3 }}
+              style={{ fontSize: '0.78rem', flex: 1 }}
+              onPressEnter={e => { if (!e.shiftKey) { e.preventDefault(); addPrompt(); } }}
+            />
+            <Button
+              icon={<PlusOutlined />}
+              onClick={addPrompt}
+              disabled={!promptInput.trim()}
+              style={{ flexShrink: 0 }}
+            />
+          </div>
+        </div>
+
+        {/* Recurring */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+          <Switch
+            size="small"
+            checked={recurring}
+            onChange={setRecurring}
+          />
+          <Text style={{ ...labelStyle, marginBottom: 0 }}>Repeat weekly</Text>
         </div>
 
         {/* Actions */}

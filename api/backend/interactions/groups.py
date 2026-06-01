@@ -2,14 +2,11 @@ import os
 import json
 from schemas.users import User, Note
 from schemas.message import Group
-from helpers import (
-    fetch_users, 
-    update_users)
-from helpers import (
+from backend.interactions.helpers import (
+    fetch_users,
+    update_users,
     read_messages,
-    format_messages
-)
-from helpers import (
+    format_messages,
     load_notes
 )
 

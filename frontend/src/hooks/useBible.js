@@ -1,24 +1,42 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { buildChapterHTML, extractVerseNums } from '../utils.js';
 
+// Module-level cache — survives component unmount/remount within the same session
+let _cachedBible = null;
+
 export function useBible() {
-  const [bible,      setBible]      = useState(null);
-  const [loading,    setLoading]    = useState(true);
+  const [bible,      setBible]      = useState(_cachedBible);
+  const [loading,    setLoading]    = useState(!_cachedBible);
   const [loadError,  setLoadError]  = useState(false);
   const [curBook,    setCurBook]    = useState(null);
   const [curChapter, setCurChapter] = useState(null);
   const [chapterHTML, setChapterHTML] = useState('');
   const [verseNums,   setVerseNums]   = useState([]);
-  const [books,       setBooks]       = useState([]);
+  const [books,       setBooks]       = useState(_cachedBible ? Object.keys(_cachedBible) : []);
   const onRendered = useRef(() => {});
+
+  // Persist position so it survives navigation away and back
+  useEffect(() => {
+    if (!curBook || !curChapter) return;
+    try {
+      localStorage.setItem('fs_bible_pos', JSON.stringify({ book: curBook, chapter: curChapter }));
+    } catch {}
+  }, [curBook, curChapter]);
 
   const setChapterRenderedCallback = useCallback(fn => { onRendered.current = fn; }, []);
 
   const loadBible = useCallback(async () => {
+    if (_cachedBible) {
+      setBible(_cachedBible);
+      setBooks(Object.keys(_cachedBible));
+      setLoading(false);
+      return _cachedBible;
+    }
     try {
       const res = await fetch('/data/bible.json');
       if (!res.ok) throw new Error(res.status);
       const data = await res.json();
+      _cachedBible = data;
       setBible(data);
       setBooks(Object.keys(data));
       setLoading(false);

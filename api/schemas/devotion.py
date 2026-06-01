@@ -6,11 +6,15 @@ class DevotionPlan(BaseModel):
     title: str = ""
     time_start: str = ""
     time_end: str = ""
+    recurring: bool = False
     group_id: str = ""
     creator_id: str = ""
     participants: list[str] = Field(default_factory=list)
     verses: list[str] = Field(default_factory=list)
     prompts: list[str] = Field(default_factory=list)
+    chime_meeting_id: str = ""
+    chime_meeting: dict = Field(default_factory=dict)
+
 
 class DevotionRequest(BaseModel):
     devotion_id: str

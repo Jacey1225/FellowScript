@@ -195,10 +195,29 @@ def update_devotion_data(session_id: str, devotion: DevotionPlan) -> bool:
     devotions = _load_devotions()
     if session_id not in devotions:
         return False
+    existing = devotions[session_id]
     updated = devotion.model_dump()
-    # Preserve live participants — don't wipe them on an edit
-    updated["participants"] = devotions[session_id].get("participants", [])
+    # Preserve fields that live updates manage — don't wipe them on an edit
+    updated["participants"]     = existing.get("participants", [])
+    updated["chime_meeting_id"] = existing.get("chime_meeting_id", "")
+    updated["chime_meeting"]    = existing.get("chime_meeting", {})
     updated["id"] = session_id
     devotions[session_id] = updated
     _save_devotions(devotions)
     return True
+
+
+def save_chime_meeting(session_id: str, meeting_id: str, meeting_data: dict) -> None:
+    devotions = _load_devotions()
+    session = devotions.get(session_id)
+    if not session:
+        return
+    session["chime_meeting_id"] = meeting_id
+    session["chime_meeting"]    = meeting_data
+    devotions[session_id] = session
+    _save_devotions(devotions)
+
+
+# Expose internals so routes can batch-update sessions without extra round-trips
+load_devotions = _load_devotions
+save_devotions = _save_devotions

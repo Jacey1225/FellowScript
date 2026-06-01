@@ -103,7 +103,7 @@ export function useHighlights({ user, curBook, curChapter }) {
   }, []);
 
   return {
-    localHl, groupHighlights,
+    localHl, groupHighlights, groupUsernames,
     loadHighlights, applyHighlights,
     setHighlight, clearHighlight,
     loadGroupHighlights, clearGroupHighlights,

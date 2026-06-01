@@ -164,14 +164,17 @@ export function useMessaging({ user }) {
   // ── Friend actions ────────────────────────────────────────────────────────
 
   const addFriend = useCallback(async (username) => {
-    if (!user || !username) return false;
+    if (!user || !username) return { ok: false, detail: 'Not signed in.' };
     try {
       const res = await fetch(
         `${API}/friends/${user.user_id}/request?friend_username=${encodeURIComponent(username)}`,
         { method: 'POST' }
       );
-      return res.ok || res.status === 204;
-    } catch { return false; }
+      if (res.ok || res.status === 204) return { ok: true };
+      let detail = 'Request failed.';
+      try { const d = await res.json(); detail = d.detail || detail; } catch {}
+      return { ok: false, detail };
+    } catch { return { ok: false, detail: 'Could not reach the server.' }; }
   }, [user]);
 
   const removeFriend = useCallback(async (friendId) => {

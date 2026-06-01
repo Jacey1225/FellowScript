@@ -1,7 +1,13 @@
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
-from api.backend.interactions.websockets import ConnectionManager
-from api.backend.interactions.friends import FriendsManager
+from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
+from backend.interactions.websockets import ConnectionManager
+from backend.interactions.friends import FriendsManager
+from backend.interactions.helpers import save_chime_meeting, load_devotions
+from botocore.exceptions import ClientError
+import boto3
+import uuid
+
 ws_router = APIRouter(prefix="/message")
+chime_router = APIRouter(prefix="/chime")
 manager = ConnectionManager()
 
 
@@ -11,15 +17,54 @@ _SIGNAL_TYPES = frozenset({
     "session-created", "session-joined", "session-left", "talking",
 })
 
+chime = boto3.client("chime-sdk-meetings", region_name='us-east-1')
+
+
+def _get_or_create_meeting(session_id: str) -> dict:
+    """Return the existing Chime meeting for a session, creating it if needed.
+
+    Idempotent: concurrent callers reuse the same meeting rather than
+    creating duplicate rooms.
+    """
+    devotions = load_devotions()
+    session = devotions.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    chime_meeting_id = session.get("chime_meeting_id", "")
+    meeting_data     = session.get("chime_meeting", {})
+
+    if chime_meeting_id and meeting_data:
+        return meeting_data
+
+    try:
+        resp = chime.create_meeting(
+            ClientRequestToken=str(uuid.uuid4()),
+            MediaRegion='us-east-1',
+            ExternalMeetingId=session_id,
+        )
+    except ClientError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    meeting_data     = resp['Meeting']
+    chime_meeting_id = meeting_data['MeetingId']
+    save_chime_meeting(session_id, chime_meeting_id, meeting_data)
+    return meeting_data
+
+
+def _create_attendee(chime_meeting_id: str, user_id: str) -> dict:
+    try:
+        resp = chime.create_attendee(
+            MeetingId=chime_meeting_id,
+            ExternalUserId=user_id,
+        )
+    except ClientError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    return resp['Attendee']
+
 
 @ws_router.websocket("/ws/{user_id}")
 async def websocket_endpoint(websocket: WebSocket, user_id: str, msg_type: str = "chat") -> None:
-    """Handle a persistent WebSocket connection for a single user.
-
-    Dispatches incoming frames based on the payload's ``type`` field (falling
-    back to the ``msg_type`` query param). Chat messages are persisted and
-    relayed; signaling frames are relayed only.
-    """
     await manager.connect(user_id, websocket)
     try:
         while True:
@@ -33,18 +78,39 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str, msg_type: str =
         await manager.disconnect(user_id)
 
 
+@chime_router.post("/{session_id}")
+async def start_meeting(session_id: str) -> dict:
+    """Get or create the Chime meeting for a session.
+
+    Returns the full Meeting object needed by the Chime SDK.
+    Safe to call multiple times — subsequent callers receive the same meeting.
+    """
+    meeting = _get_or_create_meeting(session_id)
+    return {"Meeting": meeting}
+
+
+@chime_router.post("/{session_id}/{user_id}/attend")
+async def join_meeting(session_id: str, user_id: str) -> dict:
+    """Create an attendee token for a user joining a session's Chime meeting.
+
+    The session must already have a Chime meeting (call start_meeting first).
+    Returns the Attendee object needed by the Chime SDK.
+    """
+    devotions = load_devotions()
+    session = devotions.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    chime_meeting_id = session.get("chime_meeting_id", "")
+    if not chime_meeting_id:
+        raise HTTPException(status_code=400, detail="No active meeting for this session")
+
+    attendee = _create_attendee(chime_meeting_id, user_id)
+    return {"Attendee": attendee}
+
+
 @ws_router.get("/messages/{host_user}/")
 async def read_dm(host_user: str, guest_user: str) -> dict:
-    """Fetch the direct message history between two users.
-
-    Args:
-        host_user: UUID of the requesting user.
-        guest_user: UUID of the other party in the conversation.
-
-    Returns:
-        dict: ``{"payload": dict}`` containing ``host_msgs`` and ``other_msgs``
-            lists as returned by ``FriendsManager.read_friend()``.
-    """
     friend_manager = FriendsManager(host_user)
     payload = friend_manager.read_friend(guest_user)
     return {"payload": payload}
@@ -52,35 +118,17 @@ async def read_dm(host_user: str, guest_user: str) -> dict:
 
 @ws_router.post("/friend-request")
 async def send_request(user_id: str, friend_user: str) -> None:
-    """Send a friend request to another user by username.
-
-    Args:
-        user_id: UUID of the user sending the request.
-        friend_user: Username of the intended recipient.
-    """
     friend_manager = FriendsManager(user_id)
     friend_manager.send_add_request(friend_user)
 
 
 @ws_router.post("/add-friend", status_code=204)
 async def add_friend(host_user: str, user_to_add: str) -> None:
-    """Accept a pending friend request and establish a mutual friendship.
-
-    Args:
-        host_user: UUID of the user accepting the request.
-        user_to_add: Username of the user to add as a friend.
-    """
     friend_manager = FriendsManager(host_user)
     friend_manager.add_friend(user_to_add)
 
 
 @ws_router.delete("/remove-friend", status_code=204)
 async def remove_friend(host_user: str, user_to_del: str) -> None:
-    """Remove a friend from both users' friend lists.
-
-    Args:
-        host_user: UUID of the user initiating the removal.
-        user_to_del: UUID of the friend to remove.
-    """
     friend_manager = FriendsManager(host_user)
     friend_manager.remove_friend(user_to_del)
