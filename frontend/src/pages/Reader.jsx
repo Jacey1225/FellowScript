@@ -14,13 +14,15 @@ import NotesSidebar    from '../components/NotesSidebar.jsx';
 import HighlightPicker from '../components/HighlightPicker.jsx';
 import SessionCreator  from '../components/SessionCreator.jsx';
 import SessionWidget   from '../components/SessionWidget.jsx';
+import BookmarkButton  from '../components/BookmarkButton.jsx';
 
-import { useAuth }       from '../context/AuthContext.jsx';
-import { useBible }      from '../hooks/useBible.js';
-import { useHighlights } from '../hooks/useHighlights.js';
-import { useNotes }      from '../hooks/useNotes.js';
-import { useMessaging }  from '../hooks/useMessaging.js';
-import { useSessions }   from '../hooks/useSessions.js';
+import { useAuth }        from '../context/AuthContext.jsx';
+import { useBible }       from '../hooks/useBible.js';
+import { useHighlights }  from '../hooks/useHighlights.js';
+import { useNotes }       from '../hooks/useNotes.js';
+import { useMessaging }   from '../hooks/useMessaging.js';
+import { useSessions }    from '../hooks/useSessions.js';
+import { useBookmarks }   from '../hooks/useBookmarks.js';
 
 const { Text, Title } = Typography;
 const MOBILE_BP = 900;
@@ -220,6 +222,7 @@ function ChatPanel({
   sessions, activeSessionId, talkingUserId,
   onJoinSession, onLeaveSession, onOpenSessionCreator,
   onEditSession, onDeleteSession, onNavigateVerse,
+  videoEnabled, videoTiles, onToggleVideo, bindVideoTile,
 }) {
   const [text, setText]               = useState('');
   const [showMembers, setShowMembers] = useState(false);
@@ -280,6 +283,10 @@ function ChatPanel({
         onEdit={onEditSession}
         onDelete={onDeleteSession}
         onNavigateVerse={onNavigateVerse}
+        videoEnabled={videoEnabled}
+        videoTiles={videoTiles}
+        onToggleVideo={onToggleVideo}
+        bindVideoTile={bindVideoTile}
       />
 
       {/* Group members panel */}
@@ -396,7 +403,10 @@ export default function Reader() {
     loadSessions, createSession, updateSession, deleteSession,
     joinSession, leaveSession,
     handleSignal,
+    videoEnabled, videoTiles, toggleVideo, bindVideoTile,
   } = useSessions({ user, wsRef, currentContact });
+
+  const { bookmarks, loadBookmarks, addBookmark, removeBookmark } = useBookmarks({ user });
 
   const [contactsLoaded, setContactsLoaded] = useState(false);
 
@@ -449,7 +459,7 @@ export default function Reader() {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (user) { loadHighlights(); loadNotes(); loadGroups(); connectWS(); }
+    if (user) { loadHighlights(); loadNotes(); loadGroups(); loadBookmarks(); connectWS(); }
     return () => disconnectWS();
   }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -622,6 +632,15 @@ export default function Reader() {
             </span>
           )}
         </button>
+        <BookmarkButton
+          user={user}
+          bookmarks={bookmarks}
+          curBook={curBook}
+          curChapter={curChapter}
+          onAdd={addBookmark}
+          onRemove={removeBookmark}
+          onNavigate={handleNavigate}
+        />
       </div>
 
       {/* ── Bible reading area ── */}
@@ -669,6 +688,10 @@ export default function Reader() {
                   onEditSession={openCreator}
                   onDeleteSession={deleteSession}
                   onNavigateVerse={handleNavigateVerse}
+                  videoEnabled={videoEnabled}
+                  videoTiles={videoTiles}
+                  onToggleVideo={toggleVideo}
+                  bindVideoTile={bindVideoTile}
                 />
               </div>
             )}
@@ -734,6 +757,10 @@ export default function Reader() {
                 onEditSession={openCreator}
                 onDeleteSession={deleteSession}
                 onNavigateVerse={handleNavigateVerse}
+                videoEnabled={videoEnabled}
+                videoTiles={videoTiles}
+                onToggleVideo={toggleVideo}
+                bindVideoTile={bindVideoTile}
               />
             : <ContactsPanel {...contactsProps} />
           }

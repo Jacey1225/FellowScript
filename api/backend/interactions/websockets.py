@@ -1,19 +1,27 @@
 from fastapi import WebSocket
 from schemas.message import Message
-import os
-from backend.interactions.helpers import save_message
+from db import DBManager
 
-main_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../..")
-class ConnectionManager:
-    """Manages active WebSocket connections keyed by user ID.
 
-    Provides targeted message delivery and signaling relay for real-time
-    chat and WebRTC call flows.
-    """
+class ConnectionManager(DBManager):
+    """Manages active WebSocket connections keyed by user ID."""
 
     def __init__(self) -> None:
-        """Initialise with an empty active-connections registry."""
+        super().__init__()
         self.active_connections: dict[str, WebSocket] = {}
+
+    def save_message(self, msg: Message) -> None:
+        self.cur.execute(
+            "INSERT INTO messages (from_user, group_id, text, timestamp) "
+            "VALUES (%s, %s, %s, %s) RETURNING _id",
+            (msg.from_user, msg.group_id or None, msg.text, str(msg.timestamp))
+        )
+        row = self.cur.fetchone()
+        if row:
+            message_id = str(row[0])
+            for uid in msg.to_users:
+                self.insertion("message_recipients", {"message_id": message_id, "user_id": uid})
+        self.conn.commit()
 
     async def connect(self, user_id: str, ws: WebSocket) -> None:
         """Accept a new WebSocket connection and register it.
@@ -37,14 +45,13 @@ class ConnectionManager:
         """Persist a chat message and deliver it to all online recipients.
 
         Args:
-            payload: Message dict with at minimum ``to_users`` (list[str]),
-                ``from_user`` (str), ``text`` (str), ``group_id`` (str|None),
-                and ``timestamp`` (str).
+            payload: Message dict with at minimum ``to_users``, ``from_user``,
+                ``text``, ``group_id``, and ``timestamp``.
         """
         to_users = payload.get("to_users")
         if not to_users:
             return
-        save_message(Message(**payload))
+        self.save_message(Message(**payload))
         frame = {
             "from_user": payload.get("from_user"),
             "text":      payload.get("text"),
@@ -59,16 +66,10 @@ class ConnectionManager:
     async def send_sig(self, payload: dict) -> None:
         """Relay a WebRTC signaling frame without persisting it.
 
-        Used for call-invite, call-accept, call-reject, offer, answer,
-        ice-candidate, and call-end message types. The payload is forwarded
-        as-is to each online recipient.
-
         Args:
-            payload: Signaling dict with at minimum ``to_users`` (list[str]).
-                Remaining keys are specific to the signaling message type.
+            payload: Signaling dict with at minimum ``to_users``.
         """
-        to_users = payload.get("to_users", [])
-        for uid in to_users:
+        for uid in payload.get("to_users", []):
             ws = self.active_connections.get(uid)
             if ws:
                 await ws.send_json(payload)

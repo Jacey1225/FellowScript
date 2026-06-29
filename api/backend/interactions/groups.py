@@ -1,62 +1,32 @@
-import os
-import json
-from schemas.users import User, Note
+from schemas.users import User
 from schemas.message import Group
-from backend.interactions.helpers import (
-    fetch_users,
-    update_users,
-    read_messages,
-    format_messages,
-    load_notes
-)
-
-groups_path = "data/groups.json"
-main_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../..")
+from db import DBManager
 
 
-def load_groups() -> dict:
-    """Load all group records from the JSON data store.
-
-    Returns:
-        dict: Mapping of group_id -> group data dict. Returns an empty dict
-            if the file does not exist or contains invalid JSON.
-    """
-    path = os.path.join(main_path, groups_path)
-    if not os.path.exists(path):
-        return {}
-    try:
-        with open(path, 'r') as f:
-            return json.load(f)
-    except json.JSONDecodeError:
-        return {}
-
-
-def save_groups(groups: dict) -> None:
-    """Persist all group records to the JSON data store.
-
-    Args:
-        groups: Mapping of group_id -> group data dict to write.
-    """
-    with open(os.path.join(main_path, groups_path), 'w') as f:
-        json.dump(groups, f, indent=2)
-
-
-
-class GroupsManager:
+class GroupsManager(DBManager):
     """Handles all group-level data operations for a single user/group context."""
 
     def __init__(self, user_id: str, group_id: str = "") -> None:
-        """Set up the manager for the given user and optional group.
-
-        Args:
-            user_id: UUID of the acting user.
-            group_id: ID of the group context. Defaults to ``""`` for
-                operations that don't require a specific group.
-        """
+        super().__init__()
         self.user_id  = user_id
         self.group_id = group_id
-        result = fetch_users([user_id])
-        self.user: User = result[-1] if result else User()
+        result = self.lookup("users", {"_id": user_id})
+        if result:
+            uid, data = list(result.items())[0]
+            self.user = User(user_id=uid, **data)
+        else:
+            self.user = User()
+
+    def format_messages(self, messages: dict) -> list[dict]:
+        result = []
+        for _, data in messages.items():
+            from_uid = data.get("from_user", "")
+            user_result = self.lookup("users", {"_id": from_uid})
+            if user_result:
+                _, udata = list(user_result.items())[0]
+                data = {**data, "from_user": udata.get("username", from_uid)}
+            result.append(data)
+        return result
 
     def create_group(self, users: list[str], group: Group) -> None:
         """Create a new group and add it to each member's groups list.
@@ -65,15 +35,11 @@ class GroupsManager:
             users: List of user IDs to add as initial members.
             group: ``Group`` schema instance with group_id, title, and users.
         """
-        groups = load_groups()
-        groups[group.group_id] = {"title": group.title, "users": group.users}
-        save_groups(groups)
-
-        members = fetch_users(users)
-        for member in members:
-            if group.group_id not in member.groups:
-                member.groups.append(group.group_id)
-        update_users(members)
+        self.insertion("groups", {
+            "_id":   group.group_id,
+            "title": group.title,
+            "users": group.users,
+        })
 
     def fetch_group(self) -> dict:
         """Retrieve full group data including members and message history.
@@ -83,19 +49,26 @@ class GroupsManager:
                 and ``other_msgs``. Returns ``{"error": str}`` if the group
                 does not exist.
         """
-        groups = load_groups()
-        group  = groups.get(self.group_id)
+        group = self.lookup("groups", {"_id": self.group_id})
         if not group:
             return {"error": "Group not found"}
-        other_users = [u for u in group["users"] if u != self.user_id]
-        usernames = fetch_users(other_users)
-        host_msgs, other_msgs = read_messages(self.user_id, other_users, self.group_id)
-
+        _, group_data = list(group.items())[0]
+        member_ids = [u for u in group_data.get("users", []) if u != self.user_id]
+        usernames  = []
+        other_msgs = {}
+        for uid in member_ids:
+            user = self.lookup("users", {"_id": uid})
+            if user:
+                _, udata = list(user.items())[0]
+                usernames.append(udata.get("username", ""))
+            msgs = self.lookup("messages", {"from_user": uid, "group_id": self.group_id})
+            other_msgs.update(msgs)
+        host_msgs = self.lookup("messages", {"from_user": self.user_id, "group_id": self.group_id})
         return {
-            "group":      group,
+            "group":      group_data,
             "members":    usernames,
-            "host_msgs":  format_messages(host_msgs),
-            "other_msgs": format_messages(other_msgs),
+            "host_msgs":  self.format_messages(host_msgs),
+            "other_msgs": self.format_messages(other_msgs),
         }
 
     def fetch_notes(self) -> dict:
@@ -105,106 +78,65 @@ class GroupsManager:
             dict: Mapping of username -> {note_id -> note data dict} for
                 all qualifying notes in the group.
         """
-        notes = load_notes()
         group_notes: dict = {}
-
-        for note_id, data in notes.items():
-            note = Note(**data)
-            if note.group_id != self.group_id or note.is_reply:
+        notes = self.lookup("notes", {"group_id": self.group_id})
+        for nid, data in notes.items():
+            uid = data.get("user_id")
+            if not uid:
                 continue
-            user = fetch_users([note.user])
-            if not user:
-                continue
-            username = user[-1].username
+            user = self.lookup("users", {"_id": uid})
+            username = ""
+            if user:
+                _, udata = list(user.items())[0]
+                username = udata.get("username", "")
             if username not in group_notes:
                 group_notes[username] = {}
-            group_notes[username][note_id] = note.model_dump(exclude={"user"})
-
+            group_notes[username][nid] = data
         return group_notes
 
-    def fetch_replies(self, note_id: str) -> list[dict] | dict:
-        """Retrieve all replies for a given note, with usernames resolved.
+    def fetch_replies(self, note_id: str) -> list[dict]:
+        """Retrieve all replies for a given note.
 
         Args:
             note_id: ID of the parent note whose replies to fetch.
 
         Returns:
-            list[dict]: List of reply note dicts with ``user`` replaced by
-                the author's username.
-            dict: ``{"error": str}`` if the parent note is not found.
+            list[dict]: List of reply note dicts.
         """
-        notes = load_notes()
-        note_info = notes.get(note_id)
-        note_replies: list = []
-
-        if not note_info:
-            return {"error": "cannot find note"}
-        note = Note(**note_info)
-        reply_ids = note.replies
-        for _id in reply_ids:
-            reply_info = notes.get(_id)
-            if not reply_info:
-                continue
-            reply = Note(**reply_info)
-            reply_uid = reply.user
-            user_info = fetch_users([reply_uid])
-            if not user_info:
-                continue
-            user = user_info[-1]
-            username = user.username
-            reply.user = username
-            note_replies.append(reply.model_dump())
-
-        return note_replies
+        replies = self.lookup("notes", {"is_reply": True, "parent_note_id": note_id})
+        return list(replies.values())
 
     def fetch_highlights(self) -> dict:
         """Retrieve highlight data for all members of the group.
 
         Returns:
-            dict: Mapping of user_id -> highlights dict for every group member.
+            dict: Mapping of user_id -> {key -> color} for every group member.
         """
-        groups  = load_groups()
-        group   = groups.get(self.group_id, {})
-        members = fetch_users(group.get("users", []))
-        return {u.user_id: u.highlights for u in members}
+        group = self.lookup("groups", {"_id": self.group_id})
+        if not group:
+            return {}
+        _, group_data = list(group.items())[0]
+        result = {}
+        for uid in group_data.get("users", []):
+            self.cur.execute("SELECT key, color FROM highlights WHERE user_id = %s", (uid,))
+            result[uid] = {row[0]: row[1] for row in self.cur.fetchall()}
+        return result
 
     def remove_group(self) -> None:
-        """Delete the group and remove it from all members' records.
-
-        No-ops silently if ``group_id`` is empty or the group does not exist.
-        """
+        """Delete the group. Cascades to linked notes, messages, and devotions."""
         if not self.group_id:
             return
-        groups = load_groups()
-        group  = groups.pop(self.group_id, None)
-        if not group:
-            return
-        save_groups(groups)
-        members = fetch_users(group.get("users", []))
-        for member in members:
-            if self.group_id in member.groups:
-                member.groups.remove(self.group_id)
-        update_users(members)
+        self.delete("groups", {"_id": self.group_id})
 
     def update_group(self, group: Group) -> None:
         """Replace a group's title and member list.
-
-        Adds the group to any new members' ``groups`` list. Does not remove
-        the group from users who were removed from the member list.
 
         Args:
             group: Replacement ``Group`` instance with updated title and users.
         """
         if not self.group_id:
             return
-        groups = load_groups()
-        if self.group_id not in groups:
+        existing = self.lookup("groups", {"_id": self.group_id})
+        if not existing:
             return
-        groups[self.group_id] = {"title": group.title, "users": group.users}
-        users = fetch_users(group.users)
-        for user in users:
-            if self.group_id not in user.groups:
-                user.groups.append(self.group_id)
-        save_groups(groups)
-        update_users(users)
-
+        self.update("groups", {"title": group.title, "users": group.users}, {"_id": self.group_id})

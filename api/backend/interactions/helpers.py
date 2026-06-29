@@ -3,29 +3,33 @@ import json
 from schemas.users import User
 from schemas.message import Message
 from schemas.devotion import DevotionPlan
+import logging
+from db import DBManager as DB
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+logger = logging.getLogger(__name__)
 user_path = "data/users.json"
 main_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../..")
-
 # MARK:NOTES
 
 notes_path = "data/notes.json"
 
+class HelpNotes(DB):
+    def __init__(self):
+        super().__init__()
 
-def load_notes() -> dict:
-    path = os.path.join(main_path, notes_path)
-    if not os.path.exists(path):
-        return {}
-    try:
-        with open(path, 'r') as f:
-            return json.load(f)
-    except json.JSONDecodeError:
-        return {}
+    def load_notes(self) -> dict:
+        table = "notes"
+        notes = self.lookup(table)
+        return notes
 
-
-def save_notes(notes: dict) -> None:
-    with open(os.path.join(main_path, notes_path), 'w') as f:
-        json.dump(notes, f, indent=2)
+    def save_notes(self, notes: dict) -> None:
+        with open(os.path.join(main_path, notes_path), 'w') as f:
+            json.dump(notes, f, indent=2)
 
 # MARK:MSGS
 
@@ -221,3 +225,5 @@ def save_chime_meeting(session_id: str, meeting_id: str, meeting_data: dict) -> 
 # Expose internals so routes can batch-update sessions without extra round-trips
 load_devotions = _load_devotions
 save_devotions = _save_devotions
+
+#MARK:AGENTS
