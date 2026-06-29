@@ -22,6 +22,8 @@ export function useSessions({ user, wsRef, currentContact }) {
   const [talkingUserId,   setTalkingUserId]   = useState(null);
   const [showCreator,     setShowCreator]     = useState(false);
   const [editingSession,  setEditingSession]  = useState(null);
+  const [videoEnabled,    setVideoEnabled]    = useState(false);
+  const [videoTiles,      setVideoTiles]      = useState([]);
 
   const sessionsRef       = useRef([]);
   const activeIdRef       = useRef(null);
@@ -29,10 +31,13 @@ export function useSessions({ user, wsRef, currentContact }) {
   const chimeSession      = useRef(null);   // DefaultMeetingSession instance
   const chimeAudioEl      = useRef(null);   // <audio> element Chime binds to
   const talkStopTimer     = useRef(null);
+  const chimeObserverRef  = useRef(null);
+  const videoEnabledRef   = useRef(false);
 
-  useEffect(() => { sessionsRef.current = sessions; },         [sessions]);
-  useEffect(() => { activeIdRef.current = activeSessionId; },  [activeSessionId]);
+  useEffect(() => { sessionsRef.current = sessions; },           [sessions]);
+  useEffect(() => { activeIdRef.current = activeSessionId; },    [activeSessionId]);
   useEffect(() => { currentContactRef.current = currentContact; }, [currentContact]);
+  useEffect(() => { videoEnabledRef.current = videoEnabled; },   [videoEnabled]);
 
   const loadSessionsRef = useRef(null);
 
@@ -46,6 +51,30 @@ export function useSessions({ user, wsRef, currentContact }) {
   const closeCreator = useCallback(() => {
     setEditingSession(null);
     setShowCreator(false);
+  }, []);
+
+  // ── Video ─────────────────────────────────────────────────────────────────
+
+  const toggleVideo = useCallback(async () => {
+    if (!chimeSession.current) return;
+    if (videoEnabledRef.current) {
+      chimeSession.current.audioVideo.stopLocalVideoTile();
+      try { await chimeSession.current.audioVideo.stopVideoInput(); } catch {}
+      setVideoEnabled(false);
+    } else {
+      try {
+        const inputs = await chimeSession.current.audioVideo.listVideoInputDevices();
+        if (!inputs.length) return;
+        await chimeSession.current.audioVideo.startVideoInput(inputs[0].deviceId);
+        chimeSession.current.audioVideo.startLocalVideoTile();
+        setVideoEnabled(true);
+      } catch {}
+    }
+  }, []);
+
+  const bindVideoTile = useCallback((tileId, el) => {
+    if (!chimeSession.current || !el) return;
+    chimeSession.current.audioVideo.bindVideoElement(tileId, el);
   }, []);
 
   // ── Load ──────────────────────────────────────────────────────────────────
@@ -251,11 +280,32 @@ export function useSessions({ user, wsRef, currentContact }) {
       }
     );
 
-    // 8. Start the Chime audio session
+    // 8. Start the Chime audio/video session
     session.audioVideo.start();
+
+    // 9. Observe video tile lifecycle so the UI can render remote cameras
+    const observer = {
+      videoTileDidUpdate: (tileState) => {
+        if (!tileState.boundAttendeeId) return;
+        setVideoTiles(prev => {
+          if (prev.some(t => t.tileId === tileState.tileId)) return prev;
+          return [...prev, {
+            tileId:  tileState.tileId,
+            isLocal: tileState.localTile,
+            userId:  tileState.boundExternalUserId || '',
+          }];
+        });
+      },
+      videoTileWasRemoved: (tileId) => {
+        setVideoTiles(prev => prev.filter(t => t.tileId !== tileId));
+      },
+    };
+    chimeObserverRef.current = observer;
+    session.audioVideo.addObserver(observer);
+
     setActiveSessionId(sessionId);
 
-    // 9. Fetch fresh session data and notify existing participants so their UI updates
+    // 10. Fetch fresh session data and notify existing participants so their UI updates
     try {
       const contact   = currentContactRef.current;
       const contactId = roomKey(contact, user.user_id);
@@ -286,6 +336,20 @@ export function useSessions({ user, wsRef, currentContact }) {
     if (!sessionId || !user) return;
 
     clearTimeout(talkStopTimer.current);
+
+    // Stop video if active
+    if (videoEnabledRef.current && chimeSession.current) {
+      try { chimeSession.current.audioVideo.stopLocalVideoTile(); } catch {}
+      try { await chimeSession.current.audioVideo.stopVideoInput(); } catch {}
+    }
+
+    // Remove video tile observer and reset video state
+    if (chimeObserverRef.current && chimeSession.current) {
+      try { chimeSession.current.audioVideo.removeObserver(chimeObserverRef.current); } catch {}
+      chimeObserverRef.current = null;
+    }
+    setVideoEnabled(false);
+    setVideoTiles([]);
 
     // Stop the Chime session
     if (chimeSession.current) {
@@ -367,5 +431,6 @@ export function useSessions({ user, wsRef, currentContact }) {
     loadSessions, createSession, updateSession, deleteSession,
     joinSession, leaveSession,
     handleSignal,
+    videoEnabled, videoTiles, toggleVideo, bindVideoTile,
   };
 }

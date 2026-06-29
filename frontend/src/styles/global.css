@@ -30,6 +30,8 @@
   --bib-divider:     rgba(200,134,26,0.18);
   --bib-ch-border:   rgba(200,134,26,0.22);
   --bib-ch-text:     rgba(244,228,193,0.55);
+  --bible-bg:        #231610;
+  --bible-text:      #E8D9BB;
 }
 
 /* ── Light mode overrides ── */
@@ -48,6 +50,8 @@
   --bib-divider:     rgba(130,80,15,0.2);
   --bib-ch-border:   rgba(130,80,15,0.28);
   --bib-ch-text:     rgba(30,18,8,0.6);
+  --bible-bg:        #F4E4C1;
+  --bible-text:      #1A100A;
 }
 
 /* ── Reset & base ── */
@@ -274,14 +278,15 @@ body {
 
 /* ── Chapter card (parchment look — Ant Card overridden) ── */
 .chapter-card.ant-card {
-  background: var(--parchment) !important;
-  color: var(--ink) !important;
+  background: var(--bible-bg) !important;
+  color: var(--bible-text) !important;
   border-radius: 14px !important;
   border: none !important;
   box-shadow: 4px 6px 18px rgba(0,0,0,0.55), 14px 22px 60px rgba(0,0,0,0.38);
   position: relative;
   overflow: hidden;
   animation: fadeUp 0.45s ease both;
+  transition: background 0.25s ease, color 0.25s ease;
 }
 
 .chapter-card.ant-card::before {
@@ -295,8 +300,14 @@ body {
   z-index: 0;
 }
 
+[data-theme="dark"] .chapter-card.ant-card::before {
+  background:
+    radial-gradient(ellipse at 8% 6%, rgba(180,120,40,0.12) 0%, transparent 48%),
+    radial-gradient(ellipse at 94% 94%, rgba(80,40,10,0.15) 0%, transparent 45%);
+}
+
 .chapter-card .ant-card-body {
-  color: var(--ink) !important;
+  color: var(--bible-text) !important;
   position: relative;
   z-index: 1;
 }
@@ -314,8 +325,9 @@ body {
   font-family: 'Playfair Display', serif;
   font-size: clamp(1.7rem, 4vw, 2.5rem);
   font-weight: 700;
-  color: var(--ink);
+  color: var(--bible-text);
   line-height: 1.15;
+  transition: color 0.25s ease;
 }
 
 .card-section-head {
@@ -332,8 +344,9 @@ body {
   font-family: 'Lora', serif;
   font-size: var(--bible-font-size, 1.04rem);
   line-height: var(--bible-line-height, 2.15);
-  color: #28160a;
+  color: var(--bible-text);
   margin-top: 1.5rem;
+  transition: color 0.25s ease;
 }
 
 .section-head {
@@ -918,15 +931,32 @@ body {
   background: transparent;
   border: none;
   outline: none;
-  resize: none;
   font-family: 'Lora', serif;
   font-size: 0.9rem;
   color: rgba(244,228,193,0.72);
   line-height: 1.88;
   padding: 0;
   min-height: 220px;
+  word-break: break-word;
 }
-.note-body-textarea::placeholder { color: rgba(244,228,193,0.18); }
+.note-body-textarea:empty::before {
+  content: attr(data-placeholder);
+  color: rgba(244,228,193,0.18);
+  pointer-events: none;
+  display: block;
+}
+
+/* Rendered note body (NoteDetail view) */
+.note-rendered-body mark {
+  background: rgba(200,134,26,0.35);
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+.note-rendered-body b,
+.note-rendered-body strong { color: rgba(244,228,193,0.95); }
+.note-rendered-body div,
+.note-rendered-body p { margin: 0; }
 
 /* ── Verse selector widget (3 columns) ── */
 .verse-sel-widget {

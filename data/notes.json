@@ -18,7 +18,8 @@
       ]
     ],
     "replies": [],
-    "is_reply": false
+    "is_reply": false,
+    "timestamp": "2026-05-11 13:44:58.153845"
   },
   "288c95e1-eb4f-4532-8256-845168b077d4": {
     "title": "Struggle with Humility",
@@ -31,7 +32,8 @@
       []
     ],
     "replies": [],
-    "is_reply": false
+    "is_reply": false,
+    "timestamp": "2026-05-11 13:44:58.153882"
   },
   "6aa3b9a5-9986-4fd1-9e84-e5dee8fcdcb8": {
     "title": "'Holy and Blameless'",
@@ -52,7 +54,8 @@
       ]
     ],
     "replies": [],
-    "is_reply": false
+    "is_reply": false,
+    "timestamp": "2026-05-11 13:44:58.153890"
   },
   "9ca0fb17-e96c-4d10-862e-ab32c61c930b": {
     "title": "'greatness of his power toward us who believe - the same power that rose Jesus from the dead'",
@@ -73,7 +76,8 @@
       ]
     ],
     "replies": [],
-    "is_reply": false
+    "is_reply": false,
+    "timestamp": "2026-05-11 13:44:58.153967"
   },
   "cbe834dd-d717-4e5e-8a86-68084a22305f": {
     "title": "Thursday 5/14 Devotions Sharing",
@@ -88,14 +92,16 @@
     "replies": [
       "4c097db8-d180-4dad-8fa4-429b514ec289"
     ],
-    "is_reply": false
+    "is_reply": false,
+    "timestamp": "2026-05-14 13:44:58.153984"
   },
   "fcd8e8a5-d260-48a4-baa8-3a479b583e6d": {
-    "title": "Maintaining the Faith as a Daily Practice",
     "user": "60aa9553-b147-4e09-9a6e-b3e3abcf57f0",
+    "group_id": "",
+    "replies": [],
+    "title": "Maintaining the Faith as a Daily Practice",
     "text": "2 Timothy 1:7 is a verse that I seem to always be reminding myself of lately. One that speaks to my dreams, telling me to never ever leave behind the foundation of my purpose when chasing after something bigger than myself, for my dreams will be left behind as well.",
     "public": false,
-    "group_id": "",
     "verses": [
       [
         "2 Timothy",
@@ -108,8 +114,7 @@
         7
       ]
     ],
-    "replies": [],
-    "is_reply": false
+    "timestamp": "2026-05-11 13:44:58.153990"
   },
   "367134b0-6d26-4caa-b75d-0a38542c0305": {
     "title": "Stubbornness in our Ways",
@@ -130,7 +135,8 @@
       ]
     ],
     "replies": [],
-    "is_reply": false
+    "is_reply": false,
+    "timestamp": "2026-05-11 13:44:58.154006"
   },
   "4c097db8-d180-4dad-8fa4-429b514ec289": {
     "title": "",
@@ -143,14 +149,15 @@
       []
     ],
     "replies": [],
-    "is_reply": true
+    "is_reply": true,
+    "timestamp": "2026-05-11 13:44:58.154011"
   },
   "f720aea5-f7eb-430f-9ffa-6dbe458db734": {
     "title": "May, 15, 2026 Notes",
     "user": "2605d0b3-5570-4f12-b15f-a9d7c398e63d",
     "text": "Lord, this evening you remind me and guide me towards a truth that I have long known as head knowledge, but have yet to truly surrender to you; attention seeking \u2013 performance. Forgive me Lord for where I try to garner attention for myself and seat myself at the throne of my life, and the desire for others to put me on their thrones. Cleanse me of this sin and I thank you for this conviction that you\u2019ve granted me to let go. To no longer derive my faith and my desire to serve you do to an underlying motive that is to serve myself. I thank you for this conviction. I thank you for your righteousness and the death and resurrection of your son, Jesus Christ, that has made it possible that I could call myself a child of God. Truly, I shall walk not by my own means, but by yours that I would practice my righteousness in secret. For you know all things and will be watching. So truly, why else does it matter that my neighbor sees my actions. I shall let this go to you Lord. Continue to convict and spur my faith and spirit in the direction of your cross, that I would be found serving in secret and for your stead.",
     "public": true,
-    "group_id": "",
+    "group_id": "b7fce9fc-3658-42c1-9e03-dde6c6b80c51",
     "verses": [
       [
         "Matthew",
@@ -163,8 +170,11 @@
         4
       ]
     ],
-    "replies": [],
-    "is_reply": false
+    "replies": [
+      "3063eb65-9d11-430a-9fb9-45a0a2b057af"
+    ],
+    "is_reply": false,
+    "timestamp": "2026-05-15 13:44:58.154219"
   },
   "7b575dc8-fb70-4e54-89f5-577624435d8d": {
     "title": "The Israelites as a Representation",
@@ -177,7 +187,8 @@
       []
     ],
     "replies": [],
-    "is_reply": false
+    "is_reply": false,
+    "timestamp": "2026-05-11 13:44:58.154226"
   },
   "51c754e1-4166-414f-b2a5-5bf8a7ada773": {
     "title": "Friday 5/15 Ephesians 3",
@@ -192,7 +203,8 @@
     "replies": [
       "48b14822-5988-44fe-ae67-a9ba0fb7fb1e"
     ],
-    "is_reply": false
+    "is_reply": false,
+    "timestamp": "2026-05-15 13:44:58.154243"
   },
   "48b14822-5988-44fe-ae67-a9ba0fb7fb1e": {
     "title": "",
@@ -205,7 +217,8 @@
       []
     ],
     "replies": [],
-    "is_reply": true
+    "is_reply": true,
+    "timestamp": "2026-05-11 13:44:58.154247"
   },
   "44eb5260-5d02-4984-9e5d-213df2b38e62": {
     "title": "Sunday Service Highlights",
@@ -226,7 +239,8 @@
       ]
     ],
     "replies": [],
-    "is_reply": false
+    "is_reply": false,
+    "timestamp": "2026-05-11 13:44:58.154264"
   },
   "767933b6-5901-4484-b499-89e88011366e": {
     "title": "Gods Perfect Love",
@@ -247,6 +261,338 @@
       ]
     ],
     "replies": [],
-    "is_reply": false
+    "is_reply": false,
+    "timestamp": "2026-05-11 13:44:58.154270"
+  },
+  "1ed2585f-690c-4b45-96dd-4f702286d875": {
+    "user": "60aa9553-b147-4e09-9a6e-b3e3abcf57f0",
+    "group_id": "b7fce9fc-3658-42c1-9e03-dde6c6b80c51",
+    "replies": [],
+    "title": "The Image of God",
+    "text": "Just wanted to share a reminder that I had earlier today, 5/20/26,  during one of the Sunday service messages, that if we are able to see ourselves in the midst of the common civilian of this day, and see that our lives are not too far different, we should consider the possibility that we lack the seriousness of our faith. Following the Lord in seriousness and genuine devotion yields immeasurable results, setting us aside from worldly ways entirely. To me, I am encouraged by this to always put myself in retrospect, who I am, what I desire, and how I behave, that I may always be taking my faith as serious as possible.",
+    "public": true,
+    "verses": [
+      [],
+      []
+    ]
+  },
+  "3063eb65-9d11-430a-9fb9-45a0a2b057af": {
+    "title": "",
+    "user": "60aa9553-b147-4e09-9a6e-b3e3abcf57f0",
+    "text": "Super encouraged by this, sumthing I\u2019ve also seen myself struggle with time and time again. Will be praying for you brother \ud83e\udee1",
+    "public": true,
+    "group_id": "b7fce9fc-3658-42c1-9e03-dde6c6b80c51",
+    "verses": [
+      [],
+      []
+    ],
+    "replies": [],
+    "is_reply": true,
+    "timestamp": "2026-05-21 07:16:25.237188"
+  },
+  "1eed13ba-8c54-4163-aa34-f24ccabda02b": {
+    "title": "Zach 4:10",
+    "user": "ffcc7ee2-da3f-4b0f-acab-3b963d701566",
+    "text": "Felt this matches where you are at... u made this and released it to the world (or initially a small subset of your world).  Rejoice in that. - it's not ego it's GOD saying \"well done my good and faithful son\"",
+    "public": false,
+    "group_id": "",
+    "verses": [
+      [
+        "Zechariah",
+        4,
+        10
+      ],
+      [
+        "Zechariah",
+        4,
+        10
+      ]
+    ],
+    "replies": [],
+    "is_reply": false,
+    "timestamp": "2026-05-21 07:16:25.237188"
+  },
+  "bff3d09b-6b07-431e-bb23-c808ec5d3c5b": {
+    "title": "God\u2019s Absoluteness",
+    "user": "60aa9553-b147-4e09-9a6e-b3e3abcf57f0",
+    "text": "Just struck by Gods pursuit of His mission that no matter our doubt, our sin, our fears, God is always going to carry out His plans, that mankind may all know God. I want to remind myself of this that I have not lost my purpose in Gods sight because of my sin, doubt, or fear, but in fact it is part of my purpose that I feel these things, yet still decide to follow in the lords footsteps",
+    "public": true,
+    "group_id": "72ad3b30-bb59-44d4-bdba-72baa85392af",
+    "verses": [
+      [
+        "Exodus",
+        14,
+        20
+      ],
+      [
+        "Exodus",
+        14,
+        20
+      ]
+    ],
+    "replies": [],
+    "is_reply": false,
+    "timestamp": "2026-05-21 07:16:25.237188"
+  },
+  "e2913f3d-e2bf-4b58-88a8-249e60000518": {
+    "title": "Dead Works",
+    "user": "60aa9553-b147-4e09-9a6e-b3e3abcf57f0",
+    "text": "Just wanted to take this verse as a reminder to myself that without faith in my soul, without the seeking of God's guidance, all of my works mean nothing to God. Yes, God's mission is that man may all know and love God, but that cannot happen if that mission becomes a priority over knowing and loving God myself. I just want to pray for discipline and a focused mind that I can keep this word engrained in my mind, being full in prayer and word.",
+    "public": true,
+    "group_id": "b7fce9fc-3658-42c1-9e03-dde6c6b80c51",
+    "verses": [
+      [
+        "Matthew",
+        7,
+        22
+      ]
+    ],
+    "replies": [],
+    "is_reply": false,
+    "timestamp": "2026-05-30 05:52:42.120403"
+  },
+  "97598a4b-a720-4abf-987d-68d81c23dc0e": {
+    "user": "60aa9553-b147-4e09-9a6e-b3e3abcf57f0",
+    "group_id": "",
+    "replies": [],
+    "title": "Struggle With Faith",
+    "text": "Tonight I\u2019ve noticed a really serious issue in my walk with Jesus. Since I started this project, I\u2019ve been more proud of myself that I am finally taking a leap forward and being a part of Gods mission for us. However, I\u2019ve been letting that mission take me away from nurturing my own faith in Christ. Instead of learning to humble myself, keep my tongue quiet, and respectful, I judge, gossip, lust, and I\u2019ve distracted myself from praying and studying Gods word. I just want to learn to be more focused on the things more important than just my mission for God.",
+    "public": false,
+    "verses": [
+      [
+        "Romans",
+        7,
+        15
+      ]
+    ],
+    "timestamp": "2026-05-30 09:15:19.596222"
+  },
+  "518dc156-9ecd-4a98-ac66-e9aa62a1d7b1": {
+    "user": "60aa9553-b147-4e09-9a6e-b3e3abcf57f0",
+    "group_id": "",
+    "replies": [],
+    "title": "Sunday Service - 05/31",
+    "text": "Out of the fear of what may come to Israel, Saul disobeys the Lord's timing. Samuel responds in disappointment, \"what have you done?\" I think if I put myself in Saul's shoes, in a moment of pressure, I would see myself justifying my impatience over God's command through the intense circumstances such as this. Even in my own situations in life, especially at work, I tend to make excuses for my sin. I gossip about others, talk down on others, and yet I justify those behaviors through me just being human who makes mistakes, or thinking that my words aren't as bad as they may seem toward others. \n\nRealizing this today, has made encouraged to be more humble both internally and externally about my shortcomings in God's sight. To not push myself in a blameless state, but to be true in blame, that yes I do sin and it is not something that is to go without remorse or reflection. My sin is serious, and impactful, and must see a genuine repentance. \n\nIt is very easy for me to get prideful and defensive in my faults, but it is so crucial that I work on taking accountability before the Lord and before those that I impact that I am in fault. My tendencies to gossip about others at work, is something that I need to bring before God and others in humility and genuine repentance. Through reflection of this, the most complex, and deep form of connection with God is being in constant self-awareness of the seriousness of my sin, and my incompleteness, taking it and achieving gratitude that God has enabled us to still live our lives with Him, and removing myself from such sin to the best of my ability. While prayer and study is crucial to the building of my faith, it is carrying that over into action that puts this eternal relationship fully in motion.",
+    "public": false,
+    "verses": [
+      [
+        "1 Samuel",
+        13,
+        11
+      ],
+      [
+        "1 Samuel",
+        13,
+        9
+      ],
+      [
+        "1 Samuel",
+        15,
+        24
+      ]
+    ],
+    "timestamp": "2026-05-31 19:42:16.798760"
+  },
+  "88cf2b4d-1874-48d1-a644-27e7a90890e3": {
+    "user": "60aa9553-b147-4e09-9a6e-b3e3abcf57f0",
+    "group_id": "fd7fbf8b-d2cf-4fe6-ade5-d227c9d1da66",
+    "replies": [],
+    "title": "To Want God More than Anything",
+    "text": "Just want to keep reminding myself of what's most important in my life, amidst all the other things going on around me. Yes, I could be using my skills to push the greater good in God's sight, I could speak in light of Gods word toward others, and study God's word, but none of this means anything if I myself don't nurture and desire a personal, complex relationship with Him. In the gospels, the Pharisees, who devoted their entire lives to preaching the gospel were left behind in God's kingdom solely because God does not want people who just want to do good by Him, He wants people who want Him back and just as much. The idea of fanning into flame the gift of God is the practice of daily connection with the Lord, one that requires humility, gratitude, and respect, and when simple practice becomes a ritual, me and many others testify the transformation that occurs.",
+    "public": true,
+    "verses": [
+      [
+        "2 Timothy",
+        1,
+        6
+      ],
+      [
+        "2 Timothy",
+        1,
+        7
+      ],
+      [
+        "2 Timothy",
+        1,
+        8
+      ]
+    ],
+    "timestamp": "2026-06-01 08:05:38.478152"
+  },
+  "031f4a0a-9fe3-44fe-a747-d794c61f53eb": {
+    "title": "6/1/26 Hebrews 4",
+    "user": "3abbfaad-6ace-40a7-8e97-ec399ee350e7",
+    "text": "Hey guys, just wanted to share that I was encouraged reading this chapter. I was reminded by the character of God, that while he is holy and has a high holy standard for us, at the same time he is gracious and merciful. These two aspects of God encourage me to renew my commitment to strive to live in obedience to him. Wanted to recommit to my devotions and sharing a note here. Had a time to thank God for sending his son, for his mercy and grace over my life.",
+    "public": true,
+    "group_id": "b7fce9fc-3658-42c1-9e03-dde6c6b80c51",
+    "verses": [],
+    "replies": [],
+    "is_reply": false,
+    "timestamp": "2026-06-01 18:23:12.805899"
+  },
+  "ee2dd969-fe3a-4e7f-a7b7-c570673952f0": {
+    "title": "Confidence in Uncertainty",
+    "user": "60aa9553-b147-4e09-9a6e-b3e3abcf57f0",
+    "text": "lately I have been very anxious and worried for the outcome of my current classes. Although it is indeed a shallow and privileged worry, it burdens my heart with stress. If I fail to meet the goals I have this quarter it may determine the outcome f my transfer results which then has a bigger impact on my future. I am feeling the weight of expectation from my father as well as myself to hold myself to a high standard. Reading on Esther's fearful events as Queen of Persia, and the uncertain future that is to befall her gives me something to relate to. She is faced with a terrifying possibility which could result in incredible casualty of her people, but instead of panicking, running away, she decides to face these transgressions whether or not it means her death. On top of that she does this with courage and confidence saying, \"if I perish, I perish.\" (Esther 4:16) So in the end, through Esther's bravery courage, and confidence in the Lord's grace, she saves herself and her people. (Esther 8:11) I pray that I can disciple myself to lean on God in this way, o face my uncertainty in this way, and by God's grace trust His ways with my future in His hands.",
+    "public": false,
+    "group_id": "",
+    "verses": [
+      [
+        "Esther",
+        4,
+        15
+      ],
+      [
+        "Esther",
+        8,
+        11
+      ]
+    ],
+    "replies": [],
+    "is_reply": false,
+    "timestamp": "2026-06-01 22:26:38.276167"
+  },
+  "3de3f7f2-9dac-4154-80b0-e18c8ea4d0a0": {
+    "title": "6/2/26",
+    "user": "3abbfaad-6ace-40a7-8e97-ec399ee350e7",
+    "text": "was struck by this verse from Psalm 111:10, The fear of the Lord is the beginning of wisdom; all those who practice it have a good understanding...his praise endures forever! I noticed that the fear of the Lord is not something you have or don't have but something we need to practice. Continual conscience reminders of who God is and to submit to him out of reverence is needed, and how we grow in wisdom. I thought about how in my continual battle with temptation, fear of the Lord should be the primary motivation in continuing to pray, confess and to fight, not to prove myself or others,",
+    "public": true,
+    "group_id": "b7fce9fc-3658-42c1-9e03-dde6c6b80c51",
+    "verses": [
+      [
+        "Psalms",
+        111,
+        10
+      ]
+    ],
+    "replies": [],
+    "is_reply": false,
+    "timestamp": "2026-06-02 18:42:37.220037"
+  },
+  "3ebfec6f-ecfc-4ddf-89e0-57c41078aa7a": {
+    "title": "6/3/26 - measure of my days",
+    "user": "3abbfaad-6ace-40a7-8e97-ec399ee350e7",
+    "text": "Mom is staying over at our place, and mentioned that my grandpa has dementia now. I felt sad knowing I wouldn't be able to connect as much with him, and just thinking about aging and death in general. I thought of this verse which was shared in our last Sunday Service \"oh Lord make me know my end and what is the measure of my days, let me know how fleeting I am. When I realize my life is but a fleeting mist, I feel like what is most important in life comes into sharp focus, loving God and loving others, so thats my takeaway from today",
+    "public": true,
+    "group_id": "b7fce9fc-3658-42c1-9e03-dde6c6b80c51",
+    "verses": [
+      [
+        "Psalms",
+        39,
+        4
+      ]
+    ],
+    "replies": [
+      "99889779-e7f9-458e-8b3c-c11ea63955b6"
+    ],
+    "is_reply": false,
+    "timestamp": "2026-06-03 16:21:12.844982"
+  },
+  "0cb941d3-cded-42ab-b1cc-7477d40382af": {
+    "title": "6/4 - takeaway from Hebrews 5-7, theme of Jesus as high priest",
+    "user": "3abbfaad-6ace-40a7-8e97-ec399ee350e7",
+    "text": "One big theme from these three chapters is about Jesus as our great high priest forever. In the OT the high priest was the main priest who was a \"go-between\" for the people and God. Through Jesus we have a great high priest forever, who only needed to make one sacrifice. Different parts emphasized his eternal unchanging nature in his role to basically help us, or make it possible for us to relate to God. \n\nJesus is the concrete evidence of God's amazing promises to us to bless us ... Hebrews 6:19 says We have this as a sure and steadfast anchor of the soul, a hope that enters into the inner place behind the curtain, where Jesus has gone as a forerunner on our behalf...\n\nIt hit me afresh that everything that Jesus did and went through, it was all part of God's plan, and he did it for us, he did it for me, that we may have hope.\n\n7:25 says he is able to save to the uttermost those who draw near to God through him, since he always lives to make intercession for them. \n\nThis verse in particular encouraged me, sometimes I have my doubts in my battles with sin, or think that God is far off or has turned away. But here it says Jesus is in heaven and lives to make intercession for me. He is actively helping me still, I just need to draw near to him in faith.\n\nThis morning I had a time to really approach God and ask for his help and express my dependence on him again. I find that my temptations are ever present, the sins of my past always haunting me and my mind, and I need Jesus as my priest very much. Praying this morning, definitely gave me a renewed sense of comfort and strength, and I'm reminded that I need to continue to come to Him like this in my times of need, specifically when I feel tempted.",
+    "public": true,
+    "group_id": "b7fce9fc-3658-42c1-9e03-dde6c6b80c51",
+    "verses": [],
+    "replies": [],
+    "is_reply": false,
+    "timestamp": "2026-06-04 17:26:34.262205"
+  },
+  "d1ab505a-bd85-4062-b84c-8ff1e9779543": {
+    "title": "Paul's Way of Life",
+    "user": "60aa9553-b147-4e09-9a6e-b3e3abcf57f0",
+    "text": "Just struck by Paul's way if life and his perspective of what himself and the Gospel is. He identifies these two as separate from man. Paul's calling and new self is no longer intertwined with the ways of man, because the gospel with which he has been redeemed through is not of man. So the idea that I bring from this is that if we are all redeemed through this gospel, beyond the ways of man, why is it that we remain complacent in our old ways, even in the slightest? We are not just called to believe in Christ, but live in Christ, that is what true belief is. Belief as strong as that in all paths that it could be interpreted should have an impact big enough to transform who you are from the inside out and if it hasn't then there is reason to question that belief. I want to pray that I continue to root out my old ways, and through my brothers I can confess, and repent with them that I may be transformed in due time with the Lord.",
+    "public": true,
+    "group_id": "b7fce9fc-3658-42c1-9e03-dde6c6b80c51",
+    "verses": [
+      [
+        "Galatians",
+        1,
+        10
+      ],
+      [
+        "Galatians",
+        1,
+        11
+      ]
+    ],
+    "replies": [],
+    "is_reply": false,
+    "timestamp": "2026-06-04 17:41:42.421278"
+  },
+  "99889779-e7f9-458e-8b3c-c11ea63955b6": {
+    "title": "",
+    "user": "60aa9553-b147-4e09-9a6e-b3e3abcf57f0",
+    "text": "sorry to hear this news Tim. Will keep this in my prayers, and for your ever-growing strength in Christ.",
+    "public": true,
+    "group_id": "b7fce9fc-3658-42c1-9e03-dde6c6b80c51",
+    "verses": [
+      [],
+      []
+    ],
+    "replies": [],
+    "is_reply": true,
+    "timestamp": "2026-06-04 17:42:47.355605"
+  },
+  "335e0498-133c-4c2b-b1a0-6a1bac867b6b": {
+    "user": "60aa9553-b147-4e09-9a6e-b3e3abcf57f0",
+    "group_id": "",
+    "replies": [],
+    "title": "Resting in the Spirit - Overwhelmed",
+    "text": "- Faith is realizing and mebracing hte idea that reality is in it's true form, accepting it, and being confident that this reality is not all that God has for our lives. There is so much more than what is that burdens our lives. Our obligations, responsibilities, standards/expectations, are are real and a part of our lives, but these are not what God has for us to hope for. Faith in Him is having trust and awaiting for Him to reveal greatness within us and in Him who has called us. In my moments of stress and being overwhelmed, I want to remind myself to take more time out of my week to rest in spirit. To take time to really thank God and hope on His plans for me and for the people that are and will be around me. \n\nWhat does that resting look like?\nPrayer, being in Gods word daily, and connecting with people around me in a spiritual context are all ways of resting with the Lord. It is an important time for me to renew my hearts desires, and ensure that I do not fall into the lies of the world and what it tells me to uphold to. I notice that during my prayers and the time I spend to be in Gods word, I tend to awlays still worry about the things going on in my life. Im always on the edge, still overwhelmed, never actually resting, because in the time that I take to rest, I still worry, I am still overwhelmed, never trusting, never clearing my mind. I cannot rest if I cannot surrender these things going on in my life. \n\nOne more quick note is to be more mindful about my pride. As I was watching love island with juliet yesterday I notice myself constantly looking down on the people there because I am somehow morally higher than they are. Does Jesus looks down on the sinful? Am I not sinful myself just as much as they are? No. I am just as much of a person, a victim of sin as the people that I looked down on before. So how should I think towards this group of people. Those who I would look down in my spiritual immaturity? I am to be clear of mind in my opinions, remove myself from comparison, and simply have faith that God can speak to these people.\n\nIn the midst of our struggles, we are always asking questions of Gods ultimate plans. We questions God and has intentions, and expect answers as quick as possible, but sometimes God does not respond with something grand and new. Sometimes, the answer is just Him. The answer is knowing that Gods presence is enough.",
+    "public": false,
+    "verses": [
+      [
+        "Psalms",
+        131,
+        1
+      ],
+      [
+        "Psalms",
+        23,
+        4
+      ]
+    ],
+    "timestamp": "2026-06-07 18:17:40.202301"
+  },
+  "3dff5f56-876e-4751-8f5e-34f028e98832": {
+    "title": "Dealing with Failure",
+    "user": "60aa9553-b147-4e09-9a6e-b3e3abcf57f0",
+    "text": "Lately I\u2019ve been feeling very overwhelmed by my failures and it has caused me to want to take a step back and reflect. I have been walking like my path is already at its fullest, all I have to do is follow. As if my personal growth has somehow met its peak. The recent events of my life have shown me that I am completely wrong. My lack of discipline and organization has brought multiple failures, and it has made me fearful. However, reading on Nehemiah\u2019s grief over his people, his humility in his sin, reminds me of all there is for me to keep going. God\u2019s consequence and might isn\u2019t just sound reasoning for our disobedience. It opens eyes and hearts to what is left for us to do. My failure has brought me focus and more determination to deepen my faith, teach myself to organize my life, and make the absolute most of what God has given to me.",
+    "public": true,
+    "group_id": "b7fce9fc-3658-42c1-9e03-dde6c6b80c51",
+    "verses": [],
+    "replies": [],
+    "is_reply": false,
+    "timestamp": "2026-06-09 22:18:49.493721"
+  },
+  "38c318b1-67dd-40fd-ba93-ac2c000603e7": {
+    "title": "Praying Thanks and for Guidance",
+    "user": "60aa9553-b147-4e09-9a6e-b3e3abcf57f0",
+    "text": "Dear Father,<div>Today I just wanted to present you with my <b><font color=\"#c8861a\">gratitude</font></b>. These past couple months have felt like I have been <font color=\"#b07ee0\" style=\"\">guided by your wisdom</font>. Through my passions, and through my mistakes you have <font color=\"#b07ee0\">enabled me to be something bigger,</font> one small event of my life at a time. Through your workings, I have noticed myself <font color=\"#6dbf7e\">reflect failure into perseverance and determination, transform sin into truer repentance, and replace worldly, selfish desire into humble servanthood for your kingdom</font>. I am speechless at how grateful I am to be cared for by you in these ways, and I just pray that I continue to accept this guidance each and every day following this. <font color=\"#e07070\">Root out my faults and shortcomings, give me burdens and trials </font>that I may be transformed into the kind of man that you need, that I may be capable of fulfilling the plans you have for my life. I apologize, Lord, for my recent disobediences, my struggle with lust and lack of control over the things I say. I pray that these things too can be attended that I may be fuller in Spirit, closer to your love.&nbsp;</div><div><br></div><div>Thank you Lord,</div><div><font color=\"#7eb8e0\">Amen.&nbsp;&nbsp;</font></div>",
+    "public": true,
+    "group_id": "b7fce9fc-3658-42c1-9e03-dde6c6b80c51",
+    "verses": [],
+    "replies": [],
+    "is_reply": false,
+    "timestamp": "2026-06-11 20:52:06.254443"
+  },
+  "5fb572b4-2dd8-4afc-a5cc-abad130a2112": {
+    "title": "Proclaiming the Gospel Requires Living in It",
+    "user": "60aa9553-b147-4e09-9a6e-b3e3abcf57f0",
+    "text": "I just wanted to highlight and pray on this verse that I may live out the gospel as it is written by Paul. One of my greatest fears is the fear of not feeling worthy of proclaiming the gospel because I myself do not strive to live it out. My life, my choices, my thoughts must all be in constant regards to the truth of what is told, though I struggle, the people around me must know that it is my will not to live in the ways of what Paul refers as the Gentiles. It is my obligation after knowing the truth that I set aside my greed, my lust, and my desire to know about the lives of other people, so that I may live in purity, and be <b><font color=\"#c8861a\">worthy of proclaiming the greatness of God</font></b>.&nbsp;",
+    "public": true,
+    "group_id": "b7fce9fc-3658-42c1-9e03-dde6c6b80c51",
+    "verses": [
+      [
+        "Galatians",
+        2,
+        14
+      ]
+    ],
+    "replies": [],
+    "is_reply": false,
+    "timestamp": "2026-06-14 21:39:34.456805"
   }
 }

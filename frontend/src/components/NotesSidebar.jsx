@@ -16,7 +16,46 @@ function validVerses(verses) {
   if (!Array.isArray(verses)) return [];
   return verses.filter(v => Array.isArray(v) && v.length >= 3 && v[0]);
 }
+
+// Strip HTML tags to produce a plain-text preview
+function stripHtml(html) {
+  if (!html) return '';
+  const el = document.createElement('div');
+  el.innerHTML = html;
+  return el.textContent || '';
+}
+
 import VerseSelector from './VerseSelector.jsx';
+
+const TEXT_COLORS = ['#c8861a', '#e07070', '#6dbf7e', '#7eb8e0', '#b07ee0', '#f4e4c1'];
+
+// Rounded formatting widget button — uses onMouseDown so it never steals focus
+// from the contentEditable body, preserving the user's text selection.
+function FmtBtn({ children, title, onMouseDown }) {
+  return (
+    <button
+      title={title}
+      onMouseDown={onMouseDown}
+      style={{
+        background: 'rgba(200,134,26,0.08)',
+        border: '1px solid rgba(200,134,26,0.22)',
+        borderRadius: 20,
+        color: 'rgba(244,228,193,0.65)',
+        cursor: 'pointer',
+        fontSize: '0.7rem',
+        padding: '0.2rem 0.62rem',
+        lineHeight: 1.3,
+        transition: 'background 0.15s, border-color 0.15s, color 0.15s',
+        userSelect: 'none',
+        flexShrink: 0,
+      }}
+      onMouseEnter={e => { e.currentTarget.style.background = 'rgba(200,134,26,0.2)'; e.currentTarget.style.borderColor = 'rgba(200,134,26,0.5)'; e.currentTarget.style.color = 'var(--gold)'; }}
+      onMouseLeave={e => { e.currentTarget.style.background = 'rgba(200,134,26,0.08)'; e.currentTarget.style.borderColor = 'rgba(200,134,26,0.22)'; e.currentTarget.style.color = 'rgba(244,228,193,0.65)'; }}
+    >
+      {children}
+    </button>
+  );
+}
 
 const { TextArea } = Input;
 const { Text, Title } = Typography;
@@ -24,16 +63,24 @@ const { Text, Title } = Typography;
 // ── Note editor (Apple Notes style) ──────────────────────────────────────────
 
 function NoteEditor({ note, noteId, user, currentGroupId, books, chapterCount, verseCount, onSave, onBack }) {
-  const [titleVal,  setTitleVal]  = useState(note?.title || '');
-  const [bodyVal,   setBodyVal]   = useState(note?.text  || '');
-  const [isPublic,  setIsPublic]  = useState(!noteId ? true : (note?.public || false));
-  const [verseList, setVerseList] = useState(() => {
+  const [titleVal,   setTitleVal]   = useState(note?.title || '');
+  const [isPublic,   setIsPublic]   = useState(!noteId ? true : (note?.public || false));
+  const [verseList,  setVerseList]  = useState(() => {
     if (!note?.verses) return [];
     return note.verses
       .filter(v => Array.isArray(v) && v.length >= 3 && v[0])
       .map(([b, c, v]) => ({ book: b, chapter: c, verse: v }));
   });
-  const titleRef = useRef(null);
+  const [showColors, setShowColors] = useState(false);
+
+  const titleRef    = useRef(null);
+  const bodyRef     = useRef(null);
+  const colorWrapRef = useRef(null);
+
+  // Seed the contentEditable body with the existing HTML once on mount
+  useEffect(() => {
+    if (bodyRef.current) bodyRef.current.innerHTML = note?.text || '';
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-resize title textarea
   useEffect(() => {
@@ -45,6 +92,14 @@ function NoteEditor({ note, noteId, user, currentGroupId, books, chapterCount, v
 
   useEffect(() => { titleRef.current?.focus(); }, []);
 
+  // Close color picker on outside mousedown
+  useEffect(() => {
+    if (!showColors) return;
+    const close = (e) => { if (!colorWrapRef.current?.contains(e.target)) setShowColors(false); };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [showColors]);
+
   const addVerse    = (book, chapter, verse) => setVerseList(p => [...p, { book, chapter, verse }]);
   const removeVerse = (i) => setVerseList(p => p.filter((_, j) => j !== i));
 
@@ -54,32 +109,55 @@ function NoteEditor({ note, noteId, user, currentGroupId, books, chapterCount, v
       group_id: isPublic && currentGroupId ? currentGroupId : '',
       replies:  note?.replies || [],
       title:    titleVal.trim() || 'Untitled',
-      text:     bodyVal.trim(),
+      text:     bodyRef.current?.innerHTML || '',
       public:   isPublic,
       verses:   verseList.map(v => [v.book, v.chapter, v.verse]),
     }, noteId || null);
     onBack();
   };
 
+  // execCommand-based formatting (e.preventDefault keeps selection alive)
+  const fmt = (cmd, val = null) => (e) => {
+    e.preventDefault();
+    bodyRef.current?.focus();
+    document.execCommand(cmd, false, val);
+  };
+
+  // Wrap selected text in <mark> for semantic highlighting
+  const applyHighlight = (e) => {
+    e.preventDefault();
+    const sel = window.getSelection();
+    if (!sel?.rangeCount || sel.isCollapsed) return;
+    const range = sel.getRangeAt(0);
+    const mark  = document.createElement('mark');
+    try {
+      range.surroundContents(mark);
+    } catch {
+      // Selection spans element boundaries — extract then re-insert
+      mark.appendChild(range.extractContents());
+      range.insertNode(mark);
+    }
+    sel.removeAllRanges();
+  };
+
+  const applyColor = (color) => (e) => {
+    e.preventDefault();
+    setShowColors(false);
+    bodyRef.current?.focus();
+    document.execCommand('foreColor', false, color);
+  };
+
   return (
     <div className="note-editor">
-      {/* Header — Cancel left, Save right, always visible above keyboard */}
+      {/* Header */}
       <div className="note-editor-header">
-        <button className="note-editor-action-btn note-editor-cancel" onClick={onBack}>
-          Cancel
-        </button>
+        <button className="note-editor-action-btn note-editor-cancel" onClick={onBack}>Cancel</button>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flex: 1, justifyContent: 'center' }}>
-          <Switch
-            size="small"
-            checked={isPublic}
-            onChange={setIsPublic}
-            style={{ background: isPublic ? 'rgba(200,134,26,0.8)' : undefined }}
-          />
+          <Switch size="small" checked={isPublic} onChange={setIsPublic}
+            style={{ background: isPublic ? 'rgba(200,134,26,0.8)' : undefined }} />
           <span style={{ fontSize: '0.72rem', color: 'rgba(244,228,193,0.55)', fontFamily: "'Lora', serif" }}>Public</span>
         </div>
-        <button className="note-editor-action-btn note-editor-save" onClick={handleSave}>
-          Save
-        </button>
+        <button className="note-editor-action-btn note-editor-save" onClick={handleSave}>Save</button>
       </div>
 
       {/* Verse bar */}
@@ -91,13 +169,62 @@ function NoteEditor({ note, noteId, user, currentGroupId, books, chapterCount, v
           </span>
         ))}
         {books?.length > 0 && (
-          <VerseSelector
-            books={books}
-            chapterCount={chapterCount}
-            verseCount={verseCount}
-            onSelect={addVerse}
-          />
+          <VerseSelector books={books} chapterCount={chapterCount} verseCount={verseCount} onSelect={addVerse} />
         )}
+      </div>
+
+      {/* Format toolbar — floats between verse bar and writing area */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', padding: '0.38rem 0.7rem 0.18rem', flexWrap: 'wrap' }}>
+        <FmtBtn title="Bold" onMouseDown={fmt('bold')}>
+          <strong style={{ fontFamily: 'Georgia, serif', letterSpacing: '0.02em' }}>B</strong>
+        </FmtBtn>
+        <FmtBtn title="Italic" onMouseDown={fmt('italic')}>
+          <em style={{ fontFamily: 'Georgia, serif' }}>I</em>
+        </FmtBtn>
+        <FmtBtn title="Underline" onMouseDown={fmt('underline')}>
+          <span style={{ textDecoration: 'underline' }}>U</span>
+        </FmtBtn>
+        <FmtBtn title="Highlight" onMouseDown={applyHighlight}>
+          <span style={{ background: 'rgba(200,134,26,0.45)', borderRadius: 2, padding: '0 3px' }}>H</span>
+        </FmtBtn>
+        {/* Text color with swatch picker */}
+        <div ref={colorWrapRef} style={{ position: 'relative' }}>
+          <FmtBtn title="Text color" onMouseDown={(e) => { e.preventDefault(); setShowColors(v => !v); }}>
+            <span style={{ borderBottom: '2px solid var(--gold)', paddingBottom: 1 }}>A</span>
+          </FmtBtn>
+          {showColors && (
+            <div style={{
+              position: 'absolute', top: 'calc(100% + 6px)', left: 0,
+              display: 'flex', gap: '0.3rem',
+              background: 'rgba(14,9,2,0.97)',
+              border: '1px solid rgba(200,134,26,0.25)',
+              borderRadius: 12,
+              padding: '0.38rem 0.45rem',
+              zIndex: 30,
+              boxShadow: '0 6px 20px rgba(0,0,0,0.55)',
+            }}>
+              {TEXT_COLORS.map(color => (
+                <button
+                  key={color}
+                  onMouseDown={applyColor(color)}
+                  title={color}
+                  style={{
+                    width: 17, height: 17,
+                    borderRadius: '50%',
+                    background: color,
+                    border: '1px solid rgba(255,255,255,0.15)',
+                    cursor: 'pointer',
+                    padding: 0,
+                    flexShrink: 0,
+                    transition: 'transform 0.1s',
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.transform = 'scale(1.28)'; }}
+                  onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1)'; }}
+                />
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Writing area */}
@@ -109,11 +236,12 @@ function NoteEditor({ note, noteId, user, currentGroupId, books, chapterCount, v
           value={titleVal}
           onChange={e => setTitleVal(e.target.value)}
         />
-        <textarea
+        <div
+          ref={bodyRef}
+          contentEditable
+          suppressContentEditableWarning
           className="note-body-textarea"
-          placeholder="Start writing…"
-          value={bodyVal}
-          onChange={e => setBodyVal(e.target.value)}
+          data-placeholder="Start writing…"
         />
       </div>
     </div>
@@ -174,7 +302,7 @@ function NoteCard({ id, note, owner, isOwn, onEdit, onDelete, onOpen, onNavigate
         </div>
       )}
       <p style={{ margin: 0, fontSize: '0.8rem', color: 'rgba(244,228,193,0.55)', lineHeight: 1.6, display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden', maxHeight: '3.84rem' }}>
-        {note.text}
+        {stripHtml(note.text)}
       </p>
     </div>
   );
@@ -204,7 +332,11 @@ function NoteDetail({ note, noteId, onBack, canReply, onReply, replies, repliesL
         </Text>
       </div>
       <div style={{ flex: 1, overflowY: 'auto', padding: '0.85rem 0.6rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-        <Text style={{ fontSize: '0.88rem', color: 'rgba(244,228,193,0.75)', lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>{note?.text}</Text>
+        <div
+          className="note-rendered-body"
+          style={{ fontSize: '0.88rem', color: 'rgba(244,228,193,0.75)', lineHeight: 1.8 }}
+          dangerouslySetInnerHTML={{ __html: note?.text || '' }}
+        />
         {verses.length > 0 && (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem' }}>
             {verses.map((v, i) => (
@@ -358,24 +490,25 @@ export default function NotesSidebar({
     try { return localStorage.getItem('fs_notes_tab') || 'verse'; } catch { return 'verse'; }
   });
 
-  // Derive lists
-  const { verse: verseList, pub: pubList } = React.useMemo(() => {
-    const verse = [], pub = [];
-    const src = notes.filtered || notes.all || {};
-    Object.entries(src).forEach(([id, note]) => {
-      if (note.group_id) return;
-      verse.push([id, note, null, false]);
-    });
+  // Derive notes list: group view shows only that group's notes, personal view shows only personal notes
+  const verseList = React.useMemo(() => {
+    const list = [];
     if (currentGroupId) {
       const myUsername = user?.username || '';
       const groupSrc   = notes.filteredGroup || notes.group || {};
       Object.entries(groupSrc).forEach(([uname, noteMap]) => {
         Object.entries(noteMap).forEach(([id, note]) => {
-          if (note.public) pub.push([id, note, uname, uname === myUsername]);
+          if (note.public) list.push([id, note, uname, uname === myUsername]);
         });
       });
+    } else {
+      const src = notes.filtered || notes.all || {};
+      Object.entries(src).forEach(([id, note]) => {
+        if (note.group_id) return;
+        list.push([id, note, null, false]);
+      });
     }
-    return { verse, pub };
+    return list;
   }, [notes, currentGroupId, user]);
 
   const openEditor = (id = null) => { setEditorNoteId(id); setEditorOpen(true); };
@@ -450,6 +583,23 @@ export default function NotesSidebar({
     );
   }, [localHl, groupHighlights, groupUsernames, currentGroupId]);
 
+  // Compact group selector rendered on the right side of the tab bar
+  const groupSelector = groups.length > 0 ? (
+    <div style={{ display: 'flex', alignItems: 'center', paddingRight: '0.3rem' }}>
+      <Select
+        value={currentGroupId || ''}
+        onChange={onGroupChange}
+        size="small"
+        popupMatchSelectWidth={false}
+        style={{ minWidth: 80, maxWidth: 120, fontSize: '0.68rem' }}
+        options={[
+          { value: '', label: 'Personal' },
+          ...groups.map(g => ({ value: g.id, label: g.title })),
+        ]}
+      />
+    </div>
+  ) : null;
+
   const tabItems = [
     {
       key: 'verse',
@@ -459,26 +609,6 @@ export default function NotesSidebar({
           {verseList.length === 0
             ? verseEmpty
             : verseList.map(([id, note, owner, isOwn]) => (
-                <NoteCard key={id} id={id} note={note} owner={owner} isOwn={isOwn}
-                  onEdit={openEditor} onDelete={handleDelete} onOpen={openDetail}
-                  onNavigateVerse={onNavigateVerse} />
-              ))
-          }
-        </div>
-      ),
-    },
-    {
-      key: 'public',
-      label: 'Group',
-      children: (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem', padding: '0.5rem 0.4rem' }}>
-          {pubList.length === 0
-            ? <div style={{ textAlign: 'center', padding: '2rem 1rem' }}>
-                <Text style={{ fontSize: '0.75rem', color: 'rgba(244,228,193,0.25)', fontFamily: "'Lora', serif" }}>
-                  {currentGroupId ? 'No public notes in this group yet.' : 'Join a group to see shared notes.'}
-                </Text>
-              </div>
-            : pubList.map(([id, note, owner, isOwn]) => (
                 <NoteCard key={id} id={id} note={note} owner={owner} isOwn={isOwn}
                   onEdit={openEditor} onDelete={handleDelete} onOpen={openDetail}
                   onNavigateVerse={onNavigateVerse} />
@@ -563,22 +693,6 @@ export default function NotesSidebar({
         </div>
       </div>
 
-      {/* Group selector */}
-      {groups.length > 0 && (
-        <div style={{ padding: '0.3rem 0.55rem', borderBottom: '1px solid rgba(200,134,26,0.1)' }}>
-          <Select
-            value={currentGroupId || ''}
-            onChange={onGroupChange}
-            style={{ width: '100%' }}
-            size="small"
-            options={[
-              { value: '', label: 'Personal notes' },
-              ...groups.map(g => ({ value: g.id, label: g.title })),
-            ]}
-          />
-        </div>
-      )}
-
       {/* Notes list or detail */}
       {detailNote
         ? <NoteDetail
@@ -595,6 +709,7 @@ export default function NotesSidebar({
               onChange={key => { try { localStorage.setItem('fs_notes_tab', key); } catch {} setActiveTab(key); }}
               items={tabItems}
               size="small"
+              tabBarExtraContent={{ right: groupSelector }}
               style={{ padding: '0 0.25rem', display: 'flex', flexDirection: 'column', height: '100%' }}
             />
           </div>

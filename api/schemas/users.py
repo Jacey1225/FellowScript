@@ -13,6 +13,9 @@ class User(BaseModel):
     highlights: dict[str, str] = Field(
         default_factory=dict,
         description="key: 'Book-chapter-verse' e.g. 'Genesis-1-3', value: hex color")
+    bookmarks: dict[str, str] = Field(
+        default_factory=dict, 
+        description="key: 'book-chapter' eg. 'Genesis-1'")
 
 class Note(BaseModel):
     title: str = Field(default_factory=str)

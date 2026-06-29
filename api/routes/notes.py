@@ -1,296 +1,212 @@
-import os
-import json
 from fastapi import APIRouter, HTTPException
-from schemas.users import User, Note
+from schemas.users import Note
+from db import DBManager
 import uuid
 import logging
 
 notes_router = APIRouter(prefix="/notes")
-main_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../..")
-user_path = "data/users.json"
-notes_path = "data/notes.json"
 logger = logging.getLogger(__name__)
 
 
-def load_users() -> dict:
-    """Load all user records from the JSON data store.
-
-    Returns:
-        dict: Mapping of user_id -> user data dict. Returns an empty dict
-            if the file does not exist or contains invalid JSON.
-    """
-    path = os.path.join(main_path, user_path)
-    if not os.path.exists(path):
-        return {}
-    try:
-        with open(path, "r") as f:
-            return json.load(f)
-    except json.JSONDecodeError:
-        return {}
-
-
-def load_notes() -> dict:
-    """Load all notes from the JSON data store.
-
-    Returns:
-        dict: Mapping of note_id -> note data dict. Returns an empty dict
-            if the file does not exist or contains invalid JSON.
-    """
-    path = os.path.join(main_path, notes_path)
-    if not os.path.exists(path):
-        return {}
-    try:
-        with open(path, "r") as f:
-            return json.load(f)
-    except json.JSONDecodeError:
-        return {}
-
-
-def save_users(users: dict) -> None:
-    """Persist all user records to the JSON data store.
-
-    Args:
-        users: Mapping of user_id -> user data dict to write.
-    """
-    with open(os.path.join(main_path, user_path), "w") as f:
-        json.dump(users, f, indent=2)
-
-
-def save_notes(notes: dict) -> None:
-    """Persist all notes to the JSON data store.
-
-    Args:
-        notes: Mapping of note_id -> note data dict to write.
-    """
-    with open(os.path.join(main_path, notes_path), 'w') as f:
-        json.dump(notes, f, indent=2)
-
-
-def fetch_user(user_id: str) -> dict:
-    """Look up a single user and return both the User model and the full store.
-
-    Args:
-        user_id: UUID of the user to look up.
-
-    Returns:
-        dict: On success, ``{"success": User, "users": dict}`` where ``users``
-            is the full user mapping needed for subsequent writes. On failure,
-            ``{"error": str}``.
-    """
-    users = load_users()
-    data = users.get(user_id)
-    if not data:
-        return {"error": "cannot find user"}
-    return {"success": User(**data), "users": users}
-
-
 # ── Highlights ────────────────────────────────────────────────────────────────
+# bookmark and reply routes must be registered before /{user_id} so FastAPI
+# does not treat "bookmark" or "reply" as a user_id path segment.
 
 @notes_router.get("/highlight/{user_id}")
 async def get_highlights(user_id: str) -> dict:
-    """Return all verse highlights for a user.
-
-    Args:
-        user_id: UUID of the user whose highlights to retrieve.
-
-    Returns:
-        dict: Mapping of ``"Book-chapter-verse"`` keys to hex color strings.
-
-    Raises:
-        HTTPException 404: If the user does not exist.
-    """
-    result = fetch_user(user_id)
-    if "success" not in result:
-        raise HTTPException(status_code=404, detail="User not found")
-    return result["success"].highlights
+    db = DBManager()
+    try:
+        db.cur.execute("SELECT key, color FROM highlights WHERE user_id = %s", (user_id,))
+        return {row[0]: row[1] for row in db.cur.fetchall()}
+    finally:
+        db.close()
 
 
 @notes_router.post("/highlight/{user_id}")
 async def highlight_verse(user_id: str, verse: dict) -> dict:
-    """Add or update a highlight color on a specific verse.
-
-    Args:
-        user_id: UUID of the user creating the highlight.
-        verse: Payload with keys ``book`` (str), ``chapter`` (int|str),
-            ``verse`` (int|str), and ``color`` (hex str).
-
-    Returns:
-        dict: ``{"key": str, "color": str}`` confirming the stored key and color.
-
-    Raises:
-        HTTPException 400: If any of book, chapter, verse, or color is missing.
-        HTTPException 404: If the user does not exist.
-    """
-    result = fetch_user(user_id)
-    if "success" not in result:
-        raise HTTPException(status_code=404, detail="User not found")
-    user: User = result["success"]
-    logger.info("user fetch success")
-    logger.info(f"received highlight payload: {verse}")
-
     book    = verse.get("book")
     chapter = verse.get("chapter")
     verse_n = verse.get("verse")
     color   = verse.get("color")
-
-    logger.info(f"book={book!r}  chapter={chapter!r}  verse={verse_n!r}  color={color!r}")
-
     if not all([book, chapter, verse_n, color]):
-        logger.info("a value in info dict is missing")
         raise HTTPException(status_code=400, detail="book, chapter, verse, color required")
-
-    logger.info("found all keys in info dict")
     key = f"{book}-{chapter}-{verse_n}"
-    logger.info(f"fetched key: {key} for highlight")
-    user.highlights[key] = str(color)
-    result["users"][user_id] = user.model_dump(exclude={"user_id"})
-    save_users(result["users"])
-    return {"key": key, "color": color}
+    db = DBManager()
+    try:
+        db.cur.execute(
+            "INSERT INTO highlights (user_id, key, color) VALUES (%s, %s, %s) "
+            "ON CONFLICT (user_id, key) DO UPDATE SET color = EXCLUDED.color",
+            (user_id, key, str(color))
+        )
+        db.conn.commit()
+        return {"key": key, "color": color}
+    finally:
+        db.close()
 
 
 @notes_router.delete("/highlight/{user_id}/{key}")
 async def remove_highlight(user_id: str, key: str) -> dict:
-    """Remove a highlight from a verse.
+    db = DBManager()
+    try:
+        db.delete("highlights", {"user_id": user_id, "key": key})
+        return {"success": "highlight removed"}
+    finally:
+        db.close()
 
-    Args:
-        user_id: UUID of the user whose highlight to remove.
-        key: The highlight key in ``"Book-chapter-verse"`` format.
 
-    Returns:
-        dict: ``{"success": "highlight removed"}``.
+# ── Bookmarks ─────────────────────────────────────────────────────────────────
 
-    Raises:
-        HTTPException 404: If the user does not exist.
-    """
-    result = fetch_user(user_id)
-    if "success" not in result:
-        raise HTTPException(status_code=404, detail="User not found")
-    user: User = result["success"]
-    user.highlights.pop(key, None)
-    result["users"][user_id] = user.model_dump(exclude={"user_id"})
-    save_users(result["users"])
-    return {"success": "highlight removed"}
+@notes_router.get("/bookmark/{user_id}")
+async def get_bookmarks(user_id: str) -> dict:
+    db = DBManager()
+    try:
+        db.cur.execute("SELECT key, label FROM bookmarks WHERE user_id = %s", (user_id,))
+        return {row[0]: row[1] for row in db.cur.fetchall()}
+    finally:
+        db.close()
+
+
+@notes_router.post("/bookmark/{user_id}")
+async def add_bookmark(user_id: str, bookmark: dict) -> dict:
+    book    = bookmark.get("book")
+    chapter = bookmark.get("chapter")
+    label   = bookmark.get("label", "")
+    if not all([book, chapter]):
+        raise HTTPException(status_code=400, detail="book and chapter required")
+    key = f"{book}-{chapter}"
+    db = DBManager()
+    try:
+        db.cur.execute(
+            "INSERT INTO bookmarks (user_id, key, label) VALUES (%s, %s, %s) "
+            "ON CONFLICT (user_id, key) DO UPDATE SET label = EXCLUDED.label",
+            (user_id, key, str(label))
+        )
+        db.conn.commit()
+        return {"key": key, "label": label}
+    finally:
+        db.close()
+
+
+@notes_router.delete("/bookmark/{user_id}/{key}")
+async def remove_bookmark(user_id: str, key: str) -> dict:
+    db = DBManager()
+    try:
+        db.delete("bookmarks", {"user_id": user_id, "key": key})
+        return {"success": "bookmark removed"}
+    finally:
+        db.close()
 
 
 # ── Notes ─────────────────────────────────────────────────────────────────────
 
-@notes_router.post("/{user_id}", status_code=201)
-async def create_note(user_id: str, note_dict: dict) -> dict:
-    """Create a new study note for a user.
-
-    Generates a UUID for the note and writes it to the data store.
-
-    Args:
-        user_id: UUID of the note author; injected into the note if not
-            already present in ``note_dict``.
-        note_dict: Raw note payload matching the ``Note`` schema fields.
-
-    Returns:
-        dict: ``{"id": str, "data": dict}`` with the new note's ID and full data.
-    """
-    notes = load_notes()
-    note_id = str(uuid.uuid4())
-    note_dict.setdefault("user", user_id)
-    note = Note(**note_dict)
-    notes[note_id] = note.model_dump()
-    save_notes(notes)
-    return {"id": note_id, "data": note.model_dump()}
-
-
 @notes_router.post("/reply/{note_id}", status_code=201)
 async def post_reply(note_id: str, reply: dict) -> dict:
-    """Attach a reply note to an existing note.
+    db = DBManager()
+    try:
+        if not db.lookup("notes", {"_id": note_id}):
+            return {"error": "cannot find note"}
+        reply_note = Note(**reply)
+        reply_id   = str(uuid.uuid4())
+        db.cur.execute(
+            "INSERT INTO notes (_id, user_id, title, text, public, group_id, is_reply, parent_note_id, timestamp) "
+            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+            (reply_id, reply_note.user, reply_note.title, reply_note.text,
+             reply_note.public, reply_note.group_id or None, True, note_id,
+             reply_note.timestamp)
+        )
+        db.conn.commit()
+        return {"id": reply_id}
+    finally:
+        db.close()
 
-    Creates a new Note record for the reply, assigns it a UUID, and appends
-    that UUID to the parent note's ``replies`` list.
 
-    Args:
-        note_id: ID of the parent note to reply to.
-        reply: Raw note payload for the reply, matching the ``Note`` schema.
-
-    Returns:
-        dict: ``{"id": str}`` with the reply note's new ID, or
-            ``{"error": str}`` if the parent note is not found.
-    """
-    notes = load_notes()
-    note_to_reply = notes.get(note_id)
-    if not note_to_reply:
-        return {"error": "cannot find note"}
-
-    reply_note = Note(**reply)
-    reply_id = str(uuid.uuid4())
-    note_to_reply["replies"].append(reply_id)
-    notes[note_id] = note_to_reply
-    notes[reply_id] = reply_note.model_dump()
-    save_notes(notes)
-    return {"id": reply_id}
+@notes_router.post("/{user_id}", status_code=201)
+async def create_note(user_id: str, note_dict: dict) -> dict:
+    db = DBManager()
+    try:
+        note_id = str(uuid.uuid4())
+        note_dict.setdefault("user", user_id)
+        note = Note(**note_dict)
+        db.cur.execute(
+            "INSERT INTO notes (_id, user_id, title, text, public, group_id, is_reply, timestamp) "
+            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s)",
+            (note_id, note.user, note.title, note.text,
+             note.public, note.group_id or None, note.is_reply, note.timestamp)
+        )
+        for i, verse in enumerate(note.verses):
+            if isinstance(verse, list) and len(verse) >= 3:
+                db.cur.execute(
+                    "INSERT INTO note_verses (note_id, position, book, chapter, verse) VALUES (%s,%s,%s,%s,%s)",
+                    (note_id, i, verse[0], verse[1], verse[2])
+                )
+        db.conn.commit()
+        return {"id": note_id, "data": note.model_dump()}
+    finally:
+        db.close()
 
 
 @notes_router.get("/{user_id}")
 async def get_notes(user_id: str) -> dict:
-    """Retrieve all top-level notes authored by a user.
-
-    Excludes reply notes (``is_reply == True``).
-
-    Args:
-        user_id: UUID of the user whose notes to retrieve.
-
-    Returns:
-        dict: Mapping of note_id -> note data dict for all matching notes.
-    """
-    notes = load_notes()
-    result = {}
-    for note_id, data in notes.items():
-        note = Note(**data)
-        if note.user == user_id and not note.is_reply:
-            result[note_id] = data
-    return result
+    db = DBManager()
+    try:
+        db.cur.execute(
+            "SELECT n._id, n.user_id, n.title, n.text, n.public, n.group_id, n.is_reply, n.timestamp, "
+            "COALESCE(array_agg(ARRAY[nv.book, nv.chapter::text, nv.verse::text] ORDER BY nv.position) "
+            "FILTER (WHERE nv.note_id IS NOT NULL), '{}') AS verses "
+            "FROM notes n LEFT JOIN note_verses nv ON n._id = nv.note_id "
+            "WHERE n.user_id = %s AND n.is_reply = false "
+            "GROUP BY n._id",
+            (user_id,)
+        )
+        result = {}
+        for row in db.cur.fetchall():
+            result[str(row[0])] = {
+                "user":      str(row[1] or ""),
+                "title":     row[2],
+                "text":      row[3],
+                "public":    row[4],
+                "group_id":  row[5] or "",
+                "is_reply":  row[6],
+                "timestamp": str(row[7] or ""),
+                "verses":    list(row[8]) if row[8] else [],
+                "replies":   [],
+            }
+        return result
+    finally:
+        db.close()
 
 
 @notes_router.put("/{user_id}")
 async def update_note(user_id: str, note_id: str, note_dict: dict) -> None:
-    """Replace the content of an existing note.
-
-    Args:
-        user_id: UUID of the user making the update; must match the note owner.
-        note_id: ID of the note to update (passed as a query parameter).
-        note_dict: Complete replacement note payload.
-
-    Raises:
-        HTTPException 404: If the note does not exist.
-        HTTPException 403: If the user does not own the note.
-    """
-    notes = load_notes()
-    if note_id not in notes:
-        raise HTTPException(status_code=404, detail="Note not found")
-    if notes[note_id].get("user") != user_id:
-        raise HTTPException(status_code=403, detail="Not authorized")
-    if "timestamp" not in note_dict and "timestamp" in notes[note_id]:
-        note_dict["timestamp"] = notes[note_id]["timestamp"]
-    notes[note_id] = note_dict
-    save_notes(notes)
+    db = DBManager()
+    try:
+        existing = db.lookup("notes", {"_id": note_id})
+        if not existing:
+            raise HTTPException(status_code=404, detail="Note not found")
+        _, note_data = list(existing.items())[0]
+        if str(note_data.get("user_id")) != user_id:
+            raise HTTPException(status_code=403, detail="Not authorized")
+        note = Note(**note_dict)
+        db.cur.execute(
+            "UPDATE notes SET title=%s, text=%s, public=%s, group_id=%s WHERE _id=%s",
+            (note.title, note.text, note.public, note.group_id or None, note_id)
+        )
+        db.conn.commit()
+    finally:
+        db.close()
 
 
 @notes_router.delete("/{user_id}")
 async def delete_note(user_id: str, note_id: str) -> dict:
-    """Permanently delete a note.
-
-    Args:
-        user_id: UUID of the user making the request; must match the note owner.
-        note_id: ID of the note to delete (passed as a query parameter).
-
-    Returns:
-        dict: ``{"success": "note deleted"}``.
-
-    Raises:
-        HTTPException 404: If the note does not exist.
-        HTTPException 403: If the user does not own the note.
-    """
-    notes = load_notes()
-    if note_id not in notes:
-        raise HTTPException(status_code=404, detail="Note not found")
-    if notes[note_id].get("user") != user_id:
-        raise HTTPException(status_code=403, detail="Not authorized")
-    del notes[note_id]
-    save_notes(notes)
-    return {"success": "note deleted"}
+    db = DBManager()
+    try:
+        existing = db.lookup("notes", {"_id": note_id})
+        if not existing:
+            raise HTTPException(status_code=404, detail="Note not found")
+        _, note_data = list(existing.items())[0]
+        if str(note_data.get("user_id")) != user_id:
+            raise HTTPException(status_code=403, detail="Not authorized")
+        db.delete("notes", {"_id": note_id})
+        return {"success": "note deleted"}
+    finally:
+        db.close()

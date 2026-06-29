@@ -1,0 +1,150 @@
+{
+  "22bd255d-5977-403a-991f-7392db711040": {
+    "id": "22bd255d-5977-403a-991f-7392db711040",
+    "title": "Test Session",
+    "time_start": "2026-05-29T19:00:00Z",
+    "time_end": "",
+    "group_id": "test-group",
+    "creator_id": "test-user",
+    "participants": [],
+    "verses": [
+      "Genesis-1-1"
+    ],
+    "prompts": []
+  },
+  "c05b62f1-a6cc-47a3-80ee-1a25b4ecc69a": {
+    "id": "c05b62f1-a6cc-47a3-80ee-1a25b4ecc69a",
+    "title": "Afternoon Study",
+    "time_start": "2026-05-28T19:40:00.000Z",
+    "time_end": "2026-05-28T20:04:00.000Z",
+    "group_id": "b7fce9fc-3658-42c1-9e03-dde6c6b80c51",
+    "creator_id": "60aa9553-b147-4e09-9a6e-b3e3abcf57f0",
+    "participants": [],
+    "verses": [],
+    "prompts": []
+  },
+  "683b9559-7095-42ab-ad98-ca9f37e928b3": {
+    "id": "683b9559-7095-42ab-ad98-ca9f37e928b3",
+    "title": "Afternoon Study",
+    "time_start": "2026-05-28T08:10:00.000Z",
+    "time_end": "2026-05-28T20:15:00.000Z",
+    "group_id": "b7fce9fc-3658-42c1-9e03-dde6c6b80c51",
+    "creator_id": "60aa9553-b147-4e09-9a6e-b3e3abcf57f0",
+    "participants": [],
+    "verses": [
+      "Exodus-16-1",
+      "2 Timothy-1-7"
+    ],
+    "prompts": []
+  },
+  "754aaf9e-e9bd-412b-be92-0ce96c4365a0": {
+    "id": "754aaf9e-e9bd-412b-be92-0ce96c4365a0",
+    "title": "Test Session",
+    "time_start": "2026-05-30T01:08:08.100Z",
+    "time_end": "2026-05-30T01:13:08.100Z",
+    "group_id": "179a5a43-4bd6-4160-ba93-b54a55cb96bb",
+    "creator_id": "60aa9553-b147-4e09-9a6e-b3e3abcf57f0",
+    "participants": [],
+    "verses": [
+      "2 Corinthians-4-4"
+    ],
+    "prompts": []
+  },
+  "b7482d47-95ad-4b64-b671-855400517ce8": {
+    "id": "b7482d47-95ad-4b64-b671-855400517ce8",
+    "title": "Test Session",
+    "time_start": "2026-05-30T01:18:55.000Z",
+    "time_end": "2026-05-30T01:23:55.000Z",
+    "group_id": "60aa9553-b147-4e09-9a6e-b3e3abcf57f0",
+    "creator_id": "179a5a43-4bd6-4160-ba93-b54a55cb96bb",
+    "participants": [],
+    "verses": [],
+    "prompts": []
+  },
+  "afcc2ffb-3406-4e0e-b8f0-cc355d01bc15": {
+    "id": "afcc2ffb-3406-4e0e-b8f0-cc355d01bc15",
+    "title": "Test Session",
+    "time_start": "2026-05-30T01:31:34.200Z",
+    "time_end": "2026-05-30T01:36:34.200Z",
+    "group_id": "60aa9553-b147-4e09-9a6e-b3e3abcf57f0",
+    "creator_id": "179a5a43-4bd6-4160-ba93-b54a55cb96bb",
+    "participants": [],
+    "verses": [],
+    "prompts": []
+  },
+  "0d363e25-65bd-4517-af2c-24985080837f": {
+    "id": "0d363e25-65bd-4517-af2c-24985080837f",
+    "title": "Test",
+    "time_start": "2026-05-30T01:39:32.700Z",
+    "time_end": "2026-05-30T01:44:32.700Z",
+    "group_id": "60aa9553-b147-4e09-9a6e-b3e3abcf57f0",
+    "creator_id": "179a5a43-4bd6-4160-ba93-b54a55cb96bb",
+    "participants": [],
+    "verses": [],
+    "prompts": []
+  },
+  "1208767e-3d52-43a2-93ee-c6b28e19306f": {
+    "id": "1208767e-3d52-43a2-93ee-c6b28e19306f",
+    "title": "Test",
+    "time_start": "2026-05-30T01:56:14.700Z",
+    "time_end": "2026-05-30T02:01:14.700Z",
+    "group_id": "179a5a43-4bd6-4160-ba93-b54a55cb96bb",
+    "creator_id": "60aa9553-b147-4e09-9a6e-b3e3abcf57f0",
+    "participants": [
+      "60aa9553-b147-4e09-9a6e-b3e3abcf57f0"
+    ],
+    "verses": [],
+    "prompts": []
+  },
+  "ff8cc13b-8f50-45b8-8827-f24679c20c17": {
+    "id": "ff8cc13b-8f50-45b8-8827-f24679c20c17",
+    "title": "T est",
+    "time_start": "2026-05-30T02:01:54.300Z",
+    "time_end": "2026-05-30T02:06:54.300Z",
+    "group_id": "179a5a43-4bd6-4160-ba93-b54a55cb96bb|60aa9553-b147-4e09-9a6e-b3e3abcf57f0",
+    "creator_id": "60aa9553-b147-4e09-9a6e-b3e3abcf57f0",
+    "participants": [],
+    "verses": [],
+    "prompts": []
+  },
+  "592c2513-c973-441d-842f-54e884c1fb5f": {
+    "id": "592c2513-c973-441d-842f-54e884c1fb5f",
+    "title": "test",
+    "time_start": "2026-05-30T02:07:21.700Z",
+    "time_end": "2026-05-30T02:12:21.700Z",
+    "group_id": "179a5a43-4bd6-4160-ba93-b54a55cb96bb|60aa9553-b147-4e09-9a6e-b3e3abcf57f0",
+    "creator_id": "60aa9553-b147-4e09-9a6e-b3e3abcf57f0",
+    "participants": [],
+    "verses": [],
+    "prompts": []
+  },
+  "2895c303-0817-4229-9e4c-ef5d8cc7e201": {
+    "id": "2895c303-0817-4229-9e4c-ef5d8cc7e201",
+    "title": "Test",
+    "time_start": "2026-05-30T20:46:12.900Z",
+    "time_end": "2026-05-30T20:51:12.900Z",
+    "group_id": "066a5e8c-b77c-42e9-80d6-86bbfdd30ad5|60aa9553-b147-4e09-9a6e-b3e3abcf57f0",
+    "creator_id": "60aa9553-b147-4e09-9a6e-b3e3abcf57f0",
+    "participants": [],
+    "verses": [],
+    "prompts": [],
+    "chime_meeting_id": "d24ef30d-f23e-4c36-84a5-f356fb292713",
+    "chime_meeting": {
+      "MeetingId": "d24ef30d-f23e-4c36-84a5-f356fb292713",
+      "ExternalMeetingId": "2895c303-0817-4229-9e4c-ef5d8cc7e201",
+      "MediaRegion": "us-east-1",
+      "MediaPlacement": {
+        "AudioHostUrl": "8453dc0e703135a37e87d2e5169954c1.k.m2.ue1.app.chime.aws:3478",
+        "AudioFallbackUrl": "wss://wss.k.m2.ue1.app.chime.aws:443/calls/d24ef30d-f23e-4c36-84a5-f356fb292713",
+        "SignalingUrl": "wss://signal.m2.ue1.app.chime.aws/control/d24ef30d-f23e-4c36-84a5-f356fb292713",
+        "TurnControlUrl": "https://2713.cell.us-east-1.meetings.chime.aws/v2/turn_sessions",
+        "ScreenDataUrl": "wss://bitpw.m2.ue1.app.chime.aws:443/v2/screen/d24ef30d-f23e-4c36-84a5-f356fb292713",
+        "ScreenViewingUrl": "wss://bitpw.m2.ue1.app.chime.aws:443/ws/connect?passcode=null&viewer_uuid=null&X-BitHub-Call-Id=d24ef30d-f23e-4c36-84a5-f356fb292713",
+        "ScreenSharingUrl": "wss://bitpw.m2.ue1.app.chime.aws:443/v2/screen/d24ef30d-f23e-4c36-84a5-f356fb292713",
+        "EventIngestionUrl": "https://data.svc.ue1.ingest.chime.aws/v1/client-events"
+      },
+      "TenantIds": [],
+      "MeetingArn": "arn:aws:chime:us-east-1:335651423109:meeting/d24ef30d-f23e-4c36-84a5-f356fb292713"
+    }
+  }
+}

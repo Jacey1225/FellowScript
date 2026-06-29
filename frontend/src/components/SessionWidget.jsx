@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Avatar, Button, Typography } from 'antd';
-import { AudioOutlined, PhoneOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
+import { AudioOutlined, PhoneOutlined, EditOutlined, DeleteOutlined, VideoCameraOutlined } from '@ant-design/icons';
 import { API } from '../config.js';
 
 const { Text } = Typography;
@@ -47,22 +47,47 @@ const islandStyle = {
   flexShrink: 0,
 };
 
-function IconBtn({ icon, onClick, title, danger }) {
+function IconBtn({ icon, onClick, title, danger, active }) {
+  const base  = danger ? 'rgba(255,90,90,0.55)' : active ? 'var(--gold)' : 'rgba(200,134,26,0.4)';
+  const hover = danger ? 'rgba(255,90,90,0.9)'  : 'rgba(200,134,26,0.85)';
   return (
     <button
       title={title}
       onClick={onClick}
       style={{
         background: 'none', border: 'none', cursor: 'pointer',
-        color: danger ? 'rgba(255,90,90,0.55)' : 'rgba(200,134,26,0.4)',
-        fontSize: '0.7rem', padding: '2px 4px',
+        color: base, fontSize: '0.7rem', padding: '2px 4px',
         transition: 'color 0.15s',
       }}
-      onMouseEnter={e => { e.currentTarget.style.color = danger ? 'rgba(255,90,90,0.9)' : 'rgba(200,134,26,0.85)'; }}
-      onMouseLeave={e => { e.currentTarget.style.color = danger ? 'rgba(255,90,90,0.55)' : 'rgba(200,134,26,0.4)'; }}
+      onMouseEnter={e => { e.currentTarget.style.color = hover; }}
+      onMouseLeave={e => { e.currentTarget.style.color = base; }}
     >
       {icon}
     </button>
+  );
+}
+
+function VideoTile({ tileId, isLocal, bindVideoTile }) {
+  const refCallback = useCallback(el => {
+    if (el) bindVideoTile(tileId, el);
+  }, [tileId, bindVideoTile]);
+
+  return (
+    <video
+      ref={refCallback}
+      autoPlay
+      playsInline
+      muted
+      style={{
+        width: '100%',
+        borderRadius: 6,
+        background: '#000',
+        display: 'block',
+        transform: isLocal ? 'scaleX(-1)' : 'none',
+        aspectRatio: '16 / 9',
+        objectFit: 'cover',
+      }}
+    />
   );
 }
 
@@ -109,7 +134,7 @@ function UpcomingCard({ session, activeSessionId, onJoin, onLeave, onEdit, onDel
   );
 }
 
-function ActiveCard({ session, user, activeSessionId, talkingUserId, onJoin, onLeave, onEdit, onDelete, onNavigateVerse }) {
+function ActiveCard({ session, user, activeSessionId, talkingUserId, onJoin, onLeave, onEdit, onDelete, onNavigateVerse, videoEnabled, videoTiles = [], onToggleVideo, bindVideoTile }) {
   const isJoined = activeSessionId === session.id;
   const names    = useUsernames(session.participants || []);
   const talkingName = talkingUserId
@@ -126,6 +151,14 @@ function ActiveCard({ session, user, activeSessionId, talkingUserId, onJoin, onL
             <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.82rem', color: 'var(--parchment)', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {session.title}
             </Text>
+            {isJoined && (
+              <IconBtn
+                icon={<VideoCameraOutlined />}
+                title={videoEnabled ? 'Turn off camera' : 'Turn on camera'}
+                onClick={onToggleVideo}
+                active={videoEnabled}
+              />
+            )}
             <IconBtn icon={<EditOutlined />} title="Edit session" onClick={() => onEdit(session)} />
             <IconBtn icon={<DeleteOutlined />} title="Delete session" onClick={() => onDelete(session.id)} danger />
           </div>
@@ -200,6 +233,25 @@ function ActiveCard({ session, user, activeSessionId, talkingUserId, onJoin, onL
           )}
         </div>
 
+        {/* Row 2b: live video tiles */}
+        {isJoined && videoTiles.length > 0 && (
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))',
+            gap: '0.3rem',
+            marginBottom: '0.4rem',
+          }}>
+            {videoTiles.map(tile => (
+              <VideoTile
+                key={tile.tileId}
+                tileId={tile.tileId}
+                isLocal={tile.isLocal}
+                bindVideoTile={bindVideoTile}
+              />
+            ))}
+          </div>
+        )}
+
         {/* Row 3: verse links */}
         {(session.verses || []).length > 0 && (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.28rem', marginBottom: (isJoined && (session.prompts || []).length) ? '0.5rem' : 0 }}>
@@ -249,6 +301,7 @@ function ActiveCard({ session, user, activeSessionId, talkingUserId, onJoin, onL
 export default function SessionWidget({
   sessions, user, activeSessionId, talkingUserId,
   onJoin, onLeave, onEdit, onDelete, onNavigateVerse,
+  videoEnabled, videoTiles, onToggleVideo, bindVideoTile,
 }) {
   if (!sessions || sessions.length === 0) return null;
 
@@ -281,6 +334,10 @@ export default function SessionWidget({
             onEdit={onEdit}
             onDelete={onDelete}
             onNavigateVerse={onNavigateVerse}
+            videoEnabled={videoEnabled}
+            videoTiles={videoTiles}
+            onToggleVideo={onToggleVideo}
+            bindVideoTile={bindVideoTile}
           />
         ) : (
           <UpcomingCard

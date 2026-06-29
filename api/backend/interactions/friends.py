@@ -1,26 +1,19 @@
 from schemas.users import User
-from backend.interactions.helpers import (
-    fetch_users,
-    find_by_username,
-    update_users,
-    read_messages,
-    format_messages
-)
+from db import DBManager
 
-class FriendsManager:
+
+class FriendsManager(DBManager):
     """Handles friend request, acceptance, removal, and DM retrieval."""
 
     def __init__(self, user_id: str) -> None:
-        """Set up the manager for the given user.
-
-        Args:
-            user_id: UUID of the acting user.
-        """
+        super().__init__()
         self.user_id = user_id
-        result = fetch_users([user_id])
-        self.user = User()
+        result = self.lookup("users", {"_id": user_id})
         if result:
-            self.user: User = result[-1]
+            uid, data = list(result.items())[0]
+            self.user = User(user_id=uid, **data)
+        else:
+            self.user = User()
 
     def send_add_request(self, friend_username: str) -> dict | None:
         """Append the acting user's ID to the target user's friend_requests list.
@@ -32,23 +25,20 @@ class FriendsManager:
             dict | None: ``{"error": str}`` if the user is not found or the
                 user attempts to add themselves; ``None`` on success.
         """
-        result = find_by_username(friend_username)
-        if result is None:
+        result = self.lookup("users", {"username": friend_username})
+        if not result:
             return {"error": "User not found"}
-        friend_id, friend_data = result
+        friend_id = list(result.keys())[0]
         if friend_id == self.user_id:
             return {"error": "Cannot add yourself"}
-        friend = User.model_validate({"user_id": friend_id, **friend_data})
-        if self.user_id not in friend.friend_requests:
-            friend.friend_requests.append(self.user_id)
-        update_users([friend])
+        self.insertion("friend_requests", {
+            "to_user_id":   friend_id,
+            "from_user_id": self.user_id,
+        })
         return None
 
     def add_friend(self, friend_username: str) -> dict | None:
         """Accept a pending friend request and establish a mutual friendship.
-
-        Adds each user to the other's ``friends`` list and removes the acting
-        user's ID from the target's ``friend_requests`` list if present.
 
         Args:
             friend_username: Username of the user to accept as a friend.
@@ -57,18 +47,13 @@ class FriendsManager:
             dict | None: ``{"error": str}`` if the user is not found;
                 ``None`` on success.
         """
-        result = find_by_username(friend_username)
-        if result is None:
+        result = self.lookup("users", {"username": friend_username})
+        if not result:
             return {"error": "User not found"}
-        friend_id, friend_data = result
-        friend = User.model_validate({"user_id": friend_id, **friend_data})
-        if friend_id not in self.user.friends:
-            self.user.friends.append(friend_id)
-        if friend_id in self.user.friend_requests:
-            self.user.friend_requests.remove(friend_id)
-        if self.user_id not in friend.friends:
-            friend.friends.append(self.user_id)
-        update_users([self.user, friend])
+        friend_id = list(result.keys())[0]
+        self.insertion("user_friends", {"user_id": self.user_id, "friend_id": friend_id})
+        self.insertion("user_friends", {"user_id": friend_id, "friend_id": self.user_id})
+        self.delete("friend_requests", {"to_user_id": self.user_id, "from_user_id": friend_id})
         return None
 
     def get_friends(self) -> list[dict]:
@@ -77,8 +62,13 @@ class FriendsManager:
         Returns:
             list[dict]: List of friend user records with ``hash_pass`` excluded.
         """
-        friends = fetch_users(self.user.friends)
-        return [f.model_dump(exclude={"hash_pass"}) for f in friends]
+        self.cur.execute(
+            "SELECT u._id, u.username, u.email FROM users u "
+            "JOIN user_friends uf ON u._id = uf.friend_id "
+            "WHERE uf.user_id = %s",
+            (self.user_id,)
+        )
+        return [{"user_id": r[0], "username": r[1], "email": r[2]} for r in self.cur.fetchall()]
 
     def read_friend(self, friend_id: str) -> dict:
         """Fetch a friend's profile and the shared DM history.
@@ -90,14 +80,34 @@ class FriendsManager:
             dict: Contains ``friend`` profile (without hash_pass), ``host_msgs``,
                 and ``other_msgs``. Returns ``{"error": str}`` if not found.
         """
-        friends = fetch_users([friend_id])
-        if not friends:
+        result = self.lookup("users", {"_id": friend_id})
+        if not result:
             return {"error": "Friend not found"}
-        host_msgs, other_msgs = read_messages(self.user_id, [friend_id])
+        _, friend_data = list(result.items())[0]
+        self.cur.execute(
+            "SELECT m._id, m.text, m.timestamp FROM messages m "
+            "JOIN message_recipients mr ON m._id = mr.message_id "
+            "WHERE m.from_user = %s AND mr.user_id = %s AND m.group_id IS NULL",
+            (self.user_id, friend_id)
+        )
+        host_msgs = [
+            {"from_user": self.user.username, "text": r[1], "timestamp": str(r[2])}
+            for r in self.cur.fetchall()
+        ]
+        self.cur.execute(
+            "SELECT m._id, m.text, m.timestamp FROM messages m "
+            "JOIN message_recipients mr ON m._id = mr.message_id "
+            "WHERE m.from_user = %s AND mr.user_id = %s AND m.group_id IS NULL",
+            (friend_id, self.user_id)
+        )
+        other_msgs = [
+            {"from_user": friend_data.get("username", ""), "text": r[1], "timestamp": str(r[2])}
+            for r in self.cur.fetchall()
+        ]
         return {
-            "friend":     friends[0].model_dump(exclude={"hash_pass"}),
-            "host_msgs":  format_messages(host_msgs),
-            "other_msgs": format_messages(other_msgs),
+            "friend":     {k: v for k, v in friend_data.items() if k != "hash_pass"},
+            "host_msgs":  host_msgs,
+            "other_msgs": other_msgs,
         }
 
     def remove_friend(self, friend_id: str) -> None:
@@ -106,13 +116,5 @@ class FriendsManager:
         Args:
             friend_id: UUID of the friend to remove.
         """
-        if friend_id in self.user.friends:
-            self.user.friends.remove(friend_id)
-        friends = fetch_users([friend_id])
-        if friends:
-            other = friends[0]
-            if self.user_id in other.friends:
-                other.friends.remove(self.user_id)
-            update_users([self.user, other])
-        else:
-            update_users([self.user])
+        self.delete("user_friends", {"user_id": self.user_id, "friend_id": friend_id})
+        self.delete("user_friends", {"user_id": friend_id, "friend_id": self.user_id})
