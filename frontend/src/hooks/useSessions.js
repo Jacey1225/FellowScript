@@ -115,7 +115,7 @@ export function useSessions({ user, wsRef, currentContact }) {
 
   // ── Create ────────────────────────────────────────────────────────────────
 
-  const createSession = useCallback(async ({ title, timeStart, timeEnd, verses, prompts = [], recurring = false }) => {
+  const createSession = useCallback(async ({ title, timeStart, timeEnd, verses, prompts = [], recurring = false, summarize = false }) => {
     if (!user || !currentContact) return false;
     const gid = roomKey(currentContact, user.user_id);
     try {
@@ -135,6 +135,7 @@ export function useSessions({ user, wsRef, currentContact }) {
             verses,
             prompts,
             recurring,
+            summarize,
           },
         }),
       });
@@ -157,7 +158,7 @@ export function useSessions({ user, wsRef, currentContact }) {
 
   // ── Update ────────────────────────────────────────────────────────────────
 
-  const updateSession = useCallback(async (sessionId, { title, timeStart, timeEnd, verses, prompts = [], recurring = false }) => {
+  const updateSession = useCallback(async (sessionId, { title, timeStart, timeEnd, verses, prompts = [], recurring = false, summarize = false }) => {
     if (!user) return false;
     const existing = sessionsRef.current.find(s => s.id === sessionId) || {};
     try {
@@ -178,6 +179,7 @@ export function useSessions({ user, wsRef, currentContact }) {
             verses,
             prompts,
             recurring,
+            summarize,
           },
         }),
       });

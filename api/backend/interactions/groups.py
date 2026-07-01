@@ -79,7 +79,7 @@ class GroupsManager(DBManager):
                 all qualifying notes in the group.
         """
         group_notes: dict = {}
-        notes = self.lookup("notes", {"group_id": self.group_id})
+        notes = self.lookup("notes", {"group_id": self.group_id, "is_reply": False})
         for nid, data in notes.items():
             uid = data.get("user_id")
             if not uid:
