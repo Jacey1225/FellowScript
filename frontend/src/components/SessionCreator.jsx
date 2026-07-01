@@ -31,6 +31,7 @@ export default function SessionCreator({
   const [prompts,      setPrompts]      = useState([]);
   const [promptInput,  setPromptInput]  = useState('');
   const [recurring,    setRecurring]    = useState(false);
+  const [summarize,    setSummarize]    = useState(false);
   const [loading,      setLoading]      = useState(false);
 
   // Populate or reset when modal opens
@@ -49,10 +50,11 @@ export default function SessionCreator({
       setVerses(editSession.verses || []);
       setPrompts(editSession.prompts || []);
       setRecurring(editSession.recurring || false);
+      setSummarize(editSession.summarize || false);
     } else {
       setTitle(''); setTimeStart(''); setTimeEnd('');
       setTimeStartDay(null); setDuration(30); setVerses([]);
-      setPrompts([]); setPromptInput(''); setRecurring(false);
+      setPrompts([]); setPromptInput(''); setRecurring(false); setSummarize(false);
     }
   }, [open, editSession]);
 
@@ -69,7 +71,7 @@ export default function SessionCreator({
   const handleSubmit = async () => {
     if (!title.trim() || !timeStart) return;
     setLoading(true);
-    const data = { title: title.trim(), timeStart, timeEnd, verses, prompts, recurring };
+    const data = { title: title.trim(), timeStart, timeEnd, verses, prompts, recurring, summarize };
     const ok = isEditing
       ? await onUpdate(editSession.id, data)
       : await onCreate(data);
@@ -221,14 +223,16 @@ export default function SessionCreator({
           </div>
         </div>
 
-        {/* Recurring */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-          <Switch
-            size="small"
-            checked={recurring}
-            onChange={setRecurring}
-          />
-          <Text style={{ ...labelStyle, marginBottom: 0 }}>Repeat weekly</Text>
+        {/* Recurring + Summarize */}
+        <div style={{ display: 'flex', gap: '1.4rem', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+            <Switch size="small" checked={recurring} onChange={setRecurring} />
+            <Text style={{ ...labelStyle, marginBottom: 0 }}>Repeat weekly</Text>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+            <Switch size="small" checked={summarize} onChange={setSummarize} />
+            <Text style={{ ...labelStyle, marginBottom: 0 }}>Summarize with agent</Text>
+          </div>
         </div>
 
         {/* Actions */}

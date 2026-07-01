@@ -583,6 +583,18 @@ body {
   margin-top: 0.2rem;
 }
 
+.msg-bubble-markdown p          { margin: 0 0 0.55em; }
+.msg-bubble-markdown p:last-child { margin-bottom: 0; }
+.msg-bubble-markdown h3         { font-size: 0.85rem; color: var(--gold); margin: 0.7em 0 0.3em; font-family: 'Playfair Display', serif; }
+.msg-bubble-markdown h4         { font-size: 0.8rem;  color: var(--gold); margin: 0.6em 0 0.25em; }
+.msg-bubble-markdown ul,
+.msg-bubble-markdown ol         { padding-left: 1.2em; margin: 0.3em 0 0.55em; }
+.msg-bubble-markdown li         { margin-bottom: 0.2em; }
+.msg-bubble-markdown strong     { color: var(--parchment); }
+.msg-bubble-markdown em         { color: rgba(244,228,193,0.6); font-style: italic; }
+.msg-bubble-markdown hr         { border: none; border-top: 1px solid rgba(200,134,26,0.18); margin: 0.6em 0; }
+.msg-bubble-markdown blockquote { border-left: 2px solid rgba(200,134,26,0.35); padding-left: 0.65em; margin: 0.4em 0; color: rgba(244,228,193,0.55); font-style: italic; }
+
 /* ── Scrollbar ── */
 ::-webkit-scrollbar { width: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }

@@ -64,7 +64,7 @@ const { Text, Title } = Typography;
 
 function NoteEditor({ note, noteId, user, currentGroupId, books, chapterCount, verseCount, onSave, onBack }) {
   const [titleVal,   setTitleVal]   = useState(note?.title || '');
-  const [isPublic,   setIsPublic]   = useState(!noteId ? true : (note?.public || false));
+  const [isPublic,   setIsPublic]   = useState(noteId ? (note?.public || false) : false);
   const [verseList,  setVerseList]  = useState(() => {
     if (!note?.verses) return [];
     return note.verses
@@ -504,7 +504,6 @@ export default function NotesSidebar({
     } else {
       const src = notes.filtered || notes.all || {};
       Object.entries(src).forEach(([id, note]) => {
-        if (note.group_id) return;
         list.push([id, note, null, false]);
       });
     }

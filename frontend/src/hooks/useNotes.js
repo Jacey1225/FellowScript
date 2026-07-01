@@ -101,8 +101,13 @@ export function useNotes({ user, curBook, curChapter, vsValue }) {
       });
       if (!res.ok) return false;
       const saved = await res.json();
-      setAllNotes(prev => ({ ...prev, [editingId || saved.id]: noteData }));
-      if (noteData.group_id) await loadGroupNotes(noteData.group_id);
+      const savedId = editingId || saved.id;
+      if (noteData.group_id) {
+        setAllNotes(prev => { const n = { ...prev }; delete n[savedId]; return n; });
+        await loadGroupNotes(noteData.group_id);
+      } else {
+        setAllNotes(prev => ({ ...prev, [savedId]: noteData }));
+      }
       return true;
     } catch { return false; }
   }, [user, loadGroupNotes]);
@@ -144,7 +149,7 @@ export function useNotes({ user, curBook, curChapter, vsValue }) {
   // ── Filter / sort ─────────────────────────────────────────────────────────
 
   const applyFilter = useCallback(async ({ sortVal, filterType, filterVal, activeTab }) => {
-    const isGroupTab = activeTab === 'public' && !!currentGroupId;
+    const isGroupTab = !!currentGroupId;
     const hasFilter  = !!(filterType && filterVal);
     const hasSort    = !!sortVal;
 
@@ -176,7 +181,6 @@ export function useNotes({ user, curBook, curChapter, vsValue }) {
       } else {
         const subset = {};
         for (const [nid, n] of Object.entries(allNotes)) {
-          if (n.group_id) continue;
           subset[nid] = normalizeNote(n, user.username);
         }
         payload = { [user.user_id]: subset };

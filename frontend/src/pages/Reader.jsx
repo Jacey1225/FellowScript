@@ -1,10 +1,12 @@
 import React, { useEffect, useLayoutEffect, useState, useRef, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import ReactMarkdown from 'react-markdown';
 import { Layout, Input, Button, Avatar, Typography, Divider, Modal, Form, Checkbox, Spin } from 'antd';
 import {
   SendOutlined, ArrowLeftOutlined, PlusOutlined,
   MessageOutlined, BookOutlined, TeamOutlined,
   EditOutlined, DeleteOutlined, UserAddOutlined,
+  RobotOutlined, CloseOutlined,
 } from '@ant-design/icons';
 
 import AppNav           from '../components/AppNav.jsx';
@@ -17,6 +19,7 @@ import SessionWidget   from '../components/SessionWidget.jsx';
 import BookmarkButton  from '../components/BookmarkButton.jsx';
 
 import { useAuth }        from '../context/AuthContext.jsx';
+import { useAgentChat }  from '../hooks/useAgentChat.js';
 import { useBible }       from '../hooks/useBible.js';
 import { useHighlights }  from '../hooks/useHighlights.js';
 import { useNotes }       from '../hooks/useNotes.js';
@@ -34,6 +37,201 @@ const FONT_SIZES = [
   { size: '1.38rem', lineHeight: '1.9'  },
 ];
 const FONT_SIZE_LABELS = ['Default', 'Large', 'Largest'];
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function agentLabel(agent) {
+  if (!agent?.role || agent.role.startsWith('You are a spiritual')) return 'Spiritual Guide';
+  const firstLine = agent.role.split('\n').find(l => l.trim());
+  return (firstLine || '').slice(0, 26) || 'Agent';
+}
+
+// ── Agent row ─────────────────────────────────────────────────────────────────
+
+function AgentRow({ agent, active, onOpen }) {
+  return (
+    <div
+      onClick={onOpen}
+      style={{
+        display: 'flex', alignItems: 'center', gap: '0.5rem',
+        padding: '0.55rem 0.8rem', cursor: 'pointer',
+        background: active ? 'rgba(200,134,26,0.12)' : 'transparent',
+        borderLeft: `2px solid ${active ? 'var(--gold)' : 'transparent'}`,
+        transition: 'background 0.15s, border-color 0.15s',
+      }}
+      onMouseEnter={e => { if (!active) e.currentTarget.style.background = 'rgba(200,134,26,0.06)'; }}
+      onMouseLeave={e => { if (!active) e.currentTarget.style.background = 'transparent'; }}
+    >
+      <div style={{
+        width: 30, height: 30, borderRadius: '50%', flexShrink: 0,
+        background: 'rgba(200,134,26,0.12)', border: '1px solid rgba(200,134,26,0.28)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}>
+        <RobotOutlined style={{ color: 'var(--gold)', fontSize: '0.8rem' }} />
+      </div>
+      <Text style={{
+        fontFamily: "'Lora', serif", fontSize: '0.72rem',
+        color: active ? 'var(--parchment)' : 'rgba(244,228,193,0.65)',
+        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1,
+      }}>
+        {agentLabel(agent)}
+      </Text>
+    </div>
+  );
+}
+
+// ── Agent chat panel ──────────────────────────────────────────────────────────
+
+function AgentChatPanel({ agent, messages, user, onBack, onSend, agentThinking, curBook, curChapter, curVerse, allNotes }) {
+  const [text,           setText]           = useState('');
+  const [context,        setContext]        = useState([]);
+  const [notePickerOpen, setNotePickerOpen] = useState(false);
+  const endRef        = useRef(null);
+  const notePickerRef = useRef(null);
+
+  useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
+
+  useEffect(() => {
+    const hide = e => { if (notePickerRef.current && !notePickerRef.current.contains(e.target)) setNotePickerOpen(false); };
+    document.addEventListener('mousedown', hide);
+    return () => document.removeEventListener('mousedown', hide);
+  }, []);
+
+  const addVerseContext = () => {
+    if (!curBook) return;
+    const ref = curVerse ? `${curBook} ${curChapter}:${curVerse}` : `${curBook} ${curChapter}`;
+    setContext(prev => prev.includes(ref) ? prev : [...prev, ref]);
+  };
+
+  const addNoteContext = (note) => {
+    const stripped = (note.text || '').replace(/<[^>]+>/g, '').slice(0, 120);
+    const ref = `"${note.title || 'Note'}" — ${stripped}${stripped.length >= 120 ? '…' : ''}`;
+    setContext(prev => [...prev, ref]);
+    setNotePickerOpen(false);
+  };
+
+  const handleSend = () => {
+    if (!text.trim()) return;
+    const fullContent = context.length
+      ? `${text.trim()}\n\n[Context: ${context.join('; ')}]`
+      : text.trim();
+    onSend(fullContent);
+    setText('');
+    setContext([]);
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', position: 'relative' }}>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.8rem 1rem', borderBottom: '1px solid rgba(200,134,26,0.15)', flexShrink: 0 }}>
+        <Button type="text" icon={<ArrowLeftOutlined />} onClick={onBack} style={{ color: 'rgba(200,134,26,0.65)', padding: '0 4px' }} />
+        <div style={{ width: 26, height: 26, borderRadius: '50%', background: 'rgba(200,134,26,0.12)', border: '1px solid rgba(200,134,26,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <RobotOutlined style={{ color: 'var(--gold)', fontSize: '0.78rem' }} />
+        </div>
+        <Text strong style={{ fontFamily: "'Lora', serif", fontSize: '0.88rem', color: 'var(--parchment)', flex: 1 }}>
+          {agentLabel(agent)}
+        </Text>
+      </div>
+
+      {/* Messages */}
+      <div style={{ flex: 1, overflowY: 'auto', padding: '0.75rem 0.85rem', display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
+        {messages.length === 0 && !agentThinking && (
+          <div style={{ textAlign: 'center', padding: '2.5rem 1rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.7rem' }}>
+            <div style={{ width: 42, height: 42, borderRadius: '50%', background: 'rgba(200,134,26,0.07)', border: '1px solid rgba(200,134,26,0.18)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <RobotOutlined style={{ color: 'rgba(200,134,26,0.4)', fontSize: '1.1rem' }} />
+            </div>
+            <Text style={{ fontSize: '0.72rem', color: 'rgba(244,228,193,0.22)', fontFamily: "'Lora', serif", fontStyle: 'italic' }}>
+              Your spiritual guide is ready. Ask anything.
+            </Text>
+          </div>
+        )}
+        {messages.map((m, i) => (
+          <div key={i} className={`msg-bubble ${m.mine ? 'sent' : 'received'}`}>
+            {!m.mine && <div className="msg-bubble-sender">{m.sender}</div>}
+            {m.mine
+              ? <span style={{ whiteSpace: 'pre-wrap' }}>{m.text}</span>
+              : <div className="msg-bubble-markdown"><ReactMarkdown>{m.text}</ReactMarkdown></div>
+            }
+            {m.timestamp && (
+              <div className="msg-bubble-meta">
+                {new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              </div>
+            )}
+          </div>
+        ))}
+        {agentThinking && (
+          <div className="msg-bubble received">
+            <div className="msg-bubble-sender">Agent</div>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}>
+              <Spin size="small" />
+              <span style={{ fontSize: '0.72rem', color: 'rgba(244,228,193,0.38)', fontStyle: 'italic' }}>Thinking…</span>
+            </span>
+          </div>
+        )}
+        <div ref={endRef} />
+      </div>
+
+      {/* Note picker dropdown */}
+      {notePickerOpen && (
+        <div ref={notePickerRef} style={{
+          position: 'absolute', bottom: 100, left: 8, right: 8,
+          background: 'rgba(10,7,2,0.98)', border: '1px solid rgba(200,134,26,0.2)',
+          borderRadius: 8, maxHeight: 190, overflowY: 'auto', zIndex: 20, padding: '0.35rem',
+          boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
+        }}>
+          <Text style={{ display: 'block', fontSize: '0.52rem', letterSpacing: '0.18em', textTransform: 'uppercase', color: 'rgba(200,134,26,0.4)', padding: '0.3rem 0.5rem 0.4rem' }}>
+            Select a note
+          </Text>
+          {!(allNotes || []).length
+            ? <Text style={{ fontSize: '0.7rem', color: 'rgba(244,228,193,0.3)', display: 'block', padding: '0.4rem 0.6rem' }}>No notes saved yet.</Text>
+            : (allNotes || []).slice(0, 12).map((note, i) => (
+                <div
+                  key={note.id || i}
+                  onClick={() => addNoteContext(note)}
+                  style={{ padding: '0.4rem 0.6rem', cursor: 'pointer', borderRadius: 5, fontSize: '0.72rem', fontFamily: "'Lora', serif", color: 'rgba(244,228,193,0.7)', transition: 'background 0.12s' }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'rgba(200,134,26,0.09)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                >
+                  {note.title || 'Untitled note'}
+                </div>
+              ))
+          }
+        </div>
+      )}
+
+      {/* Context bar */}
+      <div style={{ padding: '0.28rem 0.75rem', borderTop: '1px solid rgba(200,134,26,0.1)', background: 'rgba(200,134,26,0.035)', display: 'flex', flexWrap: 'wrap', gap: '0.3rem', alignItems: 'center', flexShrink: 0, minHeight: 32 }}>
+        <Button size="small" type="text" icon={<BookOutlined style={{ fontSize: '0.66rem' }} />} onClick={addVerseContext} disabled={!curBook}
+          style={{ fontSize: '0.6rem', color: 'rgba(200,134,26,0.65)', padding: '0 5px', height: 22 }}>
+          Verse
+        </Button>
+        <Button size="small" type="text" icon={<EditOutlined style={{ fontSize: '0.66rem' }} />} onClick={() => setNotePickerOpen(v => !v)}
+          style={{ fontSize: '0.6rem', color: 'rgba(200,134,26,0.65)', padding: '0 5px', height: 22 }}>
+          Notes
+        </Button>
+        {context.length > 0 && <Divider type="vertical" style={{ borderColor: 'rgba(200,134,26,0.15)', margin: '0 1px', height: 12 }} />}
+        {context.map((c, i) => (
+          <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.2rem', padding: '0.1rem 0.38rem', background: 'rgba(200,134,26,0.1)', border: '1px solid rgba(200,134,26,0.22)', borderRadius: 3, fontSize: '0.58rem', color: 'rgba(244,228,193,0.75)', fontFamily: "'Lora', serif", maxWidth: 130 }}>
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{c}</span>
+            <CloseOutlined style={{ fontSize: '0.5rem', cursor: 'pointer', color: 'rgba(200,134,26,0.6)', flexShrink: 0 }} onClick={() => setContext(prev => prev.filter(x => x !== c))} />
+          </span>
+        ))}
+      </div>
+
+      {/* Input */}
+      <div style={{ display: 'flex', gap: '0.4rem', padding: '0.6rem 0.75rem', borderTop: '1px solid rgba(200,134,26,0.15)', flexShrink: 0, alignItems: 'flex-end' }}>
+        <Input
+          value={text}
+          onChange={e => setText(e.target.value)}
+          onPressEnter={e => { if (!e.shiftKey) { e.preventDefault(); handleSend(); } }}
+          placeholder="Ask your spiritual guide…"
+          style={{ flex: 1, borderRadius: 20, fontSize: '0.82rem' }}
+        />
+        <Button type="primary" shape="circle" icon={<SendOutlined />} onClick={handleSend} disabled={!text.trim() || agentThinking} style={{ flexShrink: 0 }} />
+      </div>
+    </div>
+  );
+}
 
 // ── Contacts island ───────────────────────────────────────────────────────────
 
@@ -70,6 +268,7 @@ function ContactsPanel({
   user, friends, groups, currentContact,
   onOpen, onAddFriend, onRemoveFriend, onCreateGroup, onUpdateGroup, onLeaveGroup,
   loaded, onLoad,
+  agents, activeAgent, onOpenAgent, onNewAgent,
 }) {
   const [friendInput,    setFriendInput]    = useState('');
   const [showAddFriend,  setShowAddFriend]  = useState(false);
@@ -187,6 +386,19 @@ function ContactsPanel({
                 />
               );
             })
+        }
+
+        {/* Agents */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.55rem 0.8rem 0.25rem', borderTop: '1px solid rgba(200,134,26,0.08)', marginTop: '0.3rem' }}>
+          <Text style={{ fontSize: '0.52rem', letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(200,134,26,0.4)' }}>Agents</Text>
+          <Button type="text" size="small" icon={<PlusOutlined />} onClick={onNewAgent}
+            style={{ color: 'rgba(200,134,26,0.5)', padding: '0 3px', height: 20 }} />
+        </div>
+        {(agents || []).length === 0
+          ? <Text style={{ display: 'block', textAlign: 'center', padding: '0.6rem 0.5rem', color: 'rgba(244,228,193,0.2)', fontSize: '0.62rem' }}>No agent chats yet</Text>
+          : (agents || []).filter(a => a.enabled !== false).map(agent => (
+              <AgentRow key={agent.id} agent={agent} active={activeAgent?.id === agent.id} onOpen={() => onOpenAgent(agent)} />
+            ))
         }
       </div>
 
@@ -406,6 +618,12 @@ export default function Reader() {
     videoEnabled, videoTiles, toggleVideo, bindVideoTile,
   } = useSessions({ user, wsRef, currentContact });
 
+  const {
+    agents, agentMessages, activeAgent, agentThinking,
+    loadAgents, openAgentChat, closeAgentChat, sendAgentMessage,
+    createAgent, summarizeSession,
+  } = useAgentChat({ user, onNoteSaved: loadNotes });
+
   const { bookmarks, loadBookmarks, addBookmark, removeBookmark } = useBookmarks({ user });
 
   const [contactsLoaded, setContactsLoaded] = useState(false);
@@ -459,7 +677,7 @@ export default function Reader() {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (user) { loadHighlights(); loadNotes(); loadGroups(); loadBookmarks(); connectWS(); }
+    if (user) { loadHighlights(); loadNotes(); loadGroups(); loadBookmarks(); connectWS(); loadAgents(); }
     return () => disconnectWS();
   }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -575,12 +793,39 @@ export default function Reader() {
   const handleLoadContacts = useCallback(async () => { await loadContacts(); setContactsLoaded(true); }, [loadContacts]);
 
   const handleOpenChat = useCallback(async (contact) => {
+    closeAgentChat();
     await openChat(contact);
     loadSessions(contact);
     if (isMobile()) setMobileSidebar('messages');
-  }, [openChat, loadSessions]);
+  }, [openChat, loadSessions, closeAgentChat]);
 
   const handleCloseChat = useCallback(() => { closeChat(); }, [closeChat]);
+
+  const handleOpenAgent = useCallback(async (agent) => {
+    closeChat();
+    await openAgentChat(agent);
+    if (isMobile()) setMobileSidebar('messages');
+  }, [openAgentChat, closeChat]);
+
+  const handleCloseAgent = useCallback(() => { closeAgentChat(); }, [closeAgentChat]);
+
+  const handleNewAgent = useCallback(async () => {
+    const agent = await createAgent();
+    if (agent) await handleOpenAgent(agent);
+  }, [createAgent, handleOpenAgent]);
+
+  const handleLeaveSession = useCallback(async () => {
+    const session = sessions.find(s => s.id === activeSessionId);
+    await leaveSession();
+    if (session?.summarize) {
+      const enabledAgent = agents.find(a => a.enabled !== false);
+      if (enabledAgent) {
+        const groupId = currentContact?.group_id || currentContact?.id || '';
+        await summarizeSession(enabledAgent.id, session, groupId);
+        loadNotes();
+      }
+    }
+  }, [sessions, activeSessionId, leaveSession, agents, currentContact, summarizeSession, loadNotes]);
 
   // ── Derived ─────────────────────────────────────────────────────────────────
   const preamble = getPreamble(curBook, null);
@@ -607,6 +852,7 @@ export default function Reader() {
     onAddFriend: addFriend, onRemoveFriend: removeFriend,
     onCreateGroup: createGroup, onUpdateGroup: updateGroup, onLeaveGroup: leaveGroup,
     loaded: contactsLoaded, onLoad: handleLoadContacts,
+    agents, activeAgent, onOpenAgent: handleOpenAgent, onNewAgent: handleNewAgent,
   };
 
   return (
@@ -669,30 +915,44 @@ export default function Reader() {
           {/* Notes column */}
           <div className="notes-section">
             <NotesSidebar {...notesSidebarProps} />
-            {/* Chat only rendered when a contact is selected — slides in via CSS animation */}
-            {currentContact && (
+            {/* Chat overlays — regular contact or agent */}
+            {(currentContact || activeAgent) && (
               <div className="chat-overlay">
-                <ChatPanel
-                  contact={currentContact}
-                  messages={messages}
-                  groupMembers={groupMembers}
-                  user={user}
-                  onBack={handleCloseChat}
-                  onSend={sendMessage}
-                  sessions={sessions}
-                  activeSessionId={activeSessionId}
-                  talkingUserId={talkingUserId}
-                  onJoinSession={joinSession}
-                  onLeaveSession={leaveSession}
-                  onOpenSessionCreator={() => openCreator()}
-                  onEditSession={openCreator}
-                  onDeleteSession={deleteSession}
-                  onNavigateVerse={handleNavigateVerse}
-                  videoEnabled={videoEnabled}
-                  videoTiles={videoTiles}
-                  onToggleVideo={toggleVideo}
-                  bindVideoTile={bindVideoTile}
-                />
+                {activeAgent
+                  ? <AgentChatPanel
+                      agent={activeAgent}
+                      messages={agentMessages}
+                      user={user}
+                      onBack={handleCloseAgent}
+                      onSend={sendAgentMessage}
+                      agentThinking={agentThinking}
+                      curBook={curBook}
+                      curChapter={curChapter}
+                      curVerse={curVerse}
+                      allNotes={allNotes}
+                    />
+                  : <ChatPanel
+                      contact={currentContact}
+                      messages={messages}
+                      groupMembers={groupMembers}
+                      user={user}
+                      onBack={handleCloseChat}
+                      onSend={sendMessage}
+                      sessions={sessions}
+                      activeSessionId={activeSessionId}
+                      talkingUserId={talkingUserId}
+                      onJoinSession={joinSession}
+                      onLeaveSession={handleLeaveSession}
+                      onOpenSessionCreator={() => openCreator()}
+                      onEditSession={openCreator}
+                      onDeleteSession={deleteSession}
+                      onNavigateVerse={handleNavigateVerse}
+                      videoEnabled={videoEnabled}
+                      videoTiles={videoTiles}
+                      onToggleVideo={toggleVideo}
+                      bindVideoTile={bindVideoTile}
+                    />
+                }
               </div>
             )}
           </div>
@@ -740,29 +1000,42 @@ export default function Reader() {
           <Text style={{ fontFamily: "'Playfair Display', serif", fontSize: '1rem', color: 'var(--parchment)' }}>Messages</Text>
         </div>
         <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-          {currentContact
-            ? <ChatPanel
-                contact={currentContact}
-                messages={messages}
-                groupMembers={groupMembers}
+          {activeAgent
+            ? <AgentChatPanel
+                agent={activeAgent}
+                messages={agentMessages}
                 user={user}
-                onBack={handleCloseChat}
-                onSend={sendMessage}
-                sessions={sessions}
-                activeSessionId={activeSessionId}
-                talkingUserId={talkingUserId}
-                onJoinSession={joinSession}
-                onLeaveSession={leaveSession}
-                onOpenSessionCreator={() => openCreator()}
-                onEditSession={openCreator}
-                onDeleteSession={deleteSession}
-                onNavigateVerse={handleNavigateVerse}
-                videoEnabled={videoEnabled}
-                videoTiles={videoTiles}
-                onToggleVideo={toggleVideo}
-                bindVideoTile={bindVideoTile}
+                onBack={handleCloseAgent}
+                onSend={sendAgentMessage}
+                agentThinking={agentThinking}
+                curBook={curBook}
+                curChapter={curChapter}
+                curVerse={curVerse}
+                allNotes={allNotes}
               />
-            : <ContactsPanel {...contactsProps} />
+            : currentContact
+              ? <ChatPanel
+                  contact={currentContact}
+                  messages={messages}
+                  groupMembers={groupMembers}
+                  user={user}
+                  onBack={handleCloseChat}
+                  onSend={sendMessage}
+                  sessions={sessions}
+                  activeSessionId={activeSessionId}
+                  talkingUserId={talkingUserId}
+                  onJoinSession={joinSession}
+                  onLeaveSession={handleLeaveSession}
+                  onOpenSessionCreator={() => openCreator()}
+                  onEditSession={openCreator}
+                  onDeleteSession={deleteSession}
+                  onNavigateVerse={handleNavigateVerse}
+                  videoEnabled={videoEnabled}
+                  videoTiles={videoTiles}
+                  onToggleVideo={toggleVideo}
+                  bindVideoTile={bindVideoTile}
+                />
+              : <ContactsPanel {...contactsProps} />
           }
         </div>
       </div>

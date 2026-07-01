@@ -1,5 +1,6 @@
 import psycopg2 as sql
 import os
+import sys
 import json
 import logging
 import uuid
@@ -106,12 +107,11 @@ def create_tables(cur):
     )
 
     cur.execute(
-        "CREATE TABLE IF NOT EXISTS agent_conversations"
+        "CREATE TABLE IF NOT EXISTS agents"
         "(_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
         "user_id UUID REFERENCES users(_id) ON DELETE CASCADE,"
-        "agent_id VARCHAR(64) NOT NULL,"
-        "created_at TIMESTAMPTZ DEFAULT NOW(),"
-        "last_active TIMESTAMPTZ DEFAULT NOW())"
+        "role VARCHAR(128) DEFAULT '',"
+        "chats TEXT[])"
     )
 
     # ── Level 2: depend on Level 1 ─────────────────────────────────────────────
@@ -133,12 +133,23 @@ def create_tables(cur):
     )
 
     cur.execute(
+        "CREATE TABLE IF NOT EXISTS agent_heartbeats"
+        "(_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
+        "agent_id UUID REFERENCES agents(_id) ON DELETE CASCADE,"
+        "user_id UUID REFERENCES users(_id) ON DELETE CASCADE,"
+        "timestamp TIMESTAMPTZ DEFAULT NOW(),"
+        "days_per_week TEXT[],"
+        "prompt TEXT DEFAULT '')"
+    )
+
+    cur.execute(
         "CREATE TABLE IF NOT EXISTS agent_messages"
         "(_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
-        "conversation_id UUID REFERENCES agent_conversations(_id) ON DELETE CASCADE,"
-        "role VARCHAR(16) NOT NULL,"
-        "content TEXT NOT NULL,"
-        "timestamp TIMESTAMPTZ DEFAULT NOW())"
+        "title VARCHAR(255) DEFAULT '',"
+        "agent_id UUID REFERENCES agents(_id) ON DELETE CASCADE,"
+        "user_id UUID REFERENCES users(_id) ON DELETE CASCADE,"
+        "timestamp TIMESTAMPTZ DEFAULT NOW(),"
+        "content TEXT DEFAULT '')"
     )
     logger.info("All tables created.")
 
@@ -343,8 +354,8 @@ def clear_tables(cur):
     logger.info("Clearing all tables...")
     cur.execute(
         "TRUNCATE TABLE "
-        "agent_messages, message_recipients, note_verses, "
-        "agent_conversations, devotions, messages, notes, "
+        "agent_messages, agent_heartbeats, message_recipients, note_verses, "
+        "agents, devotions, messages, notes, "
         "bookmarks, highlights, friend_requests, user_friends, "
         "groups, users "
         "CASCADE"
@@ -368,27 +379,47 @@ def migrate_data(cur):
     insert_messages(cur, messages, valid_group_ids=set(groups.keys()), valid_user_ids=set(users.keys()))
     logger.info("Migration complete.")
 
-def main():
-    logger.info("Connecting to PostgreSQL...")
-    conn = sql.connect(
+def _connect():
+    return sql.connect(
         host="localhost",
         dbname="fellowscript",
         user="fellowscript",
         password=os.getenv("DB_PASSWORD"),
-        port=5432
+        port=5432,
     )
-    logger.info("Connected.")
 
+def main():
+    logger.info("Connecting to PostgreSQL...")
+    conn = _connect()
+    logger.info("Connected.")
     cur = conn.cursor()
     create_tables(cur)
     clear_tables(cur)
     migrate_data(cur)
-
     conn.commit()
     logger.info("Changes committed.")
     cur.close()
     conn.close()
     logger.info("Connection closed.")
+
+def main_notes_only():
+    """Insert any notes (and their verses) missing from the DB without touching other tables.
+    Groups are also upserted first so FK constraints on notes.group_id are satisfied."""
+    logger.info("Notes-only migration: connecting...")
+    conn = _connect()
+    logger.info("Connected.")
+    cur = conn.cursor()
+    groups = load_groups()
+    notes  = load_notes()
+    logger.info("Loaded %d groups and %d notes from JSON.", len(groups), len(notes))
+    insert_groups(cur, groups)
+    insert_notes(cur, notes)
+    conn.commit()
+    logger.info("Notes committed.")
+    cur.close()
+    conn.close()
+    logger.info("Done.")
+
 
 class DBManager:
     def __init__(self):
@@ -465,4 +496,7 @@ class DBManager:
         logger.info("Connection closed.")
 
 if __name__ == "__main__":
-    main()
+    if "--notes-only" in sys.argv:
+        main_notes_only()
+    else:
+        main()
