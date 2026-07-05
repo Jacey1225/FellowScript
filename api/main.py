@@ -1,11 +1,13 @@
 from fastapi import FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
+from contextlib import asynccontextmanager
 from routes.notes import notes_router
 from routes.messaging import ws_router, chime_router
 from routes.community import group_router, friend_router
 from routes.filtering import filter_router, sorting_router
 from routes.devotion import devo_router
 from routes.agent import agent_router
+from routes.notifications import notification_router
 from schemas.users import SignUp, Login, UpdateUser, User
 import uvicorn
 import bcrypt
@@ -16,7 +18,14 @@ import logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(levelname)s - %(message)s")
 
 
-app = FastAPI()
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    from backend.interactions.scheduler import start_scheduler
+    start_scheduler()
+    yield
+
+
+app = FastAPI(lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -34,6 +43,7 @@ app.include_router(filter_router)
 app.include_router(sorting_router)
 app.include_router(devo_router)
 app.include_router(agent_router)
+app.include_router(notification_router)
 
 main_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 user_path = "data/users.json"

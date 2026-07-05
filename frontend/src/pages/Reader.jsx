@@ -1,7 +1,7 @@
 import React, { useEffect, useLayoutEffect, useState, useRef, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import ReactMarkdown from 'react-markdown';
 import { Layout, Input, Button, Avatar, Typography, Divider, Modal, Form, Checkbox, Spin } from 'antd';
+import { AgentMessage } from '../components/RichText.jsx';
 import {
   SendOutlined, ArrowLeftOutlined, PlusOutlined,
   MessageOutlined, BookOutlined, TeamOutlined,
@@ -41,6 +41,7 @@ const FONT_SIZE_LABELS = ['Default', 'Large', 'Largest'];
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function agentLabel(agent) {
+  if (agent?.name) return agent.name;
   if (!agent?.role || agent.role.startsWith('You are a spiritual')) return 'Spiritual Guide';
   const firstLine = agent.role.split('\n').find(l => l.trim());
   return (firstLine || '').slice(0, 26) || 'Agent';
@@ -82,7 +83,7 @@ function AgentRow({ agent, active, onOpen }) {
 
 // ── Agent chat panel ──────────────────────────────────────────────────────────
 
-function AgentChatPanel({ agent, messages, user, onBack, onSend, agentThinking, curBook, curChapter, curVerse, allNotes }) {
+function AgentChatPanel({ agent, messages, user, onBack, onSend, agentThinking, curBook, curChapter, curVerse, allNotes, onNavigateVerse }) {
   const [text,           setText]           = useState('');
   const [context,        setContext]        = useState([]);
   const [notePickerOpen, setNotePickerOpen] = useState(false);
@@ -148,10 +149,7 @@ function AgentChatPanel({ agent, messages, user, onBack, onSend, agentThinking, 
         {messages.map((m, i) => (
           <div key={i} className={`msg-bubble ${m.mine ? 'sent' : 'received'}`}>
             {!m.mine && <div className="msg-bubble-sender">{m.sender}</div>}
-            {m.mine
-              ? <span style={{ whiteSpace: 'pre-wrap' }}>{m.text}</span>
-              : <div className="msg-bubble-markdown"><ReactMarkdown>{m.text}</ReactMarkdown></div>
-            }
+            <AgentMessage text={m.text} isMine={m.mine} onNavigate={onNavigateVerse} />
             {m.timestamp && (
               <div className="msg-bubble-meta">
                 {new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -593,7 +591,7 @@ export default function Reader() {
   } = useHighlights({ user, curBook, curChapter });
 
   const {
-    allNotes, groupNotes, currentGroupId, groups,
+    allNotes, groupNotes, currentGroupId, groups, groupLoading,
     filteredNotes, filteredGroup, filterActive,
     loadNotes, loadGroups, selectGroup,
     saveNote, deleteNote, postReply, loadDetailReplies,
@@ -692,6 +690,8 @@ export default function Reader() {
       const saved = localStorage.getItem('fs_notes_group');
       if (saved && groups.find(g => g.id === saved)) {
         handleGroupChange(saved);
+      } else if (saved) {
+        try { localStorage.removeItem('fs_notes_group'); } catch {}
       }
     } catch {}
   }, [user, groups]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -839,7 +839,7 @@ export default function Reader() {
     onSaveNote: saveNote, onDeleteNote: deleteNote,
     onReply: postReply, onLoadReplies: loadDetailReplies,
     applyFilter, clearFilter, filterActive,
-    allNotes, groupNotes,
+    allNotes, groupNotes, groupLoading,
     books, chapterCount: getChapterCount, verseCount,
     localHl, groupHighlights, groupUsernames,
     onNavigateVerse: handleNavigateVerse,
@@ -930,6 +930,7 @@ export default function Reader() {
                       curChapter={curChapter}
                       curVerse={curVerse}
                       allNotes={allNotes}
+                      onNavigateVerse={handleNavigateVerse}
                     />
                   : <ChatPanel
                       contact={currentContact}
@@ -1012,6 +1013,7 @@ export default function Reader() {
                 curChapter={curChapter}
                 curVerse={curVerse}
                 allNotes={allNotes}
+                onNavigateVerse={handleNavigateVerse}
               />
             : currentContact
               ? <ChatPanel

@@ -151,6 +151,22 @@ def create_tables(cur):
         "timestamp TIMESTAMPTZ DEFAULT NOW(),"
         "content TEXT DEFAULT '')"
     )
+
+    cur.execute(
+        "CREATE TABLE IF NOT EXISTS notifications"
+        "(_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
+        "user_id UUID REFERENCES users(_id) ON DELETE CASCADE,"
+        "name VARCHAR(255) NOT NULL DEFAULT '',"
+        "prompt TEXT DEFAULT '',"
+        "timestamps JSONB DEFAULT '[]')"
+    )
+
+    cur.execute(
+        "CREATE TABLE IF NOT EXISTS device_tokens"
+        "(user_id UUID PRIMARY KEY REFERENCES users(_id) ON DELETE CASCADE,"
+        "token TEXT NOT NULL,"
+        "updated_at TIMESTAMP DEFAULT NOW())"
+    )
     logger.info("All tables created.")
 
 main_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
@@ -354,6 +370,7 @@ def clear_tables(cur):
     logger.info("Clearing all tables...")
     cur.execute(
         "TRUNCATE TABLE "
+        "device_tokens, notifications, "
         "agent_messages, agent_heartbeats, message_recipients, note_verses, "
         "agents, devotions, messages, notes, "
         "bookmarks, highlights, friend_requests, user_friends, "

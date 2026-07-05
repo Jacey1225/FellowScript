@@ -7,6 +7,7 @@ import {
   PlusOutlined, EditOutlined, DeleteOutlined, FilterOutlined,
   ArrowLeftOutlined, ReloadOutlined,
 } from '@ant-design/icons';
+import { NoteBody, stripHtml as sanitizeStripHtml } from './RichText.jsx';
 // Format a single [book, chapter, verse] triple into a display string
 function fmtVerse([b, c, v]) { return `${b} ${c}:${v}`; }
 
@@ -18,12 +19,7 @@ function validVerses(verses) {
 }
 
 // Strip HTML tags to produce a plain-text preview
-function stripHtml(html) {
-  if (!html) return '';
-  const el = document.createElement('div');
-  el.innerHTML = html;
-  return el.textContent || '';
-}
+const stripHtml = sanitizeStripHtml;
 
 import VerseSelector from './VerseSelector.jsx';
 
@@ -332,11 +328,7 @@ function NoteDetail({ note, noteId, onBack, canReply, onReply, replies, repliesL
         </Text>
       </div>
       <div style={{ flex: 1, overflowY: 'auto', padding: '0.85rem 0.6rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-        <div
-          className="note-rendered-body"
-          style={{ fontSize: '0.88rem', color: 'rgba(244,228,193,0.75)', lineHeight: 1.8 }}
-          dangerouslySetInnerHTML={{ __html: note?.text || '' }}
-        />
+        <NoteBody html={note?.text} />
         {verses.length > 0 && (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem' }}>
             {verses.map((v, i) => (
@@ -474,7 +466,7 @@ export default function NotesSidebar({
   groups, currentGroupId, onGroupChange,
   onSaveNote, onDeleteNote, onReply, onLoadReplies,
   applyFilter, clearFilter, filterActive,
-  allNotes, groupNotes,
+  allNotes, groupNotes, groupLoading,
   books, chapterCount, verseCount,
   localHl, groupHighlights, groupUsernames,
   onNavigateVerse,
@@ -605,7 +597,9 @@ export default function NotesSidebar({
       label: 'Notes',
       children: (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem', padding: verseList.length ? '0.5rem 0.4rem' : 0, flex: 1 }}>
-          {verseList.length === 0
+          {groupLoading && currentGroupId && verseList.length === 0
+            ? <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '3rem 0' }}><Spin size="default" /></div>
+            : verseList.length === 0
             ? verseEmpty
             : verseList.map(([id, note, owner, isOwn]) => (
                 <NoteCard key={id} id={id} note={note} owner={owner} isOwn={isOwn}
