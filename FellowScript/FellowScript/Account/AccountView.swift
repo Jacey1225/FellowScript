@@ -6,6 +6,7 @@
 
 import SwiftUI
 import Combine
+import UserNotifications
 
 @MainActor
 final class AccountViewModel: ObservableObject {
@@ -21,18 +22,24 @@ final class AccountViewModel: ObservableObject {
 
     enum AlertType { case success, error, warning }
 
-    var friendCount:    Int { profileData?.friends.count    ?? 0 }
-    var groupCount:     Int { profileData?.groups.count     ?? 0 }
-    var noteCount:      Int { profileData?.notes.count      ?? 0 }
-    var highlightCount: Int { profileData?.highlights.count ?? 0 }
+    var friendCount: Int { profileData?.friends.count ?? 0 }
+    var groupCount:  Int { profileData?.groups.count  ?? 0 }
+    @Published var noteCount:      Int = 0
+    @Published var highlightCount: Int = 0
 
     func load(service: DataServiceProtocol, user: FSUser) async {
         self.service = service
         isLoading = true
         defer { isLoading = false }
         profileData = user
-        agents        = (try? await service.fetchAgents(userId: user.user_id)) ?? []
-        notifications = (try? await service.fetchNotifications(userId: user.user_id)) ?? []
+        async let fetchedAgents        = service.fetchAgents(userId: user.user_id)
+        async let fetchedNotifications = service.fetchNotifications(userId: user.user_id)
+        async let fetchedNotes         = service.fetchNotes(userId: user.user_id)
+        async let fetchedHighlights    = service.fetchHighlights(userId: user.user_id)
+        agents        = (try? await fetchedAgents)        ?? []
+        notifications = (try? await fetchedNotifications) ?? []
+        noteCount      = (try? await fetchedNotes)?.count      ?? 0
+        highlightCount = (try? await fetchedHighlights)?.count ?? 0
         await withTaskGroup(of: (String, [FSHeartbeat]).self) { group in
             for agent in agents {
                 group.addTask {
@@ -99,6 +106,8 @@ final class AccountViewModel: ObservableObject {
         if let notif = try? await service.createNotification(userId: uid, name: name, prompt: prompt, timestamps: timestamps) {
             notifications.append(notif)
         }
+        // Cancel any stale pending local notification for this slot and reschedule all
+        await NotificationScheduler.scheduleAll(userId: uid, notifications: notifications, service: service)
     }
 
     func updateNotification(notif: FSNotification, name: String, prompt: String, timestamps: [String?]) async {
@@ -109,12 +118,21 @@ final class AccountViewModel: ObservableObject {
             notifications[i].prompt     = prompt
             notifications[i].timestamps = timestamps
         }
+        // Cancel the old pending trigger and reschedule with updated time/prompt
+        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [notif.id])
+        await NotificationScheduler.scheduleAll(userId: uid, notifications: notifications, service: service)
     }
 
     func deleteNotification(notifId: String) {
         guard let uid = profileData?.user_id else { return }
         notifications.removeAll { $0.id == notifId }
-        Task { try? await service.deleteNotification(userId: uid, notifId: notifId) }
+        let remaining = notifications
+        Task {
+            try? await service.deleteNotification(userId: uid, notifId: notifId)
+            // Remove from local notification center too
+            UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [notifId])
+            await NotificationScheduler.scheduleAll(userId: uid, notifications: remaining, service: service)
+        }
     }
 }
 
@@ -297,7 +315,7 @@ struct AccountView: View {
                 StatBox(value: vm.friendCount,    label: "Friends")
                 StatBox(value: vm.groupCount,     label: "Groups")
                 StatBox(value: vm.noteCount,      label: "Notes")
-                StatBox(value: vm.highlightCount, label: "Highlights")
+                StatBox(value: vm.highlightCount, label: "Verses")
             }
         } header: {
             sectionHeader("Overview")
@@ -523,7 +541,10 @@ struct AccountView: View {
                 }
             }
 
-            Button(action: { activeSheet = .newNotification }) {
+            Button(action: {
+                appState.requestPushNotifications()
+                activeSheet = .newNotification
+            }) {
                 Label("New Notification", systemImage: "plus")
                     .font(.lora(Theme.fontBody))
                     .foregroundColor(Theme.gold)

@@ -467,6 +467,11 @@ final class NetworkService: DataServiceProtocol {
                                  jsonObject: ["token": token])
     }
 
+    func triggerNotification(userId: String, notifId: String) async throws -> [String: String] {
+        let data = try await request("/notification/\(userId)/\(notifId)/trigger", method: "POST")
+        return decode([String: String].self, from: data) ?? [:]
+    }
+
     // ── Private helpers ───────────────────────────────────────────────────────
 
     private func encodeURIComponent(_ s: String) -> String {

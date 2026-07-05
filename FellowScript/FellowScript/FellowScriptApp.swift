@@ -42,6 +42,7 @@ extension Notification.Name {
 struct FellowScriptApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @StateObject private var appState = AppState(service: NetworkService.shared)
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
         WindowGroup {
@@ -51,6 +52,18 @@ struct FellowScriptApp: App {
                 .onReceive(NotificationCenter.default.publisher(for: .apnsTokenReceived)) { note in
                     if let token = note.object as? String {
                         appState.registerDeviceToken(token)
+                    }
+                }
+                .onChange(of: scenePhase) { _, phase in
+                    guard phase == .active,
+                          let uid = appState.currentUser?.user_id else { return }
+                    Task {
+                        let notifs = (try? await appState.service.fetchNotifications(userId: uid)) ?? []
+                        await NotificationScheduler.scheduleAll(
+                            userId: uid,
+                            notifications: notifs,
+                            service: appState.service
+                        )
                     }
                 }
         }

@@ -81,6 +81,7 @@ protocol DataServiceProtocol {
     func updateNotification(userId: String, notifId: String, name: String, prompt: String, timestamps: [String?]) async throws
     func deleteNotification(userId: String, notifId: String) async throws
     func registerDeviceToken(userId: String, token: String) async throws
+    func triggerNotification(userId: String, notifId: String) async throws -> [String: String]
 }
 
 // ── Mock data ─────────────────────────────────────────────────────────────────
@@ -297,6 +298,9 @@ final class MockDataService: DataServiceProtocol {
     func updateNotification(userId: String, notifId: String, name: String, prompt: String, timestamps: [String?]) async throws {}
     func deleteNotification(userId: String, notifId: String) async throws {}
     func registerDeviceToken(userId: String, token: String) async throws {}
+    func triggerNotification(userId: String, notifId: String) async throws -> [String: String] {
+        ["name": "FellowScript", "content": "This is a sample notification."]
+    }
 }
 
 // ── AppError ──────────────────────────────────────────────────────────────────

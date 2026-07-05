@@ -47,6 +47,8 @@ export default function Account() {
   const [profileLoading, setProfileLoading] = useState(true);
   const [editLoading,    setEditLoading]    = useState(false);
   const [editMsg,        setEditMsg]        = useState(null);
+  const [notesCount,     setNotesCount]     = useState(0);
+  const [versesCount,    setVersesCount]    = useState(0);
 
   const [requests,        setRequests]        = useState([]);
   const [requestsLoading, setRequestsLoading] = useState({});
@@ -75,10 +77,23 @@ export default function Account() {
     if (!user) { navigate('/signin'); return; }
     setProfileLoading(true);
     try {
-      const res  = await fetch(`${API}/user/${user.user_id}`);
-      const data = res.ok ? await res.json() : user;
+      const [profileRes, notesRes, hlRes] = await Promise.all([
+        fetch(`${API}/user/${user.user_id}`),
+        fetch(`${API}/notes/${user.user_id}`),
+        fetch(`${API}/notes/highlight/${user.user_id}`),
+      ]);
+      const data = profileRes.ok ? await profileRes.json() : user;
       setProfileData(data);
       form.setFieldsValue({ username: data.username || '', email: data.email || '' });
+
+      if (notesRes.ok) {
+        const notesData = await notesRes.json();
+        setNotesCount(Object.keys(notesData || {}).length);
+      }
+      if (hlRes.ok) {
+        const hlData = await hlRes.json();
+        setVersesCount(Object.keys(hlData || {}).length);
+      }
 
       const reqIds = data.friend_requests || [];
       const resolved = await Promise.all(reqIds.map(async uid => {
@@ -282,10 +297,10 @@ export default function Account() {
           {profileLoading
             ? <div style={{ textAlign: 'center', padding: '2rem' }}><Spin /></div>
             : <Row>
-                <Col span={6}><StatBox value={(data.friends      || []).length}         label="Friends"    /></Col>
-                <Col span={6}><StatBox value={(data.groups       || []).length}         label="Groups"     /></Col>
-                <Col span={6}><StatBox value={Object.keys(data.notes      || {}).length} label="Notes"      /></Col>
-                <Col span={6}><StatBox value={Object.keys(data.highlights || {}).length} label="Highlights" /></Col>
+                <Col span={6}><StatBox value={(data.friends || []).length} label="Friends" /></Col>
+                <Col span={6}><StatBox value={(data.groups  || []).length} label="Groups"  /></Col>
+                <Col span={6}><StatBox value={notesCount}                  label="Notes"   /></Col>
+                <Col span={6}><StatBox value={versesCount}                 label="Verses"  /></Col>
               </Row>
           }
         </Card>

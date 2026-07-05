@@ -121,6 +121,31 @@ final class BibleViewModel: ObservableObject {
         return raw.count == 1 ? 1 : raw.count - 1
     }
 
+    func nextChapter() {
+        let total = chapters(for: curBook)
+        if curChapter < total {
+            setChapter(curChapter + 1)
+        } else {
+            let bookList = BibleData.bookNames
+            if let idx = bookList.firstIndex(of: curBook), idx + 1 < bookList.count {
+                setBook(bookList[idx + 1])
+            }
+        }
+    }
+
+    func prevChapter() {
+        if curChapter > 1 {
+            setChapter(curChapter - 1)
+        } else {
+            let bookList = BibleData.bookNames
+            if let idx = bookList.firstIndex(of: curBook), idx > 0 {
+                let prev = bookList[idx - 1]
+                curBook  = prev
+                setChapter(chapters(for: prev))
+            }
+        }
+    }
+
     func isHighlighted(verse: Int) -> String? {
         return highlights["\(curBook)-\(curChapter)-\(verse)"]
     }
@@ -205,6 +230,7 @@ struct BibleReaderView: View {
     @State private var showHighlightFor: Int? = nil
     @State private var showAddToNote:    (Int, String)? = nil
     @State private var pendingScrollVerse: Int? = nil
+    @State private var contentOpacity:   Double = 1
 
     private var fontSize: CGFloat { Theme.bibleFontSizes[min(fontSizeIndex, Theme.bibleFontSizes.count - 1)] }
 
@@ -230,6 +256,7 @@ struct BibleReaderView: View {
                                         .font(.playfair(Theme.fontDisplayXL))
                                         .foregroundColor(Theme.bibleText)
                                 }
+                                .id("chapterTop")
                                 .padding(.horizontal, Theme.spacingLG)
                                 .padding(.top, Theme.spacingMD)
                                 .padding(.bottom, Theme.spacingLG)
@@ -253,6 +280,12 @@ struct BibleReaderView: View {
                             }
                             .padding(.bottom, 60)
                         }
+                        .onChange(of: vm.curChapter) { _, _ in
+                            proxy.scrollTo("chapterTop", anchor: .top)
+                        }
+                        .onChange(of: vm.curBook) { _, _ in
+                            proxy.scrollTo("chapterTop", anchor: .top)
+                        }
                         .onChange(of: pendingScrollVerse) { _, verse in
                             guard let v = verse else { return }
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
@@ -262,8 +295,18 @@ struct BibleReaderView: View {
                             }
                         }
                     }
+                    .opacity(contentOpacity)
                 }
             }
+            .gesture(
+                DragGesture(minimumDistance: 30, coordinateSpace: .local)
+                    .onEnded { value in
+                        let dx = value.translation.width
+                        let dy = value.translation.height
+                        guard abs(dx) > abs(dy), abs(dx) > 50 else { return }
+                        changeChapter(forward: dx < 0)
+                    }
+            )
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
@@ -394,6 +437,14 @@ struct BibleReaderView: View {
 
     private func cycleFontSize() {
         fontSizeIndex = (fontSizeIndex + 1) % Theme.bibleFontSizes.count
+    }
+
+    private func changeChapter(forward: Bool) {
+        withAnimation(.easeInOut(duration: 0.12)) { contentOpacity = 0 }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+            if forward { vm.nextChapter() } else { vm.prevChapter() }
+            withAnimation(.easeInOut(duration: 0.18)) { contentOpacity = 1 }
+        }
     }
 
     private func colorName(_ hex: String) -> String {
