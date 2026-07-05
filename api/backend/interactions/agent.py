@@ -100,11 +100,14 @@ class AgentManager(DBManager):
         agent_role = list(result.values())[0].get("role", "") if result else ""
         response = self._call_api(agent_role, [{"role": "user", "content": heartbeat_content}])
         if "{" in response and "}" in response:
-            response_dict = json.loads(response)
-            if response_dict.get("__action") == "create_note":
+            start = response.find("{")
+            end = response.find("}")
+            json_str = response[start:end]
+            response_dict = json.loads(json_str)
+            if response_dict.get("__action", '') == "create_note":
                 self.note_via_hb(response_dict)
                 return {"success": "saved note"}
-            elif response_dict.get("__action") == "create_notification":
+            elif response_dict.get("__action", '') == "create_notification":
                 return response_dict
             else:
                 return {"error": "cannot find action"}
@@ -151,6 +154,9 @@ class AgentManager(DBManager):
             content=user_content, title="user", timestamp=now
         ))
         response_text = self._call_api(agent_role, [{"role": "user", "content": user_content}])
+        if "{" in response_text:
+            end = response_text.find("{")
+            response_text = response_text[:end]
         self.save_agent_message(AgentMessages(
             chat_id="", agent_id=agent_id, user_id=self.user_id,
             content=response_text, title="assistant", timestamp=now

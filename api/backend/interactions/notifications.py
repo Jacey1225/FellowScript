@@ -10,7 +10,11 @@ from schemas.notifications import Notification
 
 logger = logging.getLogger(__name__)
 
-INSTRUCTION = ""
+INSTRUCTION = (
+    "You are to create a short, encouraging reminder for a user based on the following instructions. "
+    "Respond ONLY in JSON format with a single key 'body' whose value is the reminder text. "
+    "Example: {\"body\": \"Your reminder text here.\"}\n\nInstructions: "
+)
 
 
 class NotificationManager(DBManager):
@@ -28,7 +32,20 @@ class NotificationManager(DBManager):
     # ── AI helper ─────────────────────────────────────────────────────────────
 
     def get_content(self, prompt: str) -> str:
-        return self.assistant._call_api("", [{"role": "user", "content": prompt}])
+        response = self.assistant._call_api("", [{"role": "user", "content": INSTRUCTION + prompt}])
+        # Try to parse {"body": "..."} from the response
+        if "{" in response and "}" in response:
+            try:
+                start = response.find("{")
+                end   = response.rfind("}") + 1  # rfind+1 to include the closing brace
+                content_dict: dict = json.loads(response[start:end])
+                body = content_dict.get("body", "").strip()
+                if body:
+                    return body
+            except (json.JSONDecodeError, ValueError):
+                pass
+        # Fall back to the raw response text if JSON parsing fails or is absent
+        return response.strip() or "error"
 
     # ── Scheduling helper ─────────────────────────────────────────────────────
 
@@ -124,4 +141,6 @@ class NotificationManager(DBManager):
         if not notif:
             return {"error": "notification not found"}
         content = self.get_content(notif["prompt"])
+        if content == "error":
+            return {"error": "cannot retrieve notification content"}
         return {"name": notif["name"], "content": content}

@@ -70,14 +70,26 @@ final class AppState: ObservableObject {
         storedEmail    = user.email
         currentUser    = user
         isAuthenticated = true
-        requestPushNotifications()
     }
 
     func requestPushNotifications() {
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
-            guard granted else { return }
-            DispatchQueue.main.async {
-                UIApplication.shared.registerForRemoteNotifications()
+        UNUserNotificationCenter.current().getNotificationSettings { settings in
+            switch settings.authorizationStatus {
+            case .notDetermined:
+                // First time — show the system permission dialog
+                UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
+                    guard granted else { return }
+                    DispatchQueue.main.async {
+                        UIApplication.shared.registerForRemoteNotifications()
+                    }
+                }
+            case .authorized, .provisional, .ephemeral:
+                // Already granted — just refresh the token
+                DispatchQueue.main.async {
+                    UIApplication.shared.registerForRemoteNotifications()
+                }
+            default:
+                break
             }
         }
     }
