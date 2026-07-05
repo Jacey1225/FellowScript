@@ -1,0 +1,837 @@
+// SOURCE: frontend/src/pages/Account.jsx
+// KEY STATE: profileData, agents, requests, editLoading, deleteConfirm, agentModal, hbModal
+// INTERACTIONS: edit profile (username/email/password), accept friend requests,
+//               create/toggle/delete agents, add heartbeat, sign out, delete account
+// DEPENDENCY: Theme.swift, Models.swift, AppState.swift
+
+import SwiftUI
+import Combine
+
+@MainActor
+final class AccountViewModel: ObservableObject {
+    var service: DataServiceProtocol = MockDataService.shared
+
+    @Published var profileData:     FSUser?                   = nil
+    @Published var agents:          [FSAgent]               = []
+    @Published var heartbeats:      [String: [FSHeartbeat]] = [:]  // agentId → [FSHeartbeat]
+    @Published var friendRequests:  [(id: String, username: String)] = []
+    @Published var notifications:   [FSNotification]        = []
+    @Published var isLoading       = true
+    @Published var editMsg:        (type: AlertType, text: String)? = nil
+
+    enum AlertType { case success, error, warning }
+
+    var friendCount:    Int { profileData?.friends.count    ?? 0 }
+    var groupCount:     Int { profileData?.groups.count     ?? 0 }
+    var noteCount:      Int { profileData?.notes.count      ?? 0 }
+    var highlightCount: Int { profileData?.highlights.count ?? 0 }
+
+    func load(service: DataServiceProtocol, user: FSUser) async {
+        self.service = service
+        isLoading = true
+        defer { isLoading = false }
+        profileData = user
+        agents        = (try? await service.fetchAgents(userId: user.user_id)) ?? []
+        notifications = (try? await service.fetchNotifications(userId: user.user_id)) ?? []
+        await withTaskGroup(of: (String, [FSHeartbeat]).self) { group in
+            for agent in agents {
+                group.addTask {
+                    let hbs = (try? await service.fetchHeartbeats(userId: user.user_id, agentId: agent.id)) ?? []
+                    return (agent.id, hbs)
+                }
+            }
+            for await (agentId, hbs) in group { heartbeats[agentId] = hbs }
+        }
+    }
+
+    func scheduleHeartbeat(agentId: String, days: [String], prompt: String) async {
+        guard let uid = profileData?.user_id else { return }
+        let hb = FSHeartbeat(id: UUID().uuidString, agent_id: agentId, user_id: uid,
+                             timestamp: ISO8601DateFormatter().string(from: Date()),
+                             days_per_week: days, prompt: prompt)
+        try? await service.addHeartbeat(userId: uid, agentId: agentId, heartbeat: hb)
+        heartbeats[agentId, default: []].append(hb)
+    }
+
+    func removeHeartbeat(agentId: String, heartbeatId: String) {
+        guard let uid = profileData?.user_id else { return }
+        heartbeats[agentId]?.removeAll { $0.id == heartbeatId }
+        Task { try? await service.deleteHeartbeat(userId: uid, agentId: agentId, heartbeatId: heartbeatId) }
+    }
+
+    func toggleAgent(id: String, enabled: Bool) {
+        guard let uid = profileData?.user_id else { return }
+        if let i = agents.firstIndex(where: { $0.id == id }) {
+            agents[i].enabled = enabled
+        }
+        Task { try? await service.updateAgent(userId: uid, agentId: id, enabled: enabled) }
+    }
+
+    func renameAgent(id: String, name: String) {
+        guard let uid = profileData?.user_id else { return }
+        if let i = agents.firstIndex(where: { $0.id == id }) {
+            agents[i].name = name
+        }
+        Task { try? await service.renameAgent(userId: uid, agentId: id, name: name) }
+    }
+
+    func deleteAgent(id: String) {
+        guard let uid = profileData?.user_id else { return }
+        agents.removeAll { $0.id == id }
+        Task { try? await service.deleteAgent(userId: uid, agentId: id) }
+    }
+
+    func createAgent(role: String) async {
+        guard let uid = profileData?.user_id else { return }
+        if let agent = try? await service.createAgent(userId: uid, role: role) {
+            agents.append(agent)
+        }
+    }
+
+    func acceptRequest(username: String) async {
+        guard let uid = profileData?.user_id else { return }
+        friendRequests.removeAll { $0.username == username }
+        try? await service.acceptFriendRequest(userId: uid, username: username)
+    }
+
+    func createNotification(name: String, prompt: String, timestamps: [String?]) async {
+        guard let uid = profileData?.user_id else { return }
+        if let notif = try? await service.createNotification(userId: uid, name: name, prompt: prompt, timestamps: timestamps) {
+            notifications.append(notif)
+        }
+    }
+
+    func updateNotification(notif: FSNotification, name: String, prompt: String, timestamps: [String?]) async {
+        guard let uid = profileData?.user_id else { return }
+        try? await service.updateNotification(userId: uid, notifId: notif.id, name: name, prompt: prompt, timestamps: timestamps)
+        if let i = notifications.firstIndex(where: { $0.id == notif.id }) {
+            notifications[i].name       = name
+            notifications[i].prompt     = prompt
+            notifications[i].timestamps = timestamps
+        }
+    }
+
+    func deleteNotification(notifId: String) {
+        guard let uid = profileData?.user_id else { return }
+        notifications.removeAll { $0.id == notifId }
+        Task { try? await service.deleteNotification(userId: uid, notifId: notifId) }
+    }
+}
+
+// ── Root account view ─────────────────────────────────────────────────────────
+struct AccountView: View {
+    @EnvironmentObject var appState: AppState
+    @StateObject private var vm = AccountViewModel()
+
+    // Edit profile
+    @State private var username     = ""
+    @State private var email        = ""
+    @State private var password     = ""
+
+    // Agents
+    @State private var newAgentRole   = ""
+    @State private var activeSheet:   AccountSheet? = nil
+    @State private var renameAgentId: String? = nil
+    @State private var renameText     = ""
+
+    enum AccountSheet: Identifiable {
+        case newAgent
+        case heartbeat(String)
+        case newNotification
+        case editNotification(FSNotification)
+        var id: String {
+            switch self {
+            case .newAgent:                 return "newAgent"
+            case .heartbeat(let s):         return "hb-\(s)"
+            case .newNotification:          return "newNotification"
+            case .editNotification(let n):  return "notif-\(n.id)"
+            }
+        }
+    }
+
+    @State private var showNotificationsList = false
+
+    // Danger zone
+    @State private var deleteConfirm  = ""
+    @State private var showDeleteAlert = false
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Theme.bgPage.ignoresSafeArea()
+
+                List {
+                    // ── Profile header (avatar + name) ────────────────────────
+                    profileHeader
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+
+                    // ── Stats (mirrors StatBox row) ───────────────────────────
+                    statsSection
+
+                    // ── Edit profile ──────────────────────────────────────────
+                    editProfileSection
+
+                    // ── Friend requests ───────────────────────────────────────
+                    friendRequestsSection
+
+                    // ── Agents ────────────────────────────────────────────────
+                    agentsSection
+
+                    // ── Notifications ─────────────────────────────────────────
+                    notificationsSection
+
+                    // ── Legal ────────────────────────────────────────────────
+                    legalSection
+
+                    // ── Sign Out ──────────────────────────────────────────────
+                    Section {
+                        Button(action: appState.signOut) {
+                            Label("Sign Out", systemImage: "rectangle.portrait.and.arrow.right")
+                                .foregroundColor(Theme.error)
+                                .font(.lora(Theme.fontBody))
+                        }
+                        .accessibilityLabel("Sign out of your account")
+                    }
+                    .listRowBackground(Theme.cardBg)
+
+                    // ── Danger zone ───────────────────────────────────────────
+                    dangerZone
+                }
+                .listStyle(.insetGrouped)
+                .scrollContentBackground(.hidden)
+            }
+            .navigationTitle("Account")
+            .navigationBarTitleDisplayMode(.large)
+            .navigationDestination(isPresented: $showNotificationsList) {
+                NotificationsListView(vm: vm)
+            }
+        }
+        .task {
+            if let user = appState.currentUser {
+                await vm.load(service: appState.service, user: user)
+                username = user.username
+                email    = user.email
+            }
+        }
+        .sheet(item: $activeSheet) { sheet in
+            switch sheet {
+            case .newAgent:
+                NewAgentSheet(role: $newAgentRole) {
+                    let role = newAgentRole
+                    newAgentRole = ""
+                    Task { await vm.createAgent(role: role) }
+                }
+            case .heartbeat(let agentId):
+                HeartbeatSheet { days, prompt in
+                    Task { await vm.scheduleHeartbeat(agentId: agentId, days: days, prompt: prompt) }
+                }
+            case .newNotification:
+                NotificationSetupSheet { name, prompt, timestamps in
+                    Task { await vm.createNotification(name: name, prompt: prompt, timestamps: timestamps) }
+                }
+            case .editNotification(let notif):
+                NotificationSetupSheet(existing: notif) { name, prompt, timestamps in
+                    Task { await vm.updateNotification(notif: notif, name: name, prompt: prompt, timestamps: timestamps) }
+                }
+            }
+        }
+        .alert("Rename Agent", isPresented: Binding(
+            get:  { renameAgentId != nil },
+            set:  { if !$0 { renameAgentId = nil } }
+        )) {
+            TextField("Name", text: $renameText)
+            Button("Save") {
+                if let id = renameAgentId {
+                    vm.renameAgent(id: id, name: renameText.trimmingCharacters(in: .whitespaces))
+                }
+                renameAgentId = nil
+            }
+            Button("Cancel", role: .cancel) { renameAgentId = nil }
+        } message: {
+            Text("Enter a display name for this agent.")
+        }
+        .alert("Delete Account", isPresented: $showDeleteAlert) {
+            Button("Cancel", role: .cancel) {}
+            Button("Delete", role: .destructive) {
+                let uid = appState.currentUser?.user_id ?? ""
+                Task { try? await appState.service.deleteUser(userId: uid) }
+                appState.signOut()
+            }
+        } message: {
+            Text("This permanently deletes your account and all data. Type your username to confirm.")
+        }
+    }
+
+    // ── Section builders ───────────────────────────────────────────────────────
+
+    private var profileHeader: some View {
+        VStack(spacing: Theme.spacingMD) {
+            ZStack {
+                Circle()
+                    .fill(Theme.gold.opacity(0.15))
+                    .frame(width: 72, height: 72)
+                Text(appState.currentUser?.initials ?? "?")
+                    .font(.playfair(Theme.fontDisplayMD))
+                    .foregroundColor(Theme.gold)
+            }
+            .overlay(Circle().stroke(Theme.borderGold, lineWidth: 1.5))
+            .accessibilityHidden(true)
+
+            VStack(spacing: 4) {
+                Text(vm.profileData?.username ?? "")
+                    .font(.playfair(Theme.fontDisplayMD))
+                    .foregroundColor(Theme.parchment)
+                Text(vm.profileData?.email ?? "")
+                    .font(.lora(Theme.fontSM))
+                    .foregroundColor(Theme.textMuted)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, Theme.spacingMD)
+    }
+
+    private var statsSection: some View {
+        Section {
+            HStack {
+                StatBox(value: vm.friendCount,    label: "Friends")
+                StatBox(value: vm.groupCount,     label: "Groups")
+                StatBox(value: vm.noteCount,      label: "Notes")
+                StatBox(value: vm.highlightCount, label: "Highlights")
+            }
+        } header: {
+            sectionHeader("Overview")
+        }
+        .listRowBackground(Theme.cardBg)
+    }
+
+    private var editProfileSection: some View {
+        Section {
+            // Edit message
+            if let msg = vm.editMsg {
+                HStack(spacing: Theme.spacingSM) {
+                    Image(systemName: msg.type == .success ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
+                    Text(msg.text)
+                        .font(.lora(Theme.fontSM))
+                }
+                .foregroundColor(msg.type == .success ? Theme.success : Theme.error)
+                .listRowBackground(
+                    (msg.type == .success ? Theme.success : Theme.error).opacity(0.10)
+                )
+            }
+
+            // Username
+            HStack {
+                Image(systemName: "person").foregroundColor(Theme.textGoldMuted).frame(width: 22)
+                TextField("Username", text: $username)
+                    .font(.lora(Theme.fontBody))
+                    .foregroundColor(Theme.parchment)
+                    .autocapitalization(.none)
+                    .accessibilityLabel("Username field")
+            }
+            .listRowBackground(Theme.cardBg)
+
+            // Email
+            HStack {
+                Image(systemName: "envelope").foregroundColor(Theme.textGoldMuted).frame(width: 22)
+                TextField("Email", text: $email)
+                    .font(.lora(Theme.fontBody))
+                    .foregroundColor(Theme.parchment)
+                    .keyboardType(.emailAddress)
+                    .autocapitalization(.none)
+                    .accessibilityLabel("Email field")
+            }
+            .listRowBackground(Theme.cardBg)
+
+            // Password
+            HStack {
+                Image(systemName: "lock").foregroundColor(Theme.textGoldMuted).frame(width: 22)
+                SecureField("New Password (leave blank to keep)", text: $password)
+                    .font(.lora(Theme.fontBody))
+                    .foregroundColor(Theme.parchment)
+                    .accessibilityLabel("New password field")
+            }
+            .listRowBackground(Theme.cardBg)
+
+            Button(action: saveProfile) {
+                Text("Save Changes")
+                    .font(.lora(Theme.fontBody))
+                    .foregroundColor(Theme.gold)
+            }
+            .listRowBackground(Theme.cardBg)
+            .accessibilityLabel("Save profile changes")
+        } header: {
+            sectionHeader("Edit Profile")
+        }
+    }
+
+    private var friendRequestsSection: some View {
+        Section {
+            if vm.friendRequests.isEmpty {
+                Text("No pending friend requests.")
+                    .font(.lora(Theme.fontSM))
+                    .foregroundColor(Theme.textMuted)
+                    .listRowBackground(Theme.cardBg)
+            } else {
+                ForEach(vm.friendRequests, id: \.id) { req in
+                    HStack {
+                        ZStack {
+                            Circle().fill(Theme.gold.opacity(0.15)).frame(width: 36, height: 36)
+                            Text(String(req.username.prefix(1)).uppercased())
+                                .font(.playfair(Theme.fontSM)).foregroundColor(Theme.gold)
+                        }
+                        VStack(alignment: .leading) {
+                            Text(req.username).font(.lora(Theme.fontBody)).foregroundColor(Theme.parchment)
+                            Text("Wants to be your friend").font(.lora(Theme.fontXS)).foregroundColor(Theme.textMuted)
+                        }
+                        Spacer()
+                        Button("Accept") {
+                            Task { await vm.acceptRequest(username: req.username) }
+                        }
+                        .font(.lora(Theme.fontSM)).foregroundColor(Theme.gold)
+                        .accessibilityLabel("Accept friend request from \(req.username)")
+                    }
+                    .listRowBackground(Theme.cardBg)
+                }
+            }
+        } header: {
+            sectionHeader("Friend Requests")
+        }
+    }
+
+    private var agentsSection: some View {
+        Section {
+            // Description
+            Text("Enabled agents participate in your chats and can summarize study sessions.")
+                .font(.lora(Theme.fontSM))
+                .foregroundColor(Theme.textMuted)
+                .listRowBackground(Theme.cardBg)
+
+            if vm.agents.isEmpty {
+                Text("No agents yet. Tap + to create one.")
+                    .font(.lora(Theme.fontSM))
+                    .foregroundColor(Theme.textMuted)
+                    .listRowBackground(Theme.cardBg)
+            } else {
+                ForEach($vm.agents) { $agent in
+                    HStack(spacing: Theme.spacingMD) {
+                        ZStack {
+                            Circle().fill(Theme.gold.opacity(0.12)).frame(width: 36, height: 36)
+                            Image(systemName: "brain").foregroundColor(Theme.gold)
+                        }
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(agent.displayLabel)
+                                .font(.lora(Theme.fontBody))
+                                .foregroundColor(Theme.parchment)
+                            Text(agent.role.isEmpty ? "Default spiritual guide role" : String(agent.role.prefix(60)))
+                                .font(.lora(Theme.fontXS))
+                                .foregroundColor(Theme.textMuted)
+                                .lineLimit(1)
+                        }
+                        Spacer()
+                        Toggle("", isOn: $agent.enabled)
+                            .labelsHidden()
+                            .tint(Theme.gold)
+                            .scaleEffect(0.85)
+                            .accessibilityLabel(agent.enabled ? "Disable agent" : "Enable agent")
+                            .onChange(of: agent.enabled) { _, newVal in
+                                vm.toggleAgent(id: agent.id, enabled: newVal)
+                            }
+
+                        // Rename
+                        Button(action: {
+                            renameText    = agent.name.isEmpty ? agent.displayLabel : agent.name
+                            renameAgentId = agent.id
+                        }) {
+                            Image(systemName: "pencil")
+                                .foregroundColor(Theme.gold.opacity(0.60))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Rename agent")
+
+                        // Heartbeat
+                        Button(action: { activeSheet = .heartbeat(agent.id) }) {
+                            Image(systemName: "bolt.circle")
+                                .foregroundColor(Theme.gold.opacity(0.60))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Add heartbeat to agent")
+
+                        // Delete
+                        Button(action: { vm.deleteAgent(id: agent.id) }) {
+                            Image(systemName: "trash")
+                                .foregroundColor(Theme.error.opacity(0.70))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Delete agent")
+                    }
+                    .listRowBackground(Theme.cardBg)
+
+                    // Heartbeat schedule rows
+                    let agentHeartbeats = vm.heartbeats[agent.id] ?? []
+                    ForEach(agentHeartbeats) { hb in
+                        HeartbeatRow(heartbeat: hb) {
+                            vm.removeHeartbeat(agentId: agent.id, heartbeatId: hb.id)
+                        }
+                        .listRowBackground(Theme.islandBg)
+                    }
+                }
+            }
+
+            Button(action: { activeSheet = .newAgent }) {
+                Label("New Agent", systemImage: "plus")
+                    .font(.lora(Theme.fontBody))
+                    .foregroundColor(Theme.gold)
+            }
+            .listRowBackground(Theme.cardBg)
+            .accessibilityLabel("Create new agent")
+        } header: {
+            sectionHeader("Agents")
+        }
+    }
+
+    private var notificationsSection: some View {
+        Section {
+            Text("Set up recurring AI-powered reminders for Scripture, prayer, or study.")
+                .font(.lora(Theme.fontSM))
+                .foregroundColor(Theme.textMuted)
+                .listRowBackground(Theme.cardBg)
+
+            if vm.notifications.isEmpty {
+                Text("No notifications yet. Tap + to create one.")
+                    .font(.lora(Theme.fontSM))
+                    .foregroundColor(Theme.textMuted)
+                    .listRowBackground(Theme.cardBg)
+            } else {
+                ForEach(vm.notifications.prefix(3)) { notif in
+                    HStack(spacing: Theme.spacingMD) {
+                        ZStack {
+                            Circle().fill(Theme.gold.opacity(0.12)).frame(width: 30, height: 30)
+                            Image(systemName: "bell").foregroundColor(Theme.gold).font(.caption)
+                        }
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(notif.name.isEmpty ? "Unnamed" : notif.name)
+                                .font(.lora(Theme.fontBody))
+                                .foregroundColor(Theme.parchment)
+                            Text(notif.recurrenceSummary)
+                                .font(.lora(Theme.fontXS))
+                                .foregroundColor(Theme.textMuted)
+                        }
+                        Spacer()
+                    }
+                    .listRowBackground(Theme.cardBg)
+                }
+            }
+
+            Button(action: { activeSheet = .newNotification }) {
+                Label("New Notification", systemImage: "plus")
+                    .font(.lora(Theme.fontBody))
+                    .foregroundColor(Theme.gold)
+            }
+            .listRowBackground(Theme.cardBg)
+            .accessibilityLabel("Create new notification")
+        } header: {
+            HStack {
+                sectionHeader("Notifications")
+                Spacer()
+                Button(action: { showNotificationsList = true }) {
+                    Text("View All")
+                        .font(.lora(Theme.fontXXS)).tracking(2)
+                        .foregroundColor(Theme.gold.opacity(0.70))
+                }
+            }
+        }
+    }
+
+    private var legalSection: some View {
+        Section {
+            Link(destination: URL(string: "https://fellowscript.com/privacy")!) {
+                HStack {
+                    Label("Privacy Policy", systemImage: "hand.raised")
+                        .font(.lora(Theme.fontBody))
+                        .foregroundColor(Theme.parchment)
+                    Spacer()
+                    Image(systemName: "arrow.up.right")
+                        .font(.caption)
+                        .foregroundColor(Theme.textMuted)
+                }
+            }
+            .accessibilityLabel("Open Privacy Policy")
+
+            Link(destination: URL(string: "https://fellowscript.com/terms")!) {
+                HStack {
+                    Label("Terms of Service", systemImage: "doc.text")
+                        .font(.lora(Theme.fontBody))
+                        .foregroundColor(Theme.parchment)
+                    Spacer()
+                    Image(systemName: "arrow.up.right")
+                        .font(.caption)
+                        .foregroundColor(Theme.textMuted)
+                }
+            }
+            .accessibilityLabel("Open Terms of Service")
+
+            HStack {
+                Label("Version", systemImage: "info.circle")
+                    .font(.lora(Theme.fontBody))
+                    .foregroundColor(Theme.parchment)
+                Spacer()
+                Text(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0")
+                    .font(.lora(Theme.fontSM))
+                    .foregroundColor(Theme.textMuted)
+            }
+        } header: {
+            sectionHeader("Legal")
+        }
+        .listRowBackground(Theme.cardBg)
+    }
+
+    private var dangerZone: some View {
+        Section {
+            Text("Permanently deletes your account, all notes, highlights, and removes you from all groups and friend lists. This cannot be undone.")
+                .font(.lora(Theme.fontSM))
+                .foregroundColor(Theme.textMuted)
+                .fixedSize(horizontal: false, vertical: true)
+                .listRowBackground(Theme.dangerBg)
+
+            HStack {
+                Image(systemName: "person").foregroundColor(Theme.error.opacity(0.60)).frame(width: 22)
+                TextField(appState.currentUser?.username ?? "yourname", text: $deleteConfirm)
+                    .font(.lora(Theme.fontBody))
+                    .foregroundColor(Theme.parchment)
+                    .autocapitalization(.none)
+                    .accessibilityLabel("Type your username to confirm deletion")
+            }
+            .listRowBackground(Theme.dangerBg)
+
+            Button(action: {
+                if deleteConfirm == (appState.currentUser?.username ?? "") {
+                    showDeleteAlert = true
+                }
+            }) {
+                Label("Delete My Account", systemImage: "trash")
+                    .font(.lora(Theme.fontBody))
+                    .foregroundColor(Theme.error)
+            }
+            .disabled(deleteConfirm != (appState.currentUser?.username ?? ""))
+            .listRowBackground(Theme.dangerBg)
+            .accessibilityLabel("Delete account button")
+        } header: {
+            Text("Danger Zone")
+                .font(.lora(Theme.fontXXS)).tracking(4)
+                .foregroundColor(Theme.error.opacity(0.65))
+        }
+    }
+
+    // ── Helpers ────────────────────────────────────────────────────────────────
+    @ViewBuilder
+    private func sectionHeader(_ title: String) -> some View {
+        Text(title)
+            .font(.lora(Theme.fontXXS)).tracking(4)
+            .foregroundColor(Theme.textGoldMuted)
+    }
+
+    private func saveProfile() {
+        guard let user = appState.currentUser else { return }
+        var body: [String: String] = [:]
+        if !username.isEmpty && username != user.username { body["username"] = username }
+        if !email.isEmpty    && email    != user.email    { body["email"]    = email    }
+        if !password.isEmpty                              { body["plain_pass"] = password }
+        Task {
+            if let updated = try? await appState.service.updateUser(userId: user.user_id, body: body) {
+                appState.updateUser(updated)
+                vm.profileData = updated
+            }
+            vm.editMsg = (.success, "Profile updated.")
+            try? await Task.sleep(nanoseconds: 2_500_000_000)
+            vm.editMsg = nil
+        }
+        password = ""
+    }
+}
+
+// ── Stat box (mirrors StatBox in Account.jsx) ─────────────────────────────────
+struct StatBox: View {
+    let value: Int
+    let label: String
+
+    var body: some View {
+        VStack(spacing: 4) {
+            Text("\(value)")
+                .font(.playfair(Theme.fontDisplayLG))
+                .foregroundColor(Theme.gold)
+            Text(label)
+                .font(.lora(Theme.fontXXS)).tracking(3).textCase(.uppercase)
+                .foregroundColor(Theme.textMuted)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, Theme.spacingSM)
+        .accessibilityLabel("\(value) \(label)")
+    }
+}
+
+// ── New agent sheet ───────────────────────────────────────────────────────────
+struct NewAgentSheet: View {
+    @Binding var role: String
+    let onCreate: () -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    Text("Optionally give this agent a custom role. Leave blank to use the default spiritual guide role.")
+                        .font(.lora(Theme.fontSM))
+                        .foregroundColor(Theme.textSecondary)
+                    TextEditor(text: $role)
+                        .font(.lora(Theme.fontBody))
+                        .foregroundColor(Theme.parchment)
+                        .scrollContentBackground(.hidden)
+                        .frame(minHeight: 80)
+                        .accessibilityLabel("Agent role description")
+                } header: {
+                    Text("Custom Role (optional)")
+                        .font(.lora(Theme.fontXXS)).tracking(4).foregroundColor(Theme.textGoldMuted)
+                }
+            }
+            .scrollContentBackground(.hidden)
+            .background(Theme.bgPage)
+            .navigationTitle("New Agent")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Cancel") { dismiss() }.foregroundColor(Theme.textGoldMuted)
+                }
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Create") { onCreate(); dismiss() }.foregroundColor(Theme.gold)
+                }
+            }
+        }
+        .presentationDetents([.medium])
+        .preferredColorScheme(.dark)
+    }
+}
+
+// ── Heartbeat sheet (mirrors heartbeat modal in Account.jsx) ──────────────────
+struct HeartbeatSheet: View {
+    let onSchedule: (_ days: [String], _ prompt: String) -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var selectedDays = Set<String>()
+    @State private var prompt       = ""
+    @State private var scheduleTime = Date()
+
+    private let days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    Text("Schedule a recurring prompt — the agent will check in on these days with the message you define.")
+                        .font(.lora(Theme.fontSM))
+                        .foregroundColor(Theme.textSecondary)
+                }
+
+                Section("Days") {
+                    LazyVGrid(columns: Array(repeating: .init(.flexible()), count: 4), spacing: 8) {
+                        ForEach(days, id: \.self) { day in
+                            let selected = selectedDays.contains(day)
+                            Button(action: {
+                                if selected { selectedDays.remove(day) } else { selectedDays.insert(day) }
+                            }) {
+                                Text(String(day.prefix(3)))
+                                    .font(.lora(Theme.fontXS))
+                                    .foregroundColor(selected ? Theme.ink : Theme.parchment.opacity(0.70))
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 6)
+                                    .background(selected ? Theme.gold : Theme.gold.opacity(0.10))
+                                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                            }
+                            .accessibilityLabel(day)
+                            .accessibilityAddTraits(selected ? .isSelected : [])
+                        }
+                    }
+                }
+                .listRowBackground(Theme.cardBg)
+
+                Section("Schedule Time") {
+                    DatePicker("Time", selection: $scheduleTime, displayedComponents: .hourAndMinute)
+                        .font(.lora(Theme.fontBody))
+                        .accessibilityLabel("Heartbeat time")
+                }
+                .listRowBackground(Theme.cardBg)
+
+                Section("Prompt") {
+                    TextEditor(text: $prompt)
+                        .font(.lora(Theme.fontBody))
+                        .foregroundColor(Theme.parchment)
+                        .scrollContentBackground(.hidden)
+                        .frame(minHeight: 60)
+                        .accessibilityLabel("Heartbeat prompt text")
+                }
+                .listRowBackground(Theme.cardBg)
+            }
+            .scrollContentBackground(.hidden)
+            .background(Theme.bgPage)
+            .navigationTitle("Add Heartbeat")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Cancel") { dismiss() }.foregroundColor(Theme.textGoldMuted)
+                }
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Schedule") {
+                        onSchedule(Array(selectedDays).sorted(), prompt)
+                        dismiss()
+                    }
+                    .foregroundColor(Theme.gold)
+                    .disabled(prompt.isEmpty || selectedDays.isEmpty)
+                }
+            }
+        }
+        .preferredColorScheme(.dark)
+    }
+}
+
+// ── Heartbeat row (shown under each agent) ────────────────────────────────────
+struct HeartbeatRow: View {
+    let heartbeat: FSHeartbeat
+    let onDelete: () -> Void
+
+    var body: some View {
+        HStack(spacing: Theme.spacingSM) {
+            Image(systemName: "bolt.fill")
+                .font(.system(size: 9))
+                .foregroundColor(Theme.gold.opacity(0.55))
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(heartbeat.days_per_week.map { String($0.prefix(3)) }.joined(separator: " · "))
+                    .font(.lora(Theme.fontXXS))
+                    .tracking(1)
+                    .foregroundColor(Theme.gold.opacity(0.75))
+                Text(heartbeat.prompt)
+                    .font(.lora(Theme.fontXS))
+                    .foregroundColor(Theme.textSecondary)
+                    .lineLimit(1)
+            }
+
+            Spacer()
+
+            Button(action: onDelete) {
+                Image(systemName: "xmark.circle")
+                    .foregroundColor(Theme.error.opacity(0.50))
+                    .font(.caption)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Remove heartbeat")
+        }
+        .padding(.leading, Theme.spacingLG)
+        .padding(.vertical, 4)
+    }
+}
+
+// ── Helper to make String Identifiable for sheet(item:) ──────────────────────
+struct IdentifiableString: Identifiable {
+    let value: String
+    var id: String { value }
+}

@@ -8,7 +8,7 @@ import {
 import {
   UserOutlined, MailOutlined, LockOutlined,
   LogoutOutlined, DeleteOutlined, RobotOutlined,
-  PlusOutlined, ThunderboltOutlined,
+  PlusOutlined, ThunderboltOutlined, EditOutlined, CheckOutlined, CloseOutlined,
 } from '@ant-design/icons';
 import AppNav from '../components/AppNav.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
@@ -62,9 +62,12 @@ export default function Account() {
   const [newAgentRole,    setNewAgentRole]    = useState('');
   const [agentSaving,     setAgentSaving]     = useState(false);
   const [hbModal,         setHbModal]         = useState(null); // agentId | null
+  const [renamingId,      setRenamingId]      = useState(null); // agentId being renamed
+  const [renameVal,       setRenameVal]       = useState('');
   const [hbDays,          setHbDays]          = useState([]);
   const [hbPrompt,        setHbPrompt]        = useState('');
   const [hbSaving,        setHbSaving]        = useState(false);
+  const [heartbeats,      setHeartbeats]      = useState({}); // agentId → [heartbeat]
 
   const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
@@ -100,7 +103,19 @@ export default function Account() {
       const res = await fetch(`${API}/agent/${user.user_id}`);
       if (res.ok) {
         const data = await res.json();
-        setAgents(Object.entries(data).map(([id, a]) => ({ id, ...a })));
+        const list = Object.entries(data).map(([id, a]) => ({ id, ...a }));
+        setAgents(list);
+        // Fetch heartbeats for all agents in parallel
+        const hbResults = await Promise.all(
+          list.map(async agent => {
+            try {
+              const r = await fetch(`${API}/agent/${user.user_id}/${agent.id}/heartbeats`);
+              const hbs = r.ok ? await r.json() : [];
+              return [agent.id, hbs];
+            } catch { return [agent.id, []]; }
+          })
+        );
+        setHeartbeats(Object.fromEntries(hbResults));
       }
     } catch {} finally { setAgentsLoading(false); }
   }, [user]);
@@ -128,6 +143,19 @@ export default function Account() {
     } catch {}
   };
 
+  const handleRenameAgent = async (agentId, name) => {
+    const trimmed = name.trim();
+    setAgents(prev => prev.map(a => a.id === agentId ? { ...a, name: trimmed } : a));
+    setRenamingId(null);
+    try {
+      await fetch(`${API}/agent/${user.user_id}/${agentId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: trimmed }),
+      });
+    } catch {}
+  };
+
   const handleDeleteAgent = async (agentId) => {
     try {
       const res = await fetch(`${API}/agent/${user.user_id}/${agentId}`, { method: 'DELETE' });
@@ -139,16 +167,28 @@ export default function Account() {
     if (!hbModal || !hbPrompt.trim() || !hbDays.length) return;
     setHbSaving(true);
     try {
-      await fetch(`${API}/agent/${user.user_id}/${hbModal}/heartbeat`, {
+      const newHb = {
+        _id: crypto.randomUUID(),
+        agent_id: hbModal, user_id: user.user_id,
+        days_per_week: hbDays, prompt: hbPrompt.trim(),
+        timestamp: new Date().toISOString(),
+      };
+      const res = await fetch(`${API}/agent/${user.user_id}/${hbModal}/heartbeat`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          agent_id: hbModal, user_id: user.user_id,
-          days_per_week: hbDays, prompt: hbPrompt.trim(),
-          timestamp: new Date().toISOString(),
-        }),
+        body: JSON.stringify(newHb),
       });
+      if (res.ok || res.status === 201) {
+        setHeartbeats(prev => ({ ...prev, [hbModal]: [...(prev[hbModal] || []), newHb] }));
+      }
       setHbModal(null); setHbDays([]); setHbPrompt('');
     } catch {} finally { setHbSaving(false); }
+  };
+
+  const handleDeleteHeartbeat = async (agentId, heartbeatId) => {
+    setHeartbeats(prev => ({ ...prev, [agentId]: (prev[agentId] || []).filter(h => h._id !== heartbeatId) }));
+    try {
+      await fetch(`${API}/agent/${user.user_id}/${agentId}/heartbeat/${heartbeatId}`, { method: 'DELETE' });
+    } catch {}
   };
 
   const handleSave = async (vals) => {
@@ -322,7 +362,8 @@ export default function Account() {
             : agents.length === 0
               ? <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.8rem', color: 'rgba(244,228,193,0.28)' }}>No agents yet. Create one to get started.</Text>
               : agents.map(agent => {
-                  const label = !agent.role || agent.role.startsWith('You are a spiritual') ? 'Spiritual Guide' : agent.role.split('\n').find(l => l.trim())?.slice(0, 28) || 'Agent';
+                  const label = agent.name || (!agent.role || agent.role.startsWith('You are a spiritual') ? 'Spiritual Guide' : agent.role.split('\n').find(l => l.trim())?.slice(0, 28) || 'Agent');
+                  const isRenaming = renamingId === agent.id;
                   return (
                     <div key={agent.id} style={{ padding: '0.75rem 0', borderBottom: '1px solid rgba(200,134,26,0.08)' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
@@ -330,31 +371,84 @@ export default function Account() {
                           <RobotOutlined style={{ color: 'var(--gold)', fontSize: '0.95rem' }} />
                         </div>
                         <div style={{ flex: 1 }}>
-                          <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.84rem', color: 'var(--parchment)', display: 'block' }}>{label}</Text>
-                          <Text style={{ fontSize: '0.64rem', color: 'rgba(244,228,193,0.3)', fontFamily: "'Lora', serif" }}>
-                            {agent.role ? agent.role.slice(0, 60) + (agent.role.length > 60 ? '…' : '') : 'Default spiritual guide role'}
-                          </Text>
+                          {isRenaming ? (
+                            <Input
+                              size="small"
+                              autoFocus
+                              value={renameVal}
+                              onChange={e => setRenameVal(e.target.value)}
+                              onPressEnter={() => handleRenameAgent(agent.id, renameVal)}
+                              style={{ fontSize: '0.82rem', width: '100%' }}
+                            />
+                          ) : (
+                            <>
+                              <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.84rem', color: 'var(--parchment)', display: 'block' }}>{label}</Text>
+                              <Text style={{ fontSize: '0.64rem', color: 'rgba(244,228,193,0.3)', fontFamily: "'Lora', serif" }}>
+                                {agent.role ? agent.role.slice(0, 60) + (agent.role.length > 60 ? '…' : '') : 'Default spiritual guide role'}
+                              </Text>
+                            </>
+                          )}
                         </div>
-                        <Switch
-                          size="small"
-                          checked={agent.enabled !== false}
-                          onChange={enabled => handleToggleAgent(agent.id, enabled)}
-                          title={agent.enabled !== false ? 'Enabled' : 'Disabled'}
-                        />
-                        <Button
-                          size="small" type="text"
-                          icon={<ThunderboltOutlined />}
-                          onClick={() => { setHbModal(agent.id); setHbDays([]); setHbPrompt(''); }}
-                          style={{ color: 'rgba(200,134,26,0.55)', padding: '0 4px' }}
-                          title="Add heartbeat"
-                        />
-                        <Button
-                          size="small" type="text" danger
-                          icon={<DeleteOutlined />}
-                          onClick={() => handleDeleteAgent(agent.id)}
-                          style={{ padding: '0 4px' }}
-                        />
+                        {isRenaming ? (
+                          <>
+                            <Button size="small" type="text" icon={<CheckOutlined />}
+                              onClick={() => handleRenameAgent(agent.id, renameVal)}
+                              style={{ color: 'var(--gold)', padding: '0 4px' }} />
+                            <Button size="small" type="text" icon={<CloseOutlined />}
+                              onClick={() => setRenamingId(null)}
+                              style={{ color: 'rgba(244,228,193,0.4)', padding: '0 4px' }} />
+                          </>
+                        ) : (
+                          <>
+                            <Switch
+                              size="small"
+                              checked={agent.enabled !== false}
+                              onChange={enabled => handleToggleAgent(agent.id, enabled)}
+                              title={agent.enabled !== false ? 'Enabled' : 'Disabled'}
+                            />
+                            <Button
+                              size="small" type="text"
+                              icon={<EditOutlined />}
+                              onClick={() => { setRenamingId(agent.id); setRenameVal(agent.name || label); }}
+                              style={{ color: 'rgba(200,134,26,0.55)', padding: '0 4px' }}
+                              title="Rename agent"
+                            />
+                            <Button
+                              size="small" type="text"
+                              icon={<ThunderboltOutlined />}
+                              onClick={() => { setHbModal(agent.id); setHbDays([]); setHbPrompt(''); }}
+                              style={{ color: 'rgba(200,134,26,0.55)', padding: '0 4px' }}
+                              title="Add heartbeat"
+                            />
+                            <Button
+                              size="small" type="text" danger
+                              icon={<DeleteOutlined />}
+                              onClick={() => handleDeleteAgent(agent.id)}
+                              style={{ padding: '0 4px' }}
+                            />
+                          </>
+                        )}
                       </div>
+                      {/* Heartbeat schedule rows */}
+                      {(heartbeats[agent.id] || []).map(hb => (
+                        <div key={hb._id} style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem', padding: '0.28rem 0 0.28rem 3rem', borderTop: '1px solid rgba(200,134,26,0.06)' }}>
+                          <span style={{ color: 'rgba(200,134,26,0.55)', fontSize: '0.65rem', lineHeight: 1.8, flexShrink: 0 }}>⚡</span>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.62rem', letterSpacing: '0.06em', color: 'rgba(200,134,26,0.75)', display: 'block' }}>
+                              {(hb.days_per_week || []).map(d => d.slice(0, 3)).join(' · ')}
+                            </Text>
+                            <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.72rem', color: 'rgba(244,228,193,0.45)', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {hb.prompt}
+                            </Text>
+                          </div>
+                          <Button size="small" type="text" danger
+                            icon={<CloseOutlined style={{ fontSize: '0.6rem' }} />}
+                            onClick={() => handleDeleteHeartbeat(agent.id, hb._id)}
+                            style={{ padding: '0 2px', opacity: 0.55, flexShrink: 0 }}
+                            title="Remove heartbeat"
+                          />
+                        </div>
+                      ))}
                     </div>
                   );
                 })

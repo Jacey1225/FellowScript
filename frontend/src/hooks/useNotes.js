@@ -19,13 +19,12 @@ function normalizeNote(n, username = '') {
 export function useNotes({ user, curBook, curChapter, vsValue }) {
   const [allNotes,        setAllNotes]        = useState({});
   const [groupNotes,      setGroupNotes]      = useState({});
-  const [currentGroupId,  setCurrentGroupId]  = useState(() => {
-    try { return localStorage.getItem('fs_notes_group') || null; } catch { return null; }
-  });
+  const [currentGroupId,  setCurrentGroupId]  = useState(null);
   const [groups,          setGroups]          = useState([]);
   const [filteredNotes,   setFilteredNotes]   = useState(null);
   const [filteredGroup,   setFilteredGroup]   = useState(null);
   const [filterActive,    setFilterActive]    = useState(false);
+  const [groupLoading,    setGroupLoading]    = useState(false);
   const notesCache = useRef({});
 
   // ── Load ──────────────────────────────────────────────────────────────────
@@ -43,6 +42,7 @@ export function useNotes({ user, curBook, curChapter, vsValue }) {
 
   const loadGroupNotes = useCallback(async (groupId) => {
     if (!user || !groupId) return;
+    setGroupLoading(true);
     try {
       const res = await fetch(`${API}/groups/${user.user_id}/${groupId}/notes`);
       if (res.ok) {
@@ -51,6 +51,7 @@ export function useNotes({ user, curBook, curChapter, vsValue }) {
         notesCache.current[groupId] = data;
       }
     } catch {}
+    setGroupLoading(false);
   }, [user]);
 
   const loadGroups = useCallback(async () => {
@@ -76,7 +77,8 @@ export function useNotes({ user, curBook, curChapter, vsValue }) {
   const selectGroup = useCallback(async (groupId, onHighlightsNeeded) => {
     try { localStorage.setItem('fs_notes_group', groupId || ''); } catch {}
     setCurrentGroupId(groupId || null);
-    setGroupNotes({});
+    // Show cached data immediately while the fresh fetch runs in the background
+    setGroupNotes(groupId ? (notesCache.current[groupId] || {}) : {});
     setFilteredGroup(null);
     setFilteredNotes(null);
     setFilterActive(false);
@@ -247,7 +249,7 @@ export function useNotes({ user, curBook, curChapter, vsValue }) {
   const getVerse = useCallback((note) => verseRefLabel(note?.verses), []);
 
   return {
-    allNotes, groupNotes, currentGroupId, groups,
+    allNotes, groupNotes, currentGroupId, groups, groupLoading,
     filteredNotes, filteredGroup, filterActive,
     loadNotes, loadGroupNotes, loadGroups, selectGroup,
     saveNote, deleteNote, postReply, loadDetailReplies,

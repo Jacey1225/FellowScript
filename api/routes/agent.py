@@ -41,6 +41,7 @@ async def create_agent(user_id: str, body: dict) -> dict:
         agent_id = str(uuid.uuid4())
         db.insertion("agents", {
             "_id":     agent_id,
+            "name":    body.get("name") or "Spiritual Guide",
             "user_id": user_id,
             "role":    body.get("role") or DEFAULT_ROLE,
             "chats":   body.get("chats", []),
@@ -57,7 +58,7 @@ async def update_agent(user_id: str, agent_id: str, body: dict) -> dict:
     try:
         if not db.lookup("agents", {"_id": agent_id}):
             raise HTTPException(status_code=404, detail="Agent not found")
-        updates = {k: body[k] for k in ("role", "chats", "enabled") if k in body}
+        updates = {k: body[k] for k in ("role", "chats", "enabled", "name") if k in body}
         if updates:
             db.update("agents", updates, {"_id": agent_id})
         return {"ok": True}
