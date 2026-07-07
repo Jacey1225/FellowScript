@@ -72,7 +72,7 @@ async def _fire_due_heartbeats() -> None:
             am     = AgentManager(user_id)
             loop   = asyncio.get_running_loop()
             result = await loop.run_in_executor(
-                None, functools.partial(am.commit_hb_response, agent_id, prompt)
+                None, functools.partial(am.commit_hb_response, agent_id, hb_id, prompt)
             )
             am.close()
             logger.info("Heartbeat %s fired → %s", hb_id, result)

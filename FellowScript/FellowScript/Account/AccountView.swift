@@ -592,7 +592,7 @@ struct AccountView: View {
 
     private var legalSection: some View {
         Section {
-            Link(destination: URL(string: "https://fellowscript.com/privacy")!) {
+            Link(destination: URL(string: "https://fellowscript.com/#/privacy")!) {
                 HStack {
                     Label("Privacy Policy", systemImage: "hand.raised")
                         .font(.lora(Theme.fontBody))
@@ -605,7 +605,7 @@ struct AccountView: View {
             }
             .accessibilityLabel("Open Privacy Policy")
 
-            Link(destination: URL(string: "https://fellowscript.com/terms")!) {
+            Link(destination: URL(string: "https://fellowscript.com/#/terms")!) {
                 HStack {
                     Label("Terms of Service", systemImage: "doc.text")
                         .font(.lora(Theme.fontBody))

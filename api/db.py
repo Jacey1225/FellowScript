@@ -166,6 +166,14 @@ def create_tables(cur):
         "token TEXT NOT NULL,"
         "updated_at TIMESTAMP DEFAULT NOW())"
     )
+
+    cur.execute(
+        "CREATE TABLE IF NOT EXISTS agentic_context"
+        "(_id UUID PRIMARY KEY NOT NULL,"
+        "heartbeat_id UUID REFERENCES agent_heartbeats(_id) ON DELETE CASCADE,"
+        "user_id UUID REFERENCES users(_id) ON DELETE CASCADE,"
+        "context TEXT[] DEFAULT '{}')"
+    )
     logger.info("All tables created.")
 
 main_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")

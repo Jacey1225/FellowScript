@@ -36,6 +36,7 @@ class AgentManager(DBManager):
         self.hb_table      = "agent_heartbeats"
         self.msg_table     = "agent_messages"
         self.note_table    = "notes"
+        self.context_table = "agentic_context"
 
     # ── Agent CRUD ────────────────────────────────────────────────────────────
 
@@ -110,18 +111,51 @@ class AgentManager(DBManager):
             "timestamp": note.timestamp,
         })
 
-    def commit_hb_response(self, agent_id: str, heartbeat_content: str):
+    def save_context(self, heartbeat_id: str, context_text: str) -> None:
+        try:
+            self.cur.execute(
+                "INSERT INTO agentic_context (_id, heartbeat_id, user_id, context) "
+                "VALUES (%s, %s, %s, %s)",
+                (str(uuid.uuid4()), heartbeat_id, self.user_id, [context_text])
+            )
+            self.conn.commit()
+        except Exception as e:
+            logger.error("Error saving context: %s", e)
+            self.conn.rollback()
+
+    def get_context(self, heartbeat_id: str) -> list[str]:
+        try:
+            self.cur.execute(
+                "SELECT context FROM agentic_context "
+                "WHERE heartbeat_id = %s AND user_id = %s ORDER BY ctid",
+                (heartbeat_id, self.user_id)
+            )
+            rows = self.cur.fetchall()
+            result = []
+            for (ctx_array,) in rows:
+                if ctx_array:
+                    result.extend(ctx_array)
+            return result
+        except Exception as e:
+            logger.error("Error getting context: %s", e)
+            self.conn.rollback()
+            return []
+
+    def commit_hb_response(self, agent_id: str, heartbeat_id: str, heartbeat_content: str):
         result     = self.lookup(self.agent_table, {"_id": agent_id})
         agent_role = list(result.values())[0].get("role", "") if result else ""
+        context    = self.get_context(heartbeat_id)
+        context_str = "\n".join(context) if context else "No previous context."
         note_prompt = (
             f"{heartbeat_content}\n\n"
+            f"Previous context from past responses:\n{context_str}\n\n"
             "Respond with a create_note JSON block as specified in your instructions. "
             "Output only the JSON block and nothing else."
         )
         response = self._call_api(agent_role, [{"role": "user", "content": note_prompt}])
         if "{" in response and "}" in response:
             start = response.find("{")
-            end   = response.rfind("}") + 1  # rfind so nested braces in text don't truncate
+            end   = response.rfind("}") + 1
             json_str = response[start:end]
             try:
                 response_dict = json.loads(json_str)
@@ -130,6 +164,8 @@ class AgentManager(DBManager):
                 return {"error": "invalid response"}
             if response_dict.get("__action", "") == "create_note":
                 self.note_via_hb(response_dict)
+                note_summary = f"{response_dict.get('title', '')}: {response_dict.get('text', '')[:300]}"
+                self.save_context(heartbeat_id, note_summary)
                 return {"success": "saved note"}
             else:
                 return {"error": "cannot find action"}
