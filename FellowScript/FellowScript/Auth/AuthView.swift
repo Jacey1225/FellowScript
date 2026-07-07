@@ -16,7 +16,8 @@ struct AuthView: View {
     @State private var email       = ""
     @State private var password    = ""
     @State private var errorMsg    = ""
-    @State private var isLoading   = false
+    @State private var isLoading     = false
+    @State private var googleLoading = false
     @FocusState private var focusField: Field?
 
     private enum Field { case username, email, password }
@@ -135,6 +136,40 @@ struct AuthView: View {
                         .padding(.top, Theme.spacingMD)
                         .accessibilityLabel(isSignIn ? "Sign In button" : "Create Account button")
 
+                        // Google Sign-In
+                        HStack {
+                            Rectangle().fill(Theme.borderGoldDim).frame(height: 1)
+                            Text("or")
+                                .font(.lora(Theme.fontXS))
+                                .foregroundColor(Theme.textMuted)
+                            Rectangle().fill(Theme.borderGoldDim).frame(height: 1)
+                        }
+                        .padding(.vertical, Theme.spacingSM)
+
+                        Button(action: { Task { await signInWithGoogle() } }) {
+                            HStack(spacing: Theme.spacingSM) {
+                                if googleLoading {
+                                    ProgressView().tint(Theme.parchment)
+                                } else {
+                                    Image(systemName: "globe")
+                                        .foregroundColor(Theme.parchment)
+                                    Text("Continue with Google")
+                                        .font(.lora(Theme.fontSM))
+                                        .foregroundColor(Theme.parchment)
+                                }
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, Theme.spacingMD)
+                            .background(Color(white: 0.15))
+                            .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: Theme.radius)
+                                    .stroke(Theme.borderGoldDim, lineWidth: 1)
+                            )
+                        }
+                        .disabled(googleLoading || isLoading)
+                        .accessibilityLabel("Continue with Google")
+
                         // Privacy acknowledgment — required by Apple Guideline 5.1.1
                         if !isSignIn {
                             VStack(spacing: 4) {
@@ -176,6 +211,23 @@ struct AuthView: View {
 
     private func clearForm() {
         username = ""; email = ""; password = ""; errorMsg = ""
+    }
+
+    private func signInWithGoogle() async {
+        errorMsg = ""
+        googleLoading = true
+        focusField = nil
+        defer { googleLoading = false }
+        guard let credential = await GoogleAuthSession.signIn() else {
+            errorMsg = "Google sign-in was cancelled."
+            return
+        }
+        do {
+            try await appState.signInWithGoogle(credential: credential)
+            onComplete?()
+        } catch {
+            errorMsg = error.localizedDescription
+        }
     }
 
     private func submit() async {

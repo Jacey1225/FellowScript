@@ -58,12 +58,26 @@ struct FellowScriptApp: App {
                     guard phase == .active,
                           let uid = appState.currentUser?.user_id else { return }
                     Task {
+                        // Reschedule AI notifications
                         let notifs = (try? await appState.service.fetchNotifications(userId: uid)) ?? []
                         await NotificationScheduler.scheduleAll(
                             userId: uid,
                             notifications: notifs,
                             service: appState.service
                         )
+                        // Fire any heartbeat events whose time has passed
+                        let agents = (try? await appState.service.fetchAgents(userId: uid)) ?? []
+                        var allEvents: [FSHeartbeat] = []
+                        for agent in agents {
+                            let hbs = (try? await appState.service.fetchHeartbeats(
+                                userId: uid, agentId: agent.id
+                            )) ?? []
+                            allEvents.append(contentsOf: hbs)
+                        }
+                        await HeartbeatScheduler.checkAndFire(
+                            userId: uid, events: allEvents, service: appState.service
+                        )
+                        HeartbeatScheduler.scheduleAll(events: allEvents)
                     }
                 }
         }

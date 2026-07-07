@@ -1,7 +1,7 @@
 // SOURCE: frontend/src/pages/Account.jsx
-// KEY STATE: profileData, agents, requests, editLoading, deleteConfirm, agentModal, hbModal
+// KEY STATE: profileData, agents, events, requests, editLoading, deleteConfirm, agentModal
 // INTERACTIONS: edit profile (username/email/password), accept friend requests,
-//               create/toggle/delete agents, add heartbeat, sign out, delete account
+//               create/toggle/delete agents, create/delete events, add notifications, sign out, delete account
 // DEPENDENCY: Theme.swift, Models.swift, AppState.swift
 
 import SwiftUI
@@ -12,11 +12,11 @@ import UserNotifications
 final class AccountViewModel: ObservableObject {
     var service: DataServiceProtocol = MockDataService.shared
 
-    @Published var profileData:     FSUser?                   = nil
-    @Published var agents:          [FSAgent]               = []
-    @Published var heartbeats:      [String: [FSHeartbeat]] = [:]  // agentId → [FSHeartbeat]
+    @Published var profileData:     FSUser?          = nil
+    @Published var agents:          [FSAgent]         = []
+    @Published var events:          [FSHeartbeat]     = []
     @Published var friendRequests:  [(id: String, username: String)] = []
-    @Published var notifications:   [FSNotification]        = []
+    @Published var notifications:   [FSNotification]  = []
     @Published var isLoading       = true
     @Published var editMsg:        (type: AlertType, text: String)? = nil
 
@@ -32,38 +32,43 @@ final class AccountViewModel: ObservableObject {
         isLoading = true
         defer { isLoading = false }
         profileData = user
+        async let fetchedUser          = service.fetchUser(userId: user.user_id)
         async let fetchedAgents        = service.fetchAgents(userId: user.user_id)
         async let fetchedNotifications = service.fetchNotifications(userId: user.user_id)
         async let fetchedNotes         = service.fetchNotes(userId: user.user_id)
         async let fetchedHighlights    = service.fetchHighlights(userId: user.user_id)
+        if let freshUser = try? await fetchedUser { profileData = freshUser }
         agents        = (try? await fetchedAgents)        ?? []
         notifications = (try? await fetchedNotifications) ?? []
         noteCount      = (try? await fetchedNotes)?.count      ?? 0
         highlightCount = (try? await fetchedHighlights)?.count ?? 0
-        await withTaskGroup(of: (String, [FSHeartbeat]).self) { group in
+
+        var allEvents: [FSHeartbeat] = []
+        await withTaskGroup(of: [FSHeartbeat].self) { group in
             for agent in agents {
                 group.addTask {
-                    let hbs = (try? await service.fetchHeartbeats(userId: user.user_id, agentId: agent.id)) ?? []
-                    return (agent.id, hbs)
+                    (try? await service.fetchHeartbeats(userId: user.user_id, agentId: agent.id)) ?? []
                 }
             }
-            for await (agentId, hbs) in group { heartbeats[agentId] = hbs }
+            for await hbs in group { allEvents.append(contentsOf: hbs) }
         }
+        events = allEvents
     }
 
-    func scheduleHeartbeat(agentId: String, days: [String], prompt: String) async {
+    func createEvent(agentId: String, prompt: String, timestamps: [String?]) async {
         guard let uid = profileData?.user_id else { return }
         let hb = FSHeartbeat(id: UUID().uuidString, agent_id: agentId, user_id: uid,
-                             timestamp: ISO8601DateFormatter().string(from: Date()),
-                             days_per_week: days, prompt: prompt)
+                             timestamps: timestamps, prompt: prompt)
         try? await service.addHeartbeat(userId: uid, agentId: agentId, heartbeat: hb)
-        heartbeats[agentId, default: []].append(hb)
+        events.append(hb)
+        HeartbeatScheduler.scheduleAll(events: events)
     }
 
-    func removeHeartbeat(agentId: String, heartbeatId: String) {
+    func removeEvent(_ event: FSHeartbeat) {
         guard let uid = profileData?.user_id else { return }
-        heartbeats[agentId]?.removeAll { $0.id == heartbeatId }
-        Task { try? await service.deleteHeartbeat(userId: uid, agentId: agentId, heartbeatId: heartbeatId) }
+        events.removeAll { $0.id == event.id }
+        HeartbeatScheduler.scheduleAll(events: events)
+        Task { try? await service.deleteHeartbeat(userId: uid, agentId: event.agent_id, heartbeatId: event.id) }
     }
 
     func toggleAgent(id: String, enabled: Bool) {
@@ -85,6 +90,7 @@ final class AccountViewModel: ObservableObject {
     func deleteAgent(id: String) {
         guard let uid = profileData?.user_id else { return }
         agents.removeAll { $0.id == id }
+        events.removeAll { $0.agent_id == id }
         Task { try? await service.deleteAgent(userId: uid, agentId: id) }
     }
 
@@ -106,7 +112,6 @@ final class AccountViewModel: ObservableObject {
         if let notif = try? await service.createNotification(userId: uid, name: name, prompt: prompt, timestamps: timestamps) {
             notifications.append(notif)
         }
-        // Cancel any stale pending local notification for this slot and reschedule all
         await NotificationScheduler.scheduleAll(userId: uid, notifications: notifications, service: service)
     }
 
@@ -118,7 +123,6 @@ final class AccountViewModel: ObservableObject {
             notifications[i].prompt     = prompt
             notifications[i].timestamps = timestamps
         }
-        // Cancel the old pending trigger and reschedule with updated time/prompt
         UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [notif.id])
         await NotificationScheduler.scheduleAll(userId: uid, notifications: notifications, service: service)
     }
@@ -129,7 +133,6 @@ final class AccountViewModel: ObservableObject {
         let remaining = notifications
         Task {
             try? await service.deleteNotification(userId: uid, notifId: notifId)
-            // Remove from local notification center too
             UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [notifId])
             await NotificationScheduler.scheduleAll(userId: uid, notifications: remaining, service: service)
         }
@@ -154,13 +157,13 @@ struct AccountView: View {
 
     enum AccountSheet: Identifiable {
         case newAgent
-        case heartbeat(String)
+        case newEvent
         case newNotification
         case editNotification(FSNotification)
         var id: String {
             switch self {
             case .newAgent:                 return "newAgent"
-            case .heartbeat(let s):         return "hb-\(s)"
+            case .newEvent:                 return "newEvent"
             case .newNotification:          return "newNotification"
             case .editNotification(let n):  return "notif-\(n.id)"
             }
@@ -195,6 +198,9 @@ struct AccountView: View {
 
                     // ── Agents ────────────────────────────────────────────────
                     agentsSection
+
+                    // ── Events ────────────────────────────────────────────────
+                    eventsSection
 
                     // ── Notifications ─────────────────────────────────────────
                     notificationsSection
@@ -240,9 +246,9 @@ struct AccountView: View {
                     newAgentRole = ""
                     Task { await vm.createAgent(role: role) }
                 }
-            case .heartbeat(let agentId):
-                HeartbeatSheet { days, prompt in
-                    Task { await vm.scheduleHeartbeat(agentId: agentId, days: days, prompt: prompt) }
+            case .newEvent:
+                EventSetupSheet(agents: vm.agents) { agentId, prompt, timestamps in
+                    Task { await vm.createEvent(agentId: agentId, prompt: prompt, timestamps: timestamps) }
                 }
             case .newNotification:
                 NotificationSetupSheet { name, prompt, timestamps in
@@ -419,7 +425,6 @@ struct AccountView: View {
 
     private var agentsSection: some View {
         Section {
-            // Description
             Text("Enabled agents participate in your chats and can summarize study sessions.")
                 .font(.lora(Theme.fontSM))
                 .foregroundColor(Theme.textMuted)
@@ -467,14 +472,6 @@ struct AccountView: View {
                         .buttonStyle(.plain)
                         .accessibilityLabel("Rename agent")
 
-                        // Heartbeat
-                        Button(action: { activeSheet = .heartbeat(agent.id) }) {
-                            Image(systemName: "bolt.circle")
-                                .foregroundColor(Theme.gold.opacity(0.60))
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("Add heartbeat to agent")
-
                         // Delete
                         Button(action: { vm.deleteAgent(id: agent.id) }) {
                             Image(systemName: "trash")
@@ -484,15 +481,6 @@ struct AccountView: View {
                         .accessibilityLabel("Delete agent")
                     }
                     .listRowBackground(Theme.cardBg)
-
-                    // Heartbeat schedule rows
-                    let agentHeartbeats = vm.heartbeats[agent.id] ?? []
-                    ForEach(agentHeartbeats) { hb in
-                        HeartbeatRow(heartbeat: hb) {
-                            vm.removeHeartbeat(agentId: agent.id, heartbeatId: hb.id)
-                        }
-                        .listRowBackground(Theme.islandBg)
-                    }
                 }
             }
 
@@ -505,6 +493,44 @@ struct AccountView: View {
             .accessibilityLabel("Create new agent")
         } header: {
             sectionHeader("Agents")
+        }
+    }
+
+    private var eventsSection: some View {
+        Section {
+            Text("Events are AI-powered check-ins. When the scheduled time arrives, your agent responds to the prompt and saves a note.")
+                .font(.lora(Theme.fontSM))
+                .foregroundColor(Theme.textMuted)
+                .listRowBackground(Theme.cardBg)
+
+            if vm.events.isEmpty {
+                Text("No events yet. Tap + to schedule one.")
+                    .font(.lora(Theme.fontSM))
+                    .foregroundColor(Theme.textMuted)
+                    .listRowBackground(Theme.cardBg)
+            } else {
+                ForEach(vm.events) { event in
+                    EventRow(event: event, agentName: agentName(for: event.agent_id)) {
+                        vm.removeEvent(event)
+                    }
+                    .listRowBackground(Theme.cardBg)
+                }
+            }
+
+            Button(action: {
+                guard !vm.agents.isEmpty else { return }
+                appState.requestPushNotifications()
+                activeSheet = .newEvent
+            }) {
+                Label("New Event", systemImage: "plus")
+                    .font(.lora(Theme.fontBody))
+                    .foregroundColor(vm.agents.isEmpty ? Theme.textMuted : Theme.gold)
+            }
+            .disabled(vm.agents.isEmpty)
+            .listRowBackground(Theme.cardBg)
+            .accessibilityLabel("Create new event")
+        } header: {
+            sectionHeader("Events")
         }
     }
 
@@ -652,6 +678,10 @@ struct AccountView: View {
             .foregroundColor(Theme.textGoldMuted)
     }
 
+    private func agentName(for agentId: String) -> String {
+        vm.agents.first(where: { $0.id == agentId })?.displayLabel ?? "Agent"
+    }
+
     private func saveProfile() {
         guard let user = appState.currentUser else { return }
         var body: [String: String] = [:]
@@ -671,7 +701,7 @@ struct AccountView: View {
     }
 }
 
-// ── Stat box (mirrors StatBox in Account.jsx) ─────────────────────────────────
+// ── Stat box ──────────────────────────────────────────────────────────────────
 struct StatBox: View {
     let value: Int
     let label: String
@@ -733,121 +763,40 @@ struct NewAgentSheet: View {
     }
 }
 
-// ── Heartbeat sheet (mirrors heartbeat modal in Account.jsx) ──────────────────
-struct HeartbeatSheet: View {
-    let onSchedule: (_ days: [String], _ prompt: String) -> Void
-    @Environment(\.dismiss) private var dismiss
-
-    @State private var selectedDays = Set<String>()
-    @State private var prompt       = ""
-    @State private var scheduleTime = Date()
-
-    private let days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-
-    var body: some View {
-        NavigationStack {
-            Form {
-                Section {
-                    Text("Schedule a recurring prompt — the agent will check in on these days with the message you define.")
-                        .font(.lora(Theme.fontSM))
-                        .foregroundColor(Theme.textSecondary)
-                }
-
-                Section("Days") {
-                    LazyVGrid(columns: Array(repeating: .init(.flexible()), count: 4), spacing: 8) {
-                        ForEach(days, id: \.self) { day in
-                            let selected = selectedDays.contains(day)
-                            Button(action: {
-                                if selected { selectedDays.remove(day) } else { selectedDays.insert(day) }
-                            }) {
-                                Text(String(day.prefix(3)))
-                                    .font(.lora(Theme.fontXS))
-                                    .foregroundColor(selected ? Theme.ink : Theme.parchment.opacity(0.70))
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 6)
-                                    .background(selected ? Theme.gold : Theme.gold.opacity(0.10))
-                                    .clipShape(RoundedRectangle(cornerRadius: 6))
-                            }
-                            .accessibilityLabel(day)
-                            .accessibilityAddTraits(selected ? .isSelected : [])
-                        }
-                    }
-                }
-                .listRowBackground(Theme.cardBg)
-
-                Section("Schedule Time") {
-                    DatePicker("Time", selection: $scheduleTime, displayedComponents: .hourAndMinute)
-                        .font(.lora(Theme.fontBody))
-                        .accessibilityLabel("Heartbeat time")
-                }
-                .listRowBackground(Theme.cardBg)
-
-                Section("Prompt") {
-                    TextEditor(text: $prompt)
-                        .font(.lora(Theme.fontBody))
-                        .foregroundColor(Theme.parchment)
-                        .scrollContentBackground(.hidden)
-                        .frame(minHeight: 60)
-                        .accessibilityLabel("Heartbeat prompt text")
-                }
-                .listRowBackground(Theme.cardBg)
-            }
-            .scrollContentBackground(.hidden)
-            .background(Theme.bgPage)
-            .navigationTitle("Add Heartbeat")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cancel") { dismiss() }.foregroundColor(Theme.textGoldMuted)
-                }
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Schedule") {
-                        onSchedule(Array(selectedDays).sorted(), prompt)
-                        dismiss()
-                    }
-                    .foregroundColor(Theme.gold)
-                    .disabled(prompt.isEmpty || selectedDays.isEmpty)
-                }
-            }
-        }
-        .preferredColorScheme(.dark)
-    }
-}
-
-// ── Heartbeat row (shown under each agent) ────────────────────────────────────
-struct HeartbeatRow: View {
-    let heartbeat: FSHeartbeat
+// ── Event row (shown in Events section) ───────────────────────────────────────
+struct EventRow: View {
+    let event: FSHeartbeat
+    let agentName: String
     let onDelete: () -> Void
 
     var body: some View {
-        HStack(spacing: Theme.spacingSM) {
-            Image(systemName: "bolt.fill")
-                .font(.system(size: 9))
-                .foregroundColor(Theme.gold.opacity(0.55))
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(heartbeat.days_per_week.map { String($0.prefix(3)) }.joined(separator: " · "))
-                    .font(.lora(Theme.fontXXS))
-                    .tracking(1)
-                    .foregroundColor(Theme.gold.opacity(0.75))
-                Text(heartbeat.prompt)
-                    .font(.lora(Theme.fontXS))
-                    .foregroundColor(Theme.textSecondary)
-                    .lineLimit(1)
+        HStack(spacing: Theme.spacingMD) {
+            ZStack {
+                Circle().fill(Theme.gold.opacity(0.12)).frame(width: 30, height: 30)
+                Image(systemName: "bolt.fill").foregroundColor(Theme.gold).font(.caption)
             }
-
+            VStack(alignment: .leading, spacing: 2) {
+                Text(event.prompt.isEmpty ? "Untitled Event" : String(event.prompt.prefix(50)))
+                    .font(.lora(Theme.fontBody))
+                    .foregroundColor(Theme.parchment)
+                    .lineLimit(1)
+                HStack(spacing: 4) {
+                    Text(event.scheduleSummary)
+                    Text("·")
+                    Text(agentName)
+                }
+                .font(.lora(Theme.fontXS))
+                .foregroundColor(Theme.textMuted)
+            }
             Spacer()
-
             Button(action: onDelete) {
-                Image(systemName: "xmark.circle")
-                    .foregroundColor(Theme.error.opacity(0.50))
+                Image(systemName: "trash")
+                    .foregroundColor(Theme.error.opacity(0.65))
                     .font(.caption)
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Remove heartbeat")
+            .accessibilityLabel("Delete event")
         }
-        .padding(.leading, Theme.spacingLG)
-        .padding(.vertical, 4)
     }
 }
 

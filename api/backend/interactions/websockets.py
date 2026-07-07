@@ -1,6 +1,11 @@
+import logging
+
 from fastapi import WebSocket
 from schemas.message import Message
 from db import DBManager
+from backend.interactions.push import send_push
+
+logger = logging.getLogger(__name__)
 
 
 class ConnectionManager(DBManager):
@@ -42,7 +47,8 @@ class ConnectionManager(DBManager):
         self.active_connections.pop(user_id, None)
 
     async def send_msg(self, payload: dict) -> None:
-        """Persist a chat message and deliver it to all online recipients.
+        """Persist a chat message, deliver it to online recipients via WebSocket,
+        and push-notify any offline recipients.
 
         Args:
             payload: Message dict with at minimum ``to_users``, ``from_user``,
@@ -52,16 +58,44 @@ class ConnectionManager(DBManager):
         if not to_users:
             return
         self.save_message(Message(**payload))
+
+        from_user_id = payload.get("from_user", "")
+        text         = payload.get("text", "")
+
         frame = {
-            "from_user": payload.get("from_user"),
-            "text":      payload.get("text"),
+            "from_user": from_user_id,
+            "text":      text,
             "group_id":  payload.get("group_id"),
             "timestamp": payload.get("timestamp"),
         }
+
+        # Resolve sender username once for the notification title
+        sender_name = "FellowScript"
+        try:
+            self.cur.execute("SELECT username FROM users WHERE _id = %s", (from_user_id,))
+            row = self.cur.fetchone()
+            if row:
+                sender_name = row[0]
+        except Exception as e:
+            logger.warning("Could not resolve sender username: %s", e)
+
         for uid in to_users:
             ws = self.active_connections.get(uid)
             if ws:
+                # Recipient is online — deliver via WebSocket
                 await ws.send_json(frame)
+            elif uid != from_user_id:
+                # Recipient is offline — send APNs push notification
+                try:
+                    self.cur.execute(
+                        "SELECT token FROM device_tokens WHERE user_id = %s", (uid,)
+                    )
+                    token_row = self.cur.fetchone()
+                    if token_row:
+                        body = text if len(text) <= 100 else text[:97] + "…"
+                        await send_push(token_row[0], sender_name, body)
+                except Exception as e:
+                    logger.error("Push to %s failed: %s", uid, e)
 
     async def send_sig(self, payload: dict) -> None:
         """Relay a WebRTC signaling frame without persisting it.

@@ -137,8 +137,7 @@ def create_tables(cur):
         "(_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
         "agent_id UUID REFERENCES agents(_id) ON DELETE CASCADE,"
         "user_id UUID REFERENCES users(_id) ON DELETE CASCADE,"
-        "timestamp TIMESTAMPTZ DEFAULT NOW(),"
-        "days_per_week TEXT[],"
+        "timestamps JSONB DEFAULT '[]',"
         "prompt TEXT DEFAULT '')"
     )
 

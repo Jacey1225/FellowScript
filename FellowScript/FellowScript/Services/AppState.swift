@@ -42,11 +42,19 @@ final class AppState: ObservableObject {
     func signIn(username: String, password: String) async throws {
         let user = try await service.signIn(username: username, password: password)
         persist(user)
+        requestPushNotifications()
     }
 
     func signUp(username: String, email: String, password: String) async throws {
         let user = try await service.signUp(username: username, email: email, password: password)
         persist(user)
+        requestPushNotifications()
+    }
+
+    func signInWithGoogle(credential: String) async throws {
+        let user = try await service.signInWithGoogle(credential: credential)
+        persist(user)
+        requestPushNotifications()
     }
 
     func signOut() {

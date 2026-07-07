@@ -69,6 +69,16 @@ final class NetworkService: DataServiceProtocol {
         return user
     }
 
+    func signInWithGoogle(credential: String) async throws -> FSUser {
+        let data = try await requestRaw("/auth/google", method: "POST",
+                                        jsonObject: ["credential": credential])
+        guard let user = decode(FSUser.self, from: data) else {
+            let detail = decode([String: String].self, from: data)?["detail"] ?? "Google sign-in failed."
+            throw AppError.authFailed(detail)
+        }
+        return user
+    }
+
     // ── User ──────────────────────────────────────────────────────────────────
     // GET  /user/{userId}
     // PUT  /user/{userId}   body: {username?, email?, plain_pass?}
@@ -249,7 +259,9 @@ final class NetworkService: DataServiceProtocol {
     }
 
     func addHeartbeat(userId: String, agentId: String, heartbeat: FSHeartbeat) async throws {
-        _ = try await request("/agent/\(userId)/\(agentId)/heartbeat", method: "POST", body: heartbeat)
+        let tsArray = heartbeat.timestamps.map { $0 != nil ? $0! as Any : NSNull() as Any }
+        let body: [String: Any] = ["timestamps": tsArray, "prompt": heartbeat.prompt]
+        _ = try await requestRaw("/agent/\(userId)/\(agentId)/heartbeat", method: "POST", jsonObject: body)
     }
 
     func deleteHeartbeat(userId: String, agentId: String, heartbeatId: String) async throws {

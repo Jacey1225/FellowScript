@@ -122,8 +122,7 @@ async def add_heartbeat(user_id: str, agent_id: str, body: dict) -> dict:
         heartbeat = AgentHeartbeats(
             agent_id=agent_id,
             user_id=user_id,
-            timestamp=body.get("timestamp", datetime.now()),
-            days_per_week=body.get("days_per_week", []),
+            timestamps=body.get("timestamps", [None] * 31),
             prompt=body.get("prompt", ""),
         )
         db.add_heartbeat(heartbeat)

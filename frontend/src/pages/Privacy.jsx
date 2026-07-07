@@ -1,15 +1,8 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { Typography } from 'antd';
-
-const { Title } = Typography;
 
 const S = {
-  page: {
-    minHeight: '100vh',
-    background: 'var(--bg-page)',
-    fontFamily: "'Lora', serif",
-  },
+  page: { minHeight: '100vh', background: 'var(--bg-page)', fontFamily: "'Lora', serif" },
   nav: {
     position: 'sticky', top: 0, zIndex: 10,
     background: 'var(--nav-bg)',
@@ -68,110 +61,177 @@ export default function Privacy() {
 
       <main style={S.main}>
         <h1 style={S.pageTitle}>Privacy Policy</h1>
-        <p style={S.effectiveDate}>Effective Date: June 1, 2025 &nbsp;&middot;&nbsp; Last Updated: June 1, 2025</p>
+        <p style={S.effectiveDate}>Effective Date: June 1, 2025 &nbsp;&middot;&nbsp; Last Updated: July 5, 2026</p>
 
+        {/* 1 */}
         <div style={S.section}>
           <h2 style={S.h2}>1. Introduction</h2>
-          <p style={S.p}>FellowScript ("we," "our," or "us") is a faith-based Bible study platform designed to foster meaningful connections between believers. This Privacy Policy explains how we collect, use, and protect your personal information when you use our iOS application and website (collectively, the "Service").</p>
-          <p style={S.p}>By creating an account, you agree to the collection and use of your information as described in this policy. If you do not agree, please do not use the Service.</p>
+          <p style={S.p}>FellowScript ("we," "our," or "us") is a faith-based Bible study platform designed to foster meaningful connections between believers. This Privacy Policy explains how we collect, use, disclose, and protect your personal information when you use our iOS application and website (collectively, the "Service").</p>
+          <p style={S.p}>By creating an account or using the Service, you agree to the collection and use of your information as described in this policy. If you do not agree, please do not use the Service.</p>
         </div>
 
+        {/* 2 */}
         <div style={S.section}>
           <h2 style={S.h2}>2. Information We Collect</h2>
+
           <p style={{ ...S.p, marginBottom: '0.4rem' }}><strong style={S.strong}>Account Information</strong></p>
           <ul style={S.ul}>
             <li style={S.li}>Username and email address (required to create an account)</li>
             <li style={S.li}>Password (stored as a secure cryptographic hash — never in plain text)</li>
           </ul>
+
           <p style={{ ...S.p, marginTop: '0.75rem', marginBottom: '0.4rem' }}><strong style={S.strong}>Content You Create</strong></p>
           <ul style={S.ul}>
             <li style={S.li}>Bible study notes (public and private)</li>
             <li style={S.li}>Verse highlights and bookmarks</li>
             <li style={S.li}>Messages sent within groups or direct conversations</li>
-            <li style={S.li}>AI agent interaction history</li>
+            <li style={S.li}>AI agent conversation history and custom agent configurations</li>
+            <li style={S.li}>Custom notification schedules and reminder prompts you configure</li>
           </ul>
+
+          <p style={{ ...S.p, marginTop: '0.75rem', marginBottom: '0.4rem' }}><strong style={S.strong}>Device and Notification Data</strong></p>
+          <ul style={S.ul}>
+            <li style={S.li}>APNs device token (a unique identifier assigned by Apple used to deliver push notifications to your device). This token is collected only after you grant notification permission and is used solely to send you notifications from FellowScript.</li>
+            <li style={S.li}>Device type and operating system version (collected for compatibility and debugging purposes only)</li>
+          </ul>
+
           <p style={{ ...S.p, marginTop: '0.75rem', marginBottom: '0.4rem' }}><strong style={S.strong}>Usage Information</strong></p>
           <ul style={S.ul}>
-            <li style={S.li}>Bible passages you read and chapters you visit</li>
+            <li style={S.li}>Bible passages and chapters you read</li>
             <li style={S.li}>Feature interactions within the app</li>
-            <li style={S.li}>Device type and operating system (for compatibility purposes only)</li>
+          </ul>
+
+          <p style={{ ...S.p, marginTop: '0.75rem', marginBottom: '0.4rem' }}><strong style={S.strong}>Information We Do NOT Collect</strong></p>
+          <ul style={S.ul}>
+            <li style={S.li}>Location data of any kind</li>
+            <li style={S.li}>Contacts or address book data</li>
+            <li style={S.li}>Camera or microphone data (except during optional video call sessions, which are not recorded)</li>
+            <li style={S.li}>Advertising identifiers (IDFA or GAID)</li>
+            <li style={S.li}>Browsing history outside of the Service</li>
           </ul>
         </div>
 
+        {/* 3 */}
         <div style={S.section}>
           <h2 style={S.h2}>3. How We Use Your Information</h2>
-          <p style={S.p}>We use the information we collect to:</p>
+          <p style={S.p}>We use the information we collect solely to operate and improve the Service:</p>
           <ul style={S.ul}>
             <li style={S.li}>Create and manage your account</li>
-            <li style={S.li}>Sync your notes, highlights, and reading activity across sessions</li>
+            <li style={S.li}>Sync your notes, highlights, and reading progress across sessions</li>
             <li style={S.li}>Enable community features (group messaging, shared highlights, friend connections)</li>
-            <li style={S.li}>Power AI-assisted Bible study features</li>
+            <li style={S.li}>Power AI-assisted Bible study features via our AI infrastructure provider</li>
+            <li style={S.li}>Send push notifications you have configured (reminders, devotionals, chat messages)</li>
             <li style={S.li}>Send important account or service notices</li>
-            <li style={S.li}>Improve platform performance and user experience</li>
+            <li style={S.li}>Diagnose technical issues and improve platform performance</li>
           </ul>
-          <p style={S.p}>We do not use your data for advertising and we do not build advertising profiles.</p>
+          <p style={S.p}><strong style={S.strong}>We do not use your data for advertising, and we do not build advertising profiles.</strong> We do not engage in cross-context behavioral advertising.</p>
         </div>
 
+        {/* 4 */}
         <div style={S.section}>
-          <h2 style={S.h2}>4. Data Sharing</h2>
+          <h2 style={S.h2}>4. Push Notifications</h2>
+          <p style={S.p}>FellowScript uses Apple Push Notification service (APNs) to deliver notifications to your iOS device. To send notifications, we store an APNs device token on our servers. This token is tied to your account and is used only to deliver notifications from FellowScript.</p>
+          <p style={S.p}>We send two types of push notifications:</p>
+          <ul style={S.ul}>
+            <li style={S.li}><strong style={S.strong}>Message notifications:</strong> Sent when a friend or group member sends you a chat message and you are not currently active in the app.</li>
+            <li style={S.li}><strong style={S.strong}>Scheduled reminders:</strong> Bible study reminders or devotional notifications you set up in the Notifications section of your account.</li>
+          </ul>
+          <p style={S.p}>You can disable push notifications at any time in your iOS device settings under <strong style={S.strong}>Settings &rarr; Notifications &rarr; FellowScript</strong>. Disabling notifications does not affect your ability to use any other feature of the Service.</p>
+        </div>
+
+        {/* 5 */}
+        <div style={S.section}>
+          <h2 style={S.h2}>5. Data Sharing and Disclosure</h2>
           <p style={S.p}><strong style={S.strong}>We do not sell your personal information.</strong></p>
           <p style={S.p}>We may share your information only in these limited circumstances:</p>
           <ul style={S.ul}>
-            <li style={S.li}><strong style={S.strong}>With other users:</strong> Content you mark as "public" (notes, highlights) is visible to your connections. Private content is visible only to you.</li>
-            <li style={S.li}><strong style={S.strong}>Service providers:</strong> We use third-party infrastructure providers (cloud hosting) to operate the Service. These providers are bound by confidentiality obligations and may not use your data for their own purposes.</li>
-            <li style={S.li}><strong style={S.strong}>Legal requirements:</strong> We may disclose information if required by law, court order, or to protect the rights and safety of our users.</li>
+            <li style={S.li}><strong style={S.strong}>With other users:</strong> Content you mark as "public" (notes, highlights) is visible to your connections. Private content is visible only to you. Your username is visible to friends and group members.</li>
+            <li style={S.li}><strong style={S.strong}>Infrastructure providers:</strong> We use Amazon Web Services (AWS) for cloud hosting and video calling infrastructure. AWS processes data on our behalf under a data processing agreement and may not use your data for their own purposes.</li>
+            <li style={S.li}><strong style={S.strong}>AI provider:</strong> Conversations with AI agents and notification prompt content are sent to OpenRouter (our AI infrastructure provider) to generate responses. OpenRouter processes this data under their privacy policy. We do not send personally identifiable account information (name, email) to OpenRouter alongside AI queries.</li>
+            <li style={S.li}><strong style={S.strong}>Apple:</strong> Push notification delivery is facilitated by Apple's APNs infrastructure. Apple receives your device token and notification payload to deliver notifications. Apple's handling of this data is governed by Apple's Privacy Policy.</li>
+            <li style={S.li}><strong style={S.strong}>Legal requirements:</strong> We may disclose information if required by law, court order, or to protect the rights, property, or safety of FellowScript, our users, or the public.</li>
           </ul>
         </div>
 
+        {/* 6 */}
         <div style={S.section}>
-          <h2 style={S.h2}>5. Children's Privacy (COPPA)</h2>
+          <h2 style={S.h2}>6. Children's Privacy (COPPA)</h2>
           <p style={S.p}>FellowScript is not directed to children under the age of 13. We do not knowingly collect personal information from anyone under 13. If you are under 13, please do not create an account or submit any personal information.</p>
-          <p style={S.p}>If we learn that we have collected personal information from a child under 13 without verifiable parental consent, we will promptly delete it. To report a concern, contact us at <a href="mailto:support@fellowscript.com" style={S.a}>support@fellowscript.com</a>.</p>
+          <p style={S.p}>If we learn that we have collected personal information from a child under 13 without verifiable parental consent, we will promptly delete that information. To report a concern, contact us at <a href="mailto:support@fellowscript.com" style={S.a}>support@fellowscript.com</a>.</p>
         </div>
 
+        {/* 7 */}
         <div style={S.section}>
-          <h2 style={S.h2}>6. Data Security</h2>
-          <p style={S.p}>We implement industry-standard security measures including encrypted data transmission (HTTPS/TLS) and cryptographic password hashing. However, no method of transmission over the Internet is 100% secure. We encourage you to use a strong, unique password and keep it confidential.</p>
-        </div>
-
-        <div style={S.section}>
-          <h2 style={S.h2}>7. Your Rights and Controls</h2>
-          <p style={S.p}>You have the right to:</p>
+          <h2 style={S.h2}>7. Data Security</h2>
+          <p style={S.p}>We implement industry-standard security measures to protect your information:</p>
           <ul style={S.ul}>
-            <li style={S.li}><strong style={S.strong}>Access:</strong> View all content and account data from within the app at any time</li>
-            <li style={S.li}><strong style={S.strong}>Edit:</strong> Update your username, email, or password in Account settings</li>
-            <li style={S.li}><strong style={S.strong}>Delete:</strong> Permanently delete your account and all associated data from Account settings. Deletion is immediate and irreversible.</li>
-            <li style={S.li}><strong style={S.strong}>Visibility control:</strong> Choose whether individual notes and highlights are public or private on a per-item basis</li>
+            <li style={S.li}>All data transmitted between your device and our servers is encrypted using HTTPS/TLS</li>
+            <li style={S.li}>Passwords are stored using cryptographic hashing and are never stored or transmitted in plain text</li>
+            <li style={S.li}>Our servers are hosted on AWS infrastructure with access controls and monitoring</li>
           </ul>
+          <p style={S.p}>No method of transmission over the Internet is 100% secure. While we strive to protect your data, we cannot guarantee absolute security. We encourage you to use a strong, unique password and keep your credentials confidential.</p>
         </div>
 
+        {/* 8 */}
         <div style={S.section}>
-          <h2 style={S.h2}>8. Data Retention</h2>
-          <p style={S.p}>We retain your account data for as long as your account is active. When you delete your account, your personal information, notes, messages, and highlights are permanently removed from our systems within 30 days.</p>
+          <h2 style={S.h2}>8. Your Rights and Controls</h2>
+          <p style={S.p}>You have the following rights with respect to your personal data:</p>
+          <ul style={S.ul}>
+            <li style={S.li}><strong style={S.strong}>Access:</strong> View all content and account data from within the app at any time.</li>
+            <li style={S.li}><strong style={S.strong}>Correction:</strong> Update your username, email, or password in Account settings.</li>
+            <li style={S.li}><strong style={S.strong}>Deletion:</strong> Permanently delete your account and all associated data from the Account settings page. Deletion is immediate and irreversible. Your data is purged from our systems within 30 days.</li>
+            <li style={S.li}><strong style={S.strong}>Notification control:</strong> Disable push notifications in iOS Settings at any time.</li>
+            <li style={S.li}><strong style={S.strong}>Visibility control:</strong> Choose whether individual notes and highlights are public or private on a per-item basis.</li>
+          </ul>
+          <p style={S.p}><strong style={S.strong}>To request deletion of your data by email:</strong> Send a request to <a href="mailto:support@fellowscript.com" style={S.a}>support@fellowscript.com</a> from the email address associated with your account. Include "Data Deletion Request" in the subject line. We will process your request within 30 days.</p>
         </div>
 
+        {/* 9 */}
         <div style={S.section}>
-          <h2 style={S.h2}>9. Third-Party Services</h2>
-          <p style={S.p}>The Service may reference Bible translations or external resources. These third-party websites have their own privacy policies, and we are not responsible for their content or practices.</p>
-          <p style={S.p}>Our AI study assistant feature uses third-party AI infrastructure. Conversations with AI agents are processed to generate responses and may be used to improve model quality in accordance with our provider's terms. We do not link AI conversation data to your identity outside of the Service.</p>
+          <h2 style={S.h2}>9. Data Retention</h2>
+          <p style={S.p}>We retain your account data for as long as your account is active. When you delete your account — either through the app or by submitting a request to us — your personal information, notes, messages, highlights, device tokens, and AI conversation history are permanently removed from our production systems within 30 days.</p>
+          <p style={S.p}>Aggregated, anonymized usage statistics that cannot identify you may be retained for longer periods to improve the Service.</p>
         </div>
 
+        {/* 10 */}
         <div style={S.section}>
-          <h2 style={S.h2}>10. Changes to This Policy</h2>
-          <p style={S.p}>We may update this Privacy Policy from time to time. When we do, we will update the "Last Updated" date at the top of this page. Continued use of the Service after changes are posted constitutes your acceptance of the updated policy.</p>
+          <h2 style={S.h2}>10. California Consumer Privacy Act (CCPA)</h2>
+          <p style={S.p}>If you are a California resident, you have additional rights under the CCPA including the right to know what personal information we collect, the right to request deletion, and the right to opt out of the sale of your personal information. We do not sell personal information. To exercise your rights, contact us at <a href="mailto:support@fellowscript.com" style={S.a}>support@fellowscript.com</a>.</p>
+        </div>
+
+        {/* 11 */}
+        <div style={S.section}>
+          <h2 style={S.h2}>11. International Users (GDPR)</h2>
+          <p style={S.p}>If you are located in the European Economic Area (EEA) or United Kingdom, you have rights under the General Data Protection Regulation (GDPR) including the right to access, rectification, erasure, restriction of processing, and data portability. Our lawful basis for processing your data is the performance of a contract (providing you with the Service) and your consent (for push notifications).</p>
+          <p style={S.p}>To exercise your GDPR rights, contact us at <a href="mailto:support@fellowscript.com" style={S.a}>support@fellowscript.com</a>. We will respond within 30 days.</p>
+        </div>
+
+        {/* 12 */}
+        <div style={S.section}>
+          <h2 style={S.h2}>12. Third-Party Links and Services</h2>
+          <p style={S.p}>The Service may reference Bible translations or external theological resources. These third-party websites operate under their own privacy policies and we are not responsible for their practices.</p>
+          <p style={S.p}>Our video calling feature is powered by Amazon Chime SDK. Audio and video streams during calls are not recorded or stored by FellowScript.</p>
+        </div>
+
+        {/* 13 */}
+        <div style={S.section}>
+          <h2 style={S.h2}>13. Changes to This Policy</h2>
+          <p style={S.p}>We may update this Privacy Policy from time to time. When we do, we will update the "Last Updated" date at the top of this page and, where changes are material, notify you via the app or email. Continued use of the Service after changes are posted constitutes your acceptance of the updated policy.</p>
         </div>
 
         <div style={S.contactBox}>
           <h2 style={{ ...S.h2, marginBottom: '0.5rem' }}>Contact Us</h2>
-          <p style={S.p}>If you have questions about this Privacy Policy or how we handle your data:</p>
-          <p style={S.p}><a href="mailto:support@fellowscript.com" style={S.a}>support@fellowscript.com</a></p>
+          <p style={S.p}>For questions about this Privacy Policy, data deletion requests, or how we handle your information:</p>
+          <p style={S.p}>
+            <a href="mailto:support@fellowscript.com" style={S.a}>support@fellowscript.com</a>
+          </p>
           <p style={{ ...S.p, marginTop: '0.5rem', color: 'rgba(244,228,193,0.4)', fontSize: '0.85rem', marginBottom: 0 }}>
             FellowScript &mdash; A Digital Scripture Community
           </p>
         </div>
       </main>
 
-      <footer style={S.footer}>&copy; 2025 FellowScript &nbsp;&middot;&nbsp; A Digital Scripture Community</footer>
+      <footer style={S.footer}>&copy; 2026 FellowScript &nbsp;&middot;&nbsp; A Digital Scripture Community</footer>
     </div>
   );
 }

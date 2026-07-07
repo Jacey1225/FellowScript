@@ -3,16 +3,21 @@ import { useNavigate } from 'react-router-dom';
 import {
   Layout, Card, Form, Input, Button, Typography,
   Avatar, Spin, Alert, Divider, Row, Col,
-  Switch, Modal, Checkbox,
+  Switch, Modal, Checkbox, Select, TimePicker,
 } from 'antd';
 import {
   UserOutlined, MailOutlined, LockOutlined,
   LogoutOutlined, DeleteOutlined, RobotOutlined,
-  PlusOutlined, ThunderboltOutlined, EditOutlined, CheckOutlined, CloseOutlined,
+  PlusOutlined, ThunderboltOutlined, EditOutlined,
+  CheckOutlined, CloseOutlined, CalendarOutlined,
 } from '@ant-design/icons';
+import dayjs from 'dayjs';
+import utc from 'dayjs/plugin/utc';
 import AppNav from '../components/AppNav.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import { API } from '../config.js';
+
+dayjs.extend(utc);
 
 const { Content } = Layout;
 const { Title, Text, Paragraph } = Typography;
@@ -25,6 +30,16 @@ const CARD_STYLE = {
   marginBottom: '1.5rem',
 };
 
+const WEEKDAYS = [
+  { label: 'Sun', value: 0 },
+  { label: 'Mon', value: 1 },
+  { label: 'Tue', value: 2 },
+  { label: 'Wed', value: 3 },
+  { label: 'Thu', value: 4 },
+  { label: 'Fri', value: 5 },
+  { label: 'Sat', value: 6 },
+];
+
 function StatBox({ value, label }) {
   return (
     <div style={{ textAlign: 'center', padding: '1.1rem 0.5rem' }}>
@@ -36,6 +51,38 @@ function StatBox({ value, label }) {
       </div>
     </div>
   );
+}
+
+// Converts local "HH:mm" from a dayjs object → UTC "HH:mm" string
+function toUTCTime(dayjsVal) {
+  return dayjsVal.utc().format('HH:mm');
+}
+
+// Builds a 31-slot timestamps array using UTC time
+function buildTimestamps(recurrence, weekdays, monthDays, utcTime) {
+  const ts = Array(31).fill(null);
+  if (recurrence === 'daily') return Array(31).fill(utcTime);
+  if (recurrence === 'weekly') {
+    const now = new Date();
+    const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dow = new Date(now.getFullYear(), now.getMonth(), d).getDay();
+      if (weekdays.includes(dow)) ts[d - 1] = utcTime;
+    }
+    return ts;
+  }
+  if (recurrence === 'monthly') {
+    for (const d of monthDays) if (d >= 1 && d <= 31) ts[d - 1] = utcTime;
+    return ts;
+  }
+  return ts;
+}
+
+function scheduleSummary(timestamps) {
+  const n = (timestamps || []).filter(Boolean).length;
+  if (n === 0)  return 'Not scheduled';
+  if (n >= 30)  return 'Every day';
+  return `${n} day${n === 1 ? '' : 's'} / month`;
 }
 
 export default function Account() {
@@ -58,20 +105,25 @@ export default function Account() {
   const [deleteMsg,      setDeleteMsg]      = useState(null);
 
   // Agents
-  const [agents,          setAgents]          = useState([]);
-  const [agentsLoading,   setAgentsLoading]   = useState(false);
-  const [agentModal,      setAgentModal]      = useState(false);
-  const [newAgentRole,    setNewAgentRole]    = useState('');
-  const [agentSaving,     setAgentSaving]     = useState(false);
-  const [hbModal,         setHbModal]         = useState(null); // agentId | null
-  const [renamingId,      setRenamingId]      = useState(null); // agentId being renamed
-  const [renameVal,       setRenameVal]       = useState('');
-  const [hbDays,          setHbDays]          = useState([]);
-  const [hbPrompt,        setHbPrompt]        = useState('');
-  const [hbSaving,        setHbSaving]        = useState(false);
-  const [heartbeats,      setHeartbeats]      = useState({}); // agentId → [heartbeat]
+  const [agents,        setAgents]        = useState([]);
+  const [agentsLoading, setAgentsLoading] = useState(false);
+  const [agentModal,    setAgentModal]    = useState(false);
+  const [newAgentRole,  setNewAgentRole]  = useState('');
+  const [agentSaving,   setAgentSaving]   = useState(false);
+  const [renamingId,    setRenamingId]    = useState(null);
+  const [renameVal,     setRenameVal]     = useState('');
 
-  const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+  // Events (heartbeats — flat list across all agents)
+  const [events,      setEvents]      = useState([]);
+  const [evModal,     setEvModal]     = useState(false);
+  const [evStep,      setEvStep]      = useState(0); // 0=recurrence, 1=days, 2=details
+  const [evRecur,     setEvRecur]     = useState('daily');
+  const [evWeekdays,  setEvWeekdays]  = useState([]);
+  const [evMonthDays, setEvMonthDays] = useState([]);
+  const [evTime,      setEvTime]      = useState(dayjs());
+  const [evAgentId,   setEvAgentId]   = useState('');
+  const [evPrompt,    setEvPrompt]    = useState('');
+  const [evSaving,    setEvSaving]    = useState(false);
 
   const loadProfile = useCallback(async () => {
     if (!user) { navigate('/signin'); return; }
@@ -120,22 +172,32 @@ export default function Account() {
         const data = await res.json();
         const list = Object.entries(data).map(([id, a]) => ({ id, ...a }));
         setAgents(list);
-        // Fetch heartbeats for all agents in parallel
+        if (list.length > 0) setEvAgentId(list[0].id);
+
+        // Load events flat across all agents
         const hbResults = await Promise.all(
           list.map(async agent => {
             try {
               const r = await fetch(`${API}/agent/${user.user_id}/${agent.id}/heartbeats`);
               const hbs = r.ok ? await r.json() : [];
-              return [agent.id, hbs];
-            } catch { return [agent.id, []]; }
+              return hbs.map(hb => ({ ...hb, agent_id: agent.id }));
+            } catch { return []; }
           })
         );
-        setHeartbeats(Object.fromEntries(hbResults));
+        setEvents(hbResults.flat());
       }
     } catch {} finally { setAgentsLoading(false); }
   }, [user]);
 
   useEffect(() => { loadProfile(); loadAgents(); }, [loadProfile, loadAgents]);
+
+  const agentLabel = (agent) =>
+    agent.name ||
+    (!agent.role || agent.role.startsWith('You are a spiritual')
+      ? 'Spiritual Guide'
+      : agent.role.split('\n').find(l => l.trim())?.slice(0, 28) || 'Agent');
+
+  // ── Agent handlers ────────────────────────────────────────────────────────
 
   const handleCreateAgent = async () => {
     setAgentSaving(true);
@@ -164,9 +226,7 @@ export default function Account() {
     setRenamingId(null);
     try {
       await fetch(`${API}/agent/${user.user_id}/${agentId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: trimmed }),
+        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: trimmed }),
       });
     } catch {}
   };
@@ -174,37 +234,51 @@ export default function Account() {
   const handleDeleteAgent = async (agentId) => {
     try {
       const res = await fetch(`${API}/agent/${user.user_id}/${agentId}`, { method: 'DELETE' });
-      if (res.ok || res.status === 204) setAgents(prev => prev.filter(a => a.id !== agentId));
+      if (res.ok || res.status === 204) {
+        setAgents(prev => prev.filter(a => a.id !== agentId));
+        setEvents(prev => prev.filter(e => e.agent_id !== agentId));
+      }
     } catch {}
   };
 
-  const handleAddHeartbeat = async () => {
-    if (!hbModal || !hbPrompt.trim() || !hbDays.length) return;
-    setHbSaving(true);
+  // ── Event handlers ────────────────────────────────────────────────────────
+
+  const openEventModal = () => {
+    setEvStep(0);
+    setEvRecur('daily');
+    setEvWeekdays([]);
+    setEvMonthDays([]);
+    setEvTime(dayjs());
+    setEvAgentId(agents[0]?.id || '');
+    setEvPrompt('');
+    setEvModal(true);
+  };
+
+  const handleCreateEvent = async () => {
+    if (!evAgentId || !evPrompt.trim()) return;
+    setEvSaving(true);
     try {
-      const newHb = {
-        _id: crypto.randomUUID(),
-        agent_id: hbModal, user_id: user.user_id,
-        days_per_week: hbDays, prompt: hbPrompt.trim(),
-        timestamp: new Date().toISOString(),
-      };
-      const res = await fetch(`${API}/agent/${user.user_id}/${hbModal}/heartbeat`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newHb),
+      const utcTime = toUTCTime(evTime);
+      const timestamps = buildTimestamps(evRecur, evWeekdays, evMonthDays, utcTime);
+      const body = { timestamps, prompt: evPrompt.trim() };
+      const res = await fetch(`${API}/agent/${user.user_id}/${evAgentId}/heartbeat`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
       });
       if (res.ok || res.status === 201) {
-        setHeartbeats(prev => ({ ...prev, [hbModal]: [...(prev[hbModal] || []), newHb] }));
+        setEvModal(false);
+        await loadAgents();
       }
-      setHbModal(null); setHbDays([]); setHbPrompt('');
-    } catch {} finally { setHbSaving(false); }
+    } catch {} finally { setEvSaving(false); }
   };
 
-  const handleDeleteHeartbeat = async (agentId, heartbeatId) => {
-    setHeartbeats(prev => ({ ...prev, [agentId]: (prev[agentId] || []).filter(h => h._id !== heartbeatId) }));
+  const handleDeleteEvent = async (event) => {
+    setEvents(prev => prev.filter(e => e._id !== event._id));
     try {
-      await fetch(`${API}/agent/${user.user_id}/${agentId}/heartbeat/${heartbeatId}`, { method: 'DELETE' });
+      await fetch(`${API}/agent/${user.user_id}/${event.agent_id}/heartbeat/${event._id}`, { method: 'DELETE' });
     } catch {}
   };
+
+  // ── Profile / account handlers ────────────────────────────────────────────
 
   const handleSave = async (vals) => {
     setEditMsg(null);
@@ -243,9 +317,7 @@ export default function Account() {
         `${API}/friends/${user.user_id}/add?friend_username=${encodeURIComponent(username)}`,
         { method: 'POST' }
       );
-      if (res.ok || res.status === 204) {
-        setRequests(prev => prev.filter(r => r.uid !== uid));
-      }
+      if (res.ok || res.status === 204) setRequests(prev => prev.filter(r => r.uid !== uid));
     } catch {}
     setRequestsLoading(prev => ({ ...prev, [uid]: false }));
   };
@@ -270,8 +342,125 @@ export default function Account() {
   const handleSignOut = () => { signOut(); navigate('/signin'); };
 
   if (!user) return null;
-
   const data = profileData || user;
+
+  // ── Event modal step content ───────────────────────────────────────────────
+
+  const evModalTitle = ['How often?', 'Select Days', 'Event Details'][evStep];
+
+  const evModalContent = () => {
+    if (evStep === 0) {
+      const opts = [
+        { key: 'daily',   icon: '☀️', title: 'Daily',   desc: 'Every day of the month' },
+        { key: 'weekly',  icon: '📅', title: 'Weekly',  desc: 'Selected days of the week' },
+        { key: 'monthly', icon: '🗓️', title: 'Monthly', desc: 'Selected days of the month' },
+      ];
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {opts.map(o => (
+            <button key={o.key} onClick={() => { setEvRecur(o.key); setEvStep(o.key === 'daily' ? 2 : 1); }}
+              style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '0.75rem 1rem', background: 'rgba(200,134,26,0.07)', border: '1px solid rgba(200,134,26,0.2)', borderRadius: 10, cursor: 'pointer', textAlign: 'left', width: '100%' }}>
+              <span style={{ fontSize: '1.3rem' }}>{o.icon}</span>
+              <div>
+                <div style={{ fontFamily: "'Lora', serif", color: 'var(--parchment)', fontSize: '0.88rem' }}>{o.title}</div>
+                <div style={{ fontFamily: "'Lora', serif", color: 'rgba(244,228,193,0.4)', fontSize: '0.72rem' }}>{o.desc}</div>
+              </div>
+            </button>
+          ))}
+        </div>
+      );
+    }
+
+    if (evStep === 1 && evRecur === 'weekly') {
+      return (
+        <div>
+          <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.75rem', color: 'rgba(244,228,193,0.5)', display: 'block', marginBottom: '0.75rem' }}>
+            Which days of the week?
+          </Text>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {WEEKDAYS.map(d => {
+              const sel = evWeekdays.includes(d.value);
+              return (
+                <button key={d.value} onClick={() => setEvWeekdays(prev => sel ? prev.filter(x => x !== d.value) : [...prev, d.value])}
+                  style={{ padding: '6px 14px', borderRadius: 8, border: `1px solid ${sel ? 'var(--gold)' : 'rgba(200,134,26,0.2)'}`, background: sel ? 'rgba(200,134,26,0.2)' : 'transparent', color: sel ? 'var(--gold)' : 'rgba(244,228,193,0.6)', fontFamily: "'Lora', serif", fontSize: '0.78rem', cursor: 'pointer' }}>
+                  {d.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      );
+    }
+
+    if (evStep === 1 && evRecur === 'monthly') {
+      return (
+        <div>
+          <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.75rem', color: 'rgba(244,228,193,0.5)', display: 'block', marginBottom: '0.75rem' }}>
+            Which days of the month?
+          </Text>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 6 }}>
+            {Array.from({ length: 31 }, (_, i) => i + 1).map(d => {
+              const sel = evMonthDays.includes(d);
+              return (
+                <button key={d} onClick={() => setEvMonthDays(prev => sel ? prev.filter(x => x !== d) : [...prev, d])}
+                  style={{ aspectRatio: '1', borderRadius: 6, border: `1px solid ${sel ? 'var(--gold)' : 'rgba(200,134,26,0.15)'}`, background: sel ? 'rgba(200,134,26,0.2)' : 'transparent', color: sel ? 'var(--gold)' : 'rgba(244,228,193,0.6)', fontFamily: "'Lora', serif", fontSize: '0.7rem', cursor: 'pointer' }}>
+                  {d}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      );
+    }
+
+    // Step 2: details
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        {agents.length > 1 && (
+          <div>
+            <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.7rem', letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(200,134,26,0.55)', display: 'block', marginBottom: 6 }}>Agent</Text>
+            <Select value={evAgentId} onChange={setEvAgentId} style={{ width: '100%' }}
+              options={agents.map(a => ({ value: a.id, label: agentLabel(a) }))} />
+          </div>
+        )}
+        <div>
+          <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.7rem', letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(200,134,26,0.55)', display: 'block', marginBottom: 6 }}>Event Time</Text>
+          <TimePicker value={evTime} onChange={v => v && setEvTime(v)} format="HH:mm" use12Hours={false} style={{ width: '100%' }} />
+        </div>
+        <div>
+          <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.7rem', letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(200,134,26,0.55)', display: 'block', marginBottom: 6 }}>Prompt</Text>
+          <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.72rem', color: 'rgba(244,228,193,0.35)', display: 'block', marginBottom: 8 }}>
+            The agent will respond to this prompt when the event fires and save the response as a note.
+          </Text>
+          <Input.TextArea
+            value={evPrompt} onChange={e => setEvPrompt(e.target.value)}
+            placeholder="e.g. Write a brief devotion on today's theme…"
+            autoSize={{ minRows: 3, maxRows: 6 }}
+            style={{ fontSize: '0.82rem' }}
+          />
+        </div>
+      </div>
+    );
+  };
+
+  const evModalFooter = () => {
+    if (evStep === 0) return [<Button key="cancel" onClick={() => setEvModal(false)}>Cancel</Button>];
+    if (evStep === 1) {
+      const canNext = evRecur === 'weekly' ? evWeekdays.length > 0 : evMonthDays.length > 0;
+      return [
+        <Button key="back" onClick={() => setEvStep(0)}>Back</Button>,
+        <Button key="next" type="primary" disabled={!canNext} onClick={() => setEvStep(2)}>Next</Button>,
+      ];
+    }
+    return [
+      <Button key="back" onClick={() => setEvStep(evRecur === 'daily' ? 0 : 1)}>Back</Button>,
+      <Button key="save" type="primary" loading={evSaving}
+        disabled={!evPrompt.trim() || !evAgentId}
+        onClick={handleCreateEvent}>Save</Button>,
+    ];
+  };
+
+  // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
     <Layout style={{ minHeight: '100vh', background: 'transparent' }}>
@@ -345,12 +534,9 @@ export default function Account() {
                       <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.84rem', color: 'var(--parchment)', display: 'block' }}>{username}</Text>
                       <Text style={{ fontSize: '0.68rem', color: 'rgba(244,228,193,0.35)' }}>Wants to be your friend</Text>
                     </div>
-                    <Button
-                      size="small" type="primary"
-                      loading={requestsLoading[uid]}
+                    <Button size="small" type="primary" loading={requestsLoading[uid]}
                       onClick={() => handleAccept(uid, username)}
-                      style={{ borderRadius: 8, fontFamily: "'Lora', serif" }}
-                    >
+                      style={{ borderRadius: 8, fontFamily: "'Lora', serif" }}>
                       Accept
                     </Button>
                   </div>
@@ -370,14 +556,14 @@ export default function Account() {
             </Button>
           </div>
           <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.74rem', color: 'rgba(244,228,193,0.35)', display: 'block', marginBottom: '1rem', lineHeight: 1.65 }}>
-            Enabled agents participate in your chats and can summarize study sessions. Disabled agents are hidden from the messaging sidebar.
+            Enabled agents participate in your chats and can summarize study sessions.
           </Text>
           {agentsLoading
             ? <Spin size="small" />
             : agents.length === 0
               ? <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.8rem', color: 'rgba(244,228,193,0.28)' }}>No agents yet. Create one to get started.</Text>
               : agents.map(agent => {
-                  const label = agent.name || (!agent.role || agent.role.startsWith('You are a spiritual') ? 'Spiritual Guide' : agent.role.split('\n').find(l => l.trim())?.slice(0, 28) || 'Agent');
+                  const label = agentLabel(agent);
                   const isRenaming = renamingId === agent.id;
                   return (
                     <div key={agent.id} style={{ padding: '0.75rem 0', borderBottom: '1px solid rgba(200,134,26,0.08)' }}>
@@ -387,14 +573,10 @@ export default function Account() {
                         </div>
                         <div style={{ flex: 1 }}>
                           {isRenaming ? (
-                            <Input
-                              size="small"
-                              autoFocus
-                              value={renameVal}
+                            <Input size="small" autoFocus value={renameVal}
                               onChange={e => setRenameVal(e.target.value)}
                               onPressEnter={() => handleRenameAgent(agent.id, renameVal)}
-                              style={{ fontSize: '0.82rem', width: '100%' }}
-                            />
+                              style={{ fontSize: '0.82rem', width: '100%' }} />
                           ) : (
                             <>
                               <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.84rem', color: 'var(--parchment)', display: 'block' }}>{label}</Text>
@@ -415,55 +597,64 @@ export default function Account() {
                           </>
                         ) : (
                           <>
-                            <Switch
-                              size="small"
-                              checked={agent.enabled !== false}
+                            <Switch size="small" checked={agent.enabled !== false}
                               onChange={enabled => handleToggleAgent(agent.id, enabled)}
-                              title={agent.enabled !== false ? 'Enabled' : 'Disabled'}
-                            />
-                            <Button
-                              size="small" type="text"
-                              icon={<EditOutlined />}
+                              title={agent.enabled !== false ? 'Enabled' : 'Disabled'} />
+                            <Button size="small" type="text" icon={<EditOutlined />}
                               onClick={() => { setRenamingId(agent.id); setRenameVal(agent.name || label); }}
-                              style={{ color: 'rgba(200,134,26,0.55)', padding: '0 4px' }}
-                              title="Rename agent"
-                            />
-                            <Button
-                              size="small" type="text"
-                              icon={<ThunderboltOutlined />}
-                              onClick={() => { setHbModal(agent.id); setHbDays([]); setHbPrompt(''); }}
-                              style={{ color: 'rgba(200,134,26,0.55)', padding: '0 4px' }}
-                              title="Add heartbeat"
-                            />
-                            <Button
-                              size="small" type="text" danger
-                              icon={<DeleteOutlined />}
+                              style={{ color: 'rgba(200,134,26,0.55)', padding: '0 4px' }} title="Rename agent" />
+                            <Button size="small" type="text" danger icon={<DeleteOutlined />}
                               onClick={() => handleDeleteAgent(agent.id)}
-                              style={{ padding: '0 4px' }}
-                            />
+                              style={{ padding: '0 4px' }} />
                           </>
                         )}
                       </div>
-                      {/* Heartbeat schedule rows */}
-                      {(heartbeats[agent.id] || []).map(hb => (
-                        <div key={hb._id} style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem', padding: '0.28rem 0 0.28rem 3rem', borderTop: '1px solid rgba(200,134,26,0.06)' }}>
-                          <span style={{ color: 'rgba(200,134,26,0.55)', fontSize: '0.65rem', lineHeight: 1.8, flexShrink: 0 }}>⚡</span>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.62rem', letterSpacing: '0.06em', color: 'rgba(200,134,26,0.75)', display: 'block' }}>
-                              {(hb.days_per_week || []).map(d => d.slice(0, 3)).join(' · ')}
-                            </Text>
-                            <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.72rem', color: 'rgba(244,228,193,0.45)', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                              {hb.prompt}
-                            </Text>
-                          </div>
-                          <Button size="small" type="text" danger
-                            icon={<CloseOutlined style={{ fontSize: '0.6rem' }} />}
-                            onClick={() => handleDeleteHeartbeat(agent.id, hb._id)}
-                            style={{ padding: '0 2px', opacity: 0.55, flexShrink: 0 }}
-                            title="Remove heartbeat"
-                          />
-                        </div>
-                      ))}
+                    </div>
+                  );
+                })
+          }
+        </Card>
+
+        {/* Events */}
+        <Card style={{ ...CARD_STYLE, animationDelay: '0.38s', animation: 'fadeUp 0.55s ease forwards', opacity: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.8rem' }}>
+            <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.56rem', letterSpacing: '0.3em', textTransform: 'uppercase', color: 'rgba(200,134,26,0.5)' }}>
+              Events
+            </Text>
+            <Button size="small" type="text" icon={<PlusOutlined />}
+              onClick={openEventModal}
+              disabled={agents.length === 0}
+              style={{ color: 'rgba(200,134,26,0.6)', fontSize: '0.7rem' }}>
+              New Event
+            </Button>
+          </div>
+          <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.74rem', color: 'rgba(244,228,193,0.35)', display: 'block', marginBottom: '1rem', lineHeight: 1.65 }}>
+            Scheduled events trigger an agent to write a note automatically at the set time.
+          </Text>
+          {agentsLoading
+            ? <Spin size="small" />
+            : events.length === 0
+              ? <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.8rem', color: 'rgba(244,228,193,0.28)' }}>
+                  {agents.length === 0 ? 'Create an agent first to add events.' : 'No events yet. Add one to get started.'}
+                </Text>
+              : events.map(ev => {
+                  const agent = agents.find(a => a.id === ev.agent_id);
+                  return (
+                    <div key={ev._id} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.65rem 0', borderBottom: '1px solid rgba(200,134,26,0.08)' }}>
+                      <div style={{ width: 30, height: 30, borderRadius: '50%', background: 'rgba(200,134,26,0.1)', border: '1px solid rgba(200,134,26,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        <ThunderboltOutlined style={{ color: 'var(--gold)', fontSize: '0.75rem' }} />
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.82rem', color: 'var(--parchment)', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {ev.prompt || 'Untitled Event'}
+                        </Text>
+                        <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.65rem', color: 'rgba(244,228,193,0.35)' }}>
+                          {scheduleSummary(ev.timestamps)}{agent ? ` · ${agentLabel(agent)}` : ''}
+                        </Text>
+                      </div>
+                      <Button size="small" type="text" danger icon={<DeleteOutlined style={{ fontSize: '0.7rem' }} />}
+                        onClick={() => handleDeleteEvent(ev)}
+                        style={{ padding: '0 4px', opacity: 0.65, flexShrink: 0 }} />
                     </div>
                   );
                 })
@@ -491,50 +682,25 @@ export default function Account() {
           />
         </Modal>
 
-        {/* Heartbeat modal */}
+        {/* New event modal */}
         <Modal
-          open={!!hbModal}
-          title={<Text style={{ fontFamily: "'Playfair Display', serif", color: 'var(--parchment)' }}>Add Heartbeat</Text>}
-          onCancel={() => setHbModal(null)}
-          onOk={handleAddHeartbeat}
-          okText="Schedule"
-          confirmLoading={hbSaving}
-          okButtonProps={{ disabled: !hbPrompt.trim() || !hbDays.length }}
+          open={evModal}
+          title={<Text style={{ fontFamily: "'Playfair Display', serif", color: 'var(--parchment)' }}>{evModalTitle}</Text>}
+          onCancel={() => setEvModal(false)}
+          footer={evModalFooter()}
+          destroyOnClose
         >
-          <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.78rem', color: 'rgba(244,228,193,0.55)', display: 'block', marginBottom: '0.8rem' }}>
-            Schedule a recurring prompt — the agent will check in on these days with the message you define.
-          </Text>
-          <div style={{ marginBottom: '1rem' }}>
-            <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.72rem', color: 'rgba(244,228,193,0.5)', display: 'block', marginBottom: '0.4rem' }}>Days</Text>
-            <Checkbox.Group value={hbDays} onChange={setHbDays} style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 12px' }}>
-              {DAYS.map(d => <Checkbox key={d} value={d} style={{ color: 'rgba(244,228,193,0.7)', fontSize: '0.78rem' }}>{d.slice(0, 3)}</Checkbox>)}
-            </Checkbox.Group>
-          </div>
-          <div>
-            <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.72rem', color: 'rgba(244,228,193,0.5)', display: 'block', marginBottom: '0.4rem' }}>Prompt</Text>
-            <Input.TextArea
-              placeholder="e.g. Send me a daily scripture verse and a reflection question."
-              value={hbPrompt}
-              onChange={e => setHbPrompt(e.target.value)}
-              autoSize={{ minRows: 2, maxRows: 5 }}
-              style={{ fontSize: '0.82rem' }}
-            />
-          </div>
+          {evModalContent()}
         </Modal>
 
         {/* Sign out */}
-        <Button
-          block size="large" icon={<LogoutOutlined />}
-          onClick={handleSignOut}
-          style={{ marginBottom: '1.5rem', borderRadius: 8, fontFamily: "'Lora', serif", letterSpacing: '0.1em', textTransform: 'uppercase', animation: 'fadeUp 0.55s ease 0.32s forwards', opacity: 0 }}
-        >
+        <Button block size="large" icon={<LogoutOutlined />} onClick={handleSignOut}
+          style={{ marginBottom: '1.5rem', borderRadius: 8, fontFamily: "'Lora', serif", letterSpacing: '0.1em', textTransform: 'uppercase', animation: 'fadeUp 0.55s ease 0.32s forwards', opacity: 0 }}>
           Sign Out
         </Button>
 
         {/* Danger zone */}
-        <Card
-          style={{ ...CARD_STYLE, borderColor: 'rgba(220,50,50,0.25)', background: 'rgba(40,8,8,0.75)', animationDelay: '0.40s', animation: 'fadeUp 0.55s ease forwards', opacity: 0 }}
-        >
+        <Card style={{ ...CARD_STYLE, borderColor: 'rgba(220,50,50,0.25)', background: 'rgba(40,8,8,0.75)', animationDelay: '0.46s', animation: 'fadeUp 0.55s ease forwards', opacity: 0 }}>
           <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.56rem', letterSpacing: '0.3em', textTransform: 'uppercase', color: 'rgba(220,80,80,0.7)', display: 'block', marginBottom: '0.5rem' }}>
             Danger Zone
           </Text>
@@ -546,19 +712,12 @@ export default function Account() {
             <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.72rem', color: 'rgba(244,228,193,0.5)', display: 'block', marginBottom: '0.4rem' }}>
               Type your username to confirm
             </Text>
-            <Input
-              value={deleteConfirm}
-              onChange={e => setDeleteConfirm(e.target.value)}
+            <Input value={deleteConfirm} onChange={e => setDeleteConfirm(e.target.value)}
               placeholder={profileData?.username || user?.username || 'yourname'}
-              style={{ maxWidth: 260, borderRadius: 8 }}
-            />
+              style={{ maxWidth: 260, borderRadius: 8 }} />
           </div>
-          <Button
-            danger icon={<DeleteOutlined />}
-            loading={deleteLoading}
-            onClick={handleDelete}
-            style={{ borderRadius: 8, fontFamily: "'Lora', serif" }}
-          >
+          <Button danger icon={<DeleteOutlined />} loading={deleteLoading} onClick={handleDelete}
+            style={{ borderRadius: 8, fontFamily: "'Lora', serif" }}>
             Delete My Account
           </Button>
         </Card>

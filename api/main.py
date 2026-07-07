@@ -9,11 +9,18 @@ from routes.devotion import devo_router
 from routes.agent import agent_router
 from routes.notifications import notification_router
 from schemas.users import SignUp, Login, UpdateUser, User
+from pydantic import BaseModel
 import uvicorn
 import bcrypt
 import os
 import json
+import uuid
 import logging
+import httpx
+
+
+class GoogleAuth(BaseModel):
+    credential: str
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(levelname)s - %(message)s")
 
@@ -79,6 +86,13 @@ def save_users(users: dict) -> None:
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w") as f:
         json.dump(users, f, indent=2)
+
+
+def find_by_email(users: dict, email: str) -> tuple[str, dict] | None:
+    for uid, data in users.items():
+        if data.get("email") == email:
+            return uid, data
+    return None
 
 
 def find_by_username(users: dict, username: str) -> tuple[str, dict] | None:
@@ -229,6 +243,59 @@ async def delete_user(user_id: str) -> None:
         raise HTTPException(status_code=404, detail="User not found")
     del users[user_id]
     save_users(users)
+
+
+@app.post("/auth/google")
+async def google_auth(info: GoogleAuth, response: Response) -> dict:
+    async with httpx.AsyncClient() as client:
+        r = await client.get(
+            "https://oauth2.googleapis.com/tokeninfo",
+            params={"id_token": info.credential},
+            timeout=10.0,
+        )
+    if r.status_code != 200:
+        raise HTTPException(status_code=401, detail="Invalid Google token")
+
+    token_data = r.json()
+    client_id = os.getenv("CLIENT_ID", "")
+    if token_data.get("aud") != client_id:
+        raise HTTPException(status_code=401, detail="Token audience mismatch")
+
+    email = token_data.get("email", "")
+    if not email:
+        raise HTTPException(status_code=401, detail="No email in Google token")
+
+    given_name = token_data.get("given_name") or token_data.get("name") or email.split("@")[0]
+
+    users = load_users()
+    result = find_by_email(users, email)
+
+    if result:
+        uid, data = result
+    else:
+        uid = str(uuid.uuid4())
+        base = given_name.replace(" ", "_").lower()[:16]
+        username = base
+        existing = {d.get("username") for d in users.values()}
+        counter = 1
+        while username in existing:
+            username = f"{base}{counter}"
+            counter += 1
+        users[uid] = {
+            "username": username,
+            "email": email,
+            "hash_pass": "",
+            "friends": [],
+            "groups": [],
+        }
+        save_users(users)
+        data = users[uid]
+
+    response.set_cookie(
+        key="user_id", value=uid, httponly=False, secure=True,
+        max_age=60 * 60 * 24 * 30, samesite="lax",
+    )
+    return {"user_id": uid, **{k: v for k, v in data.items() if k != "hash_pass"}}
 
 
 if __name__ == "__main__":

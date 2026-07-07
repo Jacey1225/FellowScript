@@ -2,6 +2,7 @@ import requests
 import asyncio
 import functools
 import logging
+import uuid
 from datetime import datetime
 from schemas.agent import Agent, AgentMessages, AgentHeartbeats
 from schemas.users import Note
@@ -69,13 +70,18 @@ class AgentManager(DBManager):
     # ── Heartbeat CRUD ────────────────────────────────────────────────────────
 
     def add_heartbeat(self, heartbeat: AgentHeartbeats) -> None:
-        self.insertion(self.hb_table, {
-            "agent_id":     heartbeat.agent_id,
-            "user_id":      heartbeat.user_id,
-            "timestamp":    heartbeat.timestamp,
-            "days_per_week": heartbeat.days_per_week,
-            "prompt":       heartbeat.prompt,
-        })
+        hb_id = str(uuid.uuid4())
+        try:
+            self.cur.execute(
+                "INSERT INTO agent_heartbeats (_id, agent_id, user_id, timestamps, prompt) "
+                "VALUES (%s, %s, %s, %s::jsonb, %s)",
+                (hb_id, heartbeat.agent_id, heartbeat.user_id,
+                 json.dumps(heartbeat.timestamps), heartbeat.prompt)
+            )
+            self.conn.commit()
+        except Exception as e:
+            logger.error("Error adding heartbeat: %s", e)
+            self.conn.rollback()
 
     def get_heartbeats(self, agent_id: str) -> list[dict]:
         result = self.lookup(self.hb_table, {"agent_id": agent_id})
@@ -93,22 +99,38 @@ class AgentManager(DBManager):
             group_id=data.get("group_id", ""),
             verses=data.get("verses", [])
         )
-        self.insertion(self.note_table, note.model_dump())
+        self.insertion(self.note_table, {
+            "_id":      str(uuid.uuid4()),
+            "user_id":  note.user,
+            "title":    note.title,
+            "text":     note.text,
+            "public":   note.public,
+            "group_id": note.group_id or None,
+            "is_reply": note.is_reply,
+            "timestamp": note.timestamp,
+        })
 
     def commit_hb_response(self, agent_id: str, heartbeat_content: str):
         result     = self.lookup(self.agent_table, {"_id": agent_id})
         agent_role = list(result.values())[0].get("role", "") if result else ""
-        response = self._call_api(agent_role, [{"role": "user", "content": heartbeat_content}])
+        note_prompt = (
+            f"{heartbeat_content}\n\n"
+            "Respond with a create_note JSON block as specified in your instructions. "
+            "Output only the JSON block and nothing else."
+        )
+        response = self._call_api(agent_role, [{"role": "user", "content": note_prompt}])
         if "{" in response and "}" in response:
             start = response.find("{")
-            end = response.find("}")
+            end   = response.rfind("}") + 1  # rfind so nested braces in text don't truncate
             json_str = response[start:end]
-            response_dict = json.loads(json_str)
-            if response_dict.get("__action", '') == "create_note":
+            try:
+                response_dict = json.loads(json_str)
+            except (json.JSONDecodeError, ValueError) as e:
+                logger.error("JSON parse error in commit_hb_response: %s | raw: %.200s", e, json_str)
+                return {"error": "invalid response"}
+            if response_dict.get("__action", "") == "create_note":
                 self.note_via_hb(response_dict)
                 return {"success": "saved note"}
-            elif response_dict.get("__action", '') == "create_notification":
-                return response_dict
             else:
                 return {"error": "cannot find action"}
         else:

@@ -1,32 +1,26 @@
-// Multi-step sheet for creating or editing a notification.
+// Multi-step sheet for creating a new heartbeat event.
 // Step 1: Recurrence (Daily / Weekly / Monthly)
 // Step 2: Day picker (weekday pills for Weekly, 1-31 grid for Monthly; skipped for Daily)
-// Step 3: Time, name, prompt, and save
+// Step 3: Agent picker (if more than one), time, and prompt
 
 import SwiftUI
 
-struct NotificationSetupSheet: View {
-    let existing: FSNotification?
-    let onSave:   (String, String, [String?]) -> Void
+struct EventSetupSheet: View {
+    let agents: [FSAgent]
+    let onSave: (_ agentId: String, _ prompt: String, _ timestamps: [String?]) -> Void
 
     @Environment(\.dismiss) private var dismiss
 
     enum Recurrence { case daily, weekly, monthly }
     enum SetupScreen: Hashable { case days, details }
 
+    @State private var selectedAgentId:   String       = ""
     @State private var recurrence:        Recurrence   = .daily
-    @State private var selectedWeekdays:  Set<Int>     = []   // Calendar weekday values 1(Sun)–7(Sat)
-    @State private var selectedMonthDays: Set<Int>     = []   // 1–31
+    @State private var selectedWeekdays:  Set<Int>     = []
+    @State private var selectedMonthDays: Set<Int>     = []
     @State private var selectedTime                    = Date()
-    @State private var name                            = ""
     @State private var prompt                          = ""
     @State private var path:              [SetupScreen] = []
-    @State private var hasPreFilled                    = false
-
-    init(existing: FSNotification? = nil, onSave: @escaping (String, String, [String?]) -> Void) {
-        self.existing = existing
-        self.onSave   = onSave
-    }
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -39,7 +33,9 @@ struct NotificationSetupSheet: View {
                 }
         }
         .preferredColorScheme(.dark)
-        .onAppear { prefill() }
+        .onAppear {
+            if selectedAgentId.isEmpty { selectedAgentId = agents.first?.id ?? "" }
+        }
     }
 
     // ── Step 1: Recurrence ────────────────────────────────────────────────────
@@ -52,7 +48,7 @@ struct NotificationSetupSheet: View {
                     .foregroundColor(Theme.parchment)
                     .padding(.top, Theme.spacingXL)
 
-                Text("Choose a recurrence pattern for this notification.")
+                Text("Choose a schedule for this event.")
                     .font(.lora(Theme.fontSM))
                     .foregroundColor(Theme.textMuted)
                     .multilineTextAlignment(.center)
@@ -73,7 +69,7 @@ struct NotificationSetupSheet: View {
             .frame(maxWidth: .infinity)
         }
         .background(Theme.bgPage.ignoresSafeArea())
-        .navigationTitle(existing == nil ? "New Notification" : "Edit Notification")
+        .navigationTitle("New Event")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .navigationBarLeading) {
@@ -191,22 +187,25 @@ struct NotificationSetupSheet: View {
         }
     }
 
-    // ── Step 3: Details (time + name + prompt) ────────────────────────────────
+    // ── Step 3: Details (agent + time + prompt) ───────────────────────────────
 
     private var detailsScreen: some View {
         Form {
-            Section {
-                HStack {
-                    Image(systemName: "bell").foregroundColor(Theme.textGoldMuted).frame(width: 22)
-                    TextField("Notification Name", text: $name)
-                        .font(.lora(Theme.fontBody))
-                        .foregroundColor(Theme.parchment)
+            if agents.count > 1 {
+                Section {
+                    Picker("Agent", selection: $selectedAgentId) {
+                        ForEach(agents) { agent in
+                            Text(agent.displayLabel).tag(agent.id)
+                        }
+                    }
+                    .font(.lora(Theme.fontBody))
+                    .foregroundColor(Theme.parchment)
+                } header: {
+                    Text("AGENT")
+                        .font(.lora(Theme.fontXXS)).tracking(4).foregroundColor(Theme.textGoldMuted)
                 }
-            } header: {
-                Text("NAME")
-                    .font(.lora(Theme.fontXXS)).tracking(4).foregroundColor(Theme.textGoldMuted)
+                .listRowBackground(Theme.cardBg)
             }
-            .listRowBackground(Theme.cardBg)
 
             Section {
                 DatePicker("Time", selection: $selectedTime, displayedComponents: .hourAndMinute)
@@ -214,13 +213,13 @@ struct NotificationSetupSheet: View {
                     .labelsHidden()
                     .accentColor(Theme.gold)
             } header: {
-                Text("NOTIFICATION TIME")
+                Text("EVENT TIME")
                     .font(.lora(Theme.fontXXS)).tracking(4).foregroundColor(Theme.textGoldMuted)
             }
             .listRowBackground(Theme.cardBg)
 
             Section {
-                Text("The AI generates a personalized message from this prompt when the notification fires.")
+                Text("The agent will respond to this prompt when the event fires and save the response as a note.")
                     .font(.lora(Theme.fontSM))
                     .foregroundColor(Theme.textMuted)
                     .listRowBackground(Theme.cardBg)
@@ -231,7 +230,7 @@ struct NotificationSetupSheet: View {
                     .frame(minHeight: 100)
                     .listRowBackground(Theme.cardBg)
             } header: {
-                Text("AI PROMPT")
+                Text("PROMPT")
                     .font(.lora(Theme.fontXXS)).tracking(4).foregroundColor(Theme.textGoldMuted)
             }
         }
@@ -242,14 +241,13 @@ struct NotificationSetupSheet: View {
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button("Save") {
-                    onSave(name.trimmingCharacters(in: .whitespaces),
+                    onSave(selectedAgentId,
                            prompt.trimmingCharacters(in: .whitespaces),
                            buildTimestamps())
                     dismiss()
                 }
                 .foregroundColor(Theme.gold)
-                .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty ||
-                          prompt.trimmingCharacters(in: .whitespaces).isEmpty)
+                .disabled(prompt.trimmingCharacters(in: .whitespaces).isEmpty || selectedAgentId.isEmpty)
             }
         }
     }
@@ -257,8 +255,7 @@ struct NotificationSetupSheet: View {
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private func buildTimestamps() -> [String?] {
-        let f = DateFormatter()
-        f.dateFormat = "HH:mm"
+        let f = DateFormatter(); f.dateFormat = "HH:mm"
         f.timeZone = TimeZone(identifier: "UTC")
         let timeStr = f.string(from: selectedTime)
         var ts: [String?] = Array(repeating: nil, count: 31)
@@ -268,12 +265,11 @@ struct NotificationSetupSheet: View {
             return Array(repeating: timeStr, count: 31)
 
         case .weekly:
-            let cal = Calendar.current
-            let now = Date()
+            let cal = Calendar.current; let now = Date()
             var comps = DateComponents()
-            comps.year = cal.component(.year, from: now)
+            comps.year  = cal.component(.year,  from: now)
             comps.month = cal.component(.month, from: now)
-            comps.day = 1
+            comps.day   = 1
             guard let firstDay = cal.date(from: comps),
                   let range = cal.range(of: .day, in: .month, for: now) else { return ts }
             for dayNum in 1...range.count {
@@ -289,30 +285,5 @@ struct NotificationSetupSheet: View {
             }
         }
         return ts
-    }
-
-    private func prefill() {
-        guard !hasPreFilled, let n = existing else { return }
-        hasPreFilled = true
-        name   = n.name
-        prompt = n.prompt
-
-        let active = n.timestamps.enumerated().compactMap { i, v in v != nil ? i + 1 : nil }
-        for day in active { selectedMonthDays.insert(day) }
-
-        let count = active.count
-        if count == 0 || count >= 30 {
-            recurrence = .daily
-        } else if count <= 8 {
-            recurrence = .weekly
-        } else {
-            recurrence = .monthly
-        }
-
-        if let timeStr = n.timestamps.compactMap({ $0 }).first {
-            let f = DateFormatter(); f.dateFormat = "HH:mm"
-            f.timeZone = TimeZone(identifier: "UTC")
-            selectedTime = f.date(from: timeStr) ?? Date()
-        }
     }
 }
