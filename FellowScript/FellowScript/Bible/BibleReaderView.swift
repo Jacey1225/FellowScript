@@ -236,7 +236,7 @@ struct BibleReaderView: View {
 
     var body: some View {
         NavigationStack {
-            ZStack {
+            ZStack(alignment: .top) {
                 Theme.bibleBg.ignoresSafeArea()
 
                 if vm.isLoading {
@@ -296,17 +296,43 @@ struct BibleReaderView: View {
                         }
                     }
                     .opacity(contentOpacity)
+                    .gesture(
+                        DragGesture(minimumDistance: 30, coordinateSpace: .local)
+                            .onEnded { value in
+                                guard !showNavSheet else { return }
+                                let dx = value.translation.width
+                                let dy = value.translation.height
+                                guard abs(dx) > abs(dy), abs(dx) > 50 else { return }
+                                changeChapter(forward: dx < 0)
+                            }
+                    )
+                }
+
+                // Drop-down nav overlay — slides in from top
+                if showNavSheet {
+                    BibleNavDropdown(
+                        books:      vm.books.isEmpty ? BibleData.bookNames : vm.books,
+                        curBook:    vm.curBook,
+                        curChapter: vm.curChapter,
+                        chapters:   { vm.chapters(for: $0) },
+                        onSelect:   { book, ch in
+                            vm.setBook(book)
+                            vm.setChapter(ch)
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.9)) {
+                                showNavSheet = false
+                            }
+                        },
+                        onClose: {
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.9)) {
+                                showNavSheet = false
+                            }
+                        }
+                    )
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                    .zIndex(10)
                 }
             }
-            .gesture(
-                DragGesture(minimumDistance: 30, coordinateSpace: .local)
-                    .onEnded { value in
-                        let dx = value.translation.width
-                        let dy = value.translation.height
-                        guard abs(dx) > abs(dy), abs(dx) > 50 else { return }
-                        changeChapter(forward: dx < 0)
-                    }
-            )
+            .animation(.spring(response: 0.3, dampingFraction: 0.9), value: showNavSheet)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
@@ -365,19 +391,6 @@ struct BibleReaderView: View {
                     .accessibilityLabel("Bookmark options")
                 }
             }
-        }
-        .sheet(isPresented: $showNavSheet) {
-            BibleNavSheet(
-                books:      vm.books.isEmpty ? BibleData.bookNames : vm.books,
-                curBook:    vm.curBook,
-                curChapter: vm.curChapter,
-                chapters:   { vm.chapters(for: $0) },
-                onSelect:   { book, ch in
-                    vm.setBook(book)
-                    vm.setChapter(ch)
-                    showNavSheet = false
-                }
-            )
         }
         .task {
             if let uid = appState.currentUser?.user_id {
@@ -500,68 +513,74 @@ struct VerseRow: View {
     }
 }
 
-// ── Book / Chapter nav sheet (mirrors bib-nav-widget) ────────────────────────
-struct BibleNavSheet: View {
+// ── Drop-down nav overlay (replaces sheet — slides in from top) ───────────────
+struct BibleNavDropdown: View {
     let books:      [String]
     let curBook:    String
     let curChapter: Int
     let chapters:   (String) -> Int
     let onSelect:   (String, Int) -> Void
+    let onClose:    () -> Void
 
     @State private var selectedBook: String
-    @Environment(\.dismiss) private var dismiss
 
-    init(books: [String], curBook: String, curChapter: Int, chapters: @escaping (String) -> Int, onSelect: @escaping (String, Int) -> Void) {
+    init(books: [String], curBook: String, curChapter: Int,
+         chapters: @escaping (String) -> Int,
+         onSelect: @escaping (String, Int) -> Void,
+         onClose:  @escaping () -> Void) {
         self.books      = books
         self.curBook    = curBook
         self.curChapter = curChapter
         self.chapters   = chapters
         self.onSelect   = onSelect
+        self.onClose    = onClose
         _selectedBook   = State(initialValue: curBook)
     }
 
     var body: some View {
-        NavigationStack {
+        VStack(spacing: 0) {
+            // Header bar
+            HStack {
+                Text("Select Passage")
+                    .font(.lora(Theme.fontSM))
+                    .foregroundColor(Theme.goldDim)
+                Spacer()
+                Button(action: onClose) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.title3)
+                        .foregroundColor(Theme.textMuted)
+                }
+            }
+            .padding(.horizontal, Theme.spacingMD)
+            .padding(.vertical, Theme.spacingSM)
+
+            Divider().background(Theme.borderGoldFaint)
+
+            // Two-column body
             HStack(spacing: 0) {
-                // Left column — books list (mirrors bib-nav-books)
+
+                // Left — scrollable book list
                 ScrollViewReader { proxy in
-                    ScrollView {
+                    ScrollView(.vertical, showsIndicators: false) {
                         LazyVStack(alignment: .leading, spacing: 0) {
-                            // OT / NT section dividers
-                            Text("Old Testament")
-                                .font(.lora(Theme.fontXXS)).tracking(4)
-                                .textCase(.uppercase)
-                                .foregroundColor(Theme.gold.opacity(0.50))
-                                .padding(.horizontal, Theme.spacingSM)
-                                .padding(.top, Theme.spacingMD)
-                                .padding(.bottom, Theme.spacingXS)
-
-                            ForEach(BibleData.oldTestament, id: \.self) { book in
-                                bookButton(book)
-                            }
-
-                            Text("New Testament")
-                                .font(.lora(Theme.fontXXS)).tracking(4)
-                                .textCase(.uppercase)
-                                .foregroundColor(Theme.gold.opacity(0.50))
-                                .padding(.horizontal, Theme.spacingSM)
-                                .padding(.top, Theme.spacingMD)
-                                .padding(.bottom, Theme.spacingXS)
-
-                            ForEach(BibleData.newTestament, id: \.self) { book in
-                                bookButton(book)
-                            }
+                            sectionLabel("Old Testament")
+                            ForEach(BibleData.oldTestament, id: \.self) { bookRow($0) }
+                            sectionLabel("New Testament")
+                            ForEach(BibleData.newTestament, id: \.self) { bookRow($0) }
                         }
                     }
                     .onAppear { proxy.scrollTo(selectedBook, anchor: .center) }
+                    .onChange(of: selectedBook) { _, book in
+                        withAnimation { proxy.scrollTo(book, anchor: .center) }
+                    }
                 }
                 .frame(maxWidth: .infinity)
                 .background(Theme.islandBg)
 
                 Divider().background(Theme.borderGoldFaint)
 
-                // Right column — chapter grid (mirrors bib-nav-chapters)
-                ScrollView {
+                // Right — chapter grid
+                ScrollView(.vertical, showsIndicators: false) {
                     VStack(alignment: .leading, spacing: Theme.spacingSM) {
                         Text(selectedBook.uppercased())
                             .font(.lora(Theme.fontXXS)).tracking(4)
@@ -569,24 +588,20 @@ struct BibleNavSheet: View {
                             .padding(.bottom, Theme.spacingXS)
 
                         let count = chapters(selectedBook)
-                        LazyVGrid(columns: Array(repeating: .init(.flexible(), spacing: 6), count: 5), spacing: 6) {
+                        LazyVGrid(
+                            columns: Array(repeating: .init(.flexible(), spacing: 10), count: 4),
+                            spacing: 10
+                        ) {
                             ForEach(1...max(1, count), id: \.self) { ch in
+                                let isActive = selectedBook == curBook && ch == curChapter
                                 Button(action: { onSelect(selectedBook, ch) }) {
                                     Text("\(ch)")
-                                        .font(.lora(Theme.fontXS))
-                                        .foregroundColor(selectedBook == curBook && ch == curChapter ? Theme.gold : Theme.parchment.opacity(0.55))
+                                        .font(.lora(Theme.fontHeading))
+                                        .foregroundColor(isActive ? Theme.gold : Theme.parchment.opacity(0.70))
                                         .frame(maxWidth: .infinity)
-                                        .aspectRatio(1, contentMode: .fit)
-                                        .background(
-                                            selectedBook == curBook && ch == curChapter
-                                            ? Theme.gold.opacity(0.22)
-                                            : Color.clear
-                                        )
+                                        .padding(.vertical, 10)
+                                        .background(isActive ? Theme.gold.opacity(0.20) : Color.clear)
                                         .clipShape(RoundedRectangle(cornerRadius: Theme.radiusSM))
-                                        .overlay(
-                                            RoundedRectangle(cornerRadius: Theme.radiusSM)
-                                                .stroke(Theme.borderGoldDim, lineWidth: 1)
-                                        )
                                 }
                                 .accessibilityLabel("Chapter \(ch)")
                             }
@@ -597,30 +612,37 @@ struct BibleNavSheet: View {
                 .frame(maxWidth: .infinity)
                 .background(Theme.widgetBg)
             }
-            .navigationTitle("Select Passage")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Done") { dismiss() }
-                        .foregroundColor(Theme.gold)
-                }
-            }
         }
-        .presentationDetents([.medium, .large])
-        .preferredColorScheme(.dark)
+        .background(Theme.widgetBg)
+        .clipShape(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+        )
+        .shadow(color: .black.opacity(0.55), radius: 24, x: 0, y: 10)
+        .padding(.horizontal, 0)
+        .frame(maxHeight: 430)
     }
 
     @ViewBuilder
-    private func bookButton(_ book: String) -> some View {
+    private func sectionLabel(_ title: String) -> some View {
+        Text(title)
+            .font(.lora(Theme.fontXXS)).tracking(3)
+            .textCase(.uppercase)
+            .foregroundColor(Theme.gold.opacity(0.45))
+            .padding(.horizontal, Theme.spacingMD)
+            .padding(.top, Theme.spacingMD)
+            .padding(.bottom, Theme.spacingXS)
+    }
+
+    @ViewBuilder
+    private func bookRow(_ book: String) -> some View {
         Button(action: { selectedBook = book }) {
             Text(book)
-                .font(.lora(Theme.fontSM))
-                .foregroundColor(selectedBook == book ? Theme.gold : Theme.parchment.opacity(0.60))
+                .font(.lora(Theme.fontBody))
+                .foregroundColor(selectedBook == book ? Theme.gold : Theme.parchment.opacity(0.70))
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, Theme.spacingMD)
-                .padding(.vertical, 6)
-                .background(selectedBook == book ? Theme.gold.opacity(0.18) : Color.clear)
-                .clipShape(RoundedRectangle(cornerRadius: Theme.radiusSM))
+                .padding(.vertical, 7)
+                .background(selectedBook == book ? Theme.gold.opacity(0.16) : Color.clear)
         }
         .id(book)
         .accessibilityLabel(book)

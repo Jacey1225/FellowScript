@@ -14,6 +14,7 @@ protocol DataServiceProtocol {
     // Auth
     func signIn(username: String, password: String) async throws -> FSUser
     func signUp(username: String, email: String, password: String) async throws -> FSUser
+    func signInWithGoogle(credential: String) async throws -> FSUser
 
     // User
     func fetchUser(userId: String) async throws -> FSUser
@@ -199,6 +200,11 @@ final class MockDataService: DataServiceProtocol {
     func signUp(username: String, email: String, password: String) async throws -> FSUser {
         try await Task.sleep(nanoseconds: 600_000_000)
         return FSUser(user_id: UUID().uuidString, username: username, email: email)
+    }
+
+    func signInWithGoogle(credential: String) async throws -> FSUser {
+        try await Task.sleep(nanoseconds: 600_000_000)
+        return FSUser(user_id: UUID().uuidString, username: "google_user", email: "google@example.com")
     }
 
     // User

@@ -284,16 +284,46 @@ struct FSAgentMessage: Identifiable {
 }
 
 struct FSHeartbeat: Codable, Identifiable {
-    var id:           String   = UUID().uuidString
-    var agent_id:     String   = ""
-    var user_id:      String   = ""
-    var timestamp:    String   = ""
-    var days_per_week: [String] = []
-    var prompt:       String   = ""
+    var id:         String    = UUID().uuidString
+    var agent_id:   String    = ""
+    var user_id:    String    = ""
+    var timestamps: [String?] = Array(repeating: nil, count: 31)
+    var prompt:     String    = ""
 
     enum CodingKeys: String, CodingKey {
         case id = "_id"
-        case agent_id, user_id, timestamp, days_per_week, prompt
+        case agent_id, user_id, timestamps, prompt
+    }
+}
+
+extension FSHeartbeat {
+    var activeCount: Int { timestamps.compactMap { $0 }.count }
+
+    var scheduleSummary: String {
+        let n = activeCount
+        if n == 0  { return "Not scheduled" }
+        if n >= 30 { return "Every day" }
+        return "\(n) day\(n == 1 ? "" : "s") / month"
+    }
+
+    func nextFireDate() -> Date? {
+        let fmt = DateFormatter(); fmt.dateFormat = "HH:mm"
+        let cal = Calendar.current; let now = Date()
+        for offset in 0..<62 {
+            guard let target = cal.date(byAdding: .day, value: offset, to: now) else { continue }
+            let day = cal.component(.day, from: target)
+            let idx = day - 1
+            guard idx < timestamps.count,
+                  let timeStr = timestamps[idx], !timeStr.isEmpty,
+                  let seed = fmt.date(from: timeStr) else { continue }
+            var comps = cal.dateComponents([.year, .month, .day], from: target)
+            comps.hour   = cal.component(.hour,   from: seed)
+            comps.minute = cal.component(.minute, from: seed)
+            comps.second = 0
+            guard let fireDate = cal.date(from: comps), fireDate > now else { continue }
+            return fireDate
+        }
+        return nil
     }
 }
 

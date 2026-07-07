@@ -4,6 +4,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from db import DBManager
 from backend.interactions.push import send_push
 from backend.interactions.notifications import NotificationManager
+from backend.interactions.agent import AgentManager
 
 logger = logging.getLogger(__name__)
 scheduler = AsyncIOScheduler()
@@ -43,8 +44,46 @@ async def _fire_due_notifications() -> None:
             logger.error("Failed to fire notification %s: %s", notif_id, e)
 
 
+async def _fire_due_heartbeats() -> None:
+    now          = datetime.now()
+    slot_idx     = str(now.day - 1)
+    current_time = now.strftime("%H:%M")
+
+    db = DBManager()
+    try:
+        db.cur.execute(
+            """
+            SELECT _id, agent_id, user_id, prompt
+            FROM   agent_heartbeats
+            WHERE  timestamps->>%s = %s
+            """,
+            (slot_idx, current_time),
+        )
+        rows = db.cur.fetchall()
+    except Exception as e:
+        logger.error("Heartbeat scheduler DB error: %s", e)
+        return
+    finally:
+        db.close()
+
+    for hb_id, agent_id, user_id, prompt in rows:
+        try:
+            import asyncio, functools
+            am     = AgentManager(user_id)
+            loop   = asyncio.get_running_loop()
+            result = await loop.run_in_executor(
+                None, functools.partial(am.commit_hb_response, agent_id, prompt)
+            )
+            am.close()
+            logger.info("Heartbeat %s fired → %s", hb_id, result)
+        except Exception as e:
+            logger.error("Failed to fire heartbeat %s: %s", hb_id, e)
+
+
 def start_scheduler() -> None:
     scheduler.add_job(_fire_due_notifications, "cron", minute="*", id="notify_check",
+                      replace_existing=True)
+    scheduler.add_job(_fire_due_heartbeats, "cron", minute="*", id="heartbeat_check",
                       replace_existing=True)
     scheduler.start()
     logger.info("Notification scheduler started — checking every minute")
