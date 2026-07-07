@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import {
   Layout, Card, Form, Input, Button, Typography,
   Avatar, Spin, Alert, Divider, Row, Col,
@@ -692,6 +692,16 @@ export default function Account() {
         >
           {evModalContent()}
         </Modal>
+
+        {/* Legal links */}
+        <div style={{ display: 'flex', justifyContent: 'center', gap: '2rem', marginBottom: '1.5rem' }}>
+          <Link to="/privacy" style={{ fontFamily: "'Lora', serif", fontSize: '0.78rem', color: 'rgba(244,228,193,0.35)', textDecoration: 'none' }}>
+            Privacy Policy
+          </Link>
+          <Link to="/terms" style={{ fontFamily: "'Lora', serif", fontSize: '0.78rem', color: 'rgba(244,228,193,0.35)', textDecoration: 'none' }}>
+            Terms of Service
+          </Link>
+        </div>
 
         {/* Sign out */}
         <Button block size="large" icon={<LogoutOutlined />} onClick={handleSignOut}

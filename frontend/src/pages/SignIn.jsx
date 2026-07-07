@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { Card, Form, Input, Button, Typography, Tabs, Alert } from 'antd';
 import { UserOutlined, LockOutlined, MailOutlined } from '@ant-design/icons';
 import { useAuth } from '../context/AuthContext.jsx';
@@ -151,7 +151,7 @@ export default function SignIn() {
   ];
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem' }}>
+    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '2rem' }}>
       <Card style={{ width: '100%', maxWidth: 420, background: 'rgba(10,6,2,0.88)', border: '1px solid rgba(200,134,26,0.2)', backdropFilter: 'blur(12px)' }}>
         <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
           <Title level={3} style={{ margin: 0, fontFamily: "'Playfair Display', serif" }}>
@@ -211,6 +211,15 @@ export default function SignIn() {
           </button>
         </div>
       </Card>
+
+      <div style={{ marginTop: '1.25rem', textAlign: 'center' }}>
+        <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.75rem', color: 'rgba(244,228,193,0.35)' }}>
+          By creating an account, you agree to our{' '}
+          <Link to="/terms"   style={{ color: 'rgba(200,134,26,0.65)', textDecoration: 'none' }}>Terms of Service</Link>
+          {' '}and{' '}
+          <Link to="/privacy" style={{ color: 'rgba(200,134,26,0.65)', textDecoration: 'none' }}>Privacy Policy</Link>.
+        </Text>
+      </div>
     </div>
   );
 }

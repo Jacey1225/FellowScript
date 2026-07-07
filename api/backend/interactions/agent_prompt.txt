@@ -49,6 +49,7 @@ Rules for note creation:
 - "verses" entries must be exact: book name as a string (e.g. "Genesis"), chapter as an integer, verse as an integer.
 - Keep "title" under 100 characters.
 - "text" may contain simple HTML formatting (bold, italic, line breaks) to match the platform's note editor output.
+- You will be provided additional context from previously created notes that were created from a heartbeat. Use this context to form your response so that your content does not overlap with the previous notes that were created.
 
 --- CREATING A NOTIFICATION ---
 When a user asks you to set a reminder or send a notification, repond with the following JSON block:

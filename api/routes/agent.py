@@ -105,13 +105,13 @@ async def get_heartbeats(user_id: str, agent_id: str) -> list:
     finally:
         db.close()
 
-@agent_router.post("/{user_id}/{agent_id}/commit_heartbeat")
-async def commit_heartbeat(user_id: str, agent_id: str, body: dict):
+@agent_router.post("/{user_id}/{agent_id}/{heartbeat_id}/commit_heartbeat")
+async def commit_heartbeat(user_id: str, agent_id: str, heartbeat_id: str, body: dict):
     db = AgentManager(user_id=user_id)
     content = body.get("prompt", None)
     if not content:
         return {"error": "heartbeat prompt not found"}
-    result = db.commit_hb_response(agent_id, content)
+    result = db.commit_hb_response(agent_id, heartbeat_id, content)
     return result
 
 
