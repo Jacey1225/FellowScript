@@ -51,7 +51,8 @@ protocol DataServiceProtocol {
     func deleteAgent(userId: String, agentId: String) async throws
     func addHeartbeat(userId: String, agentId: String, heartbeat: FSHeartbeat) async throws
     func deleteHeartbeat(userId: String, agentId: String, heartbeatId: String) async throws
-    func commitHeartbeat(userId: String, agentId: String, prompt: String) async throws -> [String: String]
+    func updateHeartbeat(userId: String, heartbeatId: String, heartbeat: FSHeartbeat) async throws
+    func commitHeartbeat(userId: String, agentId: String, heartbeatId: String, prompt: String) async throws -> [String: String]
     func summarizeSession(userId: String, agentId: String, session: FSSession, groupId: String) async throws
 
     // Contacts + messages
@@ -83,6 +84,9 @@ protocol DataServiceProtocol {
     func deleteNotification(userId: String, notifId: String) async throws
     func registerDeviceToken(userId: String, token: String) async throws
     func triggerNotification(userId: String, notifId: String) async throws -> [String: String]
+
+    // Chime calls
+    func joinCall(userId: String, sessionId: String) async throws -> ChimeJoinResponse
 }
 
 // ── Mock data ─────────────────────────────────────────────────────────────────
@@ -251,8 +255,9 @@ final class MockDataService: DataServiceProtocol {
 
     func addHeartbeat(userId: String, agentId: String, heartbeat: FSHeartbeat) async throws {}
     func deleteHeartbeat(userId: String, agentId: String, heartbeatId: String) async throws {}
+    func updateHeartbeat(userId: String, heartbeatId: String, heartbeat: FSHeartbeat) async throws {}
 
-    func commitHeartbeat(userId: String, agentId: String, prompt: String) async throws -> [String: String] {
+    func commitHeartbeat(userId: String, agentId: String, heartbeatId: String, prompt: String) async throws -> [String: String] {
         ["success": "saved note"]
     }
 
@@ -306,6 +311,10 @@ final class MockDataService: DataServiceProtocol {
     func registerDeviceToken(userId: String, token: String) async throws {}
     func triggerNotification(userId: String, notifId: String) async throws -> [String: String] {
         ["name": "FellowScript", "content": "This is a sample notification."]
+    }
+
+    func joinCall(userId: String, sessionId: String) async throws -> ChimeJoinResponse {
+        throw AppError.networkError("Calls are not available in preview mode.")
     }
 }
 

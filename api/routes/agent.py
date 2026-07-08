@@ -105,6 +105,22 @@ async def get_heartbeats(user_id: str, agent_id: str) -> list:
     finally:
         db.close()
 
+@agent_router.put("/{user_id}/{heartbeat_id}/update_heartbeats")
+async def update_heartbeat(user_id: str, heartbeat_id: str, body: dict) -> dict:
+    db = AgentManager(user_id)
+    try:
+        heartbeat = AgentHeartbeats(
+            agent_id=body.get("agent_id", ""),
+            user_id=user_id,
+            timestamps=body.get("timestamps", [None] * 31),
+            prompt=body.get("prompt", ""),
+        )
+        db.update_heartbeat(heartbeat_id, heartbeat)
+        return {"ok": True}
+    finally:
+        db.close()
+
+
 @agent_router.post("/{user_id}/{agent_id}/{heartbeat_id}/commit_heartbeat")
 async def commit_heartbeat(user_id: str, agent_id: str, heartbeat_id: str, body: dict):
     db = AgentManager(user_id=user_id)

@@ -65,7 +65,7 @@ enum HeartbeatScheduler {
             if let prev = lastFired[event.id], prev >= dueDate.timeIntervalSince1970 { continue }
 
             let result = try? await service.commitHeartbeat(
-                userId: userId, agentId: event.agent_id, prompt: event.prompt
+                userId: userId, agentId: event.agent_id, heartbeatId: event.id, prompt: event.prompt
             )
             guard result != nil else { continue }
 

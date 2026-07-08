@@ -71,6 +71,17 @@ final class AccountViewModel: ObservableObject {
         Task { try? await service.deleteHeartbeat(userId: uid, agentId: event.agent_id, heartbeatId: event.id) }
     }
 
+    func updateEvent(_ event: FSHeartbeat, agentId: String, prompt: String, timestamps: [String?]) async {
+        guard let uid = profileData?.user_id else { return }
+        let updated = FSHeartbeat(id: event.id, agent_id: agentId, user_id: uid,
+                                  timestamps: timestamps, prompt: prompt)
+        try? await service.updateHeartbeat(userId: uid, heartbeatId: event.id, heartbeat: updated)
+        if let i = events.firstIndex(where: { $0.id == event.id }) {
+            events[i] = updated
+        }
+        HeartbeatScheduler.scheduleAll(events: events)
+    }
+
     func toggleAgent(id: String, enabled: Bool) {
         guard let uid = profileData?.user_id else { return }
         if let i = agents.firstIndex(where: { $0.id == id }) {
@@ -158,12 +169,14 @@ struct AccountView: View {
     enum AccountSheet: Identifiable {
         case newAgent
         case newEvent
+        case editEvent(FSHeartbeat)
         case newNotification
         case editNotification(FSNotification)
         var id: String {
             switch self {
             case .newAgent:                 return "newAgent"
             case .newEvent:                 return "newEvent"
+            case .editEvent(let e):         return "event-\(e.id)"
             case .newNotification:          return "newNotification"
             case .editNotification(let n):  return "notif-\(n.id)"
             }
@@ -249,6 +262,10 @@ struct AccountView: View {
             case .newEvent:
                 EventSetupSheet(agents: vm.agents) { agentId, prompt, timestamps in
                     Task { await vm.createEvent(agentId: agentId, prompt: prompt, timestamps: timestamps) }
+                }
+            case .editEvent(let event):
+                EventSetupSheet(agents: vm.agents, existing: event) { agentId, prompt, timestamps in
+                    Task { await vm.updateEvent(event, agentId: agentId, prompt: prompt, timestamps: timestamps) }
                 }
             case .newNotification:
                 NotificationSetupSheet { name, prompt, timestamps in
@@ -510,9 +527,12 @@ struct AccountView: View {
                     .listRowBackground(Theme.cardBg)
             } else {
                 ForEach(vm.events) { event in
-                    EventRow(event: event, agentName: agentName(for: event.agent_id)) {
-                        vm.removeEvent(event)
-                    }
+                    EventRow(
+                        event:     event,
+                        agentName: agentName(for: event.agent_id),
+                        onEdit:    { activeSheet = .editEvent(event) },
+                        onDelete:  { vm.removeEvent(event) }
+                    )
                     .listRowBackground(Theme.cardBg)
                 }
             }
@@ -765,9 +785,10 @@ struct NewAgentSheet: View {
 
 // ── Event row (shown in Events section) ───────────────────────────────────────
 struct EventRow: View {
-    let event: FSHeartbeat
+    let event:     FSHeartbeat
     let agentName: String
-    let onDelete: () -> Void
+    let onEdit:    () -> Void
+    let onDelete:  () -> Void
 
     var body: some View {
         HStack(spacing: Theme.spacingMD) {
@@ -789,6 +810,14 @@ struct EventRow: View {
                 .foregroundColor(Theme.textMuted)
             }
             Spacer()
+            Button(action: onEdit) {
+                Image(systemName: "pencil")
+                    .foregroundColor(Theme.gold.opacity(0.60))
+                    .font(.caption)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Edit event")
+
             Button(action: onDelete) {
                 Image(systemName: "trash")
                     .foregroundColor(Theme.error.opacity(0.65))
