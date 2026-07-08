@@ -9,7 +9,7 @@ _DEFAULT_ROLE = _PROMPT_PATH.read_text(encoding="utf-8").strip()
 
 class Agent(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    name: str = Field(default="Spritiual Guide")
+    name: str = Field(default="Spritual Guide")
     user_id: str = Field(default_factory=str)
     chats: list[str] = Field(default_factory=list)
     role: str = Field(default=_DEFAULT_ROLE)

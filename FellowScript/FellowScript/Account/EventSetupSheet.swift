@@ -6,8 +6,9 @@
 import SwiftUI
 
 struct EventSetupSheet: View {
-    let agents: [FSAgent]
-    let onSave: (_ agentId: String, _ prompt: String, _ timestamps: [String?]) -> Void
+    let agents:   [FSAgent]
+    var existing: FSHeartbeat? = nil
+    let onSave:   (_ agentId: String, _ prompt: String, _ timestamps: [String?]) -> Void
 
     @Environment(\.dismiss) private var dismiss
 
@@ -22,6 +23,8 @@ struct EventSetupSheet: View {
     @State private var prompt                          = ""
     @State private var path:              [SetupScreen] = []
 
+    private var isEditing: Bool { existing != nil }
+
     var body: some View {
         NavigationStack(path: $path) {
             recurrenceScreen
@@ -34,7 +37,38 @@ struct EventSetupSheet: View {
         }
         .preferredColorScheme(.dark)
         .onAppear {
-            if selectedAgentId.isEmpty { selectedAgentId = agents.first?.id ?? "" }
+            if selectedAgentId.isEmpty {
+                selectedAgentId = agents.first?.id ?? ""
+            }
+            if let hb = existing {
+                prefill(from: hb)
+            }
+        }
+    }
+
+    // ── Pre-fill helpers ──────────────────────────────────────────────────────
+
+    private func prefill(from hb: FSHeartbeat) {
+        prompt          = hb.prompt
+        selectedAgentId = hb.agent_id.isEmpty ? (agents.first?.id ?? "") : hb.agent_id
+
+        // Extract time: timestamps store UTC "HH:mm"; DateFormatter with UTC tz
+        // returns a Date whose local representation the DatePicker will display.
+        let nonNil = hb.timestamps.enumerated().compactMap { idx, ts in ts.map { (idx, $0) } }
+        if let firstTime = nonNil.first?.1 {
+            let f = DateFormatter(); f.dateFormat = "HH:mm"
+            f.timeZone = TimeZone(identifier: "UTC")
+            if let parsed = f.date(from: firstTime) { selectedTime = parsed }
+        }
+
+        let count = nonNil.count
+        if count == 31 {
+            recurrence = .daily
+            path = [.details]
+        } else {
+            recurrence = .monthly
+            selectedMonthDays = Set(nonNil.map { $0.0 + 1 })
+            path = [.days, .details]
         }
     }
 
@@ -69,7 +103,7 @@ struct EventSetupSheet: View {
             .frame(maxWidth: .infinity)
         }
         .background(Theme.bgPage.ignoresSafeArea())
-        .navigationTitle("New Event")
+        .navigationTitle(isEditing ? "Edit Event" : "New Event")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .navigationBarLeading) {
@@ -240,7 +274,7 @@ struct EventSetupSheet: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
-                Button("Save") {
+                Button(isEditing ? "Update" : "Save") {
                     onSave(selectedAgentId,
                            prompt.trimmingCharacters(in: .whitespaces),
                            buildTimestamps())

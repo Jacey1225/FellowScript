@@ -231,7 +231,7 @@ final class NetworkService: DataServiceProtocol {
     // PUT    /agent/{userId}/{agentId}          body: {enabled} or other fields
     // DELETE /agent/{userId}/{agentId}
     // POST   /agent/{userId}/{agentId}/heartbeat      body: FSHeartbeat
-    // POST   /agent/{userId}/{agentId}/commit_heartbeat body: {prompt}
+    // POST   /agent/{userId}/{agentId}/{heartbeatId}/commit_heartbeat body: {prompt}
     // POST   /agent/{userId}/{agentId}/summarize      body: {session, group_id}
 
     func createAgent(userId: String, role: String) async throws -> FSAgent {
@@ -268,9 +268,19 @@ final class NetworkService: DataServiceProtocol {
         _ = try await request("/agent/\(userId)/\(agentId)/heartbeat/\(heartbeatId)", method: "DELETE")
     }
 
-    func commitHeartbeat(userId: String, agentId: String, prompt: String) async throws -> [String: String] {
+    func updateHeartbeat(userId: String, heartbeatId: String, heartbeat: FSHeartbeat) async throws {
+        let tsArray = heartbeat.timestamps.map { $0 != nil ? $0! as Any : NSNull() as Any }
+        let body: [String: Any] = [
+            "agent_id":   heartbeat.agent_id,
+            "timestamps": tsArray,
+            "prompt":     heartbeat.prompt,
+        ]
+        _ = try await requestRaw("/agent/\(userId)/\(heartbeatId)/update_heartbeats", method: "PUT", jsonObject: body)
+    }
+
+    func commitHeartbeat(userId: String, agentId: String, heartbeatId: String, prompt: String) async throws -> [String: String] {
         let data = try await requestRaw(
-            "/agent/\(userId)/\(agentId)/commit_heartbeat", method: "POST",
+            "/agent/\(userId)/\(agentId)/\(heartbeatId)/commit_heartbeat", method: "POST",
             jsonObject: ["prompt": prompt]
         )
         return decode([String: String].self, from: data) ?? [:]
@@ -482,6 +492,21 @@ final class NetworkService: DataServiceProtocol {
     func triggerNotification(userId: String, notifId: String) async throws -> [String: String] {
         let data = try await request("/notification/\(userId)/\(notifId)/trigger", method: "POST")
         return decode([String: String].self, from: data) ?? [:]
+    }
+
+    // ── Chime calls ───────────────────────────────────────────────────────────
+    // POST /devotions/join-call?user_id=&session_id=  → {Meeting, Attendee}
+
+    func joinCall(userId: String, sessionId: String) async throws -> ChimeJoinResponse {
+        let data = try await request(
+            "/devotions/join-call?user_id=\(encodeURIComponent(userId))&session_id=\(encodeURIComponent(sessionId))",
+            method: "POST"
+        )
+        guard let response = decode(ChimeJoinResponse.self, from: data) else {
+            let detail = decode([String: String].self, from: data)?["detail"] ?? "Failed to join call"
+            throw AppError.networkError(detail)
+        }
+        return response
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────

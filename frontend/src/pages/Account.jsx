@@ -114,16 +114,17 @@ export default function Account() {
   const [renameVal,     setRenameVal]     = useState('');
 
   // Events (heartbeats — flat list across all agents)
-  const [events,      setEvents]      = useState([]);
-  const [evModal,     setEvModal]     = useState(false);
-  const [evStep,      setEvStep]      = useState(0); // 0=recurrence, 1=days, 2=details
-  const [evRecur,     setEvRecur]     = useState('daily');
-  const [evWeekdays,  setEvWeekdays]  = useState([]);
-  const [evMonthDays, setEvMonthDays] = useState([]);
-  const [evTime,      setEvTime]      = useState(dayjs());
-  const [evAgentId,   setEvAgentId]   = useState('');
-  const [evPrompt,    setEvPrompt]    = useState('');
-  const [evSaving,    setEvSaving]    = useState(false);
+  const [events,        setEvents]        = useState([]);
+  const [evModal,       setEvModal]       = useState(false);
+  const [evStep,        setEvStep]        = useState(0); // 0=recurrence, 1=days, 2=details
+  const [evRecur,       setEvRecur]       = useState('daily');
+  const [evWeekdays,    setEvWeekdays]    = useState([]);
+  const [evMonthDays,   setEvMonthDays]   = useState([]);
+  const [evTime,        setEvTime]        = useState(dayjs());
+  const [evAgentId,     setEvAgentId]     = useState('');
+  const [evPrompt,      setEvPrompt]      = useState('');
+  const [evSaving,      setEvSaving]      = useState(false);
+  const [editingEvent,  setEditingEvent]  = useState(null); // FSHeartbeat being edited
 
   const loadProfile = useCallback(async () => {
     if (!user) { navigate('/signin'); return; }
@@ -244,6 +245,7 @@ export default function Account() {
   // ── Event handlers ────────────────────────────────────────────────────────
 
   const openEventModal = () => {
+    setEditingEvent(null);
     setEvStep(0);
     setEvRecur('daily');
     setEvWeekdays([]);
@@ -254,19 +256,60 @@ export default function Account() {
     setEvModal(true);
   };
 
-  const handleCreateEvent = async () => {
+  const openEditModal = (ev) => {
+    setEditingEvent(ev);
+    // Detect recurrence from timestamps
+    const nonNull = (ev.timestamps || []).filter(Boolean);
+    const count   = nonNull.length;
+    let recur = count === 31 ? 'daily' : 'monthly';
+    const filledDays = (ev.timestamps || [])
+      .map((ts, i) => ts ? i + 1 : null)
+      .filter(Boolean);
+
+    setEvRecur(recur);
+    setEvWeekdays([]);
+    setEvMonthDays(recur === 'monthly' ? filledDays : []);
+    // Parse stored UTC time and convert to local dayjs
+    const timeStr = nonNull[0] || '09:00';
+    const [h, m]  = timeStr.split(':').map(Number);
+    setEvTime(dayjs.utc().hour(h).minute(m).local());
+    setEvAgentId(ev.agent_id || agents[0]?.id || '');
+    setEvPrompt(ev.prompt || '');
+    setEvStep(recur === 'daily' ? 2 : 1);
+    setEvModal(true);
+  };
+
+  const handleSaveEvent = async () => {
     if (!evAgentId || !evPrompt.trim()) return;
     setEvSaving(true);
     try {
-      const utcTime = toUTCTime(evTime);
+      const utcTime    = toUTCTime(evTime);
       const timestamps = buildTimestamps(evRecur, evWeekdays, evMonthDays, utcTime);
-      const body = { timestamps, prompt: evPrompt.trim() };
-      const res = await fetch(`${API}/agent/${user.user_id}/${evAgentId}/heartbeat`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
-      });
-      if (res.ok || res.status === 201) {
-        setEvModal(false);
-        await loadAgents();
+      const body       = { timestamps, prompt: evPrompt.trim() };
+
+      if (editingEvent) {
+        // Update existing heartbeat
+        const res = await fetch(
+          `${API}/agent/${user.user_id}/${editingEvent._id}/update_heartbeats`,
+          { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, agent_id: evAgentId }) }
+        );
+        if (res.ok) {
+          setEvents(prev => prev.map(e =>
+            e._id === editingEvent._id
+              ? { ...e, timestamps, prompt: evPrompt.trim(), agent_id: evAgentId }
+              : e
+          ));
+          setEvModal(false);
+        }
+      } else {
+        // Create new heartbeat
+        const res = await fetch(`${API}/agent/${user.user_id}/${evAgentId}/heartbeat`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+        });
+        if (res.ok || res.status === 201) {
+          setEvModal(false);
+          await loadAgents();
+        }
       }
     } catch {} finally { setEvSaving(false); }
   };
@@ -456,7 +499,7 @@ export default function Account() {
       <Button key="back" onClick={() => setEvStep(evRecur === 'daily' ? 0 : 1)}>Back</Button>,
       <Button key="save" type="primary" loading={evSaving}
         disabled={!evPrompt.trim() || !evAgentId}
-        onClick={handleCreateEvent}>Save</Button>,
+        onClick={handleSaveEvent}>{editingEvent ? 'Update' : 'Save'}</Button>,
     ];
   };
 
@@ -652,6 +695,9 @@ export default function Account() {
                           {scheduleSummary(ev.timestamps)}{agent ? ` · ${agentLabel(agent)}` : ''}
                         </Text>
                       </div>
+                      <Button size="small" type="text" icon={<EditOutlined style={{ fontSize: '0.7rem' }} />}
+                        onClick={() => openEditModal(ev)}
+                        style={{ padding: '0 4px', color: 'rgba(200,134,26,0.6)', flexShrink: 0 }} />
                       <Button size="small" type="text" danger icon={<DeleteOutlined style={{ fontSize: '0.7rem' }} />}
                         onClick={() => handleDeleteEvent(ev)}
                         style={{ padding: '0 4px', opacity: 0.65, flexShrink: 0 }} />
@@ -685,7 +731,9 @@ export default function Account() {
         {/* New event modal */}
         <Modal
           open={evModal}
-          title={<Text style={{ fontFamily: "'Playfair Display', serif", color: 'var(--parchment)' }}>{evModalTitle}</Text>}
+          title={<Text style={{ fontFamily: "'Playfair Display', serif", color: 'var(--parchment)' }}>
+            {editingEvent ? `Edit Event` : evModalTitle}
+          </Text>}
           onCancel={() => setEvModal(false)}
           footer={evModalFooter()}
           destroyOnClose

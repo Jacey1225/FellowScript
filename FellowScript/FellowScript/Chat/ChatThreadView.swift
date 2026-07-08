@@ -324,7 +324,9 @@ struct GroupMembersPanel: View {
 // ── Session banner (mirrors SessionWidget.jsx) ────────────────────────────────
 struct SessionBanner: View {
     let session: FSSession
+    @EnvironmentObject var appState: AppState
     @State private var showDetail = false
+    @State private var showCall   = false
 
     var body: some View {
         HStack(spacing: Theme.spacingMD) {
@@ -341,13 +343,31 @@ struct SessionBanner: View {
                     .foregroundColor(Theme.textGoldMuted)
             }
             Spacer()
-            Button("View Details") { showDetail = true }
-                .font(.lora(Theme.fontXS))
-                .foregroundColor(Theme.gold)
-                .padding(.horizontal, Theme.spacingSM)
-                .padding(.vertical, 4)
-                .overlay(RoundedRectangle(cornerRadius: 6).stroke(Theme.borderGold, lineWidth: 1))
-                .accessibilityLabel("View session details: \(session.title)")
+            HStack(spacing: 8) {
+                // Join call button
+                Button { showCall = true } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "video.fill")
+                            .font(.system(size: 11))
+                        Text("Join")
+                            .font(.lora(Theme.fontXS))
+                    }
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(Color.green.opacity(0.80))
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                }
+                .accessibilityLabel("Join call for \(session.title)")
+
+                Button("Details") { showDetail = true }
+                    .font(.lora(Theme.fontXS))
+                    .foregroundColor(Theme.gold)
+                    .padding(.horizontal, Theme.spacingSM)
+                    .padding(.vertical, 4)
+                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(Theme.borderGold, lineWidth: 1))
+                    .accessibilityLabel("View session details: \(session.title)")
+            }
         }
         .padding(Theme.spacingMD)
         .background(Theme.gold.opacity(0.08))
@@ -355,6 +375,11 @@ struct SessionBanner: View {
         .overlay(RoundedRectangle(cornerRadius: Theme.radius).stroke(Theme.borderGoldDim, lineWidth: 1))
         .sheet(isPresented: $showDetail) {
             SessionDetailSheet(session: session)
+                .environmentObject(appState)
+        }
+        .fullScreenCover(isPresented: $showCall) {
+            ChimeCallView(session: session)
+                .environmentObject(appState)
         }
     }
 }
@@ -362,7 +387,9 @@ struct SessionBanner: View {
 // ── Session detail sheet ──────────────────────────────────────────────────────
 struct SessionDetailSheet: View {
     let session: FSSession
+    @EnvironmentObject var appState: AppState
     @Environment(\.dismiss) private var dismiss
+    @State private var showCall = false
 
     var body: some View {
         NavigationStack {
@@ -370,6 +397,22 @@ struct SessionDetailSheet: View {
                 Theme.bgPage.ignoresSafeArea()
                 ScrollView {
                     VStack(alignment: .leading, spacing: Theme.spacingLG) {
+                        // Join call CTA
+                        Button { showCall = true } label: {
+                            HStack(spacing: 10) {
+                                Image(systemName: "video.fill")
+                                    .font(.system(size: 16))
+                                Text("Join Audio & Video Call")
+                                    .font(.lora(Theme.fontBody, weight: .semibold))
+                            }
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 14)
+                            .background(Color.green.opacity(0.82))
+                            .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
+                        }
+                        .accessibilityLabel("Join audio and video call for \(session.title)")
+
                         VStack(alignment: .leading, spacing: Theme.spacingXS) {
                             sectionLabel("Study Session")
                             Text(session.title)
@@ -424,7 +467,18 @@ struct SessionDetailSheet: View {
                 }
             }
         }
+        .fullScreenCover(isPresented: $showCall) {
+            ChimeCallView(session: session)
+                .environmentObject(appState)
+        }
         .preferredColorScheme(.dark)
+    }
+
+    @ViewBuilder
+    private func sectionLabel(_ title: String) -> some View {
+        Text(title.uppercased())
+            .font(.lora(Theme.fontXXS)).tracking(2)
+            .foregroundColor(Theme.gold.opacity(0.50))
     }
 }
 

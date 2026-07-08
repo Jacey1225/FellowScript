@@ -88,6 +88,17 @@ class AgentManager(DBManager):
         result = self.lookup(self.hb_table, {"agent_id": agent_id})
         return [{"_id": k, **v} for k, v in result.items()]
 
+    def update_heartbeat(self, heartbeat_id: str, heartbeat: AgentHeartbeats) -> None:
+        try:
+            self.cur.execute(
+                "UPDATE agent_heartbeats SET timestamps = %s::jsonb, prompt = %s WHERE _id = %s",
+                (json.dumps(heartbeat.timestamps), heartbeat.prompt, heartbeat_id)
+            )
+            self.conn.commit()
+        except Exception as e:
+            logger.error("Error updating heartbeat %s: %s", heartbeat_id, e)
+            self.conn.rollback()
+
     def delete_heartbeat(self, heartbeat_id: str) -> None:
         self.delete(self.hb_table, {"_id": heartbeat_id})
 
