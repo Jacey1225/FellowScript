@@ -116,15 +116,18 @@ struct NoteEditorView: View {
                     // ── Format toolbar ────────────────────────────────────────
                     if !isReadOnly {
                         ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: Theme.spacingXS) {
-                                FormatButton(label: "B", bold: true)         { rtc.toggleBold() }
-                                FormatButton(label: "I", italic: true)        { rtc.toggleItalic() }
-                                FormatButton(label: "U", underline: true)     { rtc.toggleUnderline() }
-                                FormatButton(label: "H", highlightStyle: true) { rtc.toggleHighlight() }
+                            HStack(spacing: 8) {
+                                FormatButton(label: "Bold",      bold: true,           isActive: rtc.isBold)         { rtc.toggleBold() }
+                                FormatButton(label: "Italic",    italic: true,         isActive: rtc.isItalic)       { rtc.toggleItalic() }
+                                FormatButton(label: "Underline", underline: true,      isActive: rtc.isUnderline)    { rtc.toggleUnderline() }
+                                FormatButton(label: "Highlight", highlightStyle: true, isActive: rtc.isHighlight)    { rtc.toggleHighlight() }
 
-                                // Color picker toggle + swatches
-                                FormatButton(label: "A", colorBar: true) { showColorPicker.toggle() }
-                                    .accessibilityLabel("Text color picker")
+                                // Color button: lights up when cursor is in custom-colored text.
+                                // Clicking while active resets the color; otherwise opens the picker.
+                                FormatButton(label: "Text color", colorBar: true, isActive: rtc.hasCustomColor) {
+                                    if rtc.hasCustomColor { rtc.resetColor() }
+                                    else { showColorPicker.toggle() }
+                                }
 
                                 if showColorPicker {
                                     // Reset to default
@@ -134,7 +137,7 @@ struct NoteEditorView: View {
                                     } label: {
                                         Image(systemName: "xmark.circle.fill")
                                             .foregroundColor(Theme.parchment.opacity(0.50))
-                                            .font(.system(size: 18))
+                                            .font(.system(size: 24))
                                     }
                                     ForEach(Array(zip(Theme.highlightColors, Theme.highlightHex)), id: \.1) { color, hex in
                                         Button {
@@ -143,8 +146,9 @@ struct NoteEditorView: View {
                                         } label: {
                                             Circle()
                                                 .fill(color)
-                                                .frame(width: 20, height: 20)
-                                                .overlay(Circle().stroke(Color.white.opacity(0.20), lineWidth: 1.5))
+                                                .frame(width: 28, height: 28)
+                                                .overlay(Circle().stroke(Color.white.opacity(0.22), lineWidth: 1.5))
+                                                .shadow(color: color.opacity(0.45), radius: 4, x: 0, y: 2)
                                         }
                                         .transition(.scale.combined(with: .opacity))
                                         .accessibilityLabel("Apply \(hex) color")
@@ -152,7 +156,7 @@ struct NoteEditorView: View {
                                 }
                             }
                             .padding(.horizontal, Theme.spacingMD)
-                            .padding(.vertical, 6)
+                            .padding(.vertical, 10)
                         }
                         .animation(.spring(response: 0.25), value: showColorPicker)
                         .background(Theme.navBg.opacity(0.75))
@@ -192,10 +196,16 @@ struct NoteEditorView: View {
                             }
                         }
                         .padding(Theme.spacingMD)
+                        // Extra bottom space so the last line can always be scrolled
+                        // to the top of the visible area — cursor is never stuck behind
+                        // the keyboard or at the very bottom of the screen.
+                        .padding(.bottom, UIScreen.main.bounds.height * 0.55)
                         .frame(maxWidth: .infinity, alignment: .leading)
                     }
+                    // Let the keyboard properly inset the scroll view (shrinks frame
+                    // above keyboard) so content can scroll up into view while typing.
+                    .scrollDismissesKeyboard(.interactively)
                 }
-                .ignoresSafeArea(.keyboard, edges: .bottom)
             }
         }
         .preferredColorScheme(.dark)
@@ -222,11 +232,9 @@ struct NoteEditorView: View {
                 let vs   = components[2].asInt ?? 0
                 return VerseRef(book: book, chapter: ch, verse: vs)
             }
-            // Load the stored HTML into the rich-text editor after a brief
-            // delay so the UITextView has been added to the view hierarchy.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                rtc.setHTML(n.text)
-            }
+            // setHTML stores the HTML as pendingHTML if the UITextView isn't
+            // ready yet; makeUIView applies it the moment the view appears.
+            rtc.setHTML(n.text)
         } else {
             titleFocused = true
         }
@@ -235,17 +243,20 @@ struct NoteEditorView: View {
     private func handleSave() {
         isSaving = true
         let html = rtc.currentHTML()
+        // Preserve the original note's immutable metadata so a server-side ownership
+        // or type check on is_reply / user / replies doesn't silently discard the edit.
+        let originalUser = note?.user ?? ""
         let saved = FSNote(
             id:        noteId ?? UUID().uuidString,
-            user:      appState.currentUser?.user_id ?? "",
+            user:      originalUser.isEmpty ? (appState.currentUser?.user_id ?? "") : originalUser,
             title:     titleVal.isEmpty ? "Untitled" : titleVal,
             text:      html,
             public:    isPublic,
             group_id:  note?.group_id ?? groupId,
-            is_reply:  false,
+            is_reply:  note?.is_reply ?? false,
             timestamp: ISO8601DateFormatter().string(from: Date()),
             verses:    verseList.map { [.string($0.book), .int($0.chapter), .int($0.verse)] },
-            replies:   []
+            replies:   note?.replies ?? []
         )
         onSave?(saved)
         isSaving = false
@@ -279,46 +290,42 @@ struct VerseTag: View {
 
 // ── Format button (mirrors FmtBtn) ────────────────────────────────────────────
 struct FormatButton: View {
-    let label:         String
-    var bold:          Bool = false
-    var italic:        Bool = false
-    var underline:     Bool = false
+    let label:          String
+    var bold:           Bool = false
+    var italic:         Bool = false
+    var underline:      Bool = false
     var highlightStyle: Bool = false
-    var colorBar:      Bool = false
-    let action:        () -> Void
+    var colorBar:       Bool = false
+    var isActive:       Bool = false
+    let action:         () -> Void
+
+    private var symbol: String {
+        if bold           { return "bold" }
+        if italic         { return "italic" }
+        if underline      { return "underline" }
+        if highlightStyle { return "highlighter" }
+        if colorBar       { return "paintpalette" }
+        return "textformat"
+    }
 
     var body: some View {
         Button(action: action) {
-            Group {
-                if bold {
-                    Text(label).bold()
-                } else if italic {
-                    Text(label).italic()
-                } else if underline {
-                    Text(label).underline()
-                } else if highlightStyle {
-                    Text(label)
-                        .background(Theme.gold.opacity(0.40))
-                        .clipShape(RoundedRectangle(cornerRadius: 2))
-                } else if colorBar {
-                    VStack(spacing: 1) {
-                        Text(label)
-                        Rectangle()
-                            .fill(Theme.gold)
-                            .frame(height: 2)
-                    }
-                } else {
-                    Text(label)
-                }
-            }
-            .font(.lora(Theme.fontXS))
-            .foregroundColor(Theme.parchment.opacity(0.70))
-            .padding(.horizontal, Theme.spacingMD)
-            .padding(.vertical, 4)
-            .background(Theme.gold.opacity(0.08))
-            .clipShape(RoundedRectangle(cornerRadius: 20))
-            .overlay(RoundedRectangle(cornerRadius: 20).stroke(Theme.borderGoldDim, lineWidth: 1))
+            Image(systemName: symbol)
+                .font(.system(size: 17, weight: isActive ? .semibold : .medium))
+                .frame(width: 46, height: 42)
+                .foregroundColor(isActive ? Theme.gold : Theme.parchment.opacity(0.82))
+                .background(isActive ? Theme.gold.opacity(0.22) : Theme.gold.opacity(0.10))
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .stroke(
+                            isActive ? Theme.gold.opacity(0.65) : Theme.borderGoldDim,
+                            lineWidth: 1
+                        )
+                )
         }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
     }
 }
 

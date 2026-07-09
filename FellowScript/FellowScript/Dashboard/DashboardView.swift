@@ -7,26 +7,58 @@
 import SwiftUI
 import Combine
 
+// ── Community activity feed item ──────────────────────────────────────────────
+struct CommunityActivityItem {
+    enum Kind { case message, groupNote }
+    let kind:      Kind
+    let name:      String   // contact name or group name
+    let preview:   String   // message text or note title
+    let timestamp: String   // ISO string; empty → display "recent"
+
+    var icon: String {
+        kind == .message ? "bubble.left.fill" : "note.text"
+    }
+
+    var timeLabel: String {
+        guard !timestamp.isEmpty else { return "recent" }
+        let parsers: [ISO8601DateFormatter] = {
+            let a = ISO8601DateFormatter()
+            a.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            let b = ISO8601DateFormatter()
+            return [a, b]
+        }()
+        let date = parsers.lazy.compactMap { $0.date(from: timestamp) }.first
+        guard let d = date else { return "recent" }
+        let diff = Date().timeIntervalSince(d)
+        if diff < 60      { return "just now" }
+        if diff < 3_600   { return "\(Int(diff / 60))m ago" }
+        if diff < 86_400  { return "\(Int(diff / 3_600))h ago" }
+        return "\(Int(diff / 86_400))d ago"
+    }
+}
+
 @MainActor
 final class DashboardViewModel: ObservableObject {
     var service: DataServiceProtocol = MockDataService.shared
 
-    @Published var notes:             [String: FSNote]    = [:]
-    @Published var highlights:        [FSHighlight]        = []
-    @Published var agents:            [FSAgent]           = []
-    @Published var lastAgentMsg:      FSAgentMessage?     = nil
-    @Published var sessionPreview:    FSSession?          = nil
+    @Published var notes:             [String: FSNote]         = [:]
+    @Published var highlights:        [FSHighlight]             = []
+    @Published var agents:            [FSAgent]                = []
+    @Published var lastAgentMsg:      FSAgentMessage?          = nil
+    @Published var sessionPreview:    FSSession?               = nil
     @Published var isLoading          = true
     @Published var featuredHighlight: FSHighlight?
+    @Published var communityItems:    [CommunityActivityItem]  = []
 
     func load(service: DataServiceProtocol, userId: String) async {
         self.service = service
         isLoading = true
         defer { isLoading = false }
 
-        async let notesTask  = try? service.fetchNotes(userId: userId)
-        async let hlTask     = try? service.fetchHighlights(userId: userId)
-        async let agentsTask = try? service.fetchAgents(userId: userId)
+        async let notesTask    = try? service.fetchNotes(userId: userId)
+        async let hlTask       = try? service.fetchHighlights(userId: userId)
+        async let agentsTask   = try? service.fetchAgents(userId: userId)
+        async let contactsTask = try? service.fetchContacts(userId: userId)
 
         notes  = (await notesTask)  ?? [:]
         agents = (await agentsTask) ?? []
@@ -44,11 +76,50 @@ final class DashboardViewModel: ObservableObject {
             lastAgentMsg = msgs.last
         }
 
+        // Build community activity items from contacts + group notes
+        let (contactList, _) = (await contactsTask) ?? ([], [:])
+        buildCommunityItems(contacts: contactList)
     }
 
     var recentNote: (String, FSNote)? {
         notes.max(by: { $0.value.timestamp < $1.value.timestamp })
              .map { ($0.key, $0.value) }
+    }
+
+    private func buildCommunityItems(contacts: [FSContact]) {
+        var items: [CommunityActivityItem] = []
+
+        // Most recent message: first contact with a non-empty preview
+        if let contact = contacts.first(where: { !$0.preview.isEmpty }) {
+            items.append(CommunityActivityItem(
+                kind:      .message,
+                name:      contact.name,
+                preview:   contact.preview,
+                timestamp: ""
+            ))
+        }
+
+        // Most recent group note: personal notes that belong to a group
+        if let groupNote = notes.values
+            .filter({ !$0.group_id.isEmpty })
+            .sorted(by: { $0.timestamp > $1.timestamp })
+            .first {
+            items.append(CommunityActivityItem(
+                kind:      .groupNote,
+                name:      groupNote.title.isEmpty ? "Untitled" : groupNote.title,
+                preview:   groupNote.preview,
+                timestamp: groupNote.timestamp
+            ))
+        }
+
+        // Notes with timestamps sort above message items (which have no timestamp)
+        items.sort {
+            if !$0.timestamp.isEmpty && $1.timestamp.isEmpty { return true }
+            if $0.timestamp.isEmpty && !$1.timestamp.isEmpty { return false }
+            return $0.timestamp > $1.timestamp
+        }
+
+        communityItems = Array(items.prefix(2))
     }
 }
 
@@ -85,7 +156,7 @@ struct DashboardView: View {
                         RecentNoteWidget(note: vm.recentNote, onTap: { n in navigateToNote = n }, onNew: { showNewNote = true })
 
                         // 2 — Community Activity Widget
-                        CommunityActivityWidget(session: vm.sessionPreview)
+                        CommunityActivityWidget(items: vm.communityItems)
 
                         // 3 — Highlighted Verse Widget
                         HighlightedVerseWidget(
@@ -182,55 +253,13 @@ struct RecentNoteWidget: View {
 
 // ── 2. Community Activity Widget ──────────────────────────────────────────────
 struct CommunityActivityWidget: View {
-    let session: FSSession?
+    let items: [CommunityActivityItem]
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.spacingMD) {
             sectionLabel("Community Activity")
 
-            if let s = session {
-                // Upcoming session preview row
-                HStack(spacing: Theme.spacingMD) {
-                    Image(systemName: "calendar.badge.clock")
-                        .font(.system(size: 28))
-                        .foregroundColor(Theme.gold)
-                        .frame(width: 40)
-                        .accessibilityHidden(true)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(s.title)
-                            .font(.lora(Theme.fontBody, weight: .semibold))
-                            .foregroundColor(Theme.parchment)
-                        Text(s.formattedStart)
-                            .font(.lora(Theme.fontXS))
-                            .foregroundColor(Theme.textGoldMuted)
-                        Text("\(s.verses.count) verse\(s.verses.count == 1 ? "" : "s") · \(s.prompts.count) prompt\(s.prompts.count == 1 ? "" : "s")")
-                            .font(.lora(Theme.fontXXS))
-                            .foregroundColor(Theme.textMuted)
-                    }
-                }
-                .accessibilityElement(children: .combine)
-                .accessibilityLabel("Upcoming session: \(s.title) on \(s.formattedStart)")
-
-                Divider().background(Theme.borderGoldFaint)
-
-                // Static activity items — mirrors JSX activity feed
-                ForEach(activityItems, id: \.label) { item in
-                    HStack(spacing: Theme.spacingMD) {
-                        Image(systemName: item.icon)
-                            .foregroundColor(Theme.gold.opacity(0.55))
-                            .frame(width: 24)
-                            .accessibilityHidden(true)
-                        Text(item.label)
-                            .font(.lora(Theme.fontSM))
-                            .foregroundColor(Theme.textSecondary)
-                        Spacer()
-                        Text(item.time)
-                            .font(.lora(Theme.fontXXS))
-                            .foregroundColor(Theme.textMuted)
-                    }
-                    .accessibilityLabel(item.label)
-                }
-            } else {
+            if items.isEmpty {
                 VStack(spacing: Theme.spacingSM) {
                     Image(systemName: "person.3")
                         .font(.system(size: 32, weight: .light))
@@ -238,24 +267,49 @@ struct CommunityActivityWidget: View {
                     Text("No recent activity")
                         .font(.lora(Theme.fontBody))
                         .foregroundColor(Theme.textSecondary)
-                    Text("Join a group to see community notes and sessions here.")
+                    Text("Add friends or join a group to see activity here.")
                         .font(.lora(Theme.fontXS))
                         .foregroundColor(Theme.textMuted)
                         .multilineTextAlignment(.center)
                 }
                 .frame(maxWidth: .infinity)
-                .accessibilityLabel("No recent activity. Join a group to see community notes and sessions.")
+                .accessibilityLabel("No recent community activity.")
+            } else {
+                ForEach(Array(items.enumerated()), id: \.offset) { idx, item in
+                    if idx > 0 {
+                        Divider().background(Theme.borderGoldFaint)
+                    }
+                    HStack(alignment: .top, spacing: Theme.spacingMD) {
+                        Image(systemName: item.icon)
+                            .font(.system(size: 16))
+                            .foregroundColor(Theme.gold.opacity(0.60))
+                            .frame(width: 24, height: 24)
+                            .accessibilityHidden(true)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(item.name)
+                                .font(.lora(Theme.fontSM, weight: .semibold))
+                                .foregroundColor(Theme.parchment)
+                                .lineLimit(1)
+                            Text(item.preview.isEmpty ? "—" : item.preview)
+                                .font(.lora(Theme.fontSM))
+                                .foregroundColor(Theme.textSecondary)
+                                .lineLimit(2)
+                        }
+                        Spacer(minLength: 0)
+                        Text(item.timeLabel)
+                            .font(.lora(Theme.fontXXS))
+                            .foregroundColor(Theme.textMuted)
+                            .padding(.top, 2)
+                    }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel("\(item.name): \(item.preview), \(item.timeLabel)")
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .widgetCard()
         .padding(.horizontal, Theme.spacingMD)
     }
-
-    private let activityItems: [(icon: String, label: String, time: String)] = [
-        (icon: "note.text", label: "Sarah shared a note on John 1", time: "2h ago"),
-        (icon: "message",   label: "Marcus sent a message",          time: "5h ago"),
-    ]
 }
 
 // ── 3. Highlighted Verse Widget ───────────────────────────────────────────────

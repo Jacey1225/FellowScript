@@ -21,10 +21,9 @@ enum NotificationScheduler {
         notifications: [FSNotification],
         service: DataServiceProtocol
     ) async {
-        let center     = UNUserNotificationCenter.current()
-        let pending    = await center.pendingNotificationRequests()
-        let pendingIds = Set(pending.map { $0.identifier })
-        let validIds   = Set(notifications.map { $0.id })
+        let center   = UNUserNotificationCenter.current()
+        let pending  = await center.pendingNotificationRequests()
+        let validIds = Set(notifications.map { $0.id })
 
         // Remove local notifications for notifications the user has deleted
         let stale = pending.map { $0.identifier }.filter { !validIds.contains($0) }
@@ -32,18 +31,33 @@ enum NotificationScheduler {
             center.removePendingNotificationRequests(withIdentifiers: stale)
         }
 
+        // Build a map of pending trigger dates so we can detect stale/wrong-time triggers
+        var pendingFireDates: [String: Date] = [:]
+        for req in pending {
+            guard let trig = req.trigger as? UNCalendarNotificationTrigger,
+                  let d = trig.nextTriggerDate() else { continue }
+            pendingFireDates[req.identifier] = d
+        }
+
         for notif in notifications {
             // Skip if every slot is empty
             guard notif.timestamps.contains(where: { $0 != nil }) else { continue }
-            // Skip if a valid future trigger is already pending for this notification
-            if pendingIds.contains(notif.id) { continue }
 
             guard let fireDate = nextFireDate(for: notif) else { continue }
 
+            // Skip only if already scheduled at the correct time (within 60 s)
+            if let existing = pendingFireDates[notif.id],
+               abs(existing.timeIntervalSince(fireDate)) < 60 { continue }
+
+            // Cancel any wrong-time pending trigger before rescheduling
+            if pendingFireDates[notif.id] != nil {
+                center.removePendingNotificationRequests(withIdentifiers: [notif.id])
+            }
+
             // Fetch AI-generated body; fall back gracefully so scheduling always succeeds
-            let result  = try? await service.triggerNotification(userId: userId, notifId: notif.id)
-            let title   = (result?["name"]    ?? notif.name).isEmpty ? "FellowScript" : (result?["name"] ?? notif.name)
-            let body    = result?["content"] ?? notif.prompt
+            let result = try? await service.triggerNotification(userId: userId, notifId: notif.id)
+            let title  = (result?["name"] ?? notif.name).isEmpty ? "FellowScript" : (result?["name"] ?? notif.name)
+            let body   = result?["content"] ?? notif.prompt
 
             scheduleLocal(id: notif.id, title: title, body: body, at: fireDate)
         }
@@ -54,6 +68,7 @@ enum NotificationScheduler {
     static func nextFireDate(for notification: FSNotification) -> Date? {
         let fmt = DateFormatter()
         fmt.dateFormat = "HH:mm"
+        fmt.timeZone   = TimeZone(identifier: "UTC")   // timestamps stored as UTC "HH:mm"
 
         let cal       = Calendar.current
         let now       = Date()

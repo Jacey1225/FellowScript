@@ -210,6 +210,17 @@ async def update_note(user_id: str, note_id: str, note_dict: dict) -> None:
             },
             {"_id": note_id},
         )
+        # Sync note_verses: replace all existing verse rows with the ones from the PUT body.
+        db.delete("note_verses", {"note_id": note_id})
+        for i, verse in enumerate(note.verses):
+            if isinstance(verse, list) and len(verse) >= 3:
+                db.insertion("note_verses", {
+                    "note_id":  note_id,
+                    "position": i,
+                    "book":     verse[0],
+                    "chapter":  verse[1],
+                    "verse":    verse[2],
+                })
     finally:
         db.close()
 
