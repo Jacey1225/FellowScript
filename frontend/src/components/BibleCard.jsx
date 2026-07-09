@@ -63,7 +63,7 @@ export default function BibleCard({
   return (
     <Card
       className="chapter-card"
-      style={{ width: '100%', maxWidth: 'var(--bible-card-max-w, 820px)', margin: '0 2rem' }}
+      style={{ width: '100%', margin: 0 }}
       bordered={false}
     >
       {/* Header */}

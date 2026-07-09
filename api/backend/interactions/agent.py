@@ -111,8 +111,9 @@ class AgentManager(DBManager):
             group_id=data.get("group_id", ""),
             verses=data.get("verses", [])
         )
+        note_id = str(uuid.uuid4())
         self.insertion(self.note_table, {
-            "_id":      str(uuid.uuid4()),
+            "_id":      note_id,
             "user_id":  note.user,
             "title":    note.title,
             "text":     note.text,
@@ -121,6 +122,15 @@ class AgentManager(DBManager):
             "is_reply": note.is_reply,
             "timestamp": note.timestamp,
         })
+        for i, verse in enumerate(note.verses):
+            if isinstance(verse, list) and len(verse) >= 3:
+                self.insertion("note_verses", {
+                    "note_id":  note_id,
+                    "position": i,
+                    "book":     verse[0],
+                    "chapter":  verse[1],
+                    "verse":    verse[2],
+                })
 
     def save_context(self, heartbeat_id: str, context_text: str) -> None:
         try:

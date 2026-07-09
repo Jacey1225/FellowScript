@@ -122,7 +122,7 @@ enum FSVerseComponent: Codable {
         switch self { case .string(let s): return s; case .int(let i): return "\(i)" }
     }
     var asInt: Int? {
-        switch self { case .int(let i): return i; case .string: return nil }
+        switch self { case .int(let i): return i; case .string(let s): return Int(s) }
     }
 }
 
@@ -308,6 +308,7 @@ extension FSHeartbeat {
 
     func nextFireDate() -> Date? {
         let fmt = DateFormatter(); fmt.dateFormat = "HH:mm"
+        fmt.timeZone = TimeZone(identifier: "UTC")   // timestamps stored as UTC "HH:mm"
         let cal = Calendar.current; let now = Date()
         for offset in 0..<62 {
             guard let target = cal.date(byAdding: .day, value: offset, to: now) else { continue }
@@ -368,7 +369,16 @@ extension FSNotification {
         return "\(count) day\(count == 1 ? "" : "s") / month"
     }
 
-    var scheduledTime: String? { timestamps.compactMap { $0 }.first }
+    var scheduledTime: String? {
+        guard let raw = timestamps.compactMap({ $0 }).first else { return nil }
+        let utcFmt = DateFormatter()
+        utcFmt.dateFormat = "HH:mm"
+        utcFmt.timeZone = TimeZone(identifier: "UTC")
+        guard let date = utcFmt.date(from: raw) else { return raw }
+        let display = DateFormatter()
+        display.timeStyle = .short
+        return display.string(from: date)
+    }
 }
 
 // ── Group ─────────────────────────────────────────────────────────────────────

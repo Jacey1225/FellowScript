@@ -135,7 +135,16 @@ final class MockDataService: DataServiceProtocol {
             timestamp: "2026-06-15 18:45:00",
             verses: [[.string("John"), .int(1), .int(14)]], replies: []
         )
-        return ["note-001": n1, "note-002": n2, "note-003": n3]
+        // Group note — visible in the Community Activity widget
+        let n4 = FSNote(
+            id: "note-grp-001", user: mockUser.user_id,
+            title: "Romans 8 Study Notes",
+            text: "<p>Walking by the Spirit — what does it mean to set the mind on the Spirit?</p>",
+            public: true, group_id: "group-abc", is_reply: false,
+            timestamp: "2026-07-08T10:15:00Z",
+            verses: [[.string("Romans"), .int(8), .int(1)]], replies: []
+        )
+        return ["note-001": n1, "note-002": n2, "note-003": n3, "note-grp-001": n4]
     }()
 
     static let mockHighlights: [String: String] = [

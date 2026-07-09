@@ -25,28 +25,49 @@ import VerseSelector from './VerseSelector.jsx';
 
 const TEXT_COLORS = ['#c8861a', '#e07070', '#6dbf7e', '#7eb8e0', '#b07ee0', '#f4e4c1'];
 
-// Rounded formatting widget button — uses onMouseDown so it never steals focus
+// Formatting toolbar button — uses onMouseDown so it never steals focus
 // from the contentEditable body, preserving the user's text selection.
-function FmtBtn({ children, title, onMouseDown }) {
+// `active` lights the button gold to show that format is currently applied at cursor.
+function FmtBtn({ children, title, onMouseDown, active }) {
+  const base = {
+    background:  active ? 'rgba(200,134,26,0.28)' : 'rgba(200,134,26,0.10)',
+    borderColor: active ? 'rgba(200,134,26,0.65)' : 'rgba(200,134,26,0.28)',
+    color:       active ? 'var(--gold)'            : 'rgba(244,228,193,0.80)',
+  };
   return (
     <button
       title={title}
       onMouseDown={onMouseDown}
       style={{
-        background: 'rgba(200,134,26,0.08)',
-        border: '1px solid rgba(200,134,26,0.22)',
-        borderRadius: 20,
-        color: 'rgba(244,228,193,0.65)',
+        ...base,
+        border: `1px solid ${base.borderColor}`,
+        borderRadius: 10,
         cursor: 'pointer',
-        fontSize: '0.7rem',
-        padding: '0.2rem 0.62rem',
-        lineHeight: 1.3,
-        transition: 'background 0.15s, border-color 0.15s, color 0.15s',
+        fontSize: '0.92rem',
+        minWidth: 40,
+        height: 40,
+        padding: '0 0.85rem',
+        lineHeight: 1,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        transition: 'background 0.15s, border-color 0.15s, color 0.15s, transform 0.12s',
         userSelect: 'none',
         flexShrink: 0,
+        boxShadow: active ? 'inset 0 0 0 1px rgba(200,134,26,0.18)' : 'none',
       }}
-      onMouseEnter={e => { e.currentTarget.style.background = 'rgba(200,134,26,0.2)'; e.currentTarget.style.borderColor = 'rgba(200,134,26,0.5)'; e.currentTarget.style.color = 'var(--gold)'; }}
-      onMouseLeave={e => { e.currentTarget.style.background = 'rgba(200,134,26,0.08)'; e.currentTarget.style.borderColor = 'rgba(200,134,26,0.22)'; e.currentTarget.style.color = 'rgba(244,228,193,0.65)'; }}
+      onMouseEnter={e => {
+        e.currentTarget.style.background  = active ? 'rgba(200,134,26,0.38)' : 'rgba(200,134,26,0.22)';
+        e.currentTarget.style.borderColor = 'rgba(200,134,26,0.70)';
+        e.currentTarget.style.color       = 'var(--gold)';
+        e.currentTarget.style.transform   = 'translateY(-1px)';
+      }}
+      onMouseLeave={e => {
+        e.currentTarget.style.background  = base.background;
+        e.currentTarget.style.borderColor = base.borderColor;
+        e.currentTarget.style.color       = base.color;
+        e.currentTarget.style.transform   = 'translateY(0)';
+      }}
     >
       {children}
     </button>
@@ -67,10 +88,11 @@ function NoteEditor({ note, noteId, user, currentGroupId, books, chapterCount, v
       .filter(v => Array.isArray(v) && v.length >= 3 && v[0])
       .map(([b, c, v]) => ({ book: b, chapter: c, verse: v }));
   });
-  const [showColors, setShowColors] = useState(false);
+  const [showColors,    setShowColors]    = useState(false);
+  const [activeFormats, setActiveFormats] = useState({ bold: false, italic: false, underline: false, highlight: false, color: false });
 
-  const titleRef    = useRef(null);
-  const bodyRef     = useRef(null);
+  const titleRef     = useRef(null);
+  const bodyRef      = useRef(null);
   const colorWrapRef = useRef(null);
 
   // Seed the contentEditable body with the existing HTML once on mount
@@ -87,6 +109,42 @@ function NoteEditor({ note, noteId, user, currentGroupId, books, chapterCount, v
   }, [titleVal]);
 
   useEffect(() => { titleRef.current?.focus(); }, []);
+
+  // Track cursor format state so toolbar buttons light up when active.
+  useEffect(() => {
+    const qcs = (cmd) => { try { return document.queryCommandState(cmd); } catch { return false; } };
+
+    const onSel = () => {
+      if (!bodyRef.current) return;
+      const sel = window.getSelection();
+      if (!sel || !sel.rangeCount || !bodyRef.current.contains(sel.anchorNode)) {
+        setActiveFormats({ bold: false, italic: false, underline: false, highlight: false, color: false });
+        return;
+      }
+      // Walk up from the cursor anchor to detect <mark> and color spans.
+      let el = sel.anchorNode?.nodeType === Node.TEXT_NODE
+        ? sel.anchorNode.parentElement
+        : sel.anchorNode;
+      let inMark = false;
+      let hasColor = false;
+      while (el && el !== bodyRef.current) {
+        if (el.tagName === 'MARK')                                  inMark    = true;
+        if (!hasColor && el.style?.color)                           hasColor  = true;
+        if (!hasColor && el.tagName === 'FONT' && el.getAttribute('color')) hasColor = true;
+        el = el.parentElement;
+      }
+      setActiveFormats({
+        bold:      qcs('bold'),
+        italic:    qcs('italic'),
+        underline: qcs('underline'),
+        highlight: inMark,
+        color:     hasColor,
+      });
+    };
+
+    document.addEventListener('selectionchange', onSel);
+    return () => document.removeEventListener('selectionchange', onSel);
+  }, []);
 
   // Close color picker on outside mousedown
   useEffect(() => {
@@ -119,21 +177,40 @@ function NoteEditor({ note, noteId, user, currentGroupId, books, chapterCount, v
     document.execCommand(cmd, false, val);
   };
 
-  // Wrap selected text in <mark> for semantic highlighting
-  const applyHighlight = (e) => {
+  // Toggle <mark> highlight: applies when cursor is outside a mark, removes when inside.
+  const toggleHighlight = (e) => {
     e.preventDefault();
+    bodyRef.current?.focus();
     const sel = window.getSelection();
-    if (!sel?.rangeCount || sel.isCollapsed) return;
-    const range = sel.getRangeAt(0);
-    const mark  = document.createElement('mark');
-    try {
-      range.surroundContents(mark);
-    } catch {
-      // Selection spans element boundaries — extract then re-insert
-      mark.appendChild(range.extractContents());
-      range.insertNode(mark);
+    if (!sel || !sel.rangeCount) return;
+
+    // Check whether the anchor is already inside a <mark>.
+    let node = sel.anchorNode;
+    let el   = node?.nodeType === Node.TEXT_NODE ? node.parentElement : node;
+    let markEl = null;
+    while (el && el !== bodyRef.current) {
+      if (el.tagName === 'MARK') { markEl = el; break; }
+      el = el.parentElement;
     }
-    sel.removeAllRanges();
+
+    if (markEl) {
+      // Remove: unwrap the <mark> in place.
+      const parent = markEl.parentNode;
+      while (markEl.firstChild) parent.insertBefore(markEl.firstChild, markEl);
+      parent.removeChild(markEl);
+    } else {
+      // Apply: wrap selection in <mark>.
+      if (sel.isCollapsed) return;
+      const range = sel.getRangeAt(0);
+      const mark  = document.createElement('mark');
+      try {
+        range.surroundContents(mark);
+      } catch {
+        mark.appendChild(range.extractContents());
+        range.insertNode(mark);
+      }
+      sel.removeAllRanges();
+    }
   };
 
   const applyColor = (color) => (e) => {
@@ -141,6 +218,33 @@ function NoteEditor({ note, noteId, user, currentGroupId, books, chapterCount, v
     setShowColors(false);
     bodyRef.current?.focus();
     document.execCommand('foreColor', false, color);
+  };
+
+  // Toggle the color button: if cursor is inside colored text, remove the color;
+  // otherwise open the swatch picker as usual.
+  const onColorBtnMouseDown = (e) => {
+    e.preventDefault();
+    bodyRef.current?.focus();
+    const sel = window.getSelection();
+    if (sel && sel.rangeCount) {
+      let node = sel.anchorNode;
+      let el   = node?.nodeType === Node.TEXT_NODE ? node.parentElement : node;
+      while (el && el !== bodyRef.current) {
+        if (el.style?.color) {
+          el.style.removeProperty('color');
+          if (!el.getAttribute('style')) el.removeAttribute('style');
+          setShowColors(false);
+          return;
+        }
+        if (el.tagName === 'FONT' && el.getAttribute('color')) {
+          el.removeAttribute('color');
+          setShowColors(false);
+          return;
+        }
+        el = el.parentElement;
+      }
+    }
+    setShowColors(v => !v);
   };
 
   return (
@@ -169,35 +273,35 @@ function NoteEditor({ note, noteId, user, currentGroupId, books, chapterCount, v
         )}
       </div>
 
-      {/* Format toolbar — floats between verse bar and writing area */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', padding: '0.38rem 0.7rem 0.18rem', flexWrap: 'wrap' }}>
-        <FmtBtn title="Bold" onMouseDown={fmt('bold')}>
-          <strong style={{ fontFamily: 'Georgia, serif', letterSpacing: '0.02em' }}>B</strong>
+      {/* Format toolbar */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', padding: '0.55rem 0.85rem 0.5rem', flexWrap: 'wrap', borderBottom: '1px solid rgba(200,134,26,0.12)' }}>
+        <FmtBtn title="Bold (click again to remove)" onMouseDown={fmt('bold')} active={activeFormats.bold}>
+          <strong style={{ fontFamily: 'Georgia, serif', fontSize: '1rem', letterSpacing: '0.01em' }}>B</strong>
         </FmtBtn>
-        <FmtBtn title="Italic" onMouseDown={fmt('italic')}>
-          <em style={{ fontFamily: 'Georgia, serif' }}>I</em>
+        <FmtBtn title="Italic (click again to remove)" onMouseDown={fmt('italic')} active={activeFormats.italic}>
+          <em style={{ fontFamily: 'Georgia, serif', fontSize: '1rem' }}>I</em>
         </FmtBtn>
-        <FmtBtn title="Underline" onMouseDown={fmt('underline')}>
-          <span style={{ textDecoration: 'underline' }}>U</span>
+        <FmtBtn title="Underline (click again to remove)" onMouseDown={fmt('underline')} active={activeFormats.underline}>
+          <span style={{ textDecoration: 'underline', textUnderlineOffset: 3, fontFamily: 'Georgia, serif', fontSize: '1rem' }}>U</span>
         </FmtBtn>
-        <FmtBtn title="Highlight" onMouseDown={applyHighlight}>
-          <span style={{ background: 'rgba(200,134,26,0.45)', borderRadius: 2, padding: '0 3px' }}>H</span>
+        <FmtBtn title="Highlight (click again to remove)" onMouseDown={toggleHighlight} active={activeFormats.highlight}>
+          <span style={{ background: activeFormats.highlight ? 'rgba(200,134,26,0.65)' : 'rgba(200,134,26,0.42)', borderRadius: 3, padding: '1px 5px', fontFamily: 'Georgia, serif', fontSize: '0.9rem' }}>H</span>
         </FmtBtn>
-        {/* Text color with swatch picker */}
+        {/* Text color — lights up when cursor is in colored text; click to remove color */}
         <div ref={colorWrapRef} style={{ position: 'relative' }}>
-          <FmtBtn title="Text color" onMouseDown={(e) => { e.preventDefault(); setShowColors(v => !v); }}>
-            <span style={{ borderBottom: '2px solid var(--gold)', paddingBottom: 1 }}>A</span>
+          <FmtBtn title={activeFormats.color ? 'Remove color' : 'Text color'} onMouseDown={onColorBtnMouseDown} active={activeFormats.color}>
+            <span style={{ borderBottom: `2.5px solid ${activeFormats.color ? 'var(--gold)' : 'var(--gold)'}`, paddingBottom: 2, fontFamily: 'Georgia, serif', fontSize: '1rem' }}>A</span>
           </FmtBtn>
           {showColors && (
             <div style={{
-              position: 'absolute', top: 'calc(100% + 6px)', left: 0,
-              display: 'flex', gap: '0.3rem',
-              background: 'rgba(14,9,2,0.97)',
-              border: '1px solid rgba(200,134,26,0.25)',
-              borderRadius: 12,
-              padding: '0.38rem 0.45rem',
+              position: 'absolute', top: 'calc(100% + 8px)', left: 0,
+              display: 'flex', gap: '0.38rem',
+              background: 'rgba(12,7,1,0.97)',
+              border: '1px solid rgba(200,134,26,0.28)',
+              borderRadius: 14,
+              padding: '0.5rem 0.6rem',
               zIndex: 30,
-              boxShadow: '0 6px 20px rgba(0,0,0,0.55)',
+              boxShadow: '0 8px 28px rgba(0,0,0,0.65)',
             }}>
               {TEXT_COLORS.map(color => (
                 <button
@@ -205,17 +309,17 @@ function NoteEditor({ note, noteId, user, currentGroupId, books, chapterCount, v
                   onMouseDown={applyColor(color)}
                   title={color}
                   style={{
-                    width: 17, height: 17,
+                    width: 24, height: 24,
                     borderRadius: '50%',
                     background: color,
-                    border: '1px solid rgba(255,255,255,0.15)',
+                    border: '1.5px solid rgba(255,255,255,0.18)',
                     cursor: 'pointer',
                     padding: 0,
                     flexShrink: 0,
-                    transition: 'transform 0.1s',
+                    transition: 'transform 0.12s, box-shadow 0.12s',
                   }}
-                  onMouseEnter={e => { e.currentTarget.style.transform = 'scale(1.28)'; }}
-                  onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1)'; }}
+                  onMouseEnter={e => { e.currentTarget.style.transform = 'scale(1.3)'; e.currentTarget.style.boxShadow = `0 0 0 2px rgba(255,255,255,0.15)`; }}
+                  onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.boxShadow = 'none'; }}
                 />
               ))}
             </div>

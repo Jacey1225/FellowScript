@@ -8,12 +8,22 @@
   --parchment:     #F4E4C1;
   --nav-h:            64px;
   --scnav-h:          44px;
-  --right-panel-w:    540px;
-  --contacts-w:       210px;
+  /* Right panel always occupies exactly half the viewport */
+  --half:             50vw;
+  --panel-gap:        0.6rem;           /* breathing room from screen edge  */
+  --right-panel-w:    calc(var(--half) - var(--panel-gap));
+  --contacts-w:       calc(var(--right-panel-w) / 3); /* always 1/3 of panel */
   --island-radius:    18px;
   --bible-font-size:    1.04rem;
   --bible-line-height:  2.15;
-  --bible-card-max-w:   820px;
+  /* Bible card always fills its half — no width cap */
+  --bible-card-max-w:   none;
+
+  /* Fluid type scale for the right panel — scales gently with viewport width */
+  --pt-xs:  clamp(0.54rem, 0.46rem + 0.28vw, 0.72rem);
+  --pt-sm:  clamp(0.65rem, 0.56rem + 0.34vw, 0.84rem);
+  --pt-md:  clamp(0.74rem, 0.63rem + 0.42vw, 0.94rem);
+  --pt-lg:  clamp(0.84rem, 0.72rem + 0.50vw, 1.05rem);
 
   /* Theme-aware */
   --bg-page:         #1c1c1c;
@@ -158,7 +168,8 @@ body {
   top: calc(100% + 2px);
   left: 0;
   z-index: 200;
-  width: 600px;
+  /* Never wider than the left half so it doesn't overlap the right panel */
+  width: min(600px, calc(50vw - 1.5rem));
   max-height: 460px;
   background: var(--widget-bg);
   border: 1px solid var(--widget-border);
@@ -444,25 +455,27 @@ body {
 }
 .hl-clear:hover { color: rgba(244,228,193,0.9); }
 
-/* ── Reader main area — Bible takes left portion ── */
+/* ── Reader main area — Bible fills the left 50% of the screen ── */
 .reader-main {
   padding-top: calc(var(--nav-h) + var(--scnav-h) + 3rem);
   padding-bottom: 6rem;
-  padding-right: calc(56vw + 1rem);
-  padding-left: 2rem;
+  /* Left: same gap as right panel's right offset.
+     Right: right panel begins at 50vw, plus a matching gap. */
+  padding-left: var(--panel-gap);
+  padding-right: calc(50vw + var(--panel-gap));
   display: flex;
   flex-direction: column;
   align-items: center;
   min-height: 100vh;
 }
 
-/* ── Right panel — wider, with breathing room top + bottom ── */
+/* ── Right panel — always occupies the right 50% ── */
 .reader-right-panel {
   position: fixed;
   top: calc(var(--nav-h) + var(--scnav-h) + 1rem);
-  right: 0.4rem;
+  right: var(--panel-gap);
   bottom: 0.8rem;
-  width: 56vw;
+  width: var(--right-panel-w);
   z-index: 80;
 }
 
@@ -517,10 +530,10 @@ body {
   overflow: hidden;
 }
 
-/* ── Contacts column — fixed width so notes section gets all extra space ── */
+/* ── Contacts column — fluid width so it scales with the panel ── */
 .contacts-section {
   flex: none;
-  width: 190px;
+  width: var(--contacts-w);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -551,7 +564,7 @@ body {
   padding: 0.5rem 0.75rem;
   border-radius: 12px;
   font-family: 'Lora', serif;
-  font-size: 0.8rem;
+  font-size: var(--pt-md);
   line-height: 1.5;
   word-break: break-word;
 }
@@ -741,66 +754,9 @@ body {
   .mobile-overlay.open { transform: translateY(0); z-index: 125; }
 }
 
-/* ── Tablet / small desktop (901–1299px) ── */
-@media (min-width: 901px) and (max-width: 1299px) {
-  /* Fixed 420px right panel — keeps the Bible reading area wide enough */
-  .reader-right-panel {
-    width: 420px;
-    right: 0.75rem;
-    bottom: 0.75rem;
-    top: calc(var(--nav-h) + var(--scnav-h) + 0.75rem);
-  }
-
-  /* Narrow the fixed contacts strip on the smaller tablet panel */
-  .contacts-section { width: 150px; }
-
-  .reader-main {
-    padding-right: calc(420px + 1.5rem);
-    padding-left: 1.5rem;
-  }
-
-  /* Keep bible-nav widget from spilling over the right panel */
-  .bib-nav-widget {
-    max-width: min(600px, calc(100vw - 444px));
-  }
-
-  .verse-sel-widget {
-    max-width: min(780px, calc(100vw - 444px));
-  }
-
-  /* Slightly tighter chapter/verse buttons so more fit in the narrower panel */
-  .bib-ch-btn {
-    width: 30px;
-    height: 30px;
-    font-size: 0.65rem;
-  }
-}
-
-/* ── Ultrawide (≥1600px) ── */
+/* ── Large desktop (≥1600px) — extra nav padding only ── */
 @media (min-width: 1600px) {
-  :root {
-    /* Panel: generous width centered in right half, capped at 960px */
-    --uw-panel-w:       min(calc(50vw - 1.5rem), 960px);
-    --bible-card-max-w: 960px;
-  }
-
-  .reader-main {
-    padding-right: 50vw;
-    padding-left:  1.5rem;
-  }
-
-  /* Right panel: centered in the right half with top/bottom breathing room */
-  .reader-right-panel {
-    width: var(--uw-panel-w);
-    right: auto;
-    left: calc(75vw - var(--uw-panel-w) / 2);
-    top: calc(var(--nav-h) + var(--scnav-h) + 1rem);
-    bottom: 0.8rem;
-  }
-
-  .fs-nav.ant-layout-header {
-    padding: 0 4rem;
-  }
+  .fs-nav.ant-layout-header { padding: 0 4rem; }
 }
 
 /* ── Note editor (Apple Notes style) ── */
@@ -927,7 +883,7 @@ body {
   resize: none;
   overflow: hidden;
   font-family: 'Playfair Display', serif;
-  font-size: 1.52rem;
+  font-size: clamp(1.1rem, 0.9rem + 0.8vw, 1.52rem);
   font-weight: 700;
   color: var(--parchment);
   line-height: 1.3;
@@ -944,7 +900,7 @@ body {
   border: none;
   outline: none;
   font-family: 'Lora', serif;
-  font-size: 0.9rem;
+  font-size: var(--pt-lg);
   color: rgba(244,228,193,0.72);
   line-height: 1.88;
   padding: 0;
@@ -972,7 +928,8 @@ body {
 
 /* ── Verse selector widget (3 columns) ── */
 .verse-sel-widget {
-  width: 780px;
+  /* Never wider than the left half so it doesn't overlap the right panel */
+  width: min(780px, calc(50vw - 1.5rem));
   max-height: 450px;
 }
 

@@ -82,27 +82,55 @@ func htmlToAttributedString(_ html: String) -> NSAttributedString {
 }
 
 /// Convert an NSAttributedString (from the iOS editor) to HTML for storage.
+///
+/// Uses a hand-rolled serializer rather than NSAttributedString's built-in HTML export.
+/// The built-in export generates CSS-class-based HTML; when only the body fragment is
+/// stored (without the accompanying <style> block) every formatting class becomes
+/// meaningless, so bold/italic/highlight/color are all lost on re-open.
+/// This serializer emits self-contained inline tags (<b>, <em>, <u>, <mark>) and
+/// inline style attributes so the output round-trips correctly via htmlToAttributedString.
 func attributedStringToHTML(_ attr: NSAttributedString) -> String {
-    guard attr.length > 0,
-          let data = try? attr.data(
-            from: NSRange(location: 0, length: attr.length),
-            documentAttributes: [
-                .documentType: NSAttributedString.DocumentType.html,
-                .characterEncoding: String.Encoding.utf8.rawValue,
-            ]
-          ),
-          let raw = String(data: data, encoding: .utf8)
-    else { return "" }
+    guard attr.length > 0 else { return "" }
+    var html = ""
 
-    // Strip the full HTML skeleton — web side only stores the inner body HTML.
-    if let bodyStart = raw.range(of: "<body"),
-       let bodyOpen  = raw[bodyStart.upperBound...].range(of: ">"),
-       let bodyClose = raw.range(of: "</body>", options: .backwards) {
-        let inner = String(raw[bodyOpen.upperBound..<bodyClose.lowerBound])
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        return inner
+    attr.enumerateAttributes(
+        in: NSRange(location: 0, length: attr.length),
+        options: []
+    ) { attrs, range, _ in
+        var segment = (attr.string as NSString).substring(with: range)
+            .replacingOccurrences(of: "&", with: "&amp;")
+            .replacingOccurrences(of: "<", with: "&lt;")
+            .replacingOccurrences(of: ">", with: "&gt;")
+            .replacingOccurrences(of: "\n", with: "<br>")
+
+        let font    = attrs[.font] as? UIFont ?? kBodyFont
+        let isBold  = font.fontDescriptor.symbolicTraits.contains(.traitBold)
+        let isItal  = font.fontDescriptor.symbolicTraits.contains(.traitItalic)
+        let isUnder = (attrs[.underlineStyle] as? Int ?? 0) != 0
+
+        var bgA: CGFloat = 0
+        (attrs[.backgroundColor] as? UIColor ?? kClearColor)
+            .getRed(nil, green: nil, blue: nil, alpha: &bgA)
+        let isHL = bgA > 0.05
+
+        var fgR: CGFloat = 244/255, fgG: CGFloat = 228/255, fgB: CGFloat = 193/255, fgA: CGFloat = 0.78
+        if let c = attrs[.foregroundColor] as? UIColor { c.getRed(&fgR, green: &fgG, blue: &fgB, alpha: &fgA) }
+        let isCustomColor = !(abs(fgR - 244/255) < 0.06 && abs(fgG - 228/255) < 0.06 && abs(fgB - 193/255) < 0.06)
+
+        // Wrap innermost to outermost so nesting is valid.
+        if isCustomColor { segment = "<span style=\"color:rgba(\(Int(fgR*255)),\(Int(fgG*255)),\(Int(fgB*255)),\(String(format: "%.2f", fgA)))\">\(segment)</span>" }
+        if isHL          { segment = "<mark>\(segment)</mark>" }
+        if isUnder       { segment = "<u>\(segment)</u>" }
+        if isItal        { segment = "<em>\(segment)</em>" }
+        if isBold        { segment = "<b>\(segment)</b>" }
+
+        html += segment
     }
-    return raw
+
+    // Strip trailing <br> tags introduced by a final newline in the attributed string.
+    while html.hasSuffix("<br>") { html = String(html.dropLast(4)) }
+
+    return html
 }
 
 // ── Rich-text editor controller ────────────────────────────────────────────────
@@ -111,9 +139,21 @@ func attributedStringToHTML(_ attr: NSAttributedString) -> String {
 /// The toolbar calls toggle*/apply* methods; the UIViewRepresentable holds the weak ref.
 final class RichTextEditorController: ObservableObject {
 
-    @Published var htmlOutput: String = ""
+    @Published var htmlOutput:    String = ""
+
+    // Active-state flags — updated on every cursor move so the toolbar
+    // can highlight the button that matches the current insertion format.
+    @Published var isBold:         Bool = false
+    @Published var isItalic:       Bool = false
+    @Published var isUnderline:    Bool = false
+    @Published var isHighlight:    Bool = false
+    @Published var hasCustomColor: Bool = false
 
     weak var textView: UITextView?
+
+    // HTML that arrived before the UITextView was in the hierarchy.
+    // makeUIView reads this and applies it the moment the view is ready.
+    fileprivate var pendingHTML: String = ""
 
     // ── Format actions ────────────────────────────────────────────────────────
 
@@ -169,14 +209,116 @@ final class RichTextEditorController: ObservableObject {
     // ── Content access ────────────────────────────────────────────────────────
 
     func setHTML(_ html: String) {
-        let attr = htmlToAttributedString(html)
-        textView?.attributedText = attr
+        // Always update htmlOutput immediately so the placeholder hides.
         htmlOutput = html
+        if let tv = textView {
+            tv.attributedText = htmlToAttributedString(html)
+        } else {
+            // UITextView not yet in the hierarchy — store for makeUIView to pick up.
+            pendingHTML = html
+        }
     }
 
     func currentHTML() -> String {
         guard let tv = textView else { return "" }
         return attributedStringToHTML(tv.attributedText)
+    }
+
+    // ── Format-state refresh ──────────────────────────────────────────────────
+
+    /// Called on every cursor/selection change to keep the @Published flags
+    /// in sync so the toolbar buttons light up when the cursor is inside
+    /// formatted text.
+    ///
+    /// Rules (collapsed cursor):
+    ///   • Prev char == '\n' AND (at end of text OR next char == '\n'):
+    ///     truly empty line → reset typingAttributes + clear all flags.
+    ///   • Prev char == '\n' AND next char is real text:
+    ///     start of a non-empty paragraph → reflect that paragraph's first char.
+    ///   • Position 0, text exists: reflect char 0.
+    ///   • Normal: reflect the char to the left of the cursor.
+    func refreshFormatState() {
+        guard let tv = textView else { return }
+        let sel  = tv.selectedRange
+        let attr = tv.attributedText ?? NSAttributedString()
+        let len  = attr.length
+
+        // ── Selection (length > 0): inspect first selected char ───────────────
+        if sel.length > 0 {
+            let pos = min(sel.location, max(0, len - 1))
+            if len > 0 { applyFormatState(attr.attributes(at: pos, effectiveRange: nil)) }
+            else        { setAllInactive() }
+            return
+        }
+
+        // ── Collapsed cursor ──────────────────────────────────────────────────
+        let pos = sel.location
+
+        guard len > 0 else { setAllInactive(); return }
+
+        if pos == 0 {
+            // Beginning of document — reflect char 0
+            applyFormatState(attr.attributes(at: 0, effectiveRange: nil))
+            return
+        }
+
+        // Character immediately to the left
+        let prevChar = attr.attributedSubstring(
+            from: NSRange(location: pos - 1, length: 1)
+        ).string
+
+        if prevChar == "\n" {
+            if pos >= len {
+                // At end of text after a newline → freshly created empty line
+                tv.typingAttributes = kBaseAttrs
+                setAllInactive()
+            } else {
+                let nextChar = attr.attributedSubstring(
+                    from: NSRange(location: pos, length: 1)
+                ).string
+                if nextChar == "\n" {
+                    // Between two newlines → blank line in the middle of text
+                    tv.typingAttributes = kBaseAttrs
+                    setAllInactive()
+                } else {
+                    // Cursor at the very start of a non-empty paragraph
+                    applyFormatState(attr.attributes(at: pos, effectiveRange: nil))
+                }
+            }
+            return
+        }
+
+        // Normal case: reflect the char to the left
+        applyFormatState(attr.attributes(at: pos - 1, effectiveRange: nil))
+    }
+
+    private func setAllInactive() {
+        isBold = false; isItalic = false
+        isUnderline = false; isHighlight = false; hasCustomColor = false
+    }
+
+    private func applyFormatState(_ attrs: [NSAttributedString.Key: Any]) {
+        let font    = attrs[.font] as? UIFont ?? kBodyFont
+        let traits  = font.fontDescriptor.symbolicTraits
+        let underln = attrs[.underlineStyle] as? Int ?? 0
+
+        var bgR: CGFloat = 0, bgG: CGFloat = 0, bgB: CGFloat = 0, bgA: CGFloat = 0
+        (attrs[.backgroundColor] as? UIColor ?? kClearColor)
+            .getRed(&bgR, green: &bgG, blue: &bgB, alpha: &bgA)
+
+        var fgR: CGFloat = 0, fgG: CGFloat = 0, fgB: CGFloat = 0
+        (attrs[.foregroundColor] as? UIColor ?? kTextColor)
+            .getRed(&fgR, green: &fgG, blue: &fgB, alpha: nil)
+        // kTextColor ≈ (244/255, 228/255, 193/255)
+        let isDefault = abs(fgR - 244/255) < 0.06
+                     && abs(fgG - 228/255) < 0.06
+                     && abs(fgB - 193/255) < 0.06
+
+        isBold         = traits.contains(.traitBold)
+        isItalic       = traits.contains(.traitItalic)
+        isUnderline    = underln != 0
+        isHighlight    = bgA > 0.05
+        hasCustomColor = !isDefault
     }
 
     // ── Internal ──────────────────────────────────────────────────────────────
@@ -206,6 +348,7 @@ final class RichTextEditorController: ObservableObject {
         }
 
         htmlOutput = currentHTML()
+        refreshFormatState()
     }
 }
 
@@ -229,8 +372,12 @@ struct RichTextEditorView: UIViewRepresentable {
         tv.textContainerInset = .zero
         tv.textContainer.lineFragmentPadding = 0
         tv.typingAttributes   = kBaseAttrs
-        // Give the controller its reference.
         controller.textView   = tv
+        // If setHTML was called before this view entered the hierarchy, apply it now.
+        if !controller.pendingHTML.isEmpty {
+            tv.attributedText     = htmlToAttributedString(controller.pendingHTML)
+            controller.pendingHTML = ""
+        }
         return tv
     }
 
@@ -257,6 +404,11 @@ struct RichTextEditorView: UIViewRepresentable {
         func textViewDidChange(_ tv: UITextView) {
             ignoreNextUpdate = true
             parent.controller.htmlOutput = parent.controller.currentHTML()
+            parent.controller.refreshFormatState()
+        }
+
+        func textViewDidChangeSelection(_ tv: UITextView) {
+            parent.controller.refreshFormatState()
         }
     }
 }

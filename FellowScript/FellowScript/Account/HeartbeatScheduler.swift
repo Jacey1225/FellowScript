@@ -89,6 +89,7 @@ enum HeartbeatScheduler {
 
     private static func mostRecentPassedDate(for event: FSHeartbeat) -> Date? {
         let fmt = DateFormatter(); fmt.dateFormat = "HH:mm"
+        fmt.timeZone = TimeZone(identifier: "UTC")   // timestamps stored as UTC "HH:mm"
         let cal = Calendar.current; let now = Date()
         var best: Date? = nil
 
