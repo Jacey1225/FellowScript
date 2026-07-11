@@ -76,7 +76,7 @@ export function useAgentChat({ user, onNoteSaved }) {
 
         firedTodayRef.current.add(fireKey);
         try {
-          const res = await fetch(`${API}/agent/${user.user_id}/${hb.agent_id}/commit_heartbeat`, {
+          const res = await fetch(`${API}/agent/${user.user_id}/${hb.agent_id}/${hb._id}/commit_heartbeat`, {
             method:  'POST',
             headers: { 'Content-Type': 'application/json' },
             body:    JSON.stringify({ prompt: hb.prompt }),

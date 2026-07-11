@@ -109,13 +109,21 @@ final class NotesViewModel: ObservableObject {
         notes = allNotes
     }
 
+    @Published var saveError: String? = nil
+
     func saveNote(_ note: FSNote, editingId: String?, userId: String) async -> Bool {
+        print("[VM] saveNote called — editingId=\(editingId ?? "nil") text.count=\(note.text.count) text.prefix=\(note.text.prefix(60))")
         do {
             let savedId = try await service.saveNote(note, editingId: editingId, userId: userId)
             var updated = note; updated.id = savedId
             notes[savedId] = updated
+            print("[VM] saveNote succeeded — savedId=\(savedId)")
             return true
-        } catch { return false }
+        } catch {
+            print("[VM] saveNote FAILED — \(error)")
+            saveError = error.localizedDescription
+            return false
+        }
     }
 
     func deleteNote(id: String, userId: String) async {
@@ -233,6 +241,9 @@ struct NotesListView: View {
                 await vm.load(service: appState.service, userId: uid)
             }
         }
+        // Editor sheet — used by the context-menu "Edit" shortcut only.
+        // The NoteDetailView → Edit path has its own sheet to avoid two
+        // competing sheets on the same parent (which races on editingNote).
         .sheet(isPresented: $showEditor) {
             NoteEditorView(
                 note:      editingNote,
@@ -245,12 +256,18 @@ struct NotesListView: View {
             }
         }
         .sheet(item: $detailNote) { note in
-            NoteDetailView(note: note, onEdit: { n, id in
-                editingNote    = n
-                editingId      = id
-                editingGroupId = n.group_id
-                showEditor     = true
-            })
+            NoteDetailView(note: note) { saved in
+                let uid = appState.currentUser?.user_id ?? ""
+                Task { await vm.saveNote(saved, editingId: note.id, userId: uid) }
+            }
+        }
+        .alert("Save Failed", isPresented: Binding(
+            get: { vm.saveError != nil },
+            set: { if !$0 { vm.saveError = nil } }
+        )) {
+            Button("OK") { vm.saveError = nil }
+        } message: {
+            Text(vm.saveError ?? "")
         }
     }
 
@@ -504,8 +521,10 @@ struct HighlightRow: View {
 // ── Note detail sheet ─────────────────────────────────────────────────────────
 struct NoteDetailView: View {
     let note:   FSNote
-    let onEdit: (FSNote, String) -> Void
+    let onSave: (FSNote) -> Void   // called when user saves edits
+
     @Environment(\.dismiss) private var dismiss
+    @State private var showEditor = false
 
     var body: some View {
         NavigationStack {
@@ -536,11 +555,20 @@ struct NoteDetailView: View {
                     Button("Close") { dismiss() }.foregroundColor(Theme.gold)
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Edit") {
-                        onEdit(note, note.id)
-                        dismiss()
-                    }
-                    .foregroundColor(Theme.gold)
+                    Button("Edit") { showEditor = true }.foregroundColor(Theme.gold)
+                }
+            }
+            // Editor sheet lives here — note is a guaranteed let constant,
+            // so NoteEditorView always receives the correct content.
+            .sheet(isPresented: $showEditor) {
+                NoteEditorView(
+                    note:       note,
+                    noteId:     note.id,
+                    groupId:    note.group_id,
+                    isReadOnly: false
+                ) { saved in
+                    onSave(saved)
+                    dismiss()
                 }
             }
         }
