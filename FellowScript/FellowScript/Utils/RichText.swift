@@ -47,7 +47,7 @@ func htmlToAttributedString(_ html: String) -> NSAttributedString {
       body { font-family: "Lora", Georgia, serif; font-size: \(Int(kBodySize))px;
              color: rgba(244,228,193,0.78); background: transparent;
              line-height: 1.85; }
-      b, strong { font-weight: bold; }
+      b, strong { font-weight: bold; } 
       i, em     { font-style: italic; }
       u         { text-decoration: underline; }
       mark      { background-color: rgba(200,134,26,0.28); }
@@ -101,6 +101,10 @@ func attributedStringToHTML(_ attr: NSAttributedString) -> String {
             .replacingOccurrences(of: "&", with: "&amp;")
             .replacingOccurrences(of: "<", with: "&lt;")
             .replacingOccurrences(of: ">", with: "&gt;")
+            .replacingOccurrences(of: "\u{2029}", with: "<br>")
+            .replacingOccurrences(of: "\u{2028}", with: "<br>")
+            .replacingOccurrences(of: "\r\n", with: "<br>")
+            .replacingOccurrences(of: "\r", with: "<br>")
             .replacingOccurrences(of: "\n", with: "<br>")
 
         let font    = attrs[.font] as? UIFont ?? kBodyFont
@@ -127,8 +131,10 @@ func attributedStringToHTML(_ attr: NSAttributedString) -> String {
         html += segment
     }
 
-    // Strip trailing <br> tags introduced by a final newline in the attributed string.
-    while html.hasSuffix("<br>") { html = String(html.dropLast(4)) }
+    // Strip at most one trailing <br> (final paragraph break added by the HTML parser).
+    // An unbounded loop would erase all content when a note consists entirely of
+    // newline/paragraph-separator characters, returning "" and silently discarding edits.
+    if html.hasSuffix("<br>") { html = String(html.dropLast(4)) }
 
     return html
 }
@@ -150,10 +156,6 @@ final class RichTextEditorController: ObservableObject {
     @Published var hasCustomColor: Bool = false
 
     weak var textView: UITextView?
-
-    // HTML that arrived before the UITextView was in the hierarchy.
-    // makeUIView reads this and applies it the moment the view is ready.
-    fileprivate var pendingHTML: String = ""
 
     // ── Format actions ────────────────────────────────────────────────────────
 
@@ -209,19 +211,19 @@ final class RichTextEditorController: ObservableObject {
     // ── Content access ────────────────────────────────────────────────────────
 
     func setHTML(_ html: String) {
-        // Always update htmlOutput immediately so the placeholder hides.
+        guard let tv = textView else { return }
+        tv.attributedText = htmlToAttributedString(html)
         htmlOutput = html
-        if let tv = textView {
-            tv.attributedText = htmlToAttributedString(html)
-        } else {
-            // UITextView not yet in the hierarchy — store for makeUIView to pick up.
-            pendingHTML = html
-        }
     }
 
     func currentHTML() -> String {
-        guard let tv = textView else { return "" }
-        return attributedStringToHTML(tv.attributedText)
+        guard let tv = textView else {
+            print("[RTC] currentHTML — textView is NIL")
+            return ""
+        }
+        let result = attributedStringToHTML(tv.attributedText)
+        print("[RTC] currentHTML — tv.text.count=\(tv.text.count) result.count=\(result.count)")
+        return result
     }
 
     // ── Format-state refresh ──────────────────────────────────────────────────
@@ -327,7 +329,10 @@ final class RichTextEditorController: ObservableObject {
     private func modifySelection(
         modifier: (inout [NSAttributedString.Key: Any], NSRange) -> Void
     ) {
-        guard let tv = textView else { return }
+        guard let tv = textView else {
+            print("[RTC] modifySelection — textView is NIL, format button has no effect")
+            return
+        }
         let sel = tv.selectedRange
 
         if sel.length > 0 {
@@ -356,12 +361,14 @@ final class RichTextEditorController: ObservableObject {
 
 struct RichTextEditorView: UIViewRepresentable {
 
-    let controller: RichTextEditorController
+    let controller:  RichTextEditorController
+    var initialHTML: String = ""   // pre-load existing note content during makeUIView
     var placeholder: String = "Start writing…"
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
     func makeUIView(context: Context) -> UITextView {
+        print("[RTE] makeUIView — initialHTML.count=\(initialHTML.count)")
         let tv = UITextView()
         tv.delegate           = context.coordinator
         tv.backgroundColor    = .clear
@@ -373,16 +380,41 @@ struct RichTextEditorView: UIViewRepresentable {
         tv.textContainer.lineFragmentPadding = 0
         tv.typingAttributes   = kBaseAttrs
         controller.textView   = tv
-        // If setHTML was called before this view entered the hierarchy, apply it now.
-        if !controller.pendingHTML.isEmpty {
-            tv.attributedText     = htmlToAttributedString(controller.pendingHTML)
-            controller.pendingHTML = ""
+        print("[RTE] makeUIView — set controller.textView \(ObjectIdentifier(tv))")
+        // Apply existing note HTML synchronously so the text is visible immediately.
+        if !initialHTML.isEmpty {
+            // Suppress textViewDidChangeSelection during content setup — setting
+            // attributedText fires the delegate synchronously, which would call
+            // refreshFormatState() and publish @Published changes while SwiftUI is
+            // still in a render cycle, causing "Publishing changes from within view
+            // updates is not allowed" warnings and repeated makeUIView calls.
+            context.coordinator.isBuildingContent = true
+            tv.attributedText = htmlToAttributedString(initialHTML)
+            context.coordinator.isBuildingContent = false
+
+            // Defer the @Published htmlOutput update to after the render cycle for
+            // the same reason — synchronous assignment here re-triggers a render which
+            // calls makeUIView again, creating a stale controller.textView reference.
+            let html = initialHTML
+            DispatchQueue.main.async {
+                controller.htmlOutput = html
+            }
         }
         return tv
     }
 
     func updateUIView(_ tv: UITextView, context: Context) {
-        // Avoid resetting cursor position on every SwiftUI re-render.
+        // makeUIView can run several times during SwiftUI's initial layout, each
+        // creating a fresh UITextView. controller.textView is a *weak* ref, so it
+        // may be left pointing at a stray view that SwiftUI then deallocates —
+        // making it nil, which is why the format-toolbar buttons had no effect.
+        //
+        // SwiftUI retains and displays exactly ONE text view and calls updateUIView
+        // only on that live instance, so re-point the controller here to guarantee
+        // the toolbar always targets the on-screen text view.
+        if controller.textView !== tv {
+            controller.textView = tv
+        }
         if context.coordinator.ignoreNextUpdate {
             context.coordinator.ignoreNextUpdate = false
             return
@@ -397,17 +429,44 @@ struct RichTextEditorView: UIViewRepresentable {
 
     class Coordinator: NSObject, UITextViewDelegate {
         var parent: RichTextEditorView
-        var ignoreNextUpdate = false
+        var ignoreNextUpdate  = false
+        // Set to true while makeUIView is applying initial content so that the
+        // delegate's textViewDidChangeSelection callback (fired by setting
+        // attributedText) does not publish @Published changes during a SwiftUI
+        // render cycle, which would trigger "Publishing changes from within view
+        // updates is not allowed" and cause repeated makeUIView calls.
+        var isBuildingContent = false
 
         init(_ parent: RichTextEditorView) { self.parent = parent }
 
         func textViewDidChange(_ tv: UITextView) {
             ignoreNextUpdate = true
-            parent.controller.htmlOutput = parent.controller.currentHTML()
+            let live = parent.controller.currentHTML()
+            print("[RTE] textViewDidChange tv.count=\(tv.text.count) live.count=\(live.count) live.prefix=\(live.prefix(60))")
+            if !live.isEmpty {
+                parent.controller.htmlOutput = live
+            } else {
+                // HTML conversion returned empty — use plain text so edits are not lost.
+                let plain = tv.text ?? ""
+                if !plain.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    let simpleHTML = plain
+                        .replacingOccurrences(of: "&", with: "&amp;")
+                        .replacingOccurrences(of: "<", with: "&lt;")
+                        .replacingOccurrences(of: ">", with: "&gt;")
+                        .replacingOccurrences(of: "\u{2029}", with: "<br>")
+                        .replacingOccurrences(of: "\u{2028}", with: "<br>")
+                        .replacingOccurrences(of: "\r\n", with: "<br>")
+                        .replacingOccurrences(of: "\r", with: "<br>")
+                        .replacingOccurrences(of: "\n", with: "<br>")
+                    parent.controller.htmlOutput = simpleHTML
+                    print("[RTE] textViewDidChange — used plain-text fallback count=\(simpleHTML.count)")
+                }
+            }
             parent.controller.refreshFormatState()
         }
 
         func textViewDidChangeSelection(_ tv: UITextView) {
+            guard !isBuildingContent else { return }
             parent.controller.refreshFormatState()
         }
     }

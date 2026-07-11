@@ -138,7 +138,15 @@ def create_tables(cur):
         "agent_id UUID REFERENCES agents(_id) ON DELETE CASCADE,"
         "user_id UUID REFERENCES users(_id) ON DELETE CASCADE,"
         "timestamps JSONB DEFAULT '[]',"
-        "prompt TEXT DEFAULT '')"
+        "prompt TEXT DEFAULT '',"
+        # Timestamp of the most recent fire. Used to make commit_hb_response
+        # idempotent so the server cron and the iOS client can't both create a
+        # note for the same scheduled slot (they fire within the same minute).
+        "last_fired TIMESTAMPTZ)"
+    )
+    # Migration for databases created before last_fired existed.
+    cur.execute(
+        "ALTER TABLE agent_heartbeats ADD COLUMN IF NOT EXISTS last_fired TIMESTAMPTZ"
     )
 
     cur.execute(

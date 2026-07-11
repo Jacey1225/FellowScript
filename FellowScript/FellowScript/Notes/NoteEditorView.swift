@@ -182,16 +182,24 @@ struct NoteEditorView: View {
                                     .accessibilityLabel("Note body")
                             } else {
                                 ZStack(alignment: .topLeading) {
-                                    if rtc.htmlOutput.isEmpty {
-                                        Text("Start writing…")
-                                            .font(.lora(Theme.fontBody))
-                                            .foregroundColor(Theme.textMuted)
-                                            .padding(.top, 2)
-                                            .allowsHitTesting(false)
-                                    }
-                                    RichTextEditorView(controller: rtc, placeholder: "Start writing…")
-                                        .frame(maxWidth: .infinity, minHeight: 220)
-                                        .accessibilityLabel("Note body text")
+                                    // Keep Text always in the ZStack so the structure
+                                    // never changes — a structural conditional (if/else)
+                                    // shifts RichTextEditorView's ZStack position and
+                                    // can cause SwiftUI to recreate the UIViewRepresentable,
+                                    // calling makeUIView a second time and resetting htmlOutput.
+                                    Text("Start writing…")
+                                        .font(.lora(Theme.fontBody))
+                                        .foregroundColor(Theme.textMuted)
+                                        .padding(.top, 2)
+                                        .allowsHitTesting(false)
+                                        .opacity(rtc.htmlOutput.isEmpty ? 1 : 0)
+                                    RichTextEditorView(
+                                        controller:  rtc,
+                                        initialHTML: note?.text ?? "",
+                                        placeholder: "Start writing…"
+                                    )
+                                    .frame(maxWidth: .infinity, minHeight: 220)
+                                    .accessibilityLabel("Note body text")
                                 }
                             }
                         }
@@ -223,8 +231,8 @@ struct NoteEditorView: View {
     // ── Helpers ───────────────────────────────────────────────────────────────
     private func populate() {
         if let n = note {
-            titleVal = n.title
-            isPublic = n.public
+            titleVal  = n.title
+            isPublic  = n.public
             verseList = n.verses.compactMap { components -> VerseRef? in
                 guard components.count >= 3 else { return nil }
                 let book = components[0].asString
@@ -232,9 +240,8 @@ struct NoteEditorView: View {
                 let vs   = components[2].asInt ?? 0
                 return VerseRef(book: book, chapter: ch, verse: vs)
             }
-            // setHTML stores the HTML as pendingHTML if the UITextView isn't
-            // ready yet; makeUIView applies it the moment the view appears.
-            rtc.setHTML(n.text)
+            // Body text is loaded by RichTextEditorView(initialHTML:) in makeUIView —
+            // no async dispatch needed.
         } else {
             titleFocused = true
         }
@@ -242,7 +249,28 @@ struct NoteEditorView: View {
 
     private func handleSave() {
         isSaving = true
-        let html = rtc.currentHTML()
+        // Prefer live UITextView content; fall back to tracked @Published value,
+        // then original note text — defense against transient empty-string conditions.
+        let liveHTML    = rtc.currentHTML()
+        let trackedHTML = rtc.htmlOutput
+        let tvText      = rtc.textView?.text ?? ""
+        let html: String
+        if !liveHTML.isEmpty {
+            html = liveHTML
+        } else if !trackedHTML.isEmpty {
+            html = trackedHTML
+        } else if !tvText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            // Plain-text fallback when HTML conversion fails entirely
+            html = tvText
+                .replacingOccurrences(of: "\u{2029}", with: "<br>")
+                .replacingOccurrences(of: "\u{2028}", with: "<br>")
+                .replacingOccurrences(of: "\r\n", with: "<br>")
+                .replacingOccurrences(of: "\r", with: "<br>")
+                .replacingOccurrences(of: "\n", with: "<br>")
+        } else {
+            html = note?.text ?? ""
+        }
+        print("[Save] liveHTML.count=\(liveHTML.count) trackedHTML.count=\(trackedHTML.count) tvText.count=\(tvText.count) → html.count=\(html.count) html.prefix=\(html.prefix(80))")
         // Preserve the original note's immutable metadata so a server-side ownership
         // or type check on is_reply / user / replies doesn't silently discard the edit.
         let originalUser = note?.user ?? ""

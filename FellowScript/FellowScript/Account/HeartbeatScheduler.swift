@@ -13,6 +13,11 @@ import UserNotifications
 enum HeartbeatScheduler {
 
     private static let lastFiredKey = "fs_hb_last_fired"
+    // Prevents a second concurrent checkAndFire from double-firing the same event
+    // when scenePhase transitions to .active more than once before the first run
+    // finishes (e.g. Face ID, Control Center, or app-switcher briefly deactivates
+    // the scene).  Static stored properties on enums are valid in Swift.
+    private static var isFiring = false
 
     // ── Schedule reminder notifications for upcoming events ───────────────────
 
@@ -56,6 +61,10 @@ enum HeartbeatScheduler {
         events: [FSHeartbeat],
         service: DataServiceProtocol
     ) async {
+        guard !isFiring else { return }
+        isFiring = true
+        defer { isFiring = false }
+
         var lastFired = UserDefaults.standard.dictionary(forKey: lastFiredKey)
                             as? [String: Double] ?? [:]
         let now = Date()
