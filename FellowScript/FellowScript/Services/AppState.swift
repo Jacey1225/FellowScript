@@ -57,12 +57,23 @@ final class AppState: ObservableObject {
         requestPushNotifications()
     }
 
+    func signInWithApple(identityToken: String, fullName: String?, email: String?) async throws {
+        let user = try await service.signInWithApple(
+            identityToken: identityToken, fullName: fullName, email: email
+        )
+        persist(user)
+        requestPushNotifications()
+    }
+
     func signOut() {
         storedUserId    = ""
         storedUsername  = ""
         storedEmail     = ""
         currentUser     = nil
         isAuthenticated = false
+        // Wipe cached data so the next account never sees the previous user's notes,
+        // groups, highlights, messages, or account info.
+        Task { await DiskCache.shared.clear() }
     }
 
     func updateUser(_ patch: FSUser) {

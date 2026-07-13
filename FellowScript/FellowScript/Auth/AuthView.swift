@@ -4,6 +4,7 @@
 // DEPENDENCY: AppState.swift, Theme.swift
 
 import SwiftUI
+import AuthenticationServices
 
 struct AuthView: View {
     @EnvironmentObject var appState: AppState
@@ -18,6 +19,7 @@ struct AuthView: View {
     @State private var errorMsg    = ""
     @State private var isLoading     = false
     @State private var googleLoading = false
+    @State private var appleLoading  = false
     @FocusState private var focusField: Field?
 
     private enum Field { case username, email, password }
@@ -170,6 +172,28 @@ struct AuthView: View {
                         .disabled(googleLoading || isLoading)
                         .accessibilityLabel("Continue with Google")
 
+                        // Sign in with Apple — required by Guideline 4.8 whenever a
+                        // third-party social login (Google) is offered. Uses the native
+                        // SignInWithAppleButton so styling stays compliant.
+                        SignInWithAppleButton(.continue) { request in
+                            request.requestedScopes = [.fullName, .email]
+                        } onCompletion: { result in
+                            handleAppleCompletion(result)
+                        }
+                        .signInWithAppleButtonStyle(.white)
+                        .frame(height: 50)
+                        .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
+                        .padding(.top, Theme.spacingSM)
+                        .disabled(appleLoading || googleLoading || isLoading)
+                        .overlay {
+                            if appleLoading {
+                                RoundedRectangle(cornerRadius: Theme.radius)
+                                    .fill(Color.black.opacity(0.35))
+                                    .overlay(ProgressView().tint(.white))
+                            }
+                        }
+                        .accessibilityLabel("Sign in with Apple")
+
                         // Privacy acknowledgment — required by Apple Guideline 5.1.1
                         if !isSignIn {
                             VStack(spacing: 4) {
@@ -227,6 +251,50 @@ struct AuthView: View {
             onComplete?()
         } catch {
             errorMsg = error.localizedDescription
+        }
+    }
+
+    private func handleAppleCompletion(_ result: Result<ASAuthorization, Error>) {
+        errorMsg = ""
+        switch result {
+        case .failure(let error):
+            // User cancellation is not an error worth surfacing.
+            if (error as? ASAuthorizationError)?.code == .canceled { return }
+            errorMsg = "Apple sign-in failed. Please try again."
+
+        case .success(let auth):
+            guard
+                let cred  = auth.credential as? ASAuthorizationAppleIDCredential,
+                let data  = cred.identityToken,
+                let token = String(data: data, encoding: .utf8)
+            else {
+                errorMsg = "Apple sign-in did not return a valid token."
+                return
+            }
+            // Name/email are only provided on the first authorization; join name parts.
+            var name: String? = nil
+            if let nc = cred.fullName {
+                let joined = [nc.givenName, nc.familyName]
+                    .compactMap { $0 }
+                    .joined(separator: " ")
+                    .trimmingCharacters(in: .whitespaces)
+                name = joined.isEmpty ? nil : joined
+            }
+            let email = cred.email
+
+            Task {
+                appleLoading = true
+                focusField = nil
+                defer { appleLoading = false }
+                do {
+                    try await appState.signInWithApple(
+                        identityToken: token, fullName: name, email: email
+                    )
+                    onComplete?()
+                } catch {
+                    errorMsg = error.localizedDescription
+                }
+            }
         }
     }
 

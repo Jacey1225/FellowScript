@@ -171,17 +171,18 @@ struct FSBookmark: Identifiable {
 }
 
 // ── Chat / Messaging ──────────────────────────────────────────────────────────
-enum ContactType { case friend, group }
+enum ContactType: String, Codable { case friend, group }
 
-struct FSContact: Identifiable {
+struct FSContact: Identifiable, Codable {
     let id:      String
     let name:    String
     let type:    ContactType
     var preview: String = ""
-    var toUsers: [String] = []
+    var toUsers: [String] = []      // member user IDs — used for message routing
+    var memberNames: [String] = []  // member usernames (excludes self) — for display
 }
 
-struct FSMessage: Identifiable {
+struct FSMessage: Identifiable, Codable {
     let id:        String
     let text:      String
     let mine:      Bool
@@ -258,7 +259,7 @@ extension FSAgent {
     }
 }
 
-struct FSAgentMessage: Identifiable {
+struct FSAgentMessage: Identifiable, Codable {
     let id:        String
     let text:      String
     let mine:      Bool

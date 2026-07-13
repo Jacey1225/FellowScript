@@ -83,40 +83,126 @@ def format_messages(messages: list[dict]) -> list[dict]:
     return new_messages
 
 #MARK:USERS
+# All user access is Postgres-backed. The JSON-era shape is reconstructed from
+# the relational tables so every existing caller keeps working unchanged:
+#   {uid: {username, email, hash_pass, apple_sub?, friends[], friend_requests[],
+#          groups[], highlights{}, bookmarks{}}}
+
 
 def load_users_data() -> dict:
-    path = os.path.join(main_path, user_path)
-    if not os.path.exists(path):
-        return {}
+    """Build the full user map from Postgres (base rows + related tables)."""
+    db = DB()
     try:
-        with open(path, 'r') as f:
-            return json.load(f)
-    except json.JSONDecodeError:
-        return {}
+        users: dict = {}
+        db.cur.execute("SELECT _id, username, email, hash_pass, apple_sub FROM users")
+        for _id, username, email, hash_pass, apple_sub in db.cur.fetchall():
+            uid = str(_id)
+            rec = {
+                "username": username, "email": email, "hash_pass": hash_pass or "",
+                "friends": [], "friend_requests": [], "groups": [],
+                "highlights": {}, "bookmarks": {},
+            }
+            if apple_sub:
+                rec["apple_sub"] = apple_sub
+            users[uid] = rec
+
+        db.cur.execute("SELECT user_id, friend_id FROM user_friends")
+        for u, f in db.cur.fetchall():
+            u = str(u)
+            if u in users:
+                users[u]["friends"].append(str(f))
+
+        db.cur.execute("SELECT to_user_id, from_user_id FROM friend_requests")
+        for t, fr in db.cur.fetchall():
+            t = str(t)
+            if t in users:
+                users[t]["friend_requests"].append(str(fr))
+
+        db.cur.execute("SELECT user_id, key, color FROM highlights")
+        for u, k, c in db.cur.fetchall():
+            u = str(u)
+            if u in users:
+                users[u]["highlights"][k] = c
+
+        db.cur.execute("SELECT user_id, key, label FROM bookmarks")
+        for u, k, l in db.cur.fetchall():
+            u = str(u)
+            if u in users:
+                users[u]["bookmarks"][k] = l
+
+        db.cur.execute("SELECT _id, users FROM groups")
+        for gid, members in db.cur.fetchall():
+            gid = str(gid)
+            for m in (members or []):
+                m = str(m)
+                if m in users:
+                    users[m]["groups"].append(gid)
+        return users
+    finally:
+        db.close()
+
+
+def save_users_data(user_info: dict) -> None:
+    """Upsert each user's base row into Postgres.
+
+    Relations (friends, requests, highlights, bookmarks, group membership) are
+    owned by their dedicated tables and written by the respective managers, so
+    only the base ``users`` row is persisted here.
+    """
+    db = DB()
+    try:
+        for uid, d in user_info.items():
+            try:
+                db.cur.execute(
+                    "INSERT INTO users (_id, username, email, hash_pass, apple_sub) "
+                    "VALUES (%s,%s,%s,%s,%s) "
+                    "ON CONFLICT (_id) DO UPDATE SET username=EXCLUDED.username, "
+                    "email=EXCLUDED.email, hash_pass=EXCLUDED.hash_pass, "
+                    "apple_sub=COALESCE(EXCLUDED.apple_sub, users.apple_sub)",
+                    (uid, d.get("username", ""), d.get("email", ""),
+                     d.get("hash_pass", ""), d.get("apple_sub")),
+                )
+                db.conn.commit()
+            except Exception as e:
+                db.conn.rollback()
+                logger.error("save_users_data: failed to upsert %s: %s", uid, e)
+    finally:
+        db.close()
 
 
 def fetch_users(user_ids: list[str]) -> list[User]:
-    user_info = load_users_data()
-    return [
-        User.model_validate({"user_id": uid, **user_info[uid]})
-        for uid in user_ids
-        if uid in user_info
-    ]
+    if not user_ids:
+        return []
+    db = DB()
+    try:
+        db.cur.execute(
+            "SELECT _id, username, email, hash_pass FROM users WHERE _id = ANY(%s)",
+            ([str(u) for u in user_ids],),
+        )
+        return [
+            User(user_id=str(_id), username=username, email=email, hash_pass=hash_pass or "")
+            for _id, username, email, hash_pass in db.cur.fetchall()
+        ]
+    finally:
+        db.close()
 
 
 def update_users(users: list[User]) -> None:
-    user_info = load_users_data()
-    for user in users:
-        user_info[user.user_id] = user.model_dump(exclude={"user_id"})
-    with open(os.path.join(main_path, user_path), 'w') as f:
-        json.dump(user_info, f, indent=2)
+    """Upsert the given users' base rows into Postgres."""
+    save_users_data({u.user_id: u.model_dump(exclude={"user_id"}) for u in users})
 
 
 def find_by_username(username: str) -> tuple[str, dict] | None:
-    for uid, data in load_users_data().items():
-        if data.get("username") == username:
-            return uid, data
-    return None
+    db = DB()
+    try:
+        db.cur.execute("SELECT _id FROM users WHERE username = %s", (username,))
+        row = db.cur.fetchone()
+    finally:
+        db.close()
+    if not row:
+        return None
+    uid = str(row[0])
+    return uid, load_users_data().get(uid, {})
 
 #MARK:DEVOS
 

@@ -2,3 +2,5 @@ fastapi
 uvicorn[standard]
 bcrypt
 pydantic
+httpx
+pyjwt[crypto]

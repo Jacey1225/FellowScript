@@ -240,12 +240,30 @@ final class ChatViewModel: ObservableObject {
         self.service = service
         isLoading = true
         defer { isLoading = false }
+
+        // ── Cache-first: show last-known contacts/agents instantly ───────────────
+        if let cached: [FSContact] = await DiskCache.shared.load([FSContact].self, forKey: "friends:\(userId)") {
+            friends = cached
+            isLoading = false
+        }
+        if let cached: [FSContact] = await DiskCache.shared.load([FSContact].self, forKey: "groupContacts:\(userId)") {
+            groups = cached
+        }
+        if let cached: [FSAgent] = await DiskCache.shared.load([FSAgent].self, forKey: "agents:\(userId)") {
+            agents = cached
+        }
+
         async let contactsTask = try? service.fetchContacts(userId: userId)
         async let agentsTask   = try? service.fetchAgents(userId: userId)
         let (contacts, _) = (await contactsTask) ?? ([], [:])
         friends = contacts.filter { $0.type == .friend }
         groups  = contacts.filter { $0.type == .group }
         agents  = (await agentsTask) ?? []
+
+        // ── Write fresh data back to the cache ───────────────────────────────────
+        await DiskCache.shared.save(friends, forKey: "friends:\(userId)")
+        await DiskCache.shared.save(groups,  forKey: "groupContacts:\(userId)")
+        await DiskCache.shared.save(agents,  forKey: "agents:\(userId)")
     }
 
     func createAgent(role: String, userId: String) async {

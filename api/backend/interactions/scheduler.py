@@ -38,6 +38,10 @@ async def _fire_due_notifications() -> None:
             nm      = NotificationManager(user_id)
             content = nm.get_content(prompt)
             nm.close()
+            # Never push the raw prompt or the "error" sentinel — use a neutral
+            # user-facing fallback if AI content couldn't be generated.
+            if not content or content == "error":
+                content = f"{name} — open FellowScript to view." if name else "Open FellowScript for your reminder."
             ok = await send_push(token, name or "FellowScript", content)
             logger.info("Push %s → %s (%s)", notif_id, token[:8], "ok" if ok else "fail")
         except Exception as e:

@@ -56,6 +56,23 @@ class FriendsManager(DBManager):
         self.delete("friend_requests", {"to_user_id": self.user_id, "from_user_id": friend_id})
         return None
 
+    def get_requests(self) -> list[dict]:
+        """Return pending *incoming* friend requests for the acting user.
+
+        Each entry is the sender's public identity, so the account page can show
+        who wants to connect.
+
+        Returns:
+            list[dict]: ``[{"user_id": str, "username": str}, ...]``.
+        """
+        self.cur.execute(
+            "SELECT u._id, u.username FROM users u "
+            "JOIN friend_requests fr ON u._id = fr.from_user_id "
+            "WHERE fr.to_user_id = %s",
+            (self.user_id,)
+        )
+        return [{"user_id": r[0], "username": r[1]} for r in self.cur.fetchall()]
+
     def get_friends(self) -> list[dict]:
         """Return the full friend list for the acting user.
 

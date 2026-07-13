@@ -80,6 +80,18 @@ final class NotesViewModel: ObservableObject {
         isLoading = true
         defer { isLoading = false }
 
+        // ── Cache-first: show last-known data instantly, then revalidate ──────────
+        if let cached: [String: FSNote] = await DiskCache.shared.load([String: FSNote].self, forKey: "notes:\(userId)") {
+            notes = cached
+            isLoading = false
+        }
+        if let cached: [String: String] = await DiskCache.shared.load([String: String].self, forKey: "highlights:\(userId)") {
+            highlights = cached
+        }
+        if let cached: [FSGroup] = await DiskCache.shared.load([FSGroup].self, forKey: "groups:\(userId)") {
+            groups = cached
+        }
+
         async let notesTask    = try? service.fetchNotes(userId: userId)
         async let hlTask       = try? service.fetchHighlights(userId: userId)
         async let contactsTask = try? service.fetchContacts(userId: userId)
@@ -107,6 +119,11 @@ final class NotesViewModel: ObservableObject {
         }
 
         notes = allNotes
+
+        // ── Write fresh data back to the cache ────────────────────────────────────
+        await DiskCache.shared.save(allNotes,   forKey: "notes:\(userId)")
+        await DiskCache.shared.save(highlights, forKey: "highlights:\(userId)")
+        await DiskCache.shared.save(groups,     forKey: "groups:\(userId)")
     }
 
     @Published var saveError: String? = nil
@@ -373,7 +390,16 @@ struct NotesListView: View {
                     HighlightRow(highlight: h)
                         .listRowBackground(Color.clear)
                         .listRowSeparatorTint(Theme.borderGoldFaint)
-                        .accessibilityLabel("Highlight in \(h.book) chapter \(h.chapter) verse \(h.verse)")
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            // Only navigate for a properly parsed reference.
+                            guard h.chapter > 0, h.verse > 0 else { return }
+                            appState.pendingBibleNav = BibleNavTarget(
+                                book: h.book, chapter: h.chapter, verse: h.verse
+                            )
+                        }
+                        .accessibilityLabel("Highlight in \(h.book) chapter \(h.chapter) verse \(h.verse). Tap to open in the Bible.")
+                        .accessibilityAddTraits(.isButton)
                 }
                 .listStyle(.plain)
                 .scrollContentBackground(.hidden)
@@ -513,6 +539,11 @@ struct HighlightRow: View {
                     .background(Theme.gold.opacity(0.10))
                     .clipShape(Capsule())
             }
+            // Subtle affordance signalling the row opens the verse.
+            Image(systemName: "chevron.right")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundColor(Theme.gold.opacity(0.40))
+                .accessibilityHidden(true)
         }
         .padding(.vertical, Theme.spacingXS)
     }

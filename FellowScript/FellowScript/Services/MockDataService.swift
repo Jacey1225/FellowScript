@@ -15,6 +15,7 @@ protocol DataServiceProtocol {
     func signIn(username: String, password: String) async throws -> FSUser
     func signUp(username: String, email: String, password: String) async throws -> FSUser
     func signInWithGoogle(credential: String) async throws -> FSUser
+    func signInWithApple(identityToken: String, fullName: String?, email: String?) async throws -> FSUser
 
     // User
     func fetchUser(userId: String) async throws -> FSUser
@@ -61,12 +62,14 @@ protocol DataServiceProtocol {
     func fetchGroupMessages(userId: String, groupId: String) async throws -> [FSMessage]
 
     // Friends
+    func fetchFriendRequests(userId: String) async throws -> [(id: String, username: String)]
     func sendFriendRequest(userId: String, username: String) async throws
     func acceptFriendRequest(userId: String, username: String) async throws
     func removeFriend(userId: String, friendId: String) async throws
 
     // Groups
     func createGroup(userId: String, groupId: String, title: String, users: [String]) async throws
+    func updateGroup(userId: String, groupId: String, title: String, users: [String]) async throws
     func leaveGroup(userId: String, groupId: String) async throws
 
     // Sessions / Devotions
@@ -174,7 +177,8 @@ final class MockDataService: DataServiceProtocol {
         FSContact(id: "friend-002", name: "Marcus", type: .friend, preview: "Romans 8 is incredible"),
         FSContact(id: "group-abc",  name: "Wednesday Night Study", type: .group,
                   preview: "Session tomorrow at 7pm",
-                  toUsers: [mockUser.user_id, "friend-001", "friend-002"]),
+                  toUsers: [mockUser.user_id, "friend-001", "friend-002"],
+                  memberNames: ["Sarah", "Marcus"]),
     ]
 
     static let mockMessages: [FSMessage] = [
@@ -218,6 +222,13 @@ final class MockDataService: DataServiceProtocol {
     func signInWithGoogle(credential: String) async throws -> FSUser {
         try await Task.sleep(nanoseconds: 600_000_000)
         return FSUser(user_id: UUID().uuidString, username: "google_user", email: "google@example.com")
+    }
+
+    func signInWithApple(identityToken: String, fullName: String?, email: String?) async throws -> FSUser {
+        try await Task.sleep(nanoseconds: 600_000_000)
+        return FSUser(user_id: UUID().uuidString,
+                      username: fullName ?? "apple_user",
+                      email: email ?? "apple@example.com")
     }
 
     // User
@@ -288,12 +299,14 @@ final class MockDataService: DataServiceProtocol {
     }
 
     // Friends
+    func fetchFriendRequests(userId: String) async throws -> [(id: String, username: String)] { [] }
     func sendFriendRequest(userId: String, username: String) async throws {}
     func acceptFriendRequest(userId: String, username: String) async throws {}
     func removeFriend(userId: String, friendId: String) async throws {}
 
     // Groups
     func createGroup(userId: String, groupId: String, title: String, users: [String]) async throws {}
+    func updateGroup(userId: String, groupId: String, title: String, users: [String]) async throws {}
     func leaveGroup(userId: String, groupId: String) async throws {}
 
     // Sessions

@@ -17,12 +17,23 @@ import json
 import uuid
 import logging
 import httpx
+import jwt
+from jwt import PyJWKClient
+from db import DBManager
+from backend.interactions.helpers import load_users_data, save_users_data
 
 
 class GoogleAuth(BaseModel):
     credential: str
 
+
+class AppleAuth(BaseModel):
+    identity_token: str
+    full_name: str | None = None
+    email: str | None = None
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(levelname)s - %(message)s")
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -58,34 +69,13 @@ user_path = "data/users.json"
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def load_users() -> dict:
-    """Load all user records from the JSON data store.
-
-    Returns:
-        dict: Mapping of user_id -> user data dict. Returns an empty dict
-            if the file does not exist or contains invalid JSON.
-    """
-    path = os.path.join(main_path, user_path)
-    if not os.path.exists(path):
-        return {}
-    try:
-        with open(path, "r") as f:
-            return json.load(f)
-    except json.JSONDecodeError:
-        return {}
+    """Load all user records from Postgres (reconstructed to the legacy shape)."""
+    return load_users_data()
 
 
 def save_users(users: dict) -> None:
-    """Persist all user records to the JSON data store.
-
-    Creates the parent directory if it does not already exist.
-
-    Args:
-        users: Mapping of user_id -> user data dict to write.
-    """
-    path = os.path.join(main_path, user_path)
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w") as f:
-        json.dump(users, f, indent=2)
+    """Upsert user base rows into Postgres."""
+    save_users_data(users)
 
 
 def find_by_email(users: dict, email: str) -> tuple[str, dict] | None:
@@ -93,6 +83,41 @@ def find_by_email(users: dict, email: str) -> tuple[str, dict] | None:
         if data.get("email") == email:
             return uid, data
     return None
+
+
+def persist_new_user(user: User) -> None:
+    """Create a new user in BOTH stores — the single account-creation pipeline.
+
+    Every provider (password signup, Google, Apple) must go through here so that:
+      • the JSON store gets a *complete* User record (friends, friend_requests,
+        groups, highlights, bookmarks — via User.model_dump), and
+      • the Postgres ``users`` table gets the row that all DBManager-based
+        features (friends, groups, notes, messages) query.
+
+    Without the Postgres insert, an account exists for auth but is invisible to
+    every relational feature.
+    """
+    save_users_data({user.user_id: user.model_dump(exclude={"user_id"})})
+
+
+def find_by_apple_sub(users: dict, sub: str) -> tuple[str, dict] | None:
+    """Locate a user by the stable Apple subject identifier stored at signup.
+
+    Apple only returns the user's email/name on the *first* authorization, so
+    subsequent sign-ins must be matched on the token's ``sub`` claim rather than
+    on email.
+    """
+    for uid, data in users.items():
+        if data.get("apple_sub") == sub:
+            return uid, data
+    return None
+
+
+# Apple issues identity tokens signed with rotating RSA keys published at this
+# JWKS endpoint. PyJWKClient caches the fetched keys between requests.
+_APPLE_ISSUER   = "https://appleid.apple.com"
+_APPLE_JWKS_URL = "https://appleid.apple.com/auth/keys"
+_apple_jwk_client = PyJWKClient(_APPLE_JWKS_URL)
 
 
 def find_by_username(users: dict, username: str) -> tuple[str, dict] | None:
@@ -139,8 +164,7 @@ async def signup(info: SignUp, response: Response) -> dict:
         email=info.email,
         hash_pass=bcrypt.hashpw(info.plain_pass.encode(), bcrypt.gensalt()).decode()
     )
-    users[user.user_id] = user.model_dump(exclude={"user_id"})
-    save_users(users)
+    persist_new_user(user)
     response.set_cookie(key="user_id", value=user.user_id, httponly=False, secure=True, max_age=60 * 60 * 24 * 30, samesite="lax")
     return user.model_dump(exclude={"hash_pass"})
 
@@ -238,11 +262,15 @@ async def delete_user(user_id: str) -> None:
     Raises:
         HTTPException 404: If no user with the given ID exists.
     """
-    users = load_users()
-    if user_id not in users:
+    db = DBManager()
+    try:
+        db.cur.execute("DELETE FROM users WHERE _id = %s", (user_id,))
+        deleted = db.cur.rowcount
+        db.conn.commit()
+    finally:
+        db.close()
+    if not deleted:
         raise HTTPException(status_code=404, detail="User not found")
-    del users[user_id]
-    save_users(users)
 
 
 @app.post("/auth/google")
@@ -281,13 +309,82 @@ async def google_auth(info: GoogleAuth, response: Response) -> dict:
         while username in existing:
             username = f"{base}{counter}"
             counter += 1
-        users[uid] = {
-            "username": username,
-            "email": email,
-            "hash_pass": "",
-            "friends": [],
-            "groups": [],
-        }
+        # Same creation pipeline as password signup — writes to both stores.
+        user = User(user_id=uid, username=username, email=email, hash_pass="")
+        persist_new_user(user)
+        data = user.model_dump(exclude={"user_id"})
+
+    response.set_cookie(
+        key="user_id", value=uid, httponly=False, secure=True,
+        max_age=60 * 60 * 24 * 30, samesite="lax",
+    )
+    return {"user_id": uid, **{k: v for k, v in data.items() if k != "hash_pass"}}
+
+
+@app.post("/auth/apple")
+async def apple_auth(info: AppleAuth, response: Response) -> dict:
+    """Authenticate a Sign in with Apple identity token.
+
+    Verifies the token's RSA signature against Apple's published JWKS, plus its
+    issuer and audience, then finds or creates a user keyed on the stable ``sub``
+    claim. ``full_name`` / ``email`` are only supplied by the client on the very
+    first authorization, so they are used only when creating a new account.
+    """
+    audience = os.getenv("APPLE_CLIENT_ID", "com.fellowscript.app")
+
+    # Verify signature + standard claims against Apple's public keys.
+    try:
+        signing_key = _apple_jwk_client.get_signing_key_from_jwt(info.identity_token)
+        claims = jwt.decode(
+            info.identity_token,
+            signing_key.key,
+            algorithms=["RS256"],
+            audience=audience,
+            issuer=_APPLE_ISSUER,
+        )
+    except Exception as e:
+        logger.warning("Apple token verification failed: %s", e)
+        raise HTTPException(status_code=401, detail="Invalid Apple token")
+
+    sub = claims.get("sub")
+    if not sub:
+        raise HTTPException(status_code=401, detail="No subject in Apple token")
+
+    # Email may come from the token (preferred) or the first-auth request body.
+    email = claims.get("email") or info.email or ""
+
+    users = load_users()
+
+    # Match on the stable Apple identifier first, then fall back to email so an
+    # existing password/Google account with the same address is linked, not duped.
+    result = find_by_apple_sub(users, sub)
+    if not result and email:
+        result = find_by_email(users, email)
+
+    if result:
+        uid, data = result
+        # Backfill apple_sub on accounts first created via another provider.
+        if data.get("apple_sub") != sub:
+            users[uid]["apple_sub"] = sub
+            save_users(users)
+            data = users[uid]
+    else:
+        uid = str(uuid.uuid4())
+        base = (info.full_name or (email.split("@")[0] if email else "") or "apple_user")
+        base = base.replace(" ", "_").lower()[:16] or "apple_user"
+        username = base
+        existing = {d.get("username") for d in users.values()}
+        counter = 1
+        while username in existing:
+            username = f"{base}{counter}"
+            counter += 1
+        # Same creation pipeline as password signup — writes to both stores.
+        user = User(user_id=uid, username=username, email=email, hash_pass="")
+        persist_new_user(user)
+        # apple_sub isn't a User schema field; record it in the JSON store so a
+        # returning Apple sign-in matches on the stable identifier.
+        users = load_users()
+        users[uid]["apple_sub"] = sub
         save_users(users)
         data = users[uid]
 
