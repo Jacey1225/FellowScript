@@ -83,6 +83,20 @@ final class NetworkService: DataServiceProtocol {
         return user
     }
 
+    func signInWithApple(identityToken: String, fullName: String?, email: String?) async throws -> FSUser {
+        var body: [String: Any] = ["identity_token": identityToken]
+        // fullName / email are only sent on the first authorization; omit when nil
+        // so the server keeps whatever it captured the first time.
+        if let fullName { body["full_name"] = fullName }
+        if let email    { body["email"]     = email }
+        let data = try await requestRaw("/auth/apple", method: "POST", jsonObject: body)
+        guard let user = decode(FSUser.self, from: data) else {
+            let detail = decode([String: String].self, from: data)?["detail"] ?? "Apple sign-in failed."
+            throw AppError.authFailed(detail)
+        }
+        return user
+    }
+
     // ── User ──────────────────────────────────────────────────────────────────
     // GET  /user/{userId}
     // PUT  /user/{userId}   body: {username?, email?, plain_pass?}
@@ -342,8 +356,11 @@ final class NetworkService: DataServiceProtocol {
             groupMap[gid] = FSGroup(id: gid, title: title, users: users)
             let allMsgs = (resp.host_msgs ?? []) + (resp.other_msgs ?? [])
             let preview = allMsgs.sorted { $0.timestamp < $1.timestamp }.last?.text ?? ""
+            // Backend `members` is the list of member usernames (excluding self).
+            let memberNames = resp.members ?? []
             groupContacts.append(FSContact(id: gid, name: title, type: .group,
-                                           preview: preview, toUsers: users))
+                                           preview: preview, toUsers: users,
+                                           memberNames: memberNames))
         }
 
         return (friends + groupContacts, groupMap)
@@ -372,6 +389,13 @@ final class NetworkService: DataServiceProtocol {
     // POST /friends/{userId}/add?friend_username={username}
     // DELETE /friends/{userId}/{friendId}
 
+    // GET /friends/{userId}/requests → [{user_id, username}]
+    func fetchFriendRequests(userId: String) async throws -> [(id: String, username: String)] {
+        let data = try await get("/friends/\(userId)/requests")
+        let raw = decode([RawFriendRequest].self, from: data) ?? []
+        return raw.map { (id: $0.user_id, username: $0.username) }
+    }
+
     func sendFriendRequest(userId: String, username: String) async throws {
         _ = try await request("/friends/\(userId)/request?friend_username=\(encodeURIComponent(username))",
                               method: "POST")
@@ -392,6 +416,12 @@ final class NetworkService: DataServiceProtocol {
 
     func createGroup(userId: String, groupId: String, title: String, users: [String]) async throws {
         _ = try await requestRaw("/groups/\(userId)", method: "POST",
+                                  jsonObject: ["group_id": groupId, "title": title, "users": users])
+    }
+
+    // PUT /groups/{userId}/{groupId}   body: {group_id, title, users}
+    func updateGroup(userId: String, groupId: String, title: String, users: [String]) async throws {
+        _ = try await requestRaw("/groups/\(userId)/\(groupId)", method: "PUT",
                                   jsonObject: ["group_id": groupId, "title": title, "users": users])
     }
 
@@ -543,6 +573,11 @@ private struct RawMsg: Decodable {
 private struct RawChatResponse: Decodable {
     let host_msgs:  [RawMsg]?
     let other_msgs: [RawMsg]?
+}
+
+private struct RawFriendRequest: Decodable {
+    let user_id:  String
+    let username: String
 }
 
 private struct RawGroup: Decodable {

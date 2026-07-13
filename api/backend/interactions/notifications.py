@@ -1,4 +1,5 @@
 import json
+import time
 import uuid
 import logging
 from datetime import datetime
@@ -32,7 +33,23 @@ class NotificationManager(DBManager):
     # ── AI helper ─────────────────────────────────────────────────────────────
 
     def get_content(self, prompt: str) -> str:
-        response = self.assistant._call_api("", [{"role": "user", "content": INSTRUCTION + prompt}])
+        # Retry transient LLM/API failures (rate-limits, timeouts, 5xx) instead of
+        # letting one bad call propagate as an error — which the client would turn
+        # into a fallback that shows the raw prompt.
+        response = ""
+        for attempt in range(3):
+            try:
+                response = self.assistant._call_api(
+                    "", [{"role": "user", "content": INSTRUCTION + prompt}]
+                )
+                if response.strip():
+                    break
+            except Exception as e:
+                logger.warning("Notification content call failed (attempt %d): %s", attempt + 1, e)
+                response = ""
+            if attempt < 2:
+                time.sleep(0.8)
+
         # Try to parse {"body": "..."} from the response
         if "{" in response and "}" in response:
             try:

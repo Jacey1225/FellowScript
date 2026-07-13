@@ -84,20 +84,21 @@ struct NotificationRow: View {
 
             Spacer()
 
-            Button(action: onEdit) {
-                Image(systemName: "pencil")
-                    .foregroundColor(Theme.gold.opacity(0.60))
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Edit notification")
-
-            Button(action: onDelete) {
-                Image(systemName: "trash")
-                    .foregroundColor(Theme.error.opacity(0.70))
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Delete notification")
+            // Discoverability hint: signals a long-press context menu is available.
+            Image(systemName: "ellipsis")
+                .foregroundColor(Theme.textMuted)
+                .accessibilityHidden(true)
         }
         .padding(.vertical, 4)
+        .contentShape(Rectangle())
+        .contextMenu {
+            Button(action: onEdit) { Label("Edit", systemImage: "pencil") }
+            Button(role: .destructive, action: onDelete) { Label("Delete", systemImage: "trash") }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Notification: \(notif.name.isEmpty ? "Unnamed Notification" : notif.name). \(notif.recurrenceSummary).")
+        .accessibilityHint("Double-tap and hold for options.")
+        .accessibilityAction(named: "Edit", onEdit)
+        .accessibilityAction(named: "Delete", onDelete)
     }
 }

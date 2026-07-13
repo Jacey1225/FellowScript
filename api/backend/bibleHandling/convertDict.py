@@ -61,23 +61,23 @@ class ConvertBibleToDict:
         return end
 
     @log_results
-    def find_book(self, book: str, book_lines: pd.Series):
-        idx = 0
+    def find_book(self, idx: int, book: str, book_lines: pd.Series):
+        index = idx
         start, end = (0, 0)
         print(f"num lines in df: {len(book_lines)}")
-        while idx < len(book_lines):
-            line: str = book_lines.iloc[idx]
+        while index < len(book_lines):
+            line: str = book_lines.iloc[index]
             if book.lower() in line.lower():
-                if idx + 1 > len(book_lines) - 1:
-                    idx += 1
+                if index + 1 > len(book_lines) - 1:
+                    index += 1
                     continue
-                next_line: str = book_lines[idx+1]
-                start_idx = idx
+                next_line: str = book_lines[index+1]
+                start_idx = index
                 if "chapter" in next_line.lower() or (line.lower() == book.lower() and not next_line.isupper()):
                     start = self.get_start(start_idx, next_line, book_lines)
                     end = self.get_end(start, "footnotes", book_lines)
                     break
-            idx += 1
+            index += 1
         return (start, end)
     
     def remove_stops(self, line):
@@ -144,8 +144,10 @@ def main():
     converter = ConvertBibleToDict()
     converter.process_pdf()
     df = pd.read_csv(converter.out_file)
+    last_end = 0
     for book in converter.bible_dict.keys():
-        start, end = converter.find_book(book, df["lines"]) 
+        start, end = converter.find_book(last_end, book, df["lines"]) 
+        last_end = end
         chapters = converter.parse_chapters(start, end, df["lines"])
         converter.save_chapters(book.strip(), chapters)
 

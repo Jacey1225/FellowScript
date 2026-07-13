@@ -54,10 +54,27 @@ enum NotificationScheduler {
                 center.removePendingNotificationRequests(withIdentifiers: [notif.id])
             }
 
-            // Fetch AI-generated body; fall back gracefully so scheduling always succeeds
-            let result = try? await service.triggerNotification(userId: userId, notifId: notif.id)
-            let title  = (result?["name"] ?? notif.name).isEmpty ? "FellowScript" : (result?["name"] ?? notif.name)
-            let body   = result?["content"] ?? notif.prompt
+            // Fetch the AI-generated body. Retry briefly so a transient LLM/API
+            // hiccup (rate-limit, timeout, 5xx) doesn't strand this notification.
+            var result: [String: String]? = nil
+            for attempt in 0..<3 {
+                result = try? await service.triggerNotification(userId: userId, notifId: notif.id)
+                if let c = result?["content"],
+                   !c.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { break }
+                if attempt < 2 { try? await Task.sleep(nanoseconds: 700_000_000) }
+            }
+
+            let rawName = result?["name"] ?? notif.name
+            let title   = rawName.isEmpty ? "FellowScript" : rawName
+
+            // Use the agent's generated content. If it's still unavailable, fall back
+            // to a neutral, user-facing reminder — NEVER the raw prompt, which is an
+            // internal instruction to the agent and not meant to be shown.
+            let content = result?["content"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let body    = content.isEmpty
+                ? (notif.name.isEmpty ? "Open FellowScript for your reminder."
+                                      : "\(notif.name) — open FellowScript to view.")
+                : content
 
             scheduleLocal(id: notif.id, title: title, body: body, at: fireDate)
         }

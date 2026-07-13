@@ -35,6 +35,8 @@ class GroupsManager(DBManager):
             users: List of user IDs to add as initial members.
             group: ``Group`` schema instance with group_id, title, and users.
         """
+        # Membership lives in the groups.users column; GET /user derives each
+        # user's group list from it, so no separate per-user sync is needed.
         self.insertion("groups", {
             "_id":   group.group_id,
             "title": group.title,
@@ -123,7 +125,11 @@ class GroupsManager(DBManager):
         return result
 
     def remove_group(self) -> None:
-        """Delete the group. Cascades to linked notes, messages, and devotions."""
+        """Delete the group. Membership is derived from the groups.users column,
+        so deleting the row removes it from every member's view automatically.
+
+        Cascades in Postgres to linked notes, messages, and devotions.
+        """
         if not self.group_id:
             return
         self.delete("groups", {"_id": self.group_id})
@@ -139,4 +145,6 @@ class GroupsManager(DBManager):
         existing = self.lookup("groups", {"_id": self.group_id})
         if not existing:
             return
+        # groups.users is the single source of membership; GET /user derives each
+        # member's group list from it, so updating this column is sufficient.
         self.update("groups", {"title": group.title, "users": group.users}, {"_id": self.group_id})

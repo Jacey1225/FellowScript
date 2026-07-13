@@ -8,8 +8,8 @@ import SwiftUI
 import Combine
 
 // ── Community activity feed item ──────────────────────────────────────────────
-struct CommunityActivityItem {
-    enum Kind { case message, groupNote }
+struct CommunityActivityItem: Codable {
+    enum Kind: String, Codable { case message, groupNote }
     let kind:      Kind
     let name:      String   // contact name or group name
     let preview:   String   // message text or note title
@@ -55,6 +55,28 @@ final class DashboardViewModel: ObservableObject {
         isLoading = true
         defer { isLoading = false }
 
+        // ── Cache-first: render the dashboard instantly from last-known data ──────
+        // Reuses the same cache keys Notes/Chat write to, so the widgets are warm
+        // as soon as any tab has loaded once.
+        if let cached: [String: FSNote] = await DiskCache.shared.load([String: FSNote].self, forKey: "notes:\(userId)") {
+            notes = cached
+            isLoading = false
+        }
+        if let cachedHl: [String: String] = await DiskCache.shared.load([String: String].self, forKey: "highlights:\(userId)") {
+            let list = cachedHl.map { FSHighlight.from(key: $0.key, color: $0.value) }.sorted { $0.book < $1.book }
+            highlights = list
+            if featuredHighlight == nil { featuredHighlight = list.randomElement() }
+        }
+        if let cached: [FSAgent] = await DiskCache.shared.load([FSAgent].self, forKey: "agents:\(userId)") {
+            agents = cached
+        }
+        if let cached: FSAgentMessage = await DiskCache.shared.load(FSAgentMessage.self, forKey: "lastAgentMsg:\(userId)") {
+            lastAgentMsg = cached
+        }
+        if let cached: [CommunityActivityItem] = await DiskCache.shared.load([CommunityActivityItem].self, forKey: "community:\(userId)") {
+            communityItems = cached
+        }
+
         async let notesTask    = try? service.fetchNotes(userId: userId)
         async let hlTask       = try? service.fetchHighlights(userId: userId)
         async let agentsTask   = try? service.fetchAgents(userId: userId)
@@ -63,7 +85,9 @@ final class DashboardViewModel: ObservableObject {
         notes  = (await notesTask)  ?? [:]
         agents = (await agentsTask) ?? []
 
+        var hlDict: [String: String] = [:]
         if let hl = await hlTask {
+            hlDict = hl
             let list = hl.map { FSHighlight.from(key: $0.key, color: $0.value) }
                          .sorted { $0.book < $1.book }
             highlights        = list
@@ -79,6 +103,13 @@ final class DashboardViewModel: ObservableObject {
         // Build community activity items from contacts + group notes
         let (contactList, _) = (await contactsTask) ?? ([], [:])
         buildCommunityItems(contacts: contactList)
+
+        // ── Write fresh data back to the (shared) cache ──────────────────────────
+        await DiskCache.shared.save(notes,  forKey: "notes:\(userId)")
+        await DiskCache.shared.save(agents, forKey: "agents:\(userId)")
+        await DiskCache.shared.save(hlDict, forKey: "highlights:\(userId)")
+        if let m = lastAgentMsg { await DiskCache.shared.save(m, forKey: "lastAgentMsg:\(userId)") }
+        await DiskCache.shared.save(communityItems, forKey: "community:\(userId)")
     }
 
     var recentNote: (String, FSNote)? {

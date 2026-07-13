@@ -18,12 +18,25 @@ final class ChatThreadViewModel: ObservableObject {
     private var wsTask: URLSessionWebSocketTask?
 
     func load(service: DataServiceProtocol, contact: FSContact, userId: String) async {
-        if contact.type == .group {
-            messages = (try? await service.fetchGroupMessages(userId: userId, groupId: contact.id)) ?? []
-        } else {
-            messages = (try? await service.fetchFriendMessages(userId: userId, friendId: contact.id)) ?? []
+        // ── Cache-first: show the last-seen thread instantly ─────────────────────
+        if let cached: [FSMessage] = await DiskCache.shared.load([FSMessage].self, forKey: "messages:\(contact.id)") {
+            messages = cached
         }
-        sessions = (try? await service.fetchSessionsForContact(contactId: contact.id)) ?? []
+        if let cached: [FSSession] = await DiskCache.shared.load([FSSession].self, forKey: "sessions:\(contact.id)") {
+            sessions = cached
+        }
+
+        if contact.type == .group {
+            messages = (try? await service.fetchGroupMessages(userId: userId, groupId: contact.id)) ?? messages
+        } else {
+            messages = (try? await service.fetchFriendMessages(userId: userId, friendId: contact.id)) ?? messages
+        }
+        sessions = (try? await service.fetchSessionsForContact(contactId: contact.id)) ?? sessions
+
+        // ── Persist the fresh thread for the next open ───────────────────────────
+        await DiskCache.shared.save(messages, forKey: "messages:\(contact.id)")
+        await DiskCache.shared.save(sessions, forKey: "sessions:\(contact.id)")
+
         connectWebSocket(wsBase: service.wsBase, userId: userId)
     }
 
@@ -91,6 +104,13 @@ struct ChatThreadView: View {
     @State private var text:        String = ""
     @State private var showMembers: Bool   = false
     @State private var showSession: Bool   = false
+    @State private var showAddMembers: Bool = false
+
+    // Live member state (seeded from `contact`) so newly added members appear
+    // immediately without needing a full reload.
+    @State private var memberNames: [String] = []
+    @State private var memberIds:   [String] = []
+    @State private var friends:     [FSContact] = []   // candidates to add
 
     var body: some View {
         NavigationStack {
@@ -100,8 +120,12 @@ struct ChatThreadView: View {
                 VStack(spacing: 0) {
                     // ── Member list (group only, mirrors ChatView showMembers block) ──
                     if showMembers && contact.type == .group {
-                        GroupMembersPanel(contact: contact, user: user)
-                            .transition(.move(edge: .top).combined(with: .opacity))
+                        GroupMembersPanel(
+                            memberNames: memberNames,
+                            user:        user,
+                            onAddTapped: { showAddMembers = true }
+                        )
+                        .transition(.move(edge: .top).combined(with: .opacity))
                     }
 
                     // ── Session banner (upcoming session card) ─────────────────
@@ -204,9 +228,24 @@ struct ChatThreadView: View {
         .preferredColorScheme(.dark)
         .task {
             let uid = appState.currentUser?.user_id ?? ""
+            memberNames = contact.memberNames
+            memberIds   = contact.toUsers
             await vm.load(service: appState.service, contact: contact, userId: uid)
+            // Load the viewer's friends so the add-members picker can offer those
+            // who aren't already in the group.
+            if contact.type == .group {
+                let (contacts, _) = (try? await appState.service.fetchContacts(userId: uid)) ?? ([], [:])
+                friends = contacts.filter { $0.type == .friend }
+            }
         }
         .onDisappear { vm.disconnect() }
+        .sheet(isPresented: $showAddMembers) {
+            AddGroupMembersSheet(
+                candidates: friends.filter { !memberIds.contains($0.id) }
+            ) { selected in
+                addMembers(selected)
+            }
+        }
         .sheet(isPresented: $showSession) {
             SessionCreatorSheet(groupId: contact.id, onSave: { session in
                 let uid = appState.currentUser?.user_id ?? ""
@@ -227,6 +266,20 @@ struct ChatThreadView: View {
         let uid = appState.currentUser?.user_id ?? ""
         vm.sendMessage(text: trimmed, contact: contact, userId: uid)
         text = ""
+    }
+
+    private func addMembers(_ selected: [FSContact]) {
+        guard !selected.isEmpty else { return }
+        let uid = appState.currentUser?.user_id ?? ""
+        // Optimistically reflect the new members in the panel.
+        memberIds.append(contentsOf: selected.map { $0.id })
+        memberNames.append(contentsOf: selected.map { $0.name })
+        let updatedUsers = memberIds
+        Task {
+            try? await appState.service.updateGroup(
+                userId: uid, groupId: contact.id, title: contact.name, users: updatedUsers
+            )
+        }
     }
 }
 
@@ -278,8 +331,9 @@ struct MessageBubble: View {
 
 // ── Group members panel (mirrors ChatView showMembers block) ──────────────────
 struct GroupMembersPanel: View {
-    let contact: FSContact
-    let user:    FSUser?
+    let memberNames: [String]       // usernames, excluding the current user
+    let user:        FSUser?
+    var onAddTapped: (() -> Void)?  // present when the viewer may add members
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.spacingSM) {
@@ -287,11 +341,14 @@ struct GroupMembersPanel: View {
                 .font(.lora(Theme.fontXXS)).tracking(3).textCase(.uppercase)
                 .foregroundColor(Theme.gold.opacity(0.50))
 
-            HStack(spacing: Theme.spacingSM) {
-                avatarChip(name: user?.username ?? "You", isMe: true)
-                ForEach(contact.toUsers.prefix(5), id: \.self) { uid in
-                    if uid != user?.user_id {
-                        avatarChip(name: String(uid.prefix(4)), isMe: false)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: Theme.spacingSM) {
+                    avatarChip(name: user?.username ?? "You", isMe: true)
+                    ForEach(Array(memberNames.prefix(20).enumerated()), id: \.offset) { _, name in
+                        avatarChip(name: name.isEmpty ? "Member" : name, isMe: false)
+                    }
+                    if let onAddTapped {
+                        addChip(action: onAddTapped)
                     }
                 }
             }
@@ -318,6 +375,102 @@ struct GroupMembersPanel: View {
                 .foregroundColor(isMe ? Theme.gold : Theme.parchment.opacity(0.70))
         }
         .accessibilityLabel(isMe ? "\(name), you" : name)
+    }
+
+    // Subtle dashed "+" chip that sits at the end of the member row.
+    @ViewBuilder
+    private func addChip(action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 4) {
+                ZStack {
+                    Circle()
+                        .strokeBorder(
+                            Theme.gold.opacity(0.55),
+                            style: StrokeStyle(lineWidth: 1, dash: [3])
+                        )
+                        .frame(width: 26, height: 26)
+                    Image(systemName: "plus")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(Theme.gold)
+                }
+                Text("Add")
+                    .font(.lora(Theme.fontXS))
+                    .foregroundColor(Theme.gold.opacity(0.75))
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Add friends to group")
+    }
+}
+
+// ── Add-members sheet (friend picker for an existing group) ───────────────────
+struct AddGroupMembersSheet: View {
+    let candidates: [FSContact]        // friends not already in the group
+    let onAdd:      ([FSContact]) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var selectedIds = Set<String>()
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Theme.bgPage.ignoresSafeArea()
+
+                if candidates.isEmpty {
+                    VStack(spacing: Theme.spacingMD) {
+                        Image(systemName: "person.2.slash")
+                            .font(.system(size: 36, weight: .light))
+                            .foregroundColor(Theme.gold.opacity(0.35))
+                        Text("All your friends are already in this group.")
+                            .font(.lora(Theme.fontSM))
+                            .foregroundColor(Theme.textMuted)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, Theme.spacingXL)
+                    }
+                } else {
+                    Form {
+                        Section("Add friends") {
+                            ForEach(candidates) { f in
+                                HStack {
+                                    Text(f.name)
+                                        .font(.lora(Theme.fontBody))
+                                        .foregroundColor(Theme.parchment.opacity(0.70))
+                                    Spacer()
+                                    if selectedIds.contains(f.id) {
+                                        Image(systemName: "checkmark")
+                                            .foregroundColor(Theme.gold)
+                                    }
+                                }
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    if selectedIds.contains(f.id) { selectedIds.remove(f.id) }
+                                    else                           { selectedIds.insert(f.id) }
+                                }
+                                .accessibilityLabel("\(f.name). \(selectedIds.contains(f.id) ? "Selected" : "Not selected")")
+                                .accessibilityAddTraits(selectedIds.contains(f.id) ? .isSelected : [])
+                            }
+                        }
+                    }
+                    .scrollContentBackground(.hidden)
+                    .background(Theme.bgPage)
+                }
+            }
+            .navigationTitle("Add Members")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Cancel") { dismiss() }.foregroundColor(Theme.textGoldMuted)
+                }
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Add") {
+                        onAdd(candidates.filter { selectedIds.contains($0.id) })
+                        dismiss()
+                    }
+                    .foregroundColor(Theme.gold)
+                    .disabled(selectedIds.isEmpty)
+                }
+            }
+        }
+        .preferredColorScheme(.dark)
     }
 }
 

@@ -135,6 +135,23 @@ async def get_friends(user_id: str) -> list[dict]:
     return manager.get_friends()
 
 
+@friend_router.get("/{user_id}/requests")
+async def get_friend_requests(user_id: str) -> list[dict]:
+    """Return pending incoming friend requests for the user.
+
+    NOTE: declared before ``/{user_id}/{friend_id}`` so the literal ``requests``
+    segment matches first (routes resolve in definition order).
+
+    Returns:
+        list[dict]: ``[{"user_id": str, "username": str}, ...]`` of requesters.
+    """
+    manager = FriendsManager(user_id)
+    try:
+        return manager.get_requests()
+    finally:
+        manager.close()
+
+
 @friend_router.get("/{user_id}/{friend_id}")
 async def read_friend(user_id: str, friend_id: str) -> dict:
     """Fetch a friend's profile and the shared DM history.

@@ -32,6 +32,25 @@ final class AccountViewModel: ObservableObject {
         isLoading = true
         defer { isLoading = false }
         profileData = user
+        let uid = user.user_id
+
+        // ── Cache-first: show last-known account data instantly ──────────────────
+        if let cached: FSUser = await DiskCache.shared.load(FSUser.self, forKey: "user:\(uid)") {
+            profileData = cached
+        }
+        if let cached: [FSAgent] = await DiskCache.shared.load([FSAgent].self, forKey: "agents:\(uid)") {
+            agents = cached
+        }
+        if let cached: [FSNotification] = await DiskCache.shared.load([FSNotification].self, forKey: "notifications:\(uid)") {
+            notifications = cached
+        }
+        if let cached: [FSHeartbeat] = await DiskCache.shared.load([FSHeartbeat].self, forKey: "events:\(uid)") {
+            events = cached
+        }
+        if let cached: [Int] = await DiskCache.shared.load([Int].self, forKey: "counts:\(uid)"), cached.count == 2 {
+            noteCount = cached[0]; highlightCount = cached[1]
+        }
+
         async let fetchedUser          = service.fetchUser(userId: user.user_id)
         async let fetchedAgents        = service.fetchAgents(userId: user.user_id)
         async let fetchedNotifications = service.fetchNotifications(userId: user.user_id)
@@ -42,6 +61,7 @@ final class AccountViewModel: ObservableObject {
         notifications = (try? await fetchedNotifications) ?? []
         noteCount      = (try? await fetchedNotes)?.count      ?? 0
         highlightCount = (try? await fetchedHighlights)?.count ?? 0
+        friendRequests = (try? await service.fetchFriendRequests(userId: user.user_id)) ?? []
 
         var allEvents: [FSHeartbeat] = []
         await withTaskGroup(of: [FSHeartbeat].self) { group in
@@ -53,6 +73,13 @@ final class AccountViewModel: ObservableObject {
             for await hbs in group { allEvents.append(contentsOf: hbs) }
         }
         events = allEvents
+
+        // ── Write fresh account data back to the cache ────────────────────────────
+        if let fresh = profileData { await DiskCache.shared.save(fresh, forKey: "user:\(uid)") }
+        await DiskCache.shared.save(agents,        forKey: "agents:\(uid)")
+        await DiskCache.shared.save(notifications, forKey: "notifications:\(uid)")
+        await DiskCache.shared.save(events,        forKey: "events:\(uid)")
+        await DiskCache.shared.save([noteCount, highlightCount], forKey: "counts:\(uid)")
     }
 
     func createEvent(agentId: String, prompt: String, timestamps: [String?]) async {
@@ -469,6 +496,7 @@ struct AccountView: View {
                                 .lineLimit(1)
                         }
                         Spacer()
+                        // Enable/disable stays inline — it's a quick at-a-glance switch.
                         Toggle("", isOn: $agent.enabled)
                             .labelsHidden()
                             .tint(Theme.gold)
@@ -477,26 +505,29 @@ struct AccountView: View {
                             .onChange(of: agent.enabled) { _, newVal in
                                 vm.toggleAgent(id: agent.id, enabled: newVal)
                             }
-
-                        // Rename
+                        // Rename / delete moved into a long-press context menu.
+                        Image(systemName: "ellipsis")
+                            .foregroundColor(Theme.textMuted)
+                            .accessibilityHidden(true)
+                    }
+                    .contentShape(Rectangle())
+                    .contextMenu {
                         Button(action: {
                             renameText    = agent.name.isEmpty ? agent.displayLabel : agent.name
                             renameAgentId = agent.id
-                        }) {
-                            Image(systemName: "pencil")
-                                .foregroundColor(Theme.gold.opacity(0.60))
+                        }) { Label("Rename", systemImage: "pencil") }
+                        Button(role: .destructive, action: { vm.deleteAgent(id: agent.id) }) {
+                            Label("Delete", systemImage: "trash")
                         }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("Rename agent")
-
-                        // Delete
-                        Button(action: { vm.deleteAgent(id: agent.id) }) {
-                            Image(systemName: "trash")
-                                .foregroundColor(Theme.error.opacity(0.70))
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("Delete agent")
                     }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel("Agent: \(agent.displayLabel). \(agent.enabled ? "Enabled" : "Disabled").")
+                    .accessibilityHint("Double-tap and hold for options.")
+                    .accessibilityAction(named: "Rename agent") {
+                        renameText    = agent.name.isEmpty ? agent.displayLabel : agent.name
+                        renameAgentId = agent.id
+                    }
+                    .accessibilityAction(named: "Delete agent") { vm.deleteAgent(id: agent.id) }
                     .listRowBackground(Theme.cardBg)
                 }
             }
@@ -810,22 +841,23 @@ struct EventRow: View {
                 .foregroundColor(Theme.textMuted)
             }
             Spacer()
-            Button(action: onEdit) {
-                Image(systemName: "pencil")
-                    .foregroundColor(Theme.gold.opacity(0.60))
-                    .font(.caption)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Edit event")
-
-            Button(action: onDelete) {
-                Image(systemName: "trash")
-                    .foregroundColor(Theme.error.opacity(0.65))
-                    .font(.caption)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Delete event")
+            // Discoverability hint: signals a long-press context menu is available.
+            Image(systemName: "ellipsis")
+                .foregroundColor(Theme.textMuted)
+                .font(.caption)
+                .accessibilityHidden(true)
         }
+        // Whole row is the long-press target (Spacer included).
+        .contentShape(Rectangle())
+        .contextMenu {
+            Button(action: onEdit) { Label("Edit", systemImage: "pencil") }
+            Button(role: .destructive, action: onDelete) { Label("Delete", systemImage: "trash") }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Event: \(event.prompt.isEmpty ? "Untitled Event" : String(event.prompt.prefix(50))). Scheduled \(event.scheduleSummary).")
+        .accessibilityHint("Double-tap and hold for options.")
+        .accessibilityAction(named: "Edit", onEdit)
+        .accessibilityAction(named: "Delete", onDelete)
     }
 }
 
