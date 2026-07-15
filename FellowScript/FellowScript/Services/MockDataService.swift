@@ -90,6 +90,18 @@ protocol DataServiceProtocol {
 
     // Chime calls
     func joinCall(userId: String, sessionId: String) async throws -> ChimeJoinResponse
+
+    // Subscriptions
+    func fetchUserSubscription(userId: String) async throws -> FSSubscription?
+    func startSubscription(userId: String, planType: String) async throws -> String
+    func cancelSubscription(subscriptionId: String) async throws
+    func fetchSubMembers(subscriptionId: String) async throws -> [FSSubMember]
+    func removeSubMember(subscriptionId: String, userId: String) async throws
+    func fetchSubRequests(subscriptionId: String) async throws -> [FSSubMember]
+    func fetchMySubRequests(userId: String) async throws -> [FSSubRequest]
+    func requestJoinSubscription(subscriptionId: String, fromUserId: String) async throws
+    func acceptSubRequest(subscriptionId: String, fromUserId: String) async throws
+    func declineSubRequest(subscriptionId: String, fromUserId: String) async throws
 }
 
 // ── Mock data ─────────────────────────────────────────────────────────────────
@@ -338,6 +350,18 @@ final class MockDataService: DataServiceProtocol {
     func joinCall(userId: String, sessionId: String) async throws -> ChimeJoinResponse {
         throw AppError.networkError("Calls are not available in preview mode.")
     }
+
+    // Subscriptions
+    func fetchUserSubscription(userId: String) async throws -> FSSubscription? { nil }
+    func startSubscription(userId: String, planType: String) async throws -> String { UUID().uuidString }
+    func cancelSubscription(subscriptionId: String) async throws {}
+    func fetchSubMembers(subscriptionId: String) async throws -> [FSSubMember] { [] }
+    func removeSubMember(subscriptionId: String, userId: String) async throws {}
+    func fetchSubRequests(subscriptionId: String) async throws -> [FSSubMember] { [] }
+    func fetchMySubRequests(userId: String) async throws -> [FSSubRequest] { [] }
+    func requestJoinSubscription(subscriptionId: String, fromUserId: String) async throws {}
+    func acceptSubRequest(subscriptionId: String, fromUserId: String) async throws {}
+    func declineSubRequest(subscriptionId: String, fromUserId: String) async throws {}
 }
 
 // ── AppError ──────────────────────────────────────────────────────────────────

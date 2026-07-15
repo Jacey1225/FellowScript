@@ -14,6 +14,7 @@ import {
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
 import AppNav from '../components/AppNav.jsx';
+import SubscriptionCard from '../components/SubscriptionCard.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import { API } from '../config.js';
 
@@ -536,6 +537,11 @@ export default function Account() {
               </Row>
           }
         </Card>
+
+        {/* Subscription */}
+        <div style={{ animationDelay: '0.12s', animation: 'fadeUp 0.55s ease forwards', opacity: 0 }}>
+          <SubscriptionCard userId={user.user_id} />
+        </div>
 
         {/* Edit profile */}
         <Card style={{ ...CARD_STYLE, animationDelay: '0.16s', animation: 'fadeUp 0.55s ease forwards', opacity: 0 }}>

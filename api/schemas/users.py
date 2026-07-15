@@ -1,6 +1,7 @@
 from pydantic import BaseModel, Field
 import uuid
 from datetime import datetime
+from typing import Optional
 
 class User(BaseModel):
     user_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
@@ -14,8 +15,11 @@ class User(BaseModel):
         default_factory=dict,
         description="key: 'Book-chapter-verse' e.g. 'Genesis-1-3', value: hex color")
     bookmarks: dict[str, str] = Field(
-        default_factory=dict, 
+        default_factory=dict,
         description="key: 'book-chapter' eg. 'Genesis-1'")
+    # The plan a user belongs to lives in the users.subscription_id column and is
+    # managed by SubscriptionsManager; it is intentionally not a User field here
+    # (mirrors apple_sub/google_sub, which are columns but not schema fields).
 
 class Note(BaseModel):
     title: str = Field(default_factory=str)

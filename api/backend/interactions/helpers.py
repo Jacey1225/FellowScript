@@ -94,8 +94,8 @@ def load_users_data() -> dict:
     db = DB()
     try:
         users: dict = {}
-        db.cur.execute("SELECT _id, username, email, hash_pass, apple_sub FROM users")
-        for _id, username, email, hash_pass, apple_sub in db.cur.fetchall():
+        db.cur.execute("SELECT _id, username, email, hash_pass, apple_sub, google_sub FROM users")
+        for _id, username, email, hash_pass, apple_sub, google_sub in db.cur.fetchall():
             uid = str(_id)
             rec = {
                 "username": username, "email": email, "hash_pass": hash_pass or "",
@@ -104,6 +104,8 @@ def load_users_data() -> dict:
             }
             if apple_sub:
                 rec["apple_sub"] = apple_sub
+            if google_sub:
+                rec["google_sub"] = google_sub
             users[uid] = rec
 
         db.cur.execute("SELECT user_id, friend_id FROM user_friends")
@@ -154,13 +156,14 @@ def save_users_data(user_info: dict) -> None:
         for uid, d in user_info.items():
             try:
                 db.cur.execute(
-                    "INSERT INTO users (_id, username, email, hash_pass, apple_sub) "
-                    "VALUES (%s,%s,%s,%s,%s) "
+                    "INSERT INTO users (_id, username, email, hash_pass, apple_sub, google_sub) "
+                    "VALUES (%s,%s,%s,%s,%s,%s) "
                     "ON CONFLICT (_id) DO UPDATE SET username=EXCLUDED.username, "
                     "email=EXCLUDED.email, hash_pass=EXCLUDED.hash_pass, "
-                    "apple_sub=COALESCE(EXCLUDED.apple_sub, users.apple_sub)",
+                    "apple_sub=COALESCE(EXCLUDED.apple_sub, users.apple_sub), "
+                    "google_sub=COALESCE(EXCLUDED.google_sub, users.google_sub)",
                     (uid, d.get("username", ""), d.get("email", ""),
-                     d.get("hash_pass", ""), d.get("apple_sub")),
+                     d.get("hash_pass", ""), d.get("apple_sub"), d.get("google_sub")),
                 )
                 db.conn.commit()
             except Exception as e:

@@ -125,7 +125,6 @@
 			);
 			name = FellowScript;
 			packageProductDependencies = (
-				AA0000000000000000000002 /* AmazonChimeSDK */,
 			);
 			productName = FellowScript;
 			productReference = 377EC3C62FF5BDB300971A07 /* FellowScript.app */;
@@ -213,9 +212,6 @@
 			productRefGroup = 377EC3C72FF5BDB300971A07 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
-			packageReferences = (
-				AA0000000000000000000001 /* XCRemoteSwiftPackageReference "amazon-chime-sdk-ios-spm" */,
-			);
 			targets = (
 				377EC3C52FF5BDB300971A07 /* FellowScript */,
 				377EC3D22FF5BDB500971A07 /* FellowScriptTests */,
@@ -223,25 +219,6 @@
 			);
 		};
 /* End PBXProject section */
-
-/* Begin XCRemoteSwiftPackageReference section */
-		AA0000000000000000000001 /* XCRemoteSwiftPackageReference "amazon-chime-sdk-ios-spm" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/aws/amazon-chime-sdk-ios-spm.git";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 0.27.0;
-			};
-		};
-/* End XCRemoteSwiftPackageReference section */
-
-/* Begin XCSwiftPackageProductDependency section */
-		AA0000000000000000000002 /* AmazonChimeSDK */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = AA0000000000000000000001 /* XCRemoteSwiftPackageReference "amazon-chime-sdk-ios-spm" */;
-			productName = AmazonChimeSDK;
-		};
-/* End XCSwiftPackageProductDependency section */
 
 /* Begin PBXResourcesBuildPhase section */
 		377EC3C42FF5BDB300971A07 /* Resources */ = {

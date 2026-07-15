@@ -603,7 +603,12 @@ export default function NotesSidebar({
         list.push([id, note, null, false]);
       });
     }
-    return list;
+    // Most recently edited first (backend bumps `timestamp` on every edit).
+    return list.sort((a, b) => {
+      const ta = new Date(a[1]?.timestamp || 0).getTime() || 0;
+      const tb = new Date(b[1]?.timestamp || 0).getTime() || 0;
+      return tb - ta;
+    });
   }, [notes, currentGroupId, user]);
 
   const openEditor = (id = null) => { setEditorNoteId(id); setEditorOpen(true); };

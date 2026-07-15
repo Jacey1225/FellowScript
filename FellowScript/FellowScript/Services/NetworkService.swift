@@ -326,15 +326,18 @@ final class NetworkService: DataServiceProtocol {
                           let u = self.decode(FSUser.self, from: d) else {
                         return FSContact(id: fid, name: String(fid.prefix(8)), type: .friend)
                     }
-                    // Fetch last DM for preview
+                    // Fetch last DM for preview + timestamp
                     var preview = ""
+                    var lastAt  = ""
                     if let md = try? await self.get("/message/messages/\(userId)/?guest_user=\(fid)"),
                        let resp = self.decode(RawMsgPayload.self, from: md) {
-                        let all = resp.payload?.allMsgs ?? []
-                        preview = all.sorted { $0.timestamp < $1.timestamp }.last?.text ?? ""
+                        let all  = resp.payload?.allMsgs ?? []
+                        let last = all.sorted { $0.timestamp < $1.timestamp }.last
+                        preview = last?.text ?? ""
+                        lastAt  = last?.timestamp ?? ""
                     }
                     return FSContact(id: fid, name: u.username, type: .friend,
-                                     preview: preview, toUsers: [fid])
+                                     preview: preview, toUsers: [fid], lastMessageAt: lastAt)
                 }
             }
             var result: [FSContact] = []
@@ -354,13 +357,15 @@ final class NetworkService: DataServiceProtocol {
             let title = g.title ?? gid
             let users = g.users ?? []
             groupMap[gid] = FSGroup(id: gid, title: title, users: users)
-            let allMsgs = (resp.host_msgs ?? []) + (resp.other_msgs ?? [])
-            let preview = allMsgs.sorted { $0.timestamp < $1.timestamp }.last?.text ?? ""
+            let allMsgs  = (resp.host_msgs ?? []) + (resp.other_msgs ?? [])
+            let lastMsg  = allMsgs.sorted { $0.timestamp < $1.timestamp }.last
+            let preview  = lastMsg?.text ?? ""
             // Backend `members` is the list of member usernames (excluding self).
             let memberNames = resp.members ?? []
             groupContacts.append(FSContact(id: gid, name: title, type: .group,
                                            preview: preview, toUsers: users,
-                                           memberNames: memberNames))
+                                           memberNames: memberNames,
+                                           lastMessageAt: lastMsg?.timestamp ?? ""))
         }
 
         return (friends + groupContacts, groupMap)
@@ -541,6 +546,64 @@ final class NetworkService: DataServiceProtocol {
             throw AppError.networkError(detail)
         }
         return response
+    }
+
+    // ── Subscriptions ─────────────────────────────────────────────────────────
+    // Mirrors api/routes/subscription.py.
+
+    func fetchUserSubscription(userId: String) async throws -> FSSubscription? {
+        // 404 when the user is on no plan — its {"detail":...} body simply won't
+        // decode as FSSubscription, so nil falls out naturally.
+        let data = try await get("/subscriptions/user/\(encodeURIComponent(userId))")
+        return decode(FSSubscription.self, from: data)
+    }
+
+    func startSubscription(userId: String, planType: String) async throws -> String {
+        let data = try await requestRaw("/subscriptions/", method: "POST",
+                                        jsonObject: ["user_id": userId, "plan_type": planType])
+        guard let result = decode([String: String].self, from: data), let id = result["id"] else {
+            throw AppError.networkError("Could not start plan.")
+        }
+        return id
+    }
+
+    func cancelSubscription(subscriptionId: String) async throws {
+        _ = try await request("/subscriptions/\(encodeURIComponent(subscriptionId))", method: "DELETE")
+    }
+
+    func fetchSubMembers(subscriptionId: String) async throws -> [FSSubMember] {
+        let data = try await get("/subscriptions/\(encodeURIComponent(subscriptionId))/members")
+        return decode([FSSubMember].self, from: data) ?? []
+    }
+
+    func removeSubMember(subscriptionId: String, userId: String) async throws {
+        _ = try await request("/subscriptions/\(encodeURIComponent(subscriptionId))/members/\(encodeURIComponent(userId))",
+                              method: "DELETE")
+    }
+
+    func fetchSubRequests(subscriptionId: String) async throws -> [FSSubMember] {
+        let data = try await get("/subscriptions/\(encodeURIComponent(subscriptionId))/requests")
+        return decode([FSSubMember].self, from: data) ?? []
+    }
+
+    func fetchMySubRequests(userId: String) async throws -> [FSSubRequest] {
+        let data = try await get("/subscriptions/user/\(encodeURIComponent(userId))/requests")
+        return decode([FSSubRequest].self, from: data) ?? []
+    }
+
+    func requestJoinSubscription(subscriptionId: String, fromUserId: String) async throws {
+        _ = try await request("/subscriptions/\(encodeURIComponent(subscriptionId))/requests?from_user_id=\(encodeURIComponent(fromUserId))",
+                              method: "POST")
+    }
+
+    func acceptSubRequest(subscriptionId: String, fromUserId: String) async throws {
+        _ = try await request("/subscriptions/\(encodeURIComponent(subscriptionId))/requests/\(encodeURIComponent(fromUserId))/accept",
+                              method: "POST")
+    }
+
+    func declineSubRequest(subscriptionId: String, fromUserId: String) async throws {
+        _ = try await request("/subscriptions/\(encodeURIComponent(subscriptionId))/requests/\(encodeURIComponent(fromUserId))",
+                              method: "DELETE")
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────

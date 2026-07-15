@@ -76,6 +76,12 @@ async def leave_devotion(user_id: str, session_id: str) -> dict:
 async def delete_devotion(req: DevotionRequest) -> dict:
     db = DevotionManager()
     try:
+        # Only the session's creator (host) may delete it.
+        session = db.read_devotion(req.devotion_id)
+        if session is None:
+            return {"ok": True}  # already gone — idempotent
+        if str(session.creator_id) != str(req.user_id):
+            raise HTTPException(status_code=403, detail="Only the session host can delete it.")
         db.remove_devotion(req.devotion_id)
         return {"ok": True}
     finally:

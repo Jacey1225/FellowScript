@@ -34,6 +34,57 @@ extension FSUser {
     }
 }
 
+// ── Subscription ────────────────────────────────────────────────────────────
+// Mirrors api/schemas/subscription.py. Only the fields the UI needs are decoded;
+// every field is defensive (try? … ?? default) so a partial server row still loads.
+struct FSSubscription: Codable, Identifiable {
+    var id:           String = ""
+    var user_id:      String = ""    // the host who owns the plan
+    var plan_type:    String = "individual"   // "individual" | "group"
+    var status:       String = "inactive"
+    var price_cents:  Int    = 0
+    var max_members:  Int    = 1
+
+    enum CodingKeys: String, CodingKey {
+        case id, user_id, plan_type, status, price_cents, max_members
+    }
+
+    init(id: String = "", user_id: String = "", plan_type: String = "individual",
+         status: String = "inactive", price_cents: Int = 0, max_members: Int = 1) {
+        self.id = id; self.user_id = user_id; self.plan_type = plan_type
+        self.status = status; self.price_cents = price_cents; self.max_members = max_members
+    }
+
+    init(from decoder: Decoder) throws {
+        let c        = try decoder.container(keyedBy: CodingKeys.self)
+        id           = (try? c.decode(String.self, forKey: .id))          ?? ""
+        user_id      = (try? c.decode(String.self, forKey: .user_id))     ?? ""
+        plan_type    = (try? c.decode(String.self, forKey: .plan_type))   ?? "individual"
+        status       = (try? c.decode(String.self, forKey: .status))      ?? "inactive"
+        price_cents  = (try? c.decode(Int.self,    forKey: .price_cents)) ?? 0
+        max_members  = (try? c.decode(Int.self,    forKey: .max_members)) ?? 1
+    }
+
+    var priceLabel: String { "$\(price_cents / 100)" }
+    func isHost(_ userId: String) -> Bool { user_id == userId }
+}
+
+// A member of a group plan (host included).
+struct FSSubMember: Codable, Identifiable {
+    let user_id:  String
+    var username: String = ""
+    var email:    String = ""
+    var id: String { user_id }
+}
+
+// An outstanding join request this user has sent to a group plan.
+struct FSSubRequest: Codable, Identifiable {
+    let subscription_id: String
+    var plan_type: String = "group"
+    var host_id:   String = ""
+    var id: String { subscription_id }
+}
+
 // ── Note ──────────────────────────────────────────────────────────────────────
 struct FSNote: Codable, Identifiable {
     var id:        String  = UUID().uuidString
@@ -173,13 +224,14 @@ struct FSBookmark: Identifiable {
 // ── Chat / Messaging ──────────────────────────────────────────────────────────
 enum ContactType: String, Codable { case friend, group }
 
-struct FSContact: Identifiable, Codable {
+struct FSContact: Identifiable, Codable, Equatable {
     let id:      String
     let name:    String
     let type:    ContactType
     var preview: String = ""
     var toUsers: [String] = []      // member user IDs — used for message routing
     var memberNames: [String] = []  // member usernames (excludes self) — for display
+    var lastMessageAt: String = ""  // ISO timestamp of the most recent message (for sorting)
 }
 
 struct FSMessage: Identifiable, Codable {
@@ -227,6 +279,27 @@ struct FSSession: Codable, Identifiable {
             return f.string(from: d)
         }
         return time_start
+    }
+}
+
+// Resilient decoding: the server omits some fields (e.g. `summarize`) and returns
+// null for others (e.g. `time_end`). The synthesized Codable init throws on a
+// missing key or a null → non-optional mismatch, which would drop the WHOLE
+// session list. decodeIfPresent falls back to the property defaults instead.
+extension FSSession {
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id           = (try? c.decode(String.self,   forKey: .id))           ?? UUID().uuidString
+        title        = (try? c.decode(String.self,   forKey: .title))         ?? ""
+        time_start   = (try? c.decode(String.self,   forKey: .time_start))    ?? ""
+        time_end     = (try? c.decode(String.self,   forKey: .time_end))      ?? ""
+        verses       = (try? c.decode([String].self, forKey: .verses))        ?? []
+        prompts      = (try? c.decode([String].self, forKey: .prompts))       ?? []
+        recurring    = (try? c.decode(Bool.self,     forKey: .recurring))     ?? false
+        summarize    = (try? c.decode(Bool.self,     forKey: .summarize))     ?? false
+        group_id     = (try? c.decode(String.self,   forKey: .group_id))      ?? ""
+        creator_id   = (try? c.decode(String.self,   forKey: .creator_id))    ?? ""
+        participants = (try? c.decode([String].self, forKey: .participants))  ?? []
     }
 }
 

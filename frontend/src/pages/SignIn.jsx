@@ -26,20 +26,22 @@ export default function SignIn() {
   const [googleError,   setGoogleError]   = useState('');
   const [googleLoading, setGoogleLoading] = useState(false);
 
-  // After Google redirects back with #id_token=... in the hash, sign the user in automatically.
+  // Finish Google sign-in. main.jsx stashes the id_token before HashRouter can
+  // swallow the redirect fragment, so read that first (falling back to the hash).
   useEffect(() => {
-    const hash = window.location.hash.slice(1);
-    if (!hash) return;
-    const params = new URLSearchParams(hash);
-    const idToken = params.get('id_token');
-    const error   = params.get('error');
+    const stashedToken = sessionStorage.getItem('pending_google_id_token');
+    const stashedError = sessionStorage.getItem('pending_google_error');
+    sessionStorage.removeItem('pending_google_id_token');
+    sessionStorage.removeItem('pending_google_error');
+
+    const params  = new URLSearchParams(window.location.hash.slice(1));
+    const idToken = stashedToken || params.get('id_token');
+    const error   = stashedError || params.get('error');
     if (error) {
       setGoogleError('Google sign-in was cancelled or denied.');
-      window.history.replaceState(null, '', window.location.pathname);
       return;
     }
     if (!idToken) return;
-    window.history.replaceState(null, '', window.location.pathname);
     (async () => {
       setGoogleLoading(true);
       try {

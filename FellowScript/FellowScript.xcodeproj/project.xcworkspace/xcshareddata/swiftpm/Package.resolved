@@ -1,0 +1,15 @@
+{
+  "originHash" : "9ae3f3ceb93b440c77066956fa7ca4c6c77df1512f64b9beaa9ab6d83ff97ebb",
+  "pins" : [
+    {
+      "identity" : "amazon-chime-sdk-ios-spm",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/aws/amazon-chime-sdk-ios-spm.git",
+      "state" : {
+        "revision" : "597a0aa21de427c312f62949561ad74277819738",
+        "version" : "0.27.3"
+      }
+    }
+  ],
+  "version" : 3
+}
