@@ -14,9 +14,11 @@ struct CommunityActivityItem: Codable {
     let name:      String   // contact name or group name
     let preview:   String   // message text or note title
     let timestamp: String   // ISO string; empty → display "recent"
+    var contact:   FSContact? = nil   // the conversation to open when tapped
 
     var icon: String {
-        kind == .message ? "bubble.left.fill" : "note.text"
+        if let t = contact?.type { return t == .group ? "person.2.fill" : "bubble.left.fill" }
+        return kind == .message ? "bubble.left.fill" : "note.text"
     }
 
     var timeLabel: String {
@@ -118,39 +120,21 @@ final class DashboardViewModel: ObservableObject {
     }
 
     private func buildCommunityItems(contacts: [FSContact]) {
-        var items: [CommunityActivityItem] = []
-
-        // Most recent message: first contact with a non-empty preview
-        if let contact = contacts.first(where: { !$0.preview.isEmpty }) {
-            items.append(CommunityActivityItem(
-                kind:      .message,
-                name:      contact.name,
-                preview:   contact.preview,
-                timestamp: ""
-            ))
-        }
-
-        // Most recent group note: personal notes that belong to a group
-        if let groupNote = notes.values
-            .filter({ !$0.group_id.isEmpty })
-            .sorted(by: { $0.timestamp > $1.timestamp })
-            .first {
-            items.append(CommunityActivityItem(
-                kind:      .groupNote,
-                name:      groupNote.title.isEmpty ? "Untitled" : groupNote.title,
-                preview:   groupNote.preview,
-                timestamp: groupNote.timestamp
-            ))
-        }
-
-        // Notes with timestamps sort above message items (which have no timestamp)
-        items.sort {
-            if !$0.timestamp.isEmpty && $1.timestamp.isEmpty { return true }
-            if $0.timestamp.isEmpty && !$1.timestamp.isEmpty { return false }
-            return $0.timestamp > $1.timestamp
-        }
-
-        communityItems = Array(items.prefix(2))
+        // One entry per conversation — the most recent message from each friend or
+        // group — newest first. Each carries its contact so tapping opens that chat.
+        communityItems = contacts
+            .filter { !$0.preview.isEmpty }
+            .sorted { $0.lastMessageAt > $1.lastMessageAt }
+            .prefix(4)
+            .map { c in
+                CommunityActivityItem(
+                    kind:      .message,
+                    name:      c.name,
+                    preview:   c.preview,
+                    timestamp: c.lastMessageAt,
+                    contact:   c
+                )
+            }
     }
 }
 
@@ -187,7 +171,9 @@ struct DashboardView: View {
                         RecentNoteWidget(note: vm.recentNote, onTap: { n in navigateToNote = n }, onNew: { showNewNote = true })
 
                         // 2 — Community Activity Widget
-                        CommunityActivityWidget(items: vm.communityItems)
+                        CommunityActivityWidget(items: vm.communityItems, onTap: { item in
+                            appState.pendingChatContact = item.contact
+                        })
 
                         // 3 — Highlighted Verse Widget
                         HighlightedVerseWidget(
@@ -285,6 +271,7 @@ struct RecentNoteWidget: View {
 // ── 2. Community Activity Widget ──────────────────────────────────────────────
 struct CommunityActivityWidget: View {
     let items: [CommunityActivityItem]
+    var onTap: (CommunityActivityItem) -> Void = { _ in }
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.spacingMD) {
@@ -327,13 +314,23 @@ struct CommunityActivityWidget: View {
                                 .lineLimit(2)
                         }
                         Spacer(minLength: 0)
-                        Text(item.timeLabel)
-                            .font(.lora(Theme.fontXXS))
-                            .foregroundColor(Theme.textMuted)
-                            .padding(.top, 2)
+                        VStack(alignment: .trailing, spacing: 4) {
+                            Text(item.timeLabel)
+                                .font(.lora(Theme.fontXXS))
+                                .foregroundColor(Theme.textMuted)
+                            if item.contact != nil {
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 10, weight: .semibold))
+                                    .foregroundColor(Theme.gold.opacity(0.40))
+                            }
+                        }
+                        .padding(.top, 2)
                     }
+                    .contentShape(Rectangle())
+                    .onTapGesture { if item.contact != nil { onTap(item) } }
                     .accessibilityElement(children: .combine)
-                    .accessibilityLabel("\(item.name): \(item.preview), \(item.timeLabel)")
+                    .accessibilityLabel("\(item.name): \(item.preview), \(item.timeLabel). Tap to open chat.")
+                    .accessibilityAddTraits(item.contact != nil ? .isButton : [])
                 }
             }
         }

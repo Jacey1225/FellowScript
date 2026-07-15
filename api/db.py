@@ -27,8 +27,15 @@ def create_tables(cur):
         "(_id UUID PRIMARY KEY NOT NULL,"
         "username VARCHAR(64) UNIQUE NOT NULL,"
         "email VARCHAR(255) UNIQUE NOT NULL,"
-        "hash_pass VARCHAR(255) NOT NULL)"
+        "hash_pass VARCHAR(255) NOT NULL,"
+        # Stable provider identifiers for social sign-in (nullable — password
+        # accounts have neither; each is backfilled on that provider's sign-in).
+        "apple_sub TEXT,"
+        "google_sub TEXT)"
     )
+    # Migrations for databases created before the social-sign-in columns existed.
+    cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS apple_sub TEXT")
+    cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS google_sub TEXT")
 
     cur.execute(
         "CREATE TABLE IF NOT EXISTS groups"
@@ -97,7 +104,9 @@ def create_tables(cur):
         "time_start TIMESTAMPTZ,"
         "time_end TIMESTAMPTZ,"
         "recurring BOOLEAN DEFAULT FALSE,"
-        "group_id UUID REFERENCES groups(_id) ON DELETE SET NULL,"
+        # A session's room id: a group id OR a DM room key (userA|userB), so it
+        # is free-form text, not an FK to groups.
+        "group_id TEXT,"
         "creator_id UUID REFERENCES users(_id),"
         "participants TEXT[],"
         "verses TEXT[],"
@@ -112,6 +121,41 @@ def create_tables(cur):
         "user_id UUID REFERENCES users(_id) ON DELETE CASCADE,"
         "role VARCHAR(128) DEFAULT '',"
         "chats TEXT[])"
+    )
+
+    cur.execute(
+        "CREATE TABLE IF NOT EXISTS subscriptions"
+        "(_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
+        # The host who owns and pays for the plan.
+        "user_id UUID REFERENCES users(_id) ON DELETE CASCADE,"
+        "plan_type TEXT NOT NULL DEFAULT 'individual',"       # 'individual' | 'group'
+        "provider TEXT NOT NULL DEFAULT 'stripe',"            # 'stripe' | 'apple'
+        # Opaque processor references — never raw card data.
+        "stripe_customer_id TEXT DEFAULT '',"
+        "default_payment_method_id TEXT DEFAULT '',"
+        # Display-only, PCI-safe card metadata.
+        "card_brand TEXT DEFAULT '',"
+        "card_last4 TEXT DEFAULT '',"
+        "status TEXT NOT NULL DEFAULT 'inactive',"
+        "price_cents INTEGER NOT NULL DEFAULT 1000,"          # derived from plan_type
+        "max_members INTEGER NOT NULL DEFAULT 1,"             # derived from plan_type
+        "current_period_end TIMESTAMPTZ,"
+        "created_at TIMESTAMPTZ DEFAULT NOW())"
+    )
+    # Migrations for a subscriptions table created before these plan columns
+    # existed (no-op on a fresh DB where CREATE TABLE already added them).
+    cur.execute("ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(_id) ON DELETE CASCADE")
+    cur.execute("ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS plan_type TEXT NOT NULL DEFAULT 'individual'")
+    cur.execute("ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS price_cents INTEGER NOT NULL DEFAULT 1000")
+    cur.execute("ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS max_members INTEGER NOT NULL DEFAULT 1")
+    # A user's plan membership is a pointer on the users row (single source of
+    # truth): a plan's members are the users pointing at it, the host is
+    # subscriptions.user_id. Added here (after subscriptions exists) to avoid a
+    # circular create-time FK. ON DELETE SET NULL detaches members if the plan
+    # is removed.
+    cur.execute(
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS subscription_id UUID "
+        "REFERENCES subscriptions(_id) ON DELETE SET NULL"
     )
 
     # ── Level 2: depend on Level 1 ─────────────────────────────────────────────
@@ -181,6 +225,14 @@ def create_tables(cur):
         "heartbeat_id UUID REFERENCES agent_heartbeats(_id) ON DELETE CASCADE,"
         "user_id UUID REFERENCES users(_id) ON DELETE CASCADE,"
         "context TEXT[] DEFAULT '{}')"
+    )
+
+    cur.execute(
+        "CREATE TABLE IF NOT EXISTS subscription_request"
+        "(subscription_id UUID REFERENCES subscriptions(_id) ON DELETE CASCADE,"
+        "from_user_id UUID REFERENCES users(_id) ON DELETE CASCADE,"
+        "created_at TIMESTAMPTZ DEFAULT NOW(),"
+        "PRIMARY KEY (subscription_id, from_user_id))"
     )
     logger.info("All tables created.")
 
@@ -385,7 +437,7 @@ def clear_tables(cur):
     logger.info("Clearing all tables...")
     cur.execute(
         "TRUNCATE TABLE "
-        "device_tokens, notifications, "
+        "device_tokens, notifications, subscription_request, subscriptions, "
         "agent_messages, agent_heartbeats, message_recipients, note_verses, "
         "agents, devotions, messages, notes, "
         "bookmarks, highlights, friend_requests, user_friends, "

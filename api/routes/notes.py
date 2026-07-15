@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException
 from schemas.users import Note
 from db import DBManager
+from datetime import datetime
 import uuid
 import logging
 
@@ -203,10 +204,11 @@ async def update_note(user_id: str, note_id: str, note_dict: dict) -> None:
         db.update(
             "notes",
             {
-                "title":    note.title,
-                "text":     note.text,
-                "public":   note.public,
-                "group_id": note.group_id or None,
+                "title":     note.title,
+                "text":      note.text,
+                "public":    note.public,
+                "group_id":  note.group_id or None,
+                "timestamp": datetime.now(),   # bump so lists can sort by last-edited
             },
             {"_id": note_id},
         )

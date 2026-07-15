@@ -8,6 +8,14 @@ import SwiftUI
 import Combine
 import UserNotifications
 
+// A friend's group plan that still has room, surfaced so the user can request to join.
+struct FSJoinablePlan: Identifiable {
+    let plan: FSSubscription
+    let hostName: String
+    let memberCount: Int
+    var id: String { plan.id }
+}
+
 @MainActor
 final class AccountViewModel: ObservableObject {
     var service: DataServiceProtocol = MockDataService.shared
@@ -26,6 +34,18 @@ final class AccountViewModel: ObservableObject {
     var groupCount:  Int { profileData?.groups.count  ?? 0 }
     @Published var noteCount:      Int = 0
     @Published var highlightCount: Int = 0
+
+    // Subscription
+    @Published var subscription:   FSSubscription? = nil
+    @Published var subMembers:     [FSSubMember]   = []   // group members (host view)
+    @Published var subRequests:    [FSSubMember]   = []   // incoming join requests (host view)
+    @Published var mySubRequests:  [FSSubRequest]  = []   // this user's outstanding requests
+    @Published var joinablePlans:  [FSJoinablePlan] = []  // friends' group plans with room
+    @Published var subLoading      = true
+    @Published var subBusy         = false
+    @Published var subMsg: String? = nil
+
+    var isSubHost: Bool { subscription?.isHost(profileData?.user_id ?? "") ?? false }
 
     func load(service: DataServiceProtocol, user: FSUser) async {
         self.service = service
@@ -175,6 +195,100 @@ final class AccountViewModel: ObservableObject {
             await NotificationScheduler.scheduleAll(userId: uid, notifications: remaining, service: service)
         }
     }
+
+    // ── Subscription ───────────────────────────────────────────────────────────
+
+    func loadSubscription(userId: String) async {
+        subLoading = true
+        defer { subLoading = false }
+        let plan = (try? await service.fetchUserSubscription(userId: userId)) ?? nil
+        subscription = plan
+        // Host of a group plan → load members + pending requests.
+        if let plan, plan.isHost(userId), plan.plan_type == "group" {
+            subMembers  = (try? await service.fetchSubMembers(subscriptionId: plan.id))  ?? []
+            subRequests = (try? await service.fetchSubRequests(subscriptionId: plan.id)) ?? []
+        } else {
+            subMembers = []; subRequests = []
+        }
+        mySubRequests = (try? await service.fetchMySubRequests(userId: userId)) ?? []
+
+        // No plan → surface friends' group plans that still have room to join.
+        if plan == nil {
+            var found: [FSJoinablePlan] = []
+            if let (contacts, _) = try? await service.fetchContacts(userId: userId) {
+                for c in contacts where c.type == .friend {
+                    guard let p = (try? await service.fetchUserSubscription(userId: c.id)) ?? nil,
+                          p.plan_type == "group", p.isHost(c.id) else { continue }
+                    let members = (try? await service.fetchSubMembers(subscriptionId: p.id)) ?? []
+                    if members.count < p.max_members {
+                        found.append(FSJoinablePlan(plan: p, hostName: c.name, memberCount: members.count))
+                    }
+                }
+            }
+            joinablePlans = found
+        } else {
+            joinablePlans = []
+        }
+    }
+
+    func requestJoin(_ subscriptionId: String) async {
+        guard let uid = profileData?.user_id else { return }
+        subBusy = true; defer { subBusy = false }
+        do {
+            try await service.requestJoinSubscription(subscriptionId: subscriptionId, fromUserId: uid)
+            await loadSubscription(userId: uid)
+        } catch { subMsg = (error as? LocalizedError)?.errorDescription ?? "Could not send request." }
+    }
+
+    func startPlan(planType: String) async {
+        guard let uid = profileData?.user_id else { return }
+        subBusy = true; defer { subBusy = false }
+        do {
+            _ = try await service.startSubscription(userId: uid, planType: planType)
+            await loadSubscription(userId: uid)
+        } catch { subMsg = "Could not start plan." }
+    }
+
+    func cancelPlan() async {
+        guard let uid = profileData?.user_id, let plan = subscription else { return }
+        subBusy = true; defer { subBusy = false }
+        try? await service.cancelSubscription(subscriptionId: plan.id)
+        await loadSubscription(userId: uid)
+    }
+
+    func leavePlan() async {
+        guard let uid = profileData?.user_id, let plan = subscription else { return }
+        subBusy = true; defer { subBusy = false }
+        try? await service.removeSubMember(subscriptionId: plan.id, userId: uid)
+        await loadSubscription(userId: uid)
+    }
+
+    func removeMember(_ memberId: String) async {
+        guard let uid = profileData?.user_id, let plan = subscription else { return }
+        try? await service.removeSubMember(subscriptionId: plan.id, userId: memberId)
+        await loadSubscription(userId: uid)
+    }
+
+    func acceptRequest(_ fromUserId: String) async {
+        guard let uid = profileData?.user_id, let plan = subscription else { return }
+        do {
+            try await service.acceptSubRequest(subscriptionId: plan.id, fromUserId: fromUserId)
+            await loadSubscription(userId: uid)
+        } catch { subMsg = (error as? LocalizedError)?.errorDescription ?? "Could not accept." }
+    }
+
+    func declineRequest(_ fromUserId: String) async {
+        guard let uid = profileData?.user_id, let plan = subscription else { return }
+        subRequests.removeAll { $0.user_id == fromUserId }
+        try? await service.declineSubRequest(subscriptionId: plan.id, fromUserId: fromUserId)
+        await loadSubscription(userId: uid)
+    }
+
+    func cancelMyRequest(_ subscriptionId: String) async {
+        guard let uid = profileData?.user_id else { return }
+        mySubRequests.removeAll { $0.subscription_id == subscriptionId }
+        try? await service.declineSubRequest(subscriptionId: subscriptionId, fromUserId: uid)
+    }
 }
 
 // ── Root account view ─────────────────────────────────────────────────────────
@@ -230,6 +344,9 @@ struct AccountView: View {
                     // ── Stats (mirrors StatBox row) ───────────────────────────
                     statsSection
 
+                    // ── Subscription ──────────────────────────────────────────
+                    subscriptionSection
+
                     // ── Edit profile ──────────────────────────────────────────
                     editProfileSection
 
@@ -276,6 +393,7 @@ struct AccountView: View {
                 await vm.load(service: appState.service, user: user)
                 username = user.username
                 email    = user.email
+                await vm.loadSubscription(userId: user.user_id)
             }
         }
         .sheet(item: $activeSheet) { sheet in
@@ -369,6 +487,192 @@ struct AccountView: View {
             }
         } header: {
             sectionHeader("Overview")
+        }
+        .listRowBackground(Theme.cardBg)
+    }
+
+    private var subscriptionSection: some View {
+        Section {
+            if vm.subLoading {
+                HStack { Spacer(); ProgressView().tint(Theme.gold); Spacer() }
+                    .listRowBackground(Theme.cardBg)
+            } else if let plan = vm.subscription {
+                activePlanRow(plan)
+
+                if vm.isSubHost && plan.plan_type == "group" {
+                    if !vm.subMembers.isEmpty {
+                        rowCaption("Members (\(vm.subMembers.count)/\(plan.max_members))")
+                    }
+                    ForEach(vm.subMembers) { memberRow($0) }
+
+                    if !vm.subRequests.isEmpty {
+                        rowCaption("Join Requests")
+                        ForEach(vm.subRequests) { requestRow($0) }
+                    }
+                }
+                managePlanRow(plan)
+            } else {
+                rowCaption("Choose a plan to unlock FellowScript.")
+                planOptionRow(type: "individual")
+                planOptionRow(type: "group")
+                if !vm.joinablePlans.isEmpty {
+                    rowCaption("Join a Friend's Group Plan")
+                    ForEach(vm.joinablePlans) { joinableRow($0) }
+                }
+            }
+
+            // Outstanding requests this user has sent.
+            if !vm.mySubRequests.isEmpty {
+                rowCaption("Your Pending Requests")
+                ForEach(vm.mySubRequests) { myRequestRow($0) }
+            }
+
+            if let msg = vm.subMsg {
+                Text(msg)
+                    .font(.lora(Theme.fontSM)).foregroundColor(Theme.error)
+                    .listRowBackground(Theme.error.opacity(0.10))
+            }
+        } header: {
+            sectionHeader("Subscription")
+        }
+    }
+
+    // ── Subscription row builders ────────────────────────────────────────────────
+
+    @ViewBuilder
+    private func rowCaption(_ text: String) -> some View {
+        Text(text)
+            .font(.lora(Theme.fontSM))
+            .foregroundColor(Theme.textMuted)
+            .listRowBackground(Theme.cardBg)
+    }
+
+    private func activePlanRow(_ plan: FSSubscription) -> some View {
+        HStack(spacing: Theme.spacingMD) {
+            ZStack {
+                Circle().fill(Theme.gold.opacity(0.12)).frame(width: 40, height: 40)
+                Image(systemName: vm.isSubHost ? "crown.fill" : (plan.plan_type == "group" ? "person.3.fill" : "person.fill"))
+                    .foregroundColor(Theme.gold)
+            }
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Text(plan.plan_type == "group" ? "Group Plan" : "Individual Plan")
+                        .font(.lora(Theme.fontBody)).foregroundColor(Theme.parchment)
+                    Text(plan.status.capitalized)
+                        .font(.lora(Theme.fontXXS)).tracking(1)
+                        .padding(.horizontal, 7).padding(.vertical, 2)
+                        .background(Theme.gold.opacity(0.15)).foregroundColor(Theme.gold)
+                        .clipShape(Capsule())
+                }
+                Text("\(plan.priceLabel)/mo · \(vm.isSubHost ? "You are the host" : "Member")"
+                     + (plan.plan_type == "group" ? " · up to \(plan.max_members)" : ""))
+                    .font(.lora(Theme.fontXS)).foregroundColor(Theme.textMuted)
+            }
+            Spacer()
+        }
+        .listRowBackground(Theme.cardBg)
+    }
+
+    private func memberRow(_ m: FSSubMember) -> some View {
+        HStack(spacing: Theme.spacingSM) {
+            ZStack {
+                Circle().fill(Theme.gold.opacity(0.15)).frame(width: 30, height: 30)
+                Text(String(m.username.prefix(1)).uppercased()).font(.playfair(Theme.fontXS)).foregroundColor(Theme.gold)
+            }
+            Text(m.username + (m.user_id == vm.profileData?.user_id ? " (you)" : ""))
+                .font(.lora(Theme.fontSM)).foregroundColor(Theme.parchment)
+            Spacer()
+            if m.user_id != vm.profileData?.user_id {
+                Button { Task { await vm.removeMember(m.user_id) } } label: {
+                    Image(systemName: "minus.circle").foregroundColor(Theme.error)
+                }
+                .buttonStyle(.borderless)
+                .accessibilityLabel("Remove \(m.username)")
+            }
+        }
+        .listRowBackground(Theme.cardBg)
+    }
+
+    private func requestRow(_ r: FSSubMember) -> some View {
+        HStack(spacing: Theme.spacingSM) {
+            ZStack {
+                Circle().fill(Theme.gold.opacity(0.15)).frame(width: 30, height: 30)
+                Text(String(r.username.prefix(1)).uppercased()).font(.playfair(Theme.fontXS)).foregroundColor(Theme.gold)
+            }
+            VStack(alignment: .leading, spacing: 1) {
+                Text(r.username).font(.lora(Theme.fontSM)).foregroundColor(Theme.parchment)
+                Text("Wants to join").font(.lora(Theme.fontXS)).foregroundColor(Theme.textMuted)
+            }
+            Spacer()
+            Button { Task { await vm.acceptRequest(r.user_id) } } label: {
+                Image(systemName: "checkmark.circle.fill").foregroundColor(Theme.gold)
+            }
+            .buttonStyle(.borderless).accessibilityLabel("Accept \(r.username)")
+            Button { Task { await vm.declineRequest(r.user_id) } } label: {
+                Image(systemName: "xmark.circle").foregroundColor(Theme.textMuted)
+            }
+            .buttonStyle(.borderless).accessibilityLabel("Decline \(r.username)")
+        }
+        .listRowBackground(Theme.cardBg)
+    }
+
+    private func managePlanRow(_ plan: FSSubscription) -> some View {
+        Button {
+            Task { if vm.isSubHost { await vm.cancelPlan() } else { await vm.leavePlan() } }
+        } label: {
+            Label(vm.isSubHost ? "Cancel Plan" : "Leave Plan",
+                  systemImage: vm.isSubHost ? "trash" : "rectangle.portrait.and.arrow.right")
+                .font(.lora(Theme.fontBody)).foregroundColor(Theme.error)
+        }
+        .disabled(vm.subBusy)
+        .listRowBackground(Theme.cardBg)
+    }
+
+    private func planOptionRow(type: String) -> some View {
+        let isGroup = (type == "group")
+        return HStack(spacing: Theme.spacingMD) {
+            ZStack {
+                Circle().fill(Theme.gold.opacity(0.12)).frame(width: 36, height: 36)
+                Image(systemName: isGroup ? "person.3.fill" : "person.fill").foregroundColor(Theme.gold)
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                Text(isGroup ? "Group — $40/mo" : "Individual — $10/mo")
+                    .font(.lora(Theme.fontBody)).foregroundColor(Theme.parchment)
+                Text(isGroup ? "Up to 5 members" : "Just you")
+                    .font(.lora(Theme.fontXS)).foregroundColor(Theme.textMuted)
+            }
+            Spacer()
+            Button("Start") { Task { await vm.startPlan(planType: type) } }
+                .font(.lora(Theme.fontSM)).foregroundColor(Theme.gold)
+                .buttonStyle(.borderless).disabled(vm.subBusy)
+        }
+        .listRowBackground(Theme.cardBg)
+    }
+
+    private func joinableRow(_ j: FSJoinablePlan) -> some View {
+        let pending = vm.mySubRequests.contains { $0.subscription_id == j.plan.id }
+        return HStack(spacing: Theme.spacingSM) {
+            ZStack {
+                Circle().fill(Theme.gold.opacity(0.15)).frame(width: 30, height: 30)
+                Text(String(j.hostName.prefix(1)).uppercased()).font(.playfair(Theme.fontXS)).foregroundColor(Theme.gold)
+            }
+            Text("\(j.hostName)'s Group · \(j.memberCount)/\(j.plan.max_members)")
+                .font(.lora(Theme.fontSM)).foregroundColor(Theme.parchment)
+            Spacer()
+            Button(pending ? "Requested" : "Request") { Task { await vm.requestJoin(j.plan.id) } }
+                .font(.lora(Theme.fontXS)).foregroundColor(pending ? Theme.textMuted : Theme.gold)
+                .buttonStyle(.borderless).disabled(pending || vm.subBusy)
+        }
+        .listRowBackground(Theme.cardBg)
+    }
+
+    private func myRequestRow(_ r: FSSubRequest) -> some View {
+        HStack {
+            Image(systemName: "clock").foregroundColor(Theme.textGoldMuted)
+            Text("Pending group plan request").font(.lora(Theme.fontSM)).foregroundColor(Theme.textSecondary)
+            Spacer()
+            Button("Cancel") { Task { await vm.cancelMyRequest(r.subscription_id) } }
+                .font(.lora(Theme.fontXS)).foregroundColor(Theme.textMuted).buttonStyle(.borderless)
         }
         .listRowBackground(Theme.cardBg)
     }

@@ -20,6 +20,7 @@ final class AppState: ObservableObject {
     @Published var currentUser: FSUser?
     @Published var isAuthenticated = false
     @Published var pendingBibleNav: BibleNavTarget? = nil
+    @Published var pendingChatContact: FSContact? = nil   // set to open a chat from another tab
 
     // Persisted across launches via UserDefaults (mirrors localStorage in AuthContext.jsx)
     @AppStorage("fs_user_id")        private var storedUserId:   String = ""

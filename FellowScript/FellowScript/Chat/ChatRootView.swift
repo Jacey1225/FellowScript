@@ -66,6 +66,14 @@ struct ChatRootView: View {
         .task {
             await vm.load(service: appState.service, userId: appState.currentUser?.user_id ?? "")
         }
+        .onChange(of: appState.pendingChatContact) { _, target in
+            // Opened from the dashboard community widget — jump to that conversation.
+            if let t = target {
+                selectedSegment = (t.type == .group) ? 1 : 0
+                activeContact = t
+                appState.pendingChatContact = nil
+            }
+        }
         .sheet(item: $activeContact) { contact in
             ChatThreadView(contact: contact, user: appState.currentUser)
         }
@@ -256,8 +264,9 @@ final class ChatViewModel: ObservableObject {
         async let contactsTask = try? service.fetchContacts(userId: userId)
         async let agentsTask   = try? service.fetchAgents(userId: userId)
         let (contacts, _) = (await contactsTask) ?? ([], [:])
-        friends = contacts.filter { $0.type == .friend }
-        groups  = contacts.filter { $0.type == .group }
+        // Sort each list so the conversation with the most recent message is first.
+        friends = contacts.filter { $0.type == .friend }.sorted { $0.lastMessageAt > $1.lastMessageAt }
+        groups  = contacts.filter { $0.type == .group  }.sorted { $0.lastMessageAt > $1.lastMessageAt }
         agents  = (await agentsTask) ?? []
 
         // ── Write fresh data back to the cache ───────────────────────────────────

@@ -14,9 +14,25 @@ TEAM_ID   = os.getenv("APPLE_TEAM_ID", "")
 BUNDLE_ID = os.getenv("APPLE_BUNDLE_ID", "")
 KEY_PATH  = os.getenv("APPLE_KEY_PATH", "")
 
-APNS_HOST = "https://api.push.apple.com"
+# A device token belongs to exactly one APNs environment: sandbox for
+# development/Xcode builds, production for App Store/TestFlight builds. We can't
+# tell which from the token alone, so we try one host and fall back to the other
+# on an environment-mismatch error. APNS_ENV pins which is tried first.
+APNS_HOSTS = {
+    "production": "https://api.push.apple.com",
+    "sandbox":    "https://api.sandbox.push.apple.com",
+}
+_ENV_MISMATCH_REASONS = {"BadDeviceToken", "BadEnvironmentKeyInToken"}
 
 _jwt_cache: tuple[str, float] | None = None
+
+
+def _host_order() -> list[str]:
+    primary = os.getenv("APNS_ENV", "production").lower()
+    if primary not in APNS_HOSTS:
+        primary = "production"
+    other = "sandbox" if primary == "production" else "production"
+    return [primary, other]
 
 
 def _apns_jwt() -> str:
@@ -46,7 +62,6 @@ async def send_push(device_token: str, title: str, body: str) -> bool:
         logger.error("Failed to generate APNs JWT: %s", e)
         return False
 
-    url = f"{APNS_HOST}/3/device/{device_token}"
     headers = {
         "authorization": f"bearer {token}",
         "apns-push-type": "alert",
@@ -58,12 +73,24 @@ async def send_push(device_token: str, title: str, body: str) -> bool:
             "sound": "default",
         }
     }
-    try:
-        async with httpx.AsyncClient(http2=True) as client:
-            resp = await client.post(url, json=payload, headers=headers, timeout=10)
-        if resp.status_code != 200:
-            logger.error("APNs %d: %s", resp.status_code, resp.text[:200])
-        return resp.status_code == 200
-    except Exception as e:
-        logger.error("APNs send failed: %s", e)
-        return False
+
+    for env in _host_order():
+        url = f"{APNS_HOSTS[env]}/3/device/{device_token}"
+        try:
+            async with httpx.AsyncClient(http2=True) as client:
+                resp = await client.post(url, json=payload, headers=headers, timeout=10)
+        except Exception as e:
+            logger.error("APNs send failed (%s): %s", env, e)
+            continue
+        if resp.status_code == 200:
+            return True
+        reason = ""
+        try:
+            reason = resp.json().get("reason", "")
+        except Exception:
+            pass
+        logger.warning("APNs %d (%s): %s", resp.status_code, env, reason)
+        # Only worth retrying the other environment on an env-mismatch error.
+        if reason not in _ENV_MISMATCH_REASONS:
+            break
+    return False

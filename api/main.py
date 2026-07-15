@@ -8,6 +8,7 @@ from routes.filtering import filter_router, sorting_router
 from routes.devotion import devo_router
 from routes.agent import agent_router
 from routes.notifications import notification_router
+from routes.subscription import subscription_router
 from schemas.users import SignUp, Login, UpdateUser, User
 from pydantic import BaseModel
 import uvicorn
@@ -62,6 +63,7 @@ app.include_router(sorting_router)
 app.include_router(devo_router)
 app.include_router(agent_router)
 app.include_router(notification_router)
+app.include_router(subscription_router)
 
 main_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 user_path = "data/users.json"
@@ -109,6 +111,18 @@ def find_by_apple_sub(users: dict, sub: str) -> tuple[str, dict] | None:
     """
     for uid, data in users.items():
         if data.get("apple_sub") == sub:
+            return uid, data
+    return None
+
+
+def find_by_google_sub(users: dict, sub: str) -> tuple[str, dict] | None:
+    """Locate a user by the stable Google subject identifier.
+
+    Mirrors the Apple flow: match returning Google users on the token's ``sub``
+    (which never changes) rather than email, which a user could change.
+    """
+    for uid, data in users.items():
+        if data.get("google_sub") == sub:
             return uid, data
     return None
 
@@ -293,13 +307,24 @@ async def google_auth(info: GoogleAuth, response: Response) -> dict:
     if not email:
         raise HTTPException(status_code=401, detail="No email in Google token")
 
+    sub = token_data.get("sub", "")
     given_name = token_data.get("given_name") or token_data.get("name") or email.split("@")[0]
 
     users = load_users()
-    result = find_by_email(users, email)
+
+    # Match on the stable Google identifier first, then fall back to email so an
+    # existing password/Apple account with the same address is linked, not duped.
+    result = find_by_google_sub(users, sub) if sub else None
+    if not result and email:
+        result = find_by_email(users, email)
 
     if result:
         uid, data = result
+        # Backfill google_sub on accounts first created via another provider.
+        if sub and data.get("google_sub") != sub:
+            users[uid]["google_sub"] = sub
+            save_users(users)
+            data = users[uid]
     else:
         uid = str(uuid.uuid4())
         base = given_name.replace(" ", "_").lower()[:16]
@@ -312,7 +337,15 @@ async def google_auth(info: GoogleAuth, response: Response) -> dict:
         # Same creation pipeline as password signup — writes to both stores.
         user = User(user_id=uid, username=username, email=email, hash_pass="")
         persist_new_user(user)
-        data = user.model_dump(exclude={"user_id"})
+        # google_sub isn't a User schema field; record it so returning Google
+        # sign-ins match on the stable identifier.
+        if sub:
+            users = load_users()
+            users[uid]["google_sub"] = sub
+            save_users(users)
+            data = users[uid]
+        else:
+            data = user.model_dump(exclude={"user_id"})
 
     response.set_cookie(
         key="user_id", value=uid, httponly=False, secure=True,

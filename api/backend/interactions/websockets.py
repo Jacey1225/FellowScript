@@ -13,6 +13,12 @@ class ConnectionManager(DBManager):
 
     def __init__(self) -> None:
         super().__init__()
+        # This manager is a long-lived module-level singleton, so its Postgres
+        # connection stays open for the app's lifetime. Run it in autocommit mode:
+        # otherwise every SELECT (e.g. resolving a sender's username) leaves the
+        # connection "idle in transaction", pinning a snapshot and holding locks
+        # that can block DDL and stall vacuum until the next write.
+        self.conn.autocommit = True
         self.active_connections: dict[str, WebSocket] = {}
 
     def save_message(self, msg: Message) -> None:

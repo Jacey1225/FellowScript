@@ -17,12 +17,25 @@ final class ChatThreadViewModel: ObservableObject {
 
     private var wsTask: URLSessionWebSocketTask?
 
+    /// The session/devotion room id. Must match the web client's `roomKey` so
+    /// sessions (and their Chime calls) are shared cross-platform:
+    ///   • friend DM → the two user ids sorted and joined with "|"
+    ///   • group     → the group id
+    static func roomKey(contact: FSContact, userId: String) -> String {
+        if contact.type == .friend {
+            return [userId, contact.id].sorted().joined(separator: "|")
+        }
+        return contact.id
+    }
+
     func load(service: DataServiceProtocol, contact: FSContact, userId: String) async {
+        let sessionKey = Self.roomKey(contact: contact, userId: userId)
+
         // ── Cache-first: show the last-seen thread instantly ─────────────────────
         if let cached: [FSMessage] = await DiskCache.shared.load([FSMessage].self, forKey: "messages:\(contact.id)") {
             messages = cached
         }
-        if let cached: [FSSession] = await DiskCache.shared.load([FSSession].self, forKey: "sessions:\(contact.id)") {
+        if let cached: [FSSession] = await DiskCache.shared.load([FSSession].self, forKey: "sessions:\(sessionKey)") {
             sessions = cached
         }
 
@@ -31,11 +44,11 @@ final class ChatThreadViewModel: ObservableObject {
         } else {
             messages = (try? await service.fetchFriendMessages(userId: userId, friendId: contact.id)) ?? messages
         }
-        sessions = (try? await service.fetchSessionsForContact(contactId: contact.id)) ?? sessions
+        sessions = (try? await service.fetchSessionsForContact(contactId: sessionKey)) ?? sessions
 
         // ── Persist the fresh thread for the next open ───────────────────────────
         await DiskCache.shared.save(messages, forKey: "messages:\(contact.id)")
-        await DiskCache.shared.save(sessions, forKey: "sessions:\(contact.id)")
+        await DiskCache.shared.save(sessions, forKey: "sessions:\(sessionKey)")
 
         connectWebSocket(wsBase: service.wsBase, userId: userId)
     }
@@ -130,9 +143,15 @@ struct ChatThreadView: View {
 
                     // ── Session banner (upcoming session card) ─────────────────
                     if let nextSession = vm.sessions.first {
-                        SessionBanner(session: nextSession)
-                            .padding(.horizontal, Theme.spacingSM)
-                            .padding(.top, Theme.spacingXS)
+                        SessionBanner(session: nextSession, onDelete: {
+                            let uid = appState.currentUser?.user_id ?? ""
+                            let key = ChatThreadViewModel.roomKey(contact: contact, userId: uid)
+                            Task {
+                                vm.sessions = (try? await appState.service.fetchSessionsForContact(contactId: key)) ?? []
+                            }
+                        })
+                        .padding(.horizontal, Theme.spacingSM)
+                        .padding(.top, Theme.spacingXS)
                     }
 
                     // ── Message list ───────────────────────────────────────────
@@ -249,11 +268,14 @@ struct ChatThreadView: View {
         .sheet(isPresented: $showSession) {
             SessionCreatorSheet(groupId: contact.id, onSave: { session in
                 let uid = appState.currentUser?.user_id ?? ""
+                // Use the shared room key so this session (and its call) is visible
+                // to the other party on the web client too.
+                let roomKey = ChatThreadViewModel.roomKey(contact: contact, userId: uid)
                 Task {
                     _ = try? await appState.service.createSession(
-                        userId: uid, devotion: session, contactId: contact.id
+                        userId: uid, devotion: session, contactId: roomKey
                     )
-                    vm.sessions = (try? await appState.service.fetchSessionsForContact(contactId: contact.id)) ?? vm.sessions
+                    vm.sessions = (try? await appState.service.fetchSessionsForContact(contactId: roomKey)) ?? vm.sessions
                 }
                 showSession = false
             })
@@ -477,9 +499,9 @@ struct AddGroupMembersSheet: View {
 // ── Session banner (mirrors SessionWidget.jsx) ────────────────────────────────
 struct SessionBanner: View {
     let session: FSSession
+    var onDelete: (() -> Void)? = nil
     @EnvironmentObject var appState: AppState
     @State private var showDetail = false
-    @State private var showCall   = false
 
     var body: some View {
         HStack(spacing: Theme.spacingMD) {
@@ -497,8 +519,12 @@ struct SessionBanner: View {
             }
             Spacer()
             HStack(spacing: 8) {
-                // Join call button
-                Button { showCall = true } label: {
+                // Join call button — starts/joins the persistent call.
+                Button {
+                    CallController.shared.start(session: session,
+                                                service: appState.service,
+                                                userId: appState.currentUser?.user_id ?? "")
+                } label: {
                     HStack(spacing: 4) {
                         Image(systemName: "video.fill")
                             .font(.system(size: 11))
@@ -527,11 +553,7 @@ struct SessionBanner: View {
         .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
         .overlay(RoundedRectangle(cornerRadius: Theme.radius).stroke(Theme.borderGoldDim, lineWidth: 1))
         .sheet(isPresented: $showDetail) {
-            SessionDetailSheet(session: session)
-                .environmentObject(appState)
-        }
-        .fullScreenCover(isPresented: $showCall) {
-            ChimeCallView(session: session)
+            SessionDetailSheet(session: session, onDelete: onDelete)
                 .environmentObject(appState)
         }
     }
@@ -540,9 +562,16 @@ struct SessionBanner: View {
 // ── Session detail sheet ──────────────────────────────────────────────────────
 struct SessionDetailSheet: View {
     let session: FSSession
+    var onDelete: (() -> Void)? = nil
     @EnvironmentObject var appState: AppState
     @Environment(\.dismiss) private var dismiss
-    @State private var showCall = false
+    @State private var showDeleteConfirm = false
+    @State private var isDeleting = false
+
+    // Only the user who created the session may delete it.
+    private var isHost: Bool {
+        !session.creator_id.isEmpty && session.creator_id == appState.currentUser?.user_id
+    }
 
     var body: some View {
         NavigationStack {
@@ -550,8 +579,14 @@ struct SessionDetailSheet: View {
                 Theme.bgPage.ignoresSafeArea()
                 ScrollView {
                     VStack(alignment: .leading, spacing: Theme.spacingLG) {
-                        // Join call CTA
-                        Button { showCall = true } label: {
+                        // Join call CTA — start the persistent call, then close
+                        // this sheet so the call takes over full-screen.
+                        Button {
+                            CallController.shared.start(session: session,
+                                                        service: appState.service,
+                                                        userId: appState.currentUser?.user_id ?? "")
+                            dismiss()
+                        } label: {
                             HStack(spacing: 10) {
                                 Image(systemName: "video.fill")
                                     .font(.system(size: 16))
@@ -609,6 +644,31 @@ struct SessionDetailSheet: View {
                                 .font(.lora(Theme.fontSM))
                                 .foregroundColor(Theme.textGoldMuted)
                         }
+
+                        // Host-only: delete the session they created.
+                        if isHost {
+                            Button(role: .destructive) { showDeleteConfirm = true } label: {
+                                HStack(spacing: 8) {
+                                    if isDeleting {
+                                        ProgressView().tint(Theme.error)
+                                    } else {
+                                        Image(systemName: "trash")
+                                        Text("Delete Session")
+                                            .font(.lora(Theme.fontBody, weight: .semibold))
+                                    }
+                                }
+                                .foregroundColor(Theme.error)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 12)
+                                .background(Theme.error.opacity(0.10))
+                                .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
+                                .overlay(RoundedRectangle(cornerRadius: Theme.radius)
+                                    .stroke(Theme.error.opacity(0.35), lineWidth: 1))
+                            }
+                            .disabled(isDeleting)
+                            .padding(.top, Theme.spacingSM)
+                            .accessibilityLabel("Delete session \(session.title)")
+                        }
                     }
                     .padding(Theme.spacingLG)
                 }
@@ -619,10 +679,12 @@ struct SessionDetailSheet: View {
                     Button("Done") { dismiss() }.foregroundColor(Theme.gold)
                 }
             }
-        }
-        .fullScreenCover(isPresented: $showCall) {
-            ChimeCallView(session: session)
-                .environmentObject(appState)
+            .alert("Delete Session?", isPresented: $showDeleteConfirm) {
+                Button("Cancel", role: .cancel) {}
+                Button("Delete", role: .destructive) { deleteSession() }
+            } message: {
+                Text("This permanently deletes \"\(session.title)\" for everyone. This can't be undone.")
+            }
         }
         .preferredColorScheme(.dark)
     }
@@ -632,6 +694,21 @@ struct SessionDetailSheet: View {
         Text(title.uppercased())
             .font(.lora(Theme.fontXXS)).tracking(2)
             .foregroundColor(Theme.gold.opacity(0.50))
+    }
+
+    private func deleteSession() {
+        let uid = appState.currentUser?.user_id ?? ""
+        isDeleting = true
+        Task {
+            try? await appState.service.deleteSession(
+                userId: uid, sessionId: session.id, devotion: session
+            )
+            await MainActor.run {
+                isDeleting = false
+                onDelete?()   // let the thread refresh its session list
+                dismiss()
+            }
+        }
     }
 }
 
