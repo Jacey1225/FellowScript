@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException, WebSocket
 from backend.interactions.agent import AgentManager
+from backend.subscription.limits import check_limit
 from schemas.agent import AgentHeartbeats
 from schemas.agent import _DEFAULT_ROLE as DEFAULT_ROLE
 from datetime import datetime
@@ -133,6 +134,9 @@ async def commit_heartbeat(user_id: str, agent_id: str, heartbeat_id: str, body:
 
 @agent_router.post("/{user_id}/{agent_id}/heartbeat", status_code=201)
 async def add_heartbeat(user_id: str, agent_id: str, body: dict) -> dict:
+    gate = check_limit(user_id, "agent_events")
+    if not gate["allowed"]:
+        raise HTTPException(status_code=403, detail=gate)
     db = AgentManager(user_id)
     try:
         heartbeat = AgentHeartbeats(

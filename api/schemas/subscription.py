@@ -9,6 +9,24 @@ PLAN_CONFIG: dict[str, dict[str, int]] = {
     "group":      {"price_cents": 4000, "max_members": 5},   # $40 / month, up to 5 users
 }
 
+# Every new subscription starts with a free trial of this length. The first
+# billing date is computed as created_at + TRIAL_MONTHS and stored as trial_end.
+TRIAL_MONTHS = 1
+
+# Usage caps for users WITHOUT an active plan (the free tier). Subscribed users
+# (individual or group, trialing or active) bypass these entirely — unlimited.
+# Enforced server-side in the create routes via LimitsManager, so the caps hold
+# regardless of client (web or iOS).
+#   - notes:               rolling-7-day window (notes the user authors)
+#   - agent_events:        total heartbeats the user owns
+#   - agent_notifications: total scheduled notifications the user owns
+FREE_LIMITS: dict[str, int] = {
+    "notes": 10,
+    "agent_events": 1,
+    "agent_notifications": 3,
+}
+NOTES_WINDOW_DAYS = 7
+
 
 class Subscription(BaseModel):
     """A subscription plan owned by a host user."""
@@ -20,15 +38,23 @@ class Subscription(BaseModel):
     default_payment_method_id: str = Field(default="", description="opaque processor token (pm_...)")
     card_brand: str = Field(default="", description="display only, e.g. 'visa'")
     card_last4: str = Field(default="", description="display only, last 4 digits")
-    status: str = Field(default="inactive", description="active | past_due | canceled | inactive")
+    card_exp_month: str = Field(default="", description="display only, e.g. '08'")
+    card_exp_year: str = Field(default="", description="display only, e.g. '2027'")
+    status: str = Field(default="inactive", description="trialing | active | past_due | canceled | inactive")
     price_cents: int = Field(default=1000, description="derived from plan_type")
     max_members: int = Field(default=1, description="derived from plan_type")
-    current_period_end: str = Field(default="")
+    trial_end: str = Field(default="", description="when the free trial ends / first billing date")
+    current_period_end: str = Field(default="", description="next billing date")
     created_at: str = Field(default_factory=lambda: str(datetime.now()))
 
 
 class SubscriptionCreate(BaseModel):
-    """Payload to start a new plan. Price/cap are set server-side from plan_type."""
+    """Payload to start a new plan. Price/cap and trial are set server-side.
+
+    Only NON-SENSITIVE billing fields are accepted — never a full card number
+    or CVC. The client derives brand/last4/exp locally (or from the processor)
+    and sends only those, plus opaque processor tokens.
+    """
     user_id: str
     plan_type: str = "individual"
     provider: str = "stripe"
@@ -36,6 +62,8 @@ class SubscriptionCreate(BaseModel):
     default_payment_method_id: str = ""
     card_brand: str = ""
     card_last4: str = ""
+    card_exp_month: str = ""
+    card_exp_year: str = ""
 
 
 class SubscriptionUpdate(BaseModel):

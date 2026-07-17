@@ -3,7 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import {
   Layout, Card, Form, Input, Button, Typography,
   Avatar, Spin, Alert, Divider, Row, Col,
-  Switch, Modal, Checkbox, Select, TimePicker,
+  Switch, Modal, Checkbox, Select, TimePicker, Progress, message,
 } from 'antd';
 import {
   UserOutlined, MailOutlined, LockOutlined,
@@ -15,6 +15,7 @@ import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
 import AppNav from '../components/AppNav.jsx';
 import SubscriptionCard from '../components/SubscriptionCard.jsx';
+import DonationButton from '../components/DonationButton.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import { API } from '../config.js';
 
@@ -50,6 +51,38 @@ function StatBox({ value, label }) {
       <div style={{ fontFamily: "'Lora', serif", fontSize: '0.6rem', letterSpacing: '0.22em', textTransform: 'uppercase', color: 'rgba(244,228,193,0.4)', marginTop: '0.45rem' }}>
         {label}
       </div>
+    </div>
+  );
+}
+
+// A single free-tier usage row: label, "used / limit", and a progress bar.
+// When the plan is unlimited (subscribed), shows "Unlimited" instead of a meter.
+function UsageMeter({ label, hint, data }) {
+  const unlimited = !data || data.unlimited;
+  const used  = data?.used  ?? 0;
+  const limit = data?.limit ?? 0;
+  const pct   = unlimited || !limit ? 0 : Math.min(100, Math.round((used / limit) * 100));
+  const maxed = !unlimited && used >= limit;
+  return (
+    <div style={{ marginBottom: '1rem' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '0.3rem' }}>
+        <Text style={{ fontFamily: "'Lora', serif", color: 'rgba(244,228,193,0.85)', fontSize: '0.85rem' }}>
+          {label}
+          {hint && <span style={{ color: 'rgba(244,228,193,0.4)', fontSize: '0.7rem', marginLeft: 6 }}>{hint}</span>}
+        </Text>
+        <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.8rem', color: unlimited ? 'var(--gold)' : maxed ? '#e08b8b' : 'rgba(244,228,193,0.7)' }}>
+          {unlimited ? 'Unlimited' : `${used} / ${limit}`}
+        </Text>
+      </div>
+      {!unlimited && (
+        <Progress
+          percent={pct}
+          showInfo={false}
+          size="small"
+          strokeColor={maxed ? '#c0392b' : 'var(--gold)'}
+          trailColor="rgba(244,228,193,0.12)"
+        />
+      )}
     </div>
   );
 }
@@ -97,6 +130,7 @@ export default function Account() {
   const [editMsg,        setEditMsg]        = useState(null);
   const [notesCount,     setNotesCount]     = useState(0);
   const [versesCount,    setVersesCount]    = useState(0);
+  const [usage,          setUsage]          = useState(null);
 
   const [requests,        setRequests]        = useState([]);
   const [requestsLoading, setRequestsLoading] = useState({});
@@ -191,7 +225,15 @@ export default function Account() {
     } catch {} finally { setAgentsLoading(false); }
   }, [user]);
 
-  useEffect(() => { loadProfile(); loadAgents(); }, [loadProfile, loadAgents]);
+  const loadUsage = useCallback(async () => {
+    if (!user) return;
+    try {
+      const res = await fetch(`${API}/subscriptions/user/${user.user_id}/usage`);
+      if (res.ok) setUsage(await res.json());
+    } catch {}
+  }, [user]);
+
+  useEffect(() => { loadProfile(); loadAgents(); loadUsage(); }, [loadProfile, loadAgents, loadUsage]);
 
   const agentLabel = (agent) =>
     agent.name ||
@@ -307,9 +349,18 @@ export default function Account() {
         const res = await fetch(`${API}/agent/${user.user_id}/${evAgentId}/heartbeat`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
         });
-        if (res.ok || res.status === 201) {
+        if (res.status === 403) {
+          const b = await res.json().catch(() => ({}));
+          const { used, limit } = b.detail || {};
+          message.warning(
+            limit != null
+              ? `Free plan limit reached (events: ${used}/${limit}). Upgrade for unlimited access.`
+              : `You've reached your free plan limit for events. Upgrade for unlimited access.`
+          );
+        } else if (res.ok || res.status === 201) {
           setEvModal(false);
           await loadAgents();
+          await loadUsage();
         }
       }
     } catch {} finally { setEvSaving(false); }
@@ -541,6 +592,31 @@ export default function Account() {
         {/* Subscription */}
         <div style={{ animationDelay: '0.12s', animation: 'fadeUp 0.55s ease forwards', opacity: 0 }}>
           <SubscriptionCard userId={user.user_id} />
+        </div>
+
+        {/* Plan usage */}
+        {usage && (
+          <Card style={{ ...CARD_STYLE, animationDelay: '0.13s', animation: 'fadeUp 0.55s ease forwards', opacity: 0 }}>
+            <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.56rem', letterSpacing: '0.3em', textTransform: 'uppercase', color: 'rgba(200,134,26,0.5)', display: 'block', marginBottom: '1rem' }}>
+              Plan Usage
+            </Text>
+            <UsageMeter label="Notes" hint={`last ${usage.window_days} days`} data={usage.resources?.notes} />
+            <UsageMeter label="Agent events" data={usage.resources?.agent_events} />
+            <UsageMeter label="Agent notifications" data={usage.resources?.agent_notifications} />
+            {!usage.subscribed && (
+              <Alert
+                type="info"
+                showIcon
+                style={{ marginTop: '0.5rem', borderRadius: 8, background: 'rgba(200,134,26,0.08)', border: '1px solid rgba(200,134,26,0.25)' }}
+                message="You're on the free plan. Upgrade to an Individual or Group plan for unlimited notes, events, and notifications."
+              />
+            )}
+          </Card>
+        )}
+
+        {/* Donation */}
+        <div style={{ animationDelay: '0.14s', animation: 'fadeUp 0.55s ease forwards', opacity: 0 }}>
+          <DonationButton email={data.email || user.email} />
         </div>
 
         {/* Edit profile */}

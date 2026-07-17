@@ -1,0 +1,75 @@
+{
+  "identifier" : "39947558-A9D6-4CA5-8726-8797B1D4FC6D",
+  "nonRenewingSubscriptions" : [],
+  "products" : [],
+  "settings" : {
+    "_applicationInternalID" : "",
+    "_developerTeamID" : "",
+    "_failTransactionsEnabled" : false,
+    "_locale" : "en_US",
+    "_storefront" : "USA"
+  },
+  "subscriptionGroups" : [
+    {
+      "id" : "20210001",
+      "localizations" : [],
+      "name" : "FellowScript Membership",
+      "subscriptions" : [
+        {
+          "adHocOffers" : [],
+          "codeOffers" : [],
+          "displayPrice" : "9.99",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "20210002",
+          "introductoryOffer" : {
+            "internalID" : "20210004",
+            "paymentMode" : "free",
+            "subscriptionPeriod" : "P1M"
+          },
+          "localizations" : [
+            {
+              "description" : "Full FellowScript access for one person.",
+              "displayName" : "Individual Plan",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "com.fellowscript.app.individual",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "Individual",
+          "subscriptionGroupID" : "20210001",
+          "type" : "RecurringSubscription"
+        },
+        {
+          "adHocOffers" : [],
+          "codeOffers" : [],
+          "displayPrice" : "39.99",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "20210003",
+          "introductoryOffer" : {
+            "internalID" : "20210005",
+            "paymentMode" : "free",
+            "subscriptionPeriod" : "P1M"
+          },
+          "localizations" : [
+            {
+              "description" : "FellowScript for you and up to 4 others.",
+              "displayName" : "Group Plan",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "com.fellowscript.app.group",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "Group",
+          "subscriptionGroupID" : "20210001",
+          "type" : "RecurringSubscription"
+        }
+      ]
+    }
+  ],
+  "version" : {
+    "major" : 3,
+    "minor" : 0
+  }
+}

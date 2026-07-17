@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException
 from schemas.users import Note
 from db import DBManager
+from backend.subscription.limits import check_limit
 from datetime import datetime
 import uuid
 import logging
@@ -101,6 +102,11 @@ async def remove_bookmark(user_id: str, key: str) -> dict:
 
 @notes_router.post("/reply/{note_id}", status_code=201)
 async def post_reply(note_id: str, reply: dict) -> dict:
+    # Replies are notes too, so they count against the same weekly cap.
+    author = reply.get("user", "")
+    gate = check_limit(author, "notes")
+    if not gate["allowed"]:
+        raise HTTPException(status_code=403, detail=gate)
     db = DBManager()
     try:
         if not db.lookup("notes", {"_id": note_id}):
@@ -125,6 +131,9 @@ async def post_reply(note_id: str, reply: dict) -> dict:
 
 @notes_router.post("/{user_id}", status_code=201)
 async def create_note(user_id: str, note_dict: dict) -> dict:
+    gate = check_limit(user_id, "notes")
+    if not gate["allowed"]:
+        raise HTTPException(status_code=403, detail=gate)
     db = DBManager()
     try:
         note_id = str(uuid.uuid4())

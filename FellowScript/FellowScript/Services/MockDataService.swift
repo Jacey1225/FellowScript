@@ -92,8 +92,9 @@ protocol DataServiceProtocol {
     func joinCall(userId: String, sessionId: String) async throws -> ChimeJoinResponse
 
     // Subscriptions
+    func fetchUsage(userId: String) async throws -> FSUsage?
     func fetchUserSubscription(userId: String) async throws -> FSSubscription?
-    func startSubscription(userId: String, planType: String) async throws -> String
+    func startSubscription(userId: String, planType: String, billing: FSBillingInfo?) async throws -> String
     func cancelSubscription(subscriptionId: String) async throws
     func fetchSubMembers(subscriptionId: String) async throws -> [FSSubMember]
     func removeSubMember(subscriptionId: String, userId: String) async throws
@@ -102,6 +103,7 @@ protocol DataServiceProtocol {
     func requestJoinSubscription(subscriptionId: String, fromUserId: String) async throws
     func acceptSubRequest(subscriptionId: String, fromUserId: String) async throws
     func declineSubRequest(subscriptionId: String, fromUserId: String) async throws
+    func syncAppleSubscription(userId: String, jws: String) async throws -> FSSubscription?
 }
 
 // ── Mock data ─────────────────────────────────────────────────────────────────
@@ -352,8 +354,9 @@ final class MockDataService: DataServiceProtocol {
     }
 
     // Subscriptions
+    func fetchUsage(userId: String) async throws -> FSUsage? { nil }
     func fetchUserSubscription(userId: String) async throws -> FSSubscription? { nil }
-    func startSubscription(userId: String, planType: String) async throws -> String { UUID().uuidString }
+    func startSubscription(userId: String, planType: String, billing: FSBillingInfo?) async throws -> String { UUID().uuidString }
     func cancelSubscription(subscriptionId: String) async throws {}
     func fetchSubMembers(subscriptionId: String) async throws -> [FSSubMember] { [] }
     func removeSubMember(subscriptionId: String, userId: String) async throws {}
@@ -362,18 +365,30 @@ final class MockDataService: DataServiceProtocol {
     func requestJoinSubscription(subscriptionId: String, fromUserId: String) async throws {}
     func acceptSubRequest(subscriptionId: String, fromUserId: String) async throws {}
     func declineSubRequest(subscriptionId: String, fromUserId: String) async throws {}
+    func syncAppleSubscription(userId: String, jws: String) async throws -> FSSubscription? { nil }
 }
 
 // ── AppError ──────────────────────────────────────────────────────────────────
 enum AppError: LocalizedError {
     case authFailed(String)
     case networkError(String)
+    case limitReached(resource: String, used: Int, limit: Int)
     case notFound
 
     var errorDescription: String? {
         switch self {
         case .authFailed(let m):   return m
         case .networkError(let m): return m
+        case .limitReached(let resource, _, let limit):
+            let name: String
+            switch resource {
+            case "notes":               name = "notes"
+            case "agent_events":        name = "agent events"
+            case "agent_notifications": name = "agent notifications"
+            default:                    name = resource
+            }
+            return "You've reached your free plan limit for \(name) (max \(limit)). "
+                 + "Upgrade to an Individual or Group plan for unlimited access."
         case .notFound:            return "Resource not found."
         }
     }

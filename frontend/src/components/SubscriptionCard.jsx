@@ -33,6 +33,13 @@ const statusColor = (s) => ({
 
 const money = (cents) => `$${Math.round((cents || 0) / 100)}`;
 
+// Server timestamps look like "2026-08-15 19:42:23+00:00"; normalise for Date().
+const fmtDate = (s) => {
+  if (!s) return '';
+  const d = new Date(s.replace(' ', 'T'));
+  return isNaN(d.getTime()) ? '' : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+};
+
 export default function SubscriptionCard({ userId }) {
   const [loading,  setLoading]  = useState(true);
   const [plan,     setPlan]     = useState(null);   // the plan the user is on (host or member)
@@ -95,19 +102,47 @@ export default function SubscriptionCard({ userId }) {
 
   useEffect(() => { load(); }, [load]);
 
-  const flash = (type, text) => { setMsg({ type, text }); setTimeout(() => setMsg(null), 3000); };
+  const flash = (type, text) => { setMsg({ type, text }); setTimeout(() => setMsg(null), 4000); };
+
+  // Handle the redirect back from Stripe Checkout (?sub=success | ?sub=cancel).
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const sub = params.get('sub');
+    if (!sub) return;
+    // Strip the query but keep the hash route.
+    window.history.replaceState({}, '', window.location.pathname + window.location.hash);
+    if (sub === 'cancel') { flash('info', 'Checkout canceled — no charge was made.'); return; }
+    if (sub === 'success') {
+      setLoading(true);
+      // The webhook creates the plan; it may lag a second or two — poll for it.
+      let tries = 0;
+      const poll = async () => {
+        tries += 1;
+        try {
+          const r = await fetch(`${API}/subscriptions/user/${userId}`);
+          if (r.ok) { await load(); flash('success', 'Subscription active — enjoy your free month!'); return; }
+        } catch {}
+        if (tries < 6) setTimeout(poll, 1500);
+        else { await load(); flash('info', 'Almost there — refresh in a moment if your plan is not shown yet.'); }
+      };
+      poll();
+    }
+  }, [userId, load]);
 
   // ── Actions ─────────────────────────────────────────────────────────────────
 
-  const startPlan = async (planType) => {
+  // Start a plan via Stripe Checkout: the backend creates a hosted session and
+  // we redirect the browser to it. Card entry happens on Stripe's page.
+  const startCheckout = async (planType) => {
     setBusy(`start-${planType}`);
     try {
-      const res = await fetch(`${API}/subscriptions/`, {
+      const res  = await fetch(`${API}/subscriptions/checkout`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ user_id: userId, plan_type: planType }),
       });
-      if (res.ok || res.status === 201) { await load(); flash('success', `${PLANS[planType].label} plan started.`); }
-      else flash('error', 'Could not start plan.');
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.url) { window.location.href = data.url; return; }
+      flash('error', data.detail || 'Could not start checkout.');
     } catch { flash('error', 'Could not reach the server.'); }
     finally { setBusy(''); }
   };
@@ -193,7 +228,8 @@ export default function SubscriptionCard({ userId }) {
         // ── No plan: choose one ──────────────────────────────────────────────
         <>
           <p style={{ ...MUTED, marginBottom: '1rem', lineHeight: 1.65 }}>
-            Choose a plan to unlock FellowScript. Group plans let up to five people study together under one subscription.
+            Start with a <span style={{ color: 'var(--gold)' }}>free 1-month trial</span> — you won't be billed until it ends.
+            Group plans let up to five people study together under one subscription.
           </p>
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
             {Object.entries(PLANS).map(([type, p]) => (
@@ -205,13 +241,16 @@ export default function SubscriptionCard({ userId }) {
                 <div style={{ fontFamily: "'Playfair Display', serif", fontSize: '1.7rem', color: 'var(--gold)', lineHeight: 1 }}>
                   ${p.price}<span style={{ fontSize: '0.8rem', color: 'rgba(244,228,193,0.4)' }}>/mo</span>
                 </div>
-                <div style={{ ...MUTED, margin: '0.35rem 0 0.9rem' }}>
+                <div style={{ ...MUTED, margin: '0.35rem 0 0.2rem' }}>
                   {type === 'group' ? 'Up to 5 members' : 'Just you'}
                 </div>
+                <div style={{ fontFamily: "'Lora', serif", fontSize: '0.72rem', color: 'rgba(200,134,26,0.7)', marginBottom: '0.9rem' }}>
+                  Free for 1 month, then ${p.price}/mo
+                </div>
                 <Button type="primary" block loading={busy === `start-${type}`}
-                  onClick={() => startPlan(type)}
+                  onClick={() => startCheckout(type)}
                   style={{ borderRadius: 8, fontFamily: "'Lora', serif" }}>
-                  Start {p.label}
+                  Start free trial
                 </Button>
               </div>
             ))}
@@ -229,7 +268,9 @@ export default function SubscriptionCard({ userId }) {
                 <span style={{ fontFamily: "'Playfair Display', serif", fontSize: '1.15rem', color: 'var(--parchment)' }}>
                   {cfg.label} Plan
                 </span>
-                <Tag color={statusColor(plan.status)} style={{ textTransform: 'capitalize' }}>{plan.status}</Tag>
+                <Tag color={statusColor(plan.status)} style={{ textTransform: 'capitalize' }}>
+                  {plan.is_trial ? 'Free trial' : plan.status}
+                </Tag>
               </div>
               <span style={MUTED}>
                 {money(plan.price_cents)}/mo · {isHost ? 'You are the host' : 'Member'}
@@ -237,6 +278,24 @@ export default function SubscriptionCard({ userId }) {
               </span>
             </div>
           </div>
+
+          {/* Trial / billing status */}
+          {isHost && (plan.next_billing_date || plan.is_trial) && (
+            <div style={{ marginTop: '0.7rem', padding: '0.6rem 0.8rem', borderRadius: 8, background: 'rgba(200,134,26,0.07)', border: '1px solid rgba(200,134,26,0.15)' }}>
+              <span style={{ fontFamily: "'Lora', serif", fontSize: '0.78rem', color: 'rgba(244,228,193,0.7)' }}>
+                {plan.is_trial ? (
+                  <>🎁 Free trial · <span style={{ color: 'var(--gold)' }}>{plan.trial_days_remaining} day{plan.trial_days_remaining === 1 ? '' : 's'} left</span>. First billing {fmtDate(plan.next_billing_date)}.</>
+                ) : (
+                  <>Next billing {fmtDate(plan.next_billing_date)}.</>
+                )}
+                {(plan.card_brand || plan.card_last4) && (
+                  <span style={{ color: 'rgba(244,228,193,0.4)', textTransform: 'capitalize' }}>
+                    {' '}· {plan.card_brand} •••• {plan.card_last4}
+                  </span>
+                )}
+              </span>
+            </div>
+          )}
 
           {/* Group members (host view) */}
           {isHost && plan.plan_type === 'group' && (
@@ -336,6 +395,7 @@ export default function SubscriptionCard({ userId }) {
           })}
         </div>
       )}
+
     </div>
   );
 }

@@ -87,6 +87,11 @@ def create_tables(cur):
         "parent_note_id UUID REFERENCES notes(_id) ON DELETE CASCADE,"
         "timestamp TIMESTAMPTZ DEFAULT NOW())"
     )
+    # Speeds up the free-tier weekly note count (LimitsManager).
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_notes_user_timestamp "
+        "ON notes(user_id, timestamp)"
+    )
 
     cur.execute(
         "CREATE TABLE IF NOT EXISTS messages"
@@ -132,13 +137,20 @@ def create_tables(cur):
         "provider TEXT NOT NULL DEFAULT 'stripe',"            # 'stripe' | 'apple'
         # Opaque processor references — never raw card data.
         "stripe_customer_id TEXT DEFAULT '',"
+        "stripe_subscription_id TEXT DEFAULT '',"
+        "apple_original_transaction_id TEXT DEFAULT '',"
         "default_payment_method_id TEXT DEFAULT '',"
         # Display-only, PCI-safe card metadata.
         "card_brand TEXT DEFAULT '',"
         "card_last4 TEXT DEFAULT '',"
+        "card_exp_month TEXT DEFAULT '',"
+        "card_exp_year TEXT DEFAULT '',"
         "status TEXT NOT NULL DEFAULT 'inactive',"
         "price_cents INTEGER NOT NULL DEFAULT 1000,"          # derived from plan_type
         "max_members INTEGER NOT NULL DEFAULT 1,"             # derived from plan_type
+        # trial_end = first billing date (created_at + trial); current_period_end
+        # is the rolling next-billing date, monitored by the scheduler.
+        "trial_end TIMESTAMPTZ,"
         "current_period_end TIMESTAMPTZ,"
         "created_at TIMESTAMPTZ DEFAULT NOW())"
     )
@@ -148,6 +160,11 @@ def create_tables(cur):
     cur.execute("ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS plan_type TEXT NOT NULL DEFAULT 'individual'")
     cur.execute("ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS price_cents INTEGER NOT NULL DEFAULT 1000")
     cur.execute("ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS max_members INTEGER NOT NULL DEFAULT 1")
+    cur.execute("ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS card_exp_month TEXT DEFAULT ''")
+    cur.execute("ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS card_exp_year TEXT DEFAULT ''")
+    cur.execute("ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS trial_end TIMESTAMPTZ")
+    cur.execute("ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS stripe_subscription_id TEXT DEFAULT ''")
+    cur.execute("ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS apple_original_transaction_id TEXT DEFAULT ''")
     # A user's plan membership is a pointer on the users row (single source of
     # truth): a plan's members are the users pointing at it, the host is
     # subscriptions.user_id. Added here (after subscriptions exists) to avoid a
