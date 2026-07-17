@@ -5,6 +5,7 @@ from db import DBManager
 from backend.interactions.push import send_push
 from backend.interactions.notifications import NotificationManager
 from backend.interactions.agent import AgentManager
+from backend.subscription.subscriptions import SubscriptionsManager
 
 logger = logging.getLogger(__name__)
 scheduler = AsyncIOScheduler()
@@ -84,10 +85,27 @@ async def _fire_due_heartbeats() -> None:
             logger.error("Failed to fire heartbeat %s: %s", hb_id, e)
 
 
+async def _reconcile_trials() -> None:
+    """Flip subscriptions whose free trial has elapsed from trialing → active."""
+    sm = SubscriptionsManager()
+    try:
+        n = sm.reconcile_expired_trials()
+        if n:
+            logger.info("Reconciled %d expired trial(s) → active", n)
+    except Exception as e:
+        logger.error("Trial reconcile error: %s", e)
+    finally:
+        sm.close()
+
+
 def start_scheduler() -> None:
     scheduler.add_job(_fire_due_notifications, "cron", minute="*", id="notify_check",
                       replace_existing=True)
     scheduler.add_job(_fire_due_heartbeats, "cron", minute="*", id="heartbeat_check",
+                      replace_existing=True)
+    # Trials only change on a monthly boundary; an hourly sweep is ample and
+    # cheap. Lazy reconcile on read covers the gap between sweeps.
+    scheduler.add_job(_reconcile_trials, "cron", minute="5", id="trial_reconcile",
                       replace_existing=True)
     scheduler.start()
     logger.info("Notification scheduler started — checking every minute")

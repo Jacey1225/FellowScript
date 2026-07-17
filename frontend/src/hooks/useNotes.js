@@ -1,6 +1,24 @@
 import { useState, useCallback, useRef } from 'react';
+import { message } from 'antd';
 import { API } from '../config.js';
 import { verseRefLabel } from '../utils.js';
+
+// Shows a friendly upgrade prompt when the backend rejects a create with 403
+// (free-tier limit reached). Returns true if it handled a limit response.
+async function handleLimit(res, label) {
+  if (res.status !== 403) return false;
+  let used, limit;
+  try {
+    const body = await res.json();
+    ({ used, limit } = body.detail || {});
+  } catch {}
+  message.warning(
+    limit != null
+      ? `Free plan limit reached (${label}: ${used}/${limit} this week). Upgrade for unlimited access.`
+      : `You've reached your free plan limit for ${label}. Upgrade for unlimited access.`
+  );
+  return true;
+}
 
 function normalizeNote(n, username = '') {
   return {
@@ -101,6 +119,7 @@ export function useNotes({ user, curBook, curChapter, vsValue }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(noteData),
       });
+      if (await handleLimit(res, 'notes')) return false;
       if (!res.ok) return false;
       const saved = await res.json();
       const savedId = editingId || saved.id;
@@ -135,6 +154,7 @@ export function useNotes({ user, curBook, curChapter, vsValue }) {
           group_id: currentGroupId, replies: [], verses: [[], []], is_reply: true,
         }),
       });
+      if (await handleLimit(res, 'notes')) return false;
       return res.ok;
     } catch { return false; }
   }, [user, currentGroupId]);

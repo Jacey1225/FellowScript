@@ -31,10 +31,7 @@ final class NetworkService: DataServiceProtocol {
             req.httpBody = try JSONEncoder().encode(body)
         }
         let (data, response) = try await URLSession.shared.data(for: req)
-        if let http = response as? HTTPURLResponse, http.statusCode >= 400 {
-            let detail = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["detail"] as? String
-            throw AppError.networkError(detail ?? "Server error \(http.statusCode)")
-        }
+        try throwIfError(response, data)
         return data
     }
 
@@ -45,6 +42,37 @@ final class NetworkService: DataServiceProtocol {
         req.httpBody = try JSONSerialization.data(withJSONObject: jsonObject)
         let (data, _) = try await URLSession.shared.data(for: req)
         return data
+    }
+
+    /// Like `requestRaw` but validates the HTTP status. Use for writes that must
+    /// surface backend rejections (e.g. free-tier 403 limits) instead of silently
+    /// swallowing them.
+    private func checkedRequestRaw(_ path: String, method: String, jsonObject: Any) async throws -> Data {
+        var req = URLRequest(url: url(path))
+        req.httpMethod = method
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try JSONSerialization.data(withJSONObject: jsonObject)
+        let (data, response) = try await URLSession.shared.data(for: req)
+        try throwIfError(response, data)
+        return data
+    }
+
+    /// Maps an error response to a typed AppError. A 403 whose `detail` is the
+    /// LimitsManager gate dict becomes `.limitReached`; anything else with a
+    /// string detail becomes `.networkError`.
+    private func throwIfError(_ response: URLResponse, _ data: Data) throws {
+        guard let http = response as? HTTPURLResponse, http.statusCode >= 400 else { return }
+        let body = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+        if http.statusCode == 403, let gate = body?["detail"] as? [String: Any],
+           let resource = gate["resource"] as? String {
+            throw AppError.limitReached(
+                resource: resource,
+                used:  gate["used"]  as? Int ?? 0,
+                limit: gate["limit"] as? Int ?? 0
+            )
+        }
+        let detail = body?["detail"] as? String
+        throw AppError.networkError(detail ?? "Server error \(http.statusCode)")
     }
 
     private func decode<T: Decodable>(_ type: T.Type, from data: Data) -> T? {
@@ -279,7 +307,8 @@ final class NetworkService: DataServiceProtocol {
     func addHeartbeat(userId: String, agentId: String, heartbeat: FSHeartbeat) async throws {
         let tsArray = heartbeat.timestamps.map { $0 != nil ? $0! as Any : NSNull() as Any }
         let body: [String: Any] = ["timestamps": tsArray, "prompt": heartbeat.prompt]
-        _ = try await requestRaw("/agent/\(userId)/\(agentId)/heartbeat", method: "POST", jsonObject: body)
+        // checked so a free-tier 403 surfaces as AppError.limitReached
+        _ = try await checkedRequestRaw("/agent/\(userId)/\(agentId)/heartbeat", method: "POST", jsonObject: body)
     }
 
     func deleteHeartbeat(userId: String, agentId: String, heartbeatId: String) async throws {
@@ -506,7 +535,8 @@ final class NetworkService: DataServiceProtocol {
     func createNotification(userId: String, name: String, prompt: String, timestamps: [String?]) async throws -> FSNotification {
         let tsArray = timestamps.map { $0 != nil ? $0! as Any : NSNull() as Any }
         let body: [String: Any] = ["name": name, "prompt": prompt, "timestamps": tsArray]
-        let data = try await requestRaw("/notification/\(userId)", method: "POST", jsonObject: body)
+        // checked so a free-tier 403 surfaces as AppError.limitReached
+        let data = try await checkedRequestRaw("/notification/\(userId)", method: "POST", jsonObject: body)
         guard let result = decode([String: String].self, from: data), let notifId = result["id"] else {
             throw AppError.networkError("Failed to create notification")
         }
@@ -552,15 +582,35 @@ final class NetworkService: DataServiceProtocol {
     // Mirrors api/routes/subscription.py.
 
     func fetchUserSubscription(userId: String) async throws -> FSSubscription? {
-        // 404 when the user is on no plan — its {"detail":...} body simply won't
-        // decode as FSSubscription, so nil falls out naturally.
-        let data = try await get("/subscriptions/user/\(encodeURIComponent(userId))")
-        return decode(FSSubscription.self, from: data)
+        // The backend returns 404 {"detail": "No active subscription"} when the
+        // user is on no plan. FSSubscription's lenient decoder would otherwise
+        // happily decode that error body into a default (bogus "individual")
+        // plan, so explicitly treat any error status — and any subscription that
+        // came back without a real id — as "no subscription".
+        let (data, response) = try await URLSession.shared.data(
+            from: url("/subscriptions/user/\(encodeURIComponent(userId))")
+        )
+        if let http = response as? HTTPURLResponse, http.statusCode >= 400 { return nil }
+        guard let sub = decode(FSSubscription.self, from: data), !sub.id.isEmpty else { return nil }
+        return sub
     }
 
-    func startSubscription(userId: String, planType: String) async throws -> String {
-        let data = try await requestRaw("/subscriptions/", method: "POST",
-                                        jsonObject: ["user_id": userId, "plan_type": planType])
+    // GET /subscriptions/user/{userId}/usage → free-tier usage snapshot.
+    func fetchUsage(userId: String) async throws -> FSUsage? {
+        let data = try await get("/subscriptions/user/\(encodeURIComponent(userId))/usage")
+        return decode(FSUsage.self, from: data)
+    }
+
+    func startSubscription(userId: String, planType: String, billing: FSBillingInfo?) async throws -> String {
+        var body: [String: Any] = ["user_id": userId, "plan_type": planType, "provider": "stripe"]
+        if let b = billing {
+            // Only non-sensitive billing metadata is transmitted.
+            body["card_brand"]     = b.brand
+            body["card_last4"]     = b.last4
+            body["card_exp_month"] = b.expMonth
+            body["card_exp_year"]  = b.expYear
+        }
+        let data = try await requestRaw("/subscriptions/", method: "POST", jsonObject: body)
         guard let result = decode([String: String].self, from: data), let id = result["id"] else {
             throw AppError.networkError("Could not start plan.")
         }
@@ -604,6 +654,13 @@ final class NetworkService: DataServiceProtocol {
     func declineSubRequest(subscriptionId: String, fromUserId: String) async throws {
         _ = try await request("/subscriptions/\(encodeURIComponent(subscriptionId))/requests/\(encodeURIComponent(fromUserId))",
                               method: "DELETE")
+    }
+
+    func syncAppleSubscription(userId: String, jws: String) async throws -> FSSubscription? {
+        // Forwards a StoreKit 2 signed transaction; backend verifies + records.
+        let data = try await requestRaw("/subscriptions/apple/sync", method: "POST",
+                                        jsonObject: ["user_id": userId, "jws": jws])
+        return decode(FSSubscription.self, from: data)
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────

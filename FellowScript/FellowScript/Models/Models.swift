@@ -41,12 +41,19 @@ struct FSSubscription: Codable, Identifiable {
     var id:           String = ""
     var user_id:      String = ""    // the host who owns the plan
     var plan_type:    String = "individual"   // "individual" | "group"
+    var provider:     String = ""    // "stripe" | "apple"
     var status:       String = "inactive"
     var price_cents:  Int    = 0
     var max_members:  Int    = 1
+    var card_brand:   String = ""
+    var card_last4:   String = ""
+    var is_trial:     Bool   = false
+    var trial_days_remaining: Int = 0
+    var next_billing_date: String = ""   // ISO-ish "2026-08-15 19:42:23+00:00"
 
     enum CodingKeys: String, CodingKey {
-        case id, user_id, plan_type, status, price_cents, max_members
+        case id, user_id, plan_type, provider, status, price_cents, max_members
+        case card_brand, card_last4, is_trial, trial_days_remaining, next_billing_date
     }
 
     init(id: String = "", user_id: String = "", plan_type: String = "individual",
@@ -60,13 +67,74 @@ struct FSSubscription: Codable, Identifiable {
         id           = (try? c.decode(String.self, forKey: .id))          ?? ""
         user_id      = (try? c.decode(String.self, forKey: .user_id))     ?? ""
         plan_type    = (try? c.decode(String.self, forKey: .plan_type))   ?? "individual"
+        provider     = (try? c.decode(String.self, forKey: .provider))    ?? ""
         status       = (try? c.decode(String.self, forKey: .status))      ?? "inactive"
         price_cents  = (try? c.decode(Int.self,    forKey: .price_cents)) ?? 0
         max_members  = (try? c.decode(Int.self,    forKey: .max_members)) ?? 1
+        card_brand   = (try? c.decode(String.self, forKey: .card_brand))  ?? ""
+        card_last4   = (try? c.decode(String.self, forKey: .card_last4))  ?? ""
+        is_trial     = (try? c.decode(Bool.self,   forKey: .is_trial))    ?? false
+        trial_days_remaining = (try? c.decode(Int.self, forKey: .trial_days_remaining)) ?? 0
+        next_billing_date    = (try? c.decode(String.self, forKey: .next_billing_date)) ?? ""
     }
 
     var priceLabel: String { "$\(price_cents / 100)" }
     func isHost(_ userId: String) -> Bool { user_id == userId }
+
+    // "2026-08-15 19:42:23+00:00" → "Aug 15, 2026"
+    var nextBillingLabel: String {
+        guard !next_billing_date.isEmpty else { return "" }
+        let iso = next_billing_date.replacingOccurrences(of: " ", with: "T")
+        let parsers: [ISO8601DateFormatter.Options] = [
+            [.withInternetDateTime, .withFractionalSeconds], [.withInternetDateTime],
+        ]
+        for opts in parsers {
+            let f = ISO8601DateFormatter(); f.formatOptions = opts
+            if let d = f.date(from: iso) {
+                let out = DateFormatter(); out.dateStyle = .medium
+                return out.string(from: d)
+            }
+        }
+        return ""
+    }
+}
+
+// ── Free-tier usage ────────────────────────────────────────────────────────────
+// Mirrors GET /subscriptions/user/{id}/usage (api/backend/subscription/limits.py).
+// Free users are capped; subscribed users report `unlimited`.
+
+struct FSUsageResource: Codable {
+    var unlimited: Bool = false
+    var used:      Int  = 0
+    var limit:     Int  = 0
+    var remaining: Int? = nil   // null when unlimited
+
+    // Progress 0…1 for a meter (0 when unlimited or no limit).
+    var fraction: Double {
+        guard !unlimited, limit > 0 else { return 0 }
+        return min(1, Double(used) / Double(limit))
+    }
+    var maxedOut: Bool { !unlimited && used >= limit }
+}
+
+struct FSUsage: Codable {
+    var subscribed:  Bool   = false
+    var plan_type:   String = "free"
+    var window_days: Int    = 7
+    var resources:   [String: FSUsageResource] = [:]
+
+    var notes:              FSUsageResource { resources["notes"] ?? FSUsageResource() }
+    var agentEvents:        FSUsageResource { resources["agent_events"] ?? FSUsageResource() }
+    var agentNotifications: FSUsageResource { resources["agent_notifications"] ?? FSUsageResource() }
+}
+
+// Billing details collected at checkout. Only NON-SENSITIVE fields are sent to
+// the server — the full card number and CVC never leave the device.
+struct FSBillingInfo {
+    var brand: String
+    var last4: String
+    var expMonth: String
+    var expYear: String
 }
 
 // A member of a group plan (host included).

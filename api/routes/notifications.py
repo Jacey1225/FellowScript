@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException
 from backend.interactions.notifications import NotificationManager
+from backend.subscription.limits import check_limit
 from schemas.notifications import Notification
 from db import DBManager
 import logging
@@ -69,6 +70,9 @@ async def create_notification(user_id: str, body: dict) -> dict:
         prompt (str): AI prompt used when the notification fires.
         timestamps (list[str|None], optional): 31-item schedule array.
     """
+    gate = check_limit(user_id, "agent_notifications")
+    if not gate["allowed"]:
+        raise HTTPException(status_code=403, detail=gate)
     db = NotificationManager(user_id)
     try:
         notif = Notification(

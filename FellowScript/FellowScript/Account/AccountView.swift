@@ -35,6 +35,10 @@ final class AccountViewModel: ObservableObject {
     @Published var noteCount:      Int = 0
     @Published var highlightCount: Int = 0
 
+    // Free-tier usage (nil = not loaded / unavailable)
+    @Published var usage:    FSUsage? = nil
+    @Published var limitMsg: String?  = nil   // shown when a create hits the free-tier cap
+
     // Subscription
     @Published var subscription:   FSSubscription? = nil
     @Published var subMembers:     [FSSubMember]   = []   // group members (host view)
@@ -76,11 +80,13 @@ final class AccountViewModel: ObservableObject {
         async let fetchedNotifications = service.fetchNotifications(userId: user.user_id)
         async let fetchedNotes         = service.fetchNotes(userId: user.user_id)
         async let fetchedHighlights    = service.fetchHighlights(userId: user.user_id)
+        async let fetchedUsage         = service.fetchUsage(userId: user.user_id)
         if let freshUser = try? await fetchedUser { profileData = freshUser }
         agents        = (try? await fetchedAgents)        ?? []
         notifications = (try? await fetchedNotifications) ?? []
         noteCount      = (try? await fetchedNotes)?.count      ?? 0
         highlightCount = (try? await fetchedHighlights)?.count ?? 0
+        usage          = (try? await fetchedUsage) ?? usage
         friendRequests = (try? await service.fetchFriendRequests(userId: user.user_id)) ?? []
 
         var allEvents: [FSHeartbeat] = []
@@ -102,13 +108,25 @@ final class AccountViewModel: ObservableObject {
         await DiskCache.shared.save([noteCount, highlightCount], forKey: "counts:\(uid)")
     }
 
+    /// Re-fetch the free-tier usage snapshot (after a create/delete changes counts).
+    func refreshUsage() async {
+        guard let uid = profileData?.user_id else { return }
+        if let fresh = try? await service.fetchUsage(userId: uid) { usage = fresh }
+    }
+
     func createEvent(agentId: String, prompt: String, timestamps: [String?]) async {
         guard let uid = profileData?.user_id else { return }
         let hb = FSHeartbeat(id: UUID().uuidString, agent_id: agentId, user_id: uid,
                              timestamps: timestamps, prompt: prompt)
-        try? await service.addHeartbeat(userId: uid, agentId: agentId, heartbeat: hb)
-        events.append(hb)
-        HeartbeatScheduler.scheduleAll(events: events)
+        do {
+            try await service.addHeartbeat(userId: uid, agentId: agentId, heartbeat: hb)
+            events.append(hb)
+            HeartbeatScheduler.scheduleAll(events: events)
+            await refreshUsage()
+        } catch {
+            // Free-tier cap (or other failure): don't add the event, tell the user.
+            limitMsg = (error as? LocalizedError)?.errorDescription ?? "Could not create event."
+        }
     }
 
     func removeEvent(_ event: FSHeartbeat) {
@@ -167,10 +185,14 @@ final class AccountViewModel: ObservableObject {
 
     func createNotification(name: String, prompt: String, timestamps: [String?]) async {
         guard let uid = profileData?.user_id else { return }
-        if let notif = try? await service.createNotification(userId: uid, name: name, prompt: prompt, timestamps: timestamps) {
+        do {
+            let notif = try await service.createNotification(userId: uid, name: name, prompt: prompt, timestamps: timestamps)
             notifications.append(notif)
+            await NotificationScheduler.scheduleAll(userId: uid, notifications: notifications, service: service)
+            await refreshUsage()
+        } catch {
+            limitMsg = (error as? LocalizedError)?.errorDescription ?? "Could not create notification."
         }
-        await NotificationScheduler.scheduleAll(userId: uid, notifications: notifications, service: service)
     }
 
     func updateNotification(notif: FSNotification, name: String, prompt: String, timestamps: [String?]) async {
@@ -201,7 +223,20 @@ final class AccountViewModel: ObservableObject {
     func loadSubscription(userId: String) async {
         subLoading = true
         defer { subLoading = false }
-        let plan = (try? await service.fetchUserSubscription(userId: userId)) ?? nil
+        var plan = (try? await service.fetchUserSubscription(userId: userId)) ?? nil
+
+        // Reconcile a stale Apple plan: if the host's plan is Apple-billed but
+        // StoreKit no longer reports an active entitlement (canceled & expired, or
+        // revoked), remove it so the UI stops showing a subscription they no longer
+        // have. Only touches Apple *host* plans — Stripe/web plans and group
+        // memberships (which have no StoreKit entitlement) are left alone.
+        if let p = plan, p.provider == "apple", p.isHost(userId) {
+            let active = await StoreKitManager.shared.activeEntitlementProductIDs()
+            if active.isEmpty {
+                try? await service.cancelSubscription(subscriptionId: p.id)
+                plan = nil
+            }
+        }
         subscription = plan
         // Host of a group plan → load members + pending requests.
         if let plan, plan.isHost(userId), plan.plan_type == "group" {
@@ -240,13 +275,23 @@ final class AccountViewModel: ObservableObject {
         } catch { subMsg = (error as? LocalizedError)?.errorDescription ?? "Could not send request." }
     }
 
-    func startPlan(planType: String) async {
+    /// Purchase a plan through StoreKit (Apple handles the payment sheet).
+    func purchasePlan(planType: String) async {
         guard let uid = profileData?.user_id else { return }
         subBusy = true; defer { subBusy = false }
-        do {
-            _ = try await service.startSubscription(userId: uid, planType: planType)
+        let ok = await StoreKitManager.shared.purchase(planType: planType, userId: uid, service: service)
+        if ok {
             await loadSubscription(userId: uid)
-        } catch { subMsg = "Could not start plan." }
+        } else if let e = StoreKitManager.shared.lastError {
+            subMsg = e
+        }
+    }
+
+    func restorePurchases() async {
+        guard let uid = profileData?.user_id else { return }
+        subBusy = true; defer { subBusy = false }
+        await StoreKitManager.shared.restore(userId: uid, service: service)
+        await loadSubscription(userId: uid)
     }
 
     func cancelPlan() async {
@@ -295,6 +340,7 @@ final class AccountViewModel: ObservableObject {
 struct AccountView: View {
     @EnvironmentObject var appState: AppState
     @StateObject private var vm = AccountViewModel()
+    @ObservedObject private var store = StoreKitManager.shared
 
     // Edit profile
     @State private var username     = ""
@@ -347,6 +393,9 @@ struct AccountView: View {
                     // ── Subscription ──────────────────────────────────────────
                     subscriptionSection
 
+                    // ── Plan usage ────────────────────────────────────────────
+                    usageSection
+
                     // ── Edit profile ──────────────────────────────────────────
                     editProfileSection
 
@@ -393,6 +442,11 @@ struct AccountView: View {
                 await vm.load(service: appState.service, user: user)
                 username = user.username
                 email    = user.email
+                // StoreKit: start listening, load products, and push any active
+                // entitlements to the backend before reading the subscription.
+                store.startListening()
+                await store.loadProducts()
+                await store.syncEntitlements(userId: user.user_id, service: appState.service)
                 await vm.loadSubscription(userId: user.user_id)
             }
         }
@@ -421,6 +475,14 @@ struct AccountView: View {
                     Task { await vm.updateNotification(notif: notif, name: name, prompt: prompt, timestamps: timestamps) }
                 }
             }
+        }
+        .alert("Free Plan Limit", isPresented: Binding(
+            get:  { vm.limitMsg != nil },
+            set:  { if !$0 { vm.limitMsg = nil } }
+        )) {
+            Button("OK", role: .cancel) { vm.limitMsg = nil }
+        } message: {
+            Text(vm.limitMsg ?? "")
         }
         .alert("Rename Agent", isPresented: Binding(
             get:  { renameAgentId != nil },
@@ -491,6 +553,57 @@ struct AccountView: View {
         .listRowBackground(Theme.cardBg)
     }
 
+    @ViewBuilder
+    private var usageSection: some View {
+        if let usage = vm.usage {
+            Section {
+                usageRow("Notes", usage.notes, hint: "last \(usage.window_days) days")
+                usageRow("Agent events", usage.agentEvents, hint: nil)
+                usageRow("Agent notifications", usage.agentNotifications, hint: nil)
+                if !usage.subscribed {
+                    Text("You're on the free plan. Upgrade to an Individual or Group plan for unlimited notes, events, and notifications.")
+                        .font(.lora(Theme.fontSM))
+                        .foregroundColor(Theme.textGoldMuted)
+                        .listRowBackground(Theme.cardBg)
+                }
+            } header: {
+                sectionHeader("Plan Usage")
+            }
+        }
+    }
+
+    private func usageRow(_ label: String, _ r: FSUsageResource, hint: String?) -> some View {
+        VStack(alignment: .leading, spacing: Theme.spacingXS + 2) {
+            HStack(spacing: Theme.spacingSM) {
+                Text(label)
+                    .font(.lora(Theme.fontBody))
+                    .foregroundColor(Theme.parchment)
+                if let hint {
+                    Text(hint)
+                        .font(.lora(Theme.fontXS))
+                        .foregroundColor(Theme.textMuted)
+                }
+                Spacer()
+                Text(r.unlimited ? "Unlimited" : "\(r.used) / \(r.limit)")
+                    .font(.lora(Theme.fontSM))
+                    .foregroundColor(r.unlimited ? Theme.gold : (r.maxedOut ? Theme.error : Theme.textGoldMuted))
+            }
+            if !r.unlimited {
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(Theme.parchment.opacity(0.12))
+                        Capsule()
+                            .fill(r.maxedOut ? Theme.error : Theme.gold)
+                            .frame(width: max(3, geo.size.width * r.fraction))
+                    }
+                }
+                .frame(height: 5)
+            }
+        }
+        .padding(.vertical, Theme.spacingXS)
+        .listRowBackground(Theme.cardBg)
+    }
+
     private var subscriptionSection: some View {
         Section {
             if vm.subLoading {
@@ -512,7 +625,7 @@ struct AccountView: View {
                 }
                 managePlanRow(plan)
             } else {
-                rowCaption("Choose a plan to unlock FellowScript.")
+                rowCaption("Start with a free 1-month trial — you won't be billed until it ends.")
                 planOptionRow(type: "individual")
                 planOptionRow(type: "group")
                 if !vm.joinablePlans.isEmpty {
@@ -526,6 +639,14 @@ struct AccountView: View {
                 rowCaption("Your Pending Requests")
                 ForEach(vm.mySubRequests) { myRequestRow($0) }
             }
+
+            // Restore a subscription bought on another device / after reinstall.
+            Button { Task { await vm.restorePurchases() } } label: {
+                Text("Restore Purchases")
+                    .font(.lora(Theme.fontSM)).foregroundColor(Theme.textGoldMuted)
+            }
+            .disabled(vm.subBusy)
+            .listRowBackground(Theme.cardBg)
 
             if let msg = vm.subMsg {
                 Text(msg)
@@ -558,7 +679,7 @@ struct AccountView: View {
                 HStack(spacing: 6) {
                     Text(plan.plan_type == "group" ? "Group Plan" : "Individual Plan")
                         .font(.lora(Theme.fontBody)).foregroundColor(Theme.parchment)
-                    Text(plan.status.capitalized)
+                    Text(plan.is_trial ? "Free trial" : plan.status.capitalized)
                         .font(.lora(Theme.fontXXS)).tracking(1)
                         .padding(.horizontal, 7).padding(.vertical, 2)
                         .background(Theme.gold.opacity(0.15)).foregroundColor(Theme.gold)
@@ -567,6 +688,14 @@ struct AccountView: View {
                 Text("\(plan.priceLabel)/mo · \(vm.isSubHost ? "You are the host" : "Member")"
                      + (plan.plan_type == "group" ? " · up to \(plan.max_members)" : ""))
                     .font(.lora(Theme.fontXS)).foregroundColor(Theme.textMuted)
+                // Trial / next-billing line (host only — they own billing).
+                if vm.isSubHost, !plan.nextBillingLabel.isEmpty {
+                    Text(plan.is_trial
+                         ? "🎁 \(plan.trial_days_remaining) day\(plan.trial_days_remaining == 1 ? "" : "s") left · first billing \(plan.nextBillingLabel)"
+                         : "Next billing \(plan.nextBillingLabel)"
+                         + (plan.card_last4.isEmpty ? "" : " · \(plan.card_brand.capitalized) •••• \(plan.card_last4)"))
+                        .font(.lora(Theme.fontXS)).foregroundColor(Theme.textGoldMuted)
+                }
             }
             Spacer()
         }
@@ -616,35 +745,49 @@ struct AccountView: View {
         .listRowBackground(Theme.cardBg)
     }
 
+    @ViewBuilder
     private func managePlanRow(_ plan: FSSubscription) -> some View {
-        Button {
-            Task { if vm.isSubHost { await vm.cancelPlan() } else { await vm.leavePlan() } }
-        } label: {
-            Label(vm.isSubHost ? "Cancel Plan" : "Leave Plan",
-                  systemImage: vm.isSubHost ? "trash" : "rectangle.portrait.and.arrow.right")
-                .font(.lora(Theme.fontBody)).foregroundColor(Theme.error)
+        if vm.isSubHost && plan.provider == "apple" {
+            // Apple subscriptions can only be canceled through the App Store.
+            Button { Task { await store.showManageSubscriptions() } } label: {
+                Label("Manage Subscription", systemImage: "gearshape")
+                    .font(.lora(Theme.fontBody)).foregroundColor(Theme.gold)
+            }
+            .listRowBackground(Theme.cardBg)
+        } else {
+            Button {
+                Task { if vm.isSubHost { await vm.cancelPlan() } else { await vm.leavePlan() } }
+            } label: {
+                Label(vm.isSubHost ? "Cancel Plan" : "Leave Plan",
+                      systemImage: vm.isSubHost ? "trash" : "rectangle.portrait.and.arrow.right")
+                    .font(.lora(Theme.fontBody)).foregroundColor(Theme.error)
+            }
+            .disabled(vm.subBusy)
+            .listRowBackground(Theme.cardBg)
         }
-        .disabled(vm.subBusy)
-        .listRowBackground(Theme.cardBg)
     }
 
     private func planOptionRow(type: String) -> some View {
         let isGroup = (type == "group")
+        let price   = store.displayPrice(for: type) ?? (isGroup ? "$40" : "$10")
         return HStack(spacing: Theme.spacingMD) {
             ZStack {
                 Circle().fill(Theme.gold.opacity(0.12)).frame(width: 36, height: 36)
                 Image(systemName: isGroup ? "person.3.fill" : "person.fill").foregroundColor(Theme.gold)
             }
             VStack(alignment: .leading, spacing: 2) {
-                Text(isGroup ? "Group — $40/mo" : "Individual — $10/mo")
+                Text((isGroup ? "Group — " : "Individual — ") + "\(price)/mo")
                     .font(.lora(Theme.fontBody)).foregroundColor(Theme.parchment)
-                Text(isGroup ? "Up to 5 members" : "Just you")
+                Text("Free for 1 month · " + (isGroup ? "up to 5 members" : "just you"))
                     .font(.lora(Theme.fontXS)).foregroundColor(Theme.textMuted)
             }
             Spacer()
-            Button("Start") { Task { await vm.startPlan(planType: type) } }
+            Button("Start") { Task { await vm.purchasePlan(planType: type) } }
                 .font(.lora(Theme.fontSM)).foregroundColor(Theme.gold)
-                .buttonStyle(.borderless).disabled(vm.subBusy)
+                .buttonStyle(.borderless)
+                // Stay tappable even if products haven't loaded — purchasePlan
+                // surfaces a clear message instead of the button silently failing.
+                .disabled(vm.subBusy || store.purchasing)
         }
         .listRowBackground(Theme.cardBg)
     }

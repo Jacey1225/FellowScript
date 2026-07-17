@@ -9,6 +9,7 @@ from routes.devotion import devo_router
 from routes.agent import agent_router
 from routes.notifications import notification_router
 from routes.subscription import subscription_router
+from routes.donation import donation_router
 from schemas.users import SignUp, Login, UpdateUser, User
 from pydantic import BaseModel
 import uvicorn
@@ -64,6 +65,7 @@ app.include_router(devo_router)
 app.include_router(agent_router)
 app.include_router(notification_router)
 app.include_router(subscription_router)
+app.include_router(donation_router)
 
 main_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 user_path = "data/users.json"
@@ -299,8 +301,16 @@ async def google_auth(info: GoogleAuth, response: Response) -> dict:
         raise HTTPException(status_code=401, detail="Invalid Google token")
 
     token_data = r.json()
-    client_id = os.getenv("CLIENT_ID", "")
-    if token_data.get("aud") != client_id:
+    # Accept tokens from BOTH the web client (website) and the iOS client (app).
+    # Google client IDs are public identifiers, so a default is safe; override
+    # via env if the iOS client ever changes.
+    valid_auds = {
+        os.getenv("CLIENT_ID", ""),
+        os.getenv("GOOGLE_IOS_CLIENT_ID",
+                  "667477247503-1hgf50kh24a3gi121u1eps5cptjjufds.apps.googleusercontent.com"),
+    }
+    valid_auds.discard("")
+    if token_data.get("aud") not in valid_auds:
         raise HTTPException(status_code=401, detail="Token audience mismatch")
 
     email = token_data.get("email", "")
