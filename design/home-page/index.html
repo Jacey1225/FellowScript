@@ -471,33 +471,22 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#layout-top-to-bottom" class="md-nav__link">
+  <a href="#sections-top-to-bottom" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Layout (top to bottom)
+        Sections (top to bottom)
       
     </span>
   </a>
   
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#key-elements" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Key Elements
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Key Elements">
+    <nav class="md-nav" aria-label="Sections (top to bottom)">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#navigation-bar" class="md-nav__link">
+  <a href="#1-navigation-bar" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Navigation Bar
+        1. Navigation Bar
       
     </span>
   </a>
@@ -505,10 +494,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#hero-section" class="md-nav__link">
+  <a href="#2-hero" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Hero Section
+        2. Hero
       
     </span>
   </a>
@@ -516,10 +505,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#mission-section" class="md-nav__link">
+  <a href="#3-how-it-works-3-step-strip" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Mission Section
+        3. How It Works (3-step strip)
       
     </span>
   </a>
@@ -527,10 +516,43 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#feature-cards" class="md-nav__link">
+  <a href="#4-features-grid-6-cards" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Feature Cards
+        4. Features Grid (6 cards)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5-community-spotlight" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Community Spotlight
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#6-pricing-3-plan-cards" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Pricing (3-plan cards)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#7-quote-cta" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Quote CTA
       
     </span>
   </a>
@@ -543,10 +565,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#navigation" class="md-nav__link">
+  <a href="#navigation-from-home" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Navigation
+        Navigation from Home
       
     </span>
   </a>
@@ -633,6 +655,34 @@
     
   
     Community
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../account/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Account
   
 
     
@@ -869,64 +919,125 @@
 
 
 <h1 id="home-page">Home Page</h1>
-<p>The home page is the entry point and mission statement for FellowScript.</p>
+<p>The home page (<code>/</code>) is the public-facing landing page. It is visible to everyone — signed in or not — and serves as both the marketing entry point and the navigation hub for signed-in users.</p>
 <hr />
-<h2 id="layout-top-to-bottom">Layout (top to bottom)</h2>
-<pre><code>┌────────────────────────────┐
-│  FellowScript    [menu]    │  ← Nav bar
-├────────────────────────────┤
-│  A DIGITAL SCRIPTURE       │
-│  COMMUNITY                 │
-│                            │
-│  FellowScript              │  ← Hero title (Playfair Display, large)
-│  READ · REFLECT · CONNECT  │
-│                            │
-│  [ Start Reading → ]       │  ← CTA button (gold)
-├────────────────────────────┤
-│  OUR MISSION               │
-│  Fan into flame the        │
-│  gift of God.              │  ← Mission headline (bold italic)
-│                            │
-│  FellowScript is built to  │
-│  spark meaningful          │
-│  connections...            │  ← Mission paragraph
-├────────────────────────────┤
-│  [📖] Digital Bible        │
-│  [📝] Notes                │  ← Feature cards (2-column grid)
-│  [💬] Group Chat           │
-│  [🔗] Community            │
-└────────────────────────────┘
-</code></pre>
+<h2 id="sections-top-to-bottom">Sections (top to bottom)</h2>
+<h3 id="1-navigation-bar">1. Navigation Bar</h3>
+<ul>
+<li>Left: FellowScript logo + wordmark (links back to <code>/</code>)</li>
+<li>Centre: nav links — Features, Community, Pricing</li>
+<li>Right: Sign In link + "Start Reading →" CTA button (gold)</li>
+<li>Signed-in users see "Go to Reader →" instead</li>
+</ul>
+<h3 id="2-hero">2. Hero</h3>
+<ul>
+<li>Tag line: <code>READ · REFLECT · CONNECT</code> in spaced gold caps</li>
+<li>Headline: large Playfair Display serif title</li>
+<li>Subheadline: short mission description</li>
+<li>CTA: "Begin Your Study →" (routes to <code>/reader</code> if signed in, <code>/signin</code> if not)</li>
+<li>Background: dot-grid pattern on <code>#1a140f</code>; floating "floating card" elements showing sample verse cards</li>
+</ul>
+<h3 id="3-how-it-works-3-step-strip">3. How It Works (3-step strip)</h3>
+<ul>
+<li>Step 1: Read — open any book and chapter</li>
+<li>Step 2: Reflect — add rich-text notes linked to specific verses</li>
+<li>Step 3: Connect — join a group and share insights in real time</li>
+</ul>
+<h3 id="4-features-grid-6-cards">4. Features Grid (6 cards)</h3>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Digital Bible</td>
+<td>Full 66-book Bible with chapter navigation</td>
+</tr>
+<tr>
+<td>Rich Notes</td>
+<td>Formatted notes (bold, italic, highlight, color) linked to verses</td>
+</tr>
+<tr>
+<td>Community Groups</td>
+<td>Study groups with shared notes, highlights, and real-time chat</td>
+</tr>
+<tr>
+<td>AI Check-Ins</td>
+<td>Daily AI-generated devotional prompts and agent heartbeats</td>
+</tr>
+<tr>
+<td>Highlights</td>
+<td>Per-verse color highlights; group members' highlights visible in-context</td>
+</tr>
+<tr>
+<td>Bookmarks</td>
+<td>Quick-return bookmarks per chapter</td>
+</tr>
+</tbody>
+</table>
+<h3 id="5-community-spotlight">5. Community Spotlight</h3>
+<p>Mock group conversation showing the collaborative note/chat experience — sample study group discussing Romans 8.</p>
+<h3 id="6-pricing-3-plan-cards">6. Pricing (3-plan cards)</h3>
+<table>
+<thead>
+<tr>
+<th>Plan</th>
+<th>Price</th>
+<th>Limits</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Free</td>
+<td>$0</td>
+<td>5 notes/week, limited agent events</td>
+</tr>
+<tr>
+<td>Individual</td>
+<td>$4.99/mo</td>
+<td>Unlimited notes, agent events, notifications</td>
+</tr>
+<tr>
+<td>Group</td>
+<td>$9.99/mo</td>
+<td>Everything in Individual + group management tools</td>
+</tr>
+</tbody>
+</table>
+<p>"Most popular" badge displayed on the Individual plan.</p>
+<h3 id="7-quote-cta">7. Quote CTA</h3>
+<p>Final call-to-action with 2 Timothy 1:6 as the closing verse, and a "Join FellowScript" button.</p>
 <hr />
-<h2 id="key-elements">Key Elements</h2>
-<h3 id="navigation-bar">Navigation Bar</h3>
-<ul>
-<li>FellowScript logo (left)</li>
-<li>Hamburger or profile icon (right)</li>
-<li>Minimal — does not compete with the hero</li>
-</ul>
-<h3 id="hero-section">Hero Section</h3>
-<ul>
-<li>Subtitle: "A Digital Scripture Community"</li>
-<li>Main title: <strong>FellowScript</strong> in large Playfair Display</li>
-<li>Tagline: <code>READ · REFLECT · CONNECT</code> in spaced gold caps</li>
-<li>CTA: "Start Reading →" button — full width on mobile, gold fill</li>
-</ul>
-<h3 id="mission-section">Mission Section</h3>
-<ul>
-<li>Label: <code>OUR MISSION</code> in small gold caps</li>
-<li>Headline: <em>Fan into flame the gift of God.</em> (bold italic)</li>
-<li>Body: Short paragraph explaining the community goal</li>
-</ul>
-<h3 id="feature-cards">Feature Cards</h3>
-<ul>
-<li>2×2 grid on mobile</li>
-<li>Each card: icon + bold title + one-line description</li>
-<li>Cards: Digital Bible, Notes, Group Chat, Community</li>
-</ul>
-<hr />
-<h2 id="navigation">Navigation</h2>
-<p>Clicking <strong>Start Reading</strong> routes to the <a href="../bible-reader/">Bible Reader</a>.</p>
+<h2 id="navigation-from-home">Navigation from Home</h2>
+<table>
+<thead>
+<tr>
+<th>Element</th>
+<th>Destination</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Logo / title</td>
+<td><code>/</code> (home)</td>
+</tr>
+<tr>
+<td>"Start Reading" / "Begin Your Study"</td>
+<td><code>/reader</code> (signed in) or <code>/signin</code></td>
+</tr>
+<tr>
+<td>Sign In link</td>
+<td><code>/signin</code></td>
+</tr>
+<tr>
+<td>Nav "Features", "Pricing"</td>
+<td>Smooth scroll to section anchor</td>
+</tr>
+</tbody>
+</table>
 
 
 

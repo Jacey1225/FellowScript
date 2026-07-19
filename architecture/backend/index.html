@@ -511,6 +511,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../design/account/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Account
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -670,44 +698,77 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#backendbiblehandling" class="md-nav__link">
+  <a href="#entry-point-mainpy" class="md-nav__link">
     <span class="md-ellipsis">
       
-        backend/bibleHandling/
+        Entry Point — main.py
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="backend/bibleHandling/">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#layer-1-schemas" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Layer 1 — schemas/
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#layer-2-backendinteractions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Layer 2 — backend/interactions/
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#layer-3-routes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Layer 3 — routes/
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#backendsubscription" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        backend/subscription/
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dbpy-schema-and-dbmanager" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        db.py — Schema and DBManager
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="db.py — Schema and DBManager">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#convertdictpy" class="md-nav__link">
+  <a href="#schema-summary-level-0-2" class="md-nav__link">
     <span class="md-ellipsis">
       
-        convertDict.py
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#navigationpy" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        navigation.py
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#interactionspy" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        interactions.py
+        Schema summary (Level 0 → 2)
       
     </span>
   </a>
@@ -720,38 +781,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#backendmessaging" class="md-nav__link">
+  <a href="#background-scheduler" class="md-nav__link">
     <span class="md-ellipsis">
       
-        backend/messaging/
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="backend/messaging/">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#websocketspy" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        websockets.py
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#bible-source-data" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Bible Source Data
+        Background Scheduler
       
     </span>
   </a>
@@ -875,70 +908,271 @@
 
 
 <h1 id="backend">Backend</h1>
-<p>The backend is written in Python and is split into two domains: Bible data handling and real-time messaging.</p>
-<hr />
-<h2 id="backendbiblehandling"><code>backend/bibleHandling/</code></h2>
-<h3 id="convertdictpy"><code>convertDict.py</code></h3>
-<p>Responsible for parsing the raw Bible PDF sources (ESV, NIV) in <code>data/</code> and converting them into a structured Python dictionary:</p>
-<pre><code class="language-python"># Expected output shape
-{
-  &quot;2 Timothy&quot;: {
-    1: {
-      1: &quot;Paul, an apostle of Christ Jesus...&quot;,
-      2: &quot;To Timothy, my dear son...&quot;,
-      ...
-    }
-  }
-}
+<p>The backend is a <strong>FastAPI + Postgres</strong> application in <code>api/</code>. All code follows a strict three-layer flow:</p>
+<pre><code>routes/ (HTTP)  ──▶  backend/interactions/ (logic + DB)  ──▶  Postgres
+   ▲                          │
+   └── schemas/ (Pydantic) ───┘
 </code></pre>
-<p>This dictionary is the single source of truth for all scripture lookups.</p>
 <hr />
-<h3 id="navigationpy"><code>navigation.py</code></h3>
-<p>Handles book and chapter navigation. Given a book name and chapter number, returns the full list of verses for that chapter.</p>
-<p>Key responsibilities:
-- Validate that a requested book/chapter exists
-- Return verse-by-verse text for display in the Bible Reader
-- Support search/jump by book name (used by the search bar)</p>
-<hr />
-<h3 id="interactionspy"><code>interactions.py</code></h3>
-<p>Manages all user interactions with scripture text:</p>
-<p><strong>Highlights</strong>
-- Save a highlight: <code>{ user_id, book, chapter, verse, color }</code>
-- Load highlights for a chapter: returns all highlights, filtered by user or visibility</p>
-<p><strong>Notes</strong>
-- Save a note: <code>{ user_id, book, chapter, verse, text, visibility: "public" | "private" }</code>
-- Load notes for a chapter: supports All / Public / Mine filters</p>
-<hr />
-<h2 id="backendmessaging"><code>backend/messaging/</code></h2>
-<h3 id="websocketspy"><code>websockets.py</code></h3>
-<p>Runs the WebSocket server that powers real-time features:</p>
-<ul>
-<li><strong>Group chat</strong> — broadcasts messages to all members of a study group</li>
-<li><strong>Activity status</strong> — when a user highlights, reads, or notes a verse, their status is broadcast to the group so others can see it live (e.g. "James M. is reading verse 7")</li>
-<li><strong>Direct messages</strong> — routes private messages between two users without broadcasting to the group</li>
-</ul>
-<hr />
-<h2 id="bible-source-data">Bible Source Data</h2>
-<p>Located in <code>data/</code>:</p>
+<h2 id="entry-point-mainpy">Entry Point — <code>main.py</code></h2>
+<p>Registers all routers, configures CORS, and handles the three authentication routes directly (password signup/login, Google OAuth, Apple Sign In). Also starts the background scheduler on startup via <code>lifespan</code>.</p>
+<p>Auth routes in <code>main.py</code>:</p>
 <table>
 <thead>
 <tr>
-<th>File</th>
-<th>Translation</th>
+<th>Route</th>
+<th>Method</th>
+<th>Description</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>ESV Bible.pdf</code></td>
-<td>English Standard Version</td>
+<td><code>/signup</code></td>
+<td>POST</td>
+<td>Register with username + password; creates free-plan subscription</td>
 </tr>
 <tr>
-<td><code>NIV-Bible.pdf</code></td>
-<td>New International Version</td>
+<td><code>/login</code></td>
+<td>POST</td>
+<td>Authenticate with username + password</td>
+</tr>
+<tr>
+<td><code>/auth/google</code></td>
+<td>POST</td>
+<td>Validate Google ID token; find-or-create user</td>
+</tr>
+<tr>
+<td><code>/auth/apple</code></td>
+<td>POST</td>
+<td>Verify Apple JWT (JWKS); find-or-create user</td>
+</tr>
+<tr>
+<td><code>/user/{user_id}</code></td>
+<td>GET / PUT / DELETE</td>
+<td>Read, update, or permanently delete a user account</td>
 </tr>
 </tbody>
 </table>
-<p><code>convertDict.py</code> parses these files on startup (or on demand) and caches the result for fast lookups.</p>
+<hr />
+<h2 id="layer-1-schemas">Layer 1 — <code>schemas/</code></h2>
+<p>Pydantic models defining request/response shapes and internal records. One file per domain.</p>
+<table>
+<thead>
+<tr>
+<th>File</th>
+<th>Key models</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>schemas/users.py</code></td>
+<td><code>User</code>, <code>SignUp</code>, <code>Login</code>, <code>UpdateUser</code>, <code>Note</code></td>
+</tr>
+<tr>
+<td><code>schemas/message.py</code></td>
+<td><code>Message</code>, <code>Group</code></td>
+</tr>
+<tr>
+<td><code>schemas/devotion.py</code></td>
+<td><code>DevotionPlan</code>, <code>DevotionRequest</code></td>
+</tr>
+<tr>
+<td><code>schemas/agent.py</code></td>
+<td><code>AgentConfig</code>, <code>AgentEvent</code></td>
+</tr>
+<tr>
+<td><code>schemas/notifications.py</code></td>
+<td><code>Notification</code></td>
+</tr>
+<tr>
+<td><code>schemas/subscription.py</code></td>
+<td><code>Subscription</code>, <code>FREE_LIMITS</code>, <code>EXPIRY_GRACE_DAYS</code></td>
+</tr>
+<tr>
+<td><code>schemas/filter.py</code></td>
+<td><code>FilterParams</code></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="layer-2-backendinteractions">Layer 2 — <code>backend/interactions/</code></h2>
+<p>All business logic lives here in <code>*Manager</code> classes that subclass <code>DBManager</code>. Routes never touch SQL directly.</p>
+<table>
+<thead>
+<tr>
+<th>Manager</th>
+<th>File</th>
+<th>Responsibility</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GroupsManager</code></td>
+<td><code>groups.py</code></td>
+<td>Create/join/leave groups, add members</td>
+</tr>
+<tr>
+<td><code>FriendsManager</code></td>
+<td><code>friends.py</code></td>
+<td>Friend requests, friend list, remove</td>
+</tr>
+<tr>
+<td><code>DevotionManager</code></td>
+<td><code>devotion.py</code></td>
+<td>Devotion plans, participants, progress</td>
+</tr>
+<tr>
+<td><code>AgentManager</code></td>
+<td><code>agent.py</code></td>
+<td>AI agent config, heartbeat events</td>
+</tr>
+<tr>
+<td><code>NotificationManager</code></td>
+<td><code>notifications.py</code></td>
+<td>Create and read notifications</td>
+</tr>
+<tr>
+<td><code>FilterManager</code></td>
+<td><code>filtering.py</code></td>
+<td>Note filtering by book, date, user, title</td>
+</tr>
+<tr>
+<td><code>SortingManager</code></td>
+<td><code>sorting.py</code></td>
+<td>Note sorting by timestamp</td>
+</tr>
+</tbody>
+</table>
+<p><code>DBManager</code> (in <code>db.py</code>) provides four auto-committing helpers: <code>insertion</code>, <code>lookup</code>, <code>update</code>, <code>delete</code>. Raw cursor (<code>self.cur.execute</code>) is used for JOINs, array ops, and aggregations.</p>
+<hr />
+<h2 id="layer-3-routes">Layer 3 — <code>routes/</code></h2>
+<p>Thin <code>APIRouter</code> handlers. Each handler: instantiates a manager, calls one method, maps <code>{"error": ...}</code> → <code>HTTPException</code>, closes the connection in <code>finally</code>.</p>
+<table>
+<thead>
+<tr>
+<th>Router</th>
+<th>Prefix</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>notes_router</code></td>
+<td><code>/notes</code></td>
+<td>Notes CRUD, highlights, bookmarks, replies</td>
+</tr>
+<tr>
+<td><code>ws_router</code></td>
+<td><code>/ws</code></td>
+<td>WebSocket group chat + DMs</td>
+</tr>
+<tr>
+<td><code>chime_router</code></td>
+<td><code>/messages</code></td>
+<td>REST message history</td>
+</tr>
+<tr>
+<td><code>group_router</code></td>
+<td><code>/groups</code></td>
+<td>Group management</td>
+</tr>
+<tr>
+<td><code>friend_router</code></td>
+<td><code>/friends</code></td>
+<td>Friend management</td>
+</tr>
+<tr>
+<td><code>filter_router</code></td>
+<td><code>/filter</code></td>
+<td>Note filtering</td>
+</tr>
+<tr>
+<td><code>sorting_router</code></td>
+<td><code>/sort</code></td>
+<td>Note sorting</td>
+</tr>
+<tr>
+<td><code>devo_router</code></td>
+<td><code>/devotions</code></td>
+<td>Devotion plans</td>
+</tr>
+<tr>
+<td><code>agent_router</code></td>
+<td><code>/agent</code></td>
+<td>AI agent config + heartbeats</td>
+</tr>
+<tr>
+<td><code>notification_router</code></td>
+<td><code>/notifications</code></td>
+<td>Notification read/list</td>
+</tr>
+<tr>
+<td><code>subscription_router</code></td>
+<td><code>/subscriptions</code></td>
+<td>Subscription lookup, Stripe + Apple webhooks</td>
+</tr>
+<tr>
+<td><code>donation_router</code></td>
+<td><code>/donation</code></td>
+<td>One-time donation flow</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="backendsubscription"><code>backend/subscription/</code></h2>
+<p>A sibling package to <code>interactions/</code> dedicated to billing and usage enforcement.</p>
+<table>
+<thead>
+<tr>
+<th>File</th>
+<th>Responsibility</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>subscriptions.py</code></td>
+<td><code>SubscriptionsManager</code> — create free plan, get subscription, reconcile expired</td>
+</tr>
+<tr>
+<td><code>limits.py</code></td>
+<td><code>LimitsManager</code> — <code>is_subscribed()</code>, per-resource usage counts, <code>check()</code></td>
+</tr>
+<tr>
+<td><code>stripe_service.py</code></td>
+<td>Stripe Checkout session creation and webhook handling</td>
+</tr>
+<tr>
+<td><code>apple_service.py</code></td>
+<td>Apple App Store receipt/notification validation</td>
+</tr>
+</tbody>
+</table>
+<p>Every new user (all three auth paths) gets a <code>plan_type='free'</code> subscription row created by <code>SubscriptionsManager.create_free_plan()</code>. Free-tier limits are enforced server-side via <code>check_limit()</code> before every create route.</p>
+<hr />
+<h2 id="dbpy-schema-and-dbmanager"><code>db.py</code> — Schema and <code>DBManager</code></h2>
+<p><code>create_tables()</code> defines the full Postgres schema in FK-dependency order (Level 0 → Level 2). Additive <code>ALTER TABLE … ADD COLUMN IF NOT EXISTS</code> statements at the top of <code>create_tables()</code> handle live migrations without dropping data.</p>
+<h3 id="schema-summary-level-0-2">Schema summary (Level 0 → 2)</h3>
+<p><strong>Level 0 (no FK)</strong>
+- <code>users</code> — <code>_id</code>, <code>username</code>, <code>email</code>, <code>hash_pass</code>, <code>apple_sub</code>, <code>google_sub</code>, <code>subscription_id</code>
+- <code>groups</code> — <code>_id</code>, <code>title</code>, <code>members UUID[]</code>, <code>highlights JSONB</code>
+- <code>subscriptions</code> — <code>_id</code>, <code>user_id</code>, <code>plan_type</code>, <code>provider</code>, <code>status</code>, <code>price_cents</code>, <code>current_period_end</code>, Stripe/Apple identifiers</p>
+<p><strong>Level 1 (FK → Level 0)</strong>
+- <code>notes</code> — <code>_id</code>, <code>user_id</code>, <code>title</code>, <code>text</code>, <code>public</code>, <code>group_id</code>, <code>timestamp</code>, <code>created_at</code>
+- <code>messages</code> — <code>_id</code>, <code>from_user</code>, <code>group_id</code>, <code>content</code>, <code>is_dm</code>, <code>timestamp</code>
+- <code>highlights</code> — <code>(user_id, key)</code> composite PK, <code>color</code>
+- <code>bookmarks</code> — <code>(user_id, key)</code> composite PK, <code>label</code>
+- <code>notifications</code> — <code>_id</code>, <code>user_id</code>, <code>type</code>, <code>message</code>, <code>read</code>
+- <code>agents</code> — <code>_id</code>, <code>user_id</code>, <code>config JSONB</code>
+- <code>devotions</code> — <code>_id</code>, <code>creator_id</code>, <code>title</code>, <code>participants UUID[]</code>
+- <code>friend_requests</code> — <code>from_user_id</code>, <code>to_user_id</code>
+- <code>friend_list</code> — <code>user_id</code>, <code>friend_id</code></p>
+<p><strong>Level 2 (FK → Level 1)</strong>
+- <code>note_verses</code> — <code>note_id</code>, <code>position</code>, <code>book</code>, <code>chapter</code>, <code>verse</code>
+- <code>agent_heartbeats</code> — <code>_id</code>, <code>user_id</code>, <code>last_fired</code>
+- <code>message_recipients</code> — <code>message_id</code>, <code>recipient_id</code></p>
+<hr />
+<h2 id="background-scheduler">Background Scheduler</h2>
+<p><code>backend/interactions/scheduler.py</code> runs on startup (via <code>lifespan</code>) and periodically calls <code>SubscriptionsManager.reconcile_expired_subscriptions()</code> to null out subscription pointers for lapsed paid plans. Free plans (<code>plan_type='free'</code>, <code>current_period_end IS NULL</code>) are never swept.</p>
 
 
 

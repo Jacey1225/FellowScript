@@ -522,10 +522,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#search-bar" class="md-nav__link">
+  <a href="#book-chapter-navigation" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Search Bar
+        Book / Chapter Navigation
       
     </span>
   </a>
@@ -544,17 +544,6 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#community-highlights" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Community Highlights
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
   <a href="#scripture-text" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -565,19 +554,19 @@
   
 </li>
         
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#bottom-tab-bar" class="md-nav__link">
+          <li class="md-nav__item">
+  <a href="#right-panel-toggle" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Bottom Tab Bar
+        Right Panel Toggle
       
     </span>
   </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -644,6 +633,34 @@
     
   
     Community
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../account/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Account
   
 
     
@@ -880,91 +897,55 @@
 
 
 <h1 id="bible-reader">Bible Reader</h1>
-<p>The Bible Reader is the core screen of FellowScript. It combines scripture reading, annotation, and community into a single unified interface.</p>
+<p>The Bible Reader (<code>/reader</code>) is the core screen of FellowScript. It uses a three-panel layout: navigation sidebar (left), scripture text (centre), and a toggleable notes or messaging sidebar (right).</p>
 <hr />
 <h2 id="layout">Layout</h2>
-<pre><code>┌────────────────────────────┐
-│ &lt; Home   FellowScript  [⋮] │  ← Top nav
-├────────────────────────────┤
-│ [Search book / chapter   ] │  ← Book/chapter search bar
-│ 2 Timothy 1                │  ← Current book &amp; chapter label
-│ Highlight: 🟡 🟠 🟢 🔴 🔵  │  ← Highlight color palette
-├────────────────────────────┤
-│                            │
-│  2 Timothy                 │
-│  CHAPTER 1                 │
-│                            │
-│  1 Paul, an apostle of     │
-│  Christ Jesus by the will  │  ← Scripture text (Lora, readable size)
-│  of God...                 │
-│                            │
-│  3 [highlighted in gold]   │  ← Community/personal highlights shown inline
-│  I thank God, whom I serve │
-│  with a clear conscience...│
-│                            │
-│  7 | For the Spirit God    │  ← Verse 7 shown with teal highlight (community)
-│  gave us does not make us  │
-│  timid...                  │
-│                            │
-└────────────────────────────┘
-│  [📖 Read] [📝 Notes] [👥 Community] │  ← Bottom tab bar
-└────────────────────────────┘
+<pre><code>┌──────────────┬──────────────────────────┬─────────────────────┐
+│   AppNav     │                          │                     │
+│              │   [Book / Chapter nav]   │   NotesSidebar      │
+│  • Home      │                          │   or               │
+│  • Reader    │   2 Timothy              │   MessagingSidebar  │
+│  • Account   │   CHAPTER 1              │                     │
+│              │                          │   (toggled by icons │
+│              │   1 Paul, an apostle…    │    above the panel) │
+│              │   3 I thank God…         │                     │
+│              │   6 [highlighted] For    │                     │
+│              │     this reason…         │                     │
+│              │                          │                     │
+└──────────────┴──────────────────────────┴─────────────────────┘
 </code></pre>
+<p>On narrow screens, <code>AppNav</code> and the right sidebar collapse; toggle buttons appear above the scripture text.</p>
 <hr />
 <h2 id="features">Features</h2>
-<h3 id="search-bar">Search Bar</h3>
+<h3 id="book-chapter-navigation">Book / Chapter Navigation</h3>
 <ul>
-<li>Sits at the top of the reader</li>
-<li>Opens a <strong>book picker</strong> listing all 66 books</li>
-<li>Selecting a book shows chapter numbers below</li>
-<li>Selecting a chapter loads that passage</li>
+<li><code>BibleNavigator</code> component: searchable book list → chapter grid</li>
+<li><code>ScriptureNav</code>: previous/next chapter arrows</li>
+<li><code>BookmarkButton</code>: star icon to bookmark the current chapter; bookmarks appear in the Notes sidebar's Highlights tab area</li>
 </ul>
 <h3 id="highlight-palette">Highlight Palette</h3>
 <ul>
-<li>Five colors: yellow, orange, green, pink, blue</li>
-<li>Tap a verse to apply the active color</li>
-<li>Highlights persist per user</li>
-</ul>
-<h3 id="community-highlights">Community Highlights</h3>
-<ul>
-<li>A toggle/filter to show other users' public highlights inline</li>
-<li>Each community highlight has a subtle color outline and the user's initials</li>
+<li><code>HighlightPicker</code>: six swatches (warm gold, red, green, teal, purple, cream)</li>
+<li>Tap/click a verse to apply the active color; click again to remove</li>
+<li>Highlights are stored per <code>(user_id, book-chapter-verse)</code> key; group members' highlights are visible with a different opacity in group view</li>
 </ul>
 <h3 id="scripture-text">Scripture Text</h3>
 <ul>
-<li>Clean, well-spaced serif text (Lora)</li>
-<li>Verse numbers displayed inline</li>
-<li>Book title and chapter heading displayed prominently</li>
+<li>Rendered verse-by-verse via <code>BibleCard</code> components</li>
+<li>Verse numbers displayed inline in a muted gold</li>
+<li>Active highlights overlay the verse text with the stored color at ~25% opacity</li>
+<li>Clicking a highlighted verse opens the highlight picker to remove or recolor</li>
 </ul>
-<hr />
-<h2 id="bottom-tab-bar">Bottom Tab Bar</h2>
-<table>
-<thead>
-<tr>
-<th>Tab</th>
-<th>Contents</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>Read</td>
-<td>Scripture text (default)</td>
-</tr>
-<tr>
-<td>Notes</td>
-<td>All annotations for the current chapter — see <a href="../notes/">Notes</a></td>
-</tr>
-<tr>
-<td>Community</td>
-<td>Study group members and group chat — see <a href="../community/">Community</a></td>
-</tr>
-</tbody>
-</table>
+<h3 id="right-panel-toggle">Right Panel Toggle</h3>
+<p>Two icons above the right panel switch between:
+- <strong>Notes</strong> (<code>NotesSidebar</code>) — personal or group notes + highlights
+- <strong>Messages</strong> (<code>MessagingSidebar</code>) — real-time group chat and DMs</p>
 <hr />
 <h2 id="navigation">Navigation</h2>
 <ul>
-<li><strong>← Home</strong> in the top bar returns to the <a href="../home-page/">Home Page</a></li>
-<li>Book/chapter changes stay within this screen</li>
+<li>Logo / "FellowScript" in <code>AppNav</code> → <code>/</code> (home)</li>
+<li>Account icon → <code>/account</code></li>
+<li>Book/chapter changes stay within <code>/reader</code></li>
 </ul>
 
 

@@ -511,6 +511,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../design/account/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Account
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -706,41 +734,35 @@
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Pages">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#home" class="md-nav__link">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#key-components" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Home (/)
+        Key Components
       
     </span>
   </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#bible-reader-reader" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Bible Reader (/reader)
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#components" class="md-nav__link">
+  <a href="#state-and-auth" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Components
+        State and Auth
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#reader-layout" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reader Layout
       
     </span>
   </a>
@@ -759,10 +781,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#real-time" class="md-nav__link">
+  <a href="#ios-app" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Real-Time
+        iOS App
       
     </span>
   </a>
@@ -858,22 +880,53 @@
 
 
 <h1 id="frontend">Frontend</h1>
-<p>The frontend lives in <code>frontend/</code> and is responsible for all user-facing UI. It communicates with the backend via REST API calls and a WebSocket connection.</p>
+<p>The web frontend is a <strong>React 18 + Vite</strong> single-page application in <code>frontend/src/</code>. Routing uses <code>react-router-dom</code> with <code>HashRouter</code> (<code>/#/</code> prefix). UI components come from <strong>Ant Design</strong>. The built output in <code>frontend/dist/</code> is deployed to EC2 <code>/var/www/html/</code> via rsync.</p>
 <hr />
 <h2 id="pages">Pages</h2>
-<h3 id="home">Home (<code>/</code>)</h3>
-<ul>
-<li>Renders the landing page with the FellowScript hero, mission statement, and feature cards</li>
-<li>"Start Reading" button routes the user to <code>/reader</code></li>
-</ul>
-<h3 id="bible-reader-reader">Bible Reader (<code>/reader</code>)</h3>
-<ul>
-<li>Fetches scripture text from the API based on selected book/chapter</li>
-<li>Renders the highlight palette and applies user/community highlights inline</li>
-<li>Contains the bottom tab bar (Read / Notes / Community)</li>
-</ul>
+<table>
+<thead>
+<tr>
+<th>Route</th>
+<th>File</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/</code></td>
+<td><code>pages/Home.jsx</code></td>
+<td>Public landing page — hero, features, pricing, CTA</td>
+</tr>
+<tr>
+<td><code>/reader</code></td>
+<td><code>pages/Reader.jsx</code></td>
+<td>Bible reader with notes and messaging sidebars</td>
+</tr>
+<tr>
+<td><code>/account</code></td>
+<td><code>pages/Account.jsx</code></td>
+<td>Profile, subscription card, danger zone</td>
+</tr>
+<tr>
+<td><code>/signin</code></td>
+<td><code>pages/SignIn.jsx</code></td>
+<td>Password, Google, and Apple sign-in/sign-up</td>
+</tr>
+<tr>
+<td><code>/privacy</code></td>
+<td><code>pages/Privacy.jsx</code></td>
+<td>Privacy policy</td>
+</tr>
+<tr>
+<td><code>/terms</code></td>
+<td><code>pages/Terms.jsx</code></td>
+<td>Terms of service</td>
+</tr>
+</tbody>
+</table>
+<p>Unauthenticated users land on Home (<code>/</code>); once signed in, the CTA routes directly to <code>/reader</code>.</p>
 <hr />
-<h2 id="components">Components</h2>
+<h2 id="key-components">Key Components</h2>
 <table>
 <thead>
 <tr>
@@ -883,61 +936,125 @@
 </thead>
 <tbody>
 <tr>
-<td><code>NavBar</code></td>
-<td>Top bar with home link, title, and overflow menu</td>
+<td><code>AppNav.jsx</code></td>
+<td>Persistent top navigation bar — logo (links to <code>/</code>), reader link, account link; collapses to a drawer on narrow screens</td>
 </tr>
 <tr>
-<td><code>HeroSection</code></td>
-<td>Home page hero with title, tagline, and CTA</td>
+<td><code>NotesSidebar.jsx</code></td>
+<td>Full notes panel: Notes tab (rich-text cards sorted by creation date), Highlights tab, filter/sort panel, in-line editor</td>
 </tr>
 <tr>
-<td><code>FeatureCards</code></td>
-<td>2×2 grid of feature highlights on the home page</td>
+<td><code>MessagingSidebar.jsx</code></td>
+<td>Real-time WebSocket messaging — group chat and 1-on-1 DMs</td>
 </tr>
 <tr>
-<td><code>BookSearch</code></td>
-<td>Search bar for jumping to a book/chapter</td>
+<td><code>BibleCard.jsx</code></td>
+<td>Renders a single verse with inline highlight color, click-to-highlight, and verse selection</td>
 </tr>
 <tr>
-<td><code>ScriptureView</code></td>
-<td>Renders verse-by-verse scripture with inline highlights</td>
+<td><code>BibleNavigator.jsx</code></td>
+<td>Book + chapter picker (search + scroll)</td>
 </tr>
 <tr>
-<td><code>HighlightPalette</code></td>
-<td>Color selector row (yellow, orange, green, pink, blue)</td>
+<td><code>ScriptureNav.jsx</code></td>
+<td>Prev/next chapter controls</td>
 </tr>
 <tr>
-<td><code>BottomTabBar</code></td>
-<td>Read / Notes / Community tab switcher</td>
+<td><code>HighlightPicker.jsx</code></td>
+<td>Color swatch row for choosing the active highlight color</td>
 </tr>
 <tr>
-<td><code>NotesList</code></td>
-<td>Notes tab — filter tabs, note cards, add-note form</td>
+<td><code>BookmarkButton.jsx</code></td>
+<td>Toggle bookmark on the current chapter</td>
 </tr>
 <tr>
-<td><code>CommunityPanel</code></td>
-<td>Community tab — member list with DM buttons + group chat</td>
+<td><code>RichText.jsx</code></td>
+<td><code>NoteBody</code> renderer for saved HTML notes; <code>stripHtml</code> utility</td>
 </tr>
 <tr>
-<td><code>MemberRow</code></td>
-<td>Single member with avatar, name, activity status, DM button</td>
+<td><code>VerseSelector.jsx</code></td>
+<td>Verse picker used inside the note editor to link verses</td>
+</tr>
+<tr>
+<td><code>SubscriptionCard.jsx</code></td>
+<td>Displays current plan (free tier vs. paid), usage limits, upgrade prompt</td>
+</tr>
+<tr>
+<td><code>SessionWidget.jsx</code></td>
+<td>Devotion session UI</td>
+</tr>
+<tr>
+<td><code>SessionCreator.jsx</code></td>
+<td>Create a new devotion plan</td>
+</tr>
+<tr>
+<td><code>DonationButton.jsx</code></td>
+<td>One-time donation flow</td>
 </tr>
 </tbody>
 </table>
 <hr />
+<h2 id="state-and-auth">State and Auth</h2>
+<p><code>context/AuthContext.jsx</code> provides <code>useAuth()</code> across the app. It exposes:
+- <code>user</code> — the logged-in user object (or <code>null</code>)
+- <code>signIn(userData)</code> — stores user in context + <code>localStorage</code>
+- <code>signOut()</code> — clears context + <code>localStorage</code>, redirects to <code>/signin</code></p>
+<p>Session persistence uses <code>localStorage</code>; the <code>user_id</code> cookie set by the server is used for API calls.</p>
+<hr />
+<h2 id="reader-layout">Reader Layout</h2>
+<p>The Reader page uses a three-panel CSS grid:</p>
+<pre><code>┌─────────────┬──────────────────────┬──────────────┐
+│  AppNav     │                      │              │
+│  (sidebar   │   Scripture text     │   Notes or   │
+│   on left)  │   BibleCard × verse  │   Messaging  │
+│             │   BibleNavigator     │   sidebar    │
+└─────────────┴──────────────────────┴──────────────┘
+</code></pre>
+<p>On narrow screens the sidebars collapse and are accessed via toggle buttons above the scripture view.</p>
+<hr />
 <h2 id="styling">Styling</h2>
 <ul>
-<li>Dark background (<code>#1a1a2e</code>) with gold accent (<code>#C9A84C</code>)</li>
-<li>Fonts: Playfair Display (headings), Lora (body text)</li>
-<li>Mobile-first — all layouts stack vertically; sidebars do not exist</li>
-<li>Bottom tab bar replaces all sidebar navigation on mobile</li>
+<li>Dark background <code>#1a140f</code> (warm near-black)</li>
+<li>Primary gold <code>#e8a53d</code> / <code>#c8861a</code>, parchment text <code>#f4e4c1</code></li>
+<li>Fonts loaded via Google Fonts: Playfair Display, Space Grotesk, Lora, IM Fell English, JetBrains Mono</li>
+<li>Ant Design components are dark-themed via <code>ConfigProvider</code></li>
+<li>CSS variables (<code>--gold</code>, <code>--parchment</code>, <code>--bg</code>) defined on <code>:root</code> in <code>index.css</code></li>
+<li>Inline React styles + embedded <code>&lt;style&gt;</code> blocks for component-level media queries</li>
 </ul>
 <hr />
-<h2 id="real-time">Real-Time</h2>
-<p>The frontend maintains a WebSocket connection to <code>backend/messaging/websockets.py</code>:
-- Listens for group chat messages and renders them in the Community tab
-- Listens for member activity updates and refreshes the member list
-- Sends chat messages and outgoing DMs through the same connection</p>
+<h2 id="ios-app">iOS App</h2>
+<p>The native iOS client lives in <code>FellowScript/FellowScript/</code> (Swift / SwiftUI). It shares the same REST API as the web frontend. Key files:</p>
+<table>
+<thead>
+<tr>
+<th>File</th>
+<th>Responsibility</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Services/NetworkService.swift</code></td>
+<td>All API calls (notes, auth, highlights, user delete, etc.)</td>
+</tr>
+<tr>
+<td><code>Services/StoreKitManager.swift</code></td>
+<td>StoreKit 2 IAP for subscription purchases</td>
+</tr>
+<tr>
+<td><code>Auth/GoogleAuthSession.swift</code></td>
+<td>Google Sign-In integration</td>
+</tr>
+<tr>
+<td><code>Models/Models.swift</code></td>
+<td><code>Codable</code> data models mirroring the backend schemas</td>
+</tr>
+<tr>
+<td><code>Account/AccountView.swift</code></td>
+<td>Profile display, subscription status, delete-account flow</td>
+</tr>
+</tbody>
+</table>
+<p>Account deletion on iOS: the delete request is awaited before <code>signOut()</code> is called (correct async sequencing — no race condition).</p>
 
 
 

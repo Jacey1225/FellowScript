@@ -16,7 +16,7 @@
         <link rel="prev" href="../notes/">
       
       
-        <link rel="next" href="../../architecture/overview/">
+        <link rel="next" href="../account/">
       
       
         
@@ -555,28 +555,6 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#layout" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Layout
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#member-list" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Member List
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
   <a href="#group-chat" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -599,6 +577,28 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#friends" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Friends
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#groups" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Groups
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#real-time-behavior" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -613,6 +613,34 @@
   
 </nav>
       
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../account/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Account
+  
+
+    
+  </span>
+  
+  
+
+      </a>
     </li>
   
 
@@ -841,55 +869,62 @@
 
 
 <h1 id="community">Community</h1>
-<p>The Community tab shows all members of your current study group, their reading status, and the shared group chat.</p>
-<hr />
-<h2 id="layout">Layout</h2>
-<pre><code>┌────────────────────────────┐
-│ &lt; Home   FellowScript  [⋮] │
-├────────────────────────────┤
-│ [Search]   2 Timothy 1     │
-│ Highlight: 🟡 🟠 🟢 🔴 🔵  │
-├────────────────────────────┤
-│ STUDY GROUP                │
-├────────────────────────────┤
-│ 🟢 JM  James M.            │
-│        Reading verse 7  [DM]│  ← Online member with activity + DM button
-├────────────────────────────┤
-│ 🟢 SR  Sarah R.            │
-│        Left a note      [DM]│
-├────────────────────────────┤
-│ ⚪ DK  David K.            │
-│        Highlighted verse 3 [DM]│
-├────────────────────────────┤
-│ ⚪ ML  Mary L.             │
-│        Offline          [DM]│
-├────────────────────────────┤
-│ Message group...           │  ← Group chat input
-└────────────────────────────┘
-│  [📖 Read] [📝 Notes] [👥 Community] │
-└────────────────────────────┘
-</code></pre>
-<hr />
-<h2 id="member-list">Member List</h2>
-<p>Each member row shows:
-- <strong>Online indicator</strong> — green dot (online) or grey (offline)
-- <strong>Color-coded avatar</strong> with initials
-- <strong>Display name</strong>
-- <strong>Activity status</strong> — what the member is currently doing (reading a verse, leaving a note, highlighting, offline)
-- <strong>DM button</strong> — opens a direct message thread</p>
+<p>The Messaging sidebar (<code>MessagingSidebar</code>) handles all social features: group chat, direct messages, and friend management. It appears in the right panel of the Reader when the Messages icon is selected.</p>
 <hr />
 <h2 id="group-chat">Group Chat</h2>
-<ul>
-<li>A shared message input at the bottom of the Community tab</li>
-<li>All group members can read and post</li>
-<li>Real-time updates via WebSocket</li>
-</ul>
+<p>When a user belongs to a study group, the messaging sidebar shows:
+- <strong>Group message history</strong> — past messages loaded on mount
+- <strong>Real-time messages</strong> — delivered via WebSocket (<code>/ws/{user_id}</code>)
+- <strong>Message input</strong> — text field + send button at the bottom</p>
+<p>Group messages are visible to all group members.</p>
 <hr />
 <h2 id="direct-messages">Direct Messages</h2>
-<p>Tapping <strong>DM</strong> next to a member opens a private 1-on-1 thread separate from the group chat. Messages are only visible to the two participants.</p>
+<p>The sidebar also surfaces 1-on-1 DM threads. Selecting a friend from the list opens a private thread visible only to the two participants. DMs are routed through the same WebSocket connection with a <code>type: "dm"</code> payload.</p>
+<hr />
+<h2 id="friends">Friends</h2>
+<p>The friends panel shows:
+- <strong>Friend list</strong> — all accepted friends with DM button
+- <strong>Incoming requests</strong> — friend requests awaiting response (Accept / Decline)
+- <strong>Add friend</strong> — send a request by username</p>
+<p>All friend actions go through <code>GET/POST /friends/{user_id}/…</code> REST endpoints; no WebSocket is needed for friend management.</p>
+<hr />
+<h2 id="groups">Groups</h2>
+<p>Users can create or join study groups:
+- <strong>Create group</strong> — sets the user as owner; group gets a UUID and title
+- <strong>Join group</strong> — adds the user to <code>groups.members</code>
+- <strong>Leave group</strong> — removes the user from the group
+- <strong>Group selector</strong> — the compact dropdown in the Notes sidebar tab bar also switches the messaging sidebar to the selected group</p>
+<p>Group highlights (members' colored verse highlights) are visible as overlays in the scripture view when a group is selected.</p>
 <hr />
 <h2 id="real-time-behavior">Real-Time Behavior</h2>
-<p>Member activity statuses (e.g. "Reading verse 7", "Left a note") update in real time so the group can see where everyone is in the scripture. This is powered by the WebSocket layer in <code>backend/messaging/websockets.py</code>.</p>
+<p>The WebSocket connection (<code>/ws/{user_id}</code>) handles:</p>
+<table>
+<thead>
+<tr>
+<th>Event type</th>
+<th>Direction</th>
+<th>Action</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>group_message</code></td>
+<td>send/receive</td>
+<td>Broadcast to all group members</td>
+</tr>
+<tr>
+<td><code>dm</code></td>
+<td>send/receive</td>
+<td>Route to a single recipient</td>
+</tr>
+<tr>
+<td><code>activity</code></td>
+<td>receive</td>
+<td>Member is reading / highlighting / noting (broadcast by server)</td>
+</tr>
+</tbody>
+</table>
+<p>The connection is established when the Reader mounts and torn down on unmount.</p>
 
 
 

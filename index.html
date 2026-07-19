@@ -357,17 +357,6 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#mission" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Mission
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
   <a href="#core-features" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -379,10 +368,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#pages" class="md-nav__link">
+  <a href="#pages-web" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Pages
+        Pages (Web)
       
     </span>
   </a>
@@ -390,10 +379,21 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#design-philosophy" class="md-nav__link">
+  <a href="#clients" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Design Philosophy
+        Clients
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#design-at-a-glance" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Design at a Glance
       
     </span>
   </a>
@@ -587,6 +587,34 @@
     
   
     Community
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="design/account/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Account
   
 
     
@@ -824,13 +852,7 @@
 
 <h1 id="fellowscript">FellowScript</h1>
 <p><strong>A Digital Scripture Community — Read · Reflect · Connect</strong></p>
-<p>FellowScript is a faith-based Bible study platform built to spark meaningful connections among people who seek to grow in their faith together. Users read scripture side by side, share highlights and reflections, and build one another up in the Word.</p>
-<hr />
-<h2 id="mission">Mission</h2>
-<blockquote>
-<p><strong>Fan into flame the gift of God.</strong></p>
-</blockquote>
-<p>FellowScript is built to start meaningful and impactful connections with like-minded people who seek to build up their faith and fan into flame the gift of God (2 Timothy 1:6).</p>
+<p>FellowScript is a faith-based Bible study platform for reading scripture, taking rich notes, connecting with a study group, and receiving AI-powered devotional check-ins. It runs as a React web app and a native iOS app, both backed by a shared FastAPI + Postgres server hosted on AWS EC2.</p>
 <hr />
 <h2 id="core-features">Core Features</h2>
 <table>
@@ -843,39 +865,132 @@
 <tbody>
 <tr>
 <td>Digital Bible</td>
-<td>Navigate the full Bible by book and chapter with a clean reading view</td>
+<td>Navigate all 66 books by chapter with a clean, typeset reading view</td>
 </tr>
 <tr>
 <td>Highlighting</td>
-<td>Mark scripture in yellow, orange, green, pink, or blue</td>
+<td>Mark verses in six colors; highlights persist per user</td>
 </tr>
 <tr>
-<td>Notes</td>
-<td>Add public or private notes to any verse</td>
+<td>Rich Notes</td>
+<td>Add formatted notes (bold, italic, underline, highlight, color) linked to one or more verses</td>
 </tr>
 <tr>
-<td>Community Highlights</td>
-<td>Filter and browse other users' public highlights</td>
+<td>Bookmarks</td>
+<td>Bookmark chapters for quick return</td>
 </tr>
 <tr>
-<td>Group Chat</td>
-<td>Message your study group in real time</td>
+<td>Groups</td>
+<td>Create or join study groups; share public notes and highlights within the group</td>
 </tr>
 <tr>
-<td>Direct Messages</td>
-<td>Send private messages to individual members</td>
+<td>Friends</td>
+<td>Send/accept friend requests; start direct messages</td>
+</tr>
+<tr>
+<td>Group &amp; Direct Messaging</td>
+<td>Real-time WebSocket chat — group threads and 1-on-1 DMs</td>
+</tr>
+<tr>
+<td>Devotions</td>
+<td>Collaborative devotion plans shared across a group</td>
+</tr>
+<tr>
+<td>AI Agent</td>
+<td>Daily check-in heartbeats with AI-generated devotional prompts</td>
+</tr>
+<tr>
+<td>Notifications</td>
+<td>In-app notifications for group activity and agent events</td>
+</tr>
+<tr>
+<td>Subscriptions</td>
+<td>Free tier (limited notes/events) + Individual and Group paid plans via Stripe (web) or Apple IAP (iOS)</td>
+</tr>
+<tr>
+<td>Account</td>
+<td>Profile management and account deletion for web and iOS</td>
 </tr>
 </tbody>
 </table>
 <hr />
-<h2 id="pages">Pages</h2>
+<h2 id="pages-web">Pages (Web)</h2>
+<table>
+<thead>
+<tr>
+<th>Route</th>
+<th>Page</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/</code></td>
+<td>Home — landing page with feature overview and pricing</td>
+</tr>
+<tr>
+<td><code>/reader</code></td>
+<td>Bible Reader — scripture, notes sidebar, messaging sidebar</td>
+</tr>
+<tr>
+<td><code>/account</code></td>
+<td>Account — profile, subscription card, danger zone</td>
+</tr>
+<tr>
+<td><code>/signin</code></td>
+<td>Sign In / Sign Up — password, Google, or Apple</td>
+</tr>
+<tr>
+<td><code>/privacy</code></td>
+<td>Privacy Policy</td>
+</tr>
+<tr>
+<td><code>/terms</code></td>
+<td>Terms of Service</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="clients">Clients</h2>
 <ul>
-<li><strong>Home</strong> — Introduction to FellowScript's mission and a "Start Reading" entry point</li>
-<li><strong>Bible Reader</strong> — Full digital Bible with highlighting, notes, and community tabs</li>
+<li><strong>Web</strong> — React + Vite SPA, deployed via rsync to Nginx on EC2</li>
+<li><strong>iOS</strong> — Native Swift app (Xcode), distributed via App Store</li>
 </ul>
 <hr />
-<h2 id="design-philosophy">Design Philosophy</h2>
-<p>FellowScript uses a <strong>mobile-first</strong> layout. The Bible reader replaces traditional sidebars with a bottom navigation bar (Read, Notes, Community) so everything is one thumb-tap away. The visual identity uses a dark background with a warm gold accent (<code>#C9A84C</code>) and editorial serif typography (Playfair Display headings, Lora body text) to give the app a reverent but modern feel.</p>
+<h2 id="design-at-a-glance">Design at a Glance</h2>
+<table>
+<thead>
+<tr>
+<th>Token</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Background</td>
+<td><code>#1a140f</code> (warm near-black)</td>
+</tr>
+<tr>
+<td>Primary accent</td>
+<td><code>#e8a53d</code> / <code>#c8861a</code> (warm gold)</td>
+</tr>
+<tr>
+<td>Parchment text</td>
+<td><code>#f4e4c1</code></td>
+</tr>
+<tr>
+<td>Heading fonts</td>
+<td>Playfair Display, Space Grotesk</td>
+</tr>
+<tr>
+<td>Body / note fonts</td>
+<td>Lora, IM Fell English</td>
+</tr>
+<tr>
+<td>Code / mono</td>
+<td>JetBrains Mono</td>
+</tr>
+</tbody>
+</table>
 
 
 

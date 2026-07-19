@@ -511,6 +511,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../design/account/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Account
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -726,10 +754,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#bible-source" class="md-nav__link">
+  <a href="#bible-text" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Bible Source
+        Bible Text
       
     </span>
   </a>
@@ -737,22 +765,33 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#user-data" class="md-nav__link">
+  <a href="#postgres-schema" class="md-nav__link">
     <span class="md-ellipsis">
       
-        User Data
+        Postgres Schema
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="User Data">
+    <nav class="md-nav" aria-label="Postgres Schema">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#highlights" class="md-nav__link">
+  <a href="#users" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Highlights
+        users
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#subscriptions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        subscriptions
       
     </span>
   </a>
@@ -763,7 +802,51 @@
   <a href="#notes" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Notes
+        notes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#note_verses" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        note_verses
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#highlights" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        highlights
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#bookmarks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        bookmarks
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#groups" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        groups
       
     </span>
   </a>
@@ -774,7 +857,40 @@
   <a href="#messages" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Messages
+        messages
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#notifications" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        notifications
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#devotions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        devotions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#agents-agent_heartbeats" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        agents / agent_heartbeats
       
     </span>
   </a>
@@ -783,6 +899,28 @@
         
       </ul>
     </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#account-deletion" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Account Deletion
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#migrations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Migrations
+      
+    </span>
+  </a>
   
 </li>
       
@@ -847,167 +985,449 @@
 
 
 <h1 id="data">Data</h1>
-<p>FellowScript's data layer handles two things: Bible source content and user-generated content (highlights, notes, messages).</p>
+<p>All user-generated data lives in <strong>PostgreSQL</strong>. Bible text is served from a pre-parsed JSON file bundled with the backend. There are no PDF sources parsed at runtime.</p>
 <hr />
-<h2 id="bible-source">Bible Source</h2>
-<p>Raw Bible text is stored as PDFs in <code>data/</code>:</p>
+<h2 id="bible-text">Bible Text</h2>
+<p>The full Bible (KJV/ESV) is stored as a static JSON file loaded into memory on startup. The <code>api/</code> backend reads from this file to serve book/chapter/verse lookups. It is never written to at runtime.</p>
+<hr />
+<h2 id="postgres-schema">Postgres Schema</h2>
+<h3 id="users"><code>users</code></h3>
 <table>
 <thead>
 <tr>
-<th>File</th>
-<th>Translation</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>ESV Bible.pdf</code></td>
-<td>English Standard Version</td>
-</tr>
-<tr>
-<td><code>NIV-Bible.pdf</code></td>
-<td>New International Version</td>
-</tr>
-</tbody>
-</table>
-<p><code>backend/bibleHandling/convertDict.py</code> parses these into a nested dictionary structure at runtime:</p>
-<pre><code>Bible Dict
-└── Book (e.g. &quot;2 Timothy&quot;)
-    └── Chapter (int, e.g. 1)
-        └── Verse (int, e.g. 6) → text (str)
-</code></pre>
-<hr />
-<h2 id="user-data">User Data</h2>
-<h3 id="highlights">Highlights</h3>
-<p>Each highlight record stores:</p>
-<table>
-<thead>
-<tr>
-<th>Field</th>
+<th>Column</th>
 <th>Type</th>
-<th>Description</th>
+<th>Notes</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>user_id</code></td>
-<td>string</td>
-<td>The user who created the highlight</td>
+<td><code>_id</code></td>
+<td>UUID PK</td>
+<td>User identifier</td>
 </tr>
 <tr>
-<td><code>book</code></td>
-<td>string</td>
-<td>Bible book name</td>
+<td><code>username</code></td>
+<td>TEXT</td>
+<td>Unique display name</td>
 </tr>
 <tr>
-<td><code>chapter</code></td>
-<td>int</td>
-<td>Chapter number</td>
+<td><code>email</code></td>
+<td>TEXT</td>
+<td></td>
 </tr>
 <tr>
-<td><code>verse</code></td>
-<td>int</td>
-<td>Verse number</td>
+<td><code>hash_pass</code></td>
+<td>TEXT</td>
+<td>bcrypt hash; empty string for OAuth-only accounts</td>
 </tr>
 <tr>
-<td><code>color</code></td>
-<td>string</td>
-<td><code>yellow</code>, <code>orange</code>, <code>green</code>, <code>pink</code>, or <code>blue</code></td>
+<td><code>apple_sub</code></td>
+<td>TEXT</td>
+<td>Stable Apple <code>sub</code> claim for Sign in with Apple</td>
 </tr>
 <tr>
-<td><code>visibility</code></td>
-<td>string</td>
-<td><code>public</code> or <code>private</code></td>
+<td><code>google_sub</code></td>
+<td>TEXT</td>
+<td>Stable Google <code>sub</code> claim</td>
+</tr>
+<tr>
+<td><code>subscription_id</code></td>
+<td>UUID FK → <code>subscriptions</code></td>
+<td>Current plan; always set (free plan row created on signup)</td>
 </tr>
 </tbody>
 </table>
 <hr />
-<h3 id="notes">Notes</h3>
-<p>Each note record stores:</p>
+<h3 id="subscriptions"><code>subscriptions</code></h3>
 <table>
 <thead>
 <tr>
-<th>Field</th>
+<th>Column</th>
 <th>Type</th>
-<th>Description</th>
+<th>Notes</th>
 </tr>
 </thead>
 <tbody>
 <tr>
+<td><code>_id</code></td>
+<td>UUID PK</td>
+<td></td>
+</tr>
+<tr>
 <td><code>user_id</code></td>
-<td>string</td>
-<td>The author</td>
+<td>UUID FK → <code>users</code> ON DELETE CASCADE</td>
+<td></td>
 </tr>
 <tr>
-<td><code>book</code></td>
-<td>string</td>
-<td>Bible book name</td>
+<td><code>plan_type</code></td>
+<td>TEXT</td>
+<td><code>'free'</code>, <code>'individual'</code>, <code>'group'</code></td>
 </tr>
 <tr>
-<td><code>chapter</code></td>
-<td>int</td>
-<td>Chapter number</td>
+<td><code>provider</code></td>
+<td>TEXT</td>
+<td><code>'none'</code>, <code>'stripe'</code>, <code>'apple'</code></td>
 </tr>
 <tr>
-<td><code>verse</code></td>
-<td>int</td>
-<td>Verse number</td>
+<td><code>status</code></td>
+<td>TEXT</td>
+<td><code>'active'</code>, <code>'trialing'</code>, <code>'canceled'</code></td>
+</tr>
+<tr>
+<td><code>price_cents</code></td>
+<td>INTEGER</td>
+<td>0 for free plan</td>
+</tr>
+<tr>
+<td><code>max_members</code></td>
+<td>INTEGER</td>
+<td>1 for individual, N for group</td>
+</tr>
+<tr>
+<td><code>current_period_end</code></td>
+<td>TIMESTAMPTZ</td>
+<td>NULL for free plan (never expires)</td>
+</tr>
+<tr>
+<td><code>stripe_subscription_id</code></td>
+<td>TEXT</td>
+<td></td>
+</tr>
+<tr>
+<td><code>apple_original_transaction_id</code></td>
+<td>TEXT</td>
+<td></td>
+</tr>
+<tr>
+<td><code>card_brand</code>, <code>card_last4</code></td>
+<td>TEXT</td>
+<td>Display-only; no raw card data stored</td>
+</tr>
+</tbody>
+</table>
+<p>Every new user receives a <code>plan_type='free'</code> row on signup. Free plans are excluded from <code>is_subscribed()</code> checks so free-tier limits still apply.</p>
+<hr />
+<h3 id="notes"><code>notes</code></h3>
+<table>
+<thead>
+<tr>
+<th>Column</th>
+<th>Type</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>_id</code></td>
+<td>UUID PK</td>
+<td></td>
+</tr>
+<tr>
+<td><code>user_id</code></td>
+<td>UUID FK → <code>users</code></td>
+<td>Deleted with user</td>
+</tr>
+<tr>
+<td><code>title</code></td>
+<td>VARCHAR(255)</td>
+<td></td>
 </tr>
 <tr>
 <td><code>text</code></td>
-<td>string</td>
-<td>Note content</td>
+<td>TEXT</td>
+<td>HTML (rich text)</td>
 </tr>
 <tr>
-<td><code>visibility</code></td>
-<td>string</td>
-<td><code>public</code> or <code>private</code></td>
-</tr>
-<tr>
-<td><code>created_at</code></td>
-<td>datetime</td>
-<td>Timestamp</td>
-</tr>
-</tbody>
-</table>
-<hr />
-<h3 id="messages">Messages</h3>
-<p>Each message record stores:</p>
-<table>
-<thead>
-<tr>
-<th>Field</th>
-<th>Type</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>sender_id</code></td>
-<td>string</td>
-<td>Author</td>
+<td><code>public</code></td>
+<td>BOOLEAN</td>
+<td>Visible to study group when true</td>
 </tr>
 <tr>
 <td><code>group_id</code></td>
-<td>string</td>
-<td>Study group (null for DMs)</td>
+<td>UUID FK → <code>groups</code> ON DELETE SET NULL</td>
+<td></td>
 </tr>
 <tr>
-<td><code>recipient_id</code></td>
-<td>string</td>
-<td>DM target (null for group messages)</td>
+<td><code>is_reply</code></td>
+<td>BOOLEAN</td>
+<td>True for note replies</td>
 </tr>
 <tr>
-<td><code>text</code></td>
-<td>string</td>
-<td>Message content</td>
+<td><code>parent_note_id</code></td>
+<td>UUID FK → <code>notes</code> ON DELETE CASCADE</td>
+<td></td>
 </tr>
 <tr>
-<td><code>sent_at</code></td>
-<td>datetime</td>
-<td>Timestamp</td>
+<td><code>timestamp</code></td>
+<td>TIMESTAMPTZ</td>
+<td>Bumped on every edit (last-modified)</td>
+</tr>
+<tr>
+<td><code>created_at</code></td>
+<td>TIMESTAMPTZ</td>
+<td>Set at INSERT only; never updated</td>
 </tr>
 </tbody>
 </table>
+<p>Notes are always sorted by <code>created_at DESC</code> on the frontend.</p>
+<hr />
+<h3 id="note_verses"><code>note_verses</code></h3>
+<p>Verse references linked to a note (many-to-one).</p>
+<table>
+<thead>
+<tr>
+<th>Column</th>
+<th>Type</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>note_id</code></td>
+<td>UUID FK → <code>notes</code> ON DELETE CASCADE</td>
+</tr>
+<tr>
+<td><code>position</code></td>
+<td>INTEGER</td>
+</tr>
+<tr>
+<td><code>book</code></td>
+<td>TEXT</td>
+</tr>
+<tr>
+<td><code>chapter</code></td>
+<td>TEXT</td>
+</tr>
+<tr>
+<td><code>verse</code></td>
+<td>TEXT</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="highlights"><code>highlights</code></h3>
+<table>
+<thead>
+<tr>
+<th>Column</th>
+<th>Type</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>user_id</code></td>
+<td>UUID FK → <code>users</code></td>
+<td>Composite PK with <code>key</code></td>
+</tr>
+<tr>
+<td><code>key</code></td>
+<td>TEXT</td>
+<td><code>"{book}-{chapter}-{verse}"</code></td>
+</tr>
+<tr>
+<td><code>color</code></td>
+<td>TEXT</td>
+<td>Hex color string</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="bookmarks"><code>bookmarks</code></h3>
+<table>
+<thead>
+<tr>
+<th>Column</th>
+<th>Type</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>user_id</code></td>
+<td>UUID FK → <code>users</code></td>
+<td>Composite PK with <code>key</code></td>
+</tr>
+<tr>
+<td><code>key</code></td>
+<td>TEXT</td>
+<td><code>"{book}-{chapter}"</code></td>
+</tr>
+<tr>
+<td><code>label</code></td>
+<td>TEXT</td>
+<td>Optional display label</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="groups"><code>groups</code></h3>
+<table>
+<thead>
+<tr>
+<th>Column</th>
+<th>Type</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>_id</code></td>
+<td>UUID PK</td>
+</tr>
+<tr>
+<td><code>title</code></td>
+<td>TEXT</td>
+</tr>
+<tr>
+<td><code>members</code></td>
+<td>UUID[]</td>
+</tr>
+<tr>
+<td><code>highlights</code></td>
+<td>JSONB</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="messages"><code>messages</code></h3>
+<table>
+<thead>
+<tr>
+<th>Column</th>
+<th>Type</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>_id</code></td>
+<td>UUID PK DEFAULT gen_random_uuid()</td>
+<td></td>
+</tr>
+<tr>
+<td><code>from_user</code></td>
+<td>UUID FK → <code>users</code> (SET NULL on delete)</td>
+<td>Nulled when author is deleted</td>
+</tr>
+<tr>
+<td><code>group_id</code></td>
+<td>UUID FK → <code>groups</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>content</code></td>
+<td>TEXT</td>
+<td></td>
+</tr>
+<tr>
+<td><code>is_dm</code></td>
+<td>BOOLEAN</td>
+<td></td>
+</tr>
+<tr>
+<td><code>timestamp</code></td>
+<td>TIMESTAMPTZ</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="notifications"><code>notifications</code></h3>
+<table>
+<thead>
+<tr>
+<th>Column</th>
+<th>Type</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>_id</code></td>
+<td>UUID PK</td>
+</tr>
+<tr>
+<td><code>user_id</code></td>
+<td>UUID FK → <code>users</code> ON DELETE CASCADE</td>
+</tr>
+<tr>
+<td><code>type</code></td>
+<td>TEXT</td>
+</tr>
+<tr>
+<td><code>message</code></td>
+<td>TEXT</td>
+</tr>
+<tr>
+<td><code>read</code></td>
+<td>BOOLEAN</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="devotions"><code>devotions</code></h3>
+<table>
+<thead>
+<tr>
+<th>Column</th>
+<th>Type</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>_id</code></td>
+<td>UUID PK</td>
+<td></td>
+</tr>
+<tr>
+<td><code>creator_id</code></td>
+<td>UUID FK → <code>users</code> (SET NULL on delete)</td>
+<td>Nulled when creator is deleted</td>
+</tr>
+<tr>
+<td><code>title</code></td>
+<td>TEXT</td>
+<td></td>
+</tr>
+<tr>
+<td><code>participants</code></td>
+<td>UUID[]</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="agents-agent_heartbeats"><code>agents</code> / <code>agent_heartbeats</code></h3>
+<table>
+<thead>
+<tr>
+<th>Table</th>
+<th>Key columns</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>agents</code></td>
+<td><code>_id</code>, <code>user_id FK→users ON DELETE CASCADE</code>, <code>config JSONB</code></td>
+</tr>
+<tr>
+<td><code>agent_heartbeats</code></td>
+<td><code>_id</code>, <code>user_id FK→users ON DELETE CASCADE</code>, <code>last_fired TIMESTAMPTZ</code></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="account-deletion">Account Deletion</h2>
+<p><code>DELETE /user/{user_id}</code> manually handles tables whose FK to <code>users</code> lacks <code>ON DELETE CASCADE</code>:</p>
+<ol>
+<li><code>DELETE FROM notes WHERE user_id = ?</code> — removes owned notes (cascades to <code>note_verses</code>)</li>
+<li><code>UPDATE messages SET from_user = NULL WHERE from_user = ?</code> — preserves group chat history</li>
+<li><code>UPDATE devotions SET creator_id = NULL WHERE creator_id = ?</code> — preserves devotion plans</li>
+<li><code>DELETE FROM users WHERE _id = ?</code> — remaining children with CASCADE delete automatically</li>
+</ol>
+<hr />
+<h2 id="migrations">Migrations</h2>
+<p>New columns are added via idempotent <code>ALTER TABLE … ADD COLUMN IF NOT EXISTS</code> statements at the top of <code>create_tables()</code> in <code>db.py</code>. These run on every server startup and are safe to re-run against a live database.</p>
 
 
 

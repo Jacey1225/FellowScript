@@ -596,6 +596,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../account/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Account
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -819,53 +847,83 @@
 
 
 <h1 id="design-overview">Design Overview</h1>
-<p>FellowScript's UI is designed mobile-first with a dark, editorial aesthetic that feels reverent without being heavy.</p>
+<p>FellowScript's visual identity evokes the warmth and reverence of handwritten scripture — candlelight on parchment — while remaining clean and modern enough for everyday use.</p>
 <hr />
 <h2 id="visual-identity">Visual Identity</h2>
 <table>
 <thead>
 <tr>
-<th>Element</th>
+<th>Token</th>
 <th>Value</th>
+<th>Usage</th>
 </tr>
 </thead>
 <tbody>
 <tr>
 <td>Background</td>
-<td>Dark charcoal (<code>#1a1a2e</code> / near-black)</td>
+<td><code>#1a140f</code></td>
+<td>Page and panel backgrounds</td>
 </tr>
 <tr>
-<td>Primary accent</td>
-<td>Warm gold (<code>#C9A84C</code>)</td>
+<td>Primary gold</td>
+<td><code>#e8a53d</code></td>
+<td>Buttons, CTAs, active states</td>
 </tr>
 <tr>
-<td>Heading font</td>
-<td>Playfair Display (serif)</td>
+<td>Secondary gold</td>
+<td><code>#c8861a</code></td>
+<td>Borders, icon accents, hover states</td>
 </tr>
 <tr>
-<td>Body font</td>
-<td>Lora (serif)</td>
+<td>Parchment text</td>
+<td><code>#f4e4c1</code></td>
+<td>Body text on dark backgrounds</td>
 </tr>
 <tr>
-<td>Code font</td>
-<td>Roboto Mono</td>
+<td>Muted text</td>
+<td><code>rgba(244,228,193,0.4–0.6)</code></td>
+<td>Secondary labels, timestamps</td>
+</tr>
+<tr>
+<td>Heading fonts</td>
+<td>Playfair Display, Space Grotesk</td>
+<td>Page headings, landing page</td>
+</tr>
+<tr>
+<td>Body / editorial font</td>
+<td>Lora</td>
+<td>Note bodies, prose</td>
+</tr>
+<tr>
+<td>Verse / italic font</td>
+<td>IM Fell English</td>
+<td>Verse references, pull quotes</td>
+</tr>
+<tr>
+<td>Mono font</td>
+<td>JetBrains Mono</td>
+<td>Code-adjacent UI elements</td>
 </tr>
 </tbody>
 </table>
-<p>The gold accent on dark creates the parchment-and-candlelight feel of handwritten scripture — modern but grounded.</p>
 <hr />
 <h2 id="layout-strategy">Layout Strategy</h2>
-<p>On mobile, traditional sidebars are replaced entirely with a <strong>bottom navigation bar</strong>:</p>
-<pre><code>[ Read ]  [ Notes ]  [ Community ]
+<p>The web app uses a <strong>three-panel grid</strong> in the Reader view:</p>
+<pre><code>┌──────────┬────────────────────┬────────────────┐
+│  AppNav  │  Scripture text    │  Notes or      │
+│  (left)  │  (centre)          │  Messaging     │
+│          │                    │  sidebar       │
+└──────────┴────────────────────┴────────────────┘
 </code></pre>
-<p>This keeps all core actions reachable with one thumb and avoids cluttered side panels on small screens.</p>
+<p>On narrow viewports, sidebars collapse to toggle buttons above the scripture view.</p>
+<p>The <strong>Home</strong> page is a full-width landing page with a top navigation bar, not an in-app panel. Signed-out users see it as the entry point; signed-in users pass through it to reach <code>/reader</code>.</p>
 <hr />
 <h2 id="pages">Pages</h2>
 <ul>
-<li><a href="../home-page/">Home Page</a> — Landing, mission, and entry point</li>
-<li><a href="../bible-reader/">Bible Reader</a> — Scripture view with highlighting</li>
-<li><a href="../notes/">Notes</a> — Public and private annotations</li>
-<li><a href="../community/">Community</a> — Study group members and chat</li>
+<li><a href="../home-page/">Home Page</a> — Public landing page with pricing and feature overview</li>
+<li><a href="../bible-reader/">Bible Reader</a> — Scripture reading with notes and messaging sidebars</li>
+<li><a href="../notes/">Notes</a> — Rich-text notes, highlights, and the note creation date feature</li>
+<li><a href="../community/">Community</a> — Real-time group chat, DMs, and friend management</li>
 </ul>
 
 

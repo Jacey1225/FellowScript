@@ -13,7 +13,7 @@
       
       
       
-        <link rel="prev" href="../../design/community/">
+        <link rel="prev" href="../../design/account/">
       
       
         <link rel="next" href="../backend/">
@@ -511,6 +511,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../design/account/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Account
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -642,10 +670,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#folder-structure" class="md-nav__link">
+  <a href="#repository-layout" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Folder Structure
+        Repository Layout
       
     </span>
   </a>
@@ -664,10 +692,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#key-modules" class="md-nav__link">
+  <a href="#layers" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Key Modules
+        Layers
       
     </span>
   </a>
@@ -675,10 +703,21 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#communication" class="md-nav__link">
+  <a href="#request-lifecycle-typical-rest-call" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Communication
+        Request Lifecycle (typical REST call)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#deployment" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Deployment
       
     </span>
   </a>
@@ -830,82 +869,114 @@
 
 
 <h1 id="system-architecture-overview">System Architecture Overview</h1>
-<p>FellowScript is structured as a client-server application with a Python backend, a web frontend, and real-time messaging over WebSockets.</p>
+<p>FellowScript is a full-stack application with three clients (web, iOS, docs) backed by a single FastAPI server and a Postgres database, hosted on AWS EC2.</p>
 <hr />
-<h2 id="folder-structure">Folder Structure</h2>
+<h2 id="repository-layout">Repository Layout</h2>
 <pre><code>FellowScript/
-├── frontend/               # UI — HTML/CSS/JS (or framework TBD)
-├── backend/
-│   ├── bibleHandling/
-│   │   ├── convertDict.py  # Converts Bible source data into a usable dict structure
-│   │   ├── interactions.py # Highlight, note, and annotation logic
-│   │   └── navigation.py   # Book/chapter navigation and lookup
-│   └── messaging/
-│       └── websockets.py   # Real-time group chat and activity broadcast
-├── api/                    # API route definitions
-├── data/
-│   ├── ESV Bible.pdf       # ESV Bible source
-│   └── NIV-Bible.pdf       # NIV Bible source
-├── docs/                   # This documentation (MkDocs)
-├── mkdocs.yml
-└── README.md
+├── api/                        # FastAPI backend (Python)
+│   ├── main.py                 # App entry point, auth routes, lifespan
+│   ├── db.py                   # DBManager, schema DDL, migrations
+│   ├── schemas/                # Pydantic request/response models
+│   ├── routes/                 # Thin HTTP handlers (APIRouter per domain)
+│   └── backend/
+│       ├── interactions/       # Business logic + DB managers
+│       └── subscription/       # Subscription, limits, Stripe, Apple IAP
+├── frontend/                   # React + Vite web app
+│   ├── src/
+│   │   ├── pages/              # Home, Reader, Account, SignIn, Privacy, Terms
+│   │   ├── components/         # AppNav, NotesSidebar, MessagingSidebar, …
+│   │   └── context/            # AuthContext (user session)
+│   └── dist/                   # Built output (rsync'd to EC2 /var/www/html/)
+├── FellowScript/               # Native iOS app (Swift / Xcode)
+│   └── FellowScript/
+│       ├── Models/             # Codable data models
+│       ├── Services/           # NetworkService, StoreKitManager
+│       ├── Auth/               # GoogleAuthSession, AppleAuth
+│       └── Account/            # AccountView (profile + delete)
+├── docs/                       # MkDocs documentation (this site)
+└── mkdocs.yml
 </code></pre>
 <hr />
 <h2 id="data-flow">Data Flow</h2>
-<pre><code>User Action (frontend)
-        │
-        ▼
-   REST API (api/)
-        │
-        ├──▶ bibleHandling/navigation.py   → fetch book/chapter text
-        ├──▶ bibleHandling/interactions.py → save/load highlights &amp; notes
-        └──▶ messaging/websockets.py       → broadcast activity &amp; chat
-        │
-        ▼
-   Response to frontend
+<pre><code>Web (React)  ──┐
+iOS (Swift)  ──┼──▶  FastAPI (EC2 :8000)  ──▶  Postgres (local)
+               │            │
+               │     WebSocket server ──▶ real-time messaging
+               └──▶  Nginx (EC2 :80/443) ──▶ static frontend
 </code></pre>
 <hr />
-<h2 id="key-modules">Key Modules</h2>
+<h2 id="layers">Layers</h2>
 <table>
 <thead>
 <tr>
-<th>Module</th>
-<th>Responsibility</th>
+<th>Layer</th>
+<th>Technology</th>
+<th>Purpose</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>bibleHandling/convertDict.py</code></td>
-<td>Parses Bible PDFs into a structured dictionary keyed by book → chapter → verse</td>
+<td>Frontend (web)</td>
+<td>React 18 + Vite, Ant Design</td>
+<td>UI, routing, state</td>
 </tr>
 <tr>
-<td><code>bibleHandling/navigation.py</code></td>
-<td>Handles book/chapter lookup and returns verse-level text</td>
+<td>Frontend (iOS)</td>
+<td>Swift, SwiftUI</td>
+<td>Native mobile client</td>
 </tr>
 <tr>
-<td><code>bibleHandling/interactions.py</code></td>
-<td>Manages highlights (color, user, verse) and notes (text, visibility, author)</td>
+<td>API</td>
+<td>FastAPI + Uvicorn</td>
+<td>REST endpoints + WebSocket</td>
 </tr>
 <tr>
-<td><code>messaging/websockets.py</code></td>
-<td>WebSocket server for real-time group chat and member activity updates</td>
+<td>Business logic</td>
+<td>Python manager classes</td>
+<td>Domain rules, DB queries</td>
 </tr>
 <tr>
-<td><code>api/</code></td>
-<td>REST endpoints consumed by the frontend</td>
+<td>Database</td>
+<td>PostgreSQL</td>
+<td>All user-generated data</td>
 </tr>
 <tr>
-<td><code>frontend/</code></td>
-<td>Renders the UI — home page, Bible reader, notes, community tabs</td>
+<td>Auth</td>
+<td>bcrypt (password), Google OAuth, Apple JWT</td>
+<td>Three sign-in methods</td>
+</tr>
+<tr>
+<td>Billing</td>
+<td>Stripe Checkout (web), StoreKit 2 (iOS)</td>
+<td>Subscription management</td>
+</tr>
+<tr>
+<td>Hosting</td>
+<td>AWS EC2 (Nginx + Uvicorn)</td>
+<td>Web + API server</td>
+</tr>
+<tr>
+<td>Docs</td>
+<td>MkDocs + Material</td>
+<td>GitHub Pages</td>
 </tr>
 </tbody>
 </table>
 <hr />
-<h2 id="communication">Communication</h2>
-<ul>
-<li><strong>REST</strong> — Used for fetching Bible text, loading notes/highlights, and saving new ones</li>
-<li><strong>WebSocket</strong> — Used for real-time group chat messages and live member activity status</li>
-</ul>
+<h2 id="request-lifecycle-typical-rest-call">Request Lifecycle (typical REST call)</h2>
+<ol>
+<li>Client sends HTTP request to <code>api.fellowscript.app:8000</code> (or EC2 IP)</li>
+<li>FastAPI route handler in <code>routes/</code> validates the request via Pydantic schema</li>
+<li>Handler instantiates the domain manager from <code>backend/interactions/</code></li>
+<li>Manager runs SQL via <code>DBManager</code> helpers (<code>lookup</code>, <code>insertion</code>, <code>update</code>, <code>delete</code>) or raw cursor for complex queries</li>
+<li>Manager returns a plain dict; handler maps errors → <code>HTTPException</code></li>
+<li>FastAPI serialises the response to JSON</li>
+</ol>
+<hr />
+<h2 id="deployment">Deployment</h2>
+<p><strong>Frontend</strong> — <code>npm run build</code> in <code>frontend/</code>, then rsync <code>dist/</code> to EC2 <code>/var/www/html/</code>. Nginx serves the static files.</p>
+<p><strong>Backend</strong> — rsync changed Python files to EC2 <code>/home/ubuntu/fellowscript/api/</code>, then <code>sudo systemctl restart fellowscript</code>. Uvicorn runs as a systemd service inside the project virtualenv.</p>
+<p><strong>Docs</strong> — <code>.venv/bin/mkdocs gh-deploy --force</code> builds and force-pushes to the <code>gh-pages</code> branch of the GitHub repo. Live at <code>https://Jacey1225.github.io/FellowScript/</code>.</p>
 
 
 
