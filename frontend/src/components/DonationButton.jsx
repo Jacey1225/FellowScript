@@ -52,7 +52,7 @@ export default function DonationButton({ email }) {
       <Button block icon={<HeartFilled style={{ color: '#e0698a' }} />} onClick={() => setOpen(true)}
         style={{
           marginBottom: '1.5rem', height: 46, borderRadius: 12,
-          fontFamily: "'Lora', serif", letterSpacing: '0.06em',
+          fontFamily: "'Inter', sans-serif", letterSpacing: '0.06em',
           background: 'rgba(200,134,26,0.06)', border: '1px solid rgba(200,134,26,0.2)',
           color: 'var(--parchment)',
         }}>
@@ -63,12 +63,12 @@ export default function DonationButton({ email }) {
         open={open}
         onCancel={() => setOpen(false)}
         footer={null}
-        title={<span style={{ fontFamily: "'Playfair Display', serif", color: 'var(--parchment)' }}>
+        title={<span style={{ fontFamily: "'DM Serif Display', serif", color: 'var(--parchment)' }}>
           Support FellowScript
         </span>}
         destroyOnClose
       >
-        <p style={{ fontFamily: "'Lora', serif", fontSize: '0.85rem', color: 'rgba(244,228,193,0.55)', lineHeight: 1.65, marginBottom: 16 }}>
+        <p style={{ fontFamily: "'Inter', sans-serif", fontSize: '0.85rem', color: 'rgba(244,228,193,0.55)', lineHeight: 1.65, marginBottom: 16 }}>
           FellowScript is built with love. If it has been a blessing to you, a one-time gift helps keep it growing and freely available. Thank you 🙏
         </p>
         {err && <Alert type="error" message={err} showIcon style={{ marginBottom: 12, borderRadius: 8 }} />}
@@ -83,7 +83,7 @@ export default function DonationButton({ email }) {
                   border: `1px solid ${sel ? 'var(--gold)' : 'rgba(200,134,26,0.25)'}`,
                   background: sel ? 'rgba(200,134,26,0.18)' : 'transparent',
                   color: sel ? 'var(--gold)' : 'rgba(244,228,193,0.7)',
-                  fontFamily: "'Lora', serif", fontSize: '0.95rem',
+                  fontFamily: "'Inter', sans-serif", fontSize: '0.95rem',
                 }}>
                 ${v}
               </button>
@@ -97,11 +97,11 @@ export default function DonationButton({ email }) {
 
         <Button type="primary" block loading={busy} onClick={donate} icon={<HeartFilled />}
           disabled={!cents || cents < 100}
-          style={{ borderRadius: 8, height: 42, fontFamily: "'Lora', serif" }}>
+          style={{ borderRadius: 8, height: 42, fontFamily: "'Inter', sans-serif" }}>
           Donate ${dollars.toFixed(2)}
         </Button>
 
-        <p style={{ fontFamily: "'Lora', serif", fontSize: '0.68rem', color: 'rgba(244,228,193,0.3)', marginTop: 12, marginBottom: 0, textAlign: 'center' }}>
+        <p style={{ fontFamily: "'Inter', sans-serif", fontSize: '0.68rem', color: 'rgba(244,228,193,0.3)', marginTop: 12, marginBottom: 0, textAlign: 'center' }}>
           Secure one-time payment via Stripe.
         </p>
       </Modal>

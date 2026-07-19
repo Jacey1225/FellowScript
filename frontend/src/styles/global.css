@@ -8,11 +8,14 @@
   --parchment:     #F4E4C1;
   --nav-h:            64px;
   --scnav-h:          44px;
-  /* Right panel always occupies exactly half the viewport */
+  /* Icon-rail layout — replaces the old 50% fixed panel */
+  --rail-w:           64px;
+  --panel-w:          360px;
+  /* Legacy vars kept so nothing referencing them breaks */
   --half:             50vw;
-  --panel-gap:        0.6rem;           /* breathing room from screen edge  */
+  --panel-gap:        0.6rem;
   --right-panel-w:    calc(var(--half) - var(--panel-gap));
-  --contacts-w:       calc(var(--right-panel-w) / 3); /* always 1/3 of panel */
+  --contacts-w:       calc(var(--right-panel-w) / 3);
   --island-radius:    18px;
   --bible-font-size:    1.04rem;
   --bible-line-height:  2.15;
@@ -75,7 +78,7 @@ html, body, #root {
 body {
   background: var(--bg-page);
   color: #F4E4C1;
-  font-family: 'Lora', serif;
+  font-family: 'Inter', -apple-system, 'Segoe UI', sans-serif;
   transition: background 0.25s ease;
 }
 
@@ -96,7 +99,7 @@ body {
 }
 
 .nav-logo {
-  font-family: 'Playfair Display', serif;
+  font-family: 'DM Serif Display', serif;
   font-size: 1.45rem;
   font-weight: 700;
   letter-spacing: 0.02em;
@@ -115,7 +118,7 @@ body {
   line-height: var(--nav-h) !important;
 }
 .fs-nav .ant-menu-item {
-  font-family: 'Lora', serif;
+
   font-size: 0.8rem;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -146,20 +149,19 @@ body {
   gap: 0.5rem;
   padding: 0.38rem 1.05rem;
   background: var(--pill-bg);
-  border: 1px solid var(--pill-border);
+  border: none;
   border-radius: 100px;
   color: var(--pill-text);
-  font-family: 'Lora', serif;
+
   font-size: 0.78rem;
   letter-spacing: 0.06em;
   cursor: pointer;
-  transition: background 0.18s, border-color 0.18s;
+  transition: background 0.18s;
   white-space: nowrap;
 }
 .nav-pill-btn:hover,
 .nav-pill-btn.open {
   background: rgba(200,134,26,0.2);
-  border-color: rgba(200,134,26,0.55);
 }
 
 /* ── Bible nav dropdown widget ── */
@@ -168,14 +170,14 @@ body {
   top: calc(100% + 2px);
   left: 0;
   z-index: 200;
-  /* Never wider than the left half so it doesn't overlap the right panel */
-  width: min(600px, calc(50vw - 1.5rem));
+  width: min(680px, calc(100vw - var(--rail-w) - 3rem));
+  transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   max-height: 460px;
   background: var(--widget-bg);
-  border: 1px solid var(--widget-border);
+  border: none;
   border-radius: 16px;
   backdrop-filter: blur(20px);
-  box-shadow: 0 16px 56px rgba(0,0,0,0.6);
+  box-shadow: none;
   display: flex;
   overflow: hidden;
   animation: bibWidgetIn 0.18s ease forwards;
@@ -199,7 +201,7 @@ body {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  font-family: 'Lora', serif;
+
   font-size: 0.52rem;
   letter-spacing: 0.28em;
   text-transform: uppercase;
@@ -227,7 +229,7 @@ body {
   border: none;
   border-radius: 6px;
   color: var(--bib-book-text);
-  font-family: 'Lora', serif;
+
   font-size: 0.82rem;
   cursor: pointer;
   text-align: left;
@@ -251,7 +253,7 @@ body {
 }
 
 .bib-ch-book-label {
-  font-family: 'Lora', serif;
+
   font-size: 0.55rem;
   letter-spacing: 0.22em;
   text-transform: uppercase;
@@ -270,104 +272,83 @@ body {
 .bib-ch-btn {
   width: 34px;
   height: 34px;
-  border: 1px solid var(--bib-ch-border);
+  border: none;
   border-radius: 8px;
   background: transparent;
   color: var(--bib-ch-text);
-  font-family: 'Lora', serif;
+
   font-size: 0.7rem;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background 0.14s, color 0.14s, border-color 0.14s;
+  transition: background 0.14s, color 0.14s;
   flex-shrink: 0;
 }
-.bib-ch-btn:hover { background: rgba(200,134,26,0.12); color: var(--parchment); border-color: rgba(200,134,26,0.5); }
+.bib-ch-btn:hover { background: rgba(200,134,26,0.12); color: var(--parchment); }
 [data-theme="light"] .bib-ch-btn:hover { color: #1a100a; }
-.bib-ch-btn.active { background: rgba(200,134,26,0.22); color: var(--gold); border-color: rgba(200,134,26,0.65); font-weight: 700; }
+.bib-ch-btn.active { background: rgba(200,134,26,0.22); color: var(--gold); font-weight: 700; }
 
-/* ── Chapter card (parchment look — Ant Card overridden) ── */
-.chapter-card.ant-card {
-  background: var(--bible-bg) !important;
-  color: var(--bible-text) !important;
-  border-radius: 14px !important;
-  border: none !important;
-  box-shadow: 4px 6px 18px rgba(0,0,0,0.55), 14px 22px 60px rgba(0,0,0,0.38);
-  position: relative;
-  overflow: hidden;
+/* ── Chapter text — no card box, text sits directly on page background ── */
+.chapter-card {
+  background: transparent;
+  color: var(--bible-text);
+  border: none;
+  width: 100%;
   animation: fadeUp 0.45s ease both;
-  transition: background 0.25s ease, color 0.25s ease;
-}
-
-.chapter-card.ant-card::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background:
-    radial-gradient(ellipse at 8% 6%, rgba(255,246,212,0.55) 0%, transparent 48%),
-    radial-gradient(ellipse at 94% 94%, rgba(175,135,75,0.2) 0%, transparent 45%);
-  pointer-events: none;
-  z-index: 0;
-}
-
-[data-theme="dark"] .chapter-card.ant-card::before {
-  background:
-    radial-gradient(ellipse at 8% 6%, rgba(180,120,40,0.12) 0%, transparent 48%),
-    radial-gradient(ellipse at 94% 94%, rgba(80,40,10,0.15) 0%, transparent 45%);
-}
-
-.chapter-card .ant-card-body {
-  color: var(--bible-text) !important;
-  position: relative;
-  z-index: 1;
+  transition: color 0.25s ease;
 }
 
 .card-book-label {
-  font-family: 'Lora', serif;
-  font-size: 0.62rem;
-  letter-spacing: 0.3em;
+  font-family: 'Inter', sans-serif;
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.28em;
   text-transform: uppercase;
   color: var(--gold-dim);
-  margin-bottom: 0.55rem;
+  margin-bottom: 0.6rem;
 }
 
 .card-title {
-  font-family: 'Playfair Display', serif;
-  font-size: clamp(1.7rem, 4vw, 2.5rem);
-  font-weight: 700;
+  font-family: 'DM Serif Display', 'DM Serif Display', serif;
+  font-size: clamp(2.2rem, 4.5vw, 3.2rem);
+  font-weight: 400;
   color: var(--bible-text);
-  line-height: 1.15;
+  line-height: 1.1;
   transition: color 0.25s ease;
 }
 
 .card-section-head {
-  font-family: 'IM Fell English', serif;
+
   font-style: italic;
-  font-size: 0.92rem;
+  font-size: 0.95rem;
+  font-weight: 300;
   color: var(--gold-dim);
-  margin-top: 0.45rem;
-  line-height: 1.5;
+  margin-top: 0.5rem;
+  line-height: 1.6;
 }
 
 /* ── Chapter body text ── */
 .card-body {
-  font-family: 'Lora', serif;
-  font-size: var(--bible-font-size, 1.04rem);
-  line-height: var(--bible-line-height, 2.15);
+
+  font-size: var(--bible-font-size, 1.08rem);
+  font-weight: 400;
+  line-height: var(--bible-line-height, 1.9);
   color: var(--bible-text);
-  margin-top: 1.5rem;
+  margin-top: 1.6rem;
+  letter-spacing: 0.008em;
   transition: color 0.25s ease;
 }
 
 .section-head {
   display: block;
-  font-family: 'Playfair Display', serif;
-  font-size: 0.9rem;
-  font-weight: 700;
+
+  font-size: 0.85rem;
+  font-weight: 500;
   font-style: italic;
   color: var(--gold-dim);
-  margin: 1.8rem 0 0.6rem;
+  margin: 2rem 0 0.65rem;
+  letter-spacing: 0.01em;
 }
 
 /* ── Verse spans ── */
@@ -407,7 +388,7 @@ body {
   width: 13px; height: 13px;
   border-radius: 50%;
   font-size: 0.42rem;
-  font-family: 'Playfair Display', serif;
+  font-family: 'DM Serif Display', serif;
   font-weight: 700;
   color: rgba(10,7,3,0.85);
   vertical-align: super;
@@ -425,11 +406,11 @@ body {
   align-items: center;
   gap: 0.4rem;
   background: rgba(6,4,1,0.95);
-  border: 1px solid rgba(200,134,26,0.3);
+  border: none;
   backdrop-filter: blur(10px);
   padding: 0.45rem 0.6rem;
   border-radius: 10px;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+  box-shadow: none;
 }
 
 .hl-swatch {
@@ -455,53 +436,138 @@ body {
 }
 .hl-clear:hover { color: rgba(244,228,193,0.9); }
 
-/* ── Reader main area — Bible fills the left 50% of the screen ── */
+/* ── Reader main area — scripture gets full width, rail sits on top right ── */
 .reader-main {
   padding-top: calc(var(--nav-h) + var(--scnav-h) + 3rem);
   padding-bottom: 6rem;
-  /* Left: same gap as right panel's right offset.
-     Right: right panel begins at 50vw, plus a matching gap. */
   padding-left: var(--panel-gap);
-  padding-right: calc(50vw + var(--panel-gap));
+  padding-right: calc(var(--rail-w) + 2rem);
   display: flex;
   flex-direction: column;
   align-items: center;
   min-height: 100vh;
+  transition: padding-right 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.reader-main.panel-open {
+  padding-right: 50vw;
 }
 
-/* ── Right panel — always occupies the right 50% ── */
-.reader-right-panel {
+/* Constrain nav dropdowns to left half when panel is open */
+.panel-open .bib-nav-widget {
+  width: min(680px, calc(50vw - var(--rail-w) - 1.5rem));
+}
+.panel-open .verse-sel-widget {
+  width: min(780px, calc(50vw - var(--rail-w) - 1.5rem));
+}
+
+/* Old right-panel hidden — replaced by icon-rail + reader-panel */
+.reader-right-panel { display: none !important; }
+
+/* ── Icon rail — slim column pinned to the right edge ── */
+.icon-rail {
   position: fixed;
-  top: calc(var(--nav-h) + var(--scnav-h) + 1rem);
-  right: var(--panel-gap);
-  bottom: 0.8rem;
-  width: var(--right-panel-w);
-  z-index: 80;
-}
-
-/* ── Single combined island: notes (left) + contacts column (right) ── */
-.notes-island {
-  width: 100%;
-  height: 100%;
-  background: var(--island-bg);
-  border: 1px solid var(--island-border);
-  border-radius: var(--island-radius);
-  backdrop-filter: blur(16px);
-  box-shadow: 0 8px 40px rgba(0,0,0,0.5);
-  overflow: hidden;
+  top: calc(var(--nav-h) + var(--scnav-h));
+  right: 0;
+  bottom: 0;
+  width: var(--rail-w);
+  background: #120d09;
+  border-left: 1px solid #241a12;
   display: flex;
-  flex-direction: row;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 22px;
+  gap: 4px;
+  z-index: 82;
 }
 
-/* Notes column — fills all island space left over after the fixed contacts strip */
-.notes-section {
-  flex: 1;
-  min-width: 0;
+.icon-chip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 9px 6px;
+  border-radius: 9px;
+  cursor: pointer;
+  width: 50px;
+  transition: background 0.15s;
+  position: relative;
+  user-select: none;
+}
+.icon-chip:hover { background: rgba(201,138,75,0.07); }
+.icon-chip.active { background: #241a12; }
+
+.icon-chip-icon {
+  width: 20px; height: 20px;
+  border-radius: 5px;
+  background: #3a2e22;
+  display: flex; align-items: center; justify-content: center;
+  color: #6b5c4d;
+  font-size: 11px;
+  transition: background 0.15s, color 0.15s;
+}
+.icon-chip.active .icon-chip-icon { background: #c98a4b; color: #120d09; }
+
+.icon-chip-label {
+  font-size: 7px;
+  font-family: 'Inter', sans-serif;
+  font-weight: 700;
+  color: #6b5c4d;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  transition: color 0.15s;
+}
+.icon-chip.active .icon-chip-label { color: #c98a4b; }
+
+.icon-chip-dot {
+  position: absolute;
+  top: 6px; right: 6px;
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: #c98a4b;
+}
+
+/* ── Slide-in panel — always 50% width, slides in from right ── */
+.reader-panel {
+  position: fixed;
+  top: calc(var(--nav-h) + var(--scnav-h));
+  right: var(--rail-w);
+  bottom: 0;
+  width: calc(50vw - var(--rail-w));
+  background: #181109;
+  border-left: 1px solid #241a12;
+  z-index: 80;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  position: relative;
-  border-right: 1px solid rgba(200,134,26,0.14);
+  transform: translateX(50vw);
+  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  pointer-events: none;
+}
+.reader-panel.open {
+  transform: translateX(0);
+  pointer-events: all;
+}
+
+/* ── Mobile panel backdrop scrim (hidden on desktop) ── */
+.reader-panel-scrim {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.55);
+  z-index: 79;
+  backdrop-filter: blur(2px);
+}
+
+/* ── Legacy island/section classes — kept for mobile overlays ── */
+.notes-island {
+  width: 100%; height: 100%;
+  display: flex; flex-direction: column;
+  overflow: hidden;
+}
+.notes-section {
+  flex: 1; min-width: 0;
+  display: flex; flex-direction: column;
+  overflow: hidden; position: relative;
 }
 
 /* Notes sidebar fills its column */
@@ -549,13 +615,12 @@ body {
 
 /* ── Note card override ── */
 .note-card.ant-card {
-  border-color: rgba(200,134,26,0.18) !important;
+  border: none !important;
   background: rgba(20,12,4,0.5) !important;
   border-radius: 10px !important;
   cursor: pointer;
-  transition: border-color 0.2s;
 }
-.note-card.ant-card:hover { border-color: rgba(200,134,26,0.35) !important; }
+.note-card.ant-card:hover { background: rgba(20,12,4,0.75) !important; }
 .note-card .ant-card-body { padding: 0.85rem 0.95rem !important; }
 
 /* ── Message bubble ── */
@@ -563,7 +628,7 @@ body {
   max-width: 85%;
   padding: 0.5rem 0.75rem;
   border-radius: 12px;
-  font-family: 'Lora', serif;
+
   font-size: var(--pt-md);
   line-height: 1.5;
   word-break: break-word;
@@ -572,14 +637,14 @@ body {
 .msg-bubble.sent {
   align-self: flex-end;
   background: rgba(200,134,26,0.18);
-  border: 1px solid rgba(200,134,26,0.3);
+  border: none;
   color: var(--parchment);
 }
 
 .msg-bubble.received {
   align-self: flex-start;
   background: rgba(255,255,255,0.05);
-  border: 1px solid rgba(255,255,255,0.08);
+  border: none;
   color: rgba(244,228,193,0.75);
 }
 
@@ -598,7 +663,7 @@ body {
 
 .msg-bubble-markdown p          { margin: 0 0 0.55em; }
 .msg-bubble-markdown p:last-child { margin-bottom: 0; }
-.msg-bubble-markdown h3         { font-size: 0.85rem; color: var(--gold); margin: 0.7em 0 0.3em; font-family: 'Playfair Display', serif; }
+.msg-bubble-markdown h3         { font-size: 0.85rem; color: var(--gold); margin: 0.7em 0 0.3em; font-family: 'DM Serif Display', serif; }
 .msg-bubble-markdown h4         { font-size: 0.8rem;  color: var(--gold); margin: 0.6em 0 0.25em; }
 .msg-bubble-markdown ul,
 .msg-bubble-markdown ol         { padding-left: 1.2em; margin: 0.3em 0 0.55em; }
@@ -645,8 +710,8 @@ body {
   display: none;
 }
 
-/* ── Mobile / portrait tablet (≤900px) ── */
-@media (max-width: 900px) {
+/* ── Mobile / portrait tablet (≤1024px) ── */
+@media (max-width: 1024px) {
   :root {
     --nav-h:      52px;
     --scnav-h:    44px;
@@ -671,14 +736,12 @@ body {
     align-items: stretch;
   }
 
-  .chapter-card.ant-card {
-    border-radius: 0 !important;
-    box-shadow: none !important;
-    margin: 0 !important;
-  }
-
-  /* Hide desktop right panel — use bottom tab bar instead */
+  /* Hide desktop rail and panel — mobile uses bottom tab bar + overlay instead */
   .reader-right-panel { display: none; }
+  .icon-rail { display: none; }
+  .reader-panel { display: none !important; }
+  .reader-panel-scrim { display: none !important; }
+  .reader-main.panel-open { padding-right: 0 !important; }
 
   /* ── Widget sizing ── */
   .bib-nav-widget {
@@ -722,7 +785,7 @@ body {
     background: transparent;
     border: none;
     color: rgba(244,228,193,0.4);
-    font-family: 'Lora', serif;
+  
     font-size: 0.6rem;
     letter-spacing: 0.18em;
     text-transform: uppercase;
@@ -780,7 +843,7 @@ body {
   background: none;
   border: none;
   cursor: pointer;
-  font-family: 'Lora', serif;
+
   font-size: 0.8rem;
   padding: 0.35rem 0.7rem;
   border-radius: 6px;
@@ -807,7 +870,7 @@ body {
   cursor: pointer;
   font-size: 0.7rem;
   color: rgba(200,134,26,0.6);
-  font-family: 'Lora', serif;
+
   user-select: none;
 }
 
@@ -829,7 +892,7 @@ body {
   gap: 0.2rem;
   padding: 0.14rem 0.48rem 0.14rem 0.55rem;
   background: rgba(200,134,26,0.1);
-  border: 1px solid rgba(200,134,26,0.25);
+  border: none;
   border-radius: 100px;
   font-family: 'IM Fell English', serif;
   font-style: italic;
@@ -853,17 +916,17 @@ body {
 /* Add Verse button */
 .vs-add-btn {
   background: none;
-  border: 1px dashed rgba(200,134,26,0.3);
+  border: none;
   border-radius: 100px;
   color: rgba(200,134,26,0.5);
   cursor: pointer;
-  font-family: 'Lora', serif;
+
   font-size: 0.68rem;
   padding: 0.15rem 0.62rem;
-  transition: border-color 0.15s, color 0.15s;
+  transition: color 0.15s;
   white-space: nowrap;
 }
-.vs-add-btn:hover { border-color: rgba(200,134,26,0.6); color: rgba(200,134,26,0.85); }
+.vs-add-btn:hover { color: rgba(200,134,26,0.85); }
 
 /* Writing area */
 .note-editor-body {
@@ -882,7 +945,7 @@ body {
   outline: none;
   resize: none;
   overflow: hidden;
-  font-family: 'Playfair Display', serif;
+  font-family: 'DM Serif Display', serif;
   font-size: clamp(1.1rem, 0.9rem + 0.8vw, 1.52rem);
   font-weight: 700;
   color: var(--parchment);
@@ -899,7 +962,7 @@ body {
   background: transparent;
   border: none;
   outline: none;
-  font-family: 'Lora', serif;
+
   font-size: var(--pt-lg);
   color: rgba(244,228,193,0.72);
   line-height: 1.88;
@@ -928,8 +991,8 @@ body {
 
 /* ── Verse selector widget (3 columns) ── */
 .verse-sel-widget {
-  /* Never wider than the left half so it doesn't overlap the right panel */
-  width: min(780px, calc(50vw - 1.5rem));
+  width: min(780px, calc(100vw - var(--rail-w) - 3rem));
+  transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   max-height: 450px;
 }
 

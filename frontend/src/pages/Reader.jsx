@@ -6,7 +6,7 @@ import {
   SendOutlined, ArrowLeftOutlined, PlusOutlined,
   MessageOutlined, BookOutlined, TeamOutlined,
   EditOutlined, DeleteOutlined, UserAddOutlined,
-  RobotOutlined, CloseOutlined,
+  RobotOutlined, CloseOutlined, BgColorsOutlined,
 } from '@ant-design/icons';
 
 import AppNav           from '../components/AppNav.jsx';
@@ -32,9 +32,9 @@ const MOBILE_BP = 900;
 function isMobile() { return window.innerWidth <= MOBILE_BP; }
 
 const FONT_SIZES = [
-  { size: '1.04rem', lineHeight: '2.15' },
-  { size: '1.2rem',  lineHeight: '2.05' },
-  { size: '1.38rem', lineHeight: '1.9'  },
+  { size: '1.08rem', lineHeight: '1.9'  },
+  { size: '1.22rem', lineHeight: '1.85' },
+  { size: '1.4rem',  lineHeight: '1.8'  },
 ];
 const FONT_SIZE_LABELS = ['Default', 'Large', 'Largest'];
 
@@ -65,13 +65,13 @@ function AgentRow({ agent, active, onOpen }) {
     >
       <div style={{
         width: 30, height: 30, borderRadius: '50%', flexShrink: 0,
-        background: 'rgba(200,134,26,0.12)', border: '1px solid rgba(200,134,26,0.28)',
+        background: 'rgba(200,134,26,0.12)', border: 'none',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
       }}>
         <RobotOutlined style={{ color: 'var(--gold)', fontSize: '0.8rem' }} />
       </div>
       <Text style={{
-        fontFamily: "'Lora', serif", fontSize: '0.72rem',
+        fontFamily: "'Inter', sans-serif", fontSize: '0.72rem',
         color: active ? 'var(--parchment)' : 'rgba(244,228,193,0.65)',
         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1,
       }}>
@@ -129,7 +129,7 @@ function AgentChatPanel({ agent, messages, user, onBack, onSend, agentThinking, 
         <div style={{ width: 26, height: 26, borderRadius: '50%', background: 'rgba(200,134,26,0.12)', border: '1px solid rgba(200,134,26,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
           <RobotOutlined style={{ color: 'var(--gold)', fontSize: '0.78rem' }} />
         </div>
-        <Text strong style={{ fontFamily: "'Lora', serif", fontSize: '0.88rem', color: 'var(--parchment)', flex: 1 }}>
+        <Text strong style={{ fontFamily: "'Inter', sans-serif", fontSize: '0.88rem', color: 'var(--parchment)', flex: 1 }}>
           {agentLabel(agent)}
         </Text>
       </div>
@@ -141,7 +141,7 @@ function AgentChatPanel({ agent, messages, user, onBack, onSend, agentThinking, 
             <div style={{ width: 42, height: 42, borderRadius: '50%', background: 'rgba(200,134,26,0.07)', border: '1px solid rgba(200,134,26,0.18)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <RobotOutlined style={{ color: 'rgba(200,134,26,0.4)', fontSize: '1.1rem' }} />
             </div>
-            <Text style={{ fontSize: '0.72rem', color: 'rgba(244,228,193,0.22)', fontFamily: "'Lora', serif", fontStyle: 'italic' }}>
+            <Text style={{ fontSize: '0.72rem', color: 'rgba(244,228,193,0.22)', fontFamily: "'Inter', sans-serif", fontStyle: 'italic' }}>
               Your spiritual guide is ready. Ask anything.
             </Text>
           </div>
@@ -173,9 +173,8 @@ function AgentChatPanel({ agent, messages, user, onBack, onSend, agentThinking, 
       {notePickerOpen && (
         <div ref={notePickerRef} style={{
           position: 'absolute', bottom: 100, left: 8, right: 8,
-          background: 'rgba(10,7,2,0.98)', border: '1px solid rgba(200,134,26,0.2)',
+          background: 'rgba(10,7,2,0.98)', border: 'none',
           borderRadius: 8, maxHeight: 190, overflowY: 'auto', zIndex: 20, padding: '0.35rem',
-          boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
         }}>
           <Text style={{ display: 'block', fontSize: '0.52rem', letterSpacing: '0.18em', textTransform: 'uppercase', color: 'rgba(200,134,26,0.4)', padding: '0.3rem 0.5rem 0.4rem' }}>
             Select a note
@@ -186,7 +185,7 @@ function AgentChatPanel({ agent, messages, user, onBack, onSend, agentThinking, 
                 <div
                   key={note.id || i}
                   onClick={() => addNoteContext(note)}
-                  style={{ padding: '0.4rem 0.6rem', cursor: 'pointer', borderRadius: 5, fontSize: '0.72rem', fontFamily: "'Lora', serif", color: 'rgba(244,228,193,0.7)', transition: 'background 0.12s' }}
+                  style={{ padding: '0.4rem 0.6rem', cursor: 'pointer', borderRadius: 5, fontSize: '0.72rem', fontFamily: "'Inter', sans-serif", color: 'rgba(244,228,193,0.7)', transition: 'background 0.12s' }}
                   onMouseEnter={e => e.currentTarget.style.background = 'rgba(200,134,26,0.09)'}
                   onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                 >
@@ -209,7 +208,7 @@ function AgentChatPanel({ agent, messages, user, onBack, onSend, agentThinking, 
         </Button>
         {context.length > 0 && <Divider type="vertical" style={{ borderColor: 'rgba(200,134,26,0.15)', margin: '0 1px', height: 12 }} />}
         {context.map((c, i) => (
-          <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.2rem', padding: '0.1rem 0.38rem', background: 'rgba(200,134,26,0.1)', border: '1px solid rgba(200,134,26,0.22)', borderRadius: 3, fontSize: '0.58rem', color: 'rgba(244,228,193,0.75)', fontFamily: "'Lora', serif", maxWidth: 130 }}>
+          <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.2rem', padding: '0.1rem 0.38rem', background: 'rgba(200,134,26,0.1)', border: '1px solid rgba(200,134,26,0.22)', borderRadius: 3, fontSize: '0.58rem', color: 'rgba(244,228,193,0.75)', fontFamily: "'Inter', sans-serif", maxWidth: 130 }}>
             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{c}</span>
             <CloseOutlined style={{ fontSize: '0.5rem', cursor: 'pointer', color: 'rgba(200,134,26,0.6)', flexShrink: 0 }} onClick={() => setContext(prev => prev.filter(x => x !== c))} />
           </span>
@@ -249,12 +248,12 @@ function ContactRow({ contact, active, onOpen, onRemove, onEdit }) {
     >
       <Avatar
         size={30}
-        style={{ background: 'rgba(200,134,26,0.15)', border: '1px solid rgba(200,134,26,0.3)', color: 'var(--gold)', fontSize: '0.72rem', flexShrink: 0, fontFamily: "'Playfair Display', serif" }}
+        style={{ background: 'rgba(200,134,26,0.15)', border: 'none', color: 'var(--gold)', fontSize: '0.72rem', flexShrink: 0, fontFamily: "'DM Serif Display', serif" }}
       >
         {contact.name[0].toUpperCase()}
       </Avatar>
       <Text
-        style={{ fontFamily: "'Lora', serif", fontSize: '0.72rem', color: active ? 'var(--parchment)' : 'rgba(244,228,193,0.65)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}
+        style={{ fontFamily: "'Inter', sans-serif", fontSize: '0.72rem', color: active ? 'var(--parchment)' : 'rgba(244,228,193,0.65)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}
       >
         {contact.name}
       </Text>
@@ -319,7 +318,7 @@ function ContactsPanel({
   return (
     <>
       <div style={{ padding: '0.9rem 0.8rem 0.6rem', borderBottom: '1px solid rgba(200,134,26,0.12)', flexShrink: 0 }}>
-        <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.58rem', letterSpacing: '0.24em', textTransform: 'uppercase', color: 'rgba(200,134,26,0.55)' }}>
+        <Text style={{ fontFamily: "'Inter', sans-serif", fontSize: '0.58rem', letterSpacing: '0.24em', textTransform: 'uppercase', color: 'rgba(200,134,26,0.55)' }}>
           Messages
         </Text>
       </div>
@@ -345,7 +344,7 @@ function ContactsPanel({
               <div style={{
                 marginTop: '0.3rem',
                 fontSize: '0.63rem',
-                fontFamily: "'Lora', serif",
+                fontFamily: "'Inter', sans-serif",
                 color: friendMsg.type === 'success' ? '#6dbf7e' : '#e07070',
                 display: 'flex',
                 alignItems: 'center',
@@ -403,7 +402,7 @@ function ContactsPanel({
       {/* Group modal */}
       <Modal
         open={groupModal}
-        title={<Text style={{ fontFamily: "'Playfair Display', serif", color: 'var(--parchment)' }}>{editingGroup ? 'Edit Group' : 'New Group'}</Text>}
+        title={<Text style={{ fontFamily: "'DM Serif Display', serif", color: 'var(--parchment)' }}>{editingGroup ? 'Edit Group' : 'New Group'}</Text>}
         onOk={handleGroupOk}
         onCancel={() => { setGroupModal(false); setEditingGroup(null); form.resetFields(); }}
         okText={editingGroup ? 'Update' : 'Create'}
@@ -454,7 +453,7 @@ function ChatPanel({
           style={{ color: 'rgba(200,134,26,0.65)', padding: '0 4px' }} />
         <Text
           strong
-          style={{ fontFamily: "'Lora', serif", fontSize: '0.88rem', color: 'var(--parchment)', flex: 1, cursor: contact?.type === 'group' ? 'pointer' : 'default' }}
+          style={{ fontFamily: "'Inter', sans-serif", fontSize: '0.88rem', color: 'var(--parchment)', flex: 1, cursor: contact?.type === 'group' ? 'pointer' : 'default' }}
           onClick={() => contact?.type === 'group' && setShowMembers(v => !v)}
         >
           {contact?.name}
@@ -464,13 +463,13 @@ function ChatPanel({
           onClick={onOpenSessionCreator}
           style={{
             background: 'rgba(200,134,26,0.08)',
-            border: '1px solid rgba(200,134,26,0.28)',
+            border: 'none',
             borderRadius: 6,
             color: 'rgba(200,134,26,0.75)',
             cursor: 'pointer',
             fontSize: '0.62rem',
             letterSpacing: '0.06em',
-            fontFamily: "'Lora', serif",
+            fontFamily: "'Inter', sans-serif",
             padding: '0.22rem 0.55rem',
             whiteSpace: 'nowrap',
             transition: 'background 0.15s, border-color 0.15s, color 0.15s',
@@ -504,19 +503,19 @@ function ChatPanel({
         <div style={{ padding: '0.7rem 1rem', borderBottom: '1px solid rgba(200,134,26,0.12)', background: 'rgba(200,134,26,0.04)', maxHeight: 160, overflowY: 'auto', flexShrink: 0 }}>
           <Text style={{ fontSize: '0.55rem', letterSpacing: '0.18em', textTransform: 'uppercase', color: 'rgba(200,134,26,0.45)', display: 'block', marginBottom: '0.4rem' }}>Members</Text>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', marginBottom: '0.3rem' }}>
-            <Avatar size={22} style={{ background: 'rgba(200,134,26,0.12)', border: '1px solid rgba(200,134,26,0.25)', color: 'var(--gold)', fontSize: '0.55rem' }}>
+            <Avatar size={22} style={{ background: 'rgba(200,134,26,0.12)', border: 'none', color: 'var(--gold)', fontSize: '0.55rem' }}>
               {(user?.username || 'Y')[0].toUpperCase()}
             </Avatar>
-            <Text style={{ fontSize: '0.72rem', color: 'var(--gold)', fontFamily: "'Lora', serif" }}>{user?.username} (you)</Text>
+            <Text style={{ fontSize: '0.72rem', color: 'var(--gold)', fontFamily: "'Inter', sans-serif" }}>{user?.username} (you)</Text>
           </div>
           {groupMembers.map((m, i) => {
             const uname = m.username || m.user_id?.slice(0, 8) || '?';
             return (
               <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', marginBottom: '0.3rem' }}>
-                <Avatar size={22} style={{ background: 'rgba(200,134,26,0.12)', border: '1px solid rgba(200,134,26,0.25)', color: 'var(--gold)', fontSize: '0.55rem' }}>
+                <Avatar size={22} style={{ background: 'rgba(200,134,26,0.12)', border: 'none', color: 'var(--gold)', fontSize: '0.55rem' }}>
                   {uname[0].toUpperCase()}
                 </Avatar>
-                <Text style={{ fontSize: '0.72rem', color: 'rgba(244,228,193,0.65)', fontFamily: "'Lora', serif" }}>{uname}</Text>
+                <Text style={{ fontSize: '0.72rem', color: 'rgba(244,228,193,0.65)', fontFamily: "'Inter', sans-serif" }}>{uname}</Text>
               </div>
             );
           })}
@@ -527,7 +526,7 @@ function ChatPanel({
       <div style={{ flex: 1, overflowY: 'auto', padding: '0.75rem 0.85rem', display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
         {messages.length === 0 && (
           <div style={{ textAlign: 'center', padding: '2rem 1rem' }}>
-            <Text style={{ fontSize: '0.72rem', color: 'rgba(244,228,193,0.22)', fontFamily: "'Lora', serif" }}>No messages yet. Say hello!</Text>
+            <Text style={{ fontSize: '0.72rem', color: 'rgba(244,228,193,0.22)', fontFamily: "'Inter', sans-serif" }}>No messages yet. Say hello!</Text>
           </div>
         )}
         {messages.map((m, i) => (
@@ -626,6 +625,9 @@ export default function Reader() {
 
   const [contactsLoaded, setContactsLoaded] = useState(false);
 
+  // Desktop icon-rail panel state
+  const [openPanel, setOpenPanel] = useState(null); // 'notes' | 'group' | null
+
   // Mobile overlay state
   const [mobileSidebar, setMobileSidebar] = useState(null); // 'notes' | 'messages' | null
   const isMob = isMobile();
@@ -710,6 +712,15 @@ export default function Reader() {
   useEffect(() => {
     if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
   }, []);
+
+  // Mirror panel state on #root so CSS can constrain nav dropdowns
+  useEffect(() => {
+    const root = document.getElementById('root');
+    if (!root) return;
+    if (openPanel) root.classList.add('panel-open');
+    else root.classList.remove('panel-open');
+    return () => root.classList.remove('panel-open');
+  }, [openPanel]);
 
   // Scroll to top synchronously before paint whenever a new chapter loads without a target verse.
   // #root is the real scroll container (height:100% + overflow-x:hidden forces overflow-y:auto).
@@ -796,6 +807,7 @@ export default function Reader() {
     closeAgentChat();
     await openChat(contact);
     loadSessions(contact);
+    setOpenPanel('group');
     if (isMobile()) setMobileSidebar('messages');
   }, [openChat, loadSessions, closeAgentChat]);
 
@@ -804,6 +816,7 @@ export default function Reader() {
   const handleOpenAgent = useCallback(async (agent) => {
     closeChat();
     await openAgentChat(agent);
+    setOpenPanel('group');
     if (isMobile()) setMobileSidebar('messages');
   }, [openAgentChat, closeChat]);
 
@@ -890,7 +903,7 @@ export default function Reader() {
       </div>
 
       {/* ── Bible reading area ── */}
-      <main className="reader-main">
+      <main className={`reader-main${openPanel ? ' panel-open' : ''}`}>
         <BibleCard
           loading={loading} loadError={loadError}
           curBook={curBook} curChapter={curChapter}
@@ -907,62 +920,86 @@ export default function Reader() {
         onColor={handleHighlightColor} onClear={handleClearHighlight}
       />
 
-      {/* ── Desktop right panel (50% of screen) ── */}
-      <div className="reader-right-panel">
-        {/* Single island: notes section left, contacts column right */}
-        <div className="notes-island">
+      {/* ── Mobile / desktop backdrop scrim ── */}
+      <div
+        className={`reader-panel-scrim${openPanel ? ' visible' : ''}`}
+        onClick={() => setOpenPanel(null)}
+      />
 
-          {/* Notes column */}
-          <div className="notes-section">
-            <NotesSidebar {...notesSidebarProps} />
-            {/* Chat overlays — regular contact or agent */}
-            {(currentContact || activeAgent) && (
-              <div className="chat-overlay">
-                {activeAgent
-                  ? <AgentChatPanel
-                      agent={activeAgent}
-                      messages={agentMessages}
-                      user={user}
-                      onBack={handleCloseAgent}
-                      onSend={sendAgentMessage}
-                      agentThinking={agentThinking}
-                      curBook={curBook}
-                      curChapter={curChapter}
-                      curVerse={curVerse}
-                      allNotes={allNotes}
-                      onNavigateVerse={handleNavigateVerse}
-                    />
-                  : <ChatPanel
-                      contact={currentContact}
-                      messages={messages}
-                      groupMembers={groupMembers}
-                      user={user}
-                      onBack={handleCloseChat}
-                      onSend={sendMessage}
-                      sessions={sessions}
-                      activeSessionId={activeSessionId}
-                      talkingUserId={talkingUserId}
-                      onJoinSession={joinSession}
-                      onLeaveSession={handleLeaveSession}
-                      onOpenSessionCreator={() => openCreator()}
-                      onEditSession={openCreator}
-                      onDeleteSession={deleteSession}
-                      onNavigateVerse={handleNavigateVerse}
-                      videoEnabled={videoEnabled}
-                      videoTiles={videoTiles}
-                      onToggleVideo={toggleVideo}
-                      bindVideoTile={bindVideoTile}
-                    />
-                }
-              </div>
-            )}
+      {/* ── Desktop icon rail ── */}
+      <div className="icon-rail">
+        <div
+          className={`icon-chip${openPanel === 'notes' ? ' active' : ''}`}
+          onClick={() => setOpenPanel(p => p === 'notes' ? null : 'notes')}
+        >
+          <div className="icon-chip-icon"><EditOutlined style={{ fontSize: 11 }} /></div>
+          <span className="icon-chip-label">Notes</span>
+        </div>
+        <div
+          className={`icon-chip${openPanel === 'marks' ? ' active' : ''}`}
+          onClick={() => setOpenPanel(p => p === 'marks' ? null : 'marks')}
+        >
+          <div className="icon-chip-icon"><BgColorsOutlined style={{ fontSize: 11 }} /></div>
+          <span className="icon-chip-label">Marks</span>
+        </div>
+        <div
+          className={`icon-chip${openPanel === 'group' ? ' active' : ''}`}
+          onClick={() => setOpenPanel(p => p === 'group' ? null : 'group')}
+        >
+          <div className="icon-chip-icon">
+            <TeamOutlined style={{ fontSize: 11 }} />
+            {(currentContact || activeAgent) && <span className="icon-chip-dot" />}
           </div>
+          <span className="icon-chip-label">Group</span>
+        </div>
+      </div>
 
-          {/* Contacts column — right side of the same island */}
-          <div className="contacts-section">
-            <ContactsPanel {...contactsProps} />
-          </div>
-
+      {/* ── Slide-in panel ── */}
+      <div className={`reader-panel${openPanel ? ' open' : ''}`}>
+        <div style={{ position: 'relative', flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+          {openPanel === 'notes' && <NotesSidebar {...notesSidebarProps} />}
+          {openPanel === 'marks' && <NotesSidebar {...notesSidebarProps} initialTab="highlights" />}
+          {openPanel === 'group' && <ContactsPanel {...contactsProps} />}
+          {(currentContact || activeAgent) && (
+            <div className="chat-overlay">
+              {activeAgent
+                ? <AgentChatPanel
+                    agent={activeAgent}
+                    messages={agentMessages}
+                    user={user}
+                    onBack={handleCloseAgent}
+                    onSend={sendAgentMessage}
+                    agentThinking={agentThinking}
+                    curBook={curBook}
+                    curChapter={curChapter}
+                    curVerse={curVerse}
+                    allNotes={allNotes}
+                    onNavigateVerse={handleNavigateVerse}
+                  />
+                : <ChatPanel
+                    contact={currentContact}
+                    messages={messages}
+                    groupMembers={groupMembers}
+                    user={user}
+                    onBack={handleCloseChat}
+                    onSend={sendMessage}
+                    sessions={sessions}
+                    activeSessionId={activeSessionId}
+                    talkingUserId={talkingUserId}
+                    onJoinSession={joinSession}
+                    onLeaveSession={handleLeaveSession}
+                    onOpenSessionCreator={() => openCreator()}
+                    onEditSession={openCreator}
+                    onDeleteSession={deleteSession}
+                    onNavigateVerse={handleNavigateVerse}
+                    videoEnabled={videoEnabled}
+                    videoTiles={videoTiles}
+                    onToggleVideo={toggleVideo}
+                    bindVideoTile={bindVideoTile}
+                  />
+              }
+            </div>
+          )}
         </div>
       </div>
 
@@ -988,7 +1025,7 @@ export default function Reader() {
       <div className={`mobile-overlay${mobileSidebar === 'notes' ? ' open' : ''}`}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.9rem 1rem', borderBottom: '1px solid rgba(200,134,26,0.15)', background: 'rgba(6,4,1,0.98)', flexShrink: 0 }}>
           <button onClick={() => setMobileSidebar(null)} style={{ background: 'none', border: 'none', color: 'rgba(200,134,26,0.65)', cursor: 'pointer', fontSize: '1.1rem' }}>✕</button>
-          <Text style={{ fontFamily: "'Playfair Display', serif", fontSize: '1rem', color: 'var(--parchment)' }}>Notes</Text>
+          <Text style={{ fontFamily: "'DM Serif Display', serif", fontSize: '1rem', color: 'var(--parchment)' }}>Notes</Text>
         </div>
         <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
           <NotesSidebar {...notesSidebarProps} />
@@ -998,7 +1035,7 @@ export default function Reader() {
       <div className={`mobile-overlay${mobileSidebar === 'messages' ? ' open' : ''}`}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.9rem 1rem', borderBottom: '1px solid rgba(200,134,26,0.15)', background: 'rgba(6,4,1,0.98)', flexShrink: 0 }}>
           <button onClick={() => setMobileSidebar(null)} style={{ background: 'none', border: 'none', color: 'rgba(200,134,26,0.65)', cursor: 'pointer', fontSize: '1.1rem' }}>✕</button>
-          <Text style={{ fontFamily: "'Playfair Display', serif", fontSize: '1rem', color: 'var(--parchment)' }}>Messages</Text>
+          <Text style={{ fontFamily: "'DM Serif Display', serif", fontSize: '1rem', color: 'var(--parchment)' }}>Messages</Text>
         </div>
         <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
           {activeAgent

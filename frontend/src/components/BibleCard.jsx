@@ -1,5 +1,5 @@
 import React, { useRef, useEffect } from 'react';
-import { Card, Button, Space, Typography, Spin } from 'antd';
+import { Button, Typography, Spin } from 'antd';
 import { LeftOutlined, RightOutlined } from '@ant-design/icons';
 
 const { Text } = Typography;
@@ -50,7 +50,7 @@ export default function BibleCard({
         <Text style={{ fontSize: '0.68rem', letterSpacing: '0.3em', textTransform: 'uppercase', color: 'var(--gold)', display: 'block', marginBottom: '1.4rem' }}>
           A Digital Scripture Community
         </Text>
-        <Text style={{ fontFamily: "'Playfair Display', serif", fontSize: 'clamp(2rem,5vw,3rem)', fontWeight: 700, color: 'var(--parchment)', display: 'block', lineHeight: 1.2 }}>
+        <Text style={{ fontFamily: "'DM Serif Display', serif", fontSize: 'clamp(2rem,5vw,3rem)', fontWeight: 700, color: 'var(--parchment)', display: 'block', lineHeight: 1.2 }}>
           Begin <em style={{ color: 'var(--gold)', fontStyle: 'italic' }}>Reading</em>
         </Text>
         <Text style={{ fontSize: '0.88rem', color: 'rgba(244,228,193,0.45)', lineHeight: 1.85, display: 'block', marginTop: '1.1rem' }}>
@@ -61,13 +61,9 @@ export default function BibleCard({
   }
 
   return (
-    <Card
-      className="chapter-card"
-      style={{ width: '100%', margin: 0 }}
-      bordered={false}
-    >
+    <div className="chapter-card">
       {/* Header */}
-      <div style={{ marginBottom: '2.2rem', paddingBottom: '1.5rem', borderBottom: '1px solid rgba(180,130,30,0.28)' }}>
+      <div style={{ marginBottom: '2.2rem', paddingBottom: '1.5rem', borderBottom: '1px solid rgba(180,130,30,0.18)' }}>
         <div className="card-book-label">{curBook.toUpperCase()}</div>
         <div className="card-title">Chapter {curChapter}</div>
         {curChapter === 1 && preamble && (
@@ -84,16 +80,16 @@ export default function BibleCard({
       />
 
       {/* Navigation */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '3.2rem', paddingTop: '1.8rem', borderTop: '1px solid rgba(180,130,30,0.28)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '3.2rem', paddingTop: '1.8rem', borderTop: '1px solid rgba(180,130,30,0.18)' }}>
         <Button
           icon={<LeftOutlined />}
           onClick={onPrev}
           disabled={curChapter <= 1}
-          style={{ fontFamily: "'Lora', serif", fontSize: '0.76rem', letterSpacing: '0.1em', textTransform: 'uppercase' }}
+          style={{ fontFamily: "'Inter', sans-serif", fontSize: '0.76rem', letterSpacing: '0.1em', textTransform: 'uppercase' }}
         >
           Prev
         </Button>
-        <Text style={{ fontFamily: "'IM Fell English', serif", fontStyle: 'italic', fontSize: '0.9rem', color: 'rgba(26,16,10,0.45)' }}>
+        <Text style={{ fontFamily: "'Inter', sans-serif", fontStyle: 'italic', fontSize: '0.9rem', color: 'var(--gold-dim)' }}>
           {curBook} · {curChapter}
         </Text>
         <Button
@@ -101,11 +97,11 @@ export default function BibleCard({
           iconPosition="end"
           onClick={onNext}
           disabled={curChapter >= chapterCount}
-          style={{ fontFamily: "'Lora', serif", fontSize: '0.76rem', letterSpacing: '0.1em', textTransform: 'uppercase' }}
+          style={{ fontFamily: "'Inter', sans-serif", fontSize: '0.76rem', letterSpacing: '0.1em', textTransform: 'uppercase' }}
         >
           Next
         </Button>
       </div>
-    </Card>
+    </div>
   );
 }

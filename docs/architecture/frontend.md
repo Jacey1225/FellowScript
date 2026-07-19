@@ -1,51 +1,94 @@
 # Frontend
 
-The frontend lives in `frontend/` and is responsible for all user-facing UI. It communicates with the backend via REST API calls and a WebSocket connection.
+The web frontend is a **React 18 + Vite** single-page application in `frontend/src/`. Routing uses `react-router-dom` with `HashRouter` (`/#/` prefix). UI components come from **Ant Design**. The built output in `frontend/dist/` is deployed to EC2 `/var/www/html/` via rsync.
 
 ---
 
 ## Pages
 
-### Home (`/`)
-- Renders the landing page with the FellowScript hero, mission statement, and feature cards
-- "Start Reading" button routes the user to `/reader`
+| Route | File | Description |
+|---|---|---|
+| `/` | `pages/Home.jsx` | Public landing page — hero, features, pricing, CTA |
+| `/reader` | `pages/Reader.jsx` | Bible reader with notes and messaging sidebars |
+| `/account` | `pages/Account.jsx` | Profile, subscription card, danger zone |
+| `/signin` | `pages/SignIn.jsx` | Password, Google, and Apple sign-in/sign-up |
+| `/privacy` | `pages/Privacy.jsx` | Privacy policy |
+| `/terms` | `pages/Terms.jsx` | Terms of service |
 
-### Bible Reader (`/reader`)
-- Fetches scripture text from the API based on selected book/chapter
-- Renders the highlight palette and applies user/community highlights inline
-- Contains the bottom tab bar (Read / Notes / Community)
+Unauthenticated users land on Home (`/`); once signed in, the CTA routes directly to `/reader`.
 
 ---
 
-## Components
+## Key Components
 
 | Component | Description |
 |---|---|
-| `NavBar` | Top bar with home link, title, and overflow menu |
-| `HeroSection` | Home page hero with title, tagline, and CTA |
-| `FeatureCards` | 2×2 grid of feature highlights on the home page |
-| `BookSearch` | Search bar for jumping to a book/chapter |
-| `ScriptureView` | Renders verse-by-verse scripture with inline highlights |
-| `HighlightPalette` | Color selector row (yellow, orange, green, pink, blue) |
-| `BottomTabBar` | Read / Notes / Community tab switcher |
-| `NotesList` | Notes tab — filter tabs, note cards, add-note form |
-| `CommunityPanel` | Community tab — member list with DM buttons + group chat |
-| `MemberRow` | Single member with avatar, name, activity status, DM button |
+| `AppNav.jsx` | Persistent top navigation bar — logo (links to `/`), reader link, account link; collapses to a drawer on narrow screens |
+| `NotesSidebar.jsx` | Full notes panel: Notes tab (rich-text cards sorted by creation date), Highlights tab, filter/sort panel, in-line editor |
+| `MessagingSidebar.jsx` | Real-time WebSocket messaging — group chat and 1-on-1 DMs |
+| `BibleCard.jsx` | Renders a single verse with inline highlight color, click-to-highlight, and verse selection |
+| `BibleNavigator.jsx` | Book + chapter picker (search + scroll) |
+| `ScriptureNav.jsx` | Prev/next chapter controls |
+| `HighlightPicker.jsx` | Color swatch row for choosing the active highlight color |
+| `BookmarkButton.jsx` | Toggle bookmark on the current chapter |
+| `RichText.jsx` | `NoteBody` renderer for saved HTML notes; `stripHtml` utility |
+| `VerseSelector.jsx` | Verse picker used inside the note editor to link verses |
+| `SubscriptionCard.jsx` | Displays current plan (free tier vs. paid), usage limits, upgrade prompt |
+| `SessionWidget.jsx` | Devotion session UI |
+| `SessionCreator.jsx` | Create a new devotion plan |
+| `DonationButton.jsx` | One-time donation flow |
+
+---
+
+## State and Auth
+
+`context/AuthContext.jsx` provides `useAuth()` across the app. It exposes:
+- `user` — the logged-in user object (or `null`)
+- `signIn(userData)` — stores user in context + `localStorage`
+- `signOut()` — clears context + `localStorage`, redirects to `/signin`
+
+Session persistence uses `localStorage`; the `user_id` cookie set by the server is used for API calls.
+
+---
+
+## Reader Layout
+
+The Reader page uses a three-panel CSS grid:
+
+```
+┌─────────────┬──────────────────────┬──────────────┐
+│  AppNav     │                      │              │
+│  (sidebar   │   Scripture text     │   Notes or   │
+│   on left)  │   BibleCard × verse  │   Messaging  │
+│             │   BibleNavigator     │   sidebar    │
+└─────────────┴──────────────────────┴──────────────┘
+```
+
+On narrow screens the sidebars collapse and are accessed via toggle buttons above the scripture view.
 
 ---
 
 ## Styling
 
-- Dark background (`#1a1a2e`) with gold accent (`#C9A84C`)
-- Fonts: Playfair Display (headings), Lora (body text)
-- Mobile-first — all layouts stack vertically; sidebars do not exist
-- Bottom tab bar replaces all sidebar navigation on mobile
+- Dark background `#1a140f` (warm near-black)
+- Primary gold `#e8a53d` / `#c8861a`, parchment text `#f4e4c1`
+- Fonts loaded via Google Fonts: Playfair Display, Space Grotesk, Lora, IM Fell English, JetBrains Mono
+- Ant Design components are dark-themed via `ConfigProvider`
+- CSS variables (`--gold`, `--parchment`, `--bg`) defined on `:root` in `index.css`
+- Inline React styles + embedded `<style>` blocks for component-level media queries
 
 ---
 
-## Real-Time
+## iOS App
 
-The frontend maintains a WebSocket connection to `backend/messaging/websockets.py`:
-- Listens for group chat messages and renders them in the Community tab
-- Listens for member activity updates and refreshes the member list
-- Sends chat messages and outgoing DMs through the same connection
+The native iOS client lives in `FellowScript/FellowScript/` (Swift / SwiftUI). It shares the same REST API as the web frontend. Key files:
+
+| File | Responsibility |
+|---|---|
+| `Services/NetworkService.swift` | All API calls (notes, auth, highlights, user delete, etc.) |
+| `Services/StoreKitManager.swift` | StoreKit 2 IAP for subscription purchases |
+| `Auth/GoogleAuthSession.swift` | Google Sign-In integration |
+| `Models/Models.swift` | `Codable` data models mirroring the backend schemas |
+| `Account/AccountView.swift` | Profile display, subscription status, delete-account flow |
+
+Account deletion on iOS: the delete request is awaited before `signOut()` is called (correct async sequencing — no race condition).

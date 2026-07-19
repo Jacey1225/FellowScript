@@ -87,6 +87,7 @@ def create_tables(cur):
         "parent_note_id UUID REFERENCES notes(_id) ON DELETE CASCADE,"
         "timestamp TIMESTAMPTZ DEFAULT NOW())"
     )
+    cur.execute("ALTER TABLE notes ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()")
     # Speeds up the free-tier weekly note count (LimitsManager).
     cur.execute(
         "CREATE INDEX IF NOT EXISTS idx_notes_user_timestamp "

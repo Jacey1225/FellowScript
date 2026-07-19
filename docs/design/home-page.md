@@ -1,64 +1,61 @@
 # Home Page
 
-The home page is the entry point and mission statement for FellowScript.
+The home page (`/`) is the public-facing landing page. It is visible to everyone — signed in or not — and serves as both the marketing entry point and the navigation hub for signed-in users.
 
 ---
 
-## Layout (top to bottom)
+## Sections (top to bottom)
 
-```
-┌────────────────────────────┐
-│  FellowScript    [menu]    │  ← Nav bar
-├────────────────────────────┤
-│  A DIGITAL SCRIPTURE       │
-│  COMMUNITY                 │
-│                            │
-│  FellowScript              │  ← Hero title (Playfair Display, large)
-│  READ · REFLECT · CONNECT  │
-│                            │
-│  [ Start Reading → ]       │  ← CTA button (gold)
-├────────────────────────────┤
-│  OUR MISSION               │
-│  Fan into flame the        │
-│  gift of God.              │  ← Mission headline (bold italic)
-│                            │
-│  FellowScript is built to  │
-│  spark meaningful          │
-│  connections...            │  ← Mission paragraph
-├────────────────────────────┤
-│  [📖] Digital Bible        │
-│  [📝] Notes                │  ← Feature cards (2-column grid)
-│  [💬] Group Chat           │
-│  [🔗] Community            │
-└────────────────────────────┘
-```
+### 1. Navigation Bar
+- Left: FellowScript logo + wordmark (links back to `/`)
+- Centre: nav links — Features, Community, Pricing
+- Right: Sign In link + "Start Reading →" CTA button (gold)
+- Signed-in users see "Go to Reader →" instead
 
----
+### 2. Hero
+- Tag line: `READ · REFLECT · CONNECT` in spaced gold caps
+- Headline: large Playfair Display serif title
+- Subheadline: short mission description
+- CTA: "Begin Your Study →" (routes to `/reader` if signed in, `/signin` if not)
+- Background: dot-grid pattern on `#1a140f`; floating "floating card" elements showing sample verse cards
 
-## Key Elements
+### 3. How It Works (3-step strip)
+- Step 1: Read — open any book and chapter
+- Step 2: Reflect — add rich-text notes linked to specific verses
+- Step 3: Connect — join a group and share insights in real time
 
-### Navigation Bar
-- FellowScript logo (left)
-- Hamburger or profile icon (right)
-- Minimal — does not compete with the hero
+### 4. Features Grid (6 cards)
+| Feature | Description |
+|---|---|
+| Digital Bible | Full 66-book Bible with chapter navigation |
+| Rich Notes | Formatted notes (bold, italic, highlight, color) linked to verses |
+| Community Groups | Study groups with shared notes, highlights, and real-time chat |
+| AI Check-Ins | Daily AI-generated devotional prompts and agent heartbeats |
+| Highlights | Per-verse color highlights; group members' highlights visible in-context |
+| Bookmarks | Quick-return bookmarks per chapter |
 
-### Hero Section
-- Subtitle: "A Digital Scripture Community"
-- Main title: **FellowScript** in large Playfair Display
-- Tagline: `READ · REFLECT · CONNECT` in spaced gold caps
-- CTA: "Start Reading →" button — full width on mobile, gold fill
+### 5. Community Spotlight
+Mock group conversation showing the collaborative note/chat experience — sample study group discussing Romans 8.
 
-### Mission Section
-- Label: `OUR MISSION` in small gold caps
-- Headline: *Fan into flame the gift of God.* (bold italic)
-- Body: Short paragraph explaining the community goal
+### 6. Pricing (3-plan cards)
+| Plan | Price | Limits |
+|---|---|---|
+| Free | $0 | 5 notes/week, limited agent events |
+| Individual | $4.99/mo | Unlimited notes, agent events, notifications |
+| Group | $9.99/mo | Everything in Individual + group management tools |
 
-### Feature Cards
-- 2×2 grid on mobile
-- Each card: icon + bold title + one-line description
-- Cards: Digital Bible, Notes, Group Chat, Community
+"Most popular" badge displayed on the Individual plan.
+
+### 7. Quote CTA
+Final call-to-action with 2 Timothy 1:6 as the closing verse, and a "Join FellowScript" button.
 
 ---
 
-## Navigation
-Clicking **Start Reading** routes to the [Bible Reader](bible-reader.md).
+## Navigation from Home
+
+| Element | Destination |
+|---|---|
+| Logo / title | `/` (home) |
+| "Start Reading" / "Begin Your Study" | `/reader` (signed in) or `/signin` |
+| Sign In link | `/signin` |
+| Nav "Features", "Pricing" | Smooth scroll to section anchor |

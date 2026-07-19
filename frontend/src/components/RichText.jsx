@@ -172,7 +172,7 @@ function ScriptureChip({ value, book, chapter, verse, onNavigate }) {
         border:         '1px solid rgba(200,134,26,0.32)',
         borderRadius:   4,
         padding:        '0.05rem 0.42rem',
-        fontFamily:     "'IM Fell English', serif",
+        fontFamily:     "'Spectral', serif",
         fontStyle:      'italic',
         fontSize:       '0.84em',
         color:          'var(--gold)',
@@ -240,7 +240,7 @@ export function NoteBody({ html, className, style }) {
 
 const NOTE_BODY_CSS = `
 .fs-note-body {
-  font-family: 'Lora', Georgia, serif;
+  font-family: 'Inter', -apple-system, sans-serif;
   font-size: 0.88rem;
   color: rgba(244,228,193,0.80);
   line-height: 1.85;
@@ -301,7 +301,7 @@ const MD_COMPONENTS = {
       padding:     '0.1em 0 0.1em 0.85em',
       color:       'rgba(244,228,193,0.6)',
       fontStyle:   'italic',
-      fontFamily:  "'IM Fell English', serif",
+      fontFamily:  "'Spectral', serif",
     }}>
       {children}
     </blockquote>

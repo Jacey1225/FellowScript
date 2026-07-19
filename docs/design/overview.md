@@ -1,38 +1,46 @@
 # Design Overview
 
-FellowScript's UI is designed mobile-first with a dark, editorial aesthetic that feels reverent without being heavy.
+FellowScript's visual identity evokes the warmth and reverence of handwritten scripture — candlelight on parchment — while remaining clean and modern enough for everyday use.
 
 ---
 
 ## Visual Identity
 
-| Element | Value |
-|---|---|
-| Background | Dark charcoal (`#1a1a2e` / near-black) |
-| Primary accent | Warm gold (`#C9A84C`) |
-| Heading font | Playfair Display (serif) |
-| Body font | Lora (serif) |
-| Code font | Roboto Mono |
-
-The gold accent on dark creates the parchment-and-candlelight feel of handwritten scripture — modern but grounded.
+| Token | Value | Usage |
+|---|---|---|
+| Background | `#1a140f` | Page and panel backgrounds |
+| Primary gold | `#e8a53d` | Buttons, CTAs, active states |
+| Secondary gold | `#c8861a` | Borders, icon accents, hover states |
+| Parchment text | `#f4e4c1` | Body text on dark backgrounds |
+| Muted text | `rgba(244,228,193,0.4–0.6)` | Secondary labels, timestamps |
+| Heading fonts | Playfair Display, Space Grotesk | Page headings, landing page |
+| Body / editorial font | Lora | Note bodies, prose |
+| Verse / italic font | IM Fell English | Verse references, pull quotes |
+| Mono font | JetBrains Mono | Code-adjacent UI elements |
 
 ---
 
 ## Layout Strategy
 
-On mobile, traditional sidebars are replaced entirely with a **bottom navigation bar**:
+The web app uses a **three-panel grid** in the Reader view:
 
 ```
-[ Read ]  [ Notes ]  [ Community ]
+┌──────────┬────────────────────┬────────────────┐
+│  AppNav  │  Scripture text    │  Notes or      │
+│  (left)  │  (centre)          │  Messaging     │
+│          │                    │  sidebar       │
+└──────────┴────────────────────┴────────────────┘
 ```
 
-This keeps all core actions reachable with one thumb and avoids cluttered side panels on small screens.
+On narrow viewports, sidebars collapse to toggle buttons above the scripture view.
+
+The **Home** page is a full-width landing page with a top navigation bar, not an in-app panel. Signed-out users see it as the entry point; signed-in users pass through it to reach `/reader`.
 
 ---
 
 ## Pages
 
-- [Home Page](home-page.md) — Landing, mission, and entry point
-- [Bible Reader](bible-reader.md) — Scripture view with highlighting
-- [Notes](notes.md) — Public and private annotations
-- [Community](community.md) — Study group members and chat
+- [Home Page](home-page.md) — Public landing page with pricing and feature overview
+- [Bible Reader](bible-reader.md) — Scripture reading with notes and messaging sidebars
+- [Notes](notes.md) — Rich-text notes, highlights, and the note creation date feature
+- [Community](community.md) — Real-time group chat, DMs, and friend management

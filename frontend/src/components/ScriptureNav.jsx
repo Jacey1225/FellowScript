@@ -4,7 +4,7 @@ import { Select, Typography } from 'antd';
 const { Text } = Typography;
 
 const LABEL_STYLE = {
-  fontFamily: "'Lora', serif",
+  fontFamily: "'Spectral', serif",
   fontSize: '0.6rem',
   letterSpacing: '0.22em',
   textTransform: 'uppercase',

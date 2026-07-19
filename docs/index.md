@@ -2,15 +2,7 @@
 
 **A Digital Scripture Community — Read · Reflect · Connect**
 
-FellowScript is a faith-based Bible study platform built to spark meaningful connections among people who seek to grow in their faith together. Users read scripture side by side, share highlights and reflections, and build one another up in the Word.
-
----
-
-## Mission
-
-> **Fan into flame the gift of God.**
-
-FellowScript is built to start meaningful and impactful connections with like-minded people who seek to build up their faith and fan into flame the gift of God (2 Timothy 1:6).
+FellowScript is a faith-based Bible study platform for reading scripture, taking rich notes, connecting with a study group, and receiving AI-powered devotional check-ins. It runs as a React web app and a native iOS app, both backed by a shared FastAPI + Postgres server hosted on AWS EC2.
 
 ---
 
@@ -18,22 +10,48 @@ FellowScript is built to start meaningful and impactful connections with like-mi
 
 | Feature | Description |
 |---|---|
-| Digital Bible | Navigate the full Bible by book and chapter with a clean reading view |
-| Highlighting | Mark scripture in yellow, orange, green, pink, or blue |
-| Notes | Add public or private notes to any verse |
-| Community Highlights | Filter and browse other users' public highlights |
-| Group Chat | Message your study group in real time |
-| Direct Messages | Send private messages to individual members |
+| Digital Bible | Navigate all 66 books by chapter with a clean, typeset reading view |
+| Highlighting | Mark verses in six colors; highlights persist per user |
+| Rich Notes | Add formatted notes (bold, italic, underline, highlight, color) linked to one or more verses |
+| Bookmarks | Bookmark chapters for quick return |
+| Groups | Create or join study groups; share public notes and highlights within the group |
+| Friends | Send/accept friend requests; start direct messages |
+| Group & Direct Messaging | Real-time WebSocket chat — group threads and 1-on-1 DMs |
+| Devotions | Collaborative devotion plans shared across a group |
+| AI Agent | Daily check-in heartbeats with AI-generated devotional prompts |
+| Notifications | In-app notifications for group activity and agent events |
+| Subscriptions | Free tier (limited notes/events) + Individual and Group paid plans via Stripe (web) or Apple IAP (iOS) |
+| Account | Profile management and account deletion for web and iOS |
 
 ---
 
-## Pages
+## Pages (Web)
 
-- **Home** — Introduction to FellowScript's mission and a "Start Reading" entry point
-- **Bible Reader** — Full digital Bible with highlighting, notes, and community tabs
+| Route | Page |
+|---|---|
+| `/` | Home — landing page with feature overview and pricing |
+| `/reader` | Bible Reader — scripture, notes sidebar, messaging sidebar |
+| `/account` | Account — profile, subscription card, danger zone |
+| `/signin` | Sign In / Sign Up — password, Google, or Apple |
+| `/privacy` | Privacy Policy |
+| `/terms` | Terms of Service |
 
 ---
 
-## Design Philosophy
+## Clients
 
-FellowScript uses a **mobile-first** layout. The Bible reader replaces traditional sidebars with a bottom navigation bar (Read, Notes, Community) so everything is one thumb-tap away. The visual identity uses a dark background with a warm gold accent (`#C9A84C`) and editorial serif typography (Playfair Display headings, Lora body text) to give the app a reverent but modern feel.
+- **Web** — React + Vite SPA, deployed via rsync to Nginx on EC2
+- **iOS** — Native Swift app (Xcode), distributed via App Store
+
+---
+
+## Design at a Glance
+
+| Token | Value |
+|---|---|
+| Background | `#1a140f` (warm near-black) |
+| Primary accent | `#e8a53d` / `#c8861a` (warm gold) |
+| Parchment text | `#f4e4c1` |
+| Heading fonts | Playfair Display, Space Grotesk |
+| Body / note fonts | Lora, IM Fell English |
+| Code / mono | JetBrains Mono |

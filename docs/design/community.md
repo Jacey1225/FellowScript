@@ -1,65 +1,57 @@
 # Community
 
-The Community tab shows all members of your current study group, their reading status, and the shared group chat.
-
----
-
-## Layout
-
-```
-┌────────────────────────────┐
-│ < Home   FellowScript  [⋮] │
-├────────────────────────────┤
-│ [Search]   2 Timothy 1     │
-│ Highlight: 🟡 🟠 🟢 🔴 🔵  │
-├────────────────────────────┤
-│ STUDY GROUP                │
-├────────────────────────────┤
-│ 🟢 JM  James M.            │
-│        Reading verse 7  [DM]│  ← Online member with activity + DM button
-├────────────────────────────┤
-│ 🟢 SR  Sarah R.            │
-│        Left a note      [DM]│
-├────────────────────────────┤
-│ ⚪ DK  David K.            │
-│        Highlighted verse 3 [DM]│
-├────────────────────────────┤
-│ ⚪ ML  Mary L.             │
-│        Offline          [DM]│
-├────────────────────────────┤
-│ Message group...           │  ← Group chat input
-└────────────────────────────┘
-│  [📖 Read] [📝 Notes] [👥 Community] │
-└────────────────────────────┘
-```
-
----
-
-## Member List
-
-Each member row shows:
-- **Online indicator** — green dot (online) or grey (offline)
-- **Color-coded avatar** with initials
-- **Display name**
-- **Activity status** — what the member is currently doing (reading a verse, leaving a note, highlighting, offline)
-- **DM button** — opens a direct message thread
+The Messaging sidebar (`MessagingSidebar`) handles all social features: group chat, direct messages, and friend management. It appears in the right panel of the Reader when the Messages icon is selected.
 
 ---
 
 ## Group Chat
 
-- A shared message input at the bottom of the Community tab
-- All group members can read and post
-- Real-time updates via WebSocket
+When a user belongs to a study group, the messaging sidebar shows:
+- **Group message history** — past messages loaded on mount
+- **Real-time messages** — delivered via WebSocket (`/ws/{user_id}`)
+- **Message input** — text field + send button at the bottom
+
+Group messages are visible to all group members.
 
 ---
 
 ## Direct Messages
 
-Tapping **DM** next to a member opens a private 1-on-1 thread separate from the group chat. Messages are only visible to the two participants.
+The sidebar also surfaces 1-on-1 DM threads. Selecting a friend from the list opens a private thread visible only to the two participants. DMs are routed through the same WebSocket connection with a `type: "dm"` payload.
+
+---
+
+## Friends
+
+The friends panel shows:
+- **Friend list** — all accepted friends with DM button
+- **Incoming requests** — friend requests awaiting response (Accept / Decline)
+- **Add friend** — send a request by username
+
+All friend actions go through `GET/POST /friends/{user_id}/…` REST endpoints; no WebSocket is needed for friend management.
+
+---
+
+## Groups
+
+Users can create or join study groups:
+- **Create group** — sets the user as owner; group gets a UUID and title
+- **Join group** — adds the user to `groups.members`
+- **Leave group** — removes the user from the group
+- **Group selector** — the compact dropdown in the Notes sidebar tab bar also switches the messaging sidebar to the selected group
+
+Group highlights (members' colored verse highlights) are visible as overlays in the scripture view when a group is selected.
 
 ---
 
 ## Real-Time Behavior
 
-Member activity statuses (e.g. "Reading verse 7", "Left a note") update in real time so the group can see where everyone is in the scripture. This is powered by the WebSocket layer in `backend/messaging/websockets.py`.
+The WebSocket connection (`/ws/{user_id}`) handles:
+
+| Event type | Direction | Action |
+|---|---|---|
+| `group_message` | send/receive | Broadcast to all group members |
+| `dm` | send/receive | Route to a single recipient |
+| `activity` | receive | Member is reading / highlighting / noting (broadcast by server) |
+
+The connection is established when the Reader mounts and torn down on unmount.

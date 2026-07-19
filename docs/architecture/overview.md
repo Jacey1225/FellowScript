@@ -1,28 +1,35 @@
 # System Architecture Overview
 
-FellowScript is structured as a client-server application with a Python backend, a web frontend, and real-time messaging over WebSockets.
+FellowScript is a full-stack application with three clients (web, iOS, docs) backed by a single FastAPI server and a Postgres database, hosted on AWS EC2.
 
 ---
 
-## Folder Structure
+## Repository Layout
 
 ```
 FellowScript/
-├── frontend/               # UI — HTML/CSS/JS (or framework TBD)
-├── backend/
-│   ├── bibleHandling/
-│   │   ├── convertDict.py  # Converts Bible source data into a usable dict structure
-│   │   ├── interactions.py # Highlight, note, and annotation logic
-│   │   └── navigation.py   # Book/chapter navigation and lookup
-│   └── messaging/
-│       └── websockets.py   # Real-time group chat and activity broadcast
-├── api/                    # API route definitions
-├── data/
-│   ├── ESV Bible.pdf       # ESV Bible source
-│   └── NIV-Bible.pdf       # NIV Bible source
-├── docs/                   # This documentation (MkDocs)
-├── mkdocs.yml
-└── README.md
+├── api/                        # FastAPI backend (Python)
+│   ├── main.py                 # App entry point, auth routes, lifespan
+│   ├── db.py                   # DBManager, schema DDL, migrations
+│   ├── schemas/                # Pydantic request/response models
+│   ├── routes/                 # Thin HTTP handlers (APIRouter per domain)
+│   └── backend/
+│       ├── interactions/       # Business logic + DB managers
+│       └── subscription/       # Subscription, limits, Stripe, Apple IAP
+├── frontend/                   # React + Vite web app
+│   ├── src/
+│   │   ├── pages/              # Home, Reader, Account, SignIn, Privacy, Terms
+│   │   ├── components/         # AppNav, NotesSidebar, MessagingSidebar, …
+│   │   └── context/            # AuthContext (user session)
+│   └── dist/                   # Built output (rsync'd to EC2 /var/www/html/)
+├── FellowScript/               # Native iOS app (Swift / Xcode)
+│   └── FellowScript/
+│       ├── Models/             # Codable data models
+│       ├── Services/           # NetworkService, StoreKitManager
+│       ├── Auth/               # GoogleAuthSession, AppleAuth
+│       └── Account/            # AccountView (profile + delete)
+├── docs/                       # MkDocs documentation (this site)
+└── mkdocs.yml
 ```
 
 ---
@@ -30,35 +37,46 @@ FellowScript/
 ## Data Flow
 
 ```
-User Action (frontend)
-        │
-        ▼
-   REST API (api/)
-        │
-        ├──▶ bibleHandling/navigation.py   → fetch book/chapter text
-        ├──▶ bibleHandling/interactions.py → save/load highlights & notes
-        └──▶ messaging/websockets.py       → broadcast activity & chat
-        │
-        ▼
-   Response to frontend
+Web (React)  ──┐
+iOS (Swift)  ──┼──▶  FastAPI (EC2 :8000)  ──▶  Postgres (local)
+               │            │
+               │     WebSocket server ──▶ real-time messaging
+               └──▶  Nginx (EC2 :80/443) ──▶ static frontend
 ```
 
 ---
 
-## Key Modules
+## Layers
 
-| Module | Responsibility |
-|---|---|
-| `bibleHandling/convertDict.py` | Parses Bible PDFs into a structured dictionary keyed by book → chapter → verse |
-| `bibleHandling/navigation.py` | Handles book/chapter lookup and returns verse-level text |
-| `bibleHandling/interactions.py` | Manages highlights (color, user, verse) and notes (text, visibility, author) |
-| `messaging/websockets.py` | WebSocket server for real-time group chat and member activity updates |
-| `api/` | REST endpoints consumed by the frontend |
-| `frontend/` | Renders the UI — home page, Bible reader, notes, community tabs |
+| Layer | Technology | Purpose |
+|---|---|---|
+| Frontend (web) | React 18 + Vite, Ant Design | UI, routing, state |
+| Frontend (iOS) | Swift, SwiftUI | Native mobile client |
+| API | FastAPI + Uvicorn | REST endpoints + WebSocket |
+| Business logic | Python manager classes | Domain rules, DB queries |
+| Database | PostgreSQL | All user-generated data |
+| Auth | bcrypt (password), Google OAuth, Apple JWT | Three sign-in methods |
+| Billing | Stripe Checkout (web), StoreKit 2 (iOS) | Subscription management |
+| Hosting | AWS EC2 (Nginx + Uvicorn) | Web + API server |
+| Docs | MkDocs + Material | GitHub Pages |
 
 ---
 
-## Communication
+## Request Lifecycle (typical REST call)
 
-- **REST** — Used for fetching Bible text, loading notes/highlights, and saving new ones
-- **WebSocket** — Used for real-time group chat messages and live member activity status
+1. Client sends HTTP request to `api.fellowscript.app:8000` (or EC2 IP)
+2. FastAPI route handler in `routes/` validates the request via Pydantic schema
+3. Handler instantiates the domain manager from `backend/interactions/`
+4. Manager runs SQL via `DBManager` helpers (`lookup`, `insertion`, `update`, `delete`) or raw cursor for complex queries
+5. Manager returns a plain dict; handler maps errors → `HTTPException`
+6. FastAPI serialises the response to JSON
+
+---
+
+## Deployment
+
+**Frontend** — `npm run build` in `frontend/`, then rsync `dist/` to EC2 `/var/www/html/`. Nginx serves the static files.
+
+**Backend** — rsync changed Python files to EC2 `/home/ubuntu/fellowscript/api/`, then `sudo systemctl restart fellowscript`. Uvicorn runs as a systemd service inside the project virtualenv.
+
+**Docs** — `.venv/bin/mkdocs gh-deploy --force` builds and force-pushes to the `gh-pages` branch of the GitHub repo. Live at `https://Jacey1225.github.io/FellowScript/`.
