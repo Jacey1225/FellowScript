@@ -1,11 +1,12 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from db import DBManager
 from schemas.subscription import (
     SubscriptionCreate,
     SubscriptionUpdate,
     PLAN_CONFIG,
     TRIAL_MONTHS,
+    EXPIRY_GRACE_DAYS,
 )
 
 
@@ -280,14 +281,82 @@ class SubscriptionsManager(DBManager):
         self.conn.commit()
         return n
 
+    @staticmethod
+    def _is_lapsed(data: dict) -> bool:
+        """True if the paid period ended more than EXPIRY_GRACE_DAYS ago.
+
+        A lapsed plan is one whose ``current_period_end`` is well past and which
+        was never renewed (no processor notification arrived). The grace window
+        keeps a healthy plan that is briefly mid-renewal from being treated as
+        expired.
+        """
+        cpe = data.get("current_period_end")
+        if not cpe:
+            return False
+        if cpe.tzinfo is None:
+            cpe = cpe.replace(tzinfo=timezone.utc)
+        return datetime.now(timezone.utc) > cpe + timedelta(days=EXPIRY_GRACE_DAYS)
+
     def get_subscription(self, subscription_id: str) -> dict | None:
-        """Return a single plan (reconciling an elapsed trial first), or ``None``."""
+        """Return a single plan (reconciling an elapsed trial first), or ``None``.
+
+        A plan whose paid period lapsed beyond the grace window is reported as
+        ``None`` so every client reflects the true (expired) status even if a
+        processor never sent an expiry notification. This is non-destructive —
+        the row is cleaned up by ``reconcile_expired_subscriptions`` (scheduler).
+        """
         self._reconcile(subscription_id)
         result = self.lookup("subscriptions", {"_id": subscription_id})
         if not result:
             return None
         sid, data = list(result.items())[0]
+        if self._is_lapsed(data):
+            return None
         return self._to_dict(sid, data)
+
+    def reconcile_expired_subscriptions(self) -> int:
+        """Delete plans whose paid period lapsed beyond the grace window.
+
+        The active cleanup behind the lazy check in ``get_subscription``: it
+        catches Apple plans cancelled in the App Store whose EXPIRED notification
+        never arrived, and any Stripe plan that stopped renewing. Uses
+        ``delete_subscription`` so members are detached. Returns the count removed.
+        """
+        self.cur.execute(
+            "SELECT _id FROM subscriptions "
+            "WHERE current_period_end IS NOT NULL "
+            "  AND current_period_end < now() - (%s || ' days')::interval",
+            (EXPIRY_GRACE_DAYS,),
+        )
+        ids = [str(r[0]) for r in self.cur.fetchall()]
+        for sid in ids:
+            self.delete_subscription(sid)
+        return len(ids)
+
+    def create_free_plan(self, user_id: str) -> str | None:
+        """Create a permanent free-tier subscription row for a newly registered user.
+
+        Idempotent — skips creation if the user already has a subscription_id set.
+        The free plan has no trial, no billing period, and no expiry; the scheduler
+        and lapsed-plan checks both ignore rows with NULL current_period_end.
+
+        Returns:
+            The new subscription id, or None if the user was already enrolled.
+        """
+        self.cur.execute("SELECT subscription_id FROM users WHERE _id = %s", (user_id,))
+        row = self.cur.fetchone()
+        if row and row[0]:
+            return None
+        sub_id = str(uuid.uuid4())
+        self.cur.execute(
+            "INSERT INTO subscriptions "
+            "(_id, user_id, plan_type, provider, status, price_cents, max_members) "
+            "VALUES (%s, %s, 'free', 'none', 'active', 0, 1)",
+            (sub_id, user_id),
+        )
+        self.conn.commit()
+        self.update("users", {"subscription_id": sub_id}, {"_id": user_id})
+        return sub_id
 
     def get_user_subscription(self, user_id: str) -> dict | None:
         """Return the plan the given user currently belongs to, or ``None``."""

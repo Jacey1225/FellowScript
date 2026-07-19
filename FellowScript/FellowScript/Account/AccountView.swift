@@ -48,8 +48,23 @@ final class AccountViewModel: ObservableObject {
     @Published var subLoading      = true
     @Published var subBusy         = false
     @Published var subMsg: String? = nil
+    // Apple plan that was cancelled (auto-renew off) but still in its paid period.
+    @Published var autoRenewOff    = false
+    @Published var planEndDate: Date? = nil
 
     var isSubHost: Bool { subscription?.isHost(profileData?.user_id ?? "") ?? false }
+
+    /// Authoritative "has an unlimited (paid) plan" for the UI. Matches the
+    /// server's enforcement criterion exactly (a plan in `trialing`/`active`
+    /// status grants unlimited; `past_due`/other do not, and the server still
+    /// caps them). The subscription record — loaded *after* StoreKit entitlement
+    /// sync — is the source of truth; the usage payload's `subscribed` flag is a
+    /// fallback because it can be fetched before that sync and momentarily read
+    /// "free" on a cold launch.
+    var hasUnlimitedPlan: Bool {
+        if let s = subscription?.status, s == "trialing" || s == "active" { return true }
+        return usage?.subscribed ?? false
+    }
 
     func load(service: DataServiceProtocol, user: FSUser) async {
         self.service = service
@@ -230,11 +245,19 @@ final class AccountViewModel: ObservableObject {
         // revoked), remove it so the UI stops showing a subscription they no longer
         // have. Only touches Apple *host* plans — Stripe/web plans and group
         // memberships (which have no StoreKit entitlement) are left alone.
+        autoRenewOff = false
+        planEndDate  = nil
         if let p = plan, p.provider == "apple", p.isHost(userId) {
             let active = await StoreKitManager.shared.activeEntitlementProductIDs()
             if active.isEmpty {
                 try? await service.cancelSubscription(subscriptionId: p.id)
                 plan = nil
+            } else if let renewal = await StoreKitManager.shared.currentRenewal(),
+                      !renewal.willAutoRenew {
+                // Cancelled in the App Store but still within the paid period —
+                // surface that it's ending instead of implying an ongoing plan.
+                autoRenewOff = true
+                planEndDate  = renewal.expirationDate
             }
         }
         subscription = plan
@@ -264,6 +287,11 @@ final class AccountViewModel: ObservableObject {
         } else {
             joinablePlans = []
         }
+
+        // Usage was first fetched in load() before the StoreKit entitlement sync,
+        // so re-read it now that the subscription state is settled. This keeps the
+        // Plan Usage section in agreement with the subscription card.
+        await refreshUsage()
     }
 
     func requestJoin(_ subscriptionId: String) async {
@@ -503,11 +531,13 @@ struct AccountView: View {
             Button("Cancel", role: .cancel) {}
             Button("Delete", role: .destructive) {
                 let uid = appState.currentUser?.user_id ?? ""
-                Task { try? await appState.service.deleteUser(userId: uid) }
-                appState.signOut()
+                Task {
+                    try? await appState.service.deleteUser(userId: uid)
+                    await MainActor.run { appState.signOut() }
+                }
             }
         } message: {
-            Text("This permanently deletes your account and all data. Type your username to confirm.")
+            Text("This will permanently delete your account and all data. This cannot be undone.")
         }
     }
 
@@ -556,11 +586,14 @@ struct AccountView: View {
     @ViewBuilder
     private var usageSection: some View {
         if let usage = vm.usage {
+            // The subscription record is authoritative; force "unlimited" when the
+            // user has a paid plan even if this usage payload predates the sync.
+            let unlimited = vm.hasUnlimitedPlan
             Section {
-                usageRow("Notes", usage.notes, hint: "last \(usage.window_days) days")
-                usageRow("Agent events", usage.agentEvents, hint: nil)
-                usageRow("Agent notifications", usage.agentNotifications, hint: nil)
-                if !usage.subscribed {
+                usageRow("Notes", usage.notes, hint: "last \(usage.window_days) days", forceUnlimited: unlimited)
+                usageRow("Agent events", usage.agentEvents, hint: nil, forceUnlimited: unlimited)
+                usageRow("Agent notifications", usage.agentNotifications, hint: nil, forceUnlimited: unlimited)
+                if !unlimited {
                     Text("You're on the free plan. Upgrade to an Individual or Group plan for unlimited notes, events, and notifications.")
                         .font(.lora(Theme.fontSM))
                         .foregroundColor(Theme.textGoldMuted)
@@ -572,23 +605,24 @@ struct AccountView: View {
         }
     }
 
-    private func usageRow(_ label: String, _ r: FSUsageResource, hint: String?) -> some View {
-        VStack(alignment: .leading, spacing: Theme.spacingXS + 2) {
+    private func usageRow(_ label: String, _ r: FSUsageResource, hint: String?, forceUnlimited: Bool) -> some View {
+        let unlimited = forceUnlimited || r.unlimited
+        return VStack(alignment: .leading, spacing: Theme.spacingXS + 2) {
             HStack(spacing: Theme.spacingSM) {
                 Text(label)
                     .font(.lora(Theme.fontBody))
                     .foregroundColor(Theme.parchment)
-                if let hint {
+                if let hint, !unlimited {
                     Text(hint)
                         .font(.lora(Theme.fontXS))
                         .foregroundColor(Theme.textMuted)
                 }
                 Spacer()
-                Text(r.unlimited ? "Unlimited" : "\(r.used) / \(r.limit)")
+                Text(unlimited ? "Unlimited" : "\(r.used) / \(r.limit)")
                     .font(.lora(Theme.fontSM))
-                    .foregroundColor(r.unlimited ? Theme.gold : (r.maxedOut ? Theme.error : Theme.textGoldMuted))
+                    .foregroundColor(unlimited ? Theme.gold : (r.maxedOut ? Theme.error : Theme.textGoldMuted))
             }
-            if !r.unlimited {
+            if !unlimited {
                 GeometryReader { geo in
                     ZStack(alignment: .leading) {
                         Capsule().fill(Theme.parchment.opacity(0.12))
@@ -679,22 +713,29 @@ struct AccountView: View {
                 HStack(spacing: 6) {
                     Text(plan.plan_type == "group" ? "Group Plan" : "Individual Plan")
                         .font(.lora(Theme.fontBody)).foregroundColor(Theme.parchment)
-                    Text(plan.is_trial ? "Free trial" : plan.status.capitalized)
+                    let badge = plan.is_trial ? "Free trial" : (vm.autoRenewOff ? "Cancelling" : plan.status.capitalized)
+                    Text(badge)
                         .font(.lora(Theme.fontXXS)).tracking(1)
                         .padding(.horizontal, 7).padding(.vertical, 2)
-                        .background(Theme.gold.opacity(0.15)).foregroundColor(Theme.gold)
+                        .background((vm.autoRenewOff ? Theme.error : Theme.gold).opacity(0.15))
+                        .foregroundColor(vm.autoRenewOff ? Theme.error : Theme.gold)
                         .clipShape(Capsule())
                 }
                 Text("\(plan.priceLabel)/mo · \(vm.isSubHost ? "You are the host" : "Member")"
                      + (plan.plan_type == "group" ? " · up to \(plan.max_members)" : ""))
                     .font(.lora(Theme.fontXS)).foregroundColor(Theme.textMuted)
                 // Trial / next-billing line (host only — they own billing).
-                if vm.isSubHost, !plan.nextBillingLabel.isEmpty {
-                    Text(plan.is_trial
-                         ? "🎁 \(plan.trial_days_remaining) day\(plan.trial_days_remaining == 1 ? "" : "s") left · first billing \(plan.nextBillingLabel)"
-                         : "Next billing \(plan.nextBillingLabel)"
-                         + (plan.card_last4.isEmpty ? "" : " · \(plan.card_brand.capitalized) •••• \(plan.card_last4)"))
-                        .font(.lora(Theme.fontXS)).foregroundColor(Theme.textGoldMuted)
+                if vm.isSubHost {
+                    if vm.autoRenewOff {
+                        Text("Auto-renew off · cancels \(Self.mediumDate(vm.planEndDate) ?? plan.nextBillingLabel) · access until then")
+                            .font(.lora(Theme.fontXS)).foregroundColor(Theme.error)
+                    } else if !plan.nextBillingLabel.isEmpty {
+                        Text(plan.is_trial
+                             ? "🎁 \(plan.trial_days_remaining) day\(plan.trial_days_remaining == 1 ? "" : "s") left · first billing \(plan.nextBillingLabel)"
+                             : "Next billing \(plan.nextBillingLabel)"
+                             + (plan.card_last4.isEmpty ? "" : " · \(plan.card_brand.capitalized) •••• \(plan.card_last4)"))
+                            .font(.lora(Theme.fontXS)).foregroundColor(Theme.textGoldMuted)
+                    }
                 }
             }
             Spacer()
@@ -1170,6 +1211,13 @@ struct AccountView: View {
 
     // ── Helpers ────────────────────────────────────────────────────────────────
     @ViewBuilder
+    /// "Aug 15, 2026" for a Date, or nil. Used for the Apple auto-renew-off line.
+    private static func mediumDate(_ date: Date?) -> String? {
+        guard let date else { return nil }
+        let f = DateFormatter(); f.dateStyle = .medium
+        return f.string(from: date)
+    }
+
     private func sectionHeader(_ title: String) -> some View {
         Text(title)
             .font(.lora(Theme.fontXXS)).tracking(4)

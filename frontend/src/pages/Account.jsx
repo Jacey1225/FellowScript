@@ -591,7 +591,7 @@ export default function Account() {
 
         {/* Subscription */}
         <div style={{ animationDelay: '0.12s', animation: 'fadeUp 0.55s ease forwards', opacity: 0 }}>
-          <SubscriptionCard userId={user.user_id} />
+          <SubscriptionCard userId={user.user_id} onPlanChange={loadUsage} />
         </div>
 
         {/* Plan usage */}

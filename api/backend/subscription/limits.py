@@ -9,7 +9,7 @@ for every client (web and iOS) — the server is the source of truth.
 """
 
 from db import DBManager
-from schemas.subscription import FREE_LIMITS, NOTES_WINDOW_DAYS
+from schemas.subscription import FREE_LIMITS, NOTES_WINDOW_DAYS, EXPIRY_GRACE_DAYS
 
 
 class LimitsManager(DBManager):
@@ -25,11 +25,17 @@ class LimitsManager(DBManager):
         or expired plans are deleted and the pointer nulled, but we filter on
         status defensively.
         """
+        # Exclude plans whose paid period lapsed beyond the grace window, matching
+        # SubscriptionsManager.get_subscription so the usage view and the plan card
+        # agree even before the scheduler sweep removes the stale row.
         self.cur.execute(
             "SELECT 1 FROM users u "
             "JOIN subscriptions s ON s._id = u.subscription_id "
-            "WHERE u._id = %s AND s.status IN ('trialing', 'active')",
-            (user_id,),
+            "WHERE u._id = %s AND s.status IN ('trialing', 'active') "
+            "  AND s.plan_type != 'free' "
+            "  AND (s.current_period_end IS NULL "
+            "       OR s.current_period_end >= now() - (%s || ' days')::interval)",
+            (user_id, EXPIRY_GRACE_DAYS),
         )
         return self.cur.fetchone() is not None
 

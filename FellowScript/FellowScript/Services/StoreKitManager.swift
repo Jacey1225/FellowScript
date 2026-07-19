@@ -123,6 +123,29 @@ final class StoreKitManager: ObservableObject {
         return ids
     }
 
+    /// Whether the user's active FellowScript entitlement will auto-renew, plus
+    /// when the current period ends. `willAutoRenew == false` means they cancelled
+    /// (via the App Store) but still have access until `expirationDate`. Returns
+    /// nil when there is no active entitlement. Requires `loadProducts()` first.
+    struct EntitlementRenewal { let willAutoRenew: Bool; let expirationDate: Date? }
+
+    func currentRenewal() async -> EntitlementRenewal? {
+        guard let sub = products.first(where: { $0.subscription != nil })?.subscription,
+              let statuses = try? await sub.status else { return nil }
+        for status in statuses {
+            guard case .verified(let txn) = status.transaction,
+                  Self.productIDs.contains(txn.productID),
+                  status.state == .subscribed
+                    || status.state == .inGracePeriod
+                    || status.state == .inBillingRetryPeriod
+            else { continue }
+            var willRenew = true
+            if case .verified(let info) = status.renewalInfo { willRenew = info.willAutoRenew }
+            return EntitlementRenewal(willAutoRenew: willRenew, expirationDate: txn.expirationDate)
+        }
+        return nil
+    }
+
     /// Report all current active entitlements to the backend (launch + restore).
     func syncEntitlements(userId: String, service: DataServiceProtocol) async {
         for await verification in Transaction.currentEntitlements {

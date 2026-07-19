@@ -86,14 +86,17 @@ async def _fire_due_heartbeats() -> None:
 
 
 async def _reconcile_trials() -> None:
-    """Flip subscriptions whose free trial has elapsed from trialing → active."""
+    """Advance elapsed trials, and remove subscriptions whose paid period lapsed."""
     sm = SubscriptionsManager()
     try:
         n = sm.reconcile_expired_trials()
         if n:
             logger.info("Reconciled %d expired trial(s) → active", n)
+        expired = sm.reconcile_expired_subscriptions()
+        if expired:
+            logger.info("Removed %d lapsed subscription(s) past grace", expired)
     except Exception as e:
-        logger.error("Trial reconcile error: %s", e)
+        logger.error("Subscription reconcile error: %s", e)
     finally:
         sm.close()
 

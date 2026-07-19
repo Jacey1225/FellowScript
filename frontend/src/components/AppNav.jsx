@@ -17,11 +17,10 @@ export default function AppNav() {
   const accountLabel = user ? (user.username || 'Account') : 'Sign In';
   const accountHref  = user ? '/account' : '/signin';
 
-  const currentKey = location.pathname === '/'        ? 'home'
-                   : location.pathname === '/reader'  ? 'reader'
+  const currentKey = location.pathname === '/reader'  ? 'reader'
                    : location.pathname === '/account' ? 'account'
                    : location.pathname === '/signin'  ? 'account'
-                   : 'home';
+                   : '';
 
   const items = [
     { key: 'home',    label: 'Home',        icon: <HomeOutlined /> },

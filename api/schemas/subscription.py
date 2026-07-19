@@ -13,6 +13,14 @@ PLAN_CONFIG: dict[str, dict[str, int]] = {
 # billing date is computed as created_at + TRIAL_MONTHS and stored as trial_end.
 TRIAL_MONTHS = 1
 
+# Safety-net for lapsed plans. A subscription whose paid period (current_period_end)
+# ended more than this many days ago — and which was never renewed via a processor
+# notification — is treated as expired: reads stop reporting it as active and a
+# scheduler sweep removes it. The grace window absorbs a renewal that is briefly
+# mid-webhook (Stripe) or not-yet-resynced (Apple refreshes current_period_end on
+# app launch and DID_RENEW), so a healthy subscription is never dropped prematurely.
+EXPIRY_GRACE_DAYS = 3
+
 # Usage caps for users WITHOUT an active plan (the free tier). Subscribed users
 # (individual or group, trialing or active) bypass these entirely — unlimited.
 # Enforced server-side in the create routes via LimitsManager, so the caps hold
