@@ -27,11 +27,11 @@ function BackBtn({ onClick, label }) {
     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.65rem', paddingBottom: '0.4rem', borderBottom: '1px solid var(--bib-divider)', flexShrink: 0 }}>
       <button
         onClick={onClick}
-        style={{ background: 'none', border: 'none', color: 'var(--gold)', cursor: 'pointer', fontSize: '0.78rem', padding: '0 4px', fontFamily: "'Lora', serif" }}
+        style={{ background: 'none', border: 'none', color: 'var(--gold)', cursor: 'pointer', fontSize: '0.78rem', padding: '0 4px', fontFamily: "'Inter', sans-serif" }}
       >
         ← Back
       </button>
-      <span style={{ fontFamily: "'Lora', serif", fontSize: '0.55rem', letterSpacing: '0.22em', textTransform: 'uppercase', color: 'var(--bib-section-c)' }}>
+      <span style={{ fontFamily: "'Inter', sans-serif", fontSize: '0.55rem', letterSpacing: '0.22em', textTransform: 'uppercase', color: 'var(--bib-section-c)' }}>
         {label}
       </span>
     </div>
@@ -92,7 +92,7 @@ export default function VerseSelector({ books, chapterCount, verseCount, onSelec
 
   const emptyHint = (msg) => (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', padding: '1rem' }}>
-      <span style={{ fontSize: '0.72rem', color: 'rgba(200,134,26,0.35)', fontFamily: "'Lora', serif", textAlign: 'center', lineHeight: 1.6 }}>{msg}</span>
+      <span style={{ fontSize: '0.72rem', color: 'rgba(200,134,26,0.35)', fontFamily: "'Inter', sans-serif", textAlign: 'center', lineHeight: 1.6 }}>{msg}</span>
     </div>
   );
 

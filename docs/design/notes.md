@@ -1,74 +1,84 @@
 # Notes
 
-The Notes tab surfaces all annotations attached to the current chapter. Notes can be public (visible to the study group) or private (visible only to you).
+The Notes sidebar (`NotesSidebar`) appears in the right panel of the Reader. It has two tabs — Notes and Highlights — and a full rich-text editor for creating and editing notes.
 
 ---
 
-## Layout
+## Notes Tab
+
+Displays all personal notes (or group public notes when a group is selected). Notes are always sorted by **creation date, newest first**.
+
+Each note card shows:
+- **Title** — Lora serif, bold
+- **Public badge** — gold tag if the note is shared with the group
+- **Verse references** — clickable tags (`Genesis 1:1`) that navigate the reader to that verse
+- **Body preview** — up to 3 lines of plain text (HTML stripped)
+- **Creation date** — small, right-aligned, muted label: "Today", "Yesterday", "Jul 16", or "Jul 16, 2025" for older years
 
 ```
-┌────────────────────────────┐
-│ < Home   FellowScript  [⋮] │
-├────────────────────────────┤
-│ [Search]   2 Timothy 1     │
-│ Highlight: 🟡 🟠 🟢 🔴 🔵  │
-├────────────────────────────┤
-│ NOTES                      │
-│ [ All ] [ Public ] [ Mine ]│  ← Filter tabs
-├────────────────────────────┤
-│ 2 Tim 1:6                  │
-│ "Fan into flame" — this is │
-│ active. The flame is        │  ← Public note card
-│ already there...           │
-│ 🟢 Sarah R.        Public  │
-├────────────────────────────┤
-│ 2 Tim 1:7                  │
-│ Power, love, and self-      │
-│ discipline — not one        │  ← Another public note
-│ without the others...      │
-│ 🔵 David K.        Public  │
-├────────────────────────────┤
-│ 2 Tim 1:3                  │
-│ Praying constantly for      │
-│ someone while apart —      │  ← Your private note
-│ this is deep discipleship. │
-│ 🟠 You             Private │
-├────────────────────────────┤
-│ Add a note on verse 4...   │  ← Add note input
-│ [ Public ] [ Private ]     │  ← Visibility toggle
-│              [ Add note ]  │
-└────────────────────────────┘
-│  [📖 Read] [📝 Notes] [👥 Community] │
-└────────────────────────────┘
+┌────────────────────────────────┐
+│ Fan into Flame         [✏] [🗑]│
+│ 2 Tim 1:6                      │
+│ This is active. The gift of    │
+│ God is already in you, waiting │
+│ to be stirred up…              │
+│                       Jul 19   │
+└────────────────────────────────┘
 ```
 
 ---
 
-## Filter Tabs
+## Highlights Tab
 
-| Tab | Shows |
-|---|---|
-| All | Every note on this chapter (public from group + your private notes) |
-| Public | Only notes visible to the whole group |
-| Mine | Only your own notes (both public and private) |
+Lists all verse highlights for the user (or group, if a group is selected) as clickable rows, sorted by book → chapter → verse. Clicking a row navigates the reader to that verse.
+
+Group view shows a colored dot and the username of each member's highlight.
 
 ---
 
-## Note Card Structure
+## Group Selector
 
-Each note card displays:
-- **Verse reference** (e.g. `2 Tim 1:6`)
-- **Note body** — the annotation text
-- **Author avatar + name** (color-coded initials)
-- **Visibility badge** — `Public` or `Private`
+A compact dropdown on the right side of the tab bar switches between **Personal** (your own notes) and any study groups you belong to. In group view, all members' public notes appear.
 
 ---
 
-## Adding a Note
+## Filter & Sort Panel
 
-1. Tap a verse in the Read tab, or use the "Add a note on verse…" input in the Notes tab
-2. Type the note
-3. Toggle **Public** or **Private**
-4. Tap **Add note** to save
+The filter icon (top-right of the Notes header) opens a panel with:
+- **Sort by date** — Newest first / Oldest first
+- **Filter by** — Book, Title, Date, or User (group view only)
 
-Public notes are immediately visible to all members of the study group.
+---
+
+## Note Editor
+
+Opening a note or tapping **New** replaces the sidebar with a full editor:
+
+### Header bar
+- Cancel button (left)
+- Public toggle (centre) — switch to share the note with the current group
+- Save button (right)
+
+### Verse bar
+Linked verse tags with a `×` to remove; a `+` button opens `VerseSelector` to add more.
+
+### Formatting toolbar
+Bold · Italic · Underline · Highlight (`<mark>`) · Text color (six swatches)
+
+All formatting uses `execCommand` on a `contentEditable` div. The toolbar buttons light up gold when the cursor is inside the corresponding format.
+
+### Writing area
+- Title: auto-resizing `<textarea>`, large Playfair Display
+- Body: `contentEditable` div with placeholder "Start writing…"
+
+---
+
+## Note Detail
+
+Tapping a note card opens a detail view showing the full rich-text body (`NoteBody` renderer), linked verse tags, and — in group view — a reply thread with a reply input.
+
+---
+
+## Creation Date Storage
+
+`created_at` is set at INSERT time and never modified on edits. `timestamp` is bumped on every edit. The frontend sorts by `created_at` (falling back to `timestamp` for legacy notes) and displays `created_at` as the date label on each card.

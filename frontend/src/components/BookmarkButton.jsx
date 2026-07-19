@@ -84,7 +84,7 @@ export default function BookmarkButton({ user, bookmarks, curBook, curChapter, o
               color: isBookmarked ? 'rgba(255,130,130,0.8)' : 'rgba(200,134,26,0.85)',
               cursor: currentKey ? 'pointer' : 'default',
               fontSize: '0.68rem',
-              fontFamily: "'Lora', serif",
+              fontFamily: "'Inter', sans-serif",
               padding: '0.28rem 0.6rem',
               textAlign: 'left',
               width: '100%',
@@ -120,7 +120,7 @@ export default function BookmarkButton({ user, bookmarks, curBook, curChapter, o
                           color: 'rgba(244,228,193,0.7)',
                           cursor: 'pointer',
                           fontSize: '0.68rem',
-                          fontFamily: "'Lora', serif",
+                          fontFamily: "'Inter', sans-serif",
                           padding: '0.2rem 0.65rem',
                           textAlign: 'left',
                           overflow: 'hidden',
@@ -159,7 +159,7 @@ export default function BookmarkButton({ user, bookmarks, curBook, curChapter, o
             <p style={{
               fontSize: '0.62rem',
               color: 'rgba(244,228,193,0.22)',
-              fontFamily: "'Lora', serif",
+              fontFamily: "'Inter', sans-serif",
               fontStyle: 'italic',
               margin: '0.1rem 0.2rem 0',
             }}>

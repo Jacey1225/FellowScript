@@ -11,6 +11,21 @@ import { NoteBody, stripHtml as sanitizeStripHtml } from './RichText.jsx';
 // Format a single [book, chapter, verse] triple into a display string
 function fmtVerse([b, c, v]) { return `${b} ${c}:${v}`; }
 
+// Format a note's creation timestamp into a compact, human-readable label
+function fmtDate(ts) {
+  if (!ts) return '';
+  const d = new Date(ts);
+  if (isNaN(d.getTime())) return '';
+  const now = new Date();
+  if (d.toDateString() === now.toDateString()) return 'Today';
+  const yesterday = new Date(now); yesterday.setDate(now.getDate() - 1);
+  if (d.toDateString() === yesterday.toDateString()) return 'Yesterday';
+  return d.toLocaleDateString('en-US', {
+    month: 'short', day: 'numeric',
+    ...(d.getFullYear() !== now.getFullYear() ? { year: 'numeric' } : {}),
+  });
+}
+
 // Return an array of valid verse triples from a note's verses field.
 // Handles both the old [start, end] range format and the new per-verse list.
 function validVerses(verses) {
@@ -40,7 +55,7 @@ function FmtBtn({ children, title, onMouseDown, active }) {
       onMouseDown={onMouseDown}
       style={{
         ...base,
-        border: `1px solid ${base.borderColor}`,
+        border: 'none',
         borderRadius: 10,
         cursor: 'pointer',
         fontSize: '0.92rem',
@@ -255,7 +270,7 @@ function NoteEditor({ note, noteId, user, currentGroupId, books, chapterCount, v
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flex: 1, justifyContent: 'center' }}>
           <Switch size="small" checked={isPublic} onChange={setIsPublic}
             style={{ background: isPublic ? 'rgba(200,134,26,0.8)' : undefined }} />
-          <span style={{ fontSize: '0.72rem', color: 'rgba(244,228,193,0.55)', fontFamily: "'Lora', serif" }}>Public</span>
+          <span style={{ fontSize: '0.72rem', color: 'rgba(244,228,193,0.55)', fontFamily: "'Inter', sans-serif" }}>Public</span>
         </div>
         <button className="note-editor-action-btn note-editor-save" onClick={handleSave}>Save</button>
       </div>
@@ -276,32 +291,31 @@ function NoteEditor({ note, noteId, user, currentGroupId, books, chapterCount, v
       {/* Format toolbar */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', padding: '0.55rem 0.85rem 0.5rem', flexWrap: 'wrap', borderBottom: '1px solid rgba(200,134,26,0.12)' }}>
         <FmtBtn title="Bold (click again to remove)" onMouseDown={fmt('bold')} active={activeFormats.bold}>
-          <strong style={{ fontFamily: 'Georgia, serif', fontSize: '1rem', letterSpacing: '0.01em' }}>B</strong>
+          <strong style={{ fontFamily: "'Inter', sans-serif", fontSize: '1rem', letterSpacing: '0.01em' }}>B</strong>
         </FmtBtn>
         <FmtBtn title="Italic (click again to remove)" onMouseDown={fmt('italic')} active={activeFormats.italic}>
-          <em style={{ fontFamily: 'Georgia, serif', fontSize: '1rem' }}>I</em>
+          <em style={{ fontFamily: "'Inter', sans-serif", fontSize: '1rem' }}>I</em>
         </FmtBtn>
         <FmtBtn title="Underline (click again to remove)" onMouseDown={fmt('underline')} active={activeFormats.underline}>
-          <span style={{ textDecoration: 'underline', textUnderlineOffset: 3, fontFamily: 'Georgia, serif', fontSize: '1rem' }}>U</span>
+          <span style={{ textDecoration: 'underline', textUnderlineOffset: 3, fontFamily: "'Inter', sans-serif", fontSize: '1rem' }}>U</span>
         </FmtBtn>
         <FmtBtn title="Highlight (click again to remove)" onMouseDown={toggleHighlight} active={activeFormats.highlight}>
-          <span style={{ background: activeFormats.highlight ? 'rgba(200,134,26,0.65)' : 'rgba(200,134,26,0.42)', borderRadius: 3, padding: '1px 5px', fontFamily: 'Georgia, serif', fontSize: '0.9rem' }}>H</span>
+          <span style={{ background: activeFormats.highlight ? 'rgba(200,134,26,0.65)' : 'rgba(200,134,26,0.42)', borderRadius: 3, padding: '1px 5px', fontFamily: "'Inter', sans-serif", fontSize: '0.9rem' }}>H</span>
         </FmtBtn>
         {/* Text color — lights up when cursor is in colored text; click to remove color */}
         <div ref={colorWrapRef} style={{ position: 'relative' }}>
           <FmtBtn title={activeFormats.color ? 'Remove color' : 'Text color'} onMouseDown={onColorBtnMouseDown} active={activeFormats.color}>
-            <span style={{ borderBottom: `2.5px solid ${activeFormats.color ? 'var(--gold)' : 'var(--gold)'}`, paddingBottom: 2, fontFamily: 'Georgia, serif', fontSize: '1rem' }}>A</span>
+            <span style={{ borderBottom: `2.5px solid ${activeFormats.color ? 'var(--gold)' : 'var(--gold)'}`, paddingBottom: 2, fontFamily: "'Inter', sans-serif", fontSize: '1rem' }}>A</span>
           </FmtBtn>
           {showColors && (
             <div style={{
               position: 'absolute', top: 'calc(100% + 8px)', left: 0,
               display: 'flex', gap: '0.38rem',
               background: 'rgba(12,7,1,0.97)',
-              border: '1px solid rgba(200,134,26,0.28)',
+              border: 'none',
               borderRadius: 14,
               padding: '0.5rem 0.6rem',
               zIndex: 30,
-              boxShadow: '0 8px 28px rgba(0,0,0,0.65)',
             }}>
               {TEXT_COLORS.map(color => (
                 <button
@@ -312,7 +326,7 @@ function NoteEditor({ note, noteId, user, currentGroupId, books, chapterCount, v
                     width: 24, height: 24,
                     borderRadius: '50%',
                     background: color,
-                    border: '1.5px solid rgba(255,255,255,0.18)',
+                    border: 'none',
                     cursor: 'pointer',
                     padding: 0,
                     flexShrink: 0,
@@ -361,7 +375,7 @@ function NoteCard({ id, note, owner, isOwn, onEdit, onDelete, onOpen, onNavigate
       onClick={() => onOpen(id)}
     >
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '0.5rem', marginBottom: '0.4rem' }}>
-        <Text strong style={{ fontFamily: "'Lora', serif", fontSize: '0.85rem', color: 'var(--parchment)', lineHeight: 1.3 }}>
+        <Text strong style={{ fontFamily: "'Inter', sans-serif", fontSize: '0.85rem', color: 'var(--parchment)', lineHeight: 1.3 }}>
           {note.title || 'Untitled'}
           {note.public && <Tag style={{ marginLeft: 6, fontSize: '0.52rem', letterSpacing: '0.12em' }}>Public</Tag>}
           {owner && <Tag color="gold" style={{ marginLeft: 4, fontSize: '0.52rem' }}>{owner}</Tag>}
@@ -383,11 +397,11 @@ function NoteCard({ id, note, owner, isOwn, onEdit, onDelete, onOpen, onNavigate
               onClick={() => { if (onNavigateVerse) onNavigateVerse(v[0], v[1], v[2]); }}
               style={{
                 background: 'rgba(200,134,26,0.1)',
-                border: '1px solid rgba(200,134,26,0.28)',
+                border: 'none',
                 borderRadius: 4,
                 padding: '0.1rem 0.5rem',
                 cursor: onNavigateVerse ? 'pointer' : 'default',
-                fontFamily: "'IM Fell English', serif",
+                fontFamily: "'Inter', sans-serif",
                 fontStyle: 'italic',
                 fontSize: '0.68rem',
                 color: 'var(--gold)',
@@ -404,6 +418,11 @@ function NoteCard({ id, note, owner, isOwn, onEdit, onDelete, onOpen, onNavigate
       <p style={{ margin: 0, fontSize: '0.8rem', color: 'rgba(244,228,193,0.55)', lineHeight: 1.6, display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden', maxHeight: '3.84rem' }}>
         {stripHtml(note.text)}
       </p>
+      {(note.created_at || note.timestamp) && (
+        <p style={{ margin: '0.35rem 0 0', fontSize: '0.62rem', color: 'rgba(244,228,193,0.28)', textAlign: 'right', fontFamily: "'Inter', sans-serif", letterSpacing: '0.02em' }}>
+          {fmtDate(note.created_at || note.timestamp)}
+        </p>
+      )}
     </div>
   );
 }
@@ -427,7 +446,7 @@ function NoteDetail({ note, noteId, onBack, canReply, onReply, replies, repliesL
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', padding: '0.55rem 0.6rem', borderBottom: '1px solid rgba(200,134,26,0.15)', flexShrink: 0 }}>
         <Button type="text" icon={<ArrowLeftOutlined />} onClick={onBack} style={{ color: 'rgba(200,134,26,0.6)', padding: '0 4px' }} />
-        <Text strong style={{ fontFamily: "'Playfair Display', serif", fontSize: '0.95rem', color: 'var(--parchment)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <Text strong style={{ fontFamily: "'DM Serif Display', serif", fontSize: '0.95rem', color: 'var(--parchment)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {note?.title || 'Note'}
         </Text>
       </div>
@@ -445,7 +464,7 @@ function NoteDetail({ note, noteId, onBack, canReply, onReply, replies, repliesL
                   borderRadius: 4,
                   padding: '0.1rem 0.5rem',
                   cursor: onNavigateVerse ? 'pointer' : 'default',
-                  fontFamily: "'IM Fell English', serif",
+                  fontFamily: "'Inter', sans-serif",
                   fontStyle: 'italic',
                   fontSize: '0.68rem',
                   color: 'var(--gold)',
@@ -493,12 +512,12 @@ function HighlightCard({ book, chapter, verse, color, username, onNavigate }) {
         display: 'flex', alignItems: 'center', gap: '0.6rem',
         padding: '0.5rem 0.7rem',
         background: 'rgba(20,12,4,0.5)',
-        border: '1px solid rgba(200,134,26,0.18)',
+        border: 'none',
         borderRadius: 10, cursor: 'pointer',
-        transition: 'border-color 0.15s',
+        transition: 'background 0.15s',
       }}
-      onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(200,134,26,0.38)'; }}
-      onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(200,134,26,0.18)'; }}
+      onMouseEnter={e => { e.currentTarget.style.background = 'rgba(20,12,4,0.75)'; }}
+      onMouseLeave={e => { e.currentTarget.style.background = 'rgba(20,12,4,0.5)'; }}
     >
       <span style={{
         width: 10, height: 10, borderRadius: '50%',
@@ -506,7 +525,7 @@ function HighlightCard({ book, chapter, verse, color, username, onNavigate }) {
         boxShadow: `0 0 0 2px rgba(0,0,0,0.3)`,
       }} />
       <Text style={{
-        fontFamily: "'IM Fell English', serif", fontStyle: 'italic',
+        fontFamily: "'Inter', sans-serif", fontStyle: 'italic',
         fontSize: '0.82rem', color: 'var(--gold)', flex: 1,
       }}>
         {book} {chapter}:{verse}
@@ -531,7 +550,7 @@ function FilterPanel({ onApply, onClear, onClose, groupUsernames }) {
     <div style={{ position: 'absolute', inset: 0, background: 'rgba(6,4,1,0.98)', zIndex: 4, display: 'flex', flexDirection: 'column' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', padding: '0.55rem 0.6rem', borderBottom: '1px solid rgba(200,134,26,0.15)' }}>
         <Button type="text" icon={<ArrowLeftOutlined />} onClick={onClose} style={{ color: 'rgba(200,134,26,0.6)' }} />
-        <Text strong style={{ fontFamily: "'Playfair Display', serif", fontSize: '0.95rem', color: 'var(--parchment)', flex: 1 }}>Filter & Sort</Text>
+        <Text strong style={{ fontFamily: "'DM Serif Display', serif", fontSize: '0.95rem', color: 'var(--parchment)', flex: 1 }}>Filter & Sort</Text>
       </div>
       <div style={{ flex: 1, overflowY: 'auto', padding: '0.85rem 0.6rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
         <div>
@@ -574,6 +593,7 @@ export default function NotesSidebar({
   books, chapterCount, verseCount,
   localHl, groupHighlights, groupUsernames,
   onNavigateVerse,
+  initialTab,
 }) {
   const [editorOpen,   setEditorOpen]   = useState(false);
   const [editorNoteId, setEditorNoteId] = useState(null);
@@ -583,6 +603,7 @@ export default function NotesSidebar({
   const [replies,      setReplies]      = useState([]);
   const [repliesLoading, setRepliesLoading] = useState(false);
   const [activeTab,    setActiveTab]    = useState(() => {
+    if (initialTab) return initialTab;
     try { return localStorage.getItem('fs_notes_tab') || 'verse'; } catch { return 'verse'; }
   });
 
@@ -603,10 +624,10 @@ export default function NotesSidebar({
         list.push([id, note, null, false]);
       });
     }
-    // Most recently edited first (backend bumps `timestamp` on every edit).
+    // Most recently created first — prefer created_at, fall back to timestamp.
     return list.sort((a, b) => {
-      const ta = new Date(a[1]?.timestamp || 0).getTime() || 0;
-      const tb = new Date(b[1]?.timestamp || 0).getTime() || 0;
+      const ta = new Date(a[1]?.created_at || a[1]?.timestamp || 0).getTime() || 0;
+      const tb = new Date(b[1]?.created_at || b[1]?.timestamp || 0).getTime() || 0;
       return tb - ta;
     });
   }, [notes, currentGroupId, user]);
@@ -641,11 +662,11 @@ export default function NotesSidebar({
 
   const verseEmpty = (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1, padding: '2.5rem 1.5rem', textAlign: 'center', gap: '1rem' }}>
-      <div style={{ fontFamily: "'IM Fell English', serif", fontStyle: 'italic', fontSize: '2rem', color: 'rgba(200,134,26,0.25)', lineHeight: 1 }}>✦</div>
-      <Text style={{ fontFamily: "'Playfair Display', serif", fontSize: '0.95rem', color: 'rgba(244,228,193,0.55)', display: 'block', lineHeight: 1.4 }}>
+      <div style={{ fontFamily: "'Inter', sans-serif", fontStyle: 'italic', fontSize: '2rem', color: 'rgba(200,134,26,0.25)', lineHeight: 1 }}>✦</div>
+      <Text style={{ fontFamily: "'DM Serif Display', serif", fontSize: '0.95rem', color: 'rgba(244,228,193,0.55)', display: 'block', lineHeight: 1.4 }}>
         Your study begins here
       </Text>
-      <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.72rem', color: 'rgba(244,228,193,0.28)', lineHeight: 1.65, display: 'block' }}>
+      <Text style={{ fontFamily: "'Inter', sans-serif", fontSize: '0.72rem', color: 'rgba(244,228,193,0.28)', lineHeight: 1.65, display: 'block' }}>
         Tap <strong style={{ color: 'rgba(200,134,26,0.55)' }}>New</strong> to capture your first note.
       </Text>
       <Button
@@ -710,11 +731,40 @@ export default function NotesSidebar({
             ? <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '3rem 0' }}><Spin size="default" /></div>
             : verseList.length === 0
             ? verseEmpty
-            : verseList.map(([id, note, owner, isOwn]) => (
-                <NoteCard key={id} id={id} note={note} owner={owner} isOwn={isOwn}
-                  onEdit={openEditor} onDelete={handleDelete} onOpen={openDetail}
-                  onNavigateVerse={onNavigateVerse} />
-              ))
+            : (() => {
+                // Group notes by the first referenced book; no-verse notes go last.
+                const groups = new Map();
+                verseList.forEach(entry => {
+                  const book = entry[1]?.note_verses?.[0]?.[0] || '__none__';
+                  if (!groups.has(book)) groups.set(book, []);
+                  groups.get(book).push(entry);
+                });
+                const sorted = [...groups.entries()].sort(([a], [b]) => {
+                  if (a === '__none__') return 1;
+                  if (b === '__none__') return -1;
+                  return a.localeCompare(b);
+                });
+                return sorted.flatMap(([book, entries]) => [
+                  <div key={`hdr-${book}`} style={{
+                    fontFamily: "'Inter', sans-serif",
+                    fontSize: '0.67rem',
+                    fontWeight: 700,
+                    letterSpacing: '0.08em',
+                    textTransform: 'uppercase',
+                    color: 'rgba(201,138,75,0.45)',
+                    padding: '0.6rem 0.5rem 0.25rem',
+                    marginTop: '0.25rem',
+                    borderBottom: '1px solid rgba(201,138,75,0.1)',
+                  }}>
+                    {book === '__none__' ? 'General' : book}
+                  </div>,
+                  ...entries.map(([id, note, owner, isOwn]) => (
+                    <NoteCard key={id} id={id} note={note} owner={owner} isOwn={isOwn}
+                      onEdit={openEditor} onDelete={handleDelete} onOpen={openDetail}
+                      onNavigateVerse={onNavigateVerse} />
+                  )),
+                ]);
+              })()
           }
         </div>
       ),
@@ -726,7 +776,7 @@ export default function NotesSidebar({
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', padding: '0.5rem 0.4rem' }}>
           {hlList.length === 0
             ? <div style={{ textAlign: 'center', padding: '2rem 1rem' }}>
-                <Text style={{ fontSize: '0.75rem', color: 'rgba(244,228,193,0.25)', fontFamily: "'Lora', serif" }}>
+                <Text style={{ fontSize: '0.75rem', color: 'rgba(244,228,193,0.25)', fontFamily: "'Inter', sans-serif" }}>
                   {currentGroupId ? 'No highlights in this group yet.' : 'No highlights yet — mark a verse while reading.'}
                 </Text>
               </div>
@@ -778,7 +828,7 @@ export default function NotesSidebar({
 
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.75rem 0.6rem 0.6rem', borderBottom: '1px solid rgba(200,134,26,0.15)', flexShrink: 0 }}>
-        <Title level={5} style={{ margin: 0, fontFamily: "'Playfair Display', serif", color: 'var(--parchment)' }}>Notes</Title>
+        <Title level={5} style={{ margin: 0, fontFamily: "'DM Serif Display', serif", color: 'var(--parchment)' }}>Notes</Title>
         <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
           <Button
             type="text" size="small" icon={<FilterOutlined />}

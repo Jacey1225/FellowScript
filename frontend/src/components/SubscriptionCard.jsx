@@ -16,10 +16,10 @@ const CARD_STYLE = {
 };
 
 const LABEL = {
-  fontFamily: "'Lora', serif", fontSize: '0.56rem', letterSpacing: '0.3em',
+  fontFamily: "'Inter', sans-serif", fontSize: '0.56rem', letterSpacing: '0.3em',
   textTransform: 'uppercase', color: 'rgba(200,134,26,0.5)', display: 'block',
 };
-const MUTED = { fontFamily: "'Lora', serif", fontSize: '0.8rem', color: 'rgba(244,228,193,0.35)' };
+const MUTED = { fontFamily: "'Inter', sans-serif", fontSize: '0.8rem', color: 'rgba(244,228,193,0.35)' };
 
 // Server-authoritative catalog (mirrors api/schemas/subscription.py PLAN_CONFIG).
 const PLANS = {
@@ -238,7 +238,7 @@ export default function SubscriptionCard({ userId, onPlanChange }) {
               </div>
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ fontFamily: "'Playfair Display', serif", fontSize: '1.1rem', color: 'var(--parchment)' }}>Free Plan</span>
+                  <span style={{ fontFamily: "'DM Serif Display', serif", fontSize: '1.1rem', color: 'var(--parchment)' }}>Free Plan</span>
                   <Tag color="default">Active</Tag>
                 </div>
                 <span style={MUTED}>10 notes/week · 1 AI event · 3 notifications</span>
@@ -254,20 +254,20 @@ export default function SubscriptionCard({ userId, onPlanChange }) {
               <div key={type} style={{ flex: 1, minWidth: 180, border: '1px solid rgba(200,134,26,0.2)', borderRadius: 12, padding: '1.1rem' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, color: 'var(--gold)' }}>
                   {p.icon}
-                  <span style={{ fontFamily: "'Playfair Display', serif", fontSize: '1.05rem', color: 'var(--parchment)' }}>{p.label}</span>
+                  <span style={{ fontFamily: "'DM Serif Display', serif", fontSize: '1.05rem', color: 'var(--parchment)' }}>{p.label}</span>
                 </div>
-                <div style={{ fontFamily: "'Playfair Display', serif", fontSize: '1.7rem', color: 'var(--gold)', lineHeight: 1 }}>
+                <div style={{ fontFamily: "'DM Serif Display', serif", fontSize: '1.7rem', color: 'var(--gold)', lineHeight: 1 }}>
                   ${p.price}<span style={{ fontSize: '0.8rem', color: 'rgba(244,228,193,0.4)' }}>/mo</span>
                 </div>
                 <div style={{ ...MUTED, margin: '0.35rem 0 0.2rem' }}>
                   {type === 'group' ? 'Up to 5 members' : 'Just you'}
                 </div>
-                <div style={{ fontFamily: "'Lora', serif", fontSize: '0.72rem', color: 'rgba(200,134,26,0.7)', marginBottom: '0.9rem' }}>
+                <div style={{ fontFamily: "'Inter', sans-serif", fontSize: '0.72rem', color: 'rgba(200,134,26,0.7)', marginBottom: '0.9rem' }}>
                   Free for 1 month, then ${p.price}/mo
                 </div>
                 <Button type="primary" block loading={busy === `start-${type}`}
                   onClick={() => startCheckout(type)}
-                  style={{ borderRadius: 8, fontFamily: "'Lora', serif" }}>
+                  style={{ borderRadius: 8, fontFamily: "'Inter', sans-serif" }}>
                   Start free trial
                 </Button>
               </div>
@@ -283,7 +283,7 @@ export default function SubscriptionCard({ userId, onPlanChange }) {
             </div>
             <div style={{ flex: 1 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontFamily: "'Playfair Display', serif", fontSize: '1.15rem', color: 'var(--parchment)' }}>
+                <span style={{ fontFamily: "'DM Serif Display', serif", fontSize: '1.15rem', color: 'var(--parchment)' }}>
                   {cfg.label} Plan
                 </span>
                 <Tag color={statusColor(plan.status)} style={{ textTransform: 'capitalize' }}>
@@ -300,7 +300,7 @@ export default function SubscriptionCard({ userId, onPlanChange }) {
           {/* Trial / billing status */}
           {isHost && (plan.next_billing_date || plan.is_trial) && (
             <div style={{ marginTop: '0.7rem', padding: '0.6rem 0.8rem', borderRadius: 8, background: 'rgba(200,134,26,0.07)', border: '1px solid rgba(200,134,26,0.15)' }}>
-              <span style={{ fontFamily: "'Lora', serif", fontSize: '0.78rem', color: 'rgba(244,228,193,0.7)' }}>
+              <span style={{ fontFamily: "'Inter', sans-serif", fontSize: '0.78rem', color: 'rgba(244,228,193,0.7)' }}>
                 {plan.is_trial ? (
                   <>🎁 Free trial · <span style={{ color: 'var(--gold)' }}>{plan.trial_days_remaining} day{plan.trial_days_remaining === 1 ? '' : 's'} left</span>. First billing {fmtDate(plan.next_billing_date)}.</>
                 ) : (
@@ -324,7 +324,7 @@ export default function SubscriptionCard({ userId, onPlanChange }) {
                   <Avatar size="small" style={{ background: 'rgba(200,134,26,0.15)', color: 'var(--gold)' }}>
                     {(m.username || '?')[0].toUpperCase()}
                   </Avatar>
-                  <span style={{ flex: 1, fontFamily: "'Lora', serif", fontSize: '0.84rem', color: 'var(--parchment)' }}>
+                  <span style={{ flex: 1, fontFamily: "'Inter', sans-serif", fontSize: '0.84rem', color: 'var(--parchment)' }}>
                     {m.username}{m.user_id === userId && <span style={{ color: 'rgba(244,228,193,0.35)' }}> (you)</span>}
                   </span>
                   {m.user_id !== userId && (
@@ -345,7 +345,7 @@ export default function SubscriptionCard({ userId, onPlanChange }) {
                   <Avatar size="small" style={{ background: 'rgba(200,134,26,0.15)', color: 'var(--gold)' }}>
                     {(r.username || '?')[0].toUpperCase()}
                   </Avatar>
-                  <span style={{ flex: 1, fontFamily: "'Lora', serif", fontSize: '0.84rem', color: 'var(--parchment)' }}>{r.username}</span>
+                  <span style={{ flex: 1, fontFamily: "'Inter', sans-serif", fontSize: '0.84rem', color: 'var(--parchment)' }}>{r.username}</span>
                   <Button size="small" type="primary" icon={<CheckOutlined />} loading={busy === `acc-${r.user_id}`}
                     onClick={() => acceptRequest(r.user_id)} style={{ borderRadius: 8 }}>Accept</Button>
                   <Button size="small" type="text" icon={<CloseOutlined />} loading={busy === `dec-${r.user_id}`}
@@ -360,12 +360,12 @@ export default function SubscriptionCard({ userId, onPlanChange }) {
             {isHost ? (
               <Popconfirm title="Cancel this plan?" description="This ends the plan and removes all members." okText="Cancel plan" cancelText="Keep"
                 onConfirm={cancelPlan} okButtonProps={{ danger: true }}>
-                <Button danger loading={busy === 'cancel'} icon={<DeleteOutlined />} style={{ borderRadius: 8, fontFamily: "'Lora', serif" }}>
+                <Button danger loading={busy === 'cancel'} icon={<DeleteOutlined />} style={{ borderRadius: 8, fontFamily: "'Inter', sans-serif" }}>
                   Cancel Plan
                 </Button>
               </Popconfirm>
             ) : (
-              <Button danger loading={busy === 'leave'} onClick={leavePlan} style={{ borderRadius: 8, fontFamily: "'Lora', serif" }}>
+              <Button danger loading={busy === 'leave'} onClick={leavePlan} style={{ borderRadius: 8, fontFamily: "'Inter', sans-serif" }}>
                 Leave Plan
               </Button>
             )}
@@ -379,7 +379,7 @@ export default function SubscriptionCard({ userId, onPlanChange }) {
           <span style={{ ...LABEL, marginBottom: '0.6rem' }}>Your Pending Requests</span>
           {myReqs.map(r => (
             <div key={r.subscription_id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '0.4rem 0' }}>
-              <span style={{ flex: 1, fontFamily: "'Lora', serif", fontSize: '0.82rem', color: 'rgba(244,228,193,0.65)' }}>
+              <span style={{ flex: 1, fontFamily: "'Inter', sans-serif", fontSize: '0.82rem', color: 'rgba(244,228,193,0.65)' }}>
                 Requested to join a group plan
               </span>
               <Button size="small" type="text" loading={busy === `cxl-${r.subscription_id}`}
@@ -400,7 +400,7 @@ export default function SubscriptionCard({ userId, onPlanChange }) {
                 <Avatar size="small" style={{ background: 'rgba(200,134,26,0.15)', color: 'var(--gold)' }}>
                   {(p.hostName || '?')[0].toUpperCase()}
                 </Avatar>
-                <span style={{ flex: 1, fontFamily: "'Lora', serif", fontSize: '0.84rem', color: 'var(--parchment)' }}>
+                <span style={{ flex: 1, fontFamily: "'Inter', sans-serif", fontSize: '0.84rem', color: 'var(--parchment)' }}>
                   {p.hostName}'s Group
                   <span style={{ color: 'rgba(244,228,193,0.35)' }}> · {p.memberCount}/{p.max_members}</span>
                 </span>

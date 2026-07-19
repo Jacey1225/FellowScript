@@ -101,10 +101,10 @@ function UpcomingCard({ session, activeSessionId, onJoin, onLeave, onEdit, onDel
       }}>
         <PhoneOutlined style={{ fontSize: '0.8rem', color: 'rgba(200,134,26,0.45)', flexShrink: 0 }} />
         <div style={{ flex: 1, minWidth: 0 }}>
-          <Text style={{ display: 'block', fontFamily: "'Lora', serif", fontSize: '0.78rem', color: 'var(--parchment)', lineHeight: 1.3 }}>
+          <Text style={{ display: 'block', fontFamily: "'Inter', sans-serif", fontSize: '0.78rem', color: 'var(--parchment)', lineHeight: 1.3 }}>
             {session.title}
           </Text>
-          <Text style={{ fontSize: '0.62rem', color: 'rgba(244,228,193,0.4)', fontFamily: "'Lora', serif" }}>
+          <Text style={{ fontSize: '0.62rem', color: 'rgba(244,228,193,0.4)', fontFamily: "'Inter', sans-serif" }}>
             {formatTime(session.time_start)}
             {session.time_end ? ` – ${formatTime(session.time_end)}` : ''}
             {session.recurring && <span style={{ marginLeft: '0.4rem', color: 'rgba(200,134,26,0.55)' }}>· Weekly</span>}
@@ -148,7 +148,7 @@ function ActiveCard({ session, user, activeSessionId, talkingUserId, onJoin, onL
         {/* Row 1: title + controls */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', minWidth: 0 }}>
-            <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.82rem', color: 'var(--parchment)', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <Text style={{ fontFamily: "'Inter', sans-serif", fontSize: '0.82rem', color: 'var(--parchment)', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {session.title}
             </Text>
             {isJoined && (
@@ -190,7 +190,7 @@ function ActiveCard({ session, user, activeSessionId, talkingUserId, onJoin, onL
 
         {/* Row 1b: time + recurring */}
         <div style={{ marginBottom: '0.35rem' }}>
-          <Text style={{ fontSize: '0.6rem', color: 'rgba(244,228,193,0.35)', fontFamily: "'Lora', serif" }}>
+          <Text style={{ fontSize: '0.6rem', color: 'rgba(244,228,193,0.35)', fontFamily: "'Inter', sans-serif" }}>
             {formatTime(session.time_start)}
             {session.time_end ? ` – ${formatTime(session.time_end)}` : ''}
             {session.recurring && <span style={{ marginLeft: '0.4rem', color: 'rgba(200,134,26,0.5)' }}>· Weekly</span>}
@@ -200,7 +200,7 @@ function ActiveCard({ session, user, activeSessionId, talkingUserId, onJoin, onL
         {/* Row 2: participants */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.22rem', marginBottom: (session.verses || []).length ? '0.4rem' : 0, flexWrap: 'wrap' }}>
           {(session.participants || []).length === 0 ? (
-            <Text style={{ fontSize: '0.6rem', color: 'rgba(244,228,193,0.25)', fontFamily: "'Lora', serif", fontStyle: 'italic' }}>
+            <Text style={{ fontSize: '0.6rem', color: 'rgba(244,228,193,0.25)', fontFamily: "'Inter', sans-serif", fontStyle: 'italic' }}>
               No one has joined yet
             </Text>
           ) : (
@@ -265,7 +265,7 @@ function ActiveCard({ session, user, activeSessionId, talkingUserId, onJoin, onL
                     background: 'none', border: '1px solid rgba(200,134,26,0.18)',
                     borderRadius: 3, padding: '0.08rem 0.35rem',
                     cursor: 'pointer', fontSize: '0.6rem',
-                    color: 'rgba(200,134,26,0.7)', fontFamily: "'Lora', serif",
+                    color: 'rgba(200,134,26,0.7)', fontFamily: "'Inter', sans-serif",
                     transition: 'border-color 0.15s, color 0.15s',
                   }}
                   onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(200,134,26,0.55)'; e.currentTarget.style.color = 'var(--gold)'; }}
@@ -281,12 +281,12 @@ function ActiveCard({ session, user, activeSessionId, talkingUserId, onJoin, onL
         {/* Row 4: discussion prompts (only when joined) */}
         {isJoined && (session.prompts || []).length > 0 && (
           <div style={{ marginTop: '0.4rem', paddingTop: '0.4rem', borderTop: '1px solid rgba(200,134,26,0.12)' }}>
-            <Text style={{ display: 'block', fontSize: '0.55rem', letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(200,134,26,0.45)', fontFamily: "'Lora', serif", marginBottom: '0.3rem' }}>
+            <Text style={{ display: 'block', fontSize: '0.55rem', letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(200,134,26,0.45)', fontFamily: "'Inter', sans-serif", marginBottom: '0.3rem' }}>
               Discussion Prompts
             </Text>
             <ol style={{ margin: 0, padding: '0 0 0 1.1rem', display: 'flex', flexDirection: 'column', gap: '0.28rem' }}>
               {(session.prompts || []).map((p, i) => (
-                <li key={i} style={{ fontSize: '0.7rem', color: 'rgba(244,228,193,0.75)', fontFamily: "'Lora', serif", lineHeight: 1.55 }}>
+                <li key={i} style={{ fontSize: '0.7rem', color: 'rgba(244,228,193,0.75)', fontFamily: "'Inter', sans-serif", lineHeight: 1.55 }}>
                   {p}
                 </li>
               ))}

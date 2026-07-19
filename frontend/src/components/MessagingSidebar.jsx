@@ -20,11 +20,11 @@ function ContactItem({ contact, onOpen, onRemove, onEditGroup }) {
       onMouseEnter={e => { e.currentTarget.style.background = 'rgba(200,134,26,0.07)'; e.currentTarget.style.borderLeftColor = 'var(--gold)'; }}
       onMouseLeave={e => { e.currentTarget.style.background = ''; e.currentTarget.style.borderLeftColor = 'transparent'; }}
     >
-      <Avatar style={{ background: 'rgba(200,134,26,0.15)', border: '1px solid rgba(200,134,26,0.3)', color: 'var(--gold)', fontFamily: "'Playfair Display', serif", flexShrink: 0 }}>
+      <Avatar style={{ background: 'rgba(200,134,26,0.15)', border: '1px solid rgba(200,134,26,0.3)', color: 'var(--gold)', fontFamily: "'DM Serif Display', serif", flexShrink: 0 }}>
         {contact.name[0].toUpperCase()}
       </Avatar>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.82rem', color: 'rgba(244,228,193,0.75)', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <Text style={{ fontFamily: "'Inter', sans-serif", fontSize: '0.82rem', color: 'rgba(244,228,193,0.75)', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {contact.name}
         </Text>
         {contact.preview && (
@@ -69,7 +69,7 @@ function ChatView({ contact, messages, groupMembers, user, onBack, onSend }) {
         <Button type="text" icon={<ArrowLeftOutlined />} onClick={onBack} style={{ color: 'rgba(200,134,26,0.6)', padding: '0 4px' }} />
         <Text
           strong
-          style={{ fontFamily: "'Lora', serif", fontSize: '0.88rem', color: 'var(--parchment)', flex: 1, cursor: contact.type === 'group' ? 'pointer' : 'default' }}
+          style={{ fontFamily: "'Inter', sans-serif", fontSize: '0.88rem', color: 'var(--parchment)', flex: 1, cursor: contact.type === 'group' ? 'pointer' : 'default' }}
           onClick={() => contact.type === 'group' && setShowMembers(v => !v)}
         >
           {contact.name}
@@ -85,7 +85,7 @@ function ChatView({ contact, messages, groupMembers, user, onBack, onSend }) {
             <Avatar size={26} style={{ background: 'rgba(200,134,26,0.12)', border: '1px solid rgba(200,134,26,0.25)', color: 'var(--gold)', fontSize: '0.65rem' }}>
               {(user.username || 'Y')[0].toUpperCase()}
             </Avatar>
-            <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.78rem', color: 'var(--gold)' }}>{user.username || 'You'} (you)</Text>
+            <Text style={{ fontFamily: "'Inter', sans-serif", fontSize: '0.78rem', color: 'var(--gold)' }}>{user.username || 'You'} (you)</Text>
           </div>
           {groupMembers.map((m, i) => {
             const uname = m.username || m.user_id?.slice(0, 8) || '?';
@@ -94,7 +94,7 @@ function ChatView({ contact, messages, groupMembers, user, onBack, onSend }) {
                 <Avatar size={26} style={{ background: 'rgba(200,134,26,0.12)', border: '1px solid rgba(200,134,26,0.25)', color: 'var(--gold)', fontSize: '0.65rem' }}>
                   {uname[0].toUpperCase()}
                 </Avatar>
-                <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.78rem', color: 'rgba(244,228,193,0.7)' }}>{uname}</Text>
+                <Text style={{ fontFamily: "'Inter', sans-serif", fontSize: '0.78rem', color: 'rgba(244,228,193,0.7)' }}>{uname}</Text>
               </div>
             );
           })}
@@ -161,7 +161,7 @@ function GroupModal({ open, editGroup, friends, user, onCreate, onUpdate, onClos
   return (
     <Modal
       open={open}
-      title={<Text style={{ fontFamily: "'Playfair Display', serif", color: 'var(--parchment)' }}>{editGroup ? 'Edit Group' : 'New Group'}</Text>}
+      title={<Text style={{ fontFamily: "'DM Serif Display', serif", color: 'var(--parchment)' }}>{editGroup ? 'Edit Group' : 'New Group'}</Text>}
       onOk={handleOk}
       onCancel={onClose}
       confirmLoading={saving}
@@ -236,7 +236,7 @@ export default function MessagingSidebar({
         : <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
             {/* Header */}
             <div style={{ padding: '1.2rem 1.2rem 0.8rem', borderBottom: '1px solid rgba(200,134,26,0.15)' }}>
-              <Title level={5} style={{ margin: 0, fontFamily: "'Playfair Display', serif", color: 'var(--parchment)' }}>Messages</Title>
+              <Title level={5} style={{ margin: 0, fontFamily: "'DM Serif Display', serif", color: 'var(--parchment)' }}>Messages</Title>
             </div>
 
             <div style={{ flex: 1, overflowY: 'auto' }}>

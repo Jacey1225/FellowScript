@@ -1,76 +1,58 @@
 # Bible Reader
 
-The Bible Reader is the core screen of FellowScript. It combines scripture reading, annotation, and community into a single unified interface.
+The Bible Reader (`/reader`) is the core screen of FellowScript. It uses a three-panel layout: navigation sidebar (left), scripture text (centre), and a toggleable notes or messaging sidebar (right).
 
 ---
 
 ## Layout
 
 ```
-┌────────────────────────────┐
-│ < Home   FellowScript  [⋮] │  ← Top nav
-├────────────────────────────┤
-│ [Search book / chapter   ] │  ← Book/chapter search bar
-│ 2 Timothy 1                │  ← Current book & chapter label
-│ Highlight: 🟡 🟠 🟢 🔴 🔵  │  ← Highlight color palette
-├────────────────────────────┤
-│                            │
-│  2 Timothy                 │
-│  CHAPTER 1                 │
-│                            │
-│  1 Paul, an apostle of     │
-│  Christ Jesus by the will  │  ← Scripture text (Lora, readable size)
-│  of God...                 │
-│                            │
-│  3 [highlighted in gold]   │  ← Community/personal highlights shown inline
-│  I thank God, whom I serve │
-│  with a clear conscience...│
-│                            │
-│  7 | For the Spirit God    │  ← Verse 7 shown with teal highlight (community)
-│  gave us does not make us  │
-│  timid...                  │
-│                            │
-└────────────────────────────┘
-│  [📖 Read] [📝 Notes] [👥 Community] │  ← Bottom tab bar
-└────────────────────────────┘
+┌──────────────┬──────────────────────────┬─────────────────────┐
+│   AppNav     │                          │                     │
+│              │   [Book / Chapter nav]   │   NotesSidebar      │
+│  • Home      │                          │   or               │
+│  • Reader    │   2 Timothy              │   MessagingSidebar  │
+│  • Account   │   CHAPTER 1              │                     │
+│              │                          │   (toggled by icons │
+│              │   1 Paul, an apostle…    │    above the panel) │
+│              │   3 I thank God…         │                     │
+│              │   6 [highlighted] For    │                     │
+│              │     this reason…         │                     │
+│              │                          │                     │
+└──────────────┴──────────────────────────┴─────────────────────┘
 ```
+
+On narrow screens, `AppNav` and the right sidebar collapse; toggle buttons appear above the scripture text.
 
 ---
 
 ## Features
 
-### Search Bar
-- Sits at the top of the reader
-- Opens a **book picker** listing all 66 books
-- Selecting a book shows chapter numbers below
-- Selecting a chapter loads that passage
+### Book / Chapter Navigation
+- `BibleNavigator` component: searchable book list → chapter grid
+- `ScriptureNav`: previous/next chapter arrows
+- `BookmarkButton`: star icon to bookmark the current chapter; bookmarks appear in the Notes sidebar's Highlights tab area
 
 ### Highlight Palette
-- Five colors: yellow, orange, green, pink, blue
-- Tap a verse to apply the active color
-- Highlights persist per user
-
-### Community Highlights
-- A toggle/filter to show other users' public highlights inline
-- Each community highlight has a subtle color outline and the user's initials
+- `HighlightPicker`: six swatches (warm gold, red, green, teal, purple, cream)
+- Tap/click a verse to apply the active color; click again to remove
+- Highlights are stored per `(user_id, book-chapter-verse)` key; group members' highlights are visible with a different opacity in group view
 
 ### Scripture Text
-- Clean, well-spaced serif text (Lora)
-- Verse numbers displayed inline
-- Book title and chapter heading displayed prominently
+- Rendered verse-by-verse via `BibleCard` components
+- Verse numbers displayed inline in a muted gold
+- Active highlights overlay the verse text with the stored color at ~25% opacity
+- Clicking a highlighted verse opens the highlight picker to remove or recolor
 
----
-
-## Bottom Tab Bar
-
-| Tab | Contents |
-|---|---|
-| Read | Scripture text (default) |
-| Notes | All annotations for the current chapter — see [Notes](notes.md) |
-| Community | Study group members and group chat — see [Community](community.md) |
+### Right Panel Toggle
+Two icons above the right panel switch between:
+- **Notes** (`NotesSidebar`) — personal or group notes + highlights
+- **Messages** (`MessagingSidebar`) — real-time group chat and DMs
 
 ---
 
 ## Navigation
-- **← Home** in the top bar returns to the [Home Page](home-page.md)
-- Book/chapter changes stay within this screen
+
+- Logo / "FellowScript" in `AppNav` → `/` (home)
+- Account icon → `/account`
+- Book/chapter changes stay within `/reader`

@@ -97,7 +97,7 @@ export default function SessionCreator({
 
   const labelStyle = {
     display: 'block', fontSize: '0.72rem',
-    color: 'rgba(244,228,193,0.55)', fontFamily: "'Lora', serif", marginBottom: '0.35rem',
+    color: 'rgba(244,228,193,0.55)', fontFamily: "'Inter', sans-serif", marginBottom: '0.35rem',
   };
 
   return (
@@ -106,7 +106,7 @@ export default function SessionCreator({
       onCancel={handleClose}
       footer={null}
       title={
-        <Text style={{ fontFamily: "'Playfair Display', serif", color: 'var(--parchment)', fontSize: '1rem' }}>
+        <Text style={{ fontFamily: "'DM Serif Display', serif", color: 'var(--parchment)', fontSize: '1rem' }}>
           {isEditing ? 'Edit Session' : 'Schedule a Session'}
         </Text>
       }
@@ -165,7 +165,7 @@ export default function SessionCreator({
                     display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
                     padding: '0.2rem 0.5rem',
                     background: 'rgba(200,134,26,0.12)', border: '1px solid rgba(200,134,26,0.25)',
-                    borderRadius: 4, fontSize: '0.72rem', color: 'var(--parchment)', fontFamily: "'Lora', serif",
+                    borderRadius: 4, fontSize: '0.72rem', color: 'var(--parchment)', fontFamily: "'Inter', sans-serif",
                   }}
                 >
                   {parseVerseRef(ref)}
@@ -192,7 +192,7 @@ export default function SessionCreator({
                     display: 'flex', alignItems: 'flex-start', gap: '0.4rem',
                     padding: '0.3rem 0.5rem',
                     background: 'rgba(200,134,26,0.07)', border: '1px solid rgba(200,134,26,0.2)',
-                    borderRadius: 4, fontSize: '0.78rem', color: 'var(--parchment)', fontFamily: "'Lora', serif",
+                    borderRadius: 4, fontSize: '0.78rem', color: 'var(--parchment)', fontFamily: "'Inter', sans-serif",
                     lineHeight: 1.5,
                   }}
                 >
@@ -243,7 +243,7 @@ export default function SessionCreator({
             loading={loading}
             disabled={!title.trim() || !timeStart}
             onClick={handleSubmit}
-            style={{ fontFamily: "'Lora', serif" }}
+            style={{ fontFamily: "'Inter', sans-serif" }}
           >
             {isEditing ? 'Save Changes' : 'Schedule'}
           </Button>

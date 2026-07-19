@@ -140,14 +140,15 @@ async def create_note(user_id: str, note_dict: dict) -> dict:
         note_dict.setdefault("user", user_id)
         note = Note(**note_dict)
         db.insertion("notes", {
-            "_id":       note_id,
-            "user_id":   note.user,
-            "title":     note.title,
-            "text":      note.text,
-            "public":    note.public,
-            "group_id":  note.group_id or None,
-            "is_reply":  note.is_reply,
-            "timestamp": note.timestamp,
+            "_id":        note_id,
+            "user_id":    note.user,
+            "title":      note.title,
+            "text":       note.text,
+            "public":     note.public,
+            "group_id":   note.group_id or None,
+            "is_reply":   note.is_reply,
+            "timestamp":  note.timestamp,
+            "created_at": datetime.now(),
         })
         for i, verse in enumerate(note.verses):
             if isinstance(verse, list) and len(verse) >= 3:
@@ -168,7 +169,7 @@ async def get_notes(user_id: str) -> dict:
     db = DBManager()
     try:
         db.cur.execute(
-            "SELECT n._id, n.user_id, n.title, n.text, n.public, n.group_id, n.is_reply, n.timestamp "
+            "SELECT n._id, n.user_id, n.title, n.text, n.public, n.group_id, n.is_reply, n.timestamp, n.created_at "
             "FROM notes n "
             "WHERE n.user_id = %s AND n.is_reply = false AND n.group_id IS NULL",
             (user_id,)
@@ -184,15 +185,16 @@ async def get_notes(user_id: str) -> dict:
             )
             verses = [[r[1], r[2], r[3]] for r in db.cur.fetchall()]
             result[nid] = {
-                "user":      str(row[1] or ""),
-                "title":     row[2],
-                "text":      row[3],
-                "public":    row[4],
-                "group_id":  row[5] or "",
-                "is_reply":  row[6],
-                "timestamp": str(row[7] or ""),
-                "verses":    verses,
-                "replies":   [],
+                "user":       str(row[1] or ""),
+                "title":      row[2],
+                "text":       row[3],
+                "public":     row[4],
+                "group_id":   row[5] or "",
+                "is_reply":   row[6],
+                "timestamp":  str(row[7] or ""),
+                "created_at": str(row[8] or ""),
+                "verses":     verses,
+                "replies":    [],
             }
         return result
     finally:

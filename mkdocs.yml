@@ -25,6 +25,7 @@ nav:
     - Bible Reader: design/bible-reader.md
     - Notes: design/notes.md
     - Community: design/community.md
+    - Account: design/account.md
   - Architecture:
     - System Overview: architecture/overview.md
     - Backend: architecture/backend.md

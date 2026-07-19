@@ -93,11 +93,11 @@ export default function AppNav() {
         />
         <div style={{ position: 'absolute', bottom: '1.5rem', left: '1.5rem', display: 'flex', gap: '1rem' }}>
           <Link to="/privacy" onClick={() => setDrawerOpen(false)}
-            style={{ fontFamily: "'Lora', serif", fontSize: '0.7rem', color: 'rgba(244,228,193,0.35)', textDecoration: 'none' }}>
+            style={{ fontFamily: "'Inter', sans-serif", fontSize: '0.7rem', color: 'rgba(244,228,193,0.35)', textDecoration: 'none' }}>
             Privacy
           </Link>
           <Link to="/terms" onClick={() => setDrawerOpen(false)}
-            style={{ fontFamily: "'Lora', serif", fontSize: '0.7rem', color: 'rgba(244,228,193,0.35)', textDecoration: 'none' }}>
+            style={{ fontFamily: "'Inter', sans-serif", fontSize: '0.7rem', color: 'rgba(244,228,193,0.35)', textDecoration: 'none' }}>
             Terms
           </Link>
         </div>
