@@ -40,7 +40,10 @@ const fmtDate = (s) => {
   return isNaN(d.getTime()) ? '' : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 };
 
-export default function SubscriptionCard({ userId }) {
+// `onPlanChange` is invoked whenever the acting user's own plan changes (start,
+// cancel, or leave) so the parent can refresh dependent UI — notably the free-tier
+// usage/limits panel, which flips between capped and unlimited with the plan.
+export default function SubscriptionCard({ userId, onPlanChange }) {
   const [loading,  setLoading]  = useState(true);
   const [plan,     setPlan]     = useState(null);   // the plan the user is on (host or member)
   const [members,  setMembers]  = useState([]);     // group members (host view)
@@ -120,7 +123,7 @@ export default function SubscriptionCard({ userId }) {
         tries += 1;
         try {
           const r = await fetch(`${API}/subscriptions/user/${userId}`);
-          if (r.ok) { await load(); flash('success', 'Subscription active — enjoy your free month!'); return; }
+          if (r.ok) { await load(); onPlanChange?.(); flash('success', 'Subscription active — enjoy your free month!'); return; }
         } catch {}
         if (tries < 6) setTimeout(poll, 1500);
         else { await load(); flash('info', 'Almost there — refresh in a moment if your plan is not shown yet.'); }
@@ -151,7 +154,7 @@ export default function SubscriptionCard({ userId }) {
     setBusy('cancel');
     try {
       await fetch(`${API}/subscriptions/${plan.id}`, { method: 'DELETE' });
-      await load(); flash('success', 'Plan canceled.');
+      await load(); onPlanChange?.(); flash('success', 'Plan canceled.');
     } catch { flash('error', 'Could not cancel plan.'); }
     finally { setBusy(''); }
   };
@@ -160,7 +163,7 @@ export default function SubscriptionCard({ userId }) {
     setBusy('leave');
     try {
       await fetch(`${API}/subscriptions/${plan.id}/members/${userId}`, { method: 'DELETE' });
-      await load(); flash('success', 'You left the plan.');
+      await load(); onPlanChange?.(); flash('success', 'You left the plan.');
     } catch { flash('error', 'Could not leave plan.'); }
     finally { setBusy(''); }
   };
@@ -215,7 +218,8 @@ export default function SubscriptionCard({ userId }) {
 
   // ── Render ──────────────────────────────────────────────────────────────────
 
-  const cfg = plan ? (PLANS[plan.plan_type] || PLANS.individual) : null;
+  const isFree = plan?.plan_type === 'free';
+  const cfg = plan && !isFree ? (PLANS[plan.plan_type] || PLANS.individual) : null;
 
   return (
     <div style={CARD_STYLE}>
@@ -224,11 +228,25 @@ export default function SubscriptionCard({ userId }) {
 
       {loading ? (
         <div style={{ textAlign: 'center', padding: '1.5rem' }}><Spin /></div>
-      ) : !plan ? (
-        // ── No plan: choose one ──────────────────────────────────────────────
+      ) : !plan || isFree ? (
+        // ── Free plan (default for new accounts) ────────────────────────────
         <>
+          {isFree && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: '1rem' }}>
+              <div style={{ width: 42, height: 42, borderRadius: '50%', background: 'rgba(200,134,26,0.12)', border: '1px solid rgba(200,134,26,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--gold)', fontSize: '1.1rem' }}>
+                <UserOutlined />
+              </div>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontFamily: "'Playfair Display', serif", fontSize: '1.1rem', color: 'var(--parchment)' }}>Free Plan</span>
+                  <Tag color="default">Active</Tag>
+                </div>
+                <span style={MUTED}>10 notes/week · 1 AI event · 3 notifications</span>
+              </div>
+            </div>
+          )}
           <p style={{ ...MUTED, marginBottom: '1rem', lineHeight: 1.65 }}>
-            Start with a <span style={{ color: 'var(--gold)' }}>free 1-month trial</span> — you won't be billed until it ends.
+            Upgrade to unlock <span style={{ color: 'var(--gold)' }}>unlimited notes, AI check-ins,</span> and notifications.
             Group plans let up to five people study together under one subscription.
           </p>
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>

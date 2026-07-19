@@ -23,6 +23,7 @@ import jwt
 from jwt import PyJWKClient
 from db import DBManager
 from backend.interactions.helpers import load_users_data, save_users_data
+from backend.subscription.subscriptions import SubscriptionsManager
 
 
 class GoogleAuth(BaseModel):
@@ -181,6 +182,11 @@ async def signup(info: SignUp, response: Response) -> dict:
         hash_pass=bcrypt.hashpw(info.plain_pass.encode(), bcrypt.gensalt()).decode()
     )
     persist_new_user(user)
+    sm = SubscriptionsManager()
+    try:
+        sm.create_free_plan(user.user_id)
+    finally:
+        sm.close()
     response.set_cookie(key="user_id", value=user.user_id, httponly=False, secure=True, max_age=60 * 60 * 24 * 30, samesite="lax")
     return user.model_dump(exclude={"hash_pass"})
 
@@ -270,7 +276,12 @@ async def update_user(user_id: str, info: UpdateUser) -> dict:
 
 @app.delete("/user/{user_id}", status_code=204)
 async def delete_user(user_id: str) -> None:
-    """Permanently remove a user account from the data store.
+    """Permanently remove a user account and all owned data.
+
+    Notes owned by the user are deleted. Messages and devotions the user created
+    have their author field nulled so group content survives. All other related
+    rows (highlights, bookmarks, friends, agents, subscriptions, notifications)
+    cascade automatically via FK constraints.
 
     Args:
         user_id: UUID of the user to delete.
@@ -280,13 +291,17 @@ async def delete_user(user_id: str) -> None:
     """
     db = DBManager()
     try:
+        db.cur.execute("SELECT 1 FROM users WHERE _id = %s", (user_id,))
+        if not db.cur.fetchone():
+            raise HTTPException(status_code=404, detail="User not found")
+        # Tables whose FK to users has no ON DELETE rule must be handled manually.
+        db.cur.execute("DELETE FROM notes    WHERE user_id   = %s", (user_id,))
+        db.cur.execute("UPDATE messages   SET from_user   = NULL WHERE from_user   = %s", (user_id,))
+        db.cur.execute("UPDATE devotions  SET creator_id  = NULL WHERE creator_id  = %s", (user_id,))
         db.cur.execute("DELETE FROM users WHERE _id = %s", (user_id,))
-        deleted = db.cur.rowcount
         db.conn.commit()
     finally:
         db.close()
-    if not deleted:
-        raise HTTPException(status_code=404, detail="User not found")
 
 
 @app.post("/auth/google")
@@ -347,6 +362,11 @@ async def google_auth(info: GoogleAuth, response: Response) -> dict:
         # Same creation pipeline as password signup — writes to both stores.
         user = User(user_id=uid, username=username, email=email, hash_pass="")
         persist_new_user(user)
+        sm = SubscriptionsManager()
+        try:
+            sm.create_free_plan(uid)
+        finally:
+            sm.close()
         # google_sub isn't a User schema field; record it so returning Google
         # sign-ins match on the stable identifier.
         if sub:
@@ -424,6 +444,11 @@ async def apple_auth(info: AppleAuth, response: Response) -> dict:
         # Same creation pipeline as password signup — writes to both stores.
         user = User(user_id=uid, username=username, email=email, hash_pass="")
         persist_new_user(user)
+        sm = SubscriptionsManager()
+        try:
+            sm.create_free_plan(uid)
+        finally:
+            sm.close()
         # apple_sub isn't a User schema field; record it in the JSON store so a
         # returning Apple sign-in matches on the stable identifier.
         users = load_users()
