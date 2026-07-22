@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Response
+from fastapi import FastAPI, HTTPException, Response, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from routes.notes import notes_router
@@ -24,6 +24,8 @@ from jwt import PyJWKClient
 from db import DBManager
 from backend.interactions.helpers import load_users_data, save_users_data
 from backend.subscription.subscriptions import SubscriptionsManager
+from backend.auth.sessions import SessionManager
+from backend.auth.dependencies import get_current_user, require_match, SESSION_COOKIE
 
 
 class GoogleAuth(BaseModel):
@@ -137,6 +139,23 @@ _APPLE_JWKS_URL = "https://appleid.apple.com/auth/keys"
 _apple_jwk_client = PyJWKClient(_APPLE_JWKS_URL)
 
 
+def issue_session(response: Response, user_id: str) -> None:
+    """Create a server-side session for ``user_id`` and set its cookie.
+
+    The cookie carries only an opaque random token (never the user_id itself)
+    and is httponly so it can't be read or exfiltrated by injected JS.
+    """
+    db = SessionManager()
+    try:
+        token = db.create_session(user_id)
+    finally:
+        db.close()
+    response.set_cookie(
+        key=SESSION_COOKIE, value=token, httponly=True, secure=True,
+        max_age=60 * 60 * 24 * 30, samesite="lax",
+    )
+
+
 def find_by_username(users: dict, username: str) -> tuple[str, dict] | None:
     """Search the user store for a record matching the given username.
 
@@ -187,7 +206,7 @@ async def signup(info: SignUp, response: Response) -> dict:
         sm.create_free_plan(user.user_id)
     finally:
         sm.close()
-    response.set_cookie(key="user_id", value=user.user_id, httponly=False, secure=True, max_age=60 * 60 * 24 * 30, samesite="lax")
+    issue_session(response, user.user_id)
     return user.model_dump(exclude={"hash_pass"})
 
 
@@ -217,13 +236,29 @@ async def login(info: Login, response: Response) -> dict:
     if not bcrypt.checkpw(info.plain_pass.encode(), data["hash_pass"].encode()):
         raise HTTPException(status_code=401, detail="Incorrect password")
 
-    response.set_cookie(key="user_id", value=uid, httponly=False, secure=True, max_age=60 * 60 * 24 * 30, samesite="lax")
+    issue_session(response, uid)
     return {"user_id": uid, **{k: v for k, v in data.items() if k != "hash_pass"}}
 
 
+@app.post("/logout", status_code=204)
+async def logout(request: Request, response: Response) -> None:
+    """End the caller's session and clear the cookie."""
+    token = request.cookies.get(SESSION_COOKIE)
+    if token:
+        db = SessionManager()
+        try:
+            db.delete_session(token)
+        finally:
+            db.close()
+    response.delete_cookie(SESSION_COOKIE)
+
+
 @app.get("/user/{user_id}")
-async def get_user(user_id: str) -> dict:
+async def get_user(user_id: str, _: str = Depends(get_current_user)) -> dict:
     """Retrieve a single user's public profile.
+
+    Any authenticated caller may look up any user (used to display friends'
+    and group members' usernames) — only login is required, not ownership.
 
     Args:
         user_id: UUID of the user to look up.
@@ -242,8 +277,8 @@ async def get_user(user_id: str) -> dict:
 
 
 @app.put("/user/{user_id}")
-async def update_user(user_id: str, info: UpdateUser) -> dict:
-    """Update mutable fields on a user account.
+async def update_user(user_id: str, info: UpdateUser, _: str = Depends(require_match("user_id"))) -> dict:
+    """Update mutable fields on a user account. Only the account owner may call this.
 
     Only fields provided (non-None) in ``info`` are updated. Passwords are
     re-hashed with bcrypt before storage.
@@ -275,8 +310,8 @@ async def update_user(user_id: str, info: UpdateUser) -> dict:
 
 
 @app.delete("/user/{user_id}", status_code=204)
-async def delete_user(user_id: str) -> None:
-    """Permanently remove a user account and all owned data.
+async def delete_user(user_id: str, _: str = Depends(require_match("user_id"))) -> None:
+    """Permanently remove a user account and all owned data. Only the owner may call this.
 
     Notes owned by the user are deleted. Messages and devotions the user created
     have their author field nulled so group content survives. All other related
@@ -377,10 +412,7 @@ async def google_auth(info: GoogleAuth, response: Response) -> dict:
         else:
             data = user.model_dump(exclude={"user_id"})
 
-    response.set_cookie(
-        key="user_id", value=uid, httponly=False, secure=True,
-        max_age=60 * 60 * 24 * 30, samesite="lax",
-    )
+    issue_session(response, uid)
     return {"user_id": uid, **{k: v for k, v in data.items() if k != "hash_pass"}}
 
 
@@ -456,10 +488,7 @@ async def apple_auth(info: AppleAuth, response: Response) -> dict:
         save_users(users)
         data = users[uid]
 
-    response.set_cookie(
-        key="user_id", value=uid, httponly=False, secure=True,
-        max_age=60 * 60 * 24 * 30, samesite="lax",
-    )
+    issue_session(response, uid)
     return {"user_id": uid, **{k: v for k, v in data.items() if k != "hash_pass"}}
 
 

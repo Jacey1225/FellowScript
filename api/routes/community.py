@@ -1,6 +1,7 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from backend.interactions.groups import GroupsManager
 from backend.interactions.friends import  FriendsManager
+from backend.auth.dependencies import require_match
 from schemas.message import Group
 
 group_router = APIRouter(prefix="/groups")
@@ -10,7 +11,7 @@ friend_router = APIRouter(prefix="/friends")
 # ── Groups ─────────────────────────────────────────────────────────────────────
 
 @group_router.post("/{user_id}", status_code=201)
-async def create_group(user_id: str, group: Group) -> dict:
+async def create_group(user_id: str, group: Group, _: str = Depends(require_match("user_id"))) -> dict:
     """Create a new study group and add all specified members.
 
     Args:
@@ -26,7 +27,7 @@ async def create_group(user_id: str, group: Group) -> dict:
 
 
 @group_router.get("/{user_id}/{group_id}")
-async def fetch_group(user_id: str, group_id: str) -> dict:
+async def fetch_group(user_id: str, group_id: str, _: str = Depends(require_match("user_id"))) -> dict:
     """Fetch full group data including members and message history.
 
     Args:
@@ -38,8 +39,11 @@ async def fetch_group(user_id: str, group_id: str) -> dict:
 
     Raises:
         HTTPException 404: If the group does not exist.
+        HTTPException 403: If the caller is not a member of the group.
     """
     manager = GroupsManager(user_id, group_id)
+    if not manager.is_member():
+        raise HTTPException(status_code=403, detail="Not a member of this group")
     result = manager.fetch_group()
     if "error" in result:
         raise HTTPException(status_code=404, detail=result["error"])
@@ -47,7 +51,7 @@ async def fetch_group(user_id: str, group_id: str) -> dict:
 
 
 @group_router.get("/{user_id}/{group_id}/notes")
-async def fetch_group_notes(user_id: str, group_id: str) -> dict:
+async def fetch_group_notes(user_id: str, group_id: str, _: str = Depends(require_match("user_id"))) -> dict:
     """Retrieve all public notes shared within a group.
 
     Args:
@@ -57,13 +61,18 @@ async def fetch_group_notes(user_id: str, group_id: str) -> dict:
     Returns:
         dict: Mapping of username -> {note_id -> note data} for all public
             notes belonging to the group.
+
+    Raises:
+        HTTPException 403: If the caller is not a member of the group.
     """
     manager = GroupsManager(user_id, group_id)
+    if not manager.is_member():
+        raise HTTPException(status_code=403, detail="Not a member of this group")
     return manager.fetch_notes()
 
 
 @group_router.get("/{user_id}/{note_id}/{group_id}/replies")
-async def fetch_group_replies(user_id: str, note_id: str, group_id: str) -> list[dict] | dict[str, str]:
+async def fetch_group_replies(user_id: str, note_id: str, group_id: str, _: str = Depends(require_match("user_id"))) -> list[dict] | dict[str, str]:
     """Retrieve all replies attached to a specific note in a group.
 
     Args:
@@ -74,13 +83,18 @@ async def fetch_group_replies(user_id: str, note_id: str, group_id: str) -> list
     Returns:
         list[dict]: List of reply note data dicts on success.
         dict: ``{"error": str}`` if the parent note is not found.
+
+    Raises:
+        HTTPException 403: If the caller is not a member of the group.
     """
     manager = GroupsManager(user_id, group_id)
+    if not manager.is_member():
+        raise HTTPException(status_code=403, detail="Not a member of this group")
     return manager.fetch_replies(note_id)
 
 
 @group_router.get("/{user_id}/{group_id}/highlights")
-async def fetch_group_highlights(user_id: str, group_id: str) -> dict:
+async def fetch_group_highlights(user_id: str, group_id: str, _: str = Depends(require_match("user_id"))) -> dict:
     """Retrieve highlight data for all members of a group.
 
     Args:
@@ -89,40 +103,55 @@ async def fetch_group_highlights(user_id: str, group_id: str) -> dict:
 
     Returns:
         dict: Mapping of user_id -> highlights dict for every group member.
+
+    Raises:
+        HTTPException 403: If the caller is not a member of the group.
     """
     manager = GroupsManager(user_id, group_id)
+    if not manager.is_member():
+        raise HTTPException(status_code=403, detail="Not a member of this group")
     return manager.fetch_highlights()
 
 
 @group_router.put("/{user_id}/{group_id}")
-async def update_group(user_id: str, group_id: str, group: Group) -> None:
+async def update_group(user_id: str, group_id: str, group: Group, _: str = Depends(require_match("user_id"))) -> None:
     """Update a group's title and/or member list.
 
     Args:
         user_id: UUID of the user making the update.
         group_id: ID of the group to update.
         group: Replacement group payload with updated title and users.
+
+    Raises:
+        HTTPException 403: If the caller is not a member of the group.
     """
     manager = GroupsManager(user_id, group_id)
+    if not manager.is_member():
+        raise HTTPException(status_code=403, detail="Not a member of this group")
     manager.update_group(group)
 
 
 @group_router.delete("/{user_id}/{group_id}", status_code=204)
-async def remove_group(user_id: str, group_id: str) -> None:
+async def remove_group(user_id: str, group_id: str, _: str = Depends(require_match("user_id"))) -> None:
     """Delete a group and remove it from all members' records.
 
     Args:
         user_id: UUID of the user initiating the deletion.
         group_id: ID of the group to remove.
+
+    Raises:
+        HTTPException 403: If the caller is not a member of the group.
     """
     manager = GroupsManager(user_id, group_id)
+    if not manager.is_member():
+        raise HTTPException(status_code=403, detail="Not a member of this group")
     manager.remove_group()
 
 
 # ── Friends ────────────────────────────────────────────────────────────────────
 
 @friend_router.get("/{user_id}")
-async def get_friends(user_id: str) -> list[dict]:
+async def get_friends(user_id: str, _: str = Depends(require_match("user_id"))) -> list[dict]:
     """Return the full friend list for a user.
 
     Args:
@@ -136,7 +165,7 @@ async def get_friends(user_id: str) -> list[dict]:
 
 
 @friend_router.get("/{user_id}/requests")
-async def get_friend_requests(user_id: str) -> list[dict]:
+async def get_friend_requests(user_id: str, _: str = Depends(require_match("user_id"))) -> list[dict]:
     """Return pending incoming friend requests for the user.
 
     NOTE: declared before ``/{user_id}/{friend_id}`` so the literal ``requests``
@@ -153,7 +182,7 @@ async def get_friend_requests(user_id: str) -> list[dict]:
 
 
 @friend_router.get("/{user_id}/{friend_id}")
-async def read_friend(user_id: str, friend_id: str) -> dict:
+async def read_friend(user_id: str, friend_id: str, _: str = Depends(require_match("user_id"))) -> dict:
     """Fetch a friend's profile and the shared DM history.
 
     Args:
@@ -175,7 +204,7 @@ async def read_friend(user_id: str, friend_id: str) -> dict:
 
 
 @friend_router.post("/{user_id}/request")
-async def send_friend_request(user_id: str, friend_username: str) -> None:
+async def send_friend_request(user_id: str, friend_username: str, _: str = Depends(require_match("user_id"))) -> None:
     """Send a friend request to a user identified by username.
 
     Args:
@@ -193,7 +222,7 @@ async def send_friend_request(user_id: str, friend_username: str) -> None:
 
 
 @friend_router.post("/{user_id}/add", status_code=204)
-async def add_friend(user_id: str, friend_username: str) -> None:
+async def add_friend(user_id: str, friend_username: str, _: str = Depends(require_match("user_id"))) -> None:
     """Accept a friend request and create a mutual friendship.
 
     Args:
@@ -210,7 +239,7 @@ async def add_friend(user_id: str, friend_username: str) -> None:
 
 
 @friend_router.delete("/{user_id}/{friend_id}", status_code=204)
-async def remove_friend(user_id: str, friend_id: str) -> None:
+async def remove_friend(user_id: str, friend_id: str, _: str = Depends(require_match("user_id"))) -> None:
     """Remove a friend from both users' friend lists.
 
     Args:

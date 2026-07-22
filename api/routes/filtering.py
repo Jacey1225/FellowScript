@@ -1,8 +1,9 @@
 import logging
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from schemas.filter import Filter, Sort
 from backend.filters.filter_notes import Filters, Sorting
+from backend.auth.dependencies import get_current_user
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +22,7 @@ class SortRequest(BaseModel):
 
 
 @filter_router.post("/")
-async def filter_notes(req: FilterRequest) -> dict:
+async def filter_notes(req: FilterRequest, _: str = Depends(get_current_user)) -> dict:
     """Apply a filter to a collection of notes.
 
     Exactly one filter criterion from ``req.to_filter`` is applied (book,
@@ -51,7 +52,7 @@ async def filter_notes(req: FilterRequest) -> dict:
 
 
 @sorting_router.post("/")
-async def sort_notes(req: SortRequest) -> dict:
+async def sort_notes(req: SortRequest, _: str = Depends(get_current_user)) -> dict:
     """Sort a flat collection of notes by the specified criterion.
 
     Currently supports date-based sorting. If no sort criterion is provided

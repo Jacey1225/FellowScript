@@ -1,6 +1,7 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from schemas.devotion import DevotionRequest
 from backend.interactions.devotion import DevotionManager
+from backend.auth.dependencies import get_current_user, require_match
 import boto3
 import uuid
 from botocore.exceptions import ClientError
@@ -10,7 +11,9 @@ devo_router = APIRouter(prefix="/devotions")
 
 
 @devo_router.post("/", status_code=201)
-async def create_devotion(req: DevotionRequest) -> dict:
+async def create_devotion(req: DevotionRequest, current_user: str = Depends(get_current_user)) -> dict:
+    if req.user_id != current_user:
+        raise HTTPException(status_code=403, detail="Forbidden")
     db = DevotionManager()
     try:
         session_id = db.save_devotion(req.devotion)
@@ -20,7 +23,7 @@ async def create_devotion(req: DevotionRequest) -> dict:
 
 
 @devo_router.get("/contact/{contact_id}")
-async def get_contact_devotions(contact_id: str) -> dict:
+async def get_contact_devotions(contact_id: str, _: str = Depends(get_current_user)) -> dict:
     db = DevotionManager()
     try:
         return {"sessions": db.fetch_by_contact(contact_id)}
@@ -29,7 +32,7 @@ async def get_contact_devotions(contact_id: str) -> dict:
 
 
 @devo_router.get("/")
-async def fetch_devotion(devotion_id: str) -> dict:
+async def fetch_devotion(devotion_id: str, _: str = Depends(get_current_user)) -> dict:
     db = DevotionManager()
     try:
         devotion = db.read_devotion(devotion_id)
@@ -41,7 +44,9 @@ async def fetch_devotion(devotion_id: str) -> dict:
 
 
 @devo_router.put("/")
-async def update_devotion(req: DevotionRequest) -> dict:
+async def update_devotion(req: DevotionRequest, current_user: str = Depends(get_current_user)) -> dict:
+    if req.user_id != current_user:
+        raise HTTPException(status_code=403, detail="Forbidden")
     db = DevotionManager()
     try:
         ok = db.update_devotion(req.devotion_id, req.devotion)
@@ -53,7 +58,7 @@ async def update_devotion(req: DevotionRequest) -> dict:
 
 
 @devo_router.post("/join")
-async def join_devotion(user_id: str, session_id: str) -> dict:
+async def join_devotion(user_id: str, session_id: str, _: str = Depends(require_match("user_id"))) -> dict:
     db = DevotionManager()
     try:
         db.add_participant(session_id, user_id)
@@ -63,7 +68,7 @@ async def join_devotion(user_id: str, session_id: str) -> dict:
 
 
 @devo_router.post("/leave")
-async def leave_devotion(user_id: str, session_id: str) -> dict:
+async def leave_devotion(user_id: str, session_id: str, _: str = Depends(require_match("user_id"))) -> dict:
     db = DevotionManager()
     try:
         db.remove_participant(session_id, user_id)
@@ -73,7 +78,9 @@ async def leave_devotion(user_id: str, session_id: str) -> dict:
 
 
 @devo_router.delete("/")
-async def delete_devotion(req: DevotionRequest) -> dict:
+async def delete_devotion(req: DevotionRequest, current_user: str = Depends(get_current_user)) -> dict:
+    if req.user_id != current_user:
+        raise HTTPException(status_code=403, detail="Forbidden")
     db = DevotionManager()
     try:
         # Only the session's creator (host) may delete it.
@@ -89,7 +96,7 @@ async def delete_devotion(req: DevotionRequest) -> dict:
 
 
 @devo_router.post("/join-call")
-async def join_call(session_id: str, user_id: str) -> dict:
+async def join_call(session_id: str, user_id: str, _: str = Depends(require_match("user_id"))) -> dict:
     db = DevotionManager()
     try:
         session = db.get_session(session_id)

@@ -1,7 +1,8 @@
-from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect, Depends
 from backend.interactions.websockets import ConnectionManager
 from backend.interactions.friends import FriendsManager
 from backend.interactions.devotion import DevotionManager
+from backend.auth.dependencies import get_current_user, require_match, authenticate_ws
 from botocore.exceptions import ClientError
 import boto3
 import uuid
@@ -63,6 +64,10 @@ def _create_attendee(chime_meeting_id: str, user_id: str) -> dict:
 
 @ws_router.websocket("/ws/{user_id}")
 async def websocket_endpoint(websocket: WebSocket, user_id: str, msg_type: str = "chat") -> None:
+    session_user = await authenticate_ws(websocket)
+    if session_user is None or session_user != user_id:
+        await websocket.close(code=4401)
+        return
     await manager.connect(user_id, websocket)
     try:
         while True:
@@ -77,13 +82,13 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str, msg_type: str =
 
 
 @chime_router.post("/{session_id}")
-async def start_meeting(session_id: str) -> dict:
+async def start_meeting(session_id: str, _: str = Depends(get_current_user)) -> dict:
     """Get or create the Chime meeting for a session."""
     return {"Meeting": _get_or_create_meeting(session_id)}
 
 
 @chime_router.post("/{session_id}/{user_id}/attend")
-async def join_meeting(session_id: str, user_id: str) -> dict:
+async def join_meeting(session_id: str, user_id: str, _: str = Depends(require_match("user_id"))) -> dict:
     """Create an attendee token for a user joining a session's Chime meeting."""
     db = DevotionManager()
     try:
@@ -99,7 +104,7 @@ async def join_meeting(session_id: str, user_id: str) -> dict:
 
 
 @ws_router.get("/messages/{host_user}/")
-async def read_dm(host_user: str, guest_user: str) -> dict:
+async def read_dm(host_user: str, guest_user: str, _: str = Depends(require_match("host_user"))) -> dict:
     friend_manager = FriendsManager(host_user)
     try:
         return {"payload": friend_manager.read_friend(guest_user)}
@@ -108,7 +113,7 @@ async def read_dm(host_user: str, guest_user: str) -> dict:
 
 
 @ws_router.post("/friend-request")
-async def send_request(user_id: str, friend_user: str) -> None:
+async def send_request(user_id: str, friend_user: str, _: str = Depends(require_match("user_id"))) -> None:
     friend_manager = FriendsManager(user_id)
     try:
         friend_manager.send_add_request(friend_user)
@@ -117,7 +122,7 @@ async def send_request(user_id: str, friend_user: str) -> None:
 
 
 @ws_router.post("/add-friend", status_code=204)
-async def add_friend(host_user: str, user_to_add: str) -> None:
+async def add_friend(host_user: str, user_to_add: str, _: str = Depends(require_match("host_user"))) -> None:
     friend_manager = FriendsManager(host_user)
     try:
         friend_manager.add_friend(user_to_add)
@@ -126,7 +131,7 @@ async def add_friend(host_user: str, user_to_add: str) -> None:
 
 
 @ws_router.delete("/remove-friend", status_code=204)
-async def remove_friend(host_user: str, user_to_del: str) -> None:
+async def remove_friend(host_user: str, user_to_del: str, _: str = Depends(require_match("host_user"))) -> None:
     friend_manager = FriendsManager(host_user)
     try:
         friend_manager.remove_friend(user_to_del)

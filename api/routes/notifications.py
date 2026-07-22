@@ -1,6 +1,7 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from backend.interactions.notifications import NotificationManager
 from backend.subscription.limits import check_limit
+from backend.auth.dependencies import require_match
 from schemas.notifications import Notification
 from db import DBManager
 import logging
@@ -12,7 +13,7 @@ logger = logging.getLogger(__name__)
 # ── Device token registration ─────────────────────────────────────────────────
 
 @notification_router.post("/{user_id}/device-token", status_code=204)
-async def register_device_token(user_id: str, body: dict) -> None:
+async def register_device_token(user_id: str, body: dict, _: str = Depends(require_match("user_id"))) -> None:
     """Store or update a user's APNs device token."""
     token = body.get("token", "").strip()
     if not token:
@@ -37,7 +38,7 @@ async def register_device_token(user_id: str, body: dict) -> None:
 # ── List / fetch ──────────────────────────────────────────────────────────────
 
 @notification_router.get("/{user_id}")
-async def get_notifications(user_id: str) -> list:
+async def get_notifications(user_id: str, _: str = Depends(require_match("user_id"))) -> list:
     """Return all notifications belonging to user_id."""
     db = NotificationManager(user_id)
     try:
@@ -47,7 +48,7 @@ async def get_notifications(user_id: str) -> list:
 
 
 @notification_router.get("/{user_id}/{notif_id}")
-async def get_notification(user_id: str, notif_id: str) -> dict:
+async def get_notification(user_id: str, notif_id: str, _: str = Depends(require_match("user_id"))) -> dict:
     """Return a single notification by ID."""
     db = NotificationManager(user_id)
     try:
@@ -62,7 +63,7 @@ async def get_notification(user_id: str, notif_id: str) -> dict:
 # ── Create ────────────────────────────────────────────────────────────────────
 
 @notification_router.post("/{user_id}", status_code=201)
-async def create_notification(user_id: str, body: dict) -> dict:
+async def create_notification(user_id: str, body: dict, _: str = Depends(require_match("user_id"))) -> dict:
     """Create a new notification.
 
     Body fields:
@@ -90,7 +91,7 @@ async def create_notification(user_id: str, body: dict) -> dict:
 # ── Update ────────────────────────────────────────────────────────────────────
 
 @notification_router.put("/{user_id}/{notif_id}")
-async def update_notification(user_id: str, notif_id: str, body: dict) -> dict:
+async def update_notification(user_id: str, notif_id: str, body: dict, _: str = Depends(require_match("user_id"))) -> dict:
     """Update a notification's name and/or prompt."""
     db = NotificationManager(user_id)
     try:
@@ -103,7 +104,7 @@ async def update_notification(user_id: str, notif_id: str, body: dict) -> dict:
 
 
 @notification_router.patch("/{user_id}/{notif_id}/timestamp")
-async def set_timestamp(user_id: str, notif_id: str, body: dict) -> dict:
+async def set_timestamp(user_id: str, notif_id: str, body: dict, _: str = Depends(require_match("user_id"))) -> dict:
     """Set or clear the timestamp for one day slot.
 
     Body fields:
@@ -127,7 +128,7 @@ async def set_timestamp(user_id: str, notif_id: str, body: dict) -> dict:
 # ── Delete ────────────────────────────────────────────────────────────────────
 
 @notification_router.delete("/{user_id}/{notif_id}", status_code=204)
-async def delete_notification(user_id: str, notif_id: str) -> None:
+async def delete_notification(user_id: str, notif_id: str, _: str = Depends(require_match("user_id"))) -> None:
     """Permanently delete a notification."""
     db = NotificationManager(user_id)
     try:
@@ -139,7 +140,7 @@ async def delete_notification(user_id: str, notif_id: str) -> None:
 # ── Trigger / scheduling ──────────────────────────────────────────────────────
 
 @notification_router.post("/{user_id}/{notif_id}/trigger")
-async def trigger_notification(user_id: str, notif_id: str) -> dict:
+async def trigger_notification(user_id: str, notif_id: str, _: str = Depends(require_match("user_id"))) -> dict:
     """Generate AI content for a notification using its saved prompt.
 
     Returns:
@@ -156,7 +157,7 @@ async def trigger_notification(user_id: str, notif_id: str) -> dict:
 
 
 @notification_router.get("/{user_id}/{notif_id}/next")
-async def next_notification(user_id: str, notif_id: str) -> dict:
+async def next_notification(user_id: str, notif_id: str, _: str = Depends(require_match("user_id"))) -> dict:
     """Return the next scheduled month/day/time for a notification.
 
     Returns:

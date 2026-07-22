@@ -78,14 +78,14 @@ export default function BibleNavigator({ books, curBook, curChapter, onNavigate,
           {/* Left: Books */}
           <div className="bib-nav-books">
             <BooksSection
-              label="Old Testament"
-              books={otBooks}
+              label="New Testament"
+              books={ntBooks}
               selected={selectedBook}
               onSelect={setSelectedBook}
             />
             <BooksSection
-              label="New Testament"
-              books={ntBooks}
+              label="Old Testament"
+              books={otBooks}
               selected={selectedBook}
               onSelect={setSelectedBook}
             />

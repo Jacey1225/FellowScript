@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useCallback } from 'react';
+import { API } from '../config.js';
 
 const AuthContext = createContext(null);
 
@@ -22,10 +23,13 @@ export function AuthProvider({ children }) {
   }, []);
 
   const signOut = useCallback(() => {
+    // End the server-side session too — the cookie is httponly, so this is
+    // the only way to actually invalidate it (clearing local state alone
+    // would leave the session live and reusable).
+    fetch(`${API}/logout`, { method: 'POST', credentials: 'include' }).catch(() => {});
     sessionStorage.removeItem('user');
     localStorage.removeItem('fs_user');
     localStorage.removeItem('last_page');
-    document.cookie = 'user_id=; max-age=0; path=/';
     setUser(null);
   }, []);
 
