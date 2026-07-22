@@ -1,6 +1,7 @@
-from fastapi import APIRouter, HTTPException, WebSocket
+from fastapi import APIRouter, HTTPException, WebSocket, Depends
 from backend.interactions.agent import AgentManager
 from backend.subscription.limits import check_limit
+from backend.auth.dependencies import require_match, authenticate_ws
 from schemas.agent import AgentHeartbeats
 from schemas.agent import _DEFAULT_ROLE as DEFAULT_ROLE
 from datetime import datetime
@@ -17,6 +18,10 @@ logger = logging.getLogger(__name__)
 
 @agent_router.websocket("/ws/{agent_id}/{user_id}")
 async def agent_ws_endpoint(agent_id: str, user_id: str, websocket: WebSocket):
+    session_user = await authenticate_ws(websocket)
+    if session_user is None or session_user != user_id:
+        await websocket.close(code=4401)
+        return
     db = AgentManager(user_id)
     try:
         await db.connect_agent(agent_id, websocket)
@@ -27,7 +32,7 @@ async def agent_ws_endpoint(agent_id: str, user_id: str, websocket: WebSocket):
 # ── Agent CRUD ────────────────────────────────────────────────────────────────
 
 @agent_router.get("/{user_id}")
-async def get_agents(user_id: str) -> dict:
+async def get_agents(user_id: str, _: str = Depends(require_match("user_id"))) -> dict:
     db = AgentManager(user_id)
     try:
         return db.get_user_agents()
@@ -36,7 +41,7 @@ async def get_agents(user_id: str) -> dict:
 
 
 @agent_router.post("/{user_id}", status_code=201)
-async def create_agent(user_id: str, body: dict) -> dict:
+async def create_agent(user_id: str, body: dict, _: str = Depends(require_match("user_id"))) -> dict:
     db = AgentManager(user_id)
     try:
         agent_id = str(uuid.uuid4())
@@ -54,7 +59,7 @@ async def create_agent(user_id: str, body: dict) -> dict:
 
 
 @agent_router.put("/{user_id}/{agent_id}")
-async def update_agent(user_id: str, agent_id: str, body: dict) -> dict:
+async def update_agent(user_id: str, agent_id: str, body: dict, _: str = Depends(require_match("user_id"))) -> dict:
     db = AgentManager(user_id)
     try:
         if not db.lookup("agents", {"_id": agent_id}):
@@ -68,7 +73,7 @@ async def update_agent(user_id: str, agent_id: str, body: dict) -> dict:
 
 
 @agent_router.delete("/{user_id}/{agent_id}", status_code=204)
-async def delete_agent(user_id: str, agent_id: str) -> None:
+async def delete_agent(user_id: str, agent_id: str, _: str = Depends(require_match("user_id"))) -> None:
     db = AgentManager(user_id)
     try:
         db.delete_agent(agent_id)
@@ -79,7 +84,7 @@ async def delete_agent(user_id: str, agent_id: str) -> None:
 # ── Messages ──────────────────────────────────────────────────────────────────
 
 @agent_router.get("/{user_id}/{agent_id}/messages")
-async def get_messages(user_id: str, agent_id: str) -> dict:
+async def get_messages(user_id: str, agent_id: str, _: str = Depends(require_match("user_id"))) -> dict:
     db = AgentManager(user_id)
     try:
         return db.get_messages(agent_id)
@@ -88,7 +93,7 @@ async def get_messages(user_id: str, agent_id: str) -> dict:
 
 
 @agent_router.delete("/{user_id}/{agent_id}/messages/{message_id}", status_code=204)
-async def delete_message(user_id: str, agent_id: str, message_id: str) -> None:
+async def delete_message(user_id: str, agent_id: str, message_id: str, _: str = Depends(require_match("user_id"))) -> None:
     db = AgentManager(user_id)
     try:
         db.delete_message(message_id)
@@ -99,7 +104,7 @@ async def delete_message(user_id: str, agent_id: str, message_id: str) -> None:
 # ── Heartbeats ────────────────────────────────────────────────────────────────
 
 @agent_router.get("/{user_id}/{agent_id}/heartbeats")
-async def get_heartbeats(user_id: str, agent_id: str) -> list:
+async def get_heartbeats(user_id: str, agent_id: str, _: str = Depends(require_match("user_id"))) -> list:
     db = AgentManager(user_id)
     try:
         return db.get_heartbeats(agent_id)
@@ -107,7 +112,7 @@ async def get_heartbeats(user_id: str, agent_id: str) -> list:
         db.close()
 
 @agent_router.put("/{user_id}/{heartbeat_id}/update_heartbeats")
-async def update_heartbeat(user_id: str, heartbeat_id: str, body: dict) -> dict:
+async def update_heartbeat(user_id: str, heartbeat_id: str, body: dict, _: str = Depends(require_match("user_id"))) -> dict:
     db = AgentManager(user_id)
     try:
         heartbeat = AgentHeartbeats(
@@ -123,7 +128,7 @@ async def update_heartbeat(user_id: str, heartbeat_id: str, body: dict) -> dict:
 
 
 @agent_router.post("/{user_id}/{agent_id}/{heartbeat_id}/commit_heartbeat")
-async def commit_heartbeat(user_id: str, agent_id: str, heartbeat_id: str, body: dict):
+async def commit_heartbeat(user_id: str, agent_id: str, heartbeat_id: str, body: dict, _: str = Depends(require_match("user_id"))):
     db = AgentManager(user_id=user_id)
     content = body.get("prompt", None)
     if not content:
@@ -133,7 +138,7 @@ async def commit_heartbeat(user_id: str, agent_id: str, heartbeat_id: str, body:
 
 
 @agent_router.post("/{user_id}/{agent_id}/heartbeat", status_code=201)
-async def add_heartbeat(user_id: str, agent_id: str, body: dict) -> dict:
+async def add_heartbeat(user_id: str, agent_id: str, body: dict, _: str = Depends(require_match("user_id"))) -> dict:
     gate = check_limit(user_id, "agent_events")
     if not gate["allowed"]:
         raise HTTPException(status_code=403, detail=gate)
@@ -152,7 +157,7 @@ async def add_heartbeat(user_id: str, agent_id: str, body: dict) -> dict:
 
 
 @agent_router.delete("/{user_id}/{agent_id}/heartbeat/{heartbeat_id}", status_code=204)
-async def delete_heartbeat(user_id: str, agent_id: str, heartbeat_id: str) -> None:
+async def delete_heartbeat(user_id: str, agent_id: str, heartbeat_id: str, _: str = Depends(require_match("user_id"))) -> None:
     db = AgentManager(user_id)
     try:
         db.delete_heartbeat(heartbeat_id)
@@ -164,7 +169,7 @@ async def delete_heartbeat(user_id: str, agent_id: str, heartbeat_id: str) -> No
 # ── Session summarization ─────────────────────────────────────────────────────
 
 @agent_router.post("/{user_id}/{agent_id}/summarize", status_code=201)
-async def summarize_session(user_id: str, agent_id: str, body: dict) -> dict:
+async def summarize_session(user_id: str, agent_id: str, body: dict, _: str = Depends(require_match("user_id"))) -> dict:
     session  = body.get("session", {})
     group_id = body.get("group_id", "")
 

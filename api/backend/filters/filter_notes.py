@@ -2,7 +2,7 @@ from schemas.users import Note
 from schemas.filter import Sort, Filter
 from typing import Generator
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -134,7 +134,6 @@ class Sorting:
             notes: Flat mapping of note_id -> note data dict (not nested by user).
         """
         self.notes = notes
-        self.date_format = "%Y-%m-%d %H:%M:%S.%f"
 
     def quicksort(self, notes_arr: list[list]) -> list[list]:
         """Sort a list of ``[note_id, datetime]`` pairs in ascending date order.
@@ -155,8 +154,11 @@ class Sorting:
         left:   list = [[x, y] for x, y in notes_arr if y < pivot]
         middle: list = [[x, y] for x, y in notes_arr if y == pivot]
         right:  list = [[x, y] for x, y in notes_arr if y > pivot]
+        # `middle` holds only pivot-equal entries, already in sorted order relative
+        # to each other — recursing into it would re-select the same pivot forever
+        # whenever many/all entries share a value (e.g. unparseable timestamps).
         return (self.quicksort(left) +
-                self.quicksort(middle) +
+                middle +
                 self.quicksort(right))
 
     def sort_date(self, descending: bool) -> dict:
@@ -176,19 +178,20 @@ class Sorting:
         for nid, data in self.notes.items():
             note = Note(**data)
             try:
-                dt = datetime.strptime(note.timestamp, self.date_format)
-            except (ValueError, AttributeError):
-                dt = datetime.min
+                # Postgres returns timezone-aware ISO strings (e.g. trailing
+                # "-07:00"), which strptime's fixed naive format can't parse.
+                dt = datetime.fromisoformat(note.timestamp)
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+            except (ValueError, TypeError):
+                dt = datetime.min.replace(tzinfo=timezone.utc)
             date_list.append([nid, dt])
 
-        print(f"sorting list of {len(date_list)} dates: {date_list}")
         sorted_list = self.quicksort(date_list)
-        print(f"length of sorted list: {len(sorted_list)}")
         if descending:
             sorted_list = sorted_list[::-1]
 
         note_sorted = {}
         for nid, _ in sorted_list:
-            print(f"note in order: {self.notes[nid].get('title')}, {self.notes[nid].get('timestamp')}")
             note_sorted[nid] = self.notes[nid]
         return note_sorted

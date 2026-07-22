@@ -17,6 +17,14 @@ class GroupsManager(DBManager):
         else:
             self.user = User()
 
+    def is_member(self) -> bool:
+        """True if ``self.user_id`` belongs to ``self.group_id``'s member list."""
+        group = self.lookup("groups", {"_id": self.group_id})
+        if not group:
+            return False
+        _, group_data = list(group.items())[0]
+        return self.user_id in (group_data.get("users") or [])
+
     def format_messages(self, messages: dict) -> list[dict]:
         result = []
         for _, data in messages.items():

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Depends
 from pydantic import BaseModel
 from datetime import datetime, timezone
 import time
@@ -7,6 +7,7 @@ from backend.subscription.subscriptions import SubscriptionsManager
 from backend.subscription.limits import LimitsManager
 from backend.subscription import stripe_service
 from backend.subscription import apple_service
+from backend.auth.dependencies import get_current_user, require_match
 from schemas.subscription import SubscriptionCreate, SubscriptionUpdate
 
 subscription_router = APIRouter(prefix="/subscriptions")
@@ -36,7 +37,7 @@ def _ms(epoch_ms):
 # ── Plans: CRUD ────────────────────────────────────────────────────────────────
 
 @subscription_router.post("/", status_code=201)
-async def create_subscription(sub: SubscriptionCreate) -> dict:
+async def create_subscription(sub: SubscriptionCreate, current_user: str = Depends(get_current_user)) -> dict:
     """Start a new subscription plan; the host becomes its first member.
 
     Args:
@@ -46,6 +47,8 @@ async def create_subscription(sub: SubscriptionCreate) -> dict:
     Returns:
         dict: ``{"id": str}`` of the created plan.
     """
+    if sub.user_id != current_user:
+        raise HTTPException(status_code=403, detail="Forbidden")
     db = SubscriptionsManager()
     try:
         return {"id": db.create_subscription(sub)}
@@ -57,13 +60,15 @@ async def create_subscription(sub: SubscriptionCreate) -> dict:
 # These literal routes are declared before the "/{subscription_id}" wildcard.
 
 @subscription_router.post("/checkout")
-async def create_checkout(req: CheckoutRequest) -> dict:
+async def create_checkout(req: CheckoutRequest, current_user: str = Depends(get_current_user)) -> dict:
     """Create a Stripe Checkout Session for a free-trial subscription.
 
     Returns ``{"url": str}`` — the browser redirects there to enter payment on
     Stripe's hosted page. The subscription row is created by the webhook once
     checkout completes.
     """
+    if req.user_id != current_user:
+        raise HTTPException(status_code=403, detail="Forbidden")
     if not stripe_service.is_configured():
         raise HTTPException(status_code=503, detail="Payments are not configured.")
     db = SubscriptionsManager()
@@ -138,7 +143,7 @@ async def stripe_webhook(request: Request) -> dict:
 # ── Apple StoreKit billing (iOS) ────────────────────────────────────────────────
 
 @subscription_router.post("/apple/sync")
-async def apple_sync(req: AppleSyncRequest) -> dict:
+async def apple_sync(req: AppleSyncRequest, current_user: str = Depends(get_current_user)) -> dict:
     """Record/refresh an Apple subscription from a StoreKit 2 signed transaction.
 
     The iOS app sends the JWS after StoreKit has verified it on-device (on
@@ -146,6 +151,8 @@ async def apple_sync(req: AppleSyncRequest) -> dict:
     upsert the row. If the transaction has expired/been refunded, the plan is
     removed. Returns the resulting plan (or ``{"status": ...}``).
     """
+    if req.user_id != current_user:
+        raise HTTPException(status_code=403, detail="Forbidden")
     try:
         payload = apple_service.decode_jws(req.jws)
     except Exception:
@@ -215,7 +222,7 @@ async def apple_notifications(request: Request) -> dict:
 # wildcard so their literal segment matches first.
 
 @subscription_router.get("/user/{user_id}")
-async def get_user_subscription(user_id: str) -> dict:
+async def get_user_subscription(user_id: str, _: str = Depends(require_match("user_id"))) -> dict:
     """Return the plan the given user currently belongs to.
 
     Raises:
@@ -232,7 +239,7 @@ async def get_user_subscription(user_id: str) -> dict:
 
 
 @subscription_router.get("/user/{user_id}/requests")
-async def get_user_requests(user_id: str) -> list[dict]:
+async def get_user_requests(user_id: str, _: str = Depends(require_match("user_id"))) -> list[dict]:
     """List the group plans this user has an outstanding join request for."""
     db = SubscriptionsManager()
     try:
@@ -242,7 +249,7 @@ async def get_user_requests(user_id: str) -> list[dict]:
 
 
 @subscription_router.get("/user/{user_id}/usage")
-async def get_usage(user_id: str) -> dict:
+async def get_usage(user_id: str, _: str = Depends(require_match("user_id"))) -> dict:
     """Free-tier usage snapshot for the gated resources.
 
     Returns the user's subscription state plus, for each resource (notes, agent
@@ -260,32 +267,50 @@ async def get_usage(user_id: str) -> dict:
         db.close()
 
 
+def _require_host(db: SubscriptionsManager, subscription_id: str, current_user: str) -> dict:
+    """Load the plan and 403 unless ``current_user`` is its host. 404 if missing."""
+    result = db.get_subscription(subscription_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Subscription not found")
+    if result.get("user_id") != current_user:
+        raise HTTPException(status_code=403, detail="Only the plan host may do this")
+    return result
+
+
 @subscription_router.get("/{subscription_id}")
-async def get_subscription(subscription_id: str) -> dict:
-    """Fetch a single plan by id.
+async def get_subscription(subscription_id: str, current_user: str = Depends(get_current_user)) -> dict:
+    """Fetch a single plan by id. Caller must be the host or a member.
 
     Raises:
         HTTPException 404: If the plan does not exist.
+        HTTPException 403: If the caller is neither the host nor a member.
     """
     db = SubscriptionsManager()
     try:
         result = db.get_subscription(subscription_id)
         if result is None:
             raise HTTPException(status_code=404, detail="Subscription not found")
+        if result.get("user_id") != current_user and not any(
+            m["user_id"] == current_user for m in db.get_members(subscription_id)
+        ):
+            raise HTTPException(status_code=403, detail="Forbidden")
         return result
     finally:
         db.close()
 
 
 @subscription_router.put("/{subscription_id}")
-async def update_subscription(subscription_id: str, upd: SubscriptionUpdate) -> dict:
+async def update_subscription(subscription_id: str, upd: SubscriptionUpdate, current_user: str = Depends(get_current_user)) -> dict:
     """Update a plan (payment method, status, or plan_type — which re-derives price).
+    Host only.
 
     Raises:
         HTTPException 404: If the plan does not exist.
+        HTTPException 403: If the caller is not the plan's host.
     """
     db = SubscriptionsManager()
     try:
+        _require_host(db, subscription_id, current_user)
         if not db.update_subscription(subscription_id, upd):
             raise HTTPException(status_code=404, detail="Subscription not found")
         return {"ok": True}
@@ -294,14 +319,15 @@ async def update_subscription(subscription_id: str, upd: SubscriptionUpdate) -> 
 
 
 @subscription_router.delete("/{subscription_id}", status_code=204)
-async def delete_subscription(subscription_id: str) -> None:
-    """Cancel a plan and detach all of its members.
+async def delete_subscription(subscription_id: str, current_user: str = Depends(get_current_user)) -> None:
+    """Cancel a plan and detach all of its members. Host only.
 
     If the plan is backed by a Stripe subscription, it is canceled in Stripe
     first so billing stops, then the local row is removed.
     """
     db = SubscriptionsManager()
     try:
+        _require_host(db, subscription_id, current_user)
         stripe_sub = db.get_stripe_sub_id(subscription_id)
         if stripe_sub:
             stripe_service.cancel_subscription(stripe_sub)
@@ -313,24 +339,30 @@ async def delete_subscription(subscription_id: str) -> None:
 # ── Members ────────────────────────────────────────────────────────────────────
 
 @subscription_router.get("/{subscription_id}/members")
-async def get_members(subscription_id: str) -> list[dict]:
-    """List every user enrolled in the plan (host included)."""
+async def get_members(subscription_id: str, current_user: str = Depends(get_current_user)) -> list[dict]:
+    """List every user enrolled in the plan (host included). Host or member only."""
     db = SubscriptionsManager()
     try:
-        return db.get_members(subscription_id)
+        members = db.get_members(subscription_id)
+        if not any(m["user_id"] == current_user for m in members):
+            raise HTTPException(status_code=403, detail="Forbidden")
+        return members
     finally:
         db.close()
 
 
 @subscription_router.delete("/{subscription_id}/members/{user_id}", status_code=204)
-async def remove_member(subscription_id: str, user_id: str) -> None:
-    """Remove a member from a group plan (host removes, or member leaves).
+async def remove_member(subscription_id: str, user_id: str, current_user: str = Depends(get_current_user)) -> None:
+    """Remove a member from a group plan (host removes, or member leaves themselves).
 
     Raises:
         HTTPException 400: If the plan is missing or the target is the host.
+        HTTPException 403: If the caller is neither the host nor the target member.
     """
     db = SubscriptionsManager()
     try:
+        if current_user != user_id:
+            _require_host(db, subscription_id, current_user)
         result = db.remove_member(subscription_id, user_id)
         if result and "error" in result:
             raise HTTPException(status_code=400, detail=result["error"])
@@ -341,7 +373,7 @@ async def remove_member(subscription_id: str, user_id: str) -> None:
 # ── Group join requests ────────────────────────────────────────────────────────
 
 @subscription_router.post("/{subscription_id}/requests", status_code=201)
-async def create_request(subscription_id: str, from_user_id: str) -> dict:
+async def create_request(subscription_id: str, from_user_id: str, _: str = Depends(require_match("from_user_id"))) -> dict:
     """Request to join a host's group plan.
 
     Args:
@@ -363,25 +395,28 @@ async def create_request(subscription_id: str, from_user_id: str) -> dict:
 
 
 @subscription_router.get("/{subscription_id}/requests")
-async def get_requests(subscription_id: str) -> list[dict]:
-    """List pending join requests for a plan (for the host to review)."""
+async def get_requests(subscription_id: str, current_user: str = Depends(get_current_user)) -> list[dict]:
+    """List pending join requests for a plan (for the host to review). Host only."""
     db = SubscriptionsManager()
     try:
+        _require_host(db, subscription_id, current_user)
         return db.get_requests(subscription_id)
     finally:
         db.close()
 
 
 @subscription_router.post("/{subscription_id}/requests/{from_user_id}/accept")
-async def accept_request(subscription_id: str, from_user_id: str) -> dict:
-    """Host accepts a pending request, enrolling the user in the plan.
+async def accept_request(subscription_id: str, from_user_id: str, current_user: str = Depends(get_current_user)) -> dict:
+    """Host accepts a pending request, enrolling the user in the plan. Host only.
 
     Raises:
         HTTPException 400: If the plan is missing, no such request exists, or
             the plan is full.
+        HTTPException 403: If the caller is not the plan's host.
     """
     db = SubscriptionsManager()
     try:
+        _require_host(db, subscription_id, current_user)
         result = db.accept_request(subscription_id, from_user_id)
         if result and "error" in result:
             raise HTTPException(status_code=400, detail=result["error"])
@@ -391,10 +426,12 @@ async def accept_request(subscription_id: str, from_user_id: str) -> dict:
 
 
 @subscription_router.delete("/{subscription_id}/requests/{from_user_id}", status_code=204)
-async def decline_request(subscription_id: str, from_user_id: str) -> None:
+async def decline_request(subscription_id: str, from_user_id: str, current_user: str = Depends(get_current_user)) -> None:
     """Decline (host) or cancel (requester) a pending join request."""
     db = SubscriptionsManager()
     try:
+        if current_user != from_user_id:
+            _require_host(db, subscription_id, current_user)
         db.delete_request(subscription_id, from_user_id)
     finally:
         db.close()

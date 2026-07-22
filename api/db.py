@@ -252,6 +252,19 @@ def create_tables(cur):
         "created_at TIMESTAMPTZ DEFAULT NOW(),"
         "PRIMARY KEY (subscription_id, from_user_id))"
     )
+
+    # Server-side session store backing the login cookie. The cookie holds an
+    # opaque random token; only its sha256 hash is stored, mirroring hash_pass.
+    cur.execute(
+        "CREATE TABLE IF NOT EXISTS sessions"
+        "(token_hash VARCHAR(64) PRIMARY KEY,"
+        "user_id UUID REFERENCES users(_id) ON DELETE CASCADE,"
+        "created_at TIMESTAMPTZ DEFAULT NOW(),"
+        "expires_at TIMESTAMPTZ NOT NULL)"
+    )
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id)"
+    )
     logger.info("All tables created.")
 
 main_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")

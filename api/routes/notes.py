@@ -1,7 +1,8 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from schemas.users import Note
 from db import DBManager
 from backend.subscription.limits import check_limit
+from backend.auth.dependencies import get_current_user, require_match
 from datetime import datetime
 import uuid
 import logging
@@ -13,7 +14,7 @@ logger = logging.getLogger(__name__)
 # ── Highlights ────────────────────────────────────────────────────────────────
 
 @notes_router.get("/highlight/{user_id}")
-async def get_highlights(user_id: str) -> dict:
+async def get_highlights(user_id: str, _: str = Depends(require_match("user_id"))) -> dict:
     db = DBManager()
     try:
         # highlights has a composite PK (user_id, key) with no _id column,
@@ -25,7 +26,7 @@ async def get_highlights(user_id: str) -> dict:
 
 
 @notes_router.post("/highlight/{user_id}")
-async def highlight_verse(user_id: str, verse: dict) -> dict:
+async def highlight_verse(user_id: str, verse: dict, _: str = Depends(require_match("user_id"))) -> dict:
     book    = verse.get("book")
     chapter = verse.get("chapter")
     verse_n = verse.get("verse")
@@ -46,7 +47,7 @@ async def highlight_verse(user_id: str, verse: dict) -> dict:
 
 
 @notes_router.delete("/highlight/{user_id}/{key}")
-async def remove_highlight(user_id: str, key: str) -> dict:
+async def remove_highlight(user_id: str, key: str, _: str = Depends(require_match("user_id"))) -> dict:
     db = DBManager()
     try:
         db.delete("highlights", {"user_id": user_id, "key": key})
@@ -58,7 +59,7 @@ async def remove_highlight(user_id: str, key: str) -> dict:
 # ── Bookmarks ─────────────────────────────────────────────────────────────────
 
 @notes_router.get("/bookmark/{user_id}")
-async def get_bookmarks(user_id: str) -> dict:
+async def get_bookmarks(user_id: str, _: str = Depends(require_match("user_id"))) -> dict:
     db = DBManager()
     try:
         # bookmarks has a composite PK (user_id, key) with no _id column.
@@ -69,7 +70,7 @@ async def get_bookmarks(user_id: str) -> dict:
 
 
 @notes_router.post("/bookmark/{user_id}")
-async def add_bookmark(user_id: str, bookmark: dict) -> dict:
+async def add_bookmark(user_id: str, bookmark: dict, _: str = Depends(require_match("user_id"))) -> dict:
     book    = bookmark.get("book")
     chapter = bookmark.get("chapter")
     label   = bookmark.get("label", "")
@@ -89,7 +90,7 @@ async def add_bookmark(user_id: str, bookmark: dict) -> dict:
 
 
 @notes_router.delete("/bookmark/{user_id}/{key}")
-async def remove_bookmark(user_id: str, key: str) -> dict:
+async def remove_bookmark(user_id: str, key: str, _: str = Depends(require_match("user_id"))) -> dict:
     db = DBManager()
     try:
         db.delete("bookmarks", {"user_id": user_id, "key": key})
@@ -101,9 +102,13 @@ async def remove_bookmark(user_id: str, key: str) -> dict:
 # ── Notes ─────────────────────────────────────────────────────────────────────
 
 @notes_router.post("/reply/{note_id}", status_code=201)
-async def post_reply(note_id: str, reply: dict) -> dict:
-    # Replies are notes too, so they count against the same weekly cap.
+async def post_reply(note_id: str, reply: dict, current_user: str = Depends(get_current_user)) -> dict:
+    # The reply's author must be the authenticated caller, not whatever the
+    # request body claims.
     author = reply.get("user", "")
+    if author != current_user:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    # Replies are notes too, so they count against the same weekly cap.
     gate = check_limit(author, "notes")
     if not gate["allowed"]:
         raise HTTPException(status_code=403, detail=gate)
@@ -130,7 +135,7 @@ async def post_reply(note_id: str, reply: dict) -> dict:
 
 
 @notes_router.post("/{user_id}", status_code=201)
-async def create_note(user_id: str, note_dict: dict) -> dict:
+async def create_note(user_id: str, note_dict: dict, _: str = Depends(require_match("user_id"))) -> dict:
     gate = check_limit(user_id, "notes")
     if not gate["allowed"]:
         raise HTTPException(status_code=403, detail=gate)
@@ -165,7 +170,7 @@ async def create_note(user_id: str, note_dict: dict) -> dict:
 
 
 @notes_router.get("/{user_id}")
-async def get_notes(user_id: str) -> dict:
+async def get_notes(user_id: str, _: str = Depends(require_match("user_id"))) -> dict:
     db = DBManager()
     try:
         db.cur.execute(
@@ -202,7 +207,7 @@ async def get_notes(user_id: str) -> dict:
 
 
 @notes_router.put("/{user_id}")
-async def update_note(user_id: str, note_id: str, note_dict: dict) -> None:
+async def update_note(user_id: str, note_id: str, note_dict: dict, _: str = Depends(require_match("user_id"))) -> None:
     db = DBManager()
     try:
         existing = db.lookup("notes", {"_id": note_id})
@@ -239,7 +244,7 @@ async def update_note(user_id: str, note_id: str, note_dict: dict) -> None:
 
 
 @notes_router.delete("/{user_id}")
-async def delete_note(user_id: str, note_id: str) -> dict:
+async def delete_note(user_id: str, note_id: str, _: str = Depends(require_match("user_id"))) -> dict:
     db = DBManager()
     try:
         existing = db.lookup("notes", {"_id": note_id})

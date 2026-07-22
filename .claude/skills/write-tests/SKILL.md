@@ -196,6 +196,44 @@ Before calling any backend feature done, confirm:
 
 ---
 
+## Pre-deployment smoke test (mandatory before declaring a backend change done)
+
+Per-router `TestClient(app)` instances (as in the pattern above) only prove that
+router's handlers work in isolation — they do NOT prove the real app boots. A
+change can pass every per-route test and still crash the live server on deploy
+via a failure that only shows up when `main.app` itself loads: a bad import, a
+missing dependency, a route-ordering conflict across routers, or a startup-time
+error in the `lifespan` (scheduler, DB connection, etc.). All of these have
+actually happened in this project. Before calling any backend change done:
+
+1. **Boot the real app, not a stub.** Import `main.app` (or run
+   `uvicorn main:app`) with the same env vars production uses and confirm it
+   starts without exceptions — including the `lifespan` startup (scheduler
+   jobs, DB connect). A per-router `FastAPI()` + `include_router(...)` test
+   app does not catch cross-router registration issues or lifespan failures.
+2. **Hit every modified endpoint at least once against the fully-booted app**
+   — not just the ones with dedicated unit tests. A quick loop over modified
+   routes checking for a non-500 with plausible input catches silent breakage
+   in routes that "should" be unaffected by a change but share a dependency,
+   import, or middleware with what changed.
+3. **WebSocket routes need explicit tests too** — they use a different
+   request/response lifecycle than HTTP routes (no per-request exception
+   handler, auth typically read from `websocket.cookies` instead of a
+   dependency), so an HTTP-only test pass does not exercise them.
+   `TestClient.websocket_connect(url, cookies=...)` covers this without a
+   live server.
+4. **Auth/permission changes specifically**: for every route whose access
+   control changed, test both an authorized caller (still works) and an
+   unauthorized one (now correctly rejected) against the live dependency
+   chain — not just the manager method in isolation, since the bug is
+   typically in the wiring (a missing `Depends(...)`, a parameter name
+   mismatch), not the auth logic itself.
+5. Only after 1–4 pass should the change be deployed. If a live staging/local
+   environment isn't available, say so explicitly in the report rather than
+   presenting per-route unit tests as proof the server won't break.
+
+---
+
 ## Test coverage targets
 
 | Layer | Minimum coverage |

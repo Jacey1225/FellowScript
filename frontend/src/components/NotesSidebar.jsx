@@ -624,13 +624,18 @@ export default function NotesSidebar({
         list.push([id, note, null, false]);
       });
     }
-    // Most recently created first — prefer created_at, fall back to timestamp.
+    // When a filter/sort is active, the backend has already ordered these —
+    // resorting here would silently discard whatever order (e.g. "Oldest
+    // first") the user picked in the filter panel.
+    if (filterActive) return list;
+
+    // Default (no filter/sort applied): most recently created first.
     return list.sort((a, b) => {
       const ta = new Date(a[1]?.created_at || a[1]?.timestamp || 0).getTime() || 0;
       const tb = new Date(b[1]?.created_at || b[1]?.timestamp || 0).getTime() || 0;
       return tb - ta;
     });
-  }, [notes, currentGroupId, user]);
+  }, [notes, currentGroupId, user, filterActive]);
 
   const openEditor = (id = null) => { setEditorNoteId(id); setEditorOpen(true); };
   const closeEditor = () => { setEditorOpen(false); setEditorNoteId(null); };
@@ -733,35 +738,42 @@ export default function NotesSidebar({
             ? verseEmpty
             : (() => {
                 // Group notes by the first referenced book; no-verse notes go last.
-                const groups = new Map();
+                const bookGroups = new Map();
                 verseList.forEach(entry => {
-                  const book = entry[1]?.note_verses?.[0]?.[0] || '__none__';
-                  if (!groups.has(book)) groups.set(book, []);
-                  groups.get(book).push(entry);
+                  const book = validVerses(entry[1]?.verses)[0]?.[0] || '__none__';
+                  if (!bookGroups.has(book)) bookGroups.set(book, []);
+                  bookGroups.get(book).push(entry);
                 });
-                const sorted = [...groups.entries()].sort(([a], [b]) => {
+                // Order groups by canonical Bible book order, not alphabetically.
+                const bookOrder = books || [];
+                const sorted = [...bookGroups.entries()].sort(([a], [b]) => {
                   if (a === '__none__') return 1;
                   if (b === '__none__') return -1;
-                  return a.localeCompare(b);
+                  const ia = bookOrder.indexOf(a);
+                  const ib = bookOrder.indexOf(b);
+                  if (ia === -1 && ib === -1) return a.localeCompare(b);
+                  if (ia === -1) return 1;
+                  if (ib === -1) return -1;
+                  return ia - ib;
                 });
                 return sorted.flatMap(([book, entries]) => [
                   <div key={`hdr-${book}`} style={{
-                    fontFamily: "'Inter', sans-serif",
-                    fontSize: '0.67rem',
+                    fontFamily: "'DM Serif Display', serif",
+                    fontSize: '1.05rem',
                     fontWeight: 700,
-                    letterSpacing: '0.08em',
-                    textTransform: 'uppercase',
-                    color: 'rgba(201,138,75,0.45)',
-                    padding: '0.6rem 0.5rem 0.25rem',
+                    letterSpacing: '0.02em',
+                    color: 'rgba(201,138,75,0.7)',
+                    padding: '0.6rem 0.5rem 0.3rem',
                     marginTop: '0.25rem',
-                    borderBottom: '1px solid rgba(201,138,75,0.1)',
                   }}>
                     {book === '__none__' ? 'General' : book}
                   </div>,
                   ...entries.map(([id, note, owner, isOwn]) => (
-                    <NoteCard key={id} id={id} note={note} owner={owner} isOwn={isOwn}
-                      onEdit={openEditor} onDelete={handleDelete} onOpen={openDetail}
-                      onNavigateVerse={onNavigateVerse} />
+                    <div key={id} style={{ paddingLeft: '0.85rem' }}>
+                      <NoteCard id={id} note={note} owner={owner} isOwn={isOwn}
+                        onEdit={openEditor} onDelete={handleDelete} onOpen={openDetail}
+                        onNavigateVerse={onNavigateVerse} />
+                    </div>
                   )),
                 ]);
               })()
