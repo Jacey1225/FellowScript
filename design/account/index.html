@@ -870,8 +870,9 @@
 <h3 id="profile">Profile</h3>
 <ul>
 <li>Displays <code>username</code> and <code>email</code></li>
-<li>Edit form for updating either field or resetting password</li>
+<li>Edit form for updating either field, resetting password, or setting <strong>Timezone</strong> (searchable dropdown of IANA names, e.g. <code>America/Los_Angeles</code>)</li>
 <li>Changes go to <code>PUT /user/{user_id}</code></li>
+<li>Timezone determines when the nightly data backup runs for that user — always their own local 3am, not a fixed server time (see <a href="../../architecture/data/">Data → Nightly Backup Database</a>)</li>
 </ul>
 <h3 id="subscription-card-subscriptioncard">Subscription Card (<code>SubscriptionCard</code>)</h3>
 <table>
