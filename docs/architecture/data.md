@@ -23,6 +23,7 @@ The full Bible (KJV/ESV) is stored as a static JSON file loaded into memory on s
 | `apple_sub` | TEXT | Stable Apple `sub` claim for Sign in with Apple |
 | `google_sub` | TEXT | Stable Google `sub` claim |
 | `subscription_id` | UUID FK → `subscriptions` | Current plan; always set (free plan row created on signup) |
+| `timezone` | TEXT | IANA name (e.g. `America/Los_Angeles`), default `'UTC'`. User-editable in Account settings; drives the nightly backup schedule below |
 
 ---
 
@@ -163,6 +164,23 @@ Verse references linked to a note (many-to-one).
 2. `UPDATE messages SET from_user = NULL WHERE from_user = ?` — preserves group chat history
 3. `UPDATE devotions SET creator_id = NULL WHERE creator_id = ?` — preserves devotion plans
 4. `DELETE FROM users WHERE _id = ?` — remaining children with CASCADE delete automatically
+
+---
+
+## Nightly Backup Database
+
+A second, separate Postgres database (`fellowscript_backup`, same instance, owned by the `fellowscript` role) mirrors each user's recent data. A scheduler job checks every minute for any user whose `timezone` puts their local clock at 03:00, and only that user's data is copied at that moment — so the backup runs at each user's own local 3am, not a single fixed server time.
+
+Per user, per run:
+
+- `users` — profile row (username, email, timezone), always refreshed
+- `notes` — rows with `timestamp` in the last 24h (covers new *and* edited notes)
+- `note_verses` — verses belonging to whichever notes were just copied
+- `highlights`, `bookmarks` — full current set each run (these tables have no modification timestamp to filter on, and are small enough that a full re-sync is cheap)
+
+The backup tables are intentionally FK-light (no foreign keys to each other) so a backup write can never fail due to referential integrity — the goal is a resilient destination, not a fully normalized mirror. Not yet covered: agents, agent heartbeats, notifications, subscriptions, messages, and groups — a possible follow-up.
+
+Implementation: `backend/backup/manager.py` (`BackupManager`), scheduled from `backend/interactions/scheduler.py`.
 
 ---
 

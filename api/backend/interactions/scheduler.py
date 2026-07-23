@@ -4,7 +4,6 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from db import DBManager
 from backend.interactions.push import send_push
 from backend.interactions.notifications import NotificationManager
-from backend.interactions.agent import AgentManager
 from backend.subscription.subscriptions import SubscriptionsManager
 
 logger = logging.getLogger(__name__)
@@ -49,40 +48,33 @@ async def _fire_due_notifications() -> None:
             logger.error("Failed to fire notification %s: %s", notif_id, e)
 
 
-async def _fire_due_heartbeats() -> None:
-    now          = datetime.now()
-    slot_idx     = str(now.day - 1)
-    current_time = now.strftime("%H:%M")
+async def _run_nightly_backups() -> None:
+    """Mirror each due user's recent data into the separate backup database.
 
-    db = DBManager()
+    Runs every minute; a given user is only actually backed up during the one
+    minute per day their local clock reads 03:00. The DB work is synchronous
+    (psycopg2), so it's offloaded to a thread via run_in_executor to avoid
+    blocking the event loop.
+    """
+    import asyncio, functools
+    from backend.backup.manager import BackupManager
+
+    bm = BackupManager()
     try:
-        db.cur.execute(
-            """
-            SELECT _id, agent_id, user_id, prompt
-            FROM   agent_heartbeats
-            WHERE  timestamps->>%s = %s
-            """,
-            (slot_idx, current_time),
-        )
-        rows = db.cur.fetchall()
+        loop = asyncio.get_running_loop()
+        due_users = await loop.run_in_executor(None, bm.users_due_now)
+        for user_id in due_users:
+            try:
+                result = await loop.run_in_executor(
+                    None, functools.partial(bm.backup_user, user_id)
+                )
+                logger.info("Nightly backup for %s: %s", user_id, result)
+            except Exception as e:
+                logger.error("Nightly backup failed for %s: %s", user_id, e)
     except Exception as e:
-        logger.error("Heartbeat scheduler DB error: %s", e)
-        return
+        logger.error("Backup scheduler error: %s", e)
     finally:
-        db.close()
-
-    for hb_id, agent_id, user_id, prompt in rows:
-        try:
-            import asyncio, functools
-            am     = AgentManager(user_id)
-            loop   = asyncio.get_running_loop()
-            result = await loop.run_in_executor(
-                None, functools.partial(am.commit_hb_response, agent_id, hb_id, prompt)
-            )
-            am.close()
-            logger.info("Heartbeat %s fired → %s", hb_id, result)
-        except Exception as e:
-            logger.error("Failed to fire heartbeat %s: %s", hb_id, e)
+        bm.close()
 
 
 async def _reconcile_trials() -> None:
@@ -104,7 +96,9 @@ async def _reconcile_trials() -> None:
 def start_scheduler() -> None:
     scheduler.add_job(_fire_due_notifications, "cron", minute="*", id="notify_check",
                       replace_existing=True)
-    scheduler.add_job(_fire_due_heartbeats, "cron", minute="*", id="heartbeat_check",
+    # Heartbeats are fired client-side only (iOS HeartbeatScheduler.checkAndFire
+    # on app foreground) — no server-side cron job for them.
+    scheduler.add_job(_run_nightly_backups, "cron", minute="*", id="backup_check",
                       replace_existing=True)
     # Trials only change on a monthly boundary; an hourly sweep is ample and
     # cheap. Lazy reconcile on read covers the gap between sweeps.

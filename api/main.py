@@ -286,7 +286,7 @@ async def update_user(user_id: str, info: UpdateUser, _: str = Depends(require_m
     Args:
         user_id: UUID of the user to update.
         info: Partial update payload; any combination of username, email,
-            and plain_pass may be supplied.
+            plain_pass, and timezone may be supplied.
 
     Returns:
         dict: The updated user record (excludes hash_pass).
@@ -305,6 +305,8 @@ async def update_user(user_id: str, info: UpdateUser, _: str = Depends(require_m
         users[user_id]["hash_pass"] = bcrypt.hashpw(
             info.plain_pass.encode(), bcrypt.gensalt()
         ).decode()
+    if info.timezone:
+        users[user_id]["timezone"] = info.timezone
     save_users(users)
     return {"user_id": user_id, **{k: v for k, v in users[user_id].items() if k != "hash_pass"}}
 

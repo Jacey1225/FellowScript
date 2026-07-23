@@ -914,6 +914,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#nightly-backup-database" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Nightly Backup Database
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#migrations" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1035,6 +1046,11 @@
 <td><code>subscription_id</code></td>
 <td>UUID FK → <code>subscriptions</code></td>
 <td>Current plan; always set (free plan row created on signup)</td>
+</tr>
+<tr>
+<td><code>timezone</code></td>
+<td>TEXT</td>
+<td>IANA name (e.g. <code>America/Los_Angeles</code>), default <code>'UTC'</code>. User-editable in Account settings; drives the nightly backup schedule below</td>
 </tr>
 </tbody>
 </table>
@@ -1425,6 +1441,18 @@
 <li><code>UPDATE devotions SET creator_id = NULL WHERE creator_id = ?</code> — preserves devotion plans</li>
 <li><code>DELETE FROM users WHERE _id = ?</code> — remaining children with CASCADE delete automatically</li>
 </ol>
+<hr />
+<h2 id="nightly-backup-database">Nightly Backup Database</h2>
+<p>A second, separate Postgres database (<code>fellowscript_backup</code>, same instance, owned by the <code>fellowscript</code> role) mirrors each user's recent data. A scheduler job checks every minute for any user whose <code>timezone</code> puts their local clock at 03:00, and only that user's data is copied at that moment — so the backup runs at each user's own local 3am, not a single fixed server time.</p>
+<p>Per user, per run:</p>
+<ul>
+<li><code>users</code> — profile row (username, email, timezone), always refreshed</li>
+<li><code>notes</code> — rows with <code>timestamp</code> in the last 24h (covers new <em>and</em> edited notes)</li>
+<li><code>note_verses</code> — verses belonging to whichever notes were just copied</li>
+<li><code>highlights</code>, <code>bookmarks</code> — full current set each run (these tables have no modification timestamp to filter on, and are small enough that a full re-sync is cheap)</li>
+</ul>
+<p>The backup tables are intentionally FK-light (no foreign keys to each other) so a backup write can never fail due to referential integrity — the goal is a resilient destination, not a fully normalized mirror. Not yet covered: agents, agent heartbeats, notifications, subscriptions, messages, and groups — a possible follow-up.</p>
+<p>Implementation: <code>backend/backup/manager.py</code> (<code>BackupManager</code>), scheduled from <code>backend/interactions/scheduler.py</code>.</p>
 <hr />
 <h2 id="migrations">Migrations</h2>
 <p>New columns are added via idempotent <code>ALTER TABLE … ADD COLUMN IF NOT EXISTS</code> statements at the top of <code>create_tables()</code> in <code>db.py</code>. These run on every server startup and are safe to re-run against a live database.</p>

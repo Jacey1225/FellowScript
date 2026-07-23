@@ -31,11 +31,14 @@ def create_tables(cur):
         # Stable provider identifiers for social sign-in (nullable — password
         # accounts have neither; each is backfilled on that provider's sign-in).
         "apple_sub TEXT,"
-        "google_sub TEXT)"
+        "google_sub TEXT,"
+        # User-set IANA timezone name; drives the local-3am nightly backup job.
+        "timezone TEXT NOT NULL DEFAULT 'UTC')"
     )
     # Migrations for databases created before the social-sign-in columns existed.
     cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS apple_sub TEXT")
     cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS google_sub TEXT")
+    cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS timezone TEXT NOT NULL DEFAULT 'UTC'")
 
     cur.execute(
         "CREATE TABLE IF NOT EXISTS groups"
@@ -266,6 +269,74 @@ def create_tables(cur):
         "CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id)"
     )
     logger.info("All tables created.")
+
+
+BACKUP_DB_NAME = "fellowscript_backup"
+
+
+def create_backup_tables(cur) -> None:
+    """Schema for the separate nightly-backup database (BACKUP_DB_NAME).
+
+    Deliberately FK-light and denormalized relative to the primary schema —
+    a backup destination must never refuse a write because some other row
+    hasn't been mirrored yet. Each table's primary key mirrors the source
+    table's so a re-run just refreshes existing rows (upsert, never fails on
+    a duplicate). ``backed_up_at`` records when *this* copy was written, not
+    when the original data was created/changed.
+    """
+    logger.info("Creating backup-database tables...")
+    cur.execute(
+        "CREATE TABLE IF NOT EXISTS users"
+        "(_id UUID PRIMARY KEY,"
+        "username VARCHAR(64),"
+        "email VARCHAR(255),"
+        "timezone TEXT,"
+        "backed_up_at TIMESTAMPTZ DEFAULT NOW())"
+    )
+    cur.execute(
+        "CREATE TABLE IF NOT EXISTS notes"
+        "(_id UUID PRIMARY KEY,"
+        "user_id UUID,"
+        "title VARCHAR(255),"
+        "text TEXT,"
+        "public BOOLEAN,"
+        "group_id UUID,"
+        "is_reply BOOLEAN,"
+        "parent_note_id UUID,"
+        "timestamp TIMESTAMPTZ,"
+        "created_at TIMESTAMPTZ,"
+        "backed_up_at TIMESTAMPTZ DEFAULT NOW())"
+    )
+    cur.execute(
+        "CREATE TABLE IF NOT EXISTS note_verses"
+        "(note_id UUID,"
+        "position INTEGER,"
+        "book VARCHAR(64),"
+        "chapter INTEGER,"
+        "verse INTEGER,"
+        "PRIMARY KEY (note_id, position))"
+    )
+    cur.execute(
+        "CREATE TABLE IF NOT EXISTS highlights"
+        "(user_id UUID,"
+        "key VARCHAR(128),"
+        "color VARCHAR(16),"
+        "backed_up_at TIMESTAMPTZ DEFAULT NOW(),"
+        "PRIMARY KEY (user_id, key))"
+    )
+    cur.execute(
+        "CREATE TABLE IF NOT EXISTS bookmarks"
+        "(user_id UUID,"
+        "key VARCHAR(128),"
+        "label VARCHAR(255),"
+        "backed_up_at TIMESTAMPTZ DEFAULT NOW(),"
+        "PRIMARY KEY (user_id, key))"
+    )
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_backup_notes_user ON notes(user_id)"
+    )
+    logger.info("Backup-database tables created.")
+
 
 main_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 
@@ -537,17 +608,17 @@ def main_notes_only():
 
 
 class DBManager:
-    def __init__(self):
+    def __init__(self, dbname: str = "fellowscript"):
         self.conn = sql.connect(
             host="localhost",
-            dbname="fellowscript",
+            dbname=dbname,
             user="fellowscript",
             password=os.getenv("DB_PASSWORD"),
             port=5432
         )
         logger.info("Connected.")
         self.cur = self.conn.cursor()
-        self.db_name = "fellowscript"
+        self.db_name = dbname
 
     def insertion(self, table: str, values: dict[str, Any], conflict: str = "DO NOTHING"):
         cols = ", ".join(values.keys())
