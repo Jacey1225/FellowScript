@@ -32,6 +32,17 @@ const CARD_STYLE = {
   marginBottom: '1.5rem',
 };
 
+// Full IANA timezone list where supported (most modern browsers); falls back
+// to just the browser's own detected zone so the picker still works.
+const timezoneOptions = (() => {
+  try {
+    return Intl.supportedValuesOf('timeZone').map(tz => ({ value: tz, label: tz }));
+  } catch {
+    const fallback = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+    return [{ value: fallback, label: fallback }, { value: 'UTC', label: 'UTC' }];
+  }
+})();
+
 const WEEKDAYS = [
   { label: 'Sun', value: 0 },
   { label: 'Mon', value: 1 },
@@ -172,7 +183,7 @@ export default function Account() {
       ]);
       const data = profileRes.ok ? await profileRes.json() : user;
       setProfileData(data);
-      form.setFieldsValue({ username: data.username || '', email: data.email || '' });
+      form.setFieldsValue({ username: data.username || '', email: data.email || '', timezone: data.timezone || 'UTC' });
 
       if (notesRes.ok) {
         const notesData = await notesRes.json();
@@ -381,6 +392,7 @@ export default function Account() {
     if (vals.username && vals.username !== profileData?.username) body.username   = vals.username.trim();
     if (vals.email    && vals.email    !== profileData?.email)    body.email      = vals.email.trim();
     if (vals.password)                                            body.plain_pass = vals.password;
+    if (vals.timezone && vals.timezone !== (profileData?.timezone || 'UTC')) body.timezone = vals.timezone;
 
     if (Object.keys(body).length === 0) {
       setEditMsg({ type: 'warning', text: 'No changes to save.' });
@@ -631,6 +643,14 @@ export default function Account() {
             </Form.Item>
             <Form.Item name="email" label="Email" rules={[{ type: 'email', message: 'Enter a valid email' }]}>
               <Input prefix={<MailOutlined />} placeholder="you@example.com" />
+            </Form.Item>
+            <Form.Item name="timezone" label="Timezone" extra="Sets when your nightly 3am data backup runs.">
+              <Select
+                showSearch
+                placeholder="Select your timezone"
+                options={timezoneOptions}
+                filterOption={(input, option) => option.value.toLowerCase().includes(input.toLowerCase())}
+              />
             </Form.Item>
             <Form.Item name="password" label="New Password" extra="Leave blank to keep current password.">
               <Input.Password prefix={<LockOutlined />} placeholder="New password…" />

@@ -24,7 +24,7 @@ All signup paths automatically create a `plan_type='free'` subscription row for 
 | Method | Route | Description |
 |---|---|---|
 | GET | `/user/{user_id}` | Get user profile (excludes `hash_pass`) |
-| PUT | `/user/{user_id}` | Update `username`, `email`, or `plain_pass` |
+| PUT | `/user/{user_id}` | Update `username`, `email`, `plain_pass`, or `timezone` (IANA name, e.g. `America/Los_Angeles`; validated, drives the nightly backup schedule) |
 | DELETE | `/user/{user_id}` | Permanently delete account and all owned data |
 
 ---

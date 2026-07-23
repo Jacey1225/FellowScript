@@ -753,6 +753,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#backendbackup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        backend/backup/
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#dbpy-schema-and-dbmanager" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1149,11 +1160,29 @@
 </table>
 <p>Every new user (all three auth paths) gets a <code>plan_type='free'</code> subscription row created by <code>SubscriptionsManager.create_free_plan()</code>. Free-tier limits are enforced server-side via <code>check_limit()</code> before every create route.</p>
 <hr />
+<h2 id="backendbackup"><code>backend/backup/</code></h2>
+<p>A sibling package to <code>interactions/</code> for the nightly per-user data backup (see <a href="../data/">Data → Nightly Backup Database</a> for the schema/scope).</p>
+<table>
+<thead>
+<tr>
+<th>File</th>
+<th>Responsibility</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>manager.py</code></td>
+<td><code>BackupManager</code> — holds two DB connections at once (<code>source</code>: primary <code>fellowscript</code> DB, <code>dest</code>: separate <code>fellowscript_backup</code> DB). <code>users_due_now()</code> finds users whose local time is currently 03:00; <code>backup_user()</code> copies that user's recent notes/verses and full highlights/bookmarks into the backup DB via upsert.</td>
+</tr>
+</tbody>
+</table>
+<p>Unlike other managers, <code>BackupManager</code> doesn't subclass <code>DBManager</code> directly — it composes two <code>DBManager</code> instances (constructed via <code>DBManager(dbname=...)</code>) since it reads from one database and writes to another.</p>
+<hr />
 <h2 id="dbpy-schema-and-dbmanager"><code>db.py</code> — Schema and <code>DBManager</code></h2>
 <p><code>create_tables()</code> defines the full Postgres schema in FK-dependency order (Level 0 → Level 2). Additive <code>ALTER TABLE … ADD COLUMN IF NOT EXISTS</code> statements at the top of <code>create_tables()</code> handle live migrations without dropping data.</p>
 <h3 id="schema-summary-level-0-2">Schema summary (Level 0 → 2)</h3>
 <p><strong>Level 0 (no FK)</strong>
-- <code>users</code> — <code>_id</code>, <code>username</code>, <code>email</code>, <code>hash_pass</code>, <code>apple_sub</code>, <code>google_sub</code>, <code>subscription_id</code>
+- <code>users</code> — <code>_id</code>, <code>username</code>, <code>email</code>, <code>hash_pass</code>, <code>apple_sub</code>, <code>google_sub</code>, <code>subscription_id</code>, <code>timezone</code>
 - <code>groups</code> — <code>_id</code>, <code>title</code>, <code>members UUID[]</code>, <code>highlights JSONB</code>
 - <code>subscriptions</code> — <code>_id</code>, <code>user_id</code>, <code>plan_type</code>, <code>provider</code>, <code>status</code>, <code>price_cents</code>, <code>current_period_end</code>, Stripe/Apple identifiers</p>
 <p><strong>Level 1 (FK → Level 0)</strong>
@@ -1172,7 +1201,34 @@
 - <code>message_recipients</code> — <code>message_id</code>, <code>recipient_id</code></p>
 <hr />
 <h2 id="background-scheduler">Background Scheduler</h2>
-<p><code>backend/interactions/scheduler.py</code> runs on startup (via <code>lifespan</code>) and periodically calls <code>SubscriptionsManager.reconcile_expired_subscriptions()</code> to null out subscription pointers for lapsed paid plans. Free plans (<code>plan_type='free'</code>, <code>current_period_end IS NULL</code>) are never swept.</p>
+<p><code>backend/interactions/scheduler.py</code> runs on startup (via <code>lifespan</code>), using APScheduler. Current jobs:</p>
+<table>
+<thead>
+<tr>
+<th>Job</th>
+<th>Cadence</th>
+<th>Does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>_fire_due_notifications</code></td>
+<td>every minute</td>
+<td>Pushes any notification whose scheduled time-of-day matches now</td>
+</tr>
+<tr>
+<td><code>_run_nightly_backups</code></td>
+<td>every minute</td>
+<td>Copies any user whose <em>local</em> time is currently 03:00 into the backup database (see <code>backend/backup/</code>)</td>
+</tr>
+<tr>
+<td><code>_reconcile_trials</code></td>
+<td>every hour</td>
+<td>Advances elapsed trials to active, and removes subscriptions whose paid period lapsed past the grace window</td>
+</tr>
+</tbody>
+</table>
+<p>Heartbeat (AI agent event) firing is <strong>not</strong> scheduled server-side — it's driven entirely client-side by iOS's <code>HeartbeatScheduler.checkAndFire</code>, which calls the same <code>commit_heartbeat</code> endpoint on app foreground.</p>
 
 
 

@@ -8,8 +8,9 @@ The Account page (`/account`) lets users manage their profile, view their subscr
 
 ### Profile
 - Displays `username` and `email`
-- Edit form for updating either field or resetting password
+- Edit form for updating either field, resetting password, or setting **Timezone** (searchable dropdown of IANA names, e.g. `America/Los_Angeles`)
 - Changes go to `PUT /user/{user_id}`
+- Timezone determines when the nightly data backup runs for that user — always their own local 3am, not a fixed server time (see [Data → Nightly Backup Database](../architecture/data.md))
 
 ### Subscription Card (`SubscriptionCard`)
 

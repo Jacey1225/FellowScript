@@ -744,17 +744,17 @@ export default function NotesSidebar({
                   if (!bookGroups.has(book)) bookGroups.set(book, []);
                   bookGroups.get(book).push(entry);
                 });
-                // Order groups by canonical Bible book order, not alphabetically.
-                const bookOrder = books || [];
-                const sorted = [...bookGroups.entries()].sort(([a], [b]) => {
+                // Order groups by their most recently created note, newest first;
+                // "General" (no-verse notes) always sits last since it isn't a book.
+                const mostRecentTime = (entries) => Math.max(
+                  ...entries.map(([, note]) =>
+                    new Date(note?.created_at || note?.timestamp || 0).getTime() || 0
+                  )
+                );
+                const sorted = [...bookGroups.entries()].sort(([a, entriesA], [b, entriesB]) => {
                   if (a === '__none__') return 1;
                   if (b === '__none__') return -1;
-                  const ia = bookOrder.indexOf(a);
-                  const ib = bookOrder.indexOf(b);
-                  if (ia === -1 && ib === -1) return a.localeCompare(b);
-                  if (ia === -1) return 1;
-                  if (ib === -1) return -1;
-                  return ia - ib;
+                  return mostRecentTime(entriesB) - mostRecentTime(entriesA);
                 });
                 return sorted.flatMap(([book, entries]) => [
                   <div key={`hdr-${book}`} style={{

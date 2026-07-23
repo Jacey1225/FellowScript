@@ -96,6 +96,18 @@ Every new user (all three auth paths) gets a `plan_type='free'` subscription row
 
 ---
 
+## `backend/backup/`
+
+A sibling package to `interactions/` for the nightly per-user data backup (see [Data → Nightly Backup Database](data.md) for the schema/scope).
+
+| File | Responsibility |
+|---|---|
+| `manager.py` | `BackupManager` — holds two DB connections at once (`source`: primary `fellowscript` DB, `dest`: separate `fellowscript_backup` DB). `users_due_now()` finds users whose local time is currently 03:00; `backup_user()` copies that user's recent notes/verses and full highlights/bookmarks into the backup DB via upsert. |
+
+Unlike other managers, `BackupManager` doesn't subclass `DBManager` directly — it composes two `DBManager` instances (constructed via `DBManager(dbname=...)`) since it reads from one database and writes to another.
+
+---
+
 ## `db.py` — Schema and `DBManager`
 
 `create_tables()` defines the full Postgres schema in FK-dependency order (Level 0 → Level 2). Additive `ALTER TABLE … ADD COLUMN IF NOT EXISTS` statements at the top of `create_tables()` handle live migrations without dropping data.
@@ -103,7 +115,7 @@ Every new user (all three auth paths) gets a `plan_type='free'` subscription row
 ### Schema summary (Level 0 → 2)
 
 **Level 0 (no FK)**
-- `users` — `_id`, `username`, `email`, `hash_pass`, `apple_sub`, `google_sub`, `subscription_id`
+- `users` — `_id`, `username`, `email`, `hash_pass`, `apple_sub`, `google_sub`, `subscription_id`, `timezone`
 - `groups` — `_id`, `title`, `members UUID[]`, `highlights JSONB`
 - `subscriptions` — `_id`, `user_id`, `plan_type`, `provider`, `status`, `price_cents`, `current_period_end`, Stripe/Apple identifiers
 
@@ -127,4 +139,12 @@ Every new user (all three auth paths) gets a `plan_type='free'` subscription row
 
 ## Background Scheduler
 
-`backend/interactions/scheduler.py` runs on startup (via `lifespan`) and periodically calls `SubscriptionsManager.reconcile_expired_subscriptions()` to null out subscription pointers for lapsed paid plans. Free plans (`plan_type='free'`, `current_period_end IS NULL`) are never swept.
+`backend/interactions/scheduler.py` runs on startup (via `lifespan`), using APScheduler. Current jobs:
+
+| Job | Cadence | Does |
+|---|---|---|
+| `_fire_due_notifications` | every minute | Pushes any notification whose scheduled time-of-day matches now |
+| `_run_nightly_backups` | every minute | Copies any user whose *local* time is currently 03:00 into the backup database (see `backend/backup/`) |
+| `_reconcile_trials` | every hour | Advances elapsed trials to active, and removes subscriptions whose paid period lapsed past the grace window |
+
+Heartbeat (AI agent event) firing is **not** scheduled server-side — it's driven entirely client-side by iOS's `HeartbeatScheduler.checkAndFire`, which calls the same `commit_heartbeat` endpoint on app foreground.
