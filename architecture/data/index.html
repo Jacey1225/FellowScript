@@ -1441,6 +1441,7 @@
 <li><code>UPDATE devotions SET creator_id = NULL WHERE creator_id = ?</code> — preserves devotion plans</li>
 <li><code>DELETE FROM users WHERE _id = ?</code> — remaining children with CASCADE delete automatically</li>
 </ol>
+<p>The <code>fellowscript_backup</code> database (see <a href="#nightly-backup-database">Nightly Backup Database</a> above) has no FK relationship to the primary DB, so it isn't touched by any of the above — <code>delete_user</code> purges the user's row and mirrored notes/verses/highlights/bookmarks there explicitly as a separate step, so account deletion honors the Privacy Policy's promise that data is removed from all systems, not just the primary DB.</p>
 <hr />
 <h2 id="nightly-backup-database">Nightly Backup Database</h2>
 <p>A second, separate Postgres database (<code>fellowscript_backup</code>, same instance, owned by the <code>fellowscript</code> role) mirrors each user's recent data. A scheduler job checks every minute for any user whose <code>timezone</code> puts their local clock at 03:00, and only that user's data is copied at that moment — so the backup runs at each user's own local 3am, not a single fixed server time.</p>
