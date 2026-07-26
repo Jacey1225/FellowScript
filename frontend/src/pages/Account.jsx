@@ -150,6 +150,16 @@ export default function Account() {
   const [deleteLoading,  setDeleteLoading]  = useState(false);
   const [deleteMsg,      setDeleteMsg]      = useState(null);
 
+  // Two-factor authentication (email code)
+  const [mfaLoading,        setMfaLoading]        = useState(false);
+  const [mfaMsg,            setMfaMsg]            = useState(null);
+  const [mfaSetupModal,     setMfaSetupModal]     = useState(false);
+  const [mfaCode,           setMfaCode]           = useState('');
+  const [mfaConfirmLoading, setMfaConfirmLoading] = useState(false);
+  const [mfaDisableModal,   setMfaDisableModal]   = useState(false);
+  const [mfaDisablePass,    setMfaDisablePass]    = useState('');
+  const [mfaDisableLoading, setMfaDisableLoading] = useState(false);
+
   // Agents
   const [agents,        setAgents]        = useState([]);
   const [agentsLoading, setAgentsLoading] = useState(false);
@@ -417,6 +427,64 @@ export default function Account() {
     }
   };
 
+  const handleMfaToggle = async (checked) => {
+    setMfaMsg(null);
+    if (!checked) { setMfaDisableModal(true); return; }
+    setMfaLoading(true);
+    try {
+      const res = await fetch(`${API}/auth/mfa/enable`, { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) { setMfaMsg({ type: 'error', text: data.detail || 'Could not send confirmation code.' }); return; }
+      setMfaSetupModal(true);
+    } catch {
+      setMfaMsg({ type: 'error', text: 'Could not reach the server.' });
+    } finally {
+      setMfaLoading(false);
+    }
+  };
+
+  const handleMfaConfirm = async () => {
+    setMfaConfirmLoading(true);
+    try {
+      const res = await fetch(`${API}/auth/mfa/confirm`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: mfaCode }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setMfaMsg({ type: 'error', text: data.detail || 'Invalid or expired code.' }); return; }
+      updateUser({ mfa_enabled: true });
+      setProfileData(prev => ({ ...prev, mfa_enabled: true }));
+      setMfaSetupModal(false);
+      setMfaCode('');
+      setMfaMsg({ type: 'success', text: 'Two-factor authentication is now on.' });
+    } catch {
+      setMfaMsg({ type: 'error', text: 'Could not reach the server.' });
+    } finally {
+      setMfaConfirmLoading(false);
+    }
+  };
+
+  const handleMfaDisable = async () => {
+    setMfaDisableLoading(true);
+    try {
+      const res = await fetch(`${API}/auth/mfa/disable`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ plain_pass: mfaDisablePass }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setMfaMsg({ type: 'error', text: data.detail || 'Incorrect password.' }); return; }
+      updateUser({ mfa_enabled: false });
+      setProfileData(prev => ({ ...prev, mfa_enabled: false }));
+      setMfaDisableModal(false);
+      setMfaDisablePass('');
+      setMfaMsg({ type: 'success', text: 'Two-factor authentication is now off.' });
+    } catch {
+      setMfaMsg({ type: 'error', text: 'Could not reach the server.' });
+    } finally {
+      setMfaDisableLoading(false);
+    }
+  };
+
   const handleAccept = async (uid, username) => {
     setRequestsLoading(prev => ({ ...prev, [uid]: true }));
     try {
@@ -661,6 +729,20 @@ export default function Account() {
           </Form>
         </Card>
 
+        {/* Two-factor authentication */}
+        <Card style={{ ...CARD_STYLE, animationDelay: '0.20s', animation: 'fadeUp 0.55s ease forwards', opacity: 0 }}>
+          <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.56rem', letterSpacing: '0.3em', textTransform: 'uppercase', color: 'rgba(200,134,26,0.5)', display: 'block', marginBottom: '1rem' }}>
+            Two-Factor Authentication
+          </Text>
+          {mfaMsg && <Alert type={mfaMsg.type} message={mfaMsg.text} showIcon style={{ marginBottom: 16, borderRadius: 8 }} />}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem' }}>
+            <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.82rem', color: 'rgba(244,228,193,0.6)', maxWidth: 340 }}>
+              When enabled, we'll email a 6-digit code to {profileData?.email || user.email} every time you sign in.
+            </Text>
+            <Switch checked={!!profileData?.mfa_enabled} loading={mfaLoading} onChange={handleMfaToggle} />
+          </div>
+        </Card>
+
         {/* Friend requests */}
         <Card style={{ ...CARD_STYLE, animationDelay: '0.24s', animation: 'fadeUp 0.55s ease forwards', opacity: 0 }}>
           <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.56rem', letterSpacing: '0.3em', textTransform: 'uppercase', color: 'rgba(200,134,26,0.5)', display: 'block', marginBottom: '0.8rem' }}>
@@ -841,6 +923,50 @@ export default function Account() {
           destroyOnClose
         >
           {evModalContent()}
+        </Modal>
+
+        {/* Confirm enabling 2FA */}
+        <Modal
+          open={mfaSetupModal}
+          title={<Text style={{ fontFamily: "'Playfair Display', serif", color: 'var(--parchment)' }}>Confirm two-factor authentication</Text>}
+          onCancel={() => { setMfaSetupModal(false); setMfaCode(''); }}
+          onOk={handleMfaConfirm}
+          okText="Confirm"
+          confirmLoading={mfaConfirmLoading}
+        >
+          <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.78rem', color: 'rgba(244,228,193,0.55)', display: 'block', marginBottom: '0.8rem' }}>
+            Enter the 6-digit code we just emailed to {profileData?.email || user.email}.
+          </Text>
+          <Input
+            placeholder="123456"
+            value={mfaCode}
+            onChange={e => setMfaCode(e.target.value)}
+            onPressEnter={handleMfaConfirm}
+            maxLength={6}
+            style={{ fontSize: '1.1rem', letterSpacing: '0.3em', textAlign: 'center' }}
+          />
+        </Modal>
+
+        {/* Confirm disabling 2FA */}
+        <Modal
+          open={mfaDisableModal}
+          title={<Text style={{ fontFamily: "'Playfair Display', serif", color: 'var(--parchment)' }}>Turn off two-factor authentication</Text>}
+          onCancel={() => { setMfaDisableModal(false); setMfaDisablePass(''); }}
+          onOk={handleMfaDisable}
+          okText="Turn Off"
+          okButtonProps={{ danger: true }}
+          confirmLoading={mfaDisableLoading}
+        >
+          <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.78rem', color: 'rgba(244,228,193,0.55)', display: 'block', marginBottom: '0.8rem' }}>
+            Enter your current password to confirm.
+          </Text>
+          <Input.Password
+            prefix={<LockOutlined />}
+            placeholder="Current password"
+            value={mfaDisablePass}
+            onChange={e => setMfaDisablePass(e.target.value)}
+            onPressEnter={handleMfaDisable}
+          />
         </Modal>
 
         {/* Legal links */}

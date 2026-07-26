@@ -94,13 +94,16 @@ def load_users_data() -> dict:
     db = DB()
     try:
         users: dict = {}
-        db.cur.execute("SELECT _id, username, email, hash_pass, apple_sub, google_sub, timezone FROM users")
-        for _id, username, email, hash_pass, apple_sub, google_sub, timezone in db.cur.fetchall():
+        db.cur.execute(
+            "SELECT _id, username, email, hash_pass, apple_sub, google_sub, timezone, mfa_enabled FROM users"
+        )
+        for _id, username, email, hash_pass, apple_sub, google_sub, timezone, mfa_enabled in db.cur.fetchall():
             uid = str(_id)
             rec = {
                 "username": username, "email": email, "hash_pass": hash_pass or "",
                 "friends": [], "friend_requests": [], "groups": [],
                 "highlights": {}, "bookmarks": {}, "timezone": timezone or "UTC",
+                "mfa_enabled": bool(mfa_enabled),
             }
             if apple_sub:
                 rec["apple_sub"] = apple_sub

@@ -374,6 +374,7 @@ struct AccountView: View {
     @State private var username     = ""
     @State private var email        = ""
     @State private var password     = ""
+    @State private var timezone     = "UTC"
 
     // Agents
     @State private var newAgentRole   = ""
@@ -387,6 +388,7 @@ struct AccountView: View {
         case editEvent(FSHeartbeat)
         case newNotification
         case editNotification(FSNotification)
+        case timezonePicker
         var id: String {
             switch self {
             case .newAgent:                 return "newAgent"
@@ -394,6 +396,7 @@ struct AccountView: View {
             case .editEvent(let e):         return "event-\(e.id)"
             case .newNotification:          return "newNotification"
             case .editNotification(let n):  return "notif-\(n.id)"
+            case .timezonePicker:           return "timezonePicker"
             }
         }
     }
@@ -470,6 +473,7 @@ struct AccountView: View {
                 await vm.load(service: appState.service, user: user)
                 username = user.username
                 email    = user.email
+                timezone = user.timezone
                 // StoreKit: start listening, load products, and push any active
                 // entitlements to the backend before reading the subscription.
                 store.startListening()
@@ -501,6 +505,10 @@ struct AccountView: View {
             case .editNotification(let notif):
                 NotificationSetupSheet(existing: notif) { name, prompt, timestamps in
                     Task { await vm.updateNotification(notif: notif, name: name, prompt: prompt, timestamps: timestamps) }
+                }
+            case .timezonePicker:
+                TimeZonePickerSheet(selected: timezone) { picked in
+                    timezone = picked
                 }
             }
         }
@@ -899,6 +907,26 @@ struct AccountView: View {
             }
             .listRowBackground(Theme.cardBg)
 
+            // Timezone — opens a searchable picker sheet; drives the nightly
+            // backup schedule (it runs at this timezone's local 3am).
+            Button(action: { activeSheet = .timezonePicker }) {
+                HStack {
+                    Image(systemName: "clock").foregroundColor(Theme.textGoldMuted).frame(width: 22)
+                    Text("Timezone")
+                        .font(.lora(Theme.fontBody))
+                        .foregroundColor(Theme.parchment)
+                    Spacer()
+                    Text(timezone)
+                        .font(.lora(Theme.fontSM))
+                        .foregroundColor(Theme.textGoldMuted)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 12))
+                        .foregroundColor(Theme.textGoldMuted)
+                }
+            }
+            .listRowBackground(Theme.cardBg)
+            .accessibilityLabel("Timezone: \(timezone)")
+
             // Password
             HStack {
                 Image(systemName: "lock").foregroundColor(Theme.textGoldMuted).frame(width: 22)
@@ -1234,6 +1262,7 @@ struct AccountView: View {
         if !username.isEmpty && username != user.username { body["username"] = username }
         if !email.isEmpty    && email    != user.email    { body["email"]    = email    }
         if !password.isEmpty                              { body["plain_pass"] = password }
+        if timezone != user.timezone                      { body["timezone"]   = timezone }
         Task {
             if let updated = try? await appState.service.updateUser(userId: user.user_id, body: body) {
                 appState.updateUser(updated)
@@ -1305,6 +1334,53 @@ struct NewAgentSheet: View {
             }
         }
         .presentationDetents([.medium])
+        .preferredColorScheme(.dark)
+    }
+}
+
+// ── Timezone picker sheet ───────────────────────────────────────────────────
+// Full IANA timezone list via Foundation (mirrors the web Account page's use
+// of Intl.supportedValuesOf('timeZone')); searchable since there are 400+.
+struct TimeZonePickerSheet: View {
+    let selected: String
+    let onPick: (String) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var query = ""
+
+    private var allZones: [String] { TimeZone.knownTimeZoneIdentifiers.sorted() }
+    private var filtered: [String] {
+        guard !query.isEmpty else { return allZones }
+        return allZones.filter { $0.localizedCaseInsensitiveContains(query) }
+    }
+
+    var body: some View {
+        NavigationStack {
+            List(filtered, id: \.self) { tz in
+                Button(action: { onPick(tz); dismiss() }) {
+                    HStack {
+                        Text(tz)
+                            .font(.lora(Theme.fontBody))
+                            .foregroundColor(Theme.parchment)
+                        Spacer()
+                        if tz == selected {
+                            Image(systemName: "checkmark").foregroundColor(Theme.gold)
+                        }
+                    }
+                }
+                .listRowBackground(Theme.cardBg)
+                .accessibilityLabel(tz == selected ? "\(tz), selected" : tz)
+            }
+            .scrollContentBackground(.hidden)
+            .background(Theme.bgPage)
+            .searchable(text: $query, prompt: "Search timezones")
+            .navigationTitle("Timezone")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Cancel") { dismiss() }.foregroundColor(Theme.textGoldMuted)
+                }
+            }
+        }
         .preferredColorScheme(.dark)
     }
 }

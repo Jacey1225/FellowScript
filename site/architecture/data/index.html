@@ -897,6 +897,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#password_reset_tokens-mfa_codes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        password_reset_tokens / mfa_codes
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1051,6 +1062,11 @@
 <td><code>timezone</code></td>
 <td>TEXT</td>
 <td>IANA name (e.g. <code>America/Los_Angeles</code>), default <code>'UTC'</code>. User-editable in Account settings; drives the nightly backup schedule below</td>
+</tr>
+<tr>
+<td><code>mfa_enabled</code></td>
+<td>BOOLEAN</td>
+<td>Default <code>false</code>. Web-only email-code 2FA toggle — when true, <code>/login</code> pauses for a code instead of issuing a session immediately</td>
 </tr>
 </tbody>
 </table>
@@ -1433,6 +1449,27 @@
 </tbody>
 </table>
 <hr />
+<h3 id="password_reset_tokens-mfa_codes"><code>password_reset_tokens</code> / <code>mfa_codes</code></h3>
+<table>
+<thead>
+<tr>
+<th>Table</th>
+<th>Key columns</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>password_reset_tokens</code></td>
+<td><code>_id</code>, <code>user_id FK→users ON DELETE CASCADE</code>, <code>token_hash</code>, <code>expires_at</code> (30 min), <code>used</code></td>
+</tr>
+<tr>
+<td><code>mfa_codes</code></td>
+<td><code>_id</code>, <code>user_id FK→users ON DELETE CASCADE</code>, <code>code_hash</code>, <code>expires_at</code> (10 min), <code>used</code></td>
+</tr>
+</tbody>
+</table>
+<p>Same hash-at-rest pattern as <code>sessions</code>: only a sha256 hash of the emailed token/code is ever stored, so a database leak alone can't be replayed. Both are single-use (<code>used</code> flips to <code>true</code> on a successful verify) and are never purged proactively — expired/used rows are inert and harmless to leave in place at this scale.</p>
+<hr />
 <h2 id="account-deletion">Account Deletion</h2>
 <p><code>DELETE /user/{user_id}</code> manually handles tables whose FK to <code>users</code> lacks <code>ON DELETE CASCADE</code>:</p>
 <ol>
@@ -1441,6 +1478,7 @@
 <li><code>UPDATE devotions SET creator_id = NULL WHERE creator_id = ?</code> — preserves devotion plans</li>
 <li><code>DELETE FROM users WHERE _id = ?</code> — remaining children with CASCADE delete automatically</li>
 </ol>
+<p>The <code>fellowscript_backup</code> database (see <a href="#nightly-backup-database">Nightly Backup Database</a> above) has no FK relationship to the primary DB, so it isn't touched by any of the above — <code>delete_user</code> purges the user's row and mirrored notes/verses/highlights/bookmarks there explicitly as a separate step, so account deletion honors the Privacy Policy's promise that data is removed from all systems, not just the primary DB.</p>
 <hr />
 <h2 id="nightly-backup-database">Nightly Backup Database</h2>
 <p>A second, separate Postgres database (<code>fellowscript_backup</code>, same instance, owned by the <code>fellowscript</code> role) mirrors each user's recent data. A scheduler job checks every minute for any user whose <code>timezone</code> puts their local clock at 03:00, and only that user's data is copied at that moment — so the backup runs at each user's own local 3am, not a single fixed server time.</p>

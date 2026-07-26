@@ -127,7 +127,7 @@ final class NetworkService: DataServiceProtocol {
 
     // ── User ──────────────────────────────────────────────────────────────────
     // GET  /user/{userId}
-    // PUT  /user/{userId}   body: {username?, email?, plain_pass?}
+    // PUT  /user/{userId}   body: {username?, email?, plain_pass?, timezone?}
     // DELETE /user/{userId}
 
     func fetchUser(userId: String) async throws -> FSUser {

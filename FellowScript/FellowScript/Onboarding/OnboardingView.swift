@@ -17,11 +17,17 @@ struct OnboardingView: View {
         ZStack {
             Theme.bgPage.ignoresSafeArea()
             VStack {
+                // Frame must be at least 2×endRadius tall — a RadialGradient
+                // fades to `.clear` at endRadius measured from its own center,
+                // so a frame that's only as tall as endRadius clips the fade
+                // before it finishes (the glow gets a hard cut edge instead of
+                // fading away smoothly). The offset repositions the brightest
+                // point back up near the top of the screen, same as before.
                 RadialGradient(
                     colors: [Theme.gold.opacity(0.22), .clear],
                     center: .center, startRadius: 0, endRadius: 250
                 )
-                .frame(height: 250).offset(y: -40)
+                .frame(height: 500).offset(y: -165)
                 Spacer()
             }
             .ignoresSafeArea()
@@ -71,9 +77,10 @@ private struct OBWelcome: View {
             Spacer()
 
             VStack(spacing: Theme.spacingMD) {
-                Image(systemName: "cross")
-                    .font(.system(size: 42, weight: .ultraLight))
-                    .foregroundColor(Theme.gold.opacity(0.75))
+                Image("FellowScriptMark")
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 56, height: 56)
                     .scaleEffect(appeared ? 1 : 0.5)
                     .animation(.spring(response: 0.7, dampingFraction: 0.72).delay(0.1), value: appeared)
 

@@ -24,6 +24,7 @@ The full Bible (KJV/ESV) is stored as a static JSON file loaded into memory on s
 | `google_sub` | TEXT | Stable Google `sub` claim |
 | `subscription_id` | UUID FK → `subscriptions` | Current plan; always set (free plan row created on signup) |
 | `timezone` | TEXT | IANA name (e.g. `America/Los_Angeles`), default `'UTC'`. User-editable in Account settings; drives the nightly backup schedule below |
+| `mfa_enabled` | BOOLEAN | Default `false`. Web-only email-code 2FA toggle — when true, `/login` pauses for a code instead of issuing a session immediately |
 
 ---
 
@@ -156,6 +157,17 @@ Verse references linked to a note (many-to-one).
 
 ---
 
+### `password_reset_tokens` / `mfa_codes`
+
+| Table | Key columns |
+|---|---|
+| `password_reset_tokens` | `_id`, `user_id FK→users ON DELETE CASCADE`, `token_hash`, `expires_at` (30 min), `used` |
+| `mfa_codes` | `_id`, `user_id FK→users ON DELETE CASCADE`, `code_hash`, `expires_at` (10 min), `used` |
+
+Same hash-at-rest pattern as `sessions`: only a sha256 hash of the emailed token/code is ever stored, so a database leak alone can't be replayed. Both are single-use (`used` flips to `true` on a successful verify) and are never purged proactively — expired/used rows are inert and harmless to leave in place at this scale.
+
+---
+
 ## Account Deletion
 
 `DELETE /user/{user_id}` manually handles tables whose FK to `users` lacks `ON DELETE CASCADE`:
@@ -164,6 +176,8 @@ Verse references linked to a note (many-to-one).
 2. `UPDATE messages SET from_user = NULL WHERE from_user = ?` — preserves group chat history
 3. `UPDATE devotions SET creator_id = NULL WHERE creator_id = ?` — preserves devotion plans
 4. `DELETE FROM users WHERE _id = ?` — remaining children with CASCADE delete automatically
+
+The `fellowscript_backup` database (see [Nightly Backup Database](#nightly-backup-database) above) has no FK relationship to the primary DB, so it isn't touched by any of the above — `delete_user` purges the user's row and mirrored notes/verses/highlights/bookmarks there explicitly as a separate step, so account deletion honors the Privacy Policy's promise that data is removed from all systems, not just the primary DB.
 
 ---
 

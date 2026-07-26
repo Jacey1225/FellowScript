@@ -15,6 +15,8 @@ os.environ.setdefault("AWS_DEFAULT_REGION", "us-east-1")
 
 from db import DBManager, BACKUP_DB_NAME  # noqa: E402
 from backend.backup.manager import BackupManager  # noqa: E402
+from fastapi.testclient import TestClient  # noqa: E402
+import main as main_module  # noqa: E402
 
 PASSED, FAILED = [], []
 
@@ -194,6 +196,50 @@ def main():
             check("unknown user returns {'error': ...}", "error" in result3, str(result3))
         finally:
             bm.close()
+
+        print("\n=== 5. DELETE /user/{id} purges the backup DB too (Privacy Policy compliance) ===")
+        with TestClient(main_module.app) as client:
+            uname = f"backup_del_{uuid.uuid4().hex[:8]}"
+            r = client.post("/signup", json={
+                "username": uname, "email": f"{uname}@example.com", "plain_pass": "TestPass123!",
+            })
+            uid_del = r.json()["user_id"]
+            token = r.cookies.get("session")
+            add_note(uid_del, "To be deleted", datetime.now(tzmod.utc), verses=[["Genesis", 1, 1]])
+
+            bm = BackupManager()
+            try:
+                bm.backup_user(uid_del)
+            finally:
+                bm.close()
+
+            backup_db = DBManager(dbname=BACKUP_DB_NAME)
+            try:
+                backup_db.cur.execute("SELECT count(*) FROM notes WHERE user_id = %s", (uid_del,))
+                check("setup: note exists in backup DB before deletion",
+                      backup_db.cur.fetchone()[0] == 1)
+            finally:
+                backup_db.close()
+
+            r = client.delete(f"/user/{uid_del}", headers={"cookie": f"session={token}"})
+            check("account deletion -> 204", r.status_code == 204, str(r.status_code))
+
+            backup_db = DBManager(dbname=BACKUP_DB_NAME)
+            try:
+                backup_db.cur.execute("SELECT count(*) FROM users WHERE _id = %s", (uid_del,))
+                check("backup DB user row purged after account deletion",
+                      backup_db.cur.fetchone()[0] == 0)
+                backup_db.cur.execute("SELECT count(*) FROM notes WHERE user_id = %s", (uid_del,))
+                check("backup DB note purged after account deletion",
+                      backup_db.cur.fetchone()[0] == 0)
+                backup_db.cur.execute(
+                    "SELECT count(*) FROM note_verses WHERE note_id IN "
+                    "(SELECT _id FROM notes WHERE user_id = %s)", (uid_del,)
+                )
+                check("backup DB note_verses purged after account deletion",
+                      backup_db.cur.fetchone()[0] == 0)
+            finally:
+                backup_db.close()
 
     finally:
         print("\n=== cleanup ===")

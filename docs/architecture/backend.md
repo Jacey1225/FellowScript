@@ -14,6 +14,8 @@ routes/ (HTTP)  ──▶  backend/interactions/ (logic + DB)  ──▶  Postgr
 
 Registers all routers, configures CORS, and handles the three authentication routes directly (password signup/login, Google OAuth, Apple Sign In). Also starts the background scheduler on startup via `lifespan`.
 
+CORS is restricted to `https://fellowscript.com`, `https://www.fellowscript.com`, and the local dev origin — not a wildcard. `/signup` (5/min) and `/login` (10/min) are rate-limited per-IP via `slowapi` to slow down brute-forcing and mass account creation; production sits behind Cloudflare, so the limiter keys off the `CF-Connecting-IP` header (`get_client_ip()`) rather than `request.client.host`, which would otherwise resolve to a rotating Cloudflare edge IP and never actually limit anything.
+
 Auth routes in `main.py`:
 
 | Route | Method | Description |
@@ -23,6 +25,14 @@ Auth routes in `main.py`:
 | `/auth/google` | POST | Validate Google ID token; find-or-create user |
 | `/auth/apple` | POST | Verify Apple JWT (JWKS); find-or-create user |
 | `/user/{user_id}` | GET / PUT / DELETE | Read, update, or permanently delete a user account |
+| `/auth/password-reset/request` | POST | Email a single-use, 30-minute reset link if the address has an account (always returns the same generic response either way) |
+| `/auth/password-reset/confirm` | POST | Set a new password from a reset token; invalidates every existing session on the account |
+| `/auth/mfa/enable` | POST | Email a confirmation code to start turning on 2FA (authenticated) |
+| `/auth/mfa/confirm` | POST | Verify the confirmation code and turn 2FA on (authenticated) |
+| `/auth/mfa/disable` | POST | Turn 2FA off; requires re-entering the current password (authenticated) |
+| `/auth/mfa/verify-login` | POST | Complete a login paused by `/login` for 2FA: verify the emailed code and issue the session |
+
+Web-only 2FA: if a user has 2FA enabled, `/login` doesn't issue a session — it emails a 6-digit code and returns `{"mfa_required": true, "user_id": ...}`; the frontend then calls `/auth/mfa/verify-login` to finish. Not implemented on iOS yet.
 
 ---
 
@@ -93,6 +103,19 @@ A sibling package to `interactions/` dedicated to billing and usage enforcement.
 | `apple_service.py` | Apple App Store receipt/notification validation |
 
 Every new user (all three auth paths) gets a `plan_type='free'` subscription row created by `SubscriptionsManager.create_free_plan()`. Free-tier limits are enforced server-side via `check_limit()` before every create route.
+
+---
+
+## `backend/email/`
+
+Transactional email delivery via AWS SES, used by the password-reset and 2FA flows.
+
+| File | Responsibility |
+|---|---|
+| `ses_client.py` | `send_email()` — thin wrapper over `boto3`'s `sesv2` client; raises `EmailSendError` on failure. Uses a separate, narrowly-scoped IAM credential (`SES_ACCESS_KEY_ID`/`SES_SECRET_ACCESS_KEY`) from the Chime SDK user, per least-privilege. |
+| `templates.py` | `password_reset_email()`, `mfa_code_email()`, `mfa_setup_code_email()` — each returns `(subject, html_body, text_body)`. CAN-SPAM-compliant: truthful sender identity, a support contact, and a physical mailing address footer (`SENDER_POSTAL_ADDRESS` env var — must be set to a real address before sending real mail). |
+
+`backend/auth/password_reset.py` (`PasswordResetManager`) and `backend/auth/mfa.py` (`MFAManager`) generate the actual tokens/codes — both mirror `SessionManager`'s pattern of storing only a sha256 hash, never the raw secret.
 
 ---
 

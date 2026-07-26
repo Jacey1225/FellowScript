@@ -4,3 +4,5 @@ bcrypt
 pydantic
 httpx
 pyjwt[crypto]
+slowapi
+boto3

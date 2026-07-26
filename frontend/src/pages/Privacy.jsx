@@ -61,7 +61,7 @@ export default function Privacy() {
 
       <main style={S.main}>
         <h1 style={S.pageTitle}>Privacy Policy</h1>
-        <p style={S.effectiveDate}>Effective Date: June 1, 2025 &nbsp;&middot;&nbsp; Last Updated: July 5, 2026</p>
+        <p style={S.effectiveDate}>Effective Date: June 1, 2025 &nbsp;&middot;&nbsp; Last Updated: July 25, 2026</p>
 
         {/* 1 */}
         <div style={S.section}>
@@ -77,7 +77,17 @@ export default function Privacy() {
           <p style={{ ...S.p, marginBottom: '0.4rem' }}><strong style={S.strong}>Account Information</strong></p>
           <ul style={S.ul}>
             <li style={S.li}>Username and email address (required to create an account)</li>
-            <li style={S.li}>Password (stored as a secure cryptographic hash — never in plain text)</li>
+            <li style={S.li}>Password (stored as a secure cryptographic hash — never in plain text) — only if you sign up with a password</li>
+            <li style={S.li}>If you use <strong style={S.strong}>Sign in with Apple</strong> or <strong style={S.strong}>Sign in with Google</strong>: a stable account identifier from that provider, and your name/email if you grant it (Apple and Google only share your name and email on your first authorization)</li>
+            <li style={S.li}>Your selected timezone (used only to schedule your nightly data backup — see Section 9 — and never used to infer your physical location)</li>
+            <li style={S.li}>If you enable optional two-factor authentication, a flag noting it's on, and short-lived, single-use codes emailed to you at login (each expires within 10 minutes and is deleted from active use immediately after it's verified or expires)</li>
+            <li style={S.li}>If you request a password reset, a short-lived, single-use reset link is emailed to your account address (expires within 30 minutes)</li>
+          </ul>
+
+          <p style={{ ...S.p, marginTop: '0.75rem', marginBottom: '0.4rem' }}><strong style={S.strong}>Subscription and Billing Information</strong></p>
+          <ul style={S.ul}>
+            <li style={S.li}>Subscription plan type and status (free, individual, or group; active, trialing, or canceled)</li>
+            <li style={S.li}>Display-only card metadata (card brand and last 4 digits) and an opaque billing-processor reference — we never receive, see, or store your full card number, CVC, or bank details. Full payment handling is performed entirely by Stripe (web) or Apple's App Store (iOS); see Section 5.</li>
           </ul>
 
           <p style={{ ...S.p, marginTop: '0.75rem', marginBottom: '0.4rem' }}><strong style={S.strong}>Content You Create</strong></p>
@@ -97,8 +107,8 @@ export default function Privacy() {
 
           <p style={{ ...S.p, marginTop: '0.75rem', marginBottom: '0.4rem' }}><strong style={S.strong}>Usage Information</strong></p>
           <ul style={S.ul}>
-            <li style={S.li}>Bible passages and chapters you read</li>
-            <li style={S.li}>Feature interactions within the app</li>
+            <li style={S.li}>Your current Bible reading position (book and chapter) is saved locally on your device only, so the app can resume where you left off. It is not transmitted to or stored on our servers.</li>
+            <li style={S.li}>Standard server access logs (IP address, timestamp, and requested endpoint) generated automatically by our hosting infrastructure — used only for security monitoring and diagnosing technical issues. We do not operate any analytics or feature-interaction tracking system.</li>
           </ul>
 
           <p style={{ ...S.p, marginTop: '0.75rem', marginBottom: '0.4rem' }}><strong style={S.strong}>Information We Do NOT Collect</strong></p>
@@ -148,7 +158,10 @@ export default function Privacy() {
             <li style={S.li}><strong style={S.strong}>With other users:</strong> Content you mark as "public" (notes, highlights) is visible to your connections. Private content is visible only to you. Your username is visible to friends and group members.</li>
             <li style={S.li}><strong style={S.strong}>Infrastructure providers:</strong> We use Amazon Web Services (AWS) for cloud hosting and video calling infrastructure. AWS processes data on our behalf under a data processing agreement and may not use your data for their own purposes.</li>
             <li style={S.li}><strong style={S.strong}>AI provider:</strong> Conversations with AI agents and notification prompt content are sent to OpenRouter (our AI infrastructure provider) to generate responses. OpenRouter processes this data under their privacy policy. We do not send personally identifiable account information (name, email) to OpenRouter alongside AI queries.</li>
-            <li style={S.li}><strong style={S.strong}>Apple:</strong> Push notification delivery is facilitated by Apple's APNs infrastructure. Apple receives your device token and notification payload to deliver notifications. Apple's handling of this data is governed by Apple's Privacy Policy.</li>
+            <li style={S.li}><strong style={S.strong}>Payment processors:</strong> On the web, subscription and one-time payments are processed by <strong style={S.strong}>Stripe</strong>, which receives your email address and payment method details directly — we never see or store your full card number. On iOS, purchases are processed entirely by <strong style={S.strong}>Apple's App Store</strong> (StoreKit) under Apple's own privacy policy.</li>
+            <li style={S.li}><strong style={S.strong}>Sign-in providers:</strong> If you choose to sign in with <strong style={S.strong}>Apple</strong> or <strong style={S.strong}>Google</strong>, that provider authenticates you and shares a stable account identifier (and, on first authorization only, your name/email) with us, governed by Apple's or Google's own privacy policy.</li>
+            <li style={S.li}><strong style={S.strong}>Apple push notifications:</strong> Push notification delivery is facilitated by Apple's APNs infrastructure. Apple receives your device token and notification payload to deliver notifications. Apple's handling of this data is governed by Apple's Privacy Policy.</li>
+            <li style={S.li}><strong style={S.strong}>Email delivery:</strong> Password-reset links and two-factor authentication codes are sent via Amazon Simple Email Service (SES), part of the same AWS infrastructure described above. Only your email address and the message content (a reset link or one-time code) are transmitted for this purpose.</li>
             <li style={S.li}><strong style={S.strong}>Legal requirements:</strong> We may disclose information if required by law, court order, or to protect the rights, property, or safety of FellowScript, our users, or the public.</li>
           </ul>
         </div>
@@ -189,7 +202,8 @@ export default function Privacy() {
         {/* 9 */}
         <div style={S.section}>
           <h2 style={S.h2}>9. Data Retention</h2>
-          <p style={S.p}>We retain your account data for as long as your account is active. When you delete your account — either through the app or by submitting a request to us — your personal information, notes, messages, highlights, device tokens, and AI conversation history are permanently removed from our production systems within 30 days.</p>
+          <p style={S.p}>We retain your account data for as long as your account is active. As a security measure, a copy of your notes, highlights, bookmarks, and basic profile information is mirrored nightly (at 3am in your selected timezone) to a separate backup system, so your data can be restored in the event of accidental loss or data corruption.</p>
+          <p style={S.p}>When you delete your account — either through the app or by submitting a request to us — your personal information, notes, messages, highlights, bookmarks, device tokens, AI conversation history, <strong style={S.strong}>and the corresponding copy in our backup system</strong> are permanently removed from our systems within 30 days.</p>
           <p style={S.p}>Aggregated, anonymized usage statistics that cannot identify you may be retained for longer periods to improve the Service.</p>
         </div>
 
