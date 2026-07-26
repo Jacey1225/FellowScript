@@ -33,12 +33,15 @@ def create_tables(cur):
         "apple_sub TEXT,"
         "google_sub TEXT,"
         # User-set IANA timezone name; drives the local-3am nightly backup job.
-        "timezone TEXT NOT NULL DEFAULT 'UTC')"
+        "timezone TEXT NOT NULL DEFAULT 'UTC',"
+        # Email-code two-factor auth toggle (web only, for now).
+        "mfa_enabled BOOLEAN NOT NULL DEFAULT FALSE)"
     )
     # Migrations for databases created before the social-sign-in columns existed.
     cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS apple_sub TEXT")
     cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS google_sub TEXT")
     cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS timezone TEXT NOT NULL DEFAULT 'UTC'")
+    cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS mfa_enabled BOOLEAN NOT NULL DEFAULT FALSE")
 
     cur.execute(
         "CREATE TABLE IF NOT EXISTS groups"
@@ -267,6 +270,37 @@ def create_tables(cur):
     )
     cur.execute(
         "CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id)"
+    )
+
+    # Single-use, hashed password-reset links emailed to the account's address.
+    # Mirrors the sessions table's pattern: only the sha256 hash of the opaque
+    # token is stored, never the token itself.
+    cur.execute(
+        "CREATE TABLE IF NOT EXISTS password_reset_tokens"
+        "(_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
+        "user_id UUID REFERENCES users(_id) ON DELETE CASCADE,"
+        "token_hash VARCHAR(64) NOT NULL,"
+        "created_at TIMESTAMPTZ DEFAULT NOW(),"
+        "expires_at TIMESTAMPTZ NOT NULL,"
+        "used BOOLEAN NOT NULL DEFAULT FALSE)"
+    )
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_password_reset_user ON password_reset_tokens(user_id)"
+    )
+
+    # Single-use, hashed 6-digit codes emailed for the email-based 2FA login
+    # challenge. Same hash-at-rest pattern as sessions/password_reset_tokens.
+    cur.execute(
+        "CREATE TABLE IF NOT EXISTS mfa_codes"
+        "(_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
+        "user_id UUID REFERENCES users(_id) ON DELETE CASCADE,"
+        "code_hash VARCHAR(64) NOT NULL,"
+        "created_at TIMESTAMPTZ DEFAULT NOW(),"
+        "expires_at TIMESTAMPTZ NOT NULL,"
+        "used BOOLEAN NOT NULL DEFAULT FALSE)"
+    )
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_mfa_codes_user ON mfa_codes(user_id)"
     )
     logger.info("All tables created.")
 

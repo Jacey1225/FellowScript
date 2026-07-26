@@ -12,6 +12,7 @@ struct FSUser: Codable, Identifiable {
     var groups:      [String]          = []
     var notes:       [String: FSNote]  = [:]
     var highlights:  [String: String]  = [:]
+    var timezone:    String            = "UTC"
 
     var id: String { user_id }
     var initials: String { String(username.prefix(1)).uppercased() }
@@ -31,6 +32,7 @@ extension FSUser {
         groups      = (try? c.decode([String].self,         forKey: .groups))     ?? []
         notes       = (try? c.decode([String: FSNote].self, forKey: .notes))      ?? [:]
         highlights  = (try? c.decode([String: String].self, forKey: .highlights)) ?? [:]
+        timezone    = (try? c.decode(String.self, forKey: .timezone)) ?? "UTC"
     }
 }
 

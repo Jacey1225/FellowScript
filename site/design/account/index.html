@@ -870,7 +870,7 @@
 <h3 id="profile">Profile</h3>
 <ul>
 <li>Displays <code>username</code> and <code>email</code></li>
-<li>Edit form for updating either field, resetting password, or setting <strong>Timezone</strong> (searchable dropdown of IANA names, e.g. <code>America/Los_Angeles</code>)</li>
+<li>Edit form for updating either field, resetting password, or setting <strong>Timezone</strong> — a searchable list of IANA names (e.g. <code>America/Los_Angeles</code>) on both platforms: an antd <code>Select</code> on web, a <code>.searchable</code> <code>List</code> sheet (<code>TimeZonePickerSheet</code>) on iOS, sourced from <code>Intl.supportedValuesOf('timeZone')</code> / <code>TimeZone.knownTimeZoneIdentifiers</code> respectively</li>
 <li>Changes go to <code>PUT /user/{user_id}</code></li>
 <li>Timezone determines when the nightly data backup runs for that user — always their own local 3am, not a fixed server time (see <a href="../../architecture/data/">Data → Nightly Backup Database</a>)</li>
 </ul>

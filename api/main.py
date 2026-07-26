@@ -21,11 +21,35 @@ import logging
 import httpx
 import jwt
 from jwt import PyJWKClient
-from db import DBManager
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
+from db import DBManager, BACKUP_DB_NAME
 from backend.interactions.helpers import load_users_data, save_users_data
 from backend.subscription.subscriptions import SubscriptionsManager
 from backend.auth.sessions import SessionManager
+from backend.auth.password_reset import PasswordResetManager
+from backend.auth.mfa import MFAManager
 from backend.auth.dependencies import get_current_user, require_match, SESSION_COOKIE
+from backend.email.ses_client import send_email, EmailSendError
+from backend.email.templates import password_reset_email, mfa_code_email, mfa_setup_code_email
+
+
+def get_client_ip(request: Request) -> str:
+    """Resolve the true visitor IP behind Cloudflare + nginx.
+
+    Production sits behind Cloudflare, which terminates the client's real
+    connection and reconnects to our nginx box from one of its own rotating
+    edge IPs. uvicorn only trusts the single nginx hop (127.0.0.1), so
+    ``request.client.host`` / slowapi's default ``get_remote_address``
+    resolves to that rotating Cloudflare edge IP, not the actual visitor —
+    which defeats per-IP rate limiting entirely (every request looks like a
+    different client). Cloudflare's own ``CF-Connecting-IP`` header carries
+    the real visitor IP directly, so prefer it; fall back to the standard
+    resolution for local/non-Cloudflare requests (tests, direct access).
+    """
+    return request.headers.get("cf-connecting-ip") or get_remote_address(request)
 
 
 class GoogleAuth(BaseModel):
@@ -36,6 +60,28 @@ class AppleAuth(BaseModel):
     identity_token: str
     full_name: str | None = None
     email: str | None = None
+
+
+class PasswordResetRequest(BaseModel):
+    email: str
+
+
+class PasswordResetConfirm(BaseModel):
+    token: str
+    new_password: str
+
+
+class MFACode(BaseModel):
+    code: str
+
+
+class MFAVerifyLogin(BaseModel):
+    user_id: str
+    code: str
+
+
+class MFADisable(BaseModel):
+    plain_pass: str
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -50,9 +96,21 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
+# Rate-limits brute-force-able unauthenticated endpoints (signup/login) by
+# client IP. Authenticated routes (e.g. PUT /user/{id}) already require a
+# valid session and aren't guessable, so they're out of scope for this.
+limiter = Limiter(key_func=get_client_ip)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_middleware(SlowAPIMiddleware)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "https://fellowscript.com",
+        "https://www.fellowscript.com",
+        "http://localhost:5173",
+    ],
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -175,13 +233,18 @@ def find_by_username(users: dict, username: str) -> tuple[str, dict] | None:
 # ── Routes ────────────────────────────────────────────────────────────────────
 
 @app.post("/signup", status_code=201)
-async def signup(info: SignUp, response: Response) -> dict:
+@limiter.limit("5/minute")
+async def signup(request: Request, info: SignUp, response: Response) -> dict:
     """Register a new user account.
 
     Hashes the provided plain-text password with bcrypt and writes the new
     user to the data store. Sets a 30-day ``user_id`` cookie on the response.
 
+    Rate-limited to 5 attempts/minute per IP to slow down mass account
+    creation and username-enumeration probing.
+
     Args:
+        request: FastAPI request object (required by the rate limiter).
         info: Sign-up payload containing username, email, and plain_pass.
         response: FastAPI response object used to attach the session cookie.
 
@@ -211,22 +274,34 @@ async def signup(info: SignUp, response: Response) -> dict:
 
 
 @app.post("/login")
-async def login(info: Login, response: Response) -> dict:
-    """Authenticate a user and issue a session cookie.
+@limiter.limit("10/minute")
+async def login(request: Request, info: Login, response: Response) -> dict:
+    """Authenticate a user and issue a session cookie — or, if 2FA is enabled
+    on the account, pause and email a login code instead.
 
-    Verifies the plain-text password against the stored bcrypt hash.
-    Sets a 30-day ``user_id`` cookie on success.
+    Verifies the plain-text password against the stored bcrypt hash. If the
+    account has ``mfa_enabled``, no session is issued yet: a 6-digit code is
+    emailed and the response signals the caller to collect it and call
+    ``/auth/mfa/verify-login`` to finish. Otherwise sets a 30-day session
+    cookie immediately, as before.
+
+    Rate-limited to 10 attempts/minute per IP to slow down password
+    brute-forcing and credential stuffing.
 
     Args:
+        request: FastAPI request object (required by the rate limiter).
         info: Login payload containing username and plain_pass.
         response: FastAPI response object used to attach the session cookie.
 
     Returns:
-        dict: The authenticated user's data (excludes hash_pass).
+        dict: Either the authenticated user's data (excludes hash_pass), or
+            ``{"mfa_required": True, "user_id": ...}`` if a code was emailed.
 
     Raises:
         HTTPException 404: If no user with the given username exists.
         HTTPException 401: If the password does not match.
+        HTTPException 503: If the account has 2FA enabled but the code email
+            could not be sent.
     """
     users = load_users()
     result = find_by_username(users, info.username)
@@ -236,8 +311,193 @@ async def login(info: Login, response: Response) -> dict:
     if not bcrypt.checkpw(info.plain_pass.encode(), data["hash_pass"].encode()):
         raise HTTPException(status_code=401, detail="Incorrect password")
 
+    if data.get("mfa_enabled"):
+        mfa = MFAManager()
+        try:
+            code = mfa.create_code(uid)
+        finally:
+            mfa.close()
+        subject, html_body, text_body = mfa_code_email(code)
+        try:
+            send_email(data["email"], subject, html_body, text_body)
+        except EmailSendError:
+            logger.error("Failed to send MFA login code to user %s", uid)
+            raise HTTPException(
+                status_code=503,
+                detail="Unable to send verification code — please try again shortly",
+            )
+        return {"mfa_required": True, "user_id": uid}
+
     issue_session(response, uid)
     return {"user_id": uid, **{k: v for k, v in data.items() if k != "hash_pass"}}
+
+
+@app.post("/auth/mfa/verify-login")
+@limiter.limit("10/minute")
+async def mfa_verify_login(request: Request, info: MFAVerifyLogin, response: Response) -> dict:
+    """Complete a login that was paused for 2FA.
+
+    Verifies the emailed 6-digit code and, on success, issues the session
+    cookie exactly as a normal password-only login would have.
+
+    Raises:
+        HTTPException 401: If the code is wrong, expired, or already used.
+        HTTPException 404: If the user no longer exists.
+    """
+    mfa = MFAManager()
+    try:
+        ok = mfa.verify(info.user_id, info.code)
+    finally:
+        mfa.close()
+    if not ok:
+        raise HTTPException(status_code=401, detail="Invalid or expired code")
+
+    users = load_users()
+    data = users.get(info.user_id)
+    if not data:
+        raise HTTPException(status_code=404, detail="User not found")
+    issue_session(response, info.user_id)
+    return {"user_id": info.user_id, **{k: v for k, v in data.items() if k != "hash_pass"}}
+
+
+@app.post("/auth/mfa/enable")
+async def mfa_enable(user_id: str = Depends(get_current_user)) -> dict:
+    """Start turning on 2FA: email a confirmation code to the account's address.
+
+    Does not enable 2FA yet — call ``/auth/mfa/confirm`` with the code to
+    finish. Sending the code first (rather than flipping the flag directly)
+    ensures the account's email address is actually reachable before it
+    becomes required for every future login.
+
+    Raises:
+        HTTPException 503: If the confirmation code email could not be sent.
+    """
+    users = load_users()
+    data = users.get(user_id)
+    if not data:
+        raise HTTPException(status_code=404, detail="User not found")
+    mfa = MFAManager()
+    try:
+        code = mfa.create_code(user_id)
+    finally:
+        mfa.close()
+    subject, html_body, text_body = mfa_setup_code_email(code)
+    try:
+        send_email(data["email"], subject, html_body, text_body)
+    except EmailSendError:
+        raise HTTPException(
+            status_code=503,
+            detail="Unable to send confirmation code — please try again shortly",
+        )
+    return {"sent": True}
+
+
+@app.post("/auth/mfa/confirm")
+async def mfa_confirm(info: MFACode, user_id: str = Depends(get_current_user)) -> dict:
+    """Finish turning on 2FA by verifying the code sent by ``/auth/mfa/enable``.
+
+    Raises:
+        HTTPException 400: If the code is wrong, expired, or already used.
+    """
+    mfa = MFAManager()
+    try:
+        if not mfa.verify(user_id, info.code):
+            raise HTTPException(status_code=400, detail="Invalid or expired code")
+        mfa.set_enabled(user_id, True)
+    finally:
+        mfa.close()
+    return {"mfa_enabled": True}
+
+
+@app.post("/auth/mfa/disable")
+async def mfa_disable(info: MFADisable, user_id: str = Depends(get_current_user)) -> dict:
+    """Turn 2FA off. Requires re-entering the current password so a hijacked
+    or unattended session can't silently remove the account's second factor.
+
+    Raises:
+        HTTPException 401: If the supplied password is wrong.
+        HTTPException 404: If the user no longer exists.
+    """
+    users = load_users()
+    data = users.get(user_id)
+    if not data:
+        raise HTTPException(status_code=404, detail="User not found")
+    if not bcrypt.checkpw(info.plain_pass.encode(), data["hash_pass"].encode()):
+        raise HTTPException(status_code=401, detail="Incorrect password")
+    mfa = MFAManager()
+    try:
+        mfa.set_enabled(user_id, False)
+    finally:
+        mfa.close()
+    return {"mfa_enabled": False}
+
+
+@app.post("/auth/password-reset/request", status_code=202)
+@limiter.limit("5/minute")
+async def password_reset_request(request: Request, info: PasswordResetRequest) -> dict:
+    """Request a password-reset email.
+
+    Always returns the same generic response regardless of whether the email
+    belongs to an account — the response and its timing must never reveal
+    account existence. If a match is found, a single-use reset link (30-minute
+    expiry) is emailed; on any send failure this is logged, not surfaced, for
+    the same reason.
+    """
+    users = load_users()
+    result = find_by_email(users, info.email)
+    if result:
+        uid, data = result
+        pr = PasswordResetManager()
+        try:
+            token = pr.create_token(uid)
+        finally:
+            pr.close()
+        # The frontend is a HashRouter SPA — the router only reads the
+        # fragment, so the path/query must live after the '#' or this link
+        # would load the app at "/" and silently drop ?token=... entirely.
+        reset_link = f"https://fellowscript.com/#/reset-password?token={token}"
+        subject, html_body, text_body = password_reset_email(reset_link)
+        try:
+            send_email(data["email"], subject, html_body, text_body)
+        except EmailSendError:
+            logger.error("Failed to send password reset email to user %s", uid)
+    return {"detail": "If an account with that email exists, a password reset link has been sent."}
+
+
+@app.post("/auth/password-reset/confirm")
+@limiter.limit("10/minute")
+async def password_reset_confirm(request: Request, info: PasswordResetConfirm) -> dict:
+    """Complete a password reset with a token from the emailed link.
+
+    On success, every existing session for the account is invalidated (the
+    user must log in again everywhere) since a reset is often needed because
+    of a suspected compromise.
+
+    Raises:
+        HTTPException 400: If the token is invalid, expired, or already used.
+    """
+    pr = PasswordResetManager()
+    try:
+        uid = pr.resolve(info.token)
+        if not uid:
+            raise HTTPException(status_code=400, detail="Invalid or expired reset link")
+        pr.consume(info.token)
+    finally:
+        pr.close()
+
+    new_hash = bcrypt.hashpw(info.new_password.encode(), bcrypt.gensalt()).decode()
+    db = DBManager()
+    try:
+        db.update("users", {"hash_pass": new_hash}, {"_id": uid})
+    finally:
+        db.close()
+
+    sm = SessionManager()
+    try:
+        sm.delete_all_for_user(uid)
+    finally:
+        sm.close()
+    return {"detail": "Password updated. Please log in with your new password."}
 
 
 @app.post("/logout", status_code=204)
@@ -318,7 +578,8 @@ async def delete_user(user_id: str, _: str = Depends(require_match("user_id"))) 
     Notes owned by the user are deleted. Messages and devotions the user created
     have their author field nulled so group content survives. All other related
     rows (highlights, bookmarks, friends, agents, subscriptions, notifications)
-    cascade automatically via FK constraints.
+    cascade automatically via FK constraints. The separate nightly-backup
+    database (no FK relationship to the primary DB) is purged explicitly.
 
     Args:
         user_id: UUID of the user to delete.
@@ -339,6 +600,27 @@ async def delete_user(user_id: str, _: str = Depends(require_match("user_id"))) 
         db.conn.commit()
     finally:
         db.close()
+
+    # The nightly-backup database is a separate, FK-less mirror (see
+    # backend/backup/manager.py) — deleting the primary row above does not
+    # touch it, so it must be purged explicitly to honor the Privacy Policy's
+    # promise that account deletion removes data from all of our systems.
+    backup_db = DBManager(dbname=BACKUP_DB_NAME)
+    try:
+        backup_db.cur.execute(
+            "DELETE FROM note_verses WHERE note_id IN "
+            "(SELECT _id FROM notes WHERE user_id = %s)", (user_id,)
+        )
+        backup_db.cur.execute("DELETE FROM notes      WHERE user_id = %s", (user_id,))
+        backup_db.cur.execute("DELETE FROM highlights  WHERE user_id = %s", (user_id,))
+        backup_db.cur.execute("DELETE FROM bookmarks   WHERE user_id = %s", (user_id,))
+        backup_db.cur.execute("DELETE FROM users       WHERE _id = %s", (user_id,))
+        backup_db.conn.commit()
+    except Exception as e:
+        logger.error("Failed to purge backup DB for deleted user %s: %s", user_id, e)
+        backup_db.conn.rollback()
+    finally:
+        backup_db.close()
 
 
 @app.post("/auth/google")

@@ -85,6 +85,10 @@ export default function SignIn() {
       });
       const data = await res.json();
       if (!res.ok) { setSiError(data.detail || 'Sign in failed.'); return; }
+      if (data.mfa_required) {
+        navigate('/verify-2fa', { state: { user_id: data.user_id } });
+        return;
+      }
       signIn(data);
       navigate('/reader');
     } catch {
@@ -127,6 +131,11 @@ export default function SignIn() {
           <Form.Item name="password" rules={[{ required: true, message: 'Password required' }]}>
             <Input.Password prefix={<LockOutlined />} placeholder="Password" />
           </Form.Item>
+          <div style={{ textAlign: 'right', marginTop: -8, marginBottom: 16 }}>
+            <Link to="/forgot-password" style={{ fontSize: 12, color: 'rgba(200,134,26,0.65)' }}>
+              Forgot password?
+            </Link>
+          </div>
           <Button type="primary" htmlType="submit" loading={siLoading} block>Sign In</Button>
         </Form>
       ),
