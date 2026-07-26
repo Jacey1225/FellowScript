@@ -753,6 +753,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#backendemail" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        backend/email/
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#backendbackup" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -963,8 +974,39 @@
 <td>GET / PUT / DELETE</td>
 <td>Read, update, or permanently delete a user account</td>
 </tr>
+<tr>
+<td><code>/auth/password-reset/request</code></td>
+<td>POST</td>
+<td>Email a single-use, 30-minute reset link if the address has an account (always returns the same generic response either way)</td>
+</tr>
+<tr>
+<td><code>/auth/password-reset/confirm</code></td>
+<td>POST</td>
+<td>Set a new password from a reset token; invalidates every existing session on the account</td>
+</tr>
+<tr>
+<td><code>/auth/mfa/enable</code></td>
+<td>POST</td>
+<td>Email a confirmation code to start turning on 2FA (authenticated)</td>
+</tr>
+<tr>
+<td><code>/auth/mfa/confirm</code></td>
+<td>POST</td>
+<td>Verify the confirmation code and turn 2FA on (authenticated)</td>
+</tr>
+<tr>
+<td><code>/auth/mfa/disable</code></td>
+<td>POST</td>
+<td>Turn 2FA off; requires re-entering the current password (authenticated)</td>
+</tr>
+<tr>
+<td><code>/auth/mfa/verify-login</code></td>
+<td>POST</td>
+<td>Complete a login paused by <code>/login</code> for 2FA: verify the emailed code and issue the session</td>
+</tr>
 </tbody>
 </table>
+<p>Web-only 2FA: if a user has 2FA enabled, <code>/login</code> doesn't issue a session — it emails a 6-digit code and returns <code>{"mfa_required": true, "user_id": ...}</code>; the frontend then calls <code>/auth/mfa/verify-login</code> to finish. Not implemented on iOS yet.</p>
 <hr />
 <h2 id="layer-1-schemas">Layer 1 — <code>schemas/</code></h2>
 <p>Pydantic models defining request/response shapes and internal records. One file per domain.</p>
@@ -1160,6 +1202,28 @@
 </tbody>
 </table>
 <p>Every new user (all three auth paths) gets a <code>plan_type='free'</code> subscription row created by <code>SubscriptionsManager.create_free_plan()</code>. Free-tier limits are enforced server-side via <code>check_limit()</code> before every create route.</p>
+<hr />
+<h2 id="backendemail"><code>backend/email/</code></h2>
+<p>Transactional email delivery via AWS SES, used by the password-reset and 2FA flows.</p>
+<table>
+<thead>
+<tr>
+<th>File</th>
+<th>Responsibility</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ses_client.py</code></td>
+<td><code>send_email()</code> — thin wrapper over <code>boto3</code>'s <code>sesv2</code> client; raises <code>EmailSendError</code> on failure. Uses a separate, narrowly-scoped IAM credential (<code>SES_ACCESS_KEY_ID</code>/<code>SES_SECRET_ACCESS_KEY</code>) from the Chime SDK user, per least-privilege.</td>
+</tr>
+<tr>
+<td><code>templates.py</code></td>
+<td><code>password_reset_email()</code>, <code>mfa_code_email()</code>, <code>mfa_setup_code_email()</code> — each returns <code>(subject, html_body, text_body)</code>. CAN-SPAM-compliant: truthful sender identity, a support contact, and a physical mailing address footer (<code>SENDER_POSTAL_ADDRESS</code> env var — must be set to a real address before sending real mail).</td>
+</tr>
+</tbody>
+</table>
+<p><code>backend/auth/password_reset.py</code> (<code>PasswordResetManager</code>) and <code>backend/auth/mfa.py</code> (<code>MFAManager</code>) generate the actual tokens/codes — both mirror <code>SessionManager</code>'s pattern of storing only a sha256 hash, never the raw secret.</p>
 <hr />
 <h2 id="backendbackup"><code>backend/backup/</code></h2>
 <p>A sibling package to <code>interactions/</code> for the nightly per-user data backup (see <a href="../data/">Data → Nightly Backup Database</a> for the schema/scope).</p>
