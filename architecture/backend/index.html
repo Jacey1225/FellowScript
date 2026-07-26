@@ -927,6 +927,7 @@
 <hr />
 <h2 id="entry-point-mainpy">Entry Point — <code>main.py</code></h2>
 <p>Registers all routers, configures CORS, and handles the three authentication routes directly (password signup/login, Google OAuth, Apple Sign In). Also starts the background scheduler on startup via <code>lifespan</code>.</p>
+<p>CORS is restricted to <code>https://fellowscript.com</code>, <code>https://www.fellowscript.com</code>, and the local dev origin — not a wildcard. <code>/signup</code> (5/min) and <code>/login</code> (10/min) are rate-limited per-IP via <code>slowapi</code> to slow down brute-forcing and mass account creation; production sits behind Cloudflare, so the limiter keys off the <code>CF-Connecting-IP</code> header (<code>get_client_ip()</code>) rather than <code>request.client.host</code>, which would otherwise resolve to a rotating Cloudflare edge IP and never actually limit anything.</p>
 <p>Auth routes in <code>main.py</code>:</p>
 <table>
 <thead>
