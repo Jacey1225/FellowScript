@@ -908,6 +908,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#content_reports-blocked_users-guideline-12" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        content_reports / blocked_users (Guideline 1.2)
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1067,6 +1078,21 @@
 <td><code>mfa_enabled</code></td>
 <td>BOOLEAN</td>
 <td>Default <code>false</code>. Web-only email-code 2FA toggle — when true, <code>/login</code> pauses for a code instead of issuing a session immediately</td>
+</tr>
+<tr>
+<td><code>terms_accepted_at</code></td>
+<td>TIMESTAMPTZ</td>
+<td>Server-stamped on signup/first login via a given provider; never client-supplied</td>
+</tr>
+<tr>
+<td><code>terms_version</code></td>
+<td>TEXT</td>
+<td>Which <code>CURRENT_TERMS_VERSION</code> (<code>schemas/users.py</code>) was accepted; a mismatch on login triggers a <code>terms_reaccept_required</code> soft gate</td>
+</tr>
+<tr>
+<td><code>suspended_at</code></td>
+<td>TIMESTAMPTZ</td>
+<td>Guideline 1.2 moderation eject — set only by <code>backend/moderation/admin_actions.py</code>, never by the normal profile-update path. A suspended account 403s on every auth route</td>
 </tr>
 </tbody>
 </table>
@@ -1469,6 +1495,27 @@
 </tbody>
 </table>
 <p>Same hash-at-rest pattern as <code>sessions</code>: only a sha256 hash of the emailed token/code is ever stored, so a database leak alone can't be replayed. Both are single-use (<code>used</code> flips to <code>true</code> on a successful verify) and are never purged proactively — expired/used rows are inert and harmless to leave in place at this scale.</p>
+<hr />
+<h3 id="content_reports-blocked_users-guideline-12"><code>content_reports</code> / <code>blocked_users</code> (Guideline 1.2)</h3>
+<table>
+<thead>
+<tr>
+<th>Table</th>
+<th>Key columns</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>content_reports</code></td>
+<td><code>_id</code>, <code>reporter_id FK→users</code>, <code>reported_user_id FK→users</code>, <code>content_type</code> (<code>note</code>/<code>message</code>/<code>devotion_prompt</code>/<code>group_title</code>/<code>user</code>), <code>content_id</code> (nullable — polymorphic, no single FK target), <code>content_snippet</code> (frozen at report time), <code>reason</code>, <code>detail</code>, <code>status</code> (<code>open</code>/<code>actioned</code>/<code>dismissed</code>), <code>created_at</code>, <code>resolved_at</code></td>
+</tr>
+<tr>
+<td><code>blocked_users</code></td>
+<td><code>blocker_id FK→users</code>, <code>blocked_id FK→users</code>, <code>created_at</code> — composite PK <code>(blocker_id, blocked_id)</code></td>
+</tr>
+</tbody>
+</table>
+<p><code>content_snippet</code> is denormalized deliberately: if the operator doesn't check the report email until hours later and the author has since edited or deleted the content, the report still shows what was actually reported. Blocking a user auto-inserts a <code>content_reports</code> row (<code>content_type='user'</code>, <code>reason='blocked'</code>) so there's one unified queue rather than a separate notification path. See <code>backend/moderation/</code> above for the filter, reporting, blocking, and admin-resolution logic; <code>backend/moderation/admin_actions.py</code>'s <code>resolve</code> command is how reports get actioned within the 24-hour commitment in the Terms of Service.</p>
 <hr />
 <h2 id="account-deletion">Account Deletion</h2>
 <p><code>DELETE /user/{user_id}</code> manually handles tables whose FK to <code>users</code> lacks <code>ON DELETE CASCADE</code>:</p>
