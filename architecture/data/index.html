@@ -1472,8 +1472,13 @@
 <td><code>agent_heartbeats</code></td>
 <td><code>_id</code>, <code>user_id FK→users ON DELETE CASCADE</code>, <code>last_fired TIMESTAMPTZ</code></td>
 </tr>
+<tr>
+<td><code>agentic_context</code></td>
+<td><code>_id</code>, <code>heartbeat_id FK→agent_heartbeats ON DELETE CASCADE</code>, <code>user_id FK→users ON DELETE CASCADE</code>, <code>note_id FK→notes ON DELETE CASCADE</code> (nullable), <code>context TEXT[]</code></td>
+</tr>
 </tbody>
 </table>
+<p><code>agentic_context</code> gives each heartbeat continuity with its own past output: every time <code>AgentManager.commit_hb_response()</code> generates a note, it saves a summary here keyed by <code>heartbeat_id</code>, and the next fire for that same heartbeat includes prior summaries in its prompt as "Previous context from past responses." Context is scoped per-heartbeat — heartbeats don't share history with each other, and manually-written notes never feed into this loop. <code>note_id</code> links each summary to the note it was distilled from; deleting that note (from any path — the notes route, account deletion, or the moderation CLI) cascades away its context row too, so a deleted note stops appearing in future prompts.</p>
 <hr />
 <h3 id="password_reset_tokens-mfa_codes"><code>password_reset_tokens</code> / <code>mfa_codes</code></h3>
 <table>
