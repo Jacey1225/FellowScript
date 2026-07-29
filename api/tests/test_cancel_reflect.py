@@ -6,6 +6,8 @@ usage endpoint + subscription lookup. Prints each stage so we can see exactly
 where (if anywhere) the status fails to update. Cleans up after.
 """
 
+import _pathfix  # noqa: F401
+
 import uuid
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -26,7 +28,7 @@ def make_user_with_active_sub():
         db.insertion("users", {"_id": uid, "username": uname,
                                "email": f"{uname}@example.com", "hash_pass": "x"})
         db.insertion("subscriptions", {
-            "_id": sub_id, "user_id": uid, "plan_type": "individual",
+            "_id": sub_id, "user_id": uid, "plan_type": "group",
             "provider": "stripe", "status": "active",
         })
         db.update("users", {"subscription_id": sub_id}, {"_id": uid})

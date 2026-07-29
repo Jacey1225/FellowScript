@@ -45,6 +45,11 @@ struct ContentView: View {
         .fullScreenCover(isPresented: .constant(!hasCompletedOnboarding)) {
             OnboardingView(onComplete: { hasCompletedOnboarding = true })
         }
+        // Guideline 1.2: accounts that predate a material Terms change (e.g.
+        // the zero-tolerance policy rewrite) must re-consent before continuing.
+        .fullScreenCover(isPresented: $appState.termsReacceptRequired) {
+            TermsReacceptView()
+        }
         .onChange(of: appState.pendingBibleNav) { _, target in
             if target != nil { selectedTab = .bible }
         }

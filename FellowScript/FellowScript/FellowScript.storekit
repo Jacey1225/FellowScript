@@ -18,50 +18,200 @@
         {
           "adHocOffers" : [],
           "codeOffers" : [],
-          "displayPrice" : "9.99",
+          "displayPrice" : "10.00",
           "familyShareable" : false,
           "groupNumber" : 1,
-          "internalID" : "20210002",
+          "internalID" : "20210010",
           "introductoryOffer" : {
-            "internalID" : "20210004",
+            "internalID" : "20210020",
             "paymentMode" : "free",
             "subscriptionPeriod" : "P1M"
           },
           "localizations" : [
             {
-              "description" : "Full FellowScript access for one person.",
-              "displayName" : "Individual Plan",
+              "description" : "Full FellowScript access for 1 person.",
+              "displayName" : "Group (1 member)",
               "locale" : "en_US"
             }
           ],
-          "productID" : "com.fellowscript.app.individual",
+          "productID" : "com.fellowscript.app.group1",
           "recurringSubscriptionPeriod" : "P1M",
-          "referenceName" : "Individual",
+          "referenceName" : "Group 1",
           "subscriptionGroupID" : "20210001",
           "type" : "RecurringSubscription"
         },
         {
           "adHocOffers" : [],
           "codeOffers" : [],
-          "displayPrice" : "39.99",
+          "displayPrice" : "17.99",
           "familyShareable" : false,
           "groupNumber" : 1,
-          "internalID" : "20210003",
+          "internalID" : "20210011",
           "introductoryOffer" : {
-            "internalID" : "20210005",
+            "internalID" : "20210021",
             "paymentMode" : "free",
             "subscriptionPeriod" : "P1M"
           },
           "localizations" : [
             {
-              "description" : "FellowScript for you and up to 4 others.",
-              "displayName" : "Group Plan",
+              "description" : "Full FellowScript access for 2 people.",
+              "displayName" : "Group (2 members)",
               "locale" : "en_US"
             }
           ],
-          "productID" : "com.fellowscript.app.group",
+          "productID" : "com.fellowscript.app.group2",
           "recurringSubscriptionPeriod" : "P1M",
-          "referenceName" : "Group",
+          "referenceName" : "Group 2",
+          "subscriptionGroupID" : "20210001",
+          "type" : "RecurringSubscription"
+        },
+        {
+          "adHocOffers" : [],
+          "codeOffers" : [],
+          "displayPrice" : "26.99",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "20210012",
+          "introductoryOffer" : {
+            "internalID" : "20210022",
+            "paymentMode" : "free",
+            "subscriptionPeriod" : "P1M"
+          },
+          "localizations" : [
+            {
+              "description" : "Full FellowScript access for 3 people.",
+              "displayName" : "Group (3 members)",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "com.fellowscript.app.group3",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "Group 3",
+          "subscriptionGroupID" : "20210001",
+          "type" : "RecurringSubscription"
+        },
+        {
+          "adHocOffers" : [],
+          "codeOffers" : [],
+          "displayPrice" : "35.99",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "20210013",
+          "introductoryOffer" : {
+            "internalID" : "20210023",
+            "paymentMode" : "free",
+            "subscriptionPeriod" : "P1M"
+          },
+          "localizations" : [
+            {
+              "description" : "Full FellowScript access for 4 people.",
+              "displayName" : "Group (4 members)",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "com.fellowscript.app.group4",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "Group 4",
+          "subscriptionGroupID" : "20210001",
+          "type" : "RecurringSubscription"
+        },
+        {
+          "adHocOffers" : [],
+          "codeOffers" : [],
+          "displayPrice" : "44.99",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "20210014",
+          "introductoryOffer" : {
+            "internalID" : "20210024",
+            "paymentMode" : "free",
+            "subscriptionPeriod" : "P1M"
+          },
+          "localizations" : [
+            {
+              "description" : "Full FellowScript access for 5 people.",
+              "displayName" : "Group (5 members)",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "com.fellowscript.app.group5",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "Group 5",
+          "subscriptionGroupID" : "20210001",
+          "type" : "RecurringSubscription"
+        },
+        {
+          "adHocOffers" : [],
+          "codeOffers" : [],
+          "displayPrice" : "53.99",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "20210015",
+          "introductoryOffer" : {
+            "internalID" : "20210025",
+            "paymentMode" : "free",
+            "subscriptionPeriod" : "P1M"
+          },
+          "localizations" : [
+            {
+              "description" : "Full FellowScript access for 6 people.",
+              "displayName" : "Group (6 members)",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "com.fellowscript.app.group6",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "Group 6",
+          "subscriptionGroupID" : "20210001",
+          "type" : "RecurringSubscription"
+        },
+        {
+          "adHocOffers" : [],
+          "codeOffers" : [],
+          "displayPrice" : "62.99",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "20210016",
+          "introductoryOffer" : {
+            "internalID" : "20210026",
+            "paymentMode" : "free",
+            "subscriptionPeriod" : "P1M"
+          },
+          "localizations" : [
+            {
+              "description" : "Full FellowScript access for 7 people.",
+              "displayName" : "Group (7 members)",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "com.fellowscript.app.group7",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "Group 7",
+          "subscriptionGroupID" : "20210001",
+          "type" : "RecurringSubscription"
+        },
+        {
+          "adHocOffers" : [],
+          "codeOffers" : [],
+          "displayPrice" : "71.99",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "20210017",
+          "introductoryOffer" : {
+            "internalID" : "20210027",
+            "paymentMode" : "free",
+            "subscriptionPeriod" : "P1M"
+          },
+          "localizations" : [
+            {
+              "description" : "Full FellowScript access for 8 people.",
+              "displayName" : "Group (8 members)",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "com.fellowscript.app.group8",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "Group 8",
           "subscriptionGroupID" : "20210001",
           "type" : "RecurringSubscription"
         }

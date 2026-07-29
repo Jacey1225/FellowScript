@@ -79,50 +79,109 @@ final class NetworkService: DataServiceProtocol {
         try? JSONDecoder().decode(type, from: data)
     }
 
+    /// FastAPI's `detail` is a plain string for our own `HTTPException(...)` raises,
+    /// but a pydantic field_validator rejection (e.g. SignUp's terms_accepted check)
+    /// surfaces as the framework's default array shape:
+    /// `{"detail": [{"loc": [...], "msg": "...", "type": "..."}]}`. Handle both so
+    /// the user sees the real message either way, not a generic fallback.
+    private func extractErrorDetail(from data: Data) -> String? {
+        guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        if let s = obj["detail"] as? String { return s }
+        if let arr = obj["detail"] as? [[String: Any]], let msg = arr.first?["msg"] as? String { return msg }
+        return nil
+    }
+
     // ── Auth ──────────────────────────────────────────────────────────────────
 
     func signIn(username: String, password: String) async throws -> FSUser {
         let data = try await requestRaw("/login", method: "POST",
                                         jsonObject: ["username": username, "plain_pass": password])
+        // 2FA-enabled accounts get {"mfa_required": true, "user_id": ...} instead
+        // of a full user — check for that shape before attempting FSUser decode,
+        // which would otherwise just fail (username/email are required fields).
+        if let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           obj["mfa_required"] as? Bool == true, let uid = obj["user_id"] as? String {
+            throw AppError.mfaRequired(userId: uid)
+        }
         guard let user = decode(FSUser.self, from: data) else {
-            let detail = decode([String: String].self, from: data)?["detail"] ?? "Sign in failed."
-            throw AppError.authFailed(detail)
+            throw AppError.authFailed(extractErrorDetail(from: data) ?? "Sign in failed.")
         }
         return user
     }
 
-    func signUp(username: String, email: String, password: String) async throws -> FSUser {
+    func signUp(username: String, email: String, password: String, termsAccepted: Bool) async throws -> FSUser {
         let data = try await requestRaw("/signup", method: "POST",
-                                        jsonObject: ["username": username, "email": email, "plain_pass": password])
+                                        jsonObject: ["username": username, "email": email, "plain_pass": password,
+                                                     "terms_accepted": termsAccepted])
         guard let user = decode(FSUser.self, from: data) else {
-            let detail = decode([String: String].self, from: data)?["detail"] ?? "Sign up failed."
-            throw AppError.authFailed(detail)
+            throw AppError.authFailed(extractErrorDetail(from: data) ?? "Sign up failed.")
         }
         return user
     }
 
-    func signInWithGoogle(credential: String) async throws -> FSUser {
+    func signInWithGoogle(credential: String, termsAccepted: Bool) async throws -> FSUser {
         let data = try await requestRaw("/auth/google", method: "POST",
-                                        jsonObject: ["credential": credential])
+                                        jsonObject: ["credential": credential, "terms_accepted": termsAccepted])
         guard let user = decode(FSUser.self, from: data) else {
-            let detail = decode([String: String].self, from: data)?["detail"] ?? "Google sign-in failed."
-            throw AppError.authFailed(detail)
+            throw AppError.authFailed(extractErrorDetail(from: data) ?? "Google sign-in failed.")
         }
         return user
     }
 
-    func signInWithApple(identityToken: String, fullName: String?, email: String?) async throws -> FSUser {
-        var body: [String: Any] = ["identity_token": identityToken]
+    func signInWithApple(identityToken: String, fullName: String?, email: String?, termsAccepted: Bool) async throws -> FSUser {
+        var body: [String: Any] = ["identity_token": identityToken, "terms_accepted": termsAccepted]
         // fullName / email are only sent on the first authorization; omit when nil
         // so the server keeps whatever it captured the first time.
         if let fullName { body["full_name"] = fullName }
         if let email    { body["email"]     = email }
         let data = try await requestRaw("/auth/apple", method: "POST", jsonObject: body)
         guard let user = decode(FSUser.self, from: data) else {
-            let detail = decode([String: String].self, from: data)?["detail"] ?? "Apple sign-in failed."
-            throw AppError.authFailed(detail)
+            throw AppError.authFailed(extractErrorDetail(from: data) ?? "Apple sign-in failed.")
         }
         return user
+    }
+
+    /// Records acceptance of the current Terms version after a `terms_reaccept_required`
+    /// response — see FSUser.terms_reaccept_required.
+    func acceptTerms(userId: String) async throws {
+        _ = try await request("/user/\(userId)/accept-terms", method: "POST")
+    }
+
+    // ── Two-factor authentication (email code) ──────────────────────────────────
+
+    /// Completes a login paused by signIn()'s `.mfaRequired` — verifies the
+    /// emailed 6-digit code and returns the same shape a normal login would.
+    func verifyMfaLogin(userId: String, code: String) async throws -> FSUser {
+        let data = try await requestRaw("/auth/mfa/verify-login", method: "POST",
+                                        jsonObject: ["user_id": userId, "code": code])
+        guard let user = decode(FSUser.self, from: data) else {
+            throw AppError.authFailed(extractErrorDetail(from: data) ?? "Invalid or expired code.")
+        }
+        return user
+    }
+
+    /// Starts turning 2FA on: emails a confirmation code. Does not enable 2FA
+    /// yet — call mfaConfirm(code:) with it to finish.
+    func mfaEnable() async throws {
+        _ = try await checkedRequestRaw("/auth/mfa/enable", method: "POST", jsonObject: [:])
+    }
+
+    func mfaConfirm(code: String) async throws {
+        _ = try await checkedRequestRaw("/auth/mfa/confirm", method: "POST", jsonObject: ["code": code])
+    }
+
+    /// Requires the current password so a hijacked/unattended session can't
+    /// silently remove the account's second factor.
+    func mfaDisable(password: String) async throws {
+        _ = try await checkedRequestRaw("/auth/mfa/disable", method: "POST", jsonObject: ["plain_pass": password])
+    }
+
+    // ── Password reset ───────────────────────────────────────────────────────────
+
+    /// Always succeeds from the caller's perspective regardless of whether the
+    /// email has an account — the backend never reveals account existence.
+    func requestPasswordReset(email: String) async throws {
+        _ = try await requestRaw("/auth/password-reset/request", method: "POST", jsonObject: ["email": email])
     }
 
     // ── User ──────────────────────────────────────────────────────────────────
@@ -444,6 +503,34 @@ final class NetworkService: DataServiceProtocol {
         _ = try await request("/friends/\(userId)/\(encodeURIComponent(friendId))", method: "DELETE")
     }
 
+    // ── Reports / Blocks (Guideline 1.2) ────────────────────────────────────────
+    // POST   /reports/                     body: {content_type, content_id?, reported_user_id?, reason, detail}
+    // GET    /blocks/{userId}               → [{user_id, username}]
+    // POST   /blocks/{userId}/{blockedId}
+    // DELETE /blocks/{userId}/{blockedId}
+
+    func reportUser(reportedUserId: String, reason: String, detail: String) async throws {
+        _ = try await checkedRequestRaw("/reports/", method: "POST", jsonObject: [
+            "content_type": "user",
+            "reported_user_id": reportedUserId,
+            "reason": reason,
+            "detail": detail,
+        ])
+    }
+
+    func blockUser(userId: String, blockedId: String) async throws {
+        _ = try await request("/blocks/\(userId)/\(encodeURIComponent(blockedId))", method: "POST")
+    }
+
+    func unblockUser(userId: String, blockedId: String) async throws {
+        _ = try await request("/blocks/\(userId)/\(encodeURIComponent(blockedId))", method: "DELETE")
+    }
+
+    func fetchBlockedUsers(userId: String) async throws -> [FSBlockedUser] {
+        let data = try await get("/blocks/\(userId)")
+        return decode([FSBlockedUser].self, from: data) ?? []
+    }
+
     // ── Groups ────────────────────────────────────────────────────────────────
     // POST   /groups/{userId}         body: {group_id, title, users}
     // DELETE /groups/{userId}/{groupId}
@@ -601,8 +688,8 @@ final class NetworkService: DataServiceProtocol {
         return decode(FSUsage.self, from: data)
     }
 
-    func startSubscription(userId: String, planType: String, billing: FSBillingInfo?) async throws -> String {
-        var body: [String: Any] = ["user_id": userId, "plan_type": planType, "provider": "stripe"]
+    func startSubscription(userId: String, memberCount: Int, billing: FSBillingInfo?) async throws -> String {
+        var body: [String: Any] = ["user_id": userId, "member_count": memberCount, "provider": "stripe"]
         if let b = billing {
             // Only non-sensitive billing metadata is transmitted.
             body["card_brand"]     = b.brand
@@ -619,6 +706,12 @@ final class NetworkService: DataServiceProtocol {
 
     func cancelSubscription(subscriptionId: String) async throws {
         _ = try await request("/subscriptions/\(encodeURIComponent(subscriptionId))", method: "DELETE")
+    }
+
+    // Host changes how many people the plan covers; server re-prices from member_count.
+    func updateSubscriptionSeats(subscriptionId: String, memberCount: Int) async throws {
+        _ = try await requestRaw("/subscriptions/\(encodeURIComponent(subscriptionId))", method: "PUT",
+                                 jsonObject: ["member_count": memberCount])
     }
 
     func fetchSubMembers(subscriptionId: String) async throws -> [FSSubMember] {

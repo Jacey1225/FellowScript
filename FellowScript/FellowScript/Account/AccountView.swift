@@ -304,10 +304,10 @@ final class AccountViewModel: ObservableObject {
     }
 
     /// Purchase a plan through StoreKit (Apple handles the payment sheet).
-    func purchasePlan(planType: String) async {
+    func purchasePlan(memberCount: Int) async {
         guard let uid = profileData?.user_id else { return }
         subBusy = true; defer { subBusy = false }
-        let ok = await StoreKitManager.shared.purchase(planType: planType, userId: uid, service: service)
+        let ok = await StoreKitManager.shared.purchase(memberCount: memberCount, userId: uid, service: service)
         if ok {
             await loadSubscription(userId: uid)
         } else if let e = StoreKitManager.shared.lastError {
@@ -326,6 +326,14 @@ final class AccountViewModel: ObservableObject {
         guard let uid = profileData?.user_id, let plan = subscription else { return }
         subBusy = true; defer { subBusy = false }
         try? await service.cancelSubscription(subscriptionId: plan.id)
+        await loadSubscription(userId: uid)
+    }
+
+    /// Host changes how many people the plan covers; server re-prices from the count.
+    func updateSeats(memberCount: Int) async {
+        guard let uid = profileData?.user_id, let plan = subscription else { return }
+        subBusy = true; defer { subBusy = false }
+        try? await service.updateSubscriptionSeats(subscriptionId: plan.id, memberCount: memberCount)
         await loadSubscription(userId: uid)
     }
 
@@ -370,6 +378,11 @@ struct AccountView: View {
     @StateObject private var vm = AccountViewModel()
     @ObservedObject private var store = StoreKitManager.shared
 
+    // Subscription: member-count picker for a new plan (1-8)
+    @State private var selectedMemberCount = 1
+    // Subscription: host's in-progress seat-count edit on an active plan
+    @State private var editMemberCount: Int? = nil
+
     // Edit profile
     @State private var username     = ""
     @State private var email        = ""
@@ -402,6 +415,19 @@ struct AccountView: View {
     }
 
     @State private var showNotificationsList = false
+    @State private var showBlockedUsers = false
+
+    // Two-factor authentication (email code)
+    @State private var mfaEnabled = false
+    @State private var mfaLoading = false
+    @State private var mfaMsg = ""
+    @State private var mfaMsgIsError = false
+    @State private var showMfaSetup = false
+    @State private var mfaSetupCode = ""
+    @State private var mfaSetupLoading = false
+    @State private var showMfaDisable = false
+    @State private var mfaDisablePassword = ""
+    @State private var mfaDisableLoading = false
 
     // Danger zone
     @State private var deleteConfirm  = ""
@@ -442,6 +468,12 @@ struct AccountView: View {
                     // ── Notifications ─────────────────────────────────────────
                     notificationsSection
 
+                    // ── Two-Factor Authentication ─────────────────────────────
+                    twoFactorSection
+
+                    // ── Privacy & Safety ──────────────────────────────────────
+                    privacySafetySection
+
                     // ── Legal ────────────────────────────────────────────────
                     legalSection
 
@@ -467,6 +499,9 @@ struct AccountView: View {
             .navigationDestination(isPresented: $showNotificationsList) {
                 NotificationsListView(vm: vm)
             }
+            .navigationDestination(isPresented: $showBlockedUsers) {
+                BlockedUsersView(userId: appState.currentUser?.user_id ?? "", service: appState.service)
+            }
         }
         .task {
             if let user = appState.currentUser {
@@ -474,6 +509,7 @@ struct AccountView: View {
                 username = user.username
                 email    = user.email
                 timezone = user.timezone
+                mfaEnabled = user.mfa_enabled
                 // StoreKit: start listening, load products, and push any active
                 // entitlements to the backend before reading the subscription.
                 store.startListening()
@@ -655,6 +691,8 @@ struct AccountView: View {
                 activePlanRow(plan)
 
                 if vm.isSubHost && plan.plan_type == "group" {
+                    seatCountEditRow(plan)
+
                     if !vm.subMembers.isEmpty {
                         rowCaption("Members (\(vm.subMembers.count)/\(plan.max_members))")
                     }
@@ -668,8 +706,7 @@ struct AccountView: View {
                 managePlanRow(plan)
             } else {
                 rowCaption("Start with a free 1-month trial — you won't be billed until it ends.")
-                planOptionRow(type: "individual")
-                planOptionRow(type: "group")
+                memberCountPickerRow()
                 if !vm.joinablePlans.isEmpty {
                     rowCaption("Join a Friend's Group Plan")
                     ForEach(vm.joinablePlans) { joinableRow($0) }
@@ -714,12 +751,12 @@ struct AccountView: View {
         HStack(spacing: Theme.spacingMD) {
             ZStack {
                 Circle().fill(Theme.gold.opacity(0.12)).frame(width: 40, height: 40)
-                Image(systemName: vm.isSubHost ? "crown.fill" : (plan.plan_type == "group" ? "person.3.fill" : "person.fill"))
+                Image(systemName: vm.isSubHost ? "crown.fill" : "person.3.fill")
                     .foregroundColor(Theme.gold)
             }
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
-                    Text(plan.plan_type == "group" ? "Group Plan" : "Individual Plan")
+                    Text("Group Plan")
                         .font(.lora(Theme.fontBody)).foregroundColor(Theme.parchment)
                     let badge = plan.is_trial ? "Free trial" : (vm.autoRenewOff ? "Cancelling" : plan.status.capitalized)
                     Text(badge)
@@ -816,22 +853,34 @@ struct AccountView: View {
         }
     }
 
-    private func planOptionRow(type: String) -> some View {
-        let isGroup = (type == "group")
-        let price   = store.displayPrice(for: type) ?? (isGroup ? "$40" : "$10")
-        return HStack(spacing: Theme.spacingMD) {
-            ZStack {
-                Circle().fill(Theme.gold.opacity(0.12)).frame(width: 36, height: 36)
-                Image(systemName: isGroup ? "person.3.fill" : "person.fill").foregroundColor(Theme.gold)
+    // Fallback prices (mirrors api/schemas/subscription.py GROUP_PRICE_CENTS) used
+    // only until StoreKit's own localized prices have loaded.
+    private static let fallbackPriceCents: [Int: Int] = [
+        1: 1000, 2: 1799, 3: 2699, 4: 3599, 5: 4499, 6: 5399, 7: 6299, 8: 7199,
+    ]
+    private func fallbackPriceLabel(for count: Int) -> String {
+        String(format: "$%.2f", Double(Self.fallbackPriceCents[count] ?? 1000) / 100)
+    }
+
+    private func memberCountPickerRow() -> some View {
+        let price = store.displayPrice(for: selectedMemberCount) ?? fallbackPriceLabel(for: selectedMemberCount)
+        return VStack(alignment: .leading, spacing: Theme.spacingSM) {
+            HStack(spacing: Theme.spacingMD) {
+                ZStack {
+                    Circle().fill(Theme.gold.opacity(0.12)).frame(width: 36, height: 36)
+                    Image(systemName: "person.3.fill").foregroundColor(Theme.gold)
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Group — \(price)/mo")
+                        .font(.lora(Theme.fontBody)).foregroundColor(Theme.parchment)
+                    Text("Free for 1 month · choose 1-8 members")
+                        .font(.lora(Theme.fontXS)).foregroundColor(Theme.textMuted)
+                }
+                Spacer()
             }
-            VStack(alignment: .leading, spacing: 2) {
-                Text((isGroup ? "Group — " : "Individual — ") + "\(price)/mo")
-                    .font(.lora(Theme.fontBody)).foregroundColor(Theme.parchment)
-                Text("Free for 1 month · " + (isGroup ? "up to 5 members" : "just you"))
-                    .font(.lora(Theme.fontXS)).foregroundColor(Theme.textMuted)
-            }
-            Spacer()
-            Button("Start") { Task { await vm.purchasePlan(planType: type) } }
+            Stepper("Members: \(selectedMemberCount)", value: $selectedMemberCount, in: 1...8)
+                .font(.lora(Theme.fontSM)).foregroundColor(Theme.parchment)
+            Button("Start") { Task { await vm.purchasePlan(memberCount: selectedMemberCount) } }
                 .font(.lora(Theme.fontSM)).foregroundColor(Theme.gold)
                 .buttonStyle(.borderless)
                 // Stay tappable even if products haven't loaded — purchasePlan
@@ -839,6 +888,31 @@ struct AccountView: View {
                 .disabled(vm.subBusy || store.purchasing)
         }
         .listRowBackground(Theme.cardBg)
+    }
+
+    @ViewBuilder
+    private func seatCountEditRow(_ plan: FSSubscription) -> some View {
+        if let editing = editMemberCount {
+            HStack(spacing: Theme.spacingSM) {
+                Stepper("Members: \(editing)",
+                        value: Binding(get: { editing }, set: { editMemberCount = $0 }), in: 1...8)
+                    .font(.lora(Theme.fontSM)).foregroundColor(Theme.parchment)
+                Button("Save") { Task { await vm.updateSeats(memberCount: editing); editMemberCount = nil } }
+                    .font(.lora(Theme.fontSM)).foregroundColor(Theme.gold)
+                    .disabled(vm.subBusy)
+                Button("Cancel") { editMemberCount = nil }
+                    .font(.lora(Theme.fontSM)).foregroundColor(Theme.textMuted)
+            }
+            .listRowBackground(Theme.cardBg)
+        } else {
+            Button {
+                editMemberCount = plan.max_members
+            } label: {
+                Text("Change plan size (\(plan.max_members) member\(plan.max_members == 1 ? "" : "s"))")
+                    .font(.lora(Theme.fontSM)).foregroundColor(Theme.gold)
+            }
+            .listRowBackground(Theme.cardBg)
+        }
     }
 
     private func joinableRow(_ j: FSJoinablePlan) -> some View {
@@ -1155,6 +1229,121 @@ struct AccountView: View {
                 }
             }
         }
+    }
+
+    private var twoFactorSection: some View {
+        Section {
+            if !mfaMsg.isEmpty {
+                Text(mfaMsg)
+                    .font(.lora(Theme.fontXS))
+                    .foregroundColor(mfaMsgIsError ? .red : Theme.gold)
+            }
+            Toggle(isOn: Binding(
+                get: { mfaEnabled },
+                set: { newValue in Task { await handleMfaToggle(newValue) } }
+            )) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Two-Factor Authentication")
+                        .font(.lora(Theme.fontBody))
+                        .foregroundColor(Theme.parchment)
+                    Text("Emails a 6-digit code to \(appState.currentUser?.email ?? "your email") every time you sign in.")
+                        .font(.lora(Theme.fontXXS))
+                        .foregroundColor(Theme.textMuted)
+                }
+            }
+            .disabled(mfaLoading)
+            .tint(Theme.gold)
+        } header: {
+            sectionHeader("Two-Factor Authentication")
+        }
+        .listRowBackground(Theme.cardBg)
+        .sheet(isPresented: $showMfaSetup) {
+            MfaSetupSheet(
+                code: $mfaSetupCode,
+                isLoading: mfaSetupLoading,
+                onConfirm: { Task { await handleMfaConfirm() } },
+                onCancel: { showMfaSetup = false; mfaSetupCode = "" }
+            )
+        }
+        .sheet(isPresented: $showMfaDisable) {
+            MfaDisableSheet(
+                password: $mfaDisablePassword,
+                isLoading: mfaDisableLoading,
+                onConfirm: { Task { await handleMfaDisableConfirm() } },
+                onCancel: { showMfaDisable = false; mfaDisablePassword = "" }
+            )
+        }
+    }
+
+    private func handleMfaToggle(_ newValue: Bool) async {
+        mfaMsg = ""
+        if !newValue {
+            showMfaDisable = true
+            return
+        }
+        mfaLoading = true
+        defer { mfaLoading = false }
+        do {
+            try await appState.service.mfaEnable()
+            showMfaSetup = true
+        } catch {
+            mfaMsgIsError = true
+            mfaMsg = error.localizedDescription
+        }
+    }
+
+    private func handleMfaConfirm() async {
+        mfaSetupLoading = true
+        defer { mfaSetupLoading = false }
+        do {
+            try await appState.service.mfaConfirm(code: mfaSetupCode)
+            mfaEnabled = true
+            if var user = appState.currentUser { user.mfa_enabled = true; appState.updateUser(user) }
+            showMfaSetup = false
+            mfaSetupCode = ""
+            mfaMsgIsError = false
+            mfaMsg = "Two-factor authentication is now on."
+        } catch {
+            mfaMsgIsError = true
+            mfaMsg = error.localizedDescription
+        }
+    }
+
+    private func handleMfaDisableConfirm() async {
+        mfaDisableLoading = true
+        defer { mfaDisableLoading = false }
+        do {
+            try await appState.service.mfaDisable(password: mfaDisablePassword)
+            mfaEnabled = false
+            if var user = appState.currentUser { user.mfa_enabled = false; appState.updateUser(user) }
+            showMfaDisable = false
+            mfaDisablePassword = ""
+            mfaMsgIsError = false
+            mfaMsg = "Two-factor authentication is now off."
+        } catch {
+            mfaMsgIsError = true
+            mfaMsg = error.localizedDescription
+        }
+    }
+
+    private var privacySafetySection: some View {
+        Section {
+            Button(action: { showBlockedUsers = true }) {
+                HStack {
+                    Label("Blocked Users", systemImage: "hand.raised")
+                        .font(.lora(Theme.fontBody))
+                        .foregroundColor(Theme.parchment)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption)
+                        .foregroundColor(Theme.textMuted)
+                }
+            }
+            .accessibilityLabel("Manage blocked users")
+        } header: {
+            sectionHeader("Privacy & Safety")
+        }
+        .listRowBackground(Theme.cardBg)
     }
 
     private var legalSection: some View {

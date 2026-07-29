@@ -1,11 +1,13 @@
 """Tests for infra-security hardening applied via the security-compliance skill:
 CORS origin restriction and rate limiting on /signup and /login.
 
-Run with: cd api && ../.venv/bin/python test_security_hardening.py
+Run with: cd api && ../.venv/bin/python tests/test_security_hardening.py
 """
 import os
 import time
 import uuid
+
+import _pathfix  # noqa: F401,E402
 
 os.environ.setdefault("AWS_EC2_METADATA_DISABLED", "true")
 os.environ.setdefault("AWS_ACCESS_KEY_ID", "dummy")
@@ -50,6 +52,7 @@ def main():
         uname = f"rl_{uuid.uuid4().hex[:8]}"
         r3 = client.post("/signup", json={
             "username": uname, "email": f"{uname}@example.com", "plain_pass": "TestPass123!",
+            "terms_accepted": True,
         })
         check("signup happy path still returns 201", r3.status_code == 201, str(r3.status_code))
         uid = r3.json().get("user_id")
@@ -94,7 +97,7 @@ def main():
         spam_uids, spam_tokens = [], []
         for _ in range(7):
             u = f"rl_spam_{uuid.uuid4().hex[:8]}"
-            r5 = client.post("/signup", json={"username": u, "email": f"{u}@example.com", "plain_pass": "x"})
+            r5 = client.post("/signup", json={"username": u, "email": f"{u}@example.com", "plain_pass": "x", "terms_accepted": True})
             codes2.append(r5.status_code)
             if r5.status_code == 201:
                 spam_uids.append(r5.json()["user_id"])

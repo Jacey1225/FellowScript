@@ -24,11 +24,21 @@ Skip tests only for:
 
 ---
 
-## Backend tests (`api/test_<feature>.py`)
+## Backend tests (`api/tests/test_<feature>.py`)
+
+All backend test files live pooled in `api/tests/`, not scattered at the top level of `api/`. Every test file that imports a top-level `api/` module (`db`, `main`, `routes.*`, `backend.*`) **must** import the shared path shim first — Python only puts a script's own directory on `sys.path` when run directly (`python tests/test_x.py`), not `api/` itself, so `from db import DBManager` fails otherwise:
+
+```python
+import _pathfix  # noqa: F401 — must come before any db/main/routes/backend import
+```
+
+`_pathfix.py` (already in `api/tests/`) adds `api/` to `sys.path`; nothing else about it needs to change per test file.
 
 Use FastAPI's `TestClient` against a **real Postgres test DB** — never mock the database. Mocked DB tests have historically passed while real DB migrations failed. The pattern from existing tests in this project:
 
 ```python
+import _pathfix  # noqa: F401
+
 import uuid
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -110,10 +120,11 @@ For each new route or manager method, cover **all four** of these:
 - UUID fields that are not valid UUIDs → 422
 
 ### Style rules
-- Test file: `api/test_<feature>.py`
+- Test file: `api/tests/test_<feature>.py`
+- `import _pathfix  # noqa: F401` first, before any `db`/`main`/`routes.*`/`backend.*` import
 - Each scenario is a function or labeled block — never silent; always `print` or `assert` what you're checking
 - Always clean up test data in a `finally` block
-- Run with: `cd api && ../.venv/bin/python test_<feature>.py`
+- Run with: `cd api && ../.venv/bin/python tests/test_<feature>.py`
 - Print `✅` on full pass, `❌ FAIL` with context on any failure
 
 ---
@@ -250,7 +261,7 @@ actually happened in this project. Before calling any backend change done:
 
 1. Write the feature code.
 2. Write the test(s) covering the cases above.
-3. Run the tests (`python test_<feature>.py` or `npm test -- --run`).
+3. Run the tests (`python tests/test_<feature>.py` or `npm test -- --run`).
 4. If any test fails, fix the code (or the test if the assertion was wrong) and re-run.
-5. Delete throwaway test scripts that were only used for one-shot debugging. Keep tests that assert ongoing correctness in a named file (e.g. `api/test_subscriptions.py`).
+5. Delete throwaway test scripts that were only used for one-shot debugging. Keep tests that assert ongoing correctness in a named file (e.g. `api/tests/test_subscriptions.py`).
 6. Report: which tests were written, which passed, and what edge case each covers.

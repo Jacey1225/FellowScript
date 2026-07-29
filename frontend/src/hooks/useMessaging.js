@@ -189,6 +189,34 @@ export function useMessaging({ user }) {
     return false;
   }, [user]);
 
+  // ── Guideline 1.2: report & block ────────────────────────────────────────
+
+  const reportUser = useCallback(async (reportedUserId, reason, detail = '') => {
+    if (!user) return false;
+    try {
+      const res = await fetch(`${API}/reports/`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content_type: 'user', reported_user_id: reportedUserId, reason, detail }),
+      });
+      return res.ok || res.status === 201;
+    } catch { return false; }
+  }, [user]);
+
+  const blockUser = useCallback(async (blockedId) => {
+    if (!user) return false;
+    try {
+      const res = await fetch(`${API}/blocks/${user.user_id}/${encodeURIComponent(blockedId)}`, { method: 'POST' });
+      if (res.ok || res.status === 204) {
+        // Instant removal from the feed — don't wait for a refetch: drop the
+        // friend row and, if we're mid-conversation with them, close the chat.
+        setFriends(prev => prev.filter(f => f.id !== blockedId));
+        setCurrentContact(cc => (cc && cc.id === blockedId ? null : cc));
+        return true;
+      }
+    } catch {}
+    return false;
+  }, [user]);
+
   // ── Group actions ─────────────────────────────────────────────────────────
 
   const createGroup = useCallback(async (title, memberIds) => {
@@ -236,5 +264,6 @@ export function useMessaging({ user }) {
     connectWS, disconnectWS, setOnSessionSignal,
     loadContacts, openChat, closeChat, sendMessage,
     addFriend, removeFriend, createGroup, updateGroup, leaveGroup,
+    reportUser, blockUser,
   };
 }

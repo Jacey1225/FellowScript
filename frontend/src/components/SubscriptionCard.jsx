@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { Button, Spin, Alert, Tag, Avatar, Popconfirm } from 'antd';
+import { Button, Spin, Alert, Tag, Avatar, Popconfirm, InputNumber } from 'antd';
 import {
-  CrownOutlined, UserOutlined, TeamOutlined,
+  CrownOutlined, TeamOutlined,
   CheckOutlined, CloseOutlined, DeleteOutlined,
 } from '@ant-design/icons';
 import { API } from '../config.js';
@@ -21,11 +21,10 @@ const LABEL = {
 };
 const MUTED = { fontFamily: "'Inter', sans-serif", fontSize: '0.8rem', color: 'rgba(244,228,193,0.35)' };
 
-// Server-authoritative catalog (mirrors api/schemas/subscription.py PLAN_CONFIG).
-const PLANS = {
-  individual: { label: 'Individual', price: 10, cap: 1, icon: <UserOutlined /> },
-  group:      { label: 'Group',      price: 40, cap: 5, icon: <TeamOutlined /> },
-};
+// Server-authoritative price table (mirrors api/schemas/subscription.py GROUP_PRICE_CENTS).
+const GROUP_PRICE_CENTS = { 1: 1000, 2: 1799, 3: 2699, 4: 3599, 5: 4499, 6: 5399, 7: 6299, 8: 7199 };
+const MIN_MEMBERS = 1;
+const MAX_MEMBERS = 8;
 
 const statusColor = (s) => ({
   active: 'gold', trialing: 'blue', past_due: 'orange', canceled: 'red', inactive: 'default',
@@ -52,6 +51,8 @@ export default function SubscriptionCard({ userId, onPlanChange }) {
   const [joinable, setJoinable] = useState([]);     // friends' group plans with room
   const [busy,     setBusy]     = useState('');     // key of the in-flight action
   const [msg,      setMsg]      = useState(null);
+  const [selectedCount, setSelectedCount] = useState(1);  // signup member-count picker
+  const [editCount, setEditCount] = useState(null);        // host's in-progress seat-count edit
 
   const isHost = plan && plan.user_id === userId;
 
@@ -136,16 +137,30 @@ export default function SubscriptionCard({ userId, onPlanChange }) {
 
   // Start a plan via Stripe Checkout: the backend creates a hosted session and
   // we redirect the browser to it. Card entry happens on Stripe's page.
-  const startCheckout = async (planType) => {
-    setBusy(`start-${planType}`);
+  const startCheckout = async (memberCount) => {
+    setBusy('start');
     try {
       const res  = await fetch(`${API}/subscriptions/checkout`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id: userId, plan_type: planType }),
+        body: JSON.stringify({ user_id: userId, member_count: memberCount }),
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok && data.url) { window.location.href = data.url; return; }
       flash('error', data.detail || 'Could not start checkout.');
+    } catch { flash('error', 'Could not reach the server.'); }
+    finally { setBusy(''); }
+  };
+
+  // Host changes how many people their plan covers; re-prices server-side.
+  const updateSeats = async (memberCount) => {
+    setBusy('seats');
+    try {
+      const res = await fetch(`${API}/subscriptions/${plan.id}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ member_count: memberCount }),
+      });
+      if (res.ok) { setEditCount(null); await load(); flash('success', 'Plan updated.'); }
+      else { const d = await res.json().catch(() => ({})); flash('error', d.detail || 'Could not update plan.'); }
     } catch { flash('error', 'Could not reach the server.'); }
     finally { setBusy(''); }
   };
@@ -219,7 +234,6 @@ export default function SubscriptionCard({ userId, onPlanChange }) {
   // ── Render ──────────────────────────────────────────────────────────────────
 
   const isFree = plan?.plan_type === 'free';
-  const cfg = plan && !isFree ? (PLANS[plan.plan_type] || PLANS.individual) : null;
 
   return (
     <div style={CARD_STYLE}>
@@ -247,31 +261,30 @@ export default function SubscriptionCard({ userId, onPlanChange }) {
           )}
           <p style={{ ...MUTED, marginBottom: '1rem', lineHeight: 1.65 }}>
             Upgrade to unlock <span style={{ color: 'var(--gold)' }}>unlimited notes, AI check-ins,</span> and notifications.
-            Group plans let up to five people study together under one subscription.
+            Choose how many people join your plan — up to 8.
           </p>
-          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-            {Object.entries(PLANS).map(([type, p]) => (
-              <div key={type} style={{ flex: 1, minWidth: 180, border: '1px solid rgba(200,134,26,0.2)', borderRadius: 12, padding: '1.1rem' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, color: 'var(--gold)' }}>
-                  {p.icon}
-                  <span style={{ fontFamily: "'DM Serif Display', serif", fontSize: '1.05rem', color: 'var(--parchment)' }}>{p.label}</span>
-                </div>
-                <div style={{ fontFamily: "'DM Serif Display', serif", fontSize: '1.7rem', color: 'var(--gold)', lineHeight: 1 }}>
-                  ${p.price}<span style={{ fontSize: '0.8rem', color: 'rgba(244,228,193,0.4)' }}>/mo</span>
-                </div>
-                <div style={{ ...MUTED, margin: '0.35rem 0 0.2rem' }}>
-                  {type === 'group' ? 'Up to 5 members' : 'Just you'}
-                </div>
-                <div style={{ fontFamily: "'Inter', sans-serif", fontSize: '0.72rem', color: 'rgba(200,134,26,0.7)', marginBottom: '0.9rem' }}>
-                  Free for 1 month, then ${p.price}/mo
-                </div>
-                <Button type="primary" block loading={busy === `start-${type}`}
-                  onClick={() => startCheckout(type)}
-                  style={{ borderRadius: 8, fontFamily: "'Inter', sans-serif" }}>
-                  Start free trial
-                </Button>
-              </div>
-            ))}
+          <div style={{ border: '1px solid rgba(200,134,26,0.2)', borderRadius: 12, padding: '1.1rem', maxWidth: 320 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, color: 'var(--gold)' }}>
+              <TeamOutlined />
+              <span style={{ fontFamily: "'DM Serif Display', serif", fontSize: '1.05rem', color: 'var(--parchment)' }}>Group</span>
+            </div>
+            <div style={{ fontFamily: "'DM Serif Display', serif", fontSize: '1.7rem', color: 'var(--gold)', lineHeight: 1 }}>
+              {money(GROUP_PRICE_CENTS[selectedCount])}<span style={{ fontSize: '0.8rem', color: 'rgba(244,228,193,0.4)' }}>/mo</span>
+            </div>
+            <div style={{ ...MUTED, margin: '0.5rem 0 0.3rem' }}>Members</div>
+            <InputNumber
+              min={MIN_MEMBERS} max={MAX_MEMBERS} value={selectedCount}
+              onChange={(v) => setSelectedCount(v || 1)}
+              style={{ width: '100%', marginBottom: '0.6rem' }}
+            />
+            <div style={{ fontFamily: "'Inter', sans-serif", fontSize: '0.72rem', color: 'rgba(200,134,26,0.7)', marginBottom: '0.9rem' }}>
+              Free for 1 month, then {money(GROUP_PRICE_CENTS[selectedCount])}/mo
+            </div>
+            <Button type="primary" block loading={busy === 'start'}
+              onClick={() => startCheckout(selectedCount)}
+              style={{ borderRadius: 8, fontFamily: "'Inter', sans-serif" }}>
+              Start free trial
+            </Button>
           </div>
         </>
       ) : (
@@ -279,12 +292,12 @@ export default function SubscriptionCard({ userId, onPlanChange }) {
         <>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: '0.4rem' }}>
             <div style={{ width: 42, height: 42, borderRadius: '50%', background: 'rgba(200,134,26,0.12)', border: '1px solid rgba(200,134,26,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--gold)', fontSize: '1.1rem' }}>
-              {isHost ? <CrownOutlined /> : cfg.icon}
+              {isHost ? <CrownOutlined /> : <TeamOutlined />}
             </div>
             <div style={{ flex: 1 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span style={{ fontFamily: "'DM Serif Display', serif", fontSize: '1.15rem', color: 'var(--parchment)' }}>
-                  {cfg.label} Plan
+                  Group Plan
                 </span>
                 <Tag color={statusColor(plan.status)} style={{ textTransform: 'capitalize' }}>
                   {plan.is_trial ? 'Free trial' : plan.status}
@@ -312,6 +325,29 @@ export default function SubscriptionCard({ userId, onPlanChange }) {
                   </span>
                 )}
               </span>
+            </div>
+          )}
+
+          {/* Seat-count editor (host view) */}
+          {isHost && plan.plan_type === 'group' && (
+            <div style={{ marginTop: '1rem', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={LABEL}>Plan size</span>
+              {editCount === null ? (
+                <Button size="small" type="text" onClick={() => setEditCount(plan.max_members)}
+                  style={{ color: 'var(--gold)', fontFamily: "'Inter', sans-serif", fontSize: '0.78rem' }}>
+                  Change ({plan.max_members} member{plan.max_members === 1 ? '' : 's'})
+                </Button>
+              ) : (
+                <>
+                  <InputNumber min={MIN_MEMBERS} max={MAX_MEMBERS} value={editCount}
+                    onChange={(v) => setEditCount(v || 1)} size="small" style={{ width: 70 }} />
+                  <span style={MUTED}>{money(GROUP_PRICE_CENTS[editCount])}/mo</span>
+                  <Button size="small" type="primary" loading={busy === 'seats'}
+                    onClick={() => updateSeats(editCount)} style={{ borderRadius: 6 }}>Save</Button>
+                  <Button size="small" type="text" onClick={() => setEditCount(null)}
+                    style={{ color: 'rgba(244,228,193,0.5)' }}>Cancel</Button>
+                </>
+              )}
             </div>
           )}
 

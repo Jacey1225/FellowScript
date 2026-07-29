@@ -2,12 +2,18 @@ from pydantic import BaseModel, Field
 import uuid
 from datetime import datetime
 
-# Server-authoritative plan catalog. Price and member cap are derived from the
-# plan_type here — never trusted from the client.
-PLAN_CONFIG: dict[str, dict[str, int]] = {
-    "individual": {"price_cents": 1000, "max_members": 1},   # $10 / month, one user
-    "group":      {"price_cents": 4000, "max_members": 5},   # $40 / month, up to 5 users
+# Server-authoritative price table for the single "group" plan tier. The host
+# picks how many people (1-8) the plan covers; price is looked up by that
+# count here — never trusted from the client.
+GROUP_PRICE_CENTS: dict[int, int] = {
+    1: 1000, 2: 1799, 3: 2699, 4: 3599, 5: 4499, 6: 5399, 7: 6299, 8: 7199,
 }
+MIN_MEMBERS = 1
+MAX_MEMBERS = 8
+
+
+def price_for(member_count: int) -> int:
+    return GROUP_PRICE_CENTS.get(member_count, GROUP_PRICE_CENTS[MIN_MEMBERS])
 
 # Every new subscription starts with a free trial of this length. The first
 # billing date is computed as created_at + TRIAL_MONTHS and stored as trial_end.
@@ -40,7 +46,7 @@ class Subscription(BaseModel):
     """A subscription plan owned by a host user."""
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     user_id: str = Field(description="UUID of the host who owns/pays for the plan")
-    plan_type: str = Field(default="individual", description="'individual' or 'group'")
+    plan_type: str = Field(default="group", description="'free' or 'group'")
     provider: str = Field(default="stripe", description="'stripe' or 'apple'")
     stripe_customer_id: str = Field(default="")
     default_payment_method_id: str = Field(default="", description="opaque processor token (pm_...)")
@@ -49,8 +55,8 @@ class Subscription(BaseModel):
     card_exp_month: str = Field(default="", description="display only, e.g. '08'")
     card_exp_year: str = Field(default="", description="display only, e.g. '2027'")
     status: str = Field(default="inactive", description="trialing | active | past_due | canceled | inactive")
-    price_cents: int = Field(default=1000, description="derived from plan_type")
-    max_members: int = Field(default=1, description="derived from plan_type")
+    price_cents: int = Field(default=1000, description="derived from member_count")
+    max_members: int = Field(default=1, description="the host-selected member_count (1-8)")
     trial_end: str = Field(default="", description="when the free trial ends / first billing date")
     current_period_end: str = Field(default="", description="next billing date")
     created_at: str = Field(default_factory=lambda: str(datetime.now()))
@@ -64,7 +70,7 @@ class SubscriptionCreate(BaseModel):
     and sends only those, plus opaque processor tokens.
     """
     user_id: str
-    plan_type: str = "individual"
+    member_count: int = 1
     provider: str = "stripe"
     stripe_customer_id: str = ""
     default_payment_method_id: str = ""
@@ -76,7 +82,7 @@ class SubscriptionCreate(BaseModel):
 
 class SubscriptionUpdate(BaseModel):
     """Partial update; only non-None fields are applied."""
-    plan_type: str | None = None
+    member_count: int | None = None
     provider: str | None = None
     default_payment_method_id: str | None = None
     card_brand: str | None = None

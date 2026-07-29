@@ -11,6 +11,8 @@ import psycopg2 as sql
 import os
 from dotenv import load_dotenv
 
+import _pathfix  # noqa: F401
+
 load_dotenv()
 
 # ── seed IDs ──────────────────────────────────────────────────────────────────

@@ -31,9 +31,20 @@ class DevotionManager(DBManager):
     def remove_devotion(self, devotion_id: str) -> None:
         self.delete("devotions", {"_id": devotion_id})
 
-    def fetch_by_contact(self, contact_id: str) -> list[dict]:
+    def fetch_by_contact(self, contact_id: str, viewer_id: str | None = None) -> list[dict]:
         result = self.lookup("devotions", {"group_id": contact_id})
-        return [{"id": did, **data} for did, data in result.items()]
+        sessions = [{"id": did, **data} for did, data in result.items()]
+        if viewer_id:
+            # Guideline 1.2: hide devotions created by someone in a blocked
+            # relationship with the viewer, either direction.
+            self.cur.execute(
+                "SELECT blocked_id FROM blocked_users WHERE blocker_id = %s "
+                "UNION SELECT blocker_id FROM blocked_users WHERE blocked_id = %s",
+                (viewer_id, viewer_id),
+            )
+            blocked = {str(r[0]) for r in self.cur.fetchall()}
+            sessions = [s for s in sessions if str(s.get("creator_id")) not in blocked]
+        return sessions
 
     def add_participant(self, session_id: str, user_id: str) -> None:
         self.cur.execute(

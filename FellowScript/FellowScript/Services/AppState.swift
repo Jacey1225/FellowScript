@@ -21,6 +21,10 @@ final class AppState: ObservableObject {
     @Published var isAuthenticated = false
     @Published var pendingBibleNav: BibleNavTarget? = nil
     @Published var pendingChatContact: FSContact? = nil   // set to open a chat from another tab
+    // Set when the account predates a material Terms of Service change (e.g.
+    // the Guideline 1.2 zero-tolerance rewrite) — the UI should block on a
+    // re-consent screen until acceptTerms() is called.
+    @Published var termsReacceptRequired = false
 
     // Persisted across launches via UserDefaults (mirrors localStorage in AuthContext.jsx)
     @AppStorage("fs_user_id")        private var storedUserId:   String = ""
@@ -46,24 +50,39 @@ final class AppState: ObservableObject {
         requestPushNotifications()
     }
 
-    func signUp(username: String, email: String, password: String) async throws {
-        let user = try await service.signUp(username: username, email: email, password: password)
+    func signUp(username: String, email: String, password: String, termsAccepted: Bool) async throws {
+        let user = try await service.signUp(username: username, email: email, password: password, termsAccepted: termsAccepted)
         persist(user)
         requestPushNotifications()
     }
 
-    func signInWithGoogle(credential: String) async throws {
-        let user = try await service.signInWithGoogle(credential: credential)
+    func signInWithGoogle(credential: String, termsAccepted: Bool) async throws {
+        let user = try await service.signInWithGoogle(credential: credential, termsAccepted: termsAccepted)
         persist(user)
         requestPushNotifications()
     }
 
-    func signInWithApple(identityToken: String, fullName: String?, email: String?) async throws {
+    func signInWithApple(identityToken: String, fullName: String?, email: String?, termsAccepted: Bool) async throws {
         let user = try await service.signInWithApple(
-            identityToken: identityToken, fullName: fullName, email: email
+            identityToken: identityToken, fullName: fullName, email: email, termsAccepted: termsAccepted
         )
         persist(user)
         requestPushNotifications()
+    }
+
+    /// Completes a login paused by signIn() throwing `.mfaRequired` — verifies
+    /// the emailed code and finishes signing in exactly as a normal login would.
+    func completeMfaLogin(userId: String, code: String) async throws {
+        let user = try await service.verifyMfaLogin(userId: userId, code: code)
+        persist(user)
+        requestPushNotifications()
+    }
+
+    /// Records acceptance of the current Terms after a re-consent gate was shown.
+    func acceptTerms() async {
+        guard let uid = currentUser?.user_id else { return }
+        try? await service.acceptTerms(userId: uid)
+        termsReacceptRequired = false
     }
 
     func signOut() {
@@ -90,6 +109,7 @@ final class AppState: ObservableObject {
         storedEmail    = user.email
         currentUser    = user
         isAuthenticated = true
+        termsReacceptRequired = user.terms_reaccept_required
     }
 
     func requestPushNotifications() {

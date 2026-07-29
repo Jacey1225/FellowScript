@@ -107,7 +107,10 @@ async def join_meeting(session_id: str, user_id: str, _: str = Depends(require_m
 async def read_dm(host_user: str, guest_user: str, _: str = Depends(require_match("host_user"))) -> dict:
     friend_manager = FriendsManager(host_user)
     try:
-        return {"payload": friend_manager.read_friend(guest_user)}
+        result = friend_manager.read_friend(guest_user)
+        if "error" in result:
+            raise HTTPException(status_code=404, detail=result["error"])
+        return {"payload": result}
     finally:
         friend_manager.close()
 

@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from schemas.devotion import DevotionRequest
 from backend.interactions.devotion import DevotionManager
 from backend.auth.dependencies import get_current_user, require_match
+from backend.moderation.content_filter import check_clean, ContentRejected
 import boto3
 import uuid
 from botocore.exceptions import ClientError
@@ -10,10 +11,18 @@ chime = boto3.client("chime-sdk-meetings", region_name="us-east-1")
 devo_router = APIRouter(prefix="/devotions")
 
 
+def _check_devotion_clean(devotion) -> None:
+    try:
+        check_clean(title=devotion.title, prompts=" | ".join(devotion.prompts))
+    except ContentRejected as e:
+        raise HTTPException(status_code=422, detail=f"Your {e.field} contains language that isn't allowed under our community guidelines. Please revise and resubmit.")
+
+
 @devo_router.post("/", status_code=201)
 async def create_devotion(req: DevotionRequest, current_user: str = Depends(get_current_user)) -> dict:
     if req.user_id != current_user:
         raise HTTPException(status_code=403, detail="Forbidden")
+    _check_devotion_clean(req.devotion)
     db = DevotionManager()
     try:
         session_id = db.save_devotion(req.devotion)
@@ -23,10 +32,10 @@ async def create_devotion(req: DevotionRequest, current_user: str = Depends(get_
 
 
 @devo_router.get("/contact/{contact_id}")
-async def get_contact_devotions(contact_id: str, _: str = Depends(get_current_user)) -> dict:
+async def get_contact_devotions(contact_id: str, current_user: str = Depends(get_current_user)) -> dict:
     db = DevotionManager()
     try:
-        return {"sessions": db.fetch_by_contact(contact_id)}
+        return {"sessions": db.fetch_by_contact(contact_id, viewer_id=current_user)}
     finally:
         db.close()
 
@@ -47,6 +56,7 @@ async def fetch_devotion(devotion_id: str, _: str = Depends(get_current_user)) -
 async def update_devotion(req: DevotionRequest, current_user: str = Depends(get_current_user)) -> dict:
     if req.user_id != current_user:
         raise HTTPException(status_code=403, detail="Forbidden")
+    _check_devotion_clean(req.devotion)
     db = DevotionManager()
     try:
         ok = db.update_devotion(req.devotion_id, req.devotion)

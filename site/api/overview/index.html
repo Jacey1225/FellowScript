@@ -1249,8 +1249,8 @@
 </tr>
 <tr>
 <td>POST</td>
-<td><code>/subscriptions/stripe/checkout</code></td>
-<td>Create a Stripe Checkout session (web)</td>
+<td><code>/subscriptions/checkout</code></td>
+<td>Create a Stripe Checkout session (web). Body: <code>{user_id, member_count}</code> (1-8) — price is looked up server-side by count</td>
 </tr>
 <tr>
 <td>POST</td>
@@ -1259,13 +1259,18 @@
 </tr>
 <tr>
 <td>POST</td>
-<td><code>/subscriptions/apple/validate</code></td>
-<td>Validate Apple IAP receipt (iOS)</td>
+<td><code>/subscriptions/apple/sync</code></td>
+<td>Record/refresh a plan from a StoreKit 2 signed transaction (iOS). One of 8 fixed-price products maps to a member count server-side</td>
 </tr>
 <tr>
 <td>POST</td>
-<td><code>/subscriptions/apple/webhook</code></td>
+<td><code>/subscriptions/apple/notifications</code></td>
 <td>Apple App Store Server Notification handler</td>
+</tr>
+<tr>
+<td>PUT</td>
+<td><code>/subscriptions/{subscription_id}</code></td>
+<td>Update a plan (host only). Body may include <code>member_count</code> to change plan size — re-prices from the same table</td>
 </tr>
 </tbody>
 </table>

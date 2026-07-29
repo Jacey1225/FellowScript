@@ -6,12 +6,14 @@ live AWS credentials to test the request/response/DB logic around it) and
 captures the code/token so tests can drive the full flow end to end against
 a real Postgres test DB, exactly like the existing test files.
 
-Run with: cd api && ../.venv/bin/python test_mfa_password_reset.py
+Run with: cd api && ../.venv/bin/python tests/test_mfa_password_reset.py
 """
 import os
 import re
 import uuid
 from datetime import datetime, timedelta, timezone as tzmod
+
+import _pathfix  # noqa: F401,E402
 
 os.environ.setdefault("AWS_EC2_METADATA_DISABLED", "true")
 os.environ.setdefault("AWS_ACCESS_KEY_ID", "dummy")
@@ -74,7 +76,7 @@ def main():
         uname = f"mfa_{uuid.uuid4().hex[:8]}"
         email = f"{uname}@example.com"
         password = "TestPass123!"
-        r = client.post("/signup", json={"username": uname, "email": email, "plain_pass": password})
+        r = client.post("/signup", json={"username": uname, "email": email, "plain_pass": password, "terms_accepted": True})
         check("setup: signup succeeds", r.status_code == 201, str(r.status_code))
         uid = r.json()["user_id"]
         token = r.cookies.get("session")

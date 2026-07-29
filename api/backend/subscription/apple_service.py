@@ -17,15 +17,22 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# App Store Connect product id → app plan_type. Must match the products created
-# in App Store Connect and StoreKitManager on iOS.
-APPLE_PRODUCTS = {
-    "com.fellowscript.app.individual": "individual",
-    "com.fellowscript.app.group":      "group",
+# App Store Connect product id → member_count. Must match the products created
+# in App Store Connect and StoreKitManager on iOS. One fixed-price product per
+# member count (1-8), since StoreKit can't compute an arbitrary price.
+APPLE_PRODUCTS: dict[str, int] = {
+    "com.fellowscript.app.group1": 1,
+    "com.fellowscript.app.group2": 2,
+    "com.fellowscript.app.group3": 3,
+    "com.fellowscript.app.group4": 4,
+    "com.fellowscript.app.group5": 5,
+    "com.fellowscript.app.group6": 6,
+    "com.fellowscript.app.group7": 7,
+    "com.fellowscript.app.group8": 8,
 }
 
 
-def plan_type_for(product_id: str) -> str | None:
+def member_count_for(product_id: str) -> int | None:
     return APPLE_PRODUCTS.get(product_id or "")
 
 

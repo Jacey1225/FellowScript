@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 class CheckoutRequest(BaseModel):
     user_id: str
-    plan_type: str = "individual"
+    member_count: int = 1
 
 
 class AppleSyncRequest(BaseModel):
@@ -41,8 +41,8 @@ async def create_subscription(sub: SubscriptionCreate, current_user: str = Depen
     """Start a new subscription plan; the host becomes its first member.
 
     Args:
-        sub: Plan payload. ``plan_type`` ('individual' | 'group') determines the
-            price and member cap server-side.
+        sub: Plan payload. ``member_count`` (1-8) determines the price and
+            member cap server-side.
 
     Returns:
         dict: ``{"id": str}`` of the created plan.
@@ -77,8 +77,10 @@ async def create_checkout(req: CheckoutRequest, current_user: str = Depends(get_
     finally:
         db.close()
     try:
-        url = stripe_service.create_checkout_session(req.user_id, email, req.plan_type)
+        url = stripe_service.create_checkout_session(req.user_id, email, req.member_count)
         return {"url": url}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error("Stripe checkout error: %s", e)
         raise HTTPException(status_code=502, detail="Could not start checkout.")
@@ -104,15 +106,15 @@ async def stripe_webhook(request: Request) -> dict:
     db = SubscriptionsManager()
     try:
         if etype == "checkout.session.completed":
-            user_id   = obj.get("client_reference_id") or (obj.get("metadata") or {}).get("user_id")
-            plan_type = (obj.get("metadata") or {}).get("plan_type", "individual")
-            customer  = obj.get("customer") or ""
-            sub_id    = obj.get("subscription") or ""
+            user_id      = obj.get("client_reference_id") or (obj.get("metadata") or {}).get("user_id")
+            member_count = int((obj.get("metadata") or {}).get("member_count", 1))
+            customer     = obj.get("customer") or ""
+            sub_id       = obj.get("subscription") or ""
             if user_id and sub_id:
                 sub  = stripe_service.retrieve_subscription(sub_id)
                 card = stripe_service.card_from_subscription(sub)
                 db.upsert_from_stripe(
-                    user_id=user_id, plan_type=plan_type, customer_id=customer,
+                    user_id=user_id, member_count=member_count, customer_id=customer,
                     stripe_sub_id=sub_id, status=sub.get("status") or "active",
                     trial_end=_ts(sub.get("trial_end")),
                     current_period_end=_ts(sub.get("current_period_end")),
@@ -158,8 +160,8 @@ async def apple_sync(req: AppleSyncRequest, current_user: str = Depends(get_curr
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid transaction")
 
-    plan_type = apple_service.plan_type_for(payload.get("productId", ""))
-    if not plan_type:
+    member_count = apple_service.member_count_for(payload.get("productId", ""))
+    if not member_count:
         raise HTTPException(status_code=400, detail="Unknown product")
 
     otxn       = str(payload.get("originalTransactionId") or payload.get("transactionId") or "")
@@ -174,7 +176,7 @@ async def apple_sync(req: AppleSyncRequest, current_user: str = Depends(get_curr
             db.cancel_by_apple_txn(otxn)
             return {"status": "expired"}
         status = "trialing" if is_trial else "active"
-        db.upsert_from_apple(req.user_id, plan_type, otxn, status, cpe, cpe if is_trial else None)
+        db.upsert_from_apple(req.user_id, member_count, otxn, status, cpe, cpe if is_trial else None)
         return db.get_user_subscription(req.user_id) or {"status": status}
     finally:
         db.close()

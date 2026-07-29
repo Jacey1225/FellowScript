@@ -111,10 +111,11 @@ REST history: `GET /messages/{group_id}` returns past messages for a group.
 | Method | Route | Description |
 |---|---|---|
 | GET | `/subscriptions/user/{user_id}` | Get current subscription + usage summary |
-| POST | `/subscriptions/stripe/checkout` | Create a Stripe Checkout session (web) |
+| POST | `/subscriptions/checkout` | Create a Stripe Checkout session (web). Body: `{user_id, member_count}` (1-8) — price is looked up server-side by count |
 | POST | `/subscriptions/stripe/webhook` | Stripe webhook handler |
-| POST | `/subscriptions/apple/validate` | Validate Apple IAP receipt (iOS) |
-| POST | `/subscriptions/apple/webhook` | Apple App Store Server Notification handler |
+| POST | `/subscriptions/apple/sync` | Record/refresh a plan from a StoreKit 2 signed transaction (iOS). One of 8 fixed-price products maps to a member count server-side |
+| POST | `/subscriptions/apple/notifications` | Apple App Store Server Notification handler |
+| PUT | `/subscriptions/{subscription_id}` | Update a plan (host only). Body may include `member_count` to change plan size — re-prices from the same table |
 
 ---
 

@@ -10,7 +10,10 @@ from routes.agent import agent_router
 from routes.notifications import notification_router
 from routes.subscription import subscription_router
 from routes.donation import donation_router
-from schemas.users import SignUp, Login, UpdateUser, User
+from routes.reports import report_router
+from routes.blocks import block_router
+from schemas.users import SignUp, Login, UpdateUser, User, CURRENT_TERMS_VERSION
+from datetime import datetime, timezone
 from pydantic import BaseModel
 import uvicorn
 import bcrypt
@@ -54,12 +57,16 @@ def get_client_ip(request: Request) -> str:
 
 class GoogleAuth(BaseModel):
     credential: str
+    # Only enforced on the new-account branch below — these classes also serve
+    # existing-user sign-ins, where the field is irrelevant.
+    terms_accepted: bool = False
 
 
 class AppleAuth(BaseModel):
     identity_token: str
     full_name: str | None = None
     email: str | None = None
+    terms_accepted: bool = False
 
 
 class PasswordResetRequest(BaseModel):
@@ -127,6 +134,8 @@ app.include_router(agent_router)
 app.include_router(notification_router)
 app.include_router(subscription_router)
 app.include_router(donation_router)
+app.include_router(report_router)
+app.include_router(block_router)
 
 main_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 user_path = "data/users.json"
@@ -261,7 +270,11 @@ async def signup(request: Request, info: SignUp, response: Response) -> dict:
         user_id=info.user_id,
         username=info.username,
         email=info.email,
-        hash_pass=bcrypt.hashpw(info.plain_pass.encode(), bcrypt.gensalt()).decode()
+        hash_pass=bcrypt.hashpw(info.plain_pass.encode(), bcrypt.gensalt()).decode(),
+        # Server-stamped, never client-supplied — SignUp.terms_accepted is
+        # validated True-only by schemas/users.py, this just records when/what.
+        terms_accepted_at=str(datetime.now(timezone.utc)),
+        terms_version=CURRENT_TERMS_VERSION,
     )
     persist_new_user(user)
     sm = SubscriptionsManager()
@@ -300,6 +313,7 @@ async def login(request: Request, info: Login, response: Response) -> dict:
     Raises:
         HTTPException 404: If no user with the given username exists.
         HTTPException 401: If the password does not match.
+        HTTPException 403: If the account has been suspended for a Terms violation.
         HTTPException 503: If the account has 2FA enabled but the code email
             could not be sent.
     """
@@ -310,6 +324,8 @@ async def login(request: Request, info: Login, response: Response) -> dict:
     uid, data = result
     if not bcrypt.checkpw(info.plain_pass.encode(), data["hash_pass"].encode()):
         raise HTTPException(status_code=401, detail="Incorrect password")
+    if data.get("suspended_at"):
+        raise HTTPException(status_code=403, detail="This account has been suspended for violating our Terms of Service.")
 
     if data.get("mfa_enabled"):
         mfa = MFAManager()
@@ -329,7 +345,10 @@ async def login(request: Request, info: Login, response: Response) -> dict:
         return {"mfa_required": True, "user_id": uid}
 
     issue_session(response, uid)
-    return {"user_id": uid, **{k: v for k, v in data.items() if k != "hash_pass"}}
+    result_data = {"user_id": uid, **{k: v for k, v in data.items() if k != "hash_pass"}}
+    if data.get("terms_version") != CURRENT_TERMS_VERSION:
+        result_data["terms_reaccept_required"] = True
+    return result_data
 
 
 @app.post("/auth/mfa/verify-login")
@@ -356,8 +375,13 @@ async def mfa_verify_login(request: Request, info: MFAVerifyLogin, response: Res
     data = users.get(info.user_id)
     if not data:
         raise HTTPException(status_code=404, detail="User not found")
+    if data.get("suspended_at"):
+        raise HTTPException(status_code=403, detail="This account has been suspended for violating our Terms of Service.")
     issue_session(response, info.user_id)
-    return {"user_id": info.user_id, **{k: v for k, v in data.items() if k != "hash_pass"}}
+    result_data = {"user_id": info.user_id, **{k: v for k, v in data.items() if k != "hash_pass"}}
+    if data.get("terms_version") != CURRENT_TERMS_VERSION:
+        result_data["terms_reaccept_required"] = True
+    return result_data
 
 
 @app.post("/auth/mfa/enable")
@@ -571,6 +595,26 @@ async def update_user(user_id: str, info: UpdateUser, _: str = Depends(require_m
     return {"user_id": user_id, **{k: v for k, v in users[user_id].items() if k != "hash_pass"}}
 
 
+@app.post("/user/{user_id}/accept-terms")
+async def accept_terms(user_id: str, _: str = Depends(require_match("user_id"))) -> dict:
+    """Record acceptance of the current Terms of Service version.
+
+    Called when a logged-in user is shown the "Updated Terms" gate after
+    ``login``/``mfa_verify_login`` returned ``terms_reaccept_required`` (their
+    account predates a material Terms change, e.g. the zero-tolerance policy).
+    """
+    db = DBManager()
+    try:
+        db.update(
+            "users",
+            {"terms_accepted_at": datetime.now(timezone.utc), "terms_version": CURRENT_TERMS_VERSION},
+            {"_id": user_id},
+        )
+    finally:
+        db.close()
+    return {"terms_version": CURRENT_TERMS_VERSION}
+
+
 @app.delete("/user/{user_id}", status_code=204)
 async def delete_user(user_id: str, _: str = Depends(require_match("user_id"))) -> None:
     """Permanently remove a user account and all owned data. Only the owner may call this.
@@ -664,6 +708,8 @@ async def google_auth(info: GoogleAuth, response: Response) -> dict:
 
     if result:
         uid, data = result
+        if data.get("suspended_at"):
+            raise HTTPException(status_code=403, detail="This account has been suspended for violating our Terms of Service.")
         # Backfill google_sub on accounts first created via another provider.
         if sub and data.get("google_sub") != sub:
             users[uid]["google_sub"] = sub
@@ -678,8 +724,21 @@ async def google_auth(info: GoogleAuth, response: Response) -> dict:
         while username in existing:
             username = f"{base}{counter}"
             counter += 1
-        # Same creation pipeline as password signup — writes to both stores.
-        user = User(user_id=uid, username=username, email=email, hash_pass="")
+        # Guideline 4.8: never block account creation on terms_accepted here.
+        # Google only supplies name/email on this exact call — a rejected
+        # signup means a retry gets a blank name (Apple's Sign in with Apple
+        # is stricter still: it supplies the name/email exactly once, ever,
+        # per Apple ID + app, so losing this attempt loses it permanently).
+        # Create the account regardless, and let terms_reaccept_required
+        # (below) prompt for consent immediately after, instead of discarding
+        # the name/email that was just supplied.
+        if info.terms_accepted:
+            user = User(
+                user_id=uid, username=username, email=email, hash_pass="",
+                terms_accepted_at=str(datetime.now(timezone.utc)), terms_version=CURRENT_TERMS_VERSION,
+            )
+        else:
+            user = User(user_id=uid, username=username, email=email, hash_pass="")
         persist_new_user(user)
         sm = SubscriptionsManager()
         try:
@@ -697,7 +756,10 @@ async def google_auth(info: GoogleAuth, response: Response) -> dict:
             data = user.model_dump(exclude={"user_id"})
 
     issue_session(response, uid)
-    return {"user_id": uid, **{k: v for k, v in data.items() if k != "hash_pass"}}
+    result_data = {"user_id": uid, **{k: v for k, v in data.items() if k != "hash_pass"}}
+    if data.get("terms_version") != CURRENT_TERMS_VERSION:
+        result_data["terms_reaccept_required"] = True
+    return result_data
 
 
 @app.post("/auth/apple")
@@ -742,6 +804,8 @@ async def apple_auth(info: AppleAuth, response: Response) -> dict:
 
     if result:
         uid, data = result
+        if data.get("suspended_at"):
+            raise HTTPException(status_code=403, detail="This account has been suspended for violating our Terms of Service.")
         # Backfill apple_sub on accounts first created via another provider.
         if data.get("apple_sub") != sub:
             users[uid]["apple_sub"] = sub
@@ -757,8 +821,20 @@ async def apple_auth(info: AppleAuth, response: Response) -> dict:
         while username in existing:
             username = f"{base}{counter}"
             counter += 1
-        # Same creation pipeline as password signup — writes to both stores.
-        user = User(user_id=uid, username=username, email=email, hash_pass="")
+        # Guideline 4.8: never block account creation on terms_accepted here.
+        # Apple supplies full_name/email exactly once, ever, per Apple ID +
+        # app — rejecting this call means that name is gone permanently, with
+        # no way to recover it short of asking the user to type it manually
+        # (exactly the complaint this fixes). Create the account regardless,
+        # and let terms_reaccept_required (below) prompt for consent
+        # immediately after, instead of discarding what Apple just supplied.
+        if info.terms_accepted:
+            user = User(
+                user_id=uid, username=username, email=email, hash_pass="",
+                terms_accepted_at=str(datetime.now(timezone.utc)), terms_version=CURRENT_TERMS_VERSION,
+            )
+        else:
+            user = User(user_id=uid, username=username, email=email, hash_pass="")
         persist_new_user(user)
         sm = SubscriptionsManager()
         try:
@@ -773,7 +849,10 @@ async def apple_auth(info: AppleAuth, response: Response) -> dict:
         data = users[uid]
 
     issue_session(response, uid)
-    return {"user_id": uid, **{k: v for k, v in data.items() if k != "hash_pass"}}
+    result_data = {"user_id": uid, **{k: v for k, v in data.items() if k != "hash_pass"}}
+    if data.get("terms_version") != CURRENT_TERMS_VERSION:
+        result_data["terms_reaccept_required"] = True
+    return result_data
 
 
 if __name__ == "__main__":

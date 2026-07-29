@@ -14,6 +14,7 @@ is included anyway as good practice / deliverability hygiene — see the
 SENDER_POSTAL_ADDRESS placeholder, which must be set to a real address
 before this goes live.
 """
+import html
 import os
 
 SUPPORT_EMAIL = os.getenv("SUPPORT_EMAIL", "support@fellowscript.com")
@@ -151,3 +152,49 @@ def mfa_setup_code_email(code: str) -> tuple[str, str, str]:
         + _FOOTER_TEXT
     )
     return subject, _wrap_html(f"Confirm two-factor authentication — {code}", body_html), text_body
+
+
+def content_report_email(
+    report_id: str, reporter_username: str, reported_username: str, reported_user_id: str,
+    content_type: str, content_id: str | None, snippet: str, reason: str, detail: str,
+) -> tuple[str, str, str]:
+    """Returns (subject, html_body, text_body) for the developer-facing report
+    alert (Guideline 1.2 — a report must reach the developer with enough
+    context to act within 24 hours, without needing a dashboard).
+
+    ``snippet`` is user-generated content and MUST be HTML-escaped before
+    interpolation — it's the one field here an attacker fully controls."""
+    safe_snippet = html.escape(snippet) if snippet else "(no content — direct user report)"
+    safe_detail = html.escape(detail) if detail else "(none provided)"
+    subject = f"[Report] {content_type} flagged — action needed within 24h"
+    body_html = f"""
+      <p style="font-size:14px;line-height:1.6;color:#241a0d;">
+        <strong>Reporter:</strong> {html.escape(reporter_username)}<br>
+        <strong>Reported user:</strong> {html.escape(reported_username)} ({html.escape(reported_user_id)})<br>
+        <strong>Content type:</strong> {html.escape(content_type)}<br>
+        <strong>Content ID:</strong> {html.escape(str(content_id)) if content_id else "n/a"}<br>
+        <strong>Reason:</strong> {html.escape(reason)}
+      </p>
+      <p style="font-size:13px;line-height:1.6;color:#6b5d47;">
+        <strong>Reporter's note:</strong> {safe_detail}
+      </p>
+      <p style="font-size:13px;line-height:1.6;color:#241a0d;background:#f7f2e7;
+                padding:12px;border-radius:8px;white-space:pre-wrap;">
+        {safe_snippet}
+      </p>
+      <p style="font-size:13px;line-height:1.6;color:#6b5d47;">
+        To act: <code>python -m backend.moderation.admin_actions resolve {report_id} --remove-content --eject</code>
+      </p>
+    """
+    text_body = (
+        f"Reporter: {reporter_username}\n"
+        f"Reported user: {reported_username} ({reported_user_id})\n"
+        f"Content type: {content_type}\n"
+        f"Content ID: {content_id or 'n/a'}\n"
+        f"Reason: {reason}\n"
+        f"Reporter's note: {detail or '(none provided)'}\n\n"
+        f"Content:\n{snippet or '(no content — direct user report)'}\n\n"
+        f"To act: python -m backend.moderation.admin_actions resolve {report_id} --remove-content --eject"
+        + _FOOTER_TEXT
+    )
+    return subject, _wrap_html(subject, body_html), text_body

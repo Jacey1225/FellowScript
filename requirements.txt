@@ -6,3 +6,4 @@ httpx
 pyjwt[crypto]
 slowapi
 boto3
+better_profanity

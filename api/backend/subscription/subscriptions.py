@@ -4,7 +4,7 @@ from db import DBManager
 from schemas.subscription import (
     SubscriptionCreate,
     SubscriptionUpdate,
-    PLAN_CONFIG,
+    price_for,
     TRIAL_MONTHS,
     EXPIRY_GRACE_DAYS,
 )
@@ -64,16 +64,16 @@ class SubscriptionsManager(DBManager):
     def create_subscription(self, sub: SubscriptionCreate) -> str:
         """Start a new plan on a free trial and enroll the host as first member.
 
-        Price and member cap are derived server-side from ``plan_type``. The
-        subscription starts in ``trialing`` status; ``trial_end`` and the first
-        ``current_period_end`` (next billing date) are computed by the DB as
-        now() + TRIAL_MONTHS, so the billing schedule is anchored to the exact
-        creation time. Only non-sensitive billing metadata is persisted.
+        Price is derived server-side from the requested ``member_count`` (1-8).
+        The subscription starts in ``trialing`` status; ``trial_end`` and the
+        first ``current_period_end`` (next billing date) are computed by the DB
+        as now() + TRIAL_MONTHS, so the billing schedule is anchored to the
+        exact creation time. Only non-sensitive billing metadata is persisted.
 
         Returns:
             str: the new subscription's id.
         """
-        cfg    = PLAN_CONFIG.get(sub.plan_type, PLAN_CONFIG["individual"])
+        price_cents = price_for(sub.member_count)
         sub_id = str(uuid.uuid4())
         # Raw SQL so trial_end / current_period_end use the DB clock and a real
         # calendar-month interval (created_at + N months).
@@ -82,11 +82,11 @@ class SubscriptionsManager(DBManager):
             "(_id, user_id, plan_type, provider, stripe_customer_id, default_payment_method_id, "
             " card_brand, card_last4, card_exp_month, card_exp_year, status, price_cents, max_members, "
             " trial_end, current_period_end) "
-            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'trialing',%s,%s, "
+            "VALUES (%s,%s,'group',%s,%s,%s,%s,%s,%s,%s,'trialing',%s,%s, "
             "        now() + (%s || ' months')::interval, now() + (%s || ' months')::interval)",
-            (sub_id, sub.user_id, sub.plan_type, sub.provider, sub.stripe_customer_id,
+            (sub_id, sub.user_id, sub.provider, sub.stripe_customer_id,
              sub.default_payment_method_id, sub.card_brand, sub.card_last4,
-             sub.card_exp_month, sub.card_exp_year, cfg["price_cents"], cfg["max_members"],
+             sub.card_exp_month, sub.card_exp_year, price_cents, sub.member_count,
              TRIAL_MONTHS, TRIAL_MONTHS),
         )
         self.conn.commit()
@@ -117,7 +117,7 @@ class SubscriptionsManager(DBManager):
         row = self.cur.fetchone()
         return str(row[0]) if row else None
 
-    def upsert_from_stripe(self, user_id: str, plan_type: str, customer_id: str,
+    def upsert_from_stripe(self, user_id: str, member_count: int, customer_id: str,
                            stripe_sub_id: str, status: str, trial_end, current_period_end,
                            card: dict) -> str:
         """Create or update the user's plan row from Stripe (the source of truth).
@@ -125,18 +125,18 @@ class SubscriptionsManager(DBManager):
         Called from the ``checkout.session.completed`` webhook once payment info is
         confirmed. Enrolls the host and stores only non-sensitive card metadata.
         """
-        cfg = PLAN_CONFIG.get(plan_type, PLAN_CONFIG["individual"])
+        price_cents = price_for(member_count)
         self.cur.execute("SELECT subscription_id FROM users WHERE _id = %s", (user_id,))
         row = self.cur.fetchone()
         existing_id = str(row[0]) if row and row[0] else None
 
         if existing_id:
             self.cur.execute(
-                "UPDATE subscriptions SET plan_type=%s, provider='stripe', stripe_customer_id=%s, "
+                "UPDATE subscriptions SET plan_type='group', provider='stripe', stripe_customer_id=%s, "
                 "stripe_subscription_id=%s, status=%s, price_cents=%s, max_members=%s, "
                 "card_brand=%s, card_last4=%s, card_exp_month=%s, card_exp_year=%s, "
                 "trial_end=%s, current_period_end=%s WHERE _id=%s",
-                (plan_type, customer_id, stripe_sub_id, status, cfg["price_cents"], cfg["max_members"],
+                (customer_id, stripe_sub_id, status, price_cents, member_count,
                  card["brand"], card["last4"], card["exp_month"], card["exp_year"],
                  trial_end, current_period_end, existing_id),
             )
@@ -149,9 +149,9 @@ class SubscriptionsManager(DBManager):
             "(_id, user_id, plan_type, provider, stripe_customer_id, stripe_subscription_id, "
             " status, price_cents, max_members, card_brand, card_last4, card_exp_month, "
             " card_exp_year, trial_end, current_period_end) "
-            "VALUES (%s,%s,%s,'stripe',%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
-            (sub_id, user_id, plan_type, customer_id, stripe_sub_id, status,
-             cfg["price_cents"], cfg["max_members"], card["brand"], card["last4"],
+            "VALUES (%s,%s,'group','stripe',%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+            (sub_id, user_id, customer_id, stripe_sub_id, status,
+             price_cents, member_count, card["brand"], card["last4"],
              card["exp_month"], card["exp_year"], trial_end, current_period_end),
         )
         self.conn.commit()
@@ -190,24 +190,24 @@ class SubscriptionsManager(DBManager):
         row = self.cur.fetchone()
         return str(row[0]) if row else None
 
-    def upsert_from_apple(self, user_id: str, plan_type: str, original_transaction_id: str,
+    def upsert_from_apple(self, user_id: str, member_count: int, original_transaction_id: str,
                           status: str, current_period_end, trial_end) -> str:
         """Create or update the user's plan from a verified Apple transaction.
 
         Mirrors ``upsert_from_stripe`` but with ``provider='apple'`` and the
         StoreKit original transaction id. Enrolls the host.
         """
-        cfg = PLAN_CONFIG.get(plan_type, PLAN_CONFIG["individual"])
+        price_cents = price_for(member_count)
         self.cur.execute("SELECT subscription_id FROM users WHERE _id = %s", (user_id,))
         row = self.cur.fetchone()
         existing_id = str(row[0]) if row and row[0] else None
 
         if existing_id:
             self.cur.execute(
-                "UPDATE subscriptions SET plan_type=%s, provider='apple', "
+                "UPDATE subscriptions SET plan_type='group', provider='apple', "
                 "apple_original_transaction_id=%s, status=%s, price_cents=%s, max_members=%s, "
                 "trial_end=%s, current_period_end=%s WHERE _id=%s",
-                (plan_type, original_transaction_id, status, cfg["price_cents"], cfg["max_members"],
+                (original_transaction_id, status, price_cents, member_count,
                  trial_end, current_period_end, existing_id),
             )
             self.conn.commit()
@@ -218,9 +218,9 @@ class SubscriptionsManager(DBManager):
             "INSERT INTO subscriptions "
             "(_id, user_id, plan_type, provider, apple_original_transaction_id, status, "
             " price_cents, max_members, trial_end, current_period_end) "
-            "VALUES (%s,%s,%s,'apple',%s,%s,%s,%s,%s,%s)",
-            (sub_id, user_id, plan_type, original_transaction_id, status,
-             cfg["price_cents"], cfg["max_members"], trial_end, current_period_end),
+            "VALUES (%s,%s,'group','apple',%s,%s,%s,%s,%s,%s)",
+            (sub_id, user_id, original_transaction_id, status,
+             price_cents, member_count, trial_end, current_period_end),
         )
         self.conn.commit()
         self.update("users", {"subscription_id": sub_id}, {"_id": user_id})
@@ -367,7 +367,7 @@ class SubscriptionsManager(DBManager):
         return self.get_subscription(str(row[0]))
 
     def update_subscription(self, subscription_id: str, upd: SubscriptionUpdate) -> bool:
-        """Apply a partial update. Changing ``plan_type`` re-derives price/cap.
+        """Apply a partial update. Changing ``member_count`` re-derives price/cap.
 
         Returns:
             bool: False if the plan does not exist, True otherwise.
@@ -375,10 +375,10 @@ class SubscriptionsManager(DBManager):
         if not self.lookup("subscriptions", {"_id": subscription_id}):
             return False
         values = {k: v for k, v in upd.model_dump().items() if v is not None}
-        if "plan_type" in values:
-            cfg = PLAN_CONFIG.get(values["plan_type"], PLAN_CONFIG["individual"])
-            values["price_cents"] = cfg["price_cents"]
-            values["max_members"] = cfg["max_members"]
+        if "member_count" in values:
+            member_count = values.pop("member_count")
+            values["max_members"] = member_count
+            values["price_cents"] = price_for(member_count)
         if values:
             self.update("subscriptions", values, {"_id": subscription_id})
         return True

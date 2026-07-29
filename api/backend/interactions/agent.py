@@ -102,7 +102,7 @@ class AgentManager(DBManager):
     def delete_heartbeat(self, heartbeat_id: str) -> None:
         self.delete(self.hb_table, {"_id": heartbeat_id})
 
-    def note_via_hb(self, data: dict):
+    def note_via_hb(self, data: dict) -> str:
         note = Note(
             user=self.user_id,
             title=data.get("title", ""),
@@ -131,13 +131,14 @@ class AgentManager(DBManager):
                     "chapter":  verse[1],
                     "verse":    verse[2],
                 })
+        return note_id
 
-    def save_context(self, heartbeat_id: str, context_text: str) -> None:
+    def save_context(self, heartbeat_id: str, context_text: str, note_id: str | None = None) -> None:
         try:
             self.cur.execute(
-                "INSERT INTO agentic_context (_id, heartbeat_id, user_id, context) "
-                "VALUES (%s, %s, %s, %s)",
-                (str(uuid.uuid4()), heartbeat_id, self.user_id, [context_text])
+                "INSERT INTO agentic_context (_id, heartbeat_id, user_id, note_id, context) "
+                "VALUES (%s, %s, %s, %s, %s)",
+                (str(uuid.uuid4()), heartbeat_id, self.user_id, note_id, [context_text])
             )
             self.conn.commit()
         except Exception as e:
@@ -210,9 +211,12 @@ class AgentManager(DBManager):
                 logger.error("JSON parse error in commit_hb_response: %s | raw: %.200s", e, json_str)
                 return {"error": "invalid response"}
             if response_dict.get("__action", "") == "create_note":
-                self.note_via_hb(response_dict)
+                new_note_id = self.note_via_hb(response_dict)
                 note_summary = f"{response_dict.get('title', '')}: {response_dict.get('text', '')[:300]}"
-                self.save_context(heartbeat_id, note_summary)
+                # Linking context to note_id means deleting the note (from any
+                # path) cascades this context row away too — see the FK on
+                # agentic_context in db.py.
+                self.save_context(heartbeat_id, note_summary, new_note_id)
                 return {"success": "saved note"}
             else:
                 return {"error": "cannot find action"}

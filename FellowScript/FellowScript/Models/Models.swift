@@ -13,6 +13,13 @@ struct FSUser: Codable, Identifiable {
     var notes:       [String: FSNote]  = [:]
     var highlights:  [String: String]  = [:]
     var timezone:    String            = "UTC"
+    // True when this account predates a material Terms of Service change
+    // (e.g. the Guideline 1.2 zero-tolerance rewrite) and must re-accept
+    // before continuing — set only by login/signup responses, never sent.
+    var terms_reaccept_required: Bool  = false
+    // Email-code 2FA toggle state (see AccountView's Two-Factor
+    // Authentication section) — reflects the account's current setting.
+    var mfa_enabled: Bool = false
 
     var id: String { user_id }
     var initials: String { String(username.prefix(1)).uppercased() }
@@ -33,7 +40,16 @@ extension FSUser {
         notes       = (try? c.decode([String: FSNote].self, forKey: .notes))      ?? [:]
         highlights  = (try? c.decode([String: String].self, forKey: .highlights)) ?? [:]
         timezone    = (try? c.decode(String.self, forKey: .timezone)) ?? "UTC"
+        terms_reaccept_required = (try? c.decode(Bool.self, forKey: .terms_reaccept_required)) ?? false
+        mfa_enabled = (try? c.decode(Bool.self, forKey: .mfa_enabled)) ?? false
     }
+}
+
+// ── Blocked user (Guideline 1.2) ──────────────────────────────────────────────
+struct FSBlockedUser: Codable, Identifiable {
+    let user_id:  String
+    var username: String = ""
+    var id: String { user_id }
 }
 
 // ── Subscription ────────────────────────────────────────────────────────────
@@ -42,7 +58,7 @@ extension FSUser {
 struct FSSubscription: Codable, Identifiable {
     var id:           String = ""
     var user_id:      String = ""    // the host who owns the plan
-    var plan_type:    String = "individual"   // "individual" | "group"
+    var plan_type:    String = "group"        // "free" | "group"
     var provider:     String = ""    // "stripe" | "apple"
     var status:       String = "inactive"
     var price_cents:  Int    = 0
@@ -58,7 +74,7 @@ struct FSSubscription: Codable, Identifiable {
         case card_brand, card_last4, is_trial, trial_days_remaining, next_billing_date
     }
 
-    init(id: String = "", user_id: String = "", plan_type: String = "individual",
+    init(id: String = "", user_id: String = "", plan_type: String = "group",
          status: String = "inactive", price_cents: Int = 0, max_members: Int = 1) {
         self.id = id; self.user_id = user_id; self.plan_type = plan_type
         self.status = status; self.price_cents = price_cents; self.max_members = max_members
@@ -68,7 +84,7 @@ struct FSSubscription: Codable, Identifiable {
         let c        = try decoder.container(keyedBy: CodingKeys.self)
         id           = (try? c.decode(String.self, forKey: .id))          ?? ""
         user_id      = (try? c.decode(String.self, forKey: .user_id))     ?? ""
-        plan_type    = (try? c.decode(String.self, forKey: .plan_type))   ?? "individual"
+        plan_type    = (try? c.decode(String.self, forKey: .plan_type))   ?? "group"
         provider     = (try? c.decode(String.self, forKey: .provider))    ?? ""
         status       = (try? c.decode(String.self, forKey: .status))      ?? "inactive"
         price_cents  = (try? c.decode(Int.self,    forKey: .price_cents)) ?? 0

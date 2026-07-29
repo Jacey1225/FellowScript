@@ -4,6 +4,7 @@ from fastapi import WebSocket
 from schemas.message import Message
 from db import DBManager
 from backend.interactions.push import send_push
+from backend.moderation.content_filter import check_clean, ContentRejected
 
 logger = logging.getLogger(__name__)
 
@@ -63,15 +64,47 @@ class ConnectionManager(DBManager):
         to_users = payload.get("to_users")
         if not to_users:
             return
-        self.save_message(Message(**payload))
 
         from_user_id = payload.get("from_user", "")
         text         = payload.get("text", "")
+        group_id     = payload.get("group_id")
+
+        # Guideline 1.2 content filter — this is the one message-creation path
+        # with no HTTP request/response cycle, so a rejection can't be a normal
+        # HTTPException; reply only to the sender's own socket instead.
+        try:
+            check_clean(text=text)
+        except ContentRejected:
+            sender_ws = self.active_connections.get(from_user_id)
+            if sender_ws:
+                await sender_ws.send_json({
+                    "type": "error",
+                    "reason": "message_rejected",
+                    "detail": "Your message contains language that isn't allowed under our community guidelines.",
+                })
+            return
+
+        # Guideline 1.2 block enforcement. One query for the sender's full
+        # bidirectional blocked-relationship set (either direction), reused
+        # below for both the DM drop and the per-recipient group delivery
+        # skip — avoids opening a BlockManager connection per recipient.
+        self.cur.execute(
+            "SELECT blocked_id FROM blocked_users WHERE blocker_id = %s "
+            "UNION SELECT blocker_id FROM blocked_users WHERE blocked_id = %s",
+            (from_user_id, from_user_id),
+        )
+        blocked_relationships = {str(r[0]) for r in self.cur.fetchall()}
+
+        if not group_id and any(uid in blocked_relationships for uid in to_users):
+            # DM with a blocked relationship — drop entirely, no save/delivery.
+            return
+
+        self.save_message(Message(**payload))
 
         frame = {
             "from_user": from_user_id,
             "text":      text,
-            "group_id":  payload.get("group_id"),
+            "group_id":  group_id,
             "timestamp": payload.get("timestamp"),
         }
 
@@ -86,6 +119,10 @@ class ConnectionManager(DBManager):
             logger.warning("Could not resolve sender username: %s", e)
 
         for uid in to_users:
+            if uid in blocked_relationships:
+                # Group message: still persisted for other members, but skip
+                # delivery to any recipient in a blocked relationship with the sender.
+                continue
             ws = self.active_connections.get(uid)
             if ws:
                 # Recipient is online — deliver via WebSocket

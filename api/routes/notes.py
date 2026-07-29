@@ -3,6 +3,7 @@ from schemas.users import Note
 from db import DBManager
 from backend.subscription.limits import check_limit
 from backend.auth.dependencies import get_current_user, require_match
+from backend.moderation.content_filter import check_clean, ContentRejected
 from datetime import datetime
 import uuid
 import logging
@@ -117,6 +118,10 @@ async def post_reply(note_id: str, reply: dict, current_user: str = Depends(get_
         if not db.lookup("notes", {"_id": note_id}):
             return {"error": "cannot find note"}
         reply_note = Note(**reply)
+        try:
+            check_clean(title=reply_note.title, text=reply_note.text)
+        except ContentRejected as e:
+            raise HTTPException(status_code=422, detail=f"Your {e.field} contains language that isn't allowed under our community guidelines. Please revise and resubmit.")
         reply_id   = str(uuid.uuid4())
         db.insertion("notes", {
             "_id":            reply_id,
@@ -144,6 +149,10 @@ async def create_note(user_id: str, note_dict: dict, _: str = Depends(require_ma
         note_id = str(uuid.uuid4())
         note_dict.setdefault("user", user_id)
         note = Note(**note_dict)
+        try:
+            check_clean(title=note.title, text=note.text)
+        except ContentRejected as e:
+            raise HTTPException(status_code=422, detail=f"Your {e.field} contains language that isn't allowed under our community guidelines. Please revise and resubmit.")
         db.insertion("notes", {
             "_id":        note_id,
             "user_id":    note.user,
@@ -217,6 +226,10 @@ async def update_note(user_id: str, note_id: str, note_dict: dict, _: str = Depe
         if str(note_data.get("user_id")) != user_id:
             raise HTTPException(status_code=403, detail="Not authorized")
         note = Note(**note_dict)
+        try:
+            check_clean(title=note.title, text=note.text)
+        except ContentRejected as e:
+            raise HTTPException(status_code=422, detail=f"Your {e.field} contains language that isn't allowed under our community guidelines. Please revise and resubmit.")
         db.update(
             "notes",
             {
