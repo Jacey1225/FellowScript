@@ -1120,7 +1120,7 @@
 <tr>
 <td><code>plan_type</code></td>
 <td>TEXT</td>
-<td><code>'free'</code>, <code>'individual'</code>, <code>'group'</code></td>
+<td><code>'free'</code>, <code>'group'</code></td>
 </tr>
 <tr>
 <td><code>provider</code></td>
@@ -1135,12 +1135,12 @@
 <tr>
 <td><code>price_cents</code></td>
 <td>INTEGER</td>
-<td>0 for free plan</td>
+<td>0 for free plan; derived from <code>max_members</code> via <code>GROUP_PRICE_CENTS</code> for a group plan</td>
 </tr>
 <tr>
 <td><code>max_members</code></td>
 <td>INTEGER</td>
-<td>1 for individual, N for group</td>
+<td>1 for free; 1-8 for group — the host-selected member count, chosen at signup or changed later via a plan update</td>
 </tr>
 <tr>
 <td><code>current_period_end</code></td>
@@ -1165,6 +1165,7 @@
 </tbody>
 </table>
 <p>Every new user receives a <code>plan_type='free'</code> row on signup. Free plans are excluded from <code>is_subscribed()</code> checks so free-tier limits still apply.</p>
+<p>There is a single paid tier (<code>'group'</code>) covering 1-8 members at a fixed per-count price (<code>schemas/subscription.py</code>'s <code>GROUP_PRICE_CENTS</code>) — the old separate <code>'individual'</code> plan_type was folded into this as the 1-member case (identical $10 price). Apple StoreKit needs one fixed-price product per member count (<code>com.fellowscript.app.group1</code> … <code>group8</code>) since IAP can't compute an arbitrary price; Stripe Checkout computes the price inline for any count via <code>price_data</code>, no pre-created Products needed.</p>
 <hr />
 <h3 id="notes"><code>notes</code></h3>
 <table>
