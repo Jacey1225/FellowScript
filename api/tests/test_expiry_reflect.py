@@ -7,6 +7,8 @@ it as expired, and that the scheduler sweep removes the row + detaches the user.
 Also verifies a plan still within grace is NOT dropped. Cleans up after.
 """
 
+import _pathfix  # noqa: F401
+
 import uuid
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -30,7 +32,7 @@ def make_user_with_sub(days_past_period: int):
                                "email": f"{uname}@example.com", "hash_pass": "x"})
         db.cur.execute(
             "INSERT INTO subscriptions (_id, user_id, plan_type, provider, status, current_period_end) "
-            "VALUES (%s,%s,'individual','apple','active', now() - (%s || ' days')::interval)",
+            "VALUES (%s,%s,'group','apple','active', now() - (%s || ' days')::interval)",
             (sub_id, uid, days_past_period),
         )
         db.conn.commit()

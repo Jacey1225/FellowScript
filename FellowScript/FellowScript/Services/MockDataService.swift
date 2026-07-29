@@ -13,9 +13,19 @@ protocol DataServiceProtocol {
 
     // Auth
     func signIn(username: String, password: String) async throws -> FSUser
-    func signUp(username: String, email: String, password: String) async throws -> FSUser
-    func signInWithGoogle(credential: String) async throws -> FSUser
-    func signInWithApple(identityToken: String, fullName: String?, email: String?) async throws -> FSUser
+    func signUp(username: String, email: String, password: String, termsAccepted: Bool) async throws -> FSUser
+    func signInWithGoogle(credential: String, termsAccepted: Bool) async throws -> FSUser
+    func signInWithApple(identityToken: String, fullName: String?, email: String?, termsAccepted: Bool) async throws -> FSUser
+    func acceptTerms(userId: String) async throws
+
+    // Two-factor authentication
+    func verifyMfaLogin(userId: String, code: String) async throws -> FSUser
+    func mfaEnable() async throws
+    func mfaConfirm(code: String) async throws
+    func mfaDisable(password: String) async throws
+
+    // Password reset
+    func requestPasswordReset(email: String) async throws
 
     // User
     func fetchUser(userId: String) async throws -> FSUser
@@ -67,6 +77,12 @@ protocol DataServiceProtocol {
     func acceptFriendRequest(userId: String, username: String) async throws
     func removeFriend(userId: String, friendId: String) async throws
 
+    // Reports / Blocks (Guideline 1.2)
+    func reportUser(reportedUserId: String, reason: String, detail: String) async throws
+    func blockUser(userId: String, blockedId: String) async throws
+    func unblockUser(userId: String, blockedId: String) async throws
+    func fetchBlockedUsers(userId: String) async throws -> [FSBlockedUser]
+
     // Groups
     func createGroup(userId: String, groupId: String, title: String, users: [String]) async throws
     func updateGroup(userId: String, groupId: String, title: String, users: [String]) async throws
@@ -94,7 +110,8 @@ protocol DataServiceProtocol {
     // Subscriptions
     func fetchUsage(userId: String) async throws -> FSUsage?
     func fetchUserSubscription(userId: String) async throws -> FSSubscription?
-    func startSubscription(userId: String, planType: String, billing: FSBillingInfo?) async throws -> String
+    func startSubscription(userId: String, memberCount: Int, billing: FSBillingInfo?) async throws -> String
+    func updateSubscriptionSeats(subscriptionId: String, memberCount: Int) async throws
     func cancelSubscription(subscriptionId: String) async throws
     func fetchSubMembers(subscriptionId: String) async throws -> [FSSubMember]
     func removeSubMember(subscriptionId: String, userId: String) async throws
@@ -228,22 +245,36 @@ final class MockDataService: DataServiceProtocol {
         return Self.mockUser
     }
 
-    func signUp(username: String, email: String, password: String) async throws -> FSUser {
+    func signUp(username: String, email: String, password: String, termsAccepted: Bool) async throws -> FSUser {
         try await Task.sleep(nanoseconds: 600_000_000)
+        guard termsAccepted else { throw AppError.authFailed("You must accept the Terms of Service to create an account.") }
         return FSUser(user_id: UUID().uuidString, username: username, email: email)
     }
 
-    func signInWithGoogle(credential: String) async throws -> FSUser {
+    func signInWithGoogle(credential: String, termsAccepted: Bool) async throws -> FSUser {
         try await Task.sleep(nanoseconds: 600_000_000)
         return FSUser(user_id: UUID().uuidString, username: "google_user", email: "google@example.com")
     }
 
-    func signInWithApple(identityToken: String, fullName: String?, email: String?) async throws -> FSUser {
+    func signInWithApple(identityToken: String, fullName: String?, email: String?, termsAccepted: Bool) async throws -> FSUser {
         try await Task.sleep(nanoseconds: 600_000_000)
         return FSUser(user_id: UUID().uuidString,
                       username: fullName ?? "apple_user",
                       email: email ?? "apple@example.com")
     }
+
+    func acceptTerms(userId: String) async throws {}
+
+    func verifyMfaLogin(userId: String, code: String) async throws -> FSUser {
+        try await Task.sleep(nanoseconds: 600_000_000)
+        guard code == "123456" else { throw AppError.authFailed("Invalid or expired code.") }
+        return Self.mockUser
+    }
+    func mfaEnable() async throws {}
+    func mfaConfirm(code: String) async throws {}
+    func mfaDisable(password: String) async throws {}
+
+    func requestPasswordReset(email: String) async throws {}
 
     // User
     func fetchUser(userId: String) async throws -> FSUser { Self.mockUser }
@@ -318,6 +349,12 @@ final class MockDataService: DataServiceProtocol {
     func acceptFriendRequest(userId: String, username: String) async throws {}
     func removeFriend(userId: String, friendId: String) async throws {}
 
+    // Reports / Blocks (Guideline 1.2)
+    func reportUser(reportedUserId: String, reason: String, detail: String) async throws {}
+    func blockUser(userId: String, blockedId: String) async throws {}
+    func unblockUser(userId: String, blockedId: String) async throws {}
+    func fetchBlockedUsers(userId: String) async throws -> [FSBlockedUser] { [] }
+
     // Groups
     func createGroup(userId: String, groupId: String, title: String, users: [String]) async throws {}
     func updateGroup(userId: String, groupId: String, title: String, users: [String]) async throws {}
@@ -356,7 +393,8 @@ final class MockDataService: DataServiceProtocol {
     // Subscriptions
     func fetchUsage(userId: String) async throws -> FSUsage? { nil }
     func fetchUserSubscription(userId: String) async throws -> FSSubscription? { nil }
-    func startSubscription(userId: String, planType: String, billing: FSBillingInfo?) async throws -> String { UUID().uuidString }
+    func startSubscription(userId: String, memberCount: Int, billing: FSBillingInfo?) async throws -> String { UUID().uuidString }
+    func updateSubscriptionSeats(subscriptionId: String, memberCount: Int) async throws {}
     func cancelSubscription(subscriptionId: String) async throws {}
     func fetchSubMembers(subscriptionId: String) async throws -> [FSSubMember] { [] }
     func removeSubMember(subscriptionId: String, userId: String) async throws {}
@@ -374,11 +412,16 @@ enum AppError: LocalizedError {
     case networkError(String)
     case limitReached(resource: String, used: Int, limit: Int)
     case notFound
+    // Not really an error — signIn() throws this to signal the login should
+    // pause for an emailed 2FA code instead of completing. AuthView catches
+    // this case specifically and navigates to the verify screen.
+    case mfaRequired(userId: String)
 
     var errorDescription: String? {
         switch self {
         case .authFailed(let m):   return m
         case .networkError(let m): return m
+        case .mfaRequired:         return "Two-factor authentication code required."
         case .limitReached(let resource, _, let limit):
             let name: String
             switch resource {

@@ -160,6 +160,11 @@ export default function Account() {
   const [mfaDisablePass,    setMfaDisablePass]    = useState('');
   const [mfaDisableLoading, setMfaDisableLoading] = useState(false);
 
+  // Blocked users
+  const [blockedUsers,    setBlockedUsers]    = useState([]);
+  const [blockedLoading,  setBlockedLoading]  = useState(false);
+  const [unblockingId,    setUnblockingId]    = useState(null);
+
   // Agents
   const [agents,        setAgents]        = useState([]);
   const [agentsLoading, setAgentsLoading] = useState(false);
@@ -254,7 +259,26 @@ export default function Account() {
     } catch {}
   }, [user]);
 
-  useEffect(() => { loadProfile(); loadAgents(); loadUsage(); }, [loadProfile, loadAgents, loadUsage]);
+  const loadBlockedUsers = useCallback(async () => {
+    if (!user) return;
+    setBlockedLoading(true);
+    try {
+      const res = await fetch(`${API}/blocks/${user.user_id}`);
+      if (res.ok) setBlockedUsers(await res.json());
+    } catch {} finally { setBlockedLoading(false); }
+  }, [user]);
+
+  const handleUnblock = async (blockedId) => {
+    setUnblockingId(blockedId);
+    try {
+      const res = await fetch(`${API}/blocks/${user.user_id}/${blockedId}`, { method: 'DELETE' });
+      if (res.ok || res.status === 204) setBlockedUsers(prev => prev.filter(u => u.user_id !== blockedId));
+    } finally {
+      setUnblockingId(null);
+    }
+  };
+
+  useEffect(() => { loadProfile(); loadAgents(); loadUsage(); loadBlockedUsers(); }, [loadProfile, loadAgents, loadUsage, loadBlockedUsers]);
 
   const agentLabel = (agent) =>
     agent.name ||
@@ -741,6 +765,30 @@ export default function Account() {
             </Text>
             <Switch checked={!!profileData?.mfa_enabled} loading={mfaLoading} onChange={handleMfaToggle} />
           </div>
+        </Card>
+
+        {/* Blocked users */}
+        <Card style={{ ...CARD_STYLE, animationDelay: '0.22s', animation: 'fadeUp 0.55s ease forwards', opacity: 0 }}>
+          <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.56rem', letterSpacing: '0.3em', textTransform: 'uppercase', color: 'rgba(200,134,26,0.5)', display: 'block', marginBottom: '0.8rem' }}>
+            Blocked Users
+          </Text>
+          {blockedLoading
+            ? <Spin size="small" />
+            : blockedUsers.length === 0
+              ? <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.8rem', color: 'rgba(244,228,193,0.28)' }}>You haven't blocked anyone.</Text>
+              : blockedUsers.map(({ user_id, username }) => (
+                  <div key={user_id} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.6rem 0', borderBottom: '1px solid rgba(200,134,26,0.08)' }}>
+                    <Avatar style={{ background: 'rgba(200,134,26,0.15)', border: '1px solid rgba(200,134,26,0.3)', color: 'var(--gold)', fontFamily: "'Playfair Display', serif" }}>
+                      {username[0].toUpperCase()}
+                    </Avatar>
+                    <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.84rem', color: 'var(--parchment)', flex: 1 }}>{username}</Text>
+                    <Button size="small" loading={unblockingId === user_id} onClick={() => handleUnblock(user_id)}
+                      style={{ borderRadius: 8, fontFamily: "'Lora', serif" }}>
+                      Unblock
+                    </Button>
+                  </div>
+                ))
+          }
         </Card>
 
         {/* Friend requests */}

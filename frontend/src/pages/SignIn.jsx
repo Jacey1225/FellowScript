@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Card, Form, Input, Button, Typography, Tabs, Alert } from 'antd';
+import { Card, Form, Input, Button, Typography, Tabs, Alert, Checkbox, Modal } from 'antd';
 import { UserOutlined, LockOutlined, MailOutlined } from '@ant-design/icons';
 import { useAuth } from '../context/AuthContext.jsx';
 import { API } from '../config.js';
@@ -25,14 +25,52 @@ export default function SignIn() {
   const [suLoading, setSuLoading] = useState(false);
   const [googleError,   setGoogleError]   = useState('');
   const [googleLoading, setGoogleLoading] = useState(false);
+  const [activeTab,     setActiveTab]     = useState('signin');
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  // Holds the auth response while a "Terms have been updated" re-consent gate
+  // is shown, so we can finish signing the user in once they accept.
+  const [reaccept, setReaccept] = useState(null);
+  const [reacceptLoading, setReacceptLoading] = useState(false);
+
+  // Finalizes a successful /login, /signup, or /auth/google response: if the
+  // account predates a material Terms change, pause on a blocking re-consent
+  // screen instead of immediately signing in.
+  const finishAuth = (data) => {
+    if (data.terms_reaccept_required) {
+      setReaccept(data);
+      return;
+    }
+    signIn(data);
+    navigate('/reader');
+  };
+
+  const handleAcceptUpdatedTerms = async () => {
+    setReacceptLoading(true);
+    try {
+      await fetch(`${API}/user/${reaccept.user_id}/accept-terms`, { method: 'POST' });
+    } catch {
+      // Session cookie is already set server-side regardless — proceed either way
+      // rather than stranding the user on this screen over a network blip.
+    } finally {
+      setReacceptLoading(false);
+      signIn(reaccept);
+      setReaccept(null);
+      navigate('/reader');
+    }
+  };
 
   // Finish Google sign-in. main.jsx stashes the id_token before HashRouter can
   // swallow the redirect fragment, so read that first (falling back to the hash).
   useEffect(() => {
     const stashedToken = sessionStorage.getItem('pending_google_id_token');
     const stashedError = sessionStorage.getItem('pending_google_error');
+    // Google's redirect is a full page navigation, so any in-memory React
+    // state (the EULA checkbox) is gone by the time we land back here —
+    // stash it alongside the id_token and read it back the same way.
+    const stashedTerms = sessionStorage.getItem('pending_google_terms_accepted') === 'true';
     sessionStorage.removeItem('pending_google_id_token');
     sessionStorage.removeItem('pending_google_error');
+    sessionStorage.removeItem('pending_google_terms_accepted');
 
     const params  = new URLSearchParams(window.location.hash.slice(1));
     const idToken = stashedToken || params.get('id_token');
@@ -48,12 +86,11 @@ export default function SignIn() {
         const res  = await fetch(`${API}/auth/google`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ credential: idToken }),
+          body: JSON.stringify({ credential: idToken, terms_accepted: stashedTerms }),
         });
         const data = await res.json();
         if (!res.ok) { setGoogleError(data.detail || 'Google sign-in failed.'); return; }
-        signIn(data);
-        navigate('/reader');
+        finishAuth(data);
       } catch {
         setGoogleError('Could not reach the server.');
       } finally {
@@ -63,6 +100,13 @@ export default function SignIn() {
   }, []);
 
   const handleGoogleClick = () => {
+    // Never gate this on the EULA checkbox — Google sign-in must always be
+    // available with the same ease as other options (the same reasoning
+    // Guideline 4.8 applies to Sign in with Apple on iOS). If the account is
+    // new and terms weren't accepted yet, the server creates it anyway and
+    // signals terms_reaccept_required so finishAuth() prompts for consent
+    // right after, instead of this click silently failing.
+    sessionStorage.setItem('pending_google_terms_accepted', String(termsAccepted));
     const redirectUri = window.location.origin + window.location.pathname;
     const params = new URLSearchParams({
       client_id:     GOOGLE_CLIENT_ID,
@@ -89,8 +133,7 @@ export default function SignIn() {
         navigate('/verify-2fa', { state: { user_id: data.user_id } });
         return;
       }
-      signIn(data);
-      navigate('/reader');
+      finishAuth(data);
     } catch {
       setSiError('Could not reach the server.');
     } finally {
@@ -100,17 +143,23 @@ export default function SignIn() {
 
   const handleSignup = async (vals) => {
     setSuError('');
+    if (!termsAccepted) {
+      setSuError('You must agree to the Terms of Service to create an account.');
+      return;
+    }
     setSuLoading(true);
     try {
       const res  = await fetch(`${API}/signup`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: vals.username.trim(), email: vals.email.trim(), plain_pass: vals.password }),
+        body: JSON.stringify({
+          username: vals.username.trim(), email: vals.email.trim(), plain_pass: vals.password,
+          terms_accepted: termsAccepted,
+        }),
       });
       const data = await res.json();
       if (!res.ok) { setSuError(data.detail || 'Sign up failed.'); return; }
-      signIn(data);
       localStorage.setItem('fs_tour', 'reader');
-      navigate('/reader');
+      finishAuth(data);
     } catch {
       setSuError('Could not reach the server.');
     } finally {
@@ -172,7 +221,19 @@ export default function SignIn() {
           <div style={{ width: 40, height: 1, background: 'rgba(200,134,26,0.3)', margin: '1rem auto 0' }} />
         </div>
 
-        <Tabs items={tabs} centered />
+        <Tabs items={tabs} centered activeKey={activeTab} onChange={setActiveTab} />
+
+        {activeTab === 'signup' && (
+          <div style={{ marginTop: -8, marginBottom: 12 }}>
+            <Checkbox checked={termsAccepted} onChange={e => setTermsAccepted(e.target.checked)}>
+              <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.78rem', color: 'rgba(244,228,193,0.6)' }}>
+                I agree to the{' '}
+                <Link to="/terms" target="_blank" style={{ color: 'rgba(200,134,26,0.8)' }}>Terms of Service</Link>
+                {', including its zero-tolerance policy for objectionable content and abusive behavior.'}
+              </Text>
+            </Checkbox>
+          </div>
+        )}
 
         {/* Google Sign-In — below both tabs */}
         <div style={{ marginTop: 8 }}>
@@ -231,6 +292,25 @@ export default function SignIn() {
           <Link to="/privacy" style={{ color: 'rgba(200,134,26,0.65)', textDecoration: 'none' }}>Privacy Policy</Link>.
         </Text>
       </div>
+
+      <Modal
+        open={!!reaccept}
+        closable={false}
+        maskClosable={false}
+        title={<Text style={{ fontFamily: "'Playfair Display', serif", color: 'var(--parchment)' }}>Our Terms of Service have been updated</Text>}
+        footer={[
+          <Button key="agree" type="primary" loading={reacceptLoading} onClick={handleAcceptUpdatedTerms}>
+            I Agree
+          </Button>,
+        ]}
+      >
+        <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.85rem', color: 'rgba(244,228,193,0.7)' }}>
+          We've clarified our zero-tolerance policy for objectionable content and abusive behavior, including new
+          in-app reporting and blocking tools. Please review our{' '}
+          <Link to="/terms" target="_blank" style={{ color: 'var(--gold)' }}>updated Terms of Service</Link>{' '}
+          before continuing.
+        </Text>
+      </Modal>
     </div>
   );
 }

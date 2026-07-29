@@ -17,9 +17,15 @@ final class StoreKitManager: ObservableObject {
     static let shared = StoreKitManager()
     private init() {}
 
-    static let individualID = "com.fellowscript.app.individual"
-    static let groupID      = "com.fellowscript.app.group"
-    static let productIDs   = [individualID, groupID]
+    // One fixed-price product per member count (1-8) — StoreKit can't compute an
+    // arbitrary price, so the host's selected group size maps to a specific product.
+    static let productID: [Int: String] = [
+        1: "com.fellowscript.app.group1", 2: "com.fellowscript.app.group2",
+        3: "com.fellowscript.app.group3", 4: "com.fellowscript.app.group4",
+        5: "com.fellowscript.app.group5", 6: "com.fellowscript.app.group6",
+        7: "com.fellowscript.app.group7", 8: "com.fellowscript.app.group8",
+    ]
+    static let productIDs = Array(productID.values)
 
     @Published var products:   [Product] = []
     @Published var purchasing  = false
@@ -30,20 +36,21 @@ final class StoreKitManager: ObservableObject {
 
     enum StoreError: Error { case failedVerification }
 
-    // ── Product ↔ plan mapping ─────────────────────────────────────────────────
+    // ── Product ↔ member-count mapping ─────────────────────────────────────────
 
-    func planType(for productID: String) -> String {
-        productID == Self.groupID ? "group" : "individual"
+    func memberCount(for productID: String) -> Int? {
+        Self.productID.first { $0.value == productID }?.key
     }
-    func productID(for planType: String) -> String {
-        planType == "group" ? Self.groupID : Self.individualID
+    func productID(for memberCount: Int) -> String? {
+        Self.productID[memberCount]
     }
-    func product(for planType: String) -> Product? {
-        products.first { $0.id == productID(for: planType) }
+    func product(for memberCount: Int) -> Product? {
+        guard let id = productID(for: memberCount) else { return nil }
+        return products.first { $0.id == id }
     }
-    /// Localized price like "$9.99" for a plan, or nil if products aren't loaded.
-    func displayPrice(for planType: String) -> String? {
-        product(for: planType)?.displayPrice
+    /// Localized price like "$17.99" for a member count, or nil if products aren't loaded.
+    func displayPrice(for memberCount: Int) -> String? {
+        product(for: memberCount)?.displayPrice
     }
 
     // ── Lifecycle ──────────────────────────────────────────────────────────────
@@ -74,9 +81,10 @@ final class StoreKitManager: ObservableObject {
 
     // ── Purchase / restore / manage ────────────────────────────────────────────
 
-    /// Purchase a plan. Returns true when a verified purchase completed.
-    func purchase(planType: String, userId: String, service: DataServiceProtocol) async -> Bool {
-        guard let product = product(for: planType) else {
+    /// Purchase a plan for the given member count. Returns true when a verified
+    /// purchase completed.
+    func purchase(memberCount: Int, userId: String, service: DataServiceProtocol) async -> Bool {
+        guard let product = product(for: memberCount) else {
             lastError = "This plan isn't available right now."
             return false
         }

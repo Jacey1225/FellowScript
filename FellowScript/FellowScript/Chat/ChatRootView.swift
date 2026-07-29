@@ -21,6 +21,9 @@ struct ChatRootView: View {
     @State private var newAgentRole    = ""
     @State private var activeContact:  FSContact? = nil
     @State private var activeAgent:    FSAgent?   = nil
+    // Guideline 1.2 report/block
+    @State private var reportTarget:      FSContact? = nil
+    @State private var blockConfirmTarget: FSContact? = nil
 
     var body: some View {
         NavigationStack {
@@ -136,11 +139,44 @@ struct ChatRootView: View {
                                 Label("Remove", systemImage: "person.badge.minus")
                             }
                         }
+                        .swipeActions(edge: .leading) {
+                            Button { blockConfirmTarget = contact } label: {
+                                Label("Block", systemImage: "hand.raised.fill")
+                            }
+                            .tint(.red)
+                            Button { reportTarget = contact } label: {
+                                Label("Report", systemImage: "flag.fill")
+                            }
+                            .tint(.orange)
+                        }
                         .accessibilityLabel("Chat with \(contact.name)")
                 }
                 .listStyle(.plain)
                 .scrollContentBackground(.hidden)
             }
+        }
+        .sheet(item: $reportTarget) { contact in
+            ReportUserSheet(contact: contact) { reason, detail in
+                Task { try? await appState.service.reportUser(reportedUserId: contact.id, reason: reason, detail: detail) }
+                reportTarget = nil
+            }
+        }
+        .confirmationDialog(
+            "Block \(blockConfirmTarget?.name ?? "this user")?",
+            isPresented: Binding(get: { blockConfirmTarget != nil }, set: { if !$0 { blockConfirmTarget = nil } }),
+            titleVisibility: .visible
+        ) {
+            Button("Block", role: .destructive) {
+                guard let contact = blockConfirmTarget else { return }
+                let uid = appState.currentUser?.user_id ?? ""
+                vm.friends.removeAll { $0.id == contact.id }
+                if activeContact?.id == contact.id { activeContact = nil }
+                Task { try? await appState.service.blockUser(userId: uid, blockedId: contact.id) }
+                blockConfirmTarget = nil
+            }
+            Button("Cancel", role: .cancel) { blockConfirmTarget = nil }
+        } message: {
+            Text("They won't be able to contact you or add you as a friend, and their existing content will be removed from your view. We'll be notified so we can review the situation.")
         }
     }
 

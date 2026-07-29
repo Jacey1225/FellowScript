@@ -2,8 +2,8 @@
 
 Thin wrapper around the Stripe SDK: creates hosted Checkout Sessions for the
 free-trial subscription flow, verifies incoming webhooks, and cancels
-subscriptions. All plan pricing is derived from PLAN_CONFIG (inline price_data)
-so no pre-created Stripe Products/Prices are required.
+subscriptions. All plan pricing is derived from GROUP_PRICE_CENTS (inline
+price_data) so no pre-created Stripe Products/Prices are required.
 
 Secrets come from the environment (same pattern as DB_PASSWORD / APNs):
     STRIPE_SECRET_KEY      — sk_test_… / sk_live_…
@@ -14,7 +14,7 @@ Secrets come from the environment (same pattern as DB_PASSWORD / APNs):
 import os
 import logging
 import stripe
-from schemas.subscription import PLAN_CONFIG, TRIAL_MONTHS
+from schemas.subscription import price_for, MIN_MEMBERS, MAX_MEMBERS, TRIAL_MONTHS
 
 logger = logging.getLogger(__name__)
 
@@ -28,21 +28,24 @@ CANCEL_URL  = f"{_SITE}/?sub=cancel#/account"
 DONATE_SUCCESS_URL = f"{_SITE}/?donate=success#/account"
 DONATE_CANCEL_URL  = f"{_SITE}/?donate=cancel#/account"
 
-PLAN_NAMES = {"individual": "FellowScript Individual", "group": "FellowScript Group"}
-
-
 def is_configured() -> bool:
     return bool(stripe.api_key)
 
 
-def create_checkout_session(user_id: str, email: str, plan_type: str) -> str:
+def create_checkout_session(user_id: str, email: str, member_count: int) -> str:
     """Create a subscription Checkout Session with a free trial; return its URL.
 
-    Uses inline ``price_data`` from PLAN_CONFIG, so pricing is server-authoritative
-    and no dashboard Products/Prices are needed. The trial length matches the app's
-    TRIAL_MONTHS; the user is not charged until it ends.
+    Uses inline ``price_data`` derived from GROUP_PRICE_CENTS, so pricing is
+    server-authoritative and no dashboard Products/Prices are needed. The trial
+    length matches the app's TRIAL_MONTHS; the user is not charged until it ends.
+
+    Raises:
+        ValueError: if ``member_count`` is outside 1-8.
     """
-    cfg = PLAN_CONFIG.get(plan_type, PLAN_CONFIG["individual"])
+    if not (MIN_MEMBERS <= member_count <= MAX_MEMBERS):
+        raise ValueError(f"member_count must be between {MIN_MEMBERS} and {MAX_MEMBERS}")
+    price_cents = price_for(member_count)
+    name = f"FellowScript Group ({member_count} {'person' if member_count == 1 else 'people'})"
     session = stripe.checkout.Session.create(
         mode="subscription",
         client_reference_id=user_id,
@@ -51,16 +54,16 @@ def create_checkout_session(user_id: str, email: str, plan_type: str) -> str:
             "quantity": 1,
             "price_data": {
                 "currency": "usd",
-                "product_data": {"name": PLAN_NAMES.get(plan_type, "FellowScript")},
-                "unit_amount": cfg["price_cents"],
+                "product_data": {"name": name},
+                "unit_amount": price_cents,
                 "recurring": {"interval": "month"},
             },
         }],
         subscription_data={
             "trial_period_days": TRIAL_MONTHS * 30,
-            "metadata": {"user_id": user_id, "plan_type": plan_type},
+            "metadata": {"user_id": user_id, "member_count": str(member_count)},
         },
-        metadata={"user_id": user_id, "plan_type": plan_type},
+        metadata={"user_id": user_id, "member_count": str(member_count)},
         success_url=SUCCESS_URL,
         cancel_url=CANCEL_URL,
     )

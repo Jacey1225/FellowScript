@@ -61,7 +61,7 @@ export default function Privacy() {
 
       <main style={S.main}>
         <h1 style={S.pageTitle}>Privacy Policy</h1>
-        <p style={S.effectiveDate}>Effective Date: June 1, 2025 &nbsp;&middot;&nbsp; Last Updated: July 25, 2026</p>
+        <p style={S.effectiveDate}>Effective Date: June 1, 2025 &nbsp;&middot;&nbsp; Last Updated: July 27, 2026</p>
 
         {/* 1 */}
         <div style={S.section}>
@@ -82,11 +82,12 @@ export default function Privacy() {
             <li style={S.li}>Your selected timezone (used only to schedule your nightly data backup — see Section 9 — and never used to infer your physical location)</li>
             <li style={S.li}>If you enable optional two-factor authentication, a flag noting it's on, and short-lived, single-use codes emailed to you at login (each expires within 10 minutes and is deleted from active use immediately after it's verified or expires)</li>
             <li style={S.li}>If you request a password reset, a short-lived, single-use reset link is emailed to your account address (expires within 30 minutes)</li>
+            <li style={S.li}>The date you accepted our Terms of Service and which version you accepted, so we can ask you to review material updates (such as our zero-tolerance content policy)</li>
           </ul>
 
           <p style={{ ...S.p, marginTop: '0.75rem', marginBottom: '0.4rem' }}><strong style={S.strong}>Subscription and Billing Information</strong></p>
           <ul style={S.ul}>
-            <li style={S.li}>Subscription plan type and status (free, individual, or group; active, trialing, or canceled)</li>
+            <li style={S.li}>Subscription plan type and status (free or group, with a selected member count of 1-8; active, trialing, or canceled)</li>
             <li style={S.li}>Display-only card metadata (card brand and last 4 digits) and an opaque billing-processor reference — we never receive, see, or store your full card number, CVC, or bank details. Full payment handling is performed entirely by Stripe (web) or Apple's App Store (iOS); see Section 5.</li>
           </ul>
 
@@ -97,6 +98,12 @@ export default function Privacy() {
             <li style={S.li}>Messages sent within groups or direct conversations</li>
             <li style={S.li}>AI agent conversation history and custom agent configurations</li>
             <li style={S.li}>Custom notification schedules and reminder prompts you configure</li>
+          </ul>
+
+          <p style={{ ...S.p, marginTop: '0.75rem', marginBottom: '0.4rem' }}><strong style={S.strong}>Reports and Safety Data</strong></p>
+          <ul style={S.ul}>
+            <li style={S.li}>If you report content or another user, we retain the report details (a copy of the reported content at the time it was reported, your stated reason, and any additional details you provide) so we can investigate and act on it</li>
+            <li style={S.li}>If you block another user, we record that block to enforce it (hiding their content from you and preventing future contact) and are notified so we can review the situation</li>
           </ul>
 
           <p style={{ ...S.p, marginTop: '0.75rem', marginBottom: '0.4rem' }}><strong style={S.strong}>Device and Notification Data</strong></p>

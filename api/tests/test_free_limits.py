@@ -5,8 +5,10 @@ Builds a minimal FastAPI app with only the notes / agent / notification routers
 directly in the local DB, then hammers each gated endpoint past its cap and
 asserts the 403s land exactly where expected. Cleans up the user at the end.
 
-Run:  .venv/bin/python api/test_free_limits.py
+Run:  cd api && ../.venv/bin/python tests/test_free_limits.py
 """
+
+import _pathfix  # noqa: F401
 
 import uuid
 from fastapi import FastAPI
@@ -125,7 +127,7 @@ def main():
         db = DBManager()
         try:
             db.insertion("subscriptions", {
-                "_id": sub_id, "user_id": uid, "plan_type": "individual",
+                "_id": sub_id, "user_id": uid, "plan_type": "group",
                 "provider": "stripe", "status": "active",
             })
             db.update("users", {"subscription_id": sub_id}, {"_id": uid})

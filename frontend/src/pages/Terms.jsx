@@ -61,7 +61,7 @@ export default function Terms() {
 
       <main style={S.main}>
         <h1 style={S.pageTitle}>Terms of Service</h1>
-        <p style={S.effectiveDate}>Effective Date: June 1, 2025 &nbsp;&middot;&nbsp; Last Updated: July 5, 2026</p>
+        <p style={S.effectiveDate}>Effective Date: June 1, 2025 &nbsp;&middot;&nbsp; Last Updated: July 27, 2026</p>
 
         {/* 1 */}
         <div style={S.section}>
@@ -92,19 +92,22 @@ export default function Terms() {
 
         {/* 4 */}
         <div style={S.section}>
-          <h2 style={S.h2}>4. Acceptable Use</h2>
-          <p style={S.p}>FellowScript is a faith-based community. You agree to use the Service in a manner consistent with its purpose of building up believers and fostering meaningful spiritual connections. You agree not to:</p>
+          <h2 style={S.h2}>4. Acceptable Use &amp; Zero-Tolerance Policy</h2>
+          <p style={S.p}><strong style={S.strong}>FellowScript has zero tolerance for objectionable content and abusive behavior of any kind.</strong> This is not a discretionary guideline — it is a binding commitment we make to every member of this community.</p>
+          <p style={S.p}>You agree not to:</p>
           <ul style={S.ul}>
-            <li style={S.li}>Post content that is hateful, harassing, threatening, or abusive toward any individual or group</li>
+            <li style={S.li}>Post or send content that is hateful, harassing, threatening, abusive, or discriminatory toward any individual or group</li>
             <li style={S.li}>Share content that is sexually explicit, violent, or otherwise inappropriate for a faith community</li>
             <li style={S.li}>Impersonate another person or misrepresent your affiliation with any organization</li>
-            <li style={S.li}>Attempt to gain unauthorized access to any part of the Service or other users' accounts</li>
+            <li style={S.li}>Attempt to gain unauthorized access to any part of the Service or another user's account</li>
             <li style={S.li}>Use the Service to distribute spam, malware, or any unauthorized commercial messages</li>
             <li style={S.li}>Scrape, crawl, or extract data from the Service without our written permission</li>
-            <li style={S.li}>Use the Service to facilitate illegal activities of any kind</li>
+            <li style={S.li}>Use the Service to facilitate illegal activity of any kind</li>
             <li style={S.li}>Violate any applicable local, national, or international law or regulation</li>
           </ul>
-          <p style={S.p}>We reserve the right to remove content and suspend or terminate accounts that violate these guidelines, at our sole discretion and without prior notice.</p>
+          <p style={S.p}><strong style={S.strong}>Reporting and blocking.</strong> Every note, message, devotion prompt, group, and user profile on FellowScript can be reported directly within the app. You may also block any user, which immediately (a) prevents that user from contacting you or adding you as a friend going forward, and (b) removes their existing content from your view. Blocking a user automatically notifies us so we can review the situation.</p>
+          <p style={S.p}><strong style={S.strong}>Our commitment.</strong> We review every report within 24 hours of submission. Where we confirm a violation of this policy, we will remove the offending content and eject the responsible user from the Service — through suspension or permanent account termination, at our discretion based on severity — within that same 24-hour window. This zero-tolerance commitment applies to all users, regardless of when their account was created.</p>
+          <p style={S.p}>Violations may be reported in-app or by emailing <a href="mailto:support@fellowscript.com" style={S.a}>support@fellowscript.com</a>. We reserve the right to take any of the above actions immediately and without prior notice when a report is substantiated.</p>
         </div>
 
         {/* 5 */}

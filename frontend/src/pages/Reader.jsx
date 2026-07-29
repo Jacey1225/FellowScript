@@ -1,12 +1,13 @@
 import React, { useEffect, useLayoutEffect, useState, useRef, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Layout, Input, Button, Avatar, Typography, Divider, Modal, Form, Checkbox, Spin } from 'antd';
+import { Layout, Input, Button, Avatar, Typography, Divider, Modal, Form, Checkbox, Spin, Dropdown, Radio, message as antMessage } from 'antd';
 import { AgentMessage } from '../components/RichText.jsx';
 import {
   SendOutlined, ArrowLeftOutlined, PlusOutlined,
   MessageOutlined, BookOutlined, TeamOutlined,
   EditOutlined, DeleteOutlined, UserAddOutlined,
   RobotOutlined, CloseOutlined, BgColorsOutlined,
+  MoreOutlined, FlagOutlined, StopOutlined,
 } from '@ant-design/icons';
 
 import AppNav           from '../components/AppNav.jsx';
@@ -232,7 +233,23 @@ function AgentChatPanel({ agent, messages, user, onBack, onSend, agentThinking, 
 
 // ── Contacts island ───────────────────────────────────────────────────────────
 
-function ContactRow({ contact, active, onOpen, onRemove, onEdit }) {
+function ContactRow({ contact, active, onOpen, onRemove, onEdit, onReport, onBlock }) {
+  const isFriend = contact.type === 'friend';
+  const menuItems = isFriend ? [
+    { key: 'report', icon: <FlagOutlined />, label: 'Report User' },
+    { key: 'block', icon: <StopOutlined />, label: 'Block User', danger: true },
+    { key: 'remove', icon: <DeleteOutlined />, label: 'Remove Friend', danger: true },
+  ] : [
+    { key: 'edit', icon: <EditOutlined />, label: 'Edit Group' },
+    { key: 'remove', icon: <DeleteOutlined />, label: 'Leave Group', danger: true },
+  ];
+  const handleMenuClick = ({ key, domEvent }) => {
+    domEvent.stopPropagation();
+    if (key === 'report') onReport(contact);
+    else if (key === 'block') onBlock(contact);
+    else if (key === 'remove') onRemove();
+    else if (key === 'edit') onEdit();
+  };
   return (
     <div
       onClick={() => onOpen(contact)}
@@ -257,13 +274,70 @@ function ContactRow({ contact, active, onOpen, onRemove, onEdit }) {
       >
         {contact.name}
       </Text>
+      <Dropdown menu={{ items: menuItems, onClick: handleMenuClick }} trigger={['click']} placement="bottomRight">
+        <Button
+          type="text" size="small" icon={<MoreOutlined />}
+          onClick={e => e.stopPropagation()}
+          style={{ color: 'rgba(200,134,26,0.4)', padding: '0 4px', flexShrink: 0 }}
+        />
+      </Dropdown>
     </div>
+  );
+}
+
+// ── Report user modal ─────────────────────────────────────────────────────────
+
+const REPORT_REASONS = [
+  { value: 'harassment', label: 'Harassment or abusive behavior' },
+  { value: 'hate_speech', label: 'Hate speech or discrimination' },
+  { value: 'sexual_content', label: 'Sexually explicit or inappropriate content' },
+  { value: 'spam', label: 'Spam or scam' },
+  { value: 'other', label: 'Other' },
+];
+
+function ReportUserModal({ target, onSubmit, onClose }) {
+  const [reason, setReason] = useState('harassment');
+  const [detail, setDetail] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => { if (target) { setReason('harassment'); setDetail(''); } }, [target]);
+
+  const handleOk = async () => {
+    setSubmitting(true);
+    const ok = await onSubmit(target.id, reason, detail);
+    setSubmitting(false);
+    antMessage[ok ? 'success' : 'error'](ok ? 'Report submitted. We review every report within 24 hours.' : 'Could not submit report.');
+    onClose();
+  };
+
+  return (
+    <Modal
+      open={!!target}
+      title={<Text style={{ fontFamily: "'DM Serif Display', serif", color: 'var(--parchment)' }}>Report {target?.name}</Text>}
+      onOk={handleOk}
+      onCancel={onClose}
+      confirmLoading={submitting}
+      okText="Submit Report"
+      okButtonProps={{ danger: true }}
+    >
+      <Radio.Group value={reason} onChange={e => setReason(e.target.value)} style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>
+        {REPORT_REASONS.map(r => (
+          <Radio key={r.value} value={r.value} style={{ color: 'rgba(244,228,193,0.75)' }}>{r.label}</Radio>
+        ))}
+      </Radio.Group>
+      <Input.TextArea
+        placeholder="Additional details (optional)"
+        value={detail}
+        onChange={e => setDetail(e.target.value)}
+        autoSize={{ minRows: 2, maxRows: 5 }}
+      />
+    </Modal>
   );
 }
 
 function ContactsPanel({
   user, friends, groups, currentContact,
-  onOpen, onAddFriend, onRemoveFriend, onCreateGroup, onUpdateGroup, onLeaveGroup,
+  onOpen, onAddFriend, onRemoveFriend, onReportUser, onBlockUser, onCreateGroup, onUpdateGroup, onLeaveGroup,
   loaded, onLoad,
   agents, activeAgent, onOpenAgent, onNewAgent,
 }) {
@@ -272,7 +346,21 @@ function ContactsPanel({
   const [friendMsg,      setFriendMsg]      = useState(null); // { type: 'success'|'error', text }
   const [groupModal,     setGroupModal]     = useState(false);
   const [editingGroup,   setEditingGroup]   = useState(null);
+  const [reportTarget,   setReportTarget]   = useState(null);
   const [form]                              = Form.useForm();
+
+  const handleBlock = (contact) => {
+    Modal.confirm({
+      title: `Block ${contact.name}?`,
+      content: "They won't be able to contact you or add you as a friend, and their existing content will be removed from your view. We'll be notified so we can review the situation.",
+      okText: 'Block', okButtonProps: { danger: true },
+      onOk: async () => {
+        const ok = await onBlockUser(contact.id);
+        antMessage[ok ? 'success' : 'error'](ok ? `${contact.name} has been blocked.` : 'Could not block this user.');
+        await onLoad();
+      },
+    });
+  };
 
   useEffect(() => { if (!loaded) onLoad(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -362,7 +450,8 @@ function ContactsPanel({
             ? <Text style={{ display: 'block', textAlign: 'center', padding: '0.6rem 0.5rem', color: 'rgba(244,228,193,0.2)', fontSize: '0.62rem' }}>No friends yet</Text>
             : friends.map(f => (
                 <ContactRow key={f.id} contact={f} active={currentContact?.id === f.id} onOpen={onOpen}
-                  onRemove={() => { onRemoveFriend(f.id); onLoad(); }} />
+                  onRemove={() => { onRemoveFriend(f.id); onLoad(); }}
+                  onReport={setReportTarget} onBlock={handleBlock} />
               ))
         }
 
@@ -420,6 +509,12 @@ function ContactsPanel({
           </Form.Item>
         </Form>
       </Modal>
+
+      <ReportUserModal
+        target={reportTarget}
+        onSubmit={(id, reason, detail) => onReportUser(id, reason, detail)}
+        onClose={() => setReportTarget(null)}
+      />
     </>
   );
 }
@@ -603,6 +698,7 @@ export default function Reader() {
     connectWS, disconnectWS, setOnSessionSignal,
     loadContacts, openChat, closeChat, sendMessage,
     addFriend, removeFriend, createGroup, updateGroup, leaveGroup,
+    reportUser, blockUser,
   } = useMessaging({ user });
 
   const {
@@ -863,6 +959,7 @@ export default function Reader() {
     user, friends, groups: msgGroups, currentContact,
     onOpen: handleOpenChat,
     onAddFriend: addFriend, onRemoveFriend: removeFriend,
+    onReportUser: reportUser, onBlockUser: blockUser,
     onCreateGroup: createGroup, onUpdateGroup: updateGroup, onLeaveGroup: leaveGroup,
     loaded: contactsLoaded, onLoad: handleLoadContacts,
     agents, activeAgent, onOpenAgent: handleOpenAgent, onNewAgent: handleNewAgent,

@@ -1,12 +1,14 @@
 """Tests for the nightly per-user backup feature (timezone-due detection +
 BackupManager copying recent data into the separate backup database).
 
-Run with: cd api && ../.venv/bin/python test_backup.py
+Run with: cd api && ../.venv/bin/python tests/test_backup.py
 """
 import os
 import sys
 import uuid
 from datetime import datetime, timedelta, timezone as tzmod
+
+import _pathfix  # noqa: F401,E402
 
 os.environ.setdefault("AWS_EC2_METADATA_DISABLED", "true")
 os.environ.setdefault("AWS_ACCESS_KEY_ID", "dummy")
@@ -202,6 +204,7 @@ def main():
             uname = f"backup_del_{uuid.uuid4().hex[:8]}"
             r = client.post("/signup", json={
                 "username": uname, "email": f"{uname}@example.com", "plain_pass": "TestPass123!",
+                "terms_accepted": True,
             })
             uid_del = r.json()["user_id"]
             token = r.cookies.get("session")

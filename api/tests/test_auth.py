@@ -7,11 +7,13 @@ the happy path (legitimate access still works) for every router touched by
 the auth change, including the two paths not covered by the earlier ad hoc
 curl testing: WebSocket auth and the subscription host/member logic.
 
-Run with: cd api && ../.venv/bin/python test_auth.py
+Run with: cd api && ../.venv/bin/python tests/test_auth.py
 """
 import os
 import sys
 import uuid
+
+import _pathfix  # noqa: F401,E402
 
 os.environ.setdefault("AWS_EC2_METADATA_DISABLED", "true")
 os.environ.setdefault("AWS_ACCESS_KEY_ID", "dummy")
@@ -40,6 +42,7 @@ def cookie_header(token: str):
 def signup(client, username):
     r = client.post("/signup", json={
         "username": username, "email": f"{username}@example.com", "plain_pass": "TestPass123!",
+        "terms_accepted": True,
     })
     assert r.status_code == 201, f"signup failed: {r.status_code} {r.text}"
     token = r.cookies.get("session")
@@ -211,7 +214,7 @@ def main():
             r = client.get(f"/subscriptions/user/{uid_a}", headers=cookie_header(token_b))
             check("subscription: B reads A's plan via path -> 403", r.status_code == 403, str(r.status_code))
 
-            r = client.post("/subscriptions/", json={"user_id": uid_a, "plan_type": "group"}, headers=cookie_header(token_a))
+            r = client.post("/subscriptions/", json={"user_id": uid_a, "member_count": 2}, headers=cookie_header(token_a))
             check("subscription: A creates a group plan (becomes host) -> 201", r.status_code == 201, str(r.status_code))
             sub_id = r.json()["id"]
 

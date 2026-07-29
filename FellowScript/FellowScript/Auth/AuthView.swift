@@ -20,6 +20,11 @@ struct AuthView: View {
     @State private var isLoading     = false
     @State private var googleLoading = false
     @State private var appleLoading  = false
+    // Guideline 1.2 EULA gate — required for all three account-creation
+    // paths (password, Google, Apple), not just the plain sign-up button.
+    @State private var termsAccepted = false
+    @State private var pendingMfaUserId: String? = nil
+    @State private var showForgotPassword = false
     @FocusState private var focusField: Field?
 
     private enum Field { case username, email, password }
@@ -113,6 +118,18 @@ struct AuthView: View {
                                 .submitLabel(.done)
                                 .onSubmit { Task { await submit() } }
                                 .accessibilityLabel("Password field")
+
+                            if isSignIn {
+                                HStack {
+                                    Spacer()
+                                    Button(action: { showForgotPassword = true }) {
+                                        Text("Forgot password?")
+                                            .font(.lora(Theme.fontXS))
+                                            .foregroundColor(Theme.gold)
+                                    }
+                                    .accessibilityLabel("Forgot password")
+                                }
+                            }
                         }
 
                         // Submit button
@@ -213,6 +230,23 @@ struct AuthView: View {
                             }
                             .padding(.top, Theme.spacingXS)
                             .accessibilityLabel("You must be 13 or older. View our Terms of Service and Privacy Policy.")
+
+                            // Guideline 1.2 — required EULA acceptance, gates the sign-up
+                            // button AND the Google/Apple buttons above.
+                            Button(action: { termsAccepted.toggle() }) {
+                                HStack(alignment: .top, spacing: 8) {
+                                    Image(systemName: termsAccepted ? "checkmark.square.fill" : "square")
+                                        .foregroundColor(termsAccepted ? Theme.gold : Theme.textMuted)
+                                    Text("I agree to the zero-tolerance policy for objectionable content and abusive behavior in our Terms of Service.")
+                                        .font(.lora(Theme.fontXXS))
+                                        .foregroundColor(Theme.textMuted)
+                                        .multilineTextAlignment(.leading)
+                                }
+                            }
+                            .buttonStyle(.plain)
+                            .padding(.top, Theme.spacingXS)
+                            .accessibilityLabel("I agree to the Terms of Service, including its zero-tolerance policy for objectionable content and abusive behavior.")
+                            .accessibilityAddTraits(termsAccepted ? [.isButton, .isSelected] : .isButton)
                         }
                     }
                     .widgetCard()
@@ -223,22 +257,43 @@ struct AuthView: View {
             }
         }
         .onAppear { isSignIn = initialSignIn }
+        .fullScreenCover(isPresented: Binding(
+            get: { pendingMfaUserId != nil },
+            set: { if !$0 { pendingMfaUserId = nil } }
+        )) {
+            if let uid = pendingMfaUserId {
+                MfaVerifyView(userId: uid, onComplete: {
+                    pendingMfaUserId = nil
+                    onComplete?()
+                })
+                .environmentObject(appState)
+            }
+        }
+        .sheet(isPresented: $showForgotPassword) {
+            ForgotPasswordView()
+        }
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private var formValid: Bool {
         guard !username.isEmpty && !password.isEmpty else { return false }
-        if !isSignIn { return email.contains("@") && password.count >= 6 }
+        if !isSignIn { return email.contains("@") && password.count >= 6 && termsAccepted }
         return true
     }
 
     private func clearForm() {
-        username = ""; email = ""; password = ""; errorMsg = ""
+        username = ""; email = ""; password = ""; errorMsg = ""; termsAccepted = false
     }
 
     private func signInWithGoogle() async {
         errorMsg = ""
+        // Guideline 4.8: never gate this tap on the EULA checkbox — Google
+        // sign-in must always be available with the same ease as other
+        // options. If the account is new and terms weren't accepted yet, the
+        // server creates it anyway and signals terms_reaccept_required so
+        // AppState/finishAuth can prompt for consent right after, instead of
+        // this tap silently failing.
         googleLoading = true
         focusField = nil
         defer { googleLoading = false }
@@ -247,7 +302,7 @@ struct AuthView: View {
             return
         }
         do {
-            try await appState.signInWithGoogle(credential: credential)
+            try await appState.signInWithGoogle(credential: credential, termsAccepted: termsAccepted)
             onComplete?()
         } catch {
             errorMsg = error.localizedDescription
@@ -256,6 +311,11 @@ struct AuthView: View {
 
     private func handleAppleCompletion(_ result: Result<ASAuthorization, Error>) {
         errorMsg = ""
+        // Guideline 4.8: never gate this on the EULA checkbox. Apple supplies
+        // full_name/email exactly once, ever, per Apple ID + app — blocking
+        // this call on an unchecked box would burn that one-time grant
+        // permanently. The server creates the account regardless and signals
+        // terms_reaccept_required to prompt for consent right after.
         switch result {
         case .failure(let error):
             // User cancellation is not an error worth surfacing.
@@ -288,7 +348,7 @@ struct AuthView: View {
                 defer { appleLoading = false }
                 do {
                     try await appState.signInWithApple(
-                        identityToken: token, fullName: name, email: email
+                        identityToken: token, fullName: name, email: email, termsAccepted: termsAccepted
                     )
                     onComplete?()
                 } catch {
@@ -308,9 +368,11 @@ struct AuthView: View {
             if isSignIn {
                 try await appState.signIn(username: username, password: password)
             } else {
-                try await appState.signUp(username: username, email: email, password: password)
+                try await appState.signUp(username: username, email: email, password: password, termsAccepted: termsAccepted)
             }
             onComplete?()
+        } catch AppError.mfaRequired(let userId) {
+            pendingMfaUserId = userId
         } catch {
             errorMsg = error.localizedDescription
         }

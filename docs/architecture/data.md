@@ -25,6 +25,9 @@ The full Bible (KJV/ESV) is stored as a static JSON file loaded into memory on s
 | `subscription_id` | UUID FK → `subscriptions` | Current plan; always set (free plan row created on signup) |
 | `timezone` | TEXT | IANA name (e.g. `America/Los_Angeles`), default `'UTC'`. User-editable in Account settings; drives the nightly backup schedule below |
 | `mfa_enabled` | BOOLEAN | Default `false`. Web-only email-code 2FA toggle — when true, `/login` pauses for a code instead of issuing a session immediately |
+| `terms_accepted_at` | TIMESTAMPTZ | Server-stamped on signup/first login via a given provider; never client-supplied |
+| `terms_version` | TEXT | Which `CURRENT_TERMS_VERSION` (`schemas/users.py`) was accepted; a mismatch on login triggers a `terms_reaccept_required` soft gate |
+| `suspended_at` | TIMESTAMPTZ | Guideline 1.2 moderation eject — set only by `backend/moderation/admin_actions.py`, never by the normal profile-update path. A suspended account 403s on every auth route |
 
 ---
 
@@ -34,17 +37,19 @@ The full Bible (KJV/ESV) is stored as a static JSON file loaded into memory on s
 |---|---|---|
 | `_id` | UUID PK | |
 | `user_id` | UUID FK → `users` ON DELETE CASCADE | |
-| `plan_type` | TEXT | `'free'`, `'individual'`, `'group'` |
+| `plan_type` | TEXT | `'free'`, `'group'` |
 | `provider` | TEXT | `'none'`, `'stripe'`, `'apple'` |
 | `status` | TEXT | `'active'`, `'trialing'`, `'canceled'` |
-| `price_cents` | INTEGER | 0 for free plan |
-| `max_members` | INTEGER | 1 for individual, N for group |
+| `price_cents` | INTEGER | 0 for free plan; derived from `max_members` via `GROUP_PRICE_CENTS` for a group plan |
+| `max_members` | INTEGER | 1 for free; 1-8 for group — the host-selected member count, chosen at signup or changed later via a plan update |
 | `current_period_end` | TIMESTAMPTZ | NULL for free plan (never expires) |
 | `stripe_subscription_id` | TEXT | |
 | `apple_original_transaction_id` | TEXT | |
 | `card_brand`, `card_last4` | TEXT | Display-only; no raw card data stored |
 
 Every new user receives a `plan_type='free'` row on signup. Free plans are excluded from `is_subscribed()` checks so free-tier limits still apply.
+
+There is a single paid tier (`'group'`) covering 1-8 members at a fixed per-count price (`schemas/subscription.py`'s `GROUP_PRICE_CENTS`) — the old separate `'individual'` plan_type was folded into this as the 1-member case (identical $10 price). Apple StoreKit needs one fixed-price product per member count (`com.fellowscript.app.group1` … `group8`) since IAP can't compute an arbitrary price; Stripe Checkout computes the price inline for any count via `price_data`, no pre-created Products needed.
 
 ---
 
@@ -154,6 +159,9 @@ Verse references linked to a note (many-to-one).
 |---|---|
 | `agents` | `_id`, `user_id FK→users ON DELETE CASCADE`, `config JSONB` |
 | `agent_heartbeats` | `_id`, `user_id FK→users ON DELETE CASCADE`, `last_fired TIMESTAMPTZ` |
+| `agentic_context` | `_id`, `heartbeat_id FK→agent_heartbeats ON DELETE CASCADE`, `user_id FK→users ON DELETE CASCADE`, `note_id FK→notes ON DELETE CASCADE` (nullable), `context TEXT[]` |
+
+`agentic_context` gives each heartbeat continuity with its own past output: every time `AgentManager.commit_hb_response()` generates a note, it saves a summary here keyed by `heartbeat_id`, and the next fire for that same heartbeat includes prior summaries in its prompt as "Previous context from past responses." Context is scoped per-heartbeat — heartbeats don't share history with each other, and manually-written notes never feed into this loop. `note_id` links each summary to the note it was distilled from; deleting that note (from any path — the notes route, account deletion, or the moderation CLI) cascades away its context row too, so a deleted note stops appearing in future prompts.
 
 ---
 
@@ -165,6 +173,17 @@ Verse references linked to a note (many-to-one).
 | `mfa_codes` | `_id`, `user_id FK→users ON DELETE CASCADE`, `code_hash`, `expires_at` (10 min), `used` |
 
 Same hash-at-rest pattern as `sessions`: only a sha256 hash of the emailed token/code is ever stored, so a database leak alone can't be replayed. Both are single-use (`used` flips to `true` on a successful verify) and are never purged proactively — expired/used rows are inert and harmless to leave in place at this scale.
+
+---
+
+### `content_reports` / `blocked_users` (Guideline 1.2)
+
+| Table | Key columns |
+|---|---|
+| `content_reports` | `_id`, `reporter_id FK→users`, `reported_user_id FK→users`, `content_type` (`note`/`message`/`devotion_prompt`/`group_title`/`user`), `content_id` (nullable — polymorphic, no single FK target), `content_snippet` (frozen at report time), `reason`, `detail`, `status` (`open`/`actioned`/`dismissed`), `created_at`, `resolved_at` |
+| `blocked_users` | `blocker_id FK→users`, `blocked_id FK→users`, `created_at` — composite PK `(blocker_id, blocked_id)` |
+
+`content_snippet` is denormalized deliberately: if the operator doesn't check the report email until hours later and the author has since edited or deleted the content, the report still shows what was actually reported. Blocking a user auto-inserts a `content_reports` row (`content_type='user'`, `reason='blocked'`) so there's one unified queue rather than a separate notification path. See `backend/moderation/` above for the filter, reporting, blocking, and admin-resolution logic; `backend/moderation/admin_actions.py`'s `resolve` command is how reports get actioned within the 24-hour commitment in the Terms of Service.
 
 ---
 

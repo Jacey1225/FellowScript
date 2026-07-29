@@ -17,6 +17,17 @@ class GroupsManager(DBManager):
         else:
             self.user = User()
 
+    def _blocked_set(self) -> set[str]:
+        """IDs in a blocked relationship with self.user_id, either direction —
+        Guideline 1.2: a block must hide that user's content from the blocker's
+        feed. One query, reused by every fetch method below."""
+        self.cur.execute(
+            "SELECT blocked_id FROM blocked_users WHERE blocker_id = %s "
+            "UNION SELECT blocker_id FROM blocked_users WHERE blocked_id = %s",
+            (self.user_id, self.user_id),
+        )
+        return {str(r[0]) for r in self.cur.fetchall()}
+
     def is_member(self) -> bool:
         """True if ``self.user_id`` belongs to ``self.group_id``'s member list."""
         group = self.lookup("groups", {"_id": self.group_id})
@@ -64,13 +75,18 @@ class GroupsManager(DBManager):
             return {"error": "Group not found"}
         _, group_data = list(group.items())[0]
         member_ids = [u for u in group_data.get("users", []) if u != self.user_id]
+        blocked    = self._blocked_set()
         usernames  = []
         other_msgs = {}
         for uid in member_ids:
             user = self.lookup("users", {"_id": uid})
             if user:
                 _, udata = list(user.items())[0]
+                # Roster stays unfiltered for transparency about who's in the
+                # group — only their message content is hidden below.
                 usernames.append(udata.get("username", ""))
+            if uid in blocked:
+                continue
             msgs = self.lookup("messages", {"from_user": uid, "group_id": self.group_id})
             other_msgs.update(msgs)
         host_msgs = self.lookup("messages", {"from_user": self.user_id, "group_id": self.group_id})
@@ -89,10 +105,11 @@ class GroupsManager(DBManager):
                 all qualifying notes in the group.
         """
         group_notes: dict = {}
+        blocked = self._blocked_set()
         notes = self.lookup("notes", {"group_id": self.group_id, "is_reply": False})
         for nid, data in notes.items():
             uid = data.get("user_id")
-            if not uid:
+            if not uid or uid in blocked:
                 continue
             user = self.lookup("users", {"_id": uid})
             username = ""
@@ -113,8 +130,9 @@ class GroupsManager(DBManager):
         Returns:
             list[dict]: List of reply note dicts.
         """
+        blocked = self._blocked_set()
         replies = self.lookup("notes", {"is_reply": True, "parent_note_id": note_id})
-        return list(replies.values())
+        return [r for r in replies.values() if str(r.get("user_id")) not in blocked]
 
     def fetch_highlights(self) -> dict:
         """Retrieve highlight data for all members of the group.

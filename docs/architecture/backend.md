@@ -31,8 +31,11 @@ Auth routes in `main.py`:
 | `/auth/mfa/confirm` | POST | Verify the confirmation code and turn 2FA on (authenticated) |
 | `/auth/mfa/disable` | POST | Turn 2FA off; requires re-entering the current password (authenticated) |
 | `/auth/mfa/verify-login` | POST | Complete a login paused by `/login` for 2FA: verify the emailed code and issue the session |
+| `/user/{user_id}/accept-terms` | POST | Record acceptance of the current Terms version (authenticated) |
 
 Web-only 2FA: if a user has 2FA enabled, `/login` doesn't issue a session — it emails a 6-digit code and returns `{"mfa_required": true, "user_id": ...}`; the frontend then calls `/auth/mfa/verify-login` to finish. Not implemented on iOS yet.
+
+**EULA gate (Guideline 1.2)**: `/signup`, `/auth/google`, and `/auth/apple` all require `terms_accepted: true` on new-account creation (422 otherwise) — enforced on all three since Apple may review via any of them. `CURRENT_TERMS_VERSION` (`schemas/users.py`) is stamped on every new account; if an existing account's stored version doesn't match on login, the response includes `terms_reaccept_required: true` and the client shows a blocking "Updated Terms" screen before calling `/user/{id}/accept-terms`. Accounts with `users.suspended_at` set (via the moderation CLI, see below) get a 403 on every auth path instead of a session.
 
 ---
 
@@ -88,6 +91,8 @@ Thin `APIRouter` handlers. Each handler: instantiates a manager, calls one metho
 | `notification_router` | `/notifications` | Notification read/list |
 | `subscription_router` | `/subscriptions` | Subscription lookup, Stripe + Apple webhooks |
 | `donation_router` | `/donation` | One-time donation flow |
+| `report_router` | `/reports` | Guideline 1.2 content/user reporting |
+| `block_router` | `/blocks` | Guideline 1.2 user blocking |
 
 ---
 
@@ -104,6 +109,8 @@ A sibling package to `interactions/` dedicated to billing and usage enforcement.
 
 Every new user (all three auth paths) gets a `plan_type='free'` subscription row created by `SubscriptionsManager.create_free_plan()`. Free-tier limits are enforced server-side via `check_limit()` before every create route.
 
+There is a single paid tier, `'group'`, covering however many people (1-8) the host selects. `schemas/subscription.py`'s `GROUP_PRICE_CENTS` dict is the server-authoritative price-by-member-count lookup (`price_for(member_count)`), replacing the old two-tier `individual`/`group` model — selecting 1 member is priced identically to the old Individual plan. `stripe_service.create_checkout_session` builds the Stripe Checkout line item's price inline from this table for any count (no pre-created Stripe Products needed); `apple_service.APPLE_PRODUCTS` maps 8 fixed-price StoreKit product IDs (`com.fellowscript.app.group1`…`group8`) to their member count, since Apple IAP can't compute an arbitrary price. A host can change their plan's member count later via `PUT /subscriptions/{id}` with `member_count`, which re-derives `price_cents`/`max_members`.
+
 ---
 
 ## `backend/email/`
@@ -116,6 +123,19 @@ Transactional email delivery via AWS SES, used by the password-reset and 2FA flo
 | `templates.py` | `password_reset_email()`, `mfa_code_email()`, `mfa_setup_code_email()` — each returns `(subject, html_body, text_body)`. CAN-SPAM-compliant: truthful sender identity, a support contact, and a physical mailing address footer (`SENDER_POSTAL_ADDRESS` env var — must be set to a real address before sending real mail). |
 
 `backend/auth/password_reset.py` (`PasswordResetManager`) and `backend/auth/mfa.py` (`MFAManager`) generate the actual tokens/codes — both mirror `SessionManager`'s pattern of storing only a sha256 hash, never the raw secret.
+
+---
+
+## `backend/moderation/` — Guideline 1.2 (User-Generated Content)
+
+| File | Responsibility |
+|---|---|
+| `content_filter.py` | `check_clean(**fields)` — local `better_profanity` keyword filter, raises `ContentRejected(field)` on a match. Hard-rejects submission (422) rather than auto-flagging-and-posting. Wired into note/reply create+update (`routes/notes.py`), group title create+update (`routes/community.py`), devotion title+prompts create+update (`routes/devotion.py`), and the one non-HTTP path, `ConnectionManager.send_msg` (`backend/interactions/websockets.py`), which replies with an error frame to the sender's own socket instead of raising. |
+| `admin_actions.py` | CLI for resolving reports: `python -m backend.moderation.admin_actions list` / `resolve <report_id> [--remove-content] [--eject] [--dismiss]`. Removing content deletes/resets the note, message, devotion prompts, or group title by id; ejecting sets `users.suspended_at` and calls `SessionManager.delete_all_for_user()` to kill any active session immediately. No self-service admin UI exists yet — this is the "act within 24 hours" tool the report email points at. |
+
+**Reporting** — `backend/interactions/reports.py` (`ReportsManager`): `create_report(content_type, content_id, reported_user_id, reason, detail)` resolves the *current* author + text server-side (never trusts the client for who/what is reported), inserts a `content_reports` row with a frozen `content_snippet` (survives later edits/deletes), and emails `SUPPORT_EMAIL` via `backend/email/templates.py`'s `content_report_email()` (HTML-escapes the snippet before interpolation). `content_type` is one of `note` / `message` / `devotion_prompt` / `group_title` / `user`.
+
+**Blocking** — `backend/interactions/blocks.py` (`BlockManager`): `block_user()` severs any existing friendship/pending request both directions and auto-creates a `content_reports` row (`reason='blocked'`) — one unified developer queue rather than a parallel notification system. `is_blocked()` checks both directions. Enforced at every read path a blocked relationship could otherwise leak through: `friends.py`'s `send_add_request`/`add_friend`/`read_friend`, `groups.py`'s `fetch_notes`/`fetch_replies`/`fetch_group` (member roster stays visible for transparency; only their content is hidden), `websockets.py`'s `send_msg` (drops DMs entirely between blocked parties; skips delivery-only for group messages so other members still see them), and `devotion.py`'s `fetch_by_contact`. Retroactively removing a blocked user from an already-joined live Chime call is a known, accepted gap.
 
 ---
 

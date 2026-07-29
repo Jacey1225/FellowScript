@@ -764,6 +764,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#backendmoderation-guideline-12-user-generated-content" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        backend/moderation/ — Guideline 1.2 (User-Generated Content)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#backendbackup" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1004,9 +1015,15 @@
 <td>POST</td>
 <td>Complete a login paused by <code>/login</code> for 2FA: verify the emailed code and issue the session</td>
 </tr>
+<tr>
+<td><code>/user/{user_id}/accept-terms</code></td>
+<td>POST</td>
+<td>Record acceptance of the current Terms version (authenticated)</td>
+</tr>
 </tbody>
 </table>
 <p>Web-only 2FA: if a user has 2FA enabled, <code>/login</code> doesn't issue a session — it emails a 6-digit code and returns <code>{"mfa_required": true, "user_id": ...}</code>; the frontend then calls <code>/auth/mfa/verify-login</code> to finish. Not implemented on iOS yet.</p>
+<p><strong>EULA gate (Guideline 1.2)</strong>: <code>/signup</code>, <code>/auth/google</code>, and <code>/auth/apple</code> all require <code>terms_accepted: true</code> on new-account creation (422 otherwise) — enforced on all three since Apple may review via any of them. <code>CURRENT_TERMS_VERSION</code> (<code>schemas/users.py</code>) is stamped on every new account; if an existing account's stored version doesn't match on login, the response includes <code>terms_reaccept_required: true</code> and the client shows a blocking "Updated Terms" screen before calling <code>/user/{id}/accept-terms</code>. Accounts with <code>users.suspended_at</code> set (via the moderation CLI, see below) get a 403 on every auth path instead of a session.</p>
 <hr />
 <h2 id="layer-1-schemas">Layer 1 — <code>schemas/</code></h2>
 <p>Pydantic models defining request/response shapes and internal records. One file per domain.</p>
@@ -1170,6 +1187,16 @@
 <td><code>/donation</code></td>
 <td>One-time donation flow</td>
 </tr>
+<tr>
+<td><code>report_router</code></td>
+<td><code>/reports</code></td>
+<td>Guideline 1.2 content/user reporting</td>
+</tr>
+<tr>
+<td><code>block_router</code></td>
+<td><code>/blocks</code></td>
+<td>Guideline 1.2 user blocking</td>
+</tr>
 </tbody>
 </table>
 <hr />
@@ -1202,6 +1229,7 @@
 </tbody>
 </table>
 <p>Every new user (all three auth paths) gets a <code>plan_type='free'</code> subscription row created by <code>SubscriptionsManager.create_free_plan()</code>. Free-tier limits are enforced server-side via <code>check_limit()</code> before every create route.</p>
+<p>There is a single paid tier, <code>'group'</code>, covering however many people (1-8) the host selects. <code>schemas/subscription.py</code>'s <code>GROUP_PRICE_CENTS</code> dict is the server-authoritative price-by-member-count lookup (<code>price_for(member_count)</code>), replacing the old two-tier <code>individual</code>/<code>group</code> model — selecting 1 member is priced identically to the old Individual plan. <code>stripe_service.create_checkout_session</code> builds the Stripe Checkout line item's price inline from this table for any count (no pre-created Stripe Products needed); <code>apple_service.APPLE_PRODUCTS</code> maps 8 fixed-price StoreKit product IDs (<code>com.fellowscript.app.group1</code>…<code>group8</code>) to their member count, since Apple IAP can't compute an arbitrary price. A host can change their plan's member count later via <code>PUT /subscriptions/{id}</code> with <code>member_count</code>, which re-derives <code>price_cents</code>/<code>max_members</code>.</p>
 <hr />
 <h2 id="backendemail"><code>backend/email/</code></h2>
 <p>Transactional email delivery via AWS SES, used by the password-reset and 2FA flows.</p>
@@ -1224,6 +1252,28 @@
 </tbody>
 </table>
 <p><code>backend/auth/password_reset.py</code> (<code>PasswordResetManager</code>) and <code>backend/auth/mfa.py</code> (<code>MFAManager</code>) generate the actual tokens/codes — both mirror <code>SessionManager</code>'s pattern of storing only a sha256 hash, never the raw secret.</p>
+<hr />
+<h2 id="backendmoderation-guideline-12-user-generated-content"><code>backend/moderation/</code> — Guideline 1.2 (User-Generated Content)</h2>
+<table>
+<thead>
+<tr>
+<th>File</th>
+<th>Responsibility</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>content_filter.py</code></td>
+<td><code>check_clean(**fields)</code> — local <code>better_profanity</code> keyword filter, raises <code>ContentRejected(field)</code> on a match. Hard-rejects submission (422) rather than auto-flagging-and-posting. Wired into note/reply create+update (<code>routes/notes.py</code>), group title create+update (<code>routes/community.py</code>), devotion title+prompts create+update (<code>routes/devotion.py</code>), and the one non-HTTP path, <code>ConnectionManager.send_msg</code> (<code>backend/interactions/websockets.py</code>), which replies with an error frame to the sender's own socket instead of raising.</td>
+</tr>
+<tr>
+<td><code>admin_actions.py</code></td>
+<td>CLI for resolving reports: <code>python -m backend.moderation.admin_actions list</code> / <code>resolve &lt;report_id&gt; [--remove-content] [--eject] [--dismiss]</code>. Removing content deletes/resets the note, message, devotion prompts, or group title by id; ejecting sets <code>users.suspended_at</code> and calls <code>SessionManager.delete_all_for_user()</code> to kill any active session immediately. No self-service admin UI exists yet — this is the "act within 24 hours" tool the report email points at.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Reporting</strong> — <code>backend/interactions/reports.py</code> (<code>ReportsManager</code>): <code>create_report(content_type, content_id, reported_user_id, reason, detail)</code> resolves the <em>current</em> author + text server-side (never trusts the client for who/what is reported), inserts a <code>content_reports</code> row with a frozen <code>content_snippet</code> (survives later edits/deletes), and emails <code>SUPPORT_EMAIL</code> via <code>backend/email/templates.py</code>'s <code>content_report_email()</code> (HTML-escapes the snippet before interpolation). <code>content_type</code> is one of <code>note</code> / <code>message</code> / <code>devotion_prompt</code> / <code>group_title</code> / <code>user</code>.</p>
+<p><strong>Blocking</strong> — <code>backend/interactions/blocks.py</code> (<code>BlockManager</code>): <code>block_user()</code> severs any existing friendship/pending request both directions and auto-creates a <code>content_reports</code> row (<code>reason='blocked'</code>) — one unified developer queue rather than a parallel notification system. <code>is_blocked()</code> checks both directions. Enforced at every read path a blocked relationship could otherwise leak through: <code>friends.py</code>'s <code>send_add_request</code>/<code>add_friend</code>/<code>read_friend</code>, <code>groups.py</code>'s <code>fetch_notes</code>/<code>fetch_replies</code>/<code>fetch_group</code> (member roster stays visible for transparency; only their content is hidden), <code>websockets.py</code>'s <code>send_msg</code> (drops DMs entirely between blocked parties; skips delivery-only for group messages so other members still see them), and <code>devotion.py</code>'s <code>fetch_by_contact</code>. Retroactively removing a blocked user from an already-joined live Chime call is a known, accepted gap.</p>
 <hr />
 <h2 id="backendbackup"><code>backend/backup/</code></h2>
 <p>A sibling package to <code>interactions/</code> for the nightly per-user data backup (see <a href="../data/">Data → Nightly Backup Database</a> for the schema/scope).</p>

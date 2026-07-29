@@ -35,13 +35,25 @@ def create_tables(cur):
         # User-set IANA timezone name; drives the local-3am nightly backup job.
         "timezone TEXT NOT NULL DEFAULT 'UTC',"
         # Email-code two-factor auth toggle (web only, for now).
-        "mfa_enabled BOOLEAN NOT NULL DEFAULT FALSE)"
+        "mfa_enabled BOOLEAN NOT NULL DEFAULT FALSE,"
+        # Guideline 1.2 EULA gate: when the account accepted Terms, and which
+        # version — a version bump forces re-consent (see CURRENT_TERMS_VERSION
+        # in schemas/users.py) rather than silently grandfathering old accounts.
+        "terms_accepted_at TIMESTAMPTZ,"
+        "terms_version TEXT,"
+        # Set only by the moderation eject action (backend/moderation/admin_actions.py)
+        # — deliberately excluded from save_users_data's upsert so a routine
+        # profile edit can never accidentally un-suspend someone.
+        "suspended_at TIMESTAMPTZ)"
     )
     # Migrations for databases created before the social-sign-in columns existed.
     cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS apple_sub TEXT")
     cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS google_sub TEXT")
     cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS timezone TEXT NOT NULL DEFAULT 'UTC'")
     cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS mfa_enabled BOOLEAN NOT NULL DEFAULT FALSE")
+    cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS terms_accepted_at TIMESTAMPTZ")
+    cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS terms_version TEXT")
+    cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS suspended_at TIMESTAMPTZ")
 
     cur.execute(
         "CREATE TABLE IF NOT EXISTS groups"
@@ -63,6 +75,17 @@ def create_tables(cur):
         "(to_user_id UUID REFERENCES users(_id) ON DELETE CASCADE,"
         "from_user_id UUID REFERENCES users(_id) ON DELETE CASCADE,"
         "PRIMARY KEY (to_user_id, from_user_id))"
+    )
+
+    cur.execute(
+        "CREATE TABLE IF NOT EXISTS blocked_users"
+        "(blocker_id UUID REFERENCES users(_id) ON DELETE CASCADE,"
+        "blocked_id UUID REFERENCES users(_id) ON DELETE CASCADE,"
+        "created_at TIMESTAMPTZ DEFAULT NOW(),"
+        "PRIMARY KEY (blocker_id, blocked_id))"
+    )
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_blocked_users_blocked ON blocked_users(blocked_id)"
     )
 
     cur.execute(
@@ -140,7 +163,7 @@ def create_tables(cur):
         "(_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
         # The host who owns and pays for the plan.
         "user_id UUID REFERENCES users(_id) ON DELETE CASCADE,"
-        "plan_type TEXT NOT NULL DEFAULT 'individual',"       # 'individual' | 'group'
+        "plan_type TEXT NOT NULL DEFAULT 'group',"             # 'free' | 'group'
         "provider TEXT NOT NULL DEFAULT 'stripe',"            # 'stripe' | 'apple'
         # Opaque processor references — never raw card data.
         "stripe_customer_id TEXT DEFAULT '',"
@@ -153,8 +176,8 @@ def create_tables(cur):
         "card_exp_month TEXT DEFAULT '',"
         "card_exp_year TEXT DEFAULT '',"
         "status TEXT NOT NULL DEFAULT 'inactive',"
-        "price_cents INTEGER NOT NULL DEFAULT 1000,"          # derived from plan_type
-        "max_members INTEGER NOT NULL DEFAULT 1,"             # derived from plan_type
+        "price_cents INTEGER NOT NULL DEFAULT 1000,"          # derived from member_count (max_members)
+        "max_members INTEGER NOT NULL DEFAULT 1,"             # host-selected member_count, 1-8
         # trial_end = first billing date (created_at + trial); current_period_end
         # is the rolling next-billing date, monitored by the scheduler.
         "trial_end TIMESTAMPTZ,"
@@ -163,8 +186,11 @@ def create_tables(cur):
     )
     # Migrations for a subscriptions table created before these plan columns
     # existed (no-op on a fresh DB where CREATE TABLE already added them).
+    # NOTE: the old 'individual' plan_type was folded into 'group' (member_count=1,
+    # same price) when dynamic group pricing shipped. Run once on the live DB:
+    #   UPDATE subscriptions SET plan_type = 'group' WHERE plan_type = 'individual';
     cur.execute("ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(_id) ON DELETE CASCADE")
-    cur.execute("ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS plan_type TEXT NOT NULL DEFAULT 'individual'")
+    cur.execute("ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS plan_type TEXT NOT NULL DEFAULT 'group'")
     cur.execute("ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS price_cents INTEGER NOT NULL DEFAULT 1000")
     cur.execute("ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS max_members INTEGER NOT NULL DEFAULT 1")
     cur.execute("ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS card_exp_month TEXT DEFAULT ''")
@@ -248,8 +274,17 @@ def create_tables(cur):
         "(_id UUID PRIMARY KEY NOT NULL,"
         "heartbeat_id UUID REFERENCES agent_heartbeats(_id) ON DELETE CASCADE,"
         "user_id UUID REFERENCES users(_id) ON DELETE CASCADE,"
+        # Which note this context summary was distilled from. Nullable since
+        # rows written before this column existed have no note to point at.
+        # ON DELETE CASCADE: deleting the note (from any path — the notes
+        # route, account deletion, or the Guideline 1.2 moderation CLI) must
+        # also remove its trace from the agent's future "previous context"
+        # prompts, not just the note itself.
+        "note_id UUID REFERENCES notes(_id) ON DELETE CASCADE,"
         "context TEXT[] DEFAULT '{}')"
     )
+    cur.execute("ALTER TABLE agentic_context ADD COLUMN IF NOT EXISTS note_id UUID REFERENCES notes(_id) ON DELETE CASCADE")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_agentic_context_note ON agentic_context(note_id)")
 
     cur.execute(
         "CREATE TABLE IF NOT EXISTS subscription_request"
@@ -301,6 +336,32 @@ def create_tables(cur):
     )
     cur.execute(
         "CREATE INDEX IF NOT EXISTS idx_mfa_codes_user ON mfa_codes(user_id)"
+    )
+
+    # Guideline 1.2 report/flag queue. content_type is polymorphic (note,
+    # message, devotion_prompt, group_title, or a direct user report), so
+    # content_id has no single FK target — content_snippet freezes the
+    # offending text at report time so it survives a later edit/delete and the
+    # operator can still see what was actually reported hours later.
+    cur.execute(
+        "CREATE TABLE IF NOT EXISTS content_reports"
+        "(_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
+        "reporter_id UUID REFERENCES users(_id) ON DELETE CASCADE,"
+        "reported_user_id UUID REFERENCES users(_id) ON DELETE CASCADE,"
+        "content_type TEXT NOT NULL,"
+        "content_id UUID,"
+        "content_snippet TEXT DEFAULT '',"
+        "reason TEXT NOT NULL,"
+        "detail TEXT DEFAULT '',"
+        "status TEXT NOT NULL DEFAULT 'open',"
+        "created_at TIMESTAMPTZ DEFAULT NOW(),"
+        "resolved_at TIMESTAMPTZ)"
+    )
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_content_reports_status ON content_reports(status, created_at)"
+    )
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_content_reports_reported_user ON content_reports(reported_user_id)"
     )
     logger.info("All tables created.")
 

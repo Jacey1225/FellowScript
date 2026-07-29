@@ -1,5 +1,6 @@
 from schemas.users import User
 from db import DBManager
+from backend.interactions.blocks import BlockManager
 
 
 class FriendsManager(DBManager):
@@ -31,6 +32,12 @@ class FriendsManager(DBManager):
         friend_id = list(result.keys())[0]
         if friend_id == self.user_id:
             return {"error": "Cannot add yourself"}
+        blocks = BlockManager(self.user_id)
+        try:
+            if blocks.is_blocked(friend_id):
+                return {"error": "Cannot send request"}
+        finally:
+            blocks.close()
         self.insertion("friend_requests", {
             "to_user_id":   friend_id,
             "from_user_id": self.user_id,
@@ -51,6 +58,12 @@ class FriendsManager(DBManager):
         if not result:
             return {"error": "User not found"}
         friend_id = list(result.keys())[0]
+        blocks = BlockManager(self.user_id)
+        try:
+            if blocks.is_blocked(friend_id):
+                return {"error": "Cannot add this user"}
+        finally:
+            blocks.close()
         self.insertion("user_friends", {"user_id": self.user_id, "friend_id": friend_id})
         self.insertion("user_friends", {"user_id": friend_id, "friend_id": self.user_id})
         self.delete("friend_requests", {"to_user_id": self.user_id, "from_user_id": friend_id})
@@ -100,6 +113,12 @@ class FriendsManager(DBManager):
         result = self.lookup("users", {"_id": friend_id})
         if not result:
             return {"error": "Friend not found"}
+        blocks = BlockManager(self.user_id)
+        try:
+            if blocks.is_blocked(friend_id):
+                return {"error": "This contact is unavailable"}
+        finally:
+            blocks.close()
         _, friend_data = list(result.items())[0]
         self.cur.execute(
             "SELECT m._id, m.text, m.timestamp FROM messages m "

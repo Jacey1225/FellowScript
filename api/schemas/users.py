@@ -10,6 +10,14 @@ def _validate_timezone(value: str) -> str:
         raise ValueError(f"Unknown IANA timezone: {value!r}")
     return value
 
+
+# Bump whenever Terms.jsx changes materially (e.g. the zero-tolerance rewrite
+# this version represents). A version mismatch on login triggers a soft
+# re-consent gate (see main.py's login()) rather than silently grandfathering
+# accounts into terms they never agreed to.
+CURRENT_TERMS_VERSION = "2026-07-27"
+
+
 class User(BaseModel):
     user_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     username: str = Field(default_factory=str)
@@ -28,9 +36,26 @@ class User(BaseModel):
         default="UTC",
         description="IANA timezone name (e.g. 'America/Los_Angeles'); drives the "
                      "user's local-3am nightly backup schedule")
+    terms_accepted_at: str | None = Field(
+        default=None,
+        description="Server-stamped timestamp of EULA acceptance — never client-supplied")
+    terms_version: str | None = Field(
+        default=None,
+        description="Which CURRENT_TERMS_VERSION was accepted; a mismatch forces re-consent")
     # The plan a user belongs to lives in the users.subscription_id column and is
     # managed by SubscriptionsManager; it is intentionally not a User field here
     # (mirrors apple_sub/google_sub, which are columns but not schema fields).
+
+    @field_validator("terms_accepted_at", mode="before")
+    @classmethod
+    def _stringify_terms_accepted_at(cls, v):
+        # FriendsManager/GroupsManager construct User(**data) straight from
+        # DBManager.lookup()'s raw row, which returns a native datetime for
+        # TIMESTAMPTZ columns — unlike load_users_data(), which already
+        # stringifies it. Coerce here so both call shapes work.
+        return str(v) if v is not None else v
+    # suspended_at is likewise a column, not a User field — set only by the
+    # moderation eject action, mirroring mfa_enabled's exclusion from this model.
 
     @field_validator("timezone")
     @classmethod
@@ -58,6 +83,18 @@ class SignUp(BaseModel):
     username: str = Field(default_factory=str)
     email: str = Field(default_factory=str)
     plain_pass: str = Field(default_factory=str)
+    # validate_default=True is required here: pydantic v2 does NOT run
+    # validators on a field's default value unless told to, and the default
+    # (False) is exactly the invalid case this validator exists to catch — an
+    # omitted field would otherwise silently pass as an unvalidated default.
+    terms_accepted: bool = Field(default=False, validate_default=True)
+
+    @field_validator("terms_accepted")
+    @classmethod
+    def _must_accept_terms(cls, v: bool) -> bool:
+        if not v:
+            raise ValueError("You must accept the Terms of Service to create an account.")
+        return v
 
 class Login(BaseModel):
     username: str = Field(default_factory=str)

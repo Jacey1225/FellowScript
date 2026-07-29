@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
-import { Card, Form, Input, Button, Typography, Alert } from 'antd';
+import { Card, Form, Input, Button, Typography, Alert, Modal } from 'antd';
 import { useAuth } from '../context/AuthContext.jsx';
 import { API } from '../config.js';
 
@@ -14,6 +14,20 @@ export default function VerifyMfa() {
   const [code,    setCode]    = useState('');
   const [error,   setError]   = useState('');
   const [loading, setLoading] = useState(false);
+  const [reaccept, setReaccept] = useState(null);
+  const [reacceptLoading, setReacceptLoading] = useState(false);
+
+  const handleAcceptUpdatedTerms = async () => {
+    setReacceptLoading(true);
+    try {
+      await fetch(`${API}/user/${reaccept.user_id}/accept-terms`, { method: 'POST' });
+    } finally {
+      setReacceptLoading(false);
+      signIn(reaccept);
+      setReaccept(null);
+      navigate('/reader');
+    }
+  };
 
   if (!userId) {
     return (
@@ -37,6 +51,7 @@ export default function VerifyMfa() {
       });
       const data = await res.json();
       if (!res.ok) { setError(data.detail || 'Invalid or expired code.'); return; }
+      if (data.terms_reaccept_required) { setReaccept(data); return; }
       signIn(data);
       navigate('/reader');
     } catch {
@@ -80,6 +95,25 @@ export default function VerifyMfa() {
           </Link>
         </div>
       </Card>
+
+      <Modal
+        open={!!reaccept}
+        closable={false}
+        maskClosable={false}
+        title={<Text style={{ fontFamily: "'Playfair Display', serif", color: 'var(--parchment)' }}>Our Terms of Service have been updated</Text>}
+        footer={[
+          <Button key="agree" type="primary" loading={reacceptLoading} onClick={handleAcceptUpdatedTerms}>
+            I Agree
+          </Button>,
+        ]}
+      >
+        <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.85rem', color: 'rgba(244,228,193,0.7)' }}>
+          We've clarified our zero-tolerance policy for objectionable content and abusive behavior, including new
+          in-app reporting and blocking tools. Please review our{' '}
+          <Link to="/terms" target="_blank" style={{ color: 'var(--gold)' }}>updated Terms of Service</Link>{' '}
+          before continuing.
+        </Text>
+      </Modal>
     </div>
   );
 }

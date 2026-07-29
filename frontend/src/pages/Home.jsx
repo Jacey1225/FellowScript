@@ -103,7 +103,7 @@ const features = [
   {
     icon: <Ico d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" d2="M9 7a4 4 0 1 0 0-8 4 4 0 0 0 0 8zm14 0a4 4 0 1 0 0-8 4 4 0 0 0 0 8z" />,
     title: 'Group Bible Study',
-    desc: 'Invite up to four people into your plan. Share the same reading space, highlight together, message in real time.',
+    desc: 'Choose how many people join your plan — up to 8. Share the same reading space, highlight together, message in real time.',
   },
   {
     icon: <Ico d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />,
@@ -123,22 +123,13 @@ const plans = [
     primary: false,
   },
   {
-    name: 'Individual',
-    price: '$10',
-    sub: 'per month — 1 month free trial',
-    perks: ['Everything in Free', 'Unlimited notes', 'Unlimited AI check-ins', 'Unlimited notifications', 'Priority support'],
+    name: 'Group',
+    price: 'From $10',
+    sub: 'per month — pick 1 to 8 members, 1 month free trial',
+    perks: ['Unlimited notes', 'Unlimited AI check-ins', 'Unlimited notifications', 'Shared reading space & group chat', 'Live study sessions', 'Priority support'],
     cta: 'Start free trial',
     href: '/signin',
     primary: true,
-  },
-  {
-    name: 'Group',
-    price: '$40',
-    sub: 'per month — up to 5 members',
-    perks: ['Everything in Individual', 'Shared reading space', 'Group messaging & chat', 'Live study sessions', 'Invite up to 4 others'],
-    cta: 'Start group trial',
-    href: '/signin',
-    primary: false,
   },
 ];
 
@@ -285,7 +276,7 @@ export default function Home() {
                 Study together, wherever you are.
               </h2>
               <p style={{ fontSize: 14, color: 'rgba(243,234,217,.6)', lineHeight: 1.7, maxWidth: 380, margin: '0 0 28px' }}>
-                The group plan gives up to five people a shared space to read, highlight, and grow — with real-time messaging and a live study feed of what everyone's been marking.
+                The group plan gives up to eight people a shared space to read, highlight, and grow — with real-time messaging and a live study feed of what everyone's been marking.
               </p>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 {[
