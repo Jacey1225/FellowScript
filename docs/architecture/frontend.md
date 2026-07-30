@@ -9,7 +9,7 @@ The web frontend is a **React 18 + Vite** single-page application in `frontend/s
 | Route | File | Description |
 |---|---|---|
 | `/` | `pages/Home.jsx` | Public landing page — hero, features, pricing, CTA |
-| `/reader` | `pages/Reader.jsx` | Bible reader with notes and messaging sidebars |
+| `/reader` | `pages/Reader.jsx` | Bible reader — desktop: dockable VSCode-style panel workspace; mobile: bottom-tab-bar overlays |
 | `/account` | `pages/Account.jsx` | Profile, subscription card, danger zone |
 | `/signin` | `pages/SignIn.jsx` | Password, Google, and Apple sign-in/sign-up |
 | `/privacy` | `pages/Privacy.jsx` | Privacy policy |
@@ -24,9 +24,12 @@ Unauthenticated users land on Home (`/`); once signed in, the CTA routes directl
 | Component | Description |
 |---|---|
 | `AppNav.jsx` | Persistent top navigation bar — logo (links to `/`), reader link, account link; collapses to a drawer on narrow screens |
-| `NotesSidebar.jsx` | Full notes panel: Notes tab (rich-text cards sorted by creation date), Highlights tab, filter/sort panel, in-line editor |
-| `MessagingSidebar.jsx` | Real-time WebSocket messaging — group chat and 1-on-1 DMs |
+| `NotesSidebar.jsx` | Combined Notes+Highlights tabbed sidebar — **mobile only**; desktop uses the split `NotesPanel`/`HighlightsPanel` below |
 | `BibleCard.jsx` | Renders a single verse with inline highlight color, click-to-highlight, and verse selection |
+| `panels/BibleReaderPanel.jsx` | Desktop dockview panel: bundles `BibleNavigator` + font-size ticker + `BookmarkButton` + `BibleCard` + `HighlightPicker` in one component, so they always travel together wherever the panel is docked |
+| `panels/NotesPanel.jsx` / `panels/HighlightsPanel.jsx` | Desktop dockview panels — the Notes and Highlights tabs of `NotesSidebar` split into independently dockable panels; each keeps its own copy of the group-selector dropdown |
+| `panels/MessagingPanel.jsx` / `panels/AgentChatPanel.jsx` | Desktop dockview panels — friends/group DMs and the AI spiritual-guide chat, split apart so each can be positioned independently (previously combined behind one "Group" toggle) |
+| `ContactsPanel.jsx` / `ChatThread.jsx` / `AgentChatThread.jsx` | Shared building blocks used by both the desktop panels above and the mobile fullscreen overlays |
 | `BibleNavigator.jsx` | Book + chapter picker (search + scroll) |
 | `ScriptureNav.jsx` | Prev/next chapter controls |
 | `HighlightPicker.jsx` | Color swatch row for choosing the active highlight color |
@@ -53,18 +56,15 @@ Session persistence uses `localStorage`; the `user_id` cookie set by the server 
 
 ## Reader Layout
 
-The Reader page uses a three-panel CSS grid:
+**Desktop** (viewports >1024px) uses [`dockview-react`](https://github.com/mathuo/dockview) to give the Reader page a VSCode-style dockable workspace: five independently-registered panels (Bible Reading, Notes, Highlights, Messaging, Agent Chat) that the user can drag to any edge (split), drop onto another panel (tab together), or resize. Key pieces, all under `frontend/src/`:
 
-```
-┌─────────────┬──────────────────────┬──────────────┐
-│  AppNav     │                      │              │
-│  (sidebar   │   Scripture text     │   Notes or   │
-│   on left)  │   BibleCard × verse  │   Messaging  │
-│             │   BibleNavigator     │   sidebar    │
-└─────────────┴──────────────────────┴──────────────┘
-```
+- `lib/readerDockLayout.js` — `buildDefaultLayout(api)` (the single source of truth for the default arrangement: Bible reader filling the main area, Notes+Highlights+Messaging tabbed on the right spanning full height, Agent Chat docked below the reader only), plus `loadSavedLayout`/`saveLayout`/`resetLayout` for persistence to `localStorage['fs_reader_layout_v1']` (debounced on `api.onDidLayoutChange`, versioned so a future panel-set change can invalidate old saved layouts).
+- `context/ReaderPanelContexts.jsx` — five separate React contexts (one per panel), not dockview's own `params` mechanism (which only refreshes via an explicit imperative call) — `Reader.jsx` lifts all the data-fetching hooks (`useBible`, `useNotes`, `useMessaging`, `useAgentChat`, etc.) and feeds each panel a memoized context value, so e.g. an incoming chat message never re-renders the Bible panel.
+- `components/panels/*.jsx` — the five panel components registered with `DockviewReact` via a `components` map keyed by panel id.
+- `hooks/useIsDesktopViewport.js` — reactively decides which branch to mount (aligned to the same 1024px breakpoint the mobile CSS media query uses), so resizing across it cleanly swaps the dockview tree for the mobile layout instead of leaving one mounted-but-hidden.
+- `styles/reader-dock.css` — retints dockview's theme variables to the app's own dark/gold/parchment palette (loaded after `dockview-react/dist/styles/dockview.css` in `main.jsx` so the overrides win).
 
-On narrow screens the sidebars collapse and are accessed via toggle buttons above the scripture view.
+**Mobile** (≤1024px) keeps its own, entirely separate layout, untouched by the above: scripture text fills the screen with a bottom tab bar that opens Notes or Messages as a fullscreen overlay (`.mobile-tab-bar`/`.mobile-overlay` in `global.css`). The two layouts share the same underlying data hooks and several components (`ContactsPanel`, `ChatThread`, `AgentChatThread`, `NotesSidebar`) but render completely different component trees.
 
 ---
 

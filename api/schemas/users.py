@@ -42,6 +42,12 @@ class User(BaseModel):
     terms_version: str | None = Field(
         default=None,
         description="Which CURRENT_TERMS_VERSION was accepted; a mismatch forces re-consent")
+    needs_profile_completion: bool = Field(
+        default=False,
+        description="True when an Apple-created account is missing the username/email "
+                     "Apple only ever supplies once (first authorization) — the client "
+                     "should prompt the user to set them, since Apple can never resupply "
+                     "them later")
     # The plan a user belongs to lives in the users.subscription_id column and is
     # managed by SubscriptionsManager; it is intentionally not a User field here
     # (mirrors apple_sub/google_sub, which are columns but not schema fields).

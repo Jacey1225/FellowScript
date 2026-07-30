@@ -41,11 +41,12 @@ def test_price_table():
 
 def test_apple_product_mapping():
     print("\n=== Apple product id -> member_count for all 8 products ===")
-    for count in range(1, 9):
-        product_id = f"com.fellowscript.app.group{count}"
+    words = {1: "one", 2: "two", 3: "three", 4: "four", 5: "five", 6: "six", 7: "seven", 8: "eight"}
+    for count, word in words.items():
+        product_id = f"com.fellowscript.access.{word}"
         check(f"member_count_for({product_id})", apple_service.member_count_for(product_id), count)
     check("unknown product id maps to None",
-          apple_service.member_count_for("com.fellowscript.app.nonexistent"), None)
+          apple_service.member_count_for("com.fellowscript.access.nonexistent"), None)
 
 
 def test_checkout_bounds():

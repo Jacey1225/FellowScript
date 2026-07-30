@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { ReadOutlined, ReadFilled } from '@ant-design/icons';
 
 // Split a bookmark key like "1 Kings-5" into { book: "1 Kings", chapter: "5" }.
@@ -10,21 +11,38 @@ function parseKey(key) {
 
 export default function BookmarkButton({ user, bookmarks, curBook, curChapter, onAdd, onRemove, onNavigate }) {
   const [open, setOpen] = useState(false);
+  const [pos,  setPos]  = useState({ top: 0, left: 0 });
   const wrapRef = useRef(null);
 
   const currentKey  = curBook && curChapter ? `${curBook}-${curChapter}` : null;
   const isBookmarked = currentKey != null && Object.prototype.hasOwnProperty.call(bookmarks, currentKey);
   const entries      = Object.entries(bookmarks);
 
-  // Close dropdown on outside click
+  // Close dropdown on outside click (the portalled dropdown itself is outside
+  // wrapRef, so also ignore clicks that land inside it via the data attribute).
   useEffect(() => {
     if (!open) return;
-    const close = (e) => { if (!wrapRef.current?.contains(e.target)) setOpen(false); };
+    const close = (e) => {
+      if (!wrapRef.current?.contains(e.target) && !e.target.closest('[data-bookmark-dropdown]')) setOpen(false);
+    };
     document.addEventListener('mousedown', close);
     return () => document.removeEventListener('mousedown', close);
   }, [open]);
 
   if (!user) return null;
+
+  // Rendered via a body portal at a viewport-fixed position (computed from the
+  // trigger button) so the dropdown is never clipped by a dockable panel's own
+  // overflow:hidden content area.
+  const handleToggle = () => {
+    if (!open && wrapRef.current) {
+      const rect = wrapRef.current.getBoundingClientRect();
+      const width = 280;
+      const left  = Math.max(8, Math.min(rect.left, window.innerWidth - width - 8));
+      setPos({ top: rect.bottom + 8, left });
+    }
+    setOpen(v => !v);
+  };
 
   const handleToggleCurrent = () => {
     if (!currentKey) return;
@@ -39,7 +57,7 @@ export default function BookmarkButton({ user, bookmarks, curBook, curChapter, o
     <div ref={wrapRef} style={{ position: 'relative', marginLeft: '0.4rem' }}>
       <button
         className={`nav-pill-btn${open || isBookmarked ? ' open' : ''}`}
-        onClick={() => setOpen(v => !v)}
+        onClick={handleToggle}
         title="Bookmarks"
         style={{ gap: '0.35rem' }}
       >
@@ -55,11 +73,11 @@ export default function BookmarkButton({ user, bookmarks, curBook, curChapter, o
         )}
       </button>
 
-      {open && (
-        <div style={{
-          position: 'absolute',
-          top: 'calc(100% + 8px)',
-          left: 0,
+      {open && createPortal(
+        <div data-bookmark-dropdown style={{
+          position: 'fixed',
+          top: pos.top,
+          left: pos.left,
           minWidth: 210,
           maxWidth: 280,
           background: 'rgba(10,6,1,0.97)',
@@ -166,7 +184,8 @@ export default function BookmarkButton({ user, bookmarks, curBook, curChapter, o
               No bookmarks yet
             </p>
           )}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

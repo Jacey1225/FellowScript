@@ -50,6 +50,11 @@ struct ContentView: View {
         .fullScreenCover(isPresented: $appState.termsReacceptRequired) {
             TermsReacceptView()
         }
+        // Apple sign-in created this account without a name/email (only ever
+        // supplied on the first-ever authorization) — ask the user to set them.
+        .fullScreenCover(isPresented: $appState.needsProfileCompletion) {
+            CompleteProfileView()
+        }
         .onChange(of: appState.pendingBibleNav) { _, target in
             if target != nil { selectedTab = .bible }
         }

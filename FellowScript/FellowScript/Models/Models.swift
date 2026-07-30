@@ -20,6 +20,11 @@ struct FSUser: Codable, Identifiable {
     // Email-code 2FA toggle state (see AccountView's Two-Factor
     // Authentication section) — reflects the account's current setting.
     var mfa_enabled: Bool = false
+    // True when an Apple sign-in created this account without a real name/email
+    // (Apple only ever supplies them on the very first authorization for a given
+    // Apple ID + app — a missed grant can never be recovered from Apple again).
+    // The client should prompt the user to set both manually.
+    var needs_profile_completion: Bool = false
 
     var id: String { user_id }
     var initials: String { String(username.prefix(1)).uppercased() }
@@ -42,6 +47,7 @@ extension FSUser {
         timezone    = (try? c.decode(String.self, forKey: .timezone)) ?? "UTC"
         terms_reaccept_required = (try? c.decode(Bool.self, forKey: .terms_reaccept_required)) ?? false
         mfa_enabled = (try? c.decode(Bool.self, forKey: .mfa_enabled)) ?? false
+        needs_profile_completion = (try? c.decode(Bool.self, forKey: .needs_profile_completion)) ?? false
     }
 }
 

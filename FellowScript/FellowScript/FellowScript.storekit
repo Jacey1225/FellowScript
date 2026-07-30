@@ -34,7 +34,7 @@
               "locale" : "en_US"
             }
           ],
-          "productID" : "com.fellowscript.app.group1",
+          "productID" : "com.fellowscript.access.one",
           "recurringSubscriptionPeriod" : "P1M",
           "referenceName" : "Group 1",
           "subscriptionGroupID" : "20210001",
@@ -59,7 +59,7 @@
               "locale" : "en_US"
             }
           ],
-          "productID" : "com.fellowscript.app.group2",
+          "productID" : "com.fellowscript.access.two",
           "recurringSubscriptionPeriod" : "P1M",
           "referenceName" : "Group 2",
           "subscriptionGroupID" : "20210001",
@@ -84,7 +84,7 @@
               "locale" : "en_US"
             }
           ],
-          "productID" : "com.fellowscript.app.group3",
+          "productID" : "com.fellowscript.access.three",
           "recurringSubscriptionPeriod" : "P1M",
           "referenceName" : "Group 3",
           "subscriptionGroupID" : "20210001",
@@ -109,7 +109,7 @@
               "locale" : "en_US"
             }
           ],
-          "productID" : "com.fellowscript.app.group4",
+          "productID" : "com.fellowscript.access.four",
           "recurringSubscriptionPeriod" : "P1M",
           "referenceName" : "Group 4",
           "subscriptionGroupID" : "20210001",
@@ -134,7 +134,7 @@
               "locale" : "en_US"
             }
           ],
-          "productID" : "com.fellowscript.app.group5",
+          "productID" : "com.fellowscript.access.five",
           "recurringSubscriptionPeriod" : "P1M",
           "referenceName" : "Group 5",
           "subscriptionGroupID" : "20210001",
@@ -159,7 +159,7 @@
               "locale" : "en_US"
             }
           ],
-          "productID" : "com.fellowscript.app.group6",
+          "productID" : "com.fellowscript.access.six",
           "recurringSubscriptionPeriod" : "P1M",
           "referenceName" : "Group 6",
           "subscriptionGroupID" : "20210001",
@@ -184,7 +184,7 @@
               "locale" : "en_US"
             }
           ],
-          "productID" : "com.fellowscript.app.group7",
+          "productID" : "com.fellowscript.access.seven",
           "recurringSubscriptionPeriod" : "P1M",
           "referenceName" : "Group 7",
           "subscriptionGroupID" : "20210001",
@@ -209,7 +209,7 @@
               "locale" : "en_US"
             }
           ],
-          "productID" : "com.fellowscript.app.group8",
+          "productID" : "com.fellowscript.access.eight",
           "recurringSubscriptionPeriod" : "P1M",
           "referenceName" : "Group 8",
           "subscriptionGroupID" : "20210001",
