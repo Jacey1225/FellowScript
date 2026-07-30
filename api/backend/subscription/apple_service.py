@@ -21,14 +21,14 @@ logger = logging.getLogger(__name__)
 # in App Store Connect and StoreKitManager on iOS. One fixed-price product per
 # member count (1-8), since StoreKit can't compute an arbitrary price.
 APPLE_PRODUCTS: dict[str, int] = {
-    "com.fellowscript.app.group1": 1,
-    "com.fellowscript.app.group2": 2,
-    "com.fellowscript.app.group3": 3,
-    "com.fellowscript.app.group4": 4,
-    "com.fellowscript.app.group5": 5,
-    "com.fellowscript.app.group6": 6,
-    "com.fellowscript.app.group7": 7,
-    "com.fellowscript.app.group8": 8,
+    "com.fellowscript.access.one":   1,
+    "com.fellowscript.access.two":   2,
+    "com.fellowscript.access.three": 3,
+    "com.fellowscript.access.four":  4,
+    "com.fellowscript.access.five":  5,
+    "com.fellowscript.access.six":   6,
+    "com.fellowscript.access.seven": 7,
+    "com.fellowscript.access.eight": 8,
 }
 
 

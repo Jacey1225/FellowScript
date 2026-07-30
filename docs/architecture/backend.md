@@ -37,6 +37,8 @@ Web-only 2FA: if a user has 2FA enabled, `/login` doesn't issue a session — it
 
 **EULA gate (Guideline 1.2)**: `/signup`, `/auth/google`, and `/auth/apple` all require `terms_accepted: true` on new-account creation (422 otherwise) — enforced on all three since Apple may review via any of them. `CURRENT_TERMS_VERSION` (`schemas/users.py`) is stamped on every new account; if an existing account's stored version doesn't match on login, the response includes `terms_reaccept_required: true` and the client shows a blocking "Updated Terms" screen before calling `/user/{id}/accept-terms`. Accounts with `users.suspended_at` set (via the moderation CLI, see below) get a 403 on every auth path instead of a session.
 
+**Apple name/email fallback**: Apple only ever supplies `full_name`/`email` to the client on the very first authorization for a given Apple ID + app — a missed or incomplete grant (e.g. the user already authorized this app before, in testing or otherwise) can never be recovered from Apple again. `/auth/apple` sets `users.needs_profile_completion = true` on account creation whenever either is missing, and the response (and every subsequent `/auth/apple`, `/login`, `GET /user/{id}` response, since it's just another user field) includes it so the client can prompt the user to set a real username/email manually. `PUT /user/{id}` clears the flag as soon as a `username` or `email` is supplied.
+
 ---
 
 ## Layer 1 — `schemas/`
@@ -109,7 +111,7 @@ A sibling package to `interactions/` dedicated to billing and usage enforcement.
 
 Every new user (all three auth paths) gets a `plan_type='free'` subscription row created by `SubscriptionsManager.create_free_plan()`. Free-tier limits are enforced server-side via `check_limit()` before every create route.
 
-There is a single paid tier, `'group'`, covering however many people (1-8) the host selects. `schemas/subscription.py`'s `GROUP_PRICE_CENTS` dict is the server-authoritative price-by-member-count lookup (`price_for(member_count)`), replacing the old two-tier `individual`/`group` model — selecting 1 member is priced identically to the old Individual plan. `stripe_service.create_checkout_session` builds the Stripe Checkout line item's price inline from this table for any count (no pre-created Stripe Products needed); `apple_service.APPLE_PRODUCTS` maps 8 fixed-price StoreKit product IDs (`com.fellowscript.app.group1`…`group8`) to their member count, since Apple IAP can't compute an arbitrary price. A host can change their plan's member count later via `PUT /subscriptions/{id}` with `member_count`, which re-derives `price_cents`/`max_members`.
+There is a single paid tier, `'group'`, covering however many people (1-8) the host selects. `schemas/subscription.py`'s `GROUP_PRICE_CENTS` dict is the server-authoritative price-by-member-count lookup (`price_for(member_count)`), replacing the old two-tier `individual`/`group` model — selecting 1 member is priced identically to the old Individual plan. `stripe_service.create_checkout_session` builds the Stripe Checkout line item's price inline from this table for any count (no pre-created Stripe Products needed); `apple_service.APPLE_PRODUCTS` maps 8 fixed-price StoreKit product IDs (`com.fellowscript.access.one`…`com.fellowscript.access.eight`) to their member count, since Apple IAP can't compute an arbitrary price. A host can change their plan's member count later via `PUT /subscriptions/{id}` with `member_count`, which re-derives `price_cents`/`max_members`.
 
 ---
 

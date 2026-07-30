@@ -96,10 +96,10 @@ def load_users_data() -> dict:
         users: dict = {}
         db.cur.execute(
             "SELECT _id, username, email, hash_pass, apple_sub, google_sub, timezone, mfa_enabled, "
-            "terms_accepted_at, terms_version, suspended_at FROM users"
+            "terms_accepted_at, terms_version, suspended_at, needs_profile_completion FROM users"
         )
         for (_id, username, email, hash_pass, apple_sub, google_sub, timezone, mfa_enabled,
-             terms_accepted_at, terms_version, suspended_at) in db.cur.fetchall():
+             terms_accepted_at, terms_version, suspended_at, needs_profile_completion) in db.cur.fetchall():
             uid = str(_id)
             rec = {
                 "username": username, "email": email, "hash_pass": hash_pass or "",
@@ -109,6 +109,7 @@ def load_users_data() -> dict:
                 "terms_accepted_at": str(terms_accepted_at) if terms_accepted_at else None,
                 "terms_version": terms_version,
                 "suspended_at": str(suspended_at) if suspended_at else None,
+                "needs_profile_completion": bool(needs_profile_completion),
             }
             if apple_sub:
                 rec["apple_sub"] = apple_sub
@@ -168,18 +169,20 @@ def save_users_data(user_info: dict) -> None:
                 # may set it, so a routine profile edit can never un-suspend someone.
                 db.cur.execute(
                     "INSERT INTO users (_id, username, email, hash_pass, apple_sub, google_sub, timezone, "
-                    "terms_accepted_at, terms_version) "
-                    "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) "
+                    "terms_accepted_at, terms_version, needs_profile_completion) "
+                    "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,COALESCE(%s, FALSE)) "
                     "ON CONFLICT (_id) DO UPDATE SET username=EXCLUDED.username, "
                     "email=EXCLUDED.email, hash_pass=EXCLUDED.hash_pass, "
                     "apple_sub=COALESCE(EXCLUDED.apple_sub, users.apple_sub), "
                     "google_sub=COALESCE(EXCLUDED.google_sub, users.google_sub), "
                     "timezone=COALESCE(EXCLUDED.timezone, users.timezone), "
                     "terms_accepted_at=COALESCE(EXCLUDED.terms_accepted_at, users.terms_accepted_at), "
-                    "terms_version=COALESCE(EXCLUDED.terms_version, users.terms_version)",
+                    "terms_version=COALESCE(EXCLUDED.terms_version, users.terms_version), "
+                    "needs_profile_completion=COALESCE(EXCLUDED.needs_profile_completion, users.needs_profile_completion)",
                     (uid, d.get("username", ""), d.get("email", ""),
                      d.get("hash_pass", ""), d.get("apple_sub"), d.get("google_sub"),
-                     d.get("timezone"), d.get("terms_accepted_at"), d.get("terms_version")),
+                     d.get("timezone"), d.get("terms_accepted_at"), d.get("terms_version"),
+                     d.get("needs_profile_completion")),
                 )
                 db.conn.commit()
             except Exception as e:

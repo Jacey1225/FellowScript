@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { BookOutlined, DownOutlined } from '@ant-design/icons';
 
 const NT_FIRST = 'Matthew';
@@ -25,6 +26,7 @@ function BooksSection({ label, books, selected, onSelect }) {
 export default function BibleNavigator({ books, curBook, curChapter, onNavigate, chapterCount }) {
   const [open,         setOpen]         = useState(false);
   const [selectedBook, setSelectedBook] = useState(curBook || null);
+  const [widgetPos,    setWidgetPos]    = useState({ top: 0, left: 0, width: 680 });
   const widgetRef = useRef(null);
   const pillRef   = useRef(null);
 
@@ -43,6 +45,21 @@ export default function BibleNavigator({ books, curBook, curChapter, onNavigate,
     return () => document.removeEventListener('mousedown', handle);
   }, [open]);
 
+  // Rendered via a body portal at a viewport-fixed position (computed from the
+  // pill button) so the widget is never clipped by a dockable panel's own
+  // overflow:hidden content area. Mirrors the mobile-vs-desktop width the CSS
+  // media query used to apply, since the inline width now takes precedence.
+  const handleToggle = () => {
+    if (!open && pillRef.current) {
+      const rect = pillRef.current.getBoundingClientRect();
+      const mob   = window.innerWidth <= 1024;
+      const width = mob ? window.innerWidth - 20 : Math.min(680, window.innerWidth - 24);
+      const left  = mob ? 10 : Math.max(8, Math.min(rect.left, window.innerWidth - width - 8));
+      setWidgetPos({ top: rect.bottom + 2, left, width });
+    }
+    setOpen(v => !v);
+  };
+
   // Split books into OT / NT
   const ntIdx  = books.indexOf(NT_FIRST);
   const otBooks = ntIdx >= 0 ? books.slice(0, ntIdx) : books;
@@ -60,7 +77,7 @@ export default function BibleNavigator({ books, curBook, curChapter, onNavigate,
       <button
         ref={pillRef}
         className={`nav-pill-btn${open ? ' open' : ''}`}
-        onClick={() => setOpen(v => !v)}
+        onClick={handleToggle}
       >
         <BookOutlined style={{ fontSize: '0.72rem' }} />
         <span>{pillLabel}</span>
@@ -72,8 +89,9 @@ export default function BibleNavigator({ books, curBook, curChapter, onNavigate,
       </button>
 
       {/* Navigation widget */}
-      {open && (
-        <div ref={widgetRef} className="bib-nav-widget">
+      {open && createPortal(
+        <div ref={widgetRef} className="bib-nav-widget"
+          style={{ position: 'fixed', top: widgetPos.top, left: widgetPos.left, width: widgetPos.width }}>
 
           {/* Left: Books */}
           <div className="bib-nav-books">
@@ -117,7 +135,8 @@ export default function BibleNavigator({ books, curBook, curChapter, onNavigate,
             )}
           </div>
 
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

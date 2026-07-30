@@ -1094,6 +1094,11 @@
 <td>TIMESTAMPTZ</td>
 <td>Guideline 1.2 moderation eject — set only by <code>backend/moderation/admin_actions.py</code>, never by the normal profile-update path. A suspended account 403s on every auth route</td>
 </tr>
+<tr>
+<td><code>needs_profile_completion</code></td>
+<td>BOOLEAN</td>
+<td>Default <code>false</code>. Set <code>true</code> when a first-ever Apple sign-in is missing <code>full_name</code>/<code>email</code> — Apple only ever supplies these once per Apple ID + app, so a missed grant can't be recovered later. Cleared the next time the client sets a real <code>username</code>/<code>email</code> via <code>PUT /user/{id}</code></td>
+</tr>
 </tbody>
 </table>
 <hr />
@@ -1165,7 +1170,7 @@
 </tbody>
 </table>
 <p>Every new user receives a <code>plan_type='free'</code> row on signup. Free plans are excluded from <code>is_subscribed()</code> checks so free-tier limits still apply.</p>
-<p>There is a single paid tier (<code>'group'</code>) covering 1-8 members at a fixed per-count price (<code>schemas/subscription.py</code>'s <code>GROUP_PRICE_CENTS</code>) — the old separate <code>'individual'</code> plan_type was folded into this as the 1-member case (identical $10 price). Apple StoreKit needs one fixed-price product per member count (<code>com.fellowscript.app.group1</code> … <code>group8</code>) since IAP can't compute an arbitrary price; Stripe Checkout computes the price inline for any count via <code>price_data</code>, no pre-created Products needed.</p>
+<p>There is a single paid tier (<code>'group'</code>) covering 1-8 members at a fixed per-count price (<code>schemas/subscription.py</code>'s <code>GROUP_PRICE_CENTS</code>) — the old separate <code>'individual'</code> plan_type was folded into this as the 1-member case (identical $10 price). Apple StoreKit needs one fixed-price product per member count (<code>com.fellowscript.access.one</code> … <code>com.fellowscript.access.eight</code>) since IAP can't compute an arbitrary price; Stripe Checkout computes the price inline for any count via <code>price_data</code>, no pre-created Products needed.</p>
 <hr />
 <h3 id="notes"><code>notes</code></h3>
 <table>

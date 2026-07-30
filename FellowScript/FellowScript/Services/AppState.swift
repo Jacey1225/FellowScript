@@ -25,6 +25,10 @@ final class AppState: ObservableObject {
     // the Guideline 1.2 zero-tolerance rewrite) — the UI should block on a
     // re-consent screen until acceptTerms() is called.
     @Published var termsReacceptRequired = false
+    // Set when Apple created this account without a real name/email (only ever
+    // supplied on the very first authorization) — blocks on a screen asking the
+    // user to set them manually, since Apple can never resupply them.
+    @Published var needsProfileCompletion = false
 
     // Persisted across launches via UserDefaults (mirrors localStorage in AuthContext.jsx)
     @AppStorage("fs_user_id")        private var storedUserId:   String = ""
@@ -85,6 +89,15 @@ final class AppState: ObservableObject {
         termsReacceptRequired = false
     }
 
+    /// Sets a real username/email after Apple sign-in created the account
+    /// without them. Throws on failure so the view can show an error inline.
+    func completeProfile(username: String, email: String) async throws {
+        guard let uid = currentUser?.user_id else { return }
+        let user = try await service.updateUser(userId: uid, body: ["username": username, "email": email])
+        updateUser(user)
+        needsProfileCompletion = false
+    }
+
     func signOut() {
         storedUserId    = ""
         storedUsername  = ""
@@ -110,6 +123,7 @@ final class AppState: ObservableObject {
         currentUser    = user
         isAuthenticated = true
         termsReacceptRequired = user.terms_reaccept_required
+        needsProfileCompletion = user.needs_profile_completion
     }
 
     func requestPushNotifications() {

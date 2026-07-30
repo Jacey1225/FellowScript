@@ -661,6 +661,43 @@ body {
   margin-top: 0.2rem;
 }
 
+/* ── Agent response — no bubble, floats directly on the chat background
+   instead of a left-aligned received bubble (the user's own messages in
+   Agent Chat keep the normal .msg-bubble.sent treatment). The BLOCK is
+   centered in the chat column (width hugs its content, capped so long
+   replies still wrap), but the text WITHIN that block is left-aligned —
+   each line starts flush at the block's own left edge rather than being
+   individually centered. ── */
+.agent-response {
+  align-self: center;
+  width: fit-content;
+  max-width: 82%;
+  text-align: left;
+  padding: 0.3rem 0.5rem;
+  font-size: var(--pt-md);
+  line-height: 1.7;
+  color: rgba(244,228,193,0.8);
+}
+
+.agent-response-meta {
+  font-size: 0.58rem;
+  color: rgba(200,134,26,0.4);
+  margin-top: 0.3rem;
+  text-align: left;
+}
+
+.agent-response .fs-agent-markdown p          { margin: 0 0 0.55em; }
+.agent-response .fs-agent-markdown p:last-child { margin-bottom: 0; }
+.agent-response .fs-agent-markdown h3         { font-size: 0.85rem; color: var(--gold); margin: 0.7em 0 0.3em; font-family: 'DM Serif Display', serif; }
+.agent-response .fs-agent-markdown h4         { font-size: 0.8rem;  color: var(--gold); margin: 0.6em 0 0.25em; }
+.agent-response .fs-agent-markdown ul,
+.agent-response .fs-agent-markdown ol         { padding-left: 1.2em; margin: 0.3em 0 0.55em; }
+.agent-response .fs-agent-markdown li         { margin-bottom: 0.2em; }
+.agent-response .fs-agent-markdown strong     { color: var(--parchment); }
+.agent-response .fs-agent-markdown em         { color: rgba(244,228,193,0.65); font-style: italic; }
+.agent-response .fs-agent-markdown hr         { border: none; border-top: 1px solid rgba(200,134,26,0.18); margin: 0.6em 0; }
+.agent-response .fs-agent-markdown blockquote { border-left: 2px solid rgba(200,134,26,0.35); padding-left: 0.65em; margin: 0.4em 0; color: rgba(244,228,193,0.55); font-style: italic; }
+
 .msg-bubble-markdown p          { margin: 0 0 0.55em; }
 .msg-bubble-markdown p:last-child { margin-bottom: 0; }
 .msg-bubble-markdown h3         { font-size: 0.85rem; color: var(--gold); margin: 0.7em 0 0.3em; font-family: 'DM Serif Display', serif; }

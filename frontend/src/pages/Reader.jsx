@@ -1,14 +1,8 @@
-import React, { useEffect, useLayoutEffect, useState, useRef, useCallback } from 'react';
+import React, { useEffect, useLayoutEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Layout, Input, Button, Avatar, Typography, Divider, Modal, Form, Checkbox, Spin, Dropdown, Radio, message as antMessage } from 'antd';
-import { AgentMessage } from '../components/RichText.jsx';
-import {
-  SendOutlined, ArrowLeftOutlined, PlusOutlined,
-  MessageOutlined, BookOutlined, TeamOutlined,
-  EditOutlined, DeleteOutlined, UserAddOutlined,
-  RobotOutlined, CloseOutlined, BgColorsOutlined,
-  MoreOutlined, FlagOutlined, StopOutlined,
-} from '@ant-design/icons';
+import { Layout, Typography } from 'antd';
+import { MessageOutlined, BookOutlined, ReloadOutlined } from '@ant-design/icons';
+import { DockviewReact } from 'dockview-react';
 
 import AppNav           from '../components/AppNav.jsx';
 import BibleNavigator  from '../components/BibleNavigator.jsx';
@@ -16,8 +10,23 @@ import BibleCard       from '../components/BibleCard.jsx';
 import NotesSidebar    from '../components/NotesSidebar.jsx';
 import HighlightPicker from '../components/HighlightPicker.jsx';
 import SessionCreator  from '../components/SessionCreator.jsx';
-import SessionWidget   from '../components/SessionWidget.jsx';
 import BookmarkButton  from '../components/BookmarkButton.jsx';
+import ContactsPanel   from '../components/ContactsPanel.jsx';
+import ChatThread       from '../components/ChatThread.jsx';
+import AgentChatThread  from '../components/AgentChatThread.jsx';
+
+import BibleReaderPanelComponent from '../components/panels/BibleReaderPanel.jsx';
+import NotesPanelComponent       from '../components/panels/NotesPanel.jsx';
+import HighlightsPanelComponent  from '../components/panels/HighlightsPanel.jsx';
+import MessagingPanelComponent   from '../components/panels/MessagingPanel.jsx';
+import AgentChatPanelComponent   from '../components/panels/AgentChatPanel.jsx';
+import {
+  BibleReaderPanelContext, NotesPanelContext, HighlightsPanelContext,
+  MessagingPanelContext, AgentChatPanelContext,
+} from '../context/ReaderPanelContexts.jsx';
+import {
+  PANEL_IDS, loadSavedLayout, buildDefaultLayout, saveLayout, resetLayout,
+} from '../lib/readerDockLayout.js';
 
 import { useAuth }        from '../context/AuthContext.jsx';
 import { useAgentChat }  from '../hooks/useAgentChat.js';
@@ -27,9 +36,12 @@ import { useNotes }       from '../hooks/useNotes.js';
 import { useMessaging }   from '../hooks/useMessaging.js';
 import { useSessions }    from '../hooks/useSessions.js';
 import { useBookmarks }   from '../hooks/useBookmarks.js';
+import { useIsDesktopViewport } from '../hooks/useIsDesktopViewport.js';
 
-const { Text, Title } = Typography;
-const MOBILE_BP = 900;
+const { Text } = Typography;
+// Aligned with global.css's `@media (max-width: 1024px)` — the single
+// breakpoint that decides desktop-dockview vs. mobile-overlay layout.
+const MOBILE_BP = 1024;
 function isMobile() { return window.innerWidth <= MOBILE_BP; }
 
 const FONT_SIZES = [
@@ -39,624 +51,14 @@ const FONT_SIZES = [
 ];
 const FONT_SIZE_LABELS = ['Default', 'Large', 'Largest'];
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-function agentLabel(agent) {
-  if (agent?.name) return agent.name;
-  if (!agent?.role || agent.role.startsWith('You are a spiritual')) return 'Spiritual Guide';
-  const firstLine = agent.role.split('\n').find(l => l.trim());
-  return (firstLine || '').slice(0, 26) || 'Agent';
-}
-
-// ── Agent row ─────────────────────────────────────────────────────────────────
-
-function AgentRow({ agent, active, onOpen }) {
-  return (
-    <div
-      onClick={onOpen}
-      style={{
-        display: 'flex', alignItems: 'center', gap: '0.5rem',
-        padding: '0.55rem 0.8rem', cursor: 'pointer',
-        background: active ? 'rgba(200,134,26,0.12)' : 'transparent',
-        borderLeft: `2px solid ${active ? 'var(--gold)' : 'transparent'}`,
-        transition: 'background 0.15s, border-color 0.15s',
-      }}
-      onMouseEnter={e => { if (!active) e.currentTarget.style.background = 'rgba(200,134,26,0.06)'; }}
-      onMouseLeave={e => { if (!active) e.currentTarget.style.background = 'transparent'; }}
-    >
-      <div style={{
-        width: 30, height: 30, borderRadius: '50%', flexShrink: 0,
-        background: 'rgba(200,134,26,0.12)', border: 'none',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-      }}>
-        <RobotOutlined style={{ color: 'var(--gold)', fontSize: '0.8rem' }} />
-      </div>
-      <Text style={{
-        fontFamily: "'Inter', sans-serif", fontSize: '0.72rem',
-        color: active ? 'var(--parchment)' : 'rgba(244,228,193,0.65)',
-        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1,
-      }}>
-        {agentLabel(agent)}
-      </Text>
-    </div>
-  );
-}
-
-// ── Agent chat panel ──────────────────────────────────────────────────────────
-
-function AgentChatPanel({ agent, messages, user, onBack, onSend, agentThinking, curBook, curChapter, curVerse, allNotes, onNavigateVerse }) {
-  const [text,           setText]           = useState('');
-  const [context,        setContext]        = useState([]);
-  const [notePickerOpen, setNotePickerOpen] = useState(false);
-  const endRef        = useRef(null);
-  const notePickerRef = useRef(null);
-
-  useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
-
-  useEffect(() => {
-    const hide = e => { if (notePickerRef.current && !notePickerRef.current.contains(e.target)) setNotePickerOpen(false); };
-    document.addEventListener('mousedown', hide);
-    return () => document.removeEventListener('mousedown', hide);
-  }, []);
-
-  const addVerseContext = () => {
-    if (!curBook) return;
-    const ref = curVerse ? `${curBook} ${curChapter}:${curVerse}` : `${curBook} ${curChapter}`;
-    setContext(prev => prev.includes(ref) ? prev : [...prev, ref]);
-  };
-
-  const addNoteContext = (note) => {
-    const stripped = (note.text || '').replace(/<[^>]+>/g, '').slice(0, 120);
-    const ref = `"${note.title || 'Note'}" — ${stripped}${stripped.length >= 120 ? '…' : ''}`;
-    setContext(prev => [...prev, ref]);
-    setNotePickerOpen(false);
-  };
-
-  const handleSend = () => {
-    if (!text.trim()) return;
-    const fullContent = context.length
-      ? `${text.trim()}\n\n[Context: ${context.join('; ')}]`
-      : text.trim();
-    onSend(fullContent);
-    setText('');
-    setContext([]);
-  };
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', position: 'relative' }}>
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.8rem 1rem', borderBottom: '1px solid rgba(200,134,26,0.15)', flexShrink: 0 }}>
-        <Button type="text" icon={<ArrowLeftOutlined />} onClick={onBack} style={{ color: 'rgba(200,134,26,0.65)', padding: '0 4px' }} />
-        <div style={{ width: 26, height: 26, borderRadius: '50%', background: 'rgba(200,134,26,0.12)', border: '1px solid rgba(200,134,26,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-          <RobotOutlined style={{ color: 'var(--gold)', fontSize: '0.78rem' }} />
-        </div>
-        <Text strong style={{ fontFamily: "'Inter', sans-serif", fontSize: '0.88rem', color: 'var(--parchment)', flex: 1 }}>
-          {agentLabel(agent)}
-        </Text>
-      </div>
-
-      {/* Messages */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '0.75rem 0.85rem', display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
-        {messages.length === 0 && !agentThinking && (
-          <div style={{ textAlign: 'center', padding: '2.5rem 1rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.7rem' }}>
-            <div style={{ width: 42, height: 42, borderRadius: '50%', background: 'rgba(200,134,26,0.07)', border: '1px solid rgba(200,134,26,0.18)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <RobotOutlined style={{ color: 'rgba(200,134,26,0.4)', fontSize: '1.1rem' }} />
-            </div>
-            <Text style={{ fontSize: '0.72rem', color: 'rgba(244,228,193,0.22)', fontFamily: "'Inter', sans-serif", fontStyle: 'italic' }}>
-              Your spiritual guide is ready. Ask anything.
-            </Text>
-          </div>
-        )}
-        {messages.map((m, i) => (
-          <div key={i} className={`msg-bubble ${m.mine ? 'sent' : 'received'}`}>
-            {!m.mine && <div className="msg-bubble-sender">{m.sender}</div>}
-            <AgentMessage text={m.text} isMine={m.mine} onNavigate={onNavigateVerse} />
-            {m.timestamp && (
-              <div className="msg-bubble-meta">
-                {new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-              </div>
-            )}
-          </div>
-        ))}
-        {agentThinking && (
-          <div className="msg-bubble received">
-            <div className="msg-bubble-sender">Agent</div>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}>
-              <Spin size="small" />
-              <span style={{ fontSize: '0.72rem', color: 'rgba(244,228,193,0.38)', fontStyle: 'italic' }}>Thinking…</span>
-            </span>
-          </div>
-        )}
-        <div ref={endRef} />
-      </div>
-
-      {/* Note picker dropdown */}
-      {notePickerOpen && (
-        <div ref={notePickerRef} style={{
-          position: 'absolute', bottom: 100, left: 8, right: 8,
-          background: 'rgba(10,7,2,0.98)', border: 'none',
-          borderRadius: 8, maxHeight: 190, overflowY: 'auto', zIndex: 20, padding: '0.35rem',
-        }}>
-          <Text style={{ display: 'block', fontSize: '0.52rem', letterSpacing: '0.18em', textTransform: 'uppercase', color: 'rgba(200,134,26,0.4)', padding: '0.3rem 0.5rem 0.4rem' }}>
-            Select a note
-          </Text>
-          {!(allNotes || []).length
-            ? <Text style={{ fontSize: '0.7rem', color: 'rgba(244,228,193,0.3)', display: 'block', padding: '0.4rem 0.6rem' }}>No notes saved yet.</Text>
-            : (allNotes || []).slice(0, 12).map((note, i) => (
-                <div
-                  key={note.id || i}
-                  onClick={() => addNoteContext(note)}
-                  style={{ padding: '0.4rem 0.6rem', cursor: 'pointer', borderRadius: 5, fontSize: '0.72rem', fontFamily: "'Inter', sans-serif", color: 'rgba(244,228,193,0.7)', transition: 'background 0.12s' }}
-                  onMouseEnter={e => e.currentTarget.style.background = 'rgba(200,134,26,0.09)'}
-                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                >
-                  {note.title || 'Untitled note'}
-                </div>
-              ))
-          }
-        </div>
-      )}
-
-      {/* Context bar */}
-      <div style={{ padding: '0.28rem 0.75rem', borderTop: '1px solid rgba(200,134,26,0.1)', background: 'rgba(200,134,26,0.035)', display: 'flex', flexWrap: 'wrap', gap: '0.3rem', alignItems: 'center', flexShrink: 0, minHeight: 32 }}>
-        <Button size="small" type="text" icon={<BookOutlined style={{ fontSize: '0.66rem' }} />} onClick={addVerseContext} disabled={!curBook}
-          style={{ fontSize: '0.6rem', color: 'rgba(200,134,26,0.65)', padding: '0 5px', height: 22 }}>
-          Verse
-        </Button>
-        <Button size="small" type="text" icon={<EditOutlined style={{ fontSize: '0.66rem' }} />} onClick={() => setNotePickerOpen(v => !v)}
-          style={{ fontSize: '0.6rem', color: 'rgba(200,134,26,0.65)', padding: '0 5px', height: 22 }}>
-          Notes
-        </Button>
-        {context.length > 0 && <Divider type="vertical" style={{ borderColor: 'rgba(200,134,26,0.15)', margin: '0 1px', height: 12 }} />}
-        {context.map((c, i) => (
-          <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.2rem', padding: '0.1rem 0.38rem', background: 'rgba(200,134,26,0.1)', border: '1px solid rgba(200,134,26,0.22)', borderRadius: 3, fontSize: '0.58rem', color: 'rgba(244,228,193,0.75)', fontFamily: "'Inter', sans-serif", maxWidth: 130 }}>
-            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{c}</span>
-            <CloseOutlined style={{ fontSize: '0.5rem', cursor: 'pointer', color: 'rgba(200,134,26,0.6)', flexShrink: 0 }} onClick={() => setContext(prev => prev.filter(x => x !== c))} />
-          </span>
-        ))}
-      </div>
-
-      {/* Input */}
-      <div style={{ display: 'flex', gap: '0.4rem', padding: '0.6rem 0.75rem', borderTop: '1px solid rgba(200,134,26,0.15)', flexShrink: 0, alignItems: 'flex-end' }}>
-        <Input
-          value={text}
-          onChange={e => setText(e.target.value)}
-          onPressEnter={e => { if (!e.shiftKey) { e.preventDefault(); handleSend(); } }}
-          placeholder="Ask your spiritual guide…"
-          style={{ flex: 1, borderRadius: 20, fontSize: '0.82rem' }}
-        />
-        <Button type="primary" shape="circle" icon={<SendOutlined />} onClick={handleSend} disabled={!text.trim() || agentThinking} style={{ flexShrink: 0 }} />
-      </div>
-    </div>
-  );
-}
-
-// ── Contacts island ───────────────────────────────────────────────────────────
-
-function ContactRow({ contact, active, onOpen, onRemove, onEdit, onReport, onBlock }) {
-  const isFriend = contact.type === 'friend';
-  const menuItems = isFriend ? [
-    { key: 'report', icon: <FlagOutlined />, label: 'Report User' },
-    { key: 'block', icon: <StopOutlined />, label: 'Block User', danger: true },
-    { key: 'remove', icon: <DeleteOutlined />, label: 'Remove Friend', danger: true },
-  ] : [
-    { key: 'edit', icon: <EditOutlined />, label: 'Edit Group' },
-    { key: 'remove', icon: <DeleteOutlined />, label: 'Leave Group', danger: true },
-  ];
-  const handleMenuClick = ({ key, domEvent }) => {
-    domEvent.stopPropagation();
-    if (key === 'report') onReport(contact);
-    else if (key === 'block') onBlock(contact);
-    else if (key === 'remove') onRemove();
-    else if (key === 'edit') onEdit();
-  };
-  return (
-    <div
-      onClick={() => onOpen(contact)}
-      style={{
-        display: 'flex', alignItems: 'center', gap: '0.5rem',
-        padding: '0.55rem 0.8rem', cursor: 'pointer',
-        background: active ? 'rgba(200,134,26,0.12)' : 'transparent',
-        borderLeft: `2px solid ${active ? 'var(--gold)' : 'transparent'}`,
-        transition: 'background 0.15s, border-color 0.15s',
-      }}
-      onMouseEnter={e => { if (!active) e.currentTarget.style.background = 'rgba(200,134,26,0.06)'; }}
-      onMouseLeave={e => { if (!active) e.currentTarget.style.background = 'transparent'; }}
-    >
-      <Avatar
-        size={30}
-        style={{ background: 'rgba(200,134,26,0.15)', border: 'none', color: 'var(--gold)', fontSize: '0.72rem', flexShrink: 0, fontFamily: "'DM Serif Display', serif" }}
-      >
-        {contact.name[0].toUpperCase()}
-      </Avatar>
-      <Text
-        style={{ fontFamily: "'Inter', sans-serif", fontSize: '0.72rem', color: active ? 'var(--parchment)' : 'rgba(244,228,193,0.65)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}
-      >
-        {contact.name}
-      </Text>
-      <Dropdown menu={{ items: menuItems, onClick: handleMenuClick }} trigger={['click']} placement="bottomRight">
-        <Button
-          type="text" size="small" icon={<MoreOutlined />}
-          onClick={e => e.stopPropagation()}
-          style={{ color: 'rgba(200,134,26,0.4)', padding: '0 4px', flexShrink: 0 }}
-        />
-      </Dropdown>
-    </div>
-  );
-}
-
-// ── Report user modal ─────────────────────────────────────────────────────────
-
-const REPORT_REASONS = [
-  { value: 'harassment', label: 'Harassment or abusive behavior' },
-  { value: 'hate_speech', label: 'Hate speech or discrimination' },
-  { value: 'sexual_content', label: 'Sexually explicit or inappropriate content' },
-  { value: 'spam', label: 'Spam or scam' },
-  { value: 'other', label: 'Other' },
-];
-
-function ReportUserModal({ target, onSubmit, onClose }) {
-  const [reason, setReason] = useState('harassment');
-  const [detail, setDetail] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-
-  useEffect(() => { if (target) { setReason('harassment'); setDetail(''); } }, [target]);
-
-  const handleOk = async () => {
-    setSubmitting(true);
-    const ok = await onSubmit(target.id, reason, detail);
-    setSubmitting(false);
-    antMessage[ok ? 'success' : 'error'](ok ? 'Report submitted. We review every report within 24 hours.' : 'Could not submit report.');
-    onClose();
-  };
-
-  return (
-    <Modal
-      open={!!target}
-      title={<Text style={{ fontFamily: "'DM Serif Display', serif", color: 'var(--parchment)' }}>Report {target?.name}</Text>}
-      onOk={handleOk}
-      onCancel={onClose}
-      confirmLoading={submitting}
-      okText="Submit Report"
-      okButtonProps={{ danger: true }}
-    >
-      <Radio.Group value={reason} onChange={e => setReason(e.target.value)} style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>
-        {REPORT_REASONS.map(r => (
-          <Radio key={r.value} value={r.value} style={{ color: 'rgba(244,228,193,0.75)' }}>{r.label}</Radio>
-        ))}
-      </Radio.Group>
-      <Input.TextArea
-        placeholder="Additional details (optional)"
-        value={detail}
-        onChange={e => setDetail(e.target.value)}
-        autoSize={{ minRows: 2, maxRows: 5 }}
-      />
-    </Modal>
-  );
-}
-
-function ContactsPanel({
-  user, friends, groups, currentContact,
-  onOpen, onAddFriend, onRemoveFriend, onReportUser, onBlockUser, onCreateGroup, onUpdateGroup, onLeaveGroup,
-  loaded, onLoad,
-  agents, activeAgent, onOpenAgent, onNewAgent,
-}) {
-  const [friendInput,    setFriendInput]    = useState('');
-  const [showAddFriend,  setShowAddFriend]  = useState(false);
-  const [friendMsg,      setFriendMsg]      = useState(null); // { type: 'success'|'error', text }
-  const [groupModal,     setGroupModal]     = useState(false);
-  const [editingGroup,   setEditingGroup]   = useState(null);
-  const [reportTarget,   setReportTarget]   = useState(null);
-  const [form]                              = Form.useForm();
-
-  const handleBlock = (contact) => {
-    Modal.confirm({
-      title: `Block ${contact.name}?`,
-      content: "They won't be able to contact you or add you as a friend, and their existing content will be removed from your view. We'll be notified so we can review the situation.",
-      okText: 'Block', okButtonProps: { danger: true },
-      onOk: async () => {
-        const ok = await onBlockUser(contact.id);
-        antMessage[ok ? 'success' : 'error'](ok ? `${contact.name} has been blocked.` : 'Could not block this user.');
-        await onLoad();
-      },
-    });
-  };
-
-  useEffect(() => { if (!loaded) onLoad(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const handleAddFriend = async () => {
-    if (!friendInput.trim()) return;
-    const result = await onAddFriend(friendInput.trim());
-    if (result.ok) {
-      setFriendInput('');
-      setFriendMsg({ type: 'success', text: 'Friend request sent!' });
-      await onLoad();
-      setTimeout(() => { setShowAddFriend(false); setFriendMsg(null); }, 1800);
-    } else {
-      setFriendMsg({ type: 'error', text: result.detail || 'Request failed.' });
-    }
-  };
-
-  const handleGroupOk = async () => {
-    const vals = form.getFieldsValue();
-    if (editingGroup) {
-      await onUpdateGroup(editingGroup.id, vals.title, vals.members || []);
-    } else {
-      await onCreateGroup(vals.title, vals.members || []);
-    }
-    setGroupModal(false);
-    setEditingGroup(null);
-    form.resetFields();
-    await onLoad();
-  };
-
-  const openNewGroup = () => { setEditingGroup(null); form.resetFields(); setGroupModal(true); };
-
-  if (!user) {
-    return (
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', padding: '1.2rem', textAlign: 'center', gap: '0.8rem' }}>
-        <MessageOutlined style={{ fontSize: 22, color: 'rgba(200,134,26,0.35)' }} />
-        <Text style={{ fontSize: '0.68rem', color: 'rgba(244,228,193,0.3)', lineHeight: 1.5 }}>Sign in to message study partners.</Text>
-      </div>
-    );
-  }
-
-  const groupList = Object.entries(groups || {});
-
-  return (
-    <>
-      <div style={{ padding: '0.9rem 0.8rem 0.6rem', borderBottom: '1px solid rgba(200,134,26,0.12)', flexShrink: 0 }}>
-        <Text style={{ fontFamily: "'Inter', sans-serif", fontSize: '0.58rem', letterSpacing: '0.24em', textTransform: 'uppercase', color: 'rgba(200,134,26,0.55)' }}>
-          Messages
-        </Text>
-      </div>
-
-      <div style={{ flex: 1, overflowY: 'auto' }}>
-        {/* Friends */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.55rem 0.8rem 0.25rem' }}>
-          <Text style={{ fontSize: '0.52rem', letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(200,134,26,0.4)' }}>Friends</Text>
-          <Button type="text" size="small" icon={<UserAddOutlined />} onClick={() => setShowAddFriend(v => !v)}
-            style={{ color: 'rgba(200,134,26,0.5)', padding: '0 3px', height: 20 }} />
-        </div>
-        {showAddFriend && (
-          <div style={{ padding: '0.25rem 0.7rem 0.4rem' }}>
-            <Input
-              size="small" placeholder="Username"
-              value={friendInput}
-              onChange={e => { setFriendInput(e.target.value); if (friendMsg) setFriendMsg(null); }}
-              onPressEnter={handleAddFriend}
-              suffix={<Button type="link" size="small" onClick={handleAddFriend} style={{ padding: 0, fontSize: '0.6rem' }}>Add</Button>}
-              style={{ fontSize: '0.72rem' }}
-            />
-            {friendMsg && (
-              <div style={{
-                marginTop: '0.3rem',
-                fontSize: '0.63rem',
-                fontFamily: "'Inter', sans-serif",
-                color: friendMsg.type === 'success' ? '#6dbf7e' : '#e07070',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.3rem',
-              }}>
-                <span>{friendMsg.type === 'success' ? '✓' : '✕'}</span>
-                {friendMsg.text}
-              </div>
-            )}
-          </div>
-        )}
-        {!loaded
-          ? <div style={{ textAlign: 'center', padding: '0.8rem' }}><Spin size="small" /></div>
-          : friends.length === 0
-            ? <Text style={{ display: 'block', textAlign: 'center', padding: '0.6rem 0.5rem', color: 'rgba(244,228,193,0.2)', fontSize: '0.62rem' }}>No friends yet</Text>
-            : friends.map(f => (
-                <ContactRow key={f.id} contact={f} active={currentContact?.id === f.id} onOpen={onOpen}
-                  onRemove={() => { onRemoveFriend(f.id); onLoad(); }}
-                  onReport={setReportTarget} onBlock={handleBlock} />
-              ))
-        }
-
-        {/* Groups */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.55rem 0.8rem 0.25rem', borderTop: '1px solid rgba(200,134,26,0.08)', marginTop: '0.3rem' }}>
-          <Text style={{ fontSize: '0.52rem', letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(200,134,26,0.4)' }}>Groups</Text>
-          <Button type="text" size="small" icon={<PlusOutlined />} onClick={openNewGroup}
-            style={{ color: 'rgba(200,134,26,0.5)', padding: '0 3px', height: 20 }} />
-        </div>
-        {groupList.length === 0
-          ? <Text style={{ display: 'block', textAlign: 'center', padding: '0.6rem 0.5rem', color: 'rgba(244,228,193,0.2)', fontSize: '0.62rem' }}>No groups yet</Text>
-          : groupList.map(([gid, g]) => {
-              const contact = { id: gid, name: g.title || gid.slice(0, 8), type: 'group', toUsers: g.users || [], group_id: gid };
-              return (
-                <ContactRow key={gid} contact={contact} active={currentContact?.id === gid} onOpen={onOpen}
-                  onRemove={() => { onLeaveGroup(gid); onLoad(); }}
-                  onEdit={() => { setEditingGroup(contact); form.setFieldsValue({ title: g.title, members: (g.users || []).filter(id => id !== user?.user_id) }); setGroupModal(true); }}
-                />
-              );
-            })
-        }
-
-        {/* Agents */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.55rem 0.8rem 0.25rem', borderTop: '1px solid rgba(200,134,26,0.08)', marginTop: '0.3rem' }}>
-          <Text style={{ fontSize: '0.52rem', letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(200,134,26,0.4)' }}>Agents</Text>
-          <Button type="text" size="small" icon={<PlusOutlined />} onClick={onNewAgent}
-            style={{ color: 'rgba(200,134,26,0.5)', padding: '0 3px', height: 20 }} />
-        </div>
-        {(agents || []).length === 0
-          ? <Text style={{ display: 'block', textAlign: 'center', padding: '0.6rem 0.5rem', color: 'rgba(244,228,193,0.2)', fontSize: '0.62rem' }}>No agent chats yet</Text>
-          : (agents || []).filter(a => a.enabled !== false).map(agent => (
-              <AgentRow key={agent.id} agent={agent} active={activeAgent?.id === agent.id} onOpen={() => onOpenAgent(agent)} />
-            ))
-        }
-      </div>
-
-      {/* Group modal */}
-      <Modal
-        open={groupModal}
-        title={<Text style={{ fontFamily: "'DM Serif Display', serif", color: 'var(--parchment)' }}>{editingGroup ? 'Edit Group' : 'New Group'}</Text>}
-        onOk={handleGroupOk}
-        onCancel={() => { setGroupModal(false); setEditingGroup(null); form.resetFields(); }}
-        okText={editingGroup ? 'Update' : 'Create'}
-      >
-        <Form form={form} layout="vertical">
-          <Form.Item name="title" label="Group name" rules={[{ required: true }]}>
-            <Input placeholder="Study Group" />
-          </Form.Item>
-          <Form.Item name="members" label="Members">
-            <Checkbox.Group style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {friends.map(f => (
-                <Checkbox key={f.id} value={f.id} style={{ color: 'rgba(244,228,193,0.6)' }}>{f.name}</Checkbox>
-              ))}
-            </Checkbox.Group>
-          </Form.Item>
-        </Form>
-      </Modal>
-
-      <ReportUserModal
-        target={reportTarget}
-        onSubmit={(id, reason, detail) => onReportUser(id, reason, detail)}
-        onClose={() => setReportTarget(null)}
-      />
-    </>
-  );
-}
-
-// ── Chat panel (iMessage style) ───────────────────────────────────────────────
-
-function ChatPanel({
-  contact, messages, groupMembers, user, onBack, onSend,
-  sessions, activeSessionId, talkingUserId,
-  onJoinSession, onLeaveSession, onOpenSessionCreator,
-  onEditSession, onDeleteSession, onNavigateVerse,
-  videoEnabled, videoTiles, onToggleVideo, bindVideoTile,
-}) {
-  const [text, setText]               = useState('');
-  const [showMembers, setShowMembers] = useState(false);
-  const endRef = useRef(null);
-
-  useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
-
-  const handleSend = () => {
-    if (!text.trim()) return;
-    onSend(text.trim());
-    setText('');
-  };
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.8rem 1rem', borderBottom: '1px solid rgba(200,134,26,0.15)', flexShrink: 0 }}>
-        <Button type="text" icon={<ArrowLeftOutlined />} onClick={onBack}
-          style={{ color: 'rgba(200,134,26,0.65)', padding: '0 4px' }} />
-        <Text
-          strong
-          style={{ fontFamily: "'Inter', sans-serif", fontSize: '0.88rem', color: 'var(--parchment)', flex: 1, cursor: contact?.type === 'group' ? 'pointer' : 'default' }}
-          onClick={() => contact?.type === 'group' && setShowMembers(v => !v)}
-        >
-          {contact?.name}
-          {contact?.type === 'group' && <TeamOutlined style={{ marginLeft: 6, fontSize: '0.72rem', color: 'rgba(200,134,26,0.5)' }} />}
-        </Text>
-        <button
-          onClick={onOpenSessionCreator}
-          style={{
-            background: 'rgba(200,134,26,0.08)',
-            border: 'none',
-            borderRadius: 6,
-            color: 'rgba(200,134,26,0.75)',
-            cursor: 'pointer',
-            fontSize: '0.62rem',
-            letterSpacing: '0.06em',
-            fontFamily: "'Inter', sans-serif",
-            padding: '0.22rem 0.55rem',
-            whiteSpace: 'nowrap',
-            transition: 'background 0.15s, border-color 0.15s, color 0.15s',
-          }}
-          onMouseEnter={e => { e.currentTarget.style.background = 'rgba(200,134,26,0.16)'; e.currentTarget.style.borderColor = 'rgba(200,134,26,0.55)'; e.currentTarget.style.color = 'var(--gold)'; }}
-          onMouseLeave={e => { e.currentTarget.style.background = 'rgba(200,134,26,0.08)'; e.currentTarget.style.borderColor = 'rgba(200,134,26,0.28)'; e.currentTarget.style.color = 'rgba(200,134,26,0.75)'; }}
-        >
-          + Session
-        </button>
-      </div>
-
-      {/* Session island widgets */}
-      <SessionWidget
-        sessions={sessions}
-        user={user}
-        activeSessionId={activeSessionId}
-        talkingUserId={talkingUserId}
-        onJoin={onJoinSession}
-        onLeave={onLeaveSession}
-        onEdit={onEditSession}
-        onDelete={onDeleteSession}
-        onNavigateVerse={onNavigateVerse}
-        videoEnabled={videoEnabled}
-        videoTiles={videoTiles}
-        onToggleVideo={onToggleVideo}
-        bindVideoTile={bindVideoTile}
-      />
-
-      {/* Group members panel */}
-      {showMembers && contact?.type === 'group' && (
-        <div style={{ padding: '0.7rem 1rem', borderBottom: '1px solid rgba(200,134,26,0.12)', background: 'rgba(200,134,26,0.04)', maxHeight: 160, overflowY: 'auto', flexShrink: 0 }}>
-          <Text style={{ fontSize: '0.55rem', letterSpacing: '0.18em', textTransform: 'uppercase', color: 'rgba(200,134,26,0.45)', display: 'block', marginBottom: '0.4rem' }}>Members</Text>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', marginBottom: '0.3rem' }}>
-            <Avatar size={22} style={{ background: 'rgba(200,134,26,0.12)', border: 'none', color: 'var(--gold)', fontSize: '0.55rem' }}>
-              {(user?.username || 'Y')[0].toUpperCase()}
-            </Avatar>
-            <Text style={{ fontSize: '0.72rem', color: 'var(--gold)', fontFamily: "'Inter', sans-serif" }}>{user?.username} (you)</Text>
-          </div>
-          {groupMembers.map((m, i) => {
-            const uname = m.username || m.user_id?.slice(0, 8) || '?';
-            return (
-              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', marginBottom: '0.3rem' }}>
-                <Avatar size={22} style={{ background: 'rgba(200,134,26,0.12)', border: 'none', color: 'var(--gold)', fontSize: '0.55rem' }}>
-                  {uname[0].toUpperCase()}
-                </Avatar>
-                <Text style={{ fontSize: '0.72rem', color: 'rgba(244,228,193,0.65)', fontFamily: "'Inter', sans-serif" }}>{uname}</Text>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Messages */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '0.75rem 0.85rem', display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
-        {messages.length === 0 && (
-          <div style={{ textAlign: 'center', padding: '2rem 1rem' }}>
-            <Text style={{ fontSize: '0.72rem', color: 'rgba(244,228,193,0.22)', fontFamily: "'Inter', sans-serif" }}>No messages yet. Say hello!</Text>
-          </div>
-        )}
-        {messages.map((m, i) => (
-          <div key={i} className={`msg-bubble ${m.mine ? 'sent' : 'received'}`}>
-            {!m.mine && m.sender && <div className="msg-bubble-sender">{m.sender}</div>}
-            {m.text}
-            {m.timestamp && (
-              <div className="msg-bubble-meta">
-                {new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-              </div>
-            )}
-          </div>
-        ))}
-        <div ref={endRef} />
-      </div>
-
-      {/* Input */}
-      <div style={{ display: 'flex', gap: '0.4rem', padding: '0.65rem 0.8rem', borderTop: '1px solid rgba(200,134,26,0.15)', flexShrink: 0, alignItems: 'flex-end' }}>
-        <Input
-          value={text}
-          onChange={e => setText(e.target.value)}
-          onPressEnter={handleSend}
-          placeholder="Message…"
-          style={{ flex: 1, borderRadius: 20, fontSize: '0.82rem' }}
-        />
-        <Button
-          type="primary" shape="circle" icon={<SendOutlined />}
-          onClick={handleSend}
-          disabled={!text.trim()}
-          style={{ flexShrink: 0 }}
-        />
-      </div>
-    </div>
-  );
-}
+// Registered once — dockview looks panels up by this id, matching PANEL_IDS.
+const PANEL_COMPONENTS = {
+  [PANEL_IDS.BIBLE]:      BibleReaderPanelComponent,
+  [PANEL_IDS.NOTES]:      NotesPanelComponent,
+  [PANEL_IDS.HIGHLIGHTS]: HighlightsPanelComponent,
+  [PANEL_IDS.MESSAGING]:  MessagingPanelComponent,
+  [PANEL_IDS.AGENT_CHAT]: AgentChatPanelComponent,
+};
 
 // ── Main Reader ───────────────────────────────────────────────────────────────
 
@@ -672,6 +74,11 @@ export default function Reader() {
   } = useBible();
 
   const [curVerse,       setCurVerse]       = useState(null);
+  // Highlight-picker popover state — only used by the mobile branch's own
+  // inline Bible-reading JSX below; the desktop dockview branch's
+  // BibleReaderPanel keeps an independent copy of this same local state,
+  // since the two render trees are mutually exclusive (only one is ever
+  // mounted at a time) but each needs its own picker/scroll-position state.
   const [pickerVisible,  setPickerVisible]  = useState(false);
   const [pickerPos,      setPickerPos]      = useState({ x: 0, y: 0 });
   const [selectedVerse,  setSelectedVerse]  = useState(null);
@@ -721,14 +128,11 @@ export default function Reader() {
 
   const [contactsLoaded, setContactsLoaded] = useState(false);
 
-  // Desktop icon-rail panel state
-  const [openPanel, setOpenPanel] = useState(null); // 'notes' | 'group' | null
-
-  // Mobile overlay state
+  // Mobile overlay state (unrelated to the desktop dockview layout below)
   const [mobileSidebar, setMobileSidebar] = useState(null); // 'notes' | 'messages' | null
-  const isMob = isMobile();
+  const isDesktop = useIsDesktopViewport();
 
-  // Bible font size
+  // Bible font size — mobile-branch copy (see note on pickerVisible above).
   const [fontSizeIdx, setFontSizeIdx] = useState(() => {
     try { return Math.min(parseInt(localStorage.getItem('fs_font_size') || '0', 10), FONT_SIZES.length - 1); }
     catch { return 0; }
@@ -742,6 +146,11 @@ export default function Reader() {
   }, [fontSizeIdx]);
 
   const cycleFontSize = useCallback(() => setFontSizeIdx(i => (i + 1) % FONT_SIZES.length), []);
+
+  // Dockview (desktop) — api ref + layout persistence bookkeeping.
+  const dockviewApiRef  = useRef(null);
+  const disposableRef   = useRef(null);
+  const saveTimerRef    = useRef(null);
 
   // ── Init ────────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -809,17 +218,9 @@ export default function Reader() {
     if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
   }, []);
 
-  // Mirror panel state on #root so CSS can constrain nav dropdowns
-  useEffect(() => {
-    const root = document.getElementById('root');
-    if (!root) return;
-    if (openPanel) root.classList.add('panel-open');
-    else root.classList.remove('panel-open');
-    return () => root.classList.remove('panel-open');
-  }, [openPanel]);
-
   // Scroll to top synchronously before paint whenever a new chapter loads without a target verse.
-  // #root is the real scroll container (height:100% + overflow-x:hidden forces overflow-y:auto).
+  // #root is the mobile branch's real scroll container; inert on desktop, where
+  // the dockview panel manages its own internal scrolling instead.
   useLayoutEffect(() => {
     if (!chapterHTML || curVerse) return;
     const root = document.getElementById('root');
@@ -843,6 +244,14 @@ export default function Reader() {
     return () => document.removeEventListener('click', hide);
   }, []);
 
+  // Clean up the dockview layout-change subscription on unmount.
+  useEffect(() => {
+    return () => {
+      disposableRef.current?.dispose();
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    };
+  }, []);
+
   // ── Handlers ────────────────────────────────────────────────────────────────
   const handleNavigate = useCallback((book, ch) => {
     setBook(book);
@@ -860,10 +269,6 @@ export default function Reader() {
 
   const getChapterCount = useCallback((book) => chapterCount(book, null), [chapterCount]);
 
-  const handleVerseChange   = useCallback((vs) => {
-    setCurVerse(vs);
-    document.getElementById(`vs${vs}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  }, []);
   const handlePrev = useCallback(() => { if (curChapter > 1) { setChapter(curChapter - 1, null, null); setCurVerse(null); } }, [curChapter, setChapter]);
   const handleNext = useCallback(() => { const mx = chapterCount(curBook, null); if (curChapter < mx) { setChapter(curChapter + 1, null, null); setCurVerse(null); } }, [curBook, curChapter, chapterCount, setChapter]);
 
@@ -903,7 +308,6 @@ export default function Reader() {
     closeAgentChat();
     await openChat(contact);
     loadSessions(contact);
-    setOpenPanel('group');
     if (isMobile()) setMobileSidebar('messages');
   }, [openChat, loadSessions, closeAgentChat]);
 
@@ -912,7 +316,6 @@ export default function Reader() {
   const handleOpenAgent = useCallback(async (agent) => {
     closeChat();
     await openAgentChat(agent);
-    setOpenPanel('group');
     if (isMobile()) setMobileSidebar('messages');
   }, [openAgentChat, closeChat]);
 
@@ -936,12 +339,30 @@ export default function Reader() {
     }
   }, [sessions, activeSessionId, leaveSession, agents, currentContact, summarizeSession, loadNotes]);
 
+  // ── Dockview (desktop) ────────────────────────────────────────────────────────
+  const handleDockviewReady = useCallback((event) => {
+    const api = event.api;
+    dockviewApiRef.current = api;
+    const loaded = loadSavedLayout(api);
+    if (!loaded) buildDefaultLayout(api);
+
+    disposableRef.current?.dispose();
+    disposableRef.current = api.onDidLayoutChange(() => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = setTimeout(() => saveLayout(api), 400);
+    });
+  }, []);
+
+  const handleResetLayout = useCallback(() => {
+    if (dockviewApiRef.current) resetLayout(dockviewApiRef.current);
+  }, []);
+
   // ── Derived ─────────────────────────────────────────────────────────────────
   const preamble = getPreamble(curBook, null);
   const chCount  = chapterCount(curBook, null);
   const notesData = { all: allNotes, filtered: filteredNotes, group: groupNotes, filteredGroup };
 
-  // Shared notes sidebar props
+  // Shared notes sidebar props (mobile only — desktop uses NotesPanelContext/HighlightsPanelContext)
   const notesSidebarProps = {
     user, notes: notesData, curBook, curChapter, curVerse,
     groups, currentGroupId, onGroupChange: handleGroupChange,
@@ -954,7 +375,7 @@ export default function Reader() {
     onNavigateVerse: handleNavigateVerse,
   };
 
-  // Shared contacts props
+  // Shared contacts props (mobile only — desktop uses MessagingPanelContext/AgentChatPanelContext)
   const contactsProps = {
     user, friends, groups: msgGroups, currentContact,
     onOpen: handleOpenChat,
@@ -965,228 +386,226 @@ export default function Reader() {
     agents, activeAgent, onOpenAgent: handleOpenAgent, onNewAgent: handleNewAgent,
   };
 
+  // ── Desktop dockview panel context values ────────────────────────────────────
+  const bibleReaderPanelValue = useMemo(() => ({
+    user, curBook, curChapter, curVerse,
+    books, chapterHTML, loading, loadError, preamble,
+    getChapterCount, verseCount,
+    onNavigate: handleNavigate, onPrev: handlePrev, onNext: handleNext,
+    onVerseSelected: setCurVerse,
+    applyHighlights, setHighlight, clearHighlight,
+    bookmarks, addBookmark, removeBookmark,
+  }), [user, curBook, curChapter, curVerse, books, chapterHTML, loading, loadError, preamble,
+       getChapterCount, verseCount, handleNavigate, handlePrev, handleNext,
+       applyHighlights, setHighlight, clearHighlight, bookmarks, addBookmark, removeBookmark]);
+
+  const notesPanelValue = useMemo(() => ({
+    user, currentGroupId, groups, onGroupChange: handleGroupChange, onNavigateVerse: handleNavigateVerse,
+    notesData, groupLoading, filterActive,
+    saveNote, deleteNote, postReply, loadDetailReplies,
+    applyFilter, clearFilter,
+    books, chapterCount: getChapterCount, verseCount,
+  }), [user, currentGroupId, groups, handleGroupChange, handleNavigateVerse, notesData, groupLoading,
+       filterActive, saveNote, deleteNote, postReply, loadDetailReplies, applyFilter, clearFilter,
+       books, getChapterCount, verseCount]);
+
+  const highlightsPanelValue = useMemo(() => ({
+    user, currentGroupId, groups, onGroupChange: handleGroupChange, onNavigateVerse: handleNavigateVerse,
+    localHl, groupHighlights, groupUsernames,
+  }), [user, currentGroupId, groups, handleGroupChange, handleNavigateVerse, localHl, groupHighlights, groupUsernames]);
+
+  const messagingPanelValue = useMemo(() => ({
+    user, friends, groups: msgGroups, currentContact, messages, groupMembers,
+    onOpen: handleOpenChat, onBack: handleCloseChat,
+    onAddFriend: addFriend, onRemoveFriend: removeFriend,
+    onReportUser: reportUser, onBlockUser: blockUser,
+    onCreateGroup: createGroup, onUpdateGroup: updateGroup, onLeaveGroup: leaveGroup,
+    loaded: contactsLoaded, onLoad: handleLoadContacts, sendMessage,
+    sessions, activeSessionId, talkingUserId,
+    onJoinSession: joinSession, onLeaveSession: handleLeaveSession,
+    onOpenSessionCreator: () => openCreator(), onEditSession: openCreator, onDeleteSession: deleteSession,
+    onNavigateVerse: handleNavigateVerse,
+    videoEnabled, videoTiles, onToggleVideo: toggleVideo, bindVideoTile,
+  }), [user, friends, msgGroups, currentContact, messages, groupMembers, handleOpenChat, handleCloseChat,
+       addFriend, removeFriend, reportUser, blockUser, createGroup, updateGroup, leaveGroup,
+       contactsLoaded, handleLoadContacts, sendMessage, sessions, activeSessionId, talkingUserId,
+       joinSession, handleLeaveSession, openCreator, deleteSession, handleNavigateVerse,
+       videoEnabled, videoTiles, toggleVideo, bindVideoTile]);
+
+  const agentChatPanelValue = useMemo(() => ({
+    user, agents, agentMessages, activeAgent, agentThinking,
+    onOpenAgent: handleOpenAgent, onCloseAgent: handleCloseAgent, onNewAgent: handleNewAgent,
+    sendAgentMessage,
+    curBook, curChapter, curVerse, allNotes, onNavigateVerse: handleNavigateVerse,
+  }), [user, agents, agentMessages, activeAgent, agentThinking, handleOpenAgent, handleCloseAgent,
+       handleNewAgent, sendAgentMessage, curBook, curChapter, curVerse, allNotes, handleNavigateVerse]);
+
   return (
-    <Layout style={{ minHeight: '100vh', background: 'transparent', overflow: 'hidden' }}>
-      <AppNav />
+    <BibleReaderPanelContext.Provider value={bibleReaderPanelValue}>
+    <NotesPanelContext.Provider value={notesPanelValue}>
+    <HighlightsPanelContext.Provider value={highlightsPanelValue}>
+    <MessagingPanelContext.Provider value={messagingPanelValue}>
+    <AgentChatPanelContext.Provider value={agentChatPanelValue}>
+      <Layout style={{ minHeight: '100vh', background: 'transparent', overflow: 'hidden' }}>
+        <AppNav />
 
-      <div className="scripture-nav-bar">
-        <BibleNavigator
-          books={books} curBook={curBook} curChapter={curChapter}
-          onNavigate={handleNavigate} chapterCount={getChapterCount}
-        />
-        <button
-          className={`nav-pill-btn${fontSizeIdx > 0 ? ' open' : ''}`}
-          onClick={cycleFontSize}
-          title={`Text size: ${FONT_SIZE_LABELS[fontSizeIdx]} — click to cycle`}
-          style={{ marginLeft: '0.5rem', gap: '0.25rem', letterSpacing: 0 }}
-        >
-          <span style={{ fontSize: '0.72rem', opacity: 0.7, lineHeight: 1 }}>A</span>
-          <span style={{ fontSize: '1rem', lineHeight: 1 }}>A</span>
-          {fontSizeIdx > 0 && (
-            <span style={{ fontSize: '0.42rem', color: 'var(--gold)', letterSpacing: '0.05em', marginLeft: '0.1rem' }}>
-              {'●'.repeat(fontSizeIdx)}
-            </span>
-          )}
-        </button>
-        <BookmarkButton
-          user={user}
-          bookmarks={bookmarks}
-          curBook={curBook}
-          curChapter={curChapter}
-          onAdd={addBookmark}
-          onRemove={removeBookmark}
-          onNavigate={handleNavigate}
-        />
-      </div>
-
-      {/* ── Bible reading area ── */}
-      <main className={`reader-main${openPanel ? ' panel-open' : ''}`}>
-        <BibleCard
-          loading={loading} loadError={loadError}
-          curBook={curBook} curChapter={curChapter}
-          chapterHTML={chapterHTML} chapterCount={chCount}
-          preamble={preamble}
-          onPrev={handlePrev} onNext={handleNext}
-          onVerseClick={handleVerseClick}
-          applyHighlights={applyHighlights}
-        />
-      </main>
-
-      <HighlightPicker
-        visible={pickerVisible} position={pickerPos}
-        onColor={handleHighlightColor} onClear={handleClearHighlight}
-      />
-
-      {/* ── Mobile / desktop backdrop scrim ── */}
-      <div
-        className={`reader-panel-scrim${openPanel ? ' visible' : ''}`}
-        onClick={() => setOpenPanel(null)}
-      />
-
-      {/* ── Desktop icon rail ── */}
-      <div className="icon-rail">
-        <div
-          className={`icon-chip${openPanel === 'notes' ? ' active' : ''}`}
-          onClick={() => setOpenPanel(p => p === 'notes' ? null : 'notes')}
-        >
-          <div className="icon-chip-icon"><EditOutlined style={{ fontSize: 11 }} /></div>
-          <span className="icon-chip-label">Notes</span>
-        </div>
-        <div
-          className={`icon-chip${openPanel === 'marks' ? ' active' : ''}`}
-          onClick={() => setOpenPanel(p => p === 'marks' ? null : 'marks')}
-        >
-          <div className="icon-chip-icon"><BgColorsOutlined style={{ fontSize: 11 }} /></div>
-          <span className="icon-chip-label">Marks</span>
-        </div>
-        <div
-          className={`icon-chip${openPanel === 'group' ? ' active' : ''}`}
-          onClick={() => setOpenPanel(p => p === 'group' ? null : 'group')}
-        >
-          <div className="icon-chip-icon">
-            <TeamOutlined style={{ fontSize: 11 }} />
-            {(currentContact || activeAgent) && <span className="icon-chip-dot" />}
-          </div>
-          <span className="icon-chip-label">Group</span>
-        </div>
-      </div>
-
-      {/* ── Slide-in panel ── */}
-      <div className={`reader-panel${openPanel ? ' open' : ''}`}>
-        <div style={{ position: 'relative', flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-          {openPanel === 'notes' && <NotesSidebar {...notesSidebarProps} />}
-          {openPanel === 'marks' && <NotesSidebar {...notesSidebarProps} initialTab="highlights" />}
-          {openPanel === 'group' && <ContactsPanel {...contactsProps} />}
-          {(currentContact || activeAgent) && (
-            <div className="chat-overlay">
-              {activeAgent
-                ? <AgentChatPanel
-                    agent={activeAgent}
-                    messages={agentMessages}
-                    user={user}
-                    onBack={handleCloseAgent}
-                    onSend={sendAgentMessage}
-                    agentThinking={agentThinking}
-                    curBook={curBook}
-                    curChapter={curChapter}
-                    curVerse={curVerse}
-                    allNotes={allNotes}
-                    onNavigateVerse={handleNavigateVerse}
-                  />
-                : <ChatPanel
-                    contact={currentContact}
-                    messages={messages}
-                    groupMembers={groupMembers}
-                    user={user}
-                    onBack={handleCloseChat}
-                    onSend={sendMessage}
-                    sessions={sessions}
-                    activeSessionId={activeSessionId}
-                    talkingUserId={talkingUserId}
-                    onJoinSession={joinSession}
-                    onLeaveSession={handleLeaveSession}
-                    onOpenSessionCreator={() => openCreator()}
-                    onEditSession={openCreator}
-                    onDeleteSession={deleteSession}
-                    onNavigateVerse={handleNavigateVerse}
-                    videoEnabled={videoEnabled}
-                    videoTiles={videoTiles}
-                    onToggleVideo={toggleVideo}
-                    bindVideoTile={bindVideoTile}
-                  />
-              }
+        {isDesktop ? (
+          <>
+            <button className="nav-pill-btn dock-reset-btn" onClick={handleResetLayout} title="Reset layout to default">
+              <ReloadOutlined style={{ fontSize: '0.72rem' }} />
+              <span>Reset Layout</span>
+            </button>
+            <div className="reader-dock-container dockview-theme-abyss">
+              <DockviewReact
+                components={PANEL_COMPONENTS}
+                onReady={handleDockviewReady}
+                disableFloatingGroups
+              />
             </div>
-          )}
-        </div>
-      </div>
-
-      {/* ── Mobile: bottom tab bar ── */}
-      <div className="mobile-tab-bar">
-        <button
-          className={`mobile-tab${mobileSidebar === 'notes' ? ' active' : ''}`}
-          onClick={() => setMobileSidebar(v => v === 'notes' ? null : 'notes')}
-        >
-          <BookOutlined style={{ fontSize: 18 }} />
-          Notes
-        </button>
-        <button
-          className={`mobile-tab${mobileSidebar === 'messages' ? ' active' : ''}`}
-          onClick={() => setMobileSidebar(v => v === 'messages' ? null : 'messages')}
-        >
-          <MessageOutlined style={{ fontSize: 18 }} />
-          Messages
-        </button>
-      </div>
-
-      {/* ── Mobile overlays ── */}
-      <div className={`mobile-overlay${mobileSidebar === 'notes' ? ' open' : ''}`}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.9rem 1rem', borderBottom: '1px solid rgba(200,134,26,0.15)', background: 'rgba(6,4,1,0.98)', flexShrink: 0 }}>
-          <button onClick={() => setMobileSidebar(null)} style={{ background: 'none', border: 'none', color: 'rgba(200,134,26,0.65)', cursor: 'pointer', fontSize: '1.1rem' }}>✕</button>
-          <Text style={{ fontFamily: "'DM Serif Display', serif", fontSize: '1rem', color: 'var(--parchment)' }}>Notes</Text>
-        </div>
-        <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-          <NotesSidebar {...notesSidebarProps} />
-        </div>
-      </div>
-
-      <div className={`mobile-overlay${mobileSidebar === 'messages' ? ' open' : ''}`}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.9rem 1rem', borderBottom: '1px solid rgba(200,134,26,0.15)', background: 'rgba(6,4,1,0.98)', flexShrink: 0 }}>
-          <button onClick={() => setMobileSidebar(null)} style={{ background: 'none', border: 'none', color: 'rgba(200,134,26,0.65)', cursor: 'pointer', fontSize: '1.1rem' }}>✕</button>
-          <Text style={{ fontFamily: "'DM Serif Display', serif", fontSize: '1rem', color: 'var(--parchment)' }}>Messages</Text>
-        </div>
-        <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-          {activeAgent
-            ? <AgentChatPanel
-                agent={activeAgent}
-                messages={agentMessages}
+          </>
+        ) : (
+          <>
+            <div className="scripture-nav-bar">
+              <BibleNavigator
+                books={books} curBook={curBook} curChapter={curChapter}
+                onNavigate={handleNavigate} chapterCount={getChapterCount}
+              />
+              <button
+                className={`nav-pill-btn${fontSizeIdx > 0 ? ' open' : ''}`}
+                onClick={cycleFontSize}
+                title={`Text size: ${FONT_SIZE_LABELS[fontSizeIdx]} — click to cycle`}
+                style={{ marginLeft: '0.5rem', gap: '0.25rem', letterSpacing: 0 }}
+              >
+                <span style={{ fontSize: '0.72rem', opacity: 0.7, lineHeight: 1 }}>A</span>
+                <span style={{ fontSize: '1rem', lineHeight: 1 }}>A</span>
+                {fontSizeIdx > 0 && (
+                  <span style={{ fontSize: '0.42rem', color: 'var(--gold)', letterSpacing: '0.05em', marginLeft: '0.1rem' }}>
+                    {'●'.repeat(fontSizeIdx)}
+                  </span>
+                )}
+              </button>
+              <BookmarkButton
                 user={user}
-                onBack={handleCloseAgent}
-                onSend={sendAgentMessage}
-                agentThinking={agentThinking}
+                bookmarks={bookmarks}
                 curBook={curBook}
                 curChapter={curChapter}
-                curVerse={curVerse}
-                allNotes={allNotes}
-                onNavigateVerse={handleNavigateVerse}
+                onAdd={addBookmark}
+                onRemove={removeBookmark}
+                onNavigate={handleNavigate}
               />
-            : currentContact
-              ? <ChatPanel
-                  contact={currentContact}
-                  messages={messages}
-                  groupMembers={groupMembers}
-                  user={user}
-                  onBack={handleCloseChat}
-                  onSend={sendMessage}
-                  sessions={sessions}
-                  activeSessionId={activeSessionId}
-                  talkingUserId={talkingUserId}
-                  onJoinSession={joinSession}
-                  onLeaveSession={handleLeaveSession}
-                  onOpenSessionCreator={() => openCreator()}
-                  onEditSession={openCreator}
-                  onDeleteSession={deleteSession}
-                  onNavigateVerse={handleNavigateVerse}
-                  videoEnabled={videoEnabled}
-                  videoTiles={videoTiles}
-                  onToggleVideo={toggleVideo}
-                  bindVideoTile={bindVideoTile}
-                />
-              : <ContactsPanel {...contactsProps} />
-          }
-        </div>
-      </div>
+            </div>
 
-      <SessionCreator
-        open={showCreator}
-        editSession={editingSession}
-        onClose={closeCreator}
-        onCreate={createSession}
-        onUpdate={updateSession}
-        books={books}
-        chapterCount={getChapterCount}
-        verseCount={verseCount}
-      />
+            <main className="reader-main">
+              <BibleCard
+                loading={loading} loadError={loadError}
+                curBook={curBook} curChapter={curChapter}
+                chapterHTML={chapterHTML} chapterCount={chCount}
+                preamble={preamble}
+                onPrev={handlePrev} onNext={handleNext}
+                onVerseClick={handleVerseClick}
+                applyHighlights={applyHighlights}
+              />
+            </main>
 
-    </Layout>
+            <HighlightPicker
+              visible={pickerVisible} position={pickerPos}
+              onColor={handleHighlightColor} onClear={handleClearHighlight}
+            />
+
+            {/* ── Mobile: bottom tab bar ── */}
+            <div className="mobile-tab-bar">
+              <button
+                className={`mobile-tab${mobileSidebar === 'notes' ? ' active' : ''}`}
+                onClick={() => setMobileSidebar(v => v === 'notes' ? null : 'notes')}
+              >
+                <BookOutlined style={{ fontSize: 18 }} />
+                Notes
+              </button>
+              <button
+                className={`mobile-tab${mobileSidebar === 'messages' ? ' active' : ''}`}
+                onClick={() => setMobileSidebar(v => v === 'messages' ? null : 'messages')}
+              >
+                <MessageOutlined style={{ fontSize: 18 }} />
+                Messages
+              </button>
+            </div>
+
+            {/* ── Mobile overlays ── */}
+            <div className={`mobile-overlay${mobileSidebar === 'notes' ? ' open' : ''}`}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.9rem 1rem', borderBottom: '1px solid rgba(200,134,26,0.15)', background: 'rgba(6,4,1,0.98)', flexShrink: 0 }}>
+                <button onClick={() => setMobileSidebar(null)} style={{ background: 'none', border: 'none', color: 'rgba(200,134,26,0.65)', cursor: 'pointer', fontSize: '1.1rem' }}>✕</button>
+                <Text style={{ fontFamily: "'DM Serif Display', serif", fontSize: '1rem', color: 'var(--parchment)' }}>Notes</Text>
+              </div>
+              <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                <NotesSidebar {...notesSidebarProps} />
+              </div>
+            </div>
+
+            <div className={`mobile-overlay${mobileSidebar === 'messages' ? ' open' : ''}`}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.9rem 1rem', borderBottom: '1px solid rgba(200,134,26,0.15)', background: 'rgba(6,4,1,0.98)', flexShrink: 0 }}>
+                <button onClick={() => setMobileSidebar(null)} style={{ background: 'none', border: 'none', color: 'rgba(200,134,26,0.65)', cursor: 'pointer', fontSize: '1.1rem' }}>✕</button>
+                <Text style={{ fontFamily: "'DM Serif Display', serif", fontSize: '1rem', color: 'var(--parchment)' }}>Messages</Text>
+              </div>
+              <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                {activeAgent
+                  ? <AgentChatThread
+                      agent={activeAgent}
+                      messages={agentMessages}
+                      user={user}
+                      onBack={handleCloseAgent}
+                      onSend={sendAgentMessage}
+                      agentThinking={agentThinking}
+                      curBook={curBook}
+                      curChapter={curChapter}
+                      curVerse={curVerse}
+                      allNotes={allNotes}
+                      onNavigateVerse={handleNavigateVerse}
+                    />
+                  : currentContact
+                    ? <ChatThread
+                        contact={currentContact}
+                        messages={messages}
+                        groupMembers={groupMembers}
+                        user={user}
+                        onBack={handleCloseChat}
+                        onSend={sendMessage}
+                        sessions={sessions}
+                        activeSessionId={activeSessionId}
+                        talkingUserId={talkingUserId}
+                        onJoinSession={joinSession}
+                        onLeaveSession={handleLeaveSession}
+                        onOpenSessionCreator={() => openCreator()}
+                        onEditSession={openCreator}
+                        onDeleteSession={deleteSession}
+                        onNavigateVerse={handleNavigateVerse}
+                        videoEnabled={videoEnabled}
+                        videoTiles={videoTiles}
+                        onToggleVideo={toggleVideo}
+                        bindVideoTile={bindVideoTile}
+                      />
+                    : <ContactsPanel {...contactsProps} />
+                }
+              </div>
+            </div>
+          </>
+        )}
+
+        <SessionCreator
+          open={showCreator}
+          editSession={editingSession}
+          onClose={closeCreator}
+          onCreate={createSession}
+          onUpdate={updateSession}
+          books={books}
+          chapterCount={getChapterCount}
+          verseCount={verseCount}
+        />
+
+      </Layout>
+    </AgentChatPanelContext.Provider>
+    </MessagingPanelContext.Provider>
+    </HighlightsPanelContext.Provider>
+    </NotesPanelContext.Provider>
+    </BibleReaderPanelContext.Provider>
   );
 }

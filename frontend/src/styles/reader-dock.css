@@ -1,0 +1,103 @@
+/* Desktop dockable Reader layout — theme overrides + container rules. Only
+   affects the desktop branch of Reader.jsx (isDesktop === true); the mobile
+   bottom-tab-bar/fullscreen-overlay layout in global.css is untouched and
+   unaffected by anything here. Must load after dockview-react's own
+   stylesheet (see main.jsx import order) so these overrides win.
+
+   Panels themselves sit flush (no gaps, no rounded group corners, no card
+   shadow) — the flat, dense arrangement is intentional. Only the tabs are
+   restyled: rounded, spaced-apart pill/chip widgets rather than flat abutting
+   blocks. Every color variable below is retinted to the app's warm
+   dark/gold/parchment palette; nothing here changes the underlying
+   drag/split/tab mechanism. */
+.dockview-theme-abyss {
+  --dv-color-abyss-dark:            #0c0801;
+  --dv-color-abyss:                 #181109;   /* group/panel surface */
+  --dv-color-abyss-light:            #120d09;   /* tab-strip surface */
+  --dv-color-abyss-lighter:          rgba(200,134,26,0.15);
+  --dv-color-abyss-accent:           var(--gold);
+  --dv-color-abyss-primary-text:     var(--parchment);
+  --dv-color-abyss-secondary-text:   rgba(244,228,193,0.55);
+  --dv-activegroup-visiblepanel-tab-background-color:   rgba(200,134,26,0.16);
+  --dv-activegroup-hiddenpanel-tab-background-color:    transparent;
+  --dv-inactivegroup-visiblepanel-tab-background-color: transparent;
+  --dv-inactivegroup-hiddenpanel-tab-background-color:  transparent;
+  --dv-tab-divider-color:                        transparent;
+  --dv-separator-border:                         rgba(200,134,26,0.15);
+  --dv-paneview-header-border-color:             rgba(200,134,26,0.15);
+  --dv-paneview-active-outline-color:            var(--gold);
+  --dv-active-sash-color:                        var(--gold);
+  --dv-activegroup-visiblepanel-tab-color:       var(--parchment);
+  --dv-activegroup-hiddenpanel-tab-color:        rgba(244,228,193,0.5);
+  --dv-inactivegroup-visiblepanel-tab-color:     rgba(244,228,193,0.5);
+  --dv-inactivegroup-hiddenpanel-tab-color:      rgba(244,228,193,0.25);
+  --dv-drag-over-background-color:               rgba(200,134,26,0.14);
+  --dv-drag-over-border-color:                   var(--gold);
+  --dv-icon-hover-background-color:              rgba(200,134,26,0.15);
+  --dv-tabs-and-actions-container-font-size:     0.72rem;
+  --dv-tabs-and-actions-container-height:        44px;
+  /* Tabs only: rounded widget-chip shape, not a flat block */
+  --dv-tab-border-radius:                        100px;
+  --dv-tab-margin:                               0.45rem 0.25rem;
+  --dv-tab-close-icon-size:                       9px;
+  --dv-dropdown-border-radius:                   12px;
+}
+
+.dockview-theme-abyss .dv-default-tab,
+.dockview-theme-abyss .dv-default-tab-content {
+  font-family: 'Inter', sans-serif;
+  letter-spacing: 0.02em;
+}
+
+/* Each tab reads as its own small widget/chip (matches the app's existing
+   .nav-pill-btn treatment) rather than a flush rectangular block sharing an
+   edge with its neighbors. */
+.dockview-theme-abyss .dv-tab {
+  border-radius: var(--dv-tab-border-radius);
+  overflow: hidden;
+  background: rgba(200,134,26,0.05);
+}
+.dockview-theme-abyss .dv-tab.dv-active-tab {
+  box-shadow: inset 0 0 0 1px rgba(200,134,26,0.35);
+}
+
+/* ── Container: fills the viewport below the top nav bar. No second nav strip
+   here — each panel (e.g. BibleReaderPanel) owns its own toolbar/header. ── */
+.reader-dock-container {
+  position: fixed;
+  top: var(--nav-h);
+  left: 0; right: 0; bottom: 0;
+  z-index: 10;
+}
+
+/* ── Reset Layout button — reuses .nav-pill-btn (same class as the Bible
+   panel's font-size ticker etc.) for visual consistency; only positioning
+   lives here. ── */
+.dock-reset-btn {
+  position: fixed;
+  top: calc(var(--nav-h) + 10px);
+  right: 16px;
+  z-index: 95;
+}
+
+/* ── Bible reader panel's own toolbar (replaces the page-level
+   .scripture-nav-bar on desktop — BibleNavigator/font-ticker/BookmarkButton
+   render inside this row instead of a separate fixed strip). ── */
+.bible-panel-toolbar {
+  display: flex;
+  align-items: center;
+  padding: 0.55rem 1.1rem;
+  border-bottom: 1px solid rgba(200,134,26,0.14);
+  background: var(--nav-bg);
+  flex-shrink: 0;
+}
+
+.bible-panel-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 2.5rem 2rem 4rem;
+}

@@ -499,10 +499,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#layout" class="md-nav__link">
+  <a href="#desktop-layout-dockable-workspace" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Layout
+        Desktop Layout (dockable workspace)
       
     </span>
   </a>
@@ -555,10 +555,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#right-panel-toggle" class="md-nav__link">
+  <a href="#notes-messaging-agent-chat-panels" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Right Panel Toggle
+        Notes, Messaging, Agent Chat panels
       
     </span>
   </a>
@@ -897,37 +897,42 @@
 
 
 <h1 id="bible-reader">Bible Reader</h1>
-<p>The Bible Reader (<code>/reader</code>) is the core screen of FellowScript. It uses a three-panel layout: navigation sidebar (left), scripture text (centre), and a toggleable notes or messaging sidebar (right).</p>
+<p>The Bible Reader (<code>/reader</code>) is the core screen of FellowScript. On desktop it's a <strong>VSCode-style dockable workspace</strong>: five panels — Bible Reading, Notes, Highlights, Messaging, and Agent Chat — that the user can freely drag to any edge (split), drop onto another panel (tab together), or resize. On mobile it keeps a simpler fixed layout: scripture text with a bottom tab bar that opens Notes or Messages as a fullscreen overlay.</p>
 <hr />
-<h2 id="layout">Layout</h2>
-<pre><code>┌──────────────┬──────────────────────────┬─────────────────────┐
-│   AppNav     │                          │                     │
-│              │   [Book / Chapter nav]   │   NotesSidebar      │
-│  • Home      │                          │   or               │
-│  • Reader    │   2 Timothy              │   MessagingSidebar  │
-│  • Account   │   CHAPTER 1              │                     │
-│              │                          │   (toggled by icons │
-│              │   1 Paul, an apostle…    │    above the panel) │
-│              │   3 I thank God…         │                     │
-│              │   6 [highlighted] For    │                     │
-│              │     this reason…         │                     │
-│              │                          │                     │
-└──────────────┴──────────────────────────┴─────────────────────┘
+<h2 id="desktop-layout-dockable-workspace">Desktop Layout (dockable workspace)</h2>
+<p>Default arrangement on first visit:</p>
+<pre><code>┌───────────────────────────────┬───────────────────────────┐
+│                               │  Notes | Highlights | Msgs │
+│      Bible Reading            │  (tabbed together,        │
+│   [Book/Chapter nav · Aa ·    │   full height)             │
+│    Bookmark] toolbar          │                            │
+│                               │                            │
+│   2 Timothy — Chapter 1       │                            │
+│   1 Paul, an apostle…         │                            │
+│   6 [highlighted] For this…   │                            │
+├───────────────────────────────┤                            │
+│      Agent Chat               │                            │
+│   (docked below the reader    │                            │
+│    only — not under Notes)    │                            │
+└───────────────────────────────┴───────────────────────────┘
 </code></pre>
-<p>On narrow screens, <code>AppNav</code> and the right sidebar collapse; toggle buttons appear above the scripture text.</p>
+<p>Any panel can be dragged to a new position: dropping it on an edge splits the space; dropping it in the center of another panel's tab strip groups them as tabs. A <strong>Reset Layout</strong> button (top right) restores this default arrangement at any time. The user's arrangement persists across visits (saved to <code>localStorage</code>); see <code>docs/architecture/frontend.md</code> for the implementation.</p>
+<p>On narrow screens (≤1024px) this entire dockable system is replaced by a fixed layout: scripture text fills the screen, and a bottom tab bar opens Notes or Messages as a fullscreen overlay — no drag/split/tab behavior on mobile.</p>
 <hr />
 <h2 id="features">Features</h2>
 <h3 id="book-chapter-navigation">Book / Chapter Navigation</h3>
 <ul>
-<li><code>BibleNavigator</code> component: searchable book list → chapter grid</li>
-<li><code>ScriptureNav</code>: previous/next chapter arrows</li>
-<li><code>BookmarkButton</code>: star icon to bookmark the current chapter; bookmarks appear in the Notes sidebar's Highlights tab area</li>
+<li><code>BibleNavigator</code> component: searchable book list → chapter grid, rendered as a floating widget so it's never clipped regardless of which panel it's docked in</li>
+<li>Prev/Next chapter buttons at the bottom of the reading pane</li>
+<li><code>BookmarkButton</code>: star icon to bookmark the current chapter; bookmarks list opens the same way</li>
+<li>Both travel with the Bible Reading panel wherever it's docked — they're part of that panel's own toolbar, not a separate page-level bar</li>
 </ul>
 <h3 id="highlight-palette">Highlight Palette</h3>
 <ul>
 <li><code>HighlightPicker</code>: six swatches (warm gold, red, green, teal, purple, cream)</li>
 <li>Tap/click a verse to apply the active color; click again to remove</li>
 <li>Highlights are stored per <code>(user_id, book-chapter-verse)</code> key; group members' highlights are visible with a different opacity in group view</li>
+<li>The <strong>Highlights</strong> panel (separate from the live highlight picker) lists every highlighted verse and can be dragged/tabbed independently of Notes — it has its own copy of the group-selector dropdown so it's never stranded without a way to change groups</li>
 </ul>
 <h3 id="scripture-text">Scripture Text</h3>
 <ul>
@@ -936,10 +941,12 @@
 <li>Active highlights overlay the verse text with the stored color at ~25% opacity</li>
 <li>Clicking a highlighted verse opens the highlight picker to remove or recolor</li>
 </ul>
-<h3 id="right-panel-toggle">Right Panel Toggle</h3>
-<p>Two icons above the right panel switch between:
-- <strong>Notes</strong> (<code>NotesSidebar</code>) — personal or group notes + highlights
-- <strong>Messages</strong> (<code>MessagingSidebar</code>) — real-time group chat and DMs</p>
+<h3 id="notes-messaging-agent-chat-panels">Notes, Messaging, Agent Chat panels</h3>
+<ul>
+<li><strong>Notes</strong> — personal or group notes, with its own group-selector dropdown</li>
+<li><strong>Messaging</strong> — friends/group DMs (no agents — see below)</li>
+<li><strong>Agent Chat</strong> — a horizontal switcher across the top (not the vertical list used before) since this panel is usually docked wide-and-short under the reader; split out from Messaging so both can be positioned independently</li>
+</ul>
 <hr />
 <h2 id="navigation">Navigation</h2>
 <ul>

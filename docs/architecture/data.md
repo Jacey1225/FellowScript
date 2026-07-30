@@ -28,6 +28,7 @@ The full Bible (KJV/ESV) is stored as a static JSON file loaded into memory on s
 | `terms_accepted_at` | TIMESTAMPTZ | Server-stamped on signup/first login via a given provider; never client-supplied |
 | `terms_version` | TEXT | Which `CURRENT_TERMS_VERSION` (`schemas/users.py`) was accepted; a mismatch on login triggers a `terms_reaccept_required` soft gate |
 | `suspended_at` | TIMESTAMPTZ | Guideline 1.2 moderation eject — set only by `backend/moderation/admin_actions.py`, never by the normal profile-update path. A suspended account 403s on every auth route |
+| `needs_profile_completion` | BOOLEAN | Default `false`. Set `true` when a first-ever Apple sign-in is missing `full_name`/`email` — Apple only ever supplies these once per Apple ID + app, so a missed grant can't be recovered later. Cleared the next time the client sets a real `username`/`email` via `PUT /user/{id}` |
 
 ---
 
@@ -49,7 +50,7 @@ The full Bible (KJV/ESV) is stored as a static JSON file loaded into memory on s
 
 Every new user receives a `plan_type='free'` row on signup. Free plans are excluded from `is_subscribed()` checks so free-tier limits still apply.
 
-There is a single paid tier (`'group'`) covering 1-8 members at a fixed per-count price (`schemas/subscription.py`'s `GROUP_PRICE_CENTS`) — the old separate `'individual'` plan_type was folded into this as the 1-member case (identical $10 price). Apple StoreKit needs one fixed-price product per member count (`com.fellowscript.app.group1` … `group8`) since IAP can't compute an arbitrary price; Stripe Checkout computes the price inline for any count via `price_data`, no pre-created Products needed.
+There is a single paid tier (`'group'`) covering 1-8 members at a fixed per-count price (`schemas/subscription.py`'s `GROUP_PRICE_CENTS`) — the old separate `'individual'` plan_type was folded into this as the 1-member case (identical $10 price). Apple StoreKit needs one fixed-price product per member count (`com.fellowscript.access.one` … `com.fellowscript.access.eight`) since IAP can't compute an arbitrary price; Stripe Checkout computes the price inline for any count via `price_data`, no pre-created Products needed.
 
 ---
 

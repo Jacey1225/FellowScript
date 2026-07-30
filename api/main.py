@@ -585,6 +585,10 @@ async def update_user(user_id: str, info: UpdateUser, _: str = Depends(require_m
         users[user_id]["username"] = info.username
     if info.email:
         users[user_id]["email"] = info.email
+    # Any explicit username/email update resolves the "Apple never resupplies
+    # this" prompt — the user has now set real values themselves.
+    if (info.username or info.email) and users[user_id].get("needs_profile_completion"):
+        users[user_id]["needs_profile_completion"] = False
     if info.plain_pass:
         users[user_id]["hash_pass"] = bcrypt.hashpw(
             info.plain_pass.encode(), bcrypt.gensalt()
@@ -828,13 +832,22 @@ async def apple_auth(info: AppleAuth, response: Response) -> dict:
         # (exactly the complaint this fixes). Create the account regardless,
         # and let terms_reaccept_required (below) prompt for consent
         # immediately after, instead of discarding what Apple just supplied.
+        #
+        # If Apple didn't supply a real name and/or email on this (first-ever)
+        # authorization, there is no way to ever ask Apple for it again — flag
+        # the account so the client prompts the user to set them manually.
+        needs_profile_completion = not (info.full_name and email)
         if info.terms_accepted:
             user = User(
                 user_id=uid, username=username, email=email, hash_pass="",
                 terms_accepted_at=str(datetime.now(timezone.utc)), terms_version=CURRENT_TERMS_VERSION,
+                needs_profile_completion=needs_profile_completion,
             )
         else:
-            user = User(user_id=uid, username=username, email=email, hash_pass="")
+            user = User(
+                user_id=uid, username=username, email=email, hash_pass="",
+                needs_profile_completion=needs_profile_completion,
+            )
         persist_new_user(user)
         sm = SubscriptionsManager()
         try:

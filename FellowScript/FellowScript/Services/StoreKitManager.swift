@@ -20,10 +20,10 @@ final class StoreKitManager: ObservableObject {
     // One fixed-price product per member count (1-8) — StoreKit can't compute an
     // arbitrary price, so the host's selected group size maps to a specific product.
     static let productID: [Int: String] = [
-        1: "com.fellowscript.app.group1", 2: "com.fellowscript.app.group2",
-        3: "com.fellowscript.app.group3", 4: "com.fellowscript.app.group4",
-        5: "com.fellowscript.app.group5", 6: "com.fellowscript.app.group6",
-        7: "com.fellowscript.app.group7", 8: "com.fellowscript.app.group8",
+        1: "com.fellowscript.access.one",   2: "com.fellowscript.access.two",
+        3: "com.fellowscript.access.three", 4: "com.fellowscript.access.four",
+        5: "com.fellowscript.access.five",  6: "com.fellowscript.access.six",
+        7: "com.fellowscript.access.seven", 8: "com.fellowscript.access.eight",
     ]
     static let productIDs = Array(productID.values)
 

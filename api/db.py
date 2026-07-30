@@ -44,7 +44,11 @@ def create_tables(cur):
         # Set only by the moderation eject action (backend/moderation/admin_actions.py)
         # — deliberately excluded from save_users_data's upsert so a routine
         # profile edit can never accidentally un-suspend someone.
-        "suspended_at TIMESTAMPTZ)"
+        "suspended_at TIMESTAMPTZ,"
+        # True when an Apple-created account is missing the username/email Apple
+        # only ever supplies once (first authorization) — prompts the client to
+        # ask the user to set them, since Apple can never resupply them later.
+        "needs_profile_completion BOOLEAN NOT NULL DEFAULT FALSE)"
     )
     # Migrations for databases created before the social-sign-in columns existed.
     cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS apple_sub TEXT")
@@ -54,6 +58,7 @@ def create_tables(cur):
     cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS terms_accepted_at TIMESTAMPTZ")
     cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS terms_version TEXT")
     cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS suspended_at TIMESTAMPTZ")
+    cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS needs_profile_completion BOOLEAN NOT NULL DEFAULT FALSE")
 
     cur.execute(
         "CREATE TABLE IF NOT EXISTS groups"
