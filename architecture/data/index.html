@@ -1094,6 +1094,11 @@
 <td>TIMESTAMPTZ</td>
 <td>Guideline 1.2 moderation eject — set only by <code>backend/moderation/admin_actions.py</code>, never by the normal profile-update path. A suspended account 403s on every auth route</td>
 </tr>
+<tr>
+<td><code>needs_profile_completion</code></td>
+<td>BOOLEAN</td>
+<td>Default <code>false</code>. Set <code>true</code> when a first-ever Apple sign-in is missing <code>full_name</code>/<code>email</code> — Apple only ever supplies these once per Apple ID + app, so a missed grant can't be recovered later. Cleared the next time the client sets a real <code>username</code>/<code>email</code> via <code>PUT /user/{id}</code></td>
+</tr>
 </tbody>
 </table>
 <hr />
