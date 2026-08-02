@@ -193,10 +193,22 @@ class AgentManager(DBManager):
         result     = self.lookup(self.agent_table, {"_id": agent_id})
         agent_role = list(result.values())[0].get("role", "") if result else ""
         context    = self.get_context(heartbeat_id)
-        context_str = "\n".join(context) if context else "No previous context."
+        if context:
+            context_str = "\n".join(f"- {c}" for c in context)
+            dedup_instruction = (
+                "IMPORTANT: Every item above is a note you already wrote for this exact "
+                "recurring event. Your new note must be clearly different from all of them — "
+                "do not reuse the same title, opening line, scripture reference, or central "
+                "theme as any note listed above. Choose a fresh angle, passage, or "
+                "reflection point this time.\n\n"
+            )
+        else:
+            context_str = "No previous context — this is the first response for this event."
+            dedup_instruction = ""
         note_prompt = (
             f"{heartbeat_content}\n\n"
-            f"Previous context from past responses:\n{context_str}\n\n"
+            f"Previous notes you already wrote for this event:\n{context_str}\n\n"
+            f"{dedup_instruction}"
             "Respond with a create_note JSON block as specified in your instructions. "
             "Output only the JSON block and nothing else."
         )
