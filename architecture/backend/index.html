@@ -1265,7 +1265,7 @@
 <tbody>
 <tr>
 <td><code>content_filter.py</code></td>
-<td><code>check_clean(**fields)</code> — local <code>better_profanity</code> keyword filter, raises <code>ContentRejected(field)</code> on a match. Hard-rejects submission (422) rather than auto-flagging-and-posting. Wired into note/reply create+update (<code>routes/notes.py</code>), group title create+update (<code>routes/community.py</code>), devotion title+prompts create+update (<code>routes/devotion.py</code>), and the one non-HTTP path, <code>ConnectionManager.send_msg</code> (<code>backend/interactions/websockets.py</code>), which replies with an error frame to the sender's own socket instead of raising.</td>
+<td><code>check_clean(**fields)</code> — local <code>better_profanity</code> keyword filter, raises <code>ContentRejected(field)</code> on a match. Hard-rejects submission (422) rather than auto-flagging-and-posting. Wired into note/reply create+update (<code>routes/notes.py</code>), group title create+update (<code>routes/community.py</code>), devotion title+prompts create+update (<code>routes/devotion.py</code>), and the one non-HTTP path, <code>ConnectionManager.send_msg</code> (<code>backend/interactions/websockets.py</code>), which replies with an error frame to the sender's own socket instead of raising. Loads the full default wordlist but excludes <code>_WHITELIST_TERMS</code> — ordinary Bible-study vocabulary (<code>god</code>, <code>hell</code>, <code>damn</code>, <code>sodom</code>, <code>ass</code>, <code>prick</code>, etc.) that the default list otherwise flags as profanity — via <code>better_profanity</code>'s <code>whitelist_words</code> kwarg; genuine profanity/slurs stay censored.</td>
 </tr>
 <tr>
 <td><code>admin_actions.py</code></td>

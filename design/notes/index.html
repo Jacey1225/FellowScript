@@ -626,6 +626,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#save-failure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Save failure
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -991,6 +1002,8 @@
 <li>Title: auto-resizing <code>&lt;textarea&gt;</code>, large Playfair Display</li>
 <li>Body: <code>contentEditable</code> div with placeholder "Start writing…"</li>
 </ul>
+<h3 id="save-failure">Save failure</h3>
+<p>If the save is rejected — most commonly a 422 from the Guideline 1.2 content filter (<code>backend/moderation/content_filter.py</code>) — the editor stays open with the title/body exactly as typed and shows the server's message (a toast on web, an alert on iOS) instead of closing. The editor only dismisses after a save actually succeeds, so a flagged note can be revised and resubmitted without retyping it.</p>
 <hr />
 <h2 id="note-detail">Note Detail</h2>
 <p>Tapping a note card opens a detail view showing the full rich-text body (<code>NoteBody</code> renderer), linked verse tags, and — in group view — a reply thread with a reply input.</p>
