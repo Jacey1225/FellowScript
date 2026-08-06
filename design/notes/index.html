@@ -637,6 +637,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#ios-presentation-noteeditorviewswift" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        iOS presentation (NoteEditorView.swift)
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1004,6 +1015,35 @@
 </ul>
 <h3 id="save-failure">Save failure</h3>
 <p>If the save is rejected — most commonly a 422 from the Guideline 1.2 content filter (<code>backend/moderation/content_filter.py</code>) — the editor stays open with the title/body exactly as typed and shows the server's message (a toast on web, an alert on iOS) instead of closing. The editor only dismisses after a save actually succeeds, so a flagged note can be revised and resubmitted without retyping it.</p>
+<h3 id="ios-presentation-noteeditorviewswift">iOS presentation (<code>NoteEditorView.swift</code>)</h3>
+<p>The iOS editor (<code>FellowScript/FellowScript/Notes/NoteEditorView.swift</code>) uses the same
+interactions as above, restyled to match the app's warm-bloom / glass-card visual
+language shared with the Dashboard and Chat screens. Appearance-only — every
+binding, async save flow, and the fragile <code>Text</code>/<code>RichTextEditorView</code> ZStack
+pairing described above are unchanged.</p>
+<ul>
+<li><strong>Background</strong> — <code>Theme.bgPage</code> plus two <code>RadialGradient</code> blooms (same values
+  as <code>ChatRootView</code>), replacing the old flat <code>Theme.islandBg</code> fill.</li>
+<li><strong>Header, verse bar, format toolbar</strong> — no longer sit on opaque strips; they
+  float transparently on the bloom. The format toolbar is wrapped in a single
+  <code>glassCard(cornerRadius: 16)</code> tile.</li>
+<li><strong>Writing area</strong> — the Title + body block is wrapped in one
+  <code>glassCard(cornerRadius: 20)</code> tile, matching how every other content block in
+  the app (note cards, group activity, bookmarks) is glass-carded.</li>
+<li><strong>"+ Verse"</strong> — a solid filled pill (<code>Theme.gold</code> fill/stroke) instead of the
+  old dashed outline; the <code>VerseTag</code> capsule's border uses the same glass
+  hairline gradient as <code>glassCard()</code> instead of a flat gold stroke.</li>
+<li><strong>Header controls</strong> — Cancel is a 36×36pt ghost icon chip (<code>xmark</code>); the
+  Public toggle is an icon-badge pill (<code>globe</code>/<code>lock</code> + "Public"/"Private")
+  that flips state on tap; Save is relocated out of the header to a 48×48pt
+  gradient circular FAB pinned bottom-right, floating above the writing card.
+  It shows a <code>checkmark</code> icon, swaps to a spinner while saving, and is
+  disabled while saving — identical state logic to before, just repositioned.</li>
+<li><strong>Read-only mode</strong> — still hides the Public badge, Save FAB, "+ Verse", and
+  toolbar; a small top-trailing <code>checkmark</code> icon chip ("Done") replaces the
+  old text button in the position where Save would otherwise be, and still
+  dismisses the editor.</li>
+</ul>
 <hr />
 <h2 id="note-detail">Note Detail</h2>
 <p>Tapping a note card opens a detail view showing the full rich-text body (<code>NoteBody</code> renderer), linked verse tags, and — in group view — a reply thread with a reply input.</p>
