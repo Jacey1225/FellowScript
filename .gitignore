@@ -1,2 +1,4 @@
 fellowscript-ec2-key.pem
 .env
+.claude/pipeline/
+.claude/logs/

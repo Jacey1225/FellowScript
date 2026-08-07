@@ -3,6 +3,15 @@
 // INTERACTIONS: title → body focus transfer, Bold/Italic/Underline/Highlight/Color toolbar,
 //               add/remove verse tags, public toggle, save on dismiss
 // DEPENDENCY: Theme.swift, Models.swift
+//
+// VISUAL: warm-dark-bloom / glass-card redesign matching Dashboard/Chat/Notes
+// (glassCard() from DashboardComponents.swift, bloom RadialGradients from
+// ChatRootView.swift, Option C header controls — ghost-chip Cancel, icon-badge
+// Public toggle, bottom-right gradient Save FAB). Reference:
+// .claude/pipeline/20260806-note-editor-redesign/design-notes.md and
+// .claude/pipeline/20260806-note-editor-header-controls/design-notes.md
+// (Option C). Presentation-only — same state, same async save flow, same
+// RichTextEditorView/Text ZStack structure; no new interactions.
 
 import SwiftUI
 
@@ -11,7 +20,10 @@ struct NoteEditorView: View {
     let noteId:     String?
     var groupId:    String = ""
     let isReadOnly: Bool
-    var onSave:     ((FSNote) -> Void)? = nil
+    // Returns nil on success (the editor dismisses), or an error message to
+    // display inline (the editor stays open so the user can fix and retry —
+    // e.g. a content-filter rejection needs the flagged text still visible).
+    var onSave:     ((FSNote) async -> String?)? = nil
 
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject var appState: AppState
@@ -22,6 +34,7 @@ struct NoteEditorView: View {
     @State private var showVersePicker = false
     @State private var showColorPicker = false
     @State private var isSaving    = false
+    @State private var saveErrorMessage: String? = nil
 
     @StateObject private var rtc = RichTextEditorController()
 
@@ -30,56 +43,33 @@ struct NoteEditorView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                Theme.islandBg.ignoresSafeArea()
+                Theme.bgPage.ignoresSafeArea()
+
+                // Warm bloom ground (shared visual language with Dashboard/Chat/Notes).
+                RadialGradient(colors: [Color(hex: "#D4922A").opacity(0.20), .clear],
+                               center: UnitPoint(x: 0.12, y: 0.16), startRadius: 10, endRadius: 380)
+                    .ignoresSafeArea()
+                RadialGradient(colors: [Color(hex: "#B8761D").opacity(0.12), .clear],
+                               center: UnitPoint(x: 0.92, y: 0.60), startRadius: 10, endRadius: 340)
+                    .ignoresSafeArea()
 
                 VStack(spacing: 0) {
-                    // ── Header bar (mirrors note-editor-header) ───────────────
+                    // ── Header bar (Option C: ghost-chip Cancel, icon-badge Public;
+                    // Save relocated to the bottom-right FAB below) ───────────
                     HStack {
-                        Button("Cancel") { dismiss() }
-                            .font(.lora(Theme.fontSM))
-                            .foregroundColor(Theme.textSecondary)
-                            .accessibilityLabel("Cancel and discard changes")
-
-                        Spacer()
-
-                        // Public toggle (mirrors <Switch checked={isPublic} />)
-                        if !isReadOnly {
-                            Toggle("", isOn: $isPublic)
-                                .labelsHidden()
-                                .tint(Theme.gold)
-                                .scaleEffect(0.8)
-                                .accessibilityLabel("Make note public")
-                            Text("Public")
-                                .font(.lora(Theme.fontXS))
-                                .foregroundColor(Theme.textGoldMuted)
-                        }
+                        cancelChip
 
                         Spacer()
 
                         if !isReadOnly {
-                            Button(action: handleSave) {
-                                if isSaving {
-                                    ProgressView().tint(Theme.gold).scaleEffect(0.8)
-                                } else {
-                                    Text("Save")
-                                        .font(.lora(Theme.fontSM, weight: .semibold))
-                                        .foregroundColor(Theme.gold)
-                                }
-                            }
-                            .disabled(isSaving)
-                            .accessibilityLabel("Save note")
+                            publicBadge
                         } else {
-                            Button("Done") { dismiss() }
-                                .font(.lora(Theme.fontSM))
-                                .foregroundColor(Theme.gold)
+                            doneChip
                         }
                     }
                     .padding(.horizontal, Theme.spacingMD)
-                    .padding(.vertical, Theme.spacingSM)
-                    .background(Theme.navBg)
-                    .overlay(alignment: .bottom) {
-                        Divider().background(Theme.borderGoldFaint)
-                    }
+                    .padding(.top, Theme.spacingSM)
+                    .padding(.bottom, Theme.spacingXS)
 
                     // ── Verse bar (mirrors note-editor-verse-bar) ─────────────
                     if !verseList.isEmpty || !isReadOnly {
@@ -98,9 +88,13 @@ struct NoteEditorView: View {
                                             .foregroundColor(Theme.gold.opacity(0.70))
                                             .padding(.horizontal, Theme.spacingMD)
                                             .padding(.vertical, 4)
+                                            .background(
+                                                RoundedRectangle(cornerRadius: 100)
+                                                    .fill(Theme.gold.opacity(0.12))
+                                            )
                                             .overlay(
                                                 RoundedRectangle(cornerRadius: 100)
-                                                    .stroke(Theme.gold.opacity(0.30), style: StrokeStyle(lineWidth: 1, dash: [4]))
+                                                    .stroke(Theme.gold.opacity(0.35), lineWidth: 1)
                                             )
                                     }
                                     .accessibilityLabel("Attach a Bible verse")
@@ -109,8 +103,6 @@ struct NoteEditorView: View {
                             .padding(.horizontal, Theme.spacingMD)
                             .padding(.vertical, 6)
                         }
-                        .background(Theme.navBg.opacity(0.85))
-                        .overlay(alignment: .bottom) { Divider().background(Theme.borderGoldFaint) }
                     }
 
                     // ── Format toolbar ────────────────────────────────────────
@@ -159,8 +151,9 @@ struct NoteEditorView: View {
                             .padding(.vertical, 10)
                         }
                         .animation(.spring(response: 0.25), value: showColorPicker)
-                        .background(Theme.navBg.opacity(0.75))
-                        .overlay(alignment: .bottom) { Divider().background(Theme.borderGoldFaint) }
+                        .glassCard(cornerRadius: 16)
+                        .padding(.horizontal, Theme.spacingMD)
+                        .padding(.top, Theme.spacingSM)
                     }
 
                     // ── Writing area ──────────────────────────────────────────
@@ -203,16 +196,35 @@ struct NoteEditorView: View {
                                 }
                             }
                         }
+                        // Outer container only — the Text/RichTextEditorView ZStack
+                        // above is untouched (same sibling order, no conditional
+                        // wrapping it) so SwiftUI never recreates the UIViewRepresentable.
                         .padding(Theme.spacingMD)
-                        // Extra bottom space so the last line can always be scrolled
-                        // to the top of the visible area — cursor is never stuck behind
-                        // the keyboard or at the very bottom of the screen.
+                        .glassCard(cornerRadius: 20)
+                        .padding(.horizontal, Theme.spacingMD)
+                        .padding(.top, Theme.spacingSM)
+                        // Extra bottom space (outside the card) so the last line can
+                        // always be scrolled to the top of the visible area — cursor
+                        // is never stuck behind the keyboard or at the very bottom.
                         .padding(.bottom, UIScreen.main.bounds.height * 0.55)
                         .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     // Let the keyboard properly inset the scroll view (shrinks frame
                     // above keyboard) so content can scroll up into view while typing.
                     .scrollDismissesKeyboard(.interactively)
+                }
+
+                // Save FAB — floats above the writing card, bottom-right, thumb-
+                // reachable while scrolling/writing (Option C header-controls doc).
+                if !isReadOnly {
+                    VStack {
+                        Spacer()
+                        HStack {
+                            Spacer()
+                            saveFAB
+                        }
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
         }
@@ -226,6 +238,84 @@ struct NoteEditorView: View {
                 }
             }
         }
+        .alert("Couldn't Save Note", isPresented: Binding(
+            get: { saveErrorMessage != nil },
+            set: { if !$0 { saveErrorMessage = nil } }
+        )) {
+            Button("OK") { saveErrorMessage = nil }
+        } message: {
+            Text(saveErrorMessage ?? "")
+        }
+    }
+
+    // ── Header controls (Option C — ghost-chip Cancel, icon-badge Public,
+    // top-trailing Done chip in read-only mode; Save FAB defined below) ────────
+    private var cancelChip: some View {
+        Button(action: { dismiss() }) {
+            Image(systemName: "xmark")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(Theme.textSecondary)
+                .frame(width: 36, height: 36)
+                .background(Capsule().fill(Theme.parchment.opacity(0.06)))
+                .overlay(Capsule().stroke(Theme.parchment.opacity(0.12), lineWidth: 1))
+        }
+        .accessibilityLabel("Cancel and discard changes")
+    }
+
+    private var publicBadge: some View {
+        Button(action: { isPublic.toggle() }) {
+            HStack(spacing: 6) {
+                Image(systemName: isPublic ? "globe" : "lock")
+                    .font(.system(size: 12, weight: .semibold))
+                Text(isPublic ? "Public" : "Private")
+                    .font(.lora(Theme.fontXS))
+            }
+            .foregroundColor(Theme.textGoldMuted)
+            .padding(.horizontal, Theme.spacingMD)
+            .padding(.vertical, 8)
+            .background(Capsule().fill(Theme.parchment.opacity(0.06)))
+            .overlay(Capsule().stroke(Theme.parchment.opacity(0.12), lineWidth: 1))
+        }
+        .accessibilityLabel(isPublic ? "This note is public. Tap to make it private." : "This note is private. Tap to make it public.")
+    }
+
+    private var doneChip: some View {
+        Button(action: { dismiss() }) {
+            Image(systemName: "checkmark")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(Theme.gold)
+                .frame(width: 36, height: 36)
+                .background(Capsule().fill(Theme.parchment.opacity(0.06)))
+                .overlay(Capsule().stroke(Theme.parchment.opacity(0.12), lineWidth: 1))
+        }
+        .accessibilityLabel("Done")
+    }
+
+    private var saveFAB: some View {
+        Button(action: handleSave) {
+            ZStack {
+                Circle()
+                    .fill(
+                        LinearGradient(
+                            colors: [Color(hex: "#EDAB3C"), Color(hex: "#D4922A"), Color(hex: "#B8761D")],
+                            startPoint: .topLeading, endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(width: 48, height: 48)
+                    .shadow(color: .black.opacity(0.4), radius: 10, x: 0, y: 6)
+                if isSaving {
+                    ProgressView().tint(.white)
+                } else {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundColor(Color(hex: "#24170A"))
+                }
+            }
+        }
+        .disabled(isSaving)
+        .accessibilityLabel("Save note")
+        .padding(.trailing, 18)
+        .padding(.bottom, 18)
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
@@ -286,9 +376,15 @@ struct NoteEditorView: View {
             verses:    verseList.map { [.string($0.book), .int($0.chapter), .int($0.verse)] },
             replies:   note?.replies ?? []
         )
-        onSave?(saved)
-        isSaving = false
-        dismiss()
+        Task {
+            let errorMessage = await onSave?(saved)
+            isSaving = false
+            if let errorMessage {
+                saveErrorMessage = errorMessage
+            } else {
+                dismiss()
+            }
+        }
     }
 }
 
@@ -312,7 +408,15 @@ struct VerseTag: View {
         .padding(.vertical, 4)
         .background(Theme.gold.opacity(0.10))
         .clipShape(Capsule())
-        .overlay(Capsule().stroke(Theme.borderGold, lineWidth: 1))
+        .overlay(
+            Capsule().strokeBorder(
+                LinearGradient(
+                    colors: [Color.white.opacity(0.20), Theme.gold.opacity(0.12)],
+                    startPoint: .topLeading, endPoint: .bottomTrailing
+                ),
+                lineWidth: 1
+            )
+        )
     }
 }
 

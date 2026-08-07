@@ -41,7 +41,15 @@ extension Notification.Name {
 @main
 struct FellowScriptApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
-    @StateObject private var appState = AppState(service: NetworkService.shared)
+    // XCUITest launches with the "UI-TESTING" argument (see FellowScriptUITests)
+    // so end-to-end tests run deterministically against MockDataService instead
+    // of hitting the live backend — never set outside of test schemes, so normal
+    // launches (including TestFlight/App Store) are unaffected.
+    @StateObject private var appState = AppState(
+        service: ProcessInfo.processInfo.arguments.contains("UI-TESTING")
+            ? MockDataService.shared
+            : NetworkService.shared
+    )
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {

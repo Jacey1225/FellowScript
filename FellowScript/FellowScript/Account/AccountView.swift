@@ -240,6 +240,13 @@ final class AccountViewModel: ObservableObject {
         defer { subLoading = false }
         var plan = (try? await service.fetchUserSubscription(userId: userId)) ?? nil
 
+        // A free-tier plan is NOT an active paid subscription — treat it as
+        // "no plan" so the Subscription section shows the upgrade UI instead of
+        // painting the free tier as an active "Group Plan". (The server also now
+        // reports free users as no-plan; this is belt-and-suspenders and matches
+        // the web client's own free-plan handling.)
+        if let p = plan, p.plan_type == "free" { plan = nil }
+
         // Reconcile a stale Apple plan: if the host's plan is Apple-billed but
         // StoreKit no longer reports an active entitlement (canceled & expired, or
         // revoked), remove it so the UI stops showing a subscription they no longer

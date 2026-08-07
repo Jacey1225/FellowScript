@@ -663,17 +663,17 @@ body {
 
 /* ── Agent response — no bubble, floats directly on the chat background
    instead of a left-aligned received bubble (the user's own messages in
-   Agent Chat keep the normal .msg-bubble.sent treatment). The BLOCK is
-   centered in the chat column (width hugs its content, capped so long
-   replies still wrap), but the text WITHIN that block is left-aligned —
-   each line starts flush at the block's own left edge rather than being
-   individually centered. ── */
+   Agent Chat keep the normal .msg-bubble.sent treatment). The block spans
+   the full message column (not a shrink-to-fit floating block) and the
+   text is anchored left within it; generous side padding gives it a
+   comfortable, roughly-centered reading column without the block itself
+   being centered. ── */
 .agent-response {
-  align-self: center;
-  width: fit-content;
-  max-width: 82%;
+  align-self: stretch;
+  width: auto;
+  max-width: none;
   text-align: left;
-  padding: 0.3rem 0.5rem;
+  padding: 0.3rem 1.75rem;
   font-size: var(--pt-md);
   line-height: 1.7;
   color: rgba(244,228,193,0.8);

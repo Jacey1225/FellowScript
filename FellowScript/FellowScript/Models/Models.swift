@@ -64,7 +64,7 @@ struct FSBlockedUser: Codable, Identifiable {
 struct FSSubscription: Codable, Identifiable {
     var id:           String = ""
     var user_id:      String = ""    // the host who owns the plan
-    var plan_type:    String = "group"        // "free" | "group"
+    var plan_type:    String = "free"         // "free" | "group"
     var provider:     String = ""    // "stripe" | "apple"
     var status:       String = "inactive"
     var price_cents:  Int    = 0
@@ -80,7 +80,7 @@ struct FSSubscription: Codable, Identifiable {
         case card_brand, card_last4, is_trial, trial_days_remaining, next_billing_date
     }
 
-    init(id: String = "", user_id: String = "", plan_type: String = "group",
+    init(id: String = "", user_id: String = "", plan_type: String = "free",
          status: String = "inactive", price_cents: Int = 0, max_members: Int = 1) {
         self.id = id; self.user_id = user_id; self.plan_type = plan_type
         self.status = status; self.price_cents = price_cents; self.max_members = max_members
@@ -90,7 +90,7 @@ struct FSSubscription: Codable, Identifiable {
         let c        = try decoder.container(keyedBy: CodingKeys.self)
         id           = (try? c.decode(String.self, forKey: .id))          ?? ""
         user_id      = (try? c.decode(String.self, forKey: .user_id))     ?? ""
-        plan_type    = (try? c.decode(String.self, forKey: .plan_type))   ?? "group"
+        plan_type    = (try? c.decode(String.self, forKey: .plan_type))   ?? "free"
         provider     = (try? c.decode(String.self, forKey: .provider))    ?? ""
         status       = (try? c.decode(String.self, forKey: .status))      ?? "inactive"
         price_cents  = (try? c.decode(Int.self,    forKey: .price_cents)) ?? 0

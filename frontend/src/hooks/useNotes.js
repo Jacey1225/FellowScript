@@ -120,7 +120,14 @@ export function useNotes({ user, curBook, curChapter, vsValue }) {
         body: JSON.stringify(noteData),
       });
       if (await handleLimit(res, 'notes')) return false;
-      if (!res.ok) return false;
+      if (!res.ok) {
+        if (res.status === 422) {
+          let detail;
+          try { ({ detail } = await res.json()); } catch {}
+          message.error(detail || 'That note could not be saved. Please revise and try again.');
+        }
+        return false;
+      }
       const saved = await res.json();
       const savedId = editingId || saved.id;
       if (noteData.group_id) {
