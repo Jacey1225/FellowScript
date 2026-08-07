@@ -41,12 +41,14 @@ async def get_contact_devotions(contact_id: str, current_user: str = Depends(get
 
 
 @devo_router.get("/")
-async def fetch_devotion(devotion_id: str, _: str = Depends(get_current_user)) -> dict:
+async def fetch_devotion(devotion_id: str, current_user: str = Depends(get_current_user)) -> dict:
     db = DevotionManager()
     try:
         devotion = db.read_devotion(devotion_id)
         if not devotion:
             raise HTTPException(status_code=404, detail="Session not found")
+        if not db.is_authorized(devotion.model_dump(), current_user):
+            raise HTTPException(status_code=403, detail="Not authorized")
         return devotion.model_dump()
     finally:
         db.close()
@@ -71,6 +73,11 @@ async def update_devotion(req: DevotionRequest, current_user: str = Depends(get_
 async def join_devotion(user_id: str, session_id: str, _: str = Depends(require_match("user_id"))) -> dict:
     db = DevotionManager()
     try:
+        session = db.get_session(session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+        if not db.is_authorized(session, user_id):
+            raise HTTPException(status_code=403, detail="Not authorized")
         db.add_participant(session_id, user_id)
         return {"ok": True}
     finally:
@@ -81,6 +88,10 @@ async def join_devotion(user_id: str, session_id: str, _: str = Depends(require_
 async def leave_devotion(user_id: str, session_id: str, _: str = Depends(require_match("user_id"))) -> dict:
     db = DevotionManager()
     try:
+        session = db.get_session(session_id)
+        # Missing session: no-op, same as before (idempotent leave).
+        if session and not db.is_authorized(session, user_id):
+            raise HTTPException(status_code=403, detail="Not authorized")
         db.remove_participant(session_id, user_id)
         return {"ok": True}
     finally:
@@ -112,6 +123,8 @@ async def join_call(session_id: str, user_id: str, _: str = Depends(require_matc
         session = db.get_session(session_id)
         if not session:
             raise HTTPException(status_code=404, detail="Session not found")
+        if not db.is_authorized(session, user_id):
+            raise HTTPException(status_code=403, detail="Not authorized")
 
         chime_meeting_id = session.get("chime_meeting_id", "")
         meeting_data     = session.get("chime_meeting") or {}

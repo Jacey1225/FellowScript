@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { Button, Spin, Alert, Tag, Avatar, Popconfirm, InputNumber } from 'antd';
 import {
-  CrownOutlined, TeamOutlined,
+  CrownOutlined, TeamOutlined, UserOutlined,
   CheckOutlined, CloseOutlined, DeleteOutlined,
 } from '@ant-design/icons';
 import { API } from '../config.js';
@@ -233,7 +233,10 @@ export default function SubscriptionCard({ userId, onPlanChange }) {
 
   // ── Render ──────────────────────────────────────────────────────────────────
 
-  const isFree = plan?.plan_type === 'free';
+  // No plan (404) and an explicit free-tier row both mean "on the free plan".
+  // The server now reports free users as 404/no-plan, so treat null as free too
+  // to keep the "Free Plan · Active" badge showing.
+  const isFree = !plan || plan.plan_type === 'free';
 
   return (
     <div style={CARD_STYLE}>

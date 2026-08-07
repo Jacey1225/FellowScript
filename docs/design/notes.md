@@ -71,6 +71,39 @@ All formatting uses `execCommand` on a `contentEditable` div. The toolbar button
 - Title: auto-resizing `<textarea>`, large Playfair Display
 - Body: `contentEditable` div with placeholder "Start writing…"
 
+### Save failure
+If the save is rejected — most commonly a 422 from the Guideline 1.2 content filter (`backend/moderation/content_filter.py`) — the editor stays open with the title/body exactly as typed and shows the server's message (a toast on web, an alert on iOS) instead of closing. The editor only dismisses after a save actually succeeds, so a flagged note can be revised and resubmitted without retyping it.
+
+### iOS presentation (`NoteEditorView.swift`)
+
+The iOS editor (`FellowScript/FellowScript/Notes/NoteEditorView.swift`) uses the same
+interactions as above, restyled to match the app's warm-bloom / glass-card visual
+language shared with the Dashboard and Chat screens. Appearance-only — every
+binding, async save flow, and the fragile `Text`/`RichTextEditorView` ZStack
+pairing described above are unchanged.
+
+- **Background** — `Theme.bgPage` plus two `RadialGradient` blooms (same values
+  as `ChatRootView`), replacing the old flat `Theme.islandBg` fill.
+- **Header, verse bar, format toolbar** — no longer sit on opaque strips; they
+  float transparently on the bloom. The format toolbar is wrapped in a single
+  `glassCard(cornerRadius: 16)` tile.
+- **Writing area** — the Title + body block is wrapped in one
+  `glassCard(cornerRadius: 20)` tile, matching how every other content block in
+  the app (note cards, group activity, bookmarks) is glass-carded.
+- **"+ Verse"** — a solid filled pill (`Theme.gold` fill/stroke) instead of the
+  old dashed outline; the `VerseTag` capsule's border uses the same glass
+  hairline gradient as `glassCard()` instead of a flat gold stroke.
+- **Header controls** — Cancel is a 36×36pt ghost icon chip (`xmark`); the
+  Public toggle is an icon-badge pill (`globe`/`lock` + "Public"/"Private")
+  that flips state on tap; Save is relocated out of the header to a 48×48pt
+  gradient circular FAB pinned bottom-right, floating above the writing card.
+  It shows a `checkmark` icon, swaps to a spinner while saving, and is
+  disabled while saving — identical state logic to before, just repositioned.
+- **Read-only mode** — still hides the Public badge, Save FAB, "+ Verse", and
+  toolbar; a small top-trailing `checkmark` icon chip ("Done") replaces the
+  old text button in the position where Save would otherwise be, and still
+  dismisses the editor.
+
 ---
 
 ## Note Detail

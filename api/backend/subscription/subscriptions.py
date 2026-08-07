@@ -191,12 +191,32 @@ class SubscriptionsManager(DBManager):
         return str(row[0]) if row else None
 
     def upsert_from_apple(self, user_id: str, member_count: int, original_transaction_id: str,
-                          status: str, current_period_end, trial_end) -> str:
+                          status: str, current_period_end, trial_end) -> str | None:
         """Create or update the user's plan from a verified Apple transaction.
 
         Mirrors ``upsert_from_stripe`` but with ``provider='apple'`` and the
         StoreKit original transaction id. Enrolls the host.
+
+        Returns:
+            The subscription id, or ``None`` if ``original_transaction_id`` is
+            already tied to a *different* user's plan — one Apple purchase must
+            map to exactly one account, so a transaction already claimed
+            elsewhere is refused rather than silently reassigned. Without this
+            guard, ``Transaction.currentEntitlements`` reporting a device-level
+            (not account-level) entitlement on every launch would let any
+            newly created account on the same device/sandbox tester inherit
+            someone else's — or a stale test — subscription for free.
         """
+        if original_transaction_id:
+            self.cur.execute(
+                "SELECT user_id FROM subscriptions WHERE apple_original_transaction_id = %s "
+                "AND provider = 'apple' AND user_id != %s LIMIT 1",
+                (original_transaction_id, user_id),
+            )
+            claimed_by = self.cur.fetchone()
+            if claimed_by:
+                return None
+
         price_cents = price_for(member_count)
         self.cur.execute("SELECT subscription_id FROM users WHERE _id = %s", (user_id,))
         row = self.cur.fetchone()
@@ -359,12 +379,25 @@ class SubscriptionsManager(DBManager):
         return sub_id
 
     def get_user_subscription(self, user_id: str) -> dict | None:
-        """Return the plan the given user currently belongs to, or ``None``."""
+        """Return the user's active *paid* plan, or ``None`` on the free tier.
+
+        Every account has a ``plan_type='free'`` row (created by
+        ``create_free_plan`` and pointed at by ``users.subscription_id``) — it
+        anchors usage counting, but it is NOT a subscription from a client's
+        perspective, so it's reported as ``None``. Both clients treat ``None``
+        as "on free → show the upgrade UI"; ``LimitsManager.is_subscribed``
+        applies the same ``plan_type != 'free'`` rule. Returning the free row
+        here is what made the iOS Account screen paint the free tier as an
+        active "Group Plan".
+        """
         self.cur.execute("SELECT subscription_id FROM users WHERE _id = %s", (user_id,))
         row = self.cur.fetchone()
         if not row or not row[0]:
             return None
-        return self.get_subscription(str(row[0]))
+        plan = self.get_subscription(str(row[0]))
+        if plan and plan.get("plan_type") == "free":
+            return None
+        return plan
 
     def update_subscription(self, subscription_id: str, upd: SubscriptionUpdate) -> bool:
         """Apply a partial update. Changing ``member_count`` re-derives price/cap.

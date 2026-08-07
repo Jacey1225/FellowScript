@@ -160,6 +160,21 @@ async def apple_sync(req: AppleSyncRequest, current_user: str = Depends(get_curr
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid transaction")
 
+    # StoreKit reports EVERY active entitlement on the device (Transaction.
+    # currentEntitlements) on each launch, including fabricated ones from
+    # Xcode's local .storekit testing config. Those must never become a real
+    # paid plan — reject any transaction whose environment isn't accepted
+    # BEFORE it can touch the subscriptions table.
+    environment = payload.get("environment")
+    if not apple_service.is_accepted_environment(environment):
+        logger.warning(
+            "Rejected Apple sync for user %s: untrusted environment %r (txn %r, product %r)",
+            req.user_id, environment,
+            payload.get("originalTransactionId") or payload.get("transactionId"),
+            payload.get("productId"),
+        )
+        raise HTTPException(status_code=400, detail="Non-production transaction ignored")
+
     member_count = apple_service.member_count_for(payload.get("productId", ""))
     if not member_count:
         raise HTTPException(status_code=400, detail="Unknown product")
@@ -176,7 +191,12 @@ async def apple_sync(req: AppleSyncRequest, current_user: str = Depends(get_curr
             db.cancel_by_apple_txn(otxn)
             return {"status": "expired"}
         status = "trialing" if is_trial else "active"
-        db.upsert_from_apple(req.user_id, member_count, otxn, status, cpe, cpe if is_trial else None)
+        result = db.upsert_from_apple(req.user_id, member_count, otxn, status, cpe, cpe if is_trial else None)
+        if result is None:
+            raise HTTPException(
+                status_code=409,
+                detail="This Apple subscription is already linked to a different account.",
+            )
         return db.get_user_subscription(req.user_id) or {"status": status}
     finally:
         db.close()

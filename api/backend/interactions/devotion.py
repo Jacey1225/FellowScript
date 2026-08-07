@@ -1,10 +1,45 @@
 import json
+import logging
 from db import DBManager
 from schemas.devotion import DevotionPlan
+
+logger = logging.getLogger(__name__)
 
 
 class DevotionManager(DBManager):
     """Handles all devotion session data operations."""
+
+    def is_authorized(self, session: dict, user_id: str) -> bool:
+        """True if ``user_id`` may view, join, leave, or join the call for
+        this session: its creator, an existing participant, or a member of
+        the group/DM room it belongs to.
+
+        ``session["group_id"]`` is free-form text (see db.py's comment on
+        the devotions table) — either a real ``groups._id`` or a DM room key
+        ``"uidA|uidB"`` (sorted, see frontend's roomKey()) — so branch on
+        whether it contains the DM separator rather than assuming either.
+        """
+        if not session:
+            return False
+        if str(session.get("creator_id") or "") == user_id:
+            return True
+        if user_id in (session.get("participants") or []):
+            return True
+        group_id = str(session.get("group_id") or "")
+        if not group_id:
+            return False
+        if "|" in group_id:
+            return user_id in group_id.split("|")
+        try:
+            self.cur.execute(
+                "SELECT 1 FROM groups WHERE _id = %s AND %s = ANY(users)",
+                (group_id, user_id),
+            )
+            return self.cur.fetchone() is not None
+        except Exception as e:
+            logger.warning("Devotion group-membership check failed for group_id=%s: %s", group_id, e)
+            self.conn.rollback()
+            return False
 
     def save_devotion(self, devotion: DevotionPlan) -> str:
         self.cur.execute(

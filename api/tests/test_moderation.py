@@ -68,6 +68,21 @@ def main():
         rn_clean = client.post(f"/notes/{uid3}", json={"user": uid3, "title": "Genesis reflections", "text": "A wonderful passage."}, cookies=cookies3)
         check("clean note accepted", rn_clean.status_code == 201, str(rn_clean.status_code))
 
+        rn_bible = client.post(
+            f"/notes/{uid3}",
+            json={
+                "user": uid3,
+                "title": "God's judgment on Sodom",
+                "text": "Paul was told it is hard to kick against the pricks, and the donkey (ass) carried Mary into Bethlehem.",
+            },
+            cookies=cookies3,
+        )
+        check(
+            "note with ordinary Bible vocabulary (God/Sodom/pricks/ass) not false-flagged",
+            rn_bible.status_code == 201,
+            str(rn_bible.status_code) + " " + str(rn_bible.text),
+        )
+
         rn_dirty = client.post(f"/notes/{uid3}", json={"user": uid3, "title": "fuck this", "text": "whatever"}, cookies=cookies3)
         check("profane note title rejected -> 422", rn_dirty.status_code == 422, str(rn_dirty.status_code))
 

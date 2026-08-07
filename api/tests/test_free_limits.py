@@ -15,6 +15,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from db import DBManager
+from backend.auth.sessions import SessionManager
 from routes.notes import notes_router
 from routes.agent import agent_router
 from routes.notifications import notification_router
@@ -45,6 +46,14 @@ def make_test_user() -> tuple[str, str]:
         })
     finally:
         db.close()
+    # Every gated route requires an authenticated session matching the path
+    # user_id, so mint a real session for this user and attach it to the client.
+    sm = SessionManager()
+    try:
+        token = sm.create_session(uid)
+    finally:
+        sm.close()
+    client.cookies.set("session", token)
     return uid, uname
 
 
@@ -85,6 +94,15 @@ def main():
         check("403 detail resource", detail.get("resource"), "notes")
         check("403 detail used", detail.get("used"), 10)
         check("403 detail limit", detail.get("limit"), 10)
+
+        # summarize_session persists its output as a note, so it must honour the
+        # same notes cap. Its gate runs before the AI call, so a capped user is
+        # rejected without the model ever being invoked (safe to assert here).
+        summ = client.post(
+            f"/agent/{uid}/{uuid.uuid4()}/summarize",
+            json={"session": {"title": "t", "prompts": [], "verses": []}},
+        )
+        check("summarize blocked when notes cap reached (403)", summ.status_code, 403)
 
         # ── Agent events (heartbeats): 1 allowed, 2nd blocked ────────────────
         print("\nAGENT EVENTS (limit 1):")
