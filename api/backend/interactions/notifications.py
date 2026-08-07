@@ -110,7 +110,12 @@ class NotificationManager(DBManager):
         return [{"_id": k, **v} for k, v in result.items()]
 
     def get_notification(self, notif_id: str) -> dict | None:
-        result = self.lookup(self._table, {"_id": notif_id})
+        # Scoped by user_id like update/set_timestamp/delete below — without
+        # this, any authenticated user could read (and even AI-trigger, via
+        # /trigger) another user's notification by guessing/observing a
+        # notif_id, since require_match on the route only checks the caller
+        # IS user_id, not that notif_id belongs to them.
+        result = self.lookup(self._table, {"_id": notif_id, "user_id": self.user_id})
         if not result:
             return None
         k, v = next(iter(result.items()))

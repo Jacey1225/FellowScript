@@ -49,6 +49,20 @@ def test_apple_product_mapping():
           apple_service.member_count_for("com.fellowscript.access.nonexistent"), None)
 
 
+def test_accepted_environment():
+    print("\n=== is_accepted_environment gates StoreKit environments ===")
+    # Local Xcode .storekit testing transactions (the source of the paid-plan
+    # leak on dev devices) must never be treated as a real purchase.
+    check("Xcode environment rejected",      apple_service.is_accepted_environment("Xcode"), False)
+    check("Xcode (lowercase) rejected",      apple_service.is_accepted_environment("xcode"), False)
+    check("Production accepted",             apple_service.is_accepted_environment("Production"), True)
+    # Sandbox is accepted by default so App Review / TestFlight IAP still works.
+    check("Sandbox accepted by default",     apple_service.is_accepted_environment("Sandbox"), True)
+    check("missing environment rejected",    apple_service.is_accepted_environment(None), False)
+    check("empty environment rejected",      apple_service.is_accepted_environment(""), False)
+    check("unknown environment rejected",    apple_service.is_accepted_environment("Nonsense"), False)
+
+
 def test_checkout_bounds():
     print("\n=== create_checkout_session rejects out-of-range member_count (no network call) ===")
     for bad_count in (0, 9, -1):
@@ -138,12 +152,97 @@ def test_upsert_from_stripe_and_apple():
             cleanup_db.close()
 
 
+def test_upsert_from_apple_rejects_claimed_transaction():
+    """A StoreKit transaction already tied to one account must not silently
+    reassign to a different one (e.g. Transaction.currentEntitlements
+    reporting the same device-level/sandbox entitlement to whichever
+    FellowScript account is currently signed in on every launch)."""
+    print("\n=== upsert_from_apple refuses a transaction already claimed by another user ===")
+    uid1, uid2 = str(uuid.uuid4()), str(uuid.uuid4())
+    db = DBManager()
+    try:
+        for uid in (uid1, uid2):
+            db.insertion("users", {"_id": uid, "username": f"claim_test_{uid[:8]}",
+                                    "email": f"claim_test_{uid[:8]}@example.com", "hash_pass": "x"})
+    finally:
+        db.close()
+
+    mgr = SubscriptionsManager()
+    sub_id = None
+    try:
+        sub_id = mgr.upsert_from_apple(
+            user_id=uid1, member_count=1, original_transaction_id="txn_shared",
+            status="active", current_period_end=None, trial_end=None,
+        )
+        check("first claim of a fresh transaction succeeds", sub_id is not None, True)
+
+        result = mgr.upsert_from_apple(
+            user_id=uid2, member_count=8, original_transaction_id="txn_shared",
+            status="active", current_period_end=None, trial_end=None,
+        )
+        check("second user claiming the same transaction is refused", result, None)
+
+        row2 = mgr.get_user_subscription(uid2)
+        check("the second user's plan is unaffected (still none)", row2, None)
+
+        row1 = mgr.get_subscription(sub_id)
+        check("the first user's plan is unaffected by the refused claim", row1["max_members"], 1)
+    finally:
+        if sub_id:
+            mgr.delete_subscription(sub_id)
+        mgr.close()
+        cleanup_db = DBManager()
+        try:
+            cleanup_db.delete("users", {"_id": uid1})
+            cleanup_db.delete("users", {"_id": uid2})
+        finally:
+            cleanup_db.close()
+
+
+def test_free_plan_reported_as_no_subscription():
+    """A free-tier plan must be reported as None by get_user_subscription so
+    clients render the upgrade UI, not an active 'Group Plan' — the free row
+    exists only to anchor usage counting."""
+    print("\n=== get_user_subscription returns None for a free-tier user ===")
+    uid = str(uuid.uuid4())
+    db = DBManager()
+    try:
+        db.insertion("users", {"_id": uid, "username": f"free_test_{uid[:8]}",
+                                "email": f"free_test_{uid[:8]}@example.com", "hash_pass": "x"})
+    finally:
+        db.close()
+
+    mgr = SubscriptionsManager()
+    sub_id = None
+    try:
+        sub_id = mgr.create_free_plan(uid)
+        check("create_free_plan created a row", sub_id is not None, True)
+        # The raw row exists and is free…
+        raw = mgr.get_subscription(sub_id)
+        check("the raw free row is plan_type=free", raw["plan_type"], "free")
+        # …but the per-user query reports it as no subscription.
+        check("get_user_subscription returns None for a free user",
+              mgr.get_user_subscription(uid), None)
+    finally:
+        if sub_id:
+            mgr.delete_subscription(sub_id)
+        mgr.close()
+        cleanup_db = DBManager()
+        try:
+            cleanup_db.delete("users", {"_id": uid})
+        finally:
+            cleanup_db.close()
+
+
 def main():
     test_price_table()
     test_apple_product_mapping()
+    test_accepted_environment()
+    test_free_plan_reported_as_no_subscription()
     test_checkout_bounds()
     test_create_and_update_subscription()
     test_upsert_from_stripe_and_apple()
+    test_upsert_from_apple_rejects_claimed_transaction()
 
     print(f"\n{'='*60}")
     passed, total = sum(results), len(results)

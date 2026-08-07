@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException, Depends
 from schemas.users import Note
 from db import DBManager
+from backend.interactions.groups import GroupsManager
 from backend.subscription.limits import check_limit
 from backend.auth.dependencies import get_current_user, require_match
 from backend.moderation.content_filter import check_clean, ContentRejected
@@ -10,6 +11,23 @@ import logging
 
 notes_router = APIRouter(prefix="/notes")
 logger = logging.getLogger(__name__)
+
+
+def _can_view_note(note_data: dict, user_id: str) -> bool:
+    """True if user_id may view (and therefore reply to) this note: its
+    owner, a public note, or a note shared in a group the user belongs to."""
+    if note_data.get("public"):
+        return True
+    if str(note_data.get("user_id") or "") == user_id:
+        return True
+    group_id = note_data.get("group_id")
+    if group_id:
+        gm = GroupsManager(user_id, group_id)
+        try:
+            return gm.is_member()
+        finally:
+            gm.close()
+    return False
 
 
 # ── Highlights ────────────────────────────────────────────────────────────────
@@ -115,7 +133,13 @@ async def post_reply(note_id: str, reply: dict, current_user: str = Depends(get_
         raise HTTPException(status_code=403, detail=gate)
     db = DBManager()
     try:
-        if not db.lookup("notes", {"_id": note_id}):
+        parent = db.lookup("notes", {"_id": note_id})
+        if not parent:
+            return {"error": "cannot find note"}
+        _, parent_data = list(parent.items())[0]
+        # Same "cannot find note" message for missing vs. not-visible so a
+        # caller can't use this endpoint to probe which private note ids exist.
+        if not _can_view_note(parent_data, current_user):
             return {"error": "cannot find note"}
         reply_note = Note(**reply)
         try:

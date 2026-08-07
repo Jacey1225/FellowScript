@@ -62,11 +62,11 @@ async def create_agent(user_id: str, body: dict, _: str = Depends(require_match(
 async def update_agent(user_id: str, agent_id: str, body: dict, _: str = Depends(require_match("user_id"))) -> dict:
     db = AgentManager(user_id)
     try:
-        if not db.lookup("agents", {"_id": agent_id}):
+        if not db.owns_agent(agent_id):
             raise HTTPException(status_code=404, detail="Agent not found")
         updates = {k: body[k] for k in ("role", "chats", "enabled", "name") if k in body}
         if updates:
-            db.update("agents", updates, {"_id": agent_id})
+            db.update("agents", updates, {"_id": agent_id, "user_id": user_id})
         return {"ok": True}
     finally:
         db.close()
@@ -170,6 +170,13 @@ async def delete_heartbeat(user_id: str, agent_id: str, heartbeat_id: str, _: st
 
 @agent_router.post("/{user_id}/{agent_id}/summarize", status_code=201)
 async def summarize_session(user_id: str, agent_id: str, body: dict, _: str = Depends(require_match("user_id"))) -> dict:
+    # The summary is persisted as a note, so it counts against the same weekly
+    # notes cap as create_note/post_reply — otherwise a free user at their cap
+    # could keep minting notes through this endpoint.
+    gate = check_limit(user_id, "notes")
+    if not gate["allowed"]:
+        raise HTTPException(status_code=403, detail=gate)
+
     session  = body.get("session", {})
     group_id = body.get("group_id", "")
 

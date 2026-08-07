@@ -7,7 +7,7 @@ import {
   PlusOutlined, EditOutlined, DeleteOutlined, FilterOutlined,
   ArrowLeftOutlined, ReloadOutlined,
 } from '@ant-design/icons';
-import { NoteBody, stripHtml as sanitizeStripHtml } from './RichText.jsx';
+import { NoteBody, sanitizeNoteHtml, stripHtml as sanitizeStripHtml } from './RichText.jsx';
 // Format a single [book, chapter, verse] triple into a display string
 function fmtVerse([b, c, v]) { return `${b} ${c}:${v}`; }
 
@@ -110,9 +110,12 @@ function NoteEditor({ note, noteId, user, currentGroupId, books, chapterCount, v
   const bodyRef      = useRef(null);
   const colorWrapRef = useRef(null);
 
-  // Seed the contentEditable body with the existing HTML once on mount
+  // Seed the contentEditable body with the existing HTML once on mount.
+  // Sanitized through sanitizeNoteHtml() — note.text can contain
+  // attacker-influenceable HTML (e.g. group-shared notes, AI-summarized
+  // content), so it must never be assigned to innerHTML raw.
   useEffect(() => {
-    if (bodyRef.current) bodyRef.current.innerHTML = note?.text || '';
+    if (bodyRef.current) bodyRef.current.innerHTML = sanitizeNoteHtml(note?.text || '');
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-resize title textarea
@@ -173,7 +176,7 @@ function NoteEditor({ note, noteId, user, currentGroupId, books, chapterCount, v
   const removeVerse = (i) => setVerseList(p => p.filter((_, j) => j !== i));
 
   const handleSave = async () => {
-    await onSave({
+    const ok = await onSave({
       user:     user.user_id,
       group_id: isPublic && currentGroupId ? currentGroupId : '',
       replies:  note?.replies || [],
@@ -182,7 +185,7 @@ function NoteEditor({ note, noteId, user, currentGroupId, books, chapterCount, v
       public:   isPublic,
       verses:   verseList.map(v => [v.book, v.chapter, v.verse]),
     }, noteId || null);
-    onBack();
+    if (ok) onBack();
   };
 
   // execCommand-based formatting (e.preventDefault keeps selection alive)

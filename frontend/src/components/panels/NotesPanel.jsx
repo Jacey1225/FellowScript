@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Button, Input, Select, Typography, Spin, Divider, Tag, Switch } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined, FilterOutlined, ArrowLeftOutlined } from '@ant-design/icons';
-import { NoteBody, stripHtml as sanitizeStripHtml } from '../RichText.jsx';
+import { NoteBody, sanitizeNoteHtml, stripHtml as sanitizeStripHtml } from '../RichText.jsx';
 import VerseSelector from '../VerseSelector.jsx';
 import { useNotesPanel } from '../../context/ReaderPanelContexts.jsx';
 
@@ -101,8 +101,11 @@ function NoteEditor({ note, noteId, user, currentGroupId, books, chapterCount, v
   const bodyRef      = useRef(null);
   const colorWrapRef = useRef(null);
 
+  // Sanitized through sanitizeNoteHtml() — note.text can contain
+  // attacker-influenceable HTML (e.g. group-shared notes, AI-summarized
+  // content), so it must never be assigned to innerHTML raw.
   useEffect(() => {
-    if (bodyRef.current) bodyRef.current.innerHTML = note?.text || '';
+    if (bodyRef.current) bodyRef.current.innerHTML = sanitizeNoteHtml(note?.text || '');
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -159,7 +162,7 @@ function NoteEditor({ note, noteId, user, currentGroupId, books, chapterCount, v
   const removeVerse = (i) => setVerseList(p => p.filter((_, j) => j !== i));
 
   const handleSave = async () => {
-    await onSave({
+    const ok = await onSave({
       user:     user.user_id,
       group_id: isPublic && currentGroupId ? currentGroupId : '',
       replies:  note?.replies || [],
@@ -168,7 +171,7 @@ function NoteEditor({ note, noteId, user, currentGroupId, books, chapterCount, v
       public:   isPublic,
       verses:   verseList.map(v => [v.book, v.chapter, v.verse]),
     }, noteId || null);
-    onBack();
+    if (ok) onBack();
   };
 
   const fmt = (cmd, val = null) => (e) => {

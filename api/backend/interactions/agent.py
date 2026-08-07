@@ -55,6 +55,12 @@ class AgentManager(DBManager):
             return None
         return result
 
+    def owns_agent(self, agent_id: str) -> bool:
+        """True if ``agent_id`` belongs to ``self.user_id``. Callers that take
+        a bare agent_id from the URL/body must check this before reading or
+        acting on it — the id alone is not proof of ownership."""
+        return bool(self.lookup(self.agent_table, {"_id": agent_id, "user_id": self.user_id}))
+
     def get_user_agents(self) -> dict:
         return self.lookup(self.agent_table, {"user_id": self.user_id})
 
@@ -62,11 +68,11 @@ class AgentManager(DBManager):
         self.update(
             self.agent_table,
             {"role": agent.role, "chats": agent.chats},
-            {"_id": agent.id}
+            {"_id": agent.id, "user_id": self.user_id}
         )
 
     def delete_agent(self, agent_id: str) -> None:
-        self.delete(self.agent_table, {"_id": agent_id})
+        self.delete(self.agent_table, {"_id": agent_id, "user_id": self.user_id})
 
     # ── Heartbeat CRUD ────────────────────────────────────────────────────────
 
@@ -85,14 +91,15 @@ class AgentManager(DBManager):
             self.conn.rollback()
 
     def get_heartbeats(self, agent_id: str) -> list[dict]:
-        result = self.lookup(self.hb_table, {"agent_id": agent_id})
+        result = self.lookup(self.hb_table, {"agent_id": agent_id, "user_id": self.user_id})
         return [{"_id": k, **v} for k, v in result.items()]
 
     def update_heartbeat(self, heartbeat_id: str, heartbeat: AgentHeartbeats) -> None:
         try:
             self.cur.execute(
-                "UPDATE agent_heartbeats SET timestamps = %s::jsonb, prompt = %s WHERE _id = %s",
-                (json.dumps(heartbeat.timestamps), heartbeat.prompt, heartbeat_id)
+                "UPDATE agent_heartbeats SET timestamps = %s::jsonb, prompt = %s "
+                "WHERE _id = %s AND user_id = %s",
+                (json.dumps(heartbeat.timestamps), heartbeat.prompt, heartbeat_id, self.user_id)
             )
             self.conn.commit()
         except Exception as e:
@@ -100,7 +107,7 @@ class AgentManager(DBManager):
             self.conn.rollback()
 
     def delete_heartbeat(self, heartbeat_id: str) -> None:
-        self.delete(self.hb_table, {"_id": heartbeat_id})
+        self.delete(self.hb_table, {"_id": heartbeat_id, "user_id": self.user_id})
 
     def note_via_hb(self, data: dict) -> str:
         note = Note(
@@ -164,6 +171,13 @@ class AgentManager(DBManager):
             return []
 
     def commit_hb_response(self, agent_id: str, heartbeat_id: str, heartbeat_content: str):
+        # Ownership guard: heartbeat_id/agent_id come straight off the URL, so
+        # confirm both belong to self.user_id before claiming the fire or
+        # spending an LLM call on someone else's heartbeat.
+        owned = self.lookup(self.hb_table, {"_id": heartbeat_id, "agent_id": agent_id, "user_id": self.user_id})
+        if not owned:
+            return {"error": "heartbeat not found"}
+
         # Idempotency guard. Both the server-side cron scheduler and the iOS
         # client's foreground checkAndFire converge here, and both fire within the
         # same minute for a given scheduled slot — which would create two notes.
@@ -246,10 +260,10 @@ class AgentManager(DBManager):
         })
 
     def get_messages(self, agent_id: str) -> dict:
-        return self.lookup(self.msg_table, {"agent_id": agent_id})
+        return self.lookup(self.msg_table, {"agent_id": agent_id, "user_id": self.user_id})
 
     def delete_message(self, message_id: str) -> None:
-        self.delete(self.msg_table, {"_id": message_id})
+        self.delete(self.msg_table, {"_id": message_id, "user_id": self.user_id})
 
     # ── AI Chat ───────────────────────────────────────────────────────────────
 
@@ -286,6 +300,12 @@ class AgentManager(DBManager):
 
     async def connect_agent(self, agent_id: str, ws: WebSocket) -> None:
         await ws.accept()
+        if not self.owns_agent(agent_id):
+            # agent_id is caller-supplied in the URL; without this, any
+            # authenticated user could chat through (and read the private
+            # persona/role prompt of) an agent they don't own.
+            await ws.close(code=4403)
+            return
         loop = asyncio.get_running_loop()
         agent_data = self.get_agent(agent_id) or {}
         agent_role = list(agent_data.values())[0].get("role", "") if agent_data else ""

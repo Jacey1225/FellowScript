@@ -849,16 +849,20 @@ async def apple_auth(info: AppleAuth, response: Response) -> dict:
                 needs_profile_completion=needs_profile_completion,
             )
         persist_new_user(user)
+        # apple_sub isn't a User schema field, so it's recorded in a separate
+        # step — done immediately after the row is created (before anything
+        # else that could fail) so a retried sign-in with the same Apple ID
+        # (e.g. the client times out and the user taps "Sign in with Apple"
+        # again before profile completion) always matches this same account
+        # via find_by_apple_sub instead of creating an orphaned duplicate.
+        users = load_users()
+        users[uid]["apple_sub"] = sub
+        save_users(users)
         sm = SubscriptionsManager()
         try:
             sm.create_free_plan(uid)
         finally:
             sm.close()
-        # apple_sub isn't a User schema field; record it in the JSON store so a
-        # returning Apple sign-in matches on the stable identifier.
-        users = load_users()
-        users[uid]["apple_sub"] = sub
-        save_users(users)
         data = users[uid]
 
     issue_session(response, uid)
