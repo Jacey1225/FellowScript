@@ -6,6 +6,13 @@
 // INTERACTIONS: segment switch, tap thread → ChatThreadView, + add friend/group/agent,
 //               unread badge on Chat tab
 // DEPENDENCY: Theme.swift, Models.swift, AppState.swift
+//
+// VISUAL: warm-dark-bloom / glass-card redesign matching the Dashboard and Notes
+// screens (glassCard() from DashboardComponents.swift, custom header + pill
+// toggle pattern from NotesListView.swift). Reference:
+// .claude/pipeline/_shared/ChatRedesign.swift. Presentation-only — same
+// ChatViewModel, same three segments, same sheets, same swipe actions; no new
+// navigation and no new data fetching.
 
 import SwiftUI
 import Combine
@@ -15,6 +22,7 @@ struct ChatRootView: View {
     @EnvironmentObject var appState: AppState
     @StateObject private var vm = ChatViewModel()
     @State private var selectedSegment = 0
+    @State private var searchQuery     = ""
     @State private var showAddFriend   = false
     @State private var showAddGroup    = false
     @State private var showNewAgent    = false
@@ -26,25 +34,31 @@ struct ChatRootView: View {
     @State private var blockConfirmTarget: FSContact? = nil
 
     var body: some View {
-        NavigationStack {
-            ZStack {
-                Theme.bgPage.ignoresSafeArea()
+        ZStack(alignment: .top) {
+            Theme.bgPage.ignoresSafeArea()
 
-                VStack(spacing: 0) {
-                    // Segmented control — Friends / Groups / AI Agents
-                    Picker("Chat type", selection: $selectedSegment) {
-                        Text("Friends").tag(0)
-                        Text("Groups").tag(1)
-                        Text("Agents").tag(2)
-                    }
-                    .pickerStyle(.segmented)
-                    .padding(.horizontal, Theme.spacingMD)
-                    .padding(.vertical, Theme.spacingSM)
-                    .background(Theme.navBg)
+            // Warm bloom ground (shared visual language with Dashboard/Notes).
+            RadialGradient(colors: [Color(hex: "#D4922A").opacity(0.20), .clear],
+                           center: UnitPoint(x: 0.12, y: 0.16), startRadius: 10, endRadius: 380)
+                .ignoresSafeArea()
+            RadialGradient(colors: [Color(hex: "#B8761D").opacity(0.12), .clear],
+                           center: UnitPoint(x: 0.92, y: 0.60), startRadius: 10, endRadius: 340)
+                .ignoresSafeArea()
 
-                    Divider().background(Theme.borderGoldFaint)
+            VStack(spacing: 0) {
+                header
 
-                    // Content per segment
+                scopeToggle
+                    .padding(.horizontal, 20)
+                    .padding(.top, 18)
+
+                ChatSearchField(text: $searchQuery)
+                    .padding(.horizontal, 20)
+                    .padding(.top, 12)
+
+                if vm.isLoading {
+                    loadingView
+                } else {
                     Group {
                         switch selectedSegment {
                         case 0: friendsList
@@ -52,17 +66,6 @@ struct ChatRootView: View {
                         default: agentsList
                         }
                     }
-                }
-            }
-            .navigationTitle("Chat")
-            .navigationBarTitleDisplayMode(.large)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(action: addAction) {
-                        Image(systemName: "plus")
-                            .foregroundColor(Theme.gold)
-                    }
-                    .accessibilityLabel(selectedSegment == 0 ? "Add friend" : selectedSegment == 1 ? "New group" : "New agent")
                 }
             }
         }
@@ -115,22 +118,100 @@ struct ChatRootView: View {
         }
     }
 
+    // ── Header: decorative icon · title · new (+) ──────────────────────────────
+    // The reference's hamburger has no real destination in this app (unlike
+    // Notes, which repurposes its hamburger for its existing filter/sort menu),
+    // so it's kept as a non-interactive decorative element rather than a dead
+    // tap target — same convention as HeroHeader's avatar circle in
+    // DashboardComponents.swift ("decorative — not a control, so no dead button").
+    private var header: some View {
+        HStack {
+            Circle()
+                .strokeBorder(Theme.parchment.opacity(0.18), lineWidth: 1)
+                .background(Circle().fill(Theme.parchment.opacity(0.08)))
+                .frame(width: 44, height: 44)
+                .overlay(Image(systemName: "line.3.horizontal").foregroundColor(Theme.goldLight))
+                .accessibilityHidden(true)
+            Spacer()
+            Text("Chat")
+                .font(.system(size: 27, weight: .heavy))
+                .foregroundColor(Theme.parchment)
+            Spacer()
+            Button(action: addAction) {
+                Circle()
+                    .fill(LinearGradient(colors: [Color(hex: "#EDAB3C"), Color(hex: "#D4922A"), Color(hex: "#B8761D")],
+                                         startPoint: .topLeading, endPoint: .bottomTrailing))
+                    .frame(width: 44, height: 44)
+                    .overlay(Image(systemName: "plus").font(.system(size: 16, weight: .bold)).foregroundColor(Color(hex: "#24170A")))
+                    .shadow(color: .black.opacity(0.4), radius: 10, x: 0, y: 6)
+            }
+            .accessibilityLabel(selectedSegment == 0 ? "Add friend" : selectedSegment == 1 ? "New group" : "New agent")
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 12)
+        .padding(.bottom, 4)
+    }
+
+    // ── Friends / Groups / Agents pill toggle (replaces the native segmented Picker) ──
+    private var scopeToggle: some View {
+        HStack(spacing: 4) {
+            segmentButton(0, "Friends")
+            segmentButton(1, "Groups")
+            segmentButton(2, "Agents")
+        }
+        .padding(5)
+        .background(
+            Capsule().fill(Theme.parchment.opacity(0.07))
+                .overlay(Capsule().stroke(Theme.parchment.opacity(0.13), lineWidth: 1))
+        )
+    }
+
+    private func segmentButton(_ index: Int, _ label: String) -> some View {
+        let isActive = selectedSegment == index
+        return Button(action: { withAnimation(.spring(response: 0.28, dampingFraction: 0.85)) { selectedSegment = index } }) {
+            Text(label)
+                .font(.system(size: 14.5, weight: .heavy))
+                .foregroundColor(isActive ? Color(hex: "#24170A") : Theme.textSecondary)
+                .frame(maxWidth: .infinity, minHeight: 40)
+                .background(
+                    isActive
+                        ? LinearGradient(colors: [Color(hex: "#D4922A"), Color(hex: "#EDAB3C")], startPoint: .leading, endPoint: .trailing)
+                        : LinearGradient(colors: [.clear, .clear], startPoint: .leading, endPoint: .trailing)
+                )
+                .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
+        .accessibilityAddTraits(isActive ? .isSelected : [])
+    }
+
     // ── Friends list (mirrors MessagingSidebar friends section) ────────────────
+    // `searchQuery` filters the already-loaded array client-side — no new
+    // network calls or fields (see intake spec Open Questions: Search field).
+    private var filteredFriends: [FSContact] {
+        guard !searchQuery.isEmpty else { return vm.friends }
+        return vm.friends.filter {
+            $0.name.localizedCaseInsensitiveContains(searchQuery)
+                || $0.preview.localizedCaseInsensitiveContains(searchQuery)
+        }
+    }
+
     private var friendsList: some View {
         Group {
-            if vm.isLoading {
-                loadingView
-            } else if vm.friends.isEmpty {
+            if vm.friends.isEmpty {
                 emptyState(
                     icon:    "person.badge.plus",
                     message: "No friends yet.",
                     hint:    "Tap + to add a friend by username."
                 )
+            } else if filteredFriends.isEmpty {
+                noMatchesState
             } else {
-                List(vm.friends) { contact in
+                List(filteredFriends) { contact in
                     ContactRow(contact: contact)
                         .listRowBackground(Color.clear)
-                        .listRowSeparatorTint(Theme.borderGoldFaint)
+                        .listRowSeparator(.hidden)
+                        .listRowInsets(EdgeInsets(top: 5, leading: 20, bottom: 5, trailing: 20))
                         .onTapGesture { activeContact = contact }
                         .swipeActions(edge: .trailing) {
                             Button(role: .destructive) {
@@ -153,6 +234,8 @@ struct ChatRootView: View {
                 }
                 .listStyle(.plain)
                 .scrollContentBackground(.hidden)
+                .contentMargins(.top, 8, for: .scrollContent)
+                .contentMargins(.bottom, 110, for: .scrollContent)
             }
         }
         .sheet(item: $reportTarget) { contact in
@@ -181,21 +264,30 @@ struct ChatRootView: View {
     }
 
     // ── Groups list ────────────────────────────────────────────────────────────
+    private var filteredGroups: [FSContact] {
+        guard !searchQuery.isEmpty else { return vm.groups }
+        return vm.groups.filter {
+            $0.name.localizedCaseInsensitiveContains(searchQuery)
+                || $0.preview.localizedCaseInsensitiveContains(searchQuery)
+        }
+    }
+
     private var groupsList: some View {
         Group {
-            if vm.isLoading {
-                loadingView
-            } else if vm.groups.isEmpty {
+            if vm.groups.isEmpty {
                 emptyState(
                     icon:    "person.3",
                     message: "No groups yet.",
                     hint:    "Tap + to create a study group."
                 )
+            } else if filteredGroups.isEmpty {
+                noMatchesState
             } else {
-                List(vm.groups) { contact in
+                List(filteredGroups) { contact in
                     ContactRow(contact: contact)
                         .listRowBackground(Color.clear)
-                        .listRowSeparatorTint(Theme.borderGoldFaint)
+                        .listRowSeparator(.hidden)
+                        .listRowInsets(EdgeInsets(top: 5, leading: 20, bottom: 5, trailing: 20))
                         .onTapGesture { activeContact = contact }
                         .swipeActions(edge: .trailing) {
                             Button(role: .destructive) {
@@ -208,31 +300,41 @@ struct ChatRootView: View {
                 }
                 .listStyle(.plain)
                 .scrollContentBackground(.hidden)
+                .contentMargins(.top, 8, for: .scrollContent)
+                .contentMargins(.bottom, 110, for: .scrollContent)
             }
         }
     }
 
     // ── AI agents list ─────────────────────────────────────────────────────────
+    private var filteredAgents: [FSAgent] {
+        guard !searchQuery.isEmpty else { return vm.agents }
+        return vm.agents.filter { $0.displayLabel.localizedCaseInsensitiveContains(searchQuery) }
+    }
+
     private var agentsList: some View {
         Group {
-            if vm.isLoading {
-                loadingView
-            } else if vm.agents.isEmpty {
+            if vm.agents.isEmpty {
                 emptyState(
                     icon:    "brain",
                     message: "No agents yet.",
                     hint:    "Create an agent in Account settings."
                 )
+            } else if filteredAgents.isEmpty {
+                noMatchesState
             } else {
-                List(vm.agents) { agent in
+                List(filteredAgents) { agent in
                     AgentRow(agent: agent)
                         .listRowBackground(Color.clear)
-                        .listRowSeparatorTint(Theme.borderGoldFaint)
+                        .listRowSeparator(.hidden)
+                        .listRowInsets(EdgeInsets(top: 5, leading: 20, bottom: 5, trailing: 20))
                         .onTapGesture { activeAgent = agent }
                         .accessibilityLabel("Chat with agent: \(agent.displayLabel)")
                 }
                 .listStyle(.plain)
                 .scrollContentBackground(.hidden)
+                .contentMargins(.top, 8, for: .scrollContent)
+                .contentMargins(.bottom, 110, for: .scrollContent)
             }
         }
     }
@@ -267,6 +369,22 @@ struct ChatRootView: View {
         }
         .padding()
         .accessibilityLabel("\(message) \(hint)")
+    }
+
+    private var noMatchesState: some View {
+        VStack(spacing: Theme.spacingMD) {
+            Spacer()
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 34, weight: .light))
+                .foregroundColor(Theme.gold.opacity(0.30))
+            Text("No matches for \u{201C}\(searchQuery)\u{201D}")
+                .font(.lora(Theme.fontBody))
+                .foregroundColor(Theme.textSecondary)
+                .multilineTextAlignment(.center)
+            Spacer()
+        }
+        .padding()
+        .accessibilityLabel("No matches for \(searchQuery)")
     }
 }
 
@@ -328,49 +446,112 @@ final class ChatViewModel: ObservableObject {
     }
 }
 
-// ── Contact row (mirrors ContactItem in MessagingSidebar.jsx) ─────────────────
+// ── Relative-time helper (pure; derives only from the existing
+//    FSContact.lastMessageAt ISO string — no new field, no fabricated data) ────
+private func chatRelativeTime(_ iso: String) -> String {
+    guard !iso.isEmpty else { return "" }
+    let withFraction = ISO8601DateFormatter()
+    withFraction.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    let plain = ISO8601DateFormatter()
+    plain.formatOptions = [.withInternetDateTime]
+    guard let date = withFraction.date(from: iso) ?? plain.date(from: iso) else { return "" }
+
+    let diff = Date().timeIntervalSince(date)
+    if diff < 60      { return "now" }
+    if diff < 3_600   { return "\(Int(diff / 60))m" }
+    if diff < 86_400  { return "\(Int(diff / 3_600))h" }
+    if diff < 604_800 { return "\(Int(diff / 86_400))d" }
+    return "\(Int(diff / 604_800))w"
+}
+
+// ── Search field ────────────────────────────────────────────────────────────
+// Wired to filter the already-loaded friends/groups/agents arrays client-side
+// (see ChatRootView.filteredFriends/filteredGroups/filteredAgents) — no new
+// network calls or data surface (see intake spec Open Questions: Search field).
+struct ChatSearchField: View {
+    @Binding var text: String
+
+    var body: some View {
+        HStack(spacing: 9) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(Theme.parchment.opacity(0.4))
+            TextField("", text: $text, prompt: Text("Search conversations")
+                .foregroundColor(Theme.parchment.opacity(0.4)))
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(Theme.parchment)
+                .textInputAutocapitalization(.never)
+                .accessibilityLabel("Search conversations")
+            if !text.isEmpty {
+                Button(action: { text = "" }) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 14))
+                        .foregroundColor(Theme.parchment.opacity(0.35))
+                }
+                .accessibilityLabel("Clear search")
+            }
+        }
+        .padding(.horizontal, 14)
+        .frame(height: 42)
+        .background(Capsule().fill(Theme.parchment.opacity(0.06)))
+        .overlay(Capsule().stroke(Theme.parchment.opacity(0.12), lineWidth: 1))
+    }
+}
+
+// ── Contact row (mirrors ChatThreadRow in ChatRedesign.swift) ─────────────────
+// Online-status dot and unread-count badge are intentionally omitted: FSContact
+// carries no isOnline/unreadCount field and no presence/unread-tracking system
+// exists yet in this codebase (see intake spec Open Questions) — rendering them
+// would fabricate data rather than restyle real data. The relative timestamp
+// derives purely from the existing lastMessageAt field via chatRelativeTime(_:).
 struct ContactRow: View {
     let contact: FSContact
 
     var body: some View {
-        HStack(spacing: Theme.spacingMD) {
-            // Avatar
-            ZStack {
-                Circle()
-                    .fill(Theme.gold.opacity(0.15))
-                    .frame(width: 44, height: 44)
-                Text(String(contact.name.prefix(1)).uppercased())
-                    .font(.playfair(Theme.fontBody))
-                    .foregroundColor(Theme.gold)
-            }
-            .overlay(Circle().stroke(Theme.borderGold, lineWidth: 1))
-            .accessibilityHidden(true)
+        HStack(spacing: 13) {
+            Circle()
+                .fill(LinearGradient(colors: [Color(hex: "#EDAB3C").opacity(0.32), Color(hex: "#B8761D").opacity(0.2)],
+                                     startPoint: .topLeading, endPoint: .bottomTrailing))
+                .frame(width: 48, height: 48)
+                .overlay(Circle().stroke(Theme.gold.opacity(0.5), lineWidth: 1))
+                .overlay(
+                    Text(String(contact.name.prefix(1)).uppercased())
+                        .font(.system(size: 18, weight: .heavy))
+                        .foregroundColor(Theme.goldLight)
+                )
+                .accessibilityHidden(true)
 
-            VStack(alignment: .leading, spacing: 2) {
-                HStack {
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Text(contact.name)
-                        .font(.lora(Theme.fontBody))
-                        .foregroundColor(Theme.parchment.opacity(0.80))
+                        .font(.system(size: 15.5, weight: .heavy))
+                        .foregroundColor(Theme.parchment)
+                        .lineLimit(1)
                     if contact.type == .group {
                         Image(systemName: "person.3.fill")
-                            .font(.caption2)
+                            .font(.system(size: 10))
                             .foregroundColor(Theme.gold.opacity(0.55))
                     }
+                    Spacer(minLength: 0)
+                    let timeLabel = chatRelativeTime(contact.lastMessageAt)
+                    if !timeLabel.isEmpty {
+                        Text(timeLabel)
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundColor(Theme.textMuted)
+                    }
                 }
+
                 if !contact.preview.isEmpty {
                     Text(contact.preview)
-                        .font(.lora(Theme.fontSM))
-                        .foregroundColor(Theme.textMuted)
+                        .font(.system(size: 13))
+                        .foregroundColor(Theme.parchment.opacity(0.6))
                         .lineLimit(1)
                 }
             }
-            Spacer()
-            Image(systemName: "chevron.right")
-                .font(.caption)
-                .foregroundColor(Theme.textMuted)
-                .accessibilityHidden(true)
         }
-        .padding(.vertical, Theme.spacingSM)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 13)
+        .glassCard(cornerRadius: 20)
     }
 }
 
@@ -379,32 +560,29 @@ struct AgentRow: View {
     let agent: FSAgent
 
     var body: some View {
-        HStack(spacing: Theme.spacingMD) {
-            ZStack {
-                Circle()
-                    .fill(Theme.gold.opacity(0.12))
-                    .frame(width: 44, height: 44)
-                Image(systemName: "brain")
-                    .foregroundColor(Theme.gold)
-            }
-            .overlay(Circle().stroke(Theme.borderGold, lineWidth: 1))
-            .accessibilityHidden(true)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(agent.displayLabel)
-                    .font(.lora(Theme.fontBody))
-                    .foregroundColor(Theme.parchment.opacity(0.80))
-                Text(agent.enabled ? "Active" : "Disabled")
-                    .font(.lora(Theme.fontXS))
-                    .foregroundColor(agent.enabled ? Theme.success.opacity(0.80) : Theme.textMuted)
-            }
-            Spacer()
-            Image(systemName: "chevron.right")
-                .font(.caption)
-                .foregroundColor(Theme.textMuted)
+        HStack(spacing: 13) {
+            Circle()
+                .fill(LinearGradient(colors: [Color(hex: "#EDAB3C").opacity(0.28), Color(hex: "#B8761D").opacity(0.16)],
+                                     startPoint: .topLeading, endPoint: .bottomTrailing))
+                .frame(width: 48, height: 48)
+                .overlay(Circle().stroke(Theme.gold.opacity(0.5), lineWidth: 1))
+                .overlay(Image(systemName: "brain").foregroundColor(Theme.goldLight))
                 .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(agent.displayLabel)
+                    .font(.system(size: 15.5, weight: .heavy))
+                    .foregroundColor(Theme.parchment)
+                    .lineLimit(1)
+                Text(agent.enabled ? "Active" : "Disabled")
+                    .font(.system(size: 12))
+                    .foregroundColor(agent.enabled ? Theme.success.opacity(0.85) : Theme.textMuted)
+            }
+            Spacer(minLength: 0)
         }
-        .padding(.vertical, Theme.spacingSM)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 13)
+        .glassCard(cornerRadius: 20)
     }
 }
 

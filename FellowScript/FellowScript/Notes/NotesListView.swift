@@ -172,84 +172,38 @@ struct NotesListView: View {
     @State private var detailNote:      FSNote?  = nil
 
     var body: some View {
-        NavigationStack {
-            ZStack {
-                Theme.bgPage.ignoresSafeArea()
+        ZStack(alignment: .top) {
+            Theme.bgPage.ignoresSafeArea()
 
-                VStack(spacing: 0) {
-                    // ── Notes / Highlights segment ──────────────────────────
-                    Picker("Tab", selection: $vm.activeTab) {
-                        ForEach(NotesViewModel.NoteTab.allCases, id: \.self) { tab in
-                            Text(tab.rawValue).tag(tab)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .padding(.horizontal, Theme.spacingMD)
-                    .padding(.vertical, Theme.spacingSM)
-                    .background(Theme.navBg)
+            // Warm bloom ground (shared visual language with the Dashboard).
+            RadialGradient(colors: [Color(hex: "#D4922A").opacity(0.20), .clear],
+                           center: UnitPoint(x: 0.12, y: 0.16), startRadius: 10, endRadius: 380)
+                .ignoresSafeArea()
+            RadialGradient(colors: [Color(hex: "#B8761D").opacity(0.12), .clear],
+                           center: UnitPoint(x: 0.92, y: 0.60), startRadius: 10, endRadius: 340)
+                .ignoresSafeArea()
 
-                    // ── Category chips (Personal + each group) ─────────────
-                    if vm.activeTab == .notes {
-                        categoryPicker
-                    }
+            VStack(spacing: 0) {
+                header
 
-                    if vm.isLoading {
-                        Spacer()
-                        ProgressView().tint(Theme.gold)
-                        Spacer()
-                    } else {
-                        switch vm.activeTab {
-                        case .notes:      notesTab
-                        case .highlights: highlightsTab
-                        }
-                    }
+                notesHighlightsToggle
+                    .padding(.horizontal, 20)
+                    .padding(.top, 16)
+
+                if vm.activeTab == .notes {
+                    groupChips
+                        .padding(.top, 14)
                 }
-            }
-            .navigationTitle("Notes")
-            .navigationBarTitleDisplayMode(.large)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Menu {
-                        Section("Sort") {
-                            ForEach(NotesViewModel.SortOrder.allCases, id: \.self) { order in
-                                Button(action: { vm.sortOrder = order }) {
-                                    Label(
-                                        order.rawValue,
-                                        systemImage: vm.sortOrder == order ? "checkmark" : "arrow.up.arrow.down"
-                                    )
-                                }
-                            }
-                        }
-                        Section("Visibility") {
-                            ForEach(NotesViewModel.VisibilityFilter.allCases, id: \.self) { filter in
-                                Button(action: { vm.visibilityFilter = filter }) {
-                                    Label(
-                                        filter.rawValue,
-                                        systemImage: vm.visibilityFilter == filter ? "checkmark" : "eye"
-                                    )
-                                }
-                            }
-                        }
-                        if vm.isFiltered {
-                            Divider()
-                            Button(role: .destructive, action: { vm.resetFilters() }) {
-                                Label("Clear Filters", systemImage: "xmark.circle")
-                            }
-                        }
-                    } label: {
-                        Image(systemName: vm.isFiltered
-                              ? "line.3.horizontal.decrease.circle.fill"
-                              : "line.3.horizontal.decrease.circle")
-                            .foregroundColor(Theme.gold)
+
+                if vm.isLoading {
+                    Spacer()
+                    ProgressView().tint(Theme.gold)
+                    Spacer()
+                } else {
+                    switch vm.activeTab {
+                    case .notes:      notesTab
+                    case .highlights: highlightsTab
                     }
-                    .accessibilityLabel("Filter and sort notes")
-                }
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(action: startNewNote) {
-                        Image(systemName: "plus")
-                            .foregroundColor(Theme.gold)
-                    }
-                    .accessibilityLabel("Create new note")
                 }
             }
         }
@@ -269,13 +223,21 @@ struct NotesListView: View {
                 isReadOnly: false
             ) { saved in
                 let uid = appState.currentUser?.user_id ?? ""
-                Task { await vm.saveNote(saved, editingId: editingId, userId: uid) }
+                let ok = await vm.saveNote(saved, editingId: editingId, userId: uid)
+                if ok { return nil }
+                let msg = vm.saveError
+                vm.saveError = nil
+                return msg ?? "That note could not be saved. Please revise and try again."
             }
         }
         .sheet(item: $detailNote) { note in
             NoteDetailView(note: note) { saved in
                 let uid = appState.currentUser?.user_id ?? ""
-                Task { await vm.saveNote(saved, editingId: note.id, userId: uid) }
+                let ok = await vm.saveNote(saved, editingId: note.id, userId: uid)
+                if ok { return nil }
+                let msg = vm.saveError
+                vm.saveError = nil
+                return msg ?? "That note could not be saved. Please revise and try again."
             }
         }
         .alert("Save Failed", isPresented: Binding(
@@ -288,36 +250,124 @@ struct NotesListView: View {
         }
     }
 
-    // ── Category chip row ─────────────────────────────────────────────────────
-    private var categoryPicker: some View {
+    // ── Header: filter/sort menu · title · new note ───────────────────────────
+    // The reference's hamburger opens the (already-built) sort/visibility menu
+    // rather than a non-existent side menu, so no functionality is lost.
+    private var header: some View {
+        HStack {
+            Menu {
+                Section("Sort") {
+                    ForEach(NotesViewModel.SortOrder.allCases, id: \.self) { order in
+                        Button(action: { vm.sortOrder = order }) {
+                            Label(order.rawValue, systemImage: vm.sortOrder == order ? "checkmark" : "arrow.up.arrow.down")
+                        }
+                    }
+                }
+                Section("Visibility") {
+                    ForEach(NotesViewModel.VisibilityFilter.allCases, id: \.self) { filter in
+                        Button(action: { vm.visibilityFilter = filter }) {
+                            Label(filter.rawValue, systemImage: vm.visibilityFilter == filter ? "checkmark" : "eye")
+                        }
+                    }
+                }
+                if vm.isFiltered {
+                    Divider()
+                    Button(role: .destructive, action: { vm.resetFilters() }) {
+                        Label("Clear Filters", systemImage: "xmark.circle")
+                    }
+                }
+            } label: {
+                Circle()
+                    .strokeBorder(Theme.parchment.opacity(0.18), lineWidth: 1)
+                    .background(Circle().fill(Theme.parchment.opacity(0.08)))
+                    .frame(width: 44, height: 44)
+                    .overlay(
+                        Image(systemName: "line.3.horizontal.decrease")
+                            .foregroundColor(vm.isFiltered ? Theme.goldLight : Theme.parchment.opacity(0.8))
+                    )
+            }
+            .accessibilityLabel("Filter and sort notes")
+
+            Spacer()
+            Text("Notes")
+                .font(.system(size: 27, weight: .heavy))
+                .foregroundColor(Theme.parchment)
+            Spacer()
+
+            Button(action: startNewNote) {
+                Circle()
+                    .fill(LinearGradient(colors: [Color(hex: "#EDAB3C"), Color(hex: "#D4922A"), Color(hex: "#B8761D")],
+                                         startPoint: .topLeading, endPoint: .bottomTrailing))
+                    .frame(width: 44, height: 44)
+                    .overlay(Image(systemName: "plus").font(.system(size: 16, weight: .bold)).foregroundColor(Color(hex: "#24170A")))
+                    .shadow(color: .black.opacity(0.4), radius: 10, x: 0, y: 6)
+            }
+            .accessibilityLabel("Create new note")
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 12)
+        .padding(.bottom, 4)
+    }
+
+    // ── Notes / Highlights gold segmented toggle ──────────────────────────────
+    private var notesHighlightsToggle: some View {
+        HStack(spacing: 4) {
+            toggleSegment(.notes, "Notes")
+            toggleSegment(.highlights, "Highlights")
+        }
+        .padding(5)
+        .background(
+            Capsule().fill(Theme.parchment.opacity(0.07))
+                .overlay(Capsule().stroke(Theme.parchment.opacity(0.13), lineWidth: 1))
+        )
+    }
+
+    private func toggleSegment(_ tab: NotesViewModel.NoteTab, _ label: String) -> some View {
+        let isActive = vm.activeTab == tab
+        return Button(action: { withAnimation(.spring(response: 0.28, dampingFraction: 0.85)) { vm.activeTab = tab } }) {
+            Text(label)
+                .font(.system(size: 14.5, weight: .heavy))
+                .foregroundColor(isActive ? Color(hex: "#24170A") : Theme.textSecondary)
+                .frame(maxWidth: .infinity, minHeight: 40)
+                .background(
+                    isActive
+                        ? LinearGradient(colors: [Color(hex: "#D4922A"), Color(hex: "#EDAB3C")], startPoint: .leading, endPoint: .trailing)
+                        : LinearGradient(colors: [.clear, .clear], startPoint: .leading, endPoint: .trailing)
+                )
+                .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+
+    // ── Group filter chips (Personal + each group) ────────────────────────────
+    private var groupChips: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: Theme.spacingSM) {
+            HStack(spacing: 8) {
                 chip(title: "Personal", id: nil)
                 ForEach(vm.groups) { group in
                     chip(title: group.title, id: group.id)
                 }
             }
-            .padding(.horizontal, Theme.spacingMD)
-            .padding(.vertical, Theme.spacingSM)
+            .padding(.horizontal, 20)
         }
-        .background(Theme.navBg)
-        .overlay(alignment: .bottom) { Divider().background(Theme.borderGoldFaint) }
     }
 
     @ViewBuilder
     private func chip(title: String, id: String?) -> some View {
         let selected = vm.currentGroupId == id
-        Button(action: {
-            withAnimation(.easeInOut(duration: 0.15)) { vm.currentGroupId = id }
-        }) {
+        Button(action: { withAnimation(.easeOut(duration: 0.18)) { vm.currentGroupId = id } }) {
             Text(title)
-                .font(.lora(Theme.fontXS))
-                .foregroundColor(selected ? Theme.ink : Theme.textSecondary)
-                .padding(.horizontal, Theme.spacingMD)
-                .padding(.vertical, 6)
-                .background(selected ? Theme.gold : Theme.gold.opacity(0.10))
+                .font(.system(size: 13.5, weight: .bold))
+                .foregroundColor(selected ? Color(hex: "#24170A") : Theme.parchment.opacity(0.7))
+                .padding(.horizontal, 16)
+                .frame(height: 38)
+                .background(
+                    selected
+                        ? LinearGradient(colors: [Color(hex: "#D4922A"), Color(hex: "#EDAB3C")], startPoint: .leading, endPoint: .trailing)
+                        : LinearGradient(colors: [Theme.parchment.opacity(0.07), Theme.parchment.opacity(0.07)], startPoint: .leading, endPoint: .trailing)
+                )
+                .overlay(Capsule().stroke(selected ? Color.clear : Theme.parchment.opacity(0.14), lineWidth: 1))
                 .clipShape(Capsule())
-                .overlay(Capsule().stroke(selected ? Color.clear : Theme.borderGoldDim, lineWidth: 1))
         }
         .buttonStyle(.plain)
         .accessibilityLabel(title)
@@ -334,7 +384,8 @@ struct NotesListView: View {
                     ForEach(vm.filteredNotes, id: \.0) { id, note in
                         NoteRow(note: note)
                             .listRowBackground(Color.clear)
-                            .listRowSeparatorTint(Theme.borderGoldFaint)
+                            .listRowSeparator(.hidden)
+                            .listRowInsets(EdgeInsets(top: 6, leading: 20, bottom: 6, trailing: 20))
                             .onTapGesture { detailNote = note }
                             .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                                 Button(role: .destructive) {
@@ -361,6 +412,8 @@ struct NotesListView: View {
                 }
                 .listStyle(.plain)
                 .scrollContentBackground(.hidden)
+                .contentMargins(.top, 10, for: .scrollContent)
+                .contentMargins(.bottom, 100, for: .scrollContent)
             }
         }
     }
@@ -389,7 +442,8 @@ struct NotesListView: View {
                 List(vm.sortedHighlights) { h in
                     HighlightRow(highlight: h)
                         .listRowBackground(Color.clear)
-                        .listRowSeparatorTint(Theme.borderGoldFaint)
+                        .listRowSeparator(.hidden)
+                        .listRowInsets(EdgeInsets(top: 4, leading: 20, bottom: 4, trailing: 20))
                         .contentShape(Rectangle())
                         .onTapGesture {
                             // Only navigate for a properly parsed reference.
@@ -403,6 +457,8 @@ struct NotesListView: View {
                 }
                 .listStyle(.plain)
                 .scrollContentBackground(.hidden)
+                .contentMargins(.top, 10, for: .scrollContent)
+                .contentMargins(.bottom, 100, for: .scrollContent)
             }
         }
     }
@@ -460,21 +516,22 @@ struct NoteRow: View {
     let note: FSNote
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.spacingXS) {
+        VStack(alignment: .leading, spacing: 9) {
             HStack {
                 Text(note.title.isEmpty ? "Untitled" : note.title)
-                    .font(.lora(Theme.fontBody, weight: .semibold))
+                    .font(.system(size: 16.5, weight: .heavy))
                     .foregroundColor(Theme.parchment)
                     .lineLimit(1)
                 Spacer()
                 if note.public {
-                    Text("Public")
-                        .font(.lora(Theme.fontXXS))
-                        .tracking(2)
-                        .foregroundColor(Theme.gold)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(Theme.gold.opacity(0.10))
+                    Text("PUBLIC")
+                        .font(.system(size: 9, weight: .bold))
+                        .tracking(1.5)
+                        .foregroundColor(Theme.goldLight)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(Theme.gold.opacity(0.14))
+                        .overlay(Capsule().stroke(Theme.gold.opacity(0.32), lineWidth: 1))
                         .clipShape(Capsule())
                 }
             }
@@ -485,28 +542,31 @@ struct NoteRow: View {
                     HStack(spacing: 6) {
                         ForEach(Array(validVerses.enumerated()), id: \.offset) { _, v in
                             Text(verseLabel(v))
-                                .font(.verseRef(Theme.fontXXS))
-                                .foregroundColor(Theme.gold)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 2)
-                                .background(Theme.gold.opacity(0.10))
-                                .clipShape(RoundedRectangle(cornerRadius: 4))
-                                .overlay(RoundedRectangle(cornerRadius: 4).stroke(Theme.borderGold, lineWidth: 1))
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundColor(Theme.goldLight)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 4)
+                                .background(Theme.gold.opacity(0.14))
+                                .overlay(Capsule().stroke(Theme.gold.opacity(0.32), lineWidth: 1))
+                                .clipShape(Capsule())
                         }
                     }
                 }
             }
 
             Text(note.preview.isEmpty ? "No content" : note.preview)
-                .font(.lora(Theme.fontSM))
-                .foregroundColor(Theme.textSecondary)
+                .font(.system(size: 13))
+                .foregroundColor(Theme.parchment.opacity(0.62))
                 .lineLimit(2)
 
             Text(note.formattedTimestamp)
-                .font(.lora(Theme.fontXXS))
+                .font(.system(size: 11))
                 .foregroundColor(Theme.textMuted)
         }
-        .padding(.vertical, Theme.spacingSM)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 15)
+        .glassCard(cornerRadius: 20)
     }
 
     private func verseLabel(_ components: [FSVerseComponent]) -> String {
@@ -552,7 +612,9 @@ struct HighlightRow: View {
 // ── Note detail sheet ─────────────────────────────────────────────────────────
 struct NoteDetailView: View {
     let note:   FSNote
-    let onSave: (FSNote) -> Void   // called when user saves edits
+    // Returns nil on success, or an error message on failure (mirrors
+    // NoteEditorView.onSave so a content-filter rejection keeps both sheets open).
+    let onSave: (FSNote) async -> String?
 
     @Environment(\.dismiss) private var dismiss
     @State private var showEditor = false
@@ -598,8 +660,9 @@ struct NoteDetailView: View {
                     groupId:    note.group_id,
                     isReadOnly: false
                 ) { saved in
-                    onSave(saved)
-                    dismiss()
+                    let msg = await onSave(saved)
+                    if msg == nil { dismiss() }
+                    return msg
                 }
             }
         }

@@ -65,39 +65,35 @@ struct ContentView: View {
         .tint(Theme.gold)
     }
 
-    // ── Five-tab bar — mirrors mobile-tab-bar in global.css ──────────────────
+    // ── Five destinations behind a floating pill tab bar ─────────────────────
+    // Keeps TabView (so each screen retains its state and lazy-mounts, and its
+    // .task runs once — the same behavior the native bar gave) but hides the
+    // native chrome and overlays FloatingTabBar. The custom bar floats over the
+    // content on purpose (mini-player style); DashboardView adds bottom padding
+    // to clear it.
     private var mainTabView: some View {
-        TabView(selection: $selectedTab) {
-            DashboardView()
-                .tabItem {
-                    Label("Home", systemImage: "house.fill")
-                }
-                .tag(Tab.home)
+        ZStack(alignment: .bottom) {
+            TabView(selection: $selectedTab) {
+                DashboardView()
+                    .tag(Tab.home)
+                    .toolbar(.hidden, for: .tabBar)
+                BibleReaderView()
+                    .tag(Tab.bible)
+                    .toolbar(.hidden, for: .tabBar)
+                NotesListView()
+                    .tag(Tab.notes)
+                    .toolbar(.hidden, for: .tabBar)
+                ChatRootView()
+                    .tag(Tab.chat)
+                    .toolbar(.hidden, for: .tabBar)
+                AccountView()
+                    .tag(Tab.account)
+                    .toolbar(.hidden, for: .tabBar)
+            }
+            .accentColor(Theme.accentColor)
 
-            BibleReaderView()
-                .tabItem {
-                    Label("Bible", systemImage: "book.fill")
-                }
-                .tag(Tab.bible)
-
-            NotesListView()
-                .tabItem {
-                    Label("Notes", systemImage: "note.text")
-                }
-                .tag(Tab.notes)
-
-            ChatRootView()
-                .tabItem {
-                    Label("Chat", systemImage: "message.fill")
-                }
-                .tag(Tab.chat)
-
-            AccountView()
-                .tabItem {
-                    Label("Account", systemImage: "person.crop.circle")
-                }
-                .tag(Tab.account)
+            FloatingTabBar(selection: $selectedTab,
+                           inCallBarVisible: call.inCall && !call.isExpanded)
         }
-        .accentColor(Theme.accentColor)
     }
 }
