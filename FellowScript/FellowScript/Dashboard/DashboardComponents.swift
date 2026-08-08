@@ -29,21 +29,30 @@ struct QuickAction: Identifiable {
 // renders dark) + a warm tint so the gold backdrop bleeds through the upper
 // cards + a soft light hairline edge. Replaces the old opaque Theme.cardBg fill.
 extension View {
-    func glassCard(cornerRadius: CGFloat = 20) -> some View {
+    // `tint`/`border` default to the exact values every pre-existing call site
+    // relied on implicitly, so Dashboard/Chat/Notes/Note-Editor call sites that
+    // only ever pass `cornerRadius:` render identically. The Danger Zone card
+    // (AccountView.swift) is the only caller that overrides them, swapping in
+    // Theme.dangerBg/Theme.borderDanger for the same glass shape/material.
+    func glassCard(
+        cornerRadius: CGFloat = 20,
+        tint: Color = Color(hex: "#2A1B0B").opacity(0.20),
+        border: [Color] = [Color.white.opacity(0.20), Color(hex: "#D4922A").opacity(0.12)]
+    ) -> some View {
         self
             .background(
                 ZStack {
                     RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                         .fill(.ultraThinMaterial)
                     RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                        .fill(Color(hex: "#2A1B0B").opacity(0.20))
+                        .fill(tint)
                 }
             )
             .overlay(
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     .strokeBorder(
                         LinearGradient(
-                            colors: [Color.white.opacity(0.20), Color(hex: "#D4922A").opacity(0.12)],
+                            colors: border,
                             startPoint: .topLeading, endPoint: .bottomTrailing
                         ),
                         lineWidth: 1
