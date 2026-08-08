@@ -445,61 +445,62 @@ struct AccountView: View {
             ZStack {
                 Theme.bgPage.ignoresSafeArea()
 
-                List {
-                    // ── Profile header (avatar + name) ────────────────────────
-                    profileHeader
-                        .listRowBackground(Color.clear)
-                        .listRowSeparator(.hidden)
+                // Warm bloom ground (shared visual language with Chat/Notes/Dashboard).
+                RadialGradient(colors: [Color(hex: "#D4922A").opacity(0.20), .clear],
+                               center: UnitPoint(x: 0.12, y: 0.16), startRadius: 10, endRadius: 380)
+                    .ignoresSafeArea()
+                RadialGradient(colors: [Color(hex: "#B8761D").opacity(0.12), .clear],
+                               center: UnitPoint(x: 0.92, y: 0.60), startRadius: 10, endRadius: 340)
+                    .ignoresSafeArea()
 
-                    // ── Stats (mirrors StatBox row) ───────────────────────────
-                    statsSection
+                ScrollView {
+                    VStack(spacing: 20) {
+                        // ── Profile header (avatar + name) ────────────────────
+                        profileHeader
 
-                    // ── Subscription ──────────────────────────────────────────
-                    subscriptionSection
+                        // ── Stats (mirrors StatBox row) ───────────────────────
+                        statsSection
 
-                    // ── Plan usage ────────────────────────────────────────────
-                    usageSection
+                        // ── Subscription ───────────────────────────────────────
+                        subscriptionSection
 
-                    // ── Edit profile ──────────────────────────────────────────
-                    editProfileSection
+                        // ── Plan usage ─────────────────────────────────────────
+                        usageSection
 
-                    // ── Friend requests ───────────────────────────────────────
-                    friendRequestsSection
+                        // ── Edit profile ───────────────────────────────────────
+                        editProfileSection
 
-                    // ── Agents ────────────────────────────────────────────────
-                    agentsSection
+                        // ── Friend requests ────────────────────────────────────
+                        friendRequestsSection
 
-                    // ── Events ────────────────────────────────────────────────
-                    eventsSection
+                        // ── Agents ──────────────────────────────────────────────
+                        agentsSection
 
-                    // ── Notifications ─────────────────────────────────────────
-                    notificationsSection
+                        // ── Events ──────────────────────────────────────────────
+                        eventsSection
 
-                    // ── Two-Factor Authentication ─────────────────────────────
-                    twoFactorSection
+                        // ── Notifications ──────────────────────────────────────
+                        notificationsSection
 
-                    // ── Privacy & Safety ──────────────────────────────────────
-                    privacySafetySection
+                        // ── Two-Factor Authentication ──────────────────────────
+                        twoFactorSection
 
-                    // ── Legal ────────────────────────────────────────────────
-                    legalSection
+                        // ── Privacy & Safety ───────────────────────────────────
+                        privacySafetySection
 
-                    // ── Sign Out ──────────────────────────────────────────────
-                    Section {
-                        Button(action: appState.signOut) {
-                            Label("Sign Out", systemImage: "rectangle.portrait.and.arrow.right")
-                                .foregroundColor(Theme.error)
-                                .font(.lora(Theme.fontBody))
-                        }
-                        .accessibilityLabel("Sign out of your account")
+                        // ── Legal ───────────────────────────────────────────────
+                        legalSection
+
+                        // ── Sign Out ────────────────────────────────────────────
+                        signOutSection
+
+                        // ── Danger zone ─────────────────────────────────────────
+                        dangerZone
                     }
-                    .listRowBackground(Theme.cardBg)
-
-                    // ── Danger zone ───────────────────────────────────────────
-                    dangerZone
+                    .padding(.horizontal, 20)
+                    .padding(.top, Theme.spacingMD)
+                    .padding(.bottom, 150) // clears the floating tab bar
                 }
-                .listStyle(.insetGrouped)
-                .scrollContentBackground(.hidden)
             }
             .navigationTitle("Account")
             .navigationBarTitleDisplayMode(.large)
@@ -598,13 +599,14 @@ struct AccountView: View {
         VStack(spacing: Theme.spacingMD) {
             ZStack {
                 Circle()
-                    .fill(Theme.gold.opacity(0.15))
+                    .fill(LinearGradient(colors: [Color(hex: "#EDAB3C").opacity(0.32), Color(hex: "#B8761D").opacity(0.2)],
+                                         startPoint: .topLeading, endPoint: .bottomTrailing))
                     .frame(width: 72, height: 72)
                 Text(appState.currentUser?.initials ?? "?")
                     .font(.playfair(Theme.fontDisplayMD))
-                    .foregroundColor(Theme.gold)
+                    .foregroundColor(Theme.goldLight)
             }
-            .overlay(Circle().stroke(Theme.borderGold, lineWidth: 1.5))
+            .overlay(Circle().stroke(Theme.gold.opacity(0.5), lineWidth: 1.5))
             .accessibilityHidden(true)
 
             VStack(spacing: 4) {
@@ -621,17 +623,17 @@ struct AccountView: View {
     }
 
     private var statsSection: some View {
-        Section {
+        VStack(alignment: .leading, spacing: Theme.spacingSM) {
+            sectionLabel("Overview")
             HStack {
                 StatBox(value: vm.friendCount,    label: "Friends")
                 StatBox(value: vm.groupCount,     label: "Groups")
                 StatBox(value: vm.noteCount,      label: "Notes")
                 StatBox(value: vm.highlightCount, label: "Verses")
             }
-        } header: {
-            sectionHeader("Overview")
         }
-        .listRowBackground(Theme.cardBg)
+        .padding(.horizontal, 18).padding(.vertical, 16)
+        .glassCard(cornerRadius: 20)
     }
 
     @ViewBuilder
@@ -640,19 +642,22 @@ struct AccountView: View {
             // The subscription record is authoritative; force "unlimited" when the
             // user has a paid plan even if this usage payload predates the sync.
             let unlimited = vm.hasUnlimitedPlan
-            Section {
+            VStack(alignment: .leading, spacing: Theme.spacingSM) {
+                sectionLabel("Plan Usage")
                 usageRow("Notes", usage.notes, hint: "last \(usage.window_days) days", forceUnlimited: unlimited)
+                Divider().background(Theme.borderGoldFaint)
                 usageRow("Agent events", usage.agentEvents, hint: nil, forceUnlimited: unlimited)
+                Divider().background(Theme.borderGoldFaint)
                 usageRow("Agent notifications", usage.agentNotifications, hint: nil, forceUnlimited: unlimited)
                 if !unlimited {
+                    Divider().background(Theme.borderGoldFaint)
                     Text("You're on the free plan. Upgrade to an Individual or Group plan for unlimited notes, events, and notifications.")
                         .font(.lora(Theme.fontSM))
                         .foregroundColor(Theme.textGoldMuted)
-                        .listRowBackground(Theme.cardBg)
                 }
-            } header: {
-                sectionHeader("Plan Usage")
             }
+            .padding(.horizontal, 18).padding(.vertical, 16)
+            .glassCard(cornerRadius: 20)
         }
     }
 
@@ -686,14 +691,14 @@ struct AccountView: View {
             }
         }
         .padding(.vertical, Theme.spacingXS)
-        .listRowBackground(Theme.cardBg)
     }
 
     private var subscriptionSection: some View {
-        Section {
+        VStack(alignment: .leading, spacing: Theme.spacingSM) {
+            sectionLabel("Subscription")
+
             if vm.subLoading {
                 HStack { Spacer(); ProgressView().tint(Theme.gold); Spacer() }
-                    .listRowBackground(Theme.cardBg)
             } else if let plan = vm.subscription {
                 activePlanRow(plan)
 
@@ -710,11 +715,13 @@ struct AccountView: View {
                         ForEach(vm.subRequests) { requestRow($0) }
                     }
                 }
+                Divider().background(Theme.borderGoldFaint)
                 managePlanRow(plan)
             } else {
                 rowCaption("Start with a free 1-month trial — you won't be billed until it ends.")
                 memberCountPickerRow()
                 if !vm.joinablePlans.isEmpty {
+                    Divider().background(Theme.borderGoldFaint)
                     rowCaption("Join a Friend's Group Plan")
                     ForEach(vm.joinablePlans) { joinableRow($0) }
                 }
@@ -722,36 +729,37 @@ struct AccountView: View {
 
             // Outstanding requests this user has sent.
             if !vm.mySubRequests.isEmpty {
+                Divider().background(Theme.borderGoldFaint)
                 rowCaption("Your Pending Requests")
                 ForEach(vm.mySubRequests) { myRequestRow($0) }
             }
 
+            Divider().background(Theme.borderGoldFaint)
+
             // Restore a subscription bought on another device / after reinstall.
             Button { Task { await vm.restorePurchases() } } label: {
-                Text("Restore Purchases")
-                    .font(.lora(Theme.fontSM)).foregroundColor(Theme.textGoldMuted)
+                ghostPill("Restore Purchases", labelColor: Theme.textGoldMuted)
             }
             .disabled(vm.subBusy)
-            .listRowBackground(Theme.cardBg)
 
             if let msg = vm.subMsg {
                 Text(msg)
                     .font(.lora(Theme.fontSM)).foregroundColor(Theme.error)
-                    .listRowBackground(Theme.error.opacity(0.10))
+                    .padding(.horizontal, Theme.spacingSM).padding(.vertical, Theme.spacingXS + 2)
+                    .background(Theme.error.opacity(0.10))
+                    .clipShape(RoundedRectangle(cornerRadius: Theme.radiusSM))
             }
-        } header: {
-            sectionHeader("Subscription")
         }
+        .padding(.horizontal, 18).padding(.vertical, 16)
+        .glassCard(cornerRadius: 20)
     }
 
     // ── Subscription row builders ────────────────────────────────────────────────
 
-    @ViewBuilder
     private func rowCaption(_ text: String) -> some View {
         Text(text)
             .font(.lora(Theme.fontSM))
             .foregroundColor(Theme.textMuted)
-            .listRowBackground(Theme.cardBg)
     }
 
     private func activePlanRow(_ plan: FSSubscription) -> some View {
@@ -792,7 +800,6 @@ struct AccountView: View {
             }
             Spacer()
         }
-        .listRowBackground(Theme.cardBg)
     }
 
     private func memberRow(_ m: FSSubMember) -> some View {
@@ -812,7 +819,6 @@ struct AccountView: View {
                 .accessibilityLabel("Remove \(m.username)")
             }
         }
-        .listRowBackground(Theme.cardBg)
     }
 
     private func requestRow(_ r: FSSubMember) -> some View {
@@ -835,7 +841,6 @@ struct AccountView: View {
             }
             .buttonStyle(.borderless).accessibilityLabel("Decline \(r.username)")
         }
-        .listRowBackground(Theme.cardBg)
     }
 
     @ViewBuilder
@@ -843,20 +848,27 @@ struct AccountView: View {
         if vm.isSubHost && plan.provider == "apple" {
             // Apple subscriptions can only be canceled through the App Store.
             Button { Task { await store.showManageSubscriptions() } } label: {
-                Label("Manage Subscription", systemImage: "gearshape")
-                    .font(.lora(Theme.fontBody)).foregroundColor(Theme.gold)
+                HStack(spacing: 6) {
+                    Image(systemName: "gearshape")
+                    Text("Manage Subscription").font(.lora(Theme.fontSM))
+                }
+                .foregroundColor(Theme.gold)
+                .padding(.horizontal, 16).padding(.vertical, 8)
+                .overlay(Capsule().stroke(Theme.borderGold, lineWidth: 1))
             }
-            .listRowBackground(Theme.cardBg)
         } else {
             Button {
                 Task { if vm.isSubHost { await vm.cancelPlan() } else { await vm.leavePlan() } }
             } label: {
-                Label(vm.isSubHost ? "Cancel Plan" : "Leave Plan",
-                      systemImage: vm.isSubHost ? "trash" : "rectangle.portrait.and.arrow.right")
-                    .font(.lora(Theme.fontBody)).foregroundColor(Theme.error)
+                HStack(spacing: 6) {
+                    Image(systemName: vm.isSubHost ? "trash" : "rectangle.portrait.and.arrow.right")
+                    Text(vm.isSubHost ? "Cancel Plan" : "Leave Plan").font(.lora(Theme.fontSM))
+                }
+                .foregroundColor(Theme.error)
+                .padding(.horizontal, 16).padding(.vertical, 8)
+                .overlay(Capsule().stroke(Theme.error.opacity(0.4), lineWidth: 1))
             }
             .disabled(vm.subBusy)
-            .listRowBackground(Theme.cardBg)
         }
     }
 
@@ -887,14 +899,15 @@ struct AccountView: View {
             }
             Stepper("Members: \(selectedMemberCount)", value: $selectedMemberCount, in: 1...8)
                 .font(.lora(Theme.fontSM)).foregroundColor(Theme.parchment)
-            Button("Start") { Task { await vm.purchasePlan(memberCount: selectedMemberCount) } }
-                .font(.lora(Theme.fontSM)).foregroundColor(Theme.gold)
-                .buttonStyle(.borderless)
-                // Stay tappable even if products haven't loaded — purchasePlan
-                // surfaces a clear message instead of the button silently failing.
-                .disabled(vm.subBusy || store.purchasing)
+            Button {
+                Task { await vm.purchasePlan(memberCount: selectedMemberCount) }
+            } label: {
+                gradientPill("Start", compact: true)
+            }
+            // Stay tappable even if products haven't loaded — purchasePlan
+            // surfaces a clear message instead of the button silently failing.
+            .disabled(vm.subBusy || store.purchasing)
         }
-        .listRowBackground(Theme.cardBg)
     }
 
     @ViewBuilder
@@ -904,21 +917,20 @@ struct AccountView: View {
                 Stepper("Members: \(editing)",
                         value: Binding(get: { editing }, set: { editMemberCount = $0 }), in: 1...8)
                     .font(.lora(Theme.fontSM)).foregroundColor(Theme.parchment)
-                Button("Save") { Task { await vm.updateSeats(memberCount: editing); editMemberCount = nil } }
-                    .font(.lora(Theme.fontSM)).foregroundColor(Theme.gold)
-                    .disabled(vm.subBusy)
-                Button("Cancel") { editMemberCount = nil }
-                    .font(.lora(Theme.fontSM)).foregroundColor(Theme.textMuted)
+                Button { Task { await vm.updateSeats(memberCount: editing); editMemberCount = nil } } label: {
+                    gradientPill("Save", compact: true)
+                }
+                .disabled(vm.subBusy)
+                Button { editMemberCount = nil } label: {
+                    ghostPill("Cancel", compact: true)
+                }
             }
-            .listRowBackground(Theme.cardBg)
         } else {
             Button {
                 editMemberCount = plan.max_members
             } label: {
-                Text("Change plan size (\(plan.max_members) member\(plan.max_members == 1 ? "" : "s"))")
-                    .font(.lora(Theme.fontSM)).foregroundColor(Theme.gold)
+                ghostPill("Change plan size (\(plan.max_members) member\(plan.max_members == 1 ? "" : "s"))", labelColor: Theme.gold)
             }
-            .listRowBackground(Theme.cardBg)
         }
     }
 
@@ -936,7 +948,6 @@ struct AccountView: View {
                 .font(.lora(Theme.fontXS)).foregroundColor(pending ? Theme.textMuted : Theme.gold)
                 .buttonStyle(.borderless).disabled(pending || vm.subBusy)
         }
-        .listRowBackground(Theme.cardBg)
     }
 
     private func myRequestRow(_ r: FSSubRequest) -> some View {
@@ -947,11 +958,12 @@ struct AccountView: View {
             Button("Cancel") { Task { await vm.cancelMyRequest(r.subscription_id) } }
                 .font(.lora(Theme.fontXS)).foregroundColor(Theme.textMuted).buttonStyle(.borderless)
         }
-        .listRowBackground(Theme.cardBg)
     }
 
     private var editProfileSection: some View {
-        Section {
+        VStack(alignment: .leading, spacing: Theme.spacingSM) {
+            sectionLabel("Edit Profile")
+
             // Edit message
             if let msg = vm.editMsg {
                 HStack(spacing: Theme.spacingSM) {
@@ -960,9 +972,9 @@ struct AccountView: View {
                         .font(.lora(Theme.fontSM))
                 }
                 .foregroundColor(msg.type == .success ? Theme.success : Theme.error)
-                .listRowBackground(
-                    (msg.type == .success ? Theme.success : Theme.error).opacity(0.10)
-                )
+                .padding(.horizontal, Theme.spacingSM).padding(.vertical, Theme.spacingXS + 2)
+                .background((msg.type == .success ? Theme.success : Theme.error).opacity(0.10))
+                .clipShape(RoundedRectangle(cornerRadius: Theme.radiusSM))
             }
 
             // Username
@@ -974,7 +986,7 @@ struct AccountView: View {
                     .autocapitalization(.none)
                     .accessibilityLabel("Username field")
             }
-            .listRowBackground(Theme.cardBg)
+            Divider().background(Theme.borderGoldFaint)
 
             // Email
             HStack {
@@ -986,7 +998,7 @@ struct AccountView: View {
                     .autocapitalization(.none)
                     .accessibilityLabel("Email field")
             }
-            .listRowBackground(Theme.cardBg)
+            Divider().background(Theme.borderGoldFaint)
 
             // Timezone — opens a searchable picker sheet; drives the nightly
             // backup schedule (it runs at this timezone's local 3am).
@@ -1005,8 +1017,8 @@ struct AccountView: View {
                         .foregroundColor(Theme.textGoldMuted)
                 }
             }
-            .listRowBackground(Theme.cardBg)
             .accessibilityLabel("Timezone: \(timezone)")
+            Divider().background(Theme.borderGoldFaint)
 
             // Password
             HStack {
@@ -1016,29 +1028,28 @@ struct AccountView: View {
                     .foregroundColor(Theme.parchment)
                     .accessibilityLabel("New password field")
             }
-            .listRowBackground(Theme.cardBg)
+            Divider().background(Theme.borderGoldFaint)
 
             Button(action: saveProfile) {
-                Text("Save Changes")
-                    .font(.lora(Theme.fontBody))
-                    .foregroundColor(Theme.gold)
+                gradientPill("Save Changes")
             }
-            .listRowBackground(Theme.cardBg)
             .accessibilityLabel("Save profile changes")
-        } header: {
-            sectionHeader("Edit Profile")
         }
+        .padding(.horizontal, 18).padding(.vertical, 16)
+        .glassCard(cornerRadius: 20)
     }
 
     private var friendRequestsSection: some View {
-        Section {
+        VStack(alignment: .leading, spacing: Theme.spacingSM) {
+            sectionLabel("Friend Requests")
+
             if vm.friendRequests.isEmpty {
                 Text("No pending friend requests.")
                     .font(.lora(Theme.fontSM))
                     .foregroundColor(Theme.textMuted)
-                    .listRowBackground(Theme.cardBg)
             } else {
-                ForEach(vm.friendRequests, id: \.id) { req in
+                ForEach(Array(vm.friendRequests.enumerated()), id: \.offset) { idx, req in
+                    if idx > 0 { Divider().background(Theme.borderGoldFaint) }
                     HStack {
                         ZStack {
                             Circle().fill(Theme.gold.opacity(0.15)).frame(width: 36, height: 36)
@@ -1050,34 +1061,36 @@ struct AccountView: View {
                             Text("Wants to be your friend").font(.lora(Theme.fontXS)).foregroundColor(Theme.textMuted)
                         }
                         Spacer()
-                        Button("Accept") {
+                        Button {
                             Task { await vm.acceptRequest(username: req.username) }
+                        } label: {
+                            gradientPill("Accept", compact: true)
                         }
-                        .font(.lora(Theme.fontSM)).foregroundColor(Theme.gold)
                         .accessibilityLabel("Accept friend request from \(req.username)")
                     }
-                    .listRowBackground(Theme.cardBg)
                 }
             }
-        } header: {
-            sectionHeader("Friend Requests")
         }
+        .padding(.horizontal, 18).padding(.vertical, 16)
+        .glassCard(cornerRadius: 20)
     }
 
     private var agentsSection: some View {
-        Section {
+        VStack(alignment: .leading, spacing: Theme.spacingSM) {
+            sectionLabel("Agents")
+
             Text("Enabled agents participate in your chats and can summarize study sessions.")
                 .font(.lora(Theme.fontSM))
                 .foregroundColor(Theme.textMuted)
-                .listRowBackground(Theme.cardBg)
 
             if vm.agents.isEmpty {
+                Divider().background(Theme.borderGoldFaint)
                 Text("No agents yet. Tap + to create one.")
                     .font(.lora(Theme.fontSM))
                     .foregroundColor(Theme.textMuted)
-                    .listRowBackground(Theme.cardBg)
             } else {
                 ForEach($vm.agents) { $agent in
+                    Divider().background(Theme.borderGoldFaint)
                     HStack(spacing: Theme.spacingMD) {
                         ZStack {
                             Circle().fill(Theme.gold.opacity(0.12)).frame(width: 36, height: 36)
@@ -1125,77 +1138,86 @@ struct AccountView: View {
                         renameAgentId = agent.id
                     }
                     .accessibilityAction(named: "Delete agent") { vm.deleteAgent(id: agent.id) }
-                    .listRowBackground(Theme.cardBg)
                 }
             }
 
+            Divider().background(Theme.borderGoldFaint)
             Button(action: { activeSheet = .newAgent }) {
-                Label("New Agent", systemImage: "plus")
-                    .font(.lora(Theme.fontBody))
-                    .foregroundColor(Theme.gold)
+                ghostLabelPill(icon: "plus", "New Agent")
             }
-            .listRowBackground(Theme.cardBg)
             .accessibilityLabel("Create new agent")
-        } header: {
-            sectionHeader("Agents")
         }
+        .padding(.horizontal, 18).padding(.vertical, 16)
+        .glassCard(cornerRadius: 20)
     }
 
     private var eventsSection: some View {
-        Section {
+        VStack(alignment: .leading, spacing: Theme.spacingSM) {
+            sectionLabel("Events")
+
             Text("Events are AI-powered check-ins. When the scheduled time arrives, your agent responds to the prompt and saves a note.")
                 .font(.lora(Theme.fontSM))
                 .foregroundColor(Theme.textMuted)
-                .listRowBackground(Theme.cardBg)
 
             if vm.events.isEmpty {
+                Divider().background(Theme.borderGoldFaint)
                 Text("No events yet. Tap + to schedule one.")
                     .font(.lora(Theme.fontSM))
                     .foregroundColor(Theme.textMuted)
-                    .listRowBackground(Theme.cardBg)
             } else {
                 ForEach(vm.events) { event in
+                    Divider().background(Theme.borderGoldFaint)
                     EventRow(
                         event:     event,
                         agentName: agentName(for: event.agent_id),
                         onEdit:    { activeSheet = .editEvent(event) },
                         onDelete:  { vm.removeEvent(event) }
                     )
-                    .listRowBackground(Theme.cardBg)
                 }
             }
 
+            Divider().background(Theme.borderGoldFaint)
             Button(action: {
                 guard !vm.agents.isEmpty else { return }
                 appState.requestPushNotifications()
                 activeSheet = .newEvent
             }) {
-                Label("New Event", systemImage: "plus")
-                    .font(.lora(Theme.fontBody))
-                    .foregroundColor(vm.agents.isEmpty ? Theme.textMuted : Theme.gold)
+                ghostLabelPill(icon: "plus", "New Event", color: vm.agents.isEmpty ? Theme.textMuted : Theme.gold)
             }
             .disabled(vm.agents.isEmpty)
-            .listRowBackground(Theme.cardBg)
             .accessibilityLabel("Create new event")
-        } header: {
-            sectionHeader("Events")
         }
+        .padding(.horizontal, 18).padding(.vertical, 16)
+        .glassCard(cornerRadius: 20)
     }
 
     private var notificationsSection: some View {
-        Section {
+        VStack(alignment: .leading, spacing: Theme.spacingSM) {
+            HStack {
+                sectionLabel("Notifications")
+                Spacer()
+                Button(action: { showNotificationsList = true }) {
+                    Text("View All")
+                        .font(.lora(Theme.fontXXS)).tracking(2)
+                        .foregroundColor(Theme.gold)
+                        .padding(.horizontal, 10).padding(.vertical, 5)
+                        .background(Capsule().fill(Theme.gold.opacity(0.08)))
+                        .overlay(Capsule().stroke(Theme.borderGoldDim, lineWidth: 1))
+                }
+            }
+
             Text("Set up recurring AI-powered reminders for Scripture, prayer, or study.")
                 .font(.lora(Theme.fontSM))
                 .foregroundColor(Theme.textMuted)
-                .listRowBackground(Theme.cardBg)
 
             if vm.notifications.isEmpty {
+                Divider().background(Theme.borderGoldFaint)
                 Text("No notifications yet. Tap + to create one.")
                     .font(.lora(Theme.fontSM))
                     .foregroundColor(Theme.textMuted)
-                    .listRowBackground(Theme.cardBg)
             } else {
                 ForEach(vm.notifications.prefix(3)) { notif in
+                    Divider().background(Theme.borderGoldFaint)
                     HStack(spacing: Theme.spacingMD) {
                         ZStack {
                             Circle().fill(Theme.gold.opacity(0.12)).frame(width: 30, height: 30)
@@ -1211,35 +1233,26 @@ struct AccountView: View {
                         }
                         Spacer()
                     }
-                    .listRowBackground(Theme.cardBg)
                 }
             }
 
+            Divider().background(Theme.borderGoldFaint)
             Button(action: {
                 appState.requestPushNotifications()
                 activeSheet = .newNotification
             }) {
-                Label("New Notification", systemImage: "plus")
-                    .font(.lora(Theme.fontBody))
-                    .foregroundColor(Theme.gold)
+                ghostLabelPill(icon: "plus", "New Notification")
             }
-            .listRowBackground(Theme.cardBg)
             .accessibilityLabel("Create new notification")
-        } header: {
-            HStack {
-                sectionHeader("Notifications")
-                Spacer()
-                Button(action: { showNotificationsList = true }) {
-                    Text("View All")
-                        .font(.lora(Theme.fontXXS)).tracking(2)
-                        .foregroundColor(Theme.gold.opacity(0.70))
-                }
-            }
         }
+        .padding(.horizontal, 18).padding(.vertical, 16)
+        .glassCard(cornerRadius: 20)
     }
 
     private var twoFactorSection: some View {
-        Section {
+        VStack(alignment: .leading, spacing: Theme.spacingSM) {
+            sectionLabel("Two-Factor Authentication")
+
             if !mfaMsg.isEmpty {
                 Text(mfaMsg)
                     .font(.lora(Theme.fontXS))
@@ -1260,10 +1273,9 @@ struct AccountView: View {
             }
             .disabled(mfaLoading)
             .tint(Theme.gold)
-        } header: {
-            sectionHeader("Two-Factor Authentication")
         }
-        .listRowBackground(Theme.cardBg)
+        .padding(.horizontal, 18).padding(.vertical, 16)
+        .glassCard(cornerRadius: 20)
         .sheet(isPresented: $showMfaSetup) {
             MfaSetupSheet(
                 code: $mfaSetupCode,
@@ -1334,7 +1346,8 @@ struct AccountView: View {
     }
 
     private var privacySafetySection: some View {
-        Section {
+        VStack(alignment: .leading, spacing: Theme.spacingSM) {
+            sectionLabel("Privacy & Safety")
             Button(action: { showBlockedUsers = true }) {
                 HStack {
                     Label("Blocked Users", systemImage: "hand.raised")
@@ -1347,14 +1360,15 @@ struct AccountView: View {
                 }
             }
             .accessibilityLabel("Manage blocked users")
-        } header: {
-            sectionHeader("Privacy & Safety")
         }
-        .listRowBackground(Theme.cardBg)
+        .padding(.horizontal, 18).padding(.vertical, 16)
+        .glassCard(cornerRadius: 20)
     }
 
     private var legalSection: some View {
-        Section {
+        VStack(alignment: .leading, spacing: Theme.spacingSM) {
+            sectionLabel("Legal")
+
             Link(destination: URL(string: "https://fellowscript.com/#/privacy")!) {
                 HStack {
                     Label("Privacy Policy", systemImage: "hand.raised")
@@ -1367,6 +1381,7 @@ struct AccountView: View {
                 }
             }
             .accessibilityLabel("Open Privacy Policy")
+            Divider().background(Theme.borderGoldFaint)
 
             Link(destination: URL(string: "https://fellowscript.com/#/terms")!) {
                 HStack {
@@ -1380,6 +1395,7 @@ struct AccountView: View {
                 }
             }
             .accessibilityLabel("Open Terms of Service")
+            Divider().background(Theme.borderGoldFaint)
 
             HStack {
                 Label("Version", systemImage: "info.circle")
@@ -1390,19 +1406,35 @@ struct AccountView: View {
                     .font(.lora(Theme.fontSM))
                     .foregroundColor(Theme.textMuted)
             }
-        } header: {
-            sectionHeader("Legal")
         }
-        .listRowBackground(Theme.cardBg)
+        .padding(.horizontal, 18).padding(.vertical, 16)
+        .glassCard(cornerRadius: 20)
+    }
+
+    // Kept as its own standalone, neutral (non-danger-tinted) card — a distinct,
+    // low-risk action that shouldn't visually escalate to Danger Zone's red severity.
+    private var signOutSection: some View {
+        Button(action: appState.signOut) {
+            Label("Sign Out", systemImage: "rectangle.portrait.and.arrow.right")
+                .foregroundColor(Theme.error)
+                .font(.lora(Theme.fontBody))
+        }
+        .accessibilityLabel("Sign out of your account")
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 18).padding(.vertical, 16)
+        .glassCard(cornerRadius: 20)
     }
 
     private var dangerZone: some View {
-        Section {
+        VStack(alignment: .leading, spacing: Theme.spacingSM) {
+            Text("Danger Zone")
+                .font(.lora(Theme.fontXXS)).tracking(4)
+                .foregroundColor(Theme.error.opacity(0.65))
+
             Text("Permanently deletes your account, all notes, highlights, and removes you from all groups and friend lists. This cannot be undone.")
                 .font(.lora(Theme.fontSM))
                 .foregroundColor(Theme.textMuted)
                 .fixedSize(horizontal: false, vertical: true)
-                .listRowBackground(Theme.dangerBg)
 
             HStack {
                 Image(systemName: "person").foregroundColor(Theme.error.opacity(0.60)).frame(width: 22)
@@ -1412,25 +1444,25 @@ struct AccountView: View {
                     .autocapitalization(.none)
                     .accessibilityLabel("Type your username to confirm deletion")
             }
-            .listRowBackground(Theme.dangerBg)
 
             Button(action: {
                 if deleteConfirm == (appState.currentUser?.username ?? "") {
                     showDeleteAlert = true
                 }
             }) {
-                Label("Delete My Account", systemImage: "trash")
-                    .font(.lora(Theme.fontBody))
-                    .foregroundColor(Theme.error)
+                HStack(spacing: 6) {
+                    Image(systemName: "trash")
+                    Text("Delete My Account").font(.lora(Theme.fontSM))
+                }
+                .foregroundColor(Theme.error)
+                .padding(.horizontal, 16).padding(.vertical, 8)
+                .overlay(Capsule().stroke(Theme.error.opacity(0.4), lineWidth: 1))
             }
             .disabled(deleteConfirm != (appState.currentUser?.username ?? ""))
-            .listRowBackground(Theme.dangerBg)
             .accessibilityLabel("Delete account button")
-        } header: {
-            Text("Danger Zone")
-                .font(.lora(Theme.fontXXS)).tracking(4)
-                .foregroundColor(Theme.error.opacity(0.65))
         }
+        .padding(.horizontal, 18).padding(.vertical, 16)
+        .glassCard(tint: Theme.dangerBg, border: [Color.white.opacity(0.12), Theme.borderDanger])
     }
 
     // ── Helpers ────────────────────────────────────────────────────────────────
@@ -1442,10 +1474,42 @@ struct AccountView: View {
         return f.string(from: date)
     }
 
-    private func sectionHeader(_ title: String) -> some View {
+    // ── Shared pill controls (reused across sections; recipes cited in the design
+    // doc's §1 "Reused visual language" table — gradient CTA pill mirrors
+    // GroupActivityWidget's "Continue reading" pill / Note-Editor Save pill; ghost
+    // outline pill and ghost icon+label pill mirror NoteEditorView's header chips) ─
+    private func gradientPill(_ title: String, compact: Bool = false) -> some View {
         Text(title)
-            .font(.lora(Theme.fontXXS)).tracking(4)
-            .foregroundColor(Theme.textGoldMuted)
+            .font(.lora(compact ? Theme.fontXS : Theme.fontSM, weight: .semibold))
+            .foregroundColor(Color(hex: "#24170A"))
+            .padding(.horizontal, compact ? 14 : 20)
+            .frame(height: compact ? 32 : 36)
+            .background(
+                LinearGradient(colors: [Color(hex: "#EDAB3C"), Color(hex: "#D4922A"), Color(hex: "#B8761D")],
+                               startPoint: .topLeading, endPoint: .bottomTrailing)
+            )
+            .clipShape(Capsule())
+    }
+
+    private func ghostPill(_ title: String, compact: Bool = false,
+                            labelColor: Color = Theme.textSecondary,
+                            strokeColor: Color = Theme.parchment.opacity(0.14)) -> some View {
+        Text(title)
+            .font(.lora(compact ? Theme.fontXS : Theme.fontSM))
+            .foregroundColor(labelColor)
+            .padding(.horizontal, compact ? 12 : 16)
+            .frame(height: compact ? 32 : 36)
+            .overlay(Capsule().stroke(strokeColor, lineWidth: 1))
+    }
+
+    private func ghostLabelPill(icon: String, _ title: String, color: Color = Theme.gold) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: icon)
+            Text(title).font(.lora(Theme.fontSM))
+        }
+        .foregroundColor(color)
+        .padding(.horizontal, 16).padding(.vertical, 8)
+        .overlay(Capsule().stroke(Theme.parchment.opacity(0.14), lineWidth: 1))
     }
 
     private func agentName(for agentId: String) -> String {
