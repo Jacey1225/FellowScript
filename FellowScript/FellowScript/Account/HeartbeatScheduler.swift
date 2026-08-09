@@ -76,7 +76,17 @@ enum HeartbeatScheduler {
             let result = try? await service.commitHeartbeat(
                 userId: userId, agentId: event.agent_id, heartbeatId: event.id, prompt: event.prompt
             )
-            guard result != nil else { continue }
+            // The backend always responds 200 for this route, whether the
+            // heartbeat actually fired or not — {"success": "..."} on a real
+            // fire, but {"error": "..."} (LLM/JSON failure) or {"skipped":
+            // "..."} (already claimed by another caller within the last 2
+            // minutes) are equally valid all-string dicts that decode fine
+            // into [String: String]. Checking `result != nil` alone treats
+            // all three as success, which both suppresses any retry (by
+            // marking lastFired) and fires a false "Event Response Saved"
+            // notification even when nothing was saved. Only a `success` key
+            // means the fire actually happened.
+            guard result?["success"] != nil else { continue }
 
             lastFired[event.id] = now.timeIntervalSince1970
 

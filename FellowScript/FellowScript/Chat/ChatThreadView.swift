@@ -14,8 +14,20 @@ import Combine
 final class ChatThreadViewModel: ObservableObject {
     @Published var messages: [FSMessage] = []
     @Published var sessions: [FSSession] = []
+    // Surfaced in the view as a small "Reconnecting…" banner. Previously a
+    // dropped socket (network blip, backgrounding, Cloudflare/nginx idle
+    // timeout, or the server evicting a stale connection) gave no visible
+    // signal at all — see backend step 8 finding #2.
+    @Published var isConnected: Bool = true
 
     private var wsTask: URLSessionWebSocketTask?
+    private var wsBase:   String = ""
+    private var wsUserId: String = ""
+    private var reconnectAttempt = 0
+    private var reconnectTask: Task<Void, Never>?
+    // Set by disconnect() (view going away) so a `.failure` from that
+    // intentional cancel doesn't trigger a reconnect loop.
+    private var isDisconnecting = false
 
     /// The session/devotion room id. Must match the web client's `roomKey` so
     /// sessions (and their Chime calls) are shared cross-platform:
@@ -71,35 +83,69 @@ final class ChatThreadViewModel: ObservableObject {
     }
 
     func disconnect() {
+        isDisconnecting = true
+        reconnectTask?.cancel()
         wsTask?.cancel(with: .goingAway, reason: nil)
         wsTask = nil
     }
 
     private func connectWebSocket(wsBase: String, userId: String) {
+        self.wsBase   = wsBase
+        self.wsUserId = userId
         guard let url = URL(string: "\(wsBase)/message/ws/\(userId)") else { return }
         wsTask = URLSession.shared.webSocketTask(with: url)
         wsTask?.resume()
+        isConnected = true
+        reconnectAttempt = 0
         receiveLoop()
     }
 
     private func receiveLoop() {
         wsTask?.receive { [weak self] result in
             guard let self else { return }
-            if case .success(let msg) = result,
-               case .string(let text) = msg,
-               let data = text.data(using: .utf8),
-               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-               let msgText = json["text"] as? String {
-                let incoming = FSMessage(
-                    id:        (json["id"] as? String) ?? UUID().uuidString,
-                    text:      msgText,
-                    mine:      false,
-                    sender:    (json["from_user"] as? String) ?? "",
-                    timestamp: (json["timestamp"] as? String) ?? ""
-                )
-                Task { @MainActor in self.messages.append(incoming) }
+            switch result {
+            case .success(let msg):
+                if case .string(let text) = msg,
+                   let data = text.data(using: .utf8),
+                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let msgText = json["text"] as? String {
+                    let incoming = FSMessage(
+                        id:        (json["id"] as? String) ?? UUID().uuidString,
+                        text:      msgText,
+                        mine:      false,
+                        sender:    (json["from_user"] as? String) ?? "",
+                        timestamp: (json["timestamp"] as? String) ?? ""
+                    )
+                    Task { @MainActor in self.messages.append(incoming) }
+                }
+                // Keep listening regardless of whether this particular frame
+                // parsed (e.g. a non-text control frame) — previously an
+                // unparseable frame silently ended the loop the same way a
+                // dropped connection did.
                 self.receiveLoop()
+            case .failure:
+                // The task itself failed (dropped connection, backgrounding,
+                // idle-timeout, or the server evicting a stale socket). This
+                // used to just return, silently ending message delivery for
+                // the rest of the view's lifetime with no visible error state
+                // — see backend step 8 finding #2. Reconnect with capped
+                // exponential backoff instead of giving up.
+                Task { @MainActor in self.scheduleReconnect() }
             }
+        }
+    }
+
+    private func scheduleReconnect() {
+        guard !isDisconnecting else { return }
+        isConnected = false
+        wsTask = nil
+        reconnectAttempt += 1
+        let delaySeconds = min(pow(2.0, Double(reconnectAttempt - 1)), 30.0) // 1s, 2s, 4s, …, capped at 30s
+        reconnectTask?.cancel()
+        reconnectTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(delaySeconds * 1_000_000_000))
+            guard let self, !Task.isCancelled, !self.isDisconnecting else { return }
+            self.connectWebSocket(wsBase: self.wsBase, userId: self.wsUserId)
         }
     }
 }
@@ -125,6 +171,11 @@ struct ChatThreadView: View {
     @State private var memberIds:   [String] = []
     @State private var friends:     [FSContact] = []   // candidates to add
 
+    // Surfaces createGroup/updateGroup rejections (e.g. the content-filter
+    // 422 on a disallowed title) instead of the previous silent no-op — see
+    // backend step 8 finding #1.
+    @State private var membersErrorMsg: String? = nil
+
     var body: some View {
         NavigationStack {
             ZStack {
@@ -139,6 +190,19 @@ struct ChatThreadView: View {
                             onAddTapped: { showAddMembers = true }
                         )
                         .transition(.move(edge: .top).combined(with: .opacity))
+                    }
+
+                    // ── Reconnecting banner (dropped-socket lifecycle state) ───
+                    if !vm.isConnected {
+                        HStack(spacing: 6) {
+                            ProgressView().tint(Theme.gold).scaleEffect(0.75)
+                            Text("Reconnecting…")
+                                .font(.lora(Theme.fontXS))
+                                .foregroundColor(Theme.textGoldMuted)
+                        }
+                        .padding(.horizontal, Theme.spacingSM)
+                        .padding(.top, Theme.spacingXS)
+                        .accessibilityLabel("Reconnecting to chat")
                     }
 
                     // ── Session banner (upcoming session card) ─────────────────
@@ -280,6 +344,14 @@ struct ChatThreadView: View {
                 showSession = false
             })
         }
+        .alert("Couldn't Add Members", isPresented: Binding(
+            get: { membersErrorMsg != nil },
+            set: { if !$0 { membersErrorMsg = nil } }
+        )) {
+            Button("OK", role: .cancel) { membersErrorMsg = nil }
+        } message: {
+            Text(membersErrorMsg ?? "")
+        }
     }
 
     private func sendMessage() {
@@ -293,14 +365,29 @@ struct ChatThreadView: View {
     private func addMembers(_ selected: [FSContact]) {
         guard !selected.isEmpty else { return }
         let uid = appState.currentUser?.user_id ?? ""
+        // Snapshot before the optimistic mutation so a failed write can be
+        // rolled back instead of leaving the client and server member lists
+        // silently out of sync (backend step 8 finding #1).
+        let previousIds   = memberIds
+        let previousNames = memberNames
         // Optimistically reflect the new members in the panel.
         memberIds.append(contentsOf: selected.map { $0.id })
         memberNames.append(contentsOf: selected.map { $0.name })
         let updatedUsers = memberIds
         Task {
-            try? await appState.service.updateGroup(
-                userId: uid, groupId: contact.id, title: contact.name, users: updatedUsers
-            )
+            do {
+                try await appState.service.updateGroup(
+                    userId: uid, groupId: contact.id, title: contact.name, users: updatedUsers
+                )
+            } catch {
+                // updateGroup now uses checkedRequestRaw, so a rejected write
+                // (expired session, or the group_router content-filter 422 on
+                // the title) throws instead of silently no-opping. Roll back
+                // the optimistic mutation and tell the user why.
+                memberIds   = previousIds
+                memberNames = previousNames
+                membersErrorMsg = (error as? LocalizedError)?.errorDescription ?? "Could not add members."
+            }
         }
     }
 }

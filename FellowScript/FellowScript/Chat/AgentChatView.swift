@@ -13,8 +13,28 @@ import Combine
 final class AgentChatViewModel: ObservableObject {
     @Published var messages:   [FSAgentMessage] = []
     @Published var isThinking  = false
+    // Surfaced in the view as a small "Reconnecting…" banner, same pattern as
+    // ChatThreadViewModel. Previously receiveLoop() only re-armed itself in
+    // the `.success` branch of wsTask.receive — on `.failure` (dropped
+    // connection, backgrounding, idle-timeout) the closure just returned and
+    // the chat silently stopped receiving replies for the rest of the view's
+    // lifetime with no reconnect attempt or visible error state (backend
+    // step 11 finding #3).
+    @Published var isConnected: Bool = true
+    // Set when a send fails outright (wsTask?.send's completion handler) so
+    // the input bar can show the message wasn't delivered instead of just
+    // silently clearing isThinking after the 30s timeout.
+    @Published var sendError: String? = nil
 
     private var wsTask: URLSessionWebSocketTask?
+    private var wsBase:   String = ""
+    private var agentId:  String = ""
+    private var userId:   String = ""
+    private var reconnectAttempt = 0
+    private var reconnectTask: Task<Void, Never>?
+    // Set by disconnect() (view going away) so a `.failure` from that
+    // intentional cancel doesn't trigger a reconnect loop.
+    private var isDisconnecting = false
 
     func load(service: DataServiceProtocol, agentId: String, userId: String) async {
         messages = (try? await service.fetchAgentMessages(userId: userId, agentId: agentId)) ?? []
@@ -27,9 +47,21 @@ final class AgentChatViewModel: ObservableObject {
         messages.append(FSAgentMessage(id: UUID().uuidString, text: text, mine: true, timestamp: iso))
         isThinking = true
         let body = ["content": text]
-        if let data = try? JSONSerialization.data(withJSONObject: body),
-           let str  = String(data: data, encoding: .utf8) {
-            wsTask?.send(.string(str)) { _ in }
+        guard let data = try? JSONSerialization.data(withJSONObject: body),
+              let str  = String(data: data, encoding: .utf8) else {
+            isThinking = false
+            sendError = "Could not send message."
+            return
+        }
+        wsTask?.send(.string(str)) { [weak self] error in
+            guard let self, let error else { return }
+            // Previously discarded entirely — the message stayed in the
+            // transcript looking sent, and isThinking spun for the full 30s
+            // timeout with no indication anything went wrong.
+            Task { @MainActor in
+                self.isThinking = false
+                self.sendError  = "Message could not be sent: \(error.localizedDescription)"
+            }
         }
         Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: 30_000_000_000)
@@ -38,37 +70,68 @@ final class AgentChatViewModel: ObservableObject {
     }
 
     func disconnect() {
+        isDisconnecting = true
+        reconnectTask?.cancel()
         wsTask?.cancel(with: .goingAway, reason: nil)
         wsTask = nil
     }
 
     private func connectWebSocket(wsBase: String, agentId: String, userId: String) {
+        self.wsBase  = wsBase
+        self.agentId = agentId
+        self.userId  = userId
         guard let url = URL(string: "\(wsBase)/agent/ws/\(agentId)/\(userId)") else { return }
         wsTask = URLSession.shared.webSocketTask(with: url)
         wsTask?.resume()
+        isConnected = true
+        reconnectAttempt = 0
         receiveLoop()
     }
 
     private func receiveLoop() {
         wsTask?.receive { [weak self] result in
             guard let self else { return }
-            if case .success(let msg) = result,
-               case .string(let text) = msg,
-               let data = text.data(using: .utf8),
-               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-               let content = json["content"] as? String {
-                let reply = FSAgentMessage(
-                    id:        UUID().uuidString,
-                    text:      content,
-                    mine:      false,
-                    timestamp: (json["timestamp"] as? String) ?? ISO8601DateFormatter().string(from: Date())
-                )
-                Task { @MainActor in
-                    self.messages.append(reply)
-                    self.isThinking = false
+            switch result {
+            case .success(let msg):
+                if case .string(let text) = msg,
+                   let data = text.data(using: .utf8),
+                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let content = json["content"] as? String {
+                    let reply = FSAgentMessage(
+                        id:        UUID().uuidString,
+                        text:      content,
+                        mine:      false,
+                        timestamp: (json["timestamp"] as? String) ?? ISO8601DateFormatter().string(from: Date())
+                    )
+                    Task { @MainActor in
+                        self.messages.append(reply)
+                        self.isThinking = false
+                    }
                 }
+                // Keep listening regardless of whether this particular frame
+                // parsed — an unparseable frame (e.g. a control frame)
+                // shouldn't end the loop the same way a dropped connection does.
                 self.receiveLoop()
+            case .failure:
+                // The task itself failed. This used to just return, silently
+                // ending the chat for the rest of the view's lifetime.
+                // Reconnect with capped exponential backoff instead.
+                Task { @MainActor in self.scheduleReconnect() }
             }
+        }
+    }
+
+    private func scheduleReconnect() {
+        guard !isDisconnecting else { return }
+        isConnected = false
+        wsTask = nil
+        reconnectAttempt += 1
+        let delaySeconds = min(pow(2.0, Double(reconnectAttempt - 1)), 30.0) // 1s, 2s, 4s, …, capped at 30s
+        reconnectTask?.cancel()
+        reconnectTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(delaySeconds * 1_000_000_000))
+            guard let self, !Task.isCancelled, !self.isDisconnecting else { return }
+            self.connectWebSocket(wsBase: self.wsBase, agentId: self.agentId, userId: self.userId)
         }
     }
 }
@@ -89,6 +152,19 @@ struct AgentChatView: View {
                 Theme.bgPage.ignoresSafeArea()
 
                 VStack(spacing: 0) {
+                    // ── Reconnecting banner (dropped-socket lifecycle state) ───
+                    if !vm.isConnected {
+                        HStack(spacing: 6) {
+                            ProgressView().tint(Theme.gold).scaleEffect(0.75)
+                            Text("Reconnecting…")
+                                .font(.lora(Theme.fontXS))
+                                .foregroundColor(Theme.textGoldMuted)
+                        }
+                        .padding(.horizontal, Theme.spacingSM)
+                        .padding(.top, Theme.spacingXS)
+                        .accessibilityLabel("Reconnecting to agent")
+                    }
+
                     // ── Message list ──────────────────────────────────────────
                     ScrollViewReader { proxy in
                         ScrollView {
@@ -172,6 +248,14 @@ struct AgentChatView: View {
             await vm.load(service: appState.service, agentId: agent.id, userId: uid)
         }
         .onDisappear { vm.disconnect() }
+        .alert("Message Not Sent", isPresented: Binding(
+            get: { vm.sendError != nil },
+            set: { if !$0 { vm.sendError = nil } }
+        )) {
+            Button("OK", role: .cancel) { vm.sendError = nil }
+        } message: {
+            Text(vm.sendError ?? "")
+        }
     }
 
     private func sendMessage() {

@@ -7,6 +7,7 @@ import SwiftUI
 struct TermsReacceptView: View {
     @EnvironmentObject var appState: AppState
     @State private var agreeing = false
+    @State private var errorMessage: String?
 
     var body: some View {
         ZStack {
@@ -31,12 +32,28 @@ struct TermsReacceptView: View {
                     .font(.lora(Theme.fontSM))
                     .foregroundColor(Theme.gold)
 
+                if let errorMessage {
+                    Text(errorMessage)
+                        .font(.lora(Theme.fontSM))
+                        .foregroundColor(Theme.error)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, Theme.spacingLG)
+                }
+
                 Spacer()
 
                 Button(action: {
                     Task {
                         agreeing = true
-                        await appState.acceptTerms()
+                        errorMessage = nil
+                        do {
+                            try await appState.acceptTerms()
+                        } catch {
+                            // Keep the blocking gate up — don't let a failed
+                            // acceptance silently look like it succeeded.
+                            errorMessage = (error as? LocalizedError)?.errorDescription
+                                ?? "Couldn't save your acceptance. Please try again."
+                        }
                         agreeing = false
                     }
                 }) {

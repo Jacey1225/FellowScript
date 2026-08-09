@@ -131,7 +131,7 @@ final class ChimeCallManager: NSObject, ObservableObject {
             audioHostUrl:      response.Meeting.MediaPlacement.AudioHostUrl,
             signalingUrl:      response.Meeting.MediaPlacement.SignalingUrl,
             turnControlUrl:    response.Meeting.MediaPlacement.TurnControlUrl,
-            eventIngestionUrl: response.Meeting.MediaPlacement.IngestionUrl
+            eventIngestionUrl: response.Meeting.MediaPlacement.EventIngestionUrl
         )
         let meeting = Meeting(
             externalMeetingId: response.Meeting.ExternalMeetingId,

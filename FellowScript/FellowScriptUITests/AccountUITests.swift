@@ -333,6 +333,50 @@ final class AccountUITests: XCTestCase {
         XCTAssertTrue(signedOut, "tapping Sign Out must call appState.signOut() and return to the Auth flow\n\(app.debugDescription)")
     }
 
+    // MARK: - Timezone row reflects the freshly-fetched profile, not the
+    // stale pre-fetch snapshot (task: 20260808-timezone-display-stale-utc)
+    //
+    // Root cause (see intake spec): AccountView's `.task` used to seed the
+    // local `timezone` @State from the `user` snapshot captured before
+    // `vm.load(...)` awaited — i.e. from `appState.currentUser`, which is
+    // populated at sign-in/session-restore and defaults `timezone` to "UTC"
+    // — instead of from `vm.profileData`, the value `vm.load()` actually
+    // fetches from the backend. MockDataService.fetchUser deliberately
+    // returns a *different* timezone (`mockFetchedTimezone`,
+    // "America/Los_Angeles") than `signIn`/`mockUser` (Codable default
+    // "UTC") specifically so this distinction is observable here — mirroring
+    // a real account that has previously saved a non-UTC timezone: the
+    // pre-fetch snapshot only ever has the placeholder default, but the
+    // freshly-fetched profile has the real, saved value. Before the fix this
+    // test fails (the row shows "Timezone: UTC" instead).
+    func test_timezoneRow_showsFreshlyFetchedValue_notStalePreFetchSnapshot() {
+        let app = signInAndReachAccount()
+
+        // The freshly-fetched profile's real value (vm.profileData.timezone,
+        // populated by MockDataService.fetchUser) must be what's shown.
+        let freshRow = app.buttons["Timezone: America/Los_Angeles"]
+        scrollUntilExists(freshRow, app: app)
+        XCTAssertTrue(freshRow.exists, "Timezone row must reflect vm.profileData's freshly-fetched timezone, not the pre-fetch appState.currentUser snapshot\n\(app.debugDescription)")
+
+        // The stale pre-fetch snapshot's default ("UTC", from MockDataService's
+        // signIn/mockUser) must never be what's displayed once the fetch has
+        // completed — that's the exact bug this task fixed.
+        XCTAssertFalse(app.buttons["Timezone: UTC"].exists,
+                        "Timezone row must not show the stale pre-fetch snapshot's default 'UTC' once the profile fetch has completed\n\(app.debugDescription)")
+
+        // Regression guard (acceptance criterion 3): username/email seeding
+        // in the same `.task` block must be unaffected by the fix.
+        let usernameField = app.textFields["Username field"]
+        scrollUntilExists(usernameField, app: app)
+        XCTAssertEqual(usernameField.value as? String, "jacob",
+                        "Username field must still seed correctly from the freshly-fetched profile")
+
+        let emailField = app.textFields["Email field"]
+        scrollUntilExists(emailField, app: app)
+        XCTAssertEqual(emailField.value as? String, "jacob@example.com",
+                        "Email field must still seed correctly from the freshly-fetched profile")
+    }
+
     // MARK: - Agents: toggle enable/disable, and Events' agents-empty disabled gate
 
     func test_agentToggle_flipsEnabledState_andPersistsAcrossToggle() {
@@ -436,6 +480,52 @@ final class AccountUITests: XCTestCase {
 
     // MARK: - Subscription: no-plan state renders correctly (purchase/restore
     // themselves intentionally not driven — see file header note).
+
+    // MARK: - Friend Requests: card width matches sibling sections in the empty
+    // state (task: 20260807-friend-requests-width-fix)
+    //
+    // Root cause (see intake spec): friendRequestsSection's empty-state branch
+    // renders only a short, non-wrapping Text with no width-forcing sibling, so
+    // its VStack/glassCard shrank to fit that string instead of the section's
+    // full available width, unlike every other section. The fix added
+    // `.frame(maxWidth: .infinity, alignment: .leading)` to the section's outer
+    // VStack. This test proves the empty-state card (MockDataService.
+    // fetchFriendRequests always returns [], matching the current live default
+    // reported in the bug) renders at essentially the same width as the
+    // ScrollView's available content width, rather than shrink-wrapping around
+    // the short "No pending friend requests." string.
+    //
+    // The populated branch (list of requests, each row an HStack{...Spacer()...})
+    // already forces full width independently of this fix and is unchanged by
+    // it (confirmed by code review, not re-driven here) — MockDataService has
+    // no seam to seed a non-empty friend-requests list without adding new mock
+    // infrastructure, which would be disproportionate to this narrow,
+    // single-line layout fix per the task's explicit scope.
+    func test_friendRequestsSection_emptyState_matchesAvailableContentWidth() {
+        let app = signInAndReachAccount()
+
+        let emptyStateText = app.staticTexts["No pending friend requests."]
+        scrollUntilExists(emptyStateText, app: app)
+
+        let card = app.otherElements["Friend Requests card"]
+        XCTAssertTrue(card.waitForExistence(timeout: 5), "expected the accessibilityIdentifier hook on friendRequestsSection's outer VStack to be queryable\n\(app.debugDescription)")
+
+        let availableWidth = app.scrollViews.firstMatch.frame.width
+        XCTAssertGreaterThan(availableWidth, 0, "sanity-check the ScrollView reports a real frame")
+
+        // The section content sits inside 20pt of horizontal padding on each
+        // side (AccountView.swift's outer VStack(spacing: 20).padding(.horizontal,
+        // 20)), so a truly full-width card is ~availableWidth - 40. Allow a
+        // little slack for safe-area/measurement rounding, but the key
+        // assertion is the large margin below: before the fix, an empty-state
+        // card shrink-wrapped around "No pending friend requests." (well under
+        // 300pt on any current device), so this threshold cleanly separates
+        // "fixed" from "regressed" without depending on exact pixel math.
+        XCTAssertGreaterThan(card.frame.width, availableWidth - 60,
+                              "Friend Requests card must span essentially the full available width like its sibling sections, not shrink-wrap around the empty-state text\n\(app.debugDescription)")
+        XCTAssertGreaterThan(card.frame.width, 300,
+                              "Friend Requests card width regressed to a shrink-to-fit size around the short empty-state string\n\(app.debugDescription)")
+    }
 
     func test_subscriptionSection_noPlanState_showsStartFlow_withoutTriggeringPurchase() {
         let app = signInAndReachAccount()

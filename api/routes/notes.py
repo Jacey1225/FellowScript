@@ -197,7 +197,17 @@ async def create_note(user_id: str, note_dict: dict, _: str = Depends(require_ma
                     "chapter":  verse[1],
                     "verse":    verse[2],
                 })
-        return {"id": note_id, "data": note.model_dump()}
+        # NOTE: iOS's NetworkService.saveNote() decodes this response as
+        # [String: String] (id -> value); a nested "data" object here used to
+        # make that decode throw, so saveNote() silently fell back to the
+        # client's locally-generated FSNote.id instead of this server-issued
+        # note_id (decode() swallows the error via `try?`). The client then
+        # keyed the new note under the wrong id, so a subsequent edit/delete
+        # sent a note_id the server had never seen -> 404 "Note not found",
+        # itself silently swallowed by the caller's `try?`. Keep this shape
+        # minimal so it decodes cleanly; the frontend (useNotes.js) only ever
+        # read `saved.id` too, so the "data" field was unused dead weight.
+        return {"id": note_id}
     finally:
         db.close()
 

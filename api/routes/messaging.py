@@ -70,19 +70,29 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str, msg_type: str =
         return
     await manager.connect(user_id, websocket)
     try:
-        while True:
-            payload      = await websocket.receive_json()
-            # Never trust the client-supplied sender identity — a connected
-            # user could otherwise claim to be anyone in `from_user` and
-            # impersonate them in DMs/group chat/call signaling, bypassing
-            # block enforcement (which keys off this field).
-            payload["from_user"] = session_user
-            effective_type = payload.get("type") or msg_type
-            if effective_type in _SIGNAL_TYPES:
-                await manager.send_sig(payload)
-            else:
-                await manager.send_msg(payload)
-    except WebSocketDisconnect:
+        try:
+            while True:
+                payload      = await websocket.receive_json()
+                # Never trust the client-supplied sender identity — a connected
+                # user could otherwise claim to be anyone in `from_user` and
+                # impersonate them in DMs/group chat/call signaling, bypassing
+                # block enforcement (which keys off this field).
+                payload["from_user"] = session_user
+                effective_type = payload.get("type") or msg_type
+                if effective_type in _SIGNAL_TYPES:
+                    await manager.send_sig(payload)
+                else:
+                    await manager.send_msg(payload)
+        except WebSocketDisconnect:
+            pass
+    finally:
+        # Previously this only ran on a clean WebSocketDisconnect. Any other
+        # exception escaping the loop (e.g. a malformed frame from
+        # receive_json(), or a manager dispatch error) left this user's dead
+        # socket behind in ConnectionManager.active_connections — every
+        # future message sent to them would then hit the same failure, and
+        # (before the send_msg/send_sig hardening above) could even crash an
+        # unrelated sender's connection loop. Run cleanup on every exit path.
         await manager.disconnect(user_id)
 
 

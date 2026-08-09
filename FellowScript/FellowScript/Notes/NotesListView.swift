@@ -150,13 +150,29 @@ final class NotesViewModel: ObservableObject {
 
     func saveHighlight(book: String, chapter: Int, verse: Int, color: String, userId: String) async {
         let key = "\(book)-\(chapter)-\(verse)"
-        highlights[key] = color
-        try? await service.saveHighlight(userId: userId, book: book, chapter: chapter, verse: verse, color: color)
+        let previous = highlights[key]
+        highlights[key] = color   // optimistic
+        do {
+            try await service.saveHighlight(userId: userId, book: book, chapter: chapter, verse: verse, color: color)
+        } catch {
+            // Revert the optimistic mutation and surface the real failure —
+            // saveHighlight now uses checkedRequestRaw, so a rejected write
+            // (expired session, free-tier limit, etc.) throws instead of
+            // silently looking like it succeeded.
+            if let previous { highlights[key] = previous } else { highlights.removeValue(forKey: key) }
+            saveError = error.localizedDescription
+        }
     }
 
     func clearHighlight(key: String, userId: String) async {
-        highlights.removeValue(forKey: key)
-        try? await service.clearHighlight(userId: userId, key: key)
+        let previous = highlights[key]
+        highlights.removeValue(forKey: key)   // optimistic
+        do {
+            try await service.clearHighlight(userId: userId, key: key)
+        } catch {
+            if let previous { highlights[key] = previous }
+            saveError = error.localizedDescription
+        }
     }
 }
 

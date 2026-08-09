@@ -13,6 +13,7 @@ import uuid
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from db import DBManager
+from backend.auth.sessions import SessionManager
 from routes.subscription import subscription_router
 from backend.subscription.subscriptions import SubscriptionsManager
 
@@ -39,6 +40,15 @@ def make_user_with_sub(days_past_period: int):
         db.update("users", {"subscription_id": sub_id}, {"_id": uid})
     finally:
         db.close()
+    # These routes require an authenticated session matching the path user_id
+    # (get_current_user / require_match), so mint a real session per scenario's
+    # throwaway user and attach it to the shared client.
+    sm = SessionManager()
+    try:
+        token = sm.create_session(uid)
+    finally:
+        sm.close()
+    client.cookies.set("session", token)
     return uid, uname, sub_id
 
 

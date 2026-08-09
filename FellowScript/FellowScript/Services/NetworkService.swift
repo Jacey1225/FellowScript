@@ -19,7 +19,13 @@ final class NetworkService: DataServiceProtocol {
     }
 
     private func get(_ path: String) async throws -> Data {
-        let (data, _) = try await URLSession.shared.data(from: url(path))
+        let (data, response) = try await URLSession.shared.data(from: url(path))
+        // Validate status like request()/checkedRequestRaw() do — previously this
+        // never called throwIfError, so every fetch* built on it silently turned
+        // an HTTP error (e.g. a 401 from an expired session) into a blank default
+        // value or empty collection instead of surfacing a thrown error. Fixed at
+        // this single shared helper since it underlies nearly every domain's reads.
+        try throwIfError(response, data)
         return data
     }
 
@@ -147,6 +153,14 @@ final class NetworkService: DataServiceProtocol {
         _ = try await request("/user/\(userId)/accept-terms", method: "POST")
     }
 
+    /// Invalidates the server-side session (deletes the row + clears the cookie).
+    /// Auth is cookie-based (URLSession's shared HTTPCookieStorage sends it
+    /// automatically), so no user id / body is needed — the session token in
+    /// the request cookie identifies which session to end.
+    func logout() async throws {
+        _ = try await request("/logout", method: "POST")
+    }
+
     // ── Two-factor authentication (email code) ──────────────────────────────────
 
     /// Completes a login paused by signIn()'s `.mfaRequired` — verifies the
@@ -195,9 +209,12 @@ final class NetworkService: DataServiceProtocol {
     }
 
     func updateUser(userId: String, body: [String: String]) async throws -> FSUser {
-        let data = try await requestRaw("/user/\(userId)", method: "PUT", jsonObject: body)
+        // checkedRequestRaw (not requestRaw) so a 4xx/5xx response (e.g. a
+        // rejected timezone identifier or an auth failure) is raised as an
+        // AppError instead of silently falling through to the decode below.
+        let data = try await checkedRequestRaw("/user/\(userId)", method: "PUT", jsonObject: body)
         guard let user = decode(FSUser.self, from: data) else {
-            let detail = decode([String: String].self, from: data)?["detail"] ?? "Update failed."
+            let detail = extractErrorDetail(from: data) ?? "Update failed."
             throw AppError.networkError(detail)
         }
         return user
@@ -275,7 +292,11 @@ final class NetworkService: DataServiceProtocol {
     }
 
     func saveHighlight(userId: String, book: String, chapter: Int, verse: Int, color: String) async throws {
-        _ = try await requestRaw("/notes/highlight/\(userId)", method: "POST",
+        // checkedRequestRaw (not requestRaw) so a 4xx/5xx response (e.g. an
+        // expired session or a free-tier highlight limit) throws instead of
+        // being silently discarded — callers optimistically mutate local
+        // state and must be able to revert on failure.
+        _ = try await checkedRequestRaw("/notes/highlight/\(userId)", method: "POST",
                                   jsonObject: ["book": book, "chapter": chapter, "verse": verse, "color": color])
     }
 
@@ -294,7 +315,8 @@ final class NetworkService: DataServiceProtocol {
     }
 
     func saveBookmark(userId: String, book: String, chapter: Int, label: String) async throws {
-        _ = try await requestRaw("/notes/bookmark/\(userId)", method: "POST",
+        // checkedRequestRaw (not requestRaw) — same rationale as saveHighlight above.
+        _ = try await checkedRequestRaw("/notes/bookmark/\(userId)", method: "POST",
                                   jsonObject: ["book": book, "chapter": chapter, "label": label])
     }
 
@@ -340,22 +362,32 @@ final class NetworkService: DataServiceProtocol {
     // POST   /agent/{userId}/{agentId}/summarize      body: {session, group_id}
 
     func createAgent(userId: String, role: String) async throws -> FSAgent {
+        // checkedRequestRaw (not requestRaw) so a rejected create throws instead
+        // of falling through to the `return FSAgent(id: UUID()...)` fallback below,
+        // which used to fabricate a plausible-looking agent with a client-generated
+        // id on ANY failure (network error, 4xx/5xx, or a decode miss) — the worst
+        // instance of this file's silent-failure pattern, since it invented a
+        // success value rather than merely dropping one.
         var body: [String: Any] = ["user_id": userId, "chats": [], "enabled": true]
         if !role.isEmpty { body["role"] = role }
-        let data = try await requestRaw("/agent/\(userId)", method: "POST", jsonObject: body)
-        if let resp = decode([String: String].self, from: data), let id = resp["id"] {
-            return FSAgent(id: id, user_id: userId, role: role, enabled: true, chats: [])
+        let data = try await checkedRequestRaw("/agent/\(userId)", method: "POST", jsonObject: body)
+        guard let resp = decode([String: String].self, from: data), let id = resp["id"] else {
+            throw AppError.networkError(extractErrorDetail(from: data) ?? "Could not create agent.")
         }
-        return FSAgent(id: UUID().uuidString, user_id: userId, role: role, enabled: true, chats: [])
+        return FSAgent(id: id, user_id: userId, role: role, enabled: true, chats: [])
     }
 
     func updateAgent(userId: String, agentId: String, enabled: Bool) async throws {
-        _ = try await requestRaw("/agent/\(userId)/\(agentId)", method: "PUT",
+        // checked so a backend rejection throws instead of leaving the caller's
+        // optimistic local mutation (AccountView.toggleAgent) silently drifted
+        // from server state.
+        _ = try await checkedRequestRaw("/agent/\(userId)/\(agentId)", method: "PUT",
                                   jsonObject: ["enabled": enabled])
     }
 
     func renameAgent(userId: String, agentId: String, name: String) async throws {
-        _ = try await requestRaw("/agent/\(userId)/\(agentId)", method: "PUT",
+        // checked — see updateAgent above.
+        _ = try await checkedRequestRaw("/agent/\(userId)/\(agentId)", method: "PUT",
                                   jsonObject: ["name": name])
     }
 
@@ -375,13 +407,16 @@ final class NetworkService: DataServiceProtocol {
     }
 
     func updateHeartbeat(userId: String, heartbeatId: String, heartbeat: FSHeartbeat) async throws {
+        // checked — see updateAgent above; AccountView.updateEvent applies its
+        // local mutation unconditionally today, so a swallowed rejection here
+        // would leave the UI showing an edit the server never saved.
         let tsArray = heartbeat.timestamps.map { $0 != nil ? $0! as Any : NSNull() as Any }
         let body: [String: Any] = [
             "agent_id":   heartbeat.agent_id,
             "timestamps": tsArray,
             "prompt":     heartbeat.prompt,
         ]
-        _ = try await requestRaw("/agent/\(userId)/\(heartbeatId)/update_heartbeats", method: "PUT", jsonObject: body)
+        _ = try await checkedRequestRaw("/agent/\(userId)/\(heartbeatId)/update_heartbeats", method: "PUT", jsonObject: body)
     }
 
     func commitHeartbeat(userId: String, agentId: String, heartbeatId: String, prompt: String) async throws -> [String: String] {
@@ -393,7 +428,8 @@ final class NetworkService: DataServiceProtocol {
     }
 
     func summarizeSession(userId: String, agentId: String, session: FSSession, groupId: String) async throws {
-        _ = try await requestRaw("/agent/\(userId)/\(agentId)/summarize", method: "POST",
+        // checked — see updateAgent above.
+        _ = try await checkedRequestRaw("/agent/\(userId)/\(agentId)/summarize", method: "POST",
                                   jsonObject: ["session": try jsonObject(session), "group_id": groupId])
     }
 
@@ -535,15 +571,19 @@ final class NetworkService: DataServiceProtocol {
     // POST   /groups/{userId}         body: {group_id, title, users}
     // DELETE /groups/{userId}/{groupId}
 
+    // Uses checkedRequestRaw (not requestRaw) so a rejected create/update — most
+    // notably group_router's content-filter check_clean(title=...) 422 — throws
+    // instead of silently no-opping. See createGroup/updateGroup call sites for
+    // the corresponding UI-side error handling and optimistic-update rollback.
     func createGroup(userId: String, groupId: String, title: String, users: [String]) async throws {
-        _ = try await requestRaw("/groups/\(userId)", method: "POST",
-                                  jsonObject: ["group_id": groupId, "title": title, "users": users])
+        _ = try await checkedRequestRaw("/groups/\(userId)", method: "POST",
+                                         jsonObject: ["group_id": groupId, "title": title, "users": users])
     }
 
     // PUT /groups/{userId}/{groupId}   body: {group_id, title, users}
     func updateGroup(userId: String, groupId: String, title: String, users: [String]) async throws {
-        _ = try await requestRaw("/groups/\(userId)/\(groupId)", method: "PUT",
-                                  jsonObject: ["group_id": groupId, "title": title, "users": users])
+        _ = try await checkedRequestRaw("/groups/\(userId)/\(groupId)", method: "PUT",
+                                         jsonObject: ["group_id": groupId, "title": title, "users": users])
     }
 
     func leaveGroup(userId: String, groupId: String) async throws {
@@ -633,7 +673,11 @@ final class NetworkService: DataServiceProtocol {
     func updateNotification(userId: String, notifId: String, name: String, prompt: String, timestamps: [String?]) async throws {
         let tsArray = timestamps.map { $0 != nil ? $0! as Any : NSNull() as Any }
         let body: [String: Any] = ["name": name, "prompt": prompt, "timestamps": tsArray]
-        _ = try await requestRaw("/notification/\(userId)/\(notifId)", method: "PUT", jsonObject: body)
+        // checked — a DB-write failure now surfaces as a real 500 (see
+        // api/backend/interactions/notifications.py's re-raise fix) instead of
+        // a silently-swallowed fake success; must not go back to unchecked
+        // requestRaw or the caller can never see it.
+        _ = try await checkedRequestRaw("/notification/\(userId)/\(notifId)", method: "PUT", jsonObject: body)
     }
 
     func deleteNotification(userId: String, notifId: String) async throws {
@@ -641,7 +685,10 @@ final class NetworkService: DataServiceProtocol {
     }
 
     func registerDeviceToken(userId: String, token: String) async throws {
-        _ = try await requestRaw("/notification/\(userId)/device-token", method: "POST",
+        // checked so a write failure is at least logged by the caller instead of
+        // vanishing — this endpoint's DB write can fail like any other and there
+        // is no other signal (no UI polls "is my token registered?").
+        _ = try await checkedRequestRaw("/notification/\(userId)/device-token", method: "POST",
                                  jsonObject: ["token": token])
     }
 
@@ -697,7 +744,10 @@ final class NetworkService: DataServiceProtocol {
             body["card_exp_month"] = b.expMonth
             body["card_exp_year"]  = b.expYear
         }
-        let data = try await requestRaw("/subscriptions/", method: "POST", jsonObject: body)
+        // checkedRequestRaw (not requestRaw) so a real 400/403 rejection throws
+        // with the server's actual detail instead of silently falling through
+        // to the generic "Could not start plan." guard below.
+        let data = try await checkedRequestRaw("/subscriptions/", method: "POST", jsonObject: body)
         guard let result = decode([String: String].self, from: data), let id = result["id"] else {
             throw AppError.networkError("Could not start plan.")
         }
@@ -710,8 +760,11 @@ final class NetworkService: DataServiceProtocol {
 
     // Host changes how many people the plan covers; server re-prices from member_count.
     func updateSubscriptionSeats(subscriptionId: String, memberCount: Int) async throws {
-        _ = try await requestRaw("/subscriptions/\(encodeURIComponent(subscriptionId))", method: "PUT",
-                                 jsonObject: ["member_count": memberCount])
+        // checkedRequestRaw so a 403 ("only the host may do this") or 404 (plan
+        // gone) actually throws instead of being silently discarded — mirrors
+        // updateUser()/createGroup() elsewhere in this file.
+        _ = try await checkedRequestRaw("/subscriptions/\(encodeURIComponent(subscriptionId))", method: "PUT",
+                                        jsonObject: ["member_count": memberCount])
     }
 
     func fetchSubMembers(subscriptionId: String) async throws -> [FSSubMember] {
@@ -751,9 +804,23 @@ final class NetworkService: DataServiceProtocol {
 
     func syncAppleSubscription(userId: String, jws: String) async throws -> FSSubscription? {
         // Forwards a StoreKit 2 signed transaction; backend verifies + records.
-        let data = try await requestRaw("/subscriptions/apple/sync", method: "POST",
-                                        jsonObject: ["user_id": userId, "jws": jws])
-        return decode(FSSubscription.self, from: data)
+        // This is the highest-stakes call in the app — real Apple money has
+        // already changed hands by the time StoreKitManager.purchase() calls
+        // this. checkedRequestRaw (not requestRaw) so a 400 (invalid
+        // transaction / untrusted environment / unknown product) or 409
+        // (subscription already linked to a different account) actually
+        // throws instead of silently decoding an error body into a lenient,
+        // bogus-default FSSubscription — StoreKitManager depends on this
+        // throwing to know whether it's safe to finish() the transaction and
+        // report the purchase as successful.
+        let data = try await checkedRequestRaw("/subscriptions/apple/sync", method: "POST",
+                                               jsonObject: ["user_id": userId, "jws": jws])
+        // A successful "expired" response (`{"status": "expired"}`) has no id,
+        // same as fetchUserSubscription's no-subscription case just above —
+        // treat a missing id as "no active subscription" rather than a bogus
+        // empty-id plan.
+        guard let sub = decode(FSSubscription.self, from: data), !sub.id.isEmpty else { return nil }
+        return sub
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────

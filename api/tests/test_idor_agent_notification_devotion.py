@@ -20,6 +20,16 @@ get_current_user/require_match(user_id) — no participant/group-membership
 check, letting any authenticated user read a private session's prompts/
 verses/Chime data, or join/leave/join-call on it uninvited.
 
+Finding 5b — (added by the 20260808-ios-backend-integration-audit pipeline,
+step 20/security) api/routes/devotion.py's update_devotion() was not part of
+Finding 5's original fix: it only checked req.user_id == current_user (a
+self-identity check, not an authorization check) before overwriting an
+EXISTING session's title/prompts/verses by devotion_id — so any authenticated
+user who knew/guessed another user's devotion_id could overwrite that
+session's content even though they were never a participant/group member.
+Fixed by adding the same db.get_session() + db.is_authorized() check the
+other four routes in this finding already use. Covered below.
+
 Every case below follows the same shape: a VICTIM creates a resource, an
 ATTACKER (a different, otherwise-legitimate authenticated user) tries to
 read/mutate/delete it by ID while authenticating as themselves, and the
@@ -254,6 +264,48 @@ def main():
 
             r = client.post("/devotions/join-call", params={"session_id": devo_id, "user_id": uid_x}, headers=cookie_header(token_x))
             check("attacker join-call -> 403", r.status_code == 403, str(r.status_code))
+
+            # Finding 5b: update_devotion — attacker (never a participant/group
+            # member) tries to overwrite the victim's private session content
+            # by devotion_id. Prior to the fix this only checked
+            # req.user_id == current_user (self-identity), not that the
+            # caller has any relationship to the EXISTING session, so an
+            # attacker could rename/rewrite another user's private devotion.
+            attacker_update_payload = {
+                "devotion_id": devo_id, "user_id": uid_x,
+                "devotion": {"id": devo_id, "title": "PWNED", "creator_id": uid_v,
+                             "prompts": ["pwned prompt"], "verses": []},
+            }
+            r = client.put("/devotions/", json=attacker_update_payload, headers=cookie_header(token_x))
+            check("attacker: update_devotion on victim's session -> 403",
+                  r.status_code == 403, str(r.status_code) + " " + r.text)
+
+            r = client.get("/devotions/", params={"devotion_id": devo_id}, headers=cookie_header(token_v))
+            check("victim's session title/prompts untouched after attacker's update_devotion attempt",
+                  r.status_code == 200 and r.json().get("title") == "Private study"
+                  and r.json().get("prompts") == ["p1"], str(r.status_code) + " " + str(r.json()))
+
+            # Regression: the legitimate owner can still update their own session.
+            owner_update_payload = {
+                "devotion_id": devo_id, "user_id": uid_v,
+                "devotion": {"id": devo_id, "title": "Private study (edited)", "creator_id": uid_v,
+                             "prompts": ["p1", "p2"], "verses": []},
+            }
+            r = client.put("/devotions/", json=owner_update_payload, headers=cookie_header(token_v))
+            check("owner: update_devotion on own session -> 200", r.status_code == 200, str(r.status_code) + " " + r.text)
+
+            r = client.get("/devotions/", params={"devotion_id": devo_id}, headers=cookie_header(token_v))
+            check("owner's edit actually persisted",
+                  r.status_code == 200 and r.json().get("title") == "Private study (edited)"
+                  and r.json().get("prompts") == ["p1", "p2"], str(r.status_code) + " " + str(r.json()))
+
+            # Also confirm a non-existent devotion_id 404s for update (not a
+            # bare 403/500), matching fetch_devotion's own not-found handling.
+            r = client.put("/devotions/", json={
+                "devotion_id": str(uuid.uuid4()), "user_id": uid_v,
+                "devotion": {"id": str(uuid.uuid4()), "title": "ghost", "creator_id": uid_v, "prompts": [], "verses": []},
+            }, headers=cookie_header(token_v))
+            check("update_devotion on a nonexistent session -> 404", r.status_code == 404, str(r.status_code))
 
             # Cleanup the devotion (host-only delete, already covered elsewhere).
             del_payload = {"devotion_id": devo_id, "user_id": uid_v, "devotion": devo_payload["devotion"]}

@@ -101,8 +101,14 @@ class NotificationManager(DBManager):
             )
             self.conn.commit()
         except Exception as e:
+            # Re-raise (don't just log+swallow) — this is the exact class of bug
+            # noted on the `agents` table above: silently discarding the write
+            # while still returning a generated id lets the route respond 201
+            # with a fake success even though nothing was persisted. Letting the
+            # exception propagate turns it into a real 500 the client can see.
             logger.error("Error creating notification: %s", e)
             self.conn.rollback()
+            raise
         return notif_id
 
     def get_notifications(self) -> list[dict]:
@@ -135,8 +141,12 @@ class NotificationManager(DBManager):
                 )
                 self.conn.commit()
             except Exception as e:
+                # Re-raise — the route returns {"ok": True} unconditionally after
+                # calling this, so swallowing here silently told the client its
+                # schedule change saved when it didn't (incident #1's pattern).
                 logger.error("Error updating timestamps: %s", e)
                 self.conn.rollback()
+                raise
 
     def set_timestamp(self, notif_id: str, day: int, timestamp: Optional[str]) -> None:
         """Set or clear the timestamp for a specific day slot (0-indexed, 0–30)."""
@@ -149,8 +159,12 @@ class NotificationManager(DBManager):
             )
             self.conn.commit()
         except Exception as e:
+            # Re-raise — same false-success risk as create_notification/
+            # update_notification above: the route returns {"ok": True}
+            # unconditionally after this call.
             logger.error("Error setting timestamp slot %d: %s", day, e)
             self.conn.rollback()
+            raise
 
     def delete_notification(self, notif_id: str) -> None:
         self.delete(self._table, {"_id": notif_id, "user_id": self.user_id})
