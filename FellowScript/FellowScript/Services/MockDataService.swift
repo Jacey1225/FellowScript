@@ -17,6 +17,7 @@ protocol DataServiceProtocol {
     func signInWithGoogle(credential: String, termsAccepted: Bool) async throws -> FSUser
     func signInWithApple(identityToken: String, fullName: String?, email: String?, termsAccepted: Bool) async throws -> FSUser
     func acceptTerms(userId: String) async throws
+    func logout() async throws
 
     // Two-factor authentication
     func verifyMfaLogin(userId: String, code: String) async throws -> FSUser
@@ -144,6 +145,18 @@ final class MockDataService: DataServiceProtocol {
         highlights: [:]
     )
 
+    // The timezone `fetchUser` returns — deliberately different from
+    // `mockUser.timezone` (Codable default "UTC"), which is what `signIn`
+    // returns and what a cold-launch `appState.currentUser` snapshot is seeded
+    // with. This mirrors a real account that has previously saved a non-UTC
+    // timezone: the backend/fetch path has that real value, while a pre-fetch
+    // snapshot only ever has the placeholder default. Lets tests distinguish
+    // "the stale pre-fetch snapshot" from "the freshly-fetched profile" — the
+    // exact distinction at the heart of the 20260808-timezone-display-stale-utc
+    // regression (AccountView's `.task` used to seed its Timezone row from the
+    // former instead of the latter).
+    static let mockFetchedTimezone = "America/Los_Angeles"
+
     static let mockNotes: [String: FSNote] = {
         let n1 = FSNote(
             id: "note-001", user: mockUser.user_id,
@@ -264,6 +277,7 @@ final class MockDataService: DataServiceProtocol {
     }
 
     func acceptTerms(userId: String) async throws {}
+    func logout() async throws {}
 
     func verifyMfaLogin(userId: String, code: String) async throws -> FSUser {
         try await Task.sleep(nanoseconds: 600_000_000)
@@ -277,7 +291,11 @@ final class MockDataService: DataServiceProtocol {
     func requestPasswordReset(email: String) async throws {}
 
     // User
-    func fetchUser(userId: String) async throws -> FSUser { Self.mockUser }
+    func fetchUser(userId: String) async throws -> FSUser {
+        var freshUser = Self.mockUser
+        freshUser.timezone = Self.mockFetchedTimezone
+        return freshUser
+    }
     func updateUser(userId: String, body: [String: String]) async throws -> FSUser { Self.mockUser }
     func deleteUser(userId: String) async throws {}
 

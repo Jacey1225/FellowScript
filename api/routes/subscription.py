@@ -136,7 +136,16 @@ async def stripe_webhook(request: Request) -> dict:
             if obj.get("subscription"):
                 db.update_status_from_stripe(obj.get("subscription"), "past_due")
     except Exception as e:
+        # Do NOT swallow this into a 200 — every handler above is idempotent
+        # (upsert/update-by-id), so surfacing a 500 here is safe and lets
+        # Stripe's automatic webhook retry actually re-deliver the event.
+        # Silently acking a failed event (the previous behavior) meant a
+        # transient DB error permanently dropped that status change with no
+        # record of it beyond a log line — the exact silent-swallow-into-
+        # false-success pattern this audit is hunting for, just on the
+        # webhook ingestion path instead of a user-facing request.
         logger.error("Error handling %s: %s", etype, e)
+        raise HTTPException(status_code=500, detail="Webhook processing failed")
     finally:
         db.close()
     return {"received": True}
@@ -234,7 +243,13 @@ async def apple_notifications(request: Request) -> dict:
         elif ntype in ("EXPIRED", "REFUND", "REVOKE", "GRACE_PERIOD_EXPIRED"):
             db.cancel_by_apple_txn(otxn)
     except Exception as e:
+        # Same reasoning as the Stripe webhook above: update_status_by_apple_txn
+        # / cancel_by_apple_txn are both idempotent lookups-by-transaction-id, so
+        # surfacing a 500 is safe and lets App Store Server Notifications' retry
+        # schedule re-deliver instead of the event being permanently dropped on a
+        # transient DB error while the client-visible response still says "received".
         logger.error("Apple notification %s error: %s", ntype, e)
+        raise HTTPException(status_code=500, detail="Notification processing failed")
     finally:
         db.close()
     return {"received": True}

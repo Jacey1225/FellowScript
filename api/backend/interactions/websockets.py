@@ -125,10 +125,22 @@ class ConnectionManager(DBManager):
                 continue
             ws = self.active_connections.get(uid)
             if ws:
-                # Recipient is online — deliver via WebSocket
-                await ws.send_json(frame)
-            elif uid != from_user_id:
-                # Recipient is offline — send APNs push notification
+                # Recipient is online — deliver via WebSocket. A send can fail
+                # even though the socket is still registered (e.g. the peer
+                # dropped the connection but no close frame has reached us
+                # yet). Left unguarded, that exception would propagate out of
+                # send_msg into the SENDER's websocket_endpoint loop — one
+                # stale recipient socket would silently kill an unrelated,
+                # perfectly healthy connection. Evict the stale entry and
+                # fall through to the offline push path instead.
+                try:
+                    await ws.send_json(frame)
+                except Exception as e:
+                    logger.warning("Send to %s failed, evicting stale connection: %s", uid, e)
+                    self.active_connections.pop(uid, None)
+                    ws = None
+            if not ws and uid != from_user_id:
+                # Recipient is offline (or was just evicted above) — send APNs push notification
                 try:
                     self.cur.execute(
                         "SELECT token FROM device_tokens WHERE user_id = %s", (uid,)
@@ -149,7 +161,13 @@ class ConnectionManager(DBManager):
         for uid in payload.get("to_users", []):
             ws = self.active_connections.get(uid)
             if ws:
-                await ws.send_json(payload)
+                try:
+                    await ws.send_json(payload)
+                except Exception as e:
+                    # Same rationale as send_msg: don't let a stale recipient
+                    # socket raise into the sender's connection loop.
+                    logger.warning("Signal send to %s failed, evicting stale connection: %s", uid, e)
+                    self.active_connections.pop(uid, None)
 
     async def broadcast(self, message: dict) -> None:
         """Send a message to every currently connected user.

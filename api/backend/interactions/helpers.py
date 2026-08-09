@@ -153,41 +153,73 @@ def load_users_data() -> dict:
         db.close()
 
 
+def _upsert_user_row(db: DB, uid: str, d: dict) -> None:
+    # suspended_at is deliberately never written here (mirrors mfa_enabled's
+    # exclusion) — only backend/moderation/admin_actions.py may set it, so a
+    # routine profile edit can never un-suspend someone.
+    db.cur.execute(
+        "INSERT INTO users (_id, username, email, hash_pass, apple_sub, google_sub, timezone, "
+        "terms_accepted_at, terms_version, needs_profile_completion) "
+        "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,COALESCE(%s, FALSE)) "
+        "ON CONFLICT (_id) DO UPDATE SET username=EXCLUDED.username, "
+        "email=EXCLUDED.email, hash_pass=EXCLUDED.hash_pass, "
+        "apple_sub=COALESCE(EXCLUDED.apple_sub, users.apple_sub), "
+        "google_sub=COALESCE(EXCLUDED.google_sub, users.google_sub), "
+        "timezone=COALESCE(EXCLUDED.timezone, users.timezone), "
+        "terms_accepted_at=COALESCE(EXCLUDED.terms_accepted_at, users.terms_accepted_at), "
+        "terms_version=COALESCE(EXCLUDED.terms_version, users.terms_version), "
+        "needs_profile_completion=COALESCE(EXCLUDED.needs_profile_completion, users.needs_profile_completion)",
+        (uid, d.get("username", ""), d.get("email", ""),
+         d.get("hash_pass", ""), d.get("apple_sub"), d.get("google_sub"),
+         d.get("timezone"), d.get("terms_accepted_at"), d.get("terms_version"),
+         d.get("needs_profile_completion")),
+    )
+
+
 def save_users_data(user_info: dict) -> None:
     """Upsert each user's base row into Postgres.
 
     Relations (friends, requests, highlights, bookmarks, group membership) are
     owned by their dedicated tables and written by the respective managers, so
     only the base ``users`` row is persisted here.
+
+    Bulk, per-row-best-effort: a failure on one row is logged and rolled back
+    but does not stop the rest of the batch. This is intentional for the
+    multi-user callers this is meant for (e.g. auth backfills that touch the
+    whole loaded table incidentally) but makes it the wrong helper for a
+    single targeted edit — use ``save_user_row`` for that instead, since a
+    caller returning a "saved" response can't tell here whether its one row
+    was among the ones that actually landed.
     """
     db = DB()
     try:
         for uid, d in user_info.items():
             try:
-                # suspended_at is deliberately never written here (mirrors
-                # mfa_enabled's exclusion) — only backend/moderation/admin_actions.py
-                # may set it, so a routine profile edit can never un-suspend someone.
-                db.cur.execute(
-                    "INSERT INTO users (_id, username, email, hash_pass, apple_sub, google_sub, timezone, "
-                    "terms_accepted_at, terms_version, needs_profile_completion) "
-                    "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,COALESCE(%s, FALSE)) "
-                    "ON CONFLICT (_id) DO UPDATE SET username=EXCLUDED.username, "
-                    "email=EXCLUDED.email, hash_pass=EXCLUDED.hash_pass, "
-                    "apple_sub=COALESCE(EXCLUDED.apple_sub, users.apple_sub), "
-                    "google_sub=COALESCE(EXCLUDED.google_sub, users.google_sub), "
-                    "timezone=COALESCE(EXCLUDED.timezone, users.timezone), "
-                    "terms_accepted_at=COALESCE(EXCLUDED.terms_accepted_at, users.terms_accepted_at), "
-                    "terms_version=COALESCE(EXCLUDED.terms_version, users.terms_version), "
-                    "needs_profile_completion=COALESCE(EXCLUDED.needs_profile_completion, users.needs_profile_completion)",
-                    (uid, d.get("username", ""), d.get("email", ""),
-                     d.get("hash_pass", ""), d.get("apple_sub"), d.get("google_sub"),
-                     d.get("timezone"), d.get("terms_accepted_at"), d.get("terms_version"),
-                     d.get("needs_profile_completion")),
-                )
+                _upsert_user_row(db, uid, d)
                 db.conn.commit()
             except Exception as e:
                 db.conn.rollback()
                 logger.error("save_users_data: failed to upsert %s: %s", uid, e)
+    finally:
+        db.close()
+
+
+def save_user_row(uid: str, d: dict) -> None:
+    """Upsert exactly one user's base row into Postgres.
+
+    Unlike ``save_users_data`` (bulk, best-effort), this writes only the one
+    row a caller actually intends to change and re-raises on failure instead
+    of swallowing it into a log line — so a route like ``PUT /user/{id}`` can
+    never build a "success" response from an in-memory mutation that didn't
+    actually persist.
+    """
+    db = DB()
+    try:
+        _upsert_user_row(db, uid, d)
+        db.conn.commit()
+    except Exception:
+        db.conn.rollback()
+        raise
     finally:
         db.close()
 

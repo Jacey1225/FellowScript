@@ -83,9 +83,13 @@ final class AppState: ObservableObject {
     }
 
     /// Records acceptance of the current Terms after a re-consent gate was shown.
-    func acceptTerms() async {
+    /// Throws on failure so the blocking re-consent screen can stay up and show
+    /// an error instead of clearing the gate — and thus letting the user past a
+    /// required consent step — regardless of whether the server actually
+    /// recorded the acceptance.
+    func acceptTerms() async throws {
         guard let uid = currentUser?.user_id else { return }
-        try? await service.acceptTerms(userId: uid)
+        try await service.acceptTerms(userId: uid)
         termsReacceptRequired = false
     }
 
@@ -107,6 +111,12 @@ final class AppState: ObservableObject {
         // Wipe cached data so the next account never sees the previous user's notes,
         // groups, highlights, messages, or account info.
         Task { await DiskCache.shared.clear() }
+        // Invalidate the session server-side too — best-effort. Local sign-out
+        // above has already happened unconditionally (this device should never
+        // stay "logged in" locally just because a network call failed), but
+        // previously no call was ever made, so the server-side cookie/session
+        // row stayed valid for up to 30 days after an on-device "sign out".
+        Task { try? await service.logout() }
     }
 
     func updateUser(_ patch: FSUser) {
@@ -150,6 +160,16 @@ final class AppState: ObservableObject {
 
     func registerDeviceToken(_ token: String) {
         guard let uid = currentUser?.user_id else { return }
-        Task { try? await service.registerDeviceToken(userId: uid, token: token) }
+        // No UI surface for this background sync (nothing polls "is my token
+        // registered?"), so a log line is the only signal on failure — but it
+        // must not vanish outright the way `try?` let it before, since a failed
+        // registration means this device silently never receives push reminders.
+        Task {
+            do {
+                try await service.registerDeviceToken(userId: uid, token: token)
+            } catch {
+                print("Device token registration failed: \(error.localizedDescription)")
+            }
+        }
     }
 }

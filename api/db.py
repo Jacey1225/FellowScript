@@ -159,9 +159,31 @@ def create_tables(cur):
         "CREATE TABLE IF NOT EXISTS agents"
         "(_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
         "user_id UUID REFERENCES users(_id) ON DELETE CASCADE,"
-        "role VARCHAR(128) DEFAULT '',"
-        "chats TEXT[])"
+        # TEXT, not VARCHAR(128): routes/agent.py's create_agent falls back to
+        # schemas.agent._DEFAULT_ROLE (the full agent_prompt.txt system prompt,
+        # ~4.9KB) whenever the caller doesn't supply a custom role — the common
+        # case for a "default" agent. A VARCHAR(128) cap made every such INSERT
+        # fail with "value too long for type character varying(128)".
+        "role TEXT DEFAULT '',"
+        "chats TEXT[],"
+        # name/enabled added after the table's original creation —
+        # routes/agent.py's create_agent/update_agent and iOS's FSAgent both
+        # read/write these, but they were never declared here or backfilled
+        # via ALTER TABLE, so every INSERT/UPDATE referencing them failed at
+        # the DB level too.
+        # Both of the above failed silently: DBManager.insertion/update
+        # swallow sql.Error (log + rollback, no exception raised), so
+        # create_agent's route still returned 201 with a generated id even
+        # though the row never persisted. See the migrations below for
+        # existing databases.
+        "name VARCHAR(255) DEFAULT '',"
+        "enabled BOOLEAN NOT NULL DEFAULT TRUE)"
     )
+    # Migrations for databases created before role was TEXT and before
+    # name/enabled existed on agents.
+    cur.execute("ALTER TABLE agents ALTER COLUMN role TYPE TEXT")
+    cur.execute("ALTER TABLE agents ADD COLUMN IF NOT EXISTS name VARCHAR(255) DEFAULT ''")
+    cur.execute("ALTER TABLE agents ADD COLUMN IF NOT EXISTS enabled BOOLEAN NOT NULL DEFAULT TRUE")
 
     cur.execute(
         "CREATE TABLE IF NOT EXISTS subscriptions"

@@ -38,6 +38,12 @@ final class AccountViewModel: ObservableObject {
     // Free-tier usage (nil = not loaded / unavailable)
     @Published var usage:    FSUsage? = nil
     @Published var limitMsg: String?  = nil   // shown when a create hits the free-tier cap
+    // Shown when an agent create/toggle/rename/event-update is rejected by the
+    // backend — these used to apply an optimistic local mutation via bare
+    // `try?` and never surface the failure, silently drifting the UI from
+    // server state. Separate from limitMsg (which is titled "Free Plan Limit"
+    // specifically) since these failures aren't always cap-related.
+    @Published var agentMsg:  String?  = nil
 
     // Subscription
     @Published var subscription:   FSSubscription? = nil
@@ -155,27 +161,55 @@ final class AccountViewModel: ObservableObject {
         guard let uid = profileData?.user_id else { return }
         let updated = FSHeartbeat(id: event.id, agent_id: agentId, user_id: uid,
                                   timestamps: timestamps, prompt: prompt)
-        try? await service.updateHeartbeat(userId: uid, heartbeatId: event.id, heartbeat: updated)
-        if let i = events.firstIndex(where: { $0.id == event.id }) {
-            events[i] = updated
+        do {
+            try await service.updateHeartbeat(userId: uid, heartbeatId: event.id, heartbeat: updated)
+            if let i = events.firstIndex(where: { $0.id == event.id }) {
+                events[i] = updated
+            }
+            HeartbeatScheduler.scheduleAll(events: events)
+        } catch {
+            // Server rejected the edit — leave the pre-existing event untouched
+            // rather than applying it locally, and tell the user.
+            agentMsg = (error as? LocalizedError)?.errorDescription ?? "Could not save event."
         }
-        HeartbeatScheduler.scheduleAll(events: events)
     }
 
     func toggleAgent(id: String, enabled: Bool) {
         guard let uid = profileData?.user_id else { return }
+        let previous = agents.first { $0.id == id }?.enabled
         if let i = agents.firstIndex(where: { $0.id == id }) {
             agents[i].enabled = enabled
         }
-        Task { try? await service.updateAgent(userId: uid, agentId: id, enabled: enabled) }
+        Task {
+            do {
+                try await service.updateAgent(userId: uid, agentId: id, enabled: enabled)
+            } catch {
+                // Revert the optimistic toggle so the switch reflects reality.
+                if let i = agents.firstIndex(where: { $0.id == id }), let previous {
+                    agents[i].enabled = previous
+                }
+                agentMsg = (error as? LocalizedError)?.errorDescription ?? "Could not update agent."
+            }
+        }
     }
 
     func renameAgent(id: String, name: String) {
         guard let uid = profileData?.user_id else { return }
+        let previous = agents.first { $0.id == id }?.name
         if let i = agents.firstIndex(where: { $0.id == id }) {
             agents[i].name = name
         }
-        Task { try? await service.renameAgent(userId: uid, agentId: id, name: name) }
+        Task {
+            do {
+                try await service.renameAgent(userId: uid, agentId: id, name: name)
+            } catch {
+                // Revert the optimistic rename.
+                if let i = agents.firstIndex(where: { $0.id == id }) {
+                    agents[i].name = previous ?? ""
+                }
+                agentMsg = (error as? LocalizedError)?.errorDescription ?? "Could not rename agent."
+            }
+        }
     }
 
     func deleteAgent(id: String) {
@@ -187,8 +221,15 @@ final class AccountViewModel: ObservableObject {
 
     func createAgent(role: String) async {
         guard let uid = profileData?.user_id else { return }
-        if let agent = try? await service.createAgent(userId: uid, role: role) {
+        do {
+            let agent = try await service.createAgent(userId: uid, role: role)
             agents.append(agent)
+        } catch {
+            // Previously this silently no-opped on failure (createAgent's own
+            // fallback also used to fabricate a fake agent — fixed separately
+            // in NetworkService). Surface the failure instead of leaving the
+            // user believing nothing happened.
+            agentMsg = (error as? LocalizedError)?.errorDescription ?? "Could not create agent."
         }
     }
 
@@ -212,14 +253,23 @@ final class AccountViewModel: ObservableObject {
 
     func updateNotification(notif: FSNotification, name: String, prompt: String, timestamps: [String?]) async {
         guard let uid = profileData?.user_id else { return }
-        try? await service.updateNotification(userId: uid, notifId: notif.id, name: name, prompt: prompt, timestamps: timestamps)
-        if let i = notifications.firstIndex(where: { $0.id == notif.id }) {
-            notifications[i].name       = name
-            notifications[i].prompt     = prompt
-            notifications[i].timestamps = timestamps
+        do {
+            // Mirrors updateEvent's pattern below: call the network layer first
+            // and only apply the edit locally on confirmed success — previously
+            // this used `try?` and mutated `notifications` unconditionally, so a
+            // server-side failure (e.g. the DB-write errors notifications.py now
+            // re-raises instead of swallowing) still showed the edit as saved.
+            try await service.updateNotification(userId: uid, notifId: notif.id, name: name, prompt: prompt, timestamps: timestamps)
+            if let i = notifications.firstIndex(where: { $0.id == notif.id }) {
+                notifications[i].name       = name
+                notifications[i].prompt     = prompt
+                notifications[i].timestamps = timestamps
+            }
+            UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [notif.id])
+            await NotificationScheduler.scheduleAll(userId: uid, notifications: notifications, service: service)
+        } catch {
+            agentMsg = (error as? LocalizedError)?.errorDescription ?? "Could not save reminder."
         }
-        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [notif.id])
-        await NotificationScheduler.scheduleAll(userId: uid, notifications: notifications, service: service)
     }
 
     func deleteNotification(notifId: String) {
@@ -325,7 +375,8 @@ final class AccountViewModel: ObservableObject {
     func restorePurchases() async {
         guard let uid = profileData?.user_id else { return }
         subBusy = true; defer { subBusy = false }
-        await StoreKitManager.shared.restore(userId: uid, service: service)
+        let ok = await StoreKitManager.shared.restore(userId: uid, service: service)
+        if !ok, let e = StoreKitManager.shared.lastError { subMsg = e }
         await loadSubscription(userId: uid)
     }
 
@@ -340,7 +391,11 @@ final class AccountViewModel: ObservableObject {
     func updateSeats(memberCount: Int) async {
         guard let uid = profileData?.user_id, let plan = subscription else { return }
         subBusy = true; defer { subBusy = false }
-        try? await service.updateSubscriptionSeats(subscriptionId: plan.id, memberCount: memberCount)
+        do {
+            try await service.updateSubscriptionSeats(subscriptionId: plan.id, memberCount: memberCount)
+        } catch {
+            subMsg = (error as? LocalizedError)?.errorDescription ?? "Could not update plan size."
+        }
         await loadSubscription(userId: uid)
     }
 
@@ -514,10 +569,14 @@ struct AccountView: View {
         .task {
             if let user = appState.currentUser {
                 await vm.load(service: appState.service, user: user)
-                username = user.username
-                email    = user.email
-                timezone = user.timezone
-                mfaEnabled = user.mfa_enabled
+                // Seed local @State from the freshly-fetched profile (vm.profileData),
+                // not the stale pre-fetch `user` snapshot captured above — falling back
+                // to `user` only if the fetch somehow left profileData nil.
+                let freshUser = vm.profileData ?? user
+                username = freshUser.username
+                email    = freshUser.email
+                timezone = freshUser.timezone
+                mfaEnabled = freshUser.mfa_enabled
                 // StoreKit: start listening, load products, and push any active
                 // entitlements to the backend before reading the subscription.
                 store.startListening()
@@ -563,6 +622,14 @@ struct AccountView: View {
             Button("OK", role: .cancel) { vm.limitMsg = nil }
         } message: {
             Text(vm.limitMsg ?? "")
+        }
+        .alert("Agent Error", isPresented: Binding(
+            get:  { vm.agentMsg != nil },
+            set:  { if !$0 { vm.agentMsg = nil } }
+        )) {
+            Button("OK", role: .cancel) { vm.agentMsg = nil }
+        } message: {
+            Text(vm.agentMsg ?? "")
         }
         .alert("Rename Agent", isPresented: Binding(
             get:  { renameAgentId != nil },
@@ -1071,8 +1138,14 @@ struct AccountView: View {
                 }
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 18).padding(.vertical, 16)
         .glassCard(cornerRadius: 20)
+        // Test-only hook (no visual/behavioral effect): lets AccountUITests
+        // measure this card's rendered frame width to prove it matches its
+        // sibling sections instead of shrink-wrapping around a short empty-state
+        // string. See test_friendRequestsSection_emptyState_matchesAvailableContentWidth.
+        .accessibilityIdentifier("Friend Requests card")
     }
 
     private var agentsSection: some View {
@@ -1524,11 +1597,16 @@ struct AccountView: View {
         if !password.isEmpty                              { body["plain_pass"] = password }
         if timezone != user.timezone                      { body["timezone"]   = timezone }
         Task {
-            if let updated = try? await appState.service.updateUser(userId: user.user_id, body: body) {
+            do {
+                let updated = try await appState.service.updateUser(userId: user.user_id, body: body)
                 appState.updateUser(updated)
                 vm.profileData = updated
+                vm.editMsg = (.success, "Profile updated.")
+            } catch {
+                // Never show "Profile updated." on a failed save — surface the
+                // real error instead so a rejected/failed write is visible.
+                vm.editMsg = (.error, error.localizedDescription)
             }
-            vm.editMsg = (.success, "Profile updated.")
             try? await Task.sleep(nanoseconds: 2_500_000_000)
             vm.editMsg = nil
         }

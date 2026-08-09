@@ -2,11 +2,11 @@
 // No AmazonChimeSDK dependency — safe to import anywhere.
 
 struct ChimeMediaPlacement: Codable {
-    let AudioHostUrl:     String
-    let AudioFallbackUrl: String
-    let SignalingUrl:     String
-    let TurnControlUrl:   String
-    let IngestionUrl:     String?
+    let AudioHostUrl:       String
+    let AudioFallbackUrl:   String
+    let SignalingUrl:       String
+    let TurnControlUrl:     String
+    let EventIngestionUrl:  String?
 }
 
 struct ChimeMeetingInfo: Codable {

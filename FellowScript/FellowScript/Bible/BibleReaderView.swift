@@ -23,6 +23,7 @@ final class BibleViewModel: ObservableObject {
     @Published var bookmarks:   [String: String]  = [:]  // "Book-ch" → label
     @Published var isLoading    = true
     @Published var loadError    = false
+    @Published var saveError:   String? = nil
 
     // Cached chapter counts per book
     var chapterCounts: [String: Int] = [:]
@@ -66,24 +67,65 @@ final class BibleViewModel: ObservableObject {
     }
 
     func persistHighlight(verse: Int, color: String, userId: String) {
-        setHighlight(verse: verse, color: color)
-        Task { try? await service.saveHighlight(userId: userId, book: curBook, chapter: curChapter, verse: verse, color: color) }
+        let book = curBook, chapter = curChapter
+        let key = "\(book)-\(chapter)-\(verse)"
+        let previous = highlights[key]
+        setHighlight(verse: verse, color: color)   // optimistic
+        Task {
+            do {
+                // saveHighlight now uses checkedRequestRaw (throws on 4xx/5xx)
+                // instead of the unchecked requestRaw, so a rejected write
+                // (expired session, free-tier limit, etc.) is observable here
+                // rather than silently looking like it succeeded.
+                try await service.saveHighlight(userId: userId, book: book, chapter: chapter, verse: verse, color: color)
+            } catch {
+                if let previous { highlights[key] = previous } else { highlights.removeValue(forKey: key) }
+                saveError = error.localizedDescription
+            }
+        }
     }
 
     func persistClearHighlight(verse: Int, userId: String) {
-        let key = "\(curBook)-\(curChapter)-\(verse)"
-        clearHighlight(verse: verse)
-        Task { try? await service.clearHighlight(userId: userId, key: key) }
+        let book = curBook, chapter = curChapter
+        let key = "\(book)-\(chapter)-\(verse)"
+        let previous = highlights[key]
+        clearHighlight(verse: verse)   // optimistic
+        Task {
+            do {
+                try await service.clearHighlight(userId: userId, key: key)
+            } catch {
+                if let previous { highlights[key] = previous }
+                saveError = error.localizedDescription
+            }
+        }
     }
 
     func persistToggleBookmark(userId: String) {
         let key = "\(curBook)-\(curChapter)"
+        let book = curBook, chapter = curChapter
         if isBookmarked() {
-            bookmarks.removeValue(forKey: key)
-            Task { try? await service.removeBookmark(userId: userId, key: key) }
+            let previousLabel = bookmarks[key]
+            bookmarks.removeValue(forKey: key)   // optimistic
+            Task {
+                do {
+                    try await service.removeBookmark(userId: userId, key: key)
+                } catch {
+                    if let previousLabel { bookmarks[key] = previousLabel }
+                    saveError = error.localizedDescription
+                }
+            }
         } else {
-            bookmarks[key] = ""
-            Task { try? await service.saveBookmark(userId: userId, book: curBook, chapter: curChapter, label: "") }
+            bookmarks[key] = ""   // optimistic
+            Task {
+                do {
+                    // saveBookmark now uses checkedRequestRaw — same rationale
+                    // as persistHighlight above.
+                    try await service.saveBookmark(userId: userId, book: book, chapter: chapter, label: "")
+                } catch {
+                    bookmarks.removeValue(forKey: key)
+                    saveError = error.localizedDescription
+                }
+            }
         }
     }
 
@@ -403,6 +445,14 @@ struct BibleReaderView: View {
             vm.setChapter(t.chapter)
             pendingScrollVerse   = t.verse
             appState.pendingBibleNav = nil
+        }
+        .alert("Save Failed", isPresented: Binding(
+            get: { vm.saveError != nil },
+            set: { if !$0 { vm.saveError = nil } }
+        )) {
+            Button("OK") { vm.saveError = nil }
+        } message: {
+            Text(vm.saveError ?? "")
         }
     }
 

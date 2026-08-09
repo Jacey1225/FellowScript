@@ -98,13 +98,22 @@ struct ChatRootView: View {
             AddGroupSheet(friends: vm.friends) { title, memberIds in
                 let uid = appState.currentUser?.user_id ?? ""
                 Task {
-                    try? await appState.service.createGroup(
-                        userId: uid,
-                        groupId: UUID().uuidString,
-                        title: title,
-                        users: [uid] + memberIds
-                    )
-                    await vm.load(service: appState.service, userId: uid)
+                    do {
+                        try await appState.service.createGroup(
+                            userId: uid,
+                            groupId: UUID().uuidString,
+                            title: title,
+                            users: [uid] + memberIds
+                        )
+                        await vm.load(service: appState.service, userId: uid)
+                    } catch {
+                        // createGroup now uses checkedRequestRaw, so a rejected
+                        // create (e.g. the group_router content-filter 422 on a
+                        // disallowed title) throws instead of silently no-opping,
+                        // which previously left the user staring at an unchanged
+                        // groups list with no explanation (backend step 8 finding #1).
+                        vm.groupError = (error as? LocalizedError)?.errorDescription ?? "Could not create group."
+                    }
                 }
             }
         }
@@ -115,6 +124,22 @@ struct ChatRootView: View {
                 let uid = appState.currentUser?.user_id ?? ""
                 Task { await vm.createAgent(role: role, userId: uid) }
             }
+        }
+        .alert("Couldn't Create Group", isPresented: Binding(
+            get: { vm.groupError != nil },
+            set: { if !$0 { vm.groupError = nil } }
+        )) {
+            Button("OK", role: .cancel) { vm.groupError = nil }
+        } message: {
+            Text(vm.groupError ?? "")
+        }
+        .alert("Couldn't Create Agent", isPresented: Binding(
+            get: { vm.agentError != nil },
+            set: { if !$0 { vm.agentError = nil } }
+        )) {
+            Button("OK", role: .cancel) { vm.agentError = nil }
+        } message: {
+            Text(vm.agentError ?? "")
         }
     }
 
@@ -397,6 +422,13 @@ final class ChatViewModel: ObservableObject {
     @Published var groups:    [FSContact] = []
     @Published var agents:    [FSAgent]   = []
     @Published var isLoading  = true
+    // Surfaces createGroup rejections (see ChatRootView's showAddGroup sheet)
+    // instead of the previous silent `try?` no-op — backend step 8 finding #1.
+    @Published var groupError: String? = nil
+    // Same pattern for createAgent — NetworkService.createAgent now uses
+    // checkedRequestRaw and throws instead of fabricating a fake FSAgent with
+    // a client-generated id on failure (backend step 11 finding #2).
+    @Published var agentError: String? = nil
 
     func load(service: DataServiceProtocol, userId: String) async {
         self.service = service
@@ -430,8 +462,11 @@ final class ChatViewModel: ObservableObject {
     }
 
     func createAgent(role: String, userId: String) async {
-        if let agent = try? await service.createAgent(userId: userId, role: role) {
+        do {
+            let agent = try await service.createAgent(userId: userId, role: role)
             agents.append(agent)
+        } catch {
+            agentError = (error as? LocalizedError)?.errorDescription ?? "Could not create agent."
         }
     }
 

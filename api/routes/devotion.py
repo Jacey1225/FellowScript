@@ -61,6 +61,11 @@ async def update_devotion(req: DevotionRequest, current_user: str = Depends(get_
     _check_devotion_clean(req.devotion)
     db = DevotionManager()
     try:
+        session = db.get_session(req.devotion_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+        if not db.is_authorized(session, current_user):
+            raise HTTPException(status_code=403, detail="Not authorized")
         ok = db.update_devotion(req.devotion_id, req.devotion)
         if not ok:
             raise HTTPException(status_code=404, detail="Session not found")

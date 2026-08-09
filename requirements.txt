@@ -7,3 +7,37 @@ pyjwt[crypto]==2.13.0
 slowapi==0.1.10
 boto3==1.43.18
 better_profanity==0.7.0
+# db.py imports this unconditionally at module import time — every route that
+# touches Postgres (i.e. nearly the whole API) fails at import, not at
+# request time, without it. Present on the EC2 deploy target only because it
+# was installed by hand outside of this file; same class of gap as tzdata
+# below (confirmed via `pip freeze` parity check against the prod venv).
+psycopg2-binary==2.9.12
+# db.py / backend/interactions/agent.py / backend/interactions/push.py load
+# .env via this at import time. Same undeclared-on-prod gap as psycopg2 above.
+python-dotenv==1.2.2
+# backend/interactions/scheduler.py — started unconditionally in main.py's
+# lifespan() on every app startup (drives the nightly per-timezone backup).
+# A fresh deploy from this file alone would fail at startup without it.
+apscheduler==3.11.3
+# backend/subscription/stripe_service.py — paid-plan checkout/billing.
+stripe==15.3.0
+# backend/subscription/apple_service.py — verifies the StoreKit JWS signature
+# chain against Apple's pinned root CA before trusting any subscription
+# claim (see that module's docstring); without this, every App Store
+# subscription sync/notification call fails.
+cryptography==49.0.0
+# backend/interactions/push.py opens httpx.AsyncClient(http2=True) to call
+# APNs, which requires HTTP/2 — httpx only pulls this in as an optional
+# extra. Confirmed present on the prod venv (h2==4.3.0) but ABSENT from this
+# repo's own .venv, meaning push notifications are currently untestable in
+# local dev and would silently stop working on any fresh deploy that
+# provisions strictly from this file.
+h2==4.3.0
+# zoneinfo falls back to this package, per key, whenever a name isn't found
+# under the system's /usr/share/zoneinfo (confirmed on the EC2 deploy target:
+# its tzdata package ships only canonical zone names, not IANA's ~150
+# backward-compatibility aliases like "US/Pacific" or "Asia/Calcutta" — both
+# of which TimeZone.knownTimeZoneIdentifiers on iOS does return, so without
+# this, picking one of those in TimeZonePickerSheet 422s on save).
+tzdata==2026.2

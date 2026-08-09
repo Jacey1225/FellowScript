@@ -210,7 +210,15 @@ def main():
             # ── Subscription: host vs member logic ──────────────────────────
             print("\n=== 9. Subscription (host/member authorization) ===")
             r = client.get(f"/subscriptions/user/{uid_a}", headers=cookie_header(token_a))
-            check("subscription: A reads own auto-created free plan -> 200", r.status_code == 200, str(r.status_code))
+            # SubscriptionsManager.get_user_subscription() intentionally returns None (-> 404)
+            # for plan_type='free': the auto-created free-tier row anchors usage counting but
+            # is not a "subscription" from a client's perspective (see its docstring — this was
+            # itself a fix for the free tier mis-rendering as an active paid plan on iOS). This
+            # assertion previously expected 200 and predated that fix; corrected here to match
+            # actual, intended behavior (confirmed not a regression via git-stash reproduction,
+            # 20260808-ios-backend-integration-audit backend step 1-2).
+            check("subscription: A reads own auto-created free plan -> 404 (free tier is not a subscription)",
+                  r.status_code == 404, str(r.status_code))
             r = client.get(f"/subscriptions/user/{uid_a}", headers=cookie_header(token_b))
             check("subscription: B reads A's plan via path -> 403", r.status_code == 403, str(r.status_code))
 

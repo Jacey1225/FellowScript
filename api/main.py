@@ -29,7 +29,7 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from db import DBManager, BACKUP_DB_NAME
-from backend.interactions.helpers import load_users_data, save_users_data
+from backend.interactions.helpers import load_users_data, save_users_data, save_user_row
 from backend.subscription.subscriptions import SubscriptionsManager
 from backend.auth.sessions import SessionManager
 from backend.auth.password_reset import PasswordResetManager
@@ -577,6 +577,8 @@ async def update_user(user_id: str, info: UpdateUser, _: str = Depends(require_m
 
     Raises:
         HTTPException 404: If no user with the given ID exists.
+        HTTPException 500: If the write to Postgres fails — the row is left
+            unchanged, and the caller must not be told it succeeded.
     """
     users = load_users()
     if user_id not in users:
@@ -595,7 +597,15 @@ async def update_user(user_id: str, info: UpdateUser, _: str = Depends(require_m
         ).decode()
     if info.timezone:
         users[user_id]["timezone"] = info.timezone
-    save_users(users)
+    # A single targeted-row write, not save_users_data()'s bulk re-upsert of
+    # every loaded user — and one that raises on failure instead of logging
+    # and swallowing it, so a persistence failure can never fall through to
+    # the "success" response built below from the in-memory mutation above.
+    try:
+        save_user_row(user_id, users[user_id])
+    except Exception as e:
+        logger.error("update_user: failed to persist %s: %s", user_id, e)
+        raise HTTPException(status_code=500, detail="Failed to save profile changes") from e
     return {"user_id": user_id, **{k: v for k, v in users[user_id].items() if k != "hash_pass"}}
 
 

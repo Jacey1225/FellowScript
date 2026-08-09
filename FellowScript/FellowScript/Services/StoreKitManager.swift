@@ -95,7 +95,22 @@ final class StoreKitManager: ObservableObject {
             switch result {
             case .success(let verification):
                 let txn = try checkVerified(verification)
-                await report(jws: verification.jwsRepresentation, userId: userId, service: service)
+                do {
+                    try await report(jws: verification.jwsRepresentation, userId: userId, service: service)
+                } catch {
+                    // Apple has been paid, but the backend didn't accept the
+                    // sync (network failure, transient 5xx, or a rejection
+                    // like "already linked to a different account" — see
+                    // NetworkService.syncAppleSubscription). Do NOT finish()
+                    // the transaction or report success here: leaving it
+                    // unfinished keeps it in Transaction.currentEntitlements,
+                    // so the next syncEntitlements() call (every AccountView
+                    // load, and explicitly via restore()) retries the sync
+                    // instead of the entitlement being silently dropped while
+                    // the UI claims the purchase succeeded.
+                    lastError = "Your purchase went through with Apple, but we couldn't confirm it with FellowScript yet. It will retry automatically the next time you open this screen — contact support if it doesn't resolve."
+                    return false
+                }
                 await txn.finish()
                 return true
             case .userCancelled:
@@ -113,9 +128,13 @@ final class StoreKitManager: ObservableObject {
     }
 
     /// Restore: sync with the App Store, then report current entitlements.
-    func restore(userId: String, service: DataServiceProtocol) async {
+    /// Returns false (and sets `lastError`) if any entitlement failed to sync
+    /// with the backend, so callers can surface that instead of a silent
+    /// false-success "restore" (mirrors purchase()'s handling).
+    @discardableResult
+    func restore(userId: String, service: DataServiceProtocol) async -> Bool {
         try? await AppStore.sync()
-        await syncEntitlements(userId: userId, service: service)
+        return await syncEntitlements(userId: userId, service: service)
     }
 
     /// The product IDs the user is currently entitled to (active subscriptions).
@@ -155,13 +174,29 @@ final class StoreKitManager: ObservableObject {
     }
 
     /// Report all current active entitlements to the backend (launch + restore).
-    func syncEntitlements(userId: String, service: DataServiceProtocol) async {
+    /// Returns false (and sets `lastError`) if syncing any entitlement failed —
+    /// a failure on one entitlement doesn't stop the rest from being reported.
+    @discardableResult
+    func syncEntitlements(userId: String, service: DataServiceProtocol) async -> Bool {
+        var allSucceeded = true
         for await verification in Transaction.currentEntitlements {
             if case .verified(let txn) = verification,
                Self.productIDs.contains(txn.productID) {
-                await report(jws: verification.jwsRepresentation, userId: userId, service: service)
+                do {
+                    try await report(jws: verification.jwsRepresentation, userId: userId, service: service)
+                } catch {
+                    // Previously discarded via `try?` — the exact silent-swallow
+                    // pattern this audit is hunting for, on the entitlement
+                    // reconciliation path (app launch + Manage Subscriptions
+                    // restore) rather than the initial purchase.
+                    allSucceeded = false
+                }
             }
         }
+        if !allSucceeded {
+            lastError = "Couldn't fully sync your subscription with the server. Reopen this screen to retry."
+        }
+        return allSucceeded
     }
 
     /// Present Apple's Manage Subscriptions sheet (the only place an Apple
@@ -176,8 +211,11 @@ final class StoreKitManager: ObservableObject {
 
     // ── Helpers ────────────────────────────────────────────────────────────────
 
-    private func report(jws: String, userId: String, service: DataServiceProtocol) async {
-        try? await service.syncAppleSubscription(userId: userId, jws: jws)
+    /// Propagates any sync failure (network error or a backend rejection like
+    /// "already linked to a different account") instead of swallowing it —
+    /// callers decide what to do (see purchase()/syncEntitlements()).
+    private func report(jws: String, userId: String, service: DataServiceProtocol) async throws {
+        _ = try await service.syncAppleSubscription(userId: userId, jws: jws)
     }
 
     private func checkVerified<T>(_ result: VerificationResult<T>) throws -> T {
