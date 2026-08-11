@@ -1064,6 +1064,14 @@
 <td><code>Account/AccountView.swift</code></td>
 <td>Profile display, subscription status, delete-account flow</td>
 </tr>
+<tr>
+<td><code>Chat/ChatThreadView.swift</code></td>
+<td>Message thread (header, grouped bubbles, composer), session banner/detail, and <code>SessionCreatorSheet</code> — the bottom-sheet scheduling flow. Warm-dark-bloom restyle (matching <code>ChatRootView.swift</code>'s existing redesign) backed by <code>Theme.swift</code> tokens; same WebSocket/<code>NetworkService</code> data flow as before. <code>SessionCreatorSheet</code>'s duration control is a fixed 15/30/45/60-minute segmented picker (<code>Chat/SegmentedDurationControl.swift</code>) rather than the previous free 5-minute-step picker — <code>time_end</code> is still computed client-side from <code>time_start</code> + the selected duration, since <code>FSSession</code> has no duration field of its own.</td>
+</tr>
+<tr>
+<td><code>Chat/PillButton.swift</code>, <code>Chat/MessageGroupRow.swift</code>, <code>Chat/SegmentedDurationControl.swift</code>, <code>Chat/ChipToggle.swift</code></td>
+<td>Shared restyled Chat components (amber-gradient pill buttons, Slack-style grouped message rows, the duration segmented control, chip toggles) — per-feature component files, no separate shared <code>Theme/Components/</code> folder</td>
+</tr>
 </tbody>
 </table>
 <p>Account deletion on iOS: the delete request is awaited before <code>signOut()</code> is called (correct async sequencing — no race condition).</p>

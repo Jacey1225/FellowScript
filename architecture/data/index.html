@@ -919,6 +919,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#log_group_cursors-error_detections" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        log_group_cursors / error_detections
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1527,6 +1538,27 @@
 </tbody>
 </table>
 <p><code>content_snippet</code> is denormalized deliberately: if the operator doesn't check the report email until hours later and the author has since edited or deleted the content, the report still shows what was actually reported. Blocking a user auto-inserts a <code>content_reports</code> row (<code>content_type='user'</code>, <code>reason='blocked'</code>) so there's one unified queue rather than a separate notification path. See <code>backend/moderation/</code> above for the filter, reporting, blocking, and admin-resolution logic; <code>backend/moderation/admin_actions.py</code>'s <code>resolve</code> command is how reports get actioned within the 24-hour commitment in the Terms of Service.</p>
+<hr />
+<h3 id="log_group_cursors-error_detections"><code>log_group_cursors</code> / <code>error_detections</code></h3>
+<table>
+<thead>
+<tr>
+<th>Table</th>
+<th>Key columns</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>log_group_cursors</code></td>
+<td><code>log_group_name TEXT PK</code>, <code>last_seen_time TIMESTAMPTZ</code>, <code>updated_at</code></td>
+</tr>
+<tr>
+<td><code>error_detections</code></td>
+<td><code>_id UUID PK</code>, <code>log_group_name</code>, <code>log_stream_name</code>, <code>event_timestamp</code>, <code>message</code>, <code>matched_signal</code>, <code>context JSONB</code>, <code>detected_at</code>, <code>status TEXT DEFAULT 'new'</code></td>
+</tr>
+</tbody>
+</table>
+<p>Populated by the watchdog job (<code>backend/monitoring/watchdog.py</code>, see <a href="../backend/#background-scheduler">Backend → Background Scheduler</a>). <code>log_group_cursors</code> is a per-log-group watermark so consecutive polls never re-process or skip events. <code>error_detections.context</code> holds the assembled surrounding-log-lines + log-analyzer output for a hit; <code>status</code> defaults to <code>'new'</code> and is forward-compatible with a future acknowledged/resolved workflow, but nothing currently writes to it besides the watchdog job or reads/acts on it beyond the read-only <code>/monitoring</code> endpoints (see <a href="../../api/overview/#monitoring-error-detections">API → Monitoring</a>). Indexed on <code>(detected_at DESC)</code> and <code>(log_group_name, detected_at DESC)</code> for the list feed's default ordering and log-group filter.</p>
 <hr />
 <h2 id="account-deletion">Account Deletion</h2>
 <p><code>DELETE /user/{user_id}</code> manually handles tables whose FK to <code>users</code> lacks <code>ON DELETE CASCADE</code>:</p>

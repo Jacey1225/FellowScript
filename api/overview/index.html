@@ -924,6 +924,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#monitoring-error-detections" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Monitoring (Error Detections)
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1354,6 +1365,31 @@
 </tr>
 </tbody>
 </table>
+<hr />
+<h2 id="monitoring-error-detections">Monitoring (Error Detections)</h2>
+<p>Read-only feed of CloudWatch error detections collected by the background watchdog job (see <a href="../../architecture/backend/#background-scheduler">Backend → Background Scheduler</a>). Auth is a <strong>placeholder</strong>: any authenticated user can currently read this feed — there is no admin/staff-role check yet, since <code>is_admin</code>/role auth for a real admin page is a separate, not-yet-built decision.</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Route</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GET</td>
+<td><code>/monitoring/detections</code></td>
+<td>Paginated, filterable list of detections, most recent first. Query params: <code>log_group_name</code>, <code>start_time</code>, <code>end_time</code>, <code>limit</code> (1-200, default 50), <code>offset</code>. Returns <code>{ items, total, limit, offset }</code>; each item omits the assembled <code>context</code> blob.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/monitoring/detections/{detection_id}</code></td>
+<td>Full detection record, including assembled <code>context</code> (nearby log lines + log-analyzer output). <code>404</code> if not found.</td>
+</tr>
+</tbody>
+</table>
+<p>Nothing under <code>/monitoring</code> triggers, queues, or references any remediation action — this surface is strictly read-only.</p>
 
 
 

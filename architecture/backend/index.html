@@ -742,6 +742,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#backendmonitoring" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        backend/monitoring/
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#backendsubscription" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1198,8 +1209,35 @@
 <td><code>/blocks</code></td>
 <td>Guideline 1.2 user blocking</td>
 </tr>
+<tr>
+<td><code>monitoring_router</code></td>
+<td><code>/monitoring</code></td>
+<td>Read-only CloudWatch error-detection feed (see <code>backend/monitoring/</code> below)</td>
+</tr>
 </tbody>
 </table>
+<hr />
+<h2 id="backendmonitoring"><code>backend/monitoring/</code></h2>
+<p>A sibling package to <code>interactions/</code> for the CloudWatch-based error monitoring workflow (poll → detect → assemble context → persist → serve).</p>
+<table>
+<thead>
+<tr>
+<th>File</th>
+<th>Responsibility</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>cloudwatch_mcp_client.py</code></td>
+<td><code>CloudWatchMCPClient</code> — async wrapper over the read-only <code>cloudwatch-mcp-server</code> (Logs Insights query + <code>analyze_log_group</code>).</td>
+</tr>
+<tr>
+<td><code>watchdog.py</code></td>
+<td><code>WatchdogManager(DBManager)</code> — per-log-group cursor bookkeeping, error-signal regex scan, context assembly, and detection persistence (<code>run_cycle</code>); also the read methods (<code>list_detections</code>, <code>count_detections</code>, <code>get_detection</code>) backing the <code>/monitoring</code> routes.</td>
+</tr>
+</tbody>
+</table>
+<p>Detection is application-level (regex scan of pulled log messages against named signal patterns — traceback, critical, error level, nginx severity tags, HTTP 5xx, errno) rather than CloudWatch alarms/metric filters, which aren't configured in this AWS account. Nothing in this package executes or references any remediation action — it only reads via the MCP client and writes to this app's own <code>error_detections</code>/<code>log_group_cursors</code> tables.</p>
 <hr />
 <h2 id="backendsubscription"><code>backend/subscription/</code></h2>
 <p>A sibling package to <code>interactions/</code> dedicated to billing and usage enforcement.</p>
@@ -1345,6 +1383,11 @@
 <td><code>_reconcile_trials</code></td>
 <td>every hour</td>
 <td>Advances elapsed trials to active, and removes subscriptions whose paid period lapsed past the grace window</td>
+</tr>
+<tr>
+<td><code>_run_error_watchdog</code></td>
+<td>every 90s</td>
+<td>Polls the 5 CloudWatch log groups the agent ships (<code>nginx access/error</code>, <code>syslog</code>, <code>auth</code>, <code>app</code>) via <code>WatchdogManager.run_cycle</code>, detects errors, assembles context, and persists to <code>error_detections</code> (see <code>backend/monitoring/</code> above)</td>
 </tr>
 </tbody>
 </table>
