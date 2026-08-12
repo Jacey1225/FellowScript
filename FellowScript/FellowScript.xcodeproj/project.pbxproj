@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		377EC5283005745400971A07 /* AmazonChimeSDK in Frameworks */ = {isa = PBXBuildFile; productRef = AA0000000000000000000002 /* AmazonChimeSDK */; };
+		AA0000000000000000000005 /* ViewInspector in Frameworks */ = {isa = PBXBuildFile; productRef = AA0000000000000000000004 /* ViewInspector */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -77,6 +78,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				AA0000000000000000000005 /* ViewInspector in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -154,6 +156,7 @@
 			);
 			name = FellowScriptTests;
 			packageProductDependencies = (
+				AA0000000000000000000004 /* ViewInspector */,
 			);
 			productName = FellowScriptTests;
 			productReference = 377EC3D32FF5BDB500971A07 /* FellowScriptTests.xctest */;
@@ -216,6 +219,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				AA0000000000000000000001 /* XCRemoteSwiftPackageReference "amazon-chime-sdk-ios-spm" */,
+				AA0000000000000000000003 /* XCRemoteSwiftPackageReference "ViewInspector" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 377EC3C72FF5BDB300971A07 /* Products */;
@@ -622,6 +626,14 @@
 				minimumVersion = 0.27.0;
 			};
 		};
+		AA0000000000000000000003 /* XCRemoteSwiftPackageReference "ViewInspector" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/nalexn/ViewInspector.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.10.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -629,6 +641,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = AA0000000000000000000001 /* XCRemoteSwiftPackageReference "amazon-chime-sdk-ios-spm" */;
 			productName = AmazonChimeSDK;
+		};
+		AA0000000000000000000004 /* ViewInspector */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = AA0000000000000000000003 /* XCRemoteSwiftPackageReference "ViewInspector" */;
+			productName = ViewInspector;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

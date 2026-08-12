@@ -922,6 +922,16 @@
 <td><code>pages/Terms.jsx</code></td>
 <td>Terms of service</td>
 </tr>
+<tr>
+<td><code>/admin</code></td>
+<td><code>pages/AdminDetections.jsx</code></td>
+<td><strong>Hidden, admin-only.</strong> CloudWatch error-detection feed — filter by log group/time range, paginated list of <code>ErrorDetection</code> rows. Not linked from <code>AppNav</code> or anywhere else in the UI; reachable only by navigating to the URL directly. Gated by <code>AdminGate</code> (client-side, defense-in-depth) plus the server-side <code>require_admin</code> dependency on every <code>/monitoring/*</code> endpoint, which is the actual enforcement boundary. Desktop (&gt;1024px) renders rows as a fixed-column CSS Grid (<code>28px 160px 140px 130px 1fr 20px</code>) for dense columnar alignment. Mobile (≤1024px) falls back to a two-line row (status/log-group on line 1, demoted matched-signal + message on line 2) and replaces the desktop filter bar with a horizontally-scrollable chip-filter strip (log-group pills + a "Time" pill opening an anchored <code>Popover</code> with the From/To date pickers). Tapping a row on mobile opens <code>DetectionDetailOverlay</code> as a fullscreen overlay on top of the still-mounted list instead of navigating away — no <code>history.pushState</code>, so the URL stays <code>/admin</code> and a mobile hard refresh/direct link does not restore the overlay (accepted tradeoff for this hidden, low-volume ops surface). Desktop taps still navigate to <code>/admin/detections/:id</code>.</td>
+</tr>
+<tr>
+<td><code>/admin/detections/:id</code></td>
+<td><code>pages/AdminDetectionDetail.jsx</code></td>
+<td><strong>Hidden, admin-only.</strong> One detection's raw error + collapsible CloudWatch context, plus the debugging agent's persisted diagnostic report (root cause + remediation narrative), with a Generate/Rerun action that surfaces 429 rate-limit feedback (client-side cooldown) distinctly from a 502 OpenRouter failure. Same <code>AdminGate</code> + <code>require_admin</code> gating as <code>/admin</code>. Unchanged at any width — reachable via direct navigation/refresh, but no longer how mobile reaches detail from the <code>/admin</code> list (see <code>DetectionDetailOverlay</code> below). A "Download Remediation Instructions" button next to the Generate/Rerun action assembles a single Markdown handoff file (error record, raw context, diagnostic report if one exists) entirely client-side via <code>lib/remediationMarkdown.js</code> and triggers a browser download; a fire-and-forget <code>POST .../report/download-audit</code> call logs the export server-side without blocking or gating the download itself. Stays enabled with no report yet generated, producing an error-only file.</td>
+</tr>
 </tbody>
 </table>
 <p>Unauthenticated users land on Home (<code>/</code>); once signed in, the CTA routes directly to <code>/reader</code>.</p>
@@ -1003,6 +1013,14 @@
 <td><code>DonationButton.jsx</code></td>
 <td>One-time donation flow</td>
 </tr>
+<tr>
+<td><code>AdminGate.jsx</code></td>
+<td>Wraps the two hidden <code>/admin*</code> routes. Handles only the synchronous "no session at all" redirect to <code>/signin</code>; the 401 (session expired)/403 (non-admin) cases are handled by each admin page's own first data fetch, since there's no client-visible <code>is_admin</code> field to check ahead of time — defense-in-depth UX only, not a security boundary.</td>
+</tr>
+<tr>
+<td><code>DetectionDetailOverlay.jsx</code></td>
+<td>Mobile-only (≤1024px) "list-overlay drawer" for a detection's detail, rendered by <code>AdminDetections.jsx</code> and reusing the <code>.mobile-overlay</code> slide-up CSS class. Duplicates (rather than shares) <code>AdminDetectionDetail.jsx</code>'s fetch/rerun-report logic so that page's desktop behavior stays untouched. Splits content into an antd <code>Segmented</code> "Error"/"Report" toggle (a status dot on "Report" indicates whether one has been generated) instead of stacking both cards, since a phone screen doesn't have room for both at once. Its Report panel has the same icon-only "Download Remediation Instructions" button as the desktop page (also duplicated rather than shared, calling the same <code>lib/remediationMarkdown.js</code> helper and audit endpoint independently).</td>
+</tr>
 </tbody>
 </table>
 <hr />
@@ -1063,6 +1081,14 @@
 <tr>
 <td><code>Account/AccountView.swift</code></td>
 <td>Profile display, subscription status, delete-account flow</td>
+</tr>
+<tr>
+<td><code>Chat/ChatThreadView.swift</code></td>
+<td>Message thread (header, grouped bubbles, composer), session banner/detail, and <code>SessionCreatorSheet</code> — the bottom-sheet scheduling flow. Warm-dark-bloom restyle (matching <code>ChatRootView.swift</code>'s existing redesign) backed by <code>Theme.swift</code> tokens; same WebSocket/<code>NetworkService</code> data flow as before. <code>SessionCreatorSheet</code>'s duration control is a fixed 15/30/45/60-minute segmented picker (<code>Chat/SegmentedDurationControl.swift</code>) rather than the previous free 5-minute-step picker — <code>time_end</code> is still computed client-side from <code>time_start</code> + the selected duration, since <code>FSSession</code> has no duration field of its own.</td>
+</tr>
+<tr>
+<td><code>Chat/PillButton.swift</code>, <code>Chat/MessageGroupRow.swift</code>, <code>Chat/SegmentedDurationControl.swift</code>, <code>Chat/ChipToggle.swift</code></td>
+<td>Shared restyled Chat components (amber-gradient pill buttons, Slack-style grouped message rows, the duration segmented control, chip toggles) — per-feature component files, no separate shared <code>Theme/Components/</code> folder</td>
 </tr>
 </tbody>
 </table>

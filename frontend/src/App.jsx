@@ -9,6 +9,9 @@ import ResetPassword from './pages/ResetPassword.jsx';
 import VerifyMfa from './pages/VerifyMfa.jsx';
 import Privacy from './pages/Privacy.jsx';
 import Terms from './pages/Terms.jsx';
+import AdminGate from './components/AdminGate.jsx';
+import AdminDetections from './pages/AdminDetections.jsx';
+import AdminDetectionDetail from './pages/AdminDetectionDetail.jsx';
 
 export default function App() {
   return (
@@ -23,6 +26,12 @@ export default function App() {
         <Route path="/verify-2fa"      element={<VerifyMfa />} />
         <Route path="/privacy"   element={<Privacy />} />
         <Route path="/terms"     element={<Terms />} />
+        {/* Hidden admin-only surface: not linked from AppNav or any other
+            nav/menu component. Reachable only by navigating to the URL
+            directly. Server-side `require_admin` is the real enforcement;
+            AdminGate is defense-in-depth UX only. See design-notes.md §0. */}
+        <Route path="/admin" element={<AdminGate><AdminDetections /></AdminGate>} />
+        <Route path="/admin/detections/:id" element={<AdminGate><AdminDetectionDetail /></AdminGate>} />
         <Route path="*"          element={<Navigate to="/" replace />} />
       </Routes>
     </HashRouter>

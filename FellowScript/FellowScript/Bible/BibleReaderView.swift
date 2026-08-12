@@ -350,7 +350,10 @@ struct BibleReaderView: View {
                     )
                 }
 
-                // Drop-down nav overlay — slides in from top
+                // Drop-down nav overlay — slides in from top. Closing is now
+                // driven solely by re-tapping the nav-bar pill button (see the
+                // toolbar's Button below) or by selecting a chapter below —
+                // the panel itself no longer owns a close control.
                 if showNavSheet {
                     BibleNavDropdown(
                         books:      vm.books.isEmpty ? BibleData.bookNames : vm.books,
@@ -360,11 +363,6 @@ struct BibleReaderView: View {
                         onSelect:   { book, ch in
                             vm.setBook(book)
                             vm.setChapter(ch)
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.9)) {
-                                showNavSheet = false
-                            }
-                        },
-                        onClose: {
                             withAnimation(.spring(response: 0.3, dampingFraction: 0.9)) {
                                 showNavSheet = false
                             }
@@ -378,8 +376,15 @@ struct BibleReaderView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
-                    // Book/chapter pill button (mirrors nav-pill-btn in global.css)
-                    Button(action: { showNavSheet = true }) {
+                    // Book/chapter pill button (mirrors nav-pill-btn in global.css).
+                    // Doubles as the panel's open/close toggle — same button opens
+                    // and closes BibleNavDropdown; there is no separate in-panel
+                    // close control (see BibleNavDropdown.header).
+                    Button(action: {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.9)) {
+                            showNavSheet.toggle()
+                        }
+                    }) {
                         HStack(spacing: 4) {
                             Text("\(vm.curBook) \(vm.curChapter)")
                                 .font(.lora(Theme.fontSM))
@@ -564,103 +569,54 @@ struct VerseRow: View {
 }
 
 // ── Drop-down nav overlay (replaces sheet — slides in from top) ───────────────
+// Concept B — single-column drill-down: Step 1 is a full-width OT/NT-grouped
+// book list with a testament pill jump; tapping a book advances (local
+// @State, never a NavigationStack push, so back/close stay predictable and
+// never fight the hardware/system back gesture) to Step 2, a full-width
+// chapter grid for that book. Only a chapter tap calls `onSelect` and closes
+// the panel — matching the prior two-pane behavior where a book tap alone
+// never selected a passage. See design-notes.md §3.
 struct BibleNavDropdown: View {
     let books:      [String]
     let curBook:    String
     let curChapter: Int
     let chapters:   (String) -> Int
     let onSelect:   (String, Int) -> Void
-    let onClose:    () -> Void
 
-    @State private var selectedBook: String
+    private enum Step {
+        case bookList
+        case chapterGrid(String)
+    }
+
+    private enum Testament: Equatable {
+        case old, new
+    }
+
+    @State private var step: Step = .bookList
+    @State private var activeTestament: Testament
 
     init(books: [String], curBook: String, curChapter: Int,
          chapters: @escaping (String) -> Int,
-         onSelect: @escaping (String, Int) -> Void,
-         onClose:  @escaping () -> Void) {
+         onSelect: @escaping (String, Int) -> Void) {
         self.books      = books
         self.curBook    = curBook
         self.curChapter = curChapter
         self.chapters   = chapters
         self.onSelect   = onSelect
-        self.onClose    = onClose
-        _selectedBook   = State(initialValue: curBook)
+        _activeTestament = State(initialValue: BibleData.oldTestament.contains(curBook) ? .old : .new)
     }
 
     var body: some View {
         VStack(spacing: 0) {
-            // Header bar
-            HStack {
-                Text("Select Passage")
-                    .font(.lora(Theme.fontSM))
-                    .foregroundColor(Theme.goldDim)
-                Spacer()
-                Button(action: onClose) {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.title3)
-                        .foregroundColor(Theme.textMuted)
-                }
-            }
-            .padding(.horizontal, Theme.spacingMD)
-            .padding(.vertical, Theme.spacingSM)
+            header
 
             Divider().background(Theme.borderGoldFaint)
 
-            // Two-column body
-            HStack(spacing: 0) {
-
-                // Left — scrollable book list
-                ScrollViewReader { proxy in
-                    ScrollView(.vertical, showsIndicators: false) {
-                        LazyVStack(alignment: .leading, spacing: 0) {
-                            sectionLabel("Old Testament")
-                            ForEach(BibleData.oldTestament, id: \.self) { bookRow($0) }
-                            sectionLabel("New Testament")
-                            ForEach(BibleData.newTestament, id: \.self) { bookRow($0) }
-                        }
-                    }
-                    .onAppear { proxy.scrollTo(selectedBook, anchor: .center) }
-                    .onChange(of: selectedBook) { _, book in
-                        withAnimation { proxy.scrollTo(book, anchor: .center) }
-                    }
-                }
-                .frame(maxWidth: .infinity)
-                .background(Theme.islandBg)
-
-                Divider().background(Theme.borderGoldFaint)
-
-                // Right — chapter grid
-                ScrollView(.vertical, showsIndicators: false) {
-                    VStack(alignment: .leading, spacing: Theme.spacingSM) {
-                        Text(selectedBook.uppercased())
-                            .font(.lora(Theme.fontXXS)).tracking(4)
-                            .foregroundColor(Theme.gold.opacity(0.55))
-                            .padding(.bottom, Theme.spacingXS)
-
-                        let count = chapters(selectedBook)
-                        LazyVGrid(
-                            columns: Array(repeating: .init(.flexible(), spacing: 10), count: 4),
-                            spacing: 10
-                        ) {
-                            ForEach(1...max(1, count), id: \.self) { ch in
-                                let isActive = selectedBook == curBook && ch == curChapter
-                                Button(action: { onSelect(selectedBook, ch) }) {
-                                    Text("\(ch)")
-                                        .font(.lora(Theme.fontHeading))
-                                        .foregroundColor(isActive ? Theme.gold : Theme.parchment.opacity(0.70))
-                                        .frame(maxWidth: .infinity)
-                                        .padding(.vertical, 10)
-                                        .background(isActive ? Theme.gold.opacity(0.20) : Color.clear)
-                                        .clipShape(RoundedRectangle(cornerRadius: Theme.radiusSM))
-                                }
-                                .accessibilityLabel("Chapter \(ch)")
-                            }
-                        }
-                    }
-                    .padding(Theme.spacingMD)
-                }
-                .frame(maxWidth: .infinity)
-                .background(Theme.widgetBg)
+            switch step {
+            case .bookList:
+                bookListStep
+            case .chapterGrid(let book):
+                chapterGridStep(for: book)
             }
         }
         .background(Theme.widgetBg)
@@ -670,6 +626,122 @@ struct BibleNavDropdown: View {
         .shadow(color: .black.opacity(0.55), radius: 24, x: 0, y: 10)
         .padding(.horizontal, 0)
         .frame(maxHeight: 430)
+    }
+
+    // ── Header bar — "Select Passage" on Step 1, "‹ Back  <Book>" on Step 2.
+    // No in-panel close control: the nav-bar pill button that opened the
+    // panel is also what closes it (BibleReaderView's toolbar Button), so
+    // this header only needs to carry Step 1/Step 2 navigation chrome.
+    @ViewBuilder
+    private var header: some View {
+        Group {
+            switch step {
+            case .bookList:
+                HStack {
+                    Text("Select Passage")
+                        .font(.lora(Theme.fontSM))
+                        .foregroundColor(Theme.goldDim)
+                    Spacer()
+                }
+
+            case .chapterGrid(let book):
+                // Book name is truly centered via ZStack overlay (rather than
+                // a leading Back + trailing Spacer, which would skew it left
+                // by roughly half the Back button's width) now that there's
+                // no trailing "x" to balance against on the other side.
+                ZStack {
+                    Text(book)
+                        .font(.lora(Theme.fontSM))
+                        .foregroundColor(Theme.goldDim)
+
+                    HStack {
+                        Button(action: {
+                            withAnimation(.easeOut(duration: 0.18)) { step = .bookList }
+                        }) {
+                            HStack(spacing: 2) {
+                                Image(systemName: "chevron.left")
+                                    .font(.subheadline.weight(.semibold))
+                                Text("Back")
+                                    .font(.lora(Theme.fontSM))
+                            }
+                            .foregroundColor(Theme.goldDim)
+                            .frame(minHeight: 44)
+                        }
+                        .accessibilityLabel("Back to book list")
+                        Spacer()
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, Theme.spacingMD)
+        .padding(.vertical, Theme.spacingSM)
+    }
+
+    // ── Step 1 — full-width, scrollable, OT/NT-grouped book list ─────────────
+    private var bookListStep: some View {
+        ScrollViewReader { proxy in
+            VStack(spacing: 0) {
+                testamentToggle { testament in
+                    let target = testament == .old ? BibleData.oldTestament.first : BibleData.newTestament.first
+                    if let target {
+                        withAnimation { proxy.scrollTo(target, anchor: .top) }
+                    }
+                }
+                .padding(.horizontal, Theme.spacingMD)
+                .padding(.top, Theme.spacingSM)
+                .padding(.bottom, Theme.spacingXS)
+
+                ScrollView(.vertical, showsIndicators: false) {
+                    LazyVStack(alignment: .leading, spacing: 0) {
+                        sectionLabel("Old Testament")
+                        ForEach(BibleData.oldTestament, id: \.self) { bookRow($0) }
+                        sectionLabel("New Testament")
+                        ForEach(BibleData.newTestament, id: \.self) { bookRow($0) }
+                    }
+                }
+                // Always re-centers on curBook (not whatever was last drilled
+                // into) — fires on first appear and again whenever Step 1
+                // re-shows after backing out of Step 2, per design-notes.md §3.
+                .onAppear { proxy.scrollTo(curBook, anchor: .center) }
+            }
+        }
+        .background(Theme.islandBg)
+    }
+
+    // ── OT/NT pill segmented control — scroll-jump only, not a filter, modeled
+    // on ChatRootView.scopeToggle / NotesListView.toggleSegment (design-notes.md §1).
+    private func testamentToggle(onJump: @escaping (Testament) -> Void) -> some View {
+        HStack(spacing: 4) {
+            testamentSegment(.old, "Old Testament", onJump: onJump)
+            testamentSegment(.new, "New Testament", onJump: onJump)
+        }
+        .padding(5)
+        .background(
+            Capsule().fill(Theme.parchment.opacity(0.07))
+                .overlay(Capsule().stroke(Theme.parchment.opacity(0.13), lineWidth: 1))
+        )
+    }
+
+    private func testamentSegment(_ testament: Testament, _ label: String, onJump: @escaping (Testament) -> Void) -> some View {
+        let isActive = activeTestament == testament
+        return Button(action: {
+            withAnimation(.spring(response: 0.28, dampingFraction: 0.85)) { activeTestament = testament }
+            onJump(testament)
+        }) {
+            Text(label)
+                .font(.system(size: 14.5, weight: .heavy))
+                .foregroundColor(isActive ? Color(hex: "#24170A") : Theme.textSecondary)
+                .frame(maxWidth: .infinity, minHeight: 44)
+                .background(
+                    isActive
+                        ? LinearGradient(colors: [Color(hex: "#D4922A"), Color(hex: "#EDAB3C")], startPoint: .leading, endPoint: .trailing)
+                        : LinearGradient(colors: [.clear, .clear], startPoint: .leading, endPoint: .trailing)
+                )
+                .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
+        .accessibilityAddTraits(isActive ? .isSelected : [])
     }
 
     @ViewBuilder
@@ -683,20 +755,76 @@ struct BibleNavDropdown: View {
             .padding(.bottom, Theme.spacingXS)
     }
 
+    // Full-width row — trailing chevron signals drill-down; tapping advances
+    // to Step 2 for this book and does NOT call onSelect (matching current
+    // behavior where a book tap alone never selects a passage).
     @ViewBuilder
     private func bookRow(_ book: String) -> some View {
-        Button(action: { selectedBook = book }) {
-            Text(book)
-                .font(.lora(Theme.fontBody))
-                .foregroundColor(selectedBook == book ? Theme.gold : Theme.parchment.opacity(0.70))
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, Theme.spacingMD)
-                .padding(.vertical, 7)
-                .background(selectedBook == book ? Theme.gold.opacity(0.16) : Color.clear)
+        let isCurrent = curBook == book
+        Button(action: {
+            withAnimation(.easeOut(duration: 0.18)) { step = .chapterGrid(book) }
+        }) {
+            HStack(spacing: Theme.spacingSM) {
+                Text(book)
+                    .font(.lora(Theme.fontBody))
+                    .foregroundColor(isCurrent ? Theme.gold : Theme.parchment.opacity(0.70))
+                Spacer()
+                if isCurrent {
+                    Image(systemName: "star.fill")
+                        .font(.caption2)
+                        .foregroundColor(Theme.gold)
+                }
+                Image(systemName: "chevron.right")
+                    .font(.caption)
+                    .foregroundColor(Theme.parchment.opacity(0.35))
+            }
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .padding(.horizontal, Theme.spacingMD)
+            .padding(.vertical, 7)
+            .background(isCurrent ? Theme.gold.opacity(0.16) : Color.clear)
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
         .id(book)
-        .accessibilityLabel(book)
-        .accessibilityAddTraits(selectedBook == book ? .isSelected : [])
+        .accessibilityLabel(isCurrent ? "\(book), current book" : book)
+        .accessibilityAddTraits(isCurrent ? .isSelected : [])
+    }
+
+    // ── Step 2 — full-width chapter grid for the drilled-into book ───────────
+    @ViewBuilder
+    private func chapterGridStep(for book: String) -> some View {
+        let count = max(1, chapters(book))
+        ScrollView(.vertical, showsIndicators: false) {
+            VStack(alignment: .leading, spacing: Theme.spacingSM) {
+                Text("\(book.uppercased()) — \(count) CHAPTER\(count == 1 ? "" : "S")")
+                    .font(.lora(Theme.fontXXS)).tracking(4)
+                    .foregroundColor(Theme.gold.opacity(0.55))
+                    .padding(.bottom, Theme.spacingXS)
+
+                // Full-width step grows column count from the old fixed
+                // 2-pane 4-column grid to 5, per design-notes.md §3.
+                LazyVGrid(
+                    columns: Array(repeating: .init(.flexible(), spacing: 10), count: 5),
+                    spacing: 10
+                ) {
+                    ForEach(1...count, id: \.self) { ch in
+                        let isActive = book == curBook && ch == curChapter
+                        Button(action: { onSelect(book, ch) }) {
+                            Text("\(ch)")
+                                .font(.lora(Theme.fontHeading))
+                                .foregroundColor(isActive ? Theme.gold : Theme.parchment.opacity(0.70))
+                                .frame(maxWidth: .infinity, minHeight: 44)
+                                .background(isActive ? Theme.gold.opacity(0.20) : Color.clear)
+                                .clipShape(RoundedRectangle(cornerRadius: Theme.radiusSM))
+                        }
+                        .accessibilityLabel(isActive ? "Chapter \(ch), current chapter" : "Chapter \(ch)")
+                        .accessibilityAddTraits(isActive ? .isSelected : [])
+                    }
+                }
+            }
+            .padding(Theme.spacingMD)
+        }
+        .background(Theme.widgetBg)
     }
 }
 

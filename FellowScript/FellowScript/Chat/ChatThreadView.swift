@@ -4,6 +4,24 @@
 // INTERACTIONS: send message, toggle member list, + new study session,
 //               session banner "View Details", keyboard avoidance
 // DEPENDENCY: Theme.swift, Models.swift
+//
+// VISUAL: warm-dark-bloom restyle matching chat.html/schedule.html (the
+// migrated ChatSchedule prototype). Custom in-body header (mirrors
+// ChatRootView.swift's own header convention) replaces the native
+// NavigationStack toolbar so the back button, identity, and "Schedule" pill
+// can share the same visual language as the rest of this screen. Message
+// bubbles are grouped Slack-style via MessageGroupRow (Chat/MessageGroupRow.swift).
+// Presentation-only — same ChatThreadViewModel, same websocket lifecycle,
+// same member/session/report data flows; no new navigation, no new fetches.
+// Reference: .claude/pipeline/20260809-chat-schedule-migrate-fellowscript/,
+// /Users/jaceysimpson/Vscode/mockups/chat-schedule/chat.html,
+// /Users/jaceysimpson/Vscode/mockups/chat-schedule/schedule.html.
+//
+// NOTE: the mockups' "Active now" presence dot and "X is typing" indicator
+// are mock-only (no real presence/typing-status field on FSContact/FSMessage
+// exists anywhere in the app) and are intentionally NOT reproduced here —
+// same "no fabricated data" precedent already established in ChatRootView.swift's
+// ContactRow.
 
 import SwiftUI
 import Combine
@@ -176,136 +194,80 @@ struct ChatThreadView: View {
     // backend step 8 finding #1.
     @State private var membersErrorMsg: String? = nil
 
+    private var messageGroups: [MessageDisplayGroup] {
+        MessageDisplayGroup.grouped(from: vm.messages, me: user)
+    }
+
     var body: some View {
-        NavigationStack {
-            ZStack {
-                Theme.bgPage.ignoresSafeArea()
+        ZStack {
+            Theme.bgPage.ignoresSafeArea()
 
-                VStack(spacing: 0) {
-                    // ── Member list (group only, mirrors ChatView showMembers block) ──
-                    if showMembers && contact.type == .group {
-                        GroupMembersPanel(
-                            memberNames: memberNames,
-                            user:        user,
-                            onAddTapped: { showAddMembers = true }
-                        )
-                        .transition(.move(edge: .top).combined(with: .opacity))
+            VStack(spacing: 0) {
+                header
+
+                // ── Member list (group only, mirrors ChatView showMembers block) ──
+                if showMembers && contact.type == .group {
+                    GroupMembersPanel(
+                        memberNames: memberNames,
+                        user:        user,
+                        onAddTapped: { showAddMembers = true }
+                    )
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                }
+
+                // ── Reconnecting banner (dropped-socket lifecycle state) ───
+                if !vm.isConnected {
+                    HStack(spacing: 6) {
+                        ProgressView().tint(Theme.gold).scaleEffect(0.75)
+                        Text("Reconnecting…")
+                            .font(.lora(Theme.fontXS))
+                            .foregroundColor(Theme.textGoldMuted)
                     }
+                    .padding(.horizontal, Theme.spacingSM)
+                    .padding(.top, Theme.spacingXS)
+                    .accessibilityLabel("Reconnecting to chat")
+                }
 
-                    // ── Reconnecting banner (dropped-socket lifecycle state) ───
-                    if !vm.isConnected {
-                        HStack(spacing: 6) {
-                            ProgressView().tint(Theme.gold).scaleEffect(0.75)
-                            Text("Reconnecting…")
-                                .font(.lora(Theme.fontXS))
-                                .foregroundColor(Theme.textGoldMuted)
+                // ── Session banner (upcoming session card) ─────────────────
+                if let nextSession = vm.sessions.first {
+                    SessionBanner(session: nextSession, onDelete: {
+                        let uid = appState.currentUser?.user_id ?? ""
+                        let key = ChatThreadViewModel.roomKey(contact: contact, userId: uid)
+                        Task {
+                            vm.sessions = (try? await appState.service.fetchSessionsForContact(contactId: key)) ?? []
                         }
-                        .padding(.horizontal, Theme.spacingSM)
-                        .padding(.top, Theme.spacingXS)
-                        .accessibilityLabel("Reconnecting to chat")
-                    }
+                    })
+                    .padding(.horizontal, Theme.spacingSM)
+                    .padding(.top, Theme.spacingXS)
+                }
 
-                    // ── Session banner (upcoming session card) ─────────────────
-                    if let nextSession = vm.sessions.first {
-                        SessionBanner(session: nextSession, onDelete: {
-                            let uid = appState.currentUser?.user_id ?? ""
-                            let key = ChatThreadViewModel.roomKey(contact: contact, userId: uid)
-                            Task {
-                                vm.sessions = (try? await appState.service.fetchSessionsForContact(contactId: key)) ?? []
-                            }
-                        })
-                        .padding(.horizontal, Theme.spacingSM)
-                        .padding(.top, Theme.spacingXS)
-                    }
-
-                    // ── Message list ───────────────────────────────────────────
-                    ScrollViewReader { proxy in
-                        ScrollView {
-                            LazyVStack(alignment: .leading, spacing: Theme.spacingSM) {
-                                ForEach(vm.messages) { msg in
-                                    MessageBubble(message: msg)
-                                        .id(msg.id)
-                                        .accessibilityLabel("\(msg.mine ? "You" : msg.sender): \(msg.text)")
+                // ── Message list (Slack-style grouped bubbles) ──────────────
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        LazyVStack(spacing: 0) {
+                            ForEach(Array(messageGroups.enumerated()), id: \.element.id) { index, group in
+                                MessageGroupRow(group: group)
+                                    .id(group.id)
+                                if index < messageGroups.count - 1 {
+                                    Rectangle()
+                                        .fill(Theme.borderGoldFaint)
+                                        .frame(height: 1)
+                                        .padding(.horizontal, Theme.spacingMD)
                                 }
                             }
-                            .padding(.horizontal, Theme.spacingMD)
-                            .padding(.vertical, Theme.spacingSM)
                         }
-                        .onChange(of: vm.messages.count) { _ in
-                            if let last = vm.messages.last {
-                                withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
-                            }
+                        .padding(.top, 4)
+                        .padding(.bottom, Theme.spacingSM)
+                    }
+                    .onChange(of: vm.messages.count) { _ in
+                        if let lastGroup = messageGroups.last {
+                            withAnimation { proxy.scrollTo(lastGroup.id, anchor: .bottom) }
                         }
                     }
-                }
-                .safeAreaInset(edge: .bottom, spacing: 0) {
-                    // ── Input bar (mirrors ChatView input section) ─────────────
-                    HStack(spacing: Theme.spacingSM) {
-                        TextField("Type a message…", text: $text, axis: .vertical)
-                            .font(.lora(Theme.fontBody))
-                            .foregroundColor(Theme.parchment)
-                            .lineLimit(1...4)
-                            .padding(.horizontal, Theme.spacingMD)
-                            .padding(.vertical, Theme.spacingSM)
-                            .background(Theme.inputBg)
-                            .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
-                            .overlay(RoundedRectangle(cornerRadius: Theme.radius).stroke(Theme.borderGoldDim, lineWidth: 1))
-                            .submitLabel(.send)
-                            .onSubmit(sendMessage)
-                            .accessibilityLabel("Message input field")
-
-                        Button(action: sendMessage) {
-                            Image(systemName: "arrow.up.circle.fill")
-                                .font(.system(size: 32))
-                                .foregroundColor(text.isEmpty ? Theme.gold.opacity(0.35) : Theme.gold)
-                        }
-                        .disabled(text.isEmpty)
-                        .accessibilityLabel("Send message")
-                    }
-                    .padding(.horizontal, Theme.spacingMD)
-                    .padding(.vertical, Theme.spacingSM)
-                    .background(Theme.navBg)
-                    .overlay(alignment: .top) { Divider().background(Theme.borderGoldFaint) }
                 }
             }
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button(action: { dismiss() }) {
-                        HStack(spacing: 4) {
-                            Image(systemName: "chevron.left")
-                            Text("Back")
-                        }
-                        .foregroundColor(Theme.gold)
-                    }
-                    .accessibilityLabel("Go back")
-                }
-                ToolbarItem(placement: .principal) {
-                    Button(action: {
-                        if contact.type == .group {
-                            withAnimation { showMembers.toggle() }
-                        }
-                    }) {
-                        HStack(spacing: 4) {
-                            Text(contact.name)
-                                .font(.lora(Theme.fontBody, weight: .semibold))
-                                .foregroundColor(Theme.parchment)
-                            if contact.type == .group {
-                                Image(systemName: "person.3.fill")
-                                    .font(.caption2)
-                                    .foregroundColor(Theme.gold.opacity(0.55))
-                            }
-                        }
-                    }
-                    .accessibilityLabel(contact.type == .group ? "Group: \(contact.name). Tap to see members." : contact.name)
-                }
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(action: { showSession = true }) {
-                        Image(systemName: "calendar.badge.plus")
-                            .foregroundColor(Theme.gold)
-                    }
-                    .accessibilityLabel("Schedule new study session")
-                }
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                composer
             }
         }
         .preferredColorScheme(.dark)
@@ -354,6 +316,100 @@ struct ChatThreadView: View {
         }
     }
 
+    // ── Header: back · avatar/name (tap to toggle members) · "Schedule" pill ──
+    // Custom in-body header (mirrors ChatRootView.swift's own header
+    // convention) instead of the native NavigationStack toolbar, so this
+    // screen can share the exact same visual language (round icon button,
+    // serif identity label, amber-gradient pill) as the rest of the restyled
+    // Chat surfaces.
+    private var header: some View {
+        HStack(spacing: 14) {
+            RoundIconButton(systemIcon: "chevron.left") { dismiss() }
+                .accessibilityLabel("Go back")
+
+            Button(action: {
+                if contact.type == .group {
+                    withAnimation { showMembers.toggle() }
+                }
+            }) {
+                HStack(spacing: 12) {
+                    ZStack {
+                        Circle().fill(Theme.gold.opacity(0.18))
+                        Circle().stroke(Theme.borderGoldDim, lineWidth: 1)
+                        Text(String(contact.name.prefix(1)).uppercased())
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundColor(Theme.gold)
+                    }
+                    .frame(width: 38, height: 38)
+
+                    HStack(spacing: 5) {
+                        Text(contact.name)
+                            .font(.lora(Theme.fontHeading, weight: .bold))
+                            .foregroundColor(Theme.parchment)
+                            .lineLimit(1)
+                        if contact.type == .group {
+                            Image(systemName: "person.3.fill")
+                                .font(.caption2)
+                                .foregroundColor(Theme.gold.opacity(0.55))
+                        }
+                    }
+                }
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(contact.type == .group ? "Group: \(contact.name). Tap to see members." : contact.name)
+
+            Spacer(minLength: 8)
+
+            PillButton(title: "Schedule", systemIcon: "calendar") {
+                showSession = true
+            }
+            .accessibilityLabel("Schedule new study session")
+        }
+        .padding(.horizontal, Theme.spacingMD)
+        .padding(.top, Theme.spacingSM)
+        .padding(.bottom, Theme.spacingSM)
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(Theme.borderGoldFaint).frame(height: 1)
+        }
+    }
+
+    // ── Composer (mirrors chat.html's flush full-width `.input-bar`) ──────────
+    private var composer: some View {
+        HStack(spacing: 10) {
+            TextField("", text: $text,
+                      prompt: Text("Type a message…").foregroundColor(Theme.textSecondary), axis: .vertical)
+                .font(.lora(Theme.fontBody))
+                .foregroundColor(Theme.parchment)
+                .lineLimit(1...4)
+                .padding(.horizontal, Theme.spacingMD)
+                .padding(.vertical, Theme.spacingSM)
+                .background(Color.white.opacity(0.05))
+                .overlay(Capsule().stroke(Theme.borderGoldDim, lineWidth: 1))
+                .clipShape(Capsule())
+                .submitLabel(.send)
+                .onSubmit(sendMessage)
+                .accessibilityLabel("Message input field")
+
+            Button(action: sendMessage) {
+                Image(systemName: "arrow.up")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundColor(Theme.ink)
+                    .frame(width: 38, height: 38)
+                    .background(text.isEmpty ? AnyShapeStyle(Theme.gold.opacity(0.35)) : AnyShapeStyle(Theme.goldGradient))
+                    .clipShape(Circle())
+            }
+            .disabled(text.isEmpty)
+            .accessibilityLabel("Send message")
+        }
+        .padding(.horizontal, Theme.spacingMD)
+        .padding(.top, Theme.spacingSM)
+        .padding(.bottom, Theme.spacingMD)
+        .background(Theme.bgPage.opacity(0.55))
+        .overlay(alignment: .top) {
+            Rectangle().fill(Theme.borderGoldFaint).frame(height: 1)
+        }
+    }
+
     private func sendMessage() {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
@@ -388,52 +444,6 @@ struct ChatThreadView: View {
                 memberNames = previousNames
                 membersErrorMsg = (error as? LocalizedError)?.errorDescription ?? "Could not add members."
             }
-        }
-    }
-}
-
-// ── Message bubble (mirrors .msg-bubble sent/received in CSS) ─────────────────
-struct MessageBubble: View {
-    let message: FSMessage
-
-    var body: some View {
-        HStack {
-            if message.mine { Spacer(minLength: 60) }
-
-            VStack(alignment: message.mine ? .trailing : .leading, spacing: 2) {
-                if !message.mine && !message.sender.isEmpty {
-                    Text(message.sender)
-                        .font(.lora(Theme.fontXXS))
-                        .foregroundColor(Theme.gold.opacity(0.70))
-                }
-
-                Text(message.text)
-                    .font(.lora(Theme.fontSM))
-                    .foregroundColor(message.mine ? Theme.parchment : Theme.parchment.opacity(0.75))
-                    .padding(.horizontal, Theme.spacingMD)
-                    .padding(.vertical, Theme.spacingSM)
-                    .background(
-                        message.mine
-                        ? Theme.gold.opacity(0.18)
-                        : Color.white.opacity(0.05)
-                    )
-                    .clipShape(RoundedRectangle(cornerRadius: Theme.radiusLG))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: Theme.radiusLG)
-                            .stroke(
-                                message.mine
-                                ? Theme.gold.opacity(0.30)
-                                : Color.white.opacity(0.08),
-                                lineWidth: 1
-                            )
-                    )
-
-                Text(message.formattedTime)
-                    .font(.lora(Theme.fontXXS))
-                    .foregroundColor(Theme.gold.opacity(0.40))
-            }
-
-            if !message.mine { Spacer(minLength: 60) }
         }
     }
 }
@@ -592,21 +602,30 @@ struct SessionBanner: View {
 
     var body: some View {
         HStack(spacing: Theme.spacingMD) {
-            Image(systemName: "calendar.badge.clock")
-                .font(.system(size: 24))
-                .foregroundColor(Theme.gold)
-                .accessibilityHidden(true)
+            ZStack {
+                Circle().fill(Theme.gold.opacity(0.16))
+                Circle().stroke(Theme.borderGoldDim, lineWidth: 1)
+                Image(systemName: "calendar.badge.clock")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundColor(Theme.gold)
+            }
+            .frame(width: 40, height: 40)
+            .accessibilityHidden(true)
+
             VStack(alignment: .leading, spacing: 2) {
                 Text(session.title)
-                    .font(.lora(Theme.fontSM, weight: .semibold))
+                    .font(.lora(Theme.fontSM, weight: .bold))
                     .foregroundColor(Theme.parchment)
                 Text(session.formattedStart)
                     .font(.lora(Theme.fontXS))
-                    .foregroundColor(Theme.textGoldMuted)
+                    .foregroundColor(Theme.textSecondary)
             }
             Spacer()
             HStack(spacing: 8) {
-                // Join call button — starts/joins the persistent call.
+                // Join call button — starts/joins the persistent call. Kept
+                // green (established call-affordance convention elsewhere in
+                // the app) — only the shape/typography is restyled, per the
+                // migration's "styling only, not the call screen" scope.
                 Button {
                     CallController.shared.start(session: session,
                                                 service: appState.service,
@@ -616,29 +635,29 @@ struct SessionBanner: View {
                         Image(systemName: "video.fill")
                             .font(.system(size: 11))
                         Text("Join")
-                            .font(.lora(Theme.fontXS))
+                            .font(.system(size: 12, weight: .bold))
                     }
                     .foregroundColor(.white)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 5)
-                    .background(Color.green.opacity(0.80))
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 7)
+                    .background(Theme.success.opacity(0.82))
+                    .clipShape(Capsule())
                 }
                 .accessibilityLabel("Join call for \(session.title)")
 
                 Button("Details") { showDetail = true }
-                    .font(.lora(Theme.fontXS))
+                    .font(.system(size: 12, weight: .bold))
                     .foregroundColor(Theme.gold)
                     .padding(.horizontal, Theme.spacingSM)
-                    .padding(.vertical, 4)
-                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(Theme.borderGold, lineWidth: 1))
+                    .padding(.vertical, 7)
+                    .overlay(Capsule().stroke(Theme.borderGold, lineWidth: 1))
                     .accessibilityLabel("View session details: \(session.title)")
             }
         }
         .padding(Theme.spacingMD)
-        .background(Theme.gold.opacity(0.08))
-        .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
-        .overlay(RoundedRectangle(cornerRadius: Theme.radius).stroke(Theme.borderGoldDim, lineWidth: 1))
+        .background(Color.white.opacity(0.045))
+        .clipShape(RoundedRectangle(cornerRadius: Theme.radiusXL))
+        .overlay(RoundedRectangle(cornerRadius: Theme.radiusXL).stroke(Theme.borderGoldDim, lineWidth: 1))
         .sheet(isPresented: $showDetail) {
             SessionDetailSheet(session: session, onDelete: onDelete)
                 .environmentObject(appState)
@@ -683,13 +702,13 @@ struct SessionDetailSheet: View {
                             .foregroundColor(.white)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 14)
-                            .background(Color.green.opacity(0.82))
-                            .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
+                            .background(Theme.success.opacity(0.82))
+                            .clipShape(RoundedRectangle(cornerRadius: Theme.radiusXL))
                         }
                         .accessibilityLabel("Join audio and video call for \(session.title)")
 
                         VStack(alignment: .leading, spacing: Theme.spacingXS) {
-                            sectionLabel("Study Session")
+                            SectionEyebrow(title: "Study Session")
                             Text(session.title)
                                 .font(.playfair(Theme.fontDisplayMD))
                                 .foregroundColor(Theme.parchment)
@@ -700,7 +719,7 @@ struct SessionDetailSheet: View {
 
                         if !session.verses.isEmpty {
                             VStack(alignment: .leading, spacing: Theme.spacingSM) {
-                                sectionLabel("Verses")
+                                SectionEyebrow(title: "Verses")
                                 ForEach(session.verses, id: \.self) { ref in
                                     Text(ref.replacingOccurrences(of: "-", with: " "))
                                         .font(.verseRef(Theme.fontBody))
@@ -711,7 +730,7 @@ struct SessionDetailSheet: View {
 
                         if !session.prompts.isEmpty {
                             VStack(alignment: .leading, spacing: Theme.spacingSM) {
-                                sectionLabel("Discussion Prompts")
+                                SectionEyebrow(title: "Discussion Prompts")
                                 ForEach(Array(session.prompts.enumerated()), id: \.offset) { i, p in
                                     HStack(alignment: .top, spacing: Theme.spacingSM) {
                                         Text("\(i+1).")
@@ -776,13 +795,6 @@ struct SessionDetailSheet: View {
         .preferredColorScheme(.dark)
     }
 
-    @ViewBuilder
-    private func sectionLabel(_ title: String) -> some View {
-        Text(title.uppercased())
-            .font(.lora(Theme.fontXXS)).tracking(2)
-            .foregroundColor(Theme.gold.opacity(0.50))
-    }
-
     private func deleteSession() {
         let uid = appState.currentUser?.user_id ?? ""
         isDeleting = true
@@ -799,104 +811,183 @@ struct SessionDetailSheet: View {
     }
 }
 
-// ── Session creator sheet (mirrors SessionCreator.jsx fields) ─────────────────
+// ── Session creator sheet (mirrors SessionCreator.jsx fields / schedule.html) ─
+// Bottom-sheet presentation restyle: drag handle, Cancel/title/"Schedule"
+// pill header row, segmented 15/30/45/60m duration control, chip-style
+// option toggles. `duration` is UI-only — FSSession has no duration field —
+// time_end is computed from time_start + duration.rawValue minutes when
+// building the FSSession to hand to onSave (unchanged create path: the
+// caller in ChatThreadView still drives NetworkService.createSession).
 struct SessionCreatorSheet: View {
     let groupId: String
     let onSave:  (FSSession) -> Void
     @Environment(\.dismiss) private var dismiss
 
-    @State private var title        = ""
-    @State private var startDate    = Date().addingTimeInterval(3600)
-    @State private var duration     = 30
+    @State private var title:       String = ""
+    @State private var startDate:   Date   = Date().addingTimeInterval(3600)
+    @State private var duration:    SessionDuration = .thirty
     @State private var prompts:     [String] = []
-    @State private var promptInput  = ""
-    @State private var recurring    = false
-    @State private var summarize    = false
+    @State private var promptInput: String = ""
+    @State private var recurring:   Bool = false
+    @State private var summarize:   Bool = false
 
     var body: some View {
-        NavigationStack {
-            Form {
-                Section("Session Title") {
-                    TextField("Evening Study", text: $title)
-                        .font(.lora(Theme.fontBody))
-                        .foregroundColor(Theme.parchment)
-                        .accessibilityLabel("Session title")
-                }
+        ZStack {
+            Theme.bgPage.ignoresSafeArea()
 
-                Section("Timing") {
-                    DatePicker("Start Time", selection: $startDate, displayedComponents: [.date, .hourAndMinute])
-                        .font(.lora(Theme.fontBody))
-                        .accessibilityLabel("Session start time")
-                    Picker("Duration", selection: $duration) {
-                        ForEach(stride(from: 5, through: 180, by: 5).map { $0 }, id: \.self) { m in
-                            let h = m / 60; let mins = m % 60
-                            Text(h > 0 ? (mins > 0 ? "\(h)h \(mins)m" : "\(h)h") : "\(mins)m").tag(m)
-                        }
-                    }
-                    .accessibilityLabel("Session duration")
-                }
+            VStack(spacing: 0) {
+                dragHandle
+                sheetHeader
 
-                Section("Discussion Prompts") {
-                    ForEach(Array(prompts.enumerated()), id: \.offset) { i, p in
-                        Text(p)
-                            .font(.lora(Theme.fontSM))
-                            .foregroundColor(Theme.textSecondary)
-                            .swipeActions { Button(role: .destructive) { prompts.remove(at: i) } label: { Label("Remove", systemImage: "trash") } }
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 26) {
+                        sessionTitleSection
+                        startTimeSection
+                        durationSection
+                        discussionPromptsSection
+                        sessionOptionsSection
                     }
-                    HStack {
-                        TextField("Add a discussion question…", text: $promptInput)
-                            .font(.lora(Theme.fontSM))
-                            .foregroundColor(Theme.parchment)
-                            .accessibilityLabel("Discussion prompt input")
-                        Button(action: addPrompt) {
-                            Image(systemName: "plus.circle")
-                                .foregroundColor(promptInput.isEmpty ? Theme.textMuted : Theme.gold)
-                        }
-                        .disabled(promptInput.isEmpty)
-                        .accessibilityLabel("Add prompt")
-                    }
-                }
-
-                Section {
-                    Toggle("Repeat weekly", isOn: $recurring)
-                        .tint(Theme.gold)
-                        .accessibilityLabel("Repeat this session weekly")
-                    Toggle("Summarize with agent", isOn: $summarize)
-                        .tint(Theme.gold)
-                        .accessibilityLabel("Summarize session with AI agent")
+                    .padding(.top, 4)
+                    .padding(.bottom, Theme.spacingLG)
                 }
             }
-            .scrollContentBackground(.hidden)
-            .background(Theme.bgPage)
-            .navigationTitle("Schedule a Session")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cancel") { dismiss() }.foregroundColor(Theme.textGoldMuted)
-                }
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Schedule") {
-                        let df = ISO8601DateFormatter()
-                        let session = FSSession(
-                            id:         UUID().uuidString,
-                            title:      title,
-                            time_start: df.string(from: startDate),
-                            time_end:   df.string(from: startDate.addingTimeInterval(Double(duration * 60))),
-                            verses:     [],
-                            prompts:    prompts,
-                            recurring:  recurring,
-                            summarize:  summarize,
-                            group_id:   groupId
-                        )
-                        onSave(session)
-                        dismiss()
-                    }
-                    .foregroundColor(Theme.gold)
-                    .disabled(title.isEmpty)
-                }
+            .padding(.horizontal, Theme.spacingLG)
+        }
+        .presentationDetents([.large])
+        .presentationDragIndicator(.hidden)
+        .presentationCornerRadius(Theme.radiusXXL)
+        .preferredColorScheme(.dark)
+    }
+
+    // MARK: - Header
+
+    private var dragHandle: some View {
+        Capsule()
+            .fill(Color.white.opacity(0.2))
+            .frame(width: 36, height: 5)
+            .padding(.top, 8)
+            .padding(.bottom, 16)
+            .accessibilityHidden(true)
+    }
+
+    private var sheetHeader: some View {
+        HStack {
+            Button("Cancel") { dismiss() }
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundColor(Theme.gold)
+                .buttonStyle(.plain)
+
+            Spacer()
+
+            Text("Schedule a Session")
+                .font(.lora(Theme.fontDisplayMD, weight: .bold))
+                .foregroundColor(Theme.parchment)
+
+            Spacer()
+
+            PillButton(title: "Schedule") {
+                scheduleSession()
+            }
+            .disabled(title.isEmpty)
+            .opacity(title.isEmpty ? 0.4 : 1)
+            .accessibilityLabel("Schedule session")
+        }
+        .padding(.bottom, 22)
+    }
+
+    // MARK: - Sections
+
+    private var sessionTitleSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            SectionEyebrow(title: "Session Title")
+            TextField("", text: $title, prompt: Text("Evening Study").foregroundColor(Theme.textSecondary))
+                .font(.lora(Theme.fontBody))
+                .foregroundColor(Theme.parchment)
+                .padding(.horizontal, 18)
+                .padding(.vertical, 14)
+                .background(Color.white.opacity(0.045))
+                .overlay(RoundedRectangle(cornerRadius: Theme.radiusXL).stroke(Theme.borderGoldDim, lineWidth: 1))
+                .clipShape(RoundedRectangle(cornerRadius: Theme.radiusXL))
+                .accessibilityLabel("Session title")
+        }
+    }
+
+    private var startTimeSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            SectionEyebrow(title: "Start Time")
+            HStack(spacing: 10) {
+                DateTimeTile(systemIcon: "calendar", label: "Session start date",
+                             date: $startDate, displayedComponents: .date)
+                DateTimeTile(systemIcon: "clock", label: "Session start time",
+                             date: $startDate, displayedComponents: .hourAndMinute)
             }
         }
-        .preferredColorScheme(.dark)
+    }
+
+    private var durationSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            SectionEyebrow(title: "Duration")
+            SegmentedDurationControl(selection: $duration)
+        }
+    }
+
+    private var discussionPromptsSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            SectionEyebrow(title: "Discussion Prompts")
+
+            ForEach(Array(prompts.enumerated()), id: \.offset) { i, p in
+                HStack {
+                    Text(p)
+                        .font(.lora(Theme.fontSM))
+                        .foregroundColor(Theme.parchment)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Button(action: { prompts.remove(at: i) }) {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundColor(Theme.textMuted)
+                    }
+                    .accessibilityLabel("Remove prompt: \(p)")
+                }
+                .padding(.horizontal, 18)
+                .padding(.vertical, 12)
+                .background(Color.white.opacity(0.045))
+                .overlay(RoundedRectangle(cornerRadius: Theme.radiusXL).stroke(Theme.borderGoldDim, lineWidth: 1))
+                .clipShape(RoundedRectangle(cornerRadius: Theme.radiusXL))
+            }
+
+            HStack {
+                TextField("", text: $promptInput,
+                          prompt: Text("Add a discussion question…").foregroundColor(Theme.textSecondary))
+                    .font(.lora(Theme.fontBody))
+                    .foregroundColor(Theme.parchment)
+                    .accessibilityLabel("Discussion prompt input")
+
+                Button(action: addPrompt) {
+                    Image(systemName: "plus")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(Theme.ink)
+                        .frame(width: 32, height: 32)
+                        .background(promptInput.isEmpty ? AnyShapeStyle(Theme.gold.opacity(0.35)) : AnyShapeStyle(Theme.goldGradient))
+                        .clipShape(Circle())
+                }
+                .disabled(promptInput.isEmpty)
+                .accessibilityLabel("Add prompt")
+            }
+            .padding(.horizontal, 18)
+            .padding(.vertical, 12)
+            .background(Color.white.opacity(0.045))
+            .overlay(RoundedRectangle(cornerRadius: Theme.radiusXL).stroke(Theme.borderGoldDim, lineWidth: 1))
+            .clipShape(RoundedRectangle(cornerRadius: Theme.radiusXL))
+        }
+    }
+
+    private var sessionOptionsSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            SectionEyebrow(title: "Session Options")
+            HStack(spacing: 10) {
+                ChipToggle(title: "Repeat weekly", isOn: $recurring)
+                ChipToggle(title: "Summarize with agent", isOn: $summarize)
+            }
+        }
     }
 
     private func addPrompt() {
@@ -904,5 +995,27 @@ struct SessionCreatorSheet: View {
         guard !trimmed.isEmpty else { return }
         prompts.append(trimmed)
         promptInput = ""
+    }
+
+    private func scheduleSession() {
+        let df = ISO8601DateFormatter()
+        let session = FSSession(
+            id:         UUID().uuidString,
+            title:      title,
+            time_start: df.string(from: startDate),
+            // FSSession has no duration field — time_end is derived
+            // client-side from the segmented control's selection, matching
+            // the prior Picker-based flow's behavior. See
+            // SessionDuration.timeEndISOString(from:) for the (now
+            // independently unit-tested) formula.
+            time_end:   duration.timeEndISOString(from: startDate),
+            verses:     [],
+            prompts:    prompts,
+            recurring:  recurring,
+            summarize:  summarize,
+            group_id:   groupId
+        )
+        onSave(session)
+        dismiss()
     }
 }

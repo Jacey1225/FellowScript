@@ -5,6 +5,7 @@ from db import DBManager
 from backend.interactions.push import send_push
 from backend.interactions.notifications import NotificationManager
 from backend.subscription.subscriptions import SubscriptionsManager
+from backend.monitoring.watchdog import WATCHDOG_POLL_INTERVAL_SECONDS
 
 logger = logging.getLogger(__name__)
 scheduler = AsyncIOScheduler()
@@ -93,6 +94,30 @@ async def _reconcile_trials() -> None:
         sm.close()
 
 
+async def _run_error_watchdog() -> None:
+    """CloudWatch error-detection + context-assembly watchdog (see
+    backend/monitoring/watchdog.py). Polls all 5 monitored log groups via
+    the read-only cloudwatch-mcp-server on a synchronized per-log-group
+    cursor, detects application-level error signal, assembles context for
+    each hit, and persists detection+context records. Read-only end-to-end
+    — no remediation action is taken here (out of scope for this step).
+    """
+    from backend.monitoring.watchdog import WatchdogManager
+
+    wm = WatchdogManager()
+    try:
+        counts = await wm.run_cycle()
+        if counts["detections"]:
+            logger.info(
+                "CloudWatch watchdog: scanned %d event(s), %d new detection(s)",
+                counts["events_scanned"], counts["detections"],
+            )
+    except Exception as e:
+        logger.error("CloudWatch watchdog cycle failed: %s", e)
+    finally:
+        wm.close()
+
+
 def start_scheduler() -> None:
     scheduler.add_job(_fire_due_notifications, "cron", minute="*", id="notify_check",
                       replace_existing=True)
@@ -104,5 +129,9 @@ def start_scheduler() -> None:
     # cheap. Lazy reconcile on read covers the gap between sweeps.
     scheduler.add_job(_reconcile_trials, "cron", minute="5", id="trial_reconcile",
                       replace_existing=True)
+    # CloudWatch error watchdog — fixed interval (not cron) since it's a
+    # continuous poll loop rather than a clock-aligned sweep.
+    scheduler.add_job(_run_error_watchdog, "interval", seconds=WATCHDOG_POLL_INTERVAL_SECONDS,
+                      id="cloudwatch_watchdog", replace_existing=True)
     scheduler.start()
     logger.info("Notification scheduler started — checking every minute")

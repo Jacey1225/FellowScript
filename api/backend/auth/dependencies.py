@@ -1,5 +1,6 @@
 from fastapi import Request, HTTPException, WebSocket
 from backend.auth.sessions import SessionManager
+from db import DBManager
 
 SESSION_COOKIE = "session"
 
@@ -40,6 +41,33 @@ def require_match(field_name: str = "user_id"):
             raise HTTPException(status_code=403, detail="Forbidden")
         return current_user
     return _check
+
+
+def require_admin(request: Request) -> str:
+    """Dependency: verify the session user is an authenticated admin.
+
+    Reuses ``get_current_user`` for session verification (401 if the cookie
+    is missing/unknown/expired -- there is no separate admin auth path), then
+    looks up the resolved user's ``is_admin`` flag directly (not cached on
+    the session) and 403s if the caller is authenticated but not an admin.
+    Use in place of ``get_current_user`` for admin-only surfaces, e.g. the
+    CloudWatch error-detection monitoring endpoints in ``routes/monitoring.py``.
+    """
+    user_id = get_current_user(request)
+    db = DBManager()
+    try:
+        result = db.lookup("users", {"_id": user_id})
+    finally:
+        db.close()
+    if not result:
+        # Session resolved to a user_id with no matching row (e.g. deleted
+        # account) -- treat as unauthenticated rather than leaking a 403 for
+        # an account that no longer exists.
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    _, data = list(result.items())[0]
+    if not data.get("is_admin"):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return user_id
 
 
 async def authenticate_ws(websocket: WebSocket) -> str | None:

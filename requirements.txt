@@ -34,6 +34,15 @@ cryptography==49.0.0
 # local dev and would silently stop working on any fresh deploy that
 # provisions strictly from this file.
 h2==4.3.0
+# backend/monitoring/cloudwatch_mcp_client.py — official MCP Python SDK,
+# used to spawn/talk to the read-only cloudwatch-mcp-server subprocess for
+# the CloudWatch error watchdog (backend/interactions/scheduler.py's
+# cloudwatch_watchdog job). Not yet confirmed present on the prod venv —
+# same class of gap as psycopg2/python-dotenv above; must be installed
+# there (and the awslabs cloudwatch-mcp-server itself made reachable via
+# CLOUDWATCH_MCP_COMMAND, default `uvx awslabs.cloudwatch-mcp-server@latest`)
+# before this job's MCP calls can succeed instead of erroring every cycle.
+mcp==1.24.0
 # zoneinfo falls back to this package, per key, whenever a name isn't found
 # under the system's /usr/share/zoneinfo (confirmed on the EC2 deploy target:
 # its tzdata package ships only canonical zone names, not IANA's ~150

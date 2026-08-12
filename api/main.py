@@ -12,6 +12,7 @@ from routes.subscription import subscription_router
 from routes.donation import donation_router
 from routes.reports import report_router
 from routes.blocks import block_router
+from routes.monitoring import monitoring_router
 from schemas.users import SignUp, Login, UpdateUser, User, CURRENT_TERMS_VERSION
 from datetime import datetime, timezone
 from pydantic import BaseModel
@@ -24,11 +25,11 @@ import logging
 import httpx
 import jwt
 from jwt import PyJWKClient
-from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
+from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from db import DBManager, BACKUP_DB_NAME
+from backend.rate_limiting import get_client_ip, limiter
 from backend.interactions.helpers import load_users_data, save_users_data, save_user_row
 from backend.subscription.subscriptions import SubscriptionsManager
 from backend.auth.sessions import SessionManager
@@ -37,22 +38,6 @@ from backend.auth.mfa import MFAManager
 from backend.auth.dependencies import get_current_user, require_match, SESSION_COOKIE
 from backend.email.ses_client import send_email, EmailSendError
 from backend.email.templates import password_reset_email, mfa_code_email, mfa_setup_code_email
-
-
-def get_client_ip(request: Request) -> str:
-    """Resolve the true visitor IP behind Cloudflare + nginx.
-
-    Production sits behind Cloudflare, which terminates the client's real
-    connection and reconnects to our nginx box from one of its own rotating
-    edge IPs. uvicorn only trusts the single nginx hop (127.0.0.1), so
-    ``request.client.host`` / slowapi's default ``get_remote_address``
-    resolves to that rotating Cloudflare edge IP, not the actual visitor —
-    which defeats per-IP rate limiting entirely (every request looks like a
-    different client). Cloudflare's own ``CF-Connecting-IP`` header carries
-    the real visitor IP directly, so prefer it; fall back to the standard
-    resolution for local/non-Cloudflare requests (tests, direct access).
-    """
-    return request.headers.get("cf-connecting-ip") or get_remote_address(request)
 
 
 class GoogleAuth(BaseModel):
@@ -104,9 +89,14 @@ async def lifespan(_: FastAPI):
 app = FastAPI(lifespan=lifespan)
 
 # Rate-limits brute-force-able unauthenticated endpoints (signup/login) by
-# client IP. Authenticated routes (e.g. PUT /user/{id}) already require a
-# valid session and aren't guessable, so they're out of scope for this.
-limiter = Limiter(key_func=get_client_ip)
+# client IP. Most authenticated routes (e.g. PUT /user/{id}) already require
+# a valid session and aren't guessable, so they're out of scope for this --
+# the one exception is routes/monitoring.py's POST .../report (on-demand
+# debugging-agent rerun), which is authenticated but rate-limited anyway
+# because each call is an expensive/abusable OpenRouter LLM call, not because
+# it's guessable. `limiter` itself lives in backend/rate_limiting.py so that
+# module (and any other route module) can apply `@limiter.limit(...)` without
+# importing back through this file.
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(SlowAPIMiddleware)
@@ -136,6 +126,7 @@ app.include_router(subscription_router)
 app.include_router(donation_router)
 app.include_router(report_router)
 app.include_router(block_router)
+app.include_router(monitoring_router)
 
 main_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 user_path = "data/users.json"
