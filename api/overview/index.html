@@ -1367,7 +1367,7 @@
 </table>
 <hr />
 <h2 id="monitoring-error-detections">Monitoring (Error Detections)</h2>
-<p>Read-only feed of CloudWatch error detections collected by the background watchdog job (see <a href="../../architecture/backend/#background-scheduler">Backend → Background Scheduler</a>). Auth: <strong>admin-only</strong>. Both routes require <code>require_admin</code> (session auth via the <code>session</code> cookie, plus an <code>is_admin</code> flag on the resolved <code>users</code> row) — <code>401</code> for no/invalid session, <code>403</code> for an authenticated caller who isn't flagged admin. This replaces the earlier any-authenticated-user placeholder.</p>
+<p>Read-only feed of CloudWatch error detections collected by the background watchdog job (see <a href="../../architecture/backend/#background-scheduler">Backend → Background Scheduler</a>). Auth: <strong>admin-only</strong>. All routes require <code>require_admin</code> (session auth via the <code>session</code> cookie, plus an <code>is_admin</code> flag on the resolved <code>users</code> row) — <code>401</code> for no/invalid session, <code>403</code> for an authenticated caller who isn't flagged admin. This replaces the earlier any-authenticated-user placeholder.</p>
 <table>
 <thead>
 <tr>
@@ -1396,6 +1396,11 @@
 <td>POST</td>
 <td><code>/monitoring/detections/{detection_id}/report</code></td>
 <td>On-demand (re)generate the debugging agent's report for one detection, overwriting any prior report for it. <code>404</code> if the detection doesn't exist, <code>502</code> if the upstream OpenRouter call fails.</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/monitoring/detections/{detection_id}/report/download-audit</code></td>
+<td>Audit-only: records that an admin downloaded the (client-assembled) remediation Markdown handoff file for one detection. Returns no detection/report content — just <code>{ "logged": true }</code>. <code>404</code> if the detection doesn't exist. The admin page calls this immediately before triggering the local file download, since the <code>.md</code> itself is built entirely client-side from data already fetched.</td>
 </tr>
 </tbody>
 </table>
