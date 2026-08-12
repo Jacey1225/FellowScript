@@ -920,10 +920,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#log_group_cursors-error_detections" class="md-nav__link">
+  <a href="#log_group_cursors-error_detections-error_detection_reports" class="md-nav__link">
     <span class="md-ellipsis">
       
-        log_group_cursors / error_detections
+        log_group_cursors / error_detections / error_detection_reports
       
     </span>
   </a>
@@ -1109,6 +1109,11 @@
 <td><code>needs_profile_completion</code></td>
 <td>BOOLEAN</td>
 <td>Default <code>false</code>. Set <code>true</code> when a first-ever Apple sign-in is missing <code>full_name</code>/<code>email</code> — Apple only ever supplies these once per Apple ID + app, so a missed grant can't be recovered later. Cleared the next time the client sets a real <code>username</code>/<code>email</code> via <code>PUT /user/{id}</code></td>
+</tr>
+<tr>
+<td><code>is_admin</code></td>
+<td>BOOLEAN</td>
+<td>Default <code>false</code>. Staff/admin flag checked by <code>require_admin</code> (<code>backend/auth/dependencies.py</code>) to gate admin-only surfaces, e.g. <code>/monitoring/detections*</code>. Seeded (idempotently, by live email lookup — never a hardcoded id) for exactly one account in <code>db.py::create_tables</code>; not editable via any user-facing endpoint</td>
 </tr>
 </tbody>
 </table>
@@ -1539,7 +1544,7 @@
 </table>
 <p><code>content_snippet</code> is denormalized deliberately: if the operator doesn't check the report email until hours later and the author has since edited or deleted the content, the report still shows what was actually reported. Blocking a user auto-inserts a <code>content_reports</code> row (<code>content_type='user'</code>, <code>reason='blocked'</code>) so there's one unified queue rather than a separate notification path. See <code>backend/moderation/</code> above for the filter, reporting, blocking, and admin-resolution logic; <code>backend/moderation/admin_actions.py</code>'s <code>resolve</code> command is how reports get actioned within the 24-hour commitment in the Terms of Service.</p>
 <hr />
-<h3 id="log_group_cursors-error_detections"><code>log_group_cursors</code> / <code>error_detections</code></h3>
+<h3 id="log_group_cursors-error_detections-error_detection_reports"><code>log_group_cursors</code> / <code>error_detections</code> / <code>error_detection_reports</code></h3>
 <table>
 <thead>
 <tr>
@@ -1556,9 +1561,15 @@
 <td><code>error_detections</code></td>
 <td><code>_id UUID PK</code>, <code>log_group_name</code>, <code>log_stream_name</code>, <code>event_timestamp</code>, <code>message</code>, <code>matched_signal</code>, <code>context JSONB</code>, <code>detected_at</code>, <code>status TEXT DEFAULT 'new'</code></td>
 </tr>
+<tr>
+<td><code>error_detection_reports</code></td>
+<td><code>_id UUID PK</code>, <code>detection_id UUID UNIQUE REFERENCES error_detections(_id) ON DELETE CASCADE</code>, <code>root_cause</code>, <code>remediation_narrative</code>, <code>model</code>, <code>generated_at TIMESTAMPTZ</code></td>
+</tr>
 </tbody>
 </table>
-<p>Populated by the watchdog job (<code>backend/monitoring/watchdog.py</code>, see <a href="../backend/#background-scheduler">Backend → Background Scheduler</a>). <code>log_group_cursors</code> is a per-log-group watermark so consecutive polls never re-process or skip events. <code>error_detections.context</code> holds the assembled surrounding-log-lines + log-analyzer output for a hit; <code>status</code> defaults to <code>'new'</code> and is forward-compatible with a future acknowledged/resolved workflow, but nothing currently writes to it besides the watchdog job or reads/acts on it beyond the read-only <code>/monitoring</code> endpoints (see <a href="../../api/overview/#monitoring-error-detections">API → Monitoring</a>). Indexed on <code>(detected_at DESC)</code> and <code>(log_group_name, detected_at DESC)</code> for the list feed's default ordering and log-group filter.</p>
+<p>Populated by the watchdog job (<code>backend/monitoring/watchdog.py</code>, see <a href="../backend/#background-scheduler">Backend → Background Scheduler</a>). <code>log_group_cursors</code> is a per-log-group watermark so consecutive polls never re-process or skip events. <code>error_detections.context</code> holds the assembled surrounding-log-lines + log-analyzer output for a hit; <code>status</code> starts at <code>'new'</code> and moves to <code>'diagnosed'</code> once the debugging agent (<code>backend/monitoring/debug_agent.py</code>) has produced a report for it.</p>
+<p><code>error_detection_reports</code> holds the debugging agent's diagnostic write-up (root cause + remediation narrative) for a detection — one row per detection (<code>detection_id</code> is <code>UNIQUE</code>; a rerun upserts in place rather than accumulating history). Populated automatically right after a detection persists (one OpenRouter call per detected error, not per poll cycle) and on-demand via <code>POST /monitoring/detections/{id}/report</code> (see <a href="../../api/overview/#monitoring-error-detections">API → Monitoring</a>). Cascades away with its parent <code>error_detections</code> row.</p>
+<p>Indexed on <code>(detected_at DESC)</code> and <code>(log_group_name, detected_at DESC)</code> for the list feed's default ordering and log-group filter.</p>
 <hr />
 <h2 id="account-deletion">Account Deletion</h2>
 <p><code>DELETE /user/{user_id}</code> manually handles tables whose FK to <code>users</code> lacks <code>ON DELETE CASCADE</code>:</p>

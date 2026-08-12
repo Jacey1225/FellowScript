@@ -1212,13 +1212,13 @@
 <tr>
 <td><code>monitoring_router</code></td>
 <td><code>/monitoring</code></td>
-<td>Read-only CloudWatch error-detection feed (see <code>backend/monitoring/</code> below)</td>
+<td>Read-only CloudWatch error-detection feed + the debugging agent's reports (see <code>backend/monitoring/</code> below)</td>
 </tr>
 </tbody>
 </table>
 <hr />
 <h2 id="backendmonitoring"><code>backend/monitoring/</code></h2>
-<p>A sibling package to <code>interactions/</code> for the CloudWatch-based error monitoring workflow (poll → detect → assemble context → persist → serve).</p>
+<p>A sibling package to <code>interactions/</code> for the CloudWatch-based error monitoring workflow (poll → detect → assemble context → persist → diagnose → serve).</p>
 <table>
 <thead>
 <tr>
@@ -1233,11 +1233,15 @@
 </tr>
 <tr>
 <td><code>watchdog.py</code></td>
-<td><code>WatchdogManager(DBManager)</code> — per-log-group cursor bookkeeping, error-signal regex scan, context assembly, and detection persistence (<code>run_cycle</code>); also the read methods (<code>list_detections</code>, <code>count_detections</code>, <code>get_detection</code>) backing the <code>/monitoring</code> routes.</td>
+<td><code>WatchdogManager(DBManager)</code> — per-log-group cursor bookkeeping, error-signal regex scan, context assembly, and detection persistence (<code>run_cycle</code>); also the read methods (<code>list_detections</code>, <code>count_detections</code>, <code>get_detection</code>) backing the <code>/monitoring</code> routes. Right after a detection persists, <code>run_cycle</code> hands it off to <code>debug_agent.run_debug_agent_for_detection</code> (offloaded via <code>run_in_executor</code> so the blocking OpenRouter call never stalls the event loop).</td>
+</tr>
+<tr>
+<td><code>debug_agent.py</code></td>
+<td><code>DebugAgentManager(DBManager)</code> — the error-debugging agent. Given a detection's <code>message</code> + <code>context</code>, redacts anything shaped like a secret/credential/API key/connection-string password, then calls OpenRouter (reusing <code>AgentManager</code>'s <code>MODELNAME</code>/<code>BASEURL</code>/<code>HEADERS</code> wiring — no second isolated credential) for a root-cause + remediation-narrative diagnostic report, persists it to <code>error_detection_reports</code> (upsert on <code>detection_id</code>), and routes the detection's <code>status</code> to <code>"diagnosed"</code>. Strictly read-only/reporting: no shell, system, or AWS-write access, and the model is explicitly instructed to describe recommended remediation steps, never narrate one as already taken.</td>
 </tr>
 </tbody>
 </table>
-<p>Detection is application-level (regex scan of pulled log messages against named signal patterns — traceback, critical, error level, nginx severity tags, HTTP 5xx, errno) rather than CloudWatch alarms/metric filters, which aren't configured in this AWS account. Nothing in this package executes or references any remediation action — it only reads via the MCP client and writes to this app's own <code>error_detections</code>/<code>log_group_cursors</code> tables.</p>
+<p>Detection is application-level (regex scan of pulled log messages against named signal patterns — traceback, critical, error level, nginx severity tags, HTTP 5xx, errno) rather than CloudWatch alarms/metric filters, which aren't configured in this AWS account. Nothing in this package executes or takes any action against the server — the watchdog only reads via the MCP client and writes to this app's own <code>error_detections</code>/<code>log_group_cursors</code> tables, and the debugging agent only reads those tables plus calls OpenRouter for a text diagnosis it persists to <code>error_detection_reports</code>.</p>
 <hr />
 <h2 id="backendsubscription"><code>backend/subscription/</code></h2>
 <p>A sibling package to <code>interactions/</code> dedicated to billing and usage enforcement.</p>
@@ -1387,7 +1391,7 @@
 <tr>
 <td><code>_run_error_watchdog</code></td>
 <td>every 90s</td>
-<td>Polls the 5 CloudWatch log groups the agent ships (<code>nginx access/error</code>, <code>syslog</code>, <code>auth</code>, <code>app</code>) via <code>WatchdogManager.run_cycle</code>, detects errors, assembles context, and persists to <code>error_detections</code> (see <code>backend/monitoring/</code> above)</td>
+<td>Polls the 5 CloudWatch log groups the agent ships (<code>nginx access/error</code>, <code>syslog</code>, <code>auth</code>, <code>app</code>) via <code>WatchdogManager.run_cycle</code>, detects errors, assembles context, persists to <code>error_detections</code>, and triggers the debugging agent once per new detection (see <code>backend/monitoring/</code> above)</td>
 </tr>
 </tbody>
 </table>
