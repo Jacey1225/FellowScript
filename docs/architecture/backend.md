@@ -95,6 +95,21 @@ Thin `APIRouter` handlers. Each handler: instantiates a manager, calls one metho
 | `donation_router` | `/donation` | One-time donation flow |
 | `report_router` | `/reports` | Guideline 1.2 content/user reporting |
 | `block_router` | `/blocks` | Guideline 1.2 user blocking |
+| `monitoring_router` | `/monitoring` | Read-only CloudWatch error-detection feed + the debugging agent's reports (see `backend/monitoring/` below) |
+
+---
+
+## `backend/monitoring/`
+
+A sibling package to `interactions/` for the CloudWatch-based error monitoring workflow (poll → detect → assemble context → persist → diagnose → serve).
+
+| File | Responsibility |
+|---|---|
+| `cloudwatch_mcp_client.py` | `CloudWatchMCPClient` — async wrapper over the read-only `cloudwatch-mcp-server` (Logs Insights query + `analyze_log_group`). |
+| `watchdog.py` | `WatchdogManager(DBManager)` — per-log-group cursor bookkeeping, error-signal regex scan, context assembly, and detection persistence (`run_cycle`); also the read methods (`list_detections`, `count_detections`, `get_detection`) backing the `/monitoring` routes. Right after a detection persists, `run_cycle` hands it off to `debug_agent.run_debug_agent_for_detection` (offloaded via `run_in_executor` so the blocking OpenRouter call never stalls the event loop). |
+| `debug_agent.py` | `DebugAgentManager(DBManager)` — the error-debugging agent. Given a detection's `message` + `context`, redacts anything shaped like a secret/credential/API key/connection-string password, then calls OpenRouter (reusing `AgentManager`'s `MODELNAME`/`BASEURL`/`HEADERS` wiring — no second isolated credential) for a root-cause + remediation-narrative diagnostic report, persists it to `error_detection_reports` (upsert on `detection_id`), and routes the detection's `status` to `"diagnosed"`. Strictly read-only/reporting: no shell, system, or AWS-write access, and the model is explicitly instructed to describe recommended remediation steps, never narrate one as already taken. |
+
+Detection is application-level (regex scan of pulled log messages against named signal patterns — traceback, critical, error level, nginx severity tags, HTTP 5xx, errno) rather than CloudWatch alarms/metric filters, which aren't configured in this AWS account. Nothing in this package executes or takes any action against the server — the watchdog only reads via the MCP client and writes to this app's own `error_detections`/`log_group_cursors` tables, and the debugging agent only reads those tables plus calls OpenRouter for a text diagnosis it persists to `error_detection_reports`.
 
 ---
 
@@ -196,5 +211,6 @@ Unlike other managers, `BackupManager` doesn't subclass `DBManager` directly —
 | `_fire_due_notifications` | every minute | Pushes any notification whose scheduled time-of-day matches now |
 | `_run_nightly_backups` | every minute | Copies any user whose *local* time is currently 03:00 into the backup database (see `backend/backup/`) |
 | `_reconcile_trials` | every hour | Advances elapsed trials to active, and removes subscriptions whose paid period lapsed past the grace window |
+| `_run_error_watchdog` | every 90s | Polls the 5 CloudWatch log groups the agent ships (`nginx access/error`, `syslog`, `auth`, `app`) via `WatchdogManager.run_cycle`, detects errors, assembles context, persists to `error_detections`, and triggers the debugging agent once per new detection (see `backend/monitoring/` above) |
 
 Heartbeat (AI agent event) firing is **not** scheduled server-side — it's driven entirely client-side by iOS's `HeartbeatScheduler.checkAndFire`, which calls the same `commit_heartbeat` endpoint on app foreground.

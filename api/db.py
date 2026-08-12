@@ -48,7 +48,12 @@ def create_tables(cur):
         # True when an Apple-created account is missing the username/email Apple
         # only ever supplies once (first authorization) — prompts the client to
         # ask the user to set them, since Apple can never resupply them later.
-        "needs_profile_completion BOOLEAN NOT NULL DEFAULT FALSE)"
+        "needs_profile_completion BOOLEAN NOT NULL DEFAULT FALSE,"
+        # Staff/admin flag gating admin-only surfaces (e.g. the CloudWatch
+        # error-detection monitoring endpoints, routes/monitoring.py) via
+        # backend/auth/dependencies.py::require_admin. Distinct from the
+        # unrelated `role` column on the `agents` table (AI persona config).
+        "is_admin BOOLEAN NOT NULL DEFAULT FALSE)"
     )
     # Migrations for databases created before the social-sign-in columns existed.
     cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS apple_sub TEXT")
@@ -59,6 +64,30 @@ def create_tables(cur):
     cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS terms_version TEXT")
     cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS suspended_at TIMESTAMPTZ")
     cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS needs_profile_completion BOOLEAN NOT NULL DEFAULT FALSE")
+    cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT FALSE")
+
+    # One-time admin seed, re-applied (idempotently) every time create_tables()
+    # runs -- i.e. on every non-destructive schema-apply deploy step (see
+    # reference_deploy.md). Resolves the admin account by a live email lookup
+    # against *this* users table rather than a hardcoded _id: the legacy
+    # data/users.json seed file's UUID for this account is not authoritative
+    # for the live table and must never be trusted here.
+    _ADMIN_SEED_EMAIL = "jaceysimps@gmail.com"
+    cur.execute(
+        "UPDATE users SET is_admin = TRUE WHERE email = %s AND is_admin = FALSE",
+        (_ADMIN_SEED_EMAIL,),
+    )
+    if cur.rowcount == 0:
+        cur.execute("SELECT 1 FROM users WHERE email = %s", (_ADMIN_SEED_EMAIL,))
+        if cur.fetchone() is None:
+            # Real finding, not a silent no-op: surface loudly so a deploy
+            # doesn't quietly leave the app with zero admin accounts.
+            logger.warning(
+                "Admin seed: no user found with email %s -- is_admin was not "
+                "set for any account. Verify this is still the correct admin "
+                "account before assuming the admin page is reachable.",
+                _ADMIN_SEED_EMAIL,
+            )
 
     cur.execute(
         "CREATE TABLE IF NOT EXISTS groups"
@@ -390,6 +419,66 @@ def create_tables(cur):
     cur.execute(
         "CREATE INDEX IF NOT EXISTS idx_content_reports_reported_user ON content_reports(reported_user_id)"
     )
+
+    # CloudWatch error watchdog (cloudwatch-error-remediation workflow, step
+    # 3). Both tables are Level 0 (no FKs) — they're system/infra records,
+    # not scoped to any user.
+    #
+    # Per-log-group watermark: last_seen_time is the exclusive lower bound of
+    # the next poll's query window, so consecutive watchdog runs never
+    # re-process or skip events (see WatchdogManager.run_cycle).
+    cur.execute(
+        "CREATE TABLE IF NOT EXISTS log_group_cursors"
+        "(log_group_name TEXT PRIMARY KEY,"
+        "last_seen_time TIMESTAMPTZ NOT NULL,"
+        "updated_at TIMESTAMPTZ DEFAULT NOW())"
+    )
+
+    # One row per detected error event plus its assembled surrounding
+    # context (nearby log lines + the MCP log-analyzer's output, if any) —
+    # the context-handoff payload a later read-only admin endpoint (and,
+    # eventually, a write-capable remediation agent) would consume. `status`
+    # defaults to 'new' and is forward-compatible with a later
+    # acknowledged/resolved workflow, but nothing writes to it besides the
+    # watchdog job in this step — no remediation action reads or acts on it
+    # yet.
+    cur.execute(
+        "CREATE TABLE IF NOT EXISTS error_detections"
+        "(_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
+        "log_group_name TEXT NOT NULL,"
+        "log_stream_name TEXT,"
+        "event_timestamp TIMESTAMPTZ NOT NULL,"
+        "message TEXT NOT NULL,"
+        "matched_signal TEXT NOT NULL,"
+        "context JSONB NOT NULL DEFAULT '{}',"
+        "detected_at TIMESTAMPTZ DEFAULT NOW(),"
+        "status TEXT NOT NULL DEFAULT 'new')"
+    )
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_error_detections_detected_at "
+        "ON error_detections(detected_at DESC)"
+    )
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_error_detections_log_group "
+        "ON error_detections(log_group_name, detected_at DESC)"
+    )
+
+    # Debugging agent's diagnostic report for a detection (error-debug-agent-
+    # admin-page workflow, step 3). Level 1: references error_detections.
+    # `detection_id` is UNIQUE so a rerun (POST /monitoring/detections/{id}/
+    # report) is a plain upsert in place rather than accumulating a report
+    # row per rerun -- matches log_group_cursors' single-current-value
+    # pattern. Cascades away with its parent detection.
+    cur.execute(
+        "CREATE TABLE IF NOT EXISTS error_detection_reports"
+        "(_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
+        "detection_id UUID NOT NULL UNIQUE REFERENCES error_detections(_id) ON DELETE CASCADE,"
+        "root_cause TEXT NOT NULL DEFAULT '',"
+        "remediation_narrative TEXT NOT NULL DEFAULT '',"
+        "model TEXT NOT NULL,"
+        "generated_at TIMESTAMPTZ DEFAULT NOW())"
+    )
+
     logger.info("All tables created.")
 
 

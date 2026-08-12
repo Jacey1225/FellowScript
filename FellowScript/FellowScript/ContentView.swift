@@ -21,10 +21,40 @@ struct ContentView: View {
 
             if appState.isAuthenticated {
                 mainTabView
-            } else {
+            } else if hasCompletedOnboarding {
+                // Signed out AFTER onboarding was already completed once
+                // (e.g. a session expiring) — this is the real, reachable
+                // sign-in screen for that case.
                 AuthView()
                     .transition(.opacity)
             }
+            // Bug fix (task: 20260810-note-editor-tests-signin-not-hittable):
+            // while onboarding hasn't completed yet, this branch used to
+            // unconditionally render AuthView() here too — a SECOND, fully
+            // laid-out AuthView instance sitting underneath OnboardingView's
+            // .fullScreenCover the entire time onboarding runs (not just once
+            // the CTA is reached). Confirmed live via app.debugDescription on
+            // a real Simulator (iPhone 17 Pro, iOS 26.5, freshly erased): this
+            // buried-but-still-existing instance shares IDENTICAL accessibility
+            // labels with the CTA-triggered AuthView (both are the same
+            // AuthView struct) — "Username field", "Password field", "Sign In
+            // button", even the CTA's own "Sign In" button text collides with
+            // this instance's Sign-In/Create-Account tab toggle. Both
+            // NoteEditorUITests.swift and AccountUITests.swift query by those
+            // same labels; when the query happened to resolve to THIS buried
+            // instance instead of the real, topmost, cover-presented one, it
+            // correctly reported "exists but never hittable" forever (it's
+            // legitimately covered and non-interactive — that part was never
+            // a bug). Simply not mounting this competing instance until
+            // onboarding has actually completed removes the ambiguity: only
+            // one AuthView instance exists at a time now during onboarding.
+            // Verified on a freshly-erased Simulator (iPhone 17 Pro, iOS
+            // 26.5): onboarding's Sign In CTA now reaches a single,
+            // genuinely-hittable AuthView, and NoteEditorUITests.swift /
+            // AccountUITests.swift both get past sign-in reliably (combined
+            // with those files' own accessibility-label query fixes for
+            // .textCase(.uppercase)-styled onboarding buttons — see their
+            // signInAndReachDashboard()/signInAndReachAccount() comments).
         }
         // Minimized call bar — floats above the tab bar while a call is running
         // but not expanded, so the user can browse the app during the call.

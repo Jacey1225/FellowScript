@@ -35,6 +35,19 @@ struct NoteEditorView: View {
     @State private var showColorPicker = false
     @State private var isSaving    = false
     @State private var saveErrorMessage: String? = nil
+    // True full-screen size, measured via a GeometryReader composed with
+    // Theme.bgPage.ignoresSafeArea() (see body) — NOT UIScreen.main.bounds.
+    // UIScreen.main is deprecated and, confirmed via repeated real-Simulator
+    // runs while diagnosing task 20260810-note-editor-save-cancel-overlap-v2,
+    // reports the WRONG size in this editor's nested sheet-on-a-sheet
+    // presentation context (editing an existing note via NoteDetailView's
+    // own .sheet) — it doesn't reliably reflect the actual presenting
+    // window/scene's bounds one sheet-nesting level deep. A GeometryReader
+    // anchored to Theme.bgPage.ignoresSafeArea(), which visually/verifiably
+    // always fills the true device screen in every screenshot captured
+    // during that investigation regardless of the nested sheet's own
+    // (sometimes ambiguous) size negotiation, gives a size we can trust.
+    @State private var measuredScreenSize: CGSize = .zero
 
     @StateObject private var rtc = RichTextEditorController()
 
@@ -44,6 +57,26 @@ struct NoteEditorView: View {
         NavigationStack {
             ZStack {
                 Theme.bgPage.ignoresSafeArea()
+                    // Measures the TRUE full-screen size — see
+                    // measuredScreenSize's declaration for why this, and not
+                    // UIScreen.main.bounds, is the reliable source of truth
+                    // here. Theme.bgPage.ignoresSafeArea() is confirmed (via
+                    // screenshots taken during this bug's investigation) to
+                    // always render edge-to-edge at the real device size,
+                    // even in render passes where this editor's own ZStack/
+                    // NavigationStack negotiates an ambiguous, smaller size
+                    // from the nested sheet presentation — so a
+                    // GeometryReader riding along with it sees the correct
+                    // size when everything else might not.
+                    .overlay(
+                        GeometryReader { geo in
+                            Color.clear
+                                .onAppear { measuredScreenSize = geo.size }
+                                .onChange(of: geo.size) { _, newSize in
+                                    measuredScreenSize = newSize
+                                }
+                        }
+                    )
 
                 // Warm bloom ground (shared visual language with Dashboard/Chat/Notes).
                 RadialGradient(colors: [Color(hex: "#D4922A").opacity(0.20), .clear],
@@ -214,17 +247,43 @@ struct NoteEditorView: View {
                     .scrollDismissesKeyboard(.interactively)
                 }
 
-                // Save FAB — floats above the writing card, bottom-right, thumb-
-                // reachable while scrolling/writing (Option C header-controls doc).
-                if !isReadOnly {
-                    VStack {
-                        Spacer()
-                        HStack {
-                            Spacer()
-                            saveFAB
-                        }
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                // Save FAB — floats above the writing card, bottom-right,
+                // thumb-reachable while scrolling/writing (Option C
+                // header-controls doc).
+                //
+                // Root cause (confirmed via repeated real-Simulator runs,
+                // task 20260810-note-editor-save-cancel-overlap-v2): both the
+                // original VStack/Spacer + .frame(maxWidth: .infinity, ...)
+                // trick AND a follow-up `.overlay(alignment: .bottomTrailing)`
+                // on the outer ZStack turned out to be equally unreliable —
+                // an overlay still aligns within its BASE view's own resolved
+                // size, and when this editor is presented via NoteDetailView's
+                // nested sheet-on-a-sheet path (editing an *existing* note),
+                // the outer ZStack's size negotiation with the nested sheet
+                // is genuinely racy: verified via repeated back-to-back test
+                // runs with zero code changes between them, it sometimes
+                // resolves to the full screen and sometimes doesn't, so
+                // whichever size the ZStack happens to land on that render
+                // pass is what any Spacer- or alignment-based technique
+                // inherits. A follow-up attempt forcing an explicit
+                // `.frame(width: UIScreen.main.bounds.width, height: ...)`
+                // was ALSO unreliable — UIScreen.main is deprecated and
+                // (confirmed live) doesn't reliably reflect this nested
+                // sheet's actual presenting window/scene bounds either.
+                // Positioning saveFAB directly with `.position()`, driven by
+                // measuredScreenSize (a GeometryReader riding along with
+                // Theme.bgPage.ignoresSafeArea() above, which — confirmed via
+                // screenshots throughout this investigation — always renders
+                // at the true full device size regardless of what the
+                // nested sheet negotiates for everything else), sidesteps
+                // the whole ambient container-size propagation chain rather
+                // than depending on it.
+                if !isReadOnly, measuredScreenSize != .zero {
+                    saveFAB
+                        .position(
+                            x: measuredScreenSize.width  - saveFABRadius - saveFABMargin,
+                            y: measuredScreenSize.height - saveFABRadius - saveFABMargin
+                        )
                 }
             }
         }
@@ -291,6 +350,16 @@ struct NoteEditorView: View {
         .accessibilityLabel("Done")
     }
 
+    // Circle diameter is 48pt (radius 24) and its intended margin from the
+    // screen's trailing/bottom edge is 18pt — used both by saveFAB's own
+    // .frame(width:height:) below and by body's explicit
+    // .position(x:y:) call, which replaced the .padding(.trailing/.bottom)
+    // this view used to carry (padding doesn't compose with an absolute
+    // .position() the same way, so the margin now lives here as shared
+    // constants instead).
+    private let saveFABRadius: CGFloat = 24
+    private let saveFABMargin: CGFloat = 18
+
     private var saveFAB: some View {
         Button(action: handleSave) {
             ZStack {
@@ -301,7 +370,7 @@ struct NoteEditorView: View {
                             startPoint: .topLeading, endPoint: .bottomTrailing
                         )
                     )
-                    .frame(width: 48, height: 48)
+                    .frame(width: saveFABRadius * 2, height: saveFABRadius * 2)
                     .shadow(color: .black.opacity(0.4), radius: 10, x: 0, y: 6)
                 if isSaving {
                     ProgressView().tint(.white)
@@ -314,8 +383,6 @@ struct NoteEditorView: View {
         }
         .disabled(isSaving)
         .accessibilityLabel("Save note")
-        .padding(.trailing, 18)
-        .padding(.bottom, 18)
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────

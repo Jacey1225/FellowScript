@@ -59,6 +59,12 @@ enum Theme {
     static let radius:   CGFloat = 12
     static let radiusLG: CGFloat = 16
     static let radiusXL: CGFloat = 24
+    // Full-height bottom-sheet presentation chrome (e.g. SessionCreatorSheet)
+    // needs a rounder corner than any existing card/tile radius above — no
+    // existing token covers this larger "sheet" scale, so it's added here
+    // rather than reusing radiusXL and losing the bottom-sheet's intended
+    // roundness. Continues the SM/·/LG/XL naming ladder.
+    static let radiusXXL: CGFloat = 36
 
     // ── Spacing ───────────────────────────────────────────────────────────────
     static let spacingXS: CGFloat = 4
@@ -133,4 +139,18 @@ extension View {
     func widgetCard(padding: CGFloat = Theme.spacingMD) -> some View {
         modifier(WidgetCard(padding: padding))
     }
+}
+
+// ── Gold gradient (amber-gradient buttons/chips) ───────────────────────────
+// Composed entirely from the existing goldLight/goldDim tokens above — no new
+// hex literals. Several restyled Chat surfaces (PillButton, SegmentedDuration-
+// Control's active segment, ChipToggle's "on" state, outgoing message
+// avatars) need a reusable diagonal gold gradient rather than each call site
+// hand-rolling its own `LinearGradient(colors: [...])`.
+extension Theme {
+    static let goldGradient = LinearGradient(
+        colors: [goldLight, goldDim],
+        startPoint: .topLeading,
+        endPoint: .bottomTrailing
+    )
 }

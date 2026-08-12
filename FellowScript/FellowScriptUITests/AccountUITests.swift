@@ -174,12 +174,25 @@ final class AccountUITests: XCTestCase {
         app.launch()
 
         if !app.buttons["Home"].waitForExistence(timeout: 5) {
+            // Bug fix (task: 20260810-note-editor-tests-signin-not-hittable):
+            // "Skip →", "Begin the Tour →", and the CTA's "Sign In" are
+            // standalone Text labels styled with .textCase(.uppercase) in
+            // OnboardingView.swift (no accessibilityLabel override), so their
+            // real accessibility label is the rendered, upper-cased string —
+            // confirmed live via a real Simulator's captured accessibility
+            // hierarchy. Exact mixed-case string queries never matched, so
+            // these taps always silently no-op'd. Match case-insensitively,
+            // same as this file already does below for "sign in button".
+            func onboardingButton(containing text: String) -> XCUIElement {
+                app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", text)).firstMatch
+            }
+
             // ── Onboarding (welcome -> survey -> bridge -> tour -> cta) ────
             waitHittableThenTap(app.buttons["Get Started"], timeout: 10)
-            waitHittableThenTap(app.buttons["Skip →"])
-            waitHittableThenTap(app.buttons["Begin the Tour →"])
+            waitHittableThenTap(onboardingButton(containing: "Skip →"))
+            waitHittableThenTap(onboardingButton(containing: "Begin the Tour →"))
             waitHittableThenTap(app.buttons["Skip"])
-            waitHittableThenTap(app.buttons["Sign In"])
+            waitHittableThenTap(onboardingButton(containing: "Sign In"))
 
             let usernameField = app.textFields["Username field"]
             XCTAssertTrue(usernameField.waitForExistence(timeout: 8), "expected the sign-in form's username field")
@@ -222,11 +235,19 @@ final class AccountUITests: XCTestCase {
     private func dismissSystemAlertIfPresent(_ app: XCUIApplication) {
         let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
         let alert = springboard.alerts.firstMatch
-        guard alert.exists else { return }
-        for label in ["Allow", "OK", "Allow While Using App"] {
-            let button = alert.buttons[label]
-            if button.exists { button.tap(); return }
+        if alert.exists {
+            for label in ["Allow", "OK", "Allow While Using App"] {
+                let button = alert.buttons[label]
+                if button.exists { button.tap(); return }
+            }
         }
+        // Bug fix (task: 20260810-note-editor-tests-signin-not-hittable): iOS's
+        // Password AutoFill "Save Password?" sheet appears after a genuinely
+        // successful manual sign-in and, being a same-process Sheet rather
+        // than a springboard alert, fully blocks the Dashboard underneath
+        // until dismissed. See NoteEditorUITests.swift's matching fix.
+        let notNow = app.buttons["Not Now"]
+        if notNow.exists { notNow.tap() }
     }
 
     // MARK: - Danger Zone: username-match gate (highest-risk preserved surface)

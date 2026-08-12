@@ -54,15 +54,21 @@ struct OnboardingView: View {
                 insertion: .move(edge: .trailing).combined(with: .opacity),
                 removal:   .opacity
             ))
+            // Single source of truth for this transition's animation — go(_:)
+            // deliberately does not also wrap `phase = p` in an explicit
+            // withAnimation (which this used to do), to avoid two competing
+            // animation transactions on the same value. This alone turned out
+            // not to be the cause of the bug described below, but it's a
+            // legitimate SwiftUI footgun worth avoiding regardless.
+            .animation(.easeInOut(duration: 0.32), value: phase)
         }
-        .animation(.easeInOut(duration: 0.32), value: phase)
         .fullScreenCover(isPresented: $showAuth) {
             AuthView(initialSignIn: authSignIn, onComplete: onComplete)
         }
     }
 
     private func go(_ p: Phase) -> () -> Void {
-        { withAnimation(.easeInOut(duration: 0.32)) { phase = p } }
+        { phase = p }
     }
 }
 

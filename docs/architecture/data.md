@@ -29,6 +29,7 @@ The full Bible (KJV/ESV) is stored as a static JSON file loaded into memory on s
 | `terms_version` | TEXT | Which `CURRENT_TERMS_VERSION` (`schemas/users.py`) was accepted; a mismatch on login triggers a `terms_reaccept_required` soft gate |
 | `suspended_at` | TIMESTAMPTZ | Guideline 1.2 moderation eject — set only by `backend/moderation/admin_actions.py`, never by the normal profile-update path. A suspended account 403s on every auth route |
 | `needs_profile_completion` | BOOLEAN | Default `false`. Set `true` when a first-ever Apple sign-in is missing `full_name`/`email` — Apple only ever supplies these once per Apple ID + app, so a missed grant can't be recovered later. Cleared the next time the client sets a real `username`/`email` via `PUT /user/{id}` |
+| `is_admin` | BOOLEAN | Default `false`. Staff/admin flag checked by `require_admin` (`backend/auth/dependencies.py`) to gate admin-only surfaces, e.g. `/monitoring/detections*`. Seeded (idempotently, by live email lookup — never a hardcoded id) for exactly one account in `db.py::create_tables`; not editable via any user-facing endpoint |
 
 ---
 
@@ -185,6 +186,22 @@ Same hash-at-rest pattern as `sessions`: only a sha256 hash of the emailed token
 | `blocked_users` | `blocker_id FK→users`, `blocked_id FK→users`, `created_at` — composite PK `(blocker_id, blocked_id)` |
 
 `content_snippet` is denormalized deliberately: if the operator doesn't check the report email until hours later and the author has since edited or deleted the content, the report still shows what was actually reported. Blocking a user auto-inserts a `content_reports` row (`content_type='user'`, `reason='blocked'`) so there's one unified queue rather than a separate notification path. See `backend/moderation/` above for the filter, reporting, blocking, and admin-resolution logic; `backend/moderation/admin_actions.py`'s `resolve` command is how reports get actioned within the 24-hour commitment in the Terms of Service.
+
+---
+
+### `log_group_cursors` / `error_detections` / `error_detection_reports`
+
+| Table | Key columns |
+|---|---|
+| `log_group_cursors` | `log_group_name TEXT PK`, `last_seen_time TIMESTAMPTZ`, `updated_at` |
+| `error_detections` | `_id UUID PK`, `log_group_name`, `log_stream_name`, `event_timestamp`, `message`, `matched_signal`, `context JSONB`, `detected_at`, `status TEXT DEFAULT 'new'` |
+| `error_detection_reports` | `_id UUID PK`, `detection_id UUID UNIQUE REFERENCES error_detections(_id) ON DELETE CASCADE`, `root_cause`, `remediation_narrative`, `model`, `generated_at TIMESTAMPTZ` |
+
+Populated by the watchdog job (`backend/monitoring/watchdog.py`, see [Backend → Background Scheduler](backend.md#background-scheduler)). `log_group_cursors` is a per-log-group watermark so consecutive polls never re-process or skip events. `error_detections.context` holds the assembled surrounding-log-lines + log-analyzer output for a hit; `status` starts at `'new'` and moves to `'diagnosed'` once the debugging agent (`backend/monitoring/debug_agent.py`) has produced a report for it.
+
+`error_detection_reports` holds the debugging agent's diagnostic write-up (root cause + remediation narrative) for a detection — one row per detection (`detection_id` is `UNIQUE`; a rerun upserts in place rather than accumulating history). Populated automatically right after a detection persists (one OpenRouter call per detected error, not per poll cycle) and on-demand via `POST /monitoring/detections/{id}/report` (see [API → Monitoring](../api/overview.md#monitoring-error-detections)). Cascades away with its parent `error_detections` row.
+
+Indexed on `(detected_at DESC)` and `(log_group_name, detected_at DESC)` for the list feed's default ordering and log-group filter.
 
 ---
 

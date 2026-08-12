@@ -747,6 +747,26 @@ body {
   display: none;
 }
 
+/* Admin triage console (Direction C, mobile only): horizontally-scrollable
+   chip filter strip -- scrollbar hidden, scrolling itself stays available. */
+.admin-chip-strip {
+  scrollbar-width: none;
+}
+.admin-chip-strip::-webkit-scrollbar {
+  display: none;
+}
+
+/* Admin triage console (Direction C, mobile only): antd Segmented's "large"
+   size defaults to a ~40px item height -- bump to the 44px tap-target floor
+   (design-notes.md §4) for the Error/Report split in the list-overlay drawer. */
+.detection-overlay-segmented .ant-segmented-item,
+.detection-overlay-segmented .ant-segmented-item-label {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 /* ── Mobile / portrait tablet (≤1024px) ── */
 @media (max-width: 1024px) {
   :root {

@@ -156,3 +156,19 @@ Subscribed users (`plan_type != 'free'`, status `active`/`trialing`) are always 
 |---|---|---|
 | POST | `/filter/{user_id}` | Filter notes by book, date, title, or user |
 | POST | `/sort/{user_id}` | Sort notes by date ascending or descending |
+
+---
+
+## Monitoring (Error Detections)
+
+Read-only feed of CloudWatch error detections collected by the background watchdog job (see [Backend → Background Scheduler](../architecture/backend.md#background-scheduler)). Auth: **admin-only**. All routes require `require_admin` (session auth via the `session` cookie, plus an `is_admin` flag on the resolved `users` row) — `401` for no/invalid session, `403` for an authenticated caller who isn't flagged admin. This replaces the earlier any-authenticated-user placeholder.
+
+| Method | Route | Description |
+|---|---|---|
+| GET | `/monitoring/detections` | Paginated, filterable list of detections, most recent first. Query params: `log_group_name`, `start_time`, `end_time`, `limit` (1-200, default 50), `offset`. Returns `{ items, total, limit, offset }`; each item omits the assembled `context` blob. |
+| GET | `/monitoring/detections/{detection_id}` | Full detection record, including assembled `context` (nearby log lines + log-analyzer output). `404` if not found. |
+| GET | `/monitoring/detections/{detection_id}/report` | The debugging agent's persisted diagnostic report for one detection: `{ id, detection_id, root_cause, remediation_narrative, model, generated_at }`. `404` if the detection or its report doesn't exist yet. |
+| POST | `/monitoring/detections/{detection_id}/report` | On-demand (re)generate the debugging agent's report for one detection, overwriting any prior report for it. `404` if the detection doesn't exist, `502` if the upstream OpenRouter call fails. |
+| POST | `/monitoring/detections/{detection_id}/report/download-audit` | Audit-only: records that an admin downloaded the (client-assembled) remediation Markdown handoff file for one detection. Returns no detection/report content — just `{ "logged": true }`. `404` if the detection doesn't exist. The admin page calls this immediately before triggering the local file download, since the `.md` itself is built entirely client-side from data already fetched. |
+
+Nothing under `/monitoring` executes, queues, or takes any action against the server — this surface (including the debugging agent) is strictly read-only/reporting. The debugging agent (`backend/monitoring/debug_agent.py`) reads a detection's `message` + `context`, redacts anything shaped like a secret/credential/API key/connection-string password before it reaches the OpenRouter prompt, and produces a root-cause + remediation-narrative write-up — a recommendation for a human operator, never a record of an action taken. It reuses `AgentManager`'s existing OpenRouter credential/wiring (`backend/interactions/agent.py`) rather than a second isolated key. It runs automatically once per newly-persisted detection (from the watchdog's poll cycle) and routes `error_detections.status` to `"diagnosed"` on success; the `POST` route above lets the admin page trigger a rerun.

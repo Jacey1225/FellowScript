@@ -680,6 +680,27 @@ struct NoteDetailView: View {
                     if msg == nil { dismiss() }
                     return msg
                 }
+                // Root cause of the Save/Cancel overlap regression (task
+                // 20260810-note-editor-save-cancel-overlap-v2), confirmed via
+                // a screenshot captured mid-investigation: a sheet presented
+                // from a view that is itself already inside a sheet (this
+                // "sheet-on-a-sheet" path, as opposed to NotesListView's own
+                // direct, single-level .sheet) can genuinely — at the real
+                // UIKit level, not just a SwiftUI layout-proposal quirk —
+                // adopt a small, centered "form sheet" compact-adaptation
+                // presentation instead of the normal near-full-screen "page
+                // sheet" style, racy across launches. .presentationDetents
+                // alone (kept below) did not reliably prevent this — .large
+                // only controls which DETENT a resizable sheet rests at, not
+                // which ADAPTATION style is used when the presentation
+                // context is compact/nested, which is the actual thing
+                // going wrong here. .presentationCompactAdaptation(.fullScreenCover)
+                // explicitly overrides that adaptation so the nested sheet
+                // always renders full-screen, matching the direct
+                // (non-nested) sheet's behavior instead of racily falling
+                // back to a small form-sheet card.
+                .presentationDetents([.large])
+                .presentationCompactAdaptation(.fullScreenCover)
             }
         }
         .preferredColorScheme(.dark)

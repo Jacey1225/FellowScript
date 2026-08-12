@@ -1,5 +1,5 @@
 {
-  "originHash" : "9ae3f3ceb93b440c77066956fa7ca4c6c77df1512f64b9beaa9ab6d83ff97ebb",
+  "originHash" : "2926a28caf80b79016b5c4c876de31cbfb9a292b7cdcb82709968979c3e52bc9",
   "pins" : [
     {
       "identity" : "amazon-chime-sdk-ios-spm",
@@ -8,6 +8,15 @@
       "state" : {
         "revision" : "597a0aa21de427c312f62949561ad74277819738",
         "version" : "0.27.3"
+      }
+    },
+    {
+      "identity" : "viewinspector",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/nalexn/ViewInspector.git",
+      "state" : {
+        "revision" : "e9a06346499a3a889165647e3f23f8a7b2609a1c",
+        "version" : "0.10.3"
       }
     }
   ],

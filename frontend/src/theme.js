@@ -104,5 +104,11 @@ export const fsTheme = {
     Spin: {
       colorPrimary: '#C8861A',
     },
+    Segmented: {
+      itemSelectedBg:   'rgba(200,134,26,0.22)',
+      itemSelectedColor: '#C8861A',
+      itemHoverColor:   '#E09A30',
+      trackBg:          'rgba(20,12,4,0.7)',
+    },
   },
 };
