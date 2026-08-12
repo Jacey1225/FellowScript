@@ -930,7 +930,7 @@
 <tr>
 <td><code>/admin/detections/:id</code></td>
 <td><code>pages/AdminDetectionDetail.jsx</code></td>
-<td><strong>Hidden, admin-only.</strong> One detection's raw error + collapsible CloudWatch context, plus the debugging agent's persisted diagnostic report (root cause + remediation narrative), with a Generate/Rerun action that surfaces 429 rate-limit feedback (client-side cooldown) distinctly from a 502 OpenRouter failure. Same <code>AdminGate</code> + <code>require_admin</code> gating as <code>/admin</code>. Unchanged at any width — reachable via direct navigation/refresh, but no longer how mobile reaches detail from the <code>/admin</code> list (see <code>DetectionDetailOverlay</code> below).</td>
+<td><strong>Hidden, admin-only.</strong> One detection's raw error + collapsible CloudWatch context, plus the debugging agent's persisted diagnostic report (root cause + remediation narrative), with a Generate/Rerun action that surfaces 429 rate-limit feedback (client-side cooldown) distinctly from a 502 OpenRouter failure. Same <code>AdminGate</code> + <code>require_admin</code> gating as <code>/admin</code>. Unchanged at any width — reachable via direct navigation/refresh, but no longer how mobile reaches detail from the <code>/admin</code> list (see <code>DetectionDetailOverlay</code> below). A "Download Remediation Instructions" button next to the Generate/Rerun action assembles a single Markdown handoff file (error record, raw context, diagnostic report if one exists) entirely client-side via <code>lib/remediationMarkdown.js</code> and triggers a browser download; a fire-and-forget <code>POST .../report/download-audit</code> call logs the export server-side without blocking or gating the download itself. Stays enabled with no report yet generated, producing an error-only file.</td>
 </tr>
 </tbody>
 </table>
@@ -1019,7 +1019,7 @@
 </tr>
 <tr>
 <td><code>DetectionDetailOverlay.jsx</code></td>
-<td>Mobile-only (≤1024px) "list-overlay drawer" for a detection's detail, rendered by <code>AdminDetections.jsx</code> and reusing the <code>.mobile-overlay</code> slide-up CSS class. Duplicates (rather than shares) <code>AdminDetectionDetail.jsx</code>'s fetch/rerun-report logic so that page's desktop behavior stays untouched. Splits content into an antd <code>Segmented</code> "Error"/"Report" toggle (a status dot on "Report" indicates whether one has been generated) instead of stacking both cards, since a phone screen doesn't have room for both at once.</td>
+<td>Mobile-only (≤1024px) "list-overlay drawer" for a detection's detail, rendered by <code>AdminDetections.jsx</code> and reusing the <code>.mobile-overlay</code> slide-up CSS class. Duplicates (rather than shares) <code>AdminDetectionDetail.jsx</code>'s fetch/rerun-report logic so that page's desktop behavior stays untouched. Splits content into an antd <code>Segmented</code> "Error"/"Report" toggle (a status dot on "Report" indicates whether one has been generated) instead of stacking both cards, since a phone screen doesn't have room for both at once. Its Report panel has the same icon-only "Download Remediation Instructions" button as the desktop page (also duplicated rather than shared, calling the same <code>lib/remediationMarkdown.js</code> helper and audit endpoint independently).</td>
 </tr>
 </tbody>
 </table>
