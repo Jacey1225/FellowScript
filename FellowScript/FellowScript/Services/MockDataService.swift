@@ -297,7 +297,18 @@ final class MockDataService: DataServiceProtocol {
         return freshUser
     }
     func updateUser(userId: String, body: [String: String]) async throws -> FSUser { Self.mockUser }
-    func deleteUser(userId: String) async throws {}
+    // Deterministically fails when launched with "UI-TESTING-DELETE-FAILS"
+    // (task 20260812-account-delete-confirmation, testing step 3) so
+    // AccountUITests can drive AccountView's real Delete-account failure path
+    // (error alert shown, signOut() NOT called) end-to-end, the same way
+    // signIn()'s username/password check already lets tests drive a real auth
+    // failure — mirrors that existing conditional-throw convention rather
+    // than adding a new ad hoc mutable flag to this service.
+    func deleteUser(userId: String) async throws {
+        if ProcessInfo.processInfo.arguments.contains("UI-TESTING-DELETE-FAILS") {
+            throw AppError.networkError("Could not delete your account. Please try again.")
+        }
+    }
 
     // Notes
     func fetchNotes(userId: String) async throws -> [String: FSNote] { Self.mockNotes }

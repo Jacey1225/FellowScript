@@ -28,7 +28,7 @@ Clicking **Upgrade** on web opens a Stripe Checkout session (`POST /subscription
 Account deletion requires the user to type their username as confirmation, then press **Delete Account**.
 
 - **Web**: `DELETE /user/{user_id}` is called; on success the user is signed out and redirected to `/signin`.
-- **iOS**: `NetworkService.deleteUser(userId:)` is awaited first; `signOut()` is called after on `MainActor` (no race condition).
+- **iOS**: `appState.service.deleteUser(userId:)` is awaited first; `signOut()` is only called on `MainActor` after that call succeeds. If it throws (network error, 5xx, expired session, etc.), the user is **not** signed out — a "Delete Account Failed" alert surfaces the `LocalizedError` message instead, mirroring the page's other inline-alert failure patterns (`agentMsg`/`limitMsg`/`subMsg`), so a failed deletion never leaves the user silently logged out while their account may still exist server-side.
 
 The delete endpoint manually removes owned notes, nulls message and devotion author fields, then deletes the user row. All remaining related rows (subscriptions, highlights, bookmarks, notifications, agents) cascade automatically via FK constraints.
 

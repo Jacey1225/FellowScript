@@ -494,6 +494,12 @@ struct AccountView: View {
     // Danger zone
     @State private var deleteConfirm  = ""
     @State private var showDeleteAlert = false
+    @State private var deleteAccountBusy = false
+    // Set when deleteUser() throws — mirrors the vm.agentMsg/vm.limitMsg
+    // inline-alert pattern (a LocalizedError-backed message surfaced via a
+    // native .alert). Non-nil drives the "Delete Account Failed" alert below;
+    // must NOT be conflated with a successful deletion signing the user out.
+    @State private var deleteErrorMsg: String? = nil
 
     var body: some View {
         NavigationStack {
@@ -650,13 +656,41 @@ struct AccountView: View {
             Button("Cancel", role: .cancel) {}
             Button("Delete", role: .destructive) {
                 let uid = appState.currentUser?.user_id ?? ""
+                deleteAccountBusy = true
                 Task {
-                    try? await appState.service.deleteUser(userId: uid)
-                    await MainActor.run { appState.signOut() }
+                    do {
+                        try await appState.service.deleteUser(userId: uid)
+                        // Only sign out — locally clearing the session and
+                        // navigating away — once the backend has confirmed
+                        // the account is actually gone. Previously this used
+                        // `try? ... ; appState.signOut()` unconditionally, so
+                        // a failed delete (network error, 5xx, expired
+                        // session) still logged the user out of their
+                        // device-local session while the account/data could
+                        // still exist server-side, with no error shown.
+                        await MainActor.run {
+                            deleteAccountBusy = false
+                            appState.signOut()
+                        }
+                    } catch {
+                        await MainActor.run {
+                            deleteAccountBusy = false
+                            deleteErrorMsg = (error as? LocalizedError)?.errorDescription
+                                ?? "Could not delete your account. Please try again."
+                        }
+                    }
                 }
             }
         } message: {
             Text("This will permanently delete your account and all data. This cannot be undone.")
+        }
+        .alert("Delete Account Failed", isPresented: Binding(
+            get:  { deleteErrorMsg != nil },
+            set:  { if !$0 { deleteErrorMsg = nil } }
+        )) {
+            Button("OK", role: .cancel) { deleteErrorMsg = nil }
+        } message: {
+            Text(deleteErrorMsg ?? "")
         }
     }
 
@@ -1504,7 +1538,7 @@ struct AccountView: View {
                 .font(.lora(Theme.fontXXS)).tracking(4)
                 .foregroundColor(Theme.error.opacity(0.65))
 
-            Text("Permanently deletes your account, all notes, highlights, and removes you from all groups and friend lists. This cannot be undone.")
+            Text("Permanently deletes your account, all notes, highlights, and removes you from all groups and friend lists. This cannot be undone. Type your username below to confirm.")
                 .font(.lora(Theme.fontSM))
                 .foregroundColor(Theme.textMuted)
                 .fixedSize(horizontal: false, vertical: true)
@@ -1531,7 +1565,10 @@ struct AccountView: View {
                 .padding(.horizontal, 16).padding(.vertical, 8)
                 .overlay(Capsule().stroke(Theme.error.opacity(0.4), lineWidth: 1))
             }
-            .disabled(deleteConfirm != (appState.currentUser?.username ?? ""))
+            // deleteAccountBusy guards against re-tapping/re-showing the
+            // confirmation alert while a prior delete request is still in
+            // flight; the username-match condition itself is unchanged.
+            .disabled(deleteConfirm != (appState.currentUser?.username ?? "") || deleteAccountBusy)
             .accessibilityLabel("Delete account button")
         }
         .padding(.horizontal, 18).padding(.vertical, 16)

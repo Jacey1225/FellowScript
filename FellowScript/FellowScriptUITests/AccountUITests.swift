@@ -154,8 +154,14 @@ final class AccountUITests: XCTestCase {
     // MARK: - Shared flow: onboarding + sign-in, then land on the Account tab
     // (mirrors NoteEditorUITests.signInAndReachDashboard, routed to Account).
 
+    // extraLaunchArguments: task 20260812-account-delete-confirmation, testing
+    // step 3 — lets test_dangerZone_deleteFails_showsErrorAndStaysSignedIn
+    // additionally pass "UI-TESTING-DELETE-FAILS" so MockDataService.deleteUser
+    // deterministically throws, without affecting the other tests in this file
+    // (which omit it and keep the prior, always-succeeds MockDataService.deleteUser
+    // behavior).
     @discardableResult
-    private func signInAndReachAccount() -> XCUIApplication {
+    private func signInAndReachAccount(extraLaunchArguments: [String] = []) -> XCUIApplication {
         let app = XCUIApplication()
 
         addUIInterruptionMonitor(withDescription: "System permission alerts") { alert in
@@ -169,7 +175,7 @@ final class AccountUITests: XCTestCase {
         // Route the app at MockDataService instead of the live backend, and
         // force a real cold launch so every test starts from clean, in-memory
         // MockDataService state (agents/subscription/etc. reset each launch).
-        app.launchArguments = ["UI-TESTING"]
+        app.launchArguments = ["UI-TESTING"] + extraLaunchArguments
         app.terminate()
         app.launch()
 
@@ -332,6 +338,73 @@ final class AccountUITests: XCTestCase {
             RunLoop.current.run(until: Date().addingTimeInterval(0.3))
         }
         XCTAssertTrue(signedOut, "expected the destructive Delete confirmation to sign the user out back to the Auth flow\n\(app.debugDescription)")
+    }
+
+    /// Regression coverage for task 20260812-account-delete-confirmation: the
+    /// swallowed-failure bug fixed in AccountView.swift's "Delete Account"
+    /// alert handler (previously `try? await appState.service.deleteUser(...)`
+    /// followed by an unconditional `appState.signOut()`, so a failed deletion
+    /// silently signed the user out of their device-local session while the
+    /// account/data could still exist server-side, with no error shown).
+    /// Drives MockDataService.deleteUser's new UI-TESTING-DELETE-FAILS seam to
+    /// force a real thrown error through the exact same async Task the success
+    /// path (test_dangerZone_confirmedDelete_deletesAccountAndSignsOut) uses,
+    /// and asserts the failure path now: (1) surfaces a clear, visible error
+    /// alert, (2) does NOT sign the user out, and (3) leaves the account
+    /// screen — specifically the Danger Zone controls — intact and usable
+    /// (not an ambiguous mid-navigation state).
+    func test_dangerZone_deleteFails_showsErrorAndStaysSignedIn() {
+        let app = signInAndReachAccount(extraLaunchArguments: ["UI-TESTING-DELETE-FAILS"])
+
+        let confirmField = app.textFields["Type your username to confirm deletion"]
+        scrollUntilHittable(confirmField, app: app)
+        confirmField.tap()
+        confirmField.typeText("jacob")
+
+        let deleteButton = app.buttons["Delete account button"]
+        XCTAssertTrue(deleteButton.isEnabled)
+
+        dismissKeyboardIfPresent(app)
+        scrollUntilExists(deleteButton, app: app)
+
+        let confirmAlert = app.alerts["Delete Account"]
+        tapUntil(deleteButton, successElement: confirmAlert, app: app)
+        confirmAlert.buttons["Delete"].tap()
+
+        // MockDataService.deleteUser throws immediately (no artificial delay),
+        // but the throw is surfaced back to the main actor asynchronously via
+        // the Task in AccountView's alert handler, so poll rather than assert
+        // synchronously right after tapping Delete.
+        let failureAlert = app.alerts["Delete Account Failed"]
+        XCTAssertTrue(failureAlert.waitForExistence(timeout: 10),
+                      "expected a 'Delete Account Failed' alert after a failed deleteUser() call\n\(app.debugDescription)")
+        XCTAssertTrue(
+            failureAlert.staticTexts["Could not delete your account. Please try again."].exists,
+            "expected the thrown AppError's message to be surfaced verbatim, not a generic/blank message\n\(app.debugDescription)"
+        )
+
+        failureAlert.buttons["OK"].tap()
+        XCTAssertFalse(app.alerts["Delete Account Failed"].exists)
+
+        // Must NOT have signed out: no Auth-flow surface should appear, and
+        // the Danger Zone's own controls (proof AccountView is still showing,
+        // not an ambiguous blank/transitional state) must still be present
+        // and usable. (Deliberately not checking textFields["Username field"] —
+        // AccountView's own Edit Profile section reuses that exact
+        // accessibilityLabel for the signed-in user's username field, so its
+        // mere existence doesn't distinguish "still on Account" from "back on
+        // Auth"; "Get Started"/onboarding and the tab bar's "Home" do.)
+        XCTAssertFalse(app.buttons["Sign In"].exists, "a failed deletion must not sign the user out")
+        XCTAssertFalse(app.buttons["Get Started"].exists, "a failed deletion must not navigate back to onboarding/Auth")
+        XCTAssertTrue(app.buttons["Home"].exists, "expected the signed-in tab bar to still be showing after a failed deletion")
+        XCTAssertTrue(app.buttons["Account"].exists || app.buttons["Delete account button"].exists,
+                      "expected to remain on/reachable from the Account screen after a failed deletion\n\(app.debugDescription)")
+
+        // The confirm field must still hold the matching username and the
+        // button must still be enabled — proves the failure path didn't leave
+        // deleteAccountBusy stuck true, which would permanently disable retry.
+        scrollUntilExists(deleteButton, app: app)
+        XCTAssertTrue(deleteButton.isEnabled, "Delete My Account must be re-enabled (not stuck busy) after a failed delete, so the user can retry")
     }
 
     // MARK: - Sign Out (kept as its own neutral, non-danger-tinted card)
