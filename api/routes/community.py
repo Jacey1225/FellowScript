@@ -1,9 +1,10 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Query
 from backend.interactions.groups import GroupsManager
 from backend.interactions.friends import  FriendsManager
 from backend.auth.dependencies import require_match
 from backend.moderation.content_filter import check_clean, ContentRejected
 from schemas.message import Group
+from routes.notes import MAX_NOTES_PAGE_SIZE
 
 group_router = APIRouter(prefix="/groups")
 friend_router = APIRouter(prefix="/friends")
@@ -56,16 +57,31 @@ async def fetch_group(user_id: str, group_id: str, _: str = Depends(require_matc
 
 
 @group_router.get("/{user_id}/{group_id}/notes")
-async def fetch_group_notes(user_id: str, group_id: str, _: str = Depends(require_match("user_id"))) -> dict:
-    """Retrieve all public notes shared within a group.
+async def fetch_group_notes(
+    user_id: str,
+    group_id: str,
+    limit: int | None = Query(default=None, ge=1, le=MAX_NOTES_PAGE_SIZE, description="Max notes to return; omit for the full unpaginated set"),
+    offset: int | None = Query(default=None, ge=0, description="Notes to skip, for paging; omit for the full unpaginated set"),
+    order: str = Query(default="desc", pattern="^(asc|desc)$", description="Sort direction on timestamp"),
+    _: str = Depends(require_match("user_id")),
+) -> dict:
+    """Retrieve public notes shared within a group, ordered by timestamp.
+    `limit`/`offset` are optional and default to returning the full
+    unpaginated set, so existing callers keep working unchanged.
 
     Args:
         user_id: UUID of the requesting user.
         group_id: ID of the group whose notes to retrieve.
+        limit: Max notes to return (1-200). Omit for the full set.
+        offset: Notes to skip, for paging. Omit for the full set.
+        order: "asc" or "desc" timestamp direction (default "desc",
+            newest first). Changing order changes what "next page" means,
+            so callers paging through results must keep it fixed.
 
     Returns:
-        dict: Mapping of username -> {note_id -> note data} for all public
-            notes belonging to the group.
+        dict: Mapping of username -> {note_id -> note data} for the
+            qualifying notes in the requested page (or all of them, if
+            limit/offset are omitted).
 
     Raises:
         HTTPException 403: If the caller is not a member of the group.
@@ -73,7 +89,7 @@ async def fetch_group_notes(user_id: str, group_id: str, _: str = Depends(requir
     manager = GroupsManager(user_id, group_id)
     if not manager.is_member():
         raise HTTPException(status_code=403, detail="Not a member of this group")
-    return manager.fetch_notes()
+    return manager.fetch_notes(limit=limit, offset=offset, order=order)
 
 
 @group_router.get("/{user_id}/{note_id}/{group_id}/replies")

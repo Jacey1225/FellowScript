@@ -966,7 +966,8 @@
 <p>The Notes sidebar (<code>NotesSidebar</code>) appears in the right panel of the Reader. It has two tabs — Notes and Highlights — and a full rich-text editor for creating and editing notes.</p>
 <hr />
 <h2 id="notes-tab">Notes Tab</h2>
-<p>Displays all personal notes (or group public notes when a group is selected). Notes are always sorted by <strong>creation date, newest first</strong>.</p>
+<p>Displays personal notes (or group public notes when a group is selected). Notes are always sorted by <strong>creation date, newest first</strong>.</p>
+<p><strong>iOS pagination</strong> — the iOS Notes list loads 15 notes at a time for whichever scope is active (Personal or the selected group) instead of fetching the whole collection up front. Scrolling to the bottom of the list fetches and appends the next 15, showing a loading indicator while the request is in flight; pagination stops automatically once the scope has no more notes. Switching the group chip, the Notes/Highlights tab, or the sort order (Newest/Oldest) resets back to page 1 for the newly selected scope rather than reusing stale pages — sort order in particular must reset because it changes the server-side ordering the pages are drawn from. The visibility filter (All/Private/Public) stays client-side and is applied only to notes already loaded so far, so a narrow filter can look sparse until more pages have been scrolled into view.</p>
 <p>Each note card shows:
 - <strong>Title</strong> — Lora serif, bold
 - <strong>Public badge</strong> — gold tag if the note is shared with the group

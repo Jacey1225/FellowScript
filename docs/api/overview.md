@@ -33,7 +33,7 @@ All signup paths automatically create a `plan_type='free'` subscription row for 
 
 | Method | Route | Description |
 |---|---|---|
-| GET | `/notes/{user_id}` | All personal notes for the user (excludes replies and group notes) |
+| GET | `/notes/{user_id}` | Personal notes for the user (excludes replies and group notes), ordered by `timestamp`. Optional query params: `limit` (1-200), `offset`, `order` (`asc`/`desc`, default `desc`). Omitting `limit`/`offset` returns the full unpaginated set, unchanged from before pagination existed. |
 | POST | `/notes/{user_id}` | Create a note. Body: `{ title, text, public, group_id, verses: [[book, ch, v], …] }` |
 | PUT | `/notes/{user_id}?note_id=` | Update a note (owner only). Replaces verse list. Bumps `timestamp`. |
 | DELETE | `/notes/{user_id}?note_id=` | Delete a note (owner only) |
@@ -73,7 +73,7 @@ Note responses include `created_at` (immutable creation timestamp) and `timestam
 | DELETE | `/groups/{user_id}/{group_id}` | Delete a group (owner only) |
 | POST | `/groups/{user_id}/{group_id}/join` | Join a group |
 | POST | `/groups/{user_id}/{group_id}/leave` | Leave a group |
-| GET | `/groups/{group_id}/notes` | All public notes in the group |
+| GET | `/groups/{user_id}/{group_id}/notes` | Public notes in the group, ordered by `timestamp`. Optional query params: `limit` (1-200), `offset`, `order` (`asc`/`desc`, default `desc`). Omitting `limit`/`offset` returns the full unpaginated set, unchanged from before pagination existed. |
 | GET | `/groups/{group_id}/highlights` | All highlights in the group |
 
 ---

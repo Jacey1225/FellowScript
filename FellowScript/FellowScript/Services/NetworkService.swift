@@ -18,8 +18,17 @@ final class NetworkService: DataServiceProtocol {
         URL(string: apiBase + path)!
     }
 
-    private func get(_ path: String) async throws -> Data {
-        let (data, response) = try await URLSession.shared.data(from: url(path))
+    /// Like `url(_:)` but appends query items — used by paginated reads
+    /// (limit/offset/order) so callers don't hand-build query strings.
+    private func url(_ path: String, query: [URLQueryItem]) -> URL {
+        guard !query.isEmpty else { return url(path) }
+        var comps = URLComponents(string: apiBase + path)!
+        comps.queryItems = query
+        return comps.url!
+    }
+
+    private func get(_ path: String, query: [URLQueryItem] = []) async throws -> Data {
+        let (data, response) = try await URLSession.shared.data(from: url(path, query: query))
         // Validate status like request()/checkedRequestRaw() do — previously this
         // never called throwIfError, so every fetch* built on it silently turned
         // an HTTP error (e.g. a 401 from an expired session) into a blank default
@@ -226,16 +235,46 @@ final class NetworkService: DataServiceProtocol {
 
     // ── Notes (read) ──────────────────────────────────────────────────────────
     // GET /notes/{userId}
+    // GET /notes/{userId}?limit=&offset=&order=   (paginated — used by NotesListView)
 
     func fetchNotes(userId: String) async throws -> [String: FSNote] {
-        let data = try await get("/notes/\(userId)")
+        try await fetchNotes(userId: userId, query: [])
+    }
+
+    /// Paginated variant threaded through from `NotesViewModel`'s scroll-triggered
+    /// paging. `order` is "asc" or "desc" (timestamp direction) and must match
+    /// what the backend accepts — see `api/routes/notes.py get_notes`.
+    func fetchNotes(userId: String, limit: Int, offset: Int, order: String) async throws -> [String: FSNote] {
+        try await fetchNotes(userId: userId, query: [
+            URLQueryItem(name: "limit",  value: String(limit)),
+            URLQueryItem(name: "offset", value: String(offset)),
+            URLQueryItem(name: "order",  value: order),
+        ])
+    }
+
+    private func fetchNotes(userId: String, query: [URLQueryItem]) async throws -> [String: FSNote] {
+        let data = try await get("/notes/\(userId)", query: query)
         guard var dict = decode([String: FSNote].self, from: data) else { return [:] }
         for (key, var note) in dict { note.id = key; dict[key] = note }
         return dict
     }
 
     func fetchGroupNotes(userId: String, groupId: String) async throws -> [String: FSNote] {
-        let raw = try await get("/groups/\(userId)/\(groupId)/notes")
+        try await fetchGroupNotes(userId: userId, groupId: groupId, query: [])
+    }
+
+    /// Paginated variant — same limit/offset/order contract as `fetchNotes`,
+    /// threaded to `GET /groups/{userId}/{groupId}/notes`.
+    func fetchGroupNotes(userId: String, groupId: String, limit: Int, offset: Int, order: String) async throws -> [String: FSNote] {
+        try await fetchGroupNotes(userId: userId, groupId: groupId, query: [
+            URLQueryItem(name: "limit",  value: String(limit)),
+            URLQueryItem(name: "offset", value: String(offset)),
+            URLQueryItem(name: "order",  value: order),
+        ])
+    }
+
+    private func fetchGroupNotes(userId: String, groupId: String, query: [URLQueryItem]) async throws -> [String: FSNote] {
+        let raw = try await get("/groups/\(userId)/\(groupId)/notes", query: query)
         // Response shape: { username: { note_id: { user_id, title, text, public, group_id, is_reply, timestamp } } }
         guard let outer = (try? JSONSerialization.jsonObject(with: raw)) as? [String: Any] else { return [:] }
 

@@ -97,17 +97,46 @@ class GroupsManager(DBManager):
             "other_msgs": self.format_messages(other_msgs),
         }
 
-    def fetch_notes(self) -> dict:
-        """Retrieve all public, non-reply notes belonging to the group.
+    def fetch_notes(self, limit: int | None = None, offset: int | None = None, order: str = "desc") -> dict:
+        """Retrieve public, non-reply notes belonging to the group, ordered
+        by timestamp and optionally paginated.
+
+        Uses the raw cursor (rather than ``lookup``) because ordering and
+        LIMIT/OFFSET aren't expressible through the generic helpers.
+
+        Args:
+            limit: Max notes to return; omit for the full unpaginated set
+                (preserves historical behavior for existing callers).
+            offset: Notes to skip, for paging; omit for the full set.
+            order: "asc" or "desc" timestamp direction. Changing it changes
+                what "next page" means, so a caller paging through results
+                must keep it fixed across the sequence.
 
         Returns:
             dict: Mapping of username -> {note_id -> note data dict} for
-                all qualifying notes in the group.
+                qualifying notes in the requested page (or all of them, if
+                limit/offset are omitted).
         """
         group_notes: dict = {}
         blocked = self._blocked_set()
-        notes = self.lookup("notes", {"group_id": self.group_id, "is_reply": False})
-        for nid, data in notes.items():
+        direction = "ASC" if order == "asc" else "DESC"
+        query = (
+            "SELECT _id, user_id, title, text, public, group_id, is_reply, "
+            "parent_note_id, timestamp, created_at FROM notes "
+            "WHERE group_id = %s AND is_reply = false "
+            f"ORDER BY timestamp {direction}, _id {direction}"
+        )
+        params: list = [self.group_id]
+        if limit is not None:
+            query += " LIMIT %s"
+            params.append(limit)
+        if offset is not None:
+            query += " OFFSET %s"
+            params.append(offset)
+        self.cur.execute(query, params)
+        cols = [desc[0] for desc in self.cur.description]
+        for row in self.cur.fetchall():
+            nid, data = row[0], dict(zip(cols[1:], row[1:]))
             uid = data.get("user_id")
             if not uid or uid in blocked:
                 continue

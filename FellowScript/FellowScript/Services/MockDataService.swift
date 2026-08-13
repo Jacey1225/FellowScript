@@ -37,6 +37,14 @@ protocol DataServiceProtocol {
     func fetchNotes(userId: String) async throws -> [String: FSNote]
     func fetchGroupNotes(userId: String, groupId: String) async throws -> [String: FSNote]
 
+    // Notes (read, paginated) — used by NotesListView's scroll-triggered
+    // paging. `order` is "asc" or "desc" (timestamp direction). Kept as
+    // separate overloads (rather than optional params on the methods above)
+    // so DashboardView/AccountView's existing unpaginated call sites need no
+    // changes.
+    func fetchNotes(userId: String, limit: Int, offset: Int, order: String) async throws -> [String: FSNote]
+    func fetchGroupNotes(userId: String, groupId: String, limit: Int, offset: Int, order: String) async throws -> [String: FSNote]
+
     // Notes (write)
     func saveNote(_ note: FSNote, editingId: String?, userId: String) async throws -> String
     func deleteNote(noteId: String, userId: String) async throws
@@ -302,6 +310,19 @@ final class MockDataService: DataServiceProtocol {
     // Notes
     func fetchNotes(userId: String) async throws -> [String: FSNote] { Self.mockNotes }
     func fetchGroupNotes(userId: String, groupId: String) async throws -> [String: FSNote] { [:] }
+
+    // Notes (paginated) — slices the static mock set so the preview/mock
+    // environment exercises the same 15-at-a-time paging as the live app.
+    func fetchNotes(userId: String, limit: Int, offset: Int, order: String) async throws -> [String: FSNote] {
+        let sorted = Self.mockNotes.sorted {
+            order == "asc" ? $0.value.timestamp < $1.value.timestamp : $0.value.timestamp > $1.value.timestamp
+        }
+        guard offset < sorted.count else { return [:] }
+        let page = sorted[offset...].prefix(limit)
+        return Dictionary(uniqueKeysWithValues: page.map { ($0.key, $0.value) })
+    }
+
+    func fetchGroupNotes(userId: String, groupId: String, limit: Int, offset: Int, order: String) async throws -> [String: FSNote] { [:] }
 
     func saveNote(_ note: FSNote, editingId: String?, userId: String) async throws -> String {
         editingId ?? note.id

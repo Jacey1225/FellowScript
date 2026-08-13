@@ -1039,7 +1039,7 @@
 <tr>
 <td>GET</td>
 <td><code>/notes/{user_id}</code></td>
-<td>All personal notes for the user (excludes replies and group notes)</td>
+<td>Personal notes for the user (excludes replies and group notes), ordered by <code>timestamp</code>. Optional query params: <code>limit</code> (1-200), <code>offset</code>, <code>order</code> (<code>asc</code>/<code>desc</code>, default <code>desc</code>). Omitting <code>limit</code>/<code>offset</code> returns the full unpaginated set, unchanged from before pagination existed.</td>
 </tr>
 <tr>
 <td>POST</td>
@@ -1163,8 +1163,8 @@
 </tr>
 <tr>
 <td>GET</td>
-<td><code>/groups/{group_id}/notes</code></td>
-<td>All public notes in the group</td>
+<td><code>/groups/{user_id}/{group_id}/notes</code></td>
+<td>Public notes in the group, ordered by <code>timestamp</code>. Optional query params: <code>limit</code> (1-200), <code>offset</code>, <code>order</code> (<code>asc</code>/<code>desc</code>, default <code>desc</code>). Omitting <code>limit</code>/<code>offset</code> returns the full unpaginated set, unchanged from before pagination existed.</td>
 </tr>
 <tr>
 <td>GET</td>

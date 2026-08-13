@@ -9,15 +9,53 @@ import Combine
 @MainActor
 final class NotesViewModel: ObservableObject {
     var service: DataServiceProtocol = MockDataService.shared
+    private var userId: String = ""
 
     @Published var notes:             [String: FSNote]    = [:]
     @Published var highlights:        [String: String]    = [:]
     @Published var groups:            [FSGroup]           = []
-    @Published var currentGroupId:    String?             = nil   // nil = Personal
-    @Published var activeTab:         NoteTab             = .notes
-    @Published var sortOrder:         SortOrder           = .newest
-    @Published var visibilityFilter:  VisibilityFilter    = .all
     @Published var isLoading          = true
+
+    // ── Paging state ────────────────────────────────────────────────────────
+    // Notes are loaded 15-at-a-time for whichever scope (Personal or one
+    // selected group) is currently active — see `load()`/`loadFirstPage()`/
+    // `loadNextPageIfNeeded()`.
+    static let pageSize = 15
+    private var pageOffset  = 0
+    @Published var hasMorePages = true
+    @Published var isLoadingMore = false
+
+    @Published var currentGroupId:    String?             = nil {   // nil = Personal
+        didSet {
+            guard oldValue != currentGroupId else { return }
+            Task { await loadFirstPage() }
+        }
+    }
+    @Published var activeTab:         NoteTab             = .notes {
+        didSet {
+            // Group chips (the only thing that can change `currentGroupId`)
+            // are only shown on the Notes tab, so nothing can go stale while
+            // on Highlights — only re-page when switching back *to* Notes.
+            guard oldValue != activeTab, activeTab == .notes else { return }
+            Task { await loadFirstPage() }
+        }
+    }
+    @Published var sortOrder:         SortOrder           = .newest {
+        didSet {
+            // Sort order drives ORDER BY on the server, so it changes what
+            // "next page" means — reload from page 1 rather than trying to
+            // resume the old cursor.
+            guard oldValue != sortOrder else { return }
+            Task { await loadFirstPage() }
+        }
+    }
+    @Published var visibilityFilter:  VisibilityFilter    = .all
+
+    /// Cache key for the current scope's first page — namespaced by scope so
+    /// switching groups never shows a stale scope's cached notes.
+    private var scopeCacheKey: String {
+        "notes:\(userId):\(currentGroupId ?? "personal")"
+    }
 
     enum NoteTab: String, CaseIterable {
         case notes      = "Notes"
@@ -75,16 +113,14 @@ final class NotesViewModel: ObservableObject {
         return groups.first { $0.id == gid }?.title ?? "Group"
     }
 
+    /// Entry point called once from `NotesListView.task`. Loads highlights
+    /// and groups (small, still loaded in full) plus the first page of notes
+    /// for the current scope (Personal, since `currentGroupId` starts nil).
     func load(service: DataServiceProtocol, userId: String) async {
         self.service = service
-        isLoading = true
-        defer { isLoading = false }
+        self.userId  = userId
 
-        // ── Cache-first: show last-known data instantly, then revalidate ──────────
-        if let cached: [String: FSNote] = await DiskCache.shared.load([String: FSNote].self, forKey: "notes:\(userId)") {
-            notes = cached
-            isLoading = false
-        }
+        // ── Cache-first: show last-known highlights/groups instantly ──────────────
         if let cached: [String: String] = await DiskCache.shared.load([String: String].self, forKey: "highlights:\(userId)") {
             highlights = cached
         }
@@ -92,38 +128,91 @@ final class NotesViewModel: ObservableObject {
             groups = cached
         }
 
-        async let notesTask    = try? service.fetchNotes(userId: userId)
         async let hlTask       = try? service.fetchHighlights(userId: userId)
         async let contactsTask = try? service.fetchContacts(userId: userId)
 
-        var allNotes: [String: FSNote] = [:]
-        if let n = await notesTask { allNotes.merge(n) { _, new in new } }
-        if let h = await hlTask    { highlights = h }
-
-        var loadedGroups: [FSGroup] = []
+        if let h = await hlTask { highlights = h }
         if let (_, groupMap) = await contactsTask {
-            loadedGroups = Array(groupMap.values).sorted { $0.title < $1.title }
-            groups = loadedGroups
+            groups = Array(groupMap.values).sorted { $0.title < $1.title }
         }
-
-        // Fetch notes for every group in parallel and merge into allNotes.
-        await withTaskGroup(of: [String: FSNote].self) { group in
-            for g in loadedGroups {
-                group.addTask {
-                    (try? await service.fetchGroupNotes(userId: userId, groupId: g.id)) ?? [:]
-                }
-            }
-            for await batch in group {
-                allNotes.merge(batch) { _, new in new }
-            }
-        }
-
-        notes = allNotes
 
         // ── Write fresh data back to the cache ────────────────────────────────────
-        await DiskCache.shared.save(allNotes,   forKey: "notes:\(userId)")
         await DiskCache.shared.save(highlights, forKey: "highlights:\(userId)")
         await DiskCache.shared.save(groups,     forKey: "groups:\(userId)")
+
+        await loadFirstPage()
+    }
+
+    /// Resets paging state for whatever scope is currently selected
+    /// (`currentGroupId`) and fetches page 1. Called on initial load and
+    /// whenever the group chip, Notes/Highlights tab, or sort order changes.
+    func loadFirstPage() async {
+        pageOffset    = 0
+        hasMorePages  = true
+        isLoadingMore = false
+
+        // Cache-first: show the scope's last-known first page instantly,
+        // then revalidate against the network below.
+        if let cached: [String: FSNote] = await DiskCache.shared.load([String: FSNote].self, forKey: scopeCacheKey) {
+            notes = cached
+            isLoading = false
+        } else {
+            notes = [:]
+            isLoading = true
+        }
+
+        await fetchPage(isFirstPage: true)
+    }
+
+    /// Loads the next page for the current scope if the row that just
+    /// appeared is the last row of the currently-loaded/filtered list (or
+    /// `force` is set — used to keep paging automatically when a client-side
+    /// filter has narrowed the visible list to empty even though more
+    /// matching notes may exist in unfetched pages). No-ops if a fetch is
+    /// already in flight or the scope has no more pages.
+    func loadNextPageIfNeeded(currentId: String? = nil, force: Bool = false) async {
+        guard hasMorePages, !isLoadingMore else { return }
+        if !force {
+            guard let currentId, filteredNotes.last?.0 == currentId else { return }
+        }
+        await fetchPage(isFirstPage: false)
+    }
+
+    /// Fetches one page (`Self.pageSize` notes) for the current scope from
+    /// whichever source matches it (personal vs. a specific group), appends
+    /// or replaces `notes`, and updates paging state from the result.
+    private func fetchPage(isFirstPage: Bool) async {
+        if isFirstPage {
+            isLoading = notes.isEmpty
+        } else {
+            isLoadingMore = true
+        }
+        defer {
+            isLoading = false
+            isLoadingMore = false
+        }
+
+        let order  = sortOrder == .newest ? "desc" : "asc"
+        let offset = isFirstPage ? 0 : pageOffset
+        let fetched: [String: FSNote]
+        do {
+            if let gid = currentGroupId {
+                fetched = try await service.fetchGroupNotes(userId: userId, groupId: gid, limit: Self.pageSize, offset: offset, order: order)
+            } else {
+                fetched = try await service.fetchNotes(userId: userId, limit: Self.pageSize, offset: offset, order: order)
+            }
+        } catch {
+            fetched = [:]
+        }
+
+        if isFirstPage {
+            notes = fetched
+            await DiskCache.shared.save(notes, forKey: scopeCacheKey)
+        } else {
+            notes.merge(fetched) { _, new in new }
+        }
+        pageOffset   = offset + fetched.count
+        hasMorePages = fetched.count == Self.pageSize
     }
 
     @Published var saveError: String? = nil
@@ -393,7 +482,19 @@ struct NotesListView: View {
     // ── Notes tab ─────────────────────────────────────────────────────────────
     private var notesTab: some View {
         Group {
-            if vm.filteredNotes.isEmpty {
+            if vm.filteredNotes.isEmpty && vm.hasMorePages {
+                // The visibility filter is applied client-side over already-
+                // loaded pages only, so an empty filtered result here doesn't
+                // necessarily mean "no notes" — more pages may still contain
+                // matches. Keep paging in automatically instead of showing a
+                // false empty state.
+                VStack {
+                    Spacer()
+                    ProgressView().tint(Theme.gold)
+                    Spacer()
+                }
+                .task(id: vm.notes.count) { await vm.loadNextPageIfNeeded(force: true) }
+            } else if vm.filteredNotes.isEmpty {
                 notesEmptyState
             } else {
                 List {
@@ -403,6 +504,12 @@ struct NotesListView: View {
                             .listRowSeparator(.hidden)
                             .listRowInsets(EdgeInsets(top: 6, leading: 20, bottom: 6, trailing: 20))
                             .onTapGesture { detailNote = note }
+                            .onAppear {
+                                // Scroll-triggered pagination: fires only when
+                                // the row that appeared is the last row of the
+                                // currently-loaded/filtered list.
+                                Task { await vm.loadNextPageIfNeeded(currentId: id) }
+                            }
                             .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                                 Button(role: .destructive) {
                                     let uid = appState.currentUser?.user_id ?? ""
@@ -424,6 +531,17 @@ struct NotesListView: View {
                                 }
                             }
                             .accessibilityLabel("Note: \(note.title.isEmpty ? "Untitled" : note.title). \(note.preview)")
+                    }
+
+                    if vm.isLoadingMore {
+                        HStack {
+                            Spacer()
+                            ProgressView().tint(Theme.gold)
+                            Spacer()
+                        }
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                        .accessibilityLabel("Loading more notes")
                     }
                 }
                 .listStyle(.plain)

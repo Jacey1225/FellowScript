@@ -6,7 +6,9 @@ The Notes sidebar (`NotesSidebar`) appears in the right panel of the Reader. It 
 
 ## Notes Tab
 
-Displays all personal notes (or group public notes when a group is selected). Notes are always sorted by **creation date, newest first**.
+Displays personal notes (or group public notes when a group is selected). Notes are always sorted by **creation date, newest first**.
+
+**iOS pagination** — the iOS Notes list loads 15 notes at a time for whichever scope is active (Personal or the selected group) instead of fetching the whole collection up front. Scrolling to the bottom of the list fetches and appends the next 15, showing a loading indicator while the request is in flight; pagination stops automatically once the scope has no more notes. Switching the group chip, the Notes/Highlights tab, or the sort order (Newest/Oldest) resets back to page 1 for the newly selected scope rather than reusing stale pages — sort order in particular must reset because it changes the server-side ordering the pages are drawn from. The visibility filter (All/Private/Public) stays client-side and is applied only to notes already loaded so far, so a narrow filter can look sparse until more pages have been scrolled into view.
 
 Each note card shows:
 - **Title** — Lora serif, bold

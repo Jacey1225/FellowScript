@@ -126,6 +126,41 @@ final class ThrowingTestDataService: DataServiceProtocol {
         return try await MockDataService.shared.fetchGroupNotes(userId: userId, groupId: groupId)
     }
 
+    // Controllable / observable (task 20260812-notes-pagination, step 4
+    // testing) — used by NotesPaginationRegressionTests to prove
+    // NotesViewModel's scroll-triggered paging: page slicing, the
+    // isLoadingMore dedup guard against duplicate in-flight fetches, halting
+    // at the end of a scope, and that sort-order/scope changes reset to
+    // page 1 with the right params, without touching a real backend.
+    // `...Override`, when set, replaces the MockDataService.shared fallback
+    // so tests can hand back an arbitrary, deterministic paged slice.
+    var fetchNotesPageOverride: ((_ limit: Int, _ offset: Int, _ order: String) -> [String: FSNote])?
+    var fetchGroupNotesPageOverride: ((_ groupId: String, _ limit: Int, _ offset: Int, _ order: String) -> [String: FSNote])?
+    private(set) var fetchNotesPageCallCount = 0
+    private(set) var fetchGroupNotesPageCallCount = 0
+    private(set) var fetchNotesPageCallArgs: [(limit: Int, offset: Int, order: String)] = []
+    private(set) var fetchGroupNotesPageCallArgs: [(groupId: String, limit: Int, offset: Int, order: String)] = []
+    /// Simulated network latency so tests can prove that firing several
+    /// `loadNextPageIfNeeded` calls while one is still in flight only ever
+    /// results in a single additional fetch.
+    var fetchNotesPageDelayNanoseconds: UInt64 = 0
+
+    func fetchNotes(userId: String, limit: Int, offset: Int, order: String) async throws -> [String: FSNote] {
+        fetchNotesPageCallCount += 1
+        fetchNotesPageCallArgs.append((limit, offset, order))
+        if fetchNotesPageDelayNanoseconds > 0 { try? await Task.sleep(nanoseconds: fetchNotesPageDelayNanoseconds) }
+        if let fetchNotesPageOverride { return fetchNotesPageOverride(limit, offset, order) }
+        return try await MockDataService.shared.fetchNotes(userId: userId, limit: limit, offset: offset, order: order)
+    }
+
+    func fetchGroupNotes(userId: String, groupId: String, limit: Int, offset: Int, order: String) async throws -> [String: FSNote] {
+        fetchGroupNotesPageCallCount += 1
+        fetchGroupNotesPageCallArgs.append((groupId, limit, offset, order))
+        if fetchNotesPageDelayNanoseconds > 0 { try? await Task.sleep(nanoseconds: fetchNotesPageDelayNanoseconds) }
+        if let fetchGroupNotesPageOverride { return fetchGroupNotesPageOverride(groupId, limit, offset, order) }
+        return try await MockDataService.shared.fetchGroupNotes(userId: userId, groupId: groupId, limit: limit, offset: offset, order: order)
+    }
+
     func saveNote(_ note: FSNote, editingId: String?, userId: String) async throws -> String {
         return try await MockDataService.shared.saveNote(note, editingId: editingId, userId: userId)
     }

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Query
 from schemas.users import Note
 from db import DBManager
 from backend.interactions.groups import GroupsManager
@@ -11,6 +11,12 @@ import logging
 
 notes_router = APIRouter(prefix="/notes")
 logger = logging.getLogger(__name__)
+
+# Upper bound on a single page's size for paginated note listings. Omitting
+# limit/offset entirely still returns the full unpaginated set (see
+# get_notes / fetch_group_notes), preserving existing callers like
+# DashboardView/AccountView that expect one full-collection response.
+MAX_NOTES_PAGE_SIZE = 200
 
 
 def _can_view_note(note_data: dict, user_id: str) -> bool:
@@ -213,15 +219,46 @@ async def create_note(user_id: str, note_dict: dict, _: str = Depends(require_ma
 
 
 @notes_router.get("/{user_id}")
-async def get_notes(user_id: str, _: str = Depends(require_match("user_id"))) -> dict:
+async def get_notes(
+    user_id: str,
+    limit: int | None = Query(default=None, ge=1, le=MAX_NOTES_PAGE_SIZE, description="Max notes to return; omit for the full unpaginated set"),
+    offset: int | None = Query(default=None, ge=0, description="Notes to skip, for paging; omit for the full unpaginated set"),
+    order: str = Query(default="desc", pattern="^(asc|desc)$", description="Sort direction on timestamp"),
+    _: str = Depends(require_match("user_id")),
+) -> dict:
+    """Retrieve a user's personal (non-reply, non-group) notes, ordered by
+    timestamp. `limit`/`offset` are optional and default to returning the
+    full unpaginated set, so existing callers (DashboardView, AccountView)
+    keep working unchanged.
+
+    Args:
+        user_id: UUID of the notes' owner.
+        limit: Max notes to return (1-200). Omit for the full set.
+        offset: Notes to skip, for paging. Omit for the full set.
+        order: "asc" or "desc" timestamp direction (default "desc",
+            newest first). Changing order changes what "next page" means,
+            so callers paging through results must keep it fixed.
+
+    Returns:
+        dict: Mapping of note_id -> note data, in the requested order.
+    """
     db = DBManager()
     try:
-        db.cur.execute(
+        direction = "ASC" if order == "asc" else "DESC"
+        query = (
             "SELECT n._id, n.user_id, n.title, n.text, n.public, n.group_id, n.is_reply, n.timestamp, n.created_at "
             "FROM notes n "
-            "WHERE n.user_id = %s AND n.is_reply = false AND n.group_id IS NULL",
-            (user_id,)
+            "WHERE n.user_id = %s AND n.is_reply = false AND n.group_id IS NULL "
+            f"ORDER BY n.timestamp {direction}, n._id {direction}"
         )
+        params: list = [user_id]
+        if limit is not None:
+            query += " LIMIT %s"
+            params.append(limit)
+        if offset is not None:
+            query += " OFFSET %s"
+            params.append(offset)
+        db.cur.execute(query, params)
         rows = db.cur.fetchall()
         result = {}
         for row in rows:
