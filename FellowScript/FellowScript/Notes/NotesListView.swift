@@ -626,6 +626,14 @@ struct HighlightRow: View {
 }
 
 // ── Note detail sheet ─────────────────────────────────────────────────────────
+// Direction B ("Elevated CTA, lighter chrome") of the approved restyle —
+// see .claude/pipeline/20260813-note-viewer-mockups/design-notes.md. Adopts
+// the warm-bloom background for family resemblance with NoteEditorView/
+// ChatRootView/Dashboard, but intentionally skips the glass-card body
+// wrapper (this is read-only content — a long note's reading column stays
+// full width) and promotes Edit to a solid gradient CTA pill against a
+// secondary ghost-outline Close, mirroring AccountView's pill hierarchy.
+// Appearance only — every interaction below is byte-for-byte unchanged.
 struct NoteDetailView: View {
     let note:   FSNote
     // Returns nil on success, or an error message on failure (mirrors
@@ -633,25 +641,50 @@ struct NoteDetailView: View {
     let onSave: (FSNote) async -> String?
 
     @Environment(\.dismiss) private var dismiss
-    @State private var showEditor = false
+    // Not `private` (unlike NoteEditorView's analogous @State vars) so
+    // FellowScriptTests can assert on it directly after simulating an Edit
+    // tap via ViewInspector — see NoteDetailViewDirectionBTests.swift. No
+    // runtime behavior difference; access-control only.
+    @State var showEditor = false
+
+    // Test-only hook (ViewInspector's documented minimal-intrusion pattern
+    // for inspecting @State after an interaction — never set outside
+    // NoteDetailViewDirectionBTests.swift; inert in production since nothing
+    // assigns it). No behavior change: `.onAppear` below is a no-op unless a
+    // test supplies a closure.
+    internal var didAppear: ((Self) -> Void)?
 
     var body: some View {
         NavigationStack {
             ZStack {
                 Theme.bgPage.ignoresSafeArea()
+
+                // Warm bloom ground (shared visual language with Dashboard/
+                // Chat/Notes/NoteEditorView) — identical hex/opacity/anchor/
+                // radius to ChatRootView.swift:41-46 / NoteEditorView.swift:82-87.
+                RadialGradient(colors: [Color(hex: "#D4922A").opacity(0.20), .clear],
+                               center: UnitPoint(x: 0.12, y: 0.16), startRadius: 10, endRadius: 380)
+                    .ignoresSafeArea()
+                RadialGradient(colors: [Color(hex: "#B8761D").opacity(0.12), .clear],
+                               center: UnitPoint(x: 0.92, y: 0.60), startRadius: 10, endRadius: 340)
+                    .ignoresSafeArea()
+
                 ScrollView {
+                    // No glassCard wrapper (per Direction B) — body flows
+                    // directly on the bloom background, full width, same
+                    // structure as before, just re-themed.
                     VStack(alignment: .leading, spacing: Theme.spacingMD) {
                         Text(note.title.isEmpty ? "Untitled" : note.title)
                             .font(.playfair(Theme.fontDisplayMD))
                             .foregroundColor(Theme.parchment)
 
                         if !note.formattedTimestamp.isEmpty {
-                            Text(note.formattedTimestamp)
-                                .font(.lora(Theme.fontXS))
-                                .foregroundColor(Theme.textMuted)
+                            sectionLabel(note.formattedTimestamp)
                         }
 
-                        Divider().background(Theme.borderGoldFaint)
+                        Rectangle()
+                            .fill(Theme.goldGradient)
+                            .frame(height: 1)
 
                         NoteHTMLView(html: note.text)
                     }
@@ -661,10 +694,14 @@ struct NoteDetailView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Close") { dismiss() }.foregroundColor(Theme.gold)
+                    Button { dismiss() } label: {
+                        ghostPill("Close", compact: true)
+                    }
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Edit") { showEditor = true }.foregroundColor(Theme.gold)
+                    Button { showEditor = true } label: {
+                        gradientPill("Edit", compact: true)
+                    }
                 }
             }
             // Editor sheet lives here — note is a guaranteed let constant,
@@ -704,6 +741,35 @@ struct NoteDetailView: View {
             }
         }
         .preferredColorScheme(.dark)
+        .onAppear { didAppear?(self) }
+    }
+
+    // ── Pill controls (AccountView idiom — AccountView.swift:1554-1576 —
+    // reused as local view-scoped helpers here since those are `private`
+    // instance methods on AccountView itself, the same pattern NoteEditorView
+    // already follows for its own cancelChip/doneChip icon-chip helpers) ────
+    private func gradientPill(_ title: String, compact: Bool = false) -> some View {
+        Text(title)
+            .font(.lora(compact ? Theme.fontXS : Theme.fontSM, weight: .semibold))
+            .foregroundColor(Color(hex: "#24170A"))
+            .padding(.horizontal, compact ? 14 : 20)
+            .frame(height: compact ? 32 : 36)
+            .background(
+                LinearGradient(colors: [Color(hex: "#EDAB3C"), Color(hex: "#D4922A"), Color(hex: "#B8761D")],
+                               startPoint: .topLeading, endPoint: .bottomTrailing)
+            )
+            .clipShape(Capsule())
+    }
+
+    private func ghostPill(_ title: String, compact: Bool = false,
+                            labelColor: Color = Theme.textSecondary,
+                            strokeColor: Color = Theme.parchment.opacity(0.14)) -> some View {
+        Text(title)
+            .font(.lora(compact ? Theme.fontXS : Theme.fontSM))
+            .foregroundColor(labelColor)
+            .padding(.horizontal, compact ? 12 : 16)
+            .frame(height: compact ? 32 : 36)
+            .overlay(Capsule().stroke(strokeColor, lineWidth: 1))
     }
 }
 
