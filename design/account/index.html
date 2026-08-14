@@ -910,7 +910,7 @@
 <p>Account deletion requires the user to type their username as confirmation, then press <strong>Delete Account</strong>.</p>
 <ul>
 <li><strong>Web</strong>: <code>DELETE /user/{user_id}</code> is called; on success the user is signed out and redirected to <code>/signin</code>.</li>
-<li><strong>iOS</strong>: <code>appState.service.deleteUser(userId:)</code> is awaited first; <code>signOut()</code> is only called on <code>MainActor</code> after that call succeeds. If it throws (network error, 5xx, expired session, etc.), the user is <strong>not</strong> signed out — a "Delete Account Failed" alert surfaces the <code>LocalizedError</code> message instead, mirroring the page's other inline-alert failure patterns (<code>agentMsg</code>/<code>limitMsg</code>/<code>subMsg</code>), so a failed deletion never leaves the user silently logged out while their account may still exist server-side.</li>
+<li><strong>iOS</strong>: <code>NetworkService.deleteUser(userId:)</code> is awaited first; <code>signOut()</code> is called after on <code>MainActor</code> (no race condition).</li>
 </ul>
 <p>The delete endpoint manually removes owned notes, nulls message and devotion author fields, then deletes the user row. All remaining related rows (subscriptions, highlights, bookmarks, notifications, agents) cascade automatically via FK constraints.</p>
 <hr />
