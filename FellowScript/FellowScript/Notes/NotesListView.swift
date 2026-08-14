@@ -697,11 +697,13 @@ struct NoteDetailView: View {
                     Button { dismiss() } label: {
                         ghostPill("Close", compact: true)
                     }
+                    .buttonStyle(.plain)
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button { showEditor = true } label: {
                         gradientPill("Edit", compact: true)
                     }
+                    .buttonStyle(.plain)
                 }
             }
             // Editor sheet lives here — note is a guaranteed let constant,
@@ -767,8 +769,21 @@ struct NoteDetailView: View {
         Text(title)
             .font(.lora(compact ? Theme.fontXS : Theme.fontSM))
             .foregroundColor(labelColor)
+            // The leading toolbar slot proposes a very narrow width on iOS
+            // 26 (as if sizing for a single icon), which without this wraps
+            // "Close" letter-by-letter and truncates it. fixedSize forces
+            // the text to report/keep its natural single-line width instead
+            // of accepting that narrow proposal.
+            .fixedSize()
             .padding(.horizontal, compact ? 12 : 16)
             .frame(height: compact ? 32 : 36)
+            // Explicit (near-invisible) fill, not just a stroke overlay —
+            // AccountView's original ghostPill is stroke-only, which is fine
+            // in normal body content but collapses to a circular icon slot
+            // when used as toolbar item content on iOS 26: without an opaque
+            // background shape, the toolbar's Liquid Glass layout has no
+            // real width to size against and truncates the label.
+            .background(Capsule().fill(Theme.parchment.opacity(0.04)))
             .overlay(Capsule().stroke(strokeColor, lineWidth: 1))
     }
 }
