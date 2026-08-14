@@ -110,6 +110,35 @@ pairing described above are unchanged.
 
 Tapping a note card opens a detail view showing the full rich-text body (`NoteBody` renderer), linked verse tags, and — in group view — a reply thread with a reply input.
 
+### iOS presentation (`NoteDetailView` in `NotesListView.swift`)
+
+The iOS read-only note viewer (`FellowScript/FellowScript/Notes/NotesListView.swift`,
+`NoteDetailView`) ships **Direction B — "Elevated CTA, lighter chrome"** of the
+restyle explored in `.claude/pipeline/20260813-note-viewer-mockups/design-notes.md`.
+Appearance-only, like the `NoteEditorView` restyle above — `Close`'s `dismiss()`,
+`Edit`'s nested `NoteEditorView` sheet wiring (same `onSave` closure, same
+`.presentationDetents([.large])` / `.presentationCompactAdaptation(.fullScreenCover)`
+pair fixing the sheet-nesting regression from `20260810-note-editor-save-cancel-overlap-v2`),
+and the `note.title` / `note.formattedTimestamp` / `note.text` data flow are all
+unchanged.
+
+- **Background** — the same `Theme.bgPage` plus two `RadialGradient` blooms
+  used by `ChatRootView`/`NoteEditorView`, replacing the old flat fill.
+- **Body** — deliberately **not** wrapped in a `glassCard` (unlike
+  `NoteEditorView`'s writing area): this is read-only content, and skipping
+  the card keeps a long note's reading column full width.
+- **Close** — a `ghostPill` (text-only outline capsule, secondary weight),
+  nav-bar leading, replacing the old plain `Button("Close")`.
+- **Edit** — a `gradientPill` (solid gold-gradient capsule CTA, primary
+  weight), nav-bar trailing, replacing the old plain `Button("Edit")`. The
+  asymmetric Close/Edit pill weighting mirrors `AccountView`'s CTA hierarchy
+  and signals Edit as the primary action from this screen.
+- **Date** — rendered through the shared `sectionLabel()` eyebrow treatment
+  (tracked, uppercase, muted gold) instead of a plain caption; still hidden
+  entirely when `note.formattedTimestamp` is empty.
+- **Divider** — a 1pt `Theme.goldGradient` rule in place of the old plain
+  `Divider()`, same position/role.
+
 ---
 
 ## Creation Date Storage
