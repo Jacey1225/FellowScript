@@ -129,9 +129,16 @@ def start_scheduler() -> None:
     # cheap. Lazy reconcile on read covers the gap between sweeps.
     scheduler.add_job(_reconcile_trials, "cron", minute="5", id="trial_reconcile",
                       replace_existing=True)
-    # CloudWatch error watchdog — fixed interval (not cron) since it's a
-    # continuous poll loop rather than a clock-aligned sweep.
-    scheduler.add_job(_run_error_watchdog, "interval", seconds=WATCHDOG_POLL_INTERVAL_SECONDS,
-                      id="cloudwatch_watchdog", replace_existing=True)
+    # CloudWatch error watchdog — TEMPORARILY DISABLED (2026-08-14 production
+    # incident): analyze_log_group is missing a required log_group_arn field
+    # (always fails) and the debug-agent's OpenRouter call is returning 403
+    # (bad/expired key). Both failures get logged as [ERROR] lines, which the
+    # watchdog's own broad \bERROR\b pattern then re-detects as new errors on
+    # its next cycle — a self-amplifying feedback loop that produced runaway
+    # memory growth and repeated OOM-kills of this service for hours. Re-enable
+    # only after both underlying bugs are fixed (see backend/monitoring/watchdog.py
+    # and backend/monitoring/cloudwatch_mcp_client.py / debug_agent.py).
+    # scheduler.add_job(_run_error_watchdog, "interval", seconds=WATCHDOG_POLL_INTERVAL_SECONDS,
+    #                   id="cloudwatch_watchdog", replace_existing=True)
     scheduler.start()
     logger.info("Notification scheduler started — checking every minute")
