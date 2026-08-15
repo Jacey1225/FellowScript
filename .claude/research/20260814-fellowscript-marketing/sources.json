@@ -1,0 +1,484 @@
+[
+  {
+    "url_or_ref": "/Users/jaceysimpson/Vscode/FellowScript/README.md",
+    "title": "FellowScript README",
+    "type": "user-provided",
+    "reliability_notes": "Primary source — the project's own top-level description. Authoritative for mission statement and headline feature list, though less detailed than docs/index.md.",
+    "key_claims_supported": [
+      "FellowScript mission: 'community-driven Bible reading app... building impactful relationships that fan into flame the gift of God'",
+      "Core features: digital Bible reader, highlighting, notes, community highlights, group sidebar, mobile-first design",
+      "Design identity: warm parchment-and-gold palette, Playfair Display + Lora typography, reverent-but-modern editorial feel"
+    ],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "/Users/jaceysimpson/Vscode/FellowScript/docs/index.md",
+    "title": "FellowScript docs — Home / mkdocs index",
+    "type": "user-provided",
+    "reliability_notes": "Primary source, more detailed than README. Note: its 3-tier pricing table (Free / Individual $4.99 / Group $9.99) conflicts with docs/design/account.md, which describes a single Group-only paid tier (1-8 members, priced by member count, no separate Individual plan). account.md reads as more current/implementation-accurate (it describes live UI behavior in detail); this doc may be stale. Flagged as an internal-docs discrepancy for the findings stage rather than resolved here.",
+    "key_claims_supported": [
+      "Tagline: 'A Digital Scripture Community — Read · Reflect · Connect'",
+      "Full feature table: Bible, highlighting, rich notes, bookmarks, groups, friends, messaging, devotions, AI agent check-ins, notifications, subscriptions",
+      "Platforms: React web app + native iOS app, shared FastAPI+Postgres backend on AWS EC2",
+      "Pricing tiers as documented here (superseded by account.md — see reliability note)"
+    ],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "/Users/jaceysimpson/Vscode/FellowScript/docs/design/overview.md",
+    "title": "FellowScript docs — Design Overview",
+    "type": "user-provided",
+    "reliability_notes": "Primary source. Authoritative for brand tone description ('candlelight on parchment') and exact design tokens.",
+    "key_claims_supported": [
+      "Visual identity described as 'the warmth and reverence of handwritten scripture — candlelight on parchment — while remaining clean and modern'",
+      "Exact color tokens and font pairing (Playfair Display/Space Grotesk headings, Lora body, IM Fell English for verse/pull-quote text)",
+      "Three-panel dockable Reader layout as the core UX metaphor"
+    ],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "/Users/jaceysimpson/Vscode/FellowScript/docs/design/home-page.md",
+    "title": "FellowScript docs — Home Page design",
+    "type": "user-provided",
+    "reliability_notes": "Primary source. Directly describes the existing marketing landing page structure (hero, how-it-works, features grid, community spotlight, pricing, closing verse CTA) — this is the closest thing FellowScript already has to marketing copy/creative, useful as a baseline to build from.",
+    "key_claims_supported": [
+      "Existing landing page already uses 'READ · REFLECT · CONNECT' as a tagline and closes on a Scripture quote CTA (2 Timothy 1:6)",
+      "Landing page already markets Community Groups and AI Check-ins as headline features alongside the Bible reader",
+      "Pricing display uses a 3-card layout with an Individual plan marked 'Most popular' (again, conflicts with account.md's single-Group-tier description)"
+    ],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "/Users/jaceysimpson/Vscode/FellowScript/docs/design/community.md",
+    "title": "FellowScript docs — Community (Messaging/Groups/Friends)",
+    "type": "user-provided",
+    "reliability_notes": "Primary source. Establishes exactly what the group/social mechanic is, which is load-bearing for referral/virality recommendations.",
+    "key_claims_supported": [
+      "Group chat, DMs, friend requests, and real-time WebSocket activity are core to the product, not bolted-on",
+      "Group highlights (members' colored verse highlights) are visible as overlays — a built-in social/visibility mechanic already present"
+    ],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "/Users/jaceysimpson/Vscode/FellowScript/docs/design/account.md",
+    "title": "FellowScript docs — Account & Subscription",
+    "type": "user-provided",
+    "reliability_notes": "Primary source, and the most implementation-detailed of the docs (references live view-model wiring, e.g. AccountViewModel.usage). Treated as the more current/authoritative description of monetization: single paid tier is Group (1-8 members) priced by member count, no standalone Individual plan — this conflicts with docs/index.md and home-page.md's 3-tier table.",
+    "key_claims_supported": [
+      "Monetization is Group-plan-only, seat/member-count priced (1-8 members) — pricing structure is inherently multiplayer, which should shape which growth channels are cost-effective (group invites carry direct revenue upside, not just engagement upside)",
+      "Free tier caps: limited notes/agent events, upgrade prompt messaging already exists in-product",
+      "Billing via Stripe Checkout (web) and StoreKit 2 (iOS)"
+    ],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "/Users/jaceysimpson/Vscode/FellowScript/docs/design/notes.md",
+    "title": "FellowScript docs — Notes",
+    "type": "user-provided",
+    "reliability_notes": "Primary source. Establishes the public/private note toggle and shareable note mechanic, relevant to content-marketing and referral-mechanic recommendations (shareable public highlights/notes).",
+    "key_claims_supported": [
+      "Notes can be toggled Public to share with a group; public notes carry a gold badge",
+      "Rich formatting toolbar (bold/italic/underline/highlight/color) signals an editorial, journaling-adjacent product feel usable in content marketing screenshots"
+    ],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "/Users/jaceysimpson/Vscode/FellowScript/docs/design/bible-reader.md",
+    "title": "FellowScript docs — Bible Reader",
+    "type": "user-provided",
+    "reliability_notes": "Primary source. Describes the core screen and its most differentiating UX element (VSCode-style dockable panel workspace on desktop), relevant to positioning/differentiation claims vs. YouVersion/Hallow/Abide.",
+    "key_claims_supported": [
+      "Desktop Reader is a dockable, freely-arranged multi-panel workspace (Bible, Notes, Highlights, Messaging, Agent Chat) — an unusual, power-user-oriented design choice among Bible apps",
+      "Six-color highlight palette with per-user and per-group visibility"
+    ],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "/Users/jaceysimpson/Vscode/FellowScript/docs/architecture/overview.md",
+    "title": "FellowScript docs — System Architecture Overview",
+    "type": "user-provided",
+    "reliability_notes": "Primary source, platform/tech context only (per plan's scope — not used for implementation depth).",
+    "key_claims_supported": [
+      "Three clients (web, iOS, docs), single FastAPI+Postgres backend on AWS EC2 — confirms this is a small/single-team operation (manual rsync deploys, systemd service restarts), supporting the plan's 'small team, early-stage' framing",
+      "Auth methods: password, Google OAuth, Apple JWT — relevant to signup-friction discussion in ASO/onboarding recommendations"
+    ],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "/Users/jaceysimpson/Vscode/FellowScript/mkdocs.yml",
+    "title": "FellowScript mkdocs.yml (site nav)",
+    "type": "user-provided",
+    "reliability_notes": "Primary source. Used only to enumerate documentation pages and confirm no additional undocumented pages existed beyond the required-reading list in the plan.",
+    "key_claims_supported": [
+      "Confirms doc site structure matches exactly the required-reading list in the plan — no missed pages"
+    ],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "https://www.branch.io/resources/case-study/how-hallow-drove-2-million-app-installs-and-became-1-on-the-app-store/",
+    "title": "How Hallow Drove 2 Million App Installs and Became #1 on the App Store",
+    "type": "found",
+    "reliability_notes": "Vendor case study (Branch, the attribution/deep-linking company Hallow used) — commercially motivated but built on Hallow's own reported campaign data with specific, checkable numbers. Strong primary-adjacent source for the Lent 2024 campaign.",
+    "key_claims_supported": [
+      "Hallow partnered with 2,500+ parishes; QR codes on parish banners/flyers contributed ~9% of overall growth",
+      "2 million installs in February 2024 alone; 50%+ of installs and 43% of subscriptions attributed via referral links; 42% CAC reduction; briefly #1 on the App Store; 26% YoY retention increase",
+      "Influencer partnerships used unique tracking links per influencer to measure subscription conversion"
+    ],
+    "corroboration_count": 3
+  },
+  {
+    "url_or_ref": "https://hallow.com/blog/our-partnership-philosophy/",
+    "title": "Our Partnership Philosophy — Hallow blog",
+    "type": "found",
+    "reliability_notes": "Primary source (Hallow's own stated philosophy), though thin on church-specific detail — mostly frames Spiritual Leader / Content Partner / Advertising Partner categories and celebrity-vs-local-church attention dynamics rather than a church-partnership playbook.",
+    "key_claims_supported": [
+      "Hallow deliberately courts celebrity/high-reach partners because 'people might scroll past a post from their local church' but engage with celebrity content",
+      "Hallow frames advertising partnerships broadly as anywhere that lets them 'share the message of Christ's love'"
+    ],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "https://phiture.com/success-stories/hallow/",
+    "title": "How we successfully scaled Hallow's TikTok audience — Phiture",
+    "type": "found",
+    "reliability_notes": "Growth-agency case study with Hallow's own quoted testimonial and specific percentage results; commercially motivated (agency self-promotion) but consistent with the Branch case study's numbers and timeline, corroborating each other.",
+    "key_claims_supported": [
+      "User-generated content (UGC), not polished ads, was the winning TikTok format",
+      "300% increase in installs/purchases within 3-5 weeks of the testing program; 412% increase during Lent; 230% during Easter — i.e. church-calendar-timed campaigns outperform generic timing",
+      "Systematic audience-segment testing preceded scaling spend"
+    ],
+    "corroboration_count": 2
+  },
+  {
+    "url_or_ref": "https://research.contrary.com/company/hallow",
+    "title": "Hallow Business Breakdown & Founding Story — Contrary Research",
+    "type": "found",
+    "reliability_notes": "VC-affiliated research firm profile; found via search summary rather than fully fetched. Independent of Branch/Phiture (not vendor-authored), useful as corroboration on Hallow's parish outreach and growth narrative rather than as a primary data source.",
+    "key_claims_supported": [
+      "Post-launch, Hallow proactively reached out to parishes, dioceses, Catholic high schools, and Christian organizations aligned with its mission",
+      "2024 Catholic-organization collaborations correlated with a 30% user increase"
+    ],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "https://www.consumerstartups.com/p/hallow-building-a-9-figure-prayer-app",
+    "title": "Hallow: building a 9-figure prayer app — Consumer Startups",
+    "type": "found",
+    "reliability_notes": "Independent startup-analysis newsletter; found via search summary. Corroborates Hallow's scale (20M+ downloads, $400M+ valuation) and celebrity-marketing approach (Wahlberg, Neeson) independently of the Branch/Phiture case studies.",
+    "key_claims_supported": [
+      "Hallow: 20M+ downloads, post-Series C valuation north of $400M",
+      "Celebrity ad campaigns (Mark Wahlberg Super Bowl spot) pushed the app to #1 on the App Store, beating TikTok and Instagram, during the 2024 Lenten surge"
+    ],
+    "corroboration_count": 2
+  },
+  {
+    "url_or_ref": "https://www.stjohns.edu/news-media/news/2026-03-04/hallow-app-partners-st-johns-foster-community-prayer",
+    "title": "Hallow App Partners with St. John's to Foster a Community of Prayer",
+    "type": "found",
+    "reliability_notes": "University press release — primary source for one specific institutional partnership deal, illustrative of the campus/institutional-partnership channel rather than proof of a broad pattern on its own.",
+    "key_claims_supported": [
+      "Faith apps pursue named-institution partnerships (university + religious order grant funding) as a distribution and credibility channel, not just parish-level outreach"
+    ],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "https://growthcasestudies.com/p/youversion",
+    "title": "YouVersion Growth Case Study: From 80K to 1 billion downloads",
+    "type": "found",
+    "reliability_notes": "Independent growth-marketing case-study publication (fetched directly). Cites concrete named mechanics (verse-image sharing, streaks, Global Share the Bible Day) and figures; not YouVersion's own material but widely-repeated facts corroborated by the LinkedIn/Christian Century/Substack pieces below.",
+    "key_claims_supported": [
+      "Shareable verse-image cards drove a 'Global Share the Bible Day' campaign: 1M new installs in 11 days (Dec 2010); 535M verses shared cumulatively by 2021",
+      "Streaks (introduced 2017) and reading-plan achievement badges built daily-habit retention loops",
+      "Bible.com domain acquisition (2012) plus per-verse/per-language indexed pages drive dominant organic/SEO search visibility",
+      "Church partnership tools turn congregations into distribution channels",
+      "1B+ total installs, 100M+ monthly active users, 12M new monthly installs, 18% YoY daily-usage growth (2025)"
+    ],
+    "corroboration_count": 3
+  },
+  {
+    "url_or_ref": "https://www.linkedin.com/pulse/growth-hacks-led-youversion-500-million-downloads-okoro",
+    "title": "This Growth Hack Led YouVersion to 500 Million Downloads",
+    "type": "found",
+    "reliability_notes": "Independent LinkedIn analysis piece, found via search summary. Corroborates the growthcasestudies.com account of verse-sharing and reading-plan mechanics driving referral culture.",
+    "key_claims_supported": [
+      "Reading a plan together creates a referral culture — non-users must download the app to participate, converting shared devotional habits directly into installs"
+    ],
+    "corroboration_count": 2
+  },
+  {
+    "url_or_ref": "https://churchtechtoday.com/youversion-bible-app-engagement-surges-how-should-churches-take-advantage-in-2024/",
+    "title": "YouVersion Bible App Engagement Surges: How Should Churches Take Advantage In 2024?",
+    "type": "found",
+    "reliability_notes": "Church-technology trade publication, found via search summary. Practitioner-facing (advice to churches), useful corroboration that church-facing tooling/engagement is treated as a real growth lever industry-wide, not just by YouVersion's own marketing.",
+    "key_claims_supported": [
+      "Church-facing engagement tools (sermon notes, reading plans tied to services) are treated as a standard growth/retention lever for Bible-reading apps"
+    ],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "https://techstartups.com/2021/12/02/softbank-celebrities-back-40-million-investment-christian-worship-meditation-app-glorify/",
+    "title": "SoftBank, celebrities back a $40 million investment in Christian worship and meditation app Glorify",
+    "type": "found",
+    "reliability_notes": "Tech-business news outlet; found via search summary. Independent, corroborated by religionnews.com's separate report of the same funding round.",
+    "key_claims_supported": [
+      "Glorify raised a $40M round backed by SoftBank and celebrity investors, reflecting investor belief that faith-app community/content strategy scales"
+    ],
+    "corroboration_count": 2
+  },
+  {
+    "url_or_ref": "https://religionnews.com/2021/12/02/michael-buble-kris-jenner-invest-in-christian-mediation-app-glorify/",
+    "title": "Michael Bublé, Kris Jenner part of $40M investment in Christian meditation app Glorify",
+    "type": "found",
+    "reliability_notes": "Established religion-news outlet; independent corroboration of the same Glorify funding event from a different vantage (faith-press framing rather than tech-press).",
+    "key_claims_supported": [
+      "Same $40M Glorify raise, with celebrity-investor angle used as a PR/credibility mechanic in itself"
+    ],
+    "corroboration_count": 2
+  },
+  {
+    "url_or_ref": "https://businessmodelcanvastemplate.com/blogs/marketing-strategy/glorify-marketing-strategy",
+    "title": "What is Sales and Marketing Strategy of Glorify Company?",
+    "type": "found",
+    "reliability_notes": "Low-reliability: appears to be a templated/SEO content-mill site with no bylines or sourcing shown; treat claims here as directional only and prefer corroboration from techstartups/religionnews for the funding facts. Used only for the general channel-mix claim, which is generic and low-risk.",
+    "key_claims_supported": [
+      "Glorify's marketing mix spans content marketing, SEO/ASO, social media, influencer partnerships, and paid advertising — presented as a multi-channel approach rather than one dominant tactic"
+    ],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "https://faith.tools/app/29-abide?category=prayer",
+    "title": "Abide and its Alternatives — faith.tools directory",
+    "type": "found",
+    "reliability_notes": "Independent faith-app directory/review site, found via search summary. Useful for competitive-landscape context (pricing, positioning) but not a marketing-strategy source in itself — no insight into Abide's actual acquisition tactics was found in this round.",
+    "key_claims_supported": [
+      "Abide is positioned as the most established Christian-meditation-app competitor, priced at $39.99/yr with a free tier of shorter meditations — useful competitive pricing anchor for FellowScript's own plan design discussion"
+    ],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "https://faith.tools/small-groups",
+    "title": "Best Apps for Small Groups — faith.tools",
+    "type": "found",
+    "reliability_notes": "Independent directory site, found via search summary. Corroborates that a distinct small-group-Bible-study app category and buyer intent exists, which FellowScript's group feature set maps directly onto.",
+    "key_claims_supported": [
+      "A recognized market category of 'apps for small groups' exists among churches, distinct from single-user devotional apps — supports FellowScript's group-centric positioning as a differentiator"
+    ],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "https://theleadpastor.com/tools/best-bible-study-apps/",
+    "title": "14 Bible Study Apps for 2026 — The Lead Pastor",
+    "type": "found",
+    "reliability_notes": "Pastor/church-leadership trade publication, found via search summary. Independent corroboration (alongside faith.tools and smartgroups.app) that pastors are an actual audience actively curating/recommending Bible-study-app lists — i.e. pastor/leader outreach is a real discoverable channel, not a hypothetical one.",
+    "key_claims_supported": [
+      "Pastors and church-leadership publications actively compile and recommend Bible-study app lists, confirming pastor/leader outreach and 'best-of' list placement is a real, targetable discovery channel"
+    ],
+    "corroboration_count": 2
+  },
+  {
+    "url_or_ref": "https://smartgroups.app/",
+    "title": "SmartGroups — AI-Powered Bible Study for Churches",
+    "type": "found",
+    "reliability_notes": "Direct competitor-adjacent product site, found via search summary. Illustrates a close analog to FellowScript's group/AI-devotional combination already in-market, relevant to differentiation framing.",
+    "key_claims_supported": [
+      "A competing product (SmartGroups) already combines AI-assisted tools with pastor dashboards and small-group management, confirming the AI+group combination is a validated but contested space, not unproven"
+    ],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "https://apps.apple.com/us/app/everycampus/id6754179691",
+    "title": "EveryCampus — App Store listing",
+    "type": "found",
+    "reliability_notes": "Primary listing for a named campus-ministry coalition app; found via search summary. Confirms campus-ministry-coalition apps are an existing, live channel/model, not merely theoretical.",
+    "key_claims_supported": [
+      "EveryCampus is a live coalition app of 100+ campus ministries, including a cross-ministry prayer-wall feature — a concrete precedent for campus-ministry-coalition partnership as a channel"
+    ],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "https://www.thegospelcoalition.org/article/reach-college/",
+    "title": "3 Simple Ways to Reach College Students — The Gospel Coalition",
+    "type": "found",
+    "reliability_notes": "Established evangelical media/publishing organization; found via search summary. Independent of the ministry-marketing-agency sources, giving practitioner (rather than vendor) corroboration on campus outreach patterns.",
+    "key_claims_supported": [
+      "Campus outreach in evangelical contexts favors relational/on-the-ground tactics over broad digital advertising — relevant caution against over-indexing on paid-ad tactics for a campus-ministry channel"
+    ],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "https://reliantcreative.org/campus-ministry/",
+    "title": "Marketing for Campus Ministries — Reliant Creative",
+    "type": "found",
+    "reliability_notes": "Christian-ministry marketing agency (commercially motivated to sell these services), found via search summary. Corroborates TheGospelCoalition's framing that campus ministries need distinct, scalable messaging strategies.",
+    "key_claims_supported": [
+      "Campus ministries specifically need clarified messaging and scalable mobilization strategy — presented as a distinct marketing sub-discipline from general church marketing"
+    ],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "https://www.caylor-solutions.com/faith-based-enrollment-marketing-strategies/",
+    "title": "Faith-Based Enrollment Marketing: Strategies That Reflect Your Mission — Caylor Solutions",
+    "type": "found",
+    "reliability_notes": "Marketing agency site (education/faith sector), found via search summary. Adjacent-sector corroboration (faith-based school enrollment marketing) of mission-authentic messaging as a governing principle across faith-sector marketing generally.",
+    "key_claims_supported": [
+      "Faith-sector marketing broadly is expected to reflect institutional mission authentically rather than use generic conversion-funnel language — a tone/voice constraint relevant to FellowScript's reverent brand identity"
+    ],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "https://www.frontgatemedia.com/christian-creator-partnership-strategy/",
+    "title": "Christian Creator Partnership Strategy: A Complete Guide — FrontGate Media",
+    "type": "found",
+    "reliability_notes": "Christian-media advertising/marketing agency specializing in this exact niche, found via search summary. Domain-specific, though commercially motivated to promote creator-partnership services.",
+    "key_claims_supported": [
+      "Effective Christian-creator partnerships let creators speak in their own voice rather than following a tight script; over-scripting undermines authenticity and trust, which is the core currency of faith-audience marketing"
+    ],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "https://www.frontgatemedia.com/faith-based-creators-youtube-tiktok/",
+    "title": "The Rise of Faith-Based Creators on YouTube and TikTok — FrontGate Media",
+    "type": "found",
+    "reliability_notes": "Same agency as above; independent article, found via search summary. Corroborates the general claim that creator-partnership marketing outperforms traditional faith-audience advertising.",
+    "key_claims_supported": [
+      "Platform-specific content patterns: TikTok favors short devotionals/relatable content, Instagram favors Scripture-graphic/visual storytelling; multi-platform presence (YouTube long-form + Shorts/TikTok + Instagram + podcast) is now the norm for faith creators",
+      "Creator-partnership campaigns outperform traditional advertising in engagement/conversion for faith audiences due to trust"
+    ],
+    "corroboration_count": 2
+  },
+  {
+    "url_or_ref": "https://advertising.christianpost.com/blog/15-essential-marketing-tips-to-carry-your-strategy-through-the-end-of-2025",
+    "title": "15 Essential Marketing Tips to Carry Your Strategy Through the End of 2025 — Christian Post Advertising",
+    "type": "found",
+    "reliability_notes": "Christian-media publisher's own advertising/marketing-services arm (commercially motivated but domain-specific and detailed; fetched directly). Corroborates FrontGate Media's authenticity-over-polish claim from a separate faith-media outlet.",
+    "key_claims_supported": [
+      "Favor authentic storytelling/testimonials over polished production for faith audiences",
+      "Design app interfaces, onboarding emails, and landing pages mobile-first as a baseline expectation",
+      "Track relationship/participation metrics (engagement, community participation) over vanity download/impression counts",
+      "Segment messaging by subscription tier/lifecycle stage rather than one-size-fits-all campaigns"
+    ],
+    "corroboration_count": 2
+  },
+  {
+    "url_or_ref": "https://www.blog.udonis.co/mobile-marketing/mobile-apps/complete-guide-to-app-store-optimization",
+    "title": "App Store Optimization (ASO): The Complete 2026 Guide — Udonis",
+    "type": "found",
+    "reliability_notes": "Mobile-marketing agency blog, found via search summary. General (non-faith-specific) ASO guidance; corroborated by AppRadar, ASOmobile, Semrush, quokkalabs below on the same core mechanics.",
+    "key_claims_supported": [
+      "Title keywords carry the strongest ASO indexation weight on both the App Store and Google Play"
+    ],
+    "corroboration_count": 4
+  },
+  {
+    "url_or_ref": "https://appradar.com/academy/apple-app-store-optimization-aso",
+    "title": "How to Win with ASO in the App Store — App Radar Academy",
+    "type": "found",
+    "reliability_notes": "ASO-tooling vendor's own academy content, found via search summary. Independent product/vendor from Udonis; corroborates the same core ASO fundamentals.",
+    "key_claims_supported": [
+      "Rating threshold matters: apps under 4.0 stars struggle to gain organic traction",
+      "Screenshot galleries should tell a visual story, not just show static UI"
+    ],
+    "corroboration_count": 3
+  },
+  {
+    "url_or_ref": "https://asomobile.net/en/blog/aso-in-2026-the-complete-guide-to-app-optimization/",
+    "title": "App Store Optimization in 2026: ASO Strategy, Trends, and Best Practices — ASOMobile",
+    "type": "found",
+    "reliability_notes": "Another independent ASO-tooling vendor, found via search summary. Third independent corroboration of Custom Product Pages as a significant 2025-2026 ASO development.",
+    "key_claims_supported": [
+      "Custom Product Pages (CPPs), especially post-July-2025 organic-search eligibility, are one of the most significant recent ASO developments — relevant to testing FellowScript App Store listing variants by audience segment (e.g. small-group leaders vs. individual devotional users)"
+    ],
+    "corroboration_count": 3
+  },
+  {
+    "url_or_ref": "https://www.semrush.com/blog/app-store-optimization",
+    "title": "App Store Optimization guide — Semrush",
+    "type": "found",
+    "reliability_notes": "Major, independently well-known SEO/marketing SaaS company; found via search summary. High general reliability, though not faith-app-specific.",
+    "key_claims_supported": [
+      "Core ASO elements: keyword research, title, description, visuals, ratings/reviews — baseline checklist corroborated across all ASO sources gathered"
+    ],
+    "corroboration_count": 4
+  },
+  {
+    "url_or_ref": "https://www.molfar.io/blog/viral-loops",
+    "title": "Viral Loops in Mobile Apps: The Secret of Explosive Growth — Molfar",
+    "type": "found",
+    "reliability_notes": "Growth/product-consulting blog, found via search summary. General (non-faith-specific) viral-loop mechanics; corroborated by adapty.io, reteno, tapp.so, referralrock below.",
+    "key_claims_supported": [
+      "Each new user in a viral loop becomes a distribution channel for the next wave — general mechanic directly applicable to FellowScript's group-invite flow"
+    ],
+    "corroboration_count": 4
+  },
+  {
+    "url_or_ref": "https://adapty.io/blog/mobile-app-referral-program/",
+    "title": "How to build a referral program for your app — Adapty",
+    "type": "found",
+    "reliability_notes": "Subscription-app infrastructure vendor (Adapty specializes in in-app subscriptions), found via search summary — domain-relevant to FellowScript's Stripe/StoreKit subscription model specifically.",
+    "key_claims_supported": [
+      "Double-sided referral rewards (both referrer and referee benefit) are the dominant proven pattern, citing Dropbox/Uber/Airbnb as reference cases",
+      "Referred users show ~25% higher customer lifetime value and 83% higher trust than non-referred users — directly relevant to prioritizing referral over paid acquisition for a small-team app"
+    ],
+    "corroboration_count": 3
+  },
+  {
+    "url_or_ref": "https://reteno.com/blog/viral-loops-encourage-users-to-promote-your-app",
+    "title": "Viral Loops: Encourage Users to Promote Your App — Reteno",
+    "type": "found",
+    "reliability_notes": "Customer-engagement platform vendor blog, found via search summary. Independent corroboration of gamified progress-bar referral mechanics.",
+    "key_claims_supported": [
+      "Progress-bar referral gamification ('Invite 5 friends, you've invited 3') increases completion of referral goals"
+    ],
+    "corroboration_count": 2
+  },
+  {
+    "url_or_ref": "https://www.tapp.so/blog/viral-loop-examples/",
+    "title": "10 Viral Loop Examples From Top Mobile Apps — Tapp",
+    "type": "found",
+    "reliability_notes": "Mobile-growth vendor blog, found via search summary. Corroborates that social/community-recognition loops (leaderboards, top-referrer spotlighting) are a proven, non-monetary alternative to cash rewards — relevant given FellowScript's community/reverent tone (cash incentives may clash with brand voice).",
+    "key_claims_supported": [
+      "Social-recognition viral loops (leaderboards, spotlighting top referrers) work as an alternative to financial incentives"
+    ],
+    "corroboration_count": 2
+  },
+  {
+    "url_or_ref": "https://referralrock.com/blog/viral-loop/",
+    "title": "Viral Loops: How to Create One? — ReferralRock",
+    "type": "found",
+    "reliability_notes": "Referral-software vendor blog, found via search summary. Fourth independent corroboration of the core viral-loop concept.",
+    "key_claims_supported": [
+      "General viral-loop definition and structure, consistent across all referral/virality sources gathered"
+    ],
+    "corroboration_count": 4
+  },
+  {
+    "url_or_ref": "https://octospark.ai/blog/bootstrapped-indie-app-growth-strategies-zero-to-100k",
+    "title": "Bootstrapped Indie App Growth Strategies 2025: From Zero to 100K Users — Octospark",
+    "type": "found",
+    "reliability_notes": "Growth-tooling vendor blog, found via search summary. Directly relevant given FellowScript's confirmed small/single-developer operational profile.",
+    "key_claims_supported": [
+      "Focus DIY marketing effort on 2-3 consistently-executed tactics rather than spreading thin across many channels — a capacity-matched recommendation for a single-developer team"
+    ],
+    "corroboration_count": 2
+  },
+  {
+    "url_or_ref": "https://www.indiehackers.com/post/why-indie-hackers-should-rethink-mobile-app-marketing-in-2025-8bc7b2998c",
+    "title": "Why Indie Hackers Should Rethink Mobile App Marketing in 2025 — Indie Hackers",
+    "type": "found",
+    "reliability_notes": "Independent community forum post (not vendor-authored), found via search summary. Corroborates Octospark's community-first framing from a peer/practitioner rather than a vendor angle.",
+    "key_claims_supported": [
+      "Indie developers over-rely on paid ads and under-invest in ASO and a clear acquisition funnel — common failure mode to avoid"
+    ],
+    "corroboration_count": 2
+  },
+  {
+    "url_or_ref": "https://apsteq.com/blog/indie-app-marketing/",
+    "title": "Indie App Marketing: 7 Strategies That Work in 2026 (Real Data) — ApsteQ",
+    "type": "found",
+    "reliability_notes": "Vendor blog, found via search summary. Third independent corroboration of ASO/content/community as the low-cost core for indie apps.",
+    "key_claims_supported": [
+      "ASO, content marketing, and community building form the low-cost backbone of indie app marketing, consistent with Octospark and IndieHackers"
+    ],
+    "corroboration_count": 3
+  }
+]

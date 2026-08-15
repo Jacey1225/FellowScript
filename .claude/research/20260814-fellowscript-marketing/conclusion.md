@@ -1,0 +1,48 @@
+# Conclusion: FellowScript Marketing Methods
+
+## Bottom line
+
+Prioritize group-invite and referral mechanics over paid acquisition, position FellowScript on its group-priced, group-first bundle (dockable multi-panel Reader, shared highlights, public notes), and pursue church/small-group-leader partnerships as the primary distribution channel. That directional strategy survives scrutiny. The specific numbers backing it mostly do not. Drop the "83% higher trust" referral statistic (misattributed), drop the "30% user increase" from Catholic-org partnerships (untraceable), and stop citing the February 2024 Hallow spike as proof that calendar timing alone drives results (it was confounded by a once-in-16-years Ash Wednesday/Super Bowl overlap, a celebrity ad, and a 15x paid-spend surge in the same week). The referral LTV figure survives and is now better sourced than it started (peer-reviewed, ~16-25% lift, not the vendor-blog 25%). Whether authenticity or high-production content wins for FellowScript specifically was never tested by either side and stays open. Whether Hallow's and YouVersion's tactics transfer to a smaller, group/study-centric product like FellowScript is also untested — treat every borrowed tactic as a hypothesis, not a playbook.
+
+## Per-section findings
+
+**Section 1 — Mission, purpose, audience.** Holds. FellowScript positions itself as relational first, reading-tool second, per its own README and design docs. No external claims to contest, so nothing to evaluate.
+
+**Section 2 — Concrete features and differentiators.** Holds. Sourced entirely from primary internal docs, untouched by counter-evidence: the group/social layer as load-bearing, the dockable multi-panel Reader, and the public-note/shared-highlight mechanic remain FellowScript's clearest differentiators.
+
+**Section 3 — Brand/design identity and tone.** Downgraded. The parchment-and-gold, reverent-editorial identity itself holds. But the claim that faith audiences respond better to authentic storytelling than slick production is false as a blanket rule — it's contradicted by the brief's own strongest example, Hallow's Wahlberg/Roumie Super Bowl ad, and all three sources for the "authenticity wins" claim are commercially-interested agencies in the same vendor category. The more defensible read is channel-dependent: Hallow's TikTok growth ran on UGC/authenticity, its broadcast growth ran on celebrity polish. Which one applies to FellowScript specifically is untested.
+
+**Section 4 — Monetization and channel selection.** Corrected and strengthened. The group-priced subscription model still means group invites carry direct revenue upside, which still argues for referral mechanics over paid acquisition. But two supporting statistics needed repair: the LTV lift is real and now traced to peer-reviewed research (Schmitt, Skiera & Van den Bulte, 2011) instead of an unattributed vendor blog, while the "83% higher trust than non-referred users" figure is false as cited — it's a misattributed general word-of-mouth statistic, not a referred-vs-non-referred comparison. The claim that double-sided referral rewards are simply "the dominant proven pattern" is overstated; the same peer-reviewed source documents real referral-abuse and channel-cannibalization risks that belong in any recommendation using this pattern.
+
+**Section 5 — Channels/tactics for faith-based apps.** Mixed, and this is where the evaluation did the most work.
+- Parish/diocese partnerships: the core pattern holds (Hallow's 2,500+ parish partnerships and ~9% QR-code-attributed growth is well-sourced and unchallenged), but the "30% user increase" figure from 2024 Catholic-org collaborations is false as a citable statistic — even the counter-evidence's attempt to re-source it via the brief's own citation found no underlying data. Whether this channel transfers to FellowScript's non-diocesan, non-Catholic audience is a reasoned open question, not a resolved one.
+- Church-calendar-timed campaigns: this is the most decisively lost claim in the whole evaluation. The February 2024 spike (2M installs, #1 App Store ranking) is disproven as evidence that calendar timing alone drives outsized results — Ash Wednesday and Super Bowl LVIII fell in the same week for the first time since 2008, and Hallow's own marketing lead confirmed a simultaneous celebrity ad and 15x paid-spend increase in the same window. The raw numbers are real; the causal attribution to calendar timing alone is not. The softer, defensible version — plan around faith-calendar timing as one lever among several, not a standalone driver — survives.
+- Verse-sharing/social mechanics and the Glorify investor-interest context were not challenged and stand as sourced.
+
+**Section 6 — ASO tactics.** Holds. Not targeted by counter-evidence, corroborated 3-4x independently across Udonis, AppRadar, ASOmobile, and Semrush. No faith-specific ASO source exists, but the general guidance (title keywords, 4.0-star threshold, Custom Product Pages) stands.
+
+**Section 7 — Community/partnership channels for group features.** Unresolved, and correctly so. This was already flagged as an open hypothesis in the original brief, and counter-evidence confirms it rather than settles it — there is no public growth data for SmartGroups, FellowScript's closest comparable, to check the hypothesis against. Pastor/leader outreach and campus-ministry coalitions stand as sourced but remain single-instance precedents rather than proven patterns.
+
+**Section 8 — Comparable-app positioning.** Holds. Not contested. Hallow wins on celebrity/institutional reach, YouVersion on SEO and habit loops, Abide's actual tactics remain undocumented (a real gap), and no competitor combines FellowScript's specific bundle of group-priced subscriptions, a power-user Reader, and a built-in social/sharing layer. That bundle is the clearest basis for differentiated positioning, though it's the brief's own inference rather than a claim any source makes directly.
+
+**Section 9 — Referral/virality mechanics.** Corrected, same as Section 4 (same underlying claim, reused). The directional recommendation — prioritize referral/group-invite mechanics given group-seat pricing — survives on the corrected LTV figure alone. Progress-bar gamification and social-recognition loops (as a non-monetary alternative that avoids clashing with a reverent brand voice) were not challenged and stand as sourced.
+
+## Confidence
+
+High confidence in the directional recommendations: prioritize referral/group-invite growth over paid acquisition, lean on the group-priced model, position on the group+Reader+sharing bundle, and treat faith-calendar timing as a secondary lever layered onto other campaigns rather than a standalone driver. These held up against dedicated, good-faith counter-evidence and in most cases got more rigorously sourced through the process, not less.
+
+Low-to-moderate confidence in any specific number carried forward from this research. Four figures should be treated as unusable without independent reverification: the 83% trust statistic, the 30% Catholic-partnership increase, the framing that calendar timing alone produced the February 2024 spike, and the blanket "authenticity beats production" claim.
+
+What would change the bottom line: direct evidence on FellowScript's actual users — would a small-group Bible-study audience respond to parish-style institutional partnerships the way Hallow's largely Catholic, more devotional-focused audience did? No source on either side tested this. A/B evidence on authenticity vs. polish specifically for FellowScript's creative would resolve Section 3's open question. Clarification of which pricing model is actually live (three-tier vs. group-only, per the unresolved discrepancy between docs/index.md and docs/design/account.md) would determine whether solo-user paid acquisition is even a viable parallel channel or whether referral/group growth is the only cost-effective path by necessity.
+
+## Open questions
+
+These were flagged in the original plan or surfaced during evaluation and remain genuinely unresolved:
+
+- Which pricing structure is live in production — three-tier (Free/Individual/Group) or Group-only — and how that changes which channels are cost-effective.
+- Whether Hallow's and YouVersion's parish-partnership and calendar-timing tactics transfer to a smaller, group-study-centric product, or whether FellowScript needs a different partnership shape aimed at small-group leaders rather than institutions.
+- What Abide, the closest pricing/positioning comparable, actually does for acquisition — no source in either round documents this.
+- Whether monetary referral incentives would undermine trust with FellowScript's reverent brand voice, or whether social-recognition-based referral is the only brand-safe option — the sourced material supports social recognition as viable but doesn't test it against this specific brand tone.
+- Whether campus-ministry-coalition partnerships are worth pursuing given FellowScript's small-team capacity constraints, given a documented caution that relational tactics outperform digital ones in that specific sub-audience.
+- Whether the AI devotional check-in feature is a genuine differentiator worth headline billing, given that SmartGroups already occupies similar AI+group territory — no source resolves this; it's inferred from feature comparison alone.
+- Whether authenticity or high-production creative performs better for FellowScript specifically — the channel-dependent split observed in Hallow's data (UGC on TikTok vs. celebrity polish on broadcast) is a plausible reconciliation, not a tested answer.
