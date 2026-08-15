@@ -899,13 +899,24 @@
 <td>"Free Plan" header, active badge, usage limits, upgrade prompt</td>
 </tr>
 <tr>
-<td>Paid (individual/group)</td>
+<td>Paid (group)</td>
 <td>Plan name, billing period, card brand + last 4, cancel option</td>
 </tr>
 </tbody>
 </table>
+<p>There is only one paid tier — <strong>Group</strong> (1-8 members), priced by member count. There is no
+separate "individual" plan; a 1-member group plan covers that case.</p>
 <p>Upgrade prompt: "Upgrade to unlock unlimited notes, AI check-ins, and notifications."</p>
 <p>Clicking <strong>Upgrade</strong> on web opens a Stripe Checkout session (<code>POST /subscriptions/stripe/checkout</code>). On iOS, tapping the plan tile triggers StoreKit 2 (<code>StoreKitManager</code>).</p>
+<p><strong>"What's included" disclosure (iOS)</strong> — both the active-subscriber row and the pre-purchase
+member-count picker include a tappable "What's included" row (<code>chevron.down</code>/<code>chevron.up</code>)
+that expands in place to list the plan's benefits: unlimited notes, unlimited agent events,
+unlimited agent notifications, and shared group access for up to the selected/purchased member
+count. Free-tier caps shown in each line are read live from <code>AccountViewModel.usage</code>
+(<code>FSUsage</code>, mirroring the backend's <code>FREE_LIMITS</code>/<code>NOTES_WINDOW_DAYS</code>) so they never drift out
+of sync with server-enforced limits; a static fallback covers the brief window before usage
+loads. Collapsed by default in both states, matching the app's existing progressive-disclosure
+pattern (e.g. <code>seatCountEditRow</code>).</p>
 <h3 id="danger-zone">Danger Zone</h3>
 <p>Account deletion requires the user to type their username as confirmation, then press <strong>Delete Account</strong>.</p>
 <ul>

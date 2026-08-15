@@ -17,11 +17,24 @@ The Account page (`/account`) lets users manage their profile, view their subscr
 | State | Display |
 |---|---|
 | Free plan | "Free Plan" header, active badge, usage limits, upgrade prompt |
-| Paid (individual/group) | Plan name, billing period, card brand + last 4, cancel option |
+| Paid (group) | Plan name, billing period, card brand + last 4, cancel option |
+
+There is only one paid tier — **Group** (1-8 members), priced by member count. There is no
+separate "individual" plan; a 1-member group plan covers that case.
 
 Upgrade prompt: "Upgrade to unlock unlimited notes, AI check-ins, and notifications."
 
 Clicking **Upgrade** on web opens a Stripe Checkout session (`POST /subscriptions/stripe/checkout`). On iOS, tapping the plan tile triggers StoreKit 2 (`StoreKitManager`).
+
+**"What's included" disclosure (iOS)** — both the active-subscriber row and the pre-purchase
+member-count picker include a tappable "What's included" row (`chevron.down`/`chevron.up`)
+that expands in place to list the plan's benefits: unlimited notes, unlimited agent events,
+unlimited agent notifications, and shared group access for up to the selected/purchased member
+count. Free-tier caps shown in each line are read live from `AccountViewModel.usage`
+(`FSUsage`, mirroring the backend's `FREE_LIMITS`/`NOTES_WINDOW_DAYS`) so they never drift out
+of sync with server-enforced limits; a static fallback covers the brief window before usage
+loads. Collapsed by default in both states, matching the app's existing progressive-disclosure
+pattern (e.g. `seatCountEditRow`).
 
 ### Danger Zone
 

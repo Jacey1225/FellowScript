@@ -154,8 +154,13 @@ final class AccountUITests: XCTestCase {
     // MARK: - Shared flow: onboarding + sign-in, then land on the Account tab
     // (mirrors NoteEditorUITests.signInAndReachDashboard, routed to Account).
 
+    /// - Parameter extraLaunchArguments: additive launch arguments appended
+    ///   after "UI-TESTING" — e.g. "UI-TESTING-SUBSCRIBED" (task:
+    ///   20260814-subscription-benefits-detail) so a test can drive
+    ///   MockDataService's active-subscriber branch. Defaults to none, so
+    ///   every pre-existing call site keeps launching exactly as before.
     @discardableResult
-    private func signInAndReachAccount() -> XCUIApplication {
+    private func signInAndReachAccount(extraLaunchArguments: [String] = []) -> XCUIApplication {
         let app = XCUIApplication()
 
         addUIInterruptionMonitor(withDescription: "System permission alerts") { alert in
@@ -169,7 +174,7 @@ final class AccountUITests: XCTestCase {
         // Route the app at MockDataService instead of the live backend, and
         // force a real cold launch so every test starts from clean, in-memory
         // MockDataService state (agents/subscription/etc. reset each launch).
-        app.launchArguments = ["UI-TESTING"]
+        app.launchArguments = ["UI-TESTING"] + extraLaunchArguments
         app.terminate()
         app.launch()
 
@@ -564,5 +569,119 @@ final class AccountUITests: XCTestCase {
         let restoreButton = app.buttons["Restore Purchases"]
         scrollUntilExists(restoreButton, app: app)
         XCTAssertTrue(restoreButton.isEnabled, "Restore Purchases must not be disabled while vm.subBusy is false")
+    }
+
+    // MARK: - "What's included" benefits disclosure (task:
+    // 20260814-subscription-benefits-detail)
+    //
+    // Covers both subscription states named in the task's acceptance
+    // criteria. The active-subscriber case needed a new, additive,
+    // opt-in-only MockDataService seam (the "UI-TESTING-SUBSCRIBED" launch
+    // argument — see MockDataService.fetchUsage/fetchUserSubscription) since
+    // fetchUserSubscription previously always returned nil, making
+    // activePlanRow (and therefore its benefitsDisclosure call site)
+    // unreachable from any UI test; that default nil behavior is preserved
+    // for every other test, including the no-plan-state test directly above.
+
+    func test_subscriptionSection_prePurchaseBenefitsDisclosure_expandsCollapses_andTracksMemberCount() {
+        let app = signInAndReachAccount()
+
+        let toggle = app.buttons["whatsIncludedToggle"]
+        scrollUntilExists(toggle, app: app)
+
+        // Collapsed by default (design-notes.md §1.2: both states default closed).
+        XCTAssertFalse(app.staticTexts["Unlimited notes"].exists,
+                        "benefit rows must not be visible before the disclosure is expanded\n\(app.debugDescription)")
+
+        scrollToAndTap(toggle, app: app)
+
+        // All four benefit rows render, with the two-decimal free-tier
+        // reference numbers MockDataService.fetchUsage's default (nil)
+        // leaves at benefitRow's documented static fallback (10/7/1/3,
+        // mirroring api/schemas/subscription.py FREE_LIMITS/NOTES_WINDOW_DAYS).
+        let notesRow = app.staticTexts["Unlimited notes"]
+        XCTAssertTrue(notesRow.waitForExistence(timeout: 5), "expected the 'Unlimited notes' benefit row after expanding\n\(app.debugDescription)")
+        XCTAssertTrue(app.staticTexts["Free plan: 10 every 7 days"].exists)
+        XCTAssertTrue(app.staticTexts["Unlimited agent events"].exists)
+        XCTAssertTrue(app.staticTexts["Free plan: 1"].exists)
+        XCTAssertTrue(app.staticTexts["Unlimited agent notifications"].exists)
+        XCTAssertTrue(app.staticTexts["Free plan: 3"].exists)
+
+        // Pre-purchase state: benefit copy must track the live Stepper
+        // selection (selectedMemberCount starts at 1), not a static blurb.
+        XCTAssertTrue(app.staticTexts["Shared group access for up to 1 member"].exists,
+                       "singular 'member' must be used for a member count of 1\n\(app.debugDescription)")
+
+        // Native UIStepper (what SwiftUI's Stepper renders as) has no direct
+        // XCUIElement API of its own — the standard, documented XCUITest
+        // technique is tapping a coordinate near its right edge, which lands
+        // on the "+" control half.
+        let stepper = app.steppers.firstMatch
+        scrollUntilExists(stepper, app: app)
+        stepper.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.5)).tap()
+
+        let twoMembersRow = app.staticTexts["Shared group access for up to 2 members"]
+        XCTAssertTrue(twoMembersRow.waitForExistence(timeout: 5),
+                       "incrementing the member Stepper must update the benefits row's member count live\n\(app.debugDescription)")
+        XCTAssertFalse(app.staticTexts["Shared group access for up to 1 member"].exists,
+                        "the stale 1-member benefit text must be replaced, not left alongside the new one")
+
+        // Collapsing must hide the benefit rows again.
+        scrollUntilHittable(toggle, app: app)
+        toggle.tap()
+        RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+        XCTAssertFalse(app.staticTexts["Unlimited notes"].exists,
+                        "benefit rows must be hidden again after collapsing\n\(app.debugDescription)")
+
+        // Regression guard: expanding/collapsing/incrementing must not have
+        // disturbed the Start CTA this row sits directly above.
+        let startButton = app.buttons["Start"]
+        scrollUntilExists(startButton, app: app)
+        XCTAssertTrue(startButton.isEnabled, "Start must remain enabled after interacting with the benefits disclosure\n\(app.debugDescription)")
+    }
+
+    func test_subscriptionSection_activeSubscriberBenefitsDisclosure_showsPlanMemberCount() {
+        // MockDataService.mockActiveSubscription (max_members: 3, host ==
+        // signed-in user) via the additive "UI-TESTING-SUBSCRIBED" seam.
+        let app = signInAndReachAccount(extraLaunchArguments: ["UI-TESTING-SUBSCRIBED"])
+
+        // Sanity check we actually landed on the active-subscriber branch
+        // (activePlanRow), not the no-plan branch this file's other
+        // subscription test covers.
+        let planLabel = app.staticTexts["Group Plan"]
+        scrollUntilExists(planLabel, app: app)
+        XCTAssertFalse(app.staticTexts["Start with a free 1-month trial — you won't be billed until it ends."].exists,
+                        "the subscribed seed must render activePlanRow, not the no-plan trial caption\n\(app.debugDescription)")
+
+        let toggle = app.buttons["whatsIncludedToggle"]
+        scrollUntilExists(toggle, app: app)
+        XCTAssertFalse(app.staticTexts["Unlimited notes"].exists, "collapsed by default in the active-subscriber state too")
+
+        scrollToAndTap(toggle, app: app)
+
+        XCTAssertTrue(app.staticTexts["Unlimited notes"].waitForExistence(timeout: 5),
+                       "expected benefit rows in the active-subscriber state\n\(app.debugDescription)")
+        XCTAssertTrue(app.staticTexts["Unlimited agent events"].exists)
+        XCTAssertTrue(app.staticTexts["Unlimited agent notifications"].exists)
+
+        // memberCount comes from plan.max_members (3) here, not a Stepper
+        // selection — proves activePlanRow's call site wires the real plan
+        // size through, matching design-notes.md §2.3.
+        XCTAssertTrue(app.staticTexts["Shared group access for up to 3 members"].exists,
+                       "expected the plan's real max_members (3) reflected in the benefits row, plural 'members'\n\(app.debugDescription)")
+        XCTAssertTrue(app.staticTexts["Unlimited usage is shared across everyone on the plan"].exists)
+
+        // Regression guard: existing active-plan controls below the new
+        // disclosure (Manage Subscription for an Apple-provider plan is not
+        // reachable here since MockDataService seeds provider: "" / Stripe
+        // path — Cancel Plan is the host branch instead) must still be
+        // present and enabled after expanding the disclosure.
+        // Matched by CONTAINS (not an exact label) since the button's default
+        // accessibility label combines its SF Symbol ("trash") and "Cancel
+        // Plan" text child views — same defensive pattern this file already
+        // uses for onboarding/sign-in buttons above.
+        let cancelButton = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "Cancel Plan")).firstMatch
+        scrollUntilExists(cancelButton, app: app)
+        XCTAssertTrue(cancelButton.isEnabled, "Cancel Plan must remain enabled after interacting with the benefits disclosure\n\(app.debugDescription)")
     }
 }
