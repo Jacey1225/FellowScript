@@ -409,8 +409,43 @@ final class MockDataService: DataServiceProtocol {
     }
 
     // Subscriptions
-    func fetchUsage(userId: String) async throws -> FSUsage? { nil }
-    func fetchUserSubscription(userId: String) async throws -> FSSubscription? { nil }
+    //
+    // UI-TESTING-SUBSCRIBED (additive test-only launch argument, task:
+    // 20260814-subscription-benefits-detail): lets AccountUITests drive the
+    // active-subscriber branch of subscriptionSection (activePlanRow +
+    // benefitsDisclosure) end-to-end. Gated behind its own separate launch
+    // argument (checked only here, in addition to the existing "UI-TESTING"
+    // argument FellowScriptApp already reads to select MockDataService) so
+    // every other UI/unit test — including this file's own no-active-plan
+    // default — keeps getting the pre-existing `nil` behavior unless a test
+    // opts in explicitly.
+    private static var isUITestingSubscribed: Bool {
+        ProcessInfo.processInfo.arguments.contains("UI-TESTING-SUBSCRIBED")
+    }
+    static let mockActiveSubscription = FSSubscription(
+        id: "sub-mock-001", user_id: mockUser.user_id, plan_type: "group",
+        status: "active", price_cents: 2699, max_members: 3
+    )
+    // Mirrors the real backend's usage_summary() shape exactly (api/backend/
+    // subscription/limits.py:105-116): even for a subscribed user, `limit`
+    // stays populated with the FREE_LIMITS reference number (not zeroed out)
+    // alongside `unlimited: true` — that's what lets benefitRow's "Free
+    // plan: N" captions read as an intentional comparison ("here's what
+    // you'd be capped at without this plan"), not a stale/blank value.
+    static let mockActiveUsage = FSUsage(
+        subscribed: true, plan_type: "group", window_days: 7,
+        resources: [
+            "notes":               FSUsageResource(unlimited: true, used: 0, limit: 10, remaining: nil),
+            "agent_events":        FSUsageResource(unlimited: true, used: 0, limit: 1,  remaining: nil),
+            "agent_notifications": FSUsageResource(unlimited: true, used: 0, limit: 3,  remaining: nil),
+        ]
+    )
+    func fetchUsage(userId: String) async throws -> FSUsage? {
+        Self.isUITestingSubscribed ? Self.mockActiveUsage : nil
+    }
+    func fetchUserSubscription(userId: String) async throws -> FSSubscription? {
+        Self.isUITestingSubscribed ? Self.mockActiveSubscription : nil
+    }
     func startSubscription(userId: String, memberCount: Int, billing: FSBillingInfo?) async throws -> String { UUID().uuidString }
     func updateSubscriptionSeats(subscriptionId: String, memberCount: Int) async throws {}
     func cancelSubscription(subscriptionId: String) async throws {}
@@ -449,7 +484,7 @@ enum AppError: LocalizedError {
             default:                    name = resource
             }
             return "You've reached your free plan limit for \(name) (max \(limit)). "
-                 + "Upgrade to an Individual or Group plan for unlimited access."
+                 + "Upgrade to a Group plan for unlimited access."
         case .notFound:            return "Resource not found."
         }
     }

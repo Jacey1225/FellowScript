@@ -444,6 +444,13 @@ struct AccountView: View {
     @State private var selectedMemberCount = 1
     // Subscription: host's in-progress seat-count edit on an active plan
     @State private var editMemberCount: Int? = nil
+    // Subscription: "What's included" benefits disclosure — shared by the
+    // active-subscriber and pre-purchase states, which are mutually exclusive
+    // branches of the same section, so one toggle is safe. Pure UI display
+    // state with no backend/VM logic behind it, so it's local @State rather
+    // than @Published on AccountViewModel (matches showNotificationsList /
+    // showBlockedUsers below).
+    @State private var showBenefits = false
 
     // Edit profile
     @State private var username     = ""
@@ -718,7 +725,7 @@ struct AccountView: View {
                 usageRow("Agent notifications", usage.agentNotifications, hint: nil, forceUnlimited: unlimited)
                 if !unlimited {
                     Divider().background(Theme.borderGoldFaint)
-                    Text("You're on the free plan. Upgrade to an Individual or Group plan for unlimited notes, events, and notifications.")
+                    Text("You're on the free plan. Upgrade to a Group plan for unlimited notes, events, and notifications.")
                         .font(.lora(Theme.fontSM))
                         .foregroundColor(Theme.textGoldMuted)
                 }
@@ -768,6 +775,7 @@ struct AccountView: View {
                 HStack { Spacer(); ProgressView().tint(Theme.gold); Spacer() }
             } else if let plan = vm.subscription {
                 activePlanRow(plan)
+                benefitsDisclosure(memberCount: plan.max_members, isExpanded: $showBenefits)
 
                 if vm.isSubHost && plan.plan_type == "group" {
                     seatCountEditRow(plan)
@@ -888,6 +896,76 @@ struct AccountView: View {
         }
     }
 
+    // Mirrors the "Label + trailing chevron, plain row" idiom already used by the
+    // Blocked Users row (privacySafetySection, AccountView.swift:1424-1433), swapping
+    // chevron.right (navigate) for chevron.down/up (expand/collapse in place): this
+    // toggles content inline rather than navigating to another screen.
+    private func benefitsDisclosure(memberCount: Int, isExpanded: Binding<Bool>) -> some View {
+        VStack(alignment: .leading, spacing: Theme.spacingXS + 2) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) { isExpanded.wrappedValue.toggle() }
+            } label: {
+                HStack {
+                    Label("What's included", systemImage: "info.circle")
+                        .font(.lora(Theme.fontBody))
+                        .foregroundColor(Theme.parchment)
+                    Spacer()
+                    Image(systemName: isExpanded.wrappedValue ? "chevron.up" : "chevron.down")
+                        .font(.caption)
+                        .foregroundColor(Theme.textMuted)
+                }
+                .contentShape(Rectangle())
+                .frame(minHeight: 44)   // touch-target-size: 44x44pt minimum (Apple HIG)
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("whatsIncludedToggle")
+            .accessibilityLabel("What's included")
+            .accessibilityHint(isExpanded.wrappedValue
+                ? "Double tap to collapse the list of plan benefits"
+                : "Double tap to expand the list of plan benefits")
+
+            if isExpanded.wrappedValue {
+                VStack(alignment: .leading, spacing: Theme.spacingXS + 2) {
+                    // Fallback numbers mirror the server source of truth
+                    // (api/schemas/subscription.py FREE_LIMITS / NOTES_WINDOW_DAYS)
+                    // for the brief window before vm.usage loads — same pattern
+                    // as fallbackPriceCents above, which mirrors GROUP_PRICE_CENTS.
+                    benefitRow("Unlimited notes",
+                                "Free plan: \(vm.usage?.notes.limit ?? 10) every \(vm.usage?.window_days ?? 7) days")
+                    benefitRow("Unlimited agent events",
+                                "Free plan: \(vm.usage?.agentEvents.limit ?? 1)")
+                    benefitRow("Unlimited agent notifications",
+                                "Free plan: \(vm.usage?.agentNotifications.limit ?? 3)")
+                    benefitRow("Shared group access for up to \(memberCount) member\(memberCount == 1 ? "" : "s")",
+                                "Unlimited usage is shared across everyone on the plan")
+                }
+                .padding(.leading, Theme.spacingSM)
+                .padding(.top, Theme.spacingXS)
+                .transition(.opacity.combined(with: .move(edge: .top)))
+                .accessibilityElement(children: .contain)
+            }
+        }
+    }
+
+    // Reuses the checkmark.circle.fill / Theme.gold pairing already used as an
+    // affirmative marker in requestRow's accept button, repurposed here as a
+    // static bullet rather than a tappable action.
+    private func benefitRow(_ title: String, _ caption: String) -> some View {
+        HStack(alignment: .top, spacing: Theme.spacingSM) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 14))
+                .foregroundColor(Theme.gold)
+                .padding(.top, 2)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title).font(.lora(Theme.fontSM)).foregroundColor(Theme.parchment)
+                Text(caption).font(.lora(Theme.fontXXS)).foregroundColor(Theme.textMuted)
+            }
+            Spacer()
+        }
+        .accessibilityElement(children: .combine)
+    }
+
     private func requestRow(_ r: FSSubMember) -> some View {
         HStack(spacing: Theme.spacingSM) {
             ZStack {
@@ -966,6 +1044,7 @@ struct AccountView: View {
             }
             Stepper("Members: \(selectedMemberCount)", value: $selectedMemberCount, in: 1...8)
                 .font(.lora(Theme.fontSM)).foregroundColor(Theme.parchment)
+            benefitsDisclosure(memberCount: selectedMemberCount, isExpanded: $showBenefits)
             Button {
                 Task { await vm.purchasePlan(memberCount: selectedMemberCount) }
             } label: {
