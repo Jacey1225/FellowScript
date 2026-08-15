@@ -1,0 +1,79 @@
+[
+  {
+    "target_claim": "No faith-specific leader-first precedent was found. [...] The central question — whether a leader-first partnership shape is a documented alternative to Hallow's/YouVersion's institution-first model — is answered only via non-faith analogs (EdTech, community-led growth, Notion).",
+    "counter_claim": "A faith-specific precedent for non-institutional growth does exist, but it is user-first, not leader-first as scoped. YouVersion's own early growth (2008-2012) was driven by direct organic/individual adoption and viral sharing campaigns (83,000 downloads its opening App Store weekend in 2008; a 'Global Share the Bible Day' campaign drove roughly 1 million installs in 11 days in Dec 2010) rather than formal institutional or diocese partnerships, which came later after the app had already scaled organically. This contradicts the strongest reading of 'no faith-specific alternative to institution-first exists' but does not supply the specific pattern the claim is really about (individual pastors/small-group leaders acting as champions who bring their institution along) -- no source found documents pastors/leaders as YouVersion's primary early growth engine, and RightNow Media's own materials describe institutional/church-leadership distribution language without disclosing whether initial adoption was leader-driven or top-down. A search for a documented faith-specific leader-first *failure* case also came up empty. Net effect: complicates rather than overturns the claim -- it shows a faith app can grow via a non-institution-first motion, but not that the specific leader-first mechanism the brief needs has faith-specific precedent.",
+    "counter_evidence": [
+      {
+        "url_or_ref": "https://relevantmagazine.com/culture/how-bobby-gruenewald-built-youversion-into-the-biggest-bible-app-in-the-world/",
+        "title": "How Bobby Gruenewald Built YouVersion Into One of the Biggest Apps in the World",
+        "reliability_notes": "Established Christian culture/journalism outlet (RELEVANT), journalistic feature with founder quotes; secondary not primary source, but independent of YouVersion/Life.Church.",
+        "how_it_contradicts": "Documents YouVersion's explosive early growth (83,000 installs opening weekend, 2008) as individual-user-driven with zero institutional-partnership or pastor-champion narrative in the growth account -- contradicts the idea that institution-first is the only documented faith-app growth pattern, though it substitutes 'user-first' rather than confirming 'leader-first' specifically."
+      },
+      {
+        "url_or_ref": "https://growthcasestudies.com/p/youversion",
+        "title": "YouVersion Growth Case Study: From 80K to 1 billion downloads",
+        "reliability_notes": "Independent growth-marketing case-study aggregator; methodology/sourcing not fully transparent, treat as secondary and moderate-reliability.",
+        "how_it_contradicts": "Corroborates the RELEVANT account: describes organic word-of-mouth and a viral 'Share the Bible Day' campaign (~1M installs/11 days, Dec 2010) as the pre-institutional-partnership growth driver, with institutional partnerships appearing to solidify only after substantial organic scale."
+      }
+    ],
+    "confidence_score": 0.35
+  },
+  {
+    "target_claim": "[Campus-ministry coalitions specifically:] the evidence supports deferring rather than pursuing now.",
+    "counter_claim": "No credible counter-evidence was found after a genuinely different search strategy (single-campus/chapter blog searches, small-staffer-adoption searches, RUF/InterVarsity/Cru chapter-level searches). No documented case of a small team (below coalition scale) running a successful campus-ministry digital-tool-adoption or outreach effort surfaced, and no documented failure case of a small-team attempt surfaced either -- the absence itself remains uncontested. Independent reporting (First Things, not affiliated with any campus-ministry vendor or coalition) further complicates a challenge to the deferral: it describes campus ministries with independent budgets, full-time staff, and dedicated facilities substantially outperforming ministries that function as under-resourced student organizations, and attributes measurable engagement gains directly to added institutional infrastructure. This is not proof that a small FellowScript-scale team would fail, but it is directionally confirming, not disconfirming, of the caution behind deferring coalition-scale campus-ministry investment before validating lower-effort channels.",
+    "counter_evidence": [
+      {
+        "url_or_ref": "https://firstthings.com/the-campus-ministry-boom/",
+        "title": "The Campus Ministry Boom",
+        "reliability_notes": "Independent religion/culture magazine, not a ministry-technology vendor or coalition member; editorial/reported piece, not empirical study, but genuinely independent of the sources already cited in brief.md.",
+        "how_it_contradicts": "Does not contradict the original claim -- it reinforces it. Included transparently because it was the most relevant result of a genuine, differently-framed search for small-team campus-ministry success stories; instead of finding counter-evidence, the search surfaced further support for the resource/infrastructure-scale advantage that underlies the deferral recommendation."
+      }
+    ],
+    "confidence_score": 0.1
+  },
+  {
+    "target_claim": "Evangelical campus-outreach practitioners caution that relational/on-the-ground tactics outperform broad digital advertising specifically in the campus-ministry sub-audience.",
+    "counter_claim": "No comparative outcome study directly testing relational-versus-digital effectiveness within a campus-ministry audience was found. The best available empirical source (Barna Group) is Gen-Z-wide, not campus-ministry-specific, and does not support digital outperforming relational engagement (54% of Gen Z strongly agree in-person relationships are more valuable than digital ones) -- but it also does not support a strict binary where relational simply 'outperforms' digital broadly. Barna instead recommends a complementary framing: digital interactions used to enhance, not replace or compete with, face-to-face community. A separately-found statistics aggregator (Gitnux) listed digital-reach and in-person-retention figures side by side but with no per-statistic sourcing and mismatched units (reach vs. retention vs. conversion), so it was not treated as credible comparative evidence per the plan's reliability bar. Net effect: this is the anticipated 'refines rather than overturns' outcome -- the claim survives as stated for initial/broad-audience engagement, but the sharper form implied by 'outperform' should be softened to 'digital and relational are better understood as complementary, with relational likely mattering more for initial trust-building and digital more for reach/sustaining,' since no source actually measured comparative outperformance.",
+    "counter_evidence": [
+      {
+        "url_or_ref": "https://www.barna.com/trends/how-to-help-gen-z-connect-spiritually-online-and-at-church/",
+        "title": "How to Help Gen Z Connect Spiritually Online and at Church",
+        "reliability_notes": "Barna Group is an established empirical religion-research organization -- higher reliability than the practitioner-commentary sources already cited (TheGospelCoalition, Reliant Creative), though this report is Gen-Z-general, not campus-ministry-specific.",
+        "how_it_contradicts": "Complicates rather than contradicts: provides Gen Z's own stated preference for in-person relationships (54%) but explicitly frames the effective strategy as digital-complementing-relational rather than relational-outperforming-digital, softening the sharper 'outperform' framing in the original claim."
+      },
+      {
+        "url_or_ref": "https://gitnux.org/evangelism-statistics/",
+        "title": "Evangelism Statistics | Verified 2026 Data",
+        "reliability_notes": "Low reliability: aggregator site with report-level (not per-statistic) attribution, mismatched metrics (reach vs. retention vs. conversion) across digital and in-person figures. Noted for transparency about what was searched, not relied upon as genuine counter-evidence.",
+        "how_it_contradicts": "Does not credibly contradict or confirm -- included only to document that a comparative-statistics search was genuinely attempted and this source was assessed and rejected as too unreliable to move the needle, per the plan's explicit instruction not to stretch a weak source to fill a gap."
+      }
+    ],
+    "confidence_score": 0.25
+  },
+  {
+    "target_claim": "The EdTech teacher-first / Notion Campus Leaders 'leader-first go-to-market' pattern is treated as a structural analog worth adapting for a faith-app context, despite trust/doctrinal-safety concerns being named but not tested.",
+    "counter_claim": "The EdTech leader-first pattern itself, examined more closely, contains the failure mode the brief's Risks section only speculated about. EdTech industry commentary describes a 'pilot trap': when adoption depends on one enthusiastic teacher-champion, results are often tied to that individual's specific skill and context and do not transfer when scaled institution-wide. Separately, and more directly relevant to the trust/doctrinal-safety concern, bottom-up teacher-level adoption of an EdTech tool creates a FERPA compliance trigger the moment the teacher uses it with students -- even without the institution having signed a contract -- which forces a compliance/IT/privacy review gate before the tool can scale past the champion, structurally similar to a doctrinal-safety review gate a small-group leader's use of FellowScript might eventually hit at the pastoral or diocesan level. This is genuine complicating counter-evidence: it shows the source domain for the analog itself documents a scaling failure mode tied to institutional gatekeeping, which argues for treating the EdTech analog's transferability with more caution than the brief currently does, not less.",
+    "counter_evidence": [
+      {
+        "url_or_ref": "https://schoolai.com/blog/why-edtech-adoption-fails-in-schools",
+        "title": "Why EdTech Adoption Fails in Schools",
+        "reliability_notes": "Written by an EdTech vendor (SchoolAI) with a commercial interest in explaining and solving adoption failure -- weigh accordingly, consistent with the commercial-interest scrutiny already applied to Reach Capital/Agile Education Marketing in the original brief. No named case studies; general pattern description, not a documented single incident.",
+        "how_it_contradicts": "Documents that champion-dependent bottom-up EdTech adoption both (a) commonly fails to scale beyond the original champion's context and (b) triggers a compliance-review gate (FERPA) once usage becomes institutionally visible -- directly relevant to, and complicating, the doctrinal-safety-friction concern the brief names but does not test."
+      }
+    ],
+    "confidence_score": 0.45
+  },
+  {
+    "target_claim": "Diocese/parish administrator material skews toward compliance and liability rather than persuasion, and both compliance sources are UK Anglican/GDPR documents, a regime-mismatch caveat for a likely US-inflected audience.",
+    "counter_claim": "US-context, persuasion-oriented diocese-facing material does exist, partially overturning the 'compliance-only, UK-only' framing -- but only in vendor pitch form, not from a diocesan or denominational body itself, and access limitations restricted full verification. Flocknote (a US company) maintains a diocese-specific marketing page whose visible search-indexed content frames adoption in benefit/persuasion terms aimed at diocese-level decision-makers -- a master, diocese-wide member data list, a direct communication channel for the bishop, and ready-made templates/campaigns for parishes -- rather than compliance or liability framing. The live page itself returned a 403 (blocked) on direct fetch, so this is based on the page's indexed search snippet rather than a full read, and no USCCB or other diocesan-body-authored persuasion material (only thin, procedural communications-office resources) was found to corroborate independently. This refines rather than fully overturns the finding: US persuasion-oriented material exists, but it originates from a self-interested vendor, not from within the diocesan/denominational ecosystem itself, so the original observation that independent, persuasion-oriented US material is scarce still stands.",
+    "counter_evidence": [
+      {
+        "url_or_ref": "https://flocknote.com/diocese/",
+        "title": "Better Communication for Dioceses: Texting and Email for Parishes (Flocknote)",
+        "reliability_notes": "US-based vendor with direct commercial interest in diocese adoption -- weigh accordingly, same caution the plan itself anticipated for this angle. Full page fetch blocked (HTTP 403); assessment relies on the search-engine-indexed snippet of the page content, which is a meaningfully weaker form of verification than a direct read.",
+        "how_it_contradicts": "Shows persuasion/benefit-oriented (not compliance-oriented) language aimed at US diocese decision-makers exists, contradicting the claim that available diocese-facing material skews to compliance only and is UK-only -- but as vendor pitch content, it doesn't establish that persuasion-oriented material exists from an independent or denominational-body source."
+      }
+    ],
+    "confidence_score": 0.3
+  }
+]

@@ -1,0 +1,226 @@
+[
+  {
+    "url_or_ref": "user-provided: prior task .claude/research/20260814-fellowscript-marketing/brief.md",
+    "title": "Research Brief: FellowScript Marketing Methods (prior task)",
+    "type": "user-provided",
+    "reliability_notes": "Primary internal deliverable from the directly preceding research task in this pipeline, required first reading per this task's constraints. Establishes pastor/leader outreach and campus-ministry-coalition precedents as already-sourced background, not to be re-derived.",
+    "key_claims_supported": [
+      "Pastor/leader outreach and 'best-of' list placement (TheLeadPastor) is a real, targetable discovery channel",
+      "Campus-ministry coalition apps (EveryCampus, 100+ campus ministries) are a live precedented model",
+      "Evangelical campus-outreach practitioners caution that relational/on-the-ground tactics outperform broad digital advertising in the campus-ministry sub-audience",
+      "FellowScript is group-priced, making group-level gatekeepers a distinct acquisition channel",
+      "Hallow's institutional model rests on 2,500+ parish partnerships and ~9% QR-code-attributed growth; the 30% Catholic-org figure is debunked"
+    ],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "user-provided: prior task .claude/research/20260814-fellowscript-marketing/conclusion.md",
+    "title": "Conclusion: FellowScript Marketing Methods (prior task)",
+    "type": "user-provided",
+    "reliability_notes": "Primary internal deliverable; final evaluated conclusion of the prior pipeline run, including the two open questions this task exists to answer, and the standing caution to treat every borrowed tactic as a hypothesis, not a playbook.",
+    "key_claims_supported": [
+      "Open question: whether Hallow's/YouVersion's parish-partnership tactics transfer to a smaller group-study product or need a different, leader-first shape",
+      "Open question: whether campus-ministry-coalition partnerships are worth pursuing given small-team capacity constraints",
+      "Standing caution: treat every borrowed tactic as a hypothesis, not a proven playbook",
+      "Four figures to never re-cite: 83% referral trust stat, 30% Catholic-partnership increase, Feb 2024 Hallow spike as calendar-timing-alone proof, blanket 'authenticity beats production' claim"
+    ],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "https://www.reachcapital.com/resources/thought-leadership/should-my-edtech-company-sell-to-teachers-schools-or-districts/",
+    "title": "Should My Edtech Company Sell to Teachers, Schools or Districts?",
+    "type": "found",
+    "reliability_notes": "Published by Reach Capital, an edtech-focused venture fund with direct visibility into many portfio companies' go-to-market motions; author (Esteban Sosnik) writes from investor/operator experience rather than as a vendor selling the tactic. Commercially adjacent (VC content marketing) but not selling a product itself.",
+    "key_claims_supported": [
+      "Teacher-first ('B2C2B') bottom-up adoption is recommended for classroom-facing products: tighter feedback loop, capital efficiency, teachers as free proxy sales staff, technical feasibility via device proliferation",
+      "Bottom-up teacher adoption can transition into district-level deals when teachers 'band together' to convince administrators",
+      "Caveat: this approach applies to teacher-facing products specifically, not admin-facing tools"
+    ],
+    "corroboration_count": 3
+  },
+  {
+    "url_or_ref": "https://www.edsurge.com/news/2016-12-18-choosing-a-top-down-vs-bottom-up-approach-in-edtech-sales",
+    "title": "Choosing a 'Top-Down' vs. 'Bottom-Up' Approach in Edtech Sales",
+    "type": "found",
+    "reliability_notes": "EdSurge is a long-running, editorially independent edtech trade publication. Full article body could not be retrieved via WebFetch (paywall/JS rendering blocked extraction beyond headline/byline); used only to corroborate that this top-down/bottom-up framing is an established, named industry dichotomy, not to source specific tactical claims.",
+    "key_claims_supported": [
+      "Top-down (district-first) vs. bottom-up (teacher-first) is a recognized, named dichotomy in edtech sales strategy"
+    ],
+    "corroboration_count": 2
+  },
+  {
+    "url_or_ref": "https://agile-ed.com/resources/how-to-sell-your-product-to-schools/",
+    "title": "How To Boost EdTech Sales (Agile Education Marketing)",
+    "type": "found",
+    "reliability_notes": "Edtech marketing agency content; commercially interested in edtech sales best practices as a category but not selling the specific teacher-champion tactic as its own product. Corroborates the champion-enablement mechanism independently of Reach Capital.",
+    "key_claims_supported": [
+      "The 'champion enablement kit' concept: the teacher/coordinator champion, not the vendor's sales team, presents to the curriculum committee and drives the institutional purchase decision",
+      "No-cost pilot programs with dedicated support create the internal advocate who drives district/institutional expansion",
+      "Champions are identified via conference networking, LinkedIn outreach, and educator-community engagement"
+    ],
+    "corroboration_count": 2
+  },
+  {
+    "url_or_ref": "https://help.textinchurch.com/en/articles/9283040-how-can-i-pitch-text-in-church-to-my-leadership",
+    "title": "How can I pitch Text In Church to my Leadership",
+    "type": "found",
+    "reliability_notes": "Vendor help-center article for a church communication SaaS product, explicitly designed to help a lay champion pitch upward to church leadership — this is itself a close structural analog to the FellowScript pitch problem (a product literally instructing users how to sell it internally to gatekeepers). Commercially interested but the pitch-structure content is directly usable as a template pattern regardless of vendor bias.",
+    "key_claims_supported": [
+      "Recommends tailoring the pitch by decision-maker style: mission-focused, strategy-oriented, or data-driven leaders each get a different angle",
+      "Core pitch levers: concrete-outcome benefits backed by case studies/testimonials, cost-benefit framing as an affordable multi-ministry tool, pilot/trial proposals (e.g. free trial) to work around slow church decision-making, and framing adoption as collaborative planning rather than a top-down mandate",
+      "Common objections to pre-address: budget, perceived impersonality of automation, applicability regardless of church size, and adoption resistance (addressed via onboarding workshops/training)"
+    ],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "https://churchtechtoday.com/small-groups-church-app-fall/",
+    "title": "Empower Small Groups With A Church App This Fall",
+    "type": "found",
+    "reliability_notes": "ChurchTechToday is a dedicated church-technology trade publication (already used and treated as reliable in the prior task's brief). Practitioner-facing, not selling a specific product.",
+    "key_claims_supported": [
+      "Small-group-leader onboarding: leaders should introduce the app hands-on at first meeting, downloading together as a group activity",
+      "Position the app as the small group's central registration/resource hub (agendas, discussion guides, calendars) rather than a bolt-on",
+      "Ongoing champion-building via periodic leader check-ins and troubleshooting support throughout the season"
+    ],
+    "corroboration_count": 2
+  },
+  {
+    "url_or_ref": "https://tabernacle.app/blog/9-steps-to-adopt-new-technology-in-church-management",
+    "title": "9 Steps to Adopt New Technology in Church Management",
+    "type": "found",
+    "reliability_notes": "Vendor blog (church management software) but describes the institutional evaluation/rollout process generically rather than promoting a single product feature; useful as a structural map of institution-scale adoption friction.",
+    "key_claims_supported": [
+      "Institutional-scale rollout follows a needs-assessment -> stakeholder-workshop -> vendor-comparison -> budgeting -> risk-planning -> phased pilot -> tailored training -> ongoing-support sequence",
+      "Phased implementation (pilot group before church-wide deployment) is the recommended risk-mitigation pattern for institutional adoption",
+      "A designated 'technology champion' and help-desk access are recommended for sustaining institutional adoption post-rollout"
+    ],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "https://www.concordiatechnology.org/blog/how-pastors-and-church-leaders-can-champion-health-technology-adoption",
+    "title": "How Pastors and Church Leaders Can Champion Healthy Technology Adoption",
+    "type": "found",
+    "reliability_notes": "Published by a Lutheran (LCMS-affiliated) church-technology ministry organization; practitioner/ministry voice rather than a vendor. Notably, this source does NOT differentiate pastoral concerns from other leadership roles -- itself evidence of a real gap (role-specific pitch literature for pastors specifically is thin).",
+    "key_claims_supported": [
+      "Recommends framing technology adoption as serving, not replacing, core pastoral ministry ('Word and Sacrament')",
+      "Recommends transparency about rollout imperfections and one-on-one conversations for adoption-resistant individuals",
+      "Gap: the source treats 'pastors and church leaders' as a single undifferentiated audience rather than giving pastor-specific pitch angles (e.g. doctrinal safety) -- corroborates that pastor-specific literature, distinct from generic leadership literature, is thin"
+    ],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "https://everycampus.com/our-strategy/launching/",
+    "title": "EveryCampus — Our Strategy: Launching",
+    "type": "found",
+    "reliability_notes": "Primary source: EveryCampus's own strategy page. Confirms the coalition/partner-ecosystem model already known from the prior task, but is vision-level rather than tactical -- most operational detail sits behind a gated 'Start Something New' community platform this agent could not access.",
+    "key_claims_supported": [
+      "EveryCampus's campus-launch model is explicitly a multi-partner coalition (40+ partner organizations) approach, not a single small-team playbook",
+      "Gap: no chapter-by-chapter rollout mechanics, ambassador structure, or staffing details are publicly documented at this URL"
+    ],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "https://everycampus.com/launch-guide/",
+    "title": "EveryCampus — Launch Guide",
+    "type": "found",
+    "reliability_notes": "Primary source, same org as above. Public-facing summary of a gated deeper guide; corroborates the 'relational over digital' emphasis already flagged in the prior task (TheGospelCoalition) from the coalition's own operating literature, independent of that practitioner-commentary source.",
+    "key_claims_supported": [
+      "EveryCampus's own launch guidance foregrounds relational tactics -- small-group Bible studies, mentorship, prayer walks -- and ministry coaching over operational/digital growth mechanics",
+      "No explicit team-size or timeline requirements are given, suggesting this model doesn't publicly document what a small-team-scale version would look like"
+    ],
+    "corroboration_count": 2
+  },
+  {
+    "url_or_ref": "https://www.agathongroup.com/everycampus/",
+    "title": "How Agathon's App for EveryCampus Powered Prayer Across 4,234 College Campuses",
+    "type": "found",
+    "reliability_notes": "Case study published by the design/dev agency (Agathon) that built the EveryCampus app -- commercially interested in showcasing its own work, so treat scale claims as agency-reported rather than independently audited. Useful primarily for confirming EveryCampus operated as a multi-organization coalition effort, not a small-team analog.",
+    "key_claims_supported": [
+      "EveryCampus app covered all 4,234 US college campuses by May 2020, faster than internal schedule, per agency's account",
+      "Success attributed to persona-driven UX design and dual physical/virtual prayer-walk functionality (COVID-19 adaptation), not to a documented small-team outreach playbook",
+      "This scale was achieved via a coalition of ministry organizations (Cru, InterVarsity, etc.), not a lone small team -- relevant caution for whether this precedent transfers to FellowScript's team-size constraint"
+    ],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "https://future.com/college-ambassador-program-how-to-for-startups/",
+    "title": "A Startup's Guide to Launching College Ambassador Programs",
+    "type": "found",
+    "reliability_notes": "Published by Future (an athlete-NIL/marketing-adjacent company); author writes from direct startup-ambassador-program operating experience, including naming their own prior startup's (failed) program. Not faith-specific but a well-corroborated general pattern for a small team running a campus outreach motion.",
+    "key_claims_supported": [
+      "Small teams should start with a single 'campus lead' recruited via personal referral, who then sources and manages other reps -- a hierarchical delegation model that scales outreach without a large staff",
+      "Non-financial incentives (product affinity, resume value, exclusive access, networking) are viable substitutes for cash budgets",
+      "Programs should be structured to the academic semester/quarter calendar and launched around high-traffic campus events (welcome week) -- directly relevant to the plan's question about seasonal/semester-start timing",
+      "Caution: launching an ambassador program before achieving product-market fit/retention risks burning the audience -- a capacity/readiness caveat relevant to FellowScript's small-team constraint",
+      "Case examples (Tinder, Bumble, Discord, Grubhub, Sidechat) are for-profit consumer apps, not faith-specific -- transfer to a campus-ministry context is an extrapolation, not a proven pattern"
+    ],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "https://www.salesfully.com/single-post/community-led-growth-the-b2b-strategy-that-turns-your-customers-into-your-best-sales-team",
+    "title": "Community-Led Growth: The B2B Strategy That Turns Your Customers Into Your Best Sales Team",
+    "type": "found",
+    "reliability_notes": "B2B marketing/sales agency content; commercially interested in promoting community-led growth as a category, but the specific 'seed with your most engaged, most articulate, most generous customers first' tactic and the '20-50 early members set the culture' pattern are widely repeated, non-proprietary community-management heuristics.",
+    "key_claims_supported": [
+      "Early-champion seeding tactic: invite the most engaged, articulate, generous existing users first, since they already exhibit advocacy behavior",
+      "The first 20-50 community participants set behavioral norms for everyone who follows -- makes early-champion selection foundational",
+      "Champions convert to referral sources via peer-network recommendations, expansion/upgrade revenue, and user-generated content (tutorials, case studies)"
+    ],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "https://www.getsaral.com/academy/notions-ambassador-program",
+    "title": "How Notion Built the Perfect SaaS Brand Ambassador Program",
+    "type": "found",
+    "reliability_notes": "Marketing-agency analysis of a named, real, well-documented program (Notion's Campus Leaders/Ambassador Program), not a vendor's own claim about itself -- reduces (but doesn't eliminate) the commercial-interest concern. Notion's campus-leader program is independently corroborated by multiple secondary write-ups (Vynta, Community Inc.) found in the same search round.",
+    "key_claims_supported": [
+      "Notion's Campus Leaders are the 'backbone' of campus-level growth: hosting events, building templates/resources, providing product feedback, educating peers",
+      "Leaders are incentivized with free product access and exclusive resources/support rather than cash",
+      "This is a documented, named, non-faith example of a 'leader/champion-first' go-to-market motion applied specifically at the campus/student level -- a structural analog for how a leader-first campus outreach model can work operationally"
+    ],
+    "corroboration_count": 2
+  },
+  {
+    "url_or_ref": "https://smartgroups.app/about",
+    "title": "About SmartGroups — Our Story & Mission",
+    "type": "found",
+    "reliability_notes": "Primary source: direct competitor's own About page (already identified as FellowScript's closest direct comparable in the prior task). Self-reported founder narrative, not independently verified; does not disclose actual growth/acquisition data, which is itself informative as a gap.",
+    "key_claims_supported": [
+      "SmartGroups frames itself as 'Built by Leaders, for Leaders,' founded by people who personally led small groups -- a leader-empathy narrative rather than a documented growth-tactics case study",
+      "SmartGroups offers a free-forever single-group tier and a '90-Day Pilot' program -- consistent with the free-tier/pilot-as-foot-in-the-door pattern found elsewhere",
+      "Gap: no case study, partnership announcement, growth metric, or team-size disclosure is available -- confirms the prior task's flag that no public growth data exists for FellowScript's closest comparable"
+    ],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "https://cdn.portsmouthdiocese.org.uk/wp-content/uploads/2022/05/GOV-POL-003-01_DP-clean-2023-10-27.pdf",
+    "title": "Diocesan Operating Procedures — Data Protection (Diocese of Portsmouth)",
+    "type": "found",
+    "reliability_notes": "Primary source: an actual diocesan governance/policy document, not commentary about dioceses. Important applicability caveat: this is a Church of England (Anglican) diocese in the UK, operating under UK GDPR -- FellowScript's likely target audience per the plan (parish/diocese administrators generally, in a US-inflected context given prior task's Catholic/Hallow framing) may face different regulatory specifics (US state privacy law rather than GDPR), so treat the general pattern (diocesan-level data-protection gatekeeping exists and is a real approval factor) as transferable, not the specific legal regime.",
+    "key_claims_supported": [
+      "Diocesan-level offices hold formal, documented responsibility for data-protection compliance across parishes, with named oversight roles (trustees, employees, clergy, volunteers all under a duty to comply)",
+      "This confirms institutional/diocese-level gatekeepers face a genuine compliance/liability evaluation dimension distinct from an individual pastor's or small-group leader's adoption decision"
+    ],
+    "corroboration_count": 2
+  },
+  {
+    "url_or_ref": "https://diocesehn.org.uk/wp-content/uploads/2022/04/Data-Protection-and-GDPR-for-Parishes-April-2022.pdf",
+    "title": "A guide for parishes: Data Protection and GDPR (Diocese of Hereford/Newcastle-area)",
+    "type": "found",
+    "reliability_notes": "Primary source, same category and same UK/Anglican-context caveat as the Portsmouth document above. Independently corroborates that diocesan-level data-protection guidance for parishes is a standard, formally documented artifact across multiple dioceses, not a one-off.",
+    "key_claims_supported": [
+      "Parish-level adoption of any new communication/data-handling tool is expected to be checked against diocesan data-protection guidance -- reinforces that diocese/parish-administrator gatekeepers evaluate tools on compliance/liability grounds distinct from a pastor's or small-group leader's evaluation criteria"
+    ],
+    "corroboration_count": 2
+  },
+  {
+    "url_or_ref": "https://www.guideflow.com/blog/ministry-software",
+    "title": "4 best ministry software for 2026 (Guideflow Blog)",
+    "type": "found",
+    "reliability_notes": "Vendor/review-aggregator content; used narrowly for a single low-risk descriptive claim about the ministry-coordinator/volunteer-coordinator role, not for any tactical or quantitative claim.",
+    "key_claims_supported": [
+      "A volunteer/ministry coordinator role typically oversees recruitment and training of small-group leaders and other volunteer roles -- confirms this is a distinct role from 'pastor' with different day-to-day responsibilities, but the search round found no coordinator-specific pitch-angle literature analogous to what exists for pastors and small-group leaders (a genuine coverage gap, flagged forward)"
+    ],
+    "corroboration_count": 1
+  }
+]

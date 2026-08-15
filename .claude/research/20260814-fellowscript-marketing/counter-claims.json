@@ -1,0 +1,103 @@
+[
+  {
+    "target_claim": "Church/parish/diocese partnerships as a distribution channel. Hallow partnered with 2,500+ parishes; QR codes on parish materials contributed ~9% of overall growth, and 2024 Catholic-organization collaborations correlated with a 30% user increase (Branch.io case study; Contrary Research).",
+    "counter_claim": "The Catholic parish-partnership channel rests on centralized diocesan infrastructure (e.g., dedicated parish-management platforms like Pushpay's ParishStaq) that does not have an equivalent, comparably centralized counterpart across Protestant/non-denominational churches, which instead use fragmented general-purpose tools (Planning Center, Tithe.ly, Subsplash). This is a plausible structural reason the channel would not transfer at similar density to a non-Catholic, non-diocesan audience like FellowScript's. Separately, the specific '30% user increase' figure could not be traced to any primary data, independent replication, or methodology description beyond the original Contrary Research mention -- it remains a single, unverified correlation.",
+    "counter_evidence": [
+      {
+        "url_or_ref": "https://pushpay.com/product/parishstaq/ and general search results on denominational vs. non-denominational church infrastructure",
+        "title": "ParishStaq (Pushpay) / denominational vs. non-denominational church infrastructure comparison",
+        "reliability_notes": "Vendor product page plus general reference material (church-structure explainer sites); moderate reliability -- establishes that Catholic dioceses have centralized management software in a way that is documented, but is not itself a study of app-partnership transferability.",
+        "how_it_contradicts": "Shows a concrete structural asymmetry: Catholic parishes have shared, diocese-wide digital infrastructure that Protestant/non-denominational churches lack in equivalent centralized form, undermining the assumption that Hallow's parish-partnership playbook would scale the same way for a non-Catholic audience."
+      },
+      {
+        "url_or_ref": "https://research.contrary.com/company/hallow (re-checked)",
+        "title": "Contrary Research: Hallow Business Breakdown",
+        "reliability_notes": "Same source as the original claim; re-examined specifically to look for the underlying data/methodology behind '30% user increase' and none was found in accessible search results -- the figure appears to be reported without a traceable primary dataset.",
+        "how_it_contradicts": "Does not contradict the figure directly, but the inability to trace it to an underlying dataset, methodology, or independent replication after a genuine search is itself evidence the stat's evidentiary weight is thinner than its use in the brief implies."
+      }
+    ],
+    "confidence_score": 0.4
+  },
+  {
+    "target_claim": "Church-calendar-timed campaigns dramatically outperform generic timing. Hallow saw 412% install/purchase growth during Lent and 230% during Easter versus 300% from general testing-program gains... February 2024 (Lent) alone drove 2M installs and a brief #1 App Store ranking (Phiture case study; Branch.io case study; Consumer Startups).",
+    "counter_claim": "The February 2024 Hallow growth spike is better explained as a rare, likely non-repeatable confluence of confounds -- Ash Wednesday and Super Bowl LVIII fell in the same week for the first time since 2008, and Hallow simultaneously ran a celebrity Super Bowl ad and increased paid media spend 15x across Meta, Google, and Apple Search Ads leading into Lent -- rather than as clean evidence that liturgical-calendar timing itself, isolated from paid spend and a rare calendar coincidence, dramatically outperforms generic timing.",
+    "counter_evidence": [
+      {
+        "url_or_ref": "https://www.catholicnewsagency.com/news/256811/after-super-bowl-ad-catholic-prayer-app-hallow-sees-biggest-spike-in-its-history; https://www.catholicworldreport.com/2024/02/12/mark-wahlberg-encourages-millions-to-stay-prayed-up/",
+        "title": "Catholic News Agency / Catholic World Report coverage of Hallow's Feb 2024 Super Bowl spike",
+        "reliability_notes": "Independent religious-press journalism, not part of the Phiture/Branch.io/Consumer Startups case-study lineage that all describe the same event from a marketing-case-study angle -- traces back to a different underlying account (contemporaneous news reporting) and adds the calendar-rarity fact the marketing case studies omit.",
+        "how_it_contradicts": "Establishes that Ash Wednesday (start of Lent) and the Super Bowl fell in the same week for the first time since 2008 -- meaning the 2024 spike coincides with a rare calendar confluence, not a repeatable 'Lent timing' pattern that would recur predictably."
+      },
+      {
+        "url_or_ref": "https://wisepops.com/customers/hallow",
+        "title": "Wisepops case study on Hallow (quoting Hallow's own marketing lead Stephen Spiewak)",
+        "reliability_notes": "Vendor case study, but the quoted admission is from Hallow's own team (a primary-source statement), and the vendor (an onsite-popup tool) has no incentive to inflate or deflate the calendar-timing narrative one way or the other -- reasonably independent on this specific point.",
+        "how_it_contradicts": "Confirms Hallow ran an omnichannel campaign (Super Bowl ad plus 15x increased paid spend) leading into Lent 2024, and Hallow's own marketing lead states channels 'don't operate in a vacuum,' directly undercutting the ability to attribute the growth spike to calendar timing in isolation."
+      }
+    ],
+    "confidence_score": 0.75
+  },
+  {
+    "target_claim": "...independently matches external guidance that faith audiences respond better to authentic storytelling than slick production (Christian Post Advertising; FrontGate Media, creator-partnership piece).",
+    "counter_claim": "The brief's own strongest cited growth event -- Hallow's Mark Wahlberg/Jonathan Roumie Super Bowl ad, credited with driving the #1 App Store ranking -- is a highly produced, celebrity-driven campaign, directly contradicting the 'authenticity beats production' framing within the brief's own sourcing. Additionally, both cited 'authenticity' sources and a further one found in this search (Salem Surround) are marketing/advertising agencies serving faith clients, which have a direct commercial incentive to promote low-production, 'authentic-feeling' creator content (which they can sell) over expensive celebrity/produced campaigns (which they generally cannot).",
+    "counter_evidence": [
+      {
+        "url_or_ref": "Internal to brief.md, Summary section 8 (Hallow Super Bowl/Wahlberg case study) vs. Summary section 3 (authenticity claim)",
+        "title": "Internal tension within brief.md's own sourcing",
+        "reliability_notes": "Not an external source -- an internal contradiction identified within the brief's own cited material, as anticipated by the counter-evidence plan's success criteria for this claim.",
+        "how_it_contradicts": "The brief credits a maximally polished, celebrity-driven, expensively produced campaign as its single best-documented growth driver, while separately asserting that faith audiences prefer authentic/low-production content -- the two claims are not reconciled anywhere in the brief."
+      },
+      {
+        "url_or_ref": "https://salemsurround.com/salem-surround/christian-audience/faith-based-digital-marketing-the-complete-guide-for-churches-ministries",
+        "title": "Salem Surround faith-based digital marketing guide",
+        "reliability_notes": "Another faith-marketing agency, same vendor category as Christian Post Advertising and FrontGate Media -- per the plan's own constraint, an agency source in the same category as the sources being challenged does not count as independent corroboration.",
+        "how_it_contradicts": "Rather than serving as independent counter-evidence, this source illustrates that the 'authenticity beats production' claim is a recurring narrative across multiple vendors in the same commercially-interested category, reinforcing (not resolving) the concern that this may be a self-serving vendor narrative rather than an evidence-based finding."
+      }
+    ],
+    "confidence_score": 0.5
+  },
+  {
+    "target_claim": "referred users show ~25% higher LTV and 83% higher trust than non-referred users, and double-sided referral rewards are the dominant proven pattern (Adapty).",
+    "counter_claim": "The '~25% higher LTV' figure has a genuine, traceable, peer-reviewed academic origin (Schmitt, Skiera & Van den Bulte, Journal of Marketing, 2011, finding referred customers have 16-25% higher CLV) -- so this portion of the claim is corroborated, though the brief cites the top of a range as if it were a single fixed figure. However, the '83% higher trust' figure appears to be a conflation of an unrelated statistic: the widely-cited Nielsen finding that 83% of consumers generally trust word-of-mouth recommendations from friends/family, which measures trust in WOM broadly, not a comparison of referred vs. non-referred user trust specifically. Separately, 'double-sided rewards are the dominant proven pattern' overstates the consensus: the same 2011 academic study, and independent growth-marketing commentary, document real failure modes (referral-quality abuse/screening problems and channel cannibalization, where referral 'wins' just capture traffic that would have converted organically) that qualify rather than universally validate double-sided incentive programs.",
+    "counter_evidence": [
+      {
+        "url_or_ref": "https://faculty.wharton.upenn.edu/wp-content/uploads/2012/04/Schmitt-Skiera-vandenBulte-2011-Referral-Programs-Customer-Value.pdf",
+        "title": "Schmitt, Skiera & Van den Bulte (2011), 'Referral Programs and Customer Value,' Journal of Marketing / Wharton",
+        "reliability_notes": "Peer-reviewed academic study, independent of any referral-tool or subscription-infrastructure vendor -- exactly the disinterested source type the plan called for and the original Adapty citation lacked.",
+        "how_it_contradicts": "Confirms the 16-25% higher CLV range (partially corroborating that sub-claim) but explicitly flags that referral incentive structures create abuse potential where existing customers refer low-quality customers just to collect rewards -- directly qualifying the 'dominant proven pattern' framing as unconditional."
+      },
+      {
+        "url_or_ref": "General search results citing Nielsen's word-of-mouth trust statistic (e.g., https://www.buyapowa.com/blog/88-of-consumers-trust-word-of-mouth/ and related coverage)",
+        "title": "Nielsen consumer trust in word-of-mouth statistic",
+        "reliability_notes": "Nielsen is a disinterested, well-known research firm; however this specific figure traces to general WOM trust research, not a referred-vs-non-referred-user comparison, so its reliability for the claim as stated is the problem, not the source itself.",
+        "how_it_contradicts": "Suggests the brief's '83% higher trust than non-referred users' figure is very likely a misattributed/conflated statistic -- the 83% figure documented in widely available sources measures general consumer trust in word-of-mouth recommendations, not a measured trust differential between referred and non-referred app users."
+      },
+      {
+        "url_or_ref": "https://atticusli.com/blog/posts/channel-cannibalization/ ; https://andrewchen.com/how-to-design-a-referral-program/",
+        "title": "Channel cannibalization critique (Atticus Li) and referral program design commentary (Andrew Chen)",
+        "reliability_notes": "Independent growth-marketing practitioner commentary, not vendors selling referral-program tools -- satisfies the plan's requirement that counter-evidence not come from the same vendor category as Adapty.",
+        "how_it_contradicts": "Documents that referral-channel 'wins' can reflect cannibalization of organic conversions rather than true incremental growth, directly challenging the unqualified claim that double-sided referral rewards are simply 'the dominant proven pattern' to prioritize over other channels."
+      }
+    ],
+    "confidence_score": 0.78
+  },
+  {
+    "target_claim": "It is not established that these tactics generalize to a smaller, group/study-centric (rather than meditation/devotional-reading) product like FellowScript -- this is an extrapolation the brief and downstream stages should treat as a hypothesis, not a proven pattern for FellowScript's specific niche.",
+    "counter_claim": "No credible claim-specific counter-evidence (or supporting evidence) exists in the niche/faith-app space either way -- the closest real-world comparable, SmartGroups, has no publicly documented growth or marketing story to compare against Hallow/YouVersion. What was found is adjacent-category evidence that broad, multi-feature product positioning can itself be a marketing liability (harder single-sentence positioning, diluted ASO keyword targeting) in the general startup/app landscape, which is consistent with -- but does not resolve -- the brief's self-flagged extrapolation risk. This should remain reported as an open, empirically untested risk rather than a resolved finding in either direction.",
+    "counter_evidence": [
+      {
+        "url_or_ref": "https://smartgroups.app/about ; https://smartgroups.app/faqs",
+        "title": "SmartGroups About/FAQ pages",
+        "reliability_notes": "Primary source (the company's own site) but thin -- describes founding motivation, not growth/marketing outcomes; no funding, user-count, or channel-performance data is publicly available.",
+        "how_it_contradicts": "Does not directly contradict the claim, but confirms that even the brief's own closest comparable in the group/study-centric niche has no public track record to validate or invalidate whether Hallow/YouVersion-style tactics would work for that shape of product -- reinforcing that the extrapolation remains untested rather than proven."
+      },
+      {
+        "url_or_ref": "General search results on startup positioning risk (e.g., product-manager commentary on avoiding feature-spread, market-trend pieces on focused vs. broad app products)",
+        "title": "General startup/product-positioning commentary on feature-breadth risk",
+        "reliability_notes": "Adjacent-category, generic startup-marketing commentary rather than faith-app or niche-community-app-specific material -- exactly the fallback the plan anticipated if niche-specific material did not exist; moderate reliability given its generality.",
+        "how_it_contradicts": "Suggests that FellowScript's broader, multi-purpose feature bundle (relative to Hallow's single-purpose devotional focus) could plausibly be a positioning and ASO-targeting liability rather than a straightforward differentiation asset, adding a concrete mechanism to the brief's already-flagged risk rather than new proof either way."
+      }
+    ],
+    "confidence_score": 0.45
+  }
+]
