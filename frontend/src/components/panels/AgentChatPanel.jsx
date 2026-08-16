@@ -51,7 +51,7 @@ export default function AgentChatPanel() {
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
       <div style={{
         display: 'flex', alignItems: 'center', gap: '0.4rem',
-        padding: '0.5rem 0.7rem', borderBottom: '1px solid rgba(200,134,26,0.15)',
+        padding: '0.7rem 0.7rem', borderBottom: '1px solid rgba(200,134,26,0.12)',
         overflowX: 'auto', flexShrink: 0,
       }}>
         {enabledAgents.map(agent => (

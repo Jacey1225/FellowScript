@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Button, Input, Select, Typography, Spin, Divider, Tag, Switch } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined, FilterOutlined, ArrowLeftOutlined } from '@ant-design/icons';
+import { PlusOutlined, EditOutlined, DeleteOutlined, FilterOutlined, ArrowLeftOutlined, LockOutlined } from '@ant-design/icons';
 import { NoteBody, sanitizeNoteHtml, stripHtml as sanitizeStripHtml } from '../RichText.jsx';
 import VerseSelector from '../VerseSelector.jsx';
 import { useNotesPanel } from '../../context/ReaderPanelContexts.jsx';
@@ -632,6 +632,7 @@ export default function NotesPanel() {
   if (!user) {
     return (
       <div className="notes-sidebar" style={{ alignItems: 'center', justifyContent: 'center', gap: '1.2rem', padding: '2rem', textAlign: 'center' }}>
+        <LockOutlined style={{ fontSize: 22, color: 'rgba(200,134,26,0.35)' }} />
         <Text style={{ fontSize: '0.82rem', color: 'rgba(244,228,193,0.4)', lineHeight: 1.6 }}>Sign in to take notes while you read.</Text>
         <Button href="#/signin" style={{ padding: '0.6rem 1.6rem', letterSpacing: '0.15em', textTransform: 'uppercase' }}>Sign In</Button>
       </div>
@@ -659,7 +660,7 @@ export default function NotesPanel() {
 
   return (
     <div className="notes-sidebar">
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.75rem 0.6rem 0.6rem', borderBottom: '1px solid rgba(200,134,26,0.15)', flexShrink: 0, gap: '0.5rem' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.95rem 0.6rem 0.8rem', borderBottom: '1px solid rgba(200,134,26,0.12)', flexShrink: 0, gap: '0.5rem' }}>
         <Title level={5} style={{ margin: 0, fontFamily: "'DM Serif Display', serif", color: 'var(--parchment)' }}>Notes</Title>
         <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
           {groupSelector}
