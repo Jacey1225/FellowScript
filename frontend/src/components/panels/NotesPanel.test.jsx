@@ -56,6 +56,21 @@ function renderNotesPanel(overrides = {}) {
   );
 }
 
+// Regression test for the Reader dock structural redesign (design-notes.md
+// §6): the Notes sign-in empty state was the one gated/empty state on the
+// page without a glyph above its message (unlike the populated-empty state's
+// ✦ glyph and AgentChatPanel's RobotOutlined). Proves the glyph renders
+// alongside the existing message/CTA rather than replacing them.
+describe('NotesPanel sign-in empty state — glyph consistency', () => {
+  test('renders a glyph above the sign-in message, alongside the existing message and CTA', () => {
+    const { container } = renderNotesPanel({ user: null });
+
+    expect(container.querySelector('.anticon-lock')).toBeTruthy();
+    expect(screen.getByText('Sign in to take notes while you read.')).toBeTruthy();
+    expect(screen.getByText('Sign In')).toBeTruthy();
+  });
+});
+
 describe('NotesPanel note editor — XSS sanitization at the innerHTML callsite', () => {
   test('opening the editor on a note with a script/onerror payload never injects an executable element into the DOM', () => {
     window.__xss_fired__ = false;

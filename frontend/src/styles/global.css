@@ -383,13 +383,19 @@ body {
 [data-theme="light"] .bib-ch-btn:hover { color: #1a100a; }
 .bib-ch-btn.active { background: rgba(200,134,26,0.22); color: var(--gold); font-weight: 700; }
 
-/* ── Chapter text — no card box, text sits directly on page background ── */
+/* ── Chapter text — inset reading surface, distinct from the panel behind it
+   (var(--bg-page) against .bible-panel-body's var(--bg-page-2)) so the
+   chapter text reads as a framed page inside the panel (design-notes.md §5,
+   Option A). Verse click/highlight targets and pickerPos's
+   getBoundingClientRect() calls are unaffected — only background/radius/
+   padding change here, no DOM structure change. ── */
 .chapter-card {
-  background: transparent;
+  background: var(--bg-page);
   color: var(--bible-text);
   border: none;
   border-radius: var(--radius-lg);
   width: 100%;
+  padding: 2rem 2.5rem;
   animation: fadeUp 0.45s ease both;
   transition: color 0.25s ease;
 }

@@ -106,7 +106,7 @@ export default function HighlightsPanel() {
 
   return (
     <div className="notes-sidebar">
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.75rem 0.6rem 0.6rem', borderBottom: '1px solid rgba(200,134,26,0.15)', flexShrink: 0, gap: '0.5rem' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.95rem 0.6rem 0.8rem', borderBottom: '1px solid rgba(200,134,26,0.12)', flexShrink: 0, gap: '0.5rem' }}>
         <Title level={5} style={{ margin: 0, fontFamily: "'DM Serif Display', serif", color: 'var(--parchment)' }}>Highlights</Title>
         {groupSelector}
       </div>

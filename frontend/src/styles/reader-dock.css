@@ -4,12 +4,12 @@
    unaffected by anything here. Must load after dockview-react's own
    stylesheet (see main.jsx import order) so these overrides win.
 
-   Panels themselves sit flush (no gaps, no rounded group corners, no card
-   shadow) — the flat, dense arrangement is intentional. Only the tabs are
-   restyled: rounded, spaced-apart pill/chip widgets rather than flat abutting
-   blocks. Every color variable below is retinted to the app's warm
-   dark/gold/parchment palette; nothing here changes the underlying
-   drag/split/tab mechanism. */
+   Panels sit inset from the viewport edge, with a real gap + rounded corners
+   + soft shadow between dockview groups (reversed from the earlier flush,
+   no-gap arrangement — see .reader-dock-container / .dv-view / .dv-groupview
+   below). Tabs keep their rounded, spaced-apart pill/chip treatment. Every
+   color variable below is retinted to the app's warm dark/gold/parchment
+   palette; nothing here changes the underlying drag/split/tab mechanism. */
 .dockview-theme-abyss {
   --dv-color-abyss-dark:            #1c130a;
   --dv-color-abyss:                 #2a1e12;   /* group/panel surface */
@@ -62,12 +62,69 @@
 }
 
 /* ── Container: fills the viewport below the top nav bar. No second nav strip
-   here — each panel (e.g. BibleReaderPanel) owns its own toolbar/header. ── */
+   here — each panel (e.g. BibleReaderPanel) owns its own toolbar/header.
+   Inset padding (reusing --panel-gap, 0.6rem — see global.css:16, not a new
+   number) so the whole dockview workspace sits inset from the viewport edge
+   rather than flush against it (design-notes.md §3). ── */
 .reader-dock-container {
   position: fixed;
   top: var(--nav-h);
   left: 0; right: 0; bottom: 0;
   z-index: 10;
+  padding: var(--panel-gap);
+  box-sizing: border-box;
+}
+
+/* ── Group framing: real gap + rounded corners + soft shadow between dockview
+   groups (design-notes.md §3), reversing the previous flush/no-gap treatment.
+   Drag/split/tab mechanics are untouched — only presentation.
+
+   Mechanism verified against the installed dockview-core@7.0.4 (not guessed):
+   dockview-core ships a built-in "-spaced" theme variant, but its group-gap
+   rules target `.dv-resize-container .dv-groupview` — `.dv-resize-container`
+   is assigned in dockview-core.js exactly once, to a *floating/popped-out*
+   group's overlay wrapper, so that mechanism only affects floating groups
+   (which this app doesn't use), not the main docked grid. The actual docked
+   leaf wrapper — confirmed via dockview-core's shipped
+   dist/styles/dockview.css — is `.dv-split-view-container .dv-view-container
+   .dv-view`: `position: absolute; box-sizing: border-box` with pixel
+   width/height set by dockview's own layout engine. Padding here insets each
+   pane's visible content without changing those JS-computed dimensions, so
+   the sash/drag-over/split-target math (which reads the same live element
+   rects) is unaffected. Half of --panel-gap per side (0.3rem) so two
+   adjacent panes combine to a ~9.6px gap — within the design doc's 8-10px
+   range, reusing the existing token instead of a new number.
+
+   Scoped to LEAF .dv-view wrappers only, via :has(> .dv-groupview) — dockview's
+   grid is a recursive tree of nested SplitViews (BranchNode/LeafNode in
+   dockview-core), and an unqualified `.dv-split-view-container .dv-view-container
+   .dv-view` descendant selector matches EVERY .dv-view at every nesting depth,
+   not just leaves that directly wrap a group, so panels one branch level deeper
+   than others would pick up one extra layer of padding and end up with
+   misaligned outer edges relative to shallower panels. Confirmed via
+   dockview-core.js: LeafNode.element returns the groupview's own container
+   (which has class dv-groupview applied directly via
+   `toggleClass(this.container, 'dv-groupview', true)`), so a leaf .dv-view's
+   immediate child *is* .dv-groupview; BranchNode.element is instead a plain
+   wrapper div around a nested .dv-split-view-container, which never carries the
+   dv-groupview class, so :has(> .dv-groupview) naturally excludes branch
+   wrappers regardless of nesting depth — every leaf panel gets exactly one
+   layer of padding. :has() is within this app's supported-selector register:
+   dockview-core's own shipped "-spaced" themes already rely on it for an
+   analogous purpose (`.dv-resize-container:has(> .dv-groupview)`). ── */
+.dockview-theme-abyss .dv-view:has(> .dv-groupview) {
+  padding: calc(var(--panel-gap) / 2);
+}
+.dockview-theme-abyss .dv-groupview {
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.25);
+}
+
+/* Recessed background wash behind the tab row (design-notes.md §4) — tab
+   geometry/order/drag-to-reorder are untouched, this only sits behind them. */
+.dockview-theme-abyss .dv-tabs-and-actions-container {
+  background: rgba(0,0,0,0.12);
 }
 
 /* ── Reset Layout button — reuses .nav-pill-btn (same class as the Bible
@@ -86,12 +143,14 @@
 .bible-panel-toolbar {
   display: flex;
   align-items: center;
-  padding: 0.55rem 1.1rem;
-  border-bottom: 1px solid rgba(200,134,26,0.14);
+  padding: 0.75rem 1.1rem;
+  border-bottom: 1px solid rgba(200,134,26,0.12);
   background: var(--nav-bg);
   flex-shrink: 0;
 }
 
+/* Panel surface (--bg-page-2) behind .chapter-card's own --bg-page inset
+   surface below — the two-layer contrast is design-notes.md §5's point. */
 .bible-panel-body {
   flex: 1;
   min-height: 0;
@@ -100,4 +159,5 @@
   flex-direction: column;
   align-items: center;
   padding: 2.5rem 2rem 4rem;
+  background: var(--bg-page-2);
 }
