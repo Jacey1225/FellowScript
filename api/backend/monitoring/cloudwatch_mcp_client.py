@@ -3,7 +3,10 @@
 All CloudWatch access for the error watchdog goes through this already-
 registered, read-only MCP server rather than boto3 directly, per explicit
 user instruction (intake spec) — the MCP server is the sole source of truth
-for log data and its own log-analyzer context tools.
+for log data and its own log-analyzer context tools. (The one exception is
+`_resolve_account_id` below, which uses `boto3` STS purely to resolve the
+account id needed to construct a log group ARN — not to read CloudWatch
+data itself, so it doesn't cross that boundary.)
 
 *** INTEGRATION STATUS — READ BEFORE RELYING ON THIS IN PRODUCTION ***
 The `cloudwatch-mcp-server` was not registered/callable in the session that
@@ -18,6 +21,22 @@ names and response shapes against the installed server version before
 depending on this, and watch the first few scheduler runs' logs closely
 after deploy — `_call_tool` logs the raw response shape on unexpected input
 specifically to make that first-deploy verification easy.
+
+*** 2026-08-14 INCIDENT FOLLOW-UP — log_group_arn ***
+Production's `analyze_log_group` call was failing on every single detection
+(commit a8a22ecc) because this client only ever sent `log_group_name`, and
+the tool requires `log_group_arn` too. `analyze_log_group` below now
+constructs that ARN client-side from `CLOUDWATCH_REGION` + the caller's AWS
+account id (resolved once via `sts:GetCallerIdentity`, which every IAM
+principal can call by default — no new IAM grant needed for *that* part).
+What is NOT verified: whether `FellowScriptCloudWatchRole` (the read-only
+role the MCP server's log-reading calls run under, see the intake spec) also
+needs a `logs:DescribeLogGroups`-equivalent grant for `analyze_log_group`
+itself to succeed once it receives a well-formed ARN, and whether
+`log_group_arn` is even the tool's actual required field name/shape — both
+are flagged here explicitly per the workflow's external-dependencies note,
+not applied in this repo, and must be confirmed against the live server on
+first deploy (see `_call_tool`'s raw-response logging above).
 """
 import asyncio
 import json
@@ -28,6 +47,19 @@ from datetime import datetime, timezone
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+# Region the CloudWatch log groups (and thus their ARNs) live in — matches
+# the hardcoded "us-east-1" used elsewhere for AWS resources in this repo
+# (routes/messaging.py's Chime client, email/ses_client.py's default
+# SES_REGION); made overridable via env the same way SES_REGION is, rather
+# than hardcoded here too, since this specific value is load-bearing for
+# every analyze_log_group call rather than a fallback default.
+CLOUDWATCH_REGION = os.getenv("CLOUDWATCH_REGION", "us-east-1")
+
+# Resolved lazily via STS on first use and cached for the process lifetime —
+# an AWS account id never changes, so there's no reason to pay a network
+# round trip for it on every analyze_log_group call (one per detection).
+_account_id_cache: str | None = None
 
 # How the app spawns the MCP server subprocess. Defaults to the standard
 # `uvx`-based invocation documented for awslabs.cloudwatch-mcp-server;
@@ -51,6 +83,35 @@ def _iso(dt: datetime) -> str:
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
     return dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _log_group_arn(log_group_name: str, account_id: str) -> str:
+    """Standard CloudWatch Logs ARN shape for a log group. The trailing
+    `:*` matches the ARN CloudWatch itself returns for a log group (it
+    includes a wildcard suffix) — included so this matches what the tool
+    would receive from a real DescribeLogGroups call, not a guess."""
+    return f"arn:aws:logs:{CLOUDWATCH_REGION}:{account_id}:log-group:{log_group_name}:*"
+
+
+async def _resolve_account_id() -> str:
+    """Resolve (and cache) the AWS account id via STS, off the event loop
+    since boto3 is synchronous. `sts:GetCallerIdentity` requires no IAM
+    grant beyond being *some* authenticated AWS principal — every role
+    (including FellowScriptCloudWatchRole as-is) can already call it, so
+    this specifically does not require an IAM policy change."""
+    global _account_id_cache
+    if _account_id_cache is not None:
+        return _account_id_cache
+
+    def _get_identity() -> str:
+        import boto3
+
+        return boto3.client("sts", region_name=CLOUDWATCH_REGION).get_caller_identity()["Account"]
+
+    loop = asyncio.get_running_loop()
+    account_id = await loop.run_in_executor(None, _get_identity)
+    _account_id_cache = account_id
+    return account_id
 
 
 class CloudWatchMCPClient:
@@ -170,16 +231,47 @@ class CloudWatchMCPClient:
         server's log-analyzer tool. Best-effort and never raises — context
         assembly must not fail (or block persisting) a real detection just
         because this supplementary call errors.
+
+        2026-08-14 incident fix: this now also resolves and sends
+        `log_group_arn` (see module docstring) — previously omitted, which
+        made this call fail on every single detection in production.
         """
+        try:
+            account_id = await _resolve_account_id()
+        except Exception as e:
+            logger.warning(
+                "analyze_log_group: could not resolve AWS account id for %s (%s) — "
+                "skipping context call this time. A persistent failure here means "
+                "this environment has no usable AWS credentials at all (distinct "
+                "from a log-group-specific permission problem, since "
+                "sts:GetCallerIdentity needs no grant beyond being an authenticated "
+                "principal).",
+                log_group_name, e,
+            )
+            return {}
+
+        log_group_arn = _log_group_arn(log_group_name, account_id)
         try:
             return await self._call_tool(
                 "analyze_log_group",
                 {
+                    "log_group_arn": log_group_arn,
                     "log_group_name": log_group_name,
                     "start_time": _iso(start_time),
                     "end_time": _iso(end_time),
                 },
             )
         except CloudWatchMCPError as e:
-            logger.warning("analyze_log_group context call failed for %s: %s", log_group_name, e)
+            logger.warning(
+                "analyze_log_group context call failed for %s (arn=%s): %s — if this "
+                "is an access-denied/permission error rather than a bad-argument "
+                "error, FellowScriptCloudWatchRole likely needs an additional "
+                "read-only logs:* grant scoped to this log group ARN (an AWS-side "
+                "IAM change this repo cannot apply — flag it out-of-band). If it's "
+                "an argument/schema error, `log_group_arn` may not be this tool's "
+                "actual expected field name/shape — verify against the live "
+                "cloudwatch-mcp-server (see module docstring); this client-side ARN "
+                "construction has not been exercised end-to-end yet.",
+                log_group_name, log_group_arn, e,
+            )
             return {}

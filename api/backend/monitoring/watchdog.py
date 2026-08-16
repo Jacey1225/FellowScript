@@ -83,9 +83,80 @@ _ERROR_SIGNAL_PATTERNS: list[tuple[str, "re.Pattern[str]"]] = [
     ("errno", re.compile(r"\[Errno \d+\]")),  # OS-level failures, e.g. "address already in use"
 ]
 
+# 2026-08-14 incident structural fix -- self-exclusion.
+#
+# /fellowscript/app (one of the five scanned log groups) is the same group
+# this watchdog's own logging, the debug agent's, and the scheduler job's
+# `[ERROR]`/failure lines land in. Without exclusion, any recurring internal
+# failure here (not just the two named bugs) logs an [ERROR] line every
+# cycle, which the broad `error_level` pattern above then re-detects as a
+# *new* error next cycle -- triggering another (also-failing) round of work
+# and another [ERROR] line, indefinitely. That's the exact self-amplifying
+# feedback loop that produced the production OOM incident (see
+# scheduler.py's cloudwatch_watchdog disable comment).
+#
+# Matched against the structured `[%(name)s]` logger-name field main.py's
+# `logging.basicConfig` format emits (e.g. "... [backend.monitoring.watchdog]
+# ERROR - ...") -- deliberately NOT against the free-text message. Matching
+# on message text is what created the original overly-broad \bERROR\b
+# problem in the first place, and would risk excluding real application
+# errors that happen to share vocabulary with a watchdog/debug-agent log
+# line. `backend.interactions.scheduler.watchdog` is a *child* logger used
+# only by scheduler.py's `_run_error_watchdog` (see that module) -- the
+# scheduler module's other jobs (notifications, backups, trial reconcile)
+# log under the plain `backend.interactions.scheduler` name and are
+# intentionally NOT excluded here, so a real failure in one of those still
+# gets detected normally.
+#
+# SECURITY: anchored to the start of the message and requires the excluded
+# name to be inside the *first* bracket pair in the line, not searched for
+# anywhere in free text. `%(message)s` -- the attacker/user-influenceable
+# part of a formatted log line -- always comes after the real `[%(name)s)]`
+# field, and callers across this codebase routinely interpolate exception
+# text (`logger.error("...: %s", e)`) whose content can echo back
+# user-supplied input (e.g. a malformed request body embedded in a
+# ValueError/JSONDecodeError message). An unanchored substring search would
+# let anyone who can influence logged text -- by triggering an error whose
+# message happens to contain the literal string "[backend.monitoring.
+# watchdog]" -- get an unrelated, genuine application error line excluded
+# from detection (a log-forging / monitoring-bypass vector). Anchoring to
+# "first bracket at the start of the line" is immune to this: an attacker's
+# message content can never appear before the real name field the logging
+# formatter itself always emits first, so a forged bracket embedded deeper
+# in the line is never considered.
+_SELF_LOGGER_NAMES = (
+    "backend.monitoring.watchdog",
+    "backend.monitoring.debug_agent",
+    "backend.interactions.scheduler.watchdog",
+)
+_SELF_EXCLUSION_RE = re.compile(
+    r"^[^\[\n]*\[(" + "|".join(re.escape(name) for name in _SELF_LOGGER_NAMES) + r")\]"
+)
+
+# 2026-08-14 incident structural fix -- per-cycle circuit breaker.
+#
+# Defense-in-depth alongside the self-exclusion filter above, per explicit
+# user instruction: this is the second time an unbounded-growth mechanism
+# has surfaced in this subsystem, so the fix must not be scoped only to the
+# two named bugs. A hard cap here bounds runaway growth from *any* future
+# recurring internal failure -- or even a genuine burst of real application
+# errors -- regardless of whether the self-exclusion filter above happens to
+# cover that particular case. See `WatchdogManager.run_cycle` /
+# `_poll_one_group` for where these are enforced.
+MAX_DETECTIONS_PER_CYCLE = 25
+MAX_DEBUG_AGENT_CALLS_PER_CYCLE = 25
+
+
+def _is_self_originated(message: str) -> bool:
+    """True if `message` is a log line produced by the watchdog subsystem's
+    own logging (identified by the structured `[logger.name]` field --
+    see `_SELF_LOGGER_NAMES` above), rather than application/request content
+    a real user or upstream dependency caused."""
+    return bool(_SELF_EXCLUSION_RE.search(message))
+
 
 def _match_error_signal(message: str) -> str | None:
-    if not message:
+    if not message or _is_self_originated(message):
         return None
     for name, pattern in _ERROR_SIGNAL_PATTERNS:
         if pattern.search(message):
@@ -121,6 +192,17 @@ class WatchdogManager(DBManager):
     `run_cycle()`, matching the BackupManager/SubscriptionsManager pattern
     already used for the other scheduled jobs there.
     """
+
+    def __init__(self) -> None:
+        super().__init__()
+        # Per-cycle circuit-breaker counters (see MAX_DETECTIONS_PER_CYCLE /
+        # MAX_DEBUG_AGENT_CALLS_PER_CYCLE above) -- reset at the top of every
+        # `run_cycle()` call, initialized here too since a fresh
+        # WatchdogManager is what scheduler.py's `_run_error_watchdog`
+        # constructs per cycle.
+        self._cycle_detection_count = 0
+        self._cycle_debug_agent_count = 0
+        self._cap_tripped = False
 
     def get_cursor(self, log_group_name: str) -> datetime | None:
         result = self.lookup("log_group_cursors", {"log_group_name": log_group_name})
@@ -169,11 +251,20 @@ class WatchdogManager(DBManager):
     # a filtered, paginated feed needs, so this drops to the raw cursor per
     # the "ordering / aggregation" case in the backend-architecture skill.
 
+    # Status a detection is flagged with when it's known incident noise
+    # (see db.py's INCIDENT_NOISE_WINDOW_* backfill) rather than a real,
+    # actionable error -- excluded from the default triage feed below but
+    # never deleted, so the 2026-08-14 incident stays inspectable for
+    # postmortem purposes (get_detection / include_noise=True both still
+    # return it in full).
+    STATUS_NOISE = "noise"
+
     @staticmethod
     def _build_detection_filters(
         log_group_name: str | None,
         start_time: datetime | None,
         end_time: datetime | None,
+        include_noise: bool,
     ) -> tuple[str, list[Any]]:
         clauses: list[str] = []
         params: list[Any] = []
@@ -186,6 +277,9 @@ class WatchdogManager(DBManager):
         if end_time:
             clauses.append("detected_at <= %s")
             params.append(end_time)
+        if not include_noise:
+            clauses.append("status != %s")
+            params.append(WatchdogManager.STATUS_NOISE)
         where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
         return where, params
 
@@ -197,6 +291,7 @@ class WatchdogManager(DBManager):
         end_time: datetime | None = None,
         limit: int = 50,
         offset: int = 0,
+        include_noise: bool = False,
     ) -> list[dict[str, Any]]:
         """Paginated, filterable summary rows, most recent first.
 
@@ -204,8 +299,16 @@ class WatchdogManager(DBManager):
         so the ORDER BY + optional log_group_name filter stay index-backed.
         Omits `context` (see ErrorDetectionSummary) -- use `get_detection`
         for the full record.
+
+        `include_noise` defaults to False -- rows flagged `status='noise'`
+        (the 2026-08-14 incident-window backfill, see db.py) are excluded
+        from the default triage feed so they don't clutter it, but pass
+        `include_noise=True` to see them for postmortem review; they are
+        never deleted.
         """
-        where, params = self._build_detection_filters(log_group_name, start_time, end_time)
+        where, params = self._build_detection_filters(
+            log_group_name, start_time, end_time, include_noise
+        )
         try:
             self.cur.execute(
                 "SELECT _id AS id, log_group_name, log_stream_name, event_timestamp, "
@@ -227,10 +330,13 @@ class WatchdogManager(DBManager):
         log_group_name: str | None = None,
         start_time: datetime | None = None,
         end_time: datetime | None = None,
+        include_noise: bool = False,
     ) -> int:
         """Total row count matching the same filters as `list_detections`,
         for the list response's `total` (independent of `limit`/`offset`)."""
-        where, params = self._build_detection_filters(log_group_name, start_time, end_time)
+        where, params = self._build_detection_filters(
+            log_group_name, start_time, end_time, include_noise
+        )
         try:
             self.cur.execute(f"SELECT COUNT(*) FROM error_detections{where}", params)
             row = self.cur.fetchone()
@@ -266,13 +372,37 @@ class WatchdogManager(DBManager):
         caught and logged, and simply leaves that group's cursor unmoved for
         a retry next interval — it never blocks or desyncs another group's
         cursor (the "no cross-log-group drift" requirement from the spec).
+
+        Also enforces the per-cycle circuit breaker (MAX_DETECTIONS_PER_CYCLE
+        / MAX_DEBUG_AGENT_CALLS_PER_CYCLE) across *all* groups in this cycle
+        combined, not per-group -- a spike concentrated in one log group
+        should trip the breaker the same as one spread across several.
         """
+        # Reset every cycle rather than relying solely on __init__, in case
+        # a caller (e.g. a test) reuses one WatchdogManager across multiple
+        # run_cycle() calls -- the cap must never carry over between cycles.
+        self._cycle_detection_count = 0
+        self._cycle_debug_agent_count = 0
+        self._cap_tripped = False
+
         now = datetime.now(timezone.utc)
         window_end = now - timedelta(seconds=INGESTION_LAG_BUFFER_SECONDS)
         totals = {"events_scanned": 0, "detections": 0}
 
         async with CloudWatchMCPClient() as client:
             for log_group in LOG_GROUPS:
+                if self._cap_tripped:
+                    # Breaker already tripped earlier this cycle -- stop
+                    # opening new MCP queries for the remaining groups too.
+                    # Every untouched group's cursor is left exactly where
+                    # it was, so nothing is lost, only deferred to the next
+                    # cycle.
+                    logger.warning(
+                        "CloudWatch watchdog: per-cycle cap already tripped, "
+                        "skipping remaining log group(s) starting with %s this cycle",
+                        log_group,
+                    )
+                    break
                 try:
                     delta = await self._poll_one_group(client, log_group, window_end)
                 except Exception as e:
@@ -301,11 +431,30 @@ class WatchdogManager(DBManager):
         latest_seen = window_start
         for event in events:
             ts = _parse_event_timestamp(event) or window_end
-            if ts > latest_seen:
-                latest_seen = ts
 
             message = event.get("@message") or event.get("message") or ""
             signal = _match_error_signal(message)
+
+            if signal and self._cycle_detection_count >= MAX_DETECTIONS_PER_CYCLE:
+                # Circuit breaker: stop here rather than advancing
+                # latest_seen/the cursor past this event -- it (and
+                # anything after it in this window) is retried next cycle
+                # instead of being silently dropped. Non-matching events
+                # earlier in this same loop already advanced latest_seen
+                # normally; only a genuine new detection beyond the cap
+                # trips this.
+                self._cap_tripped = True
+                logger.warning(
+                    "CloudWatch watchdog: per-cycle detection cap (%d) reached "
+                    "in %s -- stopping early as a circuit breaker; remainder of "
+                    "this window retried next cycle",
+                    MAX_DETECTIONS_PER_CYCLE, log_group,
+                )
+                break
+
+            if ts > latest_seen:
+                latest_seen = ts
+
             if not signal:
                 continue
 
@@ -320,6 +469,7 @@ class WatchdogManager(DBManager):
             )
             self.save_detection(detection_record)
             detections += 1
+            self._cycle_detection_count += 1
 
             # Debugging-agent trigger (error-debug-agent-admin-page workflow,
             # step 3): one OpenRouter call per actual detected error, right
@@ -332,17 +482,31 @@ class WatchdogManager(DBManager):
             # A failure here never drops the already-persisted detection --
             # it just stays status='new' for a later on-demand re-run from
             # the admin page (POST /monitoring/detections/{id}/report).
-            try:
-                loop = asyncio.get_running_loop()
-                await loop.run_in_executor(
-                    None, functools.partial(run_debug_agent_for_detection, detection_record.id)
-                )
-            except Exception as e:
-                logger.error(
-                    "Debug agent failed for detection %s: %s", detection_record.id, e
+            #
+            # Also circuit-broken independently of the detection cap above:
+            # a detection can still be recorded even once debug-agent calls
+            # for this cycle are capped, it just doesn't get an automatic
+            # report -- a later on-demand rerun covers it.
+            if self._cycle_debug_agent_count < MAX_DEBUG_AGENT_CALLS_PER_CYCLE:
+                self._cycle_debug_agent_count += 1
+                try:
+                    loop = asyncio.get_running_loop()
+                    await loop.run_in_executor(
+                        None, functools.partial(run_debug_agent_for_detection, detection_record.id)
+                    )
+                except Exception as e:
+                    logger.error(
+                        "Debug agent failed for detection %s: %s", detection_record.id, e
+                    )
+            else:
+                logger.warning(
+                    "CloudWatch watchdog: per-cycle debug-agent cap (%d) reached -- "
+                    "skipping automatic report generation for detection %s; it "
+                    "stays status='new' for a later on-demand rerun",
+                    MAX_DEBUG_AGENT_CALLS_PER_CYCLE, detection_record.id,
                 )
 
-        new_cursor = latest_seen if len(events) >= QUERY_RESULT_LIMIT else window_end
+        new_cursor = latest_seen if (len(events) >= QUERY_RESULT_LIMIT or self._cap_tripped) else window_end
         self.set_cursor(log_group, new_cursor)
         return {"events_scanned": len(events), "detections": detections}
 

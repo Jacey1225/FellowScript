@@ -28,13 +28,34 @@
   --pt-md:  clamp(0.74rem, 0.63rem + 0.42vw, 0.94rem);
   --pt-lg:  clamp(0.84rem, 0.72rem + 0.50vw, 1.05rem);
 
+  /* 4-step border-radius scale (design-notes.md §2) — replaces the previous
+     ad hoc 6/8/10/12/14/16/18px spread. Pill is the dominant shape (buttons,
+     tabs, chips, tags); radius-lg is for primary containers. */
+  --radius-sm:   8px;
+  --radius-md:   14px;
+  --radius-lg:   20px;
+  --radius-pill: 999px;
+
   /* Theme-aware */
-  --bg-page:         #1c1c1c;
-  --nav-bg:          rgba(6,4,1,0.97);
-  --island-bg:       rgba(8,5,2,0.92);
+  --bg-page:         #211710;
+  --bg-page-2:       #1a120a;
+  --nav-bg:          rgba(28,19,10,0.97);
+  --island-bg:       rgba(32,22,13,0.92);
   --island-border:   rgba(200,134,26,0.18);
-  --widget-bg:       rgba(8,5,2,0.99);
+  --widget-bg:       rgba(36,26,16,0.97);
   --widget-border:   rgba(200,134,26,0.24);
+  /* Radial-gradient "bloom" layers built from --gold/--gold-light
+     (design-notes.md §1) — the static base layer behind #root;
+     Reader/Account additionally drive an animated version of the same
+     colors via <AppBloom> (design-notes.md §1a). Opacity tuned up from the
+     initial pass (0.16/0.12) — at that strength, compounded with Reader's
+     own dampening filter below, the bloom was imperceptible against the
+     dark base (confirmed via live screenshot after first deploy). */
+  --bloom-primary:   radial-gradient(ellipse 60% 46% at 22% -8%,  rgba(224,154,48,0.34) 0%, rgba(224,154,48,0) 68%);
+  --bloom-secondary: radial-gradient(ellipse 52% 42% at 96% 104%, rgba(200,134,26,0.26) 0%, rgba(200,134,26,0) 68%);
+  /* Tileable feTurbulence grain — the one new visual asset in the restyle
+     pass (design-notes.md §1a.2), used at 2-4% opacity over the bloom. */
+  --grain-bg: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
   --pill-bg:         rgba(200,134,26,0.1);
   --pill-border:     rgba(200,134,26,0.28);
   --pill-text:       rgba(244,228,193,0.85);
@@ -82,6 +103,69 @@ body {
   transition: background 0.25s ease;
 }
 
+/* ── App-wide static bloom (design-notes.md §1) — fixed, full-viewport
+   ::before behind #root, same compositing approach as Home's own <Blobs>.
+   Reader/Account additionally layer the animated <AppBloom> component
+   (design-notes.md §1a) on top of this baseline. ── */
+#root { position: relative; }
+#root::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image: var(--bloom-primary), var(--bloom-secondary);
+}
+
+/* ── Shared decorative background layer (<AppBloom>, design-notes.md §1a) ── */
+.fs-app-bloom {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+}
+.fs-app-bloom-blob {
+  position: absolute;
+  border-radius: 50%;
+  will-change: transform;
+}
+.fs-app-bloom-blob--primary {
+  width: 70vw; height: 70vw; min-width: 640px; min-height: 640px;
+  left: -12%; top: -20%;
+  background: var(--bloom-primary);
+}
+.fs-app-bloom-blob--secondary {
+  width: 55vw; height: 55vw; min-width: 480px; min-height: 480px;
+  right: -14%; bottom: -22%;
+  background: var(--bloom-secondary);
+}
+.fs-app-bloom-grain {
+  position: absolute;
+  inset: -10%;
+  background-image: var(--grain-bg);
+  background-repeat: repeat;
+  background-size: 180px 180px;
+  opacity: 0.035;
+  mix-blend-mode: overlay;
+}
+/* Context-aware bloom intensity (design-notes.md §1a.4): dimmer/cooler
+   behind Reader's scripture text to protect legibility; brighter/more
+   saturated on Account where there's no dense body text to compete with. */
+.fs-app-bloom--reader  { opacity: 0.9; filter: saturate(0.92) brightness(0.97); }
+.fs-app-bloom--account { opacity: 1; }
+
+/* ── Sparing idle motion (design-notes.md §1a.3) — reuses Home's existing
+   hm-float bob at low amplitude, for select non-Home elements only. ── */
+@keyframes fs-idle-float {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-8px); }
+}
+.fs-idle-float { animation: fs-idle-float 9s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .fs-idle-float { animation: none !important; }
+}
+
 /* ── Nav bar ── */
 .fs-nav.ant-layout-header {
   position: fixed;
@@ -99,7 +183,7 @@ body {
 }
 
 .nav-logo {
-  font-family: 'DM Serif Display', serif;
+  font-family: 'Playfair Display', serif;
   font-size: 1.45rem;
   font-weight: 700;
   letter-spacing: 0.02em;
@@ -163,6 +247,16 @@ body {
 .nav-pill-btn.open {
   background: rgba(200,134,26,0.2);
 }
+
+/* Reset Layout (dock-reset-btn) promoted to a solid-gold CTA, per
+   design-notes.md §4 — scoped so other .nav-pill-btn uses (font-size
+   ticker, bookmark widget, etc.) keep their low-opacity ghost-pill look. */
+.nav-pill-btn.dock-reset-btn {
+  background: var(--gold);
+  color: var(--ink);
+  font-weight: 600;
+}
+.nav-pill-btn.dock-reset-btn:hover { background: var(--gold-light); }
 
 /* ── Bible nav dropdown widget ── */
 .bib-nav-widget {
@@ -294,6 +388,7 @@ body {
   background: transparent;
   color: var(--bible-text);
   border: none;
+  border-radius: var(--radius-lg);
   width: 100%;
   animation: fadeUp 0.45s ease both;
   transition: color 0.25s ease;
@@ -310,7 +405,7 @@ body {
 }
 
 .card-title {
-  font-family: 'DM Serif Display', 'DM Serif Display', serif;
+  font-family: 'Playfair Display', serif;
   font-size: clamp(2.2rem, 4.5vw, 3.2rem);
   font-weight: 400;
   color: var(--bible-text);
@@ -470,8 +565,8 @@ body {
   right: 0;
   bottom: 0;
   width: var(--rail-w);
-  background: #120d09;
-  border-left: 1px solid #241a12;
+  background: var(--bg-page-2);
+  border-left: 1px solid rgba(200,134,26,0.12);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -498,7 +593,7 @@ body {
 
 .icon-chip-icon {
   width: 20px; height: 20px;
-  border-radius: 5px;
+  border-radius: var(--radius-sm);
   background: #3a2e22;
   display: flex; align-items: center; justify-content: center;
   color: #6b5c4d;
@@ -533,8 +628,8 @@ body {
   right: var(--rail-w);
   bottom: 0;
   width: calc(50vw - var(--rail-w));
-  background: #181109;
-  border-left: 1px solid #241a12;
+  background: var(--bg-page);
+  border-left: 1px solid rgba(200,134,26,0.12);
   z-index: 80;
   display: flex;
   flex-direction: column;
@@ -617,7 +712,7 @@ body {
 .note-card.ant-card {
   border: none !important;
   background: rgba(20,12,4,0.5) !important;
-  border-radius: 10px !important;
+  border-radius: var(--radius-md) !important;
   cursor: pointer;
 }
 .note-card.ant-card:hover { background: rgba(20,12,4,0.75) !important; }
@@ -627,7 +722,7 @@ body {
 .msg-bubble {
   max-width: 85%;
   padding: 0.5rem 0.75rem;
-  border-radius: 12px;
+  border-radius: var(--radius-md);
 
   font-size: var(--pt-md);
   line-height: 1.5;
@@ -854,6 +949,11 @@ body {
     transition: color 0.15s, background 0.15s;
   }
 
+  .mobile-tab {
+    margin: 0.3rem 0.25rem;
+    border-radius: var(--radius-pill);
+  }
+
   .mobile-tab.active {
     color: var(--gold);
     background: rgba(200,134,26,0.08);
@@ -915,10 +1015,13 @@ body {
 .note-editor-cancel:hover { background: rgba(255,255,255,0.06); color: rgba(244,228,193,0.7); }
 
 .note-editor-save {
-  color: var(--gold);
+  background: var(--gold);
+  color: var(--ink);
   font-weight: 600;
+  border-radius: var(--radius-pill);
+  padding: 0.35rem 0.9rem;
 }
-.note-editor-save:hover { background: rgba(200,134,26,0.12); }
+.note-editor-save:hover { background: var(--gold-light); }
 
 .note-public-toggle {
   display: flex;

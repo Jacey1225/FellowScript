@@ -193,6 +193,19 @@ class _FakeResponse:
     def __init__(self, content: str, ok: bool = True):
         self._content = content
         self._ok = ok
+        # 2026-08-15 incident-fix follow-up: _call_debug_api now checks
+        # resp.status_code (in (401, 403)) before raise_for_status() -- see
+        # DebugAgentAuthError / cloudwatch-watchdog-memory-leak workflow
+        # step 2. A real requests.Response always has this attribute; this
+        # fake needs one too so these non-auth-path tests keep exercising
+        # the generic success/failure branches they're actually testing,
+        # not an incidental AttributeError from an incomplete test double.
+        # 500 (not 401/403) for the failure case so it still reaches
+        # raise_for_status() below, matching this test file's original
+        # "simulated OpenRouter failure" (non-auth) scenario -- the
+        # dedicated auth-failure path (401/403) is covered separately in
+        # test_debug_agent_auth_failure_handling.py.
+        self.status_code = 200 if ok else 500
 
     def raise_for_status(self):
         if not self._ok:

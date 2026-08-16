@@ -15,7 +15,7 @@ function HighlightCard({ book, chapter, verse, color, username, onNavigate }) {
         padding: '0.5rem 0.7rem',
         background: 'rgba(20,12,4,0.5)',
         border: 'none',
-        borderRadius: 10, cursor: 'pointer',
+        borderRadius: 14, cursor: 'pointer',
         transition: 'background 0.15s',
       }}
       onMouseEnter={e => { e.currentTarget.style.background = 'rgba(20,12,4,0.75)'; }}
@@ -27,7 +27,7 @@ function HighlightCard({ book, chapter, verse, color, username, onNavigate }) {
         boxShadow: `0 0 0 2px rgba(0,0,0,0.3)`,
       }} />
       <Text style={{
-        fontFamily: "'Inter', sans-serif", fontStyle: 'italic',
+        fontFamily: "'IM Fell English', serif", fontStyle: 'italic',
         fontSize: '0.82rem', color: 'var(--gold)', flex: 1,
       }}>
         {book} {chapter}:{verse}

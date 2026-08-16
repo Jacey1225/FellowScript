@@ -4,15 +4,15 @@ export const fsTheme = {
   algorithm: theme.darkAlgorithm,
   token: {
     colorPrimary:      '#C8861A',
-    colorBgBase:       '#060401',
+    colorBgBase:       '#1a140f',
     colorTextBase:     '#F4E4C1',
     colorBorder:       'rgba(200,134,26,0.3)',
-    colorBgContainer:  'rgba(14,9,3,0.92)',
-    colorBgElevated:   'rgba(20,12,4,0.97)',
-    colorBgSpotlight:  'rgba(20,12,4,0.97)',
+    colorBgContainer:  'rgba(26,20,15,0.90)',
+    colorBgElevated:   'rgba(30,22,16,0.97)',
+    colorBgSpotlight:  'rgba(30,22,16,0.97)',
     fontFamily:        "'Lora', serif",
     borderRadius:      8,
-    borderRadiusLG:    12,
+    borderRadiusLG:    20,
     borderRadiusSM:    6,
     wireframe:         false,
     colorLink:         '#C8861A',
@@ -23,8 +23,8 @@ export const fsTheme = {
   },
   components: {
     Layout: {
-      headerBg:    'rgba(6,4,1,0.94)',
-      siderBg:     'rgba(6,4,1,0.96)',
+      headerBg:    'rgba(20,15,11,0.94)',
+      siderBg:     'rgba(20,15,11,0.96)',
       bodyBg:      'transparent',
       footerBg:    'transparent',
     },
@@ -49,7 +49,7 @@ export const fsTheme = {
       fontFamily:           "'Lora', serif",
     },
     Input: {
-      colorBgContainer:   'rgba(20,12,4,0.7)',
+      colorBgContainer:   'rgba(28,21,15,0.7)',
       colorBorder:        'rgba(200,134,26,0.22)',
       colorText:          '#F4E4C1',
       colorTextPlaceholder: 'rgba(244,228,193,0.25)',
@@ -58,17 +58,17 @@ export const fsTheme = {
       fontFamily:         "'Lora', serif",
     },
     Select: {
-      colorBgContainer:   'rgba(20,12,4,0.7)',
+      colorBgContainer:   'rgba(28,21,15,0.7)',
       colorBorder:        'rgba(200,134,26,0.22)',
       colorText:          '#F4E4C1',
       colorTextPlaceholder: 'rgba(244,228,193,0.25)',
       optionActiveBg:     'rgba(200,134,26,0.12)',
       optionSelectedBg:   'rgba(200,134,26,0.2)',
       optionSelectedColor: '#C8861A',
-      selectorBg:         'rgba(20,12,4,0.7)',
+      selectorBg:         'rgba(28,21,15,0.7)',
     },
     Card: {
-      colorBgContainer:   'rgba(6,4,1,0.88)',
+      colorBgContainer:   'rgba(24,18,13,0.88)',
       colorBorderSecondary: 'rgba(200,134,26,0.16)',
       headerFontFamily:   "'Playfair Display', serif",
     },
@@ -79,6 +79,7 @@ export const fsTheme = {
       itemHoverColor:     'rgba(200,134,26,0.7)',
       itemColor:          'rgba(244,228,193,0.35)',
       cardBg:             'transparent',
+      borderRadius:       999,
     },
     Form: {
       labelColor:         'rgba(200,134,26,0.6)',
@@ -91,7 +92,7 @@ export const fsTheme = {
       fontFamilyCode:     "'Lora', serif",
     },
     Drawer: {
-      colorBgElevated:    'rgba(6,4,1,0.97)',
+      colorBgElevated:    'rgba(24,18,13,0.97)',
       colorBorder:        'rgba(200,134,26,0.2)',
     },
     Divider: {
@@ -108,7 +109,8 @@ export const fsTheme = {
       itemSelectedBg:   'rgba(200,134,26,0.22)',
       itemSelectedColor: '#C8861A',
       itemHoverColor:   '#E09A30',
-      trackBg:          'rgba(20,12,4,0.7)',
+      trackBg:          'rgba(28,21,15,0.7)',
+      borderRadius:     999,
     },
   },
 };

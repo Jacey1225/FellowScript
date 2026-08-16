@@ -5,6 +5,7 @@ import { MessageOutlined, BookOutlined, ReloadOutlined } from '@ant-design/icons
 import { DockviewReact } from 'dockview-react';
 
 import AppNav           from '../components/AppNav.jsx';
+import AppBloom         from '../components/AppBloom.jsx';
 import BibleNavigator  from '../components/BibleNavigator.jsx';
 import BibleCard       from '../components/BibleCard.jsx';
 import NotesSidebar    from '../components/NotesSidebar.jsx';
@@ -447,6 +448,7 @@ export default function Reader() {
     <MessagingPanelContext.Provider value={messagingPanelValue}>
     <AgentChatPanelContext.Provider value={agentChatPanelValue}>
       <Layout style={{ minHeight: '100vh', background: 'transparent', overflow: 'hidden' }}>
+        <AppBloom variant="reader" />
         <AppNav />
 
         {isDesktop ? (

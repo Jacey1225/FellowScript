@@ -34,6 +34,26 @@ from schemas.watchdog import DetectionReport
 
 logger = logging.getLogger(__name__)
 
+
+class DebugAgentAuthError(Exception):
+    """OpenRouter rejected the credential (401/403) -- a terminal,
+    non-retryable outcome distinct from a transient/upstream failure.
+
+    2026-08-14 incident follow-up: this class exists so `generate_report`
+    can catch auth failures separately from `_call_debug_api`'s generic
+    exception path and log them at WARNING (see `generate_report`), never
+    ERROR. A bad/expired `OPENROUTER_API_KEY` returning 403 on every call
+    was one of the two failures that fed the production self-amplifying
+    feedback loop: each call logged an `[ERROR]` line, which watchdog.py's
+    own broad error-signal pattern then re-detected as a *new* error next
+    cycle, triggering another (also-failing) call and another `[ERROR]`
+    line, indefinitely. Nothing in this module retries on this exception --
+    the only way to resolve it is a human fixing the production key
+    out-of-band and either waiting for the next real detection or manually
+    triggering `POST /monitoring/detections/{id}/report`.
+    """
+
+
 SYSTEM_PROMPT = (
     "You are FellowScript's backend error-debugging assistant. You are given "
     "one CloudWatch-detected application error (the matched log line) plus "
@@ -147,7 +167,13 @@ def _call_debug_api(user_content: str) -> str:
     """Same OpenRouter wiring shape as AgentManager._call_api (same
     MODELNAME/BASEURL/HEADERS/timeout) with this agent's own system prompt
     -- AgentManager's PROMPT is a per-user Bible-study persona, not
-    applicable here, so only the credential/transport wiring is reused."""
+    applicable here, so only the credential/transport wiring is reused.
+
+    Raises `DebugAgentAuthError` (not `requests.HTTPError`) on 401/403 --
+    see that class's docstring -- so callers can route auth failures to a
+    distinct, non-ERROR-level, non-retried outcome instead of the generic
+    upstream-failure path.
+    """
     body = {
         "model": MODELNAME,
         "messages": [
@@ -157,6 +183,11 @@ def _call_debug_api(user_content: str) -> str:
         "max_tokens": 1024,
     }
     resp = requests.post(BASEURL, headers=HEADERS, json=body, timeout=60)
+    if resp.status_code in (401, 403):
+        raise DebugAgentAuthError(
+            f"OpenRouter rejected the request (HTTP {resp.status_code}) -- "
+            "check OPENROUTER_API_KEY: it may be missing, expired, or rotated."
+        )
     resp.raise_for_status()
     return resp.json()["choices"][0]["message"]["content"]
 
@@ -273,6 +304,15 @@ class DebugAgentManager(DBManager):
 
         try:
             raw_response = _call_debug_api(user_content)
+        except DebugAgentAuthError as e:
+            # Deliberately WARNING, never ERROR -- see DebugAgentAuthError's
+            # docstring for why this specific distinction is the fix for
+            # half of the 2026-08-14 incident's amplification loop. A
+            # distinct error code ("openrouter_auth_failed") lets a caller
+            # tell this apart from a generic/transient upstream failure
+            # without parsing the message text.
+            logger.warning("Debug agent auth failure for detection %s: %s", detection_id, e)
+            return {"error": "openrouter_auth_failed", "detail": str(e)}
         except Exception as e:
             logger.error("Debug agent OpenRouter call failed for detection %s: %s", detection_id, e)
             return {"error": "debug agent call failed"}

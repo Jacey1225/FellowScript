@@ -88,7 +88,7 @@ export default function AgentChatPanel() {
             </Text>
             {enabledAgents.length === 0 && (
               <Button size="small" icon={<PlusOutlined />} onClick={onNewAgent}
-                style={{ borderColor: 'rgba(200,134,26,0.4)', color: 'var(--gold)' }}>
+                style={{ background: 'var(--gold)', borderColor: 'var(--gold)', color: 'var(--ink)', fontWeight: 600, borderRadius: 999 }}>
                 New Agent Chat
               </Button>
             )}

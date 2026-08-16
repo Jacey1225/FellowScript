@@ -463,6 +463,47 @@ def create_tables(cur):
         "ON error_detections(log_group_name, detected_at DESC)"
     )
 
+    # 2026-08-14 incident-window noise backfill (cloudwatch-watchdog-memory-
+    # leak workflow, step 4), re-applied idempotently every create_tables()
+    # run -- same non-destructive, targeted-UPDATE pattern as the admin seed
+    # above. Flags error_detections rows written during the ~5-hour
+    # production OOM incident (commit a8a22ecc) as noise: that incident's
+    # self-amplifying feedback loop produced a large volume of detections
+    # that are the watchdog re-detecting its own/the debug agent's failure
+    # logs, not distinct real application errors (see
+    # backend/monitoring/watchdog.py's self-exclusion filter + per-cycle
+    # cap, added in the same workflow, which prevent this going forward).
+    # Flagged, never deleted -- the incident window stays inspectable for
+    # postmortem review via `include_noise=True` on the list endpoint, or a
+    # direct detection-id fetch (WatchdogManager.get_detection never filters
+    # by status). error_detection_reports needs no equivalent flag: it has
+    # no status column of its own and is only ever reached via its parent
+    # detection's id, so flagging the detection is sufficient.
+    #
+    # Window bounds: the incident report (commit a8a22ecc, "~5 hours"
+    # tonight) is the only record of its duration -- there's no logged exact
+    # start second to key off, so this conservatively covers the whole
+    # calendar day up to the disable commit's timestamp
+    # (2026-08-14 15:54:16-07:00) rather than guess a tighter start bound
+    # that might miss real incident rows. The `status IN (...)` guard means
+    # a later manually-reviewed status (if that concept is ever added) is
+    # never silently overwritten by a subsequent create_tables() re-run.
+    _INCIDENT_NOISE_WINDOW_START = "2026-08-14 00:00:00-07:00"
+    _INCIDENT_NOISE_WINDOW_END = "2026-08-14 15:54:16-07:00"
+    cur.execute(
+        "UPDATE error_detections SET status = 'noise' "
+        "WHERE detected_at >= %s AND detected_at <= %s "
+        "AND status IN ('new', 'diagnosed')",
+        (_INCIDENT_NOISE_WINDOW_START, _INCIDENT_NOISE_WINDOW_END),
+    )
+    if cur.rowcount:
+        logger.info(
+            "Incident-window backfill: flagged %d error_detections row(s) from "
+            "2026-08-14 as status='noise' (excluded from the default admin "
+            "triage feed, never deleted).",
+            cur.rowcount,
+        )
+
     # Debugging agent's diagnostic report for a detection (error-debug-agent-
     # admin-page workflow, step 3). Level 1: references error_detections.
     # `detection_id` is UNIQUE so a rerun (POST /monitoring/detections/{id}/

@@ -11,9 +11,9 @@
    dark/gold/parchment palette; nothing here changes the underlying
    drag/split/tab mechanism. */
 .dockview-theme-abyss {
-  --dv-color-abyss-dark:            #0c0801;
-  --dv-color-abyss:                 #181109;   /* group/panel surface */
-  --dv-color-abyss-light:            #120d09;   /* tab-strip surface */
+  --dv-color-abyss-dark:            #1c130a;
+  --dv-color-abyss:                 #2a1e12;   /* group/panel surface */
+  --dv-color-abyss-light:            #241a10;   /* tab-strip surface */
   --dv-color-abyss-lighter:          rgba(200,134,26,0.15);
   --dv-color-abyss-accent:           var(--gold);
   --dv-color-abyss-primary-text:     var(--parchment);
