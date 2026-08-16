@@ -10,6 +10,18 @@ from backend.monitoring.watchdog import WATCHDOG_POLL_INTERVAL_SECONDS
 logger = logging.getLogger(__name__)
 scheduler = AsyncIOScheduler()
 
+# Dedicated child logger for the CloudWatch watchdog's own cycle-failure
+# logging (see `_run_error_watchdog` below). `logger` (name
+# "backend.interactions.scheduler") is shared by every scheduled job in this
+# module -- notifications, nightly backups, trial reconciliation -- so
+# watchdog.py's self-exclusion filter can't safely treat the whole module's
+# logger name as "the watchdog's own log line" without also hiding a real
+# failure in one of those unrelated jobs. This child logger's name
+# ("backend.interactions.scheduler.watchdog") lets the self-exclusion filter
+# key on exactly this job's failure lines and nothing else logged from this
+# file. See backend/monitoring/watchdog.py's `_SELF_LOGGER_NAMES`.
+_watchdog_logger = logger.getChild("watchdog")
+
 
 async def _fire_due_notifications() -> None:
     now          = datetime.now()
@@ -113,7 +125,7 @@ async def _run_error_watchdog() -> None:
                 counts["events_scanned"], counts["detections"],
             )
     except Exception as e:
-        logger.error("CloudWatch watchdog cycle failed: %s", e)
+        _watchdog_logger.error("CloudWatch watchdog cycle failed: %s", e)
     finally:
         wm.close()
 
@@ -129,16 +141,24 @@ def start_scheduler() -> None:
     # cheap. Lazy reconcile on read covers the gap between sweeps.
     scheduler.add_job(_reconcile_trials, "cron", minute="5", id="trial_reconcile",
                       replace_existing=True)
-    # CloudWatch error watchdog — TEMPORARILY DISABLED (2026-08-14 production
-    # incident): analyze_log_group is missing a required log_group_arn field
-    # (always fails) and the debug-agent's OpenRouter call is returning 403
-    # (bad/expired key). Both failures get logged as [ERROR] lines, which the
-    # watchdog's own broad \bERROR\b pattern then re-detects as new errors on
-    # its next cycle — a self-amplifying feedback loop that produced runaway
-    # memory growth and repeated OOM-kills of this service for hours. Re-enable
-    # only after both underlying bugs are fixed (see backend/monitoring/watchdog.py
-    # and backend/monitoring/cloudwatch_mcp_client.py / debug_agent.py).
-    # scheduler.add_job(_run_error_watchdog, "interval", seconds=WATCHDOG_POLL_INTERVAL_SECONDS,
-    #                   id="cloudwatch_watchdog", replace_existing=True)
+    # CloudWatch error watchdog — re-enabled 2026-08-15 after the 2026-08-14
+    # production incident (a8a22ecc temporarily disabled this job). Root
+    # causes fixed: (1) cloudwatch_mcp_client.py::analyze_log_group now sends
+    # the required log_group_arn instead of omitting it; (2) debug_agent.py
+    # treats OpenRouter 401/403 as a distinct terminal DebugAgentAuthError
+    # logged at WARNING, not ERROR, so an auth failure can no longer alias
+    # into the watchdog's own error-signal pattern; (3) watchdog.py now
+    # self-excludes log lines it and the debug agent emit about their own
+    # failures (see `_watchdog_logger` above and watchdog.py's
+    # `_SELF_LOGGER_NAMES`), plus a hard per-cycle circuit breaker
+    # (MAX_DETECTIONS_PER_CYCLE / MAX_DEBUG_AGENT_CALLS_PER_CYCLE) caps any
+    # future recurring internal failure regardless of cause. See
+    # backend/monitoring/watchdog.py, cloudwatch_mcp_client.py, and
+    # debug_agent.py for the fixes, and step 5's security review
+    # (.claude/pipeline/20260815-cloudwatch-watchdog-memory-leak/security.json)
+    # for verification that the self-exclusion filter and circuit breaker
+    # can't be bypassed.
+    scheduler.add_job(_run_error_watchdog, "interval", seconds=WATCHDOG_POLL_INTERVAL_SECONDS,
+                      id="cloudwatch_watchdog", replace_existing=True)
     scheduler.start()
     logger.info("Notification scheduler started — checking every minute")

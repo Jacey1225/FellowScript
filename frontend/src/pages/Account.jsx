@@ -14,6 +14,7 @@ import {
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
 import AppNav from '../components/AppNav.jsx';
+import AppBloom from '../components/AppBloom.jsx';
 import SubscriptionCard from '../components/SubscriptionCard.jsx';
 import DonationButton from '../components/DonationButton.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
@@ -24,11 +25,17 @@ dayjs.extend(utc);
 const { Content } = Layout;
 const { Title, Text, Paragraph } = Typography;
 
+// Radius promoted to --radius-lg (20px, up from 14px) per design-notes.md
+// §3 — this CARD_STYLE object is the live equivalent of the design doc's
+// cited `.account-section` class (that selector only exists in the legacy
+// static frontend/css/account.css, not this React app). The Danger Zone
+// card below spreads this same object, so it stays a tinted variant of the
+// same card shape rather than a separate one.
 const CARD_STYLE = {
-  background: 'rgba(6,4,1,0.88)',
+  background: 'rgba(26,20,15,0.85)',
   border: '1px solid rgba(200,134,26,0.16)',
   backdropFilter: 'blur(14px)',
-  borderRadius: 14,
+  borderRadius: 20,
   marginBottom: '1.5rem',
 };
 
@@ -663,6 +670,7 @@ export default function Account() {
 
   return (
     <Layout style={{ minHeight: '100vh', background: 'transparent' }}>
+      <AppBloom variant="account" />
       <AppNav />
 
       <Content style={{ paddingTop: 'calc(var(--nav-h) + 2.5rem)', paddingBottom: '5rem', paddingLeft: '2rem', paddingRight: '2rem', maxWidth: 680, margin: '0 auto', width: '100%' }}>

@@ -1380,12 +1380,12 @@
 <tr>
 <td>GET</td>
 <td><code>/monitoring/detections</code></td>
-<td>Paginated, filterable list of detections, most recent first. Query params: <code>log_group_name</code>, <code>start_time</code>, <code>end_time</code>, <code>limit</code> (1-200, default 50), <code>offset</code>. Returns <code>{ items, total, limit, offset }</code>; each item omits the assembled <code>context</code> blob.</td>
+<td>Paginated, filterable list of detections, most recent first. Query params: <code>log_group_name</code>, <code>start_time</code>, <code>end_time</code>, <code>limit</code> (1-200, default 50), <code>offset</code>, <code>include_noise</code> (default <code>false</code>). Returns <code>{ items, total, limit, offset }</code>; each item omits the assembled <code>context</code> blob. By default, rows flagged <code>status='noise'</code> — a one-time backfill flagging detections from the 2026-08-14 production OOM incident window, where the watchdog was re-detecting its own/the debug agent's failure logs rather than real distinct application errors — are excluded from the response and from <code>total</code>. Pass <code>include_noise=true</code> to include them (e.g. for postmortem review); they are never deleted.</td>
 </tr>
 <tr>
 <td>GET</td>
 <td><code>/monitoring/detections/{detection_id}</code></td>
-<td>Full detection record, including assembled <code>context</code> (nearby log lines + log-analyzer output). <code>404</code> if not found.</td>
+<td>Full detection record, including assembled <code>context</code> (nearby log lines + log-analyzer output). <code>404</code> if not found. Unaffected by the <code>status='noise'</code> filter above — always returns the record regardless of status, so a specific incident-window detection stays reachable by id.</td>
 </tr>
 <tr>
 <td>GET</td>

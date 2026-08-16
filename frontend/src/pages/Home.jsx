@@ -7,7 +7,9 @@ import { useParallaxBlobs } from '../hooks/useParallaxBlobs.js';
 // own gold/parchment theme used in Reader/Account/etc.) ──────────────────────
 const INK    = '#17120F';
 const CREAM  = '#F6EFE6';
-const AMBER  = '#E8A355';
+// Kept in the family of the in-app --gold-light (#E09A30) so the accent hue
+// doesn't visibly shift on a Home→Reader signed-in transition (design-notes.md §6).
+const AMBER  = '#E09A30';
 const AMBER_LIGHT = '#F3C48B';
 const LIGHT_BG = '#FBF7F1';
 const LIGHT_INK = '#1A1512';

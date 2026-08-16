@@ -348,7 +348,7 @@ function NoteCard({ id, note, owner, isOwn, onEdit, onDelete, onOpen, onNavigate
   return (
     <div
       className="note-card ant-card"
-      style={{ border: '1px solid rgba(200,134,26,0.18)', background: 'rgba(20,12,4,0.5)', padding: '0.6rem 0.65rem', borderRadius: 10, cursor: 'pointer', marginBottom: 0, transition: 'border-color 0.2s' }}
+      style={{ border: '1px solid rgba(200,134,26,0.18)', background: 'rgba(20,12,4,0.5)', padding: '0.6rem 0.65rem', borderRadius: 14, cursor: 'pointer', marginBottom: 0, transition: 'border-color 0.2s' }}
       onClick={() => onOpen(id)}
     >
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '0.5rem', marginBottom: '0.4rem' }}>
@@ -378,7 +378,7 @@ function NoteCard({ id, note, owner, isOwn, onEdit, onDelete, onOpen, onNavigate
                 borderRadius: 4,
                 padding: '0.1rem 0.5rem',
                 cursor: onNavigateVerse ? 'pointer' : 'default',
-                fontFamily: "'Inter', sans-serif",
+                fontFamily: "'IM Fell English', serif",
                 fontStyle: 'italic',
                 fontSize: '0.68rem',
                 color: 'var(--gold)',
@@ -441,7 +441,7 @@ function NoteDetail({ note, noteId, onBack, canReply, onReply, replies, repliesL
                   borderRadius: 4,
                   padding: '0.1rem 0.5rem',
                   cursor: onNavigateVerse ? 'pointer' : 'default',
-                  fontFamily: "'Inter', sans-serif",
+                  fontFamily: "'IM Fell English', serif",
                   fontStyle: 'italic',
                   fontSize: '0.68rem',
                   color: 'var(--gold)',
@@ -608,7 +608,7 @@ export default function NotesPanel() {
       <Button
         size="small" icon={<PlusOutlined />}
         onClick={() => openEditor(null)}
-        style={{ marginTop: '0.2rem', borderColor: 'rgba(200,134,26,0.4)', color: 'var(--gold)', borderRadius: 8 }}
+        style={{ marginTop: '0.2rem', background: 'var(--gold)', borderColor: 'var(--gold)', color: 'var(--ink)', fontWeight: 600, borderRadius: 999 }}
       >
         New Note
       </Button>
@@ -671,7 +671,7 @@ export default function NotesPanel() {
           <Button
             size="small" icon={<PlusOutlined />}
             onClick={() => openEditor(null)}
-            style={{ borderColor: 'rgba(200,134,26,0.4)', color: 'var(--gold)' }}
+            style={{ background: 'var(--gold)', borderColor: 'var(--gold)', color: 'var(--ink)', fontWeight: 600, borderRadius: 999 }}
           >
             New
           </Button>
@@ -687,7 +687,7 @@ export default function NotesPanel() {
             replies={replies} repliesLoading={repliesLoading}
             onNavigateVerse={onNavigateVerse}
           />
-        : <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.45rem', padding: verseList.length ? '0.5rem 0.4rem' : 0 }}>
+        : <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.7rem', padding: verseList.length ? '0.5rem 0.4rem' : 0 }}>
             {groupLoading && currentGroupId && verseList.length === 0
               ? <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '3rem 0' }}><Spin size="default" /></div>
               : verseList.length === 0

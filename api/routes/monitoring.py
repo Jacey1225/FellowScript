@@ -80,6 +80,15 @@ async def list_error_detections(
     ),
     limit: int = Query(default=DEFAULT_LIST_LIMIT, ge=1, le=MAX_LIST_LIMIT),
     offset: int = Query(default=0, ge=0),
+    include_noise: bool = Query(
+        default=False,
+        description=(
+            "Include detections flagged status='noise' (the 2026-08-14 "
+            "incident-window backfill -- see db.py). Defaults to excluded "
+            "so the live triage feed isn't cluttered by that incident; set "
+            "true for postmortem review. Rows are never deleted."
+        ),
+    ),
     admin_id: str = Depends(require_admin),
 ) -> ErrorDetectionListResponse:
     """List persisted error detections, most recent first.
@@ -95,6 +104,7 @@ async def list_error_detections(
         end_time: Optional inclusive upper bound on `detected_at`.
         limit: Max rows to return (1-200, default 50).
         offset: Rows to skip, for paging.
+        include_noise: Include status='noise' rows (default excluded).
 
     Returns:
         ErrorDetectionListResponse: `items` (summaries), `total` (count
@@ -110,9 +120,13 @@ async def list_error_detections(
             end_time=end_time,
             limit=limit,
             offset=offset,
+            include_noise=include_noise,
         )
         total = manager.count_detections(
-            log_group_name=log_group_name, start_time=start_time, end_time=end_time
+            log_group_name=log_group_name,
+            start_time=start_time,
+            end_time=end_time,
+            include_noise=include_noise,
         )
         return ErrorDetectionListResponse(items=items, total=total, limit=limit, offset=offset)
     finally:

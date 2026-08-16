@@ -39,8 +39,21 @@ CASES = [
      "2026-08-11 22:43:48,123 [routes.monitoring] ERROR - Failed to fetch detection: connection refused",
      "error_level"),
     ("app: basicConfig CRITICAL line",
-     "2026-08-11 22:43:48,123 [backend.monitoring.watchdog] CRITICAL - disk full, cannot persist detection",
+     # 2026-08-15 structural-fix follow-up: this line's logger name
+     # ("routes.monitoring") is deliberately NOT one of watchdog.py's
+     # _SELF_LOGGER_NAMES -- a CRITICAL line whose logger *is* self-
+     # originated (e.g. "[backend.monitoring.watchdog]") is now, by design,
+     # excluded regardless of level (see
+     # test_watchdog_self_exclusion_and_forgery.py), so this case keeps
+     # testing the "critical" pattern itself rather than colliding with
+     # that intentional behavior change.
+     "2026-08-11 22:43:48,123 [routes.monitoring] CRITICAL - disk full, cannot persist detection",
      "critical"),
+    ("app: self-originated CRITICAL line is excluded regardless of severity "
+     "(self-exclusion is logger-based, not level-based -- see watchdog.py's "
+     "_SELF_EXCLUSION_RE docstring)",
+     "2026-08-11 22:43:48,123 [backend.monitoring.watchdog] CRITICAL - disk full, cannot persist detection",
+     None),
     ("app: basicConfig INFO line -- must NOT false-positive",
      "2026-08-11 22:43:48,123 [routes.monitoring] INFO - Handled GET /monitoring/detections",
      None),

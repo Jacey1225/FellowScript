@@ -1204,8 +1204,8 @@ private struct TourStep {
         // BIBLE (steps 1–3)
         .init(
             section: "BIBLE",
-            heading: "The full ESV & NIV at your fingertips",
-            body: "Tap the Bible tab, choose a book and chapter, then read. Swipe left or right to move between chapters. Switch translations with a single tap.",
+            heading: "The whole Bible, always within reach",
+            body: "Tap the Bible tab, choose a book and chapter, then read. Swipe left or right to move between chapters.",
             hint: "Swipe left/right to change chapters",
             activeTab: 1
         ),
@@ -1271,9 +1271,9 @@ private struct TourStep {
         .init(
             section: "AI AGENTS",
             heading: "Your personal theologian",
-            body: "In Account → Agents, create an AI agent with a custom theological role. Chat with it anytime from the Chat tab — it knows your study context and goes deep into the Word.",
-            hint: "Account → Agents → Chat",
-            activeTab: 4
+            body: "Switch to the Agents tab inside Chat and tap + to create an AI agent with a custom theological role. Chat with it anytime from that same tab — it knows your study context and goes deep into the Word.",
+            hint: "Chat → Agents → +",
+            activeTab: 3
         ),
         // EVENTS (steps 11–12)
         .init(

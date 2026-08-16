@@ -6,11 +6,14 @@ import {
 } from '@ant-design/icons';
 import { API } from '../config.js';
 
+// Radius/fill kept in sync with Account.jsx's own CARD_STYLE (design-notes.md
+// §3's --radius-lg treatment) so the subscription card reads as the same
+// card shape as the Overview/Plan Usage/Danger Zone sections around it.
 const CARD_STYLE = {
-  background: 'rgba(6,4,1,0.88)',
+  background: 'rgba(26,20,15,0.85)',
   border: '1px solid rgba(200,134,26,0.16)',
   backdropFilter: 'blur(14px)',
-  borderRadius: 14,
+  borderRadius: 20,
   marginBottom: '1.5rem',
   padding: '1.25rem 1.4rem',
 };
@@ -294,7 +297,10 @@ export default function SubscriptionCard({ userId, onPlanChange }) {
         // ── Active plan ──────────────────────────────────────────────────────
         <>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: '0.4rem' }}>
-            <div style={{ width: 42, height: 42, borderRadius: '50%', background: 'rgba(200,134,26,0.12)', border: '1px solid rgba(200,134,26,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--gold)', fontSize: '1.1rem' }}>
+            {/* Sparing idle motion on the active-plan badge only (design-notes.md
+                §1a.3) — reuses Home's low-amplitude float via the shared
+                .fs-idle-float utility; respects prefers-reduced-motion. */}
+            <div className="fs-idle-float" style={{ width: 42, height: 42, borderRadius: '50%', background: 'rgba(200,134,26,0.12)', border: '1px solid rgba(200,134,26,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--gold)', fontSize: '1.1rem' }}>
               {isHost ? <CrownOutlined /> : <TeamOutlined />}
             </div>
             <div style={{ flex: 1 }}>
