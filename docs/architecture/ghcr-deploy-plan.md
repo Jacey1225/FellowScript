@@ -120,6 +120,10 @@ The reasoning:
 
 **Status: closed for this pass.** Architecture routed the package-visibility call and the PAT scope/storage/rotation details to the security gate (checkpoint: this step) — this section is that finalized call, not a placeholder for a later pass. Provisioning itself (generating the token, running `docker login` on the host) is still not performed by this document, per this plan's planning-only scope.
 
+**Correction found during actual execution (2026-08-17): fine-grained PATs do not expose a "Packages" repository permission in GitHub's UI.** The fine-grained-PAT recommendation above assumed this permission existed at the repository-permission level, matching every other resource this project has scoped that way (`git-deploy-plan.md`'s deploy key, etc.) — confirmed absent when actually walking the token-creation flow, not a user error or a missed UI element. GitHub's fine-grained PATs currently have incomplete coverage of the classic OAuth scope surface, and container-registry (GHCR) package read/write is one of the gaps: it remains classic-PAT-only.
+
+**Revised decision: provision a classic PAT scoped to only the `read:packages` scope.** This is broader than the fine-grained recommendation above (a classic token with this scope can read every package the authenticating account can see, not just `fellowscript-api` — the exact risk Decision 5's original reasoning was written to avoid), but it is the only mechanism GitHub currently offers for this specific need. Documented here as a known, accepted gap — matching this project's existing practice of tracking accepted risks explicitly (see the CORS-wildcard and no-rate-limiting gaps already tracked in this project's security conventions) — rather than blocking indefinitely on a fine-grained permission that doesn't exist. Storage and rotation guidance (base64-not-encrypted `docker login` storage, 1-year expiration, tracked rotation reminder) carries forward unchanged from above; only the token type and its resulting broader scope change.
+
 ---
 
 ## Decision 6 — Rollback
