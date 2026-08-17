@@ -32,4 +32,5 @@ nav:
     - Frontend: architecture/frontend.md
     - Data: architecture/data.md
     - Docker Containerization Plan: architecture/docker-plan.md
+    - Git-Based Deploy Plan: architecture/git-deploy-plan.md
   - API: api/overview.md
