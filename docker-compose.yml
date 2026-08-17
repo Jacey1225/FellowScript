@@ -14,7 +14,14 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: fellowscript-api:latest
+    # Phase 4 (docs/architecture/ghcr-deploy-plan.md, Decision 1): parameterized
+    # so a deploy can point at a specific pulled GHCR tag (IMAGE_TAG=ghcr.io/
+    # jacey1225/fellowscript-api:<sha>) without touching this file. Unset
+    # (developer default) resolves to the prior literal — byte-for-byte
+    # unchanged local behavior. `build:` stays for local dev/on-host fallback;
+    # the deploy sequence never passes --build, so a pulled image is used
+    # as-is once present.
+    image: ${IMAGE_TAG:-fellowscript-api:latest}
     container_name: fellowscript-api
 
     # Decision 1/4: Postgres and nginx both stay on the host. Host networking
