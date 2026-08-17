@@ -75,6 +75,13 @@ jobs:
       AWS_ACCESS_KEY_ID: dummy
       AWS_SECRET_ACCESS_KEY: dummy
       AWS_DEFAULT_REGION: us-east-1
+      # test_sso_terms_gate.py's Google-auth test mocks a tokeninfo response
+      # with aud=os.getenv("CLIENT_ID", ""). main.py's own audience check
+      # (valid_auds.discard("")) deliberately treats an empty string as never
+      # valid, so leaving this unset makes the mocked token unmatchable no
+      # matter what -- not a real Google client ID, just needs to be the same
+      # non-empty value on both sides of this same-process comparison.
+      CLIENT_ID: ci-test-google-client-id
 
     steps:
       - name: Checkout
