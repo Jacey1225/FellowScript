@@ -40,6 +40,35 @@ def check(label, got, want):
 
 ADMIN_EMAIL = "jaceysimps@gmail.com"
 
+# Whether this run created the admin-target account itself (fresh/CI database,
+# no pre-existing account with ADMIN_EMAIL) vs. it already existed (local dev
+# DB / production, where this is a real account) -- set once by
+# _ensure_admin_target_exists(), used at the very end to decide whether
+# cleanup should remove it. Never deletes a pre-existing real account.
+_created_admin_target_uid: str | None = None
+
+
+def _ensure_admin_target_exists() -> None:
+    """Make this test self-contained against a from-scratch database (e.g.
+    CI's ephemeral Postgres) without disturbing a real pre-existing account
+    with this email on a persistent dev/prod DB. If ADMIN_EMAIL already has a
+    row, do nothing -- exactly today's behavior. If not, create a minimal
+    placeholder so create_tables()'s targeted UPDATE has a row to seed."""
+    global _created_admin_target_uid
+    dbm = DBManager()
+    try:
+        existing = dbm.lookup("users", {"email": ADMIN_EMAIL})
+    finally:
+        dbm.close()
+    if existing:
+        return
+    _created_admin_target_uid = make_decoy_user(ADMIN_EMAIL, "admin_target_ci_seed")
+
+
+def _cleanup_admin_target_if_created() -> None:
+    if _created_admin_target_uid is not None:
+        cleanup_user(_created_admin_target_uid)
+
 
 def run_create_tables():
     """Invoke the real migration-on-boot step exactly as deploy does
@@ -164,15 +193,23 @@ def test_manual_demotion_of_a_different_account_not_reinstated():
 
 
 if __name__ == "__main__":
-    test_exactly_one_admin_and_it_is_the_right_account()
-    test_rerunning_migration_is_a_no_op()
-    test_decoy_accounts_never_flagged()
-    test_manual_demotion_of_a_different_account_not_reinstated()
+    # Self-contained against a from-scratch database (CI's ephemeral Postgres,
+    # no prior signups) as well as a persistent dev/prod DB where ADMIN_EMAIL
+    # is already a real account -- see _ensure_admin_target_exists() docstring.
+    _ensure_admin_target_exists()
 
-    # Final sanity: back to exactly the one true admin after all decoys are cleaned up.
-    print("\n── Final state check ──")
-    check("exactly one admin remains after all test accounts are cleaned up",
-          count_admins(), 1)
+    try:
+        test_exactly_one_admin_and_it_is_the_right_account()
+        test_rerunning_migration_is_a_no_op()
+        test_decoy_accounts_never_flagged()
+        test_manual_demotion_of_a_different_account_not_reinstated()
+
+        # Final sanity: back to exactly the one true admin after all decoys are cleaned up.
+        print("\n── Final state check ──")
+        check("exactly one admin remains after all test accounts are cleaned up",
+              count_admins(), 1)
+    finally:
+        _cleanup_admin_target_if_created()
 
     passed = sum(results)
     failed = len(results) - passed
