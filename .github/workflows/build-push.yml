@@ -1,0 +1,179 @@
+# CI: build+tag+push the backend image to GHCR — left half of docs/architecture/
+# docker-plan.md's Phase 4 diagram (laptop -> GitHub -> GitHub Actions -> GHCR).
+#
+# Deliberately does NOT include the deploy-to-EC2 half (GHCR -> server pull ->
+# container swap). That needs an SSH deploy key and the server-side
+# ~/fellowscript-git/ checkout that docs/architecture/git-deploy-plan.md
+# already planned but hasn't provisioned yet — adding it here would either be
+# non-functional (no credentials to reach the server) or force a rushed
+# credential-provisioning side effect. It's the natural next task once the
+# deploy key exists.
+#
+# Deploy branch: defaulting to `main` (the repo's actual default branch —
+# docs/architecture/git-deploy-plan.md line 87 flags this as assumed, not
+# confirmed against a server-side deploy convention that doesn't exist yet;
+# re-confirm if that changes).
+
+name: Build and Push to GHCR
+
+on:
+  push:
+    branches:
+      - main
+
+env:
+  # Hardcoded lowercase, not templated off ${{ github.repository_owner }} /
+  # ${{ github.repository }} — those resolve to the GitHub-cased "Jacey1225",
+  # and GHCR/Docker repository paths must be all-lowercase or the push fails.
+  IMAGE: ghcr.io/jacey1225/fellowscript-api
+
+# Repo-default permissions are broader than this workflow needs. Least
+# privilege for what actually happens below: read the checked-out source,
+# write packages to GHCR (only in the build job, via its own override).
+permissions:
+  contents: read
+
+jobs:
+  # Real, blocking test gate — not decorative. api/db.py's create_tables()
+  # is an idempotent (CREATE TABLE IF NOT EXISTS) schema bootstrap against
+  # the same host="localhost"/dbname="fellowscript"/user="fellowscript" shape
+  # every api/tests/test_*.py script already assumes (they boot the real
+  # FastAPI app + DBManager, exactly as local dev does today). A Postgres
+  # service container gives that same shape on the hosted runner, with a
+  # password that only ever exists for this job.
+  test:
+    name: Run test suite
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: fellowscript
+          POSTGRES_DB: fellowscript
+          # Ephemeral, workflow-scoped credential for a throwaway container
+          # that's created and destroyed within this single job run — not a
+          # secret worth provisioning as a repo/org secret, and never reused
+          # anywhere else (matches the request's "no new credential" bar).
+          POSTGRES_PASSWORD: ci-only-ephemeral-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U fellowscript"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+
+    env:
+      DB_PASSWORD: ci-only-ephemeral-password
+      # api/tests/_pathfix.py-importing scripts set these themselves via
+      # os.environ.setdefault(...), but api/main.py's module-level AWS/boto3
+      # client construction runs before any test file gets a chance to do
+      # that — set them here so the app boots the same way it does in local
+      # dev without AWS credentials configured.
+      AWS_EC2_METADATA_DISABLED: "true"
+      AWS_ACCESS_KEY_ID: dummy
+      AWS_SECRET_ACCESS_KEY: dummy
+      AWS_DEFAULT_REGION: us-east-1
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14.6"
+
+      - name: Install dependencies
+        run: pip install --no-cache-dir -r requirements.txt
+
+      - name: Bootstrap schema
+        working-directory: api
+        # create_tables() only — deliberately not db.py's own main(), which
+        # also TRUNCATEs and re-migrates data/*.json (real seed data files
+        # committed to this repo) on every run. That's unnecessary and
+        # wasteful for a throwaway CI database that only needs the schema
+        # to exist so the test suite's inserts/reads have somewhere to go.
+        run: |
+          python - <<'PY'
+          from db import create_tables, _connect
+
+          conn = _connect()
+          cur = conn.cursor()
+          create_tables(cur)
+          conn.commit()
+          cur.close()
+          conn.close()
+          PY
+
+      - name: Run test suite
+        working-directory: api
+        # Each tests/test_*.py already runs as a real, standalone smoke test
+        # (`python tests/test_x.py`) and exits non-zero on failure — this
+        # loop runs every one and fails the job if any of them do.
+        #
+        # Known gap, documented rather than silently papered over per this
+        # task's scope: tests/test_cancel_reflect.py and
+        # tests/test_expiry_reflect.py print a pass/fail line but never call
+        # sys.exit()/raise on failure, so a broken assertion inside either of
+        # those two specific files currently can't flip this loop's exit
+        # code. Every other file in tests/test_*.py does propagate failure
+        # correctly. Fixing those two is a test-suite change (owned by the
+        # testing gate on a task that has one), not a CI-authoring change,
+        # so it's left as-is here rather than patched as a side effect of
+        # writing this workflow.
+        run: |
+          set -uo pipefail
+          failed=0
+          for f in tests/test_*.py; do
+            echo "::group::${f}"
+            python "${f}"
+            status=$?
+            if [ "${status}" -ne 0 ]; then
+              echo "FAILED: ${f} (exit ${status})"
+              failed=1
+            fi
+            echo "::endgroup::"
+          done
+          exit "${failed}"
+
+  build-and-push:
+    name: Build, tag, and push to GHCR
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          # Built-in, automatically-scoped-to-this-repo token — no PAT or
+          # other credential provisioned for this workflow.
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          # Repo root as build context, root Dockerfile — matches
+          # docker-compose.yml's `context: .` / `dockerfile: Dockerfile` so
+          # the image this produces is the same shape as the one built
+          # locally/on the deploy host.
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:latest
+            ${{ env.IMAGE }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
