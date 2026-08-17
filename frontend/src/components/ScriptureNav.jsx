@@ -8,7 +8,7 @@ const LABEL_STYLE = {
   fontSize: '0.6rem',
   letterSpacing: '0.22em',
   textTransform: 'uppercase',
-  color: 'rgba(200,134,26,0.55)',
+  color: 'rgba(255,198,26,0.55)',
   whiteSpace: 'nowrap',
 };
 
@@ -17,7 +17,7 @@ const GROUP_STYLE = {
   alignItems: 'center',
   gap: '0.5rem',
   padding: '0 1.2rem',
-  borderRight: '1px solid rgba(200,134,26,0.18)',
+  borderRight: '1px solid rgba(255,255,255,0.108)',
   height: '100%',
 };
 

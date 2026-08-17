@@ -39,9 +39,9 @@ const { Text, Title } = Typography;
 // from the contentEditable body, preserving the user's text selection.
 function FmtBtn({ children, title, onMouseDown, active }) {
   const base = {
-    background:  active ? 'rgba(200,134,26,0.28)' : 'rgba(200,134,26,0.10)',
-    borderColor: active ? 'rgba(200,134,26,0.65)' : 'rgba(200,134,26,0.28)',
-    color:       active ? 'var(--gold)'            : 'rgba(244,228,193,0.80)',
+    background:  active ? 'rgba(255,198,26,0.28)' : 'rgba(255,198,26,0.10)',
+    borderColor: active ? 'rgba(255,255,255,0.39)' : 'rgba(255,255,255,0.168)',
+    color:       active ? 'var(--gold)'            : 'rgba(242,242,242,0.80)',
   };
   return (
     <button
@@ -63,11 +63,11 @@ function FmtBtn({ children, title, onMouseDown, active }) {
         transition: 'background 0.15s, border-color 0.15s, color 0.15s, transform 0.12s',
         userSelect: 'none',
         flexShrink: 0,
-        boxShadow: active ? 'inset 0 0 0 1px rgba(200,134,26,0.18)' : 'none',
+        boxShadow: active ? 'inset 0 0 0 1px rgba(255,198,26,0.18)' : 'none',
       }}
       onMouseEnter={e => {
-        e.currentTarget.style.background  = active ? 'rgba(200,134,26,0.38)' : 'rgba(200,134,26,0.22)';
-        e.currentTarget.style.borderColor = 'rgba(200,134,26,0.70)';
+        e.currentTarget.style.background  = active ? 'rgba(255,198,26,0.38)' : 'rgba(255,198,26,0.22)';
+        e.currentTarget.style.borderColor = 'rgba(255,255,255,0.42)';
         e.currentTarget.style.color       = 'var(--gold)';
         e.currentTarget.style.transform   = 'translateY(-1px)';
       }}
@@ -250,8 +250,8 @@ function NoteEditor({ note, noteId, user, currentGroupId, books, chapterCount, v
         <button className="note-editor-action-btn note-editor-cancel" onClick={onBack}>Cancel</button>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flex: 1, justifyContent: 'center' }}>
           <Switch size="small" checked={isPublic} onChange={setIsPublic}
-            style={{ background: isPublic ? 'rgba(200,134,26,0.8)' : undefined }} />
-          <span style={{ fontSize: '0.72rem', color: 'rgba(244,228,193,0.55)', fontFamily: "'Inter', sans-serif" }}>Public</span>
+            style={{ background: isPublic ? 'rgba(255,198,26,0.8)' : undefined }} />
+          <span style={{ fontSize: '0.72rem', color: 'rgba(242,242,242,0.55)', fontFamily: "'Inter', sans-serif" }}>Public</span>
         </div>
         <button className="note-editor-action-btn note-editor-save" onClick={handleSave}>Save</button>
       </div>
@@ -268,7 +268,7 @@ function NoteEditor({ note, noteId, user, currentGroupId, books, chapterCount, v
         )}
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', padding: '0.55rem 0.85rem 0.5rem', flexWrap: 'wrap', borderBottom: '1px solid rgba(200,134,26,0.12)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', padding: '0.55rem 0.85rem 0.5rem', flexWrap: 'wrap', borderBottom: '1px solid rgba(255,255,255,0.072)' }}>
         <FmtBtn title="Bold (click again to remove)" onMouseDown={fmt('bold')} active={activeFormats.bold}>
           <strong style={{ fontFamily: "'Inter', sans-serif", fontSize: '1rem', letterSpacing: '0.01em' }}>B</strong>
         </FmtBtn>
@@ -279,7 +279,7 @@ function NoteEditor({ note, noteId, user, currentGroupId, books, chapterCount, v
           <span style={{ textDecoration: 'underline', textUnderlineOffset: 3, fontFamily: "'Inter', sans-serif", fontSize: '1rem' }}>U</span>
         </FmtBtn>
         <FmtBtn title="Highlight (click again to remove)" onMouseDown={toggleHighlight} active={activeFormats.highlight}>
-          <span style={{ background: activeFormats.highlight ? 'rgba(200,134,26,0.65)' : 'rgba(200,134,26,0.42)', borderRadius: 3, padding: '1px 5px', fontFamily: "'Inter', sans-serif", fontSize: '0.9rem' }}>H</span>
+          <span style={{ background: activeFormats.highlight ? 'rgba(255,198,26,0.65)' : 'rgba(255,198,26,0.42)', borderRadius: 3, padding: '1px 5px', fontFamily: "'Inter', sans-serif", fontSize: '0.9rem' }}>H</span>
         </FmtBtn>
         <div ref={colorWrapRef} style={{ position: 'relative' }}>
           <FmtBtn title={activeFormats.color ? 'Remove color' : 'Text color'} onMouseDown={onColorBtnMouseDown} active={activeFormats.color}>
@@ -348,7 +348,7 @@ function NoteCard({ id, note, owner, isOwn, onEdit, onDelete, onOpen, onNavigate
   return (
     <div
       className="note-card ant-card"
-      style={{ border: '1px solid rgba(200,134,26,0.18)', background: 'rgba(20,12,4,0.5)', padding: '0.6rem 0.65rem', borderRadius: 14, cursor: 'pointer', marginBottom: 0, transition: 'border-color 0.2s' }}
+      style={{ border: '1px solid rgba(255,255,255,0.108)', background: 'var(--card-bg)', padding: '0.6rem 0.65rem', borderRadius: 14, cursor: 'pointer', marginBottom: 0, transition: 'border-color 0.2s' }}
       onClick={() => onOpen(id)}
     >
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '0.5rem', marginBottom: '0.4rem' }}>
@@ -360,9 +360,9 @@ function NoteCard({ id, note, owner, isOwn, onEdit, onDelete, onOpen, onNavigate
         {canEdit && (
           <div style={{ display: 'flex', gap: 2, flexShrink: 0 }} onClick={e => e.stopPropagation()}>
             <Button type="text" size="small" icon={<EditOutlined />} onClick={() => onEdit(id)}
-              style={{ color: 'rgba(200,134,26,0.45)', padding: '0 4px' }} />
+              style={{ color: 'rgba(255,198,26,0.45)', padding: '0 4px' }} />
             <Button type="text" size="small" icon={<DeleteOutlined />} onClick={() => onDelete(id)}
-              style={{ color: 'rgba(200,134,26,0.45)', padding: '0 4px' }} />
+              style={{ color: 'rgba(255,198,26,0.45)', padding: '0 4px' }} />
           </div>
         )}
       </div>
@@ -373,30 +373,30 @@ function NoteCard({ id, note, owner, isOwn, onEdit, onDelete, onOpen, onNavigate
               key={i}
               onClick={() => { if (onNavigateVerse) onNavigateVerse(v[0], v[1], v[2]); }}
               style={{
-                background: 'rgba(200,134,26,0.1)',
+                background: 'rgba(255,198,26,0.1)',
                 border: 'none',
                 borderRadius: 4,
                 padding: '0.1rem 0.5rem',
                 cursor: onNavigateVerse ? 'pointer' : 'default',
-                fontFamily: "'IM Fell English', serif",
+                fontFamily: "'Lora', serif",
                 fontStyle: 'italic',
                 fontSize: '0.68rem',
                 color: 'var(--gold)',
                 transition: 'background 0.15s, border-color 0.15s',
               }}
-              onMouseEnter={e => { if (onNavigateVerse) { e.currentTarget.style.background = 'rgba(200,134,26,0.2)'; e.currentTarget.style.borderColor = 'rgba(200,134,26,0.55)'; } }}
-              onMouseLeave={e => { e.currentTarget.style.background = 'rgba(200,134,26,0.1)'; e.currentTarget.style.borderColor = 'rgba(200,134,26,0.28)'; }}
+              onMouseEnter={e => { if (onNavigateVerse) { e.currentTarget.style.background = 'rgba(255,198,26,0.2)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.33)'; } }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,198,26,0.1)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.168)'; }}
             >
               {fmtVerse(v)}
             </button>
           ))}
         </div>
       )}
-      <p style={{ margin: 0, fontSize: '0.8rem', color: 'rgba(244,228,193,0.55)', lineHeight: 1.6, display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden', maxHeight: '3.84rem' }}>
+      <p style={{ margin: 0, fontSize: '0.8rem', color: 'rgba(242,242,242,0.55)', lineHeight: 1.6, display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden', maxHeight: '3.84rem' }}>
         {stripHtml(note.text)}
       </p>
       {(note.created_at || note.timestamp) && (
-        <p style={{ margin: '0.35rem 0 0', fontSize: '0.62rem', color: 'rgba(244,228,193,0.28)', textAlign: 'right', fontFamily: "'Inter', sans-serif", letterSpacing: '0.02em' }}>
+        <p style={{ margin: '0.35rem 0 0', fontSize: '0.62rem', color: 'rgba(242,242,242,0.28)', textAlign: 'right', fontFamily: "'Inter', sans-serif", letterSpacing: '0.02em' }}>
           {fmtDate(note.created_at || note.timestamp)}
         </p>
       )}
@@ -421,9 +421,9 @@ function NoteDetail({ note, noteId, onBack, canReply, onReply, replies, repliesL
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', padding: '0.55rem 0.6rem', borderBottom: '1px solid rgba(200,134,26,0.15)', flexShrink: 0 }}>
-        <Button type="text" icon={<ArrowLeftOutlined />} onClick={onBack} style={{ color: 'rgba(200,134,26,0.6)', padding: '0 4px' }} />
-        <Text strong style={{ fontFamily: "'DM Serif Display', serif", fontSize: '0.95rem', color: 'var(--parchment)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', padding: '0.55rem 0.6rem', borderBottom: '1px solid rgba(255,255,255,0.09)', flexShrink: 0 }}>
+        <Button type="text" icon={<ArrowLeftOutlined />} onClick={onBack} style={{ color: 'rgba(255,198,26,0.6)', padding: '0 4px' }} />
+        <Text strong style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: '0.95rem', color: 'var(--parchment)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {note?.title || 'Note'}
         </Text>
       </div>
@@ -436,19 +436,19 @@ function NoteDetail({ note, noteId, onBack, canReply, onReply, replies, repliesL
                 key={i}
                 onClick={() => { if (onNavigateVerse) onNavigateVerse(v[0], v[1], v[2]); }}
                 style={{
-                  background: 'rgba(200,134,26,0.1)',
-                  border: '1px solid rgba(200,134,26,0.28)',
+                  background: 'rgba(255,198,26,0.1)',
+                  border: '1px solid rgba(255,255,255,0.168)',
                   borderRadius: 4,
                   padding: '0.1rem 0.5rem',
                   cursor: onNavigateVerse ? 'pointer' : 'default',
-                  fontFamily: "'IM Fell English', serif",
+                  fontFamily: "'Lora', serif",
                   fontStyle: 'italic',
                   fontSize: '0.68rem',
                   color: 'var(--gold)',
                   transition: 'background 0.15s, border-color 0.15s',
                 }}
-                onMouseEnter={e => { if (onNavigateVerse) { e.currentTarget.style.background = 'rgba(200,134,26,0.2)'; e.currentTarget.style.borderColor = 'rgba(200,134,26,0.55)'; } }}
-                onMouseLeave={e => { e.currentTarget.style.background = 'rgba(200,134,26,0.1)'; e.currentTarget.style.borderColor = 'rgba(200,134,26,0.28)'; }}
+                onMouseEnter={e => { if (onNavigateVerse) { e.currentTarget.style.background = 'rgba(255,198,26,0.2)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.33)'; } }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,198,26,0.1)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.168)'; }}
               >
                 {fmtVerse(v)}
               </button>
@@ -458,15 +458,15 @@ function NoteDetail({ note, noteId, onBack, canReply, onReply, replies, repliesL
         {canReply && (
           <>
             <Divider />
-            <Text style={{ fontSize: '0.58rem', letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(200,134,26,0.45)' }}>Replies</Text>
+            <Text style={{ fontSize: '0.58rem', letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(255,198,26,0.45)' }}>Replies</Text>
             {repliesLoading
               ? <Spin size="small" />
               : replies.length === 0
-                ? <Text style={{ fontSize: '0.72rem', color: 'rgba(244,228,193,0.25)' }}>No replies yet.</Text>
+                ? <Text style={{ fontSize: '0.72rem', color: 'rgba(242,242,242,0.25)' }}>No replies yet.</Text>
                 : replies.map((r, i) => (
-                    <div key={i} style={{ padding: '0.35rem 0.5rem', borderLeft: '2px solid rgba(200,134,26,0.2)' }}>
+                    <div key={i} style={{ padding: '0.35rem 0.5rem', borderLeft: '2px solid rgba(255,255,255,0.12)' }}>
                       <Text style={{ fontSize: '0.62rem', color: 'var(--gold)', opacity: 0.7, display: 'block' }}>{r.user}</Text>
-                      <Text style={{ fontSize: '0.75rem', color: 'rgba(244,228,193,0.6)', lineHeight: 1.5 }}>{r.text}</Text>
+                      <Text style={{ fontSize: '0.75rem', color: 'rgba(242,242,242,0.6)', lineHeight: 1.5 }}>{r.text}</Text>
                     </div>
                   ))
             }
@@ -488,19 +488,19 @@ function FilterPanel({ onApply, onClear, onClose, groupUsernames }) {
 
   return (
     <div style={{ position: 'absolute', inset: 0, background: 'rgba(6,4,1,0.98)', zIndex: 4, display: 'flex', flexDirection: 'column' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', padding: '0.55rem 0.6rem', borderBottom: '1px solid rgba(200,134,26,0.15)' }}>
-        <Button type="text" icon={<ArrowLeftOutlined />} onClick={onClose} style={{ color: 'rgba(200,134,26,0.6)' }} />
-        <Text strong style={{ fontFamily: "'DM Serif Display', serif", fontSize: '0.95rem', color: 'var(--parchment)', flex: 1 }}>Filter & Sort</Text>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', padding: '0.55rem 0.6rem', borderBottom: '1px solid rgba(255,255,255,0.09)' }}>
+        <Button type="text" icon={<ArrowLeftOutlined />} onClick={onClose} style={{ color: 'rgba(255,198,26,0.6)' }} />
+        <Text strong style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: '0.95rem', color: 'var(--parchment)', flex: 1 }}>Filter & Sort</Text>
       </div>
       <div style={{ flex: 1, overflowY: 'auto', padding: '0.85rem 0.6rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
         <div>
-          <Text style={{ fontSize: '0.58rem', letterSpacing: '0.22em', textTransform: 'uppercase', color: 'rgba(200,134,26,0.5)', display: 'block', marginBottom: 8 }}>Sort by date</Text>
+          <Text style={{ fontSize: '0.58rem', letterSpacing: '0.22em', textTransform: 'uppercase', color: 'rgba(255,198,26,0.5)', display: 'block', marginBottom: 8 }}>Sort by date</Text>
           <Select value={sortVal || undefined} placeholder="— No sort —" onChange={setSortVal} style={{ width: '100%' }}
             options={[{ value: '', label: '— No sort —' }, { value: 'desc', label: 'Newest first' }, { value: 'asc', label: 'Oldest first' }]}
           />
         </div>
         <div>
-          <Text style={{ fontSize: '0.58rem', letterSpacing: '0.22em', textTransform: 'uppercase', color: 'rgba(200,134,26,0.5)', display: 'block', marginBottom: 8 }}>Filter by</Text>
+          <Text style={{ fontSize: '0.58rem', letterSpacing: '0.22em', textTransform: 'uppercase', color: 'rgba(255,198,26,0.5)', display: 'block', marginBottom: 8 }}>Filter by</Text>
           <Select value={filterType || undefined} placeholder="— No filter —" onChange={v => { setFilterType(v); setFilterVal(''); }}
             style={{ width: '100%', marginBottom: 8 }}
             options={[{ value: '', label: '— No filter —' }, { value: 'book', label: 'Book' }, { value: 'title', label: 'Title' }, { value: 'date', label: 'Date' }, { value: 'user', label: 'User' }]}
@@ -514,7 +514,7 @@ function FilterPanel({ onApply, onClear, onClose, groupUsernames }) {
           }
         </div>
       </div>
-      <div style={{ padding: '0.6rem 0.6rem', borderTop: '1px solid rgba(200,134,26,0.12)', display: 'flex', gap: '0.5rem' }}>
+      <div style={{ padding: '0.6rem 0.6rem', borderTop: '1px solid rgba(255,255,255,0.072)', display: 'flex', gap: '0.5rem' }}>
         <Button type="primary" onClick={() => onApply({ sortVal, filterType, filterVal })} style={{ flex: 1 }}>Apply</Button>
         <Button onClick={() => { setSortVal(''); setFilterType(''); setFilterVal(''); onClear(); }} style={{ flex: 1 }}>Clear</Button>
       </div>
@@ -598,17 +598,17 @@ export default function NotesPanel() {
 
   const verseEmpty = (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1, padding: '2.5rem 1.5rem', textAlign: 'center', gap: '1rem' }}>
-      <div style={{ fontFamily: "'Inter', sans-serif", fontStyle: 'italic', fontSize: '2rem', color: 'rgba(200,134,26,0.25)', lineHeight: 1 }}>✦</div>
-      <Text style={{ fontFamily: "'DM Serif Display', serif", fontSize: '0.95rem', color: 'rgba(244,228,193,0.55)', display: 'block', lineHeight: 1.4 }}>
+      <div style={{ fontFamily: "'Inter', sans-serif", fontStyle: 'italic', fontSize: '2rem', color: 'rgba(255,198,26,0.25)', lineHeight: 1 }}>✦</div>
+      <Text style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: '0.95rem', color: 'rgba(242,242,242,0.55)', display: 'block', lineHeight: 1.4 }}>
         Your study begins here
       </Text>
-      <Text style={{ fontFamily: "'Inter', sans-serif", fontSize: '0.72rem', color: 'rgba(244,228,193,0.28)', lineHeight: 1.65, display: 'block' }}>
-        Tap <strong style={{ color: 'rgba(200,134,26,0.55)' }}>New</strong> to capture your first note.
+      <Text style={{ fontFamily: "'Inter', sans-serif", fontSize: '0.72rem', color: 'rgba(242,242,242,0.28)', lineHeight: 1.65, display: 'block' }}>
+        Tap <strong style={{ color: 'rgba(255,198,26,0.55)' }}>New</strong> to capture your first note.
       </Text>
       <Button
         size="small" icon={<PlusOutlined />}
         onClick={() => openEditor(null)}
-        style={{ marginTop: '0.2rem', background: 'var(--gold)', borderColor: 'var(--gold)', color: 'var(--ink)', fontWeight: 600, borderRadius: 999 }}
+        style={{ marginTop: '0.2rem', background: 'linear-gradient(135deg, var(--gold-light), var(--gold) 60%, var(--gold-dim))', border: 'none', color: 'var(--ink)', fontFamily: "'Space Grotesk', sans-serif", fontWeight: 600, borderRadius: 999 }}
       >
         New Note
       </Button>
@@ -632,8 +632,8 @@ export default function NotesPanel() {
   if (!user) {
     return (
       <div className="notes-sidebar" style={{ alignItems: 'center', justifyContent: 'center', gap: '1.2rem', padding: '2rem', textAlign: 'center' }}>
-        <LockOutlined style={{ fontSize: 22, color: 'rgba(200,134,26,0.35)' }} />
-        <Text style={{ fontSize: '0.82rem', color: 'rgba(244,228,193,0.4)', lineHeight: 1.6 }}>Sign in to take notes while you read.</Text>
+        <LockOutlined style={{ fontSize: 22, color: 'rgba(255,198,26,0.35)' }} />
+        <Text style={{ fontSize: '0.82rem', color: 'rgba(242,242,242,0.4)', lineHeight: 1.6 }}>Sign in to take notes while you read.</Text>
         <Button href="#/signin" style={{ padding: '0.6rem 1.6rem', letterSpacing: '0.15em', textTransform: 'uppercase' }}>Sign In</Button>
       </div>
     );
@@ -660,19 +660,19 @@ export default function NotesPanel() {
 
   return (
     <div className="notes-sidebar">
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.95rem 0.6rem 0.8rem', borderBottom: '1px solid rgba(200,134,26,0.12)', flexShrink: 0, gap: '0.5rem' }}>
-        <Title level={5} style={{ margin: 0, fontFamily: "'DM Serif Display', serif", color: 'var(--parchment)' }}>Notes</Title>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.95rem 0.6rem 0.8rem', borderBottom: '1px solid rgba(255,255,255,0.072)', flexShrink: 0, gap: '0.5rem' }}>
+        <Title level={5} style={{ margin: 0, fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.03em', color: 'var(--parchment)' }}>Notes</Title>
         <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
           {groupSelector}
           <Button
             type="text" size="small" icon={<FilterOutlined />}
             onClick={() => setShowFilter(true)}
-            style={{ color: filterActive ? 'var(--gold)' : 'rgba(200,134,26,0.55)' }}
+            style={{ color: filterActive ? 'var(--gold)' : 'rgba(255,198,26,0.55)' }}
           />
           <Button
             size="small" icon={<PlusOutlined />}
             onClick={() => openEditor(null)}
-            style={{ background: 'var(--gold)', borderColor: 'var(--gold)', color: 'var(--ink)', fontWeight: 600, borderRadius: 999 }}
+            style={{ background: 'linear-gradient(135deg, var(--gold-light), var(--gold) 60%, var(--gold-dim))', border: 'none', color: 'var(--ink)', fontFamily: "'Space Grotesk', sans-serif", fontWeight: 600, borderRadius: 999 }}
           >
             New
           </Button>
@@ -712,7 +712,7 @@ export default function NotesPanel() {
                   });
                   return sorted.flatMap(([book, entries]) => [
                     <div key={`hdr-${book}`} style={{
-                      fontFamily: "'DM Serif Display', serif",
+                      fontFamily: "'Space Grotesk', sans-serif",
                       fontSize: '1.05rem',
                       fontWeight: 700,
                       letterSpacing: '0.02em',

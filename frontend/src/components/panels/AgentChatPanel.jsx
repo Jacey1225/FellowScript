@@ -20,9 +20,9 @@ function AgentChip({ agent, active, onClick }) {
       style={{
         display: 'inline-flex', alignItems: 'center', gap: '0.35rem',
         padding: '0.32rem 0.7rem', borderRadius: 100, flexShrink: 0,
-        background: active ? 'rgba(200,134,26,0.2)' : 'rgba(200,134,26,0.08)',
-        border: `1px solid ${active ? 'rgba(200,134,26,0.55)' : 'rgba(200,134,26,0.2)'}`,
-        color: active ? 'var(--gold)' : 'rgba(244,228,193,0.65)',
+        background: active ? 'rgba(255,198,26,0.2)' : 'rgba(255,198,26,0.08)',
+        border: `1px solid ${active ? 'rgba(255,255,255,0.33)' : 'rgba(255,255,255,0.12)'}`,
+        color: active ? 'var(--gold)' : 'rgba(242,242,242,0.65)',
         cursor: 'pointer', fontSize: '0.72rem', fontFamily: "'Inter', sans-serif",
         transition: 'background 0.15s, border-color 0.15s, color 0.15s',
         whiteSpace: 'nowrap',
@@ -51,14 +51,14 @@ export default function AgentChatPanel() {
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
       <div style={{
         display: 'flex', alignItems: 'center', gap: '0.4rem',
-        padding: '0.7rem 0.7rem', borderBottom: '1px solid rgba(200,134,26,0.12)',
+        padding: '0.7rem 0.7rem', borderBottom: '1px solid rgba(255,255,255,0.072)',
         overflowX: 'auto', flexShrink: 0,
       }}>
         {enabledAgents.map(agent => (
           <AgentChip key={agent.id} agent={agent} active={activeAgent?.id === agent.id} onClick={() => onOpenAgent?.(agent)} />
         ))}
         <Button type="text" size="small" icon={<PlusOutlined />} onClick={onNewAgent}
-          style={{ color: 'rgba(200,134,26,0.55)', flexShrink: 0 }}>
+          style={{ color: 'rgba(255,198,26,0.55)', flexShrink: 0 }}>
           New
         </Button>
       </div>
@@ -80,15 +80,15 @@ export default function AgentChatPanel() {
           />
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', padding: '1.2rem', textAlign: 'center', gap: '0.8rem' }}>
-            <RobotOutlined style={{ fontSize: 22, color: 'rgba(200,134,26,0.35)' }} />
-            <Text style={{ fontSize: '0.72rem', color: 'rgba(244,228,193,0.35)', lineHeight: 1.6 }}>
+            <RobotOutlined style={{ fontSize: 22, color: 'rgba(255,198,26,0.35)' }} />
+            <Text style={{ fontSize: '0.72rem', color: 'rgba(242,242,242,0.35)', lineHeight: 1.6 }}>
               {enabledAgents.length === 0
                 ? 'Start a conversation with your spiritual guide.'
                 : 'Choose an agent above to continue chatting.'}
             </Text>
             {enabledAgents.length === 0 && (
               <Button size="small" icon={<PlusOutlined />} onClick={onNewAgent}
-                style={{ background: 'var(--gold)', borderColor: 'var(--gold)', color: 'var(--ink)', fontWeight: 600, borderRadius: 999 }}>
+                style={{ background: 'linear-gradient(135deg, var(--gold-light), var(--gold) 60%, var(--gold-dim))', border: 'none', color: 'var(--ink)', fontFamily: "'Space Grotesk', sans-serif", fontWeight: 600, borderRadius: 999 }}>
                 New Agent Chat
               </Button>
             )}

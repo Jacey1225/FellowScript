@@ -97,7 +97,7 @@ export default function SessionCreator({
 
   const labelStyle = {
     display: 'block', fontSize: '0.72rem',
-    color: 'rgba(244,228,193,0.55)', fontFamily: "'Inter', sans-serif", marginBottom: '0.35rem',
+    color: 'rgba(242,242,242,0.55)', fontFamily: "'Inter', sans-serif", marginBottom: '0.35rem',
   };
 
   return (
@@ -106,7 +106,7 @@ export default function SessionCreator({
       onCancel={handleClose}
       footer={null}
       title={
-        <Text style={{ fontFamily: "'DM Serif Display', serif", color: 'var(--parchment)', fontSize: '1rem' }}>
+        <Text style={{ fontFamily: "'Space Grotesk', sans-serif", color: 'var(--parchment)', fontSize: '1rem' }}>
           {isEditing ? 'Edit Session' : 'Schedule a Session'}
         </Text>
       }
@@ -164,13 +164,13 @@ export default function SessionCreator({
                   style={{
                     display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
                     padding: '0.2rem 0.5rem',
-                    background: 'rgba(200,134,26,0.12)', border: '1px solid rgba(200,134,26,0.25)',
+                    background: 'rgba(255,198,26,0.12)', border: '1px solid rgba(255,255,255,0.15)',
                     borderRadius: 4, fontSize: '0.72rem', color: 'var(--parchment)', fontFamily: "'Inter', sans-serif",
                   }}
                 >
                   {parseVerseRef(ref)}
                   <CloseOutlined
-                    style={{ fontSize: '0.6rem', cursor: 'pointer', color: 'rgba(200,134,26,0.6)' }}
+                    style={{ fontSize: '0.6rem', cursor: 'pointer', color: 'rgba(255,198,26,0.6)' }}
                     onClick={() => removeVerse(ref)}
                   />
                 </span>
@@ -191,14 +191,14 @@ export default function SessionCreator({
                   style={{
                     display: 'flex', alignItems: 'flex-start', gap: '0.4rem',
                     padding: '0.3rem 0.5rem',
-                    background: 'rgba(200,134,26,0.07)', border: '1px solid rgba(200,134,26,0.2)',
+                    background: 'rgba(255,198,26,0.07)', border: '1px solid rgba(255,255,255,0.12)',
                     borderRadius: 4, fontSize: '0.78rem', color: 'var(--parchment)', fontFamily: "'Inter', sans-serif",
                     lineHeight: 1.5,
                   }}
                 >
                   <span style={{ flex: 1 }}>{p}</span>
                   <CloseOutlined
-                    style={{ fontSize: '0.58rem', cursor: 'pointer', color: 'rgba(200,134,26,0.5)', marginTop: '0.2rem', flexShrink: 0 }}
+                    style={{ fontSize: '0.58rem', cursor: 'pointer', color: 'rgba(255,198,26,0.5)', marginTop: '0.2rem', flexShrink: 0 }}
                     onClick={() => removePrompt(i)}
                   />
                 </span>

@@ -58,9 +58,9 @@ export default function AgentChatThread({ agent, messages, user, onBack, onSend,
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', position: 'relative' }}>
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.8rem 1rem', borderBottom: '1px solid rgba(200,134,26,0.15)', flexShrink: 0 }}>
-        <Button type="text" icon={<ArrowLeftOutlined />} onClick={onBack} style={{ color: 'rgba(200,134,26,0.65)', padding: '0 4px' }} />
-        <div style={{ width: 26, height: 26, borderRadius: '50%', background: 'rgba(200,134,26,0.12)', border: '1px solid rgba(200,134,26,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.8rem 1rem', borderBottom: '1px solid rgba(255,255,255,0.09)', flexShrink: 0 }}>
+        <Button type="text" icon={<ArrowLeftOutlined />} onClick={onBack} style={{ color: 'rgba(255,198,26,0.65)', padding: '0 4px' }} />
+        <div style={{ width: 26, height: 26, borderRadius: '50%', background: 'rgba(255,198,26,0.12)', border: '1px solid rgba(255,255,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
           <RobotOutlined style={{ color: 'var(--gold)', fontSize: '0.78rem' }} />
         </div>
         <Text strong style={{ fontFamily: "'Inter', sans-serif", fontSize: '0.88rem', color: 'var(--parchment)', flex: 1 }}>
@@ -72,10 +72,10 @@ export default function AgentChatThread({ agent, messages, user, onBack, onSend,
       <div style={{ flex: 1, overflowY: 'auto', padding: '0.75rem 0.85rem', display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
         {messages.length === 0 && !agentThinking && (
           <div style={{ textAlign: 'center', padding: '2.5rem 1rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.7rem' }}>
-            <div style={{ width: 42, height: 42, borderRadius: '50%', background: 'rgba(200,134,26,0.07)', border: '1px solid rgba(200,134,26,0.18)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <RobotOutlined style={{ color: 'rgba(200,134,26,0.4)', fontSize: '1.1rem' }} />
+            <div style={{ width: 42, height: 42, borderRadius: '50%', background: 'rgba(255,198,26,0.07)', border: '1px solid rgba(255,255,255,0.108)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <RobotOutlined style={{ color: 'rgba(255,198,26,0.4)', fontSize: '1.1rem' }} />
             </div>
-            <Text style={{ fontSize: '0.72rem', color: 'rgba(244,228,193,0.22)', fontFamily: "'Inter', sans-serif", fontStyle: 'italic' }}>
+            <Text style={{ fontSize: '0.72rem', color: 'rgba(242,242,242,0.22)', fontFamily: "'Inter', sans-serif", fontStyle: 'italic' }}>
               Your spiritual guide is ready. Ask anything.
             </Text>
           </div>
@@ -107,7 +107,7 @@ export default function AgentChatThread({ agent, messages, user, onBack, onSend,
           <div className="agent-response">
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}>
               <Spin size="small" />
-              <span style={{ fontSize: '0.72rem', color: 'rgba(244,228,193,0.38)', fontStyle: 'italic' }}>Thinking…</span>
+              <span style={{ fontSize: '0.72rem', color: 'rgba(242,242,242,0.38)', fontStyle: 'italic' }}>Thinking…</span>
             </span>
           </div>
         )}
@@ -121,17 +121,17 @@ export default function AgentChatThread({ agent, messages, user, onBack, onSend,
           background: 'rgba(10,7,2,0.98)', border: 'none',
           borderRadius: 8, maxHeight: 190, overflowY: 'auto', zIndex: 20, padding: '0.35rem',
         }}>
-          <Text style={{ display: 'block', fontSize: '0.52rem', letterSpacing: '0.18em', textTransform: 'uppercase', color: 'rgba(200,134,26,0.4)', padding: '0.3rem 0.5rem 0.4rem' }}>
+          <Text style={{ display: 'block', fontSize: '0.52rem', letterSpacing: '0.18em', textTransform: 'uppercase', color: 'rgba(255,198,26,0.4)', padding: '0.3rem 0.5rem 0.4rem' }}>
             Select a note
           </Text>
           {!(allNotes || []).length
-            ? <Text style={{ fontSize: '0.7rem', color: 'rgba(244,228,193,0.3)', display: 'block', padding: '0.4rem 0.6rem' }}>No notes saved yet.</Text>
+            ? <Text style={{ fontSize: '0.7rem', color: 'rgba(242,242,242,0.3)', display: 'block', padding: '0.4rem 0.6rem' }}>No notes saved yet.</Text>
             : (allNotes || []).slice(0, 12).map((note, i) => (
                 <div
                   key={note.id || i}
                   onClick={() => addNoteContext(note)}
-                  style={{ padding: '0.4rem 0.6rem', cursor: 'pointer', borderRadius: 5, fontSize: '0.72rem', fontFamily: "'Inter', sans-serif", color: 'rgba(244,228,193,0.7)', transition: 'background 0.12s' }}
-                  onMouseEnter={e => e.currentTarget.style.background = 'rgba(200,134,26,0.09)'}
+                  style={{ padding: '0.4rem 0.6rem', cursor: 'pointer', borderRadius: 5, fontSize: '0.72rem', fontFamily: "'Inter', sans-serif", color: 'rgba(242,242,242,0.7)', transition: 'background 0.12s' }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,198,26,0.09)'}
                   onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                 >
                   {note.title || 'Untitled note'}
@@ -142,26 +142,26 @@ export default function AgentChatThread({ agent, messages, user, onBack, onSend,
       )}
 
       {/* Context bar */}
-      <div style={{ padding: '0.28rem 0.75rem', borderTop: '1px solid rgba(200,134,26,0.1)', background: 'rgba(200,134,26,0.035)', display: 'flex', flexWrap: 'wrap', gap: '0.3rem', alignItems: 'center', flexShrink: 0, minHeight: 32 }}>
+      <div style={{ padding: '0.28rem 0.75rem', borderTop: '1px solid rgba(255,255,255,0.06)', background: 'rgba(255,198,26,0.035)', display: 'flex', flexWrap: 'wrap', gap: '0.3rem', alignItems: 'center', flexShrink: 0, minHeight: 32 }}>
         <Button size="small" type="text" icon={<BookOutlined style={{ fontSize: '0.66rem' }} />} onClick={addVerseContext} disabled={!curBook}
-          style={{ fontSize: '0.6rem', color: 'rgba(200,134,26,0.65)', padding: '0 5px', height: 22 }}>
+          style={{ fontSize: '0.6rem', color: 'rgba(255,198,26,0.65)', padding: '0 5px', height: 22 }}>
           Verse
         </Button>
         <Button size="small" type="text" icon={<EditOutlined style={{ fontSize: '0.66rem' }} />} onClick={() => setNotePickerOpen(v => !v)}
-          style={{ fontSize: '0.6rem', color: 'rgba(200,134,26,0.65)', padding: '0 5px', height: 22 }}>
+          style={{ fontSize: '0.6rem', color: 'rgba(255,198,26,0.65)', padding: '0 5px', height: 22 }}>
           Notes
         </Button>
-        {context.length > 0 && <Divider type="vertical" style={{ borderColor: 'rgba(200,134,26,0.15)', margin: '0 1px', height: 12 }} />}
+        {context.length > 0 && <Divider type="vertical" style={{ borderColor: 'rgba(255,255,255,0.09)', margin: '0 1px', height: 12 }} />}
         {context.map((c, i) => (
-          <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.2rem', padding: '0.1rem 0.38rem', background: 'rgba(200,134,26,0.1)', border: '1px solid rgba(200,134,26,0.22)', borderRadius: 3, fontSize: '0.58rem', color: 'rgba(244,228,193,0.75)', fontFamily: "'Inter', sans-serif", maxWidth: 130 }}>
+          <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.2rem', padding: '0.1rem 0.38rem', background: 'rgba(255,198,26,0.1)', border: '1px solid rgba(255,255,255,0.132)', borderRadius: 3, fontSize: '0.58rem', color: 'rgba(242,242,242,0.75)', fontFamily: "'Inter', sans-serif", maxWidth: 130 }}>
             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{c}</span>
-            <CloseOutlined style={{ fontSize: '0.5rem', cursor: 'pointer', color: 'rgba(200,134,26,0.6)', flexShrink: 0 }} onClick={() => setContext(prev => prev.filter(x => x !== c))} />
+            <CloseOutlined style={{ fontSize: '0.5rem', cursor: 'pointer', color: 'rgba(255,198,26,0.6)', flexShrink: 0 }} onClick={() => setContext(prev => prev.filter(x => x !== c))} />
           </span>
         ))}
       </div>
 
       {/* Input */}
-      <div style={{ display: 'flex', gap: '0.4rem', padding: '0.6rem 0.75rem', borderTop: '1px solid rgba(200,134,26,0.15)', flexShrink: 0, alignItems: 'flex-end' }}>
+      <div style={{ display: 'flex', gap: '0.4rem', padding: '0.6rem 0.75rem', borderTop: '1px solid rgba(255,255,255,0.09)', flexShrink: 0, alignItems: 'flex-end' }}>
         <Input
           value={text}
           onChange={e => setText(e.target.value)}

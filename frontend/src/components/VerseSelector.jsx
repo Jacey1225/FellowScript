@@ -92,7 +92,7 @@ export default function VerseSelector({ books, chapterCount, verseCount, onSelec
 
   const emptyHint = (msg) => (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', padding: '1rem' }}>
-      <span style={{ fontSize: '0.72rem', color: 'rgba(200,134,26,0.35)', fontFamily: "'Inter', sans-serif", textAlign: 'center', lineHeight: 1.6 }}>{msg}</span>
+      <span style={{ fontSize: '0.72rem', color: 'rgba(255,198,26,0.35)', fontFamily: "'Inter', sans-serif", textAlign: 'center', lineHeight: 1.6 }}>{msg}</span>
     </div>
   );
 

@@ -23,23 +23,23 @@ function AgentRow({ agent, active, onOpen }) {
       style={{
         display: 'flex', alignItems: 'center', gap: '0.5rem',
         padding: '0.55rem 0.8rem', cursor: 'pointer',
-        background: active ? 'rgba(200,134,26,0.12)' : 'transparent',
+        background: active ? 'rgba(255,198,26,0.12)' : 'transparent',
         borderLeft: `2px solid ${active ? 'var(--gold)' : 'transparent'}`,
         transition: 'background 0.15s, border-color 0.15s',
       }}
-      onMouseEnter={e => { if (!active) e.currentTarget.style.background = 'rgba(200,134,26,0.06)'; }}
+      onMouseEnter={e => { if (!active) e.currentTarget.style.background = 'rgba(255,198,26,0.06)'; }}
       onMouseLeave={e => { if (!active) e.currentTarget.style.background = 'transparent'; }}
     >
       <div style={{
         width: 30, height: 30, borderRadius: '50%', flexShrink: 0,
-        background: 'rgba(200,134,26,0.12)', border: 'none',
+        background: 'rgba(255,198,26,0.12)', border: 'none',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
       }}>
         <RobotOutlined style={{ color: 'var(--gold)', fontSize: '0.8rem' }} />
       </div>
       <Text style={{
         fontFamily: "'Inter', sans-serif", fontSize: '0.72rem',
-        color: active ? 'var(--parchment)' : 'rgba(244,228,193,0.65)',
+        color: active ? 'var(--parchment)' : 'rgba(242,242,242,0.65)',
         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1,
       }}>
         {agentLabel(agent)}
@@ -73,21 +73,21 @@ function ContactRow({ contact, active, onOpen, onRemove, onEdit, onReport, onBlo
       style={{
         display: 'flex', alignItems: 'center', gap: '0.5rem',
         padding: '0.55rem 0.8rem', cursor: 'pointer',
-        background: active ? 'rgba(200,134,26,0.12)' : 'transparent',
+        background: active ? 'rgba(255,198,26,0.12)' : 'transparent',
         borderLeft: `2px solid ${active ? 'var(--gold)' : 'transparent'}`,
         transition: 'background 0.15s, border-color 0.15s',
       }}
-      onMouseEnter={e => { if (!active) e.currentTarget.style.background = 'rgba(200,134,26,0.06)'; }}
+      onMouseEnter={e => { if (!active) e.currentTarget.style.background = 'rgba(255,198,26,0.06)'; }}
       onMouseLeave={e => { if (!active) e.currentTarget.style.background = 'transparent'; }}
     >
       <Avatar
         size={30}
-        style={{ background: 'rgba(200,134,26,0.15)', border: 'none', color: 'var(--gold)', fontSize: '0.72rem', flexShrink: 0, fontFamily: "'DM Serif Display', serif" }}
+        style={{ background: 'rgba(255,198,26,0.15)', border: 'none', color: 'var(--gold)', fontSize: '0.72rem', flexShrink: 0, fontFamily: "'Space Grotesk', sans-serif" }}
       >
         {contact.name[0].toUpperCase()}
       </Avatar>
       <Text
-        style={{ fontFamily: "'Inter', sans-serif", fontSize: '0.72rem', color: active ? 'var(--parchment)' : 'rgba(244,228,193,0.65)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}
+        style={{ fontFamily: "'Inter', sans-serif", fontSize: '0.72rem', color: active ? 'var(--parchment)' : 'rgba(242,242,242,0.65)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}
       >
         {contact.name}
       </Text>
@@ -95,7 +95,7 @@ function ContactRow({ contact, active, onOpen, onRemove, onEdit, onReport, onBlo
         <Button
           type="text" size="small" icon={<MoreOutlined />}
           onClick={e => e.stopPropagation()}
-          style={{ color: 'rgba(200,134,26,0.4)', padding: '0 4px', flexShrink: 0 }}
+          style={{ color: 'rgba(255,198,26,0.4)', padding: '0 4px', flexShrink: 0 }}
         />
       </Dropdown>
     </div>
@@ -130,7 +130,7 @@ function ReportUserModal({ target, onSubmit, onClose }) {
   return (
     <Modal
       open={!!target}
-      title={<Text style={{ fontFamily: "'DM Serif Display', serif", color: 'var(--parchment)' }}>Report {target?.name}</Text>}
+      title={<Text style={{ fontFamily: "'Space Grotesk', sans-serif", color: 'var(--parchment)' }}>Report {target?.name}</Text>}
       onOk={handleOk}
       onCancel={onClose}
       confirmLoading={submitting}
@@ -139,7 +139,7 @@ function ReportUserModal({ target, onSubmit, onClose }) {
     >
       <Radio.Group value={reason} onChange={e => setReason(e.target.value)} style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>
         {REPORT_REASONS.map(r => (
-          <Radio key={r.value} value={r.value} style={{ color: 'rgba(244,228,193,0.75)' }}>{r.label}</Radio>
+          <Radio key={r.value} value={r.value} style={{ color: 'rgba(242,242,242,0.75)' }}>{r.label}</Radio>
         ))}
       </Radio.Group>
       <Input.TextArea
@@ -217,8 +217,8 @@ export default function ContactsPanel({
   if (!user) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', padding: '1.2rem', textAlign: 'center', gap: '0.8rem' }}>
-        <MessageOutlined style={{ fontSize: 22, color: 'rgba(200,134,26,0.35)' }} />
-        <Text style={{ fontSize: '0.68rem', color: 'rgba(244,228,193,0.3)', lineHeight: 1.5 }}>Sign in to message study partners.</Text>
+        <MessageOutlined style={{ fontSize: 22, color: 'rgba(255,198,26,0.35)' }} />
+        <Text style={{ fontSize: '0.68rem', color: 'rgba(242,242,242,0.3)', lineHeight: 1.5 }}>Sign in to message study partners.</Text>
       </div>
     );
   }
@@ -227,8 +227,8 @@ export default function ContactsPanel({
 
   return (
     <>
-      <div style={{ padding: '0.9rem 0.8rem 0.6rem', borderBottom: '1px solid rgba(200,134,26,0.12)', flexShrink: 0 }}>
-        <Text style={{ fontFamily: "'Inter', sans-serif", fontSize: '0.58rem', letterSpacing: '0.24em', textTransform: 'uppercase', color: 'rgba(200,134,26,0.55)' }}>
+      <div style={{ padding: '0.9rem 0.8rem 0.6rem', borderBottom: '1px solid rgba(255,255,255,0.072)', flexShrink: 0 }}>
+        <Text style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: '0.58rem', letterSpacing: '0.24em', textTransform: 'uppercase', color: 'rgba(255,198,26,0.55)' }}>
           Messages
         </Text>
       </div>
@@ -236,9 +236,9 @@ export default function ContactsPanel({
       <div style={{ flex: 1, overflowY: 'auto' }}>
         {/* Friends */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.55rem 0.8rem 0.25rem' }}>
-          <Text style={{ fontSize: '0.52rem', letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(200,134,26,0.4)' }}>Friends</Text>
+          <Text style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: '0.52rem', letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(255,198,26,0.4)' }}>Friends</Text>
           <Button type="text" size="small" icon={<UserAddOutlined />} onClick={() => setShowAddFriend(v => !v)}
-            style={{ color: 'rgba(200,134,26,0.5)', padding: '0 3px', height: 20 }} />
+            style={{ color: 'rgba(255,198,26,0.5)', padding: '0 3px', height: 20 }} />
         </div>
         {showAddFriend && (
           <div style={{ padding: '0.25rem 0.7rem 0.4rem' }}>
@@ -269,7 +269,7 @@ export default function ContactsPanel({
         {!loaded
           ? <div style={{ textAlign: 'center', padding: '0.8rem' }}><Spin size="small" /></div>
           : friends.length === 0
-            ? <Text style={{ display: 'block', textAlign: 'center', padding: '0.6rem 0.5rem', color: 'rgba(244,228,193,0.2)', fontSize: '0.62rem' }}>No friends yet</Text>
+            ? <Text style={{ display: 'block', textAlign: 'center', padding: '0.6rem 0.5rem', color: 'rgba(242,242,242,0.2)', fontSize: '0.62rem' }}>No friends yet</Text>
             : friends.map(f => (
                 <ContactRow key={f.id} contact={f} active={currentContact?.id === f.id} onOpen={onOpen}
                   onRemove={() => { onRemoveFriend(f.id); onLoad(); }}
@@ -278,13 +278,13 @@ export default function ContactsPanel({
         }
 
         {/* Groups */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.55rem 0.8rem 0.25rem', borderTop: '1px solid rgba(200,134,26,0.08)', marginTop: '0.3rem' }}>
-          <Text style={{ fontSize: '0.52rem', letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(200,134,26,0.4)' }}>Groups</Text>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.55rem 0.8rem 0.25rem', borderTop: '1px solid rgba(255,255,255,0.048)', marginTop: '0.3rem' }}>
+          <Text style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: '0.52rem', letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(255,198,26,0.4)' }}>Groups</Text>
           <Button type="text" size="small" icon={<PlusOutlined />} onClick={openNewGroup}
-            style={{ color: 'rgba(200,134,26,0.5)', padding: '0 3px', height: 20 }} />
+            style={{ color: 'rgba(255,198,26,0.5)', padding: '0 3px', height: 20 }} />
         </div>
         {groupList.length === 0
-          ? <Text style={{ display: 'block', textAlign: 'center', padding: '0.6rem 0.5rem', color: 'rgba(244,228,193,0.2)', fontSize: '0.62rem' }}>No groups yet</Text>
+          ? <Text style={{ display: 'block', textAlign: 'center', padding: '0.6rem 0.5rem', color: 'rgba(242,242,242,0.2)', fontSize: '0.62rem' }}>No groups yet</Text>
           : groupList.map(([gid, g]) => {
               const contact = { id: gid, name: g.title || gid.slice(0, 8), type: 'group', toUsers: g.users || [], group_id: gid };
               return (
@@ -299,13 +299,13 @@ export default function ContactsPanel({
         {/* Agents */}
         {showAgents && (
           <>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.55rem 0.8rem 0.25rem', borderTop: '1px solid rgba(200,134,26,0.08)', marginTop: '0.3rem' }}>
-              <Text style={{ fontSize: '0.52rem', letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(200,134,26,0.4)' }}>Agents</Text>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.55rem 0.8rem 0.25rem', borderTop: '1px solid rgba(255,255,255,0.048)', marginTop: '0.3rem' }}>
+              <Text style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: '0.52rem', letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(255,198,26,0.4)' }}>Agents</Text>
               <Button type="text" size="small" icon={<PlusOutlined />} onClick={onNewAgent}
-                style={{ color: 'rgba(200,134,26,0.5)', padding: '0 3px', height: 20 }} />
+                style={{ color: 'rgba(255,198,26,0.5)', padding: '0 3px', height: 20 }} />
             </div>
             {(agents || []).length === 0
-              ? <Text style={{ display: 'block', textAlign: 'center', padding: '0.6rem 0.5rem', color: 'rgba(244,228,193,0.2)', fontSize: '0.62rem' }}>No agent chats yet</Text>
+              ? <Text style={{ display: 'block', textAlign: 'center', padding: '0.6rem 0.5rem', color: 'rgba(242,242,242,0.2)', fontSize: '0.62rem' }}>No agent chats yet</Text>
               : (agents || []).filter(a => a.enabled !== false).map(agent => (
                   <AgentRow key={agent.id} agent={agent} active={activeAgent?.id === agent.id} onOpen={() => onOpenAgent(agent)} />
                 ))
@@ -317,7 +317,7 @@ export default function ContactsPanel({
       {/* Group modal */}
       <Modal
         open={groupModal}
-        title={<Text style={{ fontFamily: "'DM Serif Display', serif", color: 'var(--parchment)' }}>{editingGroup ? 'Edit Group' : 'New Group'}</Text>}
+        title={<Text style={{ fontFamily: "'Space Grotesk', sans-serif", color: 'var(--parchment)' }}>{editingGroup ? 'Edit Group' : 'New Group'}</Text>}
         onOk={handleGroupOk}
         onCancel={() => { setGroupModal(false); setEditingGroup(null); form.resetFields(); }}
         okText={editingGroup ? 'Update' : 'Create'}
@@ -329,7 +329,7 @@ export default function ContactsPanel({
           <Form.Item name="members" label="Members">
             <Checkbox.Group style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {friends.map(f => (
-                <Checkbox key={f.id} value={f.id} style={{ color: 'rgba(244,228,193,0.6)' }}>{f.name}</Checkbox>
+                <Checkbox key={f.id} value={f.id} style={{ color: 'rgba(242,242,242,0.6)' }}>{f.name}</Checkbox>
               ))}
             </Checkbox.Group>
           </Form.Item>

@@ -1,11 +1,21 @@
 /* ── CSS variables — dark mode (default) ── */
 :root,
 [data-theme="dark"] {
-  --gold:          #C8861A;
-  --gold-dim:      #A67015;
-  --gold-light:    #E09A30;
-  --ink:           #1A100A;
-  --parchment:     #F4E4C1;
+  --gold:          #FFC61A;
+  --gold-dim:      #C99A10;
+  --gold-light:    #FFD966;
+  --ink:           #0A0A0A;
+  --parchment:     #F2F2F2;
+
+  /* Grey widget-card scale (design-notes.md §2) — dockview groups, note-card
+     fill, contacts panel background, msg-bubble containers get --card-bg;
+     nested/hover surfaces (.chapter-card, note-card hover, tab-strip wash)
+     get --card-bg-2. Hairline-border-led elevation (not shadow-led) is what
+     actually separates a grey card from the near-black canvas. */
+  --card-bg:            #1A1A1C;
+  --card-bg-2:          #232326;
+  --card-border:        rgba(255,255,255,0.08);
+  --card-border-strong: rgba(255,255,255,0.14);
   --nav-h:            64px;
   --scnav-h:          44px;
   /* Icon-rail layout — replaces the old 50% fixed panel */
@@ -37,13 +47,13 @@
   --radius-pill: 999px;
 
   /* Theme-aware */
-  --bg-page:         #211710;
-  --bg-page-2:       #1a120a;
+  --bg-page:         #0A0A0A;
+  --bg-page-2:       #050505;
   --nav-bg:          rgba(28,19,10,0.97);
   --island-bg:       rgba(32,22,13,0.92);
-  --island-border:   rgba(200,134,26,0.18);
-  --widget-bg:       rgba(36,26,16,0.97);
-  --widget-border:   rgba(200,134,26,0.24);
+  --island-border:   rgba(255,255,255,0.108);
+  --widget-bg:       rgba(35,35,38,0.97);
+  --widget-border:   rgba(255,255,255,0.144);
   /* Radial-gradient "bloom" layers built from --gold/--gold-light
      (design-notes.md §1) — the static base layer behind #root;
      Reader/Account additionally drive an animated version of the same
@@ -52,18 +62,18 @@
      own dampening filter below, the bloom was imperceptible against the
      dark base (confirmed via live screenshot after first deploy). */
   --bloom-primary:   radial-gradient(ellipse 60% 46% at 22% -8%,  rgba(224,154,48,0.34) 0%, rgba(224,154,48,0) 68%);
-  --bloom-secondary: radial-gradient(ellipse 52% 42% at 96% 104%, rgba(200,134,26,0.26) 0%, rgba(200,134,26,0) 68%);
+  --bloom-secondary: radial-gradient(ellipse 52% 42% at 96% 104%, rgba(255,198,26,0.26) 0%, rgba(255,198,26,0) 68%);
   /* Tileable feTurbulence grain — the one new visual asset in the restyle
      pass (design-notes.md §1a.2), used at 2-4% opacity over the bloom. */
   --grain-bg: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-  --pill-bg:         rgba(200,134,26,0.1);
-  --pill-border:     rgba(200,134,26,0.28);
-  --pill-text:       rgba(244,228,193,0.85);
-  --bib-book-text:   rgba(244,228,193,0.6);
-  --bib-section-c:   rgba(200,134,26,0.5);
-  --bib-divider:     rgba(200,134,26,0.18);
-  --bib-ch-border:   rgba(200,134,26,0.22);
-  --bib-ch-text:     rgba(244,228,193,0.55);
+  --pill-bg:         rgba(255,198,26,0.1);
+  --pill-border:     rgba(255,255,255,0.168);
+  --pill-text:       rgba(242,242,242,0.85);
+  --bib-book-text:   rgba(242,242,242,0.6);
+  --bib-section-c:   rgba(255,198,26,0.5);
+  --bib-divider:     rgba(255,255,255,0.108);
+  --bib-ch-border:   rgba(255,255,255,0.132);
+  --bib-ch-text:     rgba(242,242,242,0.55);
   --bible-bg:        #231610;
   --bible-text:      #E8D9BB;
 }
@@ -220,7 +230,7 @@ body {
   height: var(--scnav-h);
   background: var(--nav-bg);
   backdrop-filter: blur(8px);
-  border-bottom: 1px solid rgba(200,134,26,0.14);
+  border-bottom: 1px solid rgba(255,255,255,0.084);
   display: flex;
   align-items: center;
   padding: 0 1.5rem;
@@ -245,18 +255,19 @@ body {
 }
 .nav-pill-btn:hover,
 .nav-pill-btn.open {
-  background: rgba(200,134,26,0.2);
+  background: rgba(255,198,26,0.2);
 }
 
 /* Reset Layout (dock-reset-btn) promoted to a solid-gold CTA, per
    design-notes.md §4 — scoped so other .nav-pill-btn uses (font-size
    ticker, bookmark widget, etc.) keep their low-opacity ghost-pill look. */
 .nav-pill-btn.dock-reset-btn {
-  background: var(--gold);
+  background: linear-gradient(135deg, var(--gold-light), var(--gold) 60%, var(--gold-dim));
   color: var(--ink);
+  font-family: 'Space Grotesk', sans-serif;
   font-weight: 600;
 }
-.nav-pill-btn.dock-reset-btn:hover { background: var(--gold-light); }
+.nav-pill-btn.dock-reset-btn:hover { filter: brightness(1.06); }
 
 /* ── Bible nav dropdown widget ── */
 .bib-nav-widget {
@@ -333,9 +344,9 @@ body {
   text-overflow: ellipsis;
   line-height: 1.4;
 }
-.bib-book-btn:hover { background: rgba(200,134,26,0.1); color: var(--parchment); }
+.bib-book-btn:hover { background: rgba(255,198,26,0.1); color: var(--parchment); }
 [data-theme="light"] .bib-book-btn:hover { background: rgba(130,80,15,0.1); color: #1a100a; }
-.bib-book-btn.active { background: rgba(200,134,26,0.18); color: var(--gold); font-weight: 600; }
+.bib-book-btn.active { background: rgba(255,198,26,0.18); color: var(--gold); font-weight: 600; }
 
 /* Chapters panel (right 45%) */
 .bib-nav-chapters {
@@ -379,9 +390,9 @@ body {
   transition: background 0.14s, color 0.14s;
   flex-shrink: 0;
 }
-.bib-ch-btn:hover { background: rgba(200,134,26,0.12); color: var(--parchment); }
+.bib-ch-btn:hover { background: rgba(255,198,26,0.12); color: var(--parchment); }
 [data-theme="light"] .bib-ch-btn:hover { color: #1a100a; }
-.bib-ch-btn.active { background: rgba(200,134,26,0.22); color: var(--gold); font-weight: 700; }
+.bib-ch-btn.active { background: rgba(255,198,26,0.22); color: var(--gold); font-weight: 700; }
 
 /* ── Chapter text — inset reading surface, distinct from the panel behind it
    (var(--bg-page) against .bible-panel-body's var(--bg-page-2)) so the
@@ -390,20 +401,20 @@ body {
    getBoundingClientRect() calls are unaffected — only background/radius/
    padding change here, no DOM structure change. ── */
 .chapter-card {
-  background: var(--bg-page);
+  background: var(--card-bg-2);
   color: var(--bible-text);
   border: none;
   border-radius: var(--radius-lg);
   width: 100%;
-  padding: 2rem 2.5rem;
+  padding: 2.2rem 2.6rem;
   animation: fadeUp 0.45s ease both;
   transition: color 0.25s ease;
 }
 
 .card-book-label {
-  font-family: 'Inter', sans-serif;
+  font-family: 'Space Grotesk', sans-serif;
   font-size: 0.6rem;
-  font-weight: 600;
+  font-weight: 700;
   letter-spacing: 0.28em;
   text-transform: uppercase;
   color: var(--gold-dim);
@@ -411,9 +422,9 @@ body {
 }
 
 .card-title {
-  font-family: 'Playfair Display', serif;
+  font-family: 'Space Grotesk', sans-serif;
   font-size: clamp(2.2rem, 4.5vw, 3.2rem);
-  font-weight: 400;
+  font-weight: 700;
   color: var(--bible-text);
   line-height: 1.1;
   transition: color 0.25s ease;
@@ -458,13 +469,13 @@ body {
   cursor: pointer;
 }
 
-.verse-span:hover { background: rgba(200,134,26,0.07); border-radius: 2px; }
+.verse-span:hover { background: rgba(255,198,26,0.07); border-radius: 2px; }
 
 .verse-span.active {
-  background: rgba(200,134,26,0.13);
+  background: rgba(255,198,26,0.13);
   border-radius: 2px;
-  box-shadow: 0 0 0 3px rgba(200,134,26,0.1);
-  outline: 1px solid rgba(200,134,26,0.25);
+  box-shadow: 0 0 0 3px rgba(255,198,26,0.1);
+  outline: 1px solid rgba(255,198,26,0.25);
   padding: 0.05em 0.2em;
 }
 
@@ -489,7 +500,7 @@ body {
   width: 13px; height: 13px;
   border-radius: 50%;
   font-size: 0.42rem;
-  font-family: 'DM Serif Display', serif;
+  font-family: 'Space Grotesk', sans-serif;
   font-weight: 700;
   color: rgba(10,7,3,0.85);
   vertical-align: super;
@@ -523,11 +534,11 @@ body {
 }
 .hl-swatch:hover { transform: scale(1.25); border-color: rgba(255,255,255,0.7); }
 
-.hl-divider { width: 1px; height: 16px; background: rgba(200,134,26,0.25); }
+.hl-divider { width: 1px; height: 16px; background: rgba(255,255,255,0.15); }
 
 .hl-clear {
   font-size: 0.7rem;
-  color: rgba(244,228,193,0.4);
+  color: rgba(242,242,242,0.4);
   cursor: pointer;
   padding: 0 0.2rem;
   line-height: 1;
@@ -535,7 +546,7 @@ body {
   border: none;
   background: none;
 }
-.hl-clear:hover { color: rgba(244,228,193,0.9); }
+.hl-clear:hover { color: rgba(242,242,242,0.9); }
 
 /* ── Reader main area — scripture gets full width, rail sits on top right ── */
 .reader-main {
@@ -717,11 +728,11 @@ body {
 /* ── Note card override ── */
 .note-card.ant-card {
   border: none !important;
-  background: rgba(20,12,4,0.5) !important;
+  background: var(--card-bg) !important;
   border-radius: var(--radius-md) !important;
   cursor: pointer;
 }
-.note-card.ant-card:hover { background: rgba(20,12,4,0.75) !important; }
+.note-card.ant-card:hover { background: var(--card-bg-2) !important; }
 .note-card .ant-card-body { padding: 0.85rem 0.95rem !important; }
 
 /* ── Message bubble ── */
@@ -737,7 +748,7 @@ body {
 
 .msg-bubble.sent {
   align-self: flex-end;
-  background: rgba(200,134,26,0.18);
+  background: rgba(255,198,26,0.18);
   border: none;
   color: var(--parchment);
 }
@@ -746,7 +757,7 @@ body {
   align-self: flex-start;
   background: rgba(255,255,255,0.05);
   border: none;
-  color: rgba(244,228,193,0.75);
+  color: rgba(242,242,242,0.75);
 }
 
 .msg-bubble-sender {
@@ -758,7 +769,7 @@ body {
 
 .msg-bubble-meta {
   font-size: 0.58rem;
-  color: rgba(200,134,26,0.4);
+  color: rgba(255,198,26,0.4);
   margin-top: 0.2rem;
 }
 
@@ -777,49 +788,49 @@ body {
   padding: 0.3rem 1.75rem;
   font-size: var(--pt-md);
   line-height: 1.7;
-  color: rgba(244,228,193,0.8);
+  color: rgba(242,242,242,0.8);
 }
 
 .agent-response-meta {
   font-size: 0.58rem;
-  color: rgba(200,134,26,0.4);
+  color: rgba(255,198,26,0.4);
   margin-top: 0.3rem;
   text-align: left;
 }
 
 .agent-response .fs-agent-markdown p          { margin: 0 0 0.55em; }
 .agent-response .fs-agent-markdown p:last-child { margin-bottom: 0; }
-.agent-response .fs-agent-markdown h3         { font-size: 0.85rem; color: var(--gold); margin: 0.7em 0 0.3em; font-family: 'DM Serif Display', serif; }
+.agent-response .fs-agent-markdown h3         { font-size: 0.85rem; color: var(--gold); margin: 0.7em 0 0.3em; font-family: 'Space Grotesk', sans-serif; }
 .agent-response .fs-agent-markdown h4         { font-size: 0.8rem;  color: var(--gold); margin: 0.6em 0 0.25em; }
 .agent-response .fs-agent-markdown ul,
 .agent-response .fs-agent-markdown ol         { padding-left: 1.2em; margin: 0.3em 0 0.55em; }
 .agent-response .fs-agent-markdown li         { margin-bottom: 0.2em; }
 .agent-response .fs-agent-markdown strong     { color: var(--parchment); }
-.agent-response .fs-agent-markdown em         { color: rgba(244,228,193,0.65); font-style: italic; }
-.agent-response .fs-agent-markdown hr         { border: none; border-top: 1px solid rgba(200,134,26,0.18); margin: 0.6em 0; }
-.agent-response .fs-agent-markdown blockquote { border-left: 2px solid rgba(200,134,26,0.35); padding-left: 0.65em; margin: 0.4em 0; color: rgba(244,228,193,0.55); font-style: italic; }
+.agent-response .fs-agent-markdown em         { color: rgba(242,242,242,0.65); font-style: italic; }
+.agent-response .fs-agent-markdown hr         { border: none; border-top: 1px solid rgba(255,255,255,0.108); margin: 0.6em 0; }
+.agent-response .fs-agent-markdown blockquote { border-left: 2px solid rgba(255,255,255,0.21); padding-left: 0.65em; margin: 0.4em 0; color: rgba(242,242,242,0.55); font-style: italic; }
 
 .msg-bubble-markdown p          { margin: 0 0 0.55em; }
 .msg-bubble-markdown p:last-child { margin-bottom: 0; }
-.msg-bubble-markdown h3         { font-size: 0.85rem; color: var(--gold); margin: 0.7em 0 0.3em; font-family: 'DM Serif Display', serif; }
+.msg-bubble-markdown h3         { font-size: 0.85rem; color: var(--gold); margin: 0.7em 0 0.3em; font-family: 'Space Grotesk', sans-serif; }
 .msg-bubble-markdown h4         { font-size: 0.8rem;  color: var(--gold); margin: 0.6em 0 0.25em; }
 .msg-bubble-markdown ul,
 .msg-bubble-markdown ol         { padding-left: 1.2em; margin: 0.3em 0 0.55em; }
 .msg-bubble-markdown li         { margin-bottom: 0.2em; }
 .msg-bubble-markdown strong     { color: var(--parchment); }
-.msg-bubble-markdown em         { color: rgba(244,228,193,0.6); font-style: italic; }
-.msg-bubble-markdown hr         { border: none; border-top: 1px solid rgba(200,134,26,0.18); margin: 0.6em 0; }
-.msg-bubble-markdown blockquote { border-left: 2px solid rgba(200,134,26,0.35); padding-left: 0.65em; margin: 0.4em 0; color: rgba(244,228,193,0.55); font-style: italic; }
+.msg-bubble-markdown em         { color: rgba(242,242,242,0.6); font-style: italic; }
+.msg-bubble-markdown hr         { border: none; border-top: 1px solid rgba(255,255,255,0.108); margin: 0.6em 0; }
+.msg-bubble-markdown blockquote { border-left: 2px solid rgba(255,255,255,0.21); padding-left: 0.65em; margin: 0.4em 0; color: rgba(242,242,242,0.55); font-style: italic; }
 
 /* ── Scrollbar ── */
 ::-webkit-scrollbar { width: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(200,134,26,0.25); border-radius: 2px; }
+::-webkit-scrollbar-thumb { background: rgba(255,198,26,0.25); border-radius: 2px; }
 
 /* ── Dashboard widget ── */
 .dash-widget.ant-card {
   background: rgba(6,4,1,0.88) !important;
-  border-color: rgba(200,134,26,0.16) !important;
+  border-color: rgba(255,255,255,0.096) !important;
   backdrop-filter: blur(14px);
   animation: fadeUp 0.6s ease forwards;
   opacity: 0;
@@ -832,8 +843,8 @@ body {
 .fs-footer {
   text-align: center;
   padding: 2rem;
-  border-top: 1px solid rgba(200,134,26,0.1);
-  color: rgba(244,228,193,0.2);
+  border-top: 1px solid rgba(255,255,255,0.06);
+  color: rgba(242,242,242,0.2);
   font-size: 0.66rem;
   letter-spacing: 0.15em;
   text-transform: uppercase;
@@ -933,7 +944,7 @@ body {
     bottom: 0; left: 0; right: 0;
     z-index: 120;
     background: rgba(6,4,1,0.97);
-    border-top: 1px solid rgba(200,134,26,0.2);
+    border-top: 1px solid rgba(255,255,255,0.12);
     backdrop-filter: blur(12px);
   }
 
@@ -942,7 +953,7 @@ body {
     padding: 0.85rem 0 0.7rem;
     background: transparent;
     border: none;
-    color: rgba(244,228,193,0.4);
+    color: rgba(242,242,242,0.4);
   
     font-size: 0.6rem;
     letter-spacing: 0.18em;
@@ -962,7 +973,7 @@ body {
 
   .mobile-tab.active {
     color: var(--gold);
-    background: rgba(200,134,26,0.08);
+    background: rgba(255,198,26,0.08);
   }
 
   /* Mobile fullscreen overlays */
@@ -998,7 +1009,7 @@ body {
   align-items: center;
   gap: 0.5rem;
   padding: 0.55rem 0.6rem;
-  border-bottom: 1px solid rgba(200,134,26,0.15);
+  border-bottom: 1px solid rgba(255,255,255,0.09);
   flex-shrink: 0;
 }
 
@@ -1016,18 +1027,19 @@ body {
 }
 
 .note-editor-cancel {
-  color: rgba(244,228,193,0.45);
+  color: rgba(242,242,242,0.45);
 }
-.note-editor-cancel:hover { background: rgba(255,255,255,0.06); color: rgba(244,228,193,0.7); }
+.note-editor-cancel:hover { background: rgba(255,255,255,0.06); color: rgba(242,242,242,0.7); }
 
 .note-editor-save {
-  background: var(--gold);
+  background: linear-gradient(135deg, var(--gold-light), var(--gold) 60%, var(--gold-dim));
   color: var(--ink);
+  font-family: 'Space Grotesk', sans-serif;
   font-weight: 600;
   border-radius: var(--radius-pill);
   padding: 0.35rem 0.9rem;
 }
-.note-editor-save:hover { background: var(--gold-light); }
+.note-editor-save:hover { filter: brightness(1.06); }
 
 .note-public-toggle {
   display: flex;
@@ -1035,7 +1047,7 @@ body {
   gap: 0.35rem;
   cursor: pointer;
   font-size: 0.7rem;
-  color: rgba(200,134,26,0.6);
+  color: rgba(255,198,26,0.6);
 
   user-select: none;
 }
@@ -1047,7 +1059,7 @@ body {
   flex-wrap: wrap;
   gap: 0.3rem;
   padding: 0.28rem 0.6rem;
-  border-bottom: 1px solid rgba(200,134,26,0.12);
+  border-bottom: 1px solid rgba(255,255,255,0.072);
   flex-shrink: 0;
   min-height: 32px;
 }
@@ -1057,10 +1069,10 @@ body {
   align-items: center;
   gap: 0.2rem;
   padding: 0.14rem 0.48rem 0.14rem 0.55rem;
-  background: rgba(200,134,26,0.1);
+  background: rgba(255,198,26,0.1);
   border: none;
   border-radius: 100px;
-  font-family: 'IM Fell English', serif;
+  font-family: 'Lora', serif;
   font-style: italic;
   font-size: 0.72rem;
   color: var(--gold);
@@ -1070,7 +1082,7 @@ body {
 .note-verse-remove {
   background: none;
   border: none;
-  color: rgba(200,134,26,0.45);
+  color: rgba(255,198,26,0.45);
   cursor: pointer;
   font-size: 0.9rem;
   padding: 0;
@@ -1084,7 +1096,7 @@ body {
   background: none;
   border: none;
   border-radius: 100px;
-  color: rgba(200,134,26,0.5);
+  color: rgba(255,198,26,0.5);
   cursor: pointer;
 
   font-size: 0.68rem;
@@ -1092,7 +1104,7 @@ body {
   transition: color 0.15s;
   white-space: nowrap;
 }
-.vs-add-btn:hover { color: rgba(200,134,26,0.85); }
+.vs-add-btn:hover { color: rgba(255,198,26,0.85); }
 
 /* Writing area */
 .note-editor-body {
@@ -1111,7 +1123,7 @@ body {
   outline: none;
   resize: none;
   overflow: hidden;
-  font-family: 'DM Serif Display', serif;
+  font-family: 'Space Grotesk', sans-serif;
   font-size: clamp(1.1rem, 0.9rem + 0.8vw, 1.52rem);
   font-weight: 700;
   color: var(--parchment);
@@ -1120,7 +1132,7 @@ body {
   margin-bottom: 0.85rem;
   min-height: 2rem;
 }
-.note-title-input::placeholder { color: rgba(244,228,193,0.2); }
+.note-title-input::placeholder { color: rgba(242,242,242,0.2); }
 
 .note-body-textarea {
   width: 100%;
@@ -1130,7 +1142,7 @@ body {
   outline: none;
 
   font-size: var(--pt-lg);
-  color: rgba(244,228,193,0.72);
+  color: rgba(242,242,242,0.72);
   line-height: 1.88;
   padding: 0;
   min-height: 220px;
@@ -1138,20 +1150,20 @@ body {
 }
 .note-body-textarea:empty::before {
   content: attr(data-placeholder);
-  color: rgba(244,228,193,0.18);
+  color: rgba(242,242,242,0.18);
   pointer-events: none;
   display: block;
 }
 
 /* Rendered note body (NoteDetail view) */
 .note-rendered-body mark {
-  background: rgba(200,134,26,0.35);
+  background: rgba(255,198,26,0.35);
   color: inherit;
   border-radius: 2px;
   padding: 0 1px;
 }
 .note-rendered-body b,
-.note-rendered-body strong { color: rgba(244,228,193,0.95); }
+.note-rendered-body strong { color: rgba(242,242,242,0.95); }
 .note-rendered-body div,
 .note-rendered-body p { margin: 0; }
 

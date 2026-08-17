@@ -534,9 +534,9 @@ export default function Reader() {
 
             {/* ── Mobile overlays ── */}
             <div className={`mobile-overlay${mobileSidebar === 'notes' ? ' open' : ''}`}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.9rem 1rem', borderBottom: '1px solid rgba(200,134,26,0.15)', background: 'rgba(6,4,1,0.98)', flexShrink: 0 }}>
-                <button onClick={() => setMobileSidebar(null)} style={{ background: 'none', border: 'none', color: 'rgba(200,134,26,0.65)', cursor: 'pointer', fontSize: '1.1rem' }}>✕</button>
-                <Text style={{ fontFamily: "'DM Serif Display', serif", fontSize: '1rem', color: 'var(--parchment)' }}>Notes</Text>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.9rem 1rem', borderBottom: '1px solid rgba(255,255,255,0.09)', background: 'rgba(6,4,1,0.98)', flexShrink: 0 }}>
+                <button onClick={() => setMobileSidebar(null)} style={{ background: 'none', border: 'none', color: 'rgba(255,198,26,0.65)', cursor: 'pointer', fontSize: '1.1rem' }}>✕</button>
+                <Text style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: '1rem', color: 'var(--parchment)' }}>Notes</Text>
               </div>
               <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
                 <NotesSidebar {...notesSidebarProps} />
@@ -544,9 +544,9 @@ export default function Reader() {
             </div>
 
             <div className={`mobile-overlay${mobileSidebar === 'messages' ? ' open' : ''}`}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.9rem 1rem', borderBottom: '1px solid rgba(200,134,26,0.15)', background: 'rgba(6,4,1,0.98)', flexShrink: 0 }}>
-                <button onClick={() => setMobileSidebar(null)} style={{ background: 'none', border: 'none', color: 'rgba(200,134,26,0.65)', cursor: 'pointer', fontSize: '1.1rem' }}>✕</button>
-                <Text style={{ fontFamily: "'DM Serif Display', serif", fontSize: '1rem', color: 'var(--parchment)' }}>Messages</Text>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.9rem 1rem', borderBottom: '1px solid rgba(255,255,255,0.09)', background: 'rgba(6,4,1,0.98)', flexShrink: 0 }}>
+                <button onClick={() => setMobileSidebar(null)} style={{ background: 'none', border: 'none', color: 'rgba(255,198,26,0.65)', cursor: 'pointer', fontSize: '1.1rem' }}>✕</button>
+                <Text style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: '1rem', color: 'var(--parchment)' }}>Messages</Text>
               </div>
               <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
                 {activeAgent
