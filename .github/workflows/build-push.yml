@@ -95,16 +95,38 @@ jobs:
         # committed to this repo) on every run. That's unnecessary and
         # wasteful for a throwaway CI database that only needs the schema
         # to exist so the test suite's inserts/reads have somewhere to go.
+        #
+        # Also creates the separate BACKUP_DB_NAME database + its schema
+        # (db.py::create_backup_tables) — found missing when this workflow's
+        # first real run hit a live code path (main.py::delete_user, exercised
+        # by test_apple_jws_verification.py's own cleanup) that connects to it
+        # directly. No CREATE DATABASE statement exists anywhere in this repo
+        # for it (it was provisioned out-of-band on the real Postgres
+        # instance), so CI has to do this step itself for a from-scratch
+        # database — production's Postgres already has it and is unaffected.
         run: |
           python - <<'PY'
-          from db import create_tables, _connect
+          import psycopg2
+          from db import create_tables, create_backup_tables, BACKUP_DB_NAME, _connect
 
           conn = _connect()
+          conn.autocommit = True  # CREATE DATABASE cannot run inside a transaction
           cur = conn.cursor()
           create_tables(cur)
-          conn.commit()
+          cur.execute(f"CREATE DATABASE {BACKUP_DB_NAME}")
           cur.close()
           conn.close()
+
+          backup_conn = psycopg2.connect(
+              host="localhost", port=5432,
+              dbname=BACKUP_DB_NAME, user="fellowscript",
+              password="ci-only-ephemeral-password",
+          )
+          backup_cur = backup_conn.cursor()
+          create_backup_tables(backup_cur)
+          backup_conn.commit()
+          backup_cur.close()
+          backup_conn.close()
           PY
 
       - name: Run test suite
