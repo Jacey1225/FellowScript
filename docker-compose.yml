@@ -1,0 +1,66 @@
+# FellowScript backend — Phase 1 of docs/architecture/docker-plan.md.
+# Single service; compose is worth it over a bare `docker run` even for one
+# container per Decision 4, for declarative resource limits/restart policy/
+# env-file wiring. Postgres and nginx are intentionally absent from this
+# file — both stay on the host, untouched (Decision 1 / Decision 4).
+#
+# Run from the repo root on the deploy host (this repo is rsync'd into
+# ~/fellowscript/ per the existing deploy process), so the relative bind
+# mount below and `${HOME}` resolve against the deploying user, e.g.
+# `cd ~/fellowscript && docker compose up -d`.
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: fellowscript-api:latest
+    container_name: fellowscript-api
+
+    # Decision 1/4: Postgres and nginx both stay on the host. Host networking
+    # is what lets db.py's hardcoded `host="localhost"` keep resolving to the
+    # real host Postgres with zero code changes, and lets nginx's existing
+    # `proxy_pass http://localhost:8000` keep working unchanged.
+    network_mode: host
+
+    # .env carries the plaintext key/value secrets (DB_PASSWORD, STRIPE_*,
+    # SES_*, APPLE_*, etc.) — never COPY'd into the image (see .dockerignore
+    # and the Dockerfile), supplied only at container-start time here.
+    env_file:
+      - .env
+
+    # Non-secret path overrides only:
+    #  - APPLE_KEY_PATH is repointed at the in-container bind-mount path
+    #    below, overriding whatever host path .env carries today (env_file
+    #    values are overridden by `environment:` in compose's merge order).
+    #  - AWS_SHARED_CREDENTIALS_FILE/AWS_CONFIG_FILE point boto3's default
+    #    credential chain (used by the Chime SDK client) at the read-only
+    #    mounts below, since the runtime container user has no home
+    #    directory for boto3's usual `~/.aws` default to resolve against.
+    #  - Nothing is set here for FellowScriptCloudWatchRole (the EC2
+    #    instance IAM role) — Decision 3 is explicit that wiring anything
+    #    for it would be a regression. network_mode: host already preserves
+    #    reachability to the instance metadata service (169.254.169.254),
+    #    so boto3's default chain keeps resolving it with zero config here.
+    environment:
+      APPLE_KEY_PATH: /secrets/AuthKey_22G3F2KMHS.p8
+      AWS_SHARED_CREDENTIALS_FILE: /secrets/aws/credentials
+      AWS_CONFIG_FILE: /secrets/aws/config
+
+    # Decision 3: file-based secrets are bind-mounted read-only, never
+    # COPY'd into the image. Chime SDK's ~/.aws/credentials and
+    # ~/.aws/config are kept as their own separate mounts, not merged into
+    # .env or into each other.
+    volumes:
+      - ./AuthKey_22G3F2KMHS.p8:/secrets/AuthKey_22G3F2KMHS.p8:ro
+      - ${HOME}/.aws/credentials:/secrets/aws/credentials:ro
+      - ${HOME}/.aws/config:/secrets/aws/config:ro
+
+    # Decision 5, directly motivated by the prior CloudWatch-watchdog OOM
+    # incident: cap this container's footprint so a runaway process gets
+    # OOM-killed and restarted instead of dragging the whole host (nginx +
+    # Postgres + OS) into a swapping death-spiral.
+    mem_limit: 1500m
+    memswap_limit: 1500m # equal to mem_limit == no container swap
+    cpus: "1.5"
+    restart: unless-stopped

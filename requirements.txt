@@ -43,6 +43,17 @@ h2==4.3.0
 # CLOUDWATCH_MCP_COMMAND, default `uvx awslabs.cloudwatch-mcp-server@latest`)
 # before this job's MCP calls can succeed instead of erroring every cycle.
 mcp==1.24.0
+# backend/monitoring/cloudwatch_mcp_client.py's CLOUDWATCH_MCP_COMMAND
+# subprocess target. Phase 1 of docs/architecture/docker-plan.md's Decision 2
+# resolution: pip-install and pin this at build time (console script entry
+# point confirmed from the built wheel: `awslabs.cloudwatch-mcp-server =
+# awslabs.cloudwatch_mcp_server.server:main`) instead of a runtime
+# `uvx awslabs.cloudwatch-mcp-server@latest` fetch — reproducible, no
+# `@latest` drift, no outbound-PyPI dependency at container startup/on every
+# uvx cold-start. Requires mcp[cli]<2.0.0,>=1.23.0, satisfied by mcp==1.24.0
+# above. 0.1.8 is the latest release as of this pinning (confirmed via
+# `pip index versions`); bump deliberately, not automatically.
+awslabs.cloudwatch-mcp-server==0.1.8
 # zoneinfo falls back to this package, per key, whenever a name isn't found
 # under the system's /usr/share/zoneinfo (confirmed on the EC2 deploy target:
 # its tzdata package ships only canonical zone names, not IANA's ~150
