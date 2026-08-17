@@ -81,7 +81,7 @@ export default function BookmarkButton({ user, bookmarks, curBook, curChapter, o
           minWidth: 210,
           maxWidth: 280,
           background: 'rgba(10,6,1,0.97)',
-          border: '1px solid rgba(200,134,26,0.25)',
+          border: '1px solid rgba(255,255,255,0.15)',
           borderRadius: 12,
           boxShadow: '0 8px 28px rgba(0,0,0,0.65)',
           zIndex: 200,
@@ -96,10 +96,10 @@ export default function BookmarkButton({ user, bookmarks, curBook, curChapter, o
             onClick={handleToggleCurrent}
             disabled={!currentKey}
             style={{
-              background: isBookmarked ? 'rgba(255,90,90,0.08)' : 'rgba(200,134,26,0.1)',
-              border: `1px solid ${isBookmarked ? 'rgba(255,90,90,0.28)' : 'rgba(200,134,26,0.28)'}`,
+              background: isBookmarked ? 'rgba(255,90,90,0.08)' : 'rgba(255,198,26,0.1)',
+              border: `1px solid ${isBookmarked ? 'rgba(255,90,90,0.28)' : 'rgba(255,255,255,0.168)'}`,
               borderRadius: 8,
-              color: isBookmarked ? 'rgba(255,130,130,0.8)' : 'rgba(200,134,26,0.85)',
+              color: isBookmarked ? 'rgba(255,130,130,0.8)' : 'rgba(255,198,26,0.85)',
               cursor: currentKey ? 'pointer' : 'default',
               fontSize: '0.68rem',
               fontFamily: "'Inter', sans-serif",
@@ -110,10 +110,10 @@ export default function BookmarkButton({ user, bookmarks, curBook, curChapter, o
             }}
             onMouseEnter={e => {
               if (!currentKey) return;
-              e.currentTarget.style.background = isBookmarked ? 'rgba(255,90,90,0.15)' : 'rgba(200,134,26,0.18)';
+              e.currentTarget.style.background = isBookmarked ? 'rgba(255,90,90,0.15)' : 'rgba(255,198,26,0.18)';
             }}
             onMouseLeave={e => {
-              e.currentTarget.style.background = isBookmarked ? 'rgba(255,90,90,0.08)' : 'rgba(200,134,26,0.1)';
+              e.currentTarget.style.background = isBookmarked ? 'rgba(255,90,90,0.08)' : 'rgba(255,198,26,0.1)';
             }}
           >
             {isBookmarked ? '✕  Remove this page' : '＋  Bookmark this page'}
@@ -122,7 +122,7 @@ export default function BookmarkButton({ user, bookmarks, curBook, curChapter, o
           {/* Divider + list */}
           {entries.length > 0 && (
             <>
-              <div style={{ height: 1, background: 'rgba(200,134,26,0.12)', margin: '0.05rem 0.1rem' }} />
+              <div style={{ height: 1, background: 'rgba(255,198,26,0.12)', margin: '0.05rem 0.1rem' }} />
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.22rem', maxHeight: 220, overflowY: 'auto' }}>
                 {entries.map(([key]) => {
                   const { book, chapter } = parseKey(key);
@@ -133,9 +133,9 @@ export default function BookmarkButton({ user, bookmarks, curBook, curChapter, o
                         style={{
                           flex: 1,
                           background: 'none',
-                          border: '1px solid rgba(200,134,26,0.18)',
+                          border: '1px solid rgba(255,255,255,0.108)',
                           borderRadius: 100,
-                          color: 'rgba(244,228,193,0.7)',
+                          color: 'rgba(242,242,242,0.7)',
                           cursor: 'pointer',
                           fontSize: '0.68rem',
                           fontFamily: "'Inter', sans-serif",
@@ -146,8 +146,8 @@ export default function BookmarkButton({ user, bookmarks, curBook, curChapter, o
                           whiteSpace: 'nowrap',
                           transition: 'border-color 0.15s, color 0.15s',
                         }}
-                        onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(200,134,26,0.5)'; e.currentTarget.style.color = 'var(--gold)'; }}
-                        onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(200,134,26,0.18)'; e.currentTarget.style.color = 'rgba(244,228,193,0.7)'; }}
+                        onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.3)'; e.currentTarget.style.color = 'var(--gold)'; }}
+                        onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.108)'; e.currentTarget.style.color = 'rgba(242,242,242,0.7)'; }}
                       >
                         {book} {chapter}
                       </button>
@@ -156,13 +156,13 @@ export default function BookmarkButton({ user, bookmarks, curBook, curChapter, o
                         title="Remove bookmark"
                         style={{
                           background: 'none', border: 'none',
-                          color: 'rgba(200,134,26,0.3)',
+                          color: 'rgba(255,198,26,0.3)',
                           cursor: 'pointer', fontSize: '0.85rem',
                           padding: '0 3px', lineHeight: 1, flexShrink: 0,
                           transition: 'color 0.15s',
                         }}
                         onMouseEnter={e => { e.currentTarget.style.color = 'rgba(255,90,90,0.65)'; }}
-                        onMouseLeave={e => { e.currentTarget.style.color = 'rgba(200,134,26,0.3)'; }}
+                        onMouseLeave={e => { e.currentTarget.style.color = 'rgba(255,198,26,0.3)'; }}
                       >
                         ×
                       </button>
@@ -176,7 +176,7 @@ export default function BookmarkButton({ user, bookmarks, curBook, curChapter, o
           {entries.length === 0 && (
             <p style={{
               fontSize: '0.62rem',
-              color: 'rgba(244,228,193,0.22)',
+              color: 'rgba(242,242,242,0.22)',
               fontFamily: "'Inter', sans-serif",
               fontStyle: 'italic',
               margin: '0.1rem 0.2rem 0',

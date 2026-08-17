@@ -27,14 +27,14 @@ function HighlightCard({ book, chapter, verse, color, username, onNavigate }) {
         boxShadow: `0 0 0 2px rgba(0,0,0,0.3)`,
       }} />
       <Text style={{
-        fontFamily: "'IM Fell English', serif", fontStyle: 'italic',
+        fontFamily: "'Lora', serif", fontStyle: 'italic',
         fontSize: '0.82rem', color: 'var(--gold)', flex: 1,
       }}>
         {book} {chapter}:{verse}
       </Text>
       {username && (
         <span style={{
-          background: 'rgba(200,134,26,0.15)', color: 'var(--gold)',
+          background: 'rgba(255,198,26,0.15)', color: 'var(--gold)',
           fontSize: '0.52rem', letterSpacing: '0.06em', borderRadius: 4,
           padding: '0.1rem 0.4rem',
         }}>
@@ -98,7 +98,7 @@ export default function HighlightsPanel() {
   if (!user) {
     return (
       <div className="notes-sidebar" style={{ alignItems: 'center', justifyContent: 'center', gap: '1.2rem', padding: '2rem', textAlign: 'center' }}>
-        <Text style={{ fontSize: '0.82rem', color: 'rgba(244,228,193,0.4)', lineHeight: 1.6 }}>Sign in to see your verse highlights.</Text>
+        <Text style={{ fontSize: '0.82rem', color: 'rgba(242,242,242,0.4)', lineHeight: 1.6 }}>Sign in to see your verse highlights.</Text>
         <a href="#/signin" className="ant-btn" style={{ padding: '0.6rem 1.6rem', letterSpacing: '0.15em', textTransform: 'uppercase' }}>Sign In</a>
       </div>
     );
@@ -106,15 +106,15 @@ export default function HighlightsPanel() {
 
   return (
     <div className="notes-sidebar">
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.95rem 0.6rem 0.8rem', borderBottom: '1px solid rgba(200,134,26,0.12)', flexShrink: 0, gap: '0.5rem' }}>
-        <Title level={5} style={{ margin: 0, fontFamily: "'DM Serif Display', serif", color: 'var(--parchment)' }}>Highlights</Title>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.95rem 0.6rem 0.8rem', borderBottom: '1px solid rgba(255,255,255,0.072)', flexShrink: 0, gap: '0.5rem' }}>
+        <Title level={5} style={{ margin: 0, fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.03em', color: 'var(--parchment)' }}>Highlights</Title>
         {groupSelector}
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.4rem', padding: '0.5rem 0.4rem' }}>
         {hlList.length === 0
           ? <div style={{ textAlign: 'center', padding: '2rem 1rem' }}>
-              <Text style={{ fontSize: '0.75rem', color: 'rgba(244,228,193,0.25)', fontFamily: "'Inter', sans-serif" }}>
+              <Text style={{ fontSize: '0.75rem', color: 'rgba(242,242,242,0.25)', fontFamily: "'Inter', sans-serif" }}>
                 {currentGroupId ? 'No highlights in this group yet.' : 'No highlights yet — mark a verse while reading.'}
               </Text>
             </div>

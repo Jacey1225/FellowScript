@@ -40,16 +40,16 @@ function useUsernames(participantIds) {
 const islandStyle = {
   margin: '0.6rem 0.75rem 0.2rem',
   borderRadius: '10px',
-  border: '1px solid rgba(200,134,26,0.22)',
+  border: '1px solid rgba(255,255,255,0.132)',
   background: 'rgba(18,13,5,0.85)',
-  boxShadow: '0 2px 12px rgba(0,0,0,0.4), inset 0 1px 0 rgba(200,134,26,0.08)',
+  boxShadow: '0 2px 12px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,198,26,0.08)',
   overflow: 'hidden',
   flexShrink: 0,
 };
 
 function IconBtn({ icon, onClick, title, danger, active }) {
-  const base  = danger ? 'rgba(255,90,90,0.55)' : active ? 'var(--gold)' : 'rgba(200,134,26,0.4)';
-  const hover = danger ? 'rgba(255,90,90,0.9)'  : 'rgba(200,134,26,0.85)';
+  const base  = danger ? 'rgba(255,90,90,0.55)' : active ? 'var(--gold)' : 'rgba(255,198,26,0.4)';
+  const hover = danger ? 'rgba(255,90,90,0.9)'  : 'rgba(255,198,26,0.85)';
   return (
     <button
       title={title}
@@ -99,15 +99,15 @@ function UpcomingCard({ session, activeSessionId, onJoin, onLeave, onEdit, onDel
         display: 'flex', alignItems: 'center', gap: '0.55rem',
         padding: '0.55rem 0.75rem',
       }}>
-        <PhoneOutlined style={{ fontSize: '0.8rem', color: 'rgba(200,134,26,0.45)', flexShrink: 0 }} />
+        <PhoneOutlined style={{ fontSize: '0.8rem', color: 'rgba(255,198,26,0.45)', flexShrink: 0 }} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <Text style={{ display: 'block', fontFamily: "'Inter', sans-serif", fontSize: '0.78rem', color: 'var(--parchment)', lineHeight: 1.3 }}>
             {session.title}
           </Text>
-          <Text style={{ fontSize: '0.62rem', color: 'rgba(244,228,193,0.4)', fontFamily: "'Inter', sans-serif" }}>
+          <Text style={{ fontSize: '0.62rem', color: 'rgba(242,242,242,0.4)', fontFamily: "'Inter', sans-serif" }}>
             {formatTime(session.time_start)}
             {session.time_end ? ` – ${formatTime(session.time_end)}` : ''}
-            {session.recurring && <span style={{ marginLeft: '0.4rem', color: 'rgba(200,134,26,0.55)' }}>· Weekly</span>}
+            {session.recurring && <span style={{ marginLeft: '0.4rem', color: 'rgba(255,198,26,0.55)' }}>· Weekly</span>}
           </Text>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', flexShrink: 0 }}>
@@ -121,7 +121,7 @@ function UpcomingCard({ session, activeSessionId, onJoin, onLeave, onEdit, onDel
           ) : (
             <Button
               size="small" onClick={() => onJoin(session.id)}
-              style={{ fontSize: '0.62rem', height: 20, padding: '0 7px', background: 'rgba(200,134,26,0.7)', borderColor: 'transparent', color: '#fff' }}
+              style={{ fontSize: '0.62rem', height: 20, padding: '0 7px', background: 'rgba(255,198,26,0.7)', borderColor: 'transparent', color: '#fff' }}
             >
               Join
             </Button>
@@ -180,7 +180,7 @@ function ActiveCard({ session, user, activeSessionId, talkingUserId, onJoin, onL
             ) : (
               <Button
                 size="small" onClick={() => onJoin(session.id)}
-                style={{ fontSize: '0.62rem', height: 20, padding: '0 7px', background: 'rgba(200,134,26,0.7)', borderColor: 'transparent', color: '#fff' }}
+                style={{ fontSize: '0.62rem', height: 20, padding: '0 7px', background: 'rgba(255,198,26,0.7)', borderColor: 'transparent', color: '#fff' }}
               >
                 Join
               </Button>
@@ -190,17 +190,17 @@ function ActiveCard({ session, user, activeSessionId, talkingUserId, onJoin, onL
 
         {/* Row 1b: time + recurring */}
         <div style={{ marginBottom: '0.35rem' }}>
-          <Text style={{ fontSize: '0.6rem', color: 'rgba(244,228,193,0.35)', fontFamily: "'Inter', sans-serif" }}>
+          <Text style={{ fontSize: '0.6rem', color: 'rgba(242,242,242,0.35)', fontFamily: "'Inter', sans-serif" }}>
             {formatTime(session.time_start)}
             {session.time_end ? ` – ${formatTime(session.time_end)}` : ''}
-            {session.recurring && <span style={{ marginLeft: '0.4rem', color: 'rgba(200,134,26,0.5)' }}>· Weekly</span>}
+            {session.recurring && <span style={{ marginLeft: '0.4rem', color: 'rgba(255,198,26,0.5)' }}>· Weekly</span>}
           </Text>
         </div>
 
         {/* Row 2: participants */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.22rem', marginBottom: (session.verses || []).length ? '0.4rem' : 0, flexWrap: 'wrap' }}>
           {(session.participants || []).length === 0 ? (
-            <Text style={{ fontSize: '0.6rem', color: 'rgba(244,228,193,0.25)', fontFamily: "'Inter', sans-serif", fontStyle: 'italic' }}>
+            <Text style={{ fontSize: '0.6rem', color: 'rgba(242,242,242,0.25)', fontFamily: "'Inter', sans-serif", fontStyle: 'italic' }}>
               No one has joined yet
             </Text>
           ) : (
@@ -212,8 +212,8 @@ function ActiveCard({ session, user, activeSessionId, talkingUserId, onJoin, onL
                   <Avatar
                     size={20}
                     style={{
-                      background: isTalking ? 'rgba(200,134,26,0.55)' : 'rgba(200,134,26,0.14)',
-                      border: `1px solid ${isTalking ? 'var(--gold)' : 'rgba(200,134,26,0.28)'}`,
+                      background: isTalking ? 'rgba(255,198,26,0.55)' : 'rgba(255,198,26,0.14)',
+                      border: `1px solid ${isTalking ? 'var(--gold)' : 'rgba(255,255,255,0.168)'}`,
                       color: 'var(--gold)', fontSize: '0.5rem',
                       transition: 'background 0.2s, border-color 0.2s',
                     }}
@@ -262,14 +262,14 @@ function ActiveCard({ session, user, activeSessionId, talkingUserId, onJoin, onL
                   key={ref}
                   onClick={() => onNavigateVerse(book, ch, vs)}
                   style={{
-                    background: 'none', border: '1px solid rgba(200,134,26,0.18)',
+                    background: 'none', border: '1px solid rgba(255,255,255,0.108)',
                     borderRadius: 3, padding: '0.08rem 0.35rem',
                     cursor: 'pointer', fontSize: '0.6rem',
-                    color: 'rgba(200,134,26,0.7)', fontFamily: "'Inter', sans-serif",
+                    color: 'rgba(255,198,26,0.7)', fontFamily: "'Inter', sans-serif",
                     transition: 'border-color 0.15s, color 0.15s',
                   }}
-                  onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(200,134,26,0.55)'; e.currentTarget.style.color = 'var(--gold)'; }}
-                  onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(200,134,26,0.18)'; e.currentTarget.style.color = 'rgba(200,134,26,0.7)'; }}
+                  onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.33)'; e.currentTarget.style.color = 'var(--gold)'; }}
+                  onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.108)'; e.currentTarget.style.color = 'rgba(255,198,26,0.7)'; }}
                 >
                   {label}
                 </button>
@@ -280,13 +280,13 @@ function ActiveCard({ session, user, activeSessionId, talkingUserId, onJoin, onL
 
         {/* Row 4: discussion prompts (only when joined) */}
         {isJoined && (session.prompts || []).length > 0 && (
-          <div style={{ marginTop: '0.4rem', paddingTop: '0.4rem', borderTop: '1px solid rgba(200,134,26,0.12)' }}>
-            <Text style={{ display: 'block', fontSize: '0.55rem', letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(200,134,26,0.45)', fontFamily: "'Inter', sans-serif", marginBottom: '0.3rem' }}>
+          <div style={{ marginTop: '0.4rem', paddingTop: '0.4rem', borderTop: '1px solid rgba(255,255,255,0.072)' }}>
+            <Text style={{ display: 'block', fontSize: '0.55rem', letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(255,198,26,0.45)', fontFamily: "'Inter', sans-serif", marginBottom: '0.3rem' }}>
               Discussion Prompts
             </Text>
             <ol style={{ margin: 0, padding: '0 0 0 1.1rem', display: 'flex', flexDirection: 'column', gap: '0.28rem' }}>
               {(session.prompts || []).map((p, i) => (
-                <li key={i} style={{ fontSize: '0.7rem', color: 'rgba(244,228,193,0.75)', fontFamily: "'Inter', sans-serif", lineHeight: 1.55 }}>
+                <li key={i} style={{ fontSize: '0.7rem', color: 'rgba(242,242,242,0.75)', fontFamily: "'Inter', sans-serif", lineHeight: 1.55 }}>
                   {p}
                 </li>
               ))}

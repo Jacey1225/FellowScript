@@ -27,7 +27,7 @@ export default function BibleCard({
 
   if (loading) {
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1.4rem', padding: '8rem 2rem', color: 'rgba(244,228,193,0.35)' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1.4rem', padding: '8rem 2rem', color: 'rgba(242,242,242,0.35)' }}>
         <Spin size="large" />
         <Text style={{ fontSize: '0.72rem', letterSpacing: '0.25em', textTransform: 'uppercase', color: 'inherit' }}>
           Loading Scripture…
@@ -38,7 +38,7 @@ export default function BibleCard({
 
   if (loadError) {
     return (
-      <div style={{ textAlign: 'center', padding: '8rem 2rem', color: 'rgba(200,134,26,0.65)', fontSize: '0.8rem', letterSpacing: '0.15em', textTransform: 'uppercase' }}>
+      <div style={{ textAlign: 'center', padding: '8rem 2rem', color: 'rgba(255,198,26,0.65)', fontSize: '0.8rem', letterSpacing: '0.15em', textTransform: 'uppercase' }}>
         Could not load scripture data.
       </div>
     );
@@ -50,10 +50,10 @@ export default function BibleCard({
         <Text style={{ fontSize: '0.68rem', letterSpacing: '0.3em', textTransform: 'uppercase', color: 'var(--gold)', display: 'block', marginBottom: '1.4rem' }}>
           A Digital Scripture Community
         </Text>
-        <Text style={{ fontFamily: "'DM Serif Display', serif", fontSize: 'clamp(2rem,5vw,3rem)', fontWeight: 700, color: 'var(--parchment)', display: 'block', lineHeight: 1.2 }}>
+        <Text style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 'clamp(2rem,5vw,3rem)', fontWeight: 700, color: 'var(--parchment)', display: 'block', lineHeight: 1.2 }}>
           Begin <em style={{ color: 'var(--gold)', fontStyle: 'italic' }}>Reading</em>
         </Text>
-        <Text style={{ fontSize: '0.88rem', color: 'rgba(244,228,193,0.45)', lineHeight: 1.85, display: 'block', marginTop: '1.1rem' }}>
+        <Text style={{ fontSize: '0.88rem', color: 'rgba(242,242,242,0.45)', lineHeight: 1.85, display: 'block', marginTop: '1.1rem' }}>
           Select a book and chapter above to begin your study.
         </Text>
       </div>
@@ -63,7 +63,7 @@ export default function BibleCard({
   return (
     <div className="chapter-card">
       {/* Header */}
-      <div style={{ marginBottom: '2.2rem', paddingBottom: '1.5rem', borderBottom: '1px solid rgba(180,130,30,0.18)' }}>
+      <div style={{ marginBottom: '2.2rem', paddingBottom: '1.5rem', borderBottom: '1px solid rgba(255,255,255,0.108)' }}>
         <div className="card-book-label">{curBook.toUpperCase()}</div>
         <div className="card-title">Chapter {curChapter}</div>
         {curChapter === 1 && preamble && (
@@ -80,7 +80,7 @@ export default function BibleCard({
       />
 
       {/* Navigation */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '3.2rem', paddingTop: '1.8rem', borderTop: '1px solid rgba(180,130,30,0.18)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '3.2rem', paddingTop: '1.8rem', borderTop: '1px solid rgba(255,255,255,0.108)' }}>
         <Button
           icon={<LeftOutlined />}
           onClick={onPrev}

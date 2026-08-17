@@ -8,32 +8,34 @@
    + soft shadow between dockview groups (reversed from the earlier flush,
    no-gap arrangement — see .reader-dock-container / .dv-view / .dv-groupview
    below). Tabs keep their rounded, spaced-apart pill/chip treatment. Every
-   color variable below is retinted to the app's warm dark/gold/parchment
-   palette; nothing here changes the underlying drag/split/tab mechanism. */
+   color variable below is retinted to the black-canvas/grey-widget-card/
+   gold-accent palette (design-notes.md §2/§4, the black/grey/gold restyle
+   implementation pass); nothing here changes the underlying drag/split/tab
+   mechanism. */
 .dockview-theme-abyss {
-  --dv-color-abyss-dark:            #1c130a;
-  --dv-color-abyss:                 #2a1e12;   /* group/panel surface */
-  --dv-color-abyss-light:            #241a10;   /* tab-strip surface */
-  --dv-color-abyss-lighter:          rgba(200,134,26,0.15);
+  --dv-color-abyss-dark:            #050505;
+  --dv-color-abyss:                 var(--card-bg);     /* group/panel surface — was #2a1e12 */
+  --dv-color-abyss-light:            var(--card-bg-2);   /* tab-strip surface */
+  --dv-color-abyss-lighter:          rgba(255,198,26,0.15);
   --dv-color-abyss-accent:           var(--gold);
   --dv-color-abyss-primary-text:     var(--parchment);
-  --dv-color-abyss-secondary-text:   rgba(244,228,193,0.55);
-  --dv-activegroup-visiblepanel-tab-background-color:   rgba(200,134,26,0.16);
+  --dv-color-abyss-secondary-text:   rgba(242,242,242,0.55);
+  --dv-activegroup-visiblepanel-tab-background-color:   rgba(255,198,26,0.16);
   --dv-activegroup-hiddenpanel-tab-background-color:    transparent;
   --dv-inactivegroup-visiblepanel-tab-background-color: transparent;
   --dv-inactivegroup-hiddenpanel-tab-background-color:  transparent;
   --dv-tab-divider-color:                        transparent;
-  --dv-separator-border:                         rgba(200,134,26,0.15);
-  --dv-paneview-header-border-color:             rgba(200,134,26,0.15);
+  --dv-separator-border:                         rgba(255,255,255,0.09);
+  --dv-paneview-header-border-color:             rgba(255,255,255,0.09);
   --dv-paneview-active-outline-color:            var(--gold);
   --dv-active-sash-color:                        var(--gold);
   --dv-activegroup-visiblepanel-tab-color:       var(--parchment);
-  --dv-activegroup-hiddenpanel-tab-color:        rgba(244,228,193,0.5);
-  --dv-inactivegroup-visiblepanel-tab-color:     rgba(244,228,193,0.5);
-  --dv-inactivegroup-hiddenpanel-tab-color:      rgba(244,228,193,0.25);
-  --dv-drag-over-background-color:               rgba(200,134,26,0.14);
+  --dv-activegroup-hiddenpanel-tab-color:        rgba(242,242,242,0.5);
+  --dv-inactivegroup-visiblepanel-tab-color:     rgba(242,242,242,0.5);
+  --dv-inactivegroup-hiddenpanel-tab-color:      rgba(242,242,242,0.25);
+  --dv-drag-over-background-color:               rgba(255,198,26,0.14);
   --dv-drag-over-border-color:                   var(--gold);
-  --dv-icon-hover-background-color:              rgba(200,134,26,0.15);
+  --dv-icon-hover-background-color:              rgba(255,198,26,0.15);
   --dv-tabs-and-actions-container-font-size:     0.72rem;
   --dv-tabs-and-actions-container-height:        44px;
   /* Tabs only: rounded widget-chip shape, not a flat block */
@@ -45,8 +47,10 @@
 
 .dockview-theme-abyss .dv-default-tab,
 .dockview-theme-abyss .dv-default-tab-content {
-  font-family: 'Inter', sans-serif;
-  letter-spacing: 0.02em;
+  font-family: 'Space Grotesk', sans-serif;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.01em;
 }
 
 /* Each tab reads as its own small widget/chip (matches the app's existing
@@ -55,10 +59,10 @@
 .dockview-theme-abyss .dv-tab {
   border-radius: var(--dv-tab-border-radius);
   overflow: hidden;
-  background: rgba(200,134,26,0.05);
+  background: rgba(255,198,26,0.05);
 }
 .dockview-theme-abyss .dv-tab.dv-active-tab {
-  box-shadow: inset 0 0 0 1px rgba(200,134,26,0.35);
+  box-shadow: inset 0 0 0 1px rgba(255,198,26,0.35);
 }
 
 /* ── Container: fills the viewport below the top nav bar. No second nav strip
@@ -118,13 +122,14 @@
 .dockview-theme-abyss .dv-groupview {
   border-radius: var(--radius-lg);
   overflow: hidden;
-  box-shadow: 0 4px 24px rgba(0,0,0,0.25);
+  border: 1px solid var(--card-border);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
 }
 
 /* Recessed background wash behind the tab row (design-notes.md §4) — tab
    geometry/order/drag-to-reorder are untouched, this only sits behind them. */
 .dockview-theme-abyss .dv-tabs-and-actions-container {
-  background: rgba(0,0,0,0.12);
+  background: var(--card-bg-2);
 }
 
 /* ── Reset Layout button — reuses .nav-pill-btn (same class as the Bible
@@ -144,13 +149,14 @@
   display: flex;
   align-items: center;
   padding: 0.75rem 1.1rem;
-  border-bottom: 1px solid rgba(200,134,26,0.12);
+  border-bottom: 1px solid rgba(255,255,255,0.072);
   background: var(--nav-bg);
   flex-shrink: 0;
 }
 
-/* Panel surface (--bg-page-2) behind .chapter-card's own --bg-page inset
-   surface below — the two-layer contrast is design-notes.md §5's point. */
+/* Panel surface (--card-bg) behind .chapter-card's own --card-bg-2 inset
+   surface below — the two-layer contrast is design-notes.md §5's point,
+   now expressed in the new grey scale (design-notes.md §4). */
 .bible-panel-body {
   flex: 1;
   min-height: 0;
@@ -159,5 +165,5 @@
   flex-direction: column;
   align-items: center;
   padding: 2.5rem 2rem 4rem;
-  background: var(--bg-page-2);
+  background: var(--card-bg);
 }

@@ -168,8 +168,8 @@ function ScriptureChip({ value, book, chapter, verse, onNavigate }) {
       onClick={() => onNavigate && onNavigate(book, chapter, parseInt(verse, 10))}
       style={{
         display:        'inline',
-        background:     'rgba(200,134,26,0.13)',
-        border:         '1px solid rgba(200,134,26,0.32)',
+        background:     'rgba(255,198,26,0.13)',
+        border:         '1px solid rgba(255,255,255,0.192)',
         borderRadius:   4,
         padding:        '0.05rem 0.42rem',
         fontFamily:     "'Spectral', serif",
@@ -184,12 +184,12 @@ function ScriptureChip({ value, book, chapter, verse, onNavigate }) {
       }}
       onMouseEnter={e => {
         if (!onNavigate) return;
-        e.currentTarget.style.background    = 'rgba(200,134,26,0.25)';
-        e.currentTarget.style.borderColor   = 'rgba(200,134,26,0.6)';
+        e.currentTarget.style.background    = 'rgba(255,198,26,0.25)';
+        e.currentTarget.style.borderColor   = 'rgba(255,255,255,0.36)';
       }}
       onMouseLeave={e => {
-        e.currentTarget.style.background    = 'rgba(200,134,26,0.13)';
-        e.currentTarget.style.borderColor   = 'rgba(200,134,26,0.32)';
+        e.currentTarget.style.background    = 'rgba(255,198,26,0.13)';
+        e.currentTarget.style.borderColor   = 'rgba(255,255,255,0.192)';
       }}
     >
       {value}
@@ -242,7 +242,7 @@ const NOTE_BODY_CSS = `
 .fs-note-body {
   font-family: 'Inter', -apple-system, sans-serif;
   font-size: 0.88rem;
-  color: rgba(244,228,193,0.80);
+  color: rgba(242,242,242,0.80);
   line-height: 1.85;
   white-space: pre-wrap;
   word-break: break-word;
@@ -250,25 +250,25 @@ const NOTE_BODY_CSS = `
 .fs-note-body b,
 .fs-note-body strong {
   font-weight: 700;
-  color: rgba(244,228,193,0.95);
+  color: rgba(242,242,242,0.95);
 }
 .fs-note-body i,
 .fs-note-body em {
   font-style: italic;
-  color: rgba(244,228,193,0.85);
+  color: rgba(242,242,242,0.85);
 }
 .fs-note-body u {
   text-decoration: underline;
-  text-decoration-color: rgba(200,134,26,0.55);
+  text-decoration-color: rgba(255,198,26,0.55);
   text-underline-offset: 2px;
 }
 .fs-note-body s,
 .fs-note-body del {
   text-decoration: line-through;
-  color: rgba(244,228,193,0.45);
+  color: rgba(242,242,242,0.45);
 }
 .fs-note-body mark {
-  background: rgba(200,134,26,0.28);
+  background: rgba(255,198,26,0.28);
   color: inherit;
   border-radius: 2px;
   padding: 0 2px;
@@ -286,8 +286,8 @@ const NOTE_BODY_CSS = `
  */
 const MD_COMPONENTS = {
   p:          ({ children }) => <p style={{ margin: '0 0 0.6em', lineHeight: 1.75 }}>{children}</p>,
-  strong:     ({ children }) => <strong style={{ fontWeight: 700, color: 'rgba(244,228,193,0.95)' }}>{children}</strong>,
-  em:         ({ children }) => <em style={{ fontStyle: 'italic', color: 'rgba(244,228,193,0.85)' }}>{children}</em>,
+  strong:     ({ children }) => <strong style={{ fontWeight: 700, color: 'rgba(242,242,242,0.95)' }}>{children}</strong>,
+  em:         ({ children }) => <em style={{ fontStyle: 'italic', color: 'rgba(242,242,242,0.85)' }}>{children}</em>,
   h1:         ({ children }) => <h2 style={headingStyle(1.05)}>{children}</h2>,
   h2:         ({ children }) => <h3 style={headingStyle(0.97)}>{children}</h3>,
   h3:         ({ children }) => <h4 style={headingStyle(0.90)}>{children}</h4>,
@@ -296,10 +296,10 @@ const MD_COMPONENTS = {
   li:         ({ children }) => <li style={{ marginBottom: '0.25em', lineHeight: 1.65 }}>{children}</li>,
   blockquote: ({ children }) => (
     <blockquote style={{
-      borderLeft:  '2px solid rgba(200,134,26,0.4)',
+      borderLeft:  '2px solid rgba(255,255,255,0.24)',
       margin:      '0.5em 0',
       padding:     '0.1em 0 0.1em 0.85em',
-      color:       'rgba(244,228,193,0.6)',
+      color:       'rgba(242,242,242,0.6)',
       fontStyle:   'italic',
       fontFamily:  "'Spectral', serif",
     }}>
@@ -308,8 +308,8 @@ const MD_COMPONENTS = {
   ),
   code: ({ inline, children }) => inline ? (
     <code style={{
-      background:   'rgba(200,134,26,0.12)',
-      border:       '1px solid rgba(200,134,26,0.2)',
+      background:   'rgba(255,198,26,0.12)',
+      border:       '1px solid rgba(255,255,255,0.12)',
       borderRadius: 3,
       padding:      '0.05em 0.35em',
       fontFamily:   'monospace',
@@ -321,24 +321,24 @@ const MD_COMPONENTS = {
   ) : (
     <pre style={{
       background:   'rgba(0,0,0,0.3)',
-      border:       '1px solid rgba(200,134,26,0.15)',
+      border:       '1px solid rgba(255,255,255,0.09)',
       borderRadius: 6,
       padding:      '0.6em 0.8em',
       overflowX:    'auto',
       fontSize:     '0.8em',
       fontFamily:   'monospace',
-      color:        'rgba(244,228,193,0.75)',
+      color:        'rgba(242,242,242,0.75)',
       margin:       '0.5em 0',
     }}>
       <code>{children}</code>
     </pre>
   ),
   hr: () => (
-    <hr style={{ border: 'none', borderTop: '1px solid rgba(200,134,26,0.2)', margin: '0.75em 0' }} />
+    <hr style={{ border: 'none', borderTop: '1px solid rgba(255,255,255,0.12)', margin: '0.75em 0' }} />
   ),
   a: ({ href, children }) => (
     <a href={href} target="_blank" rel="noopener noreferrer"
-      style={{ color: 'var(--gold)', textDecoration: 'underline', textDecorationColor: 'rgba(200,134,26,0.4)' }}>
+      style={{ color: 'var(--gold)', textDecoration: 'underline', textDecorationColor: 'rgba(255,198,26,0.4)' }}>
       {children}
     </a>
   ),
@@ -346,10 +346,10 @@ const MD_COMPONENTS = {
 
 function headingStyle(size) {
   return {
-    fontFamily:   "'Playfair Display', serif",
+    fontFamily:   "'Space Grotesk', sans-serif",
     fontSize:     `${size}rem`,
     fontWeight:   600,
-    color:        'rgba(244,228,193,0.92)',
+    color:        'rgba(242,242,242,0.92)',
     margin:       '0.7em 0 0.3em',
     lineHeight:   1.3,
   };

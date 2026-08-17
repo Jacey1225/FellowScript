@@ -113,7 +113,7 @@ export default function BibleNavigator({ books, curBook, curChapter, onNavigate,
           <div className="bib-nav-chapters">
             {!selectedBook ? (
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', padding: '1rem' }}>
-                <span style={{ fontSize: '0.72rem', color: 'rgba(200,134,26,0.35)', fontFamily: "'Inter', sans-serif", textAlign: 'center', lineHeight: 1.6 }}>
+                <span style={{ fontSize: '0.72rem', color: 'rgba(255,198,26,0.35)', fontFamily: "'Inter', sans-serif", textAlign: 'center', lineHeight: 1.6 }}>
                   Select a book to see its chapters
                 </span>
               </div>
