@@ -1,0 +1,33 @@
+# Per Decision 2 (docs/architecture/docker-plan.md) — none of this belongs
+# in the image or its build context.
+
+.venv/
+data/
+.git/
+frontend/
+FellowScript/
+
+# Secret material — never enters the build context, so it can never land in
+# an image layer even by accident (Decision 3). Supplied at `docker run`/
+# compose time only, via --env-file / read-only bind mounts.
+.env
+*.pem
+*.p8
+
+# Not needed in the image; keeps the context small and rebuilds fast.
+.git
+.github/
+.codegraph/
+.claude/
+docs/
+site/
+ios/
+data_changes/
+api/tests/
+api/__pycache__/
+**/__pycache__/
+**/*.pyc
+.DS_Store
+*.md
+messages.json
+README.md

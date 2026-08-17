@@ -1,0 +1,1192 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A digital scripture community platform for reading, reflecting, and connecting.">
+      
+      
+        <meta name="author" content="Jacey Simpson">
+      
+      
+      
+        <link rel="prev" href="../data/">
+      
+      
+        <link rel="next" href="../../api/overview/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Docker Containerization Plan - FellowScript</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Lora:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Lora";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="amber" data-md-color-accent="amber">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#docker-containerization-plan" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="FellowScript" class="md-header__button md-logo" aria-label="FellowScript" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            FellowScript
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Docker Containerization Plan
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+    
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../design/overview/" class="md-tabs__link">
+          
+  
+  
+  Design
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../overview/" class="md-tabs__link">
+          
+  
+  
+  Architecture
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../api/overview/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  API
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+  
+
+<nav class="md-nav md-nav--primary md-nav--lifted md-nav--integrated" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="FellowScript" class="md-nav__button md-logo" aria-label="FellowScript" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    FellowScript
+  </label>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Design
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Design
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../design/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../design/home-page/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home Page
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../design/bible-reader/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Bible Reader
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../design/notes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Notes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../design/community/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Community
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../design/account/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Account
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    System Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../backend/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Backend
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../frontend/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Frontend
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../data/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docker Containerization Plan
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docker Containerization Plan
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#baseline-whats-actually-running-today" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Baseline: what's actually running today
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#decision-1-postgres-stays-on-the-host-not-containerized" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Decision 1 — Postgres stays on the host (not containerized)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#decision-2-dockerfile-strategy-for-api" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Decision 2 — Dockerfile strategy for api/
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#decision-3-secrets-and-credential-handling" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Decision 3 — Secrets and credential handling
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#decision-4-compose-topology-target-state-not-yet-built" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Decision 4 — Compose topology (target state, not yet built)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#decision-5-resource-limits" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Decision 5 — Resource limits
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#migration-path-phased-live-production-app" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Migration path (phased, live production app)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#open-items-to-confirm-before-executing-not-resolved-by-static-analysis-alone" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Open items to confirm before executing (not resolved by static analysis alone)
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<h1 id="docker-containerization-plan">Docker Containerization Plan</h1>
+<p><strong>Status: planning only.</strong> Nothing in this document has been built or deployed —
+no <code>Dockerfile</code>, <code>docker-compose.yml</code>, <code>.dockerignore</code>, or CI config exists yet, and
+no change has been made to the live EC2 instance, <code>nginx</code>, or either systemd unit.
+This is the reference to work from when that build actually happens, so decisions
+that were made once (Postgres in-container vs. on-host, secrets handling, rollback)
+don't need to be re-derived under deploy pressure later.</p>
+<p>Companion reading: <a href="../overview/">System Overview</a> (current deployment topology),
+<a href="../backend/">Backend</a> (<code>api/</code> layer structure this Dockerfile has to build).</p>
+<hr />
+<h2 id="baseline-whats-actually-running-today">Baseline: what's actually running today</h2>
+<p>Confirmed directly against the live server and this repo, not assumed:</p>
+<table>
+<thead>
+<tr>
+<th>Component</th>
+<th>Reality</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Host</td>
+<td>Single AWS EC2 instance, Ubuntu, <code>t3.medium</code> (2 vCPU / 3.7GB RAM — recently resized up from a <code>t3.micro</code>-class instance that was swapping under normal load)</td>
+</tr>
+<tr>
+<td>DNS/edge</td>
+<td><code>fellowscript.com</code>, behind Cloudflare, <code>44.216.136.112</code></td>
+</tr>
+<tr>
+<td>Backend</td>
+<td>FastAPI app in <code>api/</code>, run via <code>venv</code>-installed <code>uvicorn</code>, managed by the <code>fellowscript.service</code> systemd unit — <strong>not containerized today</strong></td>
+</tr>
+<tr>
+<td>Database</td>
+<td>PostgreSQL running directly on the host (not RDS), managed by its own <code>postgresql.service</code> systemd unit. Two databases on the same server: <code>fellowscript</code> (primary) and <code>fellowscript_backup</code> (nightly per-user copy — see <code>backend/backup/manager.py</code>)</td>
+</tr>
+<tr>
+<td>DB connection</td>
+<td><code>api/db.py</code>'s <code>_connect()</code> and <code>DBManager.__init__</code> hardcode <code>host="localhost", port=5432, dbname="fellowscript", user="fellowscript"</code>, with <code>password=os.getenv("DB_PASSWORD")</code>. <strong><code>host</code> is not env-configurable today</strong> — this matters directly for the containerization approach below</td>
+</tr>
+<tr>
+<td>Frontend</td>
+<td>Static React/Vite build, <code>rsync</code>'d to <code>/var/www/html</code>, served by <code>nginx</code>. <strong>Out of scope for this plan</strong> — stays a static build + rsync deploy</td>
+</tr>
+<tr>
+<td>Reverse proxy</td>
+<td><code>nginx</code> proxies <code>/api/</code> to <code>localhost:8000</code>; also serves the static frontend from <code>/var/www/html</code></td>
+</tr>
+<tr>
+<td>Deploy process</td>
+<td>Entirely manual: local build → <code>scp</code>/<code>rsync</code> individual changed files into <code>~/fellowscript/</code> (no git checkout on the server) → timestamped backup to <code>~/deploy_backups/&lt;timestamp&gt;/</code> → <code>sudo systemctl restart fellowscript</code>. No CI/CD. This has already twice missed files across rounds during a recent frontend restyle — a direct driver for wanting this plan</td>
+</tr>
+<tr>
+<td>Recent incident</td>
+<td>An unbounded-growth bug in the CloudWatch log-monitoring subsystem (<code>backend/monitoring/</code>) caused a cascading OOM crash on the old, smaller instance; fixed and redeployed the same session this plan was written in. Real precedent for why per-container memory limits are designed for below, not hypothetical</td>
+</tr>
+<tr>
+<td>Disk/resource headroom</td>
+<td>Healthy as of this writing: 19GB disk / 12GB free, 3.7GB RAM. Was a real blocker before the resize; no longer constrains this plan, though the design below stays resource-conscious since this is one small box, not a cluster</td>
+</tr>
+<tr>
+<td>Secrets today</td>
+<td>Plaintext <code>.env</code> in <code>~/fellowscript/</code> (<code>OPENROUTER_API_KEY</code>, <code>DB_PASSWORD</code>, <code>STRIPE_SECRET_KEY</code>, <code>STRIPE_PUBLISHABLE_KEY</code>, <code>STRIPE_RESTRICTED_KEY</code>, <code>STRIPE_SIGNING_SECRET</code>, <code>SES_ACCESS_KEY_ID</code>, <code>SES_SECRET_ACCESS_KEY</code>, <code>SES_REGION</code>, <code>SES_SENDER_EMAIL</code>, <code>APPLE_BUNDLE_ID</code>, <code>APPLE_CLIENT_ID</code>, <code>APPLE_KEY_ID</code>, <code>APPLE_KEY_PATH</code>, <code>APPLE_TEAM_ID</code>, <code>CLIENT_ID</code>, <code>SUPPORT_EMAIL</code>), a file-based APNs key (<code>AuthKey_*.p8</code>, referenced by <code>APPLE_KEY_PATH</code>), and a separately-scoped <code>AmazonChimeSDK</code> IAM user (confirmed zero EC2 permissions — see Secrets section below)</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="decision-1-postgres-stays-on-the-host-not-containerized">Decision 1 — Postgres stays on the host (not containerized)</h2>
+<p><strong>Decision: keep Postgres running directly on the host under <code>postgresql.service</code>. Do not containerize it in this plan's scope.</strong></p>
+<p>Reasoning, specific to this deployment (not a generic "don't containerize your database" take):</p>
+<ul>
+<li><strong>This is one box.</strong> Containerizing Postgres only pays off when it buys portability across hosts, easier horizontal scaling, or environment parity across a fleet — none apply to a single <code>t3.medium</code> EC2 instance serving one production app.</li>
+<li><strong>It already works.</strong> <code>postgresql.service</code> is a mature, well-understood systemd-managed process with an existing nightly backup path (<code>backend/backup/manager.py</code> copying into <code>fellowscript_backup</code> on the same server). Containerizing it introduces new failure modes — volume misconfiguration, an errant <code>docker system prune</code> or <code>docker volume rm</code> wiping the data directory, container restart-policy interactions with a stateful process — for zero benefit at this scale.</li>
+<li><strong>The connection code is hardcoded to <code>localhost</code>.</strong> <code>db.py</code>'s <code>_connect()</code> and <code>DBManager.__init__</code> both hardcode <code>host="localhost"</code>. If the backend runs in a container with Docker's default bridge networking, <code>localhost</code> inside that container refers to the container itself, not the host — the app would fail to reach Postgres. Keeping Postgres on the host and running the backend container with <strong><code>--network=host</code></strong> (Linux-only, but this is Ubuntu on EC2, so it's available) means <code>localhost:5432</code> inside the container still resolves to the real host Postgres, and <strong>zero application code has to change</strong> to make containerization work. This is the single biggest reason Decision 1 and the Dockerfile strategy below are the low-risk path.</li>
+<li><strong>Revisit condition, not a permanent ban:</strong> if FellowScript ever moves to multi-host, a managed database (RDS) or a proper compose-network topology becomes worth it — a <code>DB_HOST</code> env var would need to be introduced into <code>db.py</code> at that point (a small, contained code change, intentionally not made in this pass). Until then, this stays on host.</li>
+</ul>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>Postgres on host (chosen)</th>
+<th>Postgres in a container</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Change required to <code>db.py</code></td>
+<td>None (<code>localhost</code> keeps working via <code>--network=host</code>)</td>
+<td>Requires adding a <code>DB_HOST</code> env var, replacing the hardcoded value</td>
+</tr>
+<tr>
+<td>Data-loss blast radius from a Docker mistake</td>
+<td>None — Postgres is untouched by any <code>docker</code> command</td>
+<td>Real — volume/network misconfig or a stray <code>docker volume rm</code> can destroy prod data</td>
+</tr>
+<tr>
+<td>Matches existing backup tooling</td>
+<td>Yes, unchanged</td>
+<td>Would need to be re-pointed at a container path/volume</td>
+</tr>
+<tr>
+<td>Benefit at this scale (single box)</td>
+<td>N/A needed</td>
+<td>Marginal — no multi-host portability to gain</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="decision-2-dockerfile-strategy-for-api">Decision 2 — Dockerfile strategy for <code>api/</code></h2>
+<p><strong>Base image:</strong> <code>python:3.14-slim</code> (the repo's own <code>.venv</code> and the developer environment this was authored in are both Python 3.14 — match that rather than pinning to an older minor version by default; confirm against whatever the EC2 venv's <code>python3 --version</code> actually reports before building, since that's the one fact this plan couldn't directly re-verify from the server this session).</p>
+<p><strong>Multi-stage build</strong>, not a single flat image:
+1. <strong>Builder stage</strong> — install build tooling and compile any wheels needed (<code>psycopg2-binary</code> ships manylinux wheels for standard <code>pip install</code>, so a full build toolchain likely isn't required — verify <code>pip install --no-cache-dir -r requirements.txt</code> works cleanly on <code>python:3.14-slim</code> before assuming a <code>build-essential</code> layer is unnecessary).
+2. <strong>Runtime stage</strong> — copy only the installed site-packages and <code>api/</code> source from the builder into a fresh <code>python:3.14-slim</code>, run as a <strong>non-root user</strong> (create a dedicated <code>app</code> user; don't run <code>uvicorn</code> as <code>root</code> in the container), <code>EXPOSE 8000</code>, <code>CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]</code>.</p>
+<p><strong><code>requirements.txt</code> gap check — already mostly closed.</strong> <code>requirements.txt</code> was recently annotated to explicitly declare every package that was previously only present on the EC2 venv by hand (confirmed via a <code>pip freeze</code> parity check documented inline): <code>psycopg2-binary</code>, <code>python-dotenv</code>, <code>apscheduler</code>, <code>stripe</code>, <code>cryptography</code>, <code>h2</code> (needed for <code>httpx</code>'s HTTP/2 APNs client), <code>mcp</code>, and <code>tzdata</code> are all now pinned in the file. A Docker build <code>FROM requirements.txt</code> alone should now produce a working image for everything <strong>except one remaining gap</strong>:</p>
+<ul>
+<li><strong><code>backend/monitoring/cloudwatch_mcp_client.py</code> shells out to <code>uvx awslabs.cloudwatch-mcp-server@latest</code> as a subprocess</strong> (<code>CLOUDWATCH_MCP_COMMAND</code> env var, defaulting to that command). Installing the <code>mcp</code> Python package via <code>pip</code> does <strong>not</strong> install <code>uv</code>/<code>uvx</code> itself, and does not pre-fetch that MCP server package. Two options for the image, to decide before building:</li>
+<li>Install <code>uv</code> in the runtime image (<code>pip install uv</code> or the official <code>uv</code> install script) so <code>uvx</code> is available and can fetch-on-first-run — simplest, but means the container needs outbound network access to PyPI at startup and on every <code>uvx</code> cold-start.</li>
+<li>Pre-install/pin <code>awslabs.cloudwatch-mcp-server</code> into the image at build time and point <code>CLOUDWATCH_MCP_COMMAND</code> at the fixed binary path instead of <code>uvx ...@latest</code> — more reproducible (no <code>@latest</code> drift, no runtime fetch), and is the direction this plan recommends when the Dockerfile actually gets written.</li>
+<li><code>.dockerignore</code> should exclude <code>.venv/</code>, <code>data/</code>, <code>.git/</code>, <code>frontend/</code>, <code>FellowScript/</code> (the iOS app), and the <code>.env</code>/<code>.pem</code>/<code>.p8</code> files living at the repo root — none of that belongs in the image or its build context.</li>
+</ul>
+<hr />
+<h2 id="decision-3-secrets-and-credential-handling">Decision 3 — Secrets and credential handling</h2>
+<p>Three distinct categories of secret material exist today, and the plan for each must <strong>not regress the existing least-privilege posture</strong> — in particular the fact that the Chime SDK IAM user is already scoped to zero EC2 permissions, which is worth preserving deliberately rather than by accident.</p>
+<table>
+<thead>
+<tr>
+<th>Category</th>
+<th>Current source</th>
+<th>Container plan</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>.env</code> key/value secrets (<code>OPENROUTER_API_KEY</code>, <code>DB_PASSWORD</code>, <code>STRIPE_*</code>, <code>SES_*</code>, <code>APPLE_BUNDLE_ID</code>/<code>APPLE_CLIENT_ID</code>/<code>APPLE_KEY_ID</code>/<code>APPLE_TEAM_ID</code>, <code>CLIENT_ID</code>, <code>SUPPORT_EMAIL</code>)</td>
+<td>Plaintext <code>.env</code> in <code>~/fellowscript/</code>, loaded via <code>python-dotenv</code> at import time</td>
+<td>Pass via <code>docker run --env-file</code> (or compose's <code>env_file:</code>) pointing at a <code>.env</code> that lives <strong>outside</strong> the build context / image — never <code>COPY .env</code> into the image, so secrets never land in an image layer or a pushed-registry blob. <code>docker history</code> on any built image should be checked to confirm no secret ever appears in a layer.</td>
+</tr>
+<tr>
+<td>File-based secret: APNs key (<code>AuthKey_*.p8</code>, referenced by <code>APPLE_KEY_PATH</code>)</td>
+<td>Sits on the host filesystem, path passed via env var</td>
+<td><strong>Bind-mount read-only</strong> into the container (<code>-v /home/ubuntu/fellowscript/AuthKey_XXXX.p8:/secrets/AuthKey_XXXX.p8:ro</code>) with <code>APPLE_KEY_PATH</code> in the env file pointed at the in-container path — same principle as <code>.env</code>: never baked into the image.</td>
+</tr>
+<tr>
+<td>AWS credential material (Chime SDK IAM user; likely also covers the CloudWatch watchdog's <code>boto3.client("sts", ...)</code> call — same generic credential pair, no separate one found in code)</td>
+<td><strong>Confirmed from <code>api/routes/messaging.py</code> and <code>api/routes/devotion.py</code></strong>: <code>boto3.client("chime-sdk-meetings", region_name="us-east-1")</code> is constructed with no explicit credentials argument — it relies entirely on boto3's default credential resolution chain. Test files (<code>api/tests/test_*.py</code>) set <code>AWS_ACCESS_KEY_ID</code>/<code>AWS_SECRET_ACCESS_KEY</code> env vars as dummies to satisfy this at import time, which is a strong signal that in production the same generic env-var pair is how boto3 actually resolves the Chime credentials — but this repo cannot fully confirm whether the real EC2 host exports them as systemd <code>Environment=</code> directives or via a <code>~/.aws/credentials</code> file, since that lives only on the live server, not in this repo. <strong>Confirm which of the two before executing this plan.</strong></td>
+<td>Whichever mechanism is confirmed, preserve it exactly — don't fold Chime's credentials into the same <code>.env</code> as <code>SES_ACCESS_KEY_ID</code>/<code>SES_SECRET_ACCESS_KEY</code> (those are already deliberately a separate, narrower credential set per <code>backend/email/ses_client.py</code>'s own comment — keep that separation in the container too). If it's env-var-based: pass <code>AWS_ACCESS_KEY_ID</code>/<code>AWS_SECRET_ACCESS_KEY</code>/<code>AWS_DEFAULT_REGION</code> via the same <code>--env-file</code> mechanism as the rest of <code>.env</code>, in their own file, not merged with app secrets. If it's file-based (<code>~/.aws/credentials</code>): bind-mount that file read-only, same pattern as the APNs key, rather than converting it into env vars (avoids widening exposure by duplicating the same credential into a second storage form).</td>
+</tr>
+</tbody>
+</table>
+<p>General rule carried through all three: <strong>nothing secret is ever <code>COPY</code>'d into a Dockerfile layer, and nothing secret goes into shell history</strong> — all secret material is supplied at <code>docker run</code>/compose time via <code>--env-file</code> or read-only bind mounts, both of which are gitignored and never enter the build context.</p>
+<hr />
+<h2 id="decision-4-compose-topology-target-state-not-yet-built">Decision 4 — Compose topology (target state, not yet built)</h2>
+<p>Given Decision 1 (Postgres stays on host) and the <code>--network=host</code> requirement it implies, the minimal, lowest-risk phase-1 topology is:</p>
+<pre><code>nginx (host, systemd, unchanged)  ──▶  fellowscript-api (Docker container, --network=host, :8000)
+                                                │
+                                                ▼
+                                   PostgreSQL (host, postgresql.service, :5432, unchanged)
+</code></pre>
+<ul>
+<li><strong><code>nginx</code> stays on the host, unchanged.</strong> It already proxies <code>/api/</code> to <code>localhost:8000</code>; with the backend container on host networking, that config needs zero edits. Containerizing <code>nginx</code> too is a later, optional phase (see Migration Path) — not recommended now, since it adds a container for no behavior change while the frontend deploy story (<code>rsync</code> to <code>/var/www/html</code>) is explicitly out of scope for this plan.</li>
+<li><strong>Backend runs as a single service</strong> in <code>docker-compose.yml</code> (even for one container, compose is worth it over a bare <code>docker run</code> for declarative resource limits, restart policy, and env-file wiring — see Decision 5).</li>
+<li><strong>Networking:</strong> <code>network_mode: host</code> on the backend service. No published ports needed (host networking exposes <code>:8000</code> directly, same as today's <code>uvicorn</code> process).</li>
+<li><strong>Volumes:</strong> none needed for Postgres (it's not containerized). The backend container itself should be effectively stateless — no named volume required for <code>api/</code> beyond the image itself. If Postgres is ever later containerized (see Decision 1's revisit condition), use a <strong>named volume</strong>, not a bind-mount, for its data directory: named volumes avoid host-container UID/GID permission mismatches with the <code>postgres</code> image's internal user, are managed and inspectable via <code>docker volume</code>, and are just as easy to back up (<code>docker run --rm -v &lt;volume&gt;:/data -v $(pwd):/backup alpine tar czf /backup/pg-backup.tgz /data</code>) — but this is deferred, not part of the current recommendation.</li>
+</ul>
+<hr />
+<h2 id="decision-5-resource-limits">Decision 5 — Resource limits</h2>
+<p>Directly informed by the CloudWatch-watchdog OOM incident: an unbounded-growth bug in one subsystem was able to consume enough memory to crash the entire host, taking down <code>nginx</code>, Postgres, and the app together, because nothing constrained that one process's footprint. A container boundary with an explicit memory cap turns "one subsystem's bug crashes the whole box" into "one container gets OOM-killed and restarted" — a real, not hypothetical, benefit on this hardware.</p>
+<p>On a 2 vCPU / 3.7GB RAM host that also runs <code>nginx</code>, <code>postgresql.service</code>, and OS overhead outside the container:</p>
+<ul>
+<li><strong>Memory:</strong> cap the backend container around <strong>1.5GB</strong> (<code>mem_limit: 1500m</code> in compose / <code>--memory=1500m</code>), with <strong>swap disabled for the container</strong> (<code>memswap_limit</code> equal to <code>mem_limit</code>, i.e. no container swap) — so a runaway process gets OOM-killed and restarted by the container's restart policy instead of dragging the whole host into the same swapping death-spiral the pre-resize instance experienced.</li>
+<li><strong>CPU:</strong> cap around <strong>1.5 vCPUs</strong> (<code>cpus: "1.5"</code>), leaving headroom for <code>nginx</code> + Postgres + the OS on the remaining half core, rather than letting one busy request queue starve the database process.</li>
+<li><strong>Restart policy:</strong> <code>restart: unless-stopped</code>, so a container that gets OOM-killed comes back automatically without a manual SSH session, matching the reliability the systemd unit already provides today.</li>
+<li>These are starting numbers to validate under real load once phase 1 actually ships — not a substitute for continuing to fix the root-cause bugs the watchdog surfaces (per <code>backend/monitoring/</code>'s own read-only, non-remediating design).</li>
+</ul>
+<hr />
+<h2 id="migration-path-phased-live-production-app">Migration path (phased, live production app)</h2>
+<p>This app has real users today; nothing below is executed as part of this plan — it is the order to execute in when the actual build happens.</p>
+<p><strong>Phase 0 — this document.</strong> Planning only. No code, config, or infra changed. <em>(Complete as of this pass.)</em></p>
+<p><strong>Phase 1 — containerize the backend only.</strong>
+1. Write the Dockerfile per Decision 2 and confirm <code>docker build</code> succeeds locally against a copy of <code>requirements.txt</code>.
+2. Confirm the <code>uvx</code>/CloudWatch-MCP-server decision (Decision 2) before finalizing the image.
+3. On the EC2 host, <code>docker build</code> (or pull a pre-built image once CI/CD exists in Phase 4) and <code>docker run</code> the container <strong>alongside</strong> the still-running <code>fellowscript.service</code>, on a scratch port first (e.g. <code>:8001</code>) to smoke-test independently before touching <code>nginx</code> or the live <code>:8000</code> path.
+4. Cut over: <code>sudo systemctl stop fellowscript</code>, start the container with <code>--network=host</code> bound to <code>:8000</code> (or via <code>docker compose up -d</code> once Decision 4's compose file exists).
+5. <strong>Rollback plan:</strong> do <strong>not</strong> disable or remove the <code>fellowscript.service</code> systemd unit — leave it installed and stopped for a defined burn-in window (recommend at least 1–2 weeks of stable production traffic). Reverting is a single <code>docker stop fellowscript-api &amp;&amp; sudo systemctl start fellowscript</code> — seconds, not a redeploy. Because Postgres never leaves the host (Decision 1), <strong>the database is never part of this rollback</strong> — there is no data migration to reverse, which is the main risk-reduction payoff of Decision 1. Keep the existing <code>~/deploy_backups/&lt;timestamp&gt;/</code> manual snapshot mechanism running through this phase too, as a cheap secondary safety net, and don't retire it until the container has been stable through the burn-in window.</p>
+<p><strong>Phase 2 — formalize with compose.</strong> Once Phase 1 is stable, move from a bare <code>docker run</code> to the <code>docker-compose.yml</code> from Decision 4, adding the resource limits and restart policy from Decision 5 declaratively. Low-risk, since it's re-expressing an already-working container, not changing behavior.</p>
+<p><strong>Phase 3 — optional, deferred.</strong> Re-evaluate containerizing <code>nginx</code> and/or Postgres only if a concrete driver appears (e.g. moving beyond a single instance, wanting environment parity with a staging box, or outgrowing the current backup approach). Not recommended now — Decision 1's reasoning holds as long as this stays a single-instance deployment.</p>
+<p><strong>Phase 4 — CI/CD follow-on</strong> (recommended direction, not built now, per the user's stated interest in removing manual SSH deploy steps):
+- A GitHub Actions workflow that, on merge to the deploy branch: builds the Dockerfile from Decision 2, tags the image with the git SHA (not just <code>latest</code> — SHA tags are what make instant rollback-to-a-previous-image possible), and pushes it to a registry (GHCR is the natural default — no separate account needed beyond the existing GitHub org).
+- A deploy step that SSHes into the EC2 host (still necessary for a single-instance deployment — this isn't being replaced, just made reliable) and runs <code>docker pull &lt;sha-tag&gt; &amp;&amp; docker compose up -d</code>, replacing the current file-by-file <code>rsync</code> (the exact mechanism that has already twice missed files across two rounds) with an atomic, fully-versioned image swap.
+- Rollback under CI/CD becomes <code>docker pull &lt;previous-sha-tag&gt; &amp;&amp; docker compose up -d</code> — nothing to manually reconstruct from <code>~/deploy_backups/&lt;timestamp&gt;/</code> snapshots, since every deployed state is a tagged, retrievable image.
+- Out of scope for this plan to build; listed here only as the recommended next step once Phases 1–3 are stable.</p>
+<hr />
+<h2 id="open-items-to-confirm-before-executing-not-resolved-by-static-analysis-alone">Open items to confirm before executing (not resolved by static analysis alone)</h2>
+<ul>
+<li>Exact production Python version on the EC2 venv (<code>python3 --version</code> on the server) — assumed 3.14 to match this repo's <code>.venv</code>, but not directly re-confirmed against the live host this session.</li>
+<li>Whether the Chime SDK IAM credentials are sourced on the server via exported <code>AWS_ACCESS_KEY_ID</code>/<code>AWS_SECRET_ACCESS_KEY</code> environment variables (e.g. in the <code>fellowscript.service</code> unit's <code>Environment=</code> directives) or via a <code>~/.aws/credentials</code> file — the code path (boto3's default chain) is confirmed; the exact on-host storage mechanism is not, and determines which of the two secrets-handling approaches in Decision 3 applies.</li>
+<li>Whether <code>pip install -r requirements.txt</code> on a clean <code>python:3.14-slim</code> actually resolves <code>psycopg2-binary</code> without needing a <code>build-essential</code> layer — worth a throwaway local build to confirm before committing to the single-stage-vs-multi-stage call in Decision 2.</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "toc.integrate"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

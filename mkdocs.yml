@@ -31,4 +31,5 @@ nav:
     - Backend: architecture/backend.md
     - Frontend: architecture/frontend.md
     - Data: architecture/data.md
+    - Docker Containerization Plan: architecture/docker-plan.md
   - API: api/overview.md

@@ -77,6 +77,6 @@ iOS (Swift)  ──┼──▶  FastAPI (EC2 :8000)  ──▶  Postgres (local
 
 **Frontend** — `npm run build` in `frontend/`, then rsync `dist/` to EC2 `/var/www/html/`. Nginx serves the static files.
 
-**Backend** — rsync changed Python files to EC2 `/home/ubuntu/fellowscript/api/`, then `sudo systemctl restart fellowscript`. Uvicorn runs as a systemd service inside the project virtualenv.
+**Backend** — rsync changed Python files to EC2 `/home/ubuntu/fellowscript/api/`, then `sudo systemctl restart fellowscript`. Uvicorn runs as a systemd service inside the project virtualenv. Not containerized today — see [Docker Containerization Plan](docker-plan.md) for the reference plan to migrate this off manual rsync+systemd.
 
 **Docs** — `.venv/bin/mkdocs gh-deploy --force` builds and force-pushes to the `gh-pages` branch of the GitHub repo. Live at `https://Jacey1225.github.io/FellowScript/`.

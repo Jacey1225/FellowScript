@@ -2,3 +2,12 @@ fellowscript-ec2-key.pem
 .env
 .claude/pipeline/
 .claude/logs/
+
+# Secret material — belt-and-suspenders alongside the Docker secrets wiring
+# in .dockerignore/docker-compose.yml (Decision 3, docs/architecture/docker-plan.md):
+# these should never be newly added to git, even though *.p8 wasn't
+# previously ignored here (see AuthKey_4SRZ3YTAAN.p8, already tracked from a
+# prior commit — that pre-existing exposure needs separate key
+# rotation/history remediation, out of scope for this gate).
+*.pem
+*.p8

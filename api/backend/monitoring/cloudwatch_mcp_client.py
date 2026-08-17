@@ -61,11 +61,20 @@ CLOUDWATCH_REGION = os.getenv("CLOUDWATCH_REGION", "us-east-1")
 # round trip for it on every analyze_log_group call (one per detection).
 _account_id_cache: str | None = None
 
-# How the app spawns the MCP server subprocess. Defaults to the standard
-# `uvx`-based invocation documented for awslabs.cloudwatch-mcp-server;
-# override via env if the deploy target installs/pins it differently.
+# How the app spawns the MCP server subprocess. Phase 1 of
+# docs/architecture/docker-plan.md's Decision 2 resolution: pip-install and
+# pin `awslabs.cloudwatch-mcp-server` at build time (see requirements.txt)
+# rather than fetching it at runtime via `uvx awslabs.cloudwatch-mcp-server
+# @latest` — reproducible (no `@latest` drift), no outbound-PyPI dependency
+# at process startup or on every uvx cold-start. The default below is that
+# pinned package's own console-script entry point (confirmed from the built
+# wheel's entry_points.txt: `awslabs.cloudwatch-mcp-server =
+# awslabs.cloudwatch_mcp_server.server:main`), resolvable via $PATH once
+# requirements.txt is installed — no args needed, unlike the old `uvx ...`
+# form. Override via env if a deploy target ever installs/pins it
+# differently.
 CLOUDWATCH_MCP_COMMAND = os.getenv(
-    "CLOUDWATCH_MCP_COMMAND", "uvx awslabs.cloudwatch-mcp-server@latest"
+    "CLOUDWATCH_MCP_COMMAND", "awslabs.cloudwatch-mcp-server"
 )
 
 # CloudWatch Logs Insights queries are asynchronous server-side (start, then
