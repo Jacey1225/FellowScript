@@ -38,6 +38,8 @@ Run with: cd api && ../.venv/bin/python tests/test_notes_pagination.py
 import os
 import sys
 import uuid
+from datetime import datetime, timezone
+from urllib.parse import quote
 
 import _pathfix  # noqa: F401,E402
 
@@ -63,6 +65,25 @@ def check(label: str, cond: bool, detail: str = ""):
 
 def cookie_header(token: str):
     return {"cookie": f"session={token}"} if token else {}
+
+
+def cursor_qs(cursor_created_at: str, cursor_id: str) -> str:
+    """Builds a cursor query string with proper percent-encoding.
+
+    next_cursor_created_at is an ISO-8601 timestamptz string that (per
+    Postgres/psycopg2's str() representation) contains a literal '+' UTC
+    offset like '+00:00' (e.g. '2026-08-18 01:56:14.315432+00:00'). Query
+    strings are decoded using application/x-www-form-urlencoded conventions
+    (by FastAPI/Starlette), where an unescaped '+' means "space", not a
+    literal plus sign -- so it must be percent-encoded (quote()'s default
+    behavior; unlike urlencode()/quote_plus, it does NOT turn spaces into
+    '+', so an actual literal '+' in the input is correctly escaped to
+    '%2B' instead of passing through raw).
+    """
+    return (
+        f"?cursor_created_at={quote(cursor_created_at, safe='')}"
+        f"&cursor_id={quote(cursor_id, safe='')}"
+    )
 
 
 def signup(client, username):
@@ -166,15 +187,46 @@ def main():
 
             r2 = client.get(
                 f"/notes/{uid_p}"
-                f"?cursor_created_at={body['next_cursor_created_at']}&cursor_id={body['next_cursor_id']}",
+                + cursor_qs(body["next_cursor_created_at"], body["next_cursor_id"]),
                 headers=cookie_header(token_p),
             )
             check("second page -> 200", r2.status_code == 200, str(r2.status_code) + " " + r2.text)
             body2 = r2.json()
             check("second page has the remaining 2 notes", len(body2["notes"]) == 2, str(len(body2["notes"])))
             check("second page has_more == False (true end reached)", body2["has_more"] is False, str(body2))
-
             page2_ids = set(body2["notes"].keys())
+
+            # Explicit regression guard for the URL-encoding bug (unescaped
+            # literal '+' in a query string is decoded server-side as a
+            # space by application/x-www-form-urlencoded conventions, which
+            # then fails Postgres's timestamp parser). This project's local
+            # Postgres session timezone (e.g. America/Los_Angeles) makes the
+            # *naturally* returned next_cursor_created_at carry a '-' UTC
+            # offset, not '+' -- so asserting against the incidental value
+            # would never actually exercise the bug here even though the
+            # same code path is what broke in CI (which runs with a '+'
+            # offset session timezone). Instead, explicitly craft a cursor
+            # timestamp representing the exact same instant re-expressed
+            # with a literal '+00:00' UTC offset -- deterministic regardless
+            # of local server timezone config -- and send it end-to-end:
+            # build query string -> server decode -> Postgres
+            # ::timestamptz parse -> correct row returned.
+            same_instant_utc = datetime.fromisoformat(body["next_cursor_created_at"]).astimezone(timezone.utc)
+            plus_cursor_created_at = str(same_instant_utc)
+            check("crafted cursor timestamp carries a literal '+' (UTC offset), proving this assertion actually exercises the encoding bug",
+                  "+" in plus_cursor_created_at, plus_cursor_created_at)
+
+            r3 = client.get(
+                f"/notes/{uid_p}"
+                + cursor_qs(plus_cursor_created_at, body["next_cursor_id"]),
+                headers=cookie_header(token_p),
+            )
+            check("cursor with a literal '+' UTC offset round-trips correctly end-to-end when properly percent-encoded (200, not a Postgres InvalidDatetimeFormat 500)",
+                  r3.status_code == 200, str(r3.status_code) + " " + r3.text)
+            body3 = r3.json() if r3.status_code == 200 else {}
+            check("the '+'-offset cursor (same instant as the original cursor, just re-expressed in UTC) returns the identical next page",
+                  set(body3.get("notes", {}).keys()) == page2_ids, str(body3))
+
             check("no duplicate notes across the two pages", page1_ids.isdisjoint(page2_ids),
                   str(page1_ids & page2_ids))
             check("every created note appears exactly once across both pages",
@@ -193,7 +245,7 @@ def main():
             check("has_more True on the exact-multiple page (documented trade-off: one more empty round trip needed)",
                   b["has_more"] is True, str(b))
             r2 = client.get(
-                f"/notes/{uid_p}?cursor_created_at={b['next_cursor_created_at']}&cursor_id={b['next_cursor_id']}",
+                f"/notes/{uid_p}" + cursor_qs(b["next_cursor_created_at"], b["next_cursor_id"]),
                 headers=cookie_header(token_p),
             )
             b2 = r2.json()
@@ -241,7 +293,7 @@ def main():
 
             r2 = client.get(
                 f"/notes/{uid_p}"
-                f"?cursor_created_at={b1['next_cursor_created_at']}&cursor_id={b1['next_cursor_id']}",
+                + cursor_qs(b1["next_cursor_created_at"], b1["next_cursor_id"]),
                 headers=cookie_header(token_p),
             )
             b2 = r2.json()
@@ -285,7 +337,7 @@ def main():
                 seen = set()
                 cursor_c, cursor_id = None, None
                 for _ in range(10):
-                    qs = f"?cursor_created_at={cursor_c}&cursor_id={cursor_id}" if cursor_c else ""
+                    qs = cursor_qs(cursor_c, cursor_id) if cursor_c else ""
                     pr = client.get(f"/notes/{uid_p}{qs}", headers=cookie_header(token_p))
                     pb = pr.json()
                     seen |= set(pb["notes"].keys())
@@ -340,7 +392,7 @@ def main():
 
             r2 = client.get(
                 f"/groups/{uid_owner}/{group_id}/notes"
-                f"?cursor_created_at={body['next_cursor_created_at']}&cursor_id={body['next_cursor_id']}",
+                + cursor_qs(body["next_cursor_created_at"], body["next_cursor_id"]),
                 headers=cookie_header(token_owner),
             )
             body2 = r2.json()
