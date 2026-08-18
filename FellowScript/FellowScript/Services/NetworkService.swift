@@ -81,8 +81,64 @@ final class NetworkService: DataServiceProtocol {
         throw AppError.networkError(detail ?? "Server error \(http.statusCode)")
     }
 
-    private func decode<T: Decodable>(_ type: T.Type, from data: Data) -> T? {
-        try? JSONDecoder().decode(type, from: data)
+    /// Decodes `data` as `T`. Callers keep their existing "nil on failure →
+    /// fall back to an empty/default value" behavior (that part is
+    /// unchanged and still intentional for these best-effort reads) — what
+    /// changes is that a failure is no longer silently discarded. It's
+    /// always logged, and when `endpoint` is given (the call sites that
+    /// matter most for diagnosing a broken contract) it's also beaconed to
+    /// the server via `reportDecodeFailure`.
+    ///
+    /// This replaces a blanket `try? JSONDecoder().decode(...)` that swallowed
+    /// every decode failure with zero logging or user-facing signal anywhere
+    /// in this file — which is exactly why the notes-load-failure incident
+    /// this fix is part of (an out-of-date client build silently failing to
+    /// decode the new `GET /notes/{user_id}` envelope) produced no error
+    /// trail on the client side either. See notes-load-failure-cloudwatch-gap
+    /// intake spec.
+    private func decode<T: Decodable>(_ type: T.Type, from data: Data, endpoint: String = "") -> T? {
+        do {
+            return try JSONDecoder().decode(type, from: data)
+        } catch {
+            let context = endpoint.isEmpty ? "\(T.self)" : endpoint
+            print("[NetworkService] decode(\(T.self)) failed for \(context): \(error)")
+            if !endpoint.isEmpty {
+                reportDecodeFailure(endpoint: endpoint, summary: String(describing: error))
+            }
+            return nil
+        }
+    }
+
+    /// "\(short) (\(build))", e.g. "1.4.2 (37)" — matches
+    /// `ClientErrorReport.client_app_version`'s documented format, the key
+    /// signal for distinguishing an out-of-date client build from a genuine
+    /// current-code bug when triaging a reported detection.
+    private func currentAppVersion() -> String {
+        let info  = Bundle.main.infoDictionary
+        let short = info?["CFBundleShortVersionString"] as? String ?? "?"
+        let build = info?["CFBundleVersion"] as? String ?? "?"
+        return "\(short) (\(build))"
+    }
+
+    /// Fire-and-forget beacon to `POST /monitoring/client-error` (backend
+    /// step 1 of the notes-load-failure-cloudwatch-gap workflow) — the
+    /// server-log-based CloudWatch watchdog can never see a well-formed 200
+    /// response an out-of-date client fails to decode on its own, so this is
+    /// the only way that class of failure becomes visible at all. Diagnostics
+    /// only: deliberately best-effort (`try?`) so a beacon failure (e.g. no
+    /// network) never surfaces to or blocks the caller that hit the original
+    /// decode failure. Never sends the raw response body — only the
+    /// endpoint, app version, and a short error summary, per
+    /// `ClientErrorReport`'s data-minimization contract.
+    private func reportDecodeFailure(endpoint: String, summary: String) {
+        let version = currentAppVersion()
+        Task {
+            _ = try? await requestRaw("/monitoring/client-error", method: "POST", jsonObject: [
+                "endpoint": endpoint,
+                "client_app_version": version,
+                "error_summary": String(summary.prefix(500)),
+            ])
+        }
     }
 
     /// FastAPI's `detail` is a plain string for our own `HTTPException(...)` raises,
@@ -237,7 +293,7 @@ final class NetworkService: DataServiceProtocol {
 
     func fetchNotes(userId: String, cursorCreatedAt: String? = nil, cursorId: String? = nil) async throws -> NotesPage {
         let data = try await get("/notes/\(userId)" + cursorQuery(cursorCreatedAt, cursorId))
-        guard let raw = decode(RawNotesPage.self, from: data) else {
+        guard let raw = decode(RawNotesPage.self, from: data, endpoint: "GET /notes/{user_id}") else {
             return NotesPage(notes: [:], nextCursorCreatedAt: nil, nextCursorId: nil, hasMore: false)
         }
         var dict = raw.notes
@@ -252,6 +308,15 @@ final class NetworkService: DataServiceProtocol {
         //                    next_cursor_created_at, next_cursor_id, has_more }
         guard let top = (try? JSONSerialization.jsonObject(with: raw)) as? [String: Any],
               let outer = top["notes"] as? [String: Any] else {
+            // Same silent-failure class as fetchNotes' RawNotesPage decode
+            // above, just reached via manual JSONSerialization instead of
+            // JSONDecoder (this response is keyed by username, so it can't
+            // use a static Decodable type the same way) — log + beacon it
+            // too rather than letting group segments fail invisibly.
+            let context = groupId.isEmpty ? "?" : groupId
+            print("[NetworkService] fetchGroupNotes decode failed for group \(context): unexpected response shape")
+            reportDecodeFailure(endpoint: "GET /groups/{user_id}/{group_id}/notes",
+                                 summary: "Unexpected response shape (missing/invalid top-level 'notes' object)")
             return NotesPage(notes: [:], nextCursorCreatedAt: nil, nextCursorId: nil, hasMore: false)
         }
 

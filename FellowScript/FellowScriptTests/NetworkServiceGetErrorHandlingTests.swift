@@ -31,6 +31,43 @@ final class StubURLProtocol: URLProtocol {
     static var stubStatusCode = 200
     static var stubBody: Data = Data()
 
+    /// One entry per intercepted request, in call order -- lets tests prove
+    /// NOT ONLY what NetworkService did with a stubbed response, but also
+    /// what (if anything) it sent back out afterward, e.g. the fire-and-
+    /// forget POST /monitoring/client-error decode-failure beacon
+    /// (NotesLoadFailureHardeningTests.swift). `bodyData` is reconstructed
+    /// from `httpBodyStream` when present -- URLSession commonly hands a
+    /// custom URLProtocol the body as a stream rather than surfacing it via
+    /// `request.httpBody` directly once the request has been handed off.
+    struct RecordedRequest {
+        let path:   String   // URL path only, no query string (use `url` for query-string assertions)
+        let url:    String   // full absoluteString, including query string
+        let method: String
+        let bodyData: Data?
+        var bodyJSON: [String: Any]? {
+            guard let bodyData, !bodyData.isEmpty else { return nil }
+            return (try? JSONSerialization.jsonObject(with: bodyData)) as? [String: Any]
+        }
+    }
+    static var requestLog: [RecordedRequest] = []
+
+    static func resetRequestLog() { requestLog = [] }
+
+    private static func readBody(from request: URLRequest) -> Data? {
+        if let body = request.httpBody { return body }
+        guard let stream = request.httpBodyStream else { return nil }
+        stream.open()
+        defer { stream.close() }
+        var data = Data()
+        let bufferSize = 4096
+        var buffer = [UInt8](repeating: 0, count: bufferSize)
+        while stream.hasBytesAvailable {
+            let read = stream.read(&buffer, maxLength: bufferSize)
+            if read > 0 { data.append(buffer, count: read) } else { break }
+        }
+        return data.isEmpty ? nil : data
+    }
+
     override class func canInit(with request: URLRequest) -> Bool {
         request.url?.host == "fellowscript.com"
     }
@@ -40,6 +77,12 @@ final class StubURLProtocol: URLProtocol {
     }
 
     override func startLoading() {
+        Self.requestLog.append(RecordedRequest(
+            path: request.url?.path ?? "",
+            url: request.url?.absoluteString ?? "",
+            method: request.httpMethod ?? "GET",
+            bodyData: Self.readBody(from: request)
+        ))
         let response = HTTPURLResponse(
             url: request.url!,
             statusCode: Self.stubStatusCode,

@@ -35,6 +35,12 @@ returns raw log/exception content and LLM-generated diagnostic narratives
 redaction-gap notes), so responses must not be persisted by the browser's
 disk cache or any intermediate cache beyond the request itself (pre-launch
 security step 8, general OWASP admin-panel hardening pass).
+
+`POST /client-error` (notes-load-failure-cloudwatch-gap workflow, step 1) is
+the one exception to the admin-only rule above: it's a client-observable-
+only failure beacon any authenticated (non-admin) user's own device calls
+to report a response it couldn't decode -- see its own docstring for auth/
+rate-limit/data-minimization details.
 """
 import asyncio
 import logging
@@ -42,11 +48,11 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 
-from backend.auth.dependencies import require_admin
+from backend.auth.dependencies import get_current_user, require_admin
 from backend.monitoring.watchdog import WatchdogManager
 from backend.monitoring.debug_agent import DebugAgentManager, run_debug_agent_for_detection
 from backend.rate_limiting import limiter
-from schemas.watchdog import DetectionReport, ErrorDetection, ErrorDetectionListResponse
+from schemas.watchdog import ClientErrorReport, DetectionReport, ErrorDetection, ErrorDetectionListResponse
 
 logger = logging.getLogger(__name__)
 audit_logger = logging.getLogger("admin_audit")
@@ -89,14 +95,24 @@ async def list_error_detections(
             "true for postmortem review. Rows are never deleted."
         ),
     ),
+    matched_signal: str | None = Query(
+        default=None,
+        description=(
+            "Filter to one detector signal, e.g. 'client_decode_failure' or "
+            "'4xx_rate_anomaly' (notes-load-failure-cloudwatch-gap workflow, "
+            "step 1) alongside the pre-existing 'traceback'/'critical'/"
+            "'error_level'/'nginx_severity_tag'/'http_5xx'/'errno' values -- "
+            "see watchdog.py's _ERROR_SIGNAL_PATTERNS for the full set."
+        ),
+    ),
     admin_id: str = Depends(require_admin),
 ) -> ErrorDetectionListResponse:
     """List persisted error detections, most recent first.
 
     Read-only feed for the (future) admin page -- summary rows only, no
     `context` blob (see `get_error_detection` for the full record with
-    context). Filter by log group and/or a `detected_at` time range;
-    paginate via `limit`/`offset`.
+    context). Filter by log group, `matched_signal`, and/or a `detected_at`
+    time range; paginate via `limit`/`offset`.
 
     Args:
         log_group_name: Optional exact-match filter, e.g. "/fellowscript/app".
@@ -105,6 +121,7 @@ async def list_error_detections(
         limit: Max rows to return (1-200, default 50).
         offset: Rows to skip, for paging.
         include_noise: Include status='noise' rows (default excluded).
+        matched_signal: Optional exact-match filter on the detector signal.
 
     Returns:
         ErrorDetectionListResponse: `items` (summaries), `total` (count
@@ -121,12 +138,14 @@ async def list_error_detections(
             limit=limit,
             offset=offset,
             include_noise=include_noise,
+            matched_signal=matched_signal,
         )
         total = manager.count_detections(
             log_group_name=log_group_name,
             start_time=start_time,
             end_time=end_time,
             include_noise=include_noise,
+            matched_signal=matched_signal,
         )
         return ErrorDetectionListResponse(items=items, total=total, limit=limit, offset=offset)
     finally:
@@ -256,3 +275,67 @@ async def log_remediation_download(
 
     _audit("download_remediation_md", admin_id, detection_id)
     return {"logged": True}
+
+
+@monitoring_router.post("/client-error", status_code=204)
+@limiter.limit("10/minute")
+async def report_client_error(
+    request: Request,
+    report: ClientErrorReport,
+    user_id: str = Depends(get_current_user),
+) -> None:
+    """Client-observable-only failure beacon (notes-load-failure-cloudwatch-
+    gap workflow, step 1): the app calls this when a server response it
+    received fails to decode -- e.g. a well-formed 200 OK an out-of-date
+    client build's model can't parse, which is exactly the incident that
+    motivated this endpoint (see `intake-spec.md`). watchdog.py's detection
+    is entirely server-log-based (see its module docstring); a 200 the
+    client can't use produces none of its tracked 5xx/ERROR/CRITICAL/
+    traceback/errno signal, so it's structurally invisible without a signal
+    reported from the client side like this one.
+
+    Deliberately minimal and NOT persisted to its own table: this logs one
+    structured line carrying the `CLIENT_DECODE_FAILURE` marker, which lands
+    in `/fellowscript/app` -- one of the five log groups the watchdog
+    already polls every cycle -- and is picked up there as its own
+    "client_decode_failure" `matched_signal` (see watchdog.py's
+    `_ERROR_SIGNAL_PATTERNS`), landing in the same `error_detections` table
+    (and this router's existing list/detail endpoints) as every other
+    detection rather than standing up a parallel table/read-path for what
+    is, at its core, one more detection row.
+
+    Auth: any authenticated user (`get_current_user`, not `require_admin` --
+    this is called by the reporting device itself, not an admin) may report
+    their own client's decode failure; `user_id` is always the session's
+    DB-verified identity, never a client-supplied field, so a report can't
+    be attributed to an arbitrary other account.
+
+    Data minimization: only `endpoint`, `client_app_version`, `http_status`,
+    and a short client-truncated `error_summary` are accepted (see
+    `ClientErrorReport`) -- never the raw response body or any other
+    request/response content, which could carry note text or other user
+    content. All fields are additionally length-capped server-side.
+
+    Rate-limited to 10/minute per client IP -- an authenticated session can
+    still call this repeatedly (e.g. a client stuck in a retry loop hitting
+    the same decode failure over and over), and each call writes a log line
+    a later poll cycle turns into a persisted detection row, so this is
+    bounded the same way other write endpoints on this router are
+    (`backend.rate_limiting.limiter`).
+
+    Args:
+        request: FastAPI request object (required by the rate limiter).
+        report: endpoint, client_app_version, http_status, error_summary.
+
+    Returns:
+        None (204).
+    """
+    logger.error(
+        "CLIENT_DECODE_FAILURE user_id=%s endpoint=%s client_app_version=%s "
+        "http_status=%s error_summary=%s",
+        user_id,
+        report.endpoint,
+        report.client_app_version or "unknown",
+        report.http_status,
+        report.error_summary,
+    )
