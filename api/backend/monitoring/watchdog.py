@@ -77,11 +77,62 @@ QUERY_RESULT_LIMIT = 1000
 _ERROR_SIGNAL_PATTERNS: list[tuple[str, "re.Pattern[str]"]] = [
     ("traceback", re.compile(r"Traceback \(most recent call last\)")),
     ("critical", re.compile(r"\bCRITICAL\b")),
+    # notes-load-failure-cloudwatch-gap workflow, step 1: the client-error-
+    # report beacon (routes/monitoring.py POST /monitoring/client-error)
+    # logs this literal marker via logger.error(...), which lands in
+    # /fellowscript/app -- one of the five groups already scanned below.
+    # Must be checked *before* the generic "error_level" pattern (first
+    # match wins in _match_error_signal), since every logger.error() call
+    # already contains the literal word "ERROR" from main.py's
+    # logging.basicConfig level-name format -- without this ordering every
+    # client-decode-failure report would just get lumped into the generic
+    # "error_level" bucket instead of its own distinguishable signal.
+    ("client_decode_failure", re.compile(r"\bCLIENT_DECODE_FAILURE\b")),
     ("error_level", re.compile(r"\bERROR\b")),
     ("nginx_severity_tag", re.compile(r"\[(error|crit|emerg|alert)\]")),
     ("http_5xx", re.compile(r'"\s(5\d{2})\s')),  # nginx access log: 5xx status after the quoted request
     ("errno", re.compile(r"\[Errno \d+\]")),  # OS-level failures, e.g. "address already in use"
 ]
+
+# notes-load-failure-cloudwatch-gap workflow, step 1: 4xx-rate anomaly
+# detection. Deliberately a *separate* detector from the per-line
+# `_ERROR_SIGNAL_PATTERNS` scan above -- it doesn't look at any one log
+# line's content, it counts nginx access-log lines whose HTTP status is in
+# the 4xx class within a poll window and flags a spike. This targets the
+# general "something is wrong at the client/API boundary" case (a client
+# hammering an endpoint with now-invalid requests after a contract change,
+# an auth/session regression, a broken deep link, etc).
+#
+# NOTE: this would NOT, on its own, have caught the incident that motivated
+# this workflow -- that response was a legitimate 200 OK the client simply
+# couldn't parse, so it never touches this counter at all. That's exactly
+# why the client_decode_failure signal above exists as a second,
+# complementary detector for the 200-but-unparseable case; the two are
+# deliberately not merged into one mechanism because they detect
+# structurally different failure classes.
+ANOMALY_4XX_LOG_GROUP = "/fellowscript/nginx/access"
+# A synthetic (non-log-group) key in the same log_group_cursors table, so
+# this detector's own watermark advances independently of the plain
+# per-line scan already run against ANOMALY_4XX_LOG_GROUP above -- the two
+# scans use different query windows/advance logic and must not clobber each
+# other's cursor.
+ANOMALY_4XX_CURSOR_KEY = "/fellowscript/nginx/access#4xx-rate-anomaly"
+# Nginx combined-log-format status code -- same "space-quoted status after
+# the request line" shape the http_5xx pattern above matches, but scoped to
+# the 4xx class via a Logs Insights filter instead of a per-line regex, so
+# only matching lines are counted (limit still applies -- see
+# QUERY_RESULT_LIMIT -- undercounting on a truncated window makes the check
+# more conservative, never less, since the count only ever grows).
+_HTTP_4XX_QUERY = 'fields @timestamp, @message | filter @message like /"\\s4\\d{2}\\s/'
+# Absolute count of 4xx responses within one ~90s poll window (see
+# WATCHDOG_POLL_INTERVAL_SECONDS) treated as anomalous. Intentionally a
+# fixed count rather than a ratio against total traffic -- this app has no
+# existing baseline-traffic metric to divide by, and a flat per-window
+# count is simple to reason about and safe to retune later once real
+# production traffic volume is observed. 30 in ~90s is well above the
+# ambient rate of incidental 401/403/404 responses a small app like this
+# sees in normal operation.
+ANOMALY_4XX_THRESHOLD = 30
 
 # 2026-08-14 incident structural fix -- self-exclusion.
 #
@@ -265,6 +316,7 @@ class WatchdogManager(DBManager):
         start_time: datetime | None,
         end_time: datetime | None,
         include_noise: bool,
+        matched_signal: str | None = None,
     ) -> tuple[str, list[Any]]:
         clauses: list[str] = []
         params: list[Any] = []
@@ -280,6 +332,13 @@ class WatchdogManager(DBManager):
         if not include_noise:
             clauses.append("status != %s")
             params.append(WatchdogManager.STATUS_NOISE)
+        if matched_signal:
+            # notes-load-failure-cloudwatch-gap workflow, step 1: lets the
+            # admin dashboard isolate the two new signal types
+            # ("client_decode_failure", "4xx_rate_anomaly") from the
+            # existing server-log-line ones (e.g. "traceback", "http_5xx").
+            clauses.append("matched_signal = %s")
+            params.append(matched_signal)
         where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
         return where, params
 
@@ -292,6 +351,7 @@ class WatchdogManager(DBManager):
         limit: int = 50,
         offset: int = 0,
         include_noise: bool = False,
+        matched_signal: str | None = None,
     ) -> list[dict[str, Any]]:
         """Paginated, filterable summary rows, most recent first.
 
@@ -305,9 +365,14 @@ class WatchdogManager(DBManager):
         from the default triage feed so they don't clutter it, but pass
         `include_noise=True` to see them for postmortem review; they are
         never deleted.
+
+        `matched_signal` optionally isolates one detector's rows, e.g.
+        "client_decode_failure" or "4xx_rate_anomaly" (see watchdog.py's
+        `_ERROR_SIGNAL_PATTERNS` / `ANOMALY_4XX_THRESHOLD` for the full set
+        of values this can take).
         """
         where, params = self._build_detection_filters(
-            log_group_name, start_time, end_time, include_noise
+            log_group_name, start_time, end_time, include_noise, matched_signal
         )
         try:
             self.cur.execute(
@@ -331,11 +396,12 @@ class WatchdogManager(DBManager):
         start_time: datetime | None = None,
         end_time: datetime | None = None,
         include_noise: bool = False,
+        matched_signal: str | None = None,
     ) -> int:
         """Total row count matching the same filters as `list_detections`,
         for the list response's `total` (independent of `limit`/`offset`)."""
         where, params = self._build_detection_filters(
-            log_group_name, start_time, end_time, include_noise
+            log_group_name, start_time, end_time, include_noise, matched_signal
         )
         try:
             self.cur.execute(f"SELECT COUNT(*) FROM error_detections{where}", params)
@@ -410,7 +476,99 @@ class WatchdogManager(DBManager):
                     continue
                 totals["events_scanned"] += delta["events_scanned"]
                 totals["detections"] += delta["detections"]
+
+            if not self._cap_tripped:
+                try:
+                    delta = await self._check_4xx_rate_anomaly(client, window_end)
+                except Exception as e:
+                    logger.error("4xx-rate anomaly check failed: %s", e)
+                else:
+                    totals["events_scanned"] += delta["events_scanned"]
+                    totals["detections"] += delta["detections"]
         return totals
+
+    async def _check_4xx_rate_anomaly(
+        self, client: CloudWatchMCPClient, window_end: datetime
+    ) -> dict[str, int]:
+        """Count nginx-access 4xx responses since this detector's own cursor
+        and, if the count crosses ANOMALY_4XX_THRESHOLD, persist one
+        synthetic ErrorDetection summarizing the spike (matched_signal=
+        "4xx_rate_anomaly"). See the module-level comment above
+        ANOMALY_4XX_LOG_GROUP for why this is a separate mechanism from the
+        per-line pattern scan in `_poll_one_group`.
+
+        Advances ANOMALY_4XX_CURSOR_KEY's cursor to `window_end` on every
+        call (success or query failure) the same way `_poll_one_group` does
+        for a group with no new events -- there is no per-event replay
+        concern here (an aggregate count over an already-passed window
+        can't retroactively change), so unlike the main per-line scan there
+        is no reason to leave the cursor short of window_end on a truncated
+        result.
+        """
+        cursor = self.get_cursor(ANOMALY_4XX_CURSOR_KEY)
+        window_start = cursor if cursor else window_end - timedelta(seconds=INITIAL_LOOKBACK_SECONDS)
+        if window_start >= window_end:
+            return {"events_scanned": 0, "detections": 0}
+
+        try:
+            matches = await client.query_log_events(
+                ANOMALY_4XX_LOG_GROUP,
+                window_start,
+                window_end,
+                query_string=_HTTP_4XX_QUERY,
+                limit=QUERY_RESULT_LIMIT,
+            )
+        except CloudWatchMCPError as e:
+            logger.warning("4xx-rate anomaly query failed for %s: %s", ANOMALY_4XX_LOG_GROUP, e)
+            self.set_cursor(ANOMALY_4XX_CURSOR_KEY, window_end)
+            return {"events_scanned": 0, "detections": 0}
+
+        self.set_cursor(ANOMALY_4XX_CURSOR_KEY, window_end)
+        count = len(matches)
+        if count < ANOMALY_4XX_THRESHOLD:
+            return {"events_scanned": count, "detections": 0}
+
+        if self._cycle_detection_count >= MAX_DETECTIONS_PER_CYCLE:
+            self._cap_tripped = True
+            logger.warning(
+                "CloudWatch watchdog: per-cycle detection cap (%d) reached -- "
+                "suppressing a 4xx-rate anomaly detection (%d responses in window "
+                "%s..%s); the window is not retried (an aggregate count, unlike a "
+                "per-line detection, has nothing left to catch up on next cycle)",
+                MAX_DETECTIONS_PER_CYCLE, count, window_start.isoformat(), window_end.isoformat(),
+            )
+            return {"events_scanned": count, "detections": 0}
+
+        latest_ts = _parse_event_timestamp(matches[-1]) if matches else None
+        detection = ErrorDetection(
+            log_group_name=ANOMALY_4XX_LOG_GROUP,
+            event_timestamp=latest_ts or window_end,
+            message=(
+                f"{count} HTTP 4xx responses in the {window_start.isoformat()}"
+                f"..{window_end.isoformat()} window (threshold {ANOMALY_4XX_THRESHOLD})"
+            ),
+            matched_signal="4xx_rate_anomaly",
+            context={
+                "count": count,
+                "threshold": ANOMALY_4XX_THRESHOLD,
+                "window_start": window_start.isoformat(),
+                "window_end": window_end.isoformat(),
+            },
+        )
+        self.save_detection(detection)
+        self._cycle_detection_count += 1
+
+        if self._cycle_debug_agent_count < MAX_DEBUG_AGENT_CALLS_PER_CYCLE:
+            self._cycle_debug_agent_count += 1
+            try:
+                loop = asyncio.get_running_loop()
+                await loop.run_in_executor(
+                    None, functools.partial(run_debug_agent_for_detection, detection.id)
+                )
+            except Exception as e:
+                logger.error("Debug agent failed for detection %s: %s", detection.id, e)
+
+        return {"events_scanned": count, "detections": 1}
 
     async def _poll_one_group(
         self, client: CloudWatchMCPClient, log_group: str, window_end: datetime
