@@ -97,19 +97,64 @@ class GroupsManager(DBManager):
             "other_msgs": self.format_messages(other_msgs),
         }
 
-    def fetch_notes(self) -> dict:
-        """Retrieve all public, non-reply notes belonging to the group.
+    def fetch_notes(
+        self,
+        limit: int = 15,
+        cursor_created_at: str | None = None,
+        cursor_id: str | None = None,
+    ) -> dict:
+        """Retrieve one page of public, non-reply notes belonging to the
+        group, newest first, using keyset pagination anchored on
+        (created_at, _id) rather than OFFSET -- so a note created or deleted
+        between page loads can't shift another row's position and cause
+        drift, duplicates, or skipped notes. Blocked-user exclusion
+        (Guideline 1.2) happens in the SQL WHERE clause itself, not as a
+        post-fetch Python filter, so a full page always contains ``limit``
+        visible notes.
+
+        Uses the raw cursor (rather than ``lookup``) because ordering,
+        LIMIT, and the blocked-user anti-join aren't expressible through the
+        generic helpers.
+
+        Args:
+            limit: Max notes to return for this page.
+            cursor_created_at: created_at of the last note from the previous
+                page. Omit together with cursor_id to fetch the first page.
+            cursor_id: _id of the last note from the previous page. Must be
+                supplied together with cursor_created_at.
 
         Returns:
-            dict: Mapping of username -> {note_id -> note data dict} for
-                all qualifying notes in the group.
+            dict: ``{"notes": {username: {note_id: note data}},
+                "next_cursor_created_at": str | None, "next_cursor_id":
+                str | None, "has_more": bool}``. has_more is True iff
+                exactly ``limit`` rows were returned.
         """
+        where = (
+            "group_id = %s AND is_reply = false "
+            "AND user_id NOT IN ("
+            "SELECT blocked_id FROM blocked_users WHERE blocker_id = %s "
+            "UNION SELECT blocker_id FROM blocked_users WHERE blocked_id = %s"
+            ")"
+        )
+        params: list = [self.group_id, self.user_id, self.user_id]
+        if cursor_created_at is not None and cursor_id is not None:
+            where += " AND (created_at, _id) < (%s::timestamptz, %s::uuid)"
+            params += [cursor_created_at, cursor_id]
+        self.cur.execute(
+            "SELECT _id, user_id, title, text, public, group_id, is_reply, "
+            "parent_note_id, timestamp, created_at FROM notes "
+            f"WHERE {where} "
+            "ORDER BY created_at DESC, _id DESC "
+            "LIMIT %s",
+            params + [limit],
+        )
+        cols = [desc[0] for desc in self.cur.description]
+        rows = self.cur.fetchall()
         group_notes: dict = {}
-        blocked = self._blocked_set()
-        notes = self.lookup("notes", {"group_id": self.group_id, "is_reply": False})
-        for nid, data in notes.items():
+        for row in rows:
+            nid, data = str(row[0]), dict(zip(cols[1:], row[1:]))
             uid = data.get("user_id")
-            if not uid or uid in blocked:
+            if not uid:
                 continue
             user = self.lookup("users", {"_id": uid})
             username = ""
@@ -119,7 +164,14 @@ class GroupsManager(DBManager):
             if username not in group_notes:
                 group_notes[username] = {}
             group_notes[username][nid] = data
-        return group_notes
+        has_more = len(rows) == limit
+        last = rows[-1] if rows else None
+        return {
+            "notes": group_notes,
+            "next_cursor_created_at": str(last[9]) if last else None,
+            "next_cursor_id": str(last[0]) if last else None,
+            "has_more": has_more,
+        }
 
     def fetch_replies(self, note_id: str) -> list[dict]:
         """Retrieve all replies for a given note.

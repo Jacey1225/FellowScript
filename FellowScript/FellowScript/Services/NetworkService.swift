@@ -225,19 +225,35 @@ final class NetworkService: DataServiceProtocol {
     }
 
     // ── Notes (read) ──────────────────────────────────────────────────────────
-    // GET /notes/{userId}
+    // GET /notes/{userId}?cursor_created_at=&cursor_id=
+    // Every call returns one SQL-capped (15), keyset-paginated page; there is
+    // no unpaginated full-fetch mode. Omit both cursor params for the first
+    // page; pass a previous page's next cursor back to fetch the following one.
 
-    func fetchNotes(userId: String) async throws -> [String: FSNote] {
-        let data = try await get("/notes/\(userId)")
-        guard var dict = decode([String: FSNote].self, from: data) else { return [:] }
-        for (key, var note) in dict { note.id = key; dict[key] = note }
-        return dict
+    private func cursorQuery(_ cursorCreatedAt: String?, _ cursorId: String?) -> String {
+        guard let c = cursorCreatedAt, let i = cursorId else { return "" }
+        return "?cursor_created_at=\(encodeURIComponent(c))&cursor_id=\(encodeURIComponent(i))"
     }
 
-    func fetchGroupNotes(userId: String, groupId: String) async throws -> [String: FSNote] {
-        let raw = try await get("/groups/\(userId)/\(groupId)/notes")
-        // Response shape: { username: { note_id: { user_id, title, text, public, group_id, is_reply, timestamp } } }
-        guard let outer = (try? JSONSerialization.jsonObject(with: raw)) as? [String: Any] else { return [:] }
+    func fetchNotes(userId: String, cursorCreatedAt: String? = nil, cursorId: String? = nil) async throws -> NotesPage {
+        let data = try await get("/notes/\(userId)" + cursorQuery(cursorCreatedAt, cursorId))
+        guard let raw = decode(RawNotesPage.self, from: data) else {
+            return NotesPage(notes: [:], nextCursorCreatedAt: nil, nextCursorId: nil, hasMore: false)
+        }
+        var dict = raw.notes
+        for (key, var note) in dict { note.id = key; dict[key] = note }
+        return NotesPage(notes: dict, nextCursorCreatedAt: raw.next_cursor_created_at,
+                         nextCursorId: raw.next_cursor_id, hasMore: raw.has_more)
+    }
+
+    func fetchGroupNotes(userId: String, groupId: String, cursorCreatedAt: String? = nil, cursorId: String? = nil) async throws -> NotesPage {
+        let raw = try await get("/groups/\(userId)/\(groupId)/notes" + cursorQuery(cursorCreatedAt, cursorId))
+        // Response shape: { notes: { username: { note_id: { user_id, title, text, public, group_id, is_reply, timestamp } } },
+        //                    next_cursor_created_at, next_cursor_id, has_more }
+        guard let top = (try? JSONSerialization.jsonObject(with: raw)) as? [String: Any],
+              let outer = top["notes"] as? [String: Any] else {
+            return NotesPage(notes: [:], nextCursorCreatedAt: nil, nextCursorId: nil, hasMore: false)
+        }
 
         var result: [String: FSNote] = [:]
         for (_, byNote) in outer {
@@ -259,7 +275,20 @@ final class NetworkService: DataServiceProtocol {
                 result[noteId] = note
             }
         }
-        return result
+        return NotesPage(
+            notes: result,
+            nextCursorCreatedAt: top["next_cursor_created_at"] as? String,
+            nextCursorId: top["next_cursor_id"] as? String,
+            hasMore: top["has_more"] as? Bool ?? false
+        )
+    }
+
+    // GET /notes/{userId}/count — a dedicated COUNT(*) so summary displays
+    // (DashboardView, AccountView) that only need a total don't have to page
+    // through the whole capped collection to compute one.
+    func fetchNotesCount(userId: String) async throws -> Int {
+        let data = try await get("/notes/\(userId)/count")
+        return decode([String: Int].self, from: data)?["count"] ?? 0
     }
 
     // ── Notes (write) ─────────────────────────────────────────────────────────
@@ -885,4 +914,11 @@ private struct RawMsgPayload: Decodable {
 
 private struct RawDevotionsResponse: Decodable {
     let sessions: [FSSession]?
+}
+
+private struct RawNotesPage: Decodable {
+    let notes: [String: FSNote]
+    let next_cursor_created_at: String?
+    let next_cursor_id: String?
+    let has_more: Bool
 }

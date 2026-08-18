@@ -99,13 +99,16 @@ final class AccountViewModel: ObservableObject {
         async let fetchedUser          = service.fetchUser(userId: user.user_id)
         async let fetchedAgents        = service.fetchAgents(userId: user.user_id)
         async let fetchedNotifications = service.fetchNotifications(userId: user.user_id)
-        async let fetchedNotes         = service.fetchNotes(userId: user.user_id)
+        // Dedicated COUNT(*) endpoint rather than fetching+counting the
+        // capped/paginated notes collection -- a user with more than one
+        // page of notes would otherwise show a truncated total here.
+        async let fetchedNoteCount     = service.fetchNotesCount(userId: user.user_id)
         async let fetchedHighlights    = service.fetchHighlights(userId: user.user_id)
         async let fetchedUsage         = service.fetchUsage(userId: user.user_id)
         if let freshUser = try? await fetchedUser { profileData = freshUser }
         agents        = (try? await fetchedAgents)        ?? []
         notifications = (try? await fetchedNotifications) ?? []
-        noteCount      = (try? await fetchedNotes)?.count      ?? 0
+        noteCount      = (try? await fetchedNoteCount)          ?? 0
         highlightCount = (try? await fetchedHighlights)?.count ?? 0
         usage          = (try? await fetchedUsage) ?? usage
         friendRequests = (try? await service.fetchFriendRequests(userId: user.user_id)) ?? []

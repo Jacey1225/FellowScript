@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Query
 from schemas.users import Note
 from db import DBManager
 from backend.interactions.groups import GroupsManager
@@ -11,6 +11,14 @@ import logging
 
 notes_router = APIRouter(prefix="/notes")
 logger = logging.getLogger(__name__)
+
+# Page size for keyset-paginated note listings (GET /{user_id} here and
+# GET /{user_id}/{group_id}/notes in community.py). Every GET-notes request
+# is capped at this size by the SQL query itself -- there is no unpaginated
+# full-fetch mode; callers that only need a total (DashboardView,
+# AccountView) should use GET /{user_id}/count instead of paging through
+# the whole collection.
+NOTES_PAGE_SIZE = 15
 
 
 def _can_view_note(note_data: dict, user_id: str) -> bool:
@@ -213,14 +221,50 @@ async def create_note(user_id: str, note_dict: dict, _: str = Depends(require_ma
 
 
 @notes_router.get("/{user_id}")
-async def get_notes(user_id: str, _: str = Depends(require_match("user_id"))) -> dict:
+async def get_notes(
+    user_id: str,
+    cursor_created_at: str | None = Query(default=None, description="created_at of the last note seen on the previous page; omit (with cursor_id) to fetch the first page"),
+    cursor_id: str | None = Query(default=None, description="_id of the last note seen on the previous page; omit (with cursor_created_at) to fetch the first page"),
+    _: str = Depends(require_match("user_id")),
+) -> dict:
+    """Retrieve one page of a user's personal (non-reply, non-group) notes,
+    newest first, using keyset pagination anchored on (created_at, _id)
+    rather than OFFSET -- so a note created or deleted between page loads
+    can't shift another row's position and cause drift, duplicates, or
+    skipped notes. Every call is capped at NOTES_PAGE_SIZE by the SQL query
+    itself; there is no unpaginated full-fetch mode.
+
+    Args:
+        user_id: UUID of the notes' owner.
+        cursor_created_at: created_at of the last note from the previous
+            page. Omit together with cursor_id to fetch the first page.
+        cursor_id: _id of the last note from the previous page. Must be
+            supplied together with cursor_created_at.
+
+    Returns:
+        dict: ``{"notes": {note_id: note data}, "next_cursor_created_at":
+            str | None, "next_cursor_id": str | None, "has_more": bool}``.
+            Pass next_cursor_created_at/next_cursor_id back as
+            cursor_created_at/cursor_id to fetch the following page.
+            has_more is True iff exactly NOTES_PAGE_SIZE rows were returned
+            -- False means the true end of the list has been reached, so the
+            client should not request another page even though a cursor is
+            still present.
+    """
     db = DBManager()
     try:
+        where = "n.user_id = %s AND n.is_reply = false AND n.group_id IS NULL"
+        params: list = [user_id]
+        if cursor_created_at is not None and cursor_id is not None:
+            where += " AND (n.created_at, n._id) < (%s::timestamptz, %s::uuid)"
+            params += [cursor_created_at, cursor_id]
         db.cur.execute(
             "SELECT n._id, n.user_id, n.title, n.text, n.public, n.group_id, n.is_reply, n.timestamp, n.created_at "
             "FROM notes n "
-            "WHERE n.user_id = %s AND n.is_reply = false AND n.group_id IS NULL",
-            (user_id,)
+            f"WHERE {where} "
+            "ORDER BY n.created_at DESC, n._id DESC "
+            "LIMIT %s",
+            params + [NOTES_PAGE_SIZE],
         )
         rows = db.cur.fetchall()
         result = {}
@@ -244,7 +288,39 @@ async def get_notes(user_id: str, _: str = Depends(require_match("user_id"))) ->
                 "verses":     verses,
                 "replies":    [],
             }
-        return result
+        has_more = len(rows) == NOTES_PAGE_SIZE
+        last = rows[-1] if rows else None
+        return {
+            "notes": result,
+            "next_cursor_created_at": str(last[8]) if last else None,
+            "next_cursor_id": str(last[0]) if last else None,
+            "has_more": has_more,
+        }
+    finally:
+        db.close()
+
+
+@notes_router.get("/{user_id}/count")
+async def get_notes_count(user_id: str, _: str = Depends(require_match("user_id"))) -> dict:
+    """Total count of a user's personal (non-reply, non-group) notes.
+
+    A dedicated COUNT(*) so summary displays (DashboardView, AccountView)
+    that only need a number don't have to page through the full capped
+    collection to compute one.
+
+    Args:
+        user_id: UUID of the notes' owner.
+
+    Returns:
+        dict: ``{"count": int}``.
+    """
+    db = DBManager()
+    try:
+        db.cur.execute(
+            "SELECT COUNT(*) FROM notes WHERE user_id = %s AND is_reply = false AND group_id IS NULL",
+            (user_id,),
+        )
+        return {"count": db.cur.fetchone()[0]}
     finally:
         db.close()
 

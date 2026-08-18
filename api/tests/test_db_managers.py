@@ -85,7 +85,10 @@ def test_groups_manager():
     check("fetch_group finds member username", "test_user_b" in group.get("members", []),
           str(group.get("members")))
 
-    notes = gm.fetch_notes()
+    # task 20260817-notes-pagination-backend: fetch_notes() now returns one
+    # keyset-paginated page as {notes, next_cursor_*, has_more} instead of a
+    # bare {username: {note_id: note}} dict -- unwrap .notes.
+    notes = gm.fetch_notes()["notes"]
     check("fetch_notes keys by username", "test_user_a" in notes, str(list(notes.keys())))
     check("fetch_notes contains note", NOTE_ID in notes.get("test_user_a", {}),
           str(notes.get("test_user_a", {}).keys()))

@@ -1,9 +1,10 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Query
 from backend.interactions.groups import GroupsManager
 from backend.interactions.friends import  FriendsManager
 from backend.auth.dependencies import require_match
 from backend.moderation.content_filter import check_clean, ContentRejected
 from schemas.message import Group
+from routes.notes import NOTES_PAGE_SIZE
 
 group_router = APIRouter(prefix="/groups")
 friend_router = APIRouter(prefix="/friends")
@@ -56,16 +57,33 @@ async def fetch_group(user_id: str, group_id: str, _: str = Depends(require_matc
 
 
 @group_router.get("/{user_id}/{group_id}/notes")
-async def fetch_group_notes(user_id: str, group_id: str, _: str = Depends(require_match("user_id"))) -> dict:
-    """Retrieve all public notes shared within a group.
+async def fetch_group_notes(
+    user_id: str,
+    group_id: str,
+    cursor_created_at: str | None = Query(default=None, description="created_at of the last note seen on the previous page; omit (with cursor_id) to fetch the first page"),
+    cursor_id: str | None = Query(default=None, description="_id of the last note seen on the previous page; omit (with cursor_created_at) to fetch the first page"),
+    _: str = Depends(require_match("user_id")),
+) -> dict:
+    """Retrieve one page of public notes shared within a group, newest
+    first, using keyset pagination anchored on (created_at, _id). Blocked
+    users' notes are excluded at the SQL level, so a full page always
+    contains NOTES_PAGE_SIZE visible notes.
 
     Args:
         user_id: UUID of the requesting user.
         group_id: ID of the group whose notes to retrieve.
+        cursor_created_at: created_at of the last note from the previous
+            page. Omit together with cursor_id to fetch the first page.
+        cursor_id: _id of the last note from the previous page. Must be
+            supplied together with cursor_created_at.
 
     Returns:
-        dict: Mapping of username -> {note_id -> note data} for all public
-            notes belonging to the group.
+        dict: ``{"notes": {username: {note_id: note data}},
+            "next_cursor_created_at": str | None, "next_cursor_id":
+            str | None, "has_more": bool}``. Pass next_cursor_created_at/
+            next_cursor_id back as cursor_created_at/cursor_id to fetch the
+            following page; has_more is False once the true end of the
+            group's notes has been reached.
 
     Raises:
         HTTPException 403: If the caller is not a member of the group.
@@ -73,7 +91,7 @@ async def fetch_group_notes(user_id: str, group_id: str, _: str = Depends(requir
     manager = GroupsManager(user_id, group_id)
     if not manager.is_member():
         raise HTTPException(status_code=403, detail="Not a member of this group")
-    return manager.fetch_notes()
+    return manager.fetch_notes(limit=NOTES_PAGE_SIZE, cursor_created_at=cursor_created_at, cursor_id=cursor_id)
 
 
 @group_router.get("/{user_id}/{note_id}/{group_id}/replies")

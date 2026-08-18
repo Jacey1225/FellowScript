@@ -86,13 +86,17 @@ final class DashboardViewModel: ObservableObject {
         recomputeDerived()
 
         // ── Fresh fetch (all via the injected service — the real backend) ────────
-        async let notesTask     = try? service.fetchNotes(userId: userId)
+        // Notes here are only ever used for the "this week" sparkline and the
+        // most-recent-note card, both of which read fine off the first
+        // backend-capped page (15, newest first) -- this view doesn't need
+        // to page through the full collection like NotesListView does.
+        async let notesTask     = try? service.fetchNotes(userId: userId, cursorCreatedAt: nil, cursorId: nil)
         async let hlTask        = try? service.fetchHighlights(userId: userId)
         async let bookmarksTask = try? service.fetchBookmarks(userId: userId)
         async let agentsTask    = try? service.fetchAgents(userId: userId)
         async let contactsTask  = try? service.fetchContacts(userId: userId)
 
-        notes  = (await notesTask)  ?? [:]
+        notes  = (await notesTask)?.notes ?? [:]
         agents = (await agentsTask) ?? []
 
         var hlDict: [String: String] = [:]

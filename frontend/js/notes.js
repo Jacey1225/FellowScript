@@ -343,7 +343,13 @@ export async function loadNotes() {
   try {
     const res = await fetch(`${API}/notes/${user.user_id}`);
     if (!res.ok) return;
-    allNotes = await res.json();
+    const payload = await res.json();
+    // Backend now returns one keyset-paginated page as
+    // {notes, next_cursor_created_at, next_cursor_id, has_more} instead of a
+    // bare {note_id: note} dict -- unwrap .notes so allNotes keeps its
+    // existing shape. This view intentionally keeps its current full-list
+    // loading behavior and just always sees the first capped page.
+    allNotes = payload.notes ?? {};
     notesCache[''] = allNotes;
     console.log('[notes] personal notes loaded:', Object.keys(allNotes).length, allNotes);
     renderAllLists();
@@ -354,7 +360,9 @@ async function _loadGroupNotes(groupId) {
   try {
     const res = await fetch(`${API}/groups/${user.user_id}/${groupId}/notes`);
     if (res.ok) {
-      const data = await res.json();
+      const payload = await res.json();
+      // Same envelope unwrap as loadNotes above.
+      const data = payload.notes ?? {};
       setGroupNotes(data);
       notesCache[groupId] = data;
       const total = Object.values(data).reduce((s, u) => s + Object.keys(u).length, 0);

@@ -5,6 +5,23 @@
 
 import Foundation
 
+// ── Notes pagination ─────────────────────────────────────────────────────────
+
+/// One backend-capped (15-per-request) keyset-paginated page of notes, as
+/// returned by GET /notes/{userId} and GET /{userId}/{groupId}/notes.
+/// `nextCursorCreatedAt`/`nextCursorId` anchor the following page to this
+/// page's last row's own (created_at, _id) rather than a row *position* --
+/// pass them straight back as the next call's cursor params. `hasMore` is
+/// true iff this page came back full (== NOTES_PAGE_SIZE rows); false means
+/// the true end of the list, so the caller should stop paging even though a
+/// cursor may still be present.
+struct NotesPage {
+    var notes:               [String: FSNote]
+    var nextCursorCreatedAt: String?
+    var nextCursorId:        String?
+    var hasMore:             Bool
+}
+
 // ── Protocol ─────────────────────────────────────────────────────────────────
 
 protocol DataServiceProtocol {
@@ -33,9 +50,15 @@ protocol DataServiceProtocol {
     func updateUser(userId: String, body: [String: String]) async throws -> FSUser
     func deleteUser(userId: String) async throws
 
-    // Notes (read)
-    func fetchNotes(userId: String) async throws -> [String: FSNote]
-    func fetchGroupNotes(userId: String, groupId: String) async throws -> [String: FSNote]
+    // Notes (read) -- every GET-notes call is capped server-side (SQL LIMIT,
+    // not client-side slicing) at NOTES_PAGE_SIZE (15) and keyset-paginated;
+    // pass a previous page's nextCursorCreatedAt/nextCursorId back to fetch
+    // the following page, or nil/nil for the first page. There is no
+    // unpaginated full-fetch mode -- fetchNotesCount below is the dedicated
+    // path for callers that only need a total.
+    func fetchNotes(userId: String, cursorCreatedAt: String?, cursorId: String?) async throws -> NotesPage
+    func fetchGroupNotes(userId: String, groupId: String, cursorCreatedAt: String?, cursorId: String?) async throws -> NotesPage
+    func fetchNotesCount(userId: String) async throws -> Int
 
     // Notes (write)
     func saveNote(_ note: FSNote, editingId: String?, userId: String) async throws -> String
@@ -299,9 +322,16 @@ final class MockDataService: DataServiceProtocol {
     func updateUser(userId: String, body: [String: String]) async throws -> FSUser { Self.mockUser }
     func deleteUser(userId: String) async throws {}
 
-    // Notes
-    func fetchNotes(userId: String) async throws -> [String: FSNote] { Self.mockNotes }
-    func fetchGroupNotes(userId: String, groupId: String) async throws -> [String: FSNote] { [:] }
+    // Notes -- the mock fixture set is well under one page, so every mock
+    // "page" is the whole (small) collection with hasMore false, regardless
+    // of the cursor passed in.
+    func fetchNotes(userId: String, cursorCreatedAt: String?, cursorId: String?) async throws -> NotesPage {
+        NotesPage(notes: Self.mockNotes, nextCursorCreatedAt: nil, nextCursorId: nil, hasMore: false)
+    }
+    func fetchGroupNotes(userId: String, groupId: String, cursorCreatedAt: String?, cursorId: String?) async throws -> NotesPage {
+        NotesPage(notes: [:], nextCursorCreatedAt: nil, nextCursorId: nil, hasMore: false)
+    }
+    func fetchNotesCount(userId: String) async throws -> Int { Self.mockNotes.count }
 
     func saveNote(_ note: FSNote, editingId: String?, userId: String) async throws -> String {
         editingId ?? note.id
