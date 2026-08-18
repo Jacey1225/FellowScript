@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		377EC5283005745400971A07 /* AmazonChimeSDK in Frameworks */ = {isa = PBXBuildFile; productRef = AA0000000000000000000002 /* AmazonChimeSDK */; };
 		AA0000000000000000000005 /* ViewInspector in Frameworks */ = {isa = PBXBuildFile; productRef = AA0000000000000000000004 /* ViewInspector */; };
+		AA1111111111111111111002 /* FellowScript.storekit in Resources */ = {isa = PBXBuildFile; fileRef = AA1111111111111111111001 /* FellowScript.storekit */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -32,6 +33,7 @@
 		377EC3C62FF5BDB300971A07 /* FellowScript.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = FellowScript.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		377EC3D32FF5BDB500971A07 /* FellowScriptTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FellowScriptTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		377EC3DD2FF5BDB500971A07 /* FellowScriptUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FellowScriptUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		AA1111111111111111111001 /* FellowScript.storekit */ = {isa = PBXFileReference; lastKnownFileType = text; path = "FellowScript/FellowScript.storekit"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -99,6 +101,7 @@
 				377EC3D62FF5BDB500971A07 /* FellowScriptTests */,
 				377EC3E02FF5BDB500971A07 /* FellowScriptUITests */,
 				377EC3C72FF5BDB300971A07 /* Products */,
+				AA1111111111111111111001 /* FellowScript.storekit */,
 			);
 			sourceTree = "<group>";
 		};
@@ -245,6 +248,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				AA1111111111111111111002 /* FellowScript.storekit in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

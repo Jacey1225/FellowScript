@@ -54,7 +54,7 @@
          </TestableReference>
       </Testables>
       <StoreKitConfigurationFileReference
-         identifier = "../../FellowScript/FellowScript.storekit">
+         identifier = "../FellowScript/FellowScript.storekit">
       </StoreKitConfigurationFileReference>
    </TestAction>
    <LaunchAction
@@ -79,7 +79,7 @@
          </BuildableReference>
       </BuildableProductRunnable>
       <StoreKitConfigurationFileReference
-         identifier = "../../FellowScript/FellowScript.storekit">
+         identifier = "../FellowScript/FellowScript.storekit">
       </StoreKitConfigurationFileReference>
    </LaunchAction>
    <ProfileAction
