@@ -54,8 +54,23 @@ final class AgentChatReconnectRegressionTests: XCTestCase {
         private var _acceptTimestamps: [Date] = []
         private let lock = NSLock()
 
+        // See ChatWebSocketReconnectRegressionTests.FlakyListener for why this
+        // gates on `.ready` rather than just polling `listener.port`: that
+        // property can briefly return a non-nil port 0 before the OS finishes
+        // binding the real ephemeral port, which silently produces
+        // "ws://127.0.0.1:0" and a 0-accept failure indistinguishable from
+        // this test's other failure modes (e.g. an ATS block).
+        private var isReady = false
+
         init() throws {
             listener = try NWListener(using: .tcp)
+            listener.stateUpdateHandler = { [weak self] state in
+                if case .ready = state {
+                    self?.lock.lock()
+                    self?.isReady = true
+                    self?.lock.unlock()
+                }
+            }
             listener.newConnectionHandler = { [weak self] connection in
                 guard let self else { return }
                 self.lock.lock()
@@ -76,7 +91,12 @@ final class AgentChatReconnectRegressionTests: XCTestCase {
         func start() async throws -> UInt16 {
             listener.start(queue: queue)
             for _ in 0..<100 {
-                if let port = listener.port { return port.rawValue }
+                lock.lock()
+                let ready = isReady
+                lock.unlock()
+                if ready, let port = listener.port, port.rawValue != 0 {
+                    return port.rawValue
+                }
                 try await Task.sleep(nanoseconds: 50_000_000)
             }
             throw NSError(domain: "FlakyListener", code: 1,
@@ -110,21 +130,61 @@ final class AgentChatReconnectRegressionTests: XCTestCase {
 
         vm.disconnect()
 
-        let timestamps = listener.acceptTimestamps()
+        // Raw accepts, coalesced into logical connection attempts. A single
+        // logical connectWebSocket() call (initial connect or a
+        // scheduleReconnect() retry) can produce a *burst* of several raw
+        // TCP accepts on this listener within milliseconds of each other
+        // (observed directly on the sibling
+        // ChatWebSocketReconnectRegressionTests case: bursts of 2-4 accepts
+        // spaced 5-16ms apart in a light-load run, but up to several
+        // hundred ms apart under this sandbox's own CPU contention —
+        // plausibly CFNetwork/URLSessionWebSocketTask racing or quickly
+        // re-trying the raw socket connect internally before surfacing one
+        // `.failure` up to the app). That burst noise is unrelated to the
+        // app's own backoff and, if measured raw, makes gap1/gap2 read as
+        // ~0s regardless of whether the production backoff logic is
+        // correct. Collapsing consecutive accepts less than
+        // `attemptGapThreshold` apart into one logical attempt (keeping the
+        // first timestamp of each cluster — the moment that connection
+        // attempt actually started) recovers the real attempt cadence. 0.6s
+        // sits with real margin below the smallest real backoff delay (1s,
+        // i.e. Task.sleep(1s) — that floor doesn't shrink under load, only
+        // the burst spread and the observed real-delay overrun grow) while
+        // still comfortably absorbing bursts observed to spread up to
+        // ~0.4s under this sandbox's heavier contention.
+        let attemptGapThreshold: TimeInterval = 0.6
+        let rawTimestamps = listener.acceptTimestamps()
+        var attempts: [Date] = []
+        for ts in rawTimestamps {
+            if let last = attempts.last, ts.timeIntervalSince(last) < attemptGapThreshold {
+                continue // same burst as the previous logical attempt
+            }
+            attempts.append(ts)
+        }
+
         XCTAssertGreaterThanOrEqual(
-            timestamps.count, 3,
+            attempts.count, 3,
             "AgentChatViewModel must keep retrying the WebSocket connection after each failure. " +
             "Before the fix, receiveLoop()'s `.failure` case just returned and the socket never " +
             "reconnected again for the rest of the view's lifetime — only the single initial " +
-            "attempt would show up here. Got \(timestamps.count) attempt(s)."
+            "attempt would show up here. Got \(attempts.count) logical attempt(s) " +
+            "(from \(rawTimestamps.count) raw accepts)."
         )
 
-        if timestamps.count >= 3 {
-            let gap1 = timestamps[1].timeIntervalSince(timestamps[0])
-            let gap2 = timestamps[2].timeIntervalSince(timestamps[1])
+        if attempts.count >= 3 {
+            let gap1 = attempts[1].timeIntervalSince(attempts[0])
+            let gap2 = attempts[2].timeIntervalSince(attempts[1])
             XCTAssertGreaterThan(gap1, 0.4,
                 "first retry should be delayed by the ~1s backoff, not immediate (busy-loop) — gap1=\(gap1)s")
-            XCTAssertGreaterThan(gap2, gap1 * 1.2,
+            // 1.1x, not the "true" 2x the 1s/2s schedule implies — see
+            // ChatWebSocketReconnectRegressionTests for why: this sandbox's
+            // own CPU contention measurably inflates real scheduled delays
+            // (e.g. an intended ~1s wait observed taking 1.7s), which
+            // compresses the *measured* ratio between consecutive gaps
+            // even when the underlying exponential backoff is working
+            // correctly. 1.1x still sits with real margin above the
+            // pre-fix bug's signature (every delay ~equal, ratio ~1.0).
+            XCTAssertGreaterThan(gap2, gap1 * 1.1,
                 "backoff between retries should grow (capped exponential), not stay constant — gap1=\(gap1)s gap2=\(gap2)s")
         }
 

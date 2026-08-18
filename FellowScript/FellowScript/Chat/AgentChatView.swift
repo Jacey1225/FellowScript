@@ -84,7 +84,14 @@ final class AgentChatViewModel: ObservableObject {
         wsTask = URLSession.shared.webSocketTask(with: url)
         wsTask?.resume()
         isConnected = true
-        reconnectAttempt = 0
+        // Do NOT reset reconnectAttempt here — this is called both for the
+        // initial connect (where reconnectAttempt is already 0) and for
+        // every retry scheduleReconnect() makes. Resetting it here made the
+        // exponential backoff never actually grow past its first ~1s delay,
+        // since scheduleReconnect() calls straight back into this function.
+        // reconnectAttempt is reset instead in receiveLoop()'s `.success`
+        // case, once a frame actually arrives and the connection is
+        // confirmed genuinely live.
         receiveLoop()
     }
 
@@ -93,6 +100,10 @@ final class AgentChatViewModel: ObservableObject {
             guard let self else { return }
             switch result {
             case .success(let msg):
+                // A frame arrived, so this connection is confirmed live —
+                // this is the "genuinely fresh/successful connection" point,
+                // not merely a call to connectWebSocket(). Reset backoff here.
+                self.reconnectAttempt = 0
                 if case .string(let text) = msg,
                    let data = text.data(using: .utf8),
                    let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],

@@ -4,6 +4,23 @@
 <dict>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<!--
+	  ATS scoping decision (recorded 2026-08-17, task 20260817-fix-preexisting-test-failures):
+	  NSAllowsLocalNetworking is added to this single shared Info.plist, which is used for
+	  both Debug and Release builds (INFOPLIST_FILE = FellowScript/Info.plist for both
+	  configurations in project.pbxproj) -- meaning it ships in the production build too.
+	  This is a deliberate choice, not an oversight: NSAllowsLocalNetworking only exempts
+	  loopback/.local/private-range addresses from ATS's TLS requirement and leaves ATS's
+	  strict requirements for actual internet hosts fully intact, so it does not broaden the
+	  app's exposure to insecure internet traffic. A Debug-only Info.plist/xcconfig split was
+	  considered and rejected as disproportionate for this narrow, commonly-shipped exception.
+	  Do not broaden this to NSAllowsArbitraryLoads or any internet-host exception.
+	-->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
 	<key>NSCameraUsageDescription</key>
 	<string>FellowScript uses your camera for video calls during study sessions.</string>
 	<key>NSMicrophoneUsageDescription</key>
