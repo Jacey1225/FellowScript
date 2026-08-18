@@ -52,7 +52,14 @@ export function useNotes({ user, curBook, curChapter, vsValue }) {
     try {
       const res = await fetch(`${API}/notes/${user.user_id}`);
       if (!res.ok) return;
-      const data = await res.json();
+      const payload = await res.json();
+      // Backend now returns one keyset-paginated page as
+      // {notes, next_cursor_created_at, next_cursor_id, has_more} instead of
+      // a bare {note_id: note} dict -- unwrap .notes so this hook's own
+      // shape (and every existing consumer of allNotes) is unaffected. The
+      // web UI intentionally keeps its current full-list loading behavior
+      // (no "load more" here) and just always sees the first capped page.
+      const data = payload.notes ?? {};
       setAllNotes(data);
       notesCache.current[''] = data;
     } catch {}
@@ -64,7 +71,10 @@ export function useNotes({ user, curBook, curChapter, vsValue }) {
     try {
       const res = await fetch(`${API}/groups/${user.user_id}/${groupId}/notes`);
       if (res.ok) {
-        const data = await res.json();
+        const payload = await res.json();
+        // Same envelope unwrap as loadNotes above -- {username: {note_id: note}}
+        // now lives under payload.notes.
+        const data = payload.notes ?? {};
         setGroupNotes(data);
         notesCache.current[groupId] = data;
       }

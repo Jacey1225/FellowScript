@@ -33,13 +33,42 @@ All signup paths automatically create a `plan_type='free'` subscription row for 
 
 | Method | Route | Description |
 |---|---|---|
-| GET | `/notes/{user_id}` | All personal notes for the user (excludes replies and group notes) |
+| GET | `/notes/{user_id}` | One page (15) of the user's personal notes (excludes replies and group notes), newest first. Keyset-paginated — see below. |
+| GET | `/notes/{user_id}/count` | Total count of the user's personal notes: `{ "count": int }`. Unpaginated, for summary displays. |
 | POST | `/notes/{user_id}` | Create a note. Body: `{ title, text, public, group_id, verses: [[book, ch, v], …] }` |
 | PUT | `/notes/{user_id}?note_id=` | Update a note (owner only). Replaces verse list. Bumps `timestamp`. |
 | DELETE | `/notes/{user_id}?note_id=` | Delete a note (owner only) |
 | POST | `/notes/reply/{note_id}` | Post a reply to a note |
 
 Note responses include `created_at` (immutable creation timestamp) and `timestamp` (last-edited).
+
+### Pagination (`GET /notes/{user_id}` and `GET /groups/{user_id}/{group_id}/notes`)
+
+Both note-listing GETs are capped server-side at 15 notes per request via keyset
+(cursor) pagination anchored on `(created_at, _id)`, ordered newest first — not
+`OFFSET`, since a note created or deleted between page loads would otherwise
+shift row positions and cause the client to skip or re-see notes.
+
+Query params (both optional; supply together or omit both for the first page):
+
+- `cursor_created_at` — `created_at` of the last note from the previous page.
+- `cursor_id` — `_id` of the last note from the previous page.
+
+Response shape:
+
+```json
+{
+  "notes": { "...": "note_id -> note data (personal), or username -> {note_id -> note data} (group)" },
+  "next_cursor_created_at": "2026-08-17T12:00:00Z",
+  "next_cursor_id": "uuid",
+  "has_more": true
+}
+```
+
+Pass `next_cursor_created_at`/`next_cursor_id` back as `cursor_created_at`/`cursor_id`
+to fetch the next page. `has_more` is `true` iff a full page (15) was returned —
+`false` means the end of the list has been reached, even though cursor fields
+may still be populated.
 
 ---
 
@@ -73,7 +102,7 @@ Note responses include `created_at` (immutable creation timestamp) and `timestam
 | DELETE | `/groups/{user_id}/{group_id}` | Delete a group (owner only) |
 | POST | `/groups/{user_id}/{group_id}/join` | Join a group |
 | POST | `/groups/{user_id}/{group_id}/leave` | Leave a group |
-| GET | `/groups/{group_id}/notes` | All public notes in the group |
+| GET | `/groups/{user_id}/{group_id}/notes` | One page (15) of public notes shared in the group, newest first. Keyset-paginated, same contract as `/notes/{user_id}` above (blocked users excluded server-side). |
 | GET | `/groups/{group_id}/highlights` | All highlights in the group |
 
 ---

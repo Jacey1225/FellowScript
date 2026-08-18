@@ -118,12 +118,45 @@ final class ThrowingTestDataService: DataServiceProtocol {
         try await MockDataService.shared.deleteUser(userId: userId)
     }
 
-    func fetchNotes(userId: String) async throws -> [String: FSNote] {
-        return try await MockDataService.shared.fetchNotes(userId: userId)
+    // task 20260817-notes-pagination-backend: DataServiceProtocol's notes
+    // read methods now take an explicit cursor and return a NotesPage
+    // (notes + next cursor + has_more) instead of a bare [String: FSNote],
+    // matching the backend's keyset-paginated response contract.
+    //
+    // Controllable/observable (used by NotesPaginationRegressionTests to
+    // drive NotesViewModel.loadMoreIfNeeded through a specific sequence of
+    // backend pages without touching the network): when a queue is
+    // populated, each call pops and returns the next queued page instead of
+    // forwarding to MockDataService; an empty queue falls back to the mock's
+    // real (single-page, hasMore: false) behavior so every OTHER test suite
+    // using this double is unaffected.
+    var fetchNotesPageQueue: [NotesPage] = []
+    private(set) var fetchNotesCallCount = 0
+    private(set) var fetchNotesCursors: [(created: String?, id: String?)] = []
+
+    var fetchGroupNotesPageQueue: [NotesPage] = []
+    private(set) var fetchGroupNotesCallCount = 0
+    private(set) var fetchGroupNotesCursors: [(created: String?, id: String?)] = []
+
+    var fetchNotesCountResult: Int?
+
+    func fetchNotes(userId: String, cursorCreatedAt: String?, cursorId: String?) async throws -> NotesPage {
+        fetchNotesCallCount += 1
+        fetchNotesCursors.append((cursorCreatedAt, cursorId))
+        if !fetchNotesPageQueue.isEmpty { return fetchNotesPageQueue.removeFirst() }
+        return try await MockDataService.shared.fetchNotes(userId: userId, cursorCreatedAt: cursorCreatedAt, cursorId: cursorId)
     }
 
-    func fetchGroupNotes(userId: String, groupId: String) async throws -> [String: FSNote] {
-        return try await MockDataService.shared.fetchGroupNotes(userId: userId, groupId: groupId)
+    func fetchGroupNotes(userId: String, groupId: String, cursorCreatedAt: String?, cursorId: String?) async throws -> NotesPage {
+        fetchGroupNotesCallCount += 1
+        fetchGroupNotesCursors.append((cursorCreatedAt, cursorId))
+        if !fetchGroupNotesPageQueue.isEmpty { return fetchGroupNotesPageQueue.removeFirst() }
+        return try await MockDataService.shared.fetchGroupNotes(userId: userId, groupId: groupId, cursorCreatedAt: cursorCreatedAt, cursorId: cursorId)
+    }
+
+    func fetchNotesCount(userId: String) async throws -> Int {
+        if let fetchNotesCountResult { return fetchNotesCountResult }
+        return try await MockDataService.shared.fetchNotesCount(userId: userId)
     }
 
     func saveNote(_ note: FSNote, editingId: String?, userId: String) async throws -> String {

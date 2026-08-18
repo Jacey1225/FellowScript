@@ -127,7 +127,12 @@ def main():
             print("\n=== 2. Returned id matches what's actually stored server-side ===")
             r = client.get(f"/notes/{uid}", headers=cookie_header(token))
             check("GET /notes/{user_id} -> 200", r.status_code == 200, f"{r.status_code} {r.text}")
-            notes = r.json()
+            # task 20260817-notes-pagination-backend: GET /notes/{user_id} now
+            # returns one keyset-paginated page as {notes, next_cursor_*,
+            # has_more} instead of a bare {note_id: note} dict -- unwrap
+            # .notes, same as every other real consumer (NetworkService,
+            # useNotes.js) had to.
+            notes = r.json()["notes"]
             check("note is present under the server-issued id", server_id in notes, str(list(notes.keys())))
             if server_id in notes:
                 check("stored title matches what was sent", notes[server_id]["title"] == "Test Note", notes[server_id])
@@ -140,14 +145,14 @@ def main():
             check("PUT with server id -> 200", r.status_code == 200, f"{r.status_code} {r.text}")
 
             r = client.get(f"/notes/{uid}", headers=cookie_header(token))
-            check("edit persisted", r.json().get(server_id, {}).get("title") == "Edited Test Note", r.text)
+            check("edit persisted", r.json()["notes"].get(server_id, {}).get("title") == "Edited Test Note", r.text)
 
             r = client.delete(f"/notes/{uid}", params={"note_id": server_id}, headers=cookie_header(token))
             check("DELETE with server id -> 200", r.status_code == 200, f"{r.status_code} {r.text}")
             created_note_ids.remove(server_id)
 
             r = client.get(f"/notes/{uid}", headers=cookie_header(token))
-            check("note actually gone after delete", server_id not in r.json(), r.text)
+            check("note actually gone after delete", server_id not in r.json()["notes"], r.text)
 
             # ── 4. Regression guard: an id the server never issued 404s ──────
             print("\n=== 4. An unknown/made-up note_id (the old bug's failure mode) gets 404, not a silent success ===")
@@ -167,7 +172,7 @@ def main():
 
             # The real note must be untouched by the failed operations above.
             r = client.get(f"/notes/{uid}", headers=cookie_header(token))
-            check("real note untouched by the failed fake-id operations", real_id in r.json(), r.text)
+            check("real note untouched by the failed fake-id operations", real_id in r.json()["notes"], r.text)
 
         finally:
             print("\n=== cleanup ===")

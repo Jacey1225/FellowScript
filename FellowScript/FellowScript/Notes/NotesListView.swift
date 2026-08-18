@@ -6,6 +6,17 @@
 import SwiftUI
 import Combine
 
+/// Keyset-pagination bookkeeping for one notes "segment" -- Personal or a
+/// single group -- mirroring the cursor a backend page's response carries.
+/// Anchored on the segment's own last-seen (created_at, _id), not a row
+/// position, so it stays correct even if notes are created/deleted
+/// elsewhere in the segment between page loads.
+private struct NotesPageState {
+    var cursorCreatedAt: String? = nil
+    var cursorId:        String? = nil
+    var hasMore:          Bool   = true
+}
+
 @MainActor
 final class NotesViewModel: ObservableObject {
     var service: DataServiceProtocol = MockDataService.shared
@@ -18,6 +29,22 @@ final class NotesViewModel: ObservableObject {
     @Published var sortOrder:         SortOrder           = .newest
     @Published var visibilityFilter:  VisibilityFilter    = .all
     @Published var isLoading          = true
+    // True while a scroll-triggered "next page" fetch for the current
+    // segment (Personal or a group) is in flight -- guards against firing a
+    // duplicate request while one is already running.
+    @Published var isLoadingMore      = false
+
+    // Keyed by "personal" for the Personal tab, or a group's id.
+    private var pageState: [String: NotesPageState] = [:]
+    private static let personalKey = "personal"
+    private func segmentKey(for groupId: String?) -> String { groupId ?? Self.personalKey }
+
+    /// True once the currently-displayed segment (Personal, or whichever
+    /// group is selected) has a further backend page to fetch. Drives
+    /// whether NotesListView shows its "loading more" footer at all.
+    var hasMoreForCurrentSegment: Bool {
+        pageState[segmentKey(for: currentGroupId)]?.hasMore ?? false
+    }
 
     enum NoteTab: String, CaseIterable {
         case notes      = "Notes"
@@ -92,13 +119,20 @@ final class NotesViewModel: ObservableObject {
             groups = cached
         }
 
-        async let notesTask    = try? service.fetchNotes(userId: userId)
+        // First page only (nil cursor) for Personal and every group -- the
+        // backend caps each at NOTES_PAGE_SIZE (15) by the SQL query itself.
+        async let notesTask    = try? service.fetchNotes(userId: userId, cursorCreatedAt: nil, cursorId: nil)
         async let hlTask       = try? service.fetchHighlights(userId: userId)
         async let contactsTask = try? service.fetchContacts(userId: userId)
 
         var allNotes: [String: FSNote] = [:]
-        if let n = await notesTask { allNotes.merge(n) { _, new in new } }
-        if let h = await hlTask    { highlights = h }
+        var newPageState: [String: NotesPageState] = [:]
+        if let page = await notesTask {
+            allNotes.merge(page.notes) { _, new in new }
+            newPageState[Self.personalKey] = NotesPageState(
+                cursorCreatedAt: page.nextCursorCreatedAt, cursorId: page.nextCursorId, hasMore: page.hasMore)
+        }
+        if let h = await hlTask { highlights = h }
 
         var loadedGroups: [FSGroup] = []
         if let (_, groupMap) = await contactsTask {
@@ -106,24 +140,61 @@ final class NotesViewModel: ObservableObject {
             groups = loadedGroups
         }
 
-        // Fetch notes for every group in parallel and merge into allNotes.
-        await withTaskGroup(of: [String: FSNote].self) { group in
+        // Fetch each group's first page in parallel and merge into allNotes.
+        await withTaskGroup(of: (String, NotesPage?).self) { group in
             for g in loadedGroups {
                 group.addTask {
-                    (try? await service.fetchGroupNotes(userId: userId, groupId: g.id)) ?? [:]
+                    (g.id, try? await service.fetchGroupNotes(userId: userId, groupId: g.id, cursorCreatedAt: nil, cursorId: nil))
                 }
             }
-            for await batch in group {
-                allNotes.merge(batch) { _, new in new }
+            for await (gid, page) in group {
+                guard let page else { continue }
+                allNotes.merge(page.notes) { _, new in new }
+                newPageState[gid] = NotesPageState(
+                    cursorCreatedAt: page.nextCursorCreatedAt, cursorId: page.nextCursorId, hasMore: page.hasMore)
             }
         }
 
-        notes = allNotes
+        notes     = allNotes
+        pageState = newPageState
 
         // ── Write fresh data back to the cache ────────────────────────────────────
         await DiskCache.shared.save(allNotes,   forKey: "notes:\(userId)")
         await DiskCache.shared.save(highlights, forKey: "highlights:\(userId)")
         await DiskCache.shared.save(groups,     forKey: "groups:\(userId)")
+    }
+
+    /// Fetches and appends the next backend-capped page of 15 for whichever
+    /// segment (Personal or the selected group) is currently on screen,
+    /// using that segment's own cursor -- never an offset counter, and no
+    /// client-side slicing/capping anywhere in this path. Called when the
+    /// last visible row scrolls into view. No-ops (rather than firing a
+    /// duplicate request) if a fetch for this segment is already in flight,
+    /// and stops once the segment's has_more is false -- the true end of
+    /// that list, not just a short page.
+    func loadMoreIfNeeded(userId: String) async {
+        guard !isLoadingMore else { return }
+        let key = segmentKey(for: currentGroupId)
+        guard let state = pageState[key], state.hasMore else { return }
+
+        isLoadingMore = true
+        defer { isLoadingMore = false }
+
+        let page: NotesPage?
+        if let gid = currentGroupId {
+            page = try? await service.fetchGroupNotes(
+                userId: userId, groupId: gid,
+                cursorCreatedAt: state.cursorCreatedAt, cursorId: state.cursorId)
+        } else {
+            page = try? await service.fetchNotes(
+                userId: userId,
+                cursorCreatedAt: state.cursorCreatedAt, cursorId: state.cursorId)
+        }
+        guard let page else { return }
+
+        notes.merge(page.notes) { _, new in new }
+        pageState[key] = NotesPageState(
+            cursorCreatedAt: page.nextCursorCreatedAt, cursorId: page.nextCursorId, hasMore: page.hasMore)
     }
 
     @Published var saveError: String? = nil
@@ -403,6 +474,14 @@ struct NotesListView: View {
                             .listRowSeparator(.hidden)
                             .listRowInsets(EdgeInsets(top: 6, leading: 20, bottom: 6, trailing: 20))
                             .onTapGesture { detailNote = note }
+                            .onAppear {
+                                // Bottom-of-list trigger for the next backend-capped page
+                                // (15 at a time). Firing on the last row lets the fetch
+                                // start slightly before the user hits the true bottom.
+                                guard id == vm.filteredNotes.last?.0 else { return }
+                                let uid = appState.currentUser?.user_id ?? ""
+                                Task { await vm.loadMoreIfNeeded(userId: uid) }
+                            }
                             .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                                 Button(role: .destructive) {
                                     let uid = appState.currentUser?.user_id ?? ""
@@ -424,6 +503,16 @@ struct NotesListView: View {
                                 }
                             }
                             .accessibilityLabel("Note: \(note.title.isEmpty ? "Untitled" : note.title). \(note.preview)")
+                    }
+                    if vm.isLoadingMore && vm.hasMoreForCurrentSegment {
+                        HStack {
+                            Spacer()
+                            ProgressView().tint(Theme.gold)
+                            Spacer()
+                        }
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                        .accessibilityLabel("Loading more notes")
                     }
                 }
                 .listStyle(.plain)
