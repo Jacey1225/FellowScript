@@ -855,7 +855,18 @@ final class NetworkService: DataServiceProtocol {
     // ── Private helpers ───────────────────────────────────────────────────────
 
     private func encodeURIComponent(_ s: String) -> String {
-        s.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? s
+        // .urlQueryAllowed treats '+' as a legal sub-delim character per raw URI
+        // syntax and leaves it unescaped. But query strings are decoded using
+        // application/x-www-form-urlencoded conventions (by FastAPI/Starlette and
+        // virtually every other web framework), where an unescaped '+' means
+        // "space", not a literal plus sign. Any value that can contain a literal
+        // '+' — e.g. an ISO-8601 timestamp with a UTC offset like "+00:00", as
+        // used by the notes-pagination cursor — must have it escaped as "%2B" or
+        // it gets silently corrupted into a space server-side. Remove '+' from
+        // the allowed set so addingPercentEncoding always escapes it.
+        var allowed = CharacterSet.urlQueryAllowed
+        allowed.remove(charactersIn: "+")
+        return s.addingPercentEncoding(withAllowedCharacters: allowed) ?? s
     }
 
     private func jsonObject<T: Encodable>(_ value: T) throws -> Any {
