@@ -13,7 +13,7 @@
       
       
       
-        <link rel="prev" href="../../architecture/data/">
+        <link rel="prev" href="../../architecture/ghcr-deploy-plan/">
       
       
       
@@ -708,6 +708,90 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/docker-plan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docker Containerization Plan
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/git-deploy-plan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Git-Based Deploy Plan
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/ghcr-deploy-plan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    GHCR Server-Side Deploy Plan
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -811,6 +895,23 @@
       
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="Notes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#pagination-get-notesuser_id-and-get-groupsuser_idgroup_idnotes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pagination (GET /notes/{user_id} and GET /groups/{user_id}/{group_id}/notes)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -1039,7 +1140,12 @@
 <tr>
 <td>GET</td>
 <td><code>/notes/{user_id}</code></td>
-<td>All personal notes for the user (excludes replies and group notes)</td>
+<td>One page (15) of the user's personal notes (excludes replies and group notes), newest first. Keyset-paginated — see below.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/notes/{user_id}/count</code></td>
+<td>Total count of the user's personal notes: <code>{ "count": int }</code>. Unpaginated, for summary displays.</td>
 </tr>
 <tr>
 <td>POST</td>
@@ -1064,6 +1170,28 @@
 </tbody>
 </table>
 <p>Note responses include <code>created_at</code> (immutable creation timestamp) and <code>timestamp</code> (last-edited).</p>
+<h3 id="pagination-get-notesuser_id-and-get-groupsuser_idgroup_idnotes">Pagination (<code>GET /notes/{user_id}</code> and <code>GET /groups/{user_id}/{group_id}/notes</code>)</h3>
+<p>Both note-listing GETs are capped server-side at 15 notes per request via keyset
+(cursor) pagination anchored on <code>(created_at, _id)</code>, ordered newest first — not
+<code>OFFSET</code>, since a note created or deleted between page loads would otherwise
+shift row positions and cause the client to skip or re-see notes.</p>
+<p>Query params (both optional; supply together or omit both for the first page):</p>
+<ul>
+<li><code>cursor_created_at</code> — <code>created_at</code> of the last note from the previous page.</li>
+<li><code>cursor_id</code> — <code>_id</code> of the last note from the previous page.</li>
+</ul>
+<p>Response shape:</p>
+<pre><code class="language-json">{
+  &quot;notes&quot;: { &quot;...&quot;: &quot;note_id -&gt; note data (personal), or username -&gt; {note_id -&gt; note data} (group)&quot; },
+  &quot;next_cursor_created_at&quot;: &quot;2026-08-17T12:00:00Z&quot;,
+  &quot;next_cursor_id&quot;: &quot;uuid&quot;,
+  &quot;has_more&quot;: true
+}
+</code></pre>
+<p>Pass <code>next_cursor_created_at</code>/<code>next_cursor_id</code> back as <code>cursor_created_at</code>/<code>cursor_id</code>
+to fetch the next page. <code>has_more</code> is <code>true</code> iff a full page (15) was returned —
+<code>false</code> means the end of the list has been reached, even though cursor fields
+may still be populated.</p>
 <hr />
 <h2 id="highlights">Highlights</h2>
 <table>
@@ -1163,8 +1291,8 @@
 </tr>
 <tr>
 <td>GET</td>
-<td><code>/groups/{group_id}/notes</code></td>
-<td>All public notes in the group</td>
+<td><code>/groups/{user_id}/{group_id}/notes</code></td>
+<td>One page (15) of public notes shared in the group, newest first. Keyset-paginated, same contract as <code>/notes/{user_id}</code> above (blocked users excluded server-side).</td>
 </tr>
 <tr>
 <td>GET</td>

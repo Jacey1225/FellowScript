@@ -828,6 +828,90 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../docker-plan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docker Containerization Plan
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../git-deploy-plan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Git-Based Deploy Plan
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ghcr-deploy-plan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    GHCR Server-Side Deploy Plan
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -1089,6 +1173,14 @@
 <tr>
 <td><code>Chat/PillButton.swift</code>, <code>Chat/MessageGroupRow.swift</code>, <code>Chat/SegmentedDurationControl.swift</code>, <code>Chat/ChipToggle.swift</code></td>
 <td>Shared restyled Chat components (amber-gradient pill buttons, Slack-style grouped message rows, the duration segmented control, chip toggles) — per-feature component files, no separate shared <code>Theme/Components/</code> folder</td>
+</tr>
+<tr>
+<td><code>LoadingScreen/LoadingScreenView.swift</code>, <code>LoadingScreen/loading-screen.mov</code></td>
+<td>App-startup loading screen: an <code>AVQueuePlayer</code>/<code>AVPlayerLooper</code>-driven, muted, looping video (<code>loading-screen.mov</code> — HEVC with alpha, 1080×1080, transcoded from the 205MB ProRes source in <code>data/</code>) shown between sign-in and the app's first-load data being ready. Falls back to a static branded placeholder if the asset fails to load/decode, and to a held representative frame (no playback) under <code>accessibilityReduceMotion</code>.</td>
+</tr>
+<tr>
+<td><code>Services/StartupCoordinator.swift</code></td>
+<td>Startup-readiness gate <code>ContentView</code> uses to decide when to swap <code>LoadingScreenView</code> for the main tab view. Owns the shared <code>NotesViewModel</code>/<code>BibleViewModel</code>/<code>ChatViewModel</code> instances used by the Notes/Bible/Chat tabs (account/user info is already resident on <code>AppState.currentUser</code>), races their existing <code>.load(service:userId:)</code> calls against a fixed 8s timeout, and reports ready on whichever finishes first — a still-pending source at timeout just falls through to that screen's own existing per-panel loading state rather than blocking the app open.</td>
 </tr>
 </tbody>
 </table>

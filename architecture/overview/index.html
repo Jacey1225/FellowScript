@@ -817,6 +817,90 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../docker-plan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docker Containerization Plan
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../git-deploy-plan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Git-Based Deploy Plan
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ghcr-deploy-plan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    GHCR Server-Side Deploy Plan
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -975,7 +1059,7 @@ iOS (Swift)  ──┼──▶  FastAPI (EC2 :8000)  ──▶  Postgres (local
 <hr />
 <h2 id="deployment">Deployment</h2>
 <p><strong>Frontend</strong> — <code>npm run build</code> in <code>frontend/</code>, then rsync <code>dist/</code> to EC2 <code>/var/www/html/</code>. Nginx serves the static files.</p>
-<p><strong>Backend</strong> — rsync changed Python files to EC2 <code>/home/ubuntu/fellowscript/api/</code>, then <code>sudo systemctl restart fellowscript</code>. Uvicorn runs as a systemd service inside the project virtualenv.</p>
+<p><strong>Backend</strong> — rsync changed Python files to EC2 <code>/home/ubuntu/fellowscript/api/</code>, then <code>sudo systemctl restart fellowscript</code>. Uvicorn runs as a systemd service inside the project virtualenv. Not containerized today — see <a href="../docker-plan/">Docker Containerization Plan</a> for the reference plan to migrate this off manual rsync+systemd.</p>
 <p><strong>Docs</strong> — <code>.venv/bin/mkdocs gh-deploy --force</code> builds and force-pushes to the <code>gh-pages</code> branch of the GitHub repo. Live at <code>https://Jacey1225.github.io/FellowScript/</code>.</p>
 
 

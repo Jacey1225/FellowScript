@@ -1,0 +1,1242 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A digital scripture community platform for reading, reflecting, and connecting.">
+      
+      
+        <meta name="author" content="Jacey Simpson">
+      
+      
+      
+        <link rel="prev" href="../git-deploy-plan/">
+      
+      
+        <link rel="next" href="../../api/overview/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>GHCR Server-Side Deploy Plan - FellowScript</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Lora:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Lora";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="amber" data-md-color-accent="amber">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#ghcr-server-side-deploy-plan-phase-4-server-half" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="FellowScript" class="md-header__button md-logo" aria-label="FellowScript" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            FellowScript
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              GHCR Server-Side Deploy Plan
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+    
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../design/overview/" class="md-tabs__link">
+          
+  
+  
+  Design
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../overview/" class="md-tabs__link">
+          
+  
+  
+  Architecture
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../api/overview/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  API
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+  
+
+<nav class="md-nav md-nav--primary md-nav--lifted md-nav--integrated" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="FellowScript" class="md-nav__button md-logo" aria-label="FellowScript" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    FellowScript
+  </label>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Design
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Design
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../design/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../design/home-page/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home Page
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../design/bible-reader/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Bible Reader
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../design/notes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Notes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../design/community/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Community
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../design/account/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Account
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    System Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../backend/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Backend
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../frontend/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Frontend
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../data/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../docker-plan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docker Containerization Plan
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../git-deploy-plan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Git-Based Deploy Plan
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    GHCR Server-Side Deploy Plan
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    GHCR Server-Side Deploy Plan
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#baseline-whats-actually-running-today" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Baseline: what's actually running today
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#decision-1-docker-composeyml-parameterize-the-image-tag-keep-build" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Decision 1 — docker-compose.yml: parameterize the image tag, keep build:
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#decision-2-new-image-detection-trigger-manual-for-this-phase-extend-build-pushyml-later" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Decision 2 — New-image-detection trigger: manual for this phase, extend build-push.yml later
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#decision-3-pullrun-sequence" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Decision 3 — Pull+run sequence
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#decision-4-ghcr-auth-is-a-distinct-credential-surface-from-the-ssh-deploy-key" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Decision 4 — GHCR auth is a distinct credential surface from the SSH deploy key
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#decision-5-ghcr-auth-finalized-by-security-gate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Decision 5 — GHCR auth: finalized by security gate
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#decision-6-rollback" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Decision 6 — Rollback
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#fit-into-phase-4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fit into Phase 4
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#migration-path" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Migration path
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#prerequisites-checklist-before-this-plan-is-safe-to-execute" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Prerequisites checklist before this plan is safe to execute
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<h1 id="ghcr-server-side-deploy-plan-phase-4-server-half">GHCR Server-Side Deploy Plan (Phase 4, server half)</h1>
+<p><strong>Status: planning only.</strong> Nothing in this document has been built, provisioned,
+or deployed — <code>docker-compose.yml</code> has not been edited, no GHCR PAT has been
+generated, no <code>docker login</code> has been run on the EC2 host, and no command from
+the sequences below has been run against production. This is the reference to
+work from when that build actually happens, following the same planning-first
+pattern as <a href="../docker-plan/">Docker Containerization Plan</a> and
+<a href="../git-deploy-plan/">Git-Based Deploy Plan</a>.</p>
+<p>Companion reading: <a href="../docker-plan/">Docker Containerization Plan</a> (this
+document is the missing detail section for that plan's Phase 4 deploy-step
+bullet — see "Fit into Phase 4" below), <a href="../git-deploy-plan/">Git-Based Deploy Plan</a>
+(a related but distinct credential/mechanism — see Decision 4 for why the two
+are not to be conflated), <a href="../overview/">System Overview</a>.</p>
+<hr />
+<h2 id="baseline-whats-actually-running-today">Baseline: what's actually running today</h2>
+<table>
+<thead>
+<tr>
+<th>Component</th>
+<th>Reality</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Build/tag/push</td>
+<td><code>.github/workflows/build-push.yml</code> (committed <code>93896c4e</code>, already built and live) pushes <code>ghcr.io/jacey1225/fellowscript-api:latest</code> and <code>:&lt;git-sha&gt;</code> on every push to <code>main</code>, authenticated via the workflow's own <code>GITHUB_TOKEN</code> — no PAT provisioned for that half of the pipeline. <strong>Out of scope to revisit here.</strong></td>
+</tr>
+<tr>
+<td>GHCR network shape</td>
+<td>Confirmed: GHCR pulls are entirely outbound/server-initiated. No inbound connection, no port to open. The server needs only outbound HTTPS (already present), the <code>docker</code> CLI (already installed), and — only if the package stays private — GHCR credentials.</td>
+</tr>
+<tr>
+<td><code>docker-compose.yml</code> today</td>
+<td>Hardcodes <code>image: fellowscript-api:latest</code> alongside <code>build: { context: ., dockerfile: Dockerfile }</code>. <code>docker compose up -d</code> on this file builds locally by default (or reuses a locally-cached <code>fellowscript-api:latest</code> image) rather than pulling a pre-built tag from GHCR — this is the specific behavior this plan has to change for "pull, don't build" to be real in practice, not just aspirational.</td>
+</tr>
+<tr>
+<td>Image contents</td>
+<td>Per the Dockerfile's runtime stage, <code>COPY api/ .</code> copies the full FastAPI application source into the image (Python is not compiled) — this matters directly for the GHCR visibility decision below: pulling this image is equivalent to reading the source tree, not just running a binary.</td>
+</tr>
+<tr>
+<td>Rollback model already shown to the user</td>
+<td><code>docker pull &lt;previous-sha-tag&gt; &amp;&amp; docker compose up -d</code> — restated, not re-derived, below in Decision 5.</td>
+</tr>
+<tr>
+<td>Related, distinct plan</td>
+<td><a href="../git-deploy-plan/">Git-Based Deploy Plan</a> already planned an SSH deploy key for a <em>different</em> purpose — pulling <strong>source</strong> via <code>git pull</code> for the pre-Phase-4 build-on-server flow. This plan is about pulling a <strong>built image</strong> from GHCR. Different registry, different auth surface. See Decision 4.</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="decision-1-docker-composeyml-parameterize-the-image-tag-keep-build">Decision 1 — <code>docker-compose.yml</code>: parameterize the image tag, keep <code>build:</code></h2>
+<p><strong>Decision: do not remove or reorder the <code>build:</code> block in <code>docker-compose.yml</code>. Add an <code>IMAGE_TAG</code> env-var override to the <code>image:</code> field, and make the deploy sequence itself explicit about pulling and skipping the build — the file's <em>default</em> behavior (a bare <code>docker compose up -d</code> with no env override) stays local-build for developers, but the <em>deploy</em> sequence never exercises that path.</strong></p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>Edit <code>docker-compose.yml</code> to drop <code>build:</code></th>
+<th>Parameterize <code>image:</code>, keep <code>build:</code> (chosen)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Local developer workflow</td>
+<td>Breaks — a developer without GHCR pull access (or who wants to iterate on an uncommitted local change) can no longer <code>docker compose up --build</code></td>
+<td>Unaffected — default <code>image: fellowscript-api:latest</code> and the existing <code>build:</code> block both still work exactly as today</td>
+</tr>
+<tr>
+<td>Phase 1/2 burn-in precedent</td>
+<td>Diverges from it — <code>docker-plan.md</code> Phase 1/2 relied on building directly on the host before CI/CD existed; removing <code>build:</code> entirely erases that capability even as a fallback</td>
+<td>Preserved as a fallback, without being the deploy-time default</td>
+</tr>
+<tr>
+<td>Risk of "forgot the flag" deploy mistake</td>
+<td>Lower by construction (nothing to forget)</td>
+<td>Mitigated by making the deploy sequence (Decision 5) explicit and scripted, not by operator memory each time</td>
+</tr>
+<tr>
+<td>Blast radius of this edit</td>
+<td>A committed-file behavior change that also affects anyone building locally</td>
+<td>A single new env var with a safe default (<code>fellowscript-api:latest</code>, i.e. unchanged behavior when unset)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Reasoning:</strong> the open question here was whether to make "pull, don't build" foolproof by editing the file, or to keep the file flexible and make the <em>deploy sequence</em> foolproof instead. Removing <code>build:</code> is more foolproof for the one deploy path but actively regresses local development and the Phase 1/2 on-host-build capability <code>docker-plan.md</code> already relied on — there's no concrete driver requiring that capability to go away, and this project's own precedent (Decision 1 of <code>docker-plan.md</code>, Decision 2 of <code>git-deploy-plan.md</code>) favors the option that doesn't remove an existing, still-used capability when a narrower fix is available. The narrower fix here is real: an env-var-driven image tag plus an explicit, scripted deploy sequence (Decision 5) makes "pull, don't build" the actual behavior of every deploy run, without touching what a developer's bare <code>docker compose up</code> does.</p>
+<p><strong>The one small edit this implies, described (not made) here:</strong></p>
+<pre><code class="language-yaml">services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ${IMAGE_TAG:-fellowscript-api:latest}   # was a bare literal
+    container_name: fellowscript-api
+    ...
+</code></pre>
+<p>With <code>IMAGE_TAG</code> unset (developer default), behavior is byte-for-byte identical to today. With <code>IMAGE_TAG=ghcr.io/jacey1225/fellowscript-api:&lt;sha&gt;</code> exported before <code>docker compose up -d</code> (Decision 5's deploy sequence), compose starts the already-pulled GHCR image and never invokes <code>build:</code> — <code>docker compose up -d</code> only builds when the named image isn't already present locally or <code>--build</code> is passed explicitly, neither of which the deploy sequence does.</p>
+<hr />
+<h2 id="decision-2-new-image-detection-trigger-manual-for-this-phase-extend-build-pushyml-later">Decision 2 — New-image-detection trigger: manual for this phase, extend <code>build-push.yml</code> later</h2>
+<p><strong>Decision: this phase stays manual — an operator SSHes in and runs the pull/restart sequence (Decision 5) by hand once a new push to <code>main</code> has built and pushed. No cron poller and no webhook receiver are introduced now.</strong></p>
+<p><strong>Future automation path, named explicitly (not left open-ended): extend the existing <code>.github/workflows/build-push.yml</code> with a final <code>deploy</code> job that SSHes into the EC2 host at the end of the same workflow run, immediately after <code>build-and-push</code> succeeds — not a new, separate polling or webhook mechanism running on the server.</strong></p>
+<p><strong>Reasoning:</strong></p>
+<ul>
+<li><strong>GitHub Actions already knows the exact moment a new image is ready</strong> — it just finished building and pushing it. A deploy job appended to the same workflow run has that information for free. A cron poller on the server would have to rediscover it (poll GHCR's API, diff tags, guess an interval), and a webhook receiver would mean standing up and maintaining a new inbound HTTP listener on the server — a new attack surface for a server that, per the Baseline table, currently has no inbound GHCR-related surface at all. Extending the workflow that already has the answer is simpler than building or maintaining either alternative.</li>
+<li><strong>Full automation's real cost is a new, more powerful credential, not engineering effort.</strong> An Actions-triggered SSH deploy step requires an SSH key stored as a GitHub Actions secret with permission to run arbitrary <code>docker</code> commands on production — materially more powerful than anything provisioned so far in this project's Docker/CI work tonight (the <code>build-push.yml</code> job only ever used the built-in, repo-scoped <code>GITHUB_TOKEN</code>; nothing in tonight's session provisioned a credential capable of reaching production directly from CI).</li>
+<li><strong>This project had a direct, same-session lesson in credential leakage tonight</strong> (the <code>AuthKey_*.p8</code> history exposure documented in <code>git-deploy-plan.md</code>'s Baseline and Decision 3). Given that, staying manual until the team is comfortable with the pull+restart mechanism itself — and only then automating, as a deliberate, separately-scoped follow-up task, not bundled into this one — is the recommended sequencing. This mirrors the same staged, conservative approach <code>docker-plan.md</code>'s Phase 1 and <code>git-deploy-plan.md</code> both already use elsewhere in this project (burn-in windows, keeping a rollback path installed, not retiring the previous mechanism immediately).</li>
+<li><strong>Manual for this phase introduces zero new credentials.</strong> Decision 5's pull/restart sequence runs over the operator's existing SSH access to the host — the same access already used for every other manual deploy step today. Nothing new is provisioned to reach this phase's acceptance bar.</li>
+</ul>
+<p><strong>What "manual" concretely means for this phase:</strong> an operator (or, if desired later without changing the trigger model, a simple script an operator runs by hand — not a cron job) runs Decision 5's command sequence over SSH after confirming a new push to <code>main</code> has finished in the Actions tab or via a Slack/GitHub notification. No polling loop, no listener process, and no new inbound surface on the server.</p>
+<p><strong>Explicit non-decision:</strong> this document does not build the future <code>deploy</code> job into <code>build-push.yml</code> — that workflow is out of scope for this plan (already built and live, not to be revisited here). This section only names the direction so it doesn't have to be re-derived later, matching <code>docker-plan.md</code>'s own Phase 4 bullet, which named CI/CD as a future direction without building it at the time.</p>
+<hr />
+<h2 id="decision-3-pullrun-sequence">Decision 3 — Pull+run sequence</h2>
+<p><strong>Sequence (described, not executed):</strong></p>
+<pre><code>ssh &lt;deploy-user&gt;@&lt;ec2-host&gt;
+cd ~/fellowscript-docker   # or ~/fellowscript-git, once git-deploy-plan.md ships
+export IMAGE_TAG=ghcr.io/jacey1225/fellowscript-api:&lt;git-sha&gt;
+docker pull &quot;$IMAGE_TAG&quot;
+docker compose up -d
+</code></pre>
+<ul>
+<li><code>&lt;git-sha&gt;</code> is the commit SHA <code>build-push.yml</code> tagged the image with — read off the Actions run that just completed, or <code>git rev-parse HEAD</code> on the operator's own up-to-date local checkout of <code>main</code> if the two are known to match.</li>
+<li><code>docker compose up -d</code> here relies on Decision 1's <code>IMAGE_TAG</code>-parameterized <code>image:</code> field: with <code>IMAGE_TAG</code> exported and the image already pulled, compose starts the pulled image directly, no build invoked.</li>
+<li><code>docker pull</code> before <code>up -d</code> (rather than relying on compose to pull) is deliberate: it makes the "did the pull actually succeed" step visible and separately checkable (non-zero exit, clear error) before touching the running container, rather than folding pull-failure handling into <code>up -d</code>'s own output.</li>
+<li>This sequence supersedes the current <code>rsync</code> + local-build deploy path for the backend image specifically — it does not change the frontend's <code>rsync</code>-to-<code>/var/www/html</code> deploy (<code>git-deploy-plan.md</code> Decision 5's frontend-out-of-scope precedent holds here too), and does not change how <code>.env</code>/the APNs key/AWS credential mounts are supplied (<code>docker-plan.md</code> Decision 3's volumes/env_file wiring in <code>docker-compose.yml</code> is untouched by this plan).</li>
+</ul>
+<hr />
+<h2 id="decision-4-ghcr-auth-is-a-distinct-credential-surface-from-the-ssh-deploy-key">Decision 4 — GHCR auth is a distinct credential surface from the SSH deploy key</h2>
+<p><strong>Explicit statement, not an assumption:</strong> <code>git-deploy-plan.md</code>'s SSH deploy key authenticates <code>git@github.com</code> for a <code>git pull</code> of <strong>source code</strong>. The mechanism this document covers authenticates <code>ghcr.io</code> for a <code>docker pull</code> of a <strong>pre-built image</strong>. These are two different registries (<code>github.com</code> vs <code>ghcr.io</code>), two different protocols (SSH vs HTTPS/Docker registry auth), and — if the private-package branch below is chosen — two different credential shapes (an SSH keypair vs a PAT). They must not be merged into a single credential or a single provisioning step, even though both are colloquially "a deploy key for GitHub."</p>
+<p>If both plans are eventually executed, the server ends up holding two independent, narrowly-scoped credentials, each usable for exactly one thing: the SSH deploy key can <code>git pull</code> source and nothing else (per <code>git-deploy-plan.md</code> Decision 1's read-only, repo-scoped design); a GHCR PAT, if provisioned, can <code>docker pull</code>/<code>docker login</code> against this one package and nothing else (scope discussed in Decision 5 below). Neither credential's compromise extends to the other's capability.</p>
+<hr />
+<h2 id="decision-5-ghcr-auth-finalized-by-security-gate">Decision 5 — GHCR auth: finalized by security gate</h2>
+<p><strong>Security gate finalization of backend's recommendation (closed for this pass):</strong></p>
+<p><strong>Keep the GHCR package private. Provision a fine-grained personal access token (not a classic PAT), scoped to only the <code>FellowScript</code> repository with the "Packages: Read-only" permission, for the server.</strong></p>
+<p>The reasoning:</p>
+<ul>
+<li><strong>This is not a compiled-binary image.</strong> Per the Baseline table, the Dockerfile's runtime stage does <code>COPY api/ .</code> — the full FastAPI application source ships inside every image layer, unobfuscated. Setting the GHCR package public would make <code>docker pull ghcr.io/jacey1225/fellowscript-api:&lt;any-tag&gt;</code> followed by <code>docker save</code>/inspecting the image filesystem equivalent to handing out the entire backend source tree to anyone with the package's URL — a materially different exposure than the "no new credential needed" framing that applies to genuinely compiled artifacts. The underlying GitHub repository is already private (<code>git-deploy-plan.md</code> Baseline); a public GHCR package would quietly undo that. <strong>Confirmed: private.</strong></li>
+<li><strong>Fine-grained PAT, not classic — this is a correction to backend's draft, not just a confirmation.</strong> Backend's draft described a PAT scoped to <code>read:packages</code> as able to "reach... nothing else" but that claim is only true for a fine-grained token. A <strong>classic</strong> PAT with the <code>read:packages</code> scope is not scoped to a single package — GitHub grants it read access to every package the authenticating account can see (all of that user's public and private packages), which would make the credential materially broader than "this one package and nothing else," undercutting the least-privilege bar <code>docker-plan.md</code> Decision 3 and <code>git-deploy-plan.md</code> Decision 1 both hold this project to. A <strong>fine-grained</strong> PAT can be scoped at creation to a single named repository (<code>FellowScript</code>) with the repository-level "Packages" permission set to read-only — that is the only token shape for which Decision 4's "can <code>docker pull</code>/<code>docker login</code> against this one package and nothing else" claim is actually accurate. <strong>Finalized: fine-grained PAT, repository-scoped to <code>FellowScript</code>, Packages permission set to Read-only, no other repository or account-wide permission granted.</strong></li>
+<li><strong>Storage: confirmed as described.</strong> <code>docker login ghcr.io -u &lt;github-username&gt; --password-stdin</code> once on the host, writing the token into Docker's own credential store (<code>~/.docker/config.json</code> for the deploy user), rather than exporting it as a shell-history-visible env var each deploy — this follows the same "never in shell history, never echoed" discipline <code>docker-plan.md</code> Decision 3 and <code>git-deploy-plan.md</code>'s Decision 1 provisioning note both already apply to other secrets in this project. <code>docker pull</code>/<code>docker compose up -d</code> afterward use the stored credential transparently, with no token appearing in the pull/run sequence in Decision 3 above. <strong>Flagged explicitly, not silently accepted:</strong> absent a credential-helper plugin (e.g. <code>docker-credential-pass</code>, <code>docker-credential-secretservice</code>), <code>docker login</code>'s default backend stores the token base64-encoded, not encrypted, inside <code>config.json</code> — confidentiality rests entirely on the file's <code>0600</code> permission and the deploy user account, the same posture this project already accepts for <code>~/.ssh/fellowscript-deploy</code> (mode <code>600</code>, no passphrase). That's consistent with this project's existing risk acceptance for machine credentials at its current scale, not a new gap — but it should be a known property, not an assumed one, matching this project's practice of stating accepted gaps explicitly (see the CORS-wildcard and no-rate-limiting gaps already tracked in this project's security conventions) rather than leaving them implicit.</li>
+<li><strong>Rotation cadence: finalized.</strong> Fine-grained PATs carry a mandatory expiration (GitHub's maximum is 1 year) — set it to the maximum (1 year) at creation, and add a tracked reminder (calendar entry or equivalent operator process, not new tooling) ~2 weeks before expiry to rotate before it lapses, avoiding the "surprise deploy outage" <code>git-deploy-plan.md</code> Decision 1 flagged as the cost of a PAT's mandatory expiration. This does not contradict <code>git-deploy-plan.md</code> Decision 1's choice of a non-expiring SSH key for the source-pull credential: that decision's premise was that the SSH deploy key was already at the narrowest available scope (repo-scoped, read-only, no narrower option existed), so an expiration deadline would have added rotation burden with no corresponding least-privilege gain. Here, the situation is different — choosing the fine-grained token <em>is</em> what delivers the single-package scoping in the first place (a classic token cannot achieve that scope at any expiration setting), so the mandatory expiration that comes bundled with it is the acceptable cost of getting real least-privilege, not an independent cost paid for nothing.</li>
+</ul>
+<p><strong>Status: closed for this pass.</strong> Architecture routed the package-visibility call and the PAT scope/storage/rotation details to the security gate (checkpoint: this step) — this section is that finalized call, not a placeholder for a later pass. Provisioning itself (generating the token, running <code>docker login</code> on the host) is still not performed by this document, per this plan's planning-only scope.</p>
+<p><strong>Correction found during actual execution (2026-08-17): fine-grained PATs do not expose a "Packages" repository permission in GitHub's UI.</strong> The fine-grained-PAT recommendation above assumed this permission existed at the repository-permission level, matching every other resource this project has scoped that way (<code>git-deploy-plan.md</code>'s deploy key, etc.) — confirmed absent when actually walking the token-creation flow, not a user error or a missed UI element. GitHub's fine-grained PATs currently have incomplete coverage of the classic OAuth scope surface, and container-registry (GHCR) package read/write is one of the gaps: it remains classic-PAT-only.</p>
+<p><strong>Revised decision: provision a classic PAT scoped to only the <code>read:packages</code> scope.</strong> This is broader than the fine-grained recommendation above (a classic token with this scope can read every package the authenticating account can see, not just <code>fellowscript-api</code> — the exact risk Decision 5's original reasoning was written to avoid), but it is the only mechanism GitHub currently offers for this specific need. Documented here as a known, accepted gap — matching this project's existing practice of tracking accepted risks explicitly (see the CORS-wildcard and no-rate-limiting gaps already tracked in this project's security conventions) — rather than blocking indefinitely on a fine-grained permission that doesn't exist. Storage and rotation guidance (base64-not-encrypted <code>docker login</code> storage, 1-year expiration, tracked rotation reminder) carries forward unchanged from above; only the token type and its resulting broader scope change.</p>
+<hr />
+<h2 id="decision-6-rollback">Decision 6 — Rollback</h2>
+<p><strong>Restated, not re-derived</strong> (already shown to the user in this session's pipeline diagram, and already the rollback shape named in <code>docker-plan.md</code>'s Phase 4 sketch):</p>
+<pre><code>export IMAGE_TAG=ghcr.io/jacey1225/fellowscript-api:&lt;previous-git-sha&gt;
+docker pull &quot;$IMAGE_TAG&quot;
+docker compose up -d
+</code></pre>
+<p>Because every pushed image is tagged with its git SHA (<code>build-push.yml</code>), rollback is just Decision 3's own sequence pointed at the previous known-good SHA — no <code>~/deploy_backups/&lt;timestamp&gt;/</code> snapshot reconstruction needed for the backend image specifically, matching the payoff <code>docker-plan.md</code>'s Phase 4 sketch already promised ("nothing to manually reconstruct... since every deployed state is a tagged, retrievable image").</p>
+<hr />
+<h2 id="fit-into-phase-4">Fit into Phase 4</h2>
+<p><code>docker-plan.md</code>'s Phase 4 section sketches the target shape in three bullets: a workflow that builds/tags/pushes (built, live, out of scope here), "a deploy step that SSHes into the EC2 host... and runs <code>docker pull &lt;sha-tag&gt; &amp;&amp; docker compose up -d</code>" (this document's Decisions 1, 3, and the compose edit resolve exactly what that bullet left implicit), and a rollback bullet (Decision 6, restated above). This document does not compete with or replace that sketch — it is the detail section for the deploy-step and rollback bullets, plus the trigger-mechanism call (Decision 2) and credential surface (Decisions 4–5) that sketch didn't address at all.</p>
+<hr />
+<h2 id="migration-path">Migration path</h2>
+<p>Nothing below is executed as part of this document.</p>
+<p><strong>Phase 4a — this document's manual trigger (recommended starting point).</strong>
+1. Confirm the security gate's finalized call on Decision 5 (package visibility, PAT if applicable).
+2. Apply Decision 1's <code>docker-compose.yml</code> edit (<code>image: ${IMAGE_TAG:-fellowscript-api:latest}</code>).
+3. If the private-package branch is chosen, run <code>docker login ghcr.io</code> once on the host per Decision 5's storage note.
+4. Operators run Decision 3's sequence manually after each <code>build-push.yml</code> run they want deployed, until the team is comfortable with the mechanism.</p>
+<p><strong>Phase 4b — deferred, named but not built here.</strong> Extend <code>build-push.yml</code> with a final <code>deploy</code> job (Decision 2) that runs Decision 3's sequence over SSH automatically at the end of a successful build-and-push run. Requires provisioning the SSH-as-a-GitHub-Actions-secret credential Decision 2 flags as the actual cost of automating — a deliberate, separately-scoped follow-up task, not bundled into this plan.</p>
+<hr />
+<h2 id="prerequisites-checklist-before-this-plan-is-safe-to-execute">Prerequisites checklist before this plan is safe to execute</h2>
+<ol>
+<li>Security gate finalizes Decision 5 (package visibility; PAT scope/storage/rotation if private) — not performed by this document.</li>
+<li><code>docker-compose.yml</code>'s <code>image:</code> field parameterized per Decision 1 — not performed by this document.</li>
+<li>If private: <code>docker login ghcr.io</code> run once on the deploy host per Decision 5 — not performed by this document.</li>
+<li>Confirm which directory the deploy sequence runs from (<code>~/fellowscript-docker/</code> today, or <code>~/fellowscript-git/</code> once <code>git-deploy-plan.md</code> ships) at execution time — this document does not depend on which, since Decision 3's sequence only needs <code>docker-compose.yml</code> to be present in the working directory, but the exact path should be confirmed against whichever of those two plans has landed by then.</li>
+</ol>
+<p>Nothing above is executed as part of this document — this is the order to execute in once the security gate's Decision 5 review lands.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "toc.integrate"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

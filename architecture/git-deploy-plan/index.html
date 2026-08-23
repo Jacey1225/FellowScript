@@ -1,0 +1,1184 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A digital scripture community platform for reading, reflecting, and connecting.">
+      
+      
+        <meta name="author" content="Jacey Simpson">
+      
+      
+      
+        <link rel="prev" href="../docker-plan/">
+      
+      
+        <link rel="next" href="../ghcr-deploy-plan/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Git-Based Deploy Plan - FellowScript</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Lora:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Lora";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="amber" data-md-color-accent="amber">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#git-based-deploy-plan-replacing-rsync" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="FellowScript" class="md-header__button md-logo" aria-label="FellowScript" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            FellowScript
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Git-Based Deploy Plan
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+    
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../design/overview/" class="md-tabs__link">
+          
+  
+  
+  Design
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../overview/" class="md-tabs__link">
+          
+  
+  
+  Architecture
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../api/overview/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  API
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+  
+
+<nav class="md-nav md-nav--primary md-nav--lifted md-nav--integrated" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="FellowScript" class="md-nav__button md-logo" aria-label="FellowScript" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    FellowScript
+  </label>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Design
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Design
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../design/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../design/home-page/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home Page
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../design/bible-reader/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Bible Reader
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../design/notes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Notes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../design/community/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Community
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../design/account/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Account
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    System Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../backend/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Backend
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../frontend/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Frontend
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../data/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../docker-plan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docker Containerization Plan
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Git-Based Deploy Plan
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Git-Based Deploy Plan
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#baseline-whats-actually-running-today" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Baseline: what's actually running today
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#decision-1-auth-mechanism-ssh-deploy-key-not-a-pat" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Decision 1 — Auth mechanism: SSH deploy key, not a PAT
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#decision-2-checkout-topology-fresh-clone-not-in-place-conversion" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Decision 2 — Checkout topology: fresh clone, not in-place conversion
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#decision-3-gitignore-behavior-under-git-clonegit-pull-and-the-history-scrub-blocker" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Decision 3 — .gitignore behavior under git clone/git pull, and the history-scrub blocker
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#decision-4-backend-pullrebuild-command-sequence" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Decision 4 — Backend pull+rebuild command sequence
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#decision-5-frontend-explicitly-out-of-scope-for-this-plan" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Decision 5 — Frontend: explicitly out of scope for this plan
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#relationship-to-phase-4-cicd-docker-planmd" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Relationship to Phase 4 CI/CD (docker-plan.md)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#prerequisites-checklist-before-this-plan-is-safe-to-execute" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Prerequisites checklist before this plan is safe to execute
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ghcr-deploy-plan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    GHCR Server-Side Deploy Plan
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<h1 id="git-based-deploy-plan-replacing-rsync">Git-Based Deploy Plan (Replacing rsync)</h1>
+<p><strong>Status: planning only.</strong> Nothing in this document has been built, provisioned, or
+deployed — no SSH deploy key or PAT has been generated, no directory on the live
+server has been touched, no <code>.git</code> checkout exists anywhere on the EC2 host, and no
+command from the sequences below has been run against production. This is the
+reference to work from when that build actually happens, following the same
+planning-first pattern as <a href="../docker-plan/">Docker Containerization Plan</a>.</p>
+<p>Companion reading: <a href="../docker-plan/">Docker Containerization Plan</a> (Phase 1 of that
+plan — containerizing the backend — is already built and live; this document is the
+next step, replacing the manual <code>rsync</code> deploy of that container's source with a
+git checkout), <a href="../overview/">System Overview</a> (current deployment topology).</p>
+<hr />
+<h2 id="baseline-whats-actually-running-today">Baseline: what's actually running today</h2>
+<table>
+<thead>
+<tr>
+<th>Component</th>
+<th>Reality</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Backend deploy</td>
+<td>Containerized per <code>docker-plan.md</code> Phase 1, already deployed live. Deploy is entirely manual: local build → <code>rsync</code> individual changed files into <code>~/fellowscript-docker/</code> → <code>docker compose build</code> → <code>docker compose up -d</code>. <strong>No git checkout exists on the server</strong> — the directory is a flat tree of rsync'd files, not a clone.</td>
+</tr>
+<tr>
+<td>Legacy backend deploy path</td>
+<td><code>~/fellowscript/</code> — the original pre-Docker, systemd-managed deploy location. Still present and still holds a live <code>.env</code> and the current APNs key, because <code>docker-plan.md</code>'s own Phase 1 rollback plan keeps <code>fellowscript.service</code> installed and stopped through a burn-in window rather than retiring it immediately.</td>
+</tr>
+<tr>
+<td>Frontend deploy</td>
+<td>Static Vite/React build, <code>rsync</code>'d to <code>/var/www/html</code>, served by <code>nginx</code>. Unaffected by anything in this document — see Decision 5 below.</td>
+</tr>
+<tr>
+<td>Repo</td>
+<td>Private: <code>https://github.com/Jacey1225/FellowScript.git</code> (confirmed via local <code>git remote -v</code>).</td>
+</tr>
+<tr>
+<td>Live untracked secrets in <code>~/fellowscript-docker/</code></td>
+<td><code>.env</code> (<code>OPENROUTER_API_KEY</code>, <code>DB_PASSWORD</code>, <code>STRIPE_*</code>, <code>SES_*</code>, <code>APPLE_*</code>, <code>CLIENT_ID</code>, <code>SUPPORT_EMAIL</code> — full list in <code>docker-plan.md</code>'s Baseline table) and <code>AuthKey_22G3F2KMHS.p8</code>, the APNs key rotated earlier tonight. Neither file is, or has ever been, tracked by this repo's current <code>.gitignore</code>-covered set.</td>
+</tr>
+<tr>
+<td>Unresolved incident</td>
+<td><code>AuthKey_4SRZ3YTAAN.p8</code> (the prior APNs key) was found tracked in this repo's git history, rotated tonight, and untracked going forward (<code>.gitignore</code> now has <code>*.p8</code>/<code>*.pem</code>). <strong>The actual history scrub of the old commit(s) that tracked it has not happened yet.</strong> This matters directly to Decision 3 below.</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="decision-1-auth-mechanism-ssh-deploy-key-not-a-pat">Decision 1 — Auth mechanism: SSH deploy key, not a PAT</h2>
+<p><strong>Decision: provision a repo-scoped, read-only SSH deploy key for the server, not a fine-grained personal access token.</strong></p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>Deploy key (chosen)</th>
+<th>Fine-grained PAT</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Scope</td>
+<td>Bound to exactly one repository (<code>FellowScript</code>) at the GitHub-platform level — cannot reach any other repo even if the owning account gains access to more later</td>
+<td>Scoped to selected repos at creation time, but tied to a user account; scope can silently drift if the account's own permissions change</td>
+</tr>
+<tr>
+<td>Read-only enforcement</td>
+<td>A first-class GitHub setting on the key itself (write access is opt-in, off by default) — enforced server-side by GitHub, not dependent on the credential holder configuring permissions correctly</td>
+<td>Requires deliberately setting the "Contents" permission to Read-only and not over-granting others; a misconfigured PAT can carry far more capability than a deploy needs</td>
+</tr>
+<tr>
+<td>Expiration / rotation burden</td>
+<td>No mandatory expiration — set once, works until revoked</td>
+<td>GitHub fine-grained PATs require an expiration date (max 1 year); this server-side credential would need a recurring manual rotation cadence to avoid a surprise deploy outage when it lapses</td>
+</tr>
+<tr>
+<td>Storage shape</td>
+<td>A standard SSH keypair — private half lives in a file with <code>600</code> permissions, referenced via <code>~/.ssh/config</code>, used through the existing <code>git</code>+SSH plumbing already on the host</td>
+<td>An opaque token string, typically stored as an env var or in a credentials file — one more secret shape to manage alongside the <code>.env</code>/<code>*.p8</code> conventions Decision 3 of <code>docker-plan.md</code> already established</td>
+</tr>
+<tr>
+<td>Precedent in this project</td>
+<td>Matches the operational pattern already used for server access itself (<code>fellowscript-ec2-key.pem</code>, a dedicated SSH keypair, gitignored)</td>
+<td>No existing precedent in this project</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Reasoning:</strong> a deploy key is purpose-built for exactly this scenario — one server, one repo, read-only, non-interactive <code>git pull</code>. It carries the least privilege of the two options by construction (repo-scoped, read-only, no user-account link), and it avoids introducing a rotation deadline into a production deploy path for no corresponding security benefit — a PAT's mandatory expiration protects against a token walking off with a departing employee's broader account access, which isn't the threat model here (this is a single-purpose machine credential, not a human's token).</p>
+<p><strong>Provisioning (described, not executed):</strong> generate the keypair locally (<code>ssh-keygen -t ed25519 -f fellowscript-deploy -N ""</code>, no passphrase since it must be used non-interactively by an unattended <code>git pull</code>), add the <strong>public</strong> half as a GitHub deploy key on the <code>FellowScript</code> repo with write access left unchecked, and <code>scp</code> the <strong>private</strong> half to the server into a location outside any git working tree — e.g. <code>~/.ssh/fellowscript-deploy</code>, mode <code>600</code>, owned by the deploy user. Reference it via a dedicated <code>~/.ssh/config</code> <code>Host</code> alias (e.g. <code>Host github-fellowscript</code> → <code>HostName github.com</code>, <code>User git</code>, <code>IdentityFile ~/.ssh/fellowscript-deploy</code>) so the checkout's <code>origin</code> remote uses <code>git@github-fellowscript:Jacey1225/FellowScript.git</code> rather than embedding the key path in the remote URL. The private key is never echoed to shell history, never written into <code>.env</code>, and never enters the repo's own working tree — same storage discipline <code>docker-plan.md</code> Decision 3 applies to the APNs key and AWS credential files (secret material supplied outside the build/checkout context, never <code>COPY</code>'d or <code>git add</code>'d).</p>
+<hr />
+<h2 id="decision-2-checkout-topology-fresh-clone-not-in-place-conversion">Decision 2 — Checkout topology: fresh clone, not in-place conversion</h2>
+<p><strong>Decision: clone the repo into a new directory (<code>~/fellowscript-git/</code>), do not <code>git init</code> inside the existing <code>~/fellowscript-docker/</code>.</strong></p>
+<p><strong>Why not convert <code>~/fellowscript-docker/</code> in place:</strong> that directory already contains the live <code>.env</code> and <code>AuthKey_22G3F2KMHS.p8</code> on disk <em>before</em> any <code>.gitignore</code> would be in effect for it. Running <code>git init</code> there and then adding files is a real window for a mistake — an early <code>git add .</code> (before anyone double-checks the ignore rules are actually being honored in that specific directory) could stage and commit a live secret, which is exactly the class of incident this project just spent tonight rotating a key and remediating a <code>.gitignore</code> for. There is no operational reason to accept that risk when a fresh clone avoids it entirely.</p>
+<p><strong>Why a fresh clone avoids it:</strong> <code>git clone</code> populates the new directory (<code>~/fellowscript-git/</code>) starting from the repo's own tracked commit history — which already includes the current <code>.gitignore</code> with <code>*.p8</code>/<code>*.pem</code>/<code>.env</code> entries. The secrets never exist in that directory until they are deliberately copied in afterward as plain files, at which point <code>git status</code> will already show them as untracked (ignored), because the ignore rule was in effect before the files ever arrived.</p>
+<p><strong>Sequence (described, not executed):</strong>
+1. <code>git clone git@github-fellowscript:Jacey1225/FellowScript.git ~/fellowscript-git</code>
+2. <code>cp ~/fellowscript-docker/.env ~/fellowscript-git/.env</code> and the equivalent copy for <code>AuthKey_22G3F2KMHS.p8</code> (plain <code>cp</code>/local copy, not <code>git add</code>, not <code>git mv</code>).
+3. Confirm <code>git -C ~/fellowscript-git status</code> reports a clean tree (the copied secrets should not appear as untracked-and-stageable-by-accident targets that anyone later runs a bare <code>git add .</code> against — they should show as ignored, not merely untracked, which is the actual guarantee <code>.gitignore</code> provides here).
+4. Point <code>docker compose</code> at <code>~/fellowscript-git/</code> as its working directory and validate the container starts correctly against the new checkout before removing anything.
+5. Once validated, retire <code>~/fellowscript-docker/</code> (rename rather than delete, e.g. <code>~/fellowscript-docker.bak/</code>, kept through a burn-in window) — mirroring the same "don't delete the old thing immediately" caution <code>docker-plan.md</code>'s own Phase 1 rollback plan uses for <code>fellowscript.service</code>.</p>
+<p><strong>What this decision explicitly does not touch:</strong> <code>~/fellowscript/</code>, the legacy pre-Docker systemd deploy path. It is already slated for retirement once <code>docker-plan.md</code>'s Phase 1 burn-in window completes, and it is not part of the active deploy path this plan is optimizing — converting it to a git checkout now would be work spent on a directory this project already intends to delete. If <code>fellowscript.service</code> is ever un-retired as a longer-term rollback path, that would be a reason to revisit this, not a default.</p>
+<hr />
+<h2 id="decision-3-gitignore-behavior-under-git-clonegit-pull-and-the-history-scrub-blocker">Decision 3 — <code>.gitignore</code> behavior under <code>git clone</code>/<code>git pull</code>, and the history-scrub blocker</h2>
+<p><strong>Explicit statement, not an assumption:</strong> <code>git clone</code> and <code>git pull</code> only ever fetch content that is part of some commit reachable in the repository's history. <code>.gitignore</code> does not participate in that direction at all — it has no effect on what a clone or pull <em>brings down</em>. What it prevents is a <em>future local commit</em> from accidentally picking up a matching file via a bare <code>git add .</code> What actually keeps a file out of a clone is simpler and stricter: <strong>it was never committed in the first place.</strong> For the current <code>.env</code> and <code>AuthKey_22G3F2KMHS.p8</code>, that holds — neither has ever been tracked by this repo — so a <code>git clone</code> today would never fetch them, full stop, regardless of <code>.gitignore</code> content.</p>
+<p><strong>Where this breaks down — the actual blocker:</strong> <code>AuthKey_4SRZ3YTAAN.p8</code> (the prior, now-rotated APNs key) <em>was</em> tracked in a past commit before tonight's remediation untracked it going forward. <code>.gitignore</code> only stops it from being re-added in a <em>future</em> commit — it does nothing to remove it from commits that already exist. A default <code>git clone</code> fetches the full reachable history by default, which means <strong>the exposed old key would be pulled down onto the production server, inside <code>.git</code>'s object store, the moment a clone is run</strong> — even though the file itself wouldn't appear in the working tree today. That is a direct regression of the secrets-hygiene work done tonight: it moves a known-leaked credential from "exposed on GitHub" to "exposed on GitHub <em>and</em> sitting in a <code>.git</code> directory on the box being hardened."</p>
+<p><strong>Decision: the pending git-history scrub of <code>AuthKey_4SRZ3YTAAN.p8</code> is a hard blocker to executing this plan.</strong> This plan's checkout topology (Decision 2) depends on a <code>git clone</code>, and a clone performed before the scrub would re-introduce exactly the exposure this project is in the middle of remediating. This plan does not perform that scrub (per its own out-of-bounds scope) — it must be completed, as its own separate approved task (e.g. <code>git filter-repo</code> or BFG Repo-Cleaner against the offending commit(s), followed by a force-push and a fresh clone-and-verify locally), <strong>before</strong> any step of this plan's clone/checkout sequence is executed on the server. A shallow clone (<code>--depth=1</code> from a point after the file's removal) would technically avoid pulling the old history, but is a workaround around the underlying problem, not a fix, and is not recommended as a substitute for the scrub.</p>
+<hr />
+<h2 id="decision-4-backend-pullrebuild-command-sequence">Decision 4 — Backend pull+rebuild command sequence</h2>
+<p><strong>Sequence (described, not executed), replacing tonight's manual <code>rsync</code> + two-step <code>docker compose build</code>/<code>up -d</code>:</strong></p>
+<pre><code>cd ~/fellowscript-git
+git pull origin main
+docker compose up -d --build
+</code></pre>
+<p>(Confirm <code>main</code> is the deploy branch in use at execution time — this plan assumes it based on this being the repo's default branch, not confirmed against a server-side deploy convention that doesn't exist yet.)</p>
+<p><strong>Relationship to <code>~/deploy_backups/&lt;timestamp&gt;/</code>:</strong> that mechanism exists today to protect against the file-by-file <code>rsync</code> process silently missing or corrupting files — a real, documented failure mode in <code>docker-plan.md</code>'s Baseline table. A git checkout removes most of that specific risk for <em>code</em>: every prior state is already a retrievable commit, so rollback becomes <code>git -C ~/fellowscript-git reset --hard &lt;previous-sha&gt; &amp;&amp; docker compose up -d --build</code> rather than restoring a directory snapshot. Recommend keeping the <code>~/deploy_backups/&lt;timestamp&gt;/</code> mechanism running through the same burn-in window this plan uses elsewhere (Decision 2), as a cheap secondary safety net covering anything outside git's reach (build artifacts, the live <code>.env</code>/<code>*.p8</code> files themselves, container state) — but expect it to matter progressively less for <em>code</em> rollback specifically, since <code>git log</code>/<code>git reset</code> is faster and less error-prone than reconstructing from a snapshot directory.</p>
+<hr />
+<h2 id="decision-5-frontend-explicitly-out-of-scope-for-this-plan">Decision 5 — Frontend: explicitly out of scope for this plan</h2>
+<p><strong>Decision: this plan covers the backend only. The frontend's <code>rsync</code>-to-<code>/var/www/html</code> static-build deploy is not converted here.</strong> This matches <code>docker-plan.md</code>'s own explicit frontend-out-of-scope precedent, and the reasoning holds again here: the frontend deploy artifact is a <em>build output</em> (<code>npm run build</code> → <code>dist/</code>), not source that gets run in place. A <code>git pull</code> on the server would still leave the server needing a Node/npm toolchain and a build step before anything could be served — a materially different operational shape than "pull and restart a container," and not a drop-in replacement for <code>rsync</code>ing a pre-built <code>dist/</code>. If the frontend is later brought into a git-based flow, it would look like <code>git pull &amp;&amp; npm ci &amp;&amp; npm run build</code> with <code>nginx</code> pointed at the resulting <code>dist/</code> in place of <code>/var/www/html</code>, but that is an explicit future decision for its own plan, not bundled into this one.</p>
+<hr />
+<h2 id="relationship-to-phase-4-cicd-docker-planmd">Relationship to Phase 4 CI/CD (<code>docker-plan.md</code>)</h2>
+<p>This plan is a <strong>stepping stone toward Phase 4, not a competing approach</strong>, but the two differ in mechanism and it's worth stating precisely what carries forward:</p>
+<ul>
+<li><strong>Reused by Phase 4:</strong> the deploy key (Decision 1) and the server-side checkout it authenticates (Decision 2) don't go away once CI/CD ships — <code>docker-compose.yml</code> and any deploy-time config still need to live somewhere on the server, and pulling that via the same git checkout is cleaner than re-introducing an <code>rsync</code> step just for config files. The auth mechanism and checkout topology decided here are the foundation Phase 4 builds on, not throwaway scaffolding.</li>
+<li><strong>Superseded by Phase 4:</strong> the <code>--build</code> half of Decision 4's command sequence. This plan has the server build its own image from source (<code>git pull &amp;&amp; docker compose up -d --build</code>); Phase 4 has GitHub Actions build the image and push a SHA-tagged image to a registry, and the server's job becomes <code>docker pull &lt;sha-tag&gt; &amp;&amp; docker compose up -d</code> — no local build, no build-toolchain drift between deploys. Once Phase 4 ships, the server-side <code>git pull</code> in this plan's sequence stops being "pull source to rebuild" and becomes "pull the compose/config files that reference the already-built image."</li>
+<li><strong>No contradiction:</strong> this plan does not lock in an approach Phase 4 would need to undo. It only replaces the file-transport mechanism (rsync → git) for a workflow that Phase 4 later replaces the <em>build</em> mechanism for (server-side build → CI-built image). The two are sequential improvements to the same pipeline, not alternatives.</li>
+</ul>
+<hr />
+<h2 id="prerequisites-checklist-before-this-plan-is-safe-to-execute">Prerequisites checklist before this plan is safe to execute</h2>
+<ol>
+<li><strong>Hard blocker:</strong> <code>AuthKey_4SRZ3YTAAN.p8</code> git-history scrub completed and force-pushed (Decision 3) — not performed by this plan, must land first as its own task.</li>
+<li>Deploy key generated and added to GitHub as a read-only, repo-scoped key (Decision 1) — not performed by this plan.</li>
+<li><code>~/fellowscript-git/</code> cloned, live secrets copied in and confirmed ignored, <code>docker compose</code> cut over and validated, <code>~/fellowscript-docker/</code> retired only after burn-in (Decision 2).</li>
+<li><code>~/fellowscript/</code> (legacy systemd path) left untouched, governed entirely by <code>docker-plan.md</code>'s own existing rollback/burn-in plan, not this document.</li>
+</ol>
+<p>Nothing above is executed as part of this document — this is the order to execute in once the plan is approved and the history-scrub blocker (item 1) is independently resolved.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "toc.integrate"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>
