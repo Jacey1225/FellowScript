@@ -167,6 +167,52 @@ jobs:
           done
           exit "${failed}"
 
+  # Drift check for task 20260824-web-notes-stale-bundle: frontend/dist is a
+  # committed, manually-built static artifact (no frontend deploy pipeline
+  # exists yet -- docs/architecture/git-deploy-plan.md explicitly scoped
+  # rsync-to-EC2 deploy out of that plan). It silently drifted a full day
+  # behind frontend/src after 8710a27a changed the notes GET response shape,
+  # shipping a pre-pagination UI to production that showed users none of
+  # their notes. `npm run build` (vite) produces content-hashed filenames, so
+  # a clean checkout's committed dist/ must be byte-identical to what
+  # building frontend/src right now produces -- any diff means src changed
+  # without dist being rebuilt and recommitted. Deliberately scoped as a
+  # freshness *check* only, not a frontend build/deploy pipeline (that stays
+  # the existing manual `npm run build && rsync` step).
+  frontend-dist-freshness:
+    name: Check frontend/dist matches a fresh build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build
+        working-directory: frontend
+        run: npm run build
+
+      - name: Fail if committed frontend/dist drifted from a fresh build
+        run: |
+          if ! git diff --quiet -- frontend/dist; then
+            echo "::error::frontend/dist does not match a fresh 'npm run build' of frontend/src -- rebuild it locally (cd frontend && npm run build) and commit the result."
+            git status --porcelain -- frontend/dist
+            git diff --stat -- frontend/dist
+            exit 1
+          fi
+
   build-and-push:
     name: Build, tag, and push to GHCR
     needs: test
