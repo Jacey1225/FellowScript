@@ -8,6 +8,7 @@ import SwiftUI
 struct ContentView: View {
     @EnvironmentObject var appState: AppState
     @ObservedObject private var call = CallController.shared
+    @StateObject private var startup = StartupCoordinator()
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
     @State private var selectedTab: Tab = .home
 
@@ -20,7 +21,20 @@ struct ContentView: View {
             Theme.bgPage.ignoresSafeArea()
 
             if appState.isAuthenticated {
-                mainTabView
+                // Startup loading screen: shown only post-auth (onboarding/
+                // sign-in already own the pre-auth period — nothing to fetch
+                // yet), and only once per session, until StartupCoordinator
+                // reports every startup-critical data source ready (or its
+                // timeout fires). Both branches live in this same ZStack
+                // over Theme.bgPage so the transition below can crossfade
+                // rather than hard-cut.
+                if startup.isReady {
+                    mainTabView
+                        .transition(.opacity)
+                } else {
+                    LoadingScreenView()
+                        .transition(.opacity)
+                }
             } else if hasCompletedOnboarding {
                 // Signed out AFTER onboarding was already completed once
                 // (e.g. a session expiring) — this is the real, reachable
@@ -91,7 +105,29 @@ struct ContentView: View {
         .onChange(of: appState.pendingChatContact) { _, target in
             if target != nil { selectedTab = .chat }
         }
+        // Startup-readiness gate: begin the race the moment we're
+        // authenticated (cold launch already-signed-in via
+        // AppState.restoreSession, or a fresh sign-in from AuthView), and
+        // reset it on sign-out so a later sign-in starts fresh rather than
+        // reusing the previous account's already-loaded view models.
+        .task {
+            if appState.isAuthenticated, let uid = appState.currentUser?.user_id {
+                startup.start(service: appState.service, userId: uid)
+            }
+        }
+        .onChange(of: appState.isAuthenticated) { _, authenticated in
+            if authenticated, let uid = appState.currentUser?.user_id {
+                startup.start(service: appState.service, userId: uid)
+            } else {
+                startup.reset()
+            }
+        }
         .animation(.easeInOut(duration: 0.25), value: appState.isAuthenticated)
+        // Loading screen → mainTabView crossfade — a single ~350ms dissolve
+        // at whatever point the video happened to be in its loop, not a
+        // hard cut and not a wait for the loop to finish (see
+        // LoadingScreenView / StartupCoordinator).
+        .animation(.easeOut(duration: 0.35), value: startup.isReady)
         .tint(Theme.gold)
     }
 
@@ -107,13 +143,19 @@ struct ContentView: View {
                 DashboardView()
                     .tag(Tab.home)
                     .toolbar(.hidden, for: .tabBar)
-                BibleReaderView()
+                // Pass StartupCoordinator's shared view-model instances —
+                // already loaded (or still resolving in the background if
+                // the readiness gate hit its timeout) — so mounting these
+                // screens for the first time doesn't fire a second,
+                // duplicate fetch (see NotesViewModel/BibleViewModel/
+                // ChatViewModel's hasLoadedOnce guard).
+                BibleReaderView(vm: startup.bibleVM)
                     .tag(Tab.bible)
                     .toolbar(.hidden, for: .tabBar)
-                NotesListView()
+                NotesListView(vm: startup.notesVM)
                     .tag(Tab.notes)
                     .toolbar(.hidden, for: .tabBar)
-                ChatRootView()
+                ChatRootView(vm: startup.chatVM)
                     .tag(Tab.chat)
                     .toolbar(.hidden, for: .tabBar)
                 AccountView()

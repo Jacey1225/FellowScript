@@ -274,7 +274,26 @@ final class ThrowingTestDataService: DataServiceProtocol {
         try await MockDataService.shared.summarizeSession(userId: userId, agentId: agentId, session: session, groupId: groupId)
     }
 
+    // Controllable / observable (task 20260823-app-loading-screen, testing
+    // step) — used by StartupCoordinatorTests to prove the startup-readiness
+    // gate (a) doesn't hang when one data source's fetch throws (NotesViewModel
+    // and ChatViewModel both call fetchContacts and already swallow its error
+    // via `try?`, so this should resolve to an empty/default result, not
+    // propagate) and (b) really does wait on real in-flight work — a delayed
+    // fetchContacts call is a shared dependency of BOTH NotesViewModel.load
+    // and ChatViewModel.load, so delaying it stalls StartupCoordinator's
+    // `await (notes, bible, chat)` race until either it resolves or the
+    // coordinator's own timeout fires, whichever comes first.
+    var fetchContactsError: Error?
+    var fetchContactsDelayNanoseconds: UInt64?
+    private(set) var fetchContactsCallCount = 0
+
     func fetchContacts(userId: String) async throws -> ([FSContact], [String: FSGroup]) {
+        fetchContactsCallCount += 1
+        if let fetchContactsDelayNanoseconds {
+            try await Task.sleep(nanoseconds: fetchContactsDelayNanoseconds)
+        }
+        if let fetchContactsError { throw fetchContactsError }
         return try await MockDataService.shared.fetchContacts(userId: userId)
     }
 

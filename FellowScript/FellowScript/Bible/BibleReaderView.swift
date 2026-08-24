@@ -40,7 +40,15 @@ final class BibleViewModel: ObservableObject {
         }
     }
 
+    // Guards against a duplicate fetch when this instance is shared between
+    // StartupCoordinator (which calls load() once up front to gate the
+    // startup loading screen) and this screen's own `.task` (which also
+    // calls load() the first time BibleReaderView is lazily mounted).
+    private var hasLoadedOnce = false
+
     func load(service: DataServiceProtocol, userId: String) async {
+        guard !hasLoadedOnce else { return }
+        hasLoadedOnce = true
         self.service = service
         // Fetch from bundled bible.json in the app bundle
         guard let url = Bundle.main.url(forResource: "bible", withExtension: "json") else {
@@ -263,7 +271,18 @@ final class BibleViewModel: ObservableObject {
 // ── Main Reader View ──────────────────────────────────────────────────────────
 struct BibleReaderView: View {
     @EnvironmentObject var appState: AppState
-    @StateObject private var vm = BibleViewModel()
+    @StateObject private var vm: BibleViewModel
+
+    // Required (no default): a bare `BibleViewModel()` default expression is
+    // evaluated as MainActor-isolated under this project's default actor
+    // isolation, but this init itself must stay usable from a nonisolated
+    // context, so it can't carry that default safely. ContentView.mainTabView
+    // is the only call site and always passes StartupCoordinator's shared
+    // instance so this screen's `.task` sees already-loaded (or in-flight)
+    // data instead of firing a second fetch (see BibleViewModel.hasLoadedOnce).
+    init(vm: BibleViewModel) {
+        _vm = StateObject(wrappedValue: vm)
+    }
 
     @AppStorage("bibleReaderFontSizeIndex") private var fontSizeIndex: Int = 1
     @State private var showNavSheet      = false
