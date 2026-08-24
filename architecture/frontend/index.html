@@ -1176,7 +1176,7 @@
 </tr>
 <tr>
 <td><code>LoadingScreen/LoadingScreenView.swift</code>, <code>LoadingScreen/loading-screen.mov</code></td>
-<td>App-startup loading screen: an <code>AVQueuePlayer</code>/<code>AVPlayerLooper</code>-driven, muted, looping video (<code>loading-screen.mov</code> — HEVC with alpha, 1080×1080, transcoded from the 205MB ProRes source in <code>data/</code>) shown between sign-in and the app's first-load data being ready. Falls back to a static branded placeholder if the asset fails to load/decode, and to a held representative frame (no playback) under <code>accessibilityReduceMotion</code>.</td>
+<td>App-startup loading screen: an <code>AVQueuePlayer</code>/<code>AVPlayerLooper</code>-driven, muted, looping video (<code>loading-screen.mov</code> — HEVC with alpha, 1440×1440, re-exported from the 205MB ProRes source in <code>data/</code> via <code>avconvert --preset PresetHEVCHighestQualityWithAlpha</code>, AVFoundation's own alpha-aware export pipeline rather than ffmpeg, to eliminate a faint alpha-plane haze the ffmpeg-produced derivative showed only during live <code>AVPlayerLayer</code> playback) shown between sign-in and the app's first-load data being ready, displayed at a fixed 180×180pt icon/mark scale (not full-bleed) centered over <code>Theme.bgPage</code>. Falls back to a static branded placeholder if the asset fails to load/decode, and to a held representative frame (no playback) under <code>accessibilityReduceMotion</code>.</td>
 </tr>
 <tr>
 <td><code>Services/StartupCoordinator.swift</code></td>
