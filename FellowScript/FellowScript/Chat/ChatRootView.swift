@@ -20,7 +20,19 @@ import Combine
 // ── Root chat view with three segments ────────────────────────────────────────
 struct ChatRootView: View {
     @EnvironmentObject var appState: AppState
-    @StateObject private var vm = ChatViewModel()
+    @StateObject private var vm: ChatViewModel
+
+    // Required (no default): a bare `ChatViewModel()` default expression is
+    // evaluated as MainActor-isolated under this project's default actor
+    // isolation, but this init itself must stay usable from a nonisolated
+    // context, so it can't carry that default safely. ContentView.mainTabView
+    // is the only call site and always passes StartupCoordinator's shared
+    // instance so this screen's `.task` sees already-loaded (or in-flight)
+    // data instead of firing a second fetch (see ChatViewModel.hasLoadedOnce).
+    init(vm: ChatViewModel) {
+        _vm = StateObject(wrappedValue: vm)
+    }
+
     @State private var selectedSegment = 0
     @State private var searchQuery     = ""
     @State private var showAddFriend   = false
@@ -430,7 +442,15 @@ final class ChatViewModel: ObservableObject {
     // a client-generated id on failure (backend step 11 finding #2).
     @Published var agentError: String? = nil
 
+    // Guards against a duplicate fetch when this instance is shared between
+    // StartupCoordinator (which calls load() once up front to gate the
+    // startup loading screen) and this screen's own `.task` (which also
+    // calls load() the first time ChatRootView is lazily mounted).
+    private var hasLoadedOnce = false
+
     func load(service: DataServiceProtocol, userId: String) async {
+        guard !hasLoadedOnce else { return }
+        hasLoadedOnce = true
         self.service = service
         isLoading = true
         defer { isLoading = false }

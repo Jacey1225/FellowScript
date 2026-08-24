@@ -102,7 +102,15 @@ final class NotesViewModel: ObservableObject {
         return groups.first { $0.id == gid }?.title ?? "Group"
     }
 
+    // Guards against a duplicate fetch when this instance is shared between
+    // StartupCoordinator (which calls load() once up front to gate the
+    // startup loading screen) and this screen's own `.task` (which also
+    // calls load() the first time NotesListView is lazily mounted).
+    private var hasLoadedOnce = false
+
     func load(service: DataServiceProtocol, userId: String) async {
+        guard !hasLoadedOnce else { return }
+        hasLoadedOnce = true
         self.service = service
         isLoading = true
         defer { isLoading = false }
@@ -250,7 +258,18 @@ final class NotesViewModel: ObservableObject {
 // ── Root notes list ───────────────────────────────────────────────────────────
 struct NotesListView: View {
     @EnvironmentObject var appState: AppState
-    @StateObject private var vm = NotesViewModel()
+    @StateObject private var vm: NotesViewModel
+
+    // Required (no default): a bare `NotesViewModel()` default expression is
+    // evaluated as MainActor-isolated under this project's default actor
+    // isolation, but this init itself must stay usable from a nonisolated
+    // context, so it can't carry that default safely. ContentView.mainTabView
+    // is the only call site and always passes StartupCoordinator's shared
+    // instance so this screen's `.task` sees already-loaded (or in-flight)
+    // data instead of firing a second fetch (see NotesViewModel.hasLoadedOnce).
+    init(vm: NotesViewModel) {
+        _vm = StateObject(wrappedValue: vm)
+    }
 
     @State private var showEditor       = false
     @State private var editingNote:     FSNote?  = nil
