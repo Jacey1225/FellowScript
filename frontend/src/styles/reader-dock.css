@@ -49,8 +49,14 @@
      retint above, not a replacement for it. Kept out of global.css so this
      never leaks into .note-card/.dash-widget/other opaque --card-bg
      surfaces elsewhere in the app; only .dv-groupview (this file) consumes
-     them. */
-  --panel-glass-bg:   rgba(26,26,28,0.62);
+     them.
+     REVISED (bounce, design-notes.md §8.2): was a neutral grey
+     rgba(26,26,28,0.62), which read as a softened grey card rather than
+     glass once the panel had real color behind it to pick up (§8.1). Now
+     the spec's own #1E1812 warm-brown hue, nudged lighter/more transparent
+     than its 55-65% floor so more of the restored ambient warmth shows
+     through the blur. */
+  --panel-glass-bg:   rgba(32,24,17,0.52);
   --panel-glass-blur: 16px;
 }
 
@@ -140,7 +146,11 @@
      already do the "glass edge" job the spec's --shadow-glass/--border-glass
      tokens asked for, so they're intentionally left as-is. */
   background: var(--panel-glass-bg);
-  backdrop-filter: blur(var(--panel-glass-blur));
+  /* saturate() added (design-notes.md §8.2, bounce revision) — the standard
+     glassmorphism mechanism for making a blurred, colorful background read
+     as vivid/lit through the glass rather than muddy; blur alone
+     desaturates by averaging. */
+  backdrop-filter: blur(var(--panel-glass-blur)) saturate(160%);
 }
 
 /* Recessed background wash behind the tab row (design-notes.md §4) — tab
@@ -169,8 +179,14 @@
   border-bottom: 1px solid rgba(255,255,255,0.072);
   /* Was var(--nav-bg) — that token is retired for Reader (see .fs-nav--unified
      above), so this toolbar now reads as the same glass family as the panel
-     body beneath it rather than a leftover opaque band (design-notes.md §3). */
+     body beneath it rather than a leftover opaque band (design-notes.md §3).
+     backdrop-filter added (design-notes.md §8.2, bounce revision) — the
+     background-only version didn't actually read as glass; matching
+     .dv-groupview's own blur+saturate so the toolbar and panel body are
+     visibly the same material rather than a flat tinted strip on top of a
+     blurred surface. */
   background: var(--panel-glass-bg);
+  backdrop-filter: blur(var(--panel-glass-blur)) saturate(160%);
   flex-shrink: 0;
 }
 

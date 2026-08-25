@@ -148,6 +148,19 @@ export default function Reader() {
 
   const cycleFontSize = useCallback(() => setFontSizeIdx(i => (i + 1) % FONT_SIZES.length), []);
 
+  // Warm Reader-scoped canvas (design-notes.md §8.1, bounce revision) — the
+  // `page-reader` class is what paints the color underneath the fixed
+  // AppBloom/grain layers (position: fixed, so they composite over
+  // whatever body's own background is); global.css's
+  // `[data-theme="dark"] body.page-reader` rule reads this class to warm
+  // --bg-page/--bg-page-2 for this route only, leaving every other route's
+  // --bg-page untouched. Mount/unmount effect so the class never leaks past
+  // this page.
+  useEffect(() => {
+    document.body.classList.add('page-reader');
+    return () => document.body.classList.remove('page-reader');
+  }, []);
+
   // Dockview (desktop) — api ref + layout persistence bookkeeping.
   const dockviewApiRef  = useRef(null);
   const disposableRef   = useRef(null);

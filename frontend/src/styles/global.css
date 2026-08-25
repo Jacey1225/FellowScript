@@ -87,6 +87,19 @@
   --trigger-fill-active:  rgba(255,255,255,0.08);
 }
 
+/* Reader-scoped warm canvas (design-notes.md §8.1, bounce revision).
+   --bg-page/--bg-page-2 stay a cooler near-black everywhere else; Reader
+   toggles `page-reader` on <body> (Reader.jsx mount/unmount effect) so the
+   base color the fixed AppBloom/grain layers composite over is the warm
+   charcoal the reference mockup uses, without touching the global token.
+   Dark-mode only — gated on [data-theme="dark"] so it can never fight the
+   light-mode override below if the class is ever left on body across a
+   theme toggle. */
+[data-theme="dark"] body.page-reader {
+  --bg-page:   #14110D;
+  --bg-page-2: #0D0906;
+}
+
 /* ── Light mode overrides ── */
 [data-theme="light"] {
   --bg-page:         #EDE0C4;
@@ -211,16 +224,16 @@ body {
 
 /* ── Unified header background (Reader route only, design-notes.md §2) ──
    Retires --surface-header's job of rendering as a distinct band: no fill,
-   no border, so the header sits directly on the same flat --bg-page canvas
-   (plus the always-present, full-viewport #root::before static bloom, see
-   above) that the rest of the Reader page already sits on — Reader's own
-   <AppBloom variant="reader"> is a no-op (returns null; Reader intentionally
-   uses the flat canvas, not the animated blob layer), so there's no separate
-   "warm bloom" layer to diffuse into here, just visual continuity with the
-   page body beneath. backdrop-filter blur stays, so scripture/panel content
-   scrolling underneath the fixed header remains legible. Scoped to
-   .fs-nav--unified (applied by AppNav.jsx only when on /reader) rather than
-   changing .fs-nav globally — Account/Admin routes keep the opaque band. */
+   no border, so the header sits directly on the same warm canvas (the
+   Reader-scoped body.page-reader --bg-page override, plus the always-
+   present #root::before static bloom AND Reader's own animated <AppBloom
+   variant="reader"> blob/grain layer — re-enabled per design-notes.md
+   §8.1, bounce revision) that the rest of the Reader page already sits
+   on, so there's continuity rather than a seam at the header's edge.
+   backdrop-filter blur stays, so scripture/panel content scrolling
+   underneath the fixed header remains legible. Scoped to .fs-nav--unified
+   (applied by AppNav.jsx only when on /reader) rather than changing
+   .fs-nav globally — Account/Admin routes keep the opaque band. */
 .fs-nav.ant-layout-header.fs-nav--unified {
   background: transparent !important;
   border-bottom: none;
@@ -550,7 +563,12 @@ body {
 }
 
 .card-title {
-  font-family: 'Space Grotesk', sans-serif;
+  /* Spectral (design-notes.md §8.3, bounce revision) — already this app's
+     "this is scripture" voice (ScriptureChip/ScriptureNav labels); was
+     Space Grotesk (sans), which is why the reading surface didn't pick up
+     the reference mockup's serif treatment. .card-book-label stays on
+     Space Grotesk (serif-body/sans-caps-label pairing, unchanged). */
+  font-family: 'Spectral', serif;
   font-size: clamp(2.2rem, 4.5vw, 3.2rem);
   font-weight: 700;
   color: var(--bible-text);
@@ -559,7 +577,7 @@ body {
 }
 
 .card-section-head {
-
+  font-family: 'Spectral', serif;
   font-style: italic;
   font-size: 0.95rem;
   font-weight: 300;
@@ -570,7 +588,10 @@ body {
 
 /* ── Chapter body text ── */
 .card-body {
-
+  /* Spectral (design-notes.md §8.3) — was unset, silently inheriting
+     body's Inter. .vnum (verse-number superscript) has no font-family of
+     its own and inherits this automatically. */
+  font-family: 'Spectral', serif;
   font-size: var(--bible-font-size, 1.08rem);
   font-weight: 400;
   line-height: var(--bible-line-height, 1.9);
@@ -582,7 +603,7 @@ body {
 
 .section-head {
   display: block;
-
+  font-family: 'Spectral', serif;
   font-size: 0.85rem;
   font-weight: 500;
   font-style: italic;
@@ -868,7 +889,10 @@ body {
   max-width: 85%;
   padding: 0.5rem 0.75rem;
   border-radius: var(--radius-md);
-
+  /* Lora (design-notes.md §8.3, bounce revision) — already the antd-wide
+     base serif (theme.js); was unset here, falling back to body's Inter.
+     .msg-bubble-markdown's h3/h4 keep their own explicit Space Grotesk. */
+  font-family: 'Lora', serif;
   font-size: var(--pt-md);
   line-height: 1.5;
   word-break: break-word;
@@ -914,6 +938,9 @@ body {
   max-width: none;
   text-align: left;
   padding: 0.3rem 1.75rem;
+  /* Lora (design-notes.md §8.3) — inherited by .fs-agent-markdown children;
+     their own h3/h4 keep explicit Space Grotesk. */
+  font-family: 'Lora', serif;
   font-size: var(--pt-md);
   line-height: 1.7;
   color: rgba(242,242,242,0.8);
@@ -1260,7 +1287,10 @@ body {
   outline: none;
   resize: none;
   overflow: hidden;
-  font-family: 'Space Grotesk', sans-serif;
+  /* Lora (design-notes.md §8.3, bounce revision) — was Space Grotesk (sans);
+     Notes is reading prose, not UI chrome, so it moves to the same serif
+     tier as the rest of the Reader's prose content. */
+  font-family: 'Lora', serif;
   font-size: clamp(1.1rem, 0.9rem + 0.8vw, 1.52rem);
   font-weight: 700;
   color: var(--parchment);
@@ -1277,7 +1307,8 @@ body {
   background: transparent;
   border: none;
   outline: none;
-
+  /* Lora (design-notes.md §8.3) — was unset, falling back to body's Inter. */
+  font-family: 'Lora', serif;
   font-size: var(--pt-lg);
   color: rgba(242,242,242,0.72);
   line-height: 1.88;
@@ -1292,7 +1323,11 @@ body {
   display: block;
 }
 
-/* Rendered note body (NoteDetail view) */
+/* Rendered note body (NoteDetail view) — Lora (design-notes.md §8.3), was
+   unset/inherited Inter. */
+.note-rendered-body {
+  font-family: 'Lora', serif;
+}
 .note-rendered-body mark {
   background: rgba(255,198,26,0.35);
   color: inherit;
