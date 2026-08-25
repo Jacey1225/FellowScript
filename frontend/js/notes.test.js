@@ -124,4 +124,29 @@ describe('notes.js loadNotes — unwraps the keyset-paginated envelope end-to-en
     expect(listEl.textContent).not.toContain('next_cursor_created_at');
     expect(listEl.textContent).not.toContain('has_more');
   });
+
+  test('a response missing .notes entirely renders the empty state, not 4 fake "Untitled" cards', async () => {
+    // Reproduces the exact reported screenshot shape: a payload whose
+    // top-level keys (none literally "notes") would, under the pre-8710a27a
+    // bug, each have been drawn as an empty "Untitled" card grouped under
+    // "General". The defensive unwrapNotesEnvelope guard must treat this as
+    // "no notes" instead.
+    global.fetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        next_cursor_created_at: '2026-08-17T00:00:00Z',
+        next_cursor_id: 'note-2',
+        has_more: true,
+        extra_unexpected_key: true,
+      }),
+    });
+
+    const { loadNotes } = await importFreshNotesModule();
+    await loadNotes();
+
+    const listEl = document.getElementById('list-verse');
+    expect(listEl.querySelectorAll('.note-card').length).toBe(0);
+    expect(listEl.textContent).toContain('No notes yet.');
+    expect(listEl.textContent).not.toContain('Untitled');
+  });
 });

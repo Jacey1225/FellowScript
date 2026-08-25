@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef } from 'react';
 import { message } from 'antd';
 import { API } from '../config.js';
-import { verseRefLabel } from '../utils.js';
+import { verseRefLabel, unwrapNotesEnvelope } from '../utils.js';
 
 // Shows a friendly upgrade prompt when the backend rejects a create with 403
 // (free-tier limit reached). Returns true if it handled a limit response.
@@ -59,7 +59,9 @@ export function useNotes({ user, curBook, curChapter, vsValue }) {
       // shape (and every existing consumer of allNotes) is unaffected. The
       // web UI intentionally keeps its current full-list loading behavior
       // (no "load more" here) and just always sees the first capped page.
-      const data = payload.notes ?? {};
+      // unwrapNotesEnvelope also fails safe (empty, not the raw envelope) if
+      // .notes is ever missing or malformed -- see its doc comment.
+      const data = unwrapNotesEnvelope(payload);
       setAllNotes(data);
       notesCache.current[''] = data;
     } catch {}
@@ -74,7 +76,7 @@ export function useNotes({ user, curBook, curChapter, vsValue }) {
         const payload = await res.json();
         // Same envelope unwrap as loadNotes above -- {username: {note_id: note}}
         // now lives under payload.notes.
-        const data = payload.notes ?? {};
+        const data = unwrapNotesEnvelope(payload);
         setGroupNotes(data);
         notesCache.current[groupId] = data;
       }

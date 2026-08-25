@@ -60,6 +60,38 @@ describe('useNotes.loadNotes — unwraps the keyset-paginated envelope', () => {
   });
 });
 
+describe('useNotes.loadNotes — fails safe on a malformed/missing envelope (defensive guard)', () => {
+  test('a response missing .notes entirely (e.g. a regression to the old bare {note_id: note} shape) becomes an empty allNotes, not the raw payload treated as notes', async () => {
+    // This is the exact pre-8710a27a failure mode from the bug report: the
+    // whole envelope (4 top-level keys) would have been assigned directly
+    // as allNotes, so each key rendered as a fake "Untitled"/"General" note.
+    global.fetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        'note-1': { title: 'A', text: 'body a' },
+        'note-2': { title: 'B', text: 'body b' },
+      }),
+    });
+
+    const { result } = renderHook(() => useNotes({ user: USER }));
+    await act(async () => { await result.current.loadNotes(); });
+
+    await waitFor(() => expect(result.current.allNotes).toEqual({}));
+  });
+
+  test('a response with a non-object .notes fails safe to an empty allNotes instead of throwing or leaking garbage', async () => {
+    global.fetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ notes: 'unexpected-string', next_cursor_created_at: null, next_cursor_id: null, has_more: false }),
+    });
+
+    const { result } = renderHook(() => useNotes({ user: USER }));
+    await act(async () => { await result.current.loadNotes(); });
+
+    await waitFor(() => expect(result.current.allNotes).toEqual({}));
+  });
+});
+
 describe('useNotes.loadGroupNotes — unwraps the keyset-paginated envelope', () => {
   test('groupNotes becomes payload.notes (username -> {note_id: note}), not the whole envelope', async () => {
     global.fetch.mockResolvedValueOnce({

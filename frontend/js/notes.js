@@ -3,7 +3,7 @@
 // so inline onclick handlers in generated HTML can reach them.
 
 import { API, user }    from './config.js';
-import { escHtml, verseRefLabel } from './utils.js';
+import { escHtml, verseRefLabel, unwrapNotesEnvelope } from './utils.js';
 import { curBook, curChapter, vsSel } from './bible.js';
 import {
   currentGroupId, groupNotes,
@@ -349,7 +349,9 @@ export async function loadNotes() {
     // bare {note_id: note} dict -- unwrap .notes so allNotes keeps its
     // existing shape. This view intentionally keeps its current full-list
     // loading behavior and just always sees the first capped page.
-    allNotes = payload.notes ?? {};
+    // unwrapNotesEnvelope also fails safe (empty, not the raw envelope) if
+    // .notes is ever missing or malformed -- see its doc comment.
+    allNotes = unwrapNotesEnvelope(payload);
     notesCache[''] = allNotes;
     console.log('[notes] personal notes loaded:', Object.keys(allNotes).length, allNotes);
     renderAllLists();
@@ -362,7 +364,7 @@ async function _loadGroupNotes(groupId) {
     if (res.ok) {
       const payload = await res.json();
       // Same envelope unwrap as loadNotes above.
-      const data = payload.notes ?? {};
+      const data = unwrapNotesEnvelope(payload);
       setGroupNotes(data);
       notesCache[groupId] = data;
       const total = Object.values(data).reduce((s, u) => s + Object.keys(u).length, 0);
