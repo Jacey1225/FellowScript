@@ -43,6 +43,15 @@
   --dv-tab-margin:                               0.45rem 0.25rem;
   --dv-tab-close-icon-size:                       9px;
   --dv-dropdown-border-radius:                   12px;
+
+  /* "Warm Vellum Glass" panel translucency (design-notes.md §3) — new,
+     dockview-abyss-scoped tokens layered on top of the opaque --card-bg
+     retint above, not a replacement for it. Kept out of global.css so this
+     never leaks into .note-card/.dash-widget/other opaque --card-bg
+     surfaces elsewhere in the app; only .dv-groupview (this file) consumes
+     them. */
+  --panel-glass-bg:   rgba(26,26,28,0.62);
+  --panel-glass-blur: 16px;
 }
 
 .dockview-theme-abyss .dv-default-tab,
@@ -124,6 +133,14 @@
   overflow: hidden;
   border: 1px solid var(--card-border);
   box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  /* Glass treatment (design-notes.md §3): translucent fill + blur instead of
+     the opaque --card-bg dockview-core would otherwise inherit via
+     --dv-color-abyss above, so panel content reads as floating glass over
+     the ambient bloom rather than a flat card. Real shadow/border above
+     already do the "glass edge" job the spec's --shadow-glass/--border-glass
+     tokens asked for, so they're intentionally left as-is. */
+  background: var(--panel-glass-bg);
+  backdrop-filter: blur(var(--panel-glass-blur));
 }
 
 /* Recessed background wash behind the tab row (design-notes.md §4) — tab
@@ -150,7 +167,10 @@
   align-items: center;
   padding: 0.75rem 1.1rem;
   border-bottom: 1px solid rgba(255,255,255,0.072);
-  background: var(--nav-bg);
+  /* Was var(--nav-bg) — that token is retired for Reader (see .fs-nav--unified
+     above), so this toolbar now reads as the same glass family as the panel
+     body beneath it rather than a leftover opaque band (design-notes.md §3). */
+  background: var(--panel-glass-bg);
   flex-shrink: 0;
 }
 

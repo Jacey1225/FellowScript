@@ -441,6 +441,20 @@ export default function Reader() {
   }), [user, agents, agentMessages, activeAgent, agentThinking, handleOpenAgent, handleCloseAgent,
        handleNewAgent, sendAgentMessage, curBook, curChapter, curVerse, allNotes, handleNavigateVerse]);
 
+  // AppNav's "Jump or Ask" command-trigger (design-spec §3.2-3.3) — a thin
+  // props bundle handing the header the exact same navigation/agent-chat
+  // machinery the dockview panels already use, so the overlay's Jump mode
+  // and Ask mode are real, not stubbed. See CommandTrigger.jsx.
+  const commandTriggerProps = useMemo(() => ({
+    books, curBook, curChapter, chapterCount: getChapterCount, verseCount,
+    onNavigate: handleNavigate, onNavigateVerse: handleNavigateVerse,
+    user, agents, activeAgent, agentMessages, agentThinking,
+    onOpenAgent: handleOpenAgent, onNewAgent: handleNewAgent, sendAgentMessage,
+    curVerse, allNotes,
+  }), [books, curBook, curChapter, getChapterCount, verseCount, handleNavigate, handleNavigateVerse,
+       user, agents, activeAgent, agentMessages, agentThinking, handleOpenAgent, handleNewAgent,
+       sendAgentMessage, curVerse, allNotes]);
+
   return (
     <BibleReaderPanelContext.Provider value={bibleReaderPanelValue}>
     <NotesPanelContext.Provider value={notesPanelValue}>
@@ -449,7 +463,7 @@ export default function Reader() {
     <AgentChatPanelContext.Provider value={agentChatPanelValue}>
       <Layout style={{ minHeight: '100vh', background: 'transparent', overflow: 'hidden' }}>
         <AppBloom variant="reader" />
-        <AppNav />
+        <AppNav commandTrigger={commandTriggerProps} />
 
         {isDesktop ? (
           <>

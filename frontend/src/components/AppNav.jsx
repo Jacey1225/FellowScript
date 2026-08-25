@@ -4,10 +4,15 @@ import { Layout, Menu, Drawer, Button, Tooltip } from 'antd';
 import { MenuOutlined, ReadOutlined, HomeOutlined, UserOutlined, BulbOutlined, BulbFilled } from '@ant-design/icons';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useTheme } from '../hooks/useTheme.js';
+import CommandTrigger from './CommandTrigger.jsx';
 
 const { Header } = Layout;
 
-export default function AppNav() {
+// `commandTrigger` is optional and only ever passed by Reader.jsx (the
+// "Jump or Ask" pill + overlay wires into Reader's own useBible/useAgentChat
+// state — see design-notes.md §4-5 and intake-spec.md's confirmed scope).
+// AppNav itself stays shared/unaware of Reader's data on the other 3 routes.
+export default function AppNav({ commandTrigger }) {
   const { user } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
@@ -16,6 +21,13 @@ export default function AppNav() {
 
   const accountLabel = user ? (user.username || 'Account') : 'Sign In';
   const accountHref  = user ? '/account' : '/signin';
+
+  // Reader-scoped only (design-notes.md §2): removes the header's own
+  // background fill so it sits on the same flat --bg-page canvas as the rest
+  // of the Reader page. Admin/Account routes keep the opaque --nav-bg band —
+  // AppNav is shared by 4 routes and only Reader's visual spec calls for the
+  // unified background.
+  const isReaderRoute = location.pathname === '/reader';
 
   const currentKey = location.pathname === '/reader'  ? 'reader'
                    : location.pathname === '/account' ? 'account'
@@ -35,7 +47,7 @@ export default function AppNav() {
   };
 
   return (
-    <Header className="fs-nav">
+    <Header className={`fs-nav${isReaderRoute ? ' fs-nav--unified' : ''}`}>
       <Link to="/" className="nav-logo">
         <span className="fellow">Fellow</span>
         <span className="script">Script</span>
@@ -53,7 +65,9 @@ export default function AppNav() {
       />
 
       {/* Right-side controls */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', flexShrink: 0 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexShrink: 0 }}>
+        {isReaderRoute && commandTrigger && <CommandTrigger {...commandTrigger} />}
+
         <Tooltip title={isDark ? 'Light mode' : 'Dark mode'} placement="bottom">
           <Button
             type="text"

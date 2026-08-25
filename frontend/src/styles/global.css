@@ -76,6 +76,15 @@
   --bib-ch-text:     rgba(242,242,242,0.55);
   --bible-bg:        #231610;
   --bible-text:      #E8D9BB;
+
+  /* Command-trigger ("Jump or Ask") pill states (design-notes.md §1/§4) — a
+     ghost-pill treatment (transparent fill, gold-tinted outline) distinct
+     from --pill-bg's filled-chip wash, retinted to the app's real --gold
+     rather than the design spec's muted antique-gold hex. */
+  --trigger-border:       rgba(255,198,26,0.35);
+  --trigger-border-hover: var(--gold);
+  --trigger-fill-hover:   rgba(255,255,255,0.04);
+  --trigger-fill-active:  rgba(255,255,255,0.08);
 }
 
 /* ── Light mode overrides ── */
@@ -96,6 +105,14 @@
   --bib-ch-text:     rgba(30,18,8,0.6);
   --bible-bg:        #F4E4C1;
   --bible-text:      #1A100A;
+
+  /* Light-mode equivalents for the command-trigger tokens (design-notes.md
+     §6 — neither source spec addresses light mode). --trigger-border-hover
+     keeps var(--gold) — gold itself doesn't shift between themes anywhere
+     else in this file, so no override needed here. */
+  --trigger-border:      rgba(160,100,18,0.35);
+  --trigger-fill-hover:  rgba(160,100,18,0.06);
+  --trigger-fill-active: rgba(160,100,18,0.12);
 }
 
 /* ── Reset & base ── */
@@ -192,6 +209,23 @@ body {
   justify-content: space-between;
 }
 
+/* ── Unified header background (Reader route only, design-notes.md §2) ──
+   Retires --surface-header's job of rendering as a distinct band: no fill,
+   no border, so the header sits directly on the same flat --bg-page canvas
+   (plus the always-present, full-viewport #root::before static bloom, see
+   above) that the rest of the Reader page already sits on — Reader's own
+   <AppBloom variant="reader"> is a no-op (returns null; Reader intentionally
+   uses the flat canvas, not the animated blob layer), so there's no separate
+   "warm bloom" layer to diffuse into here, just visual continuity with the
+   page body beneath. backdrop-filter blur stays, so scripture/panel content
+   scrolling underneath the fixed header remains legible. Scoped to
+   .fs-nav--unified (applied by AppNav.jsx only when on /reader) rather than
+   changing .fs-nav globally — Account/Admin routes keep the opaque band. */
+.fs-nav.ant-layout-header.fs-nav--unified {
+  background: transparent !important;
+  border-bottom: none;
+}
+
 .nav-logo {
   font-family: 'Playfair Display', serif;
   font-size: 1.45rem;
@@ -268,6 +302,100 @@ body {
   font-weight: 600;
 }
 .nav-pill-btn.dock-reset-btn:hover { filter: brightness(1.06); }
+
+/* ── Command-trigger pill ("Jump or Ask", design-notes.md §4) ──
+   Ghost-pill treatment (transparent fill, gold-tinted border) rather than
+   the ambient --pill-bg wash the other .nav-pill-btn uses, so it reads as
+   an outlined affordance — an anti-goal of the spec is it reading as "a
+   relabeled search bar", hence the deliberately narrow width. Reader-route
+   only (see AppNav.jsx / CommandTrigger.jsx). */
+.nav-pill-btn.cmd-trigger-btn {
+  background: transparent;
+  border: 1px solid var(--trigger-border);
+  min-width: 200px;
+  max-width: 240px;
+  height: 36px;
+  justify-content: flex-start;
+}
+.nav-pill-btn.cmd-trigger-btn:hover {
+  border-color: var(--trigger-border-hover);
+  background: var(--trigger-fill-hover);
+}
+.nav-pill-btn.cmd-trigger-btn.open,
+.nav-pill-btn.cmd-trigger-btn:active {
+  background: var(--trigger-fill-active);
+}
+/* No :focus-visible convention exists anywhere else in the codebase today
+   (design-notes.md §1/§7 flags this as a real gap, not spec nicety) — apply
+   it here and across the overlay's own interactive elements below. */
+.nav-pill-btn.cmd-trigger-btn:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+}
+.cmd-trigger-kbd {
+  margin-left: auto;
+  padding: 0.05rem 0.42rem;
+  border-radius: var(--radius-sm);
+  background: rgba(255,198,26,0.1);
+  color: rgba(255,198,26,0.7);
+  font-size: 0.62rem;
+  letter-spacing: 0.02em;
+  font-family: 'Inter', sans-serif;
+  flex-shrink: 0;
+}
+
+/* ── Command-trigger overlay (§3.3) — Jump/Ask segmented modal. The glass
+   fill/blur/border/radius live inline via CommandTrigger.jsx's Modal
+   `styles` prop (reusing --widget-bg/--widget-border/--radius-lg, the same
+   real tokens .bib-nav-widget already uses); this block only lays out the
+   overlay's own header/body/columns. */
+.cmd-overlay .ant-modal-content { box-shadow: none; }
+.cmd-overlay-header {
+  padding: 0.9rem 1rem 0.7rem;
+  border-bottom: 1px solid var(--bib-divider);
+  display: flex;
+  justify-content: center;
+}
+.cmd-overlay-body {
+  height: 440px;
+  overflow: hidden;
+}
+.cmd-overlay button:focus-visible,
+.cmd-overlay input:focus-visible,
+.cmd-overlay [tabindex]:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+}
+
+/* Jump-to-passage's 3-column book/chapter/verse picker — reuses
+   .bib-section-label/.bib-books-grid/.bib-book-btn/.bib-ch-grid/.bib-ch-btn
+   (already styled below) for the columns' contents; these rules only lay
+   out the columns themselves. */
+.cmd-jump-cols {
+  display: flex;
+  height: 100%;
+}
+.cmd-jump-col {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  padding: 0.8rem;
+  display: flex;
+  flex-direction: column;
+}
+.cmd-jump-col + .cmd-jump-col { border-left: 1px solid var(--bib-divider); }
+.cmd-jump-hint {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 1rem;
+  text-align: center;
+  font-size: 0.72rem;
+  color: rgba(255,198,26,0.35);
+  font-family: 'Inter', sans-serif;
+  line-height: 1.6;
+}
 
 /* ── Bible nav dropdown widget ── */
 .bib-nav-widget {
@@ -892,6 +1020,15 @@ body {
   /* Swap desktop menu for hamburger */
   .desktop-menu { display: none !important; }
   .hamburger-btn.ant-btn { display: inline-flex; }
+
+  /* The command-trigger pill (200-240px) doesn't fit the 52px mobile header
+     alongside the logo/theme-toggle/hamburger, and ⌘K has no mobile
+     equivalent anyway — the mobile Reader branch already has its own
+     scripture-nav-bar navigation pills instead (BibleNavigator, font size,
+     bookmarks), so this isn't a functional regression, just keeping the
+     already-minimal mobile header minimal (design-notes.md/intake-spec.md
+     scope this restyle to desktop dockview chrome + header). */
+  .cmd-trigger-btn { display: none; }
 
   .scripture-nav-bar {
     padding: 0 0.8rem;

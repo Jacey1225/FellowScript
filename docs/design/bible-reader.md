@@ -56,6 +56,14 @@ On narrow screens (≤1024px) this entire dockable system is replaced by a fixed
 - **Messaging** — friends/group DMs (no agents — see below)
 - **Agent Chat** — a horizontal switcher across the top (not the vertical list used before) since this panel is usually docked wide-and-short under the reader; split out from Messaging so both can be positioned independently
 
+### "Jump or Ask" command-trigger (header, desktop only)
+A pill button in `AppNav` labeled **Jump or Ask** with a `⌘K` shortcut chip. Clicking it, or pressing `Cmd`/`Ctrl`+K anywhere on `/reader`, opens a segmented overlay with two modes:
+
+- **Jump to passage** — a book/chapter/verse picker; selecting a chapter or verse navigates the reader using the same navigation handlers as the rest of the page.
+- **Ask the agent** — reuses the same pinned Agent Chat session (not a separate ephemeral call) to send a message and show a real response, via the `AgentChatThread` component also used by the Agent Chat panel/mobile overlay.
+
+Hidden below the 1024px mobile breakpoint — the mobile branch already has its own scripture-nav-bar navigation controls, and `⌘K` has no mobile equivalent.
+
 ---
 
 ## Navigation
@@ -63,3 +71,4 @@ On narrow screens (≤1024px) this entire dockable system is replaced by a fixed
 - Logo / "FellowScript" in `AppNav` → `/` (home)
 - Account icon → `/account`
 - Book/chapter changes stay within `/reader`
+- `⌘K` (or clicking the "Jump or Ask" pill) opens the command-trigger overlay described above
