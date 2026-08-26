@@ -565,17 +565,6 @@
   
 </li>
         
-          <li class="md-nav__item">
-  <a href="#jump-or-ask-command-trigger-header-desktop-only" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        "Jump or Ask" command-trigger (header, desktop only)
-      
-    </span>
-  </a>
-  
-</li>
-        
       </ul>
     </nav>
   
@@ -1042,21 +1031,14 @@
 <li><strong>Messaging</strong> — friends/group DMs (no agents — see below)</li>
 <li><strong>Agent Chat</strong> — a horizontal switcher across the top (not the vertical list used before) since this panel is usually docked wide-and-short under the reader; split out from Messaging so both can be positioned independently</li>
 </ul>
-<h3 id="jump-or-ask-command-trigger-header-desktop-only">"Jump or Ask" command-trigger (header, desktop only)</h3>
-<p>A pill button in <code>AppNav</code> labeled <strong>Jump or Ask</strong> with a <code>⌘K</code> shortcut chip. Clicking it, or pressing <code>Cmd</code>/<code>Ctrl</code>+K anywhere on <code>/reader</code>, opens a segmented overlay with two modes:</p>
-<ul>
-<li><strong>Jump to passage</strong> — a book/chapter/verse picker; selecting a chapter or verse navigates the reader using the same navigation handlers as the rest of the page.</li>
-<li><strong>Ask the agent</strong> — reuses the same pinned Agent Chat session (not a separate ephemeral call) to send a message and show a real response, via the <code>AgentChatThread</code> component also used by the Agent Chat panel/mobile overlay.</li>
-</ul>
-<p>Hidden below the 1024px mobile breakpoint — the mobile branch already has its own scripture-nav-bar navigation controls, and <code>⌘K</code> has no mobile equivalent.</p>
 <hr />
 <h2 id="navigation">Navigation</h2>
 <ul>
 <li>Logo / "FellowScript" in <code>AppNav</code> → <code>/</code> (home)</li>
-<li>Account icon → <code>/account</code></li>
+<li>Profile avatar (32px circular, gold ring) in <code>AppNav</code>'s top-right → <code>/account</code> if signed in, <code>/signin</code> otherwise</li>
 <li>Book/chapter changes stay within <code>/reader</code></li>
-<li><code>⌘K</code> (or clicking the "Jump or Ask" pill) opens the command-trigger overlay described above</li>
 </ul>
+<p><code>AppNav</code>'s desktop top-right shows only the profile avatar and the light/dark theme toggle — no text nav links, and no command-trigger/"Jump or Ask" overlay (removed; passage jumping is done via the mobile branch's own <code>BibleNavigator</code> controls and the desktop dockview BIBLE panel). The mobile hamburger <code>Drawer</code> still exposes Home/Read/Account as text menu items, independent of the desktop top-right.</p>
 
 
 
