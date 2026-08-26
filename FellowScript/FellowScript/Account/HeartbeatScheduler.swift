@@ -79,16 +79,35 @@ enum HeartbeatScheduler {
             // The backend always responds 200 for this route, whether the
             // heartbeat actually fired or not — {"success": "..."} on a real
             // fire, but {"error": "..."} (LLM/JSON failure) or {"skipped":
-            // "..."} (already claimed by another caller within the last 2
-            // minutes) are equally valid all-string dicts that decode fine
-            // into [String: String]. Checking `result != nil` alone treats
-            // all three as success, which both suppresses any retry (by
-            // marking lastFired) and fires a false "Event Response Saved"
+            // "..."} (already fired for this calendar day — commit_hb_response
+            // now enforces a date-boundary check server-side, not just a
+            // rolling window) are equally valid all-string dicts that decode
+            // fine into [String: String]. Checking `result != nil` alone
+            // treats all three as success, which both suppresses any retry
+            // (by marking lastFired) and fires a false "Event Response Saved"
             // notification even when nothing was saved. Only a `success` key
-            // means the fire actually happened.
+            // means the fire actually happened. A `skipped` result deliberately
+            // does NOT mark the event fired here (see
+            // HeartbeatSchedulerRegressionTests.test_skippedResult_...) — the
+            // server is always the source of truth for "already fired today",
+            // so retrying is harmless (server just says skipped again) and
+            // safer than the client guessing wrong and permanently suppressing
+            // a legitimate retry (e.g. after a transient failure).
             guard result?["success"] != nil else { continue }
 
             lastFired[event.id] = now.timeIntervalSince1970
+            // Persist immediately after each successful fire, not once after the
+            // whole batch. checkAndFire awaits a network call per event, and if
+            // the app is backgrounded/suspended mid-loop (e.g. the user reopens
+            // briefly then swipes away again while a later event in the same
+            // batch is still in flight), any events already marked fired only in
+            // the in-memory `lastFired` dict would be lost — the next reopen
+            // would see them as never-fired and re-call commitHeartbeat for an
+            // event that already succeeded today. The backend's calendar-day
+            // idempotency guard (commit_hb_response) would still no-op that
+            // retry server-side, but persisting per-event here closes the gap
+            // at the source instead of relying solely on the server backstop.
+            UserDefaults.standard.set(lastFired, forKey: lastFiredKey)
 
             let content   = UNMutableNotificationContent()
             content.title = "Event Response Saved"
@@ -101,7 +120,6 @@ enum HeartbeatScheduler {
             )
             try? await UNUserNotificationCenter.current().add(req)
         }
-        UserDefaults.standard.set(lastFired, forKey: lastFiredKey)
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────

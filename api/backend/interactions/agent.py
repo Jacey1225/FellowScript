@@ -178,19 +178,31 @@ class AgentManager(DBManager):
         if not owned:
             return {"error": "heartbeat not found"}
 
-        # Idempotency guard. Both the server-side cron scheduler and the iOS
-        # client's foreground checkAndFire converge here, and both fire within the
-        # same minute for a given scheduled slot — which would create two notes.
-        # Atomically claim the fire: the UPDATE only matches (and returns a row)
-        # if this heartbeat has not fired in the last 2 minutes. Postgres row
-        # locking guarantees exactly one concurrent caller wins the claim; any
-        # other caller gets no row and skips. Heartbeats fire at most once per
-        # day, so a 2-minute window never suppresses a legitimate fire.
+        # Idempotency guard. Heartbeats fire client-side only — iOS's
+        # HeartbeatScheduler.checkAndFire calls this on every app foreground
+        # (there is no server-side cron job for heartbeats; see
+        # scheduler.py::start_scheduler's comment) — so a single stubborn
+        # client that backgrounds/foregrounds repeatedly the same day is the
+        # only caller, and it can call this endpoint any number of times,
+        # any distance apart, for the same already-fired slot.
+        #
+        # A rolling time window (previously 2 minutes) cannot enforce "at
+        # most once per day": once more time than the window has elapsed
+        # since the first fire, a same-day reopen claims again and produces
+        # a second note. The durable invariant is a calendar-day boundary,
+        # not a rolling duration, so claim atomically based on whether
+        # last_fired already falls on today's UTC date — matching the UTC
+        # "HH:mm" convention timestamps are stored/interpreted in
+        # (AgentHeartbeats.timestamps / HeartbeatScheduler.swift). Postgres
+        # row locking still guarantees exactly one concurrent caller wins
+        # the claim; any other caller (same instant or same day) gets no
+        # row and skips.
         try:
             self.cur.execute(
                 "UPDATE agent_heartbeats SET last_fired = NOW() "
                 "WHERE _id = %s "
-                "AND (last_fired IS NULL OR last_fired < NOW() - INTERVAL '2 minutes') "
+                "AND (last_fired IS NULL "
+                "OR (last_fired AT TIME ZONE 'UTC')::date < (NOW() AT TIME ZONE 'UTC')::date) "
                 "RETURNING _id",
                 (heartbeat_id,),
             )
@@ -201,8 +213,8 @@ class AgentManager(DBManager):
             self.conn.rollback()
             return {"error": "claim failed"}
         if not claimed:
-            logger.info("Heartbeat %s already fired recently — skipping duplicate.", heartbeat_id)
-            return {"skipped": "already fired recently"}
+            logger.info("Heartbeat %s already fired today — skipping duplicate.", heartbeat_id)
+            return {"skipped": "already fired today"}
 
         result     = self.lookup(self.agent_table, {"_id": agent_id})
         agent_role = list(result.values())[0].get("role", "") if result else ""

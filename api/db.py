@@ -290,8 +290,10 @@ def create_tables(cur):
         "timestamps JSONB DEFAULT '[]',"
         "prompt TEXT DEFAULT '',"
         # Timestamp of the most recent fire. Used to make commit_hb_response
-        # idempotent so the server cron and the iOS client can't both create a
-        # note for the same scheduled slot (they fire within the same minute).
+        # idempotent so repeated same-day calls (e.g. the iOS client
+        # re-checking on every app foreground) can't create more than one
+        # note for the same scheduled slot — see the UTC-calendar-day claim
+        # in AgentManager.commit_hb_response.
         "last_fired TIMESTAMPTZ)"
     )
     # Migration for databases created before last_fired existed.
