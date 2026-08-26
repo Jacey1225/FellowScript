@@ -1054,6 +1054,10 @@
 <td>Desktop dockview panels — friends/group DMs and the AI spiritual-guide chat, split apart so each can be positioned independently (previously combined behind one "Group" toggle)</td>
 </tr>
 <tr>
+<td><code>panels/ReaderDockRail.jsx</code></td>
+<td>Fixed left icon rail (desktop only) — one icon per dockable panel type; mirrors the live dockview layout's open/active panels into React state and reveals-or-reopens a panel on click. Replaces the old top-right "Reset Layout" button as the way to bring back a closed panel.</td>
+</tr>
+<tr>
 <td><code>ContactsPanel.jsx</code> / <code>ChatThread.jsx</code> / <code>AgentChatThread.jsx</code></td>
 <td>Shared building blocks used by both the desktop panels above and the mobile fullscreen overlays</td>
 </tr>
@@ -1118,7 +1122,7 @@
 <h2 id="reader-layout">Reader Layout</h2>
 <p><strong>Desktop</strong> (viewports &gt;1024px) uses <a href="https://github.com/mathuo/dockview"><code>dockview-react</code></a> to give the Reader page a VSCode-style dockable workspace: five independently-registered panels (Bible Reading, Notes, Highlights, Messaging, Agent Chat) that the user can drag to any edge (split), drop onto another panel (tab together), or resize. Key pieces, all under <code>frontend/src/</code>:</p>
 <ul>
-<li><code>lib/readerDockLayout.js</code> — <code>buildDefaultLayout(api)</code> (the single source of truth for the default arrangement: Bible reader filling the main area, Notes+Highlights+Messaging tabbed on the right spanning full height, Agent Chat docked below the reader only), plus <code>loadSavedLayout</code>/<code>saveLayout</code>/<code>resetLayout</code> for persistence to <code>localStorage['fs_reader_layout_v1']</code> (debounced on <code>api.onDidLayoutChange</code>, versioned so a future panel-set change can invalidate old saved layouts).</li>
+<li><code>lib/readerDockLayout.js</code> — <code>buildDefaultLayout(api)</code> (the single source of truth for the default arrangement: Bible reader filling the main area, Notes+Highlights+Messaging tabbed on the right spanning full height, Agent Chat docked below the reader only), plus <code>loadSavedLayout</code>/<code>saveLayout</code>/<code>resetLayout</code> for persistence to <code>localStorage['fs_reader_layout_v1']</code> (debounced on <code>api.onDidLayoutChange</code>, versioned so a future panel-set change can invalidate old saved layouts). <code>reopenPanel(api, id)</code> re-adds a closed panel using the same per-panel default-position rules as <code>buildDefaultLayout</code>, used by the left dock rail's click-to-reopen.</li>
 <li><code>context/ReaderPanelContexts.jsx</code> — five separate React contexts (one per panel), not dockview's own <code>params</code> mechanism (which only refreshes via an explicit imperative call) — <code>Reader.jsx</code> lifts all the data-fetching hooks (<code>useBible</code>, <code>useNotes</code>, <code>useMessaging</code>, <code>useAgentChat</code>, etc.) and feeds each panel a memoized context value, so e.g. an incoming chat message never re-renders the Bible panel.</li>
 <li><code>components/panels/*.jsx</code> — the five panel components registered with <code>DockviewReact</code> via a <code>components</code> map keyed by panel id.</li>
 <li><code>hooks/useIsDesktopViewport.js</code> — reactively decides which branch to mount (aligned to the same 1024px breakpoint the mobile CSS media query uses), so resizing across it cleanly swaps the dockview tree for the mobile layout instead of leaving one mounted-but-hidden.</li>
