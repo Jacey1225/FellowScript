@@ -129,6 +129,17 @@ async def update_heartbeat(user_id: str, heartbeat_id: str, body: dict, _: str =
 
 @agent_router.post("/{user_id}/{agent_id}/{heartbeat_id}/commit_heartbeat")
 async def commit_heartbeat(user_id: str, agent_id: str, heartbeat_id: str, body: dict, _: str = Depends(require_match("user_id"))):
+    # A fired heartbeat persists its generated content as a note, so it counts
+    # against the same weekly notes cap as create_note/summarize_session —
+    # otherwise a free user at their cap could keep minting notes every time a
+    # scheduled event fires. Checked here, before commit_hb_response's
+    # once-per-day claim, so a denied request doesn't burn today's fire slot:
+    # claiming first and denying after would soft-throttle the user to zero
+    # notes for the rest of the day even if their cap frees up later.
+    gate = check_limit(user_id, "notes")
+    if not gate["allowed"]:
+        raise HTTPException(status_code=403, detail=gate)
+
     db = AgentManager(user_id=user_id)
     try:
         content = body.get("prompt", None)

@@ -121,6 +121,29 @@ def main():
         check("2nd event blocked (403)", ev_codes[1], 403)
         check("3rd event blocked (403)", ev_codes[2], 403)
 
+        # ── commit_heartbeat must also honour the notes cap ──────────────────
+        # Regression coverage for 20260825-heartbeat-notes-limit-bypass: a
+        # fired heartbeat persists its output as a note, so a user already at
+        # the notes cap (exhausted above) must be denied here too, instead of
+        # silently getting another note saved through this side door.
+        print("\nCOMMIT_HEARTBEAT (notes cap already exhausted above):")
+        _db = DBManager()
+        try:
+            hb_rows = _db.lookup("agent_heartbeats", {"agent_id": agent_id, "user_id": uid})
+        finally:
+            _db.close()
+        hb_id = next(iter(hb_rows))
+        notes_before = client.get(f"/subscriptions/user/{uid}/usage").json()["resources"]["notes"]["used"]
+        hb_commit = client.post(
+            f"/agent/{uid}/{agent_id}/{hb_id}/commit_heartbeat",
+            json={"prompt": "Write a reflection."},
+        )
+        check("commit_heartbeat blocked when notes cap reached (403)", hb_commit.status_code, 403)
+        hb_detail = hb_commit.json()["detail"]
+        check("commit_heartbeat 403 detail resource", hb_detail.get("resource"), "notes")
+        notes_after = client.get(f"/subscriptions/user/{uid}/usage").json()["resources"]["notes"]["used"]
+        check("no new note created by the denied heartbeat commit", notes_after, notes_before)
+
         # ── Agent notifications: 3 allowed, 4th blocked ──────────────────────
         print("\nAGENT NOTIFICATIONS (limit 3):")
         nt_codes = [client.post(f"/notification/{uid}",
