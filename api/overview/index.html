@@ -1415,6 +1415,9 @@ may still be populated.</p>
 </table>
 <hr />
 <h2 id="notifications">Notifications</h2>
+<p>The former user-authored ("agentic") notification management subsystem —
+CRUD + AI-trigger + scheduling endpoints under <code>/notification/{user_id}/...</code>
+— was removed in full (2026-08-26). Only device-token registration remains:</p>
 <table>
 <thead>
 <tr>
@@ -1425,17 +1428,16 @@ may still be populated.</p>
 </thead>
 <tbody>
 <tr>
-<td>GET</td>
-<td><code>/notifications/{user_id}</code></td>
-<td>List notifications</td>
-</tr>
-<tr>
-<td>PUT</td>
-<td><code>/notifications/{user_id}/{notif_id}</code></td>
-<td>Mark as read</td>
+<td>POST</td>
+<td><code>/notification/{user_id}/device-token</code></td>
+<td>Register/update the caller's APNs device token</td>
 </tr>
 </tbody>
 </table>
+<p><strong>Replacement pending</strong>: a backend activity-tracked/fixed-notification system
+(reminders derived from real note/highlight activity, plus a cross-user
+"friend went active" push) is being built as a follow-up step in the same
+task and will be documented here once it lands.</p>
 <hr />
 <h2 id="agent-ai-check-ins">Agent (AI Check-ins)</h2>
 <table>

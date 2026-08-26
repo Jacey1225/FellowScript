@@ -865,10 +865,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#notifications" class="md-nav__link">
+  <a href="#notifications-removed" class="md-nav__link">
     <span class="md-ellipsis">
       
-        notifications
+        notifications (removed)
       
     </span>
   </a>
@@ -1496,37 +1496,13 @@
 </tbody>
 </table>
 <hr />
-<h3 id="notifications"><code>notifications</code></h3>
-<table>
-<thead>
-<tr>
-<th>Column</th>
-<th>Type</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>_id</code></td>
-<td>UUID PK</td>
-</tr>
-<tr>
-<td><code>user_id</code></td>
-<td>UUID FK → <code>users</code> ON DELETE CASCADE</td>
-</tr>
-<tr>
-<td><code>type</code></td>
-<td>TEXT</td>
-</tr>
-<tr>
-<td><code>message</code></td>
-<td>TEXT</td>
-</tr>
-<tr>
-<td><code>read</code></td>
-<td>BOOLEAN</td>
-</tr>
-</tbody>
-</table>
+<h3 id="notifications-removed"><code>notifications</code> (removed)</h3>
+<p>The <code>notifications</code> table backed the former user-authored ("agentic")
+notification subsystem and was dropped outright (2026-08-26) once that
+subsystem was fully removed — nothing reads or writes it anymore. A
+replacement activity-tracking table/mechanism for the new fixed-notification
+system is being added as a follow-up step in the same task; this section will
+be updated to describe it once it lands.</p>
 <hr />
 <h3 id="devotions"><code>devotions</code></h3>
 <table>
@@ -1674,7 +1650,7 @@
 <li><code>note_verses</code> — verses belonging to whichever notes were just copied</li>
 <li><code>highlights</code>, <code>bookmarks</code> — full current set each run (these tables have no modification timestamp to filter on, and are small enough that a full re-sync is cheap)</li>
 </ul>
-<p>The backup tables are intentionally FK-light (no foreign keys to each other) so a backup write can never fail due to referential integrity — the goal is a resilient destination, not a fully normalized mirror. Not yet covered: agents, agent heartbeats, notifications, subscriptions, messages, and groups — a possible follow-up.</p>
+<p>The backup tables are intentionally FK-light (no foreign keys to each other) so a backup write can never fail due to referential integrity — the goal is a resilient destination, not a fully normalized mirror. Not yet covered: agents, agent heartbeats, subscriptions, messages, and groups — a possible follow-up. (The <code>notifications</code> table this list previously included was dropped outright, 2026-08-26 — see above.)</p>
 <p>Implementation: <code>backend/backup/manager.py</code> (<code>BackupManager</code>), scheduled from <code>backend/interactions/scheduler.py</code>.</p>
 <hr />
 <h2 id="migrations">Migrations</h2>

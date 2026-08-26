@@ -1007,7 +1007,7 @@ pattern (e.g. <code>seatCountEditRow</code>).</p>
 <li><strong>Web</strong>: <code>DELETE /user/{user_id}</code> is called; on success the user is signed out and redirected to <code>/signin</code>.</li>
 <li><strong>iOS</strong>: <code>NetworkService.deleteUser(userId:)</code> is awaited first; <code>signOut()</code> is called after on <code>MainActor</code> (no race condition).</li>
 </ul>
-<p>The delete endpoint manually removes owned notes, nulls message and devotion author fields, then deletes the user row. All remaining related rows (subscriptions, highlights, bookmarks, notifications, agents) cascade automatically via FK constraints.</p>
+<p>The delete endpoint manually removes owned notes, nulls message and devotion author fields, then deletes the user row. All remaining related rows (subscriptions, highlights, bookmarks, agents) cascade automatically via FK constraints.</p>
 <hr />
 <h2 id="visual-design-ios">Visual Design (iOS)</h2>
 <p>The iOS Account page (<code>FellowScript/FellowScript/Account/AccountView.swift</code>) uses the same

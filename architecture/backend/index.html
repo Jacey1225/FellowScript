@@ -1148,10 +1148,6 @@
 <td><code>AgentConfig</code>, <code>AgentEvent</code></td>
 </tr>
 <tr>
-<td><code>schemas/notifications.py</code></td>
-<td><code>Notification</code></td>
-</tr>
-<tr>
 <td><code>schemas/subscription.py</code></td>
 <td><code>Subscription</code>, <code>FREE_LIMITS</code>, <code>EXPIRY_GRACE_DAYS</code></td>
 </tr>
@@ -1192,11 +1188,6 @@
 <td><code>AgentManager</code></td>
 <td><code>agent.py</code></td>
 <td>AI agent config, heartbeat events</td>
-</tr>
-<tr>
-<td><code>NotificationManager</code></td>
-<td><code>notifications.py</code></td>
-<td>Create and read notifications</td>
 </tr>
 <tr>
 <td><code>FilterManager</code></td>
@@ -1270,8 +1261,8 @@
 </tr>
 <tr>
 <td><code>notification_router</code></td>
-<td><code>/notifications</code></td>
-<td>Notification read/list</td>
+<td><code>/notification</code></td>
+<td>Device-token registration only — the former CRUD/trigger/scheduling endpoints were removed in full (2026-08-26); replacement pending, see <code>docs/api/overview.md</code></td>
 </tr>
 <tr>
 <td><code>subscription_router</code></td>
@@ -1355,7 +1346,7 @@
 </tr>
 </tbody>
 </table>
-<p>Every new user (all three auth paths) gets a <code>plan_type='free'</code> subscription row created by <code>SubscriptionsManager.create_free_plan()</code>. Free-tier limits (<code>FREE_LIMITS</code>: notes 10/week, agent_events 1, agent_notifications 3) are enforced server-side via <code>check_limit(user_id, resource)</code> — which returns a 403-able gate dict — at <strong>every</strong> write path that creates a gated resource, so the cap holds for web and iOS alike. The full enforcement surface: notes → <code>POST /notes/{user_id}</code> (<code>create_note</code>), <code>POST /notes/reply/{note_id}</code> (<code>post_reply</code>), and <code>POST /agent/{user_id}/{agent_id}/summarize</code> (<code>summarize_session</code>, whose AI summary is persisted as a note) — all three count against the one weekly notes cap; agent_events → <code>POST /agent/{user_id}/{agent_id}/heartbeat</code> (<code>add_heartbeat</code>, the only heartbeat-insert path); agent_notifications → <code>POST /notification/{user_id}</code> (<code>create_notification</code>, the only notification-insert path). When auditing, the invariant to preserve is: <strong>any new route that inserts into <code>notes</code>, <code>agent_heartbeats</code>, or <code>notifications</code> must call <code>check_limit</code> first</strong> (a subscribed user is reported <code>unlimited</code> and always allowed). That free row is internal bookkeeping only — <code>GET /subscriptions/user/{id}</code> (<code>get_user_subscription</code>) reports a free-tier user as <strong><code>404</code>/no plan</strong>, never as the free row, so clients render the upgrade UI instead of painting the free tier as an active plan (<code>LimitsManager.is_subscribed</code> applies the same <code>plan_type != 'free'</code> rule). Returning the free row here is what made the iOS Account screen show an active "Group Plan · $0/mo" with "Unlimited" usage for brand-new accounts.</p>
+<p>Every new user (all three auth paths) gets a <code>plan_type='free'</code> subscription row created by <code>SubscriptionsManager.create_free_plan()</code>. Free-tier limits (<code>FREE_LIMITS</code>: notes 10/week, agent_events 1) are enforced server-side via <code>check_limit(user_id, resource)</code> — which returns a 403-able gate dict — at <strong>every</strong> write path that creates a gated resource, so the cap holds for web and iOS alike. The full enforcement surface: notes → <code>POST /notes/{user_id}</code> (<code>create_note</code>), <code>POST /notes/reply/{note_id}</code> (<code>post_reply</code>), and <code>POST /agent/{user_id}/{agent_id}/summarize</code> (<code>summarize_session</code>, whose AI summary is persisted as a note) — all three count against the one weekly notes cap; agent_events → <code>POST /agent/{user_id}/{agent_id}/heartbeat</code> (<code>add_heartbeat</code>, the only heartbeat-insert path). The former <code>agent_notifications</code> gated resource (a cap on user-authored "agentic" notifications) was removed along with that subsystem (2026-08-26). When auditing, the invariant to preserve is: <strong>any new route that inserts into <code>notes</code> or <code>agent_heartbeats</code> must call <code>check_limit</code> first</strong> (a subscribed user is reported <code>unlimited</code> and always allowed). That free row is internal bookkeeping only — <code>GET /subscriptions/user/{id}</code> (<code>get_user_subscription</code>) reports a free-tier user as <strong><code>404</code>/no plan</strong>, never as the free row, so clients render the upgrade UI instead of painting the free tier as an active plan (<code>LimitsManager.is_subscribed</code> applies the same <code>plan_type != 'free'</code> rule). Returning the free row here is what made the iOS Account screen show an active "Group Plan · $0/mo" with "Unlimited" usage for brand-new accounts.</p>
 <p>There is a single paid tier, <code>'group'</code>, covering however many people (1-8) the host selects. <code>schemas/subscription.py</code>'s <code>GROUP_PRICE_CENTS</code> dict is the server-authoritative price-by-member-count lookup (<code>price_for(member_count)</code>), replacing the old two-tier <code>individual</code>/<code>group</code> model — selecting 1 member is priced identically to the old Individual plan. <code>stripe_service.create_checkout_session</code> builds the Stripe Checkout line item's price inline from this table for any count (no pre-created Stripe Products needed); <code>apple_service.APPLE_PRODUCTS</code> maps 8 fixed-price StoreKit product IDs (<code>com.fellowscript.access.one</code>…<code>com.fellowscript.access.eight</code>) to their member count, since Apple IAP can't compute an arbitrary price. A host can change their plan's member count later via <code>PUT /subscriptions/{id}</code> with <code>member_count</code>, which re-derives <code>price_cents</code>/<code>max_members</code>.</p>
 <p><strong>Apple sync guards</strong> (three layers, spanning both <code>POST /subscriptions/apple/sync</code> and <code>POST /subscriptions/apple/notifications</code>): iOS reports every currently-active StoreKit entitlement (<code>Transaction.currentEntitlements</code>) to <code>/apple/sync</code> on each launch — a device/Apple-ID-level API, not scoped to whichever FellowScript account is signed in — and Apple's servers push renewal/refund/cancel events to <code>/apple/notifications</code>, which (like the Stripe webhook) has no user session and authenticates purely via the payload's own signature.
 1. <strong>Signature verification (primary)</strong>: <code>apple_service.decode_jws</code> verifies every JWS's <code>x5c</code> certificate chain against a pinned copy of Apple's Root CA - G3 before trusting any claim in the payload, then checks the ES256 signature itself. A JWS that doesn't chain to Apple's real root, or whose signature doesn't match, is rejected with <code>ValueError</code> (surfaced as <code>400</code>) before its payload is ever read — closing both the authenticated-user-forges-their-own-sync and the unauthenticated-anyone-forges-a-notification paths.
@@ -1448,6 +1439,7 @@
 <hr />
 <h2 id="background-scheduler">Background Scheduler</h2>
 <p><code>backend/interactions/scheduler.py</code> runs on startup (via <code>lifespan</code>), using APScheduler. Current jobs:</p>
+<p>The former <code>_fire_due_notifications</code> job (fired user-authored "agentic" notifications on their scheduled time-of-day) was removed in full (2026-08-26) along with that subsystem. A replacement set of fixed-notification jobs (activity-tracked reminders + friend-went-active) is pending as a follow-up step in the same task.</p>
 <table>
 <thead>
 <tr>
@@ -1457,11 +1449,6 @@
 </tr>
 </thead>
 <tbody>
-<tr>
-<td><code>_fire_due_notifications</code></td>
-<td>every minute</td>
-<td>Pushes any notification whose scheduled time-of-day matches now</td>
-</tr>
 <tr>
 <td><code>_run_nightly_backups</code></td>
 <td>every minute</td>
