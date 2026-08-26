@@ -31,13 +31,15 @@ EXPIRY_GRACE_DAYS = 3
 # (individual or group, trialing or active) bypass these entirely — unlimited.
 # Enforced server-side in the create routes via LimitsManager, so the caps hold
 # regardless of client (web or iOS).
-#   - notes:               rolling-7-day window (notes the user authors)
-#   - agent_events:        total heartbeats the user owns
-#   - agent_notifications: total scheduled notifications the user owns
+#   - notes:        rolling-7-day window (notes the user authors)
+#   - agent_events: total heartbeats the user owns
+#
+# The former `agent_notifications` cap (total user-authored "agentic"
+# notifications) was removed along with that subsystem — see
+# .claude/pipeline/20260826-activity-based-notifications.
 FREE_LIMITS: dict[str, int] = {
     "notes": 10,
     "agent_events": 1,
-    "agent_notifications": 3,
 }
 NOTES_WINDOW_DAYS = 7
 

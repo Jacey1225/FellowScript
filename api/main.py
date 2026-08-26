@@ -626,8 +626,8 @@ async def delete_user(user_id: str, _: str = Depends(require_match("user_id"))) 
 
     Notes owned by the user are deleted. Messages and devotions the user created
     have their author field nulled so group content survives. All other related
-    rows (highlights, bookmarks, friends, agents, subscriptions, notifications)
-    cascade automatically via FK constraints. The separate nightly-backup
+    rows (highlights, bookmarks, friends, agents, subscriptions) cascade
+    automatically via FK constraints. The separate nightly-backup
     database (no FK relationship to the primary DB) is purged explicitly.
 
     Args:

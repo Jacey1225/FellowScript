@@ -1,4 +1,4 @@
-"""Tests for the IDOR fixes (security audit findings 3, 4, 5 — HIGH):
+"""Tests for the IDOR fixes (security audit findings 3, 5 — HIGH):
 
 Finding 3 — Agent subsystem (api/backend/interactions/agent.py +
 api/routes/agent.py): every /agent/{user_id}/... route checked the CALLER is
@@ -8,11 +8,18 @@ legitimate authenticated user of their own account could read/mutate/delete
 another user's agent, messages, and heartbeats by guessing/observing their
 UUIDs, and could connect to another user's agent WebSocket.
 
-Finding 4 — api/backend/interactions/notifications.py's get_notification()
-(used by GET /notification/{user_id}/{notif_id}, /trigger, /next) had no
-user_id filter, letting any authenticated user read (and AI-trigger) another
-user's notification via require_match on their OWN user_id plus someone
-else's notif_id.
+Finding 4 (formerly covered here) — api/backend/interactions/notifications.py's
+get_notification() (used by GET /notification/{user_id}/{notif_id}, /trigger,
+/next) had no user_id filter, letting any authenticated user read (and
+AI-trigger) another user's notification via require_match on their OWN
+user_id plus someone else's notif_id. That coverage was removed here on
+2026-08-26 (.claude/pipeline/20260826-activity-based-notifications) because
+the entire agentic/custom notification CRUD subsystem it tested — routes,
+NotificationManager, schema, and the `notifications` table — was removed in
+full, not because the underlying IDOR concern stopped mattering: the new
+activity-tracked/fixed-notification system introduces its OWN cross-user
+"friend went active" notification path, which gets fresh IDOR/privacy
+coverage of its own once that system lands (per that task's step 3/4).
 
 Finding 5 — api/routes/devotion.py + api/backend/interactions/devotion.py:
 fetch/join/leave/join-call operated on any session_id with only
@@ -209,35 +216,13 @@ def main():
             except Exception as e:
                 check("owner connecting to own agent WS -> accepted", False, str(e))
 
-            # ── Finding 4: Notification IDOR ────────────────────────────────
-            print("\n=== Notifications ===")
-            r = client.post(f"/notification/{uid_v}", json={"name": "Victim reminder", "prompt": "secret prompt"},
-                             headers=cookie_header(token_v))
-            check("victim creates own notification -> 201", r.status_code == 201, str(r.status_code) + " " + r.text)
-            notif_id = r.json()["id"]
-
-            r = client.get(f"/notification/{uid_x}/{notif_id}", headers=cookie_header(token_x))
-            check("attacker: get_notification on victim's notif -> 404", r.status_code == 404, str(r.status_code))
-
-            r = client.put(f"/notification/{uid_x}/{notif_id}", json={"name": "pwned"}, headers=cookie_header(token_x))
-            check("attacker: update_notification on victim's notif -> 404", r.status_code == 404, str(r.status_code))
-
-            r = client.patch(f"/notification/{uid_x}/{notif_id}/timestamp", json={"day": 0, "timestamp": "10:00"},
-                              headers=cookie_header(token_x))
-            check("attacker: set_timestamp on victim's notif -> 404", r.status_code == 404, str(r.status_code))
-
-            r = client.post(f"/notification/{uid_x}/{notif_id}/trigger", headers=cookie_header(token_x))
-            check("attacker: trigger (AI generation) on victim's notif -> 404", r.status_code == 404, str(r.status_code))
-
-            r = client.get(f"/notification/{uid_x}/{notif_id}/next", headers=cookie_header(token_x))
-            check("attacker: next_notification on victim's notif -> 404", r.status_code == 404, str(r.status_code))
-
-            r = client.delete(f"/notification/{uid_x}/{notif_id}", headers=cookie_header(token_x))
-            check("attacker: delete_notification on victim's notif -> 204 (scoped no-op)",
-                  r.status_code == 204, str(r.status_code))
-            r = client.get(f"/notification/{uid_v}/{notif_id}", headers=cookie_header(token_v))
-            check("victim's notification still exists and readable by owner after attacker's delete attempt",
-                  r.status_code == 200 and r.json().get("name") == "Victim reminder", str(r.status_code) + " " + str(r.json()))
+            # ── Finding 4: Notification IDOR ─────────────────────────────────
+            # Removed 2026-08-26: the notification CRUD/read routes this
+            # section exercised (GET/PUT/PATCH/DELETE/trigger/next on
+            # /notification/{user_id}/{notif_id}) no longer exist — the
+            # entire agentic/custom notification subsystem was removed. See
+            # this file's module docstring for why the coverage was dropped
+            # here rather than ported, and where its successor coverage lands.
 
             # ── Finding 5: Devotion session authorization ───────────────────
             print("\n=== Devotions ===")

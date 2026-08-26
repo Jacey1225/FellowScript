@@ -1,9 +1,8 @@
 import logging
-from datetime import datetime
+from datetime import datetime, timezone as tzmod
+from zoneinfo import ZoneInfo
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from db import DBManager
-from backend.interactions.push import send_push
-from backend.interactions.notifications import NotificationManager
 from backend.subscription.subscriptions import SubscriptionsManager
 from backend.monitoring.watchdog import WATCHDOG_POLL_INTERVAL_SECONDS
 
@@ -21,44 +20,6 @@ scheduler = AsyncIOScheduler()
 # key on exactly this job's failure lines and nothing else logged from this
 # file. See backend/monitoring/watchdog.py's `_SELF_LOGGER_NAMES`.
 _watchdog_logger = logger.getChild("watchdog")
-
-
-async def _fire_due_notifications() -> None:
-    now          = datetime.now()
-    slot_idx     = str(now.day - 1)          # 0-indexed slot for today (0 = day 1)
-    current_time = now.strftime("%H:%M")
-
-    db = DBManager()
-    try:
-        db.cur.execute(
-            """
-            SELECT n._id, n.user_id, n.name, n.prompt, d.token
-            FROM   notifications n
-            JOIN   device_tokens d ON d.user_id = n.user_id
-            WHERE  n.timestamps->>%s = %s
-            """,
-            (slot_idx, current_time),
-        )
-        rows = db.cur.fetchall()
-    except Exception as e:
-        logger.error("Scheduler DB error: %s", e)
-        return
-    finally:
-        db.close()
-
-    for notif_id, user_id, name, prompt, token in rows:
-        try:
-            nm      = NotificationManager(user_id)
-            content = nm.get_content(prompt)
-            nm.close()
-            # Never push the raw prompt or the "error" sentinel — use a neutral
-            # user-facing fallback if AI content couldn't be generated.
-            if not content or content == "error":
-                content = f"{name} — open FellowScript to view." if name else "Open FellowScript for your reminder."
-            ok = await send_push(token, name or "FellowScript", content)
-            logger.info("Push %s → %s (%s)", notif_id, token[:8], "ok" if ok else "fail")
-        except Exception as e:
-            logger.error("Failed to fire notification %s: %s", notif_id, e)
 
 
 async def _run_nightly_backups() -> None:
@@ -130,13 +91,137 @@ async def _run_error_watchdog() -> None:
         wm.close()
 
 
+async def _midday_no_activity_reminder() -> None:
+    """Gentle reminder once a user's local clock reads midday and they've
+    had no tracked activity (note/highlight) yet today.
+
+    Runs every 15 minutes; per-user local-time check (same pattern as
+    BackupManager.users_due_now's 03:00 window) plus the
+    `midday_reminder_sent_date` dedup marker means each user fires at most
+    once per local calendar day, even though the job polls 4x/hour.
+    """
+    from backend.interactions.activity import ActivityManager
+    from backend.interactions.push import send_push
+
+    am = ActivityManager()
+    try:
+        for user_id, tzname, last_activity, midday_sent, _guilt_sent, token in am.users_with_tokens():
+            if not token:
+                continue
+            try:
+                local = datetime.now(tzmod.utc).astimezone(ZoneInfo(tzname or "UTC"))
+            except Exception:
+                logger.warning("Skipping user %s — invalid timezone %r", user_id, tzname)
+                continue
+            if local.hour != 12 or midday_sent == local.date():
+                continue
+            had_activity_today = (
+                last_activity is not None
+                and last_activity.astimezone(ZoneInfo(tzname or "UTC")).date() == local.date()
+            )
+            if had_activity_today:
+                continue
+            ok = await send_push(
+                token, "A gentle nudge",
+                "You haven't opened FellowScript yet today — a few quiet minutes could go a long way.",
+            )
+            if ok:
+                am.mark_midday_sent(user_id, local.date())
+    except Exception as e:
+        logger.error("Midday no-activity reminder job error: %s", e)
+    finally:
+        am.close()
+
+
+async def _guilt_no_activity_reminder() -> None:
+    """More urgent reminder once a user has gone longer than
+    ActivityManager.INACTIVITY_THRESHOLD (24h) since their last tracked
+    activity. Dedup via `guilt_reminder_sent_at` so it re-fires at most once
+    per threshold window, not on every poll. Skips users with no tracked
+    activity ever — there's no "you stopped" moment to be guilty about yet.
+    """
+    from backend.interactions.activity import ActivityManager, INACTIVITY_THRESHOLD
+    from backend.interactions.push import send_push
+
+    am = ActivityManager()
+    try:
+        now = datetime.now(tzmod.utc)
+        for user_id, _tz, last_activity, _midday_sent, guilt_sent, token in am.users_with_tokens():
+            if not token or last_activity is None:
+                continue
+            if now - last_activity <= INACTIVITY_THRESHOLD:
+                continue
+            if guilt_sent is not None and now - guilt_sent <= INACTIVITY_THRESHOLD:
+                continue
+            ok = await send_push(
+                token, "It's been a while",
+                "It's been over a day since you last opened FellowScript. Your notes and highlights are waiting.",
+            )
+            if ok:
+                am.mark_guilt_sent(user_id, now)
+    except Exception as e:
+        logger.error("Guilt no-activity reminder job error: %s", e)
+    finally:
+        am.close()
+
+
+async def _friend_went_active_notify() -> None:
+    """Notify a user's friends (excluding either direction of a block — see
+    ActivityManager.friend_device_tokens) when that user transitions from
+    inactive to active.
+
+    ActivityManager.record_activity marks a transition by setting
+    `became_active_at` and clearing `friend_notified_at`; this job picks up
+    any un-notified transition, sends once per friend, then marks it
+    notified — so a user oscillating active/inactive never re-triggers their
+    friends more than once per real (>24h-gap) transition.
+    """
+    from backend.interactions.activity import ActivityManager
+    from backend.interactions.push import send_push
+
+    am = ActivityManager()
+    try:
+        for user_id, username, became_active_at in am.pending_friend_notifications():
+            for friend_id, token in am.friend_device_tokens(user_id):
+                if not token:
+                    continue
+                try:
+                    await send_push(token, "Friend Activity", f"{username} just came back to FellowScript.")
+                except Exception as e:
+                    logger.error("Friend-went-active push failed (%s -> %s): %s", user_id, friend_id, e)
+            am.mark_friends_notified(user_id, became_active_at)
+    except Exception as e:
+        logger.error("Friend-went-active job error: %s", e)
+    finally:
+        am.close()
+
+
 def start_scheduler() -> None:
-    scheduler.add_job(_fire_due_notifications, "cron", minute="*", id="notify_check",
-                      replace_existing=True)
+    # The former `notify_check` cron job (agentic/custom notification firing)
+    # was removed in full along with that subsystem — see
+    # .claude/pipeline/20260826-activity-based-notifications. Its
+    # replacement is the three activity-tracked/fixed-notification jobs
+    # below (midday, guilt, friend-went-active), all delivered via the same
+    # send_push/device_tokens pipeline the old subsystem used.
+    #
     # Heartbeats are fired client-side only (iOS HeartbeatScheduler.checkAndFire
     # on app foreground) — no server-side cron job for them.
     scheduler.add_job(_run_nightly_backups, "cron", minute="*", id="backup_check",
                       replace_existing=True)
+    # Midday/guilt reminders: a 15-minute poll is coarse enough to be cheap
+    # but fine enough that the local-noon / >24h windows are never missed by
+    # more than 15 minutes — each job's own dedup marker (not job frequency)
+    # is what actually caps it to once per window.
+    scheduler.add_job(_midday_no_activity_reminder, "cron", minute="*/15",
+                      id="midday_no_activity_reminder", replace_existing=True)
+    scheduler.add_job(_guilt_no_activity_reminder, "cron", minute="*/15",
+                      id="guilt_no_activity_reminder", replace_existing=True)
+    # Friend-went-active isn't time-of-day sensitive (it reacts to a write,
+    # not a clock), so a short fixed interval is enough to make the
+    # notification feel prompt without polling as tightly as the
+    # once-a-minute backup job.
+    scheduler.add_job(_friend_went_active_notify, "interval", minutes=5,
+                      id="friend_went_active_notify", replace_existing=True)
     # Trials only change on a monthly boundary; an hourly sweep is ample and
     # cheap. Lazy reconcile on read covers the gap between sweeps.
     scheduler.add_job(_reconcile_trials, "cron", minute="5", id="trial_reconcile",

@@ -51,7 +51,6 @@ Pydantic models defining request/response shapes and internal records. One file 
 | `schemas/message.py` | `Message`, `Group` |
 | `schemas/devotion.py` | `DevotionPlan`, `DevotionRequest` |
 | `schemas/agent.py` | `AgentConfig`, `AgentEvent` |
-| `schemas/notifications.py` | `Notification` |
 | `schemas/subscription.py` | `Subscription`, `FREE_LIMITS`, `EXPIRY_GRACE_DAYS` |
 | `schemas/filter.py` | `FilterParams` |
 
@@ -67,7 +66,6 @@ All business logic lives here in `*Manager` classes that subclass `DBManager`. R
 | `FriendsManager` | `friends.py` | Friend requests, friend list, remove |
 | `DevotionManager` | `devotion.py` | Devotion plans, participants, progress |
 | `AgentManager` | `agent.py` | AI agent config, heartbeat events |
-| `NotificationManager` | `notifications.py` | Create and read notifications |
 | `FilterManager` | `filtering.py` | Note filtering by book, date, user, title |
 | `SortingManager` | `sorting.py` | Note sorting by timestamp |
 
@@ -90,7 +88,7 @@ Thin `APIRouter` handlers. Each handler: instantiates a manager, calls one metho
 | `sorting_router` | `/sort` | Note sorting |
 | `devo_router` | `/devotions` | Devotion plans |
 | `agent_router` | `/agent` | AI agent config + heartbeats |
-| `notification_router` | `/notifications` | Notification read/list |
+| `notification_router` | `/notification` | Device-token registration only — the former CRUD/trigger/scheduling endpoints were removed in full (2026-08-26); replacement pending, see `docs/api/overview.md` |
 | `subscription_router` | `/subscriptions` | Subscription lookup, Stripe + Apple webhooks |
 | `donation_router` | `/donation` | One-time donation flow |
 | `report_router` | `/reports` | Guideline 1.2 content/user reporting |
@@ -124,7 +122,7 @@ A sibling package to `interactions/` dedicated to billing and usage enforcement.
 | `stripe_service.py` | Stripe Checkout session creation and webhook handling |
 | `apple_service.py` | Apple App Store receipt/notification validation |
 
-Every new user (all three auth paths) gets a `plan_type='free'` subscription row created by `SubscriptionsManager.create_free_plan()`. Free-tier limits (`FREE_LIMITS`: notes 10/week, agent_events 1, agent_notifications 3) are enforced server-side via `check_limit(user_id, resource)` — which returns a 403-able gate dict — at **every** write path that creates a gated resource, so the cap holds for web and iOS alike. The full enforcement surface: notes → `POST /notes/{user_id}` (`create_note`), `POST /notes/reply/{note_id}` (`post_reply`), and `POST /agent/{user_id}/{agent_id}/summarize` (`summarize_session`, whose AI summary is persisted as a note) — all three count against the one weekly notes cap; agent_events → `POST /agent/{user_id}/{agent_id}/heartbeat` (`add_heartbeat`, the only heartbeat-insert path); agent_notifications → `POST /notification/{user_id}` (`create_notification`, the only notification-insert path). When auditing, the invariant to preserve is: **any new route that inserts into `notes`, `agent_heartbeats`, or `notifications` must call `check_limit` first** (a subscribed user is reported `unlimited` and always allowed). That free row is internal bookkeeping only — `GET /subscriptions/user/{id}` (`get_user_subscription`) reports a free-tier user as **`404`/no plan**, never as the free row, so clients render the upgrade UI instead of painting the free tier as an active plan (`LimitsManager.is_subscribed` applies the same `plan_type != 'free'` rule). Returning the free row here is what made the iOS Account screen show an active "Group Plan · $0/mo" with "Unlimited" usage for brand-new accounts.
+Every new user (all three auth paths) gets a `plan_type='free'` subscription row created by `SubscriptionsManager.create_free_plan()`. Free-tier limits (`FREE_LIMITS`: notes 10/week, agent_events 1) are enforced server-side via `check_limit(user_id, resource)` — which returns a 403-able gate dict — at **every** write path that creates a gated resource, so the cap holds for web and iOS alike. The full enforcement surface: notes → `POST /notes/{user_id}` (`create_note`), `POST /notes/reply/{note_id}` (`post_reply`), and `POST /agent/{user_id}/{agent_id}/summarize` (`summarize_session`, whose AI summary is persisted as a note) — all three count against the one weekly notes cap; agent_events → `POST /agent/{user_id}/{agent_id}/heartbeat` (`add_heartbeat`, the only heartbeat-insert path). The former `agent_notifications` gated resource (a cap on user-authored "agentic" notifications) was removed along with that subsystem (2026-08-26). When auditing, the invariant to preserve is: **any new route that inserts into `notes` or `agent_heartbeats` must call `check_limit` first** (a subscribed user is reported `unlimited` and always allowed). That free row is internal bookkeeping only — `GET /subscriptions/user/{id}` (`get_user_subscription`) reports a free-tier user as **`404`/no plan**, never as the free row, so clients render the upgrade UI instead of painting the free tier as an active plan (`LimitsManager.is_subscribed` applies the same `plan_type != 'free'` rule). Returning the free row here is what made the iOS Account screen show an active "Group Plan · $0/mo" with "Unlimited" usage for brand-new accounts.
 
 There is a single paid tier, `'group'`, covering however many people (1-8) the host selects. `schemas/subscription.py`'s `GROUP_PRICE_CENTS` dict is the server-authoritative price-by-member-count lookup (`price_for(member_count)`), replacing the old two-tier `individual`/`group` model — selecting 1 member is priced identically to the old Individual plan. `stripe_service.create_checkout_session` builds the Stripe Checkout line item's price inline from this table for any count (no pre-created Stripe Products needed); `apple_service.APPLE_PRODUCTS` maps 8 fixed-price StoreKit product IDs (`com.fellowscript.access.one`…`com.fellowscript.access.eight`) to their member count, since Apple IAP can't compute an arbitrary price. A host can change their plan's member count later via `PUT /subscriptions/{id}` with `member_count`, which re-derives `price_cents`/`max_members`.
 
@@ -206,9 +204,10 @@ Unlike other managers, `BackupManager` doesn't subclass `DBManager` directly —
 
 `backend/interactions/scheduler.py` runs on startup (via `lifespan`), using APScheduler. Current jobs:
 
+The former `_fire_due_notifications` job (fired user-authored "agentic" notifications on their scheduled time-of-day) was removed in full (2026-08-26) along with that subsystem. A replacement set of fixed-notification jobs (activity-tracked reminders + friend-went-active) is pending as a follow-up step in the same task.
+
 | Job | Cadence | Does |
 |---|---|---|
-| `_fire_due_notifications` | every minute | Pushes any notification whose scheduled time-of-day matches now |
 | `_run_nightly_backups` | every minute | Copies any user whose *local* time is currently 03:00 into the backup database (see `backend/backup/`) |
 | `_reconcile_trials` | every hour | Advances elapsed trials to active, and removes subscriptions whose paid period lapsed past the grace window |
 | `_run_error_watchdog` | every 90s | Polls the 5 CloudWatch log groups the agent ships (`nginx access/error`, `syslog`, `auth`, `app`) via `WatchdogManager.run_cycle`, detects errors, assembles context, persists to `error_detections`, and triggers the debugging agent once per new detection (see `backend/monitoring/` above) |

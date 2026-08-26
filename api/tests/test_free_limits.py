@@ -1,9 +1,14 @@
 """Integration test for the free-tier usage gateway (LimitsManager).
 
-Builds a minimal FastAPI app with only the notes / agent / notification routers
+Builds a minimal FastAPI app with only the notes / agent / subscription routers
 (avoids the Chime-heavy modules in main.py), creates a throwaway free-plan user
 directly in the local DB, then hammers each gated endpoint past its cap and
 asserts the 403s land exactly where expected. Cleans up the user at the end.
+
+The former `agent_notifications` gated resource (a cap on user-authored
+"agentic" notifications, tested here via `notification_router`) was removed
+along with that subsystem — see
+.claude/pipeline/20260826-activity-based-notifications.
 
 Run:  cd api && ../.venv/bin/python tests/test_free_limits.py
 """
@@ -18,11 +23,10 @@ from db import DBManager
 from backend.auth.sessions import SessionManager
 from routes.notes import notes_router
 from routes.agent import agent_router
-from routes.notifications import notification_router
 from routes.subscription import subscription_router
 
 app = FastAPI()
-for r in (notes_router, agent_router, notification_router, subscription_router):
+for r in (notes_router, agent_router, subscription_router):
     app.include_router(r)
 client = TestClient(app)
 
@@ -63,7 +67,6 @@ def cleanup(uid: str):
         # notes FK has no ON DELETE CASCADE, so remove children explicitly first.
         db.delete("notes", {"user_id": uid})
         db.delete("agent_heartbeats", {"user_id": uid})
-        db.delete("notifications", {"user_id": uid})
         db.delete("agents", {"user_id": uid})
         db.delete("users", {"_id": uid})
     finally:
@@ -144,22 +147,12 @@ def main():
         notes_after = client.get(f"/subscriptions/user/{uid}/usage").json()["resources"]["notes"]["used"]
         check("no new note created by the denied heartbeat commit", notes_after, notes_before)
 
-        # ── Agent notifications: 3 allowed, 4th blocked ──────────────────────
-        print("\nAGENT NOTIFICATIONS (limit 3):")
-        nt_codes = [client.post(f"/notification/{uid}",
-                                json={"name": f"nt{i}", "prompt": "p"}).status_code
-                    for i in range(5)]
-        check("first 3 notifications accepted", nt_codes[:3], [201] * 3)
-        check("4th notification blocked (403)", nt_codes[3], 403)
-        check("5th notification blocked (403)", nt_codes[4], 403)
-
         # ── Final usage snapshot reflects the caps ───────────────────────────
         print("\nFINAL usage snapshot:")
         final = client.get(f"/subscriptions/user/{uid}/usage").json()["resources"]
         print("  ", final)
         check("notes used == 10", final["notes"]["used"], 10)
         check("events used == 1", final["agent_events"]["used"], 1)
-        check("notifications used == 3", final["agent_notifications"]["used"], 3)
         check("notes remaining == 0", final["notes"]["remaining"], 0)
 
         # ── Subscribed user bypasses all caps ────────────────────────────────

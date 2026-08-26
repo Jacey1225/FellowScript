@@ -1,11 +1,15 @@
 """Free-tier usage gateway.
 
-Users without an active subscription are capped on how many notes, agent events
-(heartbeats), and agent notifications they can create. Subscribed users
-(individual or group, trialing or active) are unlimited and skip counting.
+Users without an active subscription are capped on how many notes and agent
+events (heartbeats) they can create. Subscribed users (individual or group,
+trialing or active) are unlimited and skip counting.
 
 Enforcement lives here and is called from the create routes, so the caps hold
 for every client (web and iOS) — the server is the source of truth.
+
+The former `agent_notifications` gated resource (a cap on user-authored
+"agentic" notifications) was removed along with that subsystem — see
+.claude/pipeline/20260826-activity-based-notifications.
 """
 
 from db import DBManager
@@ -52,11 +56,6 @@ class LimitsManager(DBManager):
         elif resource == "agent_events":
             self.cur.execute(
                 "SELECT COUNT(*) FROM agent_heartbeats WHERE user_id = %s",
-                (user_id,),
-            )
-        elif resource == "agent_notifications":
-            self.cur.execute(
-                "SELECT COUNT(*) FROM notifications WHERE user_id = %s",
                 (user_id,),
             )
         else:

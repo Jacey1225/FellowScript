@@ -3,6 +3,7 @@ from schemas.users import Note
 from db import DBManager
 from backend.interactions.groups import GroupsManager
 from backend.subscription.limits import check_limit
+from backend.interactions.activity import ActivityManager
 from backend.auth.dependencies import get_current_user, require_match
 from backend.moderation.content_filter import check_clean, ContentRejected
 from datetime import datetime
@@ -19,6 +20,20 @@ logger = logging.getLogger(__name__)
 # AccountView) should use GET /{user_id}/count instead of paging through
 # the whole collection.
 NOTES_PAGE_SIZE = 15
+
+
+def _record_activity(user_id: str) -> None:
+    """Best-effort activity-tracking bump — feeds the fixed-notification
+    scheduled jobs (backend/interactions/scheduler.py). Never lets an
+    activity-tracking failure fail the note/highlight write it's attached
+    to; logs and moves on."""
+    activity = ActivityManager()
+    try:
+        activity.record_activity(user_id)
+    except Exception as e:
+        logger.error("Failed to record activity for %s: %s", user_id, e)
+    finally:
+        activity.close()
 
 
 def _can_view_note(note_data: dict, user_id: str) -> bool:
@@ -68,6 +83,7 @@ async def highlight_verse(user_id: str, verse: dict, _: str = Depends(require_ma
             {"user_id": user_id, "key": key, "color": str(color)},
             conflict="(user_id, key) DO UPDATE SET color = EXCLUDED.color",
         )
+        _record_activity(user_id)
         return {"key": key, "color": color}
     finally:
         db.close()
@@ -166,6 +182,7 @@ async def post_reply(note_id: str, reply: dict, current_user: str = Depends(get_
             "parent_note_id": note_id,
             "timestamp":      reply_note.timestamp,
         })
+        _record_activity(author)
         return {"id": reply_id}
     finally:
         db.close()
@@ -215,6 +232,18 @@ async def create_note(user_id: str, note_dict: dict, _: str = Depends(require_ma
         # itself silently swallowed by the caller's `try?`. Keep this shape
         # minimal so it decodes cleanly; the frontend (useNotes.js) only ever
         # read `saved.id` too, so the "data" field was unused dead weight.
+        #
+        # Deliberately keyed off `user_id` (the require_match-verified path
+        # param), NOT `note.user`: the request body's "user" field is
+        # client-supplied and only defaulted (not overridden) to user_id, so
+        # a caller could otherwise set an arbitrary "user" in the body and
+        # trigger record_activity for a victim they don't own — feeding a
+        # false inactive->active transition into the friend-went-active
+        # notification path (spamming the victim's real friends) and
+        # resetting the victim's midday/guilt dedup markers. See
+        # .claude/pipeline/20260826-activity-based-notifications security
+        # review (step 3).
+        _record_activity(user_id)
         return {"id": note_id}
     finally:
         db.close()

@@ -201,11 +201,14 @@ def main():
             check("devotion: A (real creator/host) deletes own session -> 200", r.status_code == 200, str(r.status_code))
 
             # ── Notifications ────────────────────────────────────────────
-            print("\n=== 8. Notifications ===")
-            r = client.get(f"/notification/{uid_a}", headers=cookie_header(token_a))
-            check("notifications: A lists own -> 200", r.status_code == 200, str(r.status_code))
-            r = client.get(f"/notification/{uid_a}", headers=cookie_header(token_b))
-            check("notifications: B lists A's -> 403", r.status_code == 403, str(r.status_code))
+            # The former CRUD/list surface for user-authored "agentic"
+            # notifications (previously tested here via GET /notification/
+            # {user_id}) was removed in full along with that subsystem — see
+            # .claude/pipeline/20260826-activity-based-notifications. Only
+            # device-token registration remains on this router, which is
+            # unauthenticated-recipient plumbing with no per-user "list mine"
+            # semantics to assert here.
+            print("\n=== 8. Notifications (agentic CRUD/list removed — see above) ===")
 
             # ── Subscription: host vs member logic ──────────────────────────
             print("\n=== 9. Subscription (host/member authorization) ===")

@@ -150,10 +150,18 @@ REST history: `GET /messages/{group_id}` returns past messages for a group.
 
 ## Notifications
 
+The former user-authored ("agentic") notification management subsystem —
+CRUD + AI-trigger + scheduling endpoints under `/notification/{user_id}/...`
+— was removed in full (2026-08-26). Only device-token registration remains:
+
 | Method | Route | Description |
 |---|---|---|
-| GET | `/notifications/{user_id}` | List notifications |
-| PUT | `/notifications/{user_id}/{notif_id}` | Mark as read |
+| POST | `/notification/{user_id}/device-token` | Register/update the caller's APNs device token |
+
+**Replacement pending**: a backend activity-tracked/fixed-notification system
+(reminders derived from real note/highlight activity, plus a cross-user
+"friend went active" push) is being built as a follow-up step in the same
+task and will be documented here once it lands.
 
 ---
 

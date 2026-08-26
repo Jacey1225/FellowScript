@@ -290,7 +290,7 @@ async def get_usage(user_id: str, _: str = Depends(require_match("user_id"))) ->
     """Free-tier usage snapshot for the gated resources.
 
     Returns the user's subscription state plus, for each resource (notes, agent
-    events, agent notifications), how much has been used against the free cap.
+    events), how much has been used against the free cap.
     Subscribed users are reported as ``unlimited``. Drives the client's usage
     meters and upgrade prompts.
 

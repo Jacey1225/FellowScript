@@ -311,20 +311,53 @@ def create_tables(cur):
         "content TEXT DEFAULT '')"
     )
 
-    cur.execute(
-        "CREATE TABLE IF NOT EXISTS notifications"
-        "(_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
-        "user_id UUID REFERENCES users(_id) ON DELETE CASCADE,"
-        "name VARCHAR(255) NOT NULL DEFAULT '',"
-        "prompt TEXT DEFAULT '',"
-        "timestamps JSONB DEFAULT '[]')"
-    )
+    # One-time cleanup migration: the `notifications` table backed the
+    # removed agentic/custom notification subsystem (user-authored AI-prompt
+    # reminders on a 31-day schedule). It's dropped outright rather than
+    # retained/archived — nothing reads or writes it anymore, and it carries
+    # no data other systems depend on. See
+    # .claude/pipeline/20260826-activity-based-notifications. No FK from any
+    # other table points at it, so a plain drop is safe.
+    cur.execute("DROP TABLE IF EXISTS notifications")
 
     cur.execute(
         "CREATE TABLE IF NOT EXISTS device_tokens"
         "(user_id UUID PRIMARY KEY REFERENCES users(_id) ON DELETE CASCADE,"
         "token TEXT NOT NULL,"
         "updated_at TIMESTAMP DEFAULT NOW())"
+    )
+
+    # Backs the activity-tracked/fixed-notification system that replaced the
+    # agentic/custom notification subsystem (see
+    # .claude/pipeline/20260826-activity-based-notifications, step 2). One
+    # row per user, written only from the note/highlight create paths
+    # (backend/interactions/activity.py::ActivityManager.record_activity) —
+    # no user-facing surface, no CRUD routes. Deliberately doesn't add a
+    # timestamp column to `highlights` itself (that table's composite PK and
+    # upsert-on-conflict shape make "created_at" ambiguous on re-highlight);
+    # a highlight write instead bumps this table directly, same as a note
+    # write, so both signals share one last-activity marker without a
+    # highlights schema migration.
+    cur.execute(
+        "CREATE TABLE IF NOT EXISTS user_activity"
+        "(user_id UUID PRIMARY KEY REFERENCES users(_id) ON DELETE CASCADE,"
+        # Last time this user created a note (incl. replies) or a highlight.
+        "last_activity_at TIMESTAMPTZ,"
+        # Set to `last_activity_at`'s value whenever record_activity detects
+        # an inactive→active transition (no prior activity, or the prior
+        # last_activity_at is more than INACTIVITY_THRESHOLD old). NULL
+        # between transitions.
+        "became_active_at TIMESTAMPTZ,"
+        # NULL immediately after a transition (queues the friend-went-active
+        # job to pick it up); set once that job actually sends, so a single
+        # transition is only ever broadcast to friends once.
+        "friend_notified_at TIMESTAMPTZ,"
+        # Local calendar date (per the user's `users.timezone`) the midday
+        # no-activity-yet-today reminder last fired — caps it at once/day.
+        "midday_reminder_sent_date DATE,"
+        # Last time the >24h guilt reminder fired — caps it at once per
+        # INACTIVITY_THRESHOLD window rather than on every scheduler poll.
+        "guilt_reminder_sent_at TIMESTAMPTZ)"
     )
 
     cur.execute(
@@ -793,7 +826,7 @@ def clear_tables(cur):
     logger.info("Clearing all tables...")
     cur.execute(
         "TRUNCATE TABLE "
-        "device_tokens, notifications, subscription_request, subscriptions, "
+        "device_tokens, subscription_request, subscriptions, "
         "agent_messages, agent_heartbeats, message_recipients, note_verses, "
         "agents, devotions, messages, notes, "
         "bookmarks, highlights, friend_requests, user_friends, "

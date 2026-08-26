@@ -132,15 +132,14 @@ Verse references linked to a note (many-to-one).
 
 ---
 
-### `notifications`
+### `notifications` (removed)
 
-| Column | Type |
-|---|---|
-| `_id` | UUID PK |
-| `user_id` | UUID FK → `users` ON DELETE CASCADE |
-| `type` | TEXT |
-| `message` | TEXT |
-| `read` | BOOLEAN |
+The `notifications` table backed the former user-authored ("agentic")
+notification subsystem and was dropped outright (2026-08-26) once that
+subsystem was fully removed — nothing reads or writes it anymore. A
+replacement activity-tracking table/mechanism for the new fixed-notification
+system is being added as a follow-up step in the same task; this section will
+be updated to describe it once it lands.
 
 ---
 
@@ -229,7 +228,7 @@ Per user, per run:
 - `note_verses` — verses belonging to whichever notes were just copied
 - `highlights`, `bookmarks` — full current set each run (these tables have no modification timestamp to filter on, and are small enough that a full re-sync is cheap)
 
-The backup tables are intentionally FK-light (no foreign keys to each other) so a backup write can never fail due to referential integrity — the goal is a resilient destination, not a fully normalized mirror. Not yet covered: agents, agent heartbeats, notifications, subscriptions, messages, and groups — a possible follow-up.
+The backup tables are intentionally FK-light (no foreign keys to each other) so a backup write can never fail due to referential integrity — the goal is a resilient destination, not a fully normalized mirror. Not yet covered: agents, agent heartbeats, subscriptions, messages, and groups — a possible follow-up. (The `notifications` table this list previously included was dropped outright, 2026-08-26 — see above.)
 
 Implementation: `backend/backup/manager.py` (`BackupManager`), scheduled from `backend/interactions/scheduler.py`.
 

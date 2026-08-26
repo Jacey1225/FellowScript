@@ -43,7 +43,7 @@ Account deletion requires the user to type their username as confirmation, then 
 - **Web**: `DELETE /user/{user_id}` is called; on success the user is signed out and redirected to `/signin`.
 - **iOS**: `NetworkService.deleteUser(userId:)` is awaited first; `signOut()` is called after on `MainActor` (no race condition).
 
-The delete endpoint manually removes owned notes, nulls message and devotion author fields, then deletes the user row. All remaining related rows (subscriptions, highlights, bookmarks, notifications, agents) cascade automatically via FK constraints.
+The delete endpoint manually removes owned notes, nulls message and devotion author fields, then deletes the user row. All remaining related rows (subscriptions, highlights, bookmarks, agents) cascade automatically via FK constraints.
 
 ---
 
