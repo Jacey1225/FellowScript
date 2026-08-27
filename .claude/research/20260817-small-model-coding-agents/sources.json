@@ -1,0 +1,260 @@
+[
+  {
+    "url_or_ref": "https://arxiv.org/abs/2506.02153",
+    "title": "Small Language Models are the Future of Agentic AI (Belcak, Heinrich et al., NVIDIA)",
+    "type": "found",
+    "reliability_notes": "Position paper from NVIDIA researchers; widely cited industry-lab technical report, not peer-reviewed but backed by evidence review and NVIDIA's own SLM work. Primary anchor for the consensus/disagreement question (step 8).",
+    "key_claims_supported": [
+      "step 8: consensus/disagreement on which technique matters most",
+      "step 1/6: general framing that sub-10B SLMs on consumer hardware can match or beat larger models on many agentic subtasks at 10-30x lower cost",
+      "step 7: named/notable position defining the space"
+    ],
+    "corroboration_count": 2
+  },
+  {
+    "url_or_ref": "https://arxiv.org/abs/2510.03847",
+    "title": "Small Language Models for Agentic Systems: A Survey of Architectures, Capabilities, and Deployment Trade-offs (Sharma & Mehta)",
+    "type": "found",
+    "reliability_notes": "arXiv preprint survey; not peer-reviewed but directly on-topic and covers architectures/benchmarks (BFCL, StableToolBench) with specific model examples (Phi-4-Mini, Qwen-2.5-7B, Gemma-2-9B). Corroborates NVIDIA position paper's thesis independently.",
+    "key_claims_supported": [
+      "step 1: tool-use scaffolding (guided decoding, JSON schema enforcement, validator-first execution)",
+      "step 6: BFCL/StableToolBench as evaluation benchmarks",
+      "step 8: SLMs sufficient/superior for schema- and API-constrained agentic workloads"
+    ],
+    "corroboration_count": 2
+  },
+  {
+    "url_or_ref": "https://arxiv.org/abs/2512.15943",
+    "title": "Small Language Models for Efficient Agentic Tool Calling: Outperforming Large Models with Targeted Fine-tuning",
+    "type": "found",
+    "reliability_notes": "arXiv preprint (submitted Dec 2025, revised Mar 2026). Reports concrete, checkable quantitative benchmark numbers (ToolBench pass rates) with named baselines, increasing confidence despite being unreviewed.",
+    "key_claims_supported": [
+      "step 1: fine-tuned small model tool-calling technique",
+      "step 2: targeted fine-tuning of a 350M-parameter model (facebook/opt-350m) via SFT",
+      "step 6: ToolBench benchmark result -- fine-tuned SLM 77.55% pass rate vs ChatGPT-CoT 26.00%, ToolLLaMA-DFS 30.18%, ToolLLaMA-CoT 16.27%"
+    ],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "https://arxiv.org/abs/2505.17612",
+    "title": "Distilling LLM Agent into Small Models with Retrieval and Code Tools (Agent Distillation)",
+    "type": "found",
+    "reliability_notes": "NeurIPS 2025 Spotlight paper -- peer-reviewed at a top ML venue, strong reliability. Directly on-topic for distillation into small tool-using agents.",
+    "key_claims_supported": [
+      "step 2: distillation method (first-thought-prefix prompting + self-consistent action generation) transferring agent reasoning/behavior into 0.5B-7B models",
+      "step 2: 0.5B/1.5B/3B distilled models competitive with next-tier-larger CoT-distilled models on 8 reasoning tasks"
+    ],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "https://arxiv.org/pdf/2509.17489",
+    "title": "MapCoder-Lite: Distilling Multi-Agent Coding into a Single Small LLM",
+    "type": "found",
+    "reliability_notes": "arXiv preprint, directly on-topic for both distillation and multi-agent-to-single-small-model compression. Evaluated on standard competitive-programming benchmarks (APPS, CodeContest, xCodeEval).",
+    "key_claims_supported": [
+      "step 2: knowledge distillation of multi-agent (planner/coder/debugger/retriever) behavior into one small LLM",
+      "step 4: multi-agent orchestration pattern being compressed rather than run live",
+      "step 6: APPS/CodeContest/xCodeEval as coding-agent benchmarks"
+    ],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "https://www.distillabs.ai/blog/we-benchmarked-12-small-language-models-across-8-tasks-to-find-the-best-base-model-for-fine-tuning/",
+    "title": "We Benchmarked 12 Small Language Models Across 8 Tasks to Find the Best Base Model for Fine-Tuning -- distil labs",
+    "type": "found",
+    "reliability_notes": "Vendor engineering blog (distil labs is a fine-tuning-tooling company) with substantive methodology and named results; treat as supplementary/context per plan's constraints, not primary technical evidence -- corroborates academic distillation findings with a practitioner-scale comparison.",
+    "key_claims_supported": [
+      "step 2: LoRA-based fine-tuning recipe (rank-32, lr 2e-5, grad accumulation 16, 3 epochs); Qwen3-4B identified as best base model, matching/exceeding a 120B+ teacher after fine-tuning"
+    ],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "https://arxiv.org/abs/2510.04905",
+    "title": "Retrieval-Augmented Code Generation: A Survey with Focus on Repository-Level Approaches",
+    "type": "found",
+    "reliability_notes": "arXiv survey preprint; broad taxonomy of RACG techniques (retrieval substrate, control regime, evaluation setting). Does not differentiate by model scale, which is a noted gap for this research's small-model focus.",
+    "key_claims_supported": [
+      "step 3: taxonomy of retrieval-augmented code generation (graph-based/non-graph retrieval, training-driven optimization, autonomous agent architectures) and open challenges (scalability, reliability, RACG vs. long-context necessity boundary)"
+    ],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "https://arxiv.org/abs/2508.02611",
+    "title": "Meta-RAG on Large Codebases Using Code Summarization",
+    "type": "found",
+    "reliability_notes": "arXiv preprint with concrete quantitative results on a standard benchmark (SWE-bench Lite), giving it strong evidentiary weight despite being unreviewed. Does not explicitly target small models, a noted gap.",
+    "key_claims_supported": [
+      "step 3: codebase-aware RAG via LLM-generated summaries, achieving 79.8% average codebase size reduction",
+      "step 3/6: SWE-bench Lite results -- 84.67% file-level and 53.0% function-level bug-localization accuracy, reported as state-of-the-art"
+    ],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "https://arxiv.org/pdf/2509.04508",
+    "title": "ProST: Progressive Sub-task Training for Pareto-Optimal Multi-agent Systems Using Small Language Models",
+    "type": "found",
+    "reliability_notes": "arXiv preprint directly on-topic for multi-agent small-model orchestration; evaluated on AppWorld and SWE-Bench, both established benchmarks, raising confidence.",
+    "key_claims_supported": [
+      "step 4: progressive sub-task specialization training so multiple small models collectively match/exceed single-large-model and other multi-agent baselines",
+      "step 6: AppWorld and SWE-Bench used as evaluation suites"
+    ],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "https://arxiv.org/html/2601.00513",
+    "title": "When Small Models Are Right for Wrong Reasons: Process Verification for Trustworthy Agents",
+    "type": "found",
+    "reliability_notes": "arXiv preprint with a large empirical base (10,734 reasoning traces across 3 models x 3 datasets) and a proposed, evaluated verification classifier (0.86 F1). One of the strongest, most directly load-bearing sources found for the prompting/scaffolding question and for the cross-category disagreement question.",
+    "key_claims_supported": [
+      "step 5: process verification / Reasoning Integrity Score as an alternative to outcome-only verification for small (7-9B) models",
+      "step 5: 50-69% of small models' correct answers show flawed reasoning (\"Right-for-Wrong-Reasons\"), varying by model (Mistral-7B 50.2%, Llama-3-8B 55.2%, Qwen-2.5-7B 69.3%)",
+      "step 8/consensus-disagreement: quantified finding that RAG interventions consistently help (Cohen's d 0.23-0.93) while self-critique/verification-prompt interventions consistently harm small-model performance (d -0.14 to -0.33) due to \"pseudo-reflection\" -- directly complicates the common scaffolding assumption that self-verification loops help",
+      "explicit limitation: findings based on oracle (perfect) RAG, may not generalize beyond 7-9B models or the three tested"
+    ],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "https://aclanthology.org/2025.xllm-1.29.pdf",
+    "title": "SWRV: Empowering Self-Verification of Small Language Models",
+    "type": "found",
+    "reliability_notes": "Published in ACL Anthology (xLLM workshop 2025) -- peer-reviewed workshop venue, reasonable reliability. Corroborates that self-verification for small models is an active, nontrivial research problem, complementing the Process Verification paper's more skeptical finding.",
+    "key_claims_supported": [
+      "step 5: step-wise reasoning and self-verification framework specifically targeting small language models"
+    ],
+    "corroboration_count": 2
+  },
+  {
+    "url_or_ref": "https://arxiv.org/html/2505.23060",
+    "title": "Self-Correcting Code Generation Using Small Language Models (CoCoS)",
+    "type": "found",
+    "reliability_notes": "arXiv preprint (also in ACL Findings EMNLP 2025 per companion listing -- aclanthology.org/2025.findings-emnlp.127.pdf), giving it peer-reviewed-adjacent standing. Reports specific quantitative gains and explicitly notes its own scope limitation.",
+    "key_claims_supported": [
+      "step 5: reinforcement-learning-based multi-turn self-correction (accumulated + progressive reward) for 1B-scale models (Qwen2.5-1.5B, Llama-3.2-1B, DeepSeek-Coder-1.3B)",
+      "step 5/6: 35.8% improvement on MBPP and 27.7% on HumanEval over baselines",
+      "explicit limitation: evaluation restricted to 1B-scale models; scalability to larger models unexplored; training capped at two turns due to RL infrastructure cost"
+    ],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "https://aclanthology.org/2025.findings-emnlp.127.pdf",
+    "title": "Self-Correcting Code Generation Using Small Language Models (ACL Findings EMNLP 2025 version)",
+    "type": "found",
+    "reliability_notes": "Peer-reviewed ACL Findings publication corroborating the arXiv preprint of the same CoCoS work -- independent venue confirmation of the same underlying study.",
+    "key_claims_supported": [
+      "step 5: same CoCoS self-correction findings, peer-reviewed venue corroboration"
+    ],
+    "corroboration_count": 2
+  },
+  {
+    "url_or_ref": "https://mistral.ai/news/devstral-2507/",
+    "title": "Upgrading agentic coding capabilities with the new Devstral models -- Mistral AI",
+    "type": "found",
+    "reliability_notes": "Primary source: official vendor announcement/technical page from the model developer. Contains specific, checkable benchmark numbers; corroborated independently by Hugging Face model cards and third-party analysis below.",
+    "key_claims_supported": [
+      "step 7: Devstral Small 1.1 (24B params) scores 53.6% on SWE-Bench Verified without test-time scaling, described as state-of-the-art among open code-agent models",
+      "step 7: model designed for compatibility with multiple agentic scaffolds (OpenHands, Mistral/XML function-calling formats) rather than one fixed harness"
+    ],
+    "corroboration_count": 3
+  },
+  {
+    "url_or_ref": "https://huggingface.co/mistralai/Devstral-Small-2505",
+    "title": "mistralai/Devstral-Small-2505 model card -- Hugging Face",
+    "type": "found",
+    "reliability_notes": "Primary source: official model card from the developer/hosting platform, independent artifact from the Mistral news post, corroborating model specs and benchmark claims.",
+    "key_claims_supported": [
+      "step 7: original Devstral Small (24B) scored 46.8% on SWE-Bench Verified, reported to outperform prior open-source SOTA by 6+ points"
+    ],
+    "corroboration_count": 3
+  },
+  {
+    "url_or_ref": "https://adam.holter.com/devstral-small-2507-mistral-ais-agentic-coding-llm-just-destroyed-the-swe-bench/",
+    "title": "Devstral Small 2507: Mistral AI's Agentic Coding LLM Just Destroyed the SWE-Bench -- Adam Holter",
+    "type": "found",
+    "reliability_notes": "Independent technical blog corroborating vendor-reported numbers with third-party framing; supplementary source per plan's constraints (not primary evidence on its own, but useful independent corroboration of Mistral's own claims).",
+    "key_claims_supported": [
+      "step 7/8: independent restatement that Devstral (24B) exceeds far larger models (e.g. DeepSeek-V3-0324, Qwen3 232B-A22B) under the same OpenHands scaffold -- supports the 'scaffolding matters as much as scale' thread in the consensus/disagreement question"
+    ],
+    "corroboration_count": 3
+  },
+  {
+    "url_or_ref": "https://arxiv.org/pdf/2509.16941",
+    "title": "SWE-Bench Pro: Can AI Agents Solve...",
+    "type": "found",
+    "reliability_notes": "arXiv preprint introducing a harder successor benchmark to SWE-bench; gives concrete evidence that even top models solve under 20% of commercial-set tasks, a useful counterweight/gap-context to the more optimistic small-model claims.",
+    "key_claims_supported": [
+      "step 6/8: on SWE-Bench Pro's harder, more realistic commercial task set, the best models (regardless of size) score below 20%, indicating substantial headroom remains and complicating simple small-vs-large gap narratives"
+    ],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "https://arxiv.org/html/2512.18470v5",
+    "title": "SWE-EVO: Benchmarking Coding Agents in Long-Horizon Software Evolution Scenarios",
+    "type": "found",
+    "reliability_notes": "arXiv preprint testing 18 models across OpenHands and SWE-agent scaffolds; reports a specific quantitative capability gap useful for the small-vs-large benchmark question.",
+    "key_claims_supported": [
+      "step 6: on long-horizon SWE-EVO tasks, the best model solved only 25% of tasks vs. 72.80% on standard SWE-Bench Verified by a comparable-generation model, showing agentic capability gaps grow sharply with task horizon regardless of model tier"
+    ],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "https://arxiv.org/pdf/2511.05459",
+    "title": "SWE-Compass: Towards Unified Evaluation of Agentic Coding Abilities for Large Language Models",
+    "type": "found",
+    "reliability_notes": "arXiv preprint; unified benchmark spanning many model families (Qwen, GLM, Claude, GPT-4, etc.), useful as a cataloguing source for step 6 even though granular small-vs-large breakdown wasn't extractable from the fetched excerpt -- noted as a partial-coverage source.",
+    "key_claims_supported": [
+      "step 6: existence of a unified agentic-coding evaluation framework spanning open and proprietary models of varying sizes"
+    ],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "https://gorilla.cs.berkeley.edu/leaderboard.html",
+    "title": "Berkeley Function Calling Leaderboard (BFCL) V4 -- Gorilla",
+    "type": "found",
+    "reliability_notes": "Primary source: the official leaderboard/benchmark site from UC Berkeley's Gorilla project, the standard reference benchmark for function-calling evaluation, backed by a peer-reviewed paper (proceedings.mlr.press/v267/patil25a.html).",
+    "key_claims_supported": [
+      "step 6: BFCL as the standard tool-use/function-calling benchmark; specific small-model results -- xLAM-2-3b-fc-r 65.74% overall (81.03% live, 88.22% non-live AST, 55.62% multi-turn); Qwen3-4B 62.04% overall; Qwen3-1.7B 55.49%; xLAM-2-1b-fc-r 53.97%; Qwen3-0.6B 45.76% overall with multi-turn collapsing to 1.38%",
+      "step 1/6: clear pattern that multi-turn tool-use capability is the sharpest small-model weakness, more than single-turn accuracy"
+    ],
+    "corroboration_count": 2
+  },
+  {
+    "url_or_ref": "https://proceedings.mlr.press/v267/patil25a.html",
+    "title": "The Berkeley Function Calling Leaderboard (BFCL): From Tool Use to Agentic Evaluation of Large Language Models",
+    "type": "found",
+    "reliability_notes": "Peer-reviewed publication (PMLR/ICML-track proceedings) underlying the BFCL leaderboard -- strongest-reliability source for the benchmark's methodology.",
+    "key_claims_supported": [
+      "step 6: methodological basis (AST-based evaluation, serial/parallel/multi-turn function-call settings) for the BFCL benchmark cited across multiple other sources"
+    ],
+    "corroboration_count": 2
+  },
+  {
+    "url_or_ref": "https://www.morphllm.com/ai-coding-assistant-open-source",
+    "title": "Open Source AI Coding Assistants (2026): 8 Ranked by Stars, License, and Local-Model Support",
+    "type": "found",
+    "reliability_notes": "Vendor/product-comparison blog; treat as supplementary context per plan's constraints (identifies named projects, not itself technical evidence). Cross-checked against project-specific documentation claims picked up in the same search round.",
+    "key_claims_supported": [
+      "step 7: catalogue of open-source local-model-capable coding agent CLIs (Aider, OpenCode, Continue/cn) as of 2026, useful as a named-systems inventory"
+    ],
+    "corroboration_count": 2
+  },
+  {
+    "url_or_ref": "https://pinggy.io/blog/best_open_source_cli_coding_agents/",
+    "title": "Best Open Source CLI Coding Agents in 2026 -- Pinggy Blog",
+    "type": "found",
+    "reliability_notes": "Vendor/product-comparison blog; supplementary source corroborating the same named-projects list (Aider, OpenCode, Continue) independently of morphllm's listing.",
+    "key_claims_supported": [
+      "step 7: independent corroboration of the same named open-source local-model coding-agent projects and their local-model support (Ollama autodetect, no-API-cost operation)"
+    ],
+    "corroboration_count": 2
+  },
+  {
+    "url_or_ref": "https://arxiv.org/pdf/2511.22138",
+    "title": "TinyLLM: Evaluation and Optimization of Small Language Models for Agentic Tasks on Edge Devices",
+    "type": "found",
+    "reliability_notes": "arXiv preprint directly addressing the architectural/system-level category (context management, edge deployment trade-offs) called out in the plan's scope. Full technical detail was not fully extractable from the fetched excerpt -- flagged as a partial-coverage source; corroborates the general small-model-agent-on-constrained-hardware theme found in the NVIDIA position paper.",
+    "key_claims_supported": [
+      "step (architectural/system-level, cross-cutting): edge-device deployment constraints (memory, compute, latency) as a driver for small-model-specific agentic optimization"
+    ],
+    "corroboration_count": 1
+  }
+]

@@ -7,38 +7,6 @@
 import SwiftUI
 import Combine
 
-// ── Community activity feed item (reused for the "Group activity" widget) ──────
-struct CommunityActivityItem: Codable {
-    enum Kind: String, Codable { case message, groupNote }
-    let kind:      Kind
-    let name:      String   // contact name or group name
-    let preview:   String   // message text or note title
-    let timestamp: String   // ISO string; empty → display "recent"
-    var contact:   FSContact? = nil   // the conversation to open when tapped
-
-    var icon: String {
-        if let t = contact?.type { return t == .group ? "person.2.fill" : "bubble.left.fill" }
-        return kind == .message ? "bubble.left.fill" : "note.text"
-    }
-
-    var timeLabel: String {
-        guard !timestamp.isEmpty else { return "recent" }
-        let parsers: [ISO8601DateFormatter] = {
-            let a = ISO8601DateFormatter()
-            a.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-            let b = ISO8601DateFormatter()
-            return [a, b]
-        }()
-        let date = parsers.lazy.compactMap { $0.date(from: timestamp) }.first
-        guard let d = date else { return "recent" }
-        let diff = Date().timeIntervalSince(d)
-        if diff < 60      { return "just now" }
-        if diff < 3_600   { return "\(Int(diff / 60))m ago" }
-        if diff < 86_400  { return "\(Int(diff / 3_600))h ago" }
-        return "\(Int(diff / 86_400))d ago"
-    }
-}
-
 @MainActor
 final class DashboardViewModel: ObservableObject {
     var service: DataServiceProtocol = MockDataService.shared
@@ -49,7 +17,12 @@ final class DashboardViewModel: ObservableObject {
     @Published var agents:         [FSAgent]               = []
     @Published var lastAgentMsg:   FSAgentMessage?         = nil
     @Published var isLoading       = true
-    @Published var communityItems: [CommunityActivityItem] = []
+    // Editorial Hero's Friend Activity card + check-in nudge — GET
+    // /friends/{userId}/activity, a new targeted endpoint alongside this
+    // view's existing per-resource calls (see backend step 2 of this task:
+    // consolidating the other 5 was out of scope, this is the read surface
+    // that didn't exist at all before).
+    @Published var friendActivity: FSFriendActivityFeed    = .empty
 
     // Redesign-derived, all from real data (see load()).
     @Published var myGroups:       [GroupSummary]          = []
@@ -80,8 +53,8 @@ final class DashboardViewModel: ObservableObject {
         if let cached: FSAgentMessage = await DiskCache.shared.load(FSAgentMessage.self, forKey: "lastAgentMsg:\(userId)") {
             lastAgentMsg = cached
         }
-        if let cached: [CommunityActivityItem] = await DiskCache.shared.load([CommunityActivityItem].self, forKey: "community:\(userId)") {
-            communityItems = cached
+        if let cached: FSFriendActivityFeed = await DiskCache.shared.load(FSFriendActivityFeed.self, forKey: "friendActivity:\(userId)") {
+            friendActivity = cached
         }
         recomputeDerived()
 
@@ -90,11 +63,12 @@ final class DashboardViewModel: ObservableObject {
         // most-recent-note card, both of which read fine off the first
         // backend-capped page (15, newest first) -- this view doesn't need
         // to page through the full collection like NotesListView does.
-        async let notesTask     = try? service.fetchNotes(userId: userId, cursorCreatedAt: nil, cursorId: nil)
-        async let hlTask        = try? service.fetchHighlights(userId: userId)
-        async let bookmarksTask = try? service.fetchBookmarks(userId: userId)
-        async let agentsTask    = try? service.fetchAgents(userId: userId)
-        async let contactsTask  = try? service.fetchContacts(userId: userId)
+        async let notesTask          = try? service.fetchNotes(userId: userId, cursorCreatedAt: nil, cursorId: nil)
+        async let hlTask             = try? service.fetchHighlights(userId: userId)
+        async let bookmarksTask      = try? service.fetchBookmarks(userId: userId)
+        async let agentsTask         = try? service.fetchAgents(userId: userId)
+        async let contactsTask       = try? service.fetchContacts(userId: userId)
+        async let friendActivityTask = try? service.fetchFriendActivity(userId: userId)
 
         notes  = (await notesTask)?.notes ?? [:]
         agents = (await agentsTask) ?? []
@@ -115,8 +89,8 @@ final class DashboardViewModel: ObservableObject {
         }
 
         let (contactList, _) = (await contactsTask) ?? ([], [:])
-        buildCommunityItems(contacts: contactList)
         myGroups = buildMyGroups(contacts: contactList)
+        friendActivity = (await friendActivityTask) ?? .empty
         recomputeDerived()
 
         // ── Write fresh data back to the shared cache ────────────────────────────
@@ -124,12 +98,29 @@ final class DashboardViewModel: ObservableObject {
         await DiskCache.shared.save(agents, forKey: "agents:\(userId)")
         await DiskCache.shared.save(hlDict, forKey: "highlights:\(userId)")
         if let m = lastAgentMsg { await DiskCache.shared.save(m, forKey: "lastAgentMsg:\(userId)") }
-        await DiskCache.shared.save(communityItems, forKey: "community:\(userId)")
+        await DiskCache.shared.save(friendActivity, forKey: "friendActivity:\(userId)")
     }
 
     var recentNote: (String, FSNote)? {
         notes.max(by: { $0.value.timestamp < $1.value.timestamp })
              .map { ($0.key, $0.value) }
+    }
+
+    /// Saves a note (new or edited) through the injected service, updates the
+    /// local `notes` dict on success, and returns nil — mirrors
+    /// NotesViewModel.saveNote's contract so NoteEditorView's `onSave`
+    /// closure (nil error → dismiss, non-nil → stay open and show it) behaves
+    /// identically from the Dashboard's quick-create and note-resume sheets.
+    func saveNote(_ note: FSNote, editingId: String?, userId: String) async -> String? {
+        do {
+            let savedId = try await service.saveNote(note, editingId: editingId, userId: userId)
+            var updated = note; updated.id = savedId
+            notes[savedId] = updated
+            recomputeDerived()
+            return nil
+        } catch {
+            return error.localizedDescription
+        }
     }
 
     // ── Derivations (pure, from already-loaded data) ─────────────────────────────
@@ -138,17 +129,6 @@ final class DashboardViewModel: ObservableObject {
         notesThisWeek = computeNotesThisWeek()
         revisitVerse  = pickRevisit()
         subtitleLine  = computeSubtitle()
-    }
-
-    private func buildCommunityItems(contacts: [FSContact]) {
-        communityItems = contacts
-            .filter { !$0.preview.isEmpty }
-            .sorted { $0.lastMessageAt > $1.lastMessageAt }
-            .prefix(4)
-            .map { c in
-                CommunityActivityItem(kind: .message, name: c.name,
-                                      preview: c.preview, timestamp: c.lastMessageAt, contact: c)
-            }
     }
 
     private func buildMyGroups(contacts: [FSContact]) -> [GroupSummary] {
@@ -225,8 +205,13 @@ final class DashboardViewModel: ObservableObject {
 struct DashboardView: View {
     @EnvironmentObject var appState: AppState
     @StateObject private var vm = DashboardViewModel()
-    @State private var showNewNote   = false
-    @State private var showAgentChat = false
+    @State private var showNewNote    = false
+    @State private var showResumeNote = false
+    @State private var showAgentChat  = false
+
+    private func openFriendChat(id: String, username: String) {
+        appState.pendingChatContact = FSContact(id: id, name: username, type: .friend)
+    }
 
     // Quick actions are built from availability so there are never dead buttons.
     private var quickActions: [QuickAction] {
@@ -271,17 +256,30 @@ struct DashboardView: View {
                     HeroHeader(username: appState.currentUser?.username ?? "friend",
                                subtitle: vm.subtitleLine)
 
+                    // ── Editorial Hero: Friend Activity ───────────────────────────────
+                    FriendActivityHeroCard(feed: vm.friendActivity) { entry in
+                        openFriendChat(id: entry.friend_id, username: entry.username)
+                    }
+
+                    if let checkIn = vm.friendActivity.check_in {
+                        CheckInRow(checkIn: checkIn) {
+                            openFriendChat(id: checkIn.friend_id, username: checkIn.username)
+                        }
+                    }
+
+                    NoteResumeCard(note: vm.recentNote?.1) {
+                        if vm.recentNote != nil {
+                            showResumeNote = true
+                        } else {
+                            showNewNote = true
+                        }
+                    }
+
                     if let verse = vm.revisitVerse {
                         RevisitVerseCard(verse: verse) {
                             appState.pendingBibleNav = BibleNavTarget(book: verse.book, chapter: verse.chapter, verse: verse.verse)
                         }
                     }
-
-                    GroupActivityWidget(
-                        items: vm.communityItems,
-                        onTapItem: { item in if item.contact != nil { appState.pendingChatContact = item.contact } },
-                        onContinueReading: vm.lastReadTarget == nil ? nil : { appState.pendingBibleNav = vm.lastReadTarget }
-                    )
 
                     if !vm.bookmarks.isEmpty {
                         BookmarksWidget(bookmarks: vm.bookmarks) { b in
@@ -310,7 +308,16 @@ struct DashboardView: View {
             }
         }
         .sheet(isPresented: $showNewNote) {
-            NoteEditorView(note: nil, noteId: nil, isReadOnly: false)
+            NoteEditorView(note: nil, noteId: nil, isReadOnly: false) { saved in
+                await vm.saveNote(saved, editingId: nil, userId: appState.currentUser?.user_id ?? "")
+            }
+        }
+        .sheet(isPresented: $showResumeNote) {
+            if let recent = vm.recentNote {
+                NoteEditorView(note: recent.1, noteId: recent.0, isReadOnly: false) { saved in
+                    await vm.saveNote(saved, editingId: recent.0, userId: appState.currentUser?.user_id ?? "")
+                }
+            }
         }
         .sheet(isPresented: $showAgentChat) {
             if let a = vm.agents.first { AgentChatView(agent: a) }

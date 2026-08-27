@@ -1,0 +1,180 @@
+[
+  {
+    "url_or_ref": "/Users/jaceysimpson/Downloads/MR-v2.pdf",
+    "title": "Modern Robotics: Mechanics, Planning, and Control (Kevin M. Lynch, Frank C. Park) — updated first-edition preprint, Dec 30, 2019",
+    "type": "user-provided",
+    "reliability_notes": "Primary source of record per the research plan. Read directly with pdftotext (poppler, installed this round after the environment initially lacked pdftotext/pdftoppm) across pages 1-9 (front-matter table of contents) and 14-18 (preface). This is the authoritative ground truth for the book's own structure, not a claim requiring external corroboration. Confirmed: 644 pages, PDF metadata shows CreationDate Jan 5 2020, producer pdfTeX; text explicitly self-identifies as the 'Dec 2019 preprint of updated first edition of Modern Robotics, 2017' published by Cambridge University Press (original ISBN 9781107156302, 3rd-printing-2019-or-later matches this text). Confirmed chapter list (13 numbered chapters + 4 appendices + bibliography + index), matching but not identical in pagination to the public MIT/Northwestern syllabus commonly cited online — this PDF read directly is more authoritative than that public syllabus for this user's specific copy.",
+    "key_claims_supported": [
+      "Confirmed 13-chapter structure: 1 Preview; 2 Configuration Space; 3 Rigid-Body Motions; 4 Forward Kinematics; 5 Velocity Kinematics and Statics; 6 Inverse Kinematics; 7 Kinematics of Closed Chains; 8 Dynamics of Open Chains; 9 Trajectory Generation; 10 Motion Planning; 11 Robot Control; 12 Grasping and Manipulation; 13 Wheeled Mobile Robots",
+      "Confirmed major subsections per chapter (e.g. Ch.5 Manipulator Jacobian/Statics/Singularity/Manipulability; Ch.8 Lagrangian & Newton-Euler dynamics, actuation/gearing/friction; Ch.10 grid/sampling/RRT/PRM/potential-field planners; Ch.11 velocity- vs torque-input motion control, force control, impedance control; Ch.12 contact kinematics, friction, form/force closure; Ch.13 omnidirectional vs nonholonomic wheeled robots, odometry, mobile manipulation)",
+      "Confirmed appendices: A Summary of Useful Formulas; B Other Representations of Rotations; C Denavit-Hartenberg Parameters; D Optimization and Lagrange Multipliers; plus Bibliography and Index",
+      "Confirmed 644 total pages, updated first-edition preprint dated Dec 2019 / distributed Jan 2020, original Cambridge University Press 2017 publication",
+      "Authors' own stated prerequisite structure: Chapters 2-6 are 'the minimum essentials' and 'should probably be covered in sequence'; Chapter 8 (dynamics) is a prerequisite for standard treatments of Ch.9 (trajectory generation) and Ch.11 (robot control), though the authors note control/trajectory generation can be taught with velocity-only inputs if dynamics is skipped; various named university courses (Seoul National University, Northwestern) combine subsets of Ch.2-13 in different orders depending on focus (kinematics-only path: 2-7 and 13; planning-focused path: 2-3, 10, 13; manipulation-focused path: 2-6, 8, 12; control-focused path: 2-6, 8, 9, 11)"
+    ],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "https://github.com/TheRobotStudio/SO-ARM100",
+    "title": "TheRobotStudio/SO-ARM100 (Standard Open Arm 100) — GitHub repo",
+    "type": "found",
+    "reliability_notes": "Primary/official open-source repo for the arm from its original creator (TheRobotStudio, in collaboration with Hugging Face). Authoritative for design files, BOM, and licensing.",
+    "key_claims_supported": [
+      "SO-ARM100/101 is a fully open-source 6-DOF serial manipulator, 3D-printable, servo-driven, designed for real-world buildability by individuals"
+    ],
+    "corroboration_count": 3
+  },
+  {
+    "url_or_ref": "https://www.seeedstudio.com/SO-ARM100-Low-Cost-AI-Arm-Kit.html",
+    "title": "SO-ARM100 3D-Printed Robotic Arm Frame | Open-Source Robotics Kit for DIY Projects — Seeed Studio",
+    "type": "found",
+    "reliability_notes": "Commercial hardware vendor selling an officially licensed kit version; independent of TheRobotStudio's own GitHub, corroborates real-world productization and specs (6-DOF, 30kg·cm torque, 300mm reach, 200g payload).",
+    "key_claims_supported": [
+      "SO-ARM100 is buildable/purchasable as a real hobbyist kit, not just a theoretical design",
+      "Concrete spec numbers: 6-DOF, ~300mm reach, 200g payload, suitable for pick-and-place/small manipulation tasks"
+    ],
+    "corroboration_count": 3
+  },
+  {
+    "url_or_ref": "https://wiki.seeedstudio.com/lerobot_so100m_new/",
+    "title": "Getting Started with SO-ARM10x in LeRobot — Seeed Studio Wiki",
+    "type": "found",
+    "reliability_notes": "Independent vendor documentation/tutorial corroborating the arm's integration with the Hugging Face LeRobot software stack and community tooling.",
+    "key_claims_supported": [
+      "SO-ARM100/101 has active, maintained tutorial and software-integration documentation (not a dead/abandoned project)"
+    ],
+    "corroboration_count": 3
+  },
+  {
+    "url_or_ref": "https://www.hackster.io/news/hugging-face-launches-the-so-101-an-upgraded-low-cost-3d-printable-autonomous-robot-arm-532360f441eb",
+    "title": "Hugging Face Launches the SO-101, an Upgraded Low-Cost 3D-Printable Autonomous Robot Arm — Hackster.io",
+    "type": "found",
+    "reliability_notes": "Independent maker-press coverage (Hackster.io) corroborating vendor/GitHub claims about the arm's popularity, cost, and Hugging Face backing.",
+    "key_claims_supported": [
+      "SO-ARM100 has a large, active builder community ('thousands of builders'), Hugging Face-backed successor (SO-101) shows ongoing iteration/maintenance, not a one-off/dead project",
+      "Approximate cost: single arm ~$115, dual-arm teleop setup ~$230"
+    ],
+    "corroboration_count": 3
+  },
+  {
+    "url_or_ref": "https://robotsthatexist.com/robots/so-100",
+    "title": "SO-100 - Real Robot Build Info | Robots That Exist",
+    "type": "found",
+    "reliability_notes": "Independent aggregator site specifically cataloguing robots with confirmed real-world builds (as opposed to purely conceptual designs) — directly supports the plan's requirement for real-world buildability precedent, not just theoretical proposals.",
+    "key_claims_supported": [
+      "SO-ARM100 is confirmed as an actually-built (not merely proposed) hobbyist robot with documented build info"
+    ],
+    "corroboration_count": 3
+  },
+  {
+    "url_or_ref": "https://huggingface.co/docs/lerobot/lekiwi",
+    "title": "LeKiwi · Hugging Face (official LeRobot docs)",
+    "type": "found",
+    "reliability_notes": "Official documentation from Hugging Face's LeRobot project, the software/hardware ecosystem maintainer. Authoritative primary source for this specific project's design and intent.",
+    "key_claims_supported": [
+      "LeKiwi is a low-cost holonomic (3-wheel Kiwi-drive) mobile base designed specifically to carry an SO-ARM100/101 arm, forming a combined mobile-manipulator platform",
+      "LeKiwi is compatible with the full LeRobot teleoperation/imitation-learning software stack"
+    ],
+    "corroboration_count": 4
+  },
+  {
+    "url_or_ref": "https://robotics.growbotics.ai/projects/hardware/lekiwi",
+    "title": "LeKiwi — Specs, BOM & Assembly | Open Source Robotics — growbotics.ai",
+    "type": "found",
+    "reliability_notes": "Independent third-party hardware documentation/BOM aggregator, corroborating the official Hugging Face docs with concrete build specs and bill-of-materials detail.",
+    "key_claims_supported": [
+      "LeKiwi has a documented, replicable bill of materials and assembly process (real buildability, not just a concept)"
+    ],
+    "corroboration_count": 4
+  },
+  {
+    "url_or_ref": "https://robotsthatexist.com/robots/lekiwi",
+    "title": "LeKiwi - Real Robot Build Info | Robots That Exist",
+    "type": "found",
+    "reliability_notes": "Same independent 'confirmed real build' aggregator used for SO-100, corroborating LeKiwi specifically as an actually-built platform.",
+    "key_claims_supported": [
+      "LeKiwi is confirmed as an actually-built hobbyist platform, cost approx. $660 for the complete mobile-manipulator system"
+    ],
+    "corroboration_count": 4
+  },
+  {
+    "url_or_ref": "https://wiki.seeedstudio.com/lerobot_lekiwi/",
+    "title": "Lekiwi in Lerobot | Seeed Studio Wiki",
+    "type": "found",
+    "reliability_notes": "Independent vendor tutorial documentation, corroborating that LeKiwi has active, maintained build/setup instructions.",
+    "key_claims_supported": [
+      "LeKiwi has active maintained documentation/tutorials, indicating an ongoing (not defunct) community"
+    ],
+    "corroboration_count": 4
+  },
+  {
+    "url_or_ref": "https://github.com/Roger-random/Sawppy_Rover",
+    "title": "Roger-random/Sawppy_Rover — 'A Motorized Model of Mars Rover Curiosity and Perseverance for <$500 In Parts' — GitHub",
+    "type": "found",
+    "reliability_notes": "Original creator's own repository; primary source for the design, BOM, and cost claim.",
+    "key_claims_supported": [
+      "Sawppy is a rocker-bogie wheeled rover (JPL Curiosity/Perseverance-inspired), open-source, targeted at individual hobbyists, buildable for under $500 in parts"
+    ],
+    "corroboration_count": 3
+  },
+  {
+    "url_or_ref": "https://hackaday.io/project/158208-sawppy-the-rover",
+    "title": "Sawppy the Rover | Hackaday.io",
+    "type": "found",
+    "reliability_notes": "Independent maker-community platform (Hackaday.io) hosting the project's build logs from the wider community, not just the original creator — corroborates real-world replication by multiple individuals.",
+    "key_claims_supported": [
+      "Sawppy has been independently built/replicated by multiple hobbyists beyond the original creator, with an active build-log community"
+    ],
+    "corroboration_count": 3
+  },
+  {
+    "url_or_ref": "https://open-source-rover.readthedocs.io/",
+    "title": "JPL Open Source Rover documentation",
+    "type": "found",
+    "reliability_notes": "Primary source for the original JPL project that Sawppy is derived from/inspired by; institutional (NASA JPL) origin lends technical credibility to the underlying rocker-bogie design being replicated at hobbyist scale.",
+    "key_claims_supported": [
+      "The rocker-bogie mobile-robot architecture Sawppy replicates has a credible institutional (NASA JPL) engineering origin, not an ad hoc hobbyist invention"
+    ],
+    "corroboration_count": 3
+  },
+  {
+    "url_or_ref": "https://www.kickstarter.com/projects/petoi/bittle",
+    "title": "Petoi Bittle: A Palm-sized Robot Dog for STEM and Fun — Kickstarter campaign page",
+    "type": "found",
+    "reliability_notes": "Primary crowdfunding source; directly documents real backer/community numbers and pricing, not marketing copy alone.",
+    "key_claims_supported": [
+      "Bittle raised $567,218 from 2,052 backers across 60+ countries, kit price ~$225, confirming substantial real-world hobbyist demand and buildability"
+    ],
+    "corroboration_count": 4
+  },
+  {
+    "url_or_ref": "https://github.com/PetoiCamp/OpenCat/blob/main/README.md",
+    "title": "PetoiCamp/OpenCat — open-source quadruped robotic pet framework — GitHub",
+    "type": "found",
+    "reliability_notes": "Original maker's open-source software framework repo underlying Bittle (and sibling Nybble); primary source for the gait/kinematics/control software claims.",
+    "key_claims_supported": [
+      "Bittle runs on OpenCat, an open-source Arduino/Raspberry Pi framework implementing inverse-kinematics-driven gait generation, servo control, and IMU integration — i.e. it genuinely exercises kinematics/control concepts, not just pre-baked motions",
+      "Bittle is a 9-DOF quadruped (2 joints/leg x4 legs + 1 neck joint)"
+    ],
+    "corroboration_count": 4
+  },
+  {
+    "url_or_ref": "https://www.petoi.com/products/petoi-bittle-robot-dog",
+    "title": "Robot Dog Bittle By Petoi | Open-Source Robot Pet for All — official product page",
+    "type": "found",
+    "reliability_notes": "Vendor's own current product page; corroborates the project is still actively sold/maintained years after the 2020 Kickstarter, i.e. not defunct.",
+    "key_claims_supported": [
+      "Bittle remains an actively sold, maintained product as of research date, not a dead Kickstarter-only project"
+    ],
+    "corroboration_count": 4
+  },
+  {
+    "url_or_ref": "https://newatlas.com/robotics/petoi-bittle-robot-dog/",
+    "title": "Walking programmable sub-$200 robot dog hits Kickstarter — New Atlas",
+    "type": "found",
+    "reliability_notes": "Independent tech-journalism outlet, corroborating vendor/Kickstarter claims about price point and product description from an outside perspective.",
+    "key_claims_supported": [
+      "Independent press confirms Bittle's approximate price point (sub-$200 to ~$225) and hobbyist/enthusiast target audience framing"
+    ],
+    "corroboration_count": 4
+  }
+]

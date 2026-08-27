@@ -1,0 +1,5 @@
+{
+  "task_id": "20260818-lekiwi-3d-print-build-guide",
+  "result": "pass",
+  "summary": "5 claims evaluated across the brief's 6 sections. Stronger-original: 2 (B - heat-set inserts, C - print/assembly time estimates, held on default weight of an unrebutted vendor source). Stronger-counter: 2 (D - motor-ID mapping strengthened by primary source code; A's broad framing weakened by independent GitHub artifacts the brief missed). Disproven: 2 (the brief's own Seeed-specific-variant hedge on claim D; A's broad 'no independent account of physical/design friction' framing). False: 0 (no claim was shown flatly false with no credible support remaining). Unresolved: 3 (B, C, E - real-world heat-set-insert failures, real-world print/assembly time accuracy, and real-world spend vs. the $482-499 baseline all remain genuinely open, with E's search notably incomplete due to rate-limiting)."
+}

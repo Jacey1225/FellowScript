@@ -1,0 +1,84 @@
+[
+  {
+    "target_claim": "SCoRe: a 7B (Qwen2.5-based) student reaching 52.3 average across 8 combined benchmarks (GAIA, HLE, xBench, WebWalker, etc.) versus the 72B teacher's 51.1 -- exceeding the teacher -- and versus 43.0 for naive behavioral-cloning distillation of the same 7B model (arXiv 2509.14257).",
+    "counter_claim": "No independent replication, third-party benchmark re-execution, or SCoRe-specific methodological critique was found after a genuine search (citation graph, distillation-artifact literature, benchmark-contamination literature). The strongest related finding is a general (non-SCoRe-specific) methodological critique: 'When Agents Look the Same: Quantifying Distillation-Induced Similarity in Tool-Use Behaviors' (arXiv 2604.21255, ACL 2026) argues that LLM-agent distillation broadly produces behavioral homogenization -- distilled agents sharing 'nearly identical reasoning steps and failure modes,' i.e. 'distilled echoes of a few dominant teachers' -- such that apparent capability gains can reflect surface-level mimicry of teacher style rather than independently verified capability improvement. This raises a genuine, mechanism-level doubt about how much weight the 'exceeds teacher' framing deserves for the whole distillation-training cluster SCoRe belongs to, but it does not test SCoRe's own benchmarks (GAIA/HLE/xBench/WebWalker), does not test the same models, and never mentions SCoRe by name -- so it is suggestive, not a direct rebuttal. The absence of any direct replication attempt after a genuine search is itself the primary finding for this claim.",
+    "counter_evidence": [
+      {
+        "url_or_ref": "https://arxiv.org/abs/2604.21255",
+        "title": "When Agents Look the Same: Quantifying Distillation-Induced Similarity in Tool-Use Behaviors",
+        "reliability_notes": "arXiv preprint accepted at ACL 2026 Main Conference (peer-reviewed venue). Fetched and read directly. Authors (Chenghao Yang, Yuning Zhang, Zhoufutu Wen, Tao Gong, Jiaheng Liu, Qi Chu, Nenghai Yu) are fully independent of SCoRe's authors (Yuanjie Lyu, Chengyu Wang, Jun Huang, Tong Xu, USTC). Evaluates 18 deployed commercial models plus a controlled Qwen2.5-14B-Instruct fine-tuning experiment on tau-Bench/tau2-Bench -- different benchmarks and models than SCoRe, so relevance is by mechanism-level inference, not direct benchmark contradiction.",
+        "how_it_contradicts": "Argues the general mechanism by which a distilled student appearing to match or exceed a larger teacher can be an artifact of behavioral mimicry (matching teacher-preferred reasoning patterns) rather than genuine independent capability transfer -- directly the kind of artifact the search angle asked about, but applied generically to the distillation-cluster rather than to SCoRe's specific numbers."
+      },
+      {
+        "url_or_ref": "search effort record (no source found)",
+        "title": "No independent replication or SCoRe-specific critique located",
+        "reliability_notes": "Checked Semantic Scholar's citation graph for arXiv:2509.14257 (9 citing papers as of this search), general distillation 'student surpasses teacher' literature, and targeted searches combining SCoRe's benchmark names with contamination/overfitting/critique terms. All citing papers extend or reuse the same distillation-cluster methodology (e.g. 'From Scoring to Acting: Outcome-Verified Comparative Self-Distillation,' 'A Few Teacher Steps Go a Long Way') rather than independently re-running or challenging SCoRe's own benchmark claim.",
+        "how_it_contradicts": "Does not contradict the claim directly; records that a genuine, good-faith search for direct counter-evidence came up empty, which per the plan's own discipline should be reported plainly rather than papered over."
+      }
+    ],
+    "confidence_score": 0.25
+  },
+  {
+    "target_claim": "ACM: sub-9B models were deliberately not used as the rollout/student model because 'substantially smaller models often lose coherence after only a few turns, producing trajectories of limited value for learning effective compression behavior,' used in the brief as evidence of a possible scale floor below which architectural techniques cannot be trained.",
+    "counter_claim": "Partial, domain-mismatched counter-evidence exists: ATOD (fetched in full) trains and evaluates models down to 0.6B parameters -- far below ACM's 9B threshold -- on genuinely multi-turn, multi-step interactive tool-use benchmarks (ALFWorld, WebShop, Search-QA), reporting high success rates at 0.6B (82.81% ALFWorld, 86.72% WebShop) that are broadly comparable to its 1.7B and 4B variants, with no coherence collapse reported. This shows models an order of magnitude smaller than ACM's cutoff can sustain enough multi-turn coherence to succeed on interactive tool-use tasks, complicating a blanket 'sub-9B models lose coherence after a few turns' framing. However, this is genuinely weaker counter-evidence than it first appears: ALFWorld/WebShop episodes are shorter and structurally different from ACM's long-horizon context-compression trajectories (which likely require sustaining coherence over many more turns before compression becomes necessary), so the domains are not directly comparable. Separately, a search for a paper whose central finding (not incidental aside) is small-model long-horizon coherence surfaced 'LHC v0.2' (a blog benchmark, not peer-reviewed), whose central finding -- every 8B-class model tested underperformed a deterministic parser baseline on state-recall/decision-consistency tasks after context gaps, and fine-tuning did not measurably help -- actually reinforces rather than contradicts ACM's claim, at slightly larger (8B) scale.",
+    "counter_evidence": [
+      {
+        "url_or_ref": "https://arxiv.org/html/2606.27814",
+        "title": "ATOD: Annealed Turn-Aware On-Policy Distillation for Multi-Turn Agentic Tasks",
+        "reliability_notes": "arXiv preprint, fetched and read directly (upgraded from the source-gathering stage's search-summary-only status). Tests Qwen3 at 0.6B/1.7B/4B on ALFWorld, Search-QA, and WebShop -- genuinely multi-turn interactive environments, independent of ACM's authors and technique.",
+        "how_it_contradicts": "Reports strong multi-turn task success (>80% on ALFWorld/WebShop) at 0.6B, well below ACM's 9B floor, with no reported coherence collapse -- directly complicates, though does not fully refute (different task domain, likely shorter horizons), ACM's 'sub-9B loses coherence after a few turns' claim."
+      },
+      {
+        "url_or_ref": "https://www.hugo.im/posts/lhc-v02-long-horizon-coherence-benchmark",
+        "title": "LHC v0.2: A Benchmark for Long-Horizon Agent Coherence",
+        "reliability_notes": "Independent blog post, not peer-reviewed or arXiv, single author (Hugo Nogueira, CPTO at an enterprise-AI compliance company) -- per the plan's constraints this is supplementary-only, not primary evidence, but included because its central subject (unlike ACM) is small-model long-horizon coherence itself, which the search angle flagged as a stronger source type if found.",
+        "how_it_contradicts": "Does not contradict ACM's claim -- it corroborates it at a nearby scale (8B-class models underperform a deterministic baseline on state-recall after context gaps, and fine-tuning does not fix this), and is reported here because a genuine search for the strongest-form counter-evidence surfaced this instead, which should be recorded plainly rather than omitted."
+      }
+    ],
+    "confidence_score": 0.3
+  },
+  {
+    "target_claim": "HORIZON: 'model scaling alone is unlikely to resolve the dominant failure mechanisms' of long-horizon agentic failure, evidenced only on frontier/SOTA models and imported to the small-model question by inference.",
+    "counter_claim": "Two independent, small-model-inclusive sources complicate the inference that HORIZON's frontier-evidenced conclusion transfers to small models. 'The Illusion of Diminishing Returns: Measuring Long Horizon Execution in LLMs' (ICLR 2026) directly tests model families from 4B up through frontier scale (Qwen3, Gemma3, DeepSeek-V3, Kimi K2, GPT-5, Claude-4) and finds a clear scaling trend: larger models sustain accuracy over significantly more sequential execution turns even when single-step accuracy is already near-perfect and comparable across sizes -- meaning raw scale itself, not just method, measurably extends long-horizon execution capability, in tension with 'scaling alone is unlikely to resolve' the failure. AgentFloor (arXiv 2605.00334) independently tests 16 open-weight models from 0.27B-32B against GPT-5 on a long-horizon planning tier and finds small/mid-sized open-weight models' tier-E failures carry a capacity-flavored signature distinct from frontier failures (e.g. a 26B model failing via step-budget exhaustion and hallucinated tools -- 'the signature of a model running out of room' -- versus GPT-5's early-resignation/plan-without-execute pattern), and that no intervention tested (including a phase-decomposition prompt, the paper's 'obvious candidate for a universal fix') generalized across model scales. Together these are genuine, small-model-inclusive, peer-reviewed/arXiv evidence that (a) scale itself measurably affects long-horizon performance (cutting against 'scaling alone is unlikely to resolve'), and (b) small-model long-horizon failure composition differs qualitatively from the frontier-only failure taxonomy HORIZON describes -- exactly the small-model failure-composition evidence the brief's Open Question 6 flagged as missing.",
+    "counter_evidence": [
+      {
+        "url_or_ref": "https://arxiv.org/html/2509.09677v3",
+        "title": "The Illusion of Diminishing Returns: Measuring Long Horizon Execution in LLMs",
+        "reliability_notes": "arXiv preprint accepted at ICLR 2026 (peer-reviewed). Fetched and read directly. Tests Qwen3 (4B/8B/14B/32B), Gemma3 (4B/12B/27B), plus frontier models -- directly small-model-inclusive, unlike HORIZON. Independent of HORIZON's authors.",
+        "how_it_contradicts": "Isolates pure execution capability (holding plan/knowledge fixed) and finds a clear scaling trend in how many sequential turns a model can execute correctly, even where small models match larger ones on single-step accuracy -- direct evidence that raw capacity (not just training method) drives a substantial share of long-horizon degradation, in tension with HORIZON's 'scaling alone is unlikely to resolve' framing as applied to small models."
+      },
+      {
+        "url_or_ref": "https://arxiv.org/html/2605.00334v1",
+        "title": "AgentFloor: How Far Up the Tool Use Ladder Can Small Open-Weight Models Go?",
+        "reliability_notes": "arXiv preprint (2026), fetched and read directly. Evaluates 16 open-weight models from 0.27B-32B (including several sub-10B: nemotron-3-nano:4B, granite4:3B, ministral-3:8B) against GPT-5 on a 6-tier capability ladder including a long-horizon planning tier. Independent of HORIZON's authors.",
+        "how_it_contradicts": "Provides genuine small-model long-horizon failure-composition evidence (not just success-rate) showing failure signatures differ by scale in ways consistent with capacity limits (step-budget exhaustion, tool hallucination under token pressure) rather than uniformly matching HORIZON's frontier-derived taxonomy (planning errors, catastrophic forgetting, history-error accumulation) -- and finds that architectural/prompting interventions do not generalize across model scales, undercutting a simple 'method-level fix works independent of scale' reading of HORIZON's own prescription."
+      }
+    ],
+    "confidence_score": 0.6
+  },
+  {
+    "target_claim": "AgenticQwen 'closes the gap with much larger models' on tool-use tasks, corroborated directionally by ATOD and CacheRL, but with two of the three legs (ATOD, CacheRL) previously only identified via search summary, not independently fetched and read in full.",
+    "counter_claim": "The cluster's verification status is weaker than a first read suggests, though this is a corroboration-strength finding rather than a direct contradiction. ATOD was successfully fetched and read in full this round: it confirms and quantifies the directional claim (consistent gains across 0.6B/1.7B/4B student scales, surpassing the corresponding teacher by 2.16 points on average across ALFWorld/Search-QA/WebShop, no reported benchmark failures) -- this upgrades ATOD from search-summary to verified status and, if anything, strengthens rather than weakens the cluster. CacheRL, however, could not be upgraded despite two independent fetch attempts (one PDF, one arXiv abstract page): the PDF returned only unreadable compressed binary streams, and the abstract-page fetch could not confirm the specific 'open challenge' framing language attributed to it in sources.json, only a self-reported 92%-vs-GPT-5's-94% headline number on a 4B model. No independent third-party evaluation of AgenticQwen-8B on external tool-use leaderboards (e.g. BFCL) was found -- its 47.4-average and 'closes the gap' framing remain entirely self-reported by the releasing paper/lab, unverified by any outside benchmark run located in this search.",
+    "counter_evidence": [
+      {
+        "url_or_ref": "https://arxiv.org/html/2606.27814",
+        "title": "ATOD: Annealed Turn-Aware On-Policy Distillation for Multi-Turn Agentic Tasks",
+        "reliability_notes": "Successfully fetched and read in full this round (previously search-summary-only). Independent of AgenticQwen's authors.",
+        "how_it_contradicts": "Does not contradict the cluster's claim -- confirms and quantifies it (surpasses teacher by 2.16 points average) -- included here because verifying it was one of the two required search angles for this claim, and the result is that this leg of the cluster is now stronger, not weaker, evidence."
+      },
+      {
+        "url_or_ref": "https://arxiv.org/pdf/2606.14179 and https://arxiv.org/abs/2606.14179",
+        "title": "CacheRL: Multi-Turn Tool-Calling Agents via Cached Rollouts and Hybrid Reward",
+        "reliability_notes": "Two independent fetch attempts made; both failed to produce fully readable text (PDF returned raw compressed streams; the abstract-page fetch returned only a partial secondary summary that could not confirm the 'open challenge' language from sources.json). Remains effectively unverifiable beyond search-summary level despite good-faith effort.",
+        "how_it_contradicts": "Does not contradict the underlying claim, but means this leg of the three-source corroborating cluster still cannot be independently verified in full -- the echo-chamber risk flagged in the plan (three restatements of a search-snippet-level claim rather than genuine independent corroboration) is only partially resolved, not closed."
+      },
+      {
+        "url_or_ref": "search effort record (no source found)",
+        "title": "No independent third-party evaluation of AgenticQwen-8B located",
+        "reliability_notes": "Searched BFCL and general agentic-benchmark leaderboard sources specifically for AgenticQwen-8B entries scored by a party other than the releasing paper; none found.",
+        "how_it_contradicts": "AgenticQwen's 'closes the gap' framing remains an entirely self-reported claim, consistent with the plan's flagged risk pattern of vendor/lab self-reported capability claims going unchecked by outside evaluation."
+      }
+    ],
+    "confidence_score": 0.3
+  }
+]

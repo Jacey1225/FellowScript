@@ -1,0 +1,5 @@
+{
+  "task_id": "20260816-dashboard-design-principles",
+  "result": "pass",
+  "summary": "Targeted six claims from brief.md for counter-evidence: (A) bar/line/scatter charts 'consistently outperform' pie charts, (B) dark themes should exceed WCAG AA contrast minimums (15.8:1), (C) the 2023-2026 trend verdict that bento-grid/dark-mode 'won' while glassmorphism/kinetic-typography/3D 'failed' (including the single-source 15-30% FPS-drop stat), (D) skeleton screens are preferred over spinners for dashboards, (E) dashboard distinctiveness comes from content-form fit rather than templating, and (F) truncated/non-zero Y-axes as an unqualified anti-pattern. These were chosen because they are load-bearing recommendations the requester could act on directly, and because C and E are explicitly flagged as thinly corroborated in the brief's own Risks/Open Questions, while A, B, D, and F are stated as near-absolute rules on single or narrow source chains without engaging any contrary perspective."
+}

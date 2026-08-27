@@ -1,0 +1,6 @@
+{
+  "task_id": "20260816-dashboard-design-principles",
+  "stage": "evaluating-diffs",
+  "result": "pass",
+  "summary": "The durable core of dashboard design (IA, visual system, accessibility, content-driven distinctiveness) holds up under adversarial review; three specific claims (pie-vs-bar for proportion estimation, skeleton screens over spinners, chart-agnostic Y-axis-truncation rule) were disproven as originally stated and narrowed rather than reversed, and two 2023-2026 trend claims (glassmorphism's FPS cost, bento grids at high density) remain genuinely unresolved. No claim was found simply false."
+}

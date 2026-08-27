@@ -1,0 +1,7 @@
+{
+  "task_id": "20260826-friend-activity-dashboard-revision",
+  "step": 1,
+  "stage": "intake",
+  "result": "pass",
+  "summary": "Captured as a revision task against the existing 'Friend Activity Dashboard, Editorial Hero' (Variant C) HTML mockup: remove the two .sec-label elements ('Friend Activity', 'Pick Up Where You Left Off') with spacing rebalanced, and soften the gold gradient wash on the phone screen plus the hero-glow radial to read as natural/subtle rather than saturated/banded. Media type hint: static (single self-contained HTML/CSS mockup, no motion). Gaps flagged forward (exact gradient numeric targets, output naming/location, whether body::before backdrop glow is in scope) rather than blocking."
+}

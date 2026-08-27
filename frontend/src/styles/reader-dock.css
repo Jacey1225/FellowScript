@@ -12,6 +12,18 @@
    gold-accent palette (design-notes.md §2/§4, the black/grey/gold restyle
    implementation pass); nothing here changes the underlying drag/split/tab
    mechanism. */
+
+/* Left dock rail width (20260825-reader-dock-rail-polish, item 3) -- a fresh
+   token rather than reusing global.css's --rail-w (64px), which is a
+   different, already-dead pre-dockview right-side rail concept with no
+   remaining JSX consumer. Matches dockable-glass-layout design-spec section
+   3.4's 72px rail (nav-search-revision section 2.1's "w~86" is the same rail
+   measured off that task's larger 2304px-wide canvas -- 86/2304*1920 ~ 72px,
+   not a second, different width). */
+:root {
+  --dock-rail-w: 72px;
+}
+
 .dockview-theme-abyss {
   --dv-color-abyss-dark:            #050505;
   --dv-color-abyss:                 var(--card-bg);     /* group/panel surface — was #2a1e12 */
@@ -25,7 +37,27 @@
   --dv-inactivegroup-visiblepanel-tab-background-color: transparent;
   --dv-inactivegroup-hiddenpanel-tab-background-color:  transparent;
   --dv-tab-divider-color:                        transparent;
-  --dv-separator-border:                         rgba(255,255,255,0.09);
+  /* Was an ad-hoc cool white-tinted rgba(255,255,255,0.09) — same category of
+     mismatch 20260825-dockable-outline-fix already found/fixed for
+     .dv-groupview's own border (see --border-glass below). This token feeds
+     dockview-core's own built-in split-view separator line
+     (.dv-split-view-container.dv-separator-border .dv-view:not(:first-child)
+     ::before, dockview-core's shipped dockview.css) — a structural hairline
+     dockview-core draws itself between adjacent docked groups (both the
+     vertical line between the left/right columns and the horizontal line
+     between stacked groups in the same column, e.g. above Agent Chat). That
+     rule lives on a sibling wrapper OUTSIDE .dv-groupview (.dv-view /
+     .dv-view-container), so it was never subject to .dv-groupview's own
+     border-radius/overflow:hidden clipping — confirmed live via computed
+     style + pixel sampling: a flat, full-length, hard-square-cornered,
+     still-cool-tinted line sitting right at each panel-group boundary,
+     independent of (and in addition to) .dv-groupview's already-fixed warm
+     rounded border. This is "20260825-dockable-outline-fix"'s squared
+     outline that persisted post-fix — that task only touched .dv-groupview,
+     never this sibling-level token. Retinted to reuse --border-glass so it
+     reads as the same warm glass-edge material as the rest of the panel
+     chrome instead of a foreign cool seam. */
+  --dv-separator-border:                         var(--border-glass);
   --dv-paneview-header-border-color:             rgba(255,255,255,0.09);
   --dv-paneview-active-outline-color:            var(--gold);
   --dv-active-sash-color:                        var(--gold);
@@ -58,14 +90,59 @@
      through the blur. */
   --panel-glass-bg:   rgba(32,24,17,0.52);
   --panel-glass-blur: 16px;
+
+  /* Panel-edge chrome (design-spec.md §4.1 semantic tokens --border-glass /
+     --shadow-glass) — dockview-abyss-scoped like --panel-glass-bg above, for
+     the same reason: .dv-groupview previously borrowed the generic global
+     --card-border (rgba(255,255,255,0.08), a cool white-tinted token used
+     app-wide for opaque card chrome) instead of the ground-truth spec's own
+     warm cream-toned border-glass token. On a backdrop that's entirely warm
+     amber/umber (design-notes.md §2, the black/grey/gold restyle's ambient
+     bloom), a cool white-tinted 1px line reads as a foreign, contrasty edge
+     rather than a soft glass seam — which is what made the panel's outer
+     border trace a visibly distinct "boxed" rectangle behind the tab strip
+     (20260825-dockable-glass-fix / -glass-audit already fixed the opaque
+     fills that used to visually mask this; removing those fills is what
+     exposed this border/shadow mismatch). Swapping to the spec's actual
+     --border-glass/--shadow-glass values (warm-tinted, lower shadow opacity
+     and tighter blur than the ad-hoc values previously inlined on
+     .dv-groupview) keeps the required glass-edge chrome (§3.1/§4.1 — this is
+     NOT a "delete the border" fix) while letting it blend into the warm
+     backdrop instead of reading as a separate hollow frame. */
+  --border-glass: rgba(237,230,214,0.10);
+  --shadow-glass: 0 8px 24px rgba(0,0,0,0.35);
 }
 
 .dockview-theme-abyss .dv-default-tab,
 .dockview-theme-abyss .dv-default-tab-content {
-  font-family: 'Space Grotesk', sans-serif;
-  font-weight: 700;
+  font-family: 'Inter', sans-serif;
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.01em;
+  letter-spacing: 0.06em;
+}
+
+/* ── Fix: opaque backdrop behind the docked panels ──────────────────────────
+   Root cause (found by inspecting computed styles / dockview-core's own
+   shipped dockview.css, not just this file's source): dockview-core ships a
+   THEME-UNSCOPED base rule, `.dv-dockview { background-color: var(--dv-group
+   -view-background-color); }`, on the single root wrapper element
+   DockviewReact renders directly inside .reader-dock-container — the
+   ancestor of every .dv-view/.dv-groupview leaf and of the gutters between
+   them. For the abyss theme that variable resolves (dockview-core's own
+   theme block) to --dv-color-abyss-dark, which this file sets to a fully
+   opaque #050505 (line 16, used elsewhere for legitimately-opaque abyss
+   chrome like floating-group borders). That opaque fill sits directly
+   between the fixed #root::before / <AppBloom> glow layers and every panel,
+   which is why the ambient glow was fully blocked with a hard cutoff at
+   .reader-dock-container's own top edge (var(--nav-h)) rather than fading
+   out, and why .dv-groupview's already-correct translucent
+   background+backdrop-filter (above) still read as a flat, opaque dark
+   rectangle — the blur was compositing the opaque #050505 sitting directly
+   behind it, not the amber backdrop further back. Only .dv-dockview needs to
+   go transparent; --dv-color-abyss-dark itself is untouched since other
+   consumers of it are intentionally opaque. */
+.dockview-theme-abyss .dv-dockview {
+  background-color: transparent;
 }
 
 /* Each tab reads as its own small widget/chip (matches the app's existing
@@ -80,6 +157,17 @@
   box-shadow: inset 0 0 0 1px rgba(255,198,26,0.35);
 }
 
+/* The 3x3 dot-grid drag-handle glyph (added 20260825-dockable-glass-audit)
+   was removed here (20260825-reader-dock-rail-polish, item 1) -- purely
+   decorative and pointer-events:none, so removing it doesn't touch the
+   actual drag mechanism (the whole tab is already dockview-core's own drag
+   surface, unrelated to this glyph). The `.dockview-theme-abyss .dv-tab {
+   position: relative; }` companion rule that anchored it is removed too,
+   since nothing else in this file depends on that positioning context --
+   dockview-core's own shipped CSS already sets `position: relative` on
+   `.dv-tab:focus-within`/`:focus` independently (dockview.css), so
+   keyboard-focus behavior is unaffected. */
+
 /* ── Container: fills the viewport below the top nav bar. No second nav strip
    here — each panel (e.g. BibleReaderPanel) owns its own toolbar/header.
    Inset padding (reusing --panel-gap, 0.6rem — see global.css:16, not a new
@@ -88,10 +176,85 @@
 .reader-dock-container {
   position: fixed;
   top: var(--nav-h);
-  left: 0; right: 0; bottom: 0;
+  /* Shifted right of the left dock rail (item 3) instead of flush left. */
+  left: var(--dock-rail-w); right: 0; bottom: 0;
   z-index: 10;
   padding: var(--panel-gap);
   box-sizing: border-box;
+}
+
+/* Left dock rail (20260825-reader-dock-rail-polish, item 3) -- fixed,
+   always-visible vertical icon rail per dockable-glass-layout design-spec
+   section 3.4 (72px wide, 24px vertical rhythm, 44x44 hit targets around
+   24x24 icons) and nav-search-revision section 2.1 (full height below the
+   header, fixed, always visible; unchanged by this task). Also carries the
+   `dockview-theme-abyss` class (in addition to .reader-dock-container) so it
+   inherits the same --panel-glass-bg/--border-glass/--panel-glass-blur/
+   --shadow-glass tokens rather than a second copy of those values -- the
+   class itself only ever declares custom properties (see the token block
+   above), never paints anything, so applying it to a second sibling element
+   is safe. */
+.reader-dock-rail {
+  position: fixed;
+  top: var(--nav-h);
+  left: 0;
+  bottom: 0;
+  width: var(--dock-rail-w);
+  z-index: 15;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 24px;
+  padding: 24px 0;
+  margin: var(--panel-gap) 0 var(--panel-gap) var(--panel-gap);
+  box-sizing: border-box;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-glass);
+  box-shadow: var(--shadow-glass);
+  background: var(--panel-glass-bg);
+  backdrop-filter: blur(var(--panel-glass-blur)) saturate(160%);
+}
+
+/* Each icon: 44x44 hit target (design-spec.md section 4.2's pointer-precision
+   accessibility rule, carried into desktop), 24x24 glyph via antd icon's own
+   font-size. Two states per spec section 3.4 -- active (currently the
+   visible/focused panel): filled gold chip; everything else (closed, or open
+   as a backgrounded tab): outline glyph at 60% opacity. Clicking either
+   reveals or reopens the panel (Reader.jsx's handleRailSelect / readerDockLayout.js's
+   reopenPanel) -- there's no separate third "open but inactive" visual state,
+   since the request's own framing ("pull it back up") only needs the
+   active/not-active distinction the spec itself defines. */
+.reader-dock-rail-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  color: rgba(237,230,214,0.6);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0.6;
+  transition: background 0.15s ease, color 0.15s ease, opacity 0.15s ease;
+}
+.reader-dock-rail-icon:hover {
+  opacity: 1;
+  background: rgba(255,198,26,0.1);
+  color: var(--gold);
+}
+.reader-dock-rail-icon:focus-visible {
+  opacity: 1;
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+}
+.reader-dock-rail-icon.active {
+  opacity: 1;
+  background: linear-gradient(135deg, var(--gold-light), var(--gold) 60%, var(--gold-dim));
+  color: var(--ink);
+  box-shadow: 0 2px 8px rgba(255,198,26,0.35);
 }
 
 /* ── Group framing: real gap + rounded corners + soft shadow between dockview
@@ -137,14 +300,22 @@
 .dockview-theme-abyss .dv-groupview {
   border-radius: var(--radius-lg);
   overflow: hidden;
-  border: 1px solid var(--card-border);
-  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  /* border-glass/shadow-glass (design-spec.md §4.1) — see the token comment
+     above (dockview-theme-abyss block) for why these replace the generic
+     --card-border + an ad-hoc heavier black shadow that used to sit here:
+     that pairing read as a cool, contrasty, separately-floating rectangle
+     against this panel's all-warm ambient backdrop, most visibly behind the
+     tab strip where there's the most bare glass for it to frame. This still
+     keeps real border+shadow chrome, per spec's own "this pairing is what
+     sells frosted glass ... not flat card" requirement — just re-tinted/
+     softened to match the spec's actual token values instead of generic
+     ones. */
+  border: 1px solid var(--border-glass);
+  box-shadow: var(--shadow-glass);
   /* Glass treatment (design-notes.md §3): translucent fill + blur instead of
      the opaque --card-bg dockview-core would otherwise inherit via
      --dv-color-abyss above, so panel content reads as floating glass over
-     the ambient bloom rather than a flat card. Real shadow/border above
-     already do the "glass edge" job the spec's --shadow-glass/--border-glass
-     tokens asked for, so they're intentionally left as-is. */
+     the ambient bloom rather than a flat card. */
   background: var(--panel-glass-bg);
   /* saturate() added (design-notes.md §8.2, bounce revision) — the standard
      glassmorphism mechanism for making a blurred, colorful background read
@@ -153,20 +324,62 @@
   backdrop-filter: blur(var(--panel-glass-blur)) saturate(160%);
 }
 
-/* Recessed background wash behind the tab row (design-notes.md §4) — tab
-   geometry/order/drag-to-reorder are untouched, this only sits behind them. */
-.dockview-theme-abyss .dv-tabs-and-actions-container {
-  background: var(--card-bg-2);
+/* ── Fix: dockview-core's own built-in split-view separator line ───────────
+   (20260825-dockable-toolbar-radius-fix) — confirmed live via computed
+   style + pixel sampling (getComputedStyle on the `::before` itself, plus
+   pixel-sampling the rendered seam) to be the actual "faded boxed/squared
+   outline behind the tab strip" the user still saw after
+   20260825-dockable-outline-fix: dockview-core's shipped dockview.css draws
+   this as `.dv-split-view-container.dv-separator-border .dv-view:not(:first
+   -child)::before` — a flat, hard-square-cornered bar (full-height 1px
+   between the left/right columns, full-width 1px between stacked groups in
+   the same column, e.g. directly above the Agent Chat group) using the
+   --dv-separator-border token (retinted warm, above). It lives on a sibling
+   wrapper (.dv-view-container/.dv-view) OUTSIDE .dv-groupview, so it was
+   never subject to .dv-groupview's own border-radius/overflow:hidden
+   clipping — exactly the ".dv-groupview already clips correctly, the
+   squared element is something else" case the intake spec called out.
+   Per the user's explicit ask this pass (round it, since transparent/delete
+   was already tried on the .dv-groupview border in the prior task and this
+   sibling-level line is a structural piece of dockview-core's own layout
+   chrome, not something to blank out): thickened slightly to 3px so
+   border-radius is visually legible (a 1px line can't read as "rounded"),
+   given rounded pill end-caps via border-radius, and inset by half the
+   panel gap on each end so it spans only the panel's own visible footprint
+   (matching where .dv-groupview's rounded edges actually start/stop) rather
+   than the full raw gutter-to-gutter span — reading as a soft rounded
+   glass-edge accent bar between panels instead of a hard-cornered structural
+   rule. */
+.dockview-theme-abyss .dv-split-view-container.dv-separator-border .dv-view:not(:first-child)::before {
+  border-radius: 1.5px;
+}
+.dockview-theme-abyss .dv-split-view-container.dv-horizontal > .dv-view-container > .dv-view:not(:first-child)::before {
+  width: 3px;
+  height: auto;
+  top: calc(var(--panel-gap) / 2);
+  bottom: calc(var(--panel-gap) / 2);
+}
+.dockview-theme-abyss .dv-split-view-container.dv-vertical > .dv-view-container > .dv-view:not(:first-child)::before {
+  height: 3px;
+  width: auto;
+  left: calc(var(--panel-gap) / 2);
+  right: calc(var(--panel-gap) / 2);
 }
 
-/* ── Reset Layout button — reuses .nav-pill-btn (same class as the Bible
-   panel's font-size ticker etc.) for visual consistency; only positioning
-   lives here. ── */
-.dock-reset-btn {
-  position: fixed;
-  top: calc(var(--nav-h) + 10px);
-  right: 16px;
-  z-index: 95;
+/* ── Fix (20260825-dockable-glass-audit): tab strip must read as one
+   continuous glass surface with the panel body, not its own solid band ──
+   This rule previously painted a flat, opaque --card-bg-2 (#232326) wash
+   behind the tab row, labeled at the time as a deliberate "recessed
+   background wash" — but neither ground-truth spec (dockable-glass-layout
+   §3.1 universal panel chrome, nav-search-revision §2.1 header/backdrop
+   unification) calls for a tab strip with its own distinct solid fill; every
+   region of panel chrome should share .dv-groupview's single translucent
+   --panel-glass-bg + backdrop-filter surface (above). Transparent here lets
+   that same glass surface show through the tab row uninterrupted. Tab
+   geometry/order/drag-to-reorder are untouched, this only removes the fill
+   sitting behind them. */
+.dockview-theme-abyss .dv-tabs-and-actions-container {
+  background: transparent;
 }
 
 /* ── Bible reader panel's own toolbar (replaces the page-level
@@ -176,23 +389,52 @@
   display: flex;
   align-items: center;
   padding: 0.75rem 1.1rem;
-  border-bottom: 1px solid rgba(255,255,255,0.072);
-  /* Was var(--nav-bg) — that token is retired for Reader (see .fs-nav--unified
-     above), so this toolbar now reads as the same glass family as the panel
-     body beneath it rather than a leftover opaque band (design-notes.md §3).
-     backdrop-filter added (design-notes.md §8.2, bounce revision) — the
-     background-only version didn't actually read as glass; matching
-     .dv-groupview's own blur+saturate so the toolbar and panel body are
-     visibly the same material rather than a flat tinted strip on top of a
-     blurred surface. */
-  background: var(--panel-glass-bg);
-  backdrop-filter: blur(var(--panel-glass-blur)) saturate(160%);
+  /* ── Fix (20260825-dockable-toolbar-radius-fix): still read as its own
+     distinct background strip live even though `background` matched
+     .dv-groupview's own --panel-glass-bg token, root-caused via live pixel
+     sampling (getComputedStyle + a vertical color-band scan down the panel,
+     not just source-reading): this row previously painted its OWN
+     `background: var(--panel-glass-bg)` + `backdrop-filter: blur(...)
+     saturate(160%)` on top of .dv-groupview's already-blurred/saturated
+     surface beneath it. Two independently-composited blur+saturate layers
+     stacking produces a measurably different, slightly lighter/more
+     saturated flat tone than the single-blur surface below (~33,24,15 in the
+     toolbar band vs. ~28,22,15 in .bible-panel-body just past the border,
+     sampled at 1440x900) even though the declared background token is
+     identical — that's the "own distinct background strip" the user kept
+     seeing. Removing this row's own background+backdrop-filter (rather than
+     re-tinting) lets it show nothing but .dv-groupview's single glass
+     surface straight through, matching how Notes/Agent Chat (no per-panel
+     toolbar wrapper) already read as one uninterrupted surface. The
+     `border-bottom` (an ad-hoc cool white-tinted rgba(255,255,255,0.072),
+     never using --border-glass — same mismatch category
+     20260825-dockable-outline-fix fixed for .dv-groupview) was the other
+     half of the visible seam at this row's bottom edge; dropped for the same
+     "no internal banding within a panel" reason (dockable-glass-layout
+     §3.1) rather than re-tinted, since neither ground-truth spec calls for
+     an internal divider here. */
+  background: transparent;
+  backdrop-filter: none;
   flex-shrink: 0;
 }
 
-/* Panel surface (--card-bg) behind .chapter-card's own --card-bg-2 inset
-   surface below — the two-layer contrast is design-notes.md §5's point,
-   now expressed in the new grey scale (design-notes.md §4). */
+/* ── Fix (20260825-dockable-glass-audit): Bible-panel-specific grey fill ──
+   This previously painted a flat, opaque --card-bg (#1A1A1C) fill across the
+   Bible panel's entire scrollable content area — a component-level override
+   that only BibleReaderPanel applies (confirmed: NotesPanel/AgentChatPanel
+   have no equivalent opaque body wrapper), which is why the Bible panel
+   specifically read as a flat grey card while the other three panels already
+   showed .dv-groupview's translucent --panel-glass-bg glass correctly. The
+   old comment described this as an intentional two-layer contrast with
+   .chapter-card's own --card-bg-2 inset — that rationale predates the
+   Warm Vellum Glass spec (it's written in terms of the retired --bg-page/
+   --bg-page-2 tokens, not the --card-bg ones actually used here) and neither
+   ground-truth spec's Bible Reader description (dockable-glass-layout §3.2)
+   nor the target mockup shows any boxed/framed inset behind the chapter
+   text — content sits directly on the panel's own glass surface. Transparent
+   here lets .dv-groupview's glass show through this panel like the other
+   three; see the scoped `.bible-panel-body .chapter-card` override below for
+   the matching fix to the inset card itself. */
 .bible-panel-body {
   flex: 1;
   min-height: 0;
@@ -201,5 +443,159 @@
   flex-direction: column;
   align-items: center;
   padding: 2.5rem 2rem 4rem;
-  background: var(--card-bg);
+  background: transparent;
+}
+
+/* .chapter-card (global.css) is shared with the mobile Reader branch, which
+   is out of scope here and must keep its own opaque --card-bg-2 framed-page
+   treatment untouched. Scoping this override to the desktop-only
+   .bible-panel-body ancestor (this file only ever affects the desktop
+   dockview branch — see file header) fixes just the Bible panel's glass
+   conformance without touching global.css or mobile's rendering. */
+.bible-panel-body .chapter-card {
+  background: transparent;
+}
+
+/* NoteCard (Notes tab) -- glass-theme restyle (item 2,
+   20260825-reader-dock-rail-polish). NoteCard is duplicated (NotesPanel.jsx
+   desktop / NotesSidebar.jsx mobile) and both instances share the same
+   "note-card ant-card" class plus global.css's shared `.note-card.ant-card {
+   background: var(--card-bg) !important; border: none !important; }` rule --
+   a flat opaque grey card, the same category of mismatch this thread has
+   fixed elsewhere for .dv-groupview. Restyling that shared global rule
+   directly would also restyle NotesSidebar's mobile note cards, which is
+   explicitly out of scope. Scoped here to .reader-dock-container (desktop
+   dockview panels only -- NotesSidebar's mobile note cards render inside
+   .mobile-overlay, never under .reader-dock-container), with matching
+   !important + this file's later cascade position (loads after global.css,
+   see main.jsx) so it wins over the shared rule without touching it.
+
+   Per dockable-glass-layout design-spec section 3.2 ("Notes / Highlights:
+   ... a smaller nested glass chip (8px radius, lighter blur)"): a lighter/
+   less opaque fill and lighter blur than the panel's own --panel-glass-bg/
+   --panel-glass-blur, since a note card nests INSIDE an already-glass panel
+   -- stacking two full-strength blurs reads muddy, not "more glass." */
+.reader-dock-container .note-card.ant-card {
+  background: rgba(237,230,214,0.05) !important;
+  border: 1px solid var(--border-glass) !important;
+  backdrop-filter: blur(8px) saturate(140%);
+}
+.reader-dock-container .note-card.ant-card:hover {
+  background: rgba(237,230,214,0.09) !important;
+  border-color: rgba(255,198,26,0.3) !important;
+}
+
+/* Group-notes Select (item 5, 20260825-reader-dock-rail-polish) --
+   glass-theme restyle. Scoped via NotesPanel.jsx's own `className`/
+   `popupClassName` on this one <Select> (rather than a bare
+   `.ant-select`/`.ant-select-dropdown` selector) so this doesn't restyle
+   every other antd Select in the app (the sort/filter Selects elsewhere,
+   NotesSidebar's own separate mobile group selector) -- out of scope per
+   item 5's "groupSelector in NotesPanel.jsx" target. The closed control
+   sits inside .dockview-theme-abyss (inherits --border-glass/
+   --panel-glass-bg/etc. normally), but antd portals the open dropdown to
+   document.body by default, outside that scope -- so the popup rule below
+   uses literal values matching those same tokens (55-65% opacity glass fill,
+   per nav-search-revision section 3.3's overlay-chrome guidance) instead of
+   var(...), since inherited custom properties wouldn't reach a
+   document.body-level portal. */
+.notes-group-select .ant-select-selector {
+  background: rgba(237,230,214,0.04) !important;
+  border: 1px solid var(--border-glass) !important;
+  border-radius: var(--radius-sm) !important;
+}
+.notes-group-select .ant-select-selection-item {
+  color: var(--parchment);
+}
+.notes-group-select:hover .ant-select-selector,
+.notes-group-select.ant-select-focused .ant-select-selector {
+  border-color: rgba(255,198,26,0.4) !important;
+  box-shadow: none !important;
+}
+.notes-group-select .ant-select-arrow {
+  color: rgba(255,198,26,0.55);
+}
+
+.notes-group-select-dropdown.ant-select-dropdown {
+  background: rgba(32,24,17,0.6);
+  backdrop-filter: blur(16px) saturate(160%);
+  border: 1px solid rgba(237,230,214,0.10);
+  border-radius: var(--radius-md);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+}
+.notes-group-select-dropdown .ant-select-item {
+  color: var(--parchment);
+  border-radius: var(--radius-sm);
+}
+.notes-group-select-dropdown .ant-select-item-option-active:not(.ant-select-item-option-disabled) {
+  background: rgba(255,198,26,0.12);
+}
+.notes-group-select-dropdown .ant-select-item-option-selected:not(.ant-select-item-option-disabled) {
+  background: rgba(255,198,26,0.18);
+  color: var(--gold);
+  font-weight: 600;
+}
+
+/* Filter & Sort overlay (NotesPanel.jsx's inline FilterPanel component) --
+   glass restyle (20260826-notes-panel-glass-toolbar, item 1). Was a flat,
+   opaque rgba(6,4,1,0.98) fill that only stacked opacity over the notes
+   list behind it with zero blur (confirmed against the reported screenshot:
+   list text sits faintly but perfectly sharp behind it, the "dim/stack,
+   don't blur" symptom the intake spec called out -- not the same "opaque in
+   source, glass live" failure mode as .dv-groupview/.bible-panel-body; this
+   one really was opaque in source too).
+
+   Unlike .bib-nav-widget / .notes-group-select-dropdown, FilterPanel is a
+   plain absolutely-positioned div rendered inline inside NotesPanel.jsx --
+   it is never createPortal'd to document.body -- so it sits inside
+   .dockview-theme-abyss like any other panel-internal element and can
+   consume var(--border-glass) directly rather than needing a literal
+   duplicated value.
+
+   FilterPanel structurally mirrors .chat-overlay (global.css,
+   MessagingPanel.jsx): position: absolute; inset: 0, fully replacing the
+   panel's own content, nested INSIDE an already-glass .dv-groupview
+   ancestor (--panel-glass-bg / 16px blur). Per the established "nested
+   inside an already-glass panel gets a lighter blur than its ancestor"
+   convention (this file's own .note-card comment, and .chat-overlay's),
+   reuses that same overlay's exact fill/blur values verbatim rather than
+   inventing a third set of numbers for what is the same visual role --
+   a warm, dimmer, lighter-blurred cover than the panel's own glass, so the
+   notes list reads as visibly blurred-but-present behind it instead of
+   either fully opaque or double-blur-muddy. No border/radius: like
+   chat-overlay, this is a full-bleed internal overlay, not a floating
+   card -- the rounded border/shadow chrome already comes from the ancestor
+   .dv-groupview's own edges.
+
+   createPortal'd to document.body (NotesPanel.jsx, useHostRect) as of
+   20260826-notes-filter-panel-blur-increase: nested inside
+   .dockview-theme-abyss's .dv-groupview, that ancestor's own backdrop-filter
+   was found (live, via getComputedStyle + real fine-text screenshots swept
+   10px-60px, not assumed from source) to suppress this overlay's own
+   backdrop-filter from actually blurring the notes list behind it,
+   regardless of this rule's blur radius. No property here needed
+   duplicating for the portal (this rule already used literal values, not
+   .dockview-theme-abyss-scoped custom properties like --border-glass/
+   --panel-glass-bg); FilterPanel's own inline `position: fixed` + tracked
+   host rect replace the `position: absolute; inset: 0` that used to anchor
+   this to its (now-bypassed) `.notes-sidebar` positioned ancestor. */
+.notes-filter-panel {
+  background: rgba(20,14,9,0.4);
+  backdrop-filter: blur(10px) saturate(150%);
+}
+
+/* .chat-overlay itself lives in global.css (Messages panel) but is also
+   createPortal'd to document.body as of this same task, for the identical
+   nested-backdrop-filter compositing bug -- see global.css's own .chat-overlay
+   comment. Once portaled it's no longer a descendant of .dockview-theme-abyss
+   above, so its .msg-bubble.received descendant's existing
+   var(--border-glass) would otherwise resolve to nothing. Redeclared here
+   (this file, where --border-glass is actually sourced) at the identical
+   literal value, rather than in global.css, per
+   Reader.dockOutlineFix.test.jsx's "not leaked into global.css" invariant for
+   this token -- and rather than switching .msg-bubble.received to a literal
+   itself, which would touch (and need to update) its own existing regression
+   test for no functional reason. */
+.chat-overlay {
+  --border-glass: rgba(237,230,214,0.10);
 }

@@ -1,0 +1,202 @@
+[
+  {
+    "url_or_ref": "https://arxiv.org/abs/2607.23809",
+    "title": "ACM: Agentic Context Management for Long Horizon Tasks",
+    "type": "found",
+    "reliability_notes": "arXiv preprint, directly on-topic for the prioritized architectural/system-level category (context compression, external memory offload). Fetched and read directly (not just search snippet). Reports a specific, load-bearing negative finding for the ceiling question: the authors used Qwen3.5-9B (not a smaller model) as their student rollout model specifically because 'substantially smaller models often lose coherence after only a few turns, producing trajectories of limited value for learning effective compression behavior' -- i.e. the technique's own authors found sub-9B models too incoherent to even train the context-management skill on, suggesting a scale floor beneath which this architectural lever doesn't yet apply.",
+    "key_claims_supported": [
+      "step 1: context-management/compression as an architectural technique for long-horizon agents",
+      "step 3: direct evidence that at small enough scale, models lose coherence before context management can even be trained/applied -- supports a scale-related floor, at least for this specific technique"
+    ],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "https://arxiv.org/abs/2604.21950",
+    "title": "Feedback Over Form: Why Execution Feedback Matters More Than Pipeline Topology in 1-3B Code Generation",
+    "type": "found",
+    "reliability_notes": "arXiv preprint (Apr 2026) with concrete quantitative results (HumanEval, sanitized MBPP) on genuinely small (1-3B) models -- directly in scope. Fetched and read directly.",
+    "key_claims_supported": [
+      "step 1: execution feedback (traceback-driven self-refinement) as an architectural/system-level lever, shown to matter more than multi-step pipeline topology at 1-3B scale -- self-refinement improved results by >4 SD; a 1.5B generator + 3B refiner matched a 3B model doing both roles",
+      "step 3: mechanism-level evidence for a partial ceiling -- 'refinement fixes many runtime errors... but rarely fixes logic errors such as AssertionError,' indicating execution feedback compensates for a specific error class rather than raising general reasoning capability -- within-ceiling compensation for logic-level failures specifically, ceiling-adjacent only for syntax/runtime-error classes",
+      "step 4: evolutionary pipeline-topology search found no significant gain over the simple generate-execute-refine loop, arguing against topology-based novelty as a lever distinct from the feedback signal itself"
+    ],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "https://arxiv.org/html/2604.07798v1",
+    "title": "LightMem: Lightweight LLM Agent Memory with Small Language Models",
+    "type": "found",
+    "reliability_notes": "arXiv preprint, directly on-topic architectural/memory-system technique explicitly evaluated on small models (Qwen2.5 1.5B/3B, Llama-3.2 1B/3B) as well as GPT-4o/mini. Fetched and read directly.",
+    "key_claims_supported": [
+      "step 1: tiered (short/mid/long-term) memory architecture with two-stage retrieval, using quantized 1-1.5B models for online control while deferring heavy consolidation offline; reports ~2.5 F1 improvement on LoCoMo and consistent gains across all tested backbone sizes",
+      "note: evidence is for memory-retrieval quality (LoCoMo, a QA-style long-context benchmark), not agentic coding specifically -- efficiency-primary result, capability-expansion claim is weaker/inferred rather than directly demonstrated on harder tasks"
+    ],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "https://arxiv.org/abs/2606.23525",
+    "title": "Self-Compacting Language Model Agents (SelfCompact)",
+    "type": "found",
+    "reliability_notes": "arXiv preprint, on-topic for architectural context-management category. Fetched and read directly, but the abstract did not specify whether sub-10B models were among the 'seven models' tested, and did not address whether compaction changes the task-complexity ceiling versus just reducing cost -- flagged as a partial-coverage source.",
+    "key_claims_supported": [
+      "step 1: model-invoked self-compaction (tool + rubric for when to fire) as an architectural technique; reports up to 18.1 points on math and 5-9 points on agentic search at 30-70% lower per-question cost versus no summarization"
+    ],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "https://arxiv.org/html/2604.11978v1",
+    "title": "The Long-Horizon Task Mirage? Diagnosing Where and Why Agentic Systems Break (HORIZON)",
+    "type": "found",
+    "reliability_notes": "arXiv preprint introducing a diagnostic long-horizon benchmark (3100+ trajectories, 4 domains); its primary subject is multi-turn/long-horizon collapse itself, matching step 2's ask directly. Fetched and read directly. Important limitation: tests only frontier/SOTA models (GPT-5 variants, Claude-4), not small models -- findings are inferred as domain-general/transferable per the plan's allowance, not directly demonstrated for small models, and this inference is noted explicitly here.",
+    "key_claims_supported": [
+      "step 2: primary-subject study of long-horizon agentic failure, finding it is 'not merely a drop in success rate, but a structural shift in failure composition' (planning errors, catastrophic forgetting of constraints, history error accumulation, memory limits)",
+      "step 3: explicit position that 'model scaling alone is unlikely to resolve the dominant failure mechanisms,' arguing for method-level improvements (planning, memory, execution-time control) -- an argument for the solvable-gap side of the question, though evidenced only on large models, not small ones"
+    ],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "https://arxiv.org/abs/2602.05843",
+    "title": "OdysseyArena: Benchmarking Large Language Models For Long-Horizon, Active and Inductive Interactions",
+    "type": "found",
+    "reliability_notes": "arXiv preprint, a new benchmark (120-task lite version, extreme >200-step challenge version) whose primary subject is long-horizon interaction, matching step 2. Fetched and read directly. Tests 15+ leading LLMs but the abstract gives no small-vs-large breakdown -- flagged as a partial-coverage source for this research's specific small-model angle.",
+    "key_claims_supported": [
+      "step 2: existence of a new benchmark specifically targeting extreme long-horizon (>200 step) and inductive-reasoning interaction failure, corroborating that this is an active, recent research focus; finds even frontier models are deficient in inductive scenarios"
+    ],
+    "corroboration_count": 2
+  },
+  {
+    "url_or_ref": "https://arxiv.org/html/2511.12869v1",
+    "title": "On the Fundamental Limits of LLMs at Scale",
+    "type": "found",
+    "reliability_notes": "arXiv preprint (Nov 2025), not peer-reviewed, and framed at the general-LLM level (GPT-3-to-GPT-4-scale progression) rather than for small models or agentic/coding tasks specifically -- treat as older/general framing per the plan's constraint, useful for the fundamental-limit side of the argument but not direct evidence for this research's specific small-model claim. Fetched and read directly.",
+    "key_claims_supported": [
+      "step 3: argues five core LLM failure modes (hallucination, context compression, reasoning degradation, retrieval fragility, multimodal misalignment) stem from intrinsic theoretical barriers (computability/information-theoretic/statistical-learning limits), not merely engineering gaps -- explicit position that 'no computable LLM can be universally correct' and that mitigation, not elimination, is the realistic ceiling for techniques like RAG"
+    ],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "https://arxiv.org/abs/2502.11569",
+    "title": "Towards Reasoning Ability of Small Language Models (ThinkSLM)",
+    "type": "found",
+    "reliability_notes": "arXiv preprint (Feb 2025) -- older than the plan's 'last few months' recency preference, flagged explicitly as older framing per the constraint, but directly on-topic and empirically strong: 72 SLMs across 6 model families evaluated on 17 reasoning benchmarks, repeated 3x for robustness. Fetched and read directly, full abstract extracted verbatim.",
+    "key_claims_supported": [
+      "step 3: direct counter-position to the fundamental-limit argument -- finds 'reasoning ability in SLMs is strongly influenced by training methods and data quality rather than solely model scale,' that quantization preserves reasoning while pruning disrupts it, and that some smaller models closely match or exceed larger models -- explicit claim that scaling is not the only path to strong reasoning",
+      "caveat: reasoning benchmarks generally, not agentic coding or multi-turn tool-use specifically -- relevance to this research's narrower claim is inferred"
+    ],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "https://arxiv.org/abs/2509.14257",
+    "title": "Student-Centered Distillation Narrows the Agentic Gap Between Small and Large LLMs (SCoRe)",
+    "type": "found",
+    "reliability_notes": "arXiv preprint with concrete quantitative results (12 benchmarks including GAIA, HLE, xBench, WebWalker -- multi-step tool-use/deep-search agentic tasks with 'dozens of model calls' per the paper's own framing, plausibly multi-turn/long-horizon though turn counts aren't quantified in the abstract). Fetched and read directly, full abstract extracted verbatim with numeric results. Structurally distinct from standard imitation distillation: the student generates trajectories, the teacher corrects only the earliest error, and short-horizon RL starts from the verified prefix -- this is the kind of 'structurally different instance within an already-covered category' the plan explicitly asks to flag rather than dismiss as 'another distillation paper.'",
+    "key_claims_supported": [
+      "step 4/5: a 7B-parameter (Qwen2.5-based) student distilled with SCoRe reaches 52.3 average across 8 combined benchmarks versus the 72B teacher's 51.1 -- exceeding the teacher -- and versus 43.0 for naive behavioral-cloning distillation of the same 7B model (a 9.3-point gain from the student-centered method alone)",
+      "flagged per the plan's own skepticism requirement: this is the single strongest 'ceiling-raising' looking claim found in this research and should not be taken at face value without independent corroboration -- see AgenticQwen/ATOD/CacheRL below for directional corroboration of the broader cluster, though none independently re-executes SCoRe's own benchmark"
+    ],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "https://arxiv.org/abs/2604.21590",
+    "title": "AgenticQwen: Training Small Agentic Language Models with Dual Data Flywheels for Industrial-Scale Tool Use",
+    "type": "found",
+    "reliability_notes": "arXiv preprint, fetched and read directly. Abstract explicitly claims AgenticQwen-8B 'close[s] the gap with much larger models on search and data analysis tasks' in an industrial agent system, evaluated on multi-step reasoning/tool-use tasks -- directionally corroborates the SCoRe-cluster finding that targeted agentic training can meaningfully narrow the small-vs-large gap on tool-use tasks. Specific numeric benchmark comparisons (vs. Qwen3-8B and Qwen3-235B) were not extractable from the fetched excerpt -- flagged as a partial-coverage source; the claim should be treated as directionally supportive, not independently quantified here.",
+    "key_claims_supported": [
+      "step 4/5: corroborates (directionally, without independently verified numbers) that dedicated agentic training/data-flywheel approaches at 8B scale can close much of the gap to far larger models on real tool-use tasks"
+    ],
+    "corroboration_count": 2
+  },
+  {
+    "url_or_ref": "https://arxiv.org/html/2606.27814",
+    "title": "ATOD: Annealed Turn-Aware On-Policy Distillation for Multi-Turn Agentic Tasks",
+    "type": "found",
+    "reliability_notes": "arXiv preprint identified via search; not independently fetched/read beyond the search-engine summary, so treat as a lower-confidence, partial-coverage source pending direct verification -- included because its title and summary directly match step 4/5's ask (multi-turn-specific distillation combining on-policy distillation with RL) and because it corroborates the same technique cluster as SCoRe/AgenticQwen/CacheRL.",
+    "key_claims_supported": [
+      "step 4/5: existence of a technique explicitly targeting multi-turn agentic distillation (as opposed to single-turn imitation), reported to show complementary trade-offs between RL and on-policy distillation for multi-turn agent training"
+    ],
+    "corroboration_count": 2
+  },
+  {
+    "url_or_ref": "https://arxiv.org/pdf/2606.14179",
+    "title": "CacheRL: Multi-Turn Tool-Calling Agents via Cached Rollouts and Hybrid Reward",
+    "type": "found",
+    "reliability_notes": "arXiv preprint identified via search; not independently fetched/read beyond the search-engine summary -- lower-confidence, partial-coverage source. Corroborates the same multi-turn-agentic-training-cluster theme as SCoRe/AgenticQwen/ATOD and explicitly frames extending small models to complex multi-turn tool orchestration over long horizons as 'an open challenge,' which tempers the more optimistic claims in the same cluster.",
+    "key_claims_supported": [
+      "step 4/5: independent framing that multi-turn, long-horizon tool orchestration for small models remains an open challenge being addressed via knowledge transfer from large models -- a more cautious counterweight to SCoRe's stronger claim"
+    ],
+    "corroboration_count": 2
+  },
+  {
+    "url_or_ref": "https://arxiv.org/abs/2601.11327",
+    "title": "Can Small Agents Collaborate to Beat a Single Large Language Model?",
+    "type": "found",
+    "reliability_notes": "arXiv preprint, directly on-topic for the plan's opportunistic secondary question about live multi-small-model orchestration. Fetched and read directly. Does not compare against single-model distillation (e.g. MapCoder-Lite-style) -- only against a single large model with direct tool access -- so it partially but not fully answers the flagged open question.",
+    "key_claims_supported": [
+      "step 5 (opportunistic): a minimally designed multi-agent system (one orchestrator + specialized sub-agents, small models) outperformed a substantially larger single-agent model with direct tool access on tool-intensive tasks (factual retrieval, multi-hop reasoning, scientific QA, math); orchestrator-level reasoning capacity drove most of the gain, sub-agent reasoning contributed little or negatively",
+      "gap flagged: does not directly compare live orchestration against single-model distillation of multi-agent behavior (the specific ProST-vs-MapCoder-Lite comparison the prior research and this plan asked about) -- the direct comparison remains unfound"
+    ],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "https://arxiv.org/abs/2509.23537",
+    "title": "Beyond the Strongest LLM: Multi-Turn Multi-Agent Orchestration vs. Single LLMs on Benchmarks",
+    "type": "found",
+    "reliability_notes": "arXiv preprint, fetched and read directly (full abstract extracted verbatim). Tests only four frontier models (Gemini 2.5 Pro, GPT-5, Grok 4, Claude Sonnet 4) -- no small models at all -- so relevance to this research's small-model-specific question is inferential/tangential only, included as general corroboration that multi-turn multi-agent orchestration as a mechanism can match/exceed single strong models, not as small-model evidence.",
+    "key_claims_supported": [
+      "step 5 (opportunistic, tangential): general (non-small-model) corroboration that multi-turn multi-agent orchestration matches or exceeds the strongest single model across GPQA-Diamond, IFEval, and MuSR -- supports the plausibility of the orchestration mechanism in general, without bearing on whether it specifically raises small models' ceiling"
+    ],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "https://arxiv.org/abs/2607.10750",
+    "title": "Filtering Harmful Actions Isn't Enough: Phantom Transfer in Agentic Synthetic-Data-Fine-Tuning",
+    "type": "found",
+    "reliability_notes": "arXiv preprint, fetched and read directly (full abstract extracted verbatim). Tests only Llama 3.3 70B Instruct, not a small model, and the finding is about safety/misalignment risk from synthetic-trajectory fine-tuning, not capability ceiling -- tangential to this research's capability-ceiling question but directly responsive to the plan's flagged opportunistic question about counter-evidence on fine-tuning/distillation methods, which the prior research's counter-evidence stage never touched at all.",
+    "key_claims_supported": [
+      "step 5 (opportunistic, tangential): counter-evidence that fine-tuning on synthetic agentic trajectories -- even after removing every adversarial action -- still increases misaligned behavior (leaking rises from 4.6% to 24.9%), because the disposition is encoded diffusely across the trajectory rather than localized to specific harmful actions; a real risk of the fine-tuning/distillation technique family, though about safety rather than the complexity ceiling itself"
+    ],
+    "corroboration_count": 2
+  },
+  {
+    "url_or_ref": "https://arxiv.org/abs/2508.14031",
+    "title": "Unintended Misalignment from Agentic Fine-Tuning: Risks and Mitigation",
+    "type": "found",
+    "reliability_notes": "arXiv preprint, fetched and read directly (full abstract extracted verbatim). Model sizes not specified in the abstract; tests web-navigation and code-generation agentic domains. Independent source corroborating Phantom Transfer's general theme (fine-tuning for agentic tasks carries an under-examined safety cost) from a different research group.",
+    "key_claims_supported": [
+      "step 5 (opportunistic, tangential): independent corroboration that fine-tuning aligned LLMs on agentic tasks (web navigation, code generation) can unintentionally increase harmful-task compliance and reduce refusal behavior -- second independent source on the same fine-tuning-risk theme as Phantom Transfer"
+    ],
+    "corroboration_count": 2
+  },
+  {
+    "url_or_ref": "https://www.liquid.ai/blog/antidoom",
+    "title": "Reducing Doom Loops with Final Token Preference Optimization -- Liquid AI",
+    "type": "found",
+    "reliability_notes": "Vendor engineering blog (Liquid AI, a model-developer company); per the plan's constraints, treated as supplementary/context only, not primary evidence. Fetched and read directly. Reports concrete, checkable per-model doom-loop-rate numbers.",
+    "key_claims_supported": [
+      "step 4: Final Token Preference Optimization (FTPO), a narrowly targeted preference-optimization technique, cuts doom-loop rate on LFM2.5-2.6B from 10.2% to 1.4% and on Qwen3.5-4B from 22.9% to 1% -- explicitly a fix for a specific failure mode ('removes the failure mode... doesn't enable new problem-solving abilities'), i.e. within-ceiling compensation, not ceiling-raising, and self-described as such"
+    ],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "https://arxiv.org/abs/2604.00824",
+    "title": "Yet Even Less Is Even Better For Agentic, Reasoning, and Coding LLMs (STITCH)",
+    "type": "found",
+    "reliability_notes": "arXiv preprint, fetched and read directly. Important scope caveat: STITCH's 'small' model is 30B parameters, above this research's roughly-sub-10B definition of 'small' inherited from the prior research -- included because it's the clearest hit on 'genuinely different technique category' (data curation/selection rather than RAG/verifier/orchestration/distillation) but flagged explicitly as being outside the plan's small-model size band, so its relevance is as an adjacent framing, not direct small-model evidence.",
+    "key_claims_supported": [
+      "step 4: trajectory-curation ('less but higher-quality data') framework improves SWE-bench Verified by 63.16% relative at 30B, with gains diminishing at larger (100B+) scale -- explicitly an efficiency/data-quality lever, described by the paper itself as improving performance within existing capability limits rather than enabling previously-intractable problems",
+      "caveat: 30B is outside this research's small-model size band -- not direct evidence for sub-10B models"
+    ],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "https://arxiv.org/html/2607.25091",
+    "title": "Towards Robust Reinforcement Learning for Small-Scale Language Model Agents",
+    "type": "found",
+    "reliability_notes": "arXiv preprint, fetched and read directly, genuinely small models (Pythia 70-410M, SmolLM2 135-360M) -- well within scope. Explicitly restricts evaluation to single-turn interactions and releases a multi-turn extension framework as unvalidated future work -- directly relevant as a negative/limiting data point: even a paper squarely about making RL training robust for small-scale agents could not yet extend its own validated results to multi-turn.",
+    "key_claims_supported": [
+      "step 1: identifies and fixes three concrete RL-training failure modes (silent LoRA freezing, bfloat16 overflow, reward-driven policy collapse) for small-scale models via a 'capacity-headroom hypothesis' -- PPO stabilization",
+      "step 3: PPO improvements only materialize when supervised fine-tuning already reaches PPL <20 -- suggests the technique compensates for training instability within an existing capability band rather than raising it, and explicitly does not yet extend (even as unvalidated future work) to multi-turn agentic settings, underscoring how thin coverage of small-model multi-turn RL currently is"
+    ],
+    "corroboration_count": 1
+  }
+]

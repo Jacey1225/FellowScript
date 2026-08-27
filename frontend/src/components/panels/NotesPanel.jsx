@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { Button, Input, Select, Typography, Spin, Divider, Tag, Switch } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined, FilterOutlined, ArrowLeftOutlined, LockOutlined } from '@ant-design/icons';
 import { NoteBody, sanitizeNoteHtml, stripHtml as sanitizeStripHtml } from '../RichText.jsx';
 import VerseSelector from '../VerseSelector.jsx';
 import { useNotesPanel } from '../../context/ReaderPanelContexts.jsx';
+import { useHostRect } from '../../hooks/useHostRect.js';
 
 // Format a single [book, chapter, verse] triple into a display string
 function fmtVerse([b, c, v]) { return `${b} ${c}:${v}`; }
@@ -347,8 +349,13 @@ function NoteCard({ id, note, owner, isOwn, onEdit, onDelete, onOpen, onNavigate
 
   return (
     <div
+      // Background/border come from reader-dock.css's desktop-scoped glass
+      // override (item 2, 20260825-reader-dock-rail-polish) — the shared
+      // global.css `.note-card.ant-card` rule this used to lean on paints a
+      // flat opaque --card-bg fill, which NotesSidebar.jsx's mobile NoteCard
+      // still intentionally uses; only inline geometry lives here now.
       className="note-card ant-card"
-      style={{ border: '1px solid rgba(255,255,255,0.108)', background: 'var(--card-bg)', padding: '0.6rem 0.65rem', borderRadius: 14, cursor: 'pointer', marginBottom: 0, transition: 'border-color 0.2s' }}
+      style={{ padding: '0.6rem 0.65rem', borderRadius: 14, cursor: 'pointer', marginBottom: 0, transition: 'border-color 0.2s' }}
       onClick={() => onOpen(id)}
     >
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '0.5rem', marginBottom: '0.4rem' }}>
@@ -486,8 +493,42 @@ function FilterPanel({ onApply, onClear, onClose, groupUsernames }) {
   const [filterType, setFilterType] = useState('');
   const [filterVal,  setFilterVal]  = useState('');
 
-  return (
-    <div style={{ position: 'absolute', inset: 0, background: 'rgba(6,4,1,0.98)', zIndex: 4, display: 'flex', flexDirection: 'column' }}>
+  // createPortal'd to document.body (see useHostRect's own comment) so this
+  // full-bleed overlay escapes .dv-groupview's own backdrop-filter, which
+  // otherwise suppresses this panel's independent backdrop-filter from
+  // blurring the notes list behind it regardless of blur radius --
+  // root-caused live (20260826-notes-filter-panel-blur-increase), not a
+  // values-only fix. `position: fixed` + the tracked rect replace the old
+  // `position: absolute; inset: 0`, which relied on being a normal
+  // descendant of the (now bypassed) `.notes-sidebar` positioned ancestor.
+  //
+  // The host to track is `.notes-sidebar` -- FilterPanel's own original,
+  // never-portaled parent -- found via a zero-size, non-portaled anchor
+  // rendered in FilterPanel's normal (non-portaled) output position rather
+  // than via a new prop, so the component's existing onApply/onClear/onClose/
+  // groupUsernames signature is untouched.
+  const hostRef = useRef(null);
+  const rect = useHostRect(true, hostRef);
+
+  const panel = (
+    <div
+      className="notes-filter-panel"
+      style={{
+        position: 'fixed',
+        top: rect?.top ?? 0,
+        left: rect?.left ?? 0,
+        width: rect?.width ?? '100%',
+        height: rect?.height ?? '100%',
+        // Was z-index: 4, enough to beat this panel's own local siblings.
+        // Now a document.body-level sibling of .reader-dock-container
+        // (z-index: 10) and the dock rail (z-index: 15) instead of a local
+        // descendant of .notes-sidebar -- needs to clear both to still
+        // visually cover the panel it's portaled out of.
+        zIndex: 50,
+        display: 'flex',
+        flexDirection: 'column',
+        visibility: rect ? 'visible' : 'hidden',
+      }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', padding: '0.55rem 0.6rem', borderBottom: '1px solid rgba(255,255,255,0.09)' }}>
         <Button type="text" icon={<ArrowLeftOutlined />} onClick={onClose} style={{ color: 'rgba(255,198,26,0.6)' }} />
         <Text strong style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: '0.95rem', color: 'var(--parchment)', flex: 1 }}>Filter & Sort</Text>
@@ -519,6 +560,13 @@ function FilterPanel({ onApply, onClear, onClose, groupUsernames }) {
         <Button onClick={() => { setSortVal(''); setFilterType(''); setFilterVal(''); onClear(); }} style={{ flex: 1 }}>Clear</Button>
       </div>
     </div>
+  );
+
+  return (
+    <>
+      <span ref={el => { hostRef.current = el ? el.parentElement : null; }} style={{ display: 'none' }} aria-hidden="true" />
+      {createPortal(panel, document.body)}
+    </>
   );
 }
 
@@ -615,8 +663,14 @@ export default function NotesPanel() {
     </div>
   );
 
+  // classNames (not a bare `.ant-select`/`.ant-select-dropdown` selector) so
+  // the glass restyle (item 5, 20260825-reader-dock-rail-polish) is scoped to
+  // just this one Select — antd's other Selects app-wide (sort/filter here,
+  // NotesSidebar's own separate mobile group selector) are untouched.
   const groupSelector = (groups || []).length > 0 ? (
     <Select
+      className="notes-group-select"
+      popupClassName="notes-group-select-dropdown"
       value={currentGroupId || ''}
       onChange={onGroupChange}
       size="small"
@@ -663,12 +717,15 @@ export default function NotesPanel() {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.95rem 0.6rem 0.8rem', borderBottom: '1px solid rgba(255,255,255,0.072)', flexShrink: 0, gap: '0.5rem' }}>
         <Title level={5} style={{ margin: 0, fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.03em', color: 'var(--parchment)' }}>Notes</Title>
         <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-          {groupSelector}
+          {/* Filter/funnel button is leftmost (20260826-notes-panel-glass-toolbar,
+              item 2) -- before groupSelector and +New. Pure ordering change;
+              the button's own styling/behavior is untouched. */}
           <Button
             type="text" size="small" icon={<FilterOutlined />}
             onClick={() => setShowFilter(true)}
             style={{ color: filterActive ? 'var(--gold)' : 'rgba(255,198,26,0.55)' }}
           />
+          {groupSelector}
           <Button
             size="small" icon={<PlusOutlined />}
             onClick={() => openEditor(null)}

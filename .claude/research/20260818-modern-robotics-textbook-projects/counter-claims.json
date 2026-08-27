@@ -1,0 +1,158 @@
+[
+  {
+    "target_claim": "SO-ARM100 has a large, active builder community ('thousands of builders')... Approximate cost: single arm ~$115, dual-arm teleop setup ~$230 (brief §2A, sourced to Hackster.io / Seeed Studio)",
+    "counter_claim": "The $115/$230 cost figures understate the realistic all-in cost of a working single arm, and the build has genuine, currently-unresolved friction beyond what vendor/press coverage conveys. The 'thousands of builders' figure traces to a single press mention and has no independent numeric corroboration or refutation available anywhere searched.",
+    "counter_evidence": [
+      {
+        "url_or_ref": "https://www.seeedstudio.com/SO-ARM100-Low-Cost-AI-Arm-Kit.html",
+        "title": "SO-ARM100 Low-Cost AI Arm Servo Motor Kit for LeRobot (Without 3D Printed Parts) — Seeed Studio",
+        "reliability_notes": "Same vendor page cited by the brief for buildability, but read directly for pricing detail this round. Independent of press framing since it's a raw product listing.",
+        "how_it_contradicts": "Lists $200 for the servo/adapter/cable kit ALONE, explicitly excluding the 3D-printed frame ('Without 3D Printed Parts') — meaning a complete single arm (frame + electronics) realistically costs well over the brief's stated ~$115, which appears to reflect only a bare frame-kit price."
+      },
+        {
+        "url_or_ref": "aggregated web search across so100.nanocorp.app and vendor listings (WowRobo, PartaBot)",
+        "title": "SO-ARM100 total single-arm BOM cost figure",
+        "reliability_notes": "Cross-vendor pricing aggregation via search, not a single citable page; moderate reliability, consistent across multiple independent vendors (not just one HF-ecosystem source).",
+        "how_it_contradicts": "Full single-arm BOM commonly cited at ~$229.88, with pre-assembled versions at $199-$299 — roughly double the brief's $115 single-arm figure."
+      },
+      {
+        "url_or_ref": "https://github.com/huggingface/lerobot/issues/1026",
+        "title": "Manual calibration is buggy. Please enable auto-calibration for so-100 arm · Issue #1026 · huggingface/lerobot",
+        "reliability_notes": "Primary-source GitHub issue on the actual software repo, independent of vendor marketing; directly documents user-reported friction.",
+        "how_it_contradicts": "Reports the arm working 'one hour and then irreparably broken the next' due to calibration instability; issue was closed as 'not planned' rather than fixed, indicating the underlying friction is unresolved as of research date, contrary to a smooth-build narrative."
+      },
+      {
+        "url_or_ref": "https://github.com/huggingface/lerobot/issues/930",
+        "title": "So100 follower's 2nd motor moves the opposite direction of the leader · Issue #930",
+        "reliability_notes": "Same primary-source repo as above.",
+        "how_it_contradicts": "Documents a distinct hardware/calibration malfunction (motor moving opposite direction, getting stuck), corroborating that calibration friction is a recurring theme rather than an isolated report."
+      },
+      {
+        "url_or_ref": "no independent source found confirming or disputing 'thousands of builders'",
+        "title": "Community-size verification gap",
+        "reliability_notes": "Genuine search attempt made (Reddit, Hacker News, sales-figure queries); no independent count exists anywhere found.",
+        "how_it_contradicts": "Does not contradict the figure, but shows it is unverifiable/unfalsifiable beyond the original Hackster.io press mention — a good-faith attempt to independently corroborate or challenge the number turned up nothing either way."
+      }
+    ],
+    "confidence_score": 0.6
+  },
+  {
+    "target_claim": "LeKiwi is confirmed as an actually-built hobbyist platform, cost approx. $660 for the complete mobile-manipulator system, and has a documented, replicable bill of materials and assembly process (brief §2B, sourced to robotsthatexist.com and robotics.growbotics.ai)",
+    "counter_claim": "The reference LeRobot-ecosystem BOM (SIGRobotics-UIUC, the repo actually linked from Hugging Face's own docs) totals $482-499 across configurations and explicitly excludes 3D-printing cost — a materially lower base figure than the brief's $660, though the gap could plausibly be closed by adding print/shipping costs rather than representing a true contradiction. Separately, an independent, non-affiliated builder (Foxglove blog, Aditya Kamath) confirms the base kit is genuinely buildable and reports it worked 'out of the box' — this is claim-supporting, not counter-evidence, and is reported honestly as such. Whether robotsthatexist.com and growbotics.ai are independent verifiers of the $660 figure or aggregator sites mirroring a single upstream number could not be resolved this round.",
+    "counter_evidence": [
+      {
+        "url_or_ref": "https://github.com/SIGRobotics-UIUC/LeKiwi/blob/main/BOM.md",
+        "title": "LeKiwi Bill of Materials — SIGRobotics-UIUC/LeKiwi (the repo linked from Hugging Face's own LeKiwi docs)",
+        "reliability_notes": "This is the actual upstream/reference BOM the ecosystem points to, not a third-party aggregator — high reliability for what it claims, though not independent of the HF ecosystem itself.",
+        "how_it_contradicts": "Total costs range $482 (5V base) to $499 (12V full), explicitly excluding 3D-printing cost — lower than and not directly reconcilable with the brief's stated $660 total without knowing what robotsthatexist.com's $660 figure actually includes."
+      },
+      {
+        "url_or_ref": "https://foxglove.dev/blog/upgrading-the-lekiwi-into-a-lidar-equipped-explorer",
+        "title": "Upgrading the LeKiwi into a LiDAR-equipped explorer — Foxglove blog (Aditya Kamath)",
+        "reliability_notes": "Independent builder, not affiliated with Hugging Face/SIGRobotics/growbotics.ai/robotsthatexist.com — genuinely independent corroborating voice.",
+        "how_it_contradicts": "Does NOT contradict the buildability claim — reports the base LeKiwi worked well out of the box with accurate odometry, no major cost overruns or assembly difficulty reported. Included here per the plan's instruction to report honestly when a claim holds up under scrutiny."
+      },
+      {
+        "url_or_ref": "gap: robotsthatexist.com/robots/lekiwi and robotics.growbotics.ai/projects/hardware/lekiwi methodology",
+        "title": "Independence-of-aggregator verification gap",
+        "reliability_notes": "Both pages are JS-rendered client-side apps; WebFetch returned only empty shells, and the agent-browser skill's `belt` CLI is not installed/authenticated in this environment, so interactive retrieval was not possible this round.",
+        "how_it_contradicts": "Does not resolve whether these two 'independent' sources are genuinely independent verifiers or mirrors of the same upstream BOM — flagged honestly as a limits-of-search gap per the plan's own caution about these two sites, not stretched into a false confirmation either way."
+      }
+    ],
+    "confidence_score": 0.35
+  },
+  {
+    "target_claim": "All four projects use position-controlled hobby servos rather than torque/force-controlled actuators, so none of them genuinely requires working through the book's Lagrangian/Newton-Euler dynamics formalism... This is a structural gap across the entire candidate set (brief Risks, unsourced editorial judgment call)",
+    "counter_claim": "No credible counter-evidence found — primary technical evidence largely corroborates the brief's own risk note rather than contradicting it. The underlying Feetech STS3215 servos used in SO-ARM100/LeKiwi do technically support current-based torque/force estimation (a real capability that exists in the hardware/ecosystem), but this is not part of any documented, default LeRobot/Seeed/Waveshare tutorial path for these specific candidates, and OpenCat's firmware is confirmed via direct source inspection to run on precomputed gait tables rather than any runtime dynamics computation. As the plan itself anticipated, this outcome should be read as corroborating the brief's existing risk note, not undermining it.",
+    "counter_evidence": [
+      {
+        "url_or_ref": "https://www.mintlify.com/huggingface/lerobot/motors/feetech (LeRobot Feetech motor docs, via search)",
+        "title": "Feetech Motors — LeRobot documentation",
+        "reliability_notes": "Official LeRobot technical documentation; primary source for what the servos actually expose.",
+        "how_it_contradicts": "Confirms Feetech servos expose a Present_Current register (used for stall/force detection in at least one independent project, arXiv 'Nori Bot'), showing dynamics-adjacent capability exists in the underlying hardware — a partial, narrow qualification of 'none of them genuinely requires' framing, though this capability is not used in any of the candidates' documented default builds."
+      },
+      {
+        "url_or_ref": "https://github.com/PetoiCamp/OpenCat/blob/main/src/InstinctBittle.h (direct source inspection)",
+        "title": "InstinctBittle.h — raw gait-angle lookup tables, PetoiCamp/OpenCat",
+        "reliability_notes": "Primary firmware source code, directly inspected this round rather than relying on documentation claims.",
+        "how_it_contradicts": "Confirms Bittle's onboard gait execution is precomputed angle-table playback with no runtime dynamics computation, reinforcing (not contradicting) the brief's claim that Bittle's build does not exercise Ch.8-style dynamics."
+      },
+      {
+        "url_or_ref": "search across Seeed Studio, Waveshare, and LeRobot SO-ARM100 tutorial documentation",
+        "title": "Absence of current/torque-based control in default SO-ARM100 tutorials",
+        "reliability_notes": "Genuine, good-faith search across the primary tutorial sources for this candidate.",
+        "how_it_contradicts": "No documented tutorial path uses current-based force/torque control for SO-ARM100 or LeKiwi's default builds (only a compliant/touch-sensing gripper accessory was found, which is a different mechanism) — the absence itself corroborates the brief's claim for the documented, as-built default path."
+      }
+    ],
+    "confidence_score": 0.15
+  },
+  {
+    "target_claim": "Bittle runs on OpenCat, an open-source... framework implementing inverse-kinematics-driven gait generation, servo control, and IMU integration — i.e. it genuinely exercises kinematics/control concepts, not just pre-baked motions (brief §2D, sourced solely to the OpenCat GitHub README)",
+    "counter_claim": "Primary firmware source inspection shows Bittle's onboard runtime gait execution is precomputed lookup-table playback (static int8_t joint-angle arrays with keyframe interpolation), not live per-step inverse kinematics computed on-device. Inverse kinematics is genuinely used in the design/tooling pipeline (an offline IKPY-based tool generates the tables before they are baked into firmware), but the robot itself, while running, is closer to 'pre-baked motions' than the brief's framing suggests. Additionally, the current OpenCat README (the brief's sole cited source) does not actually use the term 'inverse kinematics' anywhere in its present text, meaning the brief's specific technical claim is more asserted than directly sourced even in its own citation.",
+    "counter_evidence": [
+      {
+        "url_or_ref": "https://github.com/PetoiCamp/OpenCat/blob/main/src/InstinctBittle.h",
+        "title": "InstinctBittle.h — PetoiCamp/OpenCat firmware source",
+        "reliability_notes": "Primary firmware source, directly inspected via raw GitHub content this round — the strongest possible evidence type (the actual running code), fully independent of any vendor description.",
+        "how_it_contradicts": "Shows gait data stored as static PROGMEM int8_t arrays of precomputed joint angles (e.g. bdF[], bk[], bkL[], crF[] tables) rather than any runtime IK-solving routine — the robot plays back these tables rather than computing leg-target inverse kinematics live during walking."
+      },
+      {
+        "url_or_ref": "https://github.com/ger01d/kinematic-model-opencat",
+        "title": "Inverse kinematic model of quadruped OpenCat robots — ger01d/kinematic-model-opencat",
+        "reliability_notes": "Independent community tool (not Petoi's own repo) documenting how OpenCat gaits are actually produced.",
+        "how_it_contradicts": "Confirms the IKPY-based IK computation happens offline on a development machine, with the resulting angle sequences 'directly used for the instincts.h in OpenCat' — i.e., IK is a design-time step, not a run-time behavior of the shipped robot."
+      },
+      {
+        "url_or_ref": "https://raw.githubusercontent.com/PetoiCamp/OpenCat/main/README.md",
+        "title": "OpenCat README (current, as of research date)",
+        "reliability_notes": "The brief's own cited source, re-read directly this round for the specific claim text.",
+        "how_it_contradicts": "Contains zero occurrences of 'kinematic' or 'IK' in its current text — it describes the framework only in general terms ('gait coordination, servo control, IMU integration'), so the brief's specific 'inverse-kinematics-driven gait generation' framing is not actually present in the cited source as currently written."
+      }
+    ],
+    "confidence_score": 0.7
+  },
+  {
+    "target_claim": "Bittle remains an actively sold, maintained product as of research date, not a dead Kickstarter-only project, paired with the brief's own flagged risk that the popularity numbers ($567,218/2,052 backers) are from the 2020 campaign (brief §2D + Risks)",
+    "counter_claim": "The specific product that ran the 2020 Kickstarter campaign — the original Bittle on the NyBoard/ATmega328P platform — is now explicitly labeled 'discontinued' in OpenCat's current official README, having been superseded as the actively-marketed product by 'Bittle X' (current-generation ESP32/BiBoard hardware). The legacy NyBoard codebase remains 'fully supported' by the current repo, so the framework/lineage is genuinely still alive, but the brief's framing ('remains an actively sold... product') is only true of the Bittle lineage/brand, not strictly true of the specific original product the 2020 backers funded.",
+    "counter_evidence": [
+      {
+        "url_or_ref": "https://raw.githubusercontent.com/PetoiCamp/OpenCat/main/README.md",
+        "title": "OpenCat README (current, as of research date) — 'Current Hardware' section",
+        "reliability_notes": "Primary source, Petoi's own current official documentation — directly re-read this round for currency-specific language rather than relying on the brief's earlier, less specific characterization.",
+        "how_it_contradicts": "States: 'The original Bittle and Nybble mini robots (NyBoard/ATmega328P) are discontinued but still fully supported by this codebase' — directly qualifying the 'actively sold' framing for the specific product tied to the cited 2020 Kickstarter numbers."
+      }
+    ],
+    "confidence_score": 0.55
+  },
+  {
+    "target_claim": "Blanket hobbyist-feasibility framing — that all four candidates are 'buildable by an individual hobbyist' at the stated cost/tool level (implicit across §2A-D and the research plan's success criteria)",
+    "counter_claim": "All three physically-inspected candidates (SO-ARM100, Sawppy, Bittle) remain genuinely buildable by individual hobbyists — none of the counter-evidence found rises to 'not actually buildable' — but independent, non-vendor sources consistently report real friction and cost/tool-prerequisite understatement beyond what the brief's largely vendor/press-sourced framing conveys.",
+    "counter_evidence": [
+      {
+        "url_or_ref": "https://github.com/huggingface/lerobot/issues/1026 and #930",
+        "title": "SO-ARM100 unresolved calibration issues (see also counter-claim #1)",
+        "reliability_notes": "Primary GitHub issue tracker, independent of vendor marketing.",
+        "how_it_contradicts": "Documents ongoing calibration reliability problems and required-force assembly steps not conveyed by vendor kit pages."
+      },
+      {
+        "url_or_ref": "search results referencing Sawppy Hackaday.io build logs on M3 heat-set-insert tolerance problems",
+        "title": "Sawppy build-log community reports on hardware tolerance issues and cost overruns beyond $500",
+        "reliability_notes": "Hackaday.io community build logs — genuinely independent multi-builder evidence (as the plan itself noted going in), reporting real friction rather than promotional framing.",
+        "how_it_contradicts": "Confirms the community's own reported experience that the '<$500' figure covers only the base motorized chassis, with real builds commonly exceeding it once accessories are added, plus recurring dimensional-tolerance problems with heat-set inserts across multiple independent builders."
+      },
+      {
+        "url_or_ref": "https://the-gadgeteer.com/2022/11/26/petoi-bittle-open-source-robot-dog-review-build-and-program-your-own-four-legged-friend/",
+        "title": "Petoi Bittle Open Source Robot Dog review — The Gadgeteer",
+        "reliability_notes": "Independent consumer-tech review site, no commercial/authorship stake in Petoi.",
+        "how_it_contradicts": "Reports calibration as 'a fiddly process,' the included screwdriver as inadequate for the self-tapping screws, and the head as 'flimsy compared to the rest of the robot' — practical friction points not conveyed by Petoi's own product page or the Kickstarter/press sources the brief cites."
+      },
+      {
+        "url_or_ref": "https://www.tomshardware.com/reviews/petoi-bittle-opensource-robotic-dog-ai-stem-learning",
+        "title": "Petoi Bittle Robot Dog Review — Tom's Hardware",
+        "reliability_notes": "Independent tech-journalism outlet with no commercial stake in Petoi.",
+        "how_it_contradicts": "Positions Bittle's value as conditional ('probably not worth the investment' for a user who just wants a remote-controlled toy rather than a coding platform) — a more qualified buildability/value framing than the brief's implicit blanket-feasibility read."
+      }
+    ],
+    "confidence_score": 0.5
+  }
+]

@@ -633,6 +633,15 @@ final class NetworkService: DataServiceProtocol {
         _ = try await request("/friends/\(userId)/\(encodeURIComponent(friendId))", method: "DELETE")
     }
 
+    // GET /friends/{userId}/activity → {friends_active: [...], check_in: {...}|null}
+    // Dashboard's Friend Activity hero card. Declared server-side ahead of
+    // /friends/{userId}/{friendId} so the literal "activity" path segment
+    // matches first.
+    func fetchFriendActivity(userId: String) async throws -> FSFriendActivityFeed {
+        let data = try await get("/friends/\(userId)/activity")
+        return decode(FSFriendActivityFeed.self, from: data, endpoint: "/friends/{userId}/activity") ?? .empty
+    }
+
     // ── Reports / Blocks (Guideline 1.2) ────────────────────────────────────────
     // POST   /reports/                     body: {content_type, content_id?, reported_user_id?, reason, detail}
     // GET    /blocks/{userId}               → [{user_id, username}]
@@ -743,40 +752,12 @@ final class NetworkService: DataServiceProtocol {
     }
 
     // ── Notifications ─────────────────────────────────────────────────────────
-    // GET    /notification/{userId}
-    // POST   /notification/{userId}           body: {name, prompt, timestamps}
-    // PUT    /notification/{userId}/{notifId} body: {name, prompt, timestamps}
-    // DELETE /notification/{userId}/{notifId}
-
-    func fetchNotifications(userId: String) async throws -> [FSNotification] {
-        let data = try await get("/notification/\(userId)")
-        return decode([FSNotification].self, from: data) ?? []
-    }
-
-    func createNotification(userId: String, name: String, prompt: String, timestamps: [String?]) async throws -> FSNotification {
-        let tsArray = timestamps.map { $0 != nil ? $0! as Any : NSNull() as Any }
-        let body: [String: Any] = ["name": name, "prompt": prompt, "timestamps": tsArray]
-        // checked so a free-tier 403 surfaces as AppError.limitReached
-        let data = try await checkedRequestRaw("/notification/\(userId)", method: "POST", jsonObject: body)
-        guard let result = decode([String: String].self, from: data), let notifId = result["id"] else {
-            throw AppError.networkError("Failed to create notification")
-        }
-        return FSNotification(id: notifId, user_id: userId, name: name, prompt: prompt, timestamps: timestamps)
-    }
-
-    func updateNotification(userId: String, notifId: String, name: String, prompt: String, timestamps: [String?]) async throws {
-        let tsArray = timestamps.map { $0 != nil ? $0! as Any : NSNull() as Any }
-        let body: [String: Any] = ["name": name, "prompt": prompt, "timestamps": tsArray]
-        // checked — a DB-write failure now surfaces as a real 500 (see
-        // api/backend/interactions/notifications.py's re-raise fix) instead of
-        // a silently-swallowed fake success; must not go back to unchecked
-        // requestRaw or the caller can never see it.
-        _ = try await checkedRequestRaw("/notification/\(userId)/\(notifId)", method: "PUT", jsonObject: body)
-    }
-
-    func deleteNotification(userId: String, notifId: String) async throws {
-        _ = try await request("/notification/\(userId)/\(notifId)", method: "DELETE")
-    }
+    // POST   /notification/{userId}/device-token
+    //
+    // The user-authored notification CRUD/trigger endpoints this file used to
+    // call (GET/POST/PUT/DELETE /notification/{userId}[...]) were removed from
+    // the backend in 20260826-activity-based-notifications; device-token
+    // registration and push delivery are unaffected and kept below.
 
     func registerDeviceToken(userId: String, token: String) async throws {
         // checked so a write failure is at least logged by the caller instead of
@@ -784,11 +765,6 @@ final class NetworkService: DataServiceProtocol {
         // is no other signal (no UI polls "is my token registered?").
         _ = try await checkedRequestRaw("/notification/\(userId)/device-token", method: "POST",
                                  jsonObject: ["token": token])
-    }
-
-    func triggerNotification(userId: String, notifId: String) async throws -> [String: String] {
-        let data = try await request("/notification/\(userId)/\(notifId)/trigger", method: "POST")
-        return decode([String: String].self, from: data) ?? [:]
     }
 
     // ── Chime calls ───────────────────────────────────────────────────────────

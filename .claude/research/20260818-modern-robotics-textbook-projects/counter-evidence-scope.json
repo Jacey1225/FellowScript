@@ -1,0 +1,5 @@
+{
+  "task_id": "20260818-modern-robotics-textbook-projects",
+  "result": "pass",
+  "summary": "Targeted six load-bearing claims from the brief's candidate-project section and risks: SO-ARM100's cost/community-size framing, LeKiwi's cost/BOM independence, the brief's own unsourced blanket dismissal of Ch.8 dynamics exercise across all candidates, the self-sourced OpenCat 'genuine IK' claim for Bittle, Bittle's currency/maintenance claim given its dated 2020 Kickstarter numbers, and the general hobbyist-feasibility framing across all four candidates. These were chosen because they are either thinly/circularly corroborated (vendor-and-press-only sourcing within the same commercial ecosystem, e.g. Hugging Face/Seeed Studio or Petoi/OpenCat self-description) or stated with more confidence than the cited sources actually support (the Ch.8 dismissal has no citation at all). The textbook-structure claims (Section 1 of the brief) were excluded from scope since they trace to the user's own primary-source PDF and the brief already correctly flags that no external corroboration is meaningful there."
+}

@@ -1,0 +1,91 @@
+[
+  {
+    "target_claim": "\"No independent, non-vendor builder account documenting physical print/assembly friction (tolerance issues, warping, part breakage, heat-set-insert problems...) was found in this round\" — the one independent account located reports the base 'arrived pre-integrated' and was 'a breeze' to integrate, with 'zero physical build/print friction reported.'",
+    "counter_claim": "Independent, non-vendor GitHub activity on the official SIGRobotics-UIUC/LeKiwi repo shows the print files themselves have had real, externally-discovered fit and design shortcomings — the 'zero friction' framing understates this. It falls short of documented warping/breakage/heat-set-insert failure, so the original claim is weakened rather than reversed.",
+    "counter_evidence": [
+      {
+        "url_or_ref": "https://github.com/SIGRobotics-UIUC/LeKiwi/issues/17",
+        "title": "Base camera mount cutout mismatched for Innomaker camera (SIGRobotics-UIUC/LeKiwi issue #17)",
+        "reliability_notes": "Independent, non-vendor external user (vladfatu, not a project maintainer), filed May 15 2025, still open. First-hand, specific, dated report with a concrete technical detail (cutout mirrored for the wrong side) and a stated workaround (the user modified the STL themselves).",
+        "how_it_contradicts": "Documents an actual, independent-user-discovered print-file design flaw (a genuine fit problem in an official printable part) that required a manual STL fix — direct evidence against the 'zero physical build/print friction reported' framing, even though it's narrow (an alternate-camera compatibility issue, not a core structural failure)."
+      },
+      {
+        "url_or_ref": "https://github.com/SIGRobotics-UIUC/LeKiwi/pull/9",
+        "title": "New drive motor mount design (SIGRobotics-UIUC/LeKiwi PR #9, merged)",
+        "reliability_notes": "Independent external contributor (batuergun), merged by a project maintainer (pkooij) on Apr 3 2025 — maintainer acceptance lends this weight beyond a mere unreviewed suggestion. Description states the redesign was for 'enhanced structural rigidity' and 'eliminating the need for standoffs,' implying the original mount had a rigidity/complexity shortcoming, though the PR text does not explicitly narrate a failure.",
+        "how_it_contradicts": "A maintainer-accepted hardware redesign of a core drive-motor-mount print file, motivated by structural rigidity, is evidence the original print design was not without physical shortcomings — weaker than a direct failure report, but still independent evidence of design friction, not silence."
+      },
+      {
+        "url_or_ref": "https://github.com/SIGRobotics-UIUC/LeKiwi/pull/26",
+        "title": "Add a fully enclosed servo mount 3D model (SIGRobotics-UIUC/LeKiwi PR #26, open/unmerged)",
+        "reliability_notes": "Independent external contributor (JoyandAI), filed Dec 22 2025, still open/unmerged as of this search — weaker signal than PR #9 since it has not been reviewed or accepted by maintainers. Description cites 'enhanced stability' and 'deeper hex nut recesses... for easier installation' as improvements over the original.",
+        "how_it_contradicts": "A community-proposed alternative to the stock servo mount, motivated by stability and installation-ease improvements, is tangential/weak counter-evidence — it implies a perceived shortcoming but is unmerged and unconfirmed by maintainers, so should not be weighted as strongly as PR #9 or issue #17."
+      }
+    ],
+    "confidence_score": 0.35
+  },
+  {
+    "target_claim": "\"...notably — no heat-set inserts (screws thread directly into printed plastic)\" (SO-101 arm, sourced to TheRobotStudio/SO-ARM100), and for the LeKiwi base, silence on heat-set-insert guidance is not a confirmed absence.",
+    "counter_claim": "No credible counter-evidence found. A genuine, targeted search for stripped-thread, cracked-mount, or heat-set-insert-retrofit reports tied to LeKiwi or SO-101/SO-ARM100 turned up nothing on GitHub (issues/PRs across both repos), and the broader web/forum/Reddit angle specified in the search plan could not be executed due to tooling limits (see gaps below). This is reported as a held, low-confidence finding, not as resolved absence of the failure mode.",
+    "counter_evidence": [
+      {
+        "url_or_ref": "GitHub issue/PR search (api.github.com/search/issues) across SIGRobotics-UIUC/LeKiwi and TheRobotStudio/SO-ARM100 for terms: \"heat-set\", \"stripped thread\", \"cracked\"",
+        "title": "Targeted GitHub search for heat-set-insert / stripped-thread complaints",
+        "reliability_notes": "Systematic, repeatable search of the two most relevant repos' public issue/PR trackers; zero on-topic hits (one query returned 0 results, another returned 8 results all unrelated to LeKiwi/SO-ARM100).",
+        "how_it_contradicts": "Does not contradict the claim — reported here as the negative result of a genuine search attempt, per the plan's instruction to distinguish 'no counter-evidence found' from 'found but weak.'"
+      }
+    ],
+    "confidence_score": 0.15
+  },
+  {
+    "target_claim": "\"~34 hours total print time across 11+ parts\" (3DPrinting.md) and Assembly.md's \"~2 hours total\" fastener-level assembly sequence.",
+    "counter_claim": "No credible counter-evidence found. No independent build log, forum post, or GitHub issue reporting a materially different print-time or assembly-time figure for LeKiwi was located. This is reported as a held, low-confidence finding given real, named tooling gaps that prevented a fuller search (see gaps below), not as independent confirmation that the vendor figures are accurate.",
+    "counter_evidence": [
+      {
+        "url_or_ref": "GitHub issue/PR search (api.github.com/search/issues) for \"lekiwi\" + \"print time\", \"hours to print\", \"hours to assemble\"",
+        "title": "Targeted GitHub search for independent print/assembly time reports",
+        "reliability_notes": "Systematic search of GitHub's public issue tracker across all repos mentioning LeKiwi; zero on-topic hits (one query returned 3 unrelated results, two returned 0).",
+        "how_it_contradicts": "Does not contradict the claim — reported as a negative search result."
+      }
+    ],
+    "confidence_score": 0.15
+  },
+  {
+    "target_claim": "Wheel drive-motor IDs 7/8/9 must be assigned to specific physical positions (8=rear, 7=left-front, 9=right-front), and mis-assignment is a documented pitfall — sourced only to the independent Seeed Studio wiki, raising a risk it reflects a Seeed-specific build variant rather than a universal requirement.",
+    "counter_claim": "No counter-evidence found; instead, the claim is confirmed and strengthened. Direct inspection of the official Hugging Face LeRobot source code (not the Seeed wiki) shows the motor-ID-to-wheel-position mapping is hardcoded in software (base_left_wheel = Motor(7), base_back_wheel = Motor(8), base_right_wheel = Motor(9)) — a universal requirement enforced by the LeKiwi driver itself, not a Seeed-specific kit variant note. A related independent GitHub issue (#1243) corroborates that mis-assigned or missing wheel-motor IDs 7/8/9 is a real, recurring builder pain point.",
+    "counter_evidence": [
+      {
+        "url_or_ref": "https://raw.githubusercontent.com/huggingface/lerobot/main/src/lerobot/robots/lekiwi/lekiwi.py",
+        "title": "LeKiwi robot driver source — huggingface/lerobot (official, primary source, independent of Seeed)",
+        "reliability_notes": "Primary, authoritative, independently verified by directly fetching and grepping the raw file content (not paraphrase-only). Highest possible reliability for this question — it is the actual code that enforces the mapping.",
+        "how_it_contradicts": "Rather than contradicting the original claim, this resolves the flagged uncertainty in the claim's favor: the mapping (7=left, 8=back/rear, 9=right) is hardcoded and universal across all LeKiwi builds using the official software stack, not a vendor-specific note as the brief's Risks section worried. This should be reported as a successful, resolved check per the counter-evidence plan's own guidance."
+      },
+      {
+        "url_or_ref": "https://github.com/huggingface/lerobot/issues/1243",
+        "title": "\"Can't set up wheels IDS for lekiwi\" — huggingface/lerobot issue #1243 (closed, not planned/stale)",
+        "reliability_notes": "Independent, non-vendor builder-reported issue describing a real-world failure to get wheel motor IDs 1, 7, 8, 9 detected/configured during calibration. Closed as 'not planned'/stale rather than resolved, so the underlying friction was never fully addressed by maintainers.",
+        "how_it_contradicts": "Corroborates (rather than contradicts) that correct motor-ID assignment for the wheels is a genuine, recurring builder pain point independent of the Seeed wiki — supporting the practical importance of the original claim, though it does not by itself confirm the specific 7/8/9-to-position mapping."
+      }
+    ],
+    "confidence_score": 0.85
+  },
+  {
+    "target_claim": "BOM.md totals $482 (12V complete variant) / $499 (5V complete variant), explicitly excluding 3D-printing filament/time cost, treated as 'the harder number' — tested here for whether real-world total spend by an actual builder runs meaningfully above this baseline.",
+    "counter_claim": "No credible counter-evidence found that real-world spend runs meaningfully above $482-499. No independent builder account itemizing actual total spend (including shipping, import duty, reprints, or substitutions) was located. The one other independent cost data point available (orobot.io's $450-550 estimate, already in sources.json) sits within/near the reference range rather than materially above it. This is a held, low-confidence finding given tooling gaps, not confirmation that real-world spend never exceeds the baseline.",
+    "counter_evidence": [
+      {
+        "url_or_ref": "GitHub issue search (api.github.com/search/issues) for \"lekiwi\" + \"import duty\" (0 hits), \"cost me\" (0 hits); \"shipping cost\", \"ended up spending\" rate-limited before completion",
+        "title": "Targeted GitHub search for real-world builder spend reports",
+        "reliability_notes": "Partial search — two of four planned queries returned clean zero results; two others were blocked by GitHub's unauthenticated search API rate limit before they could be completed, and were not retried within this round's time budget.",
+        "how_it_contradicts": "Does not contradict the claim — reported as an incomplete negative result with the rate-limit gap named explicitly."
+      },
+      {
+        "url_or_ref": "https://orobot.io/o/program/BROKER-2/lekiwi-mobile-base (already cataloged in sources.json, corroboration_count 2)",
+        "title": "LeKiwi Mobile Base — orobot.io independent cost estimate ($450-550)",
+        "reliability_notes": "Independent third-party catalog estimate, not a first-hand build-and-spend account; already known to this task from the sourcing stage, re-surfaced here specifically to check its relevance as a real-spend data point.",
+        "how_it_contradicts": "Weak/tangential at best — it is an estimate, not an itemized actual-spend report, and it sits within/overlapping the $482-499 range rather than showing spend running meaningfully above it, so it does not meaningfully weaken the target claim."
+      }
+    ],
+    "confidence_score": 0.15
+  }
+]

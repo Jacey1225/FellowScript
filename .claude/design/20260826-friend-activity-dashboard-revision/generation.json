@@ -1,0 +1,15 @@
+{
+  "task_id": "20260826-friend-activity-dashboard-revision",
+  "step": 4,
+  "stage": "generation",
+  "result": "pass",
+  "openart_used": false,
+  "generated_assets": [
+    {
+      "type": "html",
+      "path": ".claude/design/20260826-friend-activity-dashboard-revision/friend-activity-dashboard-revised.html",
+      "description": "Complete, self-contained, standalone HTML/CSS revision of the Friend Activity Dashboard (Variant C, Editorial Hero) mockup."
+    }
+  ],
+  "summary": "Corrected miscategorization from the prior pass: this static deliverable required no OpenArt render, but it did require a real renderable output file, which had not been produced. Read the source artifact in full and design-spec.md's four exact edits, then applied them to a complete revised HTML file written to friend-activity-dashboard-revised.html: (1) removed the '.sec-label' 'Friend Activity' div from .eyebrow-row and changed that rule from 'justify-content: space-between; gap: 12px' to 'justify-content: flex-end' (avatar stack now the sole, right-anchored child); (2) removed the '.sec-label' 'Pick Up Where You Left Off' div from .note-card and bumped .note-headline's margin-top from 10px to 16px to match the card's 16px top padding; (3) replaced the .screen background's opaque 5-stop banded linear-gradient (var(--grad-1) plateau) with a 5-stop rgba() taper (0.14 -> 0.10 -> 0.07 -> 0.04 -> transparent at 48%); (4) softened .hero-glow's radial from rgba(212,146,42,0.10)/transparent 70% to 0.07/transparent 78%, blur(50px) unchanged. Verified via grep: zero remaining '.sec-label' markup usages, .eyebrow-row and .note-headline rules match spec exactly. All other markup, copy, color tokens, typography, and component structure carried forward unchanged from the source artifact; the Claude-artifact-sandbox frame-runtime wrapper present in the source tool-result file was stripped in favor of a clean standalone <!DOCTYPE html> document, since that wrapper is sandbox infrastructure, not part of the authored deliverable (still uses the same two Google Fonts <link> tags and inline <style>, per spec's 'self-contained .html file' requirement)."
+}

@@ -1,18 +1,20 @@
 import React, { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Layout, Menu, Drawer, Button, Tooltip } from 'antd';
+import { Layout, Menu, Drawer, Button, Tooltip, Avatar } from 'antd';
 import { MenuOutlined, ReadOutlined, HomeOutlined, UserOutlined, BulbOutlined, BulbFilled } from '@ant-design/icons';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useTheme } from '../hooks/useTheme.js';
-import CommandTrigger from './CommandTrigger.jsx';
 
 const { Header } = Layout;
 
-// `commandTrigger` is optional and only ever passed by Reader.jsx (the
-// "Jump or Ask" pill + overlay wires into Reader's own useBible/useAgentChat
-// state — see design-notes.md §4-5 and intake-spec.md's confirmed scope).
-// AppNav itself stays shared/unaware of Reader's data on the other 3 routes.
-export default function AppNav({ commandTrigger }) {
+// The desktop top-right no longer shows the Home/Read/Account text Menu or
+// the Reader-only "Jump or Ask" command trigger (dropped entirely per
+// 20260825-header-nav-profile-icon's architecture step 1) — just the profile
+// avatar (below) and the unchanged theme toggle. The mobile hamburger
+// `Drawer` keeps its own Home/Read/Account Menu untouched (desktop-only
+// scope, confirmed), so `items`/`onMenuClick`/`accountLabel` below still
+// serve that Menu.
+export default function AppNav() {
   const { user } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
@@ -53,20 +55,28 @@ export default function AppNav({ commandTrigger }) {
         <span className="script">Script</span>
       </Link>
 
-      {/* Desktop menu */}
-      <Menu
-        theme="dark"
-        mode="horizontal"
-        selectedKeys={[currentKey]}
-        items={items}
-        onClick={onMenuClick}
-        style={{ flex: 1, justifyContent: 'flex-end', minWidth: 0 }}
-        className="desktop-menu"
-      />
-
       {/* Right-side controls */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexShrink: 0 }}>
-        {isReaderRoute && commandTrigger && <CommandTrigger {...commandTrigger} />}
+        <Tooltip title={user ? (accountLabel || 'Account') : 'Sign in'} placement="bottom">
+          <Link to={accountHref} className="nav-profile-link" aria-label={user ? 'Account' : 'Sign in'}>
+            <Avatar
+              size={32}
+              icon={!user ? <UserOutlined /> : undefined}
+              style={{
+                background: user ? 'rgba(200,134,26,0.12)' : 'transparent',
+                border: '1.5px solid var(--gold)',
+                color: 'var(--gold)',
+                fontFamily: "'Inter', sans-serif",
+                fontWeight: 600,
+                fontSize: '0.8rem',
+                cursor: 'pointer',
+              }}
+              className="nav-profile-avatar"
+            >
+              {user ? (user.username || 'A')[0].toUpperCase() : null}
+            </Avatar>
+          </Link>
+        </Tooltip>
 
         <Tooltip title={isDark ? 'Light mode' : 'Dark mode'} placement="bottom">
           <Button

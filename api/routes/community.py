@@ -208,6 +208,29 @@ async def get_friend_requests(user_id: str, _: str = Depends(require_match("user
         manager.close()
 
 
+@friend_router.get("/{user_id}/activity")
+async def get_friend_activity(user_id: str, _: str = Depends(require_match("user_id"))) -> dict:
+    """Friend-activity read surface for the dashboard's Friend Activity hero
+    card.
+
+    NOTE: declared before ``/{user_id}/{friend_id}`` so the literal
+    ``activity`` segment matches first (routes resolve in definition
+    order), same reasoning as ``/{user_id}/requests`` above.
+
+    Args:
+        user_id: UUID of the requesting user (their own friend list only).
+
+    Returns:
+        dict: ``{"friends_active": [...], "check_in": {...} | None}`` --
+            see ``FriendsManager.get_friend_activity`` for the full shape.
+    """
+    manager = FriendsManager(user_id)
+    try:
+        return manager.get_friend_activity()
+    finally:
+        manager.close()
+
+
 @friend_router.get("/{user_id}/{friend_id}")
 async def read_friend(user_id: str, friend_id: str, _: str = Depends(require_match("user_id"))) -> dict:
     """Fetch a friend's profile and the shared DM history.

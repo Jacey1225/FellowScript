@@ -63,7 +63,7 @@ All business logic lives here in `*Manager` classes that subclass `DBManager`. R
 | Manager | File | Responsibility |
 |---|---|---|
 | `GroupsManager` | `groups.py` | Create/join/leave groups, add members |
-| `FriendsManager` | `friends.py` | Friend requests, friend list, remove |
+| `FriendsManager` | `friends.py` | Friend requests, friend list, remove, friend-activity read surface (`get_friend_activity`) |
 | `DevotionManager` | `devotion.py` | Devotion plans, participants, progress |
 | `AgentManager` | `agent.py` | AI agent config, heartbeat events |
 | `FilterManager` | `filtering.py` | Note filtering by book, date, user, title |
@@ -155,7 +155,7 @@ Transactional email delivery via AWS SES, used by the password-reset and 2FA flo
 
 **Reporting** — `backend/interactions/reports.py` (`ReportsManager`): `create_report(content_type, content_id, reported_user_id, reason, detail)` resolves the *current* author + text server-side (never trusts the client for who/what is reported), inserts a `content_reports` row with a frozen `content_snippet` (survives later edits/deletes), and emails `SUPPORT_EMAIL` via `backend/email/templates.py`'s `content_report_email()` (HTML-escapes the snippet before interpolation). `content_type` is one of `note` / `message` / `devotion_prompt` / `group_title` / `user`.
 
-**Blocking** — `backend/interactions/blocks.py` (`BlockManager`): `block_user()` severs any existing friendship/pending request both directions and auto-creates a `content_reports` row (`reason='blocked'`) — one unified developer queue rather than a parallel notification system. `is_blocked()` checks both directions. Enforced at every read path a blocked relationship could otherwise leak through: `friends.py`'s `send_add_request`/`add_friend`/`read_friend`, `groups.py`'s `fetch_notes`/`fetch_replies`/`fetch_group` (member roster stays visible for transparency; only their content is hidden), `websockets.py`'s `send_msg` (drops DMs entirely between blocked parties; skips delivery-only for group messages so other members still see them), and `devotion.py`'s `fetch_by_contact`. Retroactively removing a blocked user from an already-joined live Chime call is a known, accepted gap.
+**Blocking** — `backend/interactions/blocks.py` (`BlockManager`): `block_user()` severs any existing friendship/pending request both directions and auto-creates a `content_reports` row (`reason='blocked'`) — one unified developer queue rather than a parallel notification system. `is_blocked()` checks both directions. Enforced at every read path a blocked relationship could otherwise leak through: `friends.py`'s `send_add_request`/`add_friend`/`read_friend`/`get_friend_activity` (friend-activity dashboard feed — re-checks `blocked_users` both directions rather than trusting `user_friends` alone, same defense-in-depth as `ActivityManager.friend_device_tokens`), `groups.py`'s `fetch_notes`/`fetch_replies`/`fetch_group` (member roster stays visible for transparency; only their content is hidden), `websockets.py`'s `send_msg` (drops DMs entirely between blocked parties; skips delivery-only for group messages so other members still see them), and `devotion.py`'s `fetch_by_contact`. Retroactively removing a blocked user from an already-joined live Chime call is a known, accepted gap.
 
 ---
 

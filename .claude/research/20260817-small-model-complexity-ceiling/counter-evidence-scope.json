@@ -1,0 +1,5 @@
+{
+  "task_id": "20260817-small-model-complexity-ceiling",
+  "result": "pass",
+  "summary": "Targeted 4 claims from brief.md for counter-evidence: (1) SCoRe's single-source, unreplicated '7B student beats 72B teacher' result, the brief's strongest ceiling-raising claim; (2) ACM's incidental 'sub-9B models too incoherent' aside, used as the main scale-floor evidence despite corroboration_count 1; (3) HORIZON's 'scaling alone unlikely to resolve' conclusion, evidenced only on frontier models but imported to the small-model question by inference; (4) the AgenticQwen/ATOD/CacheRL distillation-narrows-the-gap cluster, where two of three corroborating legs were only read via search summary. All four are load-bearing for the brief's central ceiling-raising-vs-solvable-gap question and are flagged in the brief's own Risks section or sources.json as thin/single-source/unverified."
+}

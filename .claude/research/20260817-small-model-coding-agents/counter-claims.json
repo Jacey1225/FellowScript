@@ -1,0 +1,97 @@
+[
+  {
+    "target_claim": "sub-10B SLMs on consumer hardware can match or beat larger models on many agentic subtasks at 10-30x lower cost",
+    "counter_claim": "No independent empirical rebuttal of the NVIDIA thesis was found after a good-faith search, including NVIDIA's own public correspondence page for the paper, which surfaced only a conceptual counterpoint (reasoning-LLM cost tradeoffs, raised by an outside commenter) rather than quantitative pushback. However, the brief's own harder-benchmark sources (SWE-bench Pro, SWE-EVO) indirectly undermine the thesis's apparent scope: as task difficulty and horizon increase, capability gaps grow sharply regardless of model tier, and top models of any size solve under ~20-25% of the harder task sets -- suggesting the 'small models match large' finding may be an artifact of testing on saturated/easier benchmarks (standard SWE-bench Verified, BFCL single-turn) rather than a generalizable claim about agentic capability. A related 2026 paper on small multi-agent systems (arxiv.org/abs/2601.11327) further complicates the thesis by finding that when small models are orchestrated together, the gains come specifically from a capable orchestrator, not from sub-agent scale reduction per se -- i.e., 'small models are enough' may really mean 'small models plus a strong orchestration layer are enough,' a narrower claim than the brief's framing implies.",
+    "counter_evidence": [
+      {
+        "url_or_ref": "https://research.nvidia.com/labs/lpr/slm-agents/correspondence.html",
+        "title": "Correspondence - Small Language Models are the Future of Agentic AI",
+        "reliability_notes": "Primary-source page hosted by NVIDIA itself, publishing outside commentary; the one substantive critique present (from Alexei Novikov/Opplane) is conceptual, not empirical, and the paper's authors did not offer counter-data in response.",
+        "how_it_contradicts": "Confirms the brief's own labeling of the NVIDIA claim as an unrebutted industry position -- absence of empirical challenge even on the paper's own dedicated feedback channel is itself informative."
+      },
+      {
+        "url_or_ref": "arxiv.org/pdf/2509.16941 (SWE-bench Pro) and arxiv.org/html/2512.18470v5 (SWE-EVO)",
+        "title": "SWE-bench Pro; SWE-EVO",
+        "reliability_notes": "Already in sources.json as brief-cited preprints; reused here per plan's instruction as tools against claim #1 rather than re-targeted directly.",
+        "how_it_contradicts": "Shows capability gaps persist and grow with task realism/horizon regardless of model size, implying the NVIDIA thesis's 'match or beat' framing is scoped to easier benchmark conditions rather than being a general property of small vs. large models."
+      },
+      {
+        "url_or_ref": "https://arxiv.org/abs/2601.11327",
+        "title": "Can Small Agents Collaborate to Beat a Single Large Language Model?",
+        "reliability_notes": "Recent (2026) preprint, also under OpenReview; independent research group, not NVIDIA-affiliated.",
+        "how_it_contradicts": "Finds that gains from small-agent systems are driven primarily by orchestrator capacity, with sub-agent reasoning contributing limited or negative benefit -- qualifies rather than flatly refutes the NVIDIA thesis, showing the claim depends heavily on orchestration quality, a variable the brief's summary of the thesis does not foreground."
+      }
+    ],
+    "confidence_score": 0.3
+  },
+  {
+    "target_claim": "targeted supervised fine-tuning of a 350M-parameter model (facebook/opt-350m) reached a 77.55% pass rate on ToolBench, exceeding much larger baselines (ChatGPT-CoT 26.00%, ToolLLaMA-DFS 30.18%, ToolLLaMA-CoT 16.27%)",
+    "counter_claim": "The evaluation instrument underlying this result (ToolBench's original ToolEval pass-rate methodology, using GPT-3.5-turbo as judge) has a documented, independently-verified reliability problem: StableToolBench (published at a peer-reviewed venue, arxiv.org/abs/2403.07714) found the GPT-3.5-turbo evaluator only 65% accurate on solvability judgments (vs. GPT-4's 80%), that unsure/unsolvable tasks default to a 'pass' regardless of actual answer quality, that only 44.4% of ToolBench's underlying APIs remained functionally callable when independently retested, and that reproducing original ToolBench pass rates against a stabilized API environment caused declines of up to 40% for previously-reported models. Because the 2512.15943 paper's cited baselines (ChatGPT-CoT 26.00%, ToolLLaMA-DFS 30.18%, ToolLLaMA-CoT 16.27%) are the same original ToolLLaMA-paper figures produced under this exact evaluator/API setup, the entire comparison -- including the 350M model's 77.55% figure -- rests on an instrument with known, substantial reliability problems. This does not prove the 350M result is wrong, but it substantially weakens confidence that a clean, reproducible 3x margin over baselines would hold under a stabilized re-test.",
+    "counter_evidence": [
+      {
+        "url_or_ref": "https://arxiv.org/abs/2403.07714",
+        "title": "StableToolBench: Towards Stable Large-Scale Benchmarking on Tool Learning of Large Language Models",
+        "reliability_notes": "Peer-reviewed-track preprint with rigorous reproduction methodology; independent of both the original ToolBench/ToolLLaMA authors and the 2512.15943 authors; published March 2024, predating the target claim's December 2025 publication.",
+        "how_it_contradicts": "Undermines the evidentiary basis (not the specific number) of the claim: documents that the exact evaluation methodology and baseline figures the 350M paper relies on are known to be unstable, evaluator-lenient, and poorly reproducible -- a methodological critique per the plan's allowance, even without a direct opposing numeric result for the 350M model itself."
+      }
+    ],
+    "confidence_score": 0.55
+  },
+  {
+    "target_claim": "Devstral Small 1.1 (24B) reportedly reaches 53.6% without test-time scaling, described by its vendor as state-of-the-art among open code-agent models",
+    "counter_claim": "The 'SOTA among open code-agent models' claim was already non-durable within the same general timeframe: multiple competing open-weight models report higher SWE-bench Verified scores, including Mistral's own later Devstral 2 (123B, 72.2%), Devstral Small 2 (68.0%), Qwen3-Coder-Next (70.6%, activating only ~3B parameters), and DeepSeek-V3.2 (~70%). This does not contradict that 53.6% was accurate for Devstral Small 1.1 at the time of its release, but it shows the 'state-of-the-art' framing was a point-in-time vendor claim that lapsed quickly -- and, notably, all of the competing figures are themselves vendor self-reported via official model cards, restated uncritically by third-party aggregator blogs (e.g., Modal) rather than independently re-measured. This reinforces rather than resolves the brief's own corroboration-inflation concern: the entire open-model SWE-bench Verified 'leaderboard' in this space appears to be built almost entirely from vendor self-reports passed through restating blogs, with no independent third-party re-execution of the benchmark found for Devstral specifically in this search.",
+    "counter_evidence": [
+      {
+        "url_or_ref": "https://mistral.ai/news/devstral-2-vibe-cli/ ; https://modal.com/resources/best-open-source-models-swe-bench-coding-agents",
+        "title": "Introducing Devstral 2 and Mistral Vibe CLI (Mistral AI); Best Open Source Models for SWE-Bench-Style Coding Agents in 2026 (Modal)",
+        "reliability_notes": "Devstral 2 figure is vendor-sourced (Mistral's own announcement, same evidentiary weakness as the original claim); Modal blog explicitly restates vendor model-card numbers without independent re-execution, confirmed on fetch.",
+        "how_it_contradicts": "Directly contradicts the 'SOTA' framing's durability by showing a higher-scoring open model (from the same vendor) superseded it, and shows competing vendors' higher figures for Qwen3-Coder-Next and DeepSeek-V3.2 in the same period -- undermining the claim's conclusion, not just its evidentiary basis."
+      },
+      {
+        "url_or_ref": "https://labs.scale.com/leaderboard/swe_bench_pro_public",
+        "title": "SWE-bench Pro Leaderboard (Scale AI)",
+        "reliability_notes": "Independently run by Scale AI with reproducible Docker-based environments -- a genuine third-party evaluation infrastructure, though evaluation harness varies by model (mini-swe-agent for some).",
+        "how_it_contradicts": "Devstral does not appear on this independently-run harder benchmark at all, meaning no independent re-execution of Devstral's capability exists even on a benchmark built for exactly this purpose -- a gap, not a direct contradiction, but consistent with the brief's own flag that Devstral's numbers are vendor-asserted only."
+      }
+    ],
+    "confidence_score": 0.5
+  },
+  {
+    "target_claim": "self-critique/verification-prompt interventions consistently harm small-model performance (d -0.14 to -0.33) via pseudo-reflection, while SWRV and CoCoS report gains from self-verification/self-correction training for small models",
+    "counter_claim": "A plausible mechanistic reconciliation exists in prior literature that the brief did not surface: self-correction/self-verification only reliably helps when it is backed by a trained, externally-validating verifier (or strong external feedback), not when it relies on a model's free-form, untrained self-critique of its own output. 'Small Language Models Need Strong Verifiers to Self-Correct Reasoning' (ACL Findings 2024) finds that small-model self-verifiers of the same architecture as the generator are 'weak' and bottleneck self-correction, while pairing with a strong (e.g., GPT-4-class) external verifier substantially improves results. The foundational 'Large Language Models Cannot Self-Correct Reasoning Yet' (Huang et al., ICLR 2024) independently establishes that intrinsic self-correction without external feedback frequently fails to improve, and sometimes degrades, reasoning performance at any model scale -- a general mechanism, not small-model-specific. Together these suggest the brief's contradiction resolves along a trained-verifier-vs-free-form-critique axis largely as the brief itself speculated: SWRV and CoCoS's gains likely stem from RL-trained or structured verification signal, while the process-verification paper's harm finding stems from free-form, untrained self-critique prompting -- consistent with, not contradicting, the 'pseudo-reflection' finding.",
+    "counter_evidence": [
+      {
+        "url_or_ref": "https://aclanthology.org/2024.findings-acl.924/",
+        "title": "Small Language Models Need Strong Verifiers to Self-Correct Reasoning",
+        "reliability_notes": "Peer-reviewed, ACL Findings 2024 -- a credible venue matching the reliability tier of SWRV/CoCoS in the brief. Slightly outside the plan's 12-18 month recency window (2024 vs. Jan 2025-Aug 2026) but explicitly permitted as foundational/mechanism context for claim #4 per the plan's exemption.",
+        "how_it_contradicts": "Not adversarial counter-evidence but reconciliation-oriented, per the plan's stated goal for this claim: directly demonstrates the trained-verifier-strength mechanism that explains why some self-verification approaches help (SWRV, CoCoS) while unguided self-critique (the process-verification paper's target) harms."
+      },
+      {
+        "url_or_ref": "https://arxiv.org/abs/2310.01798",
+        "title": "Large Language Models Cannot Self-Correct Reasoning Yet",
+        "reliability_notes": "ICLR 2024, Google DeepMind authors; foundational, pre-dates the plan's recency window but explicitly permitted as background/mechanism literature.",
+        "how_it_contradicts": "Provides a general (not small-model-specific) mechanistic account of why intrinsic, feedback-free self-correction underperforms or degrades results, supporting the process-verification paper's finding as a known, broader phenomenon rather than an anomaly needing to be reconciled against SWRV/CoCoS as a direct contradiction."
+      }
+    ],
+    "confidence_score": 0.6
+  },
+  {
+    "target_claim": "RAG is one of the better-evidenced compensators in this survey even though the RAG-specific papers themselves don't isolate small models -- this synthesis rests on ... arxiv.org/html/2601.00513 whose RAG-helps finding is self-caveated as resting on oracle (perfect) RAG and only three 7-9B models",
+    "counter_claim": "Evidence from a real production RAG-for-code-completion deployment (WeChat) indicates the oracle-RAG caveat is not a minor technicality: under realistic (non-oracle) retrieval, RAG exhibits a threshold effect where retrieval quality below a certain point actively harms code-generation performance via 'context pollution' from irrelevant or low-quality retrieved snippets, rather than simply providing a smaller version of the oracle benefit. This suggests the brief's 'RAG is one of the better-evidenced compensators' synthesis likely overstates how reliably RAG would help small-model coding agents in real, non-oracle deployment -- the Cohen's d 0.23-0.93 effect measured under oracle conditions may not transfer, and could reverse, once retrieval is imperfect (the typical real-world case). A broader, more general RAG robustness study found comparatively milder degradation (2-6%, described as a roughly uniform offset) under realistic noise conditions, showing the size of the oracle-to-realistic gap is domain- and task-dependent rather than a fixed discount -- but the code-specific study is more directly on point for this brief's domain.",
+    "counter_evidence": [
+      {
+        "url_or_ref": "https://arxiv.org/pdf/2507.18515",
+        "title": "A Deep Dive into Retrieval-Augmented Generation for Code Completion: Experience on WeChat",
+        "reliability_notes": "Industry engineering report from a large-scale real production deployment (Tencent/WeChat), not peer-reviewed academic venue, but grounded in real (non-oracle) retrieval conditions and directly in the coding-agent domain -- exactly the realistic-retrieval-quality test the plan's search angle called for.",
+        "how_it_contradicts": "Directly undermines the RAG-as-compensator synthesis's evidentiary basis by showing the oracle-RAG caveat the brief already flags is load-bearing: under realistic retrieval, RAG's benefit is conditional on a quality threshold and can reverse into harm, rather than being a small, statistically-guaranteed positive effect as the Cohen's d framing implies."
+      },
+      {
+        "url_or_ref": "https://arxiv.org/html/2411.19463",
+        "title": "Understanding the Fundamental Design Decisions of Retrieval-Augmented Generation Systems",
+        "reliability_notes": "Preprint studying RAG design decisions generally (not code-specific, not small-model-specific), included as a general-RAG-reliability comparison point.",
+        "how_it_contradicts": "Provides a more moderate counter-data point (2-6% uniform degradation under realistic noise rather than a reversal), showing the magnitude of the oracle-to-realistic RAG gap is not uniformly catastrophic -- included to avoid overstating the WeChat finding as the only possible outcome, per the requirement to score confidence on how directly evidence contradicts rather than how much was found."
+      }
+    ],
+    "confidence_score": 0.55
+  }
+]

@@ -1,12 +1,11 @@
 // SOURCE: frontend/src/pages/Account.jsx
 // KEY STATE: profileData, agents, events, requests, editLoading, deleteConfirm, agentModal
 // INTERACTIONS: edit profile (username/email/password), accept friend requests,
-//               create/toggle/delete agents, create/delete events, add notifications, sign out, delete account
+//               create/toggle/delete agents, create/delete events, sign out, delete account
 // DEPENDENCY: Theme.swift, Models.swift, AppState.swift
 
 import SwiftUI
 import Combine
-import UserNotifications
 
 // A friend's group plan that still has room, surfaced so the user can request to join.
 struct FSJoinablePlan: Identifiable {
@@ -24,7 +23,6 @@ final class AccountViewModel: ObservableObject {
     @Published var agents:          [FSAgent]         = []
     @Published var events:          [FSHeartbeat]     = []
     @Published var friendRequests:  [(id: String, username: String)] = []
-    @Published var notifications:   [FSNotification]  = []
     @Published var isLoading       = true
     @Published var editMsg:        (type: AlertType, text: String)? = nil
 
@@ -86,9 +84,6 @@ final class AccountViewModel: ObservableObject {
         if let cached: [FSAgent] = await DiskCache.shared.load([FSAgent].self, forKey: "agents:\(uid)") {
             agents = cached
         }
-        if let cached: [FSNotification] = await DiskCache.shared.load([FSNotification].self, forKey: "notifications:\(uid)") {
-            notifications = cached
-        }
         if let cached: [FSHeartbeat] = await DiskCache.shared.load([FSHeartbeat].self, forKey: "events:\(uid)") {
             events = cached
         }
@@ -98,7 +93,6 @@ final class AccountViewModel: ObservableObject {
 
         async let fetchedUser          = service.fetchUser(userId: user.user_id)
         async let fetchedAgents        = service.fetchAgents(userId: user.user_id)
-        async let fetchedNotifications = service.fetchNotifications(userId: user.user_id)
         // Dedicated COUNT(*) endpoint rather than fetching+counting the
         // capped/paginated notes collection -- a user with more than one
         // page of notes would otherwise show a truncated total here.
@@ -107,7 +101,6 @@ final class AccountViewModel: ObservableObject {
         async let fetchedUsage         = service.fetchUsage(userId: user.user_id)
         if let freshUser = try? await fetchedUser { profileData = freshUser }
         agents        = (try? await fetchedAgents)        ?? []
-        notifications = (try? await fetchedNotifications) ?? []
         noteCount      = (try? await fetchedNoteCount)          ?? 0
         highlightCount = (try? await fetchedHighlights)?.count ?? 0
         usage          = (try? await fetchedUsage) ?? usage
@@ -127,7 +120,6 @@ final class AccountViewModel: ObservableObject {
         // ── Write fresh account data back to the cache ────────────────────────────
         if let fresh = profileData { await DiskCache.shared.save(fresh, forKey: "user:\(uid)") }
         await DiskCache.shared.save(agents,        forKey: "agents:\(uid)")
-        await DiskCache.shared.save(notifications, forKey: "notifications:\(uid)")
         await DiskCache.shared.save(events,        forKey: "events:\(uid)")
         await DiskCache.shared.save([noteCount, highlightCount], forKey: "counts:\(uid)")
     }
@@ -240,50 +232,6 @@ final class AccountViewModel: ObservableObject {
         guard let uid = profileData?.user_id else { return }
         friendRequests.removeAll { $0.username == username }
         try? await service.acceptFriendRequest(userId: uid, username: username)
-    }
-
-    func createNotification(name: String, prompt: String, timestamps: [String?]) async {
-        guard let uid = profileData?.user_id else { return }
-        do {
-            let notif = try await service.createNotification(userId: uid, name: name, prompt: prompt, timestamps: timestamps)
-            notifications.append(notif)
-            await NotificationScheduler.scheduleAll(userId: uid, notifications: notifications, service: service)
-            await refreshUsage()
-        } catch {
-            limitMsg = (error as? LocalizedError)?.errorDescription ?? "Could not create notification."
-        }
-    }
-
-    func updateNotification(notif: FSNotification, name: String, prompt: String, timestamps: [String?]) async {
-        guard let uid = profileData?.user_id else { return }
-        do {
-            // Mirrors updateEvent's pattern below: call the network layer first
-            // and only apply the edit locally on confirmed success — previously
-            // this used `try?` and mutated `notifications` unconditionally, so a
-            // server-side failure (e.g. the DB-write errors notifications.py now
-            // re-raises instead of swallowing) still showed the edit as saved.
-            try await service.updateNotification(userId: uid, notifId: notif.id, name: name, prompt: prompt, timestamps: timestamps)
-            if let i = notifications.firstIndex(where: { $0.id == notif.id }) {
-                notifications[i].name       = name
-                notifications[i].prompt     = prompt
-                notifications[i].timestamps = timestamps
-            }
-            UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [notif.id])
-            await NotificationScheduler.scheduleAll(userId: uid, notifications: notifications, service: service)
-        } catch {
-            agentMsg = (error as? LocalizedError)?.errorDescription ?? "Could not save reminder."
-        }
-    }
-
-    func deleteNotification(notifId: String) {
-        guard let uid = profileData?.user_id else { return }
-        notifications.removeAll { $0.id == notifId }
-        let remaining = notifications
-        Task {
-            try? await service.deleteNotification(userId: uid, notifId: notifId)
-            UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [notifId])
-            await NotificationScheduler.scheduleAll(userId: uid, notifications: remaining, service: service)
-        }
     }
 
     // ── Subscription ───────────────────────────────────────────────────────────
@@ -451,8 +399,7 @@ struct AccountView: View {
     // active-subscriber and pre-purchase states, which are mutually exclusive
     // branches of the same section, so one toggle is safe. Pure UI display
     // state with no backend/VM logic behind it, so it's local @State rather
-    // than @Published on AccountViewModel (matches showNotificationsList /
-    // showBlockedUsers below).
+    // than @Published on AccountViewModel (matches showBlockedUsers below).
     @State private var showBenefits = false
 
     // Edit profile
@@ -471,22 +418,17 @@ struct AccountView: View {
         case newAgent
         case newEvent
         case editEvent(FSHeartbeat)
-        case newNotification
-        case editNotification(FSNotification)
         case timezonePicker
         var id: String {
             switch self {
             case .newAgent:                 return "newAgent"
             case .newEvent:                 return "newEvent"
             case .editEvent(let e):         return "event-\(e.id)"
-            case .newNotification:          return "newNotification"
-            case .editNotification(let n):  return "notif-\(n.id)"
             case .timezonePicker:           return "timezonePicker"
             }
         }
     }
 
-    @State private var showNotificationsList = false
     @State private var showBlockedUsers = false
 
     // Two-factor authentication (email code)
@@ -544,9 +486,6 @@ struct AccountView: View {
                         // ── Events ──────────────────────────────────────────────
                         eventsSection
 
-                        // ── Notifications ──────────────────────────────────────
-                        notificationsSection
-
                         // ── Two-Factor Authentication ──────────────────────────
                         twoFactorSection
 
@@ -569,9 +508,6 @@ struct AccountView: View {
             }
             .navigationTitle("Account")
             .navigationBarTitleDisplayMode(.large)
-            .navigationDestination(isPresented: $showNotificationsList) {
-                NotificationsListView(vm: vm)
-            }
             .navigationDestination(isPresented: $showBlockedUsers) {
                 BlockedUsersView(userId: appState.currentUser?.user_id ?? "", service: appState.service)
             }
@@ -610,14 +546,6 @@ struct AccountView: View {
             case .editEvent(let event):
                 EventSetupSheet(agents: vm.agents, existing: event) { agentId, prompt, timestamps in
                     Task { await vm.updateEvent(event, agentId: agentId, prompt: prompt, timestamps: timestamps) }
-                }
-            case .newNotification:
-                NotificationSetupSheet { name, prompt, timestamps in
-                    Task { await vm.createNotification(name: name, prompt: prompt, timestamps: timestamps) }
-                }
-            case .editNotification(let notif):
-                NotificationSetupSheet(existing: notif) { name, prompt, timestamps in
-                    Task { await vm.updateNotification(notif: notif, name: name, prompt: prompt, timestamps: timestamps) }
                 }
             case .timezonePicker:
                 TimeZonePickerSheet(selected: timezone) { picked in
@@ -724,11 +652,9 @@ struct AccountView: View {
                 usageRow("Notes", usage.notes, hint: "last \(usage.window_days) days", forceUnlimited: unlimited)
                 Divider().background(Theme.borderGoldFaint)
                 usageRow("Agent events", usage.agentEvents, hint: nil, forceUnlimited: unlimited)
-                Divider().background(Theme.borderGoldFaint)
-                usageRow("Agent notifications", usage.agentNotifications, hint: nil, forceUnlimited: unlimited)
                 if !unlimited {
                     Divider().background(Theme.borderGoldFaint)
-                    Text("You're on the free plan. Upgrade to a Group plan for unlimited notes, events, and notifications.")
+                    Text("You're on the free plan. Upgrade to a Group plan for unlimited notes and events.")
                         .font(.lora(Theme.fontSM))
                         .foregroundColor(Theme.textGoldMuted)
                 }
@@ -937,8 +863,6 @@ struct AccountView: View {
                                 "Free plan: \(vm.usage?.notes.limit ?? 10) every \(vm.usage?.window_days ?? 7) days")
                     benefitRow("Unlimited agent events",
                                 "Free plan: \(vm.usage?.agentEvents.limit ?? 1)")
-                    benefitRow("Unlimited agent notifications",
-                                "Free plan: \(vm.usage?.agentNotifications.limit ?? 3)")
                     benefitRow("Shared group access for up to \(memberCount) member\(memberCount == 1 ? "" : "s")",
                                 "Unlimited usage is shared across everyone on the plan")
                 }
@@ -1227,6 +1151,12 @@ struct AccountView: View {
         // measure this card's rendered frame width to prove it matches its
         // sibling sections instead of shrink-wrapping around a short empty-state
         // string. See test_friendRequestsSection_emptyState_matchesAvailableContentWidth.
+        // .accessibilityElement(children: .combine) is required alongside the
+        // identifier below — without it, a bare identifier on a plain (non-
+        // accessibility-element) VStack gets pushed down onto each descendant
+        // leaf individually instead of producing one queryable otherElements
+        // container, which is what the test actually looks up.
+        .accessibilityElement(children: .combine)
         .accessibilityIdentifier("Friend Requests card")
     }
 
@@ -1244,7 +1174,18 @@ struct AccountView: View {
                     .font(.lora(Theme.fontSM))
                     .foregroundColor(Theme.textMuted)
             } else {
-                ForEach($vm.agents) { $agent in
+                // Iterate over stable values (vm.agents), not ForEach($vm.agents) —
+                // an index-keyed array Binding. Deleting the last row from inside
+                // this row's own .contextMenu action, while ForEach($vm.agents) still
+                // holds index-derived Bindings into the (now-shrunk-or-empty) array,
+                // is a well-documented SwiftUI footgun (out-of-bounds access inside
+                // SwiftUI's binding/diffing machinery once the dismiss transition
+                // races the mutation) — this is what crashed
+                // test_eventsSection_newEventDisabled_whenNoAgents_reenabledAfterCreatingAgent.
+                // Sourcing the Toggle's binding via agentEnabledBinding(id:), keyed by
+                // agent.id and re-resolved against vm.agents on every get/set, removes
+                // the dangling-index hazard structurally instead of just timing around it.
+                ForEach(vm.agents) { agent in
                     Divider().background(Theme.borderGoldFaint)
                     HStack(spacing: Theme.spacingMD) {
                         ZStack {
@@ -1262,14 +1203,15 @@ struct AccountView: View {
                         }
                         Spacer()
                         // Enable/disable stays inline — it's a quick at-a-glance switch.
-                        Toggle("", isOn: $agent.enabled)
+                        // vm.toggleAgent(id:enabled:) is already id-keyed (looks the
+                        // agent up by id, not index) and is the sole source of truth
+                        // for the optimistic update + revert-on-failure, so the
+                        // binding's setter just delegates to it directly.
+                        Toggle("", isOn: agentEnabledBinding(id: agent.id))
                             .labelsHidden()
                             .tint(Theme.gold)
                             .scaleEffect(0.85)
                             .accessibilityLabel(agent.enabled ? "Disable agent" : "Enable agent")
-                            .onChange(of: agent.enabled) { _, newVal in
-                                vm.toggleAgent(id: agent.id, enabled: newVal)
-                            }
                         // Rename / delete moved into a long-press context menu.
                         Image(systemName: "ellipsis")
                             .foregroundColor(Theme.textMuted)
@@ -1304,6 +1246,18 @@ struct AccountView: View {
         }
         .padding(.horizontal, 18).padding(.vertical, 16)
         .glassCard(cornerRadius: 20)
+    }
+
+    // id-keyed Binding for an individual agent row's Toggle, re-resolved against
+    // vm.agents on every get/set instead of an index captured once at ForEach
+    // build time. Pairs with ForEach(vm.agents) (value iteration) in agentsSection
+    // above — together they remove the dangling-array-index crash that
+    // ForEach($vm.agents) had when a row's own contextMenu deleted the last agent.
+    private func agentEnabledBinding(id: String) -> Binding<Bool> {
+        Binding(
+            get: { vm.agents.first(where: { $0.id == id })?.enabled ?? false },
+            set: { vm.toggleAgent(id: id, enabled: $0) }
+        )
     }
 
     private var eventsSection: some View {
@@ -1341,64 +1295,6 @@ struct AccountView: View {
             }
             .disabled(vm.agents.isEmpty)
             .accessibilityLabel("Create new event")
-        }
-        .padding(.horizontal, 18).padding(.vertical, 16)
-        .glassCard(cornerRadius: 20)
-    }
-
-    private var notificationsSection: some View {
-        VStack(alignment: .leading, spacing: Theme.spacingSM) {
-            HStack {
-                sectionLabel("Notifications")
-                Spacer()
-                Button(action: { showNotificationsList = true }) {
-                    Text("View All")
-                        .font(.lora(Theme.fontXXS)).tracking(2)
-                        .foregroundColor(Theme.gold)
-                        .padding(.horizontal, 10).padding(.vertical, 5)
-                        .background(Capsule().fill(Theme.gold.opacity(0.08)))
-                        .overlay(Capsule().stroke(Theme.borderGoldDim, lineWidth: 1))
-                }
-            }
-
-            Text("Set up recurring AI-powered reminders for Scripture, prayer, or study.")
-                .font(.lora(Theme.fontSM))
-                .foregroundColor(Theme.textMuted)
-
-            if vm.notifications.isEmpty {
-                Divider().background(Theme.borderGoldFaint)
-                Text("No notifications yet. Tap + to create one.")
-                    .font(.lora(Theme.fontSM))
-                    .foregroundColor(Theme.textMuted)
-            } else {
-                ForEach(vm.notifications.prefix(3)) { notif in
-                    Divider().background(Theme.borderGoldFaint)
-                    HStack(spacing: Theme.spacingMD) {
-                        ZStack {
-                            Circle().fill(Theme.gold.opacity(0.12)).frame(width: 30, height: 30)
-                            Image(systemName: "bell").foregroundColor(Theme.gold).font(.caption)
-                        }
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(notif.name.isEmpty ? "Unnamed" : notif.name)
-                                .font(.lora(Theme.fontBody))
-                                .foregroundColor(Theme.parchment)
-                            Text(notif.recurrenceSummary)
-                                .font(.lora(Theme.fontXS))
-                                .foregroundColor(Theme.textMuted)
-                        }
-                        Spacer()
-                    }
-                }
-            }
-
-            Divider().background(Theme.borderGoldFaint)
-            Button(action: {
-                appState.requestPushNotifications()
-                activeSheet = .newNotification
-            }) {
-                ghostLabelPill(icon: "plus", "New Notification")
-            }
-            .accessibilityLabel("Create new notification")
         }
         .padding(.horizontal, 18).padding(.vertical, 16)
         .glassCard(cornerRadius: 20)

@@ -1,0 +1,8 @@
+{
+  "task_id": "20260826-friend-activity-dashboard-revision",
+  "step": 3,
+  "stage": "static-spec",
+  "result": "pass",
+  "generation_needed": false,
+  "summary": "Specced four exact edits to the existing Friend Activity Dashboard (Variant C) HTML artifact: (1) remove the .sec-label 'Friend Activity' element and change .eyebrow-row to justify-content: flex-end so the avatar stack stays right-anchored; (2) remove the .sec-label 'Pick Up Where You Left Off' element and bump .note-headline margin-top from 10px to 16px to match the card's 16px top padding; (3) replace the .screen background's hard 5-stop banded linear-gradient (opaque var(--grad-1) plateau) with a 5-stop rgba() taper peaking at 0.14 opacity and fading to transparent by 48%; (4) soften .hero-glow's radial from rgba(212,146,42,0.10)/transparent 70% to 0.07/transparent 78%, keeping blur(50px). No new visual asset generation needed — this is a direct code-level HTML/CSS revision, not an OpenArt render."
+}

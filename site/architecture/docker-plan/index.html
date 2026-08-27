@@ -16,7 +16,7 @@
         <link rel="prev" href="../data/">
       
       
-        <link rel="next" href="../../api/overview/">
+        <link rel="next" href="../git-deploy-plan/">
       
       
         
@@ -859,10 +859,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#open-items-to-confirm-before-executing-not-resolved-by-static-analysis-alone" class="md-nav__link">
+  <a href="#open-items-all-confirmed-against-the-live-server" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Open items to confirm before executing (not resolved by static analysis alone)
+        Open items — all confirmed against the live server
       
     </span>
   </a>
@@ -873,6 +873,62 @@
   
 </nav>
       
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../git-deploy-plan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Git-Based Deploy Plan
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ghcr-deploy-plan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    GHCR Server-Side Deploy Plan
+  
+
+    
+  </span>
+  
+  
+
+      </a>
     </li>
   
 
@@ -1038,9 +1094,10 @@ don't need to be re-derived under deploy pressure later.</p>
 </table>
 <hr />
 <h2 id="decision-2-dockerfile-strategy-for-api">Decision 2 — Dockerfile strategy for <code>api/</code></h2>
-<p><strong>Base image:</strong> <code>python:3.14-slim</code> (the repo's own <code>.venv</code> and the developer environment this was authored in are both Python 3.14 — match that rather than pinning to an older minor version by default; confirm against whatever the EC2 venv's <code>python3 --version</code> actually reports before building, since that's the one fact this plan couldn't directly re-verify from the server this session).</p>
-<p><strong>Multi-stage build</strong>, not a single flat image:
-1. <strong>Builder stage</strong> — install build tooling and compile any wheels needed (<code>psycopg2-binary</code> ships manylinux wheels for standard <code>pip install</code>, so a full build toolchain likely isn't required — verify <code>pip install --no-cache-dir -r requirements.txt</code> works cleanly on <code>python:3.14-slim</code> before assuming a <code>build-essential</code> layer is unnecessary).
+<p><strong>Base image:</strong> <code>python:3.14-slim</code> — <strong>confirmed against the live server</strong>: <code>python3 --version</code> on the EC2 venv reports <strong>3.14.6</strong>, matching this repo's own <code>.venv</code>. Pin the base image to <code>python:3.14-slim</code> (or <code>python:3.14.6-slim</code> if reproducibility down to the patch version is preferred over automatic minor-patch updates).</p>
+<p><strong>Confirmed: no <code>build-essential</code>/build-toolchain layer is needed.</strong> <code>psycopg2-binary</code> (and the rest of <code>requirements.txt</code>) installs cleanly via <code>pip install --no-cache-dir -r requirements.txt</code> on <code>python:3.14-slim</code> with no build toolchain — verified directly rather than assumed from the manylinux-wheel default. This simplifies the build:</p>
+<p><strong>Two-stage build</strong> (kept even without a compile step, since it still separates a smaller runtime image from anything only needed at install time — e.g. <code>pip</code>'s own cache, any <code>-dev</code>/test-only entries in <code>requirements.txt</code> — not because wheels need compiling):
+1. <strong>Builder stage</strong> — <code>pip install --no-cache-dir -r requirements.txt</code> into a target directory, no <code>build-essential</code> or other compiler toolchain required.
 2. <strong>Runtime stage</strong> — copy only the installed site-packages and <code>api/</code> source from the builder into a fresh <code>python:3.14-slim</code>, run as a <strong>non-root user</strong> (create a dedicated <code>app</code> user; don't run <code>uvicorn</code> as <code>root</code> in the container), <code>EXPOSE 8000</code>, <code>CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]</code>.</p>
 <p><strong><code>requirements.txt</code> gap check — already mostly closed.</strong> <code>requirements.txt</code> was recently annotated to explicitly declare every package that was previously only present on the EC2 venv by hand (confirmed via a <code>pip freeze</code> parity check documented inline): <code>psycopg2-binary</code>, <code>python-dotenv</code>, <code>apscheduler</code>, <code>stripe</code>, <code>cryptography</code>, <code>h2</code> (needed for <code>httpx</code>'s HTTP/2 APNs client), <code>mcp</code>, and <code>tzdata</code> are all now pinned in the file. A Docker build <code>FROM requirements.txt</code> alone should now produce a working image for everything <strong>except one remaining gap</strong>:</p>
 <ul>
@@ -1072,13 +1129,18 @@ don't need to be re-derived under deploy pressure later.</p>
 <td><strong>Bind-mount read-only</strong> into the container (<code>-v /home/ubuntu/fellowscript/AuthKey_XXXX.p8:/secrets/AuthKey_XXXX.p8:ro</code>) with <code>APPLE_KEY_PATH</code> in the env file pointed at the in-container path — same principle as <code>.env</code>: never baked into the image.</td>
 </tr>
 <tr>
-<td>AWS credential material (Chime SDK IAM user; likely also covers the CloudWatch watchdog's <code>boto3.client("sts", ...)</code> call — same generic credential pair, no separate one found in code)</td>
-<td><strong>Confirmed from <code>api/routes/messaging.py</code> and <code>api/routes/devotion.py</code></strong>: <code>boto3.client("chime-sdk-meetings", region_name="us-east-1")</code> is constructed with no explicit credentials argument — it relies entirely on boto3's default credential resolution chain. Test files (<code>api/tests/test_*.py</code>) set <code>AWS_ACCESS_KEY_ID</code>/<code>AWS_SECRET_ACCESS_KEY</code> env vars as dummies to satisfy this at import time, which is a strong signal that in production the same generic env-var pair is how boto3 actually resolves the Chime credentials — but this repo cannot fully confirm whether the real EC2 host exports them as systemd <code>Environment=</code> directives or via a <code>~/.aws/credentials</code> file, since that lives only on the live server, not in this repo. <strong>Confirm which of the two before executing this plan.</strong></td>
-<td>Whichever mechanism is confirmed, preserve it exactly — don't fold Chime's credentials into the same <code>.env</code> as <code>SES_ACCESS_KEY_ID</code>/<code>SES_SECRET_ACCESS_KEY</code> (those are already deliberately a separate, narrower credential set per <code>backend/email/ses_client.py</code>'s own comment — keep that separation in the container too). If it's env-var-based: pass <code>AWS_ACCESS_KEY_ID</code>/<code>AWS_SECRET_ACCESS_KEY</code>/<code>AWS_DEFAULT_REGION</code> via the same <code>--env-file</code> mechanism as the rest of <code>.env</code>, in their own file, not merged with app secrets. If it's file-based (<code>~/.aws/credentials</code>): bind-mount that file read-only, same pattern as the APNs key, rather than converting it into env vars (avoids widening exposure by duplicating the same credential into a second storage form).</td>
+<td>AWS credential material — Chime SDK IAM <strong>user</strong> (access-key pair)</td>
+<td><strong>Confirmed from <code>api/routes/messaging.py</code> and <code>api/routes/devotion.py</code></strong>: <code>boto3.client("chime-sdk-meetings", region_name="us-east-1")</code> is constructed with no explicit credentials argument — it relies entirely on boto3's default credential resolution chain. <strong>Confirmed against the live server: file-based (<code>~/.aws/credentials</code>), not environment variables.</strong></td>
+<td>Bind-mount <code>~/.aws/credentials</code> (and <code>~/.aws/config</code>) <strong>read-only</strong> into the container, same pattern as the APNs key — do <strong>not</strong> convert it into env vars, which would duplicate the same credential into a second storage form for no benefit. Keep it a separate mount from the APNs key and <code>.env</code>, not merged — don't fold Chime's credentials into the same <code>.env</code> as <code>SES_ACCESS_KEY_ID</code>/<code>SES_SECRET_ACCESS_KEY</code> either (those are already deliberately a separate, narrower credential set per <code>backend/email/ses_client.py</code>'s own comment — keep that separation in the container too).</td>
+</tr>
+<tr>
+<td>AWS credential material — <code>FellowScriptCloudWatchRole</code> (EC2 <strong>instance IAM role</strong>, confirmed via IMDSv2 in this repo's own prior pipeline work — <code>.claude/pipeline/20260811-cloudwatch-error-remediation/intake-spec.md</code> — not an access-key pair at all)</td>
+<td><strong>Security-review correction to this plan's original secrets table</strong>, which had speculated the CloudWatch watchdog's <code>boto3.client("sts", ...)</code> call (<code>api/backend/monitoring/cloudwatch_mcp_client.py::_resolve_account_id</code>) "likely" shares the same generic credential pair as the Chime SDK user. It does not — this repo's own history confirms <code>FellowScriptCloudWatchRole</code> is a <strong>separate EC2 instance role</strong>, resolved automatically by boto3's default chain via the EC2 Instance Metadata Service (IMDSv2), not via any env var, <code>.env</code> entry, or credentials file. Nothing in <code>cloudwatch_mcp_client.py</code> or <code>db.py</code> pulls explicit key material for it — that's the point of an instance role.</td>
+<td><strong>Do not wire this into <code>.env</code> or any bind mount at all — doing so would be a least-privilege regression</strong>, converting a short-lived, automatically-rotated, host-scoped credential into a static, copyable secret that could then leak via a <code>.env</code> file or image layer. The correct container plan is to do nothing extra: with Decision 4's <code>--network=host</code>, the container reaches the EC2 metadata endpoint (<code>169.254.169.254</code>) exactly as the host process does today, so <code>boto3</code>'s default chain keeps resolving <code>FellowScriptCloudWatchRole</code> automatically inside the container with zero secrets wiring — the same "no code/config change needed" property Decision 1 relies on for <code>localhost:5432</code>. <strong>Revisit condition:</strong> if backend networking ever moves off <code>--network=host</code> to a bridge network in a later phase, confirm IMDSv2 reachability explicitly first — Docker's default bridge network does not always route to the metadata endpoint without extra configuration, and losing that route would silently break the CloudWatch watchdog's account-id resolution rather than fail loudly.</td>
 </tr>
 </tbody>
 </table>
-<p>General rule carried through all three: <strong>nothing secret is ever <code>COPY</code>'d into a Dockerfile layer, and nothing secret goes into shell history</strong> — all secret material is supplied at <code>docker run</code>/compose time via <code>--env-file</code> or read-only bind mounts, both of which are gitignored and never enter the build context.</p>
+<p>General rule carried through all three secret categories above and the instance-role row: <strong>nothing secret is ever <code>COPY</code>'d into a Dockerfile layer, and nothing secret goes into shell history</strong> — all secret material is supplied at <code>docker run</code>/compose time via <code>--env-file</code> or read-only bind mounts, both of which are gitignored and never enter the build context. The one exception, by design, is the instance role: it is never "supplied" at all, because doing so would be the regression, not the fix.</p>
 <hr />
 <h2 id="decision-4-compose-topology-target-state-not-yet-built">Decision 4 — Compose topology (target state, not yet built)</h2>
 <p>Given Decision 1 (Postgres stays on host) and the <code>--network=host</code> requirement it implies, the minimal, lowest-risk phase-1 topology is:</p>
@@ -1117,15 +1179,16 @@ don't need to be re-derived under deploy pressure later.</p>
 <p><strong>Phase 3 — optional, deferred.</strong> Re-evaluate containerizing <code>nginx</code> and/or Postgres only if a concrete driver appears (e.g. moving beyond a single instance, wanting environment parity with a staging box, or outgrowing the current backup approach). Not recommended now — Decision 1's reasoning holds as long as this stays a single-instance deployment.</p>
 <p><strong>Phase 4 — CI/CD follow-on</strong> (recommended direction, not built now, per the user's stated interest in removing manual SSH deploy steps):
 - A GitHub Actions workflow that, on merge to the deploy branch: builds the Dockerfile from Decision 2, tags the image with the git SHA (not just <code>latest</code> — SHA tags are what make instant rollback-to-a-previous-image possible), and pushes it to a registry (GHCR is the natural default — no separate account needed beyond the existing GitHub org).
-- A deploy step that SSHes into the EC2 host (still necessary for a single-instance deployment — this isn't being replaced, just made reliable) and runs <code>docker pull &lt;sha-tag&gt; &amp;&amp; docker compose up -d</code>, replacing the current file-by-file <code>rsync</code> (the exact mechanism that has already twice missed files across two rounds) with an atomic, fully-versioned image swap.
+- A deploy step that SSHes into the EC2 host (still necessary for a single-instance deployment — this isn't being replaced, just made reliable) and runs <code>docker pull &lt;sha-tag&gt; &amp;&amp; docker compose up -d</code>, replacing the current file-by-file <code>rsync</code> (the exact mechanism that has already twice missed files across two rounds) with an atomic, fully-versioned image swap. <strong>The build/tag/push half of this bullet is now built and live</strong> (<code>.github/workflows/build-push.yml</code>); the server-side pull/run half — the <code>docker-compose.yml</code> build-vs-pull resolution, the new-image-detection trigger, and the GHCR credential surface — is worked out in detail in <a href="../ghcr-deploy-plan/">GHCR Server-Side Deploy Plan</a>.
 - Rollback under CI/CD becomes <code>docker pull &lt;previous-sha-tag&gt; &amp;&amp; docker compose up -d</code> — nothing to manually reconstruct from <code>~/deploy_backups/&lt;timestamp&gt;/</code> snapshots, since every deployed state is a tagged, retrievable image.
 - Out of scope for this plan to build; listed here only as the recommended next step once Phases 1–3 are stable.</p>
 <hr />
-<h2 id="open-items-to-confirm-before-executing-not-resolved-by-static-analysis-alone">Open items to confirm before executing (not resolved by static analysis alone)</h2>
+<h2 id="open-items-all-confirmed-against-the-live-server">Open items — all confirmed against the live server</h2>
+<p>All three items originally flagged here have been confirmed directly against the production host and folded into Decisions 2–3 above; nothing static-analysis-only remains blocking Phase 1:</p>
 <ul>
-<li>Exact production Python version on the EC2 venv (<code>python3 --version</code> on the server) — assumed 3.14 to match this repo's <code>.venv</code>, but not directly re-confirmed against the live host this session.</li>
-<li>Whether the Chime SDK IAM credentials are sourced on the server via exported <code>AWS_ACCESS_KEY_ID</code>/<code>AWS_SECRET_ACCESS_KEY</code> environment variables (e.g. in the <code>fellowscript.service</code> unit's <code>Environment=</code> directives) or via a <code>~/.aws/credentials</code> file — the code path (boto3's default chain) is confirmed; the exact on-host storage mechanism is not, and determines which of the two secrets-handling approaches in Decision 3 applies.</li>
-<li>Whether <code>pip install -r requirements.txt</code> on a clean <code>python:3.14-slim</code> actually resolves <code>psycopg2-binary</code> without needing a <code>build-essential</code> layer — worth a throwaway local build to confirm before committing to the single-stage-vs-multi-stage call in Decision 2.</li>
+<li><strong>Python version:</strong> 3.14.6, confirmed via <code>python3 --version</code> on the EC2 venv. Matches this repo's <code>.venv</code> — Decision 2's base image choice stands as written.</li>
+<li><strong>Chime SDK credential storage:</strong> file-based (<code>~/.aws/credentials</code>), not environment variables. Decision 3's secrets table reflects the single confirmed mechanism (read-only bind-mount).</li>
+<li><strong><code>psycopg2-binary</code> build toolchain requirement:</strong> confirmed <strong>not needed</strong> — installs cleanly with no <code>build-essential</code>/compiler layer. Decision 2 updated accordingly.</li>
 </ul>
 
 

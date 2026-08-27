@@ -1,0 +1,6 @@
+{
+  "task_id": "20260817-small-model-complexity-ceiling",
+  "stage": "evaluating-diffs",
+  "result": "pass",
+  "summary": "No technique found raises the small-model complexity ceiling on multi-turn/long-horizon tasks -- every architectural lever (context compression, memory, execution-feedback, RL stabilization) compensates within the ceiling or hits a coherence floor below which it can't even be applied; SCoRe's 7B-beats-72B distillation result is the strongest ceiling-raising signal but remains single-source and unreplicated; and the fundamental-limit-vs-solvable-gap question stays open, tilted slightly further open after HORIZON's small-model inference was directly overturned by peer-reviewed evidence that scale itself extends long-horizon execution capacity."
+}

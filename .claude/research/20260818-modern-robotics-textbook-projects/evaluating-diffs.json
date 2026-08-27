@@ -1,0 +1,6 @@
+{
+  "task_id": "20260818-modern-robotics-textbook-projects",
+  "stage": "evaluating-diffs",
+  "result": "pass",
+  "summary": "The PDF's 13-chapter structure is confirmed directly, and four hobbyist candidates (SO-ARM100/101, LeKiwi, Sawppy, Petoi Bittle) remain genuinely buildable and chapter-mappable, though none spans all 13 chapters and Ch.7 stays unexercised; two specific claims were disproven (SO-ARM100's ~$115 headline cost is a bare-frame price, not a build cost, and Bittle's gait uses offline precomputed IK tables rather than live per-step IK), while LeKiwi's buildability and the Ch.8 dynamics-gap risk note were strengthened and the overall feasibility framing needs a tone correction rather than a reversal."
+}

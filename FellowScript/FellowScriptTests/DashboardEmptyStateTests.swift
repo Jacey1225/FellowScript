@@ -1,0 +1,207 @@
+// DashboardEmptyStateTests.swift — coverage for task
+// 20260826-friend-activity-dashboard-implementation, testing step 5
+// (re-entry pass): empty-state rendering for the Editorial Hero dashboard's
+// three new/changed components (Dashboard/DashboardComponents.swift):
+// FriendActivityHeroCard, CheckInRow, NoteResumeCard.
+//
+// Per the acceptance criteria ("Empty states are handled explicitly and
+// match real conditions rather than being assumed away: no friends yet,
+// friends with no recent activity, and no recent note to resume all render
+// a defined (not broken/blank) state") this file proves each of those three
+// states renders its own distinct, non-blank copy — plus a happy-path
+// regression guard per component so the empty-state coverage can't
+// accidentally pass by disabling the populated branch entirely.
+//
+// None of FriendActivityHeroCard/CheckInRow/NoteResumeCard hold their own
+// @State — they're pure functions of their `let` properties — so (matching
+// this target's existing convention for stateless components, e.g.
+// PillButtonTests.swift/ChipToggleTests.swift) these are inspected directly
+// via `.inspect()` with no ViewHosting/didAppear needed.
+
+import XCTest
+import SwiftUI
+import ViewInspector
+@testable import FellowScript
+
+final class FriendActivityHeroCardTests: XCTestCase {
+
+    // Deterministic "today" timestamp so activityDayLabel's
+    // Calendar.isDateInToday branch is exercised reliably regardless of
+    // what real date the test happens to run on.
+    private func isoNow() -> String {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f.string(from: Date())
+    }
+
+    // MARK: Empty state 1 — no friends at all
+
+    func test_noFriends_rendersAddAFriendEmptyState_notActivityRow() throws {
+        let sut = FriendActivityHeroCard(feed: .empty) { _ in }
+
+        XCTAssertNoThrow(try sut.inspect().find(text: "Add a friend to see their notes and highlights here."))
+        // The "Friend activity" eyebrow label is part of THIS (no-friends)
+        // branch specifically -- the populated branches (avatarStackRow/
+        // activityRow) don't render it at all, see the next tests.
+        XCTAssertNoThrow(try sut.inspect().find(text: "Friend activity"))
+    }
+
+    // MARK: Empty state 2 — friends exist, but none have any tracked activity
+
+    func test_friendsWithNoTrackedActivity_rendersNoRecentActivityMessage_distinctFromNoFriendsState() throws {
+        let feed = FSFriendActivityFeed(
+            friends_active: [
+                FSFriendActivityEntry(friend_id: "f1", username: "Sarah", last_active_at: nil, note_preview: nil),
+            ],
+            check_in: nil
+        )
+        let sut = FriendActivityHeroCard(feed: feed) { _ in }
+
+        XCTAssertNoThrow(try sut.inspect().find(text: "No recent activity from your friends yet."))
+        XCTAssertThrowsError(try sut.inspect().find(text: "Add a friend to see their notes and highlights here."),
+                              "friends-with-no-activity must render its own message, not fall back to the no-friends copy") { _ in }
+    }
+
+    // MARK: Happy path — active friend with a note preview (regression guard)
+
+    func test_activeFriendWithNotePreview_rendersHeadlineAndPreviewText() throws {
+        let feed = FSFriendActivityFeed(
+            friends_active: [
+                FSFriendActivityEntry(
+                    friend_id: "f1", username: "Sarah", last_active_at: isoNow(),
+                    note_preview: FSFriendNotePreview(note_id: "n1", title: "Morning reflection",
+                                                        text: "Started reading Psalm 23 again this morning.",
+                                                        timestamp: isoNow())
+                )
+            ],
+            check_in: nil
+        )
+        let sut = FriendActivityHeroCard(feed: feed) { _ in }
+
+        XCTAssertNoThrow(try sut.inspect().find(text: "Sarah wrote a note today"))
+        XCTAssertNoThrow(try sut.inspect().find(text: "Started reading Psalm 23 again this morning."))
+        XCTAssertThrowsError(try sut.inspect().find(text: "No recent activity from your friends yet."))
+        XCTAssertThrowsError(try sut.inspect().find(text: "Add a friend to see their notes and highlights here."))
+    }
+
+    // MARK: Happy path — active friend WITHOUT a note preview still gets a headline
+
+    func test_activeFriendWithoutNotePreview_rendersWasActiveHeadline_noPreviewPanel() throws {
+        let feed = FSFriendActivityFeed(
+            friends_active: [
+                FSFriendActivityEntry(friend_id: "f2", username: "Marcus", last_active_at: isoNow(), note_preview: nil)
+            ],
+            check_in: nil
+        )
+        let sut = FriendActivityHeroCard(feed: feed) { _ in }
+
+        XCTAssertNoThrow(try sut.inspect().find(text: "Marcus was active today"))
+    }
+
+    // MARK: Tap wiring — activityRow's tap invokes onOpenFriend with the primary entry
+
+    func test_tappingActivityRow_invokesOnOpenFriend_withPrimaryEntry() throws {
+        var opened: FSFriendActivityEntry?
+        let entry = FSFriendActivityEntry(friend_id: "f1", username: "Sarah", last_active_at: isoNow(), note_preview: nil)
+        let feed = FSFriendActivityFeed(friends_active: [entry], check_in: nil)
+        let sut = FriendActivityHeroCard(feed: feed) { opened = $0 }
+
+        // activityRow's Button is the only Button in the populated (single
+        // active friend, no note preview) render tree -- avatarStackRow is
+        // plain Circles/Text, not tappable.
+        try sut.inspect().find(ViewType.Button.self).tap()
+
+        XCTAssertEqual(opened?.friend_id, "f1")
+    }
+}
+
+final class CheckInRowTests: XCTestCase {
+
+    // MARK: Badge text variants (all four branches of CheckInRow.badgeText)
+
+    func test_badgeText_nilDaysSinceContact_rendersNeverMessaged() throws {
+        let sut = CheckInRow(checkIn: FSCheckInCandidate(friend_id: "f1", username: "Quiet Friend", days_since_contact: nil)) {}
+        XCTAssertNoThrow(try sut.inspect().find(text: "Never messaged"),
+                          "a friend with tracked activity but no direct-message history yet must render a defined, non-crashing badge")
+    }
+
+    func test_badgeText_zeroDays_rendersTalkedToday() throws {
+        let sut = CheckInRow(checkIn: FSCheckInCandidate(friend_id: "f1", username: "Sarah", days_since_contact: 0)) {}
+        XCTAssertNoThrow(try sut.inspect().find(text: "Talked today"))
+    }
+
+    func test_badgeText_oneDay_rendersSingularDayPhrasing() throws {
+        let sut = CheckInRow(checkIn: FSCheckInCandidate(friend_id: "f1", username: "Sarah", days_since_contact: 1)) {}
+        XCTAssertNoThrow(try sut.inspect().find(text: "It's been 1 day"))
+    }
+
+    func test_badgeText_multipleDays_rendersPluralDayPhrasing() throws {
+        let sut = CheckInRow(checkIn: FSCheckInCandidate(friend_id: "f1", username: "Sarah", days_since_contact: 6)) {}
+        XCTAssertNoThrow(try sut.inspect().find(text: "It's been 6 days"))
+    }
+
+    func test_headline_includesFriendUsername() throws {
+        let sut = CheckInRow(checkIn: FSCheckInCandidate(friend_id: "f1", username: "Sarah", days_since_contact: 6)) {}
+        XCTAssertNoThrow(try sut.inspect().find(text: "Check in with Sarah"))
+    }
+
+    func test_tappingCTAButton_invokesOnTap() throws {
+        var tapped = false
+        let sut = CheckInRow(checkIn: FSCheckInCandidate(friend_id: "f1", username: "Sarah", days_since_contact: 6)) { tapped = true }
+        // The CTA Button's label is a plain Circle/Image (its user-facing
+        // "Check in with Sarah" text lives in a sibling VStack, not inside
+        // the Button itself -- the button is identified by accessibility
+        // label only), so it's the only Button in the tree either way.
+        try sut.inspect().find(ViewType.Button.self).tap()
+        XCTAssertTrue(tapped)
+    }
+}
+
+final class NoteResumeCardTests: XCTestCase {
+
+    // MARK: Empty state 3 — no recent note to resume
+
+    func test_nilNote_rendersHaventWrittenEmptyState_andStartANotePillCopy() throws {
+        let sut = NoteResumeCard(note: nil) {}
+
+        XCTAssertNoThrow(try sut.inspect().find(text: "You haven't written a note yet."))
+        XCTAssertNoThrow(try sut.inspect().find(text: "Start a note"))
+        XCTAssertNoThrow(try sut.inspect().find(text: "capture a reflection"))
+        XCTAssertThrowsError(try sut.inspect().find(text: "Open note"),
+                              "the empty state must not show the populated 'Open note' pill copy") { _ in }
+    }
+
+    func test_nilNote_tappingCard_invokesOnOpen_soCallerCanOpenANewNoteInstead() throws {
+        var opened = false
+        let sut = NoteResumeCard(note: nil) { opened = true }
+        try sut.inspect().find(ViewType.Button.self).tap()
+        XCTAssertTrue(opened)
+    }
+
+    // MARK: Happy path — a real recent note (regression guard)
+
+    func test_populatedNote_rendersTitleAndPreview_andOpenNotePillCopy() throws {
+        let note = FSNote(
+            id: "note-1", user: "user-1", title: "Sunday Service 06/28",
+            text: "Pastor Ed spoke on the courage of faith.", public: false, group_id: "",
+            is_reply: false, timestamp: "2026-06-28 20:10:22", verses: [], replies: []
+        )
+        let sut = NoteResumeCard(note: note) {}
+
+        XCTAssertNoThrow(try sut.inspect().find(text: "Sunday Service 06/28"))
+        XCTAssertNoThrow(try sut.inspect().find(text: "Open note"))
+        XCTAssertNoThrow(try sut.inspect().find(text: "where you left off"))
+        XCTAssertThrowsError(try sut.inspect().find(text: "You haven't written a note yet."))
+    }
+
+    func test_populatedNote_emptyTitle_fallsBackToUntitledNote_insteadOfBlankRow() throws {
+        let note = FSNote(
+            id: "note-1", user: "user-1", title: "",
+            text: "body", public: false, group_id: "",
+            is_reply: false, timestamp: "2026-06-28 20:10:22", verses: [], replies: []
+        )
+        let sut = NoteResumeCard(note: note) {}
+        XCTAssertNoThrow(try sut.inspect().find(text: "Untitled note"),
+                          "a note with an empty title must render a defined fallback label, never a blank row")
+    }
+}

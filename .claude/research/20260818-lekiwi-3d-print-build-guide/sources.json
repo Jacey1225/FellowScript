@@ -1,0 +1,137 @@
+[
+  {
+    "url_or_ref": "user-provided: prior research at .claude/research/20260818-modern-robotics-textbook-projects/brief.md, critique.md, conclusion.md",
+    "title": "Modern Robotics Textbook Projects — prior completed research (background, cited forward)",
+    "type": "user-provided",
+    "reliability_notes": "Prior full 8-step pipeline run in this same project. Established (with critique-stage corroboration/correction already applied): confirmed 13-chapter Modern Robotics structure and prerequisite ordering (from direct PDF read); LeKiwi confirmed buildable via an independent, non-affiliated builder account (Foxglove/Aditya Kamath) in addition to vendor/aggregator sources; LeKiwi cost is an unresolved range ($482-499 upstream reference BOM, excluding print cost, vs. $660 aggregator headline figure) — critique treats $482-499 as the harder number; Ch.8 dynamics is a structural gap across the whole SO-ARM family (position-controlled hobby servos, no runtime dynamics computation); calibration friction on the SO-ARM family is documented via open GitHub issues on the lerobot repo. Treated as settled background per the research plan, not re-derived.",
+    "key_claims_supported": [
+      "Textbook's confirmed 13-chapter structure and authors' own prerequisite ordering, citable directly for chapter-mapping reasoning",
+      "LeKiwi buildability already independently corroborated (Foxglove/Aditya Kamath)",
+      "LeKiwi cost range $482-499 (reference BOM, excl. print cost) vs. $660 (aggregator headline) already flagged as unreconciled",
+      "Ch.8 dynamics structural gap already evidence-backed for the whole SO-ARM/LeKiwi family",
+      "SO-ARM family calibration friction already documented via GitHub issues"
+    ],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "https://github.com/SIGRobotics-UIUC/LeKiwi/blob/main/3DPrinting.md",
+    "title": "LeKiwi 3D Printing instructions — SIGRobotics-UIUC/LeKiwi (official repo)",
+    "type": "found",
+    "reliability_notes": "Primary/official source — the project's own repo. Directly documents printer requirements: PLA, 15% infill, 0.2mm layer height, 150mm/s speed, tested on a Bambu Lab P1S with auto-arrange/auto-support, supports needed specifically for the servo wheel hub, ~34 hours total print time across 11+ parts. No bed-size or heat-set-insert guidance given for base parts specifically (contrast with SO-101 arm STL guidance below, which does specify bed size and no heat-set inserts).",
+    "key_claims_supported": [
+      "Official location of LeKiwi base/chassis 3D-printable part files and printer requirements",
+      "Parts to print for the base: base plate (2 layers), 3x drive motor mounts, 3x servo wheel hubs (needs supports), servo controller mount, battery mount, Pi case (top/bottom), camera mounts, optional modified follower-arm-base shim",
+      "~34 hour total print time estimate for the base part set"
+    ],
+    "corroboration_count": 2
+  },
+  {
+    "url_or_ref": "https://github.com/SIGRobotics-UIUC/LeKiwi/blob/main/Assembly.md",
+    "title": "LeKiwi Assembly guide — SIGRobotics-UIUC/LeKiwi (official repo)",
+    "type": "found",
+    "reliability_notes": "Primary/official source. Gives a concrete 5-phase assembly sequence (wheel modules; bottom plate/electronics; top plate/Pi/arm mount; final assembly/cable routing; camera mounting) with fastener-level detail, ~2 hour estimate, and a stated prerequisite that a pre-built SO-100/SO-101 arm exists before starting. Corroborated at a coarser phase level by the independent Seeed Studio wiki tutorial (below), which follows the same underlying repo but documents it independently with its own phase lettering and additional callouts (e.g. motor-ID assignment warning).",
+    "key_claims_supported": [
+      "Concrete 5-phase LeKiwi assembly sequence: wheel modules -> bottom plate -> top plate -> final assembly/cable routing -> camera mounting",
+      "Fastener-level detail per phase (e.g. drive motor to mount, wheel hub to omniwheel, servo horn to wheel hub)",
+      "Arm (SO-101) must be pre-built separately before LeKiwi-specific assembly begins",
+      "12V vs 5V vs wired power variants require different bottom-plate wiring paths"
+    ],
+    "corroboration_count": 2
+  },
+  {
+    "url_or_ref": "https://github.com/SIGRobotics-UIUC/LeKiwi/blob/main/BOM.md",
+    "title": "LeKiwi Bill of Materials (root/Feetech-based build) — SIGRobotics-UIUC/LeKiwi (official repo)",
+    "type": "found",
+    "reliability_notes": "Primary/official source; this is the same upstream reference BOM the prior research's critique stage already identified as totaling $482-499 excluding print cost. This round fetched the itemized breakdown directly: $482 (12V complete), $499 (5V complete), $184 (wired base only), broken into mobile-base structure, sensors/compute, base electronics, SO-101 arm componentry, and tools/accessories, explicitly noting the total excludes 3D-printing cost. This directly extends the prior research (which had the total figure but not the itemization or the print-cost caveat) rather than duplicating it.",
+    "key_claims_supported": [
+      "Itemized print-vs-buy BOM for the Feetech-based LeKiwi: printed parts free (chassis/mounts/hubs), purchased parts costed line-by-line (servos, Pi, cameras, battery, controller boards, fasteners)",
+      "Confirmed the $482-499 reference BOM total explicitly excludes 3D-printing filament/time cost — a print-cost-specific gap the prior research's cost baseline did not address, in scope for this task per the research plan",
+      "Three build variants (12V complete, 5V complete, wired-base-only) with different costs and wiring complexity"
+    ],
+    "corroboration_count": 2
+  },
+  {
+    "url_or_ref": "https://github.com/SIGRobotics-UIUC/LeKiwi/blob/main/DynamixelLeKiwi/BOM.md",
+    "title": "LeKiwi Bill of Materials (Dynamixel variant) — SIGRobotics-UIUC/LeKiwi (official repo)",
+    "type": "found",
+    "reliability_notes": "Primary/official source documenting an alternate, Dynamixel-servo-based LeKiwi variant (as opposed to the Feetech-based default). Total $770.47, notably higher than both the $482-499 Feetech reference BOM and the prior research's $660 aggregator figure — suggests the $660 headline may partially reflect a different/mixed configuration rather than being directly reconcilable with the $482-499 Feetech figure. This is new print-cost/BOM-adjacent evidence not covered by the prior research (which assumed a single BOM baseline).",
+    "key_claims_supported": [
+      "A distinct Dynamixel-servo LeKiwi build variant exists alongside the default Feetech variant, at a materially higher cost ($770.47 vs $482-499)",
+      "Dynamixel variant BOM: 3x DYNAMIXEL XL430-W250-T wheel motors, U2D2 controller hardware, Koch v1.1 leader/follower teleoperation arms priced separately ($199 leader / $232 follower)"
+    ],
+    "corroboration_count": 2
+  },
+  {
+    "url_or_ref": "https://github.com/SIGRobotics-UIUC/LeKiwi/blob/main/README.md",
+    "title": "SIGRobotics-UIUC/LeKiwi — main repo README",
+    "type": "found",
+    "reliability_notes": "Primary/official source; repo entry point linking BOM/3DPrinting/Assembly docs and confirming hardware overview (Pi 5, 12V 5A battery or 65W power bank, 3-wheel Kiwi holonomic drive with omni wheels, SO-ARM101 arm, workspace + wrist cameras). Also confirms Fusion 360 CAD source files and exported URDF are available, and that base plates use a standardized 3.5mm-hole/20mm-spacing mounting pattern.",
+    "key_claims_supported": [
+      "LeKiwi is built around a 3-wheel holonomic ('Kiwi drive') base plus an SO-ARM101 follower arm",
+      "CAD source (Fusion 360) and URDF (for simulation) are available alongside the STL print files, not just STLs alone",
+      "Standardized base-plate mounting pattern (3.5mm holes, 20mm spacing) referenced across parts"
+    ],
+    "corroboration_count": 2
+  },
+  {
+    "url_or_ref": "https://github.com/huggingface/lerobot/blob/main/docs/source/lekiwi.mdx (rendered at https://huggingface.co/docs/lerobot/lekiwi)",
+    "title": "LeKiwi — official Hugging Face LeRobot documentation",
+    "type": "found",
+    "reliability_notes": "Primary/official source from the software-stack maintainer (Hugging Face), independent authorship from the SIGRobotics-UIUC hardware repo though part of the same overall ecosystem. Authoritative for software/firmware setup phase: installation (`pip install -e \".[lekiwi]\"`), port detection (`lerobot-find-port`), motor setup (`lerobot-setup-motors`), calibration (`lerobot-calibrate` for both follower base+arm and leader teleop arm), host/client teleoperation architecture (Pi runs `lekiwi_host`, laptop runs client), keyboard teleop controls and three named speed modes, dataset recording/training/eval workflow, and Mac-specific Input Monitoring permission gotcha.",
+    "key_claims_supported": [
+      "Full software/firmware setup phase: install, port-find, motor-setup, calibrate (two-step: follower base+arm, then leader arm), host/client teleoperation launch",
+      "LeKiwi's holonomic base exposes keyboard teleop with three explicit speed modes (fast/medium/slow; linear m/s and rotational deg/s specified) — directly supports mapping the drive-control phase to Ch.13 wheeled-robot kinematics and Ch.11 control",
+      "Calibration procedure: move to mid-range, then cycle full joint range of motion, explicitly framed as enabling policy transfer across physically different robot units",
+      "Data collection guidance (>=50 episodes, 10 per location) for imitation-learning training, relevant to the software-setup phase's chapter mapping"
+    ],
+    "corroboration_count": 3
+  },
+  {
+    "url_or_ref": "https://wiki.seeedstudio.com/lerobot_lekiwi/",
+    "title": "Lekiwi in Lerobot — Seeed Studio Wiki",
+    "type": "found",
+    "reliability_notes": "Independent vendor tutorial (Seeed Studio, a hardware vendor separate from SIGRobotics-UIUC and Hugging Face) documenting the same build from its own perspective — genuine second-source corroboration of print settings and assembly phases, not a mirror of the primary repo's text. One minor discrepancy flagged: this source recommends PLA+ specifically, while the official 3DPrinting.md says plain PLA (same general filament family, but not identical wording) — worth noting as a small inconsistency rather than a substantive conflict. Also independently documents software friction points (Linux USB permission fix, `lerobot-find-port` requiring physical cable disconnection, IP-config verification via ping, Mac keyboard-permission requirement, SSH-not-enabled-by-default on fresh Pi images) not spelled out as explicitly in the HF docs.",
+    "key_claims_supported": [
+      "Independent corroboration of LeKiwi print settings (PLA+, 0.2mm layer height, 15% infill, 150mm/s, Bambu Lab P1S tested) and that supports are needed only for the wheel hub",
+      "Independent corroboration of the phased assembly structure (motor install -> electronics -> Pi/arm mount) with its own fastener-level detail",
+      "Critical build callout: wheel motor IDs 7/8/9 map to specific physical positions (8=rear, 7=left-front, 9=right-front) and mis-assignment is a documented pitfall",
+      "Software/firmware setup friction points: Linux USB port permissions, port-detection requiring physical cable disconnect, Mac keyboard Input Monitoring permission, SSH not enabled by default on fresh Raspberry Pi OS installs"
+    ],
+    "corroboration_count": 2
+  },
+  {
+    "url_or_ref": "https://foxglove.dev/blog/upgrading-the-lekiwi-into-a-lidar-equipped-explorer",
+    "title": "Upgrading the LeKiwi into a LiDAR-equipped explorer — Foxglove blog (Aditya Kamath)",
+    "type": "found",
+    "reliability_notes": "Independent, non-vendor, non-affiliated builder account (same author/source the prior research already used to corroborate LeKiwi buildability generally). This round re-checked it specifically for print/assembly friction: the author reports the base arrived pre-integrated and 'a breeze' to integrate (shared STS3215 servos with prior SO-100 experience), and describes no physical assembly or print friction at all — the only friction documented is software-side (buggy manufacturer ROS 2 LiDAR package, resolved with AI-assisted debugging), unrelated to LeKiwi's own print/assembly process. This is informative as a data point (an experienced builder found the physical build smooth) but does not itself surface print-specific friction, which remains a genuine gap (see source-gathering.json).",
+    "key_claims_supported": [
+      "Independent, non-vendor builder reports the LeKiwi base+arm integration was straightforward (no reported print-fit or assembly friction), corroborating rather than contradicting the official docs' framing",
+      "This account's friction is entirely software-side (buggy third-party ROS 2 LiDAR driver package), not physical build/print related"
+    ],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "https://github.com/TheRobotStudio/SO-ARM100 (STL/SO101 directory: https://github.com/TheRobotStudio/SO-ARM100/tree/main/STL/SO101)",
+    "title": "TheRobotStudio/SO-ARM100 — official SO-101 arm STL/print files and print-settings guidance",
+    "type": "found",
+    "reliability_notes": "Primary/official source, already used in the prior research for SO-ARM100/101 buildability but re-fetched this round specifically for print-settings detail the prior round did not extract (bed-size variants, gauge-part testing, no-heat-set-inserts confirmation). This is the actual upstream location of the SO-101 arm's print files that LeKiwi's own repo references and optionally patches with a modified base shim.",
+    "key_claims_supported": [
+      "SO-101 arm STL files ship in two bed-size variants: Ender-compatible (220x220mm) and Prusa/UP-compatible (205x250mm) — a concrete, LeKiwi-relevant printer requirement not previously captured",
+      "Print settings: PLA+, 0.4mm nozzle/0.2mm layer height (or 0.6mm nozzle/0.4mm layer height alternative), 15% infill, supports everywhere except shallow slopes and horizontal-axis screw holes",
+      "Recommends printing/verifying a calibration gauge part (against a 4x2 Lego block or an actual STS3215 servo) before committing to a full print run, to catch printer dimensional-accuracy problems early",
+      "No heat-set inserts are used in this design (screws thread directly into printed plastic)"
+    ],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "https://orobot.io/o/program/BROKER-2/lekiwi-mobile-base",
+    "title": "LeKiwi Mobile Base — Free STLs, Code & BOM — orobot.io",
+    "type": "found",
+    "reliability_notes": "Independent third-party robot-cataloguing site (distinct from Seeed Studio, Hugging Face, and SIGRobotics-UIUC), corroborating part counts, print-vs-buy split, and an independent cost estimate ($450-550) that sits between the $482-499 reference BOM and the $660 aggregator figure -- another data point on the unresolved cost range, not a resolution of it. Does not itself document assembly-phase detail or friction points beyond linking back to the upstream repo.",
+    "key_claims_supported": [
+      "Independent corroboration of the ~12-15 printed-part count and print-vs-buy split (chassis/mounts/hubs/camera holders/compute enclosure printed; motors/wheels/controller/Pi/battery/cameras/fasteners purchased)",
+      "Independent cost estimate ($450-550) partially triangulating the unresolved $482-499 vs $660 cost range from the prior research, without resolving it"
+    ],
+    "corroboration_count": 2
+  }
+]

@@ -1,0 +1,6 @@
+{
+  "task_id": "20260817-small-model-coding-agents",
+  "stage": "evaluating-diffs",
+  "result": "pass",
+  "summary": "Small local models become capable coding agents only through compensation (verifiers, retrieval, orchestration, distillation), not raw capability gains; the best-evidenced finding is negative (severe multi-turn tool-use collapse, uncontested), and several headline claims (350M-model ToolBench margin, RAG as a general compensator, Devstral's SOTA framing) hold up only in narrower conditions than originally stated, while none were flatly disproven and two areas (fine-tuning/distillation, multi-agent-vs-distillation) remain fully unresolved."
+}

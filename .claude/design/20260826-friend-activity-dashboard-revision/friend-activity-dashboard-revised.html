@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Friend Activity Dashboard, Editorial Hero</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Lora:ital,wght@0,500;0,600;1,500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+
+<style>
+  :root {
+    --bg-page: #120d09;
+    --bg-page-2: #0c0906;
+    --bg-app: #1E1812;
+
+    --grad-1: #C98420;
+    --grad-2: #A0641A;
+    --grad-3: #6B4315;
+    --grad-4: rgba(58, 38, 18, 0.55);
+
+    --glass-tint: rgba(42, 27, 11, 0.14);
+
+    --gold: #D4922A;
+    --gold-light: #F0AE40;
+    --gold-dim: #B07820;
+    --gold-muted: rgba(212, 146, 42, 0.75);
+
+    --parchment: #F5EAD0;
+    --parchment-55: rgba(245, 234, 208, 0.55);
+    --parchment-70: rgba(245, 234, 208, 0.70);
+    --parchment-85: rgba(245, 234, 208, 0.85);
+
+    --ink: #1A100A;
+    --ink-2: #24170A;
+
+    --hairline: rgba(255, 255, 255, 0.08);
+    --border-a-hero: rgba(255, 255, 255, 0.30);
+    --border-b-hero: rgba(212, 146, 42, 0.20);
+    --border-a-std: rgba(255, 255, 255, 0.18);
+    --border-b-std: rgba(212, 146, 42, 0.12);
+
+    --caption: rgba(245, 234, 208, 0.38);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    background: var(--bg-page);
+    color: var(--parchment);
+    font-family: "Inter", system-ui, sans-serif;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 56px 20px 72px;
+    position: relative;
+    overflow-x: hidden;
+    margin: 0;
+  }
+
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    background:
+      radial-gradient(760px 560px at 50% 8%, rgba(201, 132, 32, 0.16), transparent 60%),
+      radial-gradient(900px 700px at 50% 100%, var(--bg-page-2), transparent 70%);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .stage {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 22px;
+  }
+
+  .eyebrow-page {
+    font-family: "Lora", Georgia, serif;
+    font-size: 11px;
+    letter-spacing: 0.32em;
+    text-transform: uppercase;
+    color: var(--caption);
+    text-align: center;
+  }
+
+  /* ---------- phone shell ---------- */
+
+  .phone-shell {
+    width: 458px;
+    padding: 14px;
+    border-radius: 66px;
+    background: linear-gradient(155deg, #2b2320, #0e0b09 60%);
+    box-shadow:
+      0 40px 90px rgba(0, 0, 0, 0.55),
+      0 8px 24px rgba(0, 0, 0, 0.4),
+      inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+    position: relative;
+  }
+
+  .screen {
+    width: 430px;
+    height: 932px;
+    border-radius: 54px;
+    overflow: hidden;
+    position: relative;
+    background:
+      linear-gradient(180deg,
+        rgba(201, 132, 32, 0.14) 0%,
+        rgba(201, 132, 32, 0.10) 10%,
+        rgba(160, 100, 26, 0.07) 22%,
+        rgba(107, 67, 21, 0.04) 34%,
+        transparent 48%
+      ),
+      var(--bg-app);
+  }
+
+  .dynamic-island {
+    position: absolute;
+    top: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 118px;
+    height: 34px;
+    border-radius: 20px;
+    background: #050403;
+    z-index: 20;
+  }
+
+  .home-indicator {
+    position: absolute;
+    bottom: 9px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 134px;
+    height: 5px;
+    border-radius: 3px;
+    background: rgba(245, 234, 208, 0.55);
+    z-index: 20;
+  }
+
+  /* ---------- status bar ---------- */
+
+  .status-bar {
+    height: 59px;
+    padding: 0 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: relative;
+    z-index: 5;
+  }
+
+  .status-time {
+    font-family: "Outfit", sans-serif;
+    font-weight: 600;
+    font-size: 15px;
+    color: var(--ink);
+    letter-spacing: 0.01em;
+  }
+
+  .status-icons { display: flex; align-items: center; gap: 6px; }
+  .status-icons svg { display: block; }
+
+  /* ---------- content column ---------- */
+
+  .content {
+    position: relative;
+    z-index: 5;
+    padding: 0 20px;
+  }
+
+  .greeting {
+    padding: 10px 0 8px;
+    font-family: "Outfit", sans-serif;
+    font-weight: 600;
+    font-size: 16px;
+    color: var(--ink);
+  }
+
+  .greeting .greet-accent {
+    font-family: "Lora", Georgia, serif;
+    font-style: italic;
+    font-weight: 600;
+  }
+
+  .hairline {
+    height: 1px;
+    background: var(--hairline);
+    margin: 12px 0;
+  }
+
+  /* ---------- hero glow (subtlety device, baseline) ---------- */
+
+  .hero-wrap {
+    position: relative;
+    margin-top: 8px;
+  }
+
+  .hero-glow {
+    position: absolute;
+    top: -14px;
+    left: -25px;
+    right: -25px;
+    bottom: -20px;
+    background: radial-gradient(60% 60% at 50% 42%, rgba(212, 146, 42, 0.07), transparent 78%);
+    filter: blur(50px);
+    z-index: 0;
+    pointer-events: none;
+  }
+
+  /* ---------- glass card base ---------- */
+
+  .glass-card {
+    position: relative;
+    z-index: 1;
+    border-radius: 24px;
+    border: 1px solid transparent;
+    background:
+      linear-gradient(var(--glass-tint), var(--glass-tint)) padding-box,
+      linear-gradient(135deg, var(--border-a-hero), var(--border-b-hero)) border-box;
+    backdrop-filter: blur(26px) saturate(170%);
+    -webkit-backdrop-filter: blur(26px) saturate(170%);
+    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.28);
+  }
+
+  .glass-card.standard {
+    border-radius: 20px;
+    background:
+      linear-gradient(var(--glass-tint), var(--glass-tint)) padding-box,
+      linear-gradient(135deg, var(--border-a-std), var(--border-b-std)) border-box;
+    backdrop-filter: blur(22px) saturate(160%);
+    -webkit-backdrop-filter: blur(22px) saturate(160%);
+  }
+
+  .sec-label {
+    font-family: "Lora", Georgia, serif;
+    font-size: 10.5px;
+    letter-spacing: 0.28em;
+    text-transform: uppercase;
+    color: var(--gold-muted);
+  }
+
+  /* ---------- hero: friend activity ---------- */
+
+  .hero-card {
+    padding: 20px;
+  }
+
+  .eyebrow-row {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+  }
+
+  .avatar-stack {
+    display: flex;
+    align-items: center;
+  }
+
+  .avatar-stack .stack-avatar {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: var(--ink-2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: "Outfit", sans-serif;
+    font-weight: 700;
+    font-size: 12px;
+    color: var(--gold-light);
+    border: 2px solid var(--bg-app);
+    margin-left: -9px;
+  }
+
+  .avatar-stack .stack-avatar:first-child { margin-left: 0; }
+
+  .avatar-stack .stack-avatar.plus {
+    background: var(--ink-2);
+    color: var(--gold-light);
+    font-size: 10.5px;
+  }
+
+  .activity-primary {
+    display: flex;
+    gap: 14px;
+    margin-top: 14px;
+  }
+
+  .avatar {
+    flex: 0 0 auto;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: var(--ink-2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: "Outfit", sans-serif;
+    font-weight: 700;
+    font-size: 14px;
+    color: var(--gold-light);
+    margin-top: 4px;
+  }
+
+  .activity-body { flex: 1; min-width: 0; }
+
+  .activity-headline {
+    font-family: "Outfit", sans-serif;
+    font-weight: 700;
+    font-size: 36px;
+    line-height: 1.10;
+    color: var(--parchment);
+    text-wrap: balance;
+  }
+
+  .activity-time {
+    margin-top: 4px;
+    font-size: 11px;
+    color: var(--parchment-55);
+  }
+
+  .chevron {
+    flex: 0 0 auto;
+    align-self: center;
+    margin-left: 8px;
+    width: 7px;
+    height: 12px;
+  }
+
+  .preview-panel {
+    margin-top: 16px;
+    margin-left: 32px;
+    margin-right: 16px;
+    font-size: 18px;
+    line-height: 1.6;
+  }
+
+  .preview-panel.note {
+    font-family: "Inter", sans-serif;
+    font-style: normal;
+    color: var(--parchment-85);
+  }
+
+  .preview-panel.verse {
+    font-family: "Lora", Georgia, serif;
+    font-style: italic;
+    color: var(--parchment-70);
+  }
+
+  /* ---------- check-in row (flush, no container) ---------- */
+
+  .checkin-row {
+    margin: 24px 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+  }
+
+  .checkin-copy { min-width: 0; }
+
+  .checkin-title {
+    font-family: "Outfit", sans-serif;
+    font-weight: 700;
+    font-size: 17px;
+    color: var(--parchment);
+  }
+
+  .checkin-badge {
+    display: inline-flex;
+    align-items: center;
+    margin-top: 6px;
+    padding: 0 8px;
+    height: 20px;
+    border-radius: 10px;
+    border: 1px solid rgba(212, 146, 42, 0.35);
+    font-family: "Outfit", sans-serif;
+    font-weight: 600;
+    font-size: 10.5px;
+    color: rgba(240, 174, 64, 0.85);
+  }
+
+  .checkin-cta {
+    flex: 0 0 auto;
+    width: 56px;
+    height: 56px;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(90deg, var(--gold-light), var(--gold-dim));
+    box-shadow: 0 10px 26px rgba(212, 146, 42, 0.35);
+    cursor: pointer;
+  }
+
+  .checkin-cta-fill {
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    background: var(--ink-2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .checkin-cta-icon {
+    width: 24px;
+    height: 24px;
+    transform: rotate(-45deg);
+  }
+
+  /* ---------- last note widget ---------- */
+
+  .note-card {
+    padding: 16px;
+    padding-bottom: 13px;
+  }
+
+  .note-headline {
+    margin-top: 16px;
+    font-family: "Outfit", sans-serif;
+    font-weight: 700;
+    font-size: 19px;
+    color: var(--parchment);
+    text-wrap: balance;
+  }
+
+  .note-preview {
+    margin-top: 8px;
+    font-family: "Inter", sans-serif;
+    font-size: 13px;
+    line-height: 1.55;
+    color: var(--parchment-70);
+  }
+
+  .note-cta {
+    margin-top: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 44px;
+    padding: 0 6px 0 18px;
+    border-radius: 22px;
+    background: linear-gradient(90deg, var(--gold-light), var(--gold-dim));
+    cursor: pointer;
+  }
+
+  .note-cta-text { line-height: 1.2; }
+
+  .note-cta-text .l1 {
+    font-family: "Outfit", sans-serif;
+    font-weight: 700;
+    font-size: 14.5px;
+    color: var(--ink-2);
+  }
+
+  .note-cta-text .l2 {
+    font-family: "Outfit", sans-serif;
+    font-weight: 500;
+    font-size: 11.5px;
+    color: var(--ink-2);
+  }
+
+  .note-cta-badge {
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    background: var(--ink-2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+  }
+
+  .note-cta-badge svg { width: 16px; height: 16px; }
+
+  /* ---------- tab bar sliver / scroll clearance ---------- */
+
+  .tab-bar-zone {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: -34px;
+    display: flex;
+    justify-content: center;
+    z-index: 4;
+  }
+
+  .tab-bar-pill {
+    width: 268px;
+    height: 64px;
+    border-radius: 32px;
+    background: rgba(245, 234, 208, 0.07);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-top: 1px solid rgba(255, 255, 255, 0.10);
+    backdrop-filter: blur(16px) saturate(160%);
+    -webkit-backdrop-filter: blur(16px) saturate(160%);
+    box-shadow: 0 -14px 30px rgba(0, 0, 0, 0.2);
+    filter: blur(0.4px);
+  }
+
+  .caption {
+    font-family: "Inter", sans-serif;
+    font-size: 12px;
+    color: var(--caption);
+    text-align: center;
+    max-width: 420px;
+    line-height: 1.6;
+  }
+</style>
+</head>
+<body>
+
+<div class="stage">
+  <div class="eyebrow-page">FellowScript &middot; Variant C &mdash; Editorial Hero</div>
+
+  <div class="phone-shell">
+    <div class="screen">
+      <div class="dynamic-island"></div>
+
+      <div class="status-bar">
+        <div class="status-time">9:41</div>
+        <div class="status-icons">
+          <svg width="18" height="12" viewBox="0 0 18 12" fill="none">
+            <rect x="0" y="7" width="3" height="5" rx="0.8" fill="#1A100A"/>
+            <rect x="5" y="5" width="3" height="7" rx="0.8" fill="#1A100A"/>
+            <rect x="10" y="2.5" width="3" height="9.5" rx="0.8" fill="#1A100A"/>
+            <rect x="15" y="0" width="3" height="12" rx="0.8" fill="#1A100A"/>
+          </svg>
+          <svg width="16" height="12" viewBox="0 0 16 12" fill="none">
+            <path d="M8 10.6a1.2 1.2 0 100-2.4 1.2 1.2 0 000 2.4z" fill="#1A100A"/>
+            <path d="M4.6 6.4a5 5 0 016.8 0" stroke="#1A100A" stroke-width="1.4" fill="none" stroke-linecap="round"/>
+            <path d="M2 3.6a9 9 0 0112 0" stroke="#1A100A" stroke-width="1.4" fill="none" stroke-linecap="round"/>
+          </svg>
+          <svg width="25" height="12" viewBox="0 0 25 12" fill="none">
+            <rect x="0.75" y="0.75" width="20.5" height="10.5" rx="2.5" stroke="#1A100A" stroke-width="1.1"/>
+            <rect x="2.25" y="2.25" width="16" height="7.5" rx="1.2" fill="#1A100A"/>
+            <rect x="22" y="4" width="1.6" height="4" rx="0.8" fill="#1A100A"/>
+          </svg>
+        </div>
+      </div>
+
+      <div class="content">
+        <div class="greeting">Good morning, <span class="greet-accent">friend</span></div>
+
+        <div class="hero-wrap">
+          <div class="hero-glow"></div>
+          <div class="glass-card hero-card">
+            <div class="eyebrow-row">
+              <div class="avatar-stack" aria-hidden="true">
+                <div class="stack-avatar">S</div>
+                <div class="stack-avatar">J</div>
+                <div class="stack-avatar plus">+3</div>
+              </div>
+            </div>
+
+            <div class="activity-primary">
+              <div class="avatar">S</div>
+              <div class="activity-body">
+                <div class="activity-headline">Sarah wrote&nbsp;a note today</div>
+                <div class="activity-time">Today &middot; 9:14 AM</div>
+              </div>
+              <svg class="chevron" viewBox="0 0 8 13" fill="none">
+                <path d="M1 1l5.5 5.5L1 12" stroke="rgba(212,146,42,0.75)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </div>
+
+            <div class="hairline"></div>
+
+            <div class="preview-panel note">
+              Started reading Psalm 23 again this morning. Reminded me how much I need to slow down and actually listen instead of just reading&hellip;
+            </div>
+          </div>
+        </div>
+
+        <div class="checkin-row">
+          <div class="checkin-copy">
+            <div class="checkin-title">Check in with Sarah</div>
+            <div class="checkin-badge">It&rsquo;s been 6 days</div>
+          </div>
+          <button class="checkin-cta" aria-label="Check in with Sarah">
+            <span class="checkin-cta-fill">
+              <svg class="checkin-cta-icon" viewBox="0 0 24 24" fill="none">
+                <path d="M5 12h13.5M13 6.5L18.5 12 13 17.5" stroke="#F0AE40" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+              </svg>
+            </span>
+          </button>
+        </div>
+
+        <div class="glass-card standard note-card">
+          <div class="note-headline">Pick up on Sunday Service Notes</div>
+          <div class="note-preview">
+            Pastor Mike talked about grace in Ephesians 2. Need to come back to the part about&hellip;
+          </div>
+          <div class="note-cta">
+            <div class="note-cta-text">
+              <div class="l1">Open note</div>
+              <div class="l2">where you left off</div>
+            </div>
+            <div class="note-cta-badge">
+              <svg viewBox="0 0 24 24" fill="none">
+                <path d="M5 12h13.5M13 6.5L18.5 12 13 17.5" stroke="#F0AE40" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+              </svg>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="tab-bar-zone"><div class="tab-bar-pill"></div></div>
+      <div class="home-indicator"></div>
+    </div>
+  </div>
+
+  <div class="caption">
+    Variant C &mdash; Editorial Hero. Pushes the typographic register: a bolder, larger headline and a deeper preview-panel inset sharpen the widget's typographic presence.
+  </div>
+</div>
+
+</body>
+</html>

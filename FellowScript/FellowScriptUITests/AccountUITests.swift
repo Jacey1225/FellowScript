@@ -40,10 +40,28 @@ final class AccountUITests: XCTestCase {
     // transiently "hittable" mid-momentum, and a tap synthesized right then
     // can land on whatever settles underneath instead of the intended
     // control — the extra settle avoids that class of flake.
+    //
+    // Bug fix (task: 20260818-account-uitests-failures, item #1): every
+    // iteration of these retry loops now also calls
+    // dismissSystemAlertIfPresent(app). Previously that helper (added by task
+    // 20260810-note-editor-tests-signin-not-hittable) was only polled inside
+    // signInAndReachAccount()'s post-submit wait loop, which exits as soon as
+    // app.buttons["Home"].exists — but iOS's Password AutoFill "Save
+    // Password?" sheet is not guaranteed to render synchronously with sign-in
+    // completing, and can appear after that loop has already returned. A
+    // real, reproduced run of test_dangerZone_confirmedDelete_deletesAccountAndSignsOut
+    // (the longest, most scroll-heavy post-sign-in flow in this file, giving
+    // the delayed sheet the most opportunity to appear mid-test) showed
+    // exactly that: the sheet appeared after Home was already up, sat there
+    // blocking all hit-testing, and "jacob" TextField never became hittable
+    // within 25.0s. Dismissing on every scroll-helper iteration (not just
+    // during the initial post-sign-in window) protects any test's later
+    // interactions, whenever the sheet happens to appear.
 
     private func scrollToAndTap(_ element: XCUIElement, app: XCUIApplication, timeout: TimeInterval = 25) {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
+            dismissSystemAlertIfPresent(app)
             if element.exists && element.isHittable {
                 RunLoop.current.run(until: Date().addingTimeInterval(0.4))
                 if element.exists && element.isHittable {
@@ -60,6 +78,7 @@ final class AccountUITests: XCTestCase {
     private func scrollUntilExists(_ element: XCUIElement, app: XCUIApplication, timeout: TimeInterval = 25) {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
+            dismissSystemAlertIfPresent(app)
             if element.exists { return }
             app.scrollViews.firstMatch.swipeUp(velocity: .slow)
             RunLoop.current.run(until: Date().addingTimeInterval(0.6))
@@ -80,6 +99,7 @@ final class AccountUITests: XCTestCase {
     private func scrollUntilHittable(_ element: XCUIElement, app: XCUIApplication, timeout: TimeInterval = 25) {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
+            dismissSystemAlertIfPresent(app)
             if element.exists && element.isHittable {
                 RunLoop.current.run(until: Date().addingTimeInterval(0.4))
                 if element.exists && element.isHittable { return }
@@ -255,6 +275,38 @@ final class AccountUITests: XCTestCase {
         if notNow.exists { notNow.tap() }
     }
 
+    /// Taps `field` then types `text` into it, re-checked against the
+    /// Password AutoFill "Save Password?" sheet immediately before each of
+    /// the two actions. Needed because a snapshot-based XCUITest action
+    /// (`.tap()`/`.typeText()`) on an element that has stopped existing
+    /// throws a hard, unrecoverable test failure under `continueAfterFailure
+    /// = false` — reproduced for real by
+    /// test_dangerZone_confirmedDelete_deletesAccountAndSignsOut, where the
+    /// sheet slipped in during the brief gap between `scrollUntilHittable`
+    /// returning (which itself already dismisses the sheet on every retry
+    /// iteration, but not after its final check) and the very next
+    /// `.tap()`/`.typeText()` pair, leaving `.typeText()` unable to find any
+    /// TextField at all. Since a failure there can't be caught and retried
+    /// (the test method's execution is aborted at that point), the only
+    /// reliable guard is re-dismissing and re-checking existence/hittability
+    /// immediately before each action, not retrying after one fails.
+    private func safeTypeText(_ field: XCUIElement, text: String, app: XCUIApplication, timeout: TimeInterval = 10) {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            dismissSystemAlertIfPresent(app)
+            if field.exists && field.isHittable {
+                field.tap()
+                dismissSystemAlertIfPresent(app)
+                if field.exists && field.isHittable {
+                    field.typeText(text)
+                    return
+                }
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.3))
+        }
+        XCTFail("expected \(field) to accept typed text (\"\(text)\") within \(timeout)s\n\(app.debugDescription)")
+    }
+
     // MARK: - Danger Zone: username-match gate (highest-risk preserved surface)
 
     func test_dangerZone_deleteButtonStaysDisabledUntilUsernameMatches() {
@@ -273,15 +325,16 @@ final class AccountUITests: XCTestCase {
         // existence above may have nudged confirmField just out of the
         // hittable region.
         scrollUntilHittable(confirmField, app: app)
-        confirmField.tap()
-        confirmField.typeText("not-jacob")
+        safeTypeText(confirmField, text: "not-jacob", app: app)
         XCTAssertFalse(deleteButton.isEnabled, "Delete My Account must stay disabled while the typed text does not match the username exactly")
 
         // Clear and type the exact username ("jacob", MockDataService.mockUser).
+        dismissSystemAlertIfPresent(app)
         if let currentValue = confirmField.value as? String, !currentValue.isEmpty {
             let deleteAll = String(repeating: XCUIKeyboardKey.delete.rawValue, count: currentValue.count)
             confirmField.typeText(deleteAll)
         }
+        dismissSystemAlertIfPresent(app)
         confirmField.typeText("jacob")
         XCTAssertTrue(deleteButton.isEnabled, "Delete My Account must become enabled once the field exactly matches the signed-in username")
 
@@ -312,11 +365,22 @@ final class AccountUITests: XCTestCase {
 
         let confirmField = app.textFields["Type your username to confirm deletion"]
         scrollUntilHittable(confirmField, app: app)
-        confirmField.tap()
-        confirmField.typeText("jacob")
+        safeTypeText(confirmField, text: "jacob", app: app)
 
+        // Settle before reading isEnabled: the disabled-state binding update
+        // (deleteConfirm != vm.username) needs a SwiftUI render pass after
+        // typeText's last keystroke, and checking immediately with zero
+        // settle is a race — this test's own sibling,
+        // test_dangerZone_deleteButtonStaysDisabledUntilUsernameMatches,
+        // reads the same isEnabled state after a `RunLoop`-yielding
+        // multi-keystroke exchange (typing a wrong value, then clearing and
+        // retyping), which happens to give SwiftUI enough real wall-clock
+        // time to catch up; this test's single, immediate `typeText` call
+        // doesn't have that same natural buffer.
         let deleteButton = app.buttons["Delete account button"]
-        XCTAssertTrue(deleteButton.isEnabled)
+        RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+        XCTAssertTrue(deleteButton.waitForExistence(timeout: 1) && deleteButton.isEnabled,
+                      "Delete My Account must become enabled once the confirm field matches the signed-in username (\"jacob\")\n\(app.debugDescription)")
 
         dismissKeyboardIfPresent(app)
         scrollUntilExists(deleteButton, app: app)
@@ -436,19 +500,20 @@ final class AccountUITests: XCTestCase {
         XCTAssertTrue(app.switches["Agent: Spiritual Guide. Enabled."].waitForExistence(timeout: 5))
     }
 
-    // KNOWN PRE-EXISTING BUG (not introduced by this redesign — confirmed via
-    // `git show <pre-task-commit>:.../AccountView.swift` that agentsSection's
-    // `ForEach($vm.agents) { $agent in ... Toggle(..., isOn: $agent.enabled) }`
-    // + context-menu `vm.deleteAgent(id:)` is byte-for-byte identical logic to
-    // before this task): deleting the only agent crashes the app
-    // (Array._checkSubscript out-of-bounds inside SwiftUI's ToggleState/Binding
-    // machinery — a stale-binding-into-a-mutated-array crash, a well-known
-    // SwiftUI `ForEach($array)` footgun) rather than leaving vm.agents empty.
-    // This test therefore currently fails on `**TEST FAILED**`/app-crash, but
-    // that failure is NOT caused by this task's diff — it reproduces
-    // identically against the pre-redesign source. Filed as a separate,
-    // out-of-scope defect; left here (not deleted/weakened) so it starts
-    // passing automatically once that unrelated bug is fixed elsewhere.
+    // FIXED (task: 20260818-account-uitests-failures, item #2): this test used
+    // to crash the app process (Array._checkSubscript out-of-bounds inside
+    // SwiftUI's ToggleState/Binding machinery) when deleting the only agent
+    // via the context menu, because agentsSection's `ForEach($vm.agents)` held
+    // an index-derived Binding into an array that the same context menu's
+    // own destructive action then mutated out from under it — a well-known
+    // SwiftUI `ForEach($array)` footgun, worst when the removed element was
+    // the last one (array becomes empty), exactly this test's scenario. The
+    // bug predated the appearance-redesign (confirmed via `git show` to be
+    // byte-for-byte identical logic beforehand) and is now fixed structurally
+    // in AccountView.swift: agentsSection iterates `ForEach(vm.agents)`
+    // (stable values, not an index-keyed array Binding) and the row Toggle
+    // sources its binding from `agentEnabledBinding(id:)`, an id-keyed
+    // `Binding(get:set:)` re-resolved against vm.agents on every access.
     func test_eventsSection_newEventDisabled_whenNoAgents_reenabledAfterCreatingAgent() {
         let app = signInAndReachAccount()
 
@@ -604,8 +669,6 @@ final class AccountUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Free plan: 10 every 7 days"].exists)
         XCTAssertTrue(app.staticTexts["Unlimited agent events"].exists)
         XCTAssertTrue(app.staticTexts["Free plan: 1"].exists)
-        XCTAssertTrue(app.staticTexts["Unlimited agent notifications"].exists)
-        XCTAssertTrue(app.staticTexts["Free plan: 3"].exists)
 
         // Pre-purchase state: benefit copy must track the live Stepper
         // selection (selectedMemberCount starts at 1), not a static blurb.
@@ -662,7 +725,6 @@ final class AccountUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Unlimited notes"].waitForExistence(timeout: 5),
                        "expected benefit rows in the active-subscriber state\n\(app.debugDescription)")
         XCTAssertTrue(app.staticTexts["Unlimited agent events"].exists)
-        XCTAssertTrue(app.staticTexts["Unlimited agent notifications"].exists)
 
         // memberCount comes from plan.max_members (3) here, not a Stepper
         // selection — proves activePlanRow's call site wires the real plan

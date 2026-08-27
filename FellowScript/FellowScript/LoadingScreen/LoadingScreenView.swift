@@ -1,6 +1,19 @@
 // DEPENDENCY: Theme.swift, ContentView.swift, StartupCoordinator.swift
-// SOURCE: data/loading-screen.mov (transcoded to loading-screen.mov, HEVC +
-//         alpha, 1080x1080, ~9.7s @ 24fps — see this folder's own copy)
+// SOURCE: data/loading-screen.mov (ProRes 4444, real per-pixel alpha),
+//         re-transcoded to this folder's loading-screen.mov via `avconvert
+//         --preset PresetHEVCHighestQualityWithAlpha` (AVFoundation's own
+//         export pipeline, not ffmpeg) — HEVC + alpha, 1440x1440, ~9.7s @
+//         24fps. Task 20260824-loading-screen-visual-fix found the prior
+//         ffmpeg-produced derivative decoded correctly for a single
+//         high-quality frame grab (AVAssetImageGenerator) but showed a
+//         faint, uniform, real-device-reproducible whitish haze over
+//         Theme.bgPage during live AVPlayerLayer playback specifically —
+//         alpha-plane compression noise in that transcode's real-time decode
+//         path that only ffmpeg's own (non-live) decode was lenient enough
+//         to mask. Re-exporting through AVFoundation's own alpha-aware
+//         preset (the same framework family that plays it back) removed the
+//         haze entirely, confirmed via on-simulator screenshot + pixel
+//         sampling against Theme.bgPage before/after.
 //
 // Purely presentational — has no readiness or timing logic of its own.
 // ContentView owns the startup-readiness gate (StartupCoordinator) and the
@@ -26,7 +39,11 @@ struct LoadingScreenView: View {
                     Theme.bgPage.ignoresSafeArea()
                     LoopingVideoPlayer(reduceMotion: reduceMotion, onFailure: { playerFailed = true })
                         .aspectRatio(1, contentMode: .fit)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        // Icon/mark scale, not full-bleed (was effectively
+                        // filling the whole screen at .frame(maxWidth/maxHeight:
+                        // .infinity) before this fix) — centered over
+                        // Theme.bgPage with no other layout change.
+                        .frame(width: 180, height: 180)
                 }
                 // The animation itself is the loading indicator — no
                 // spinner/progress chrome stacked on top of it. One
@@ -91,6 +108,12 @@ private final class PlayerContainerView: UIView {
         backgroundColor = .clear
         isOpaque = false
         playerLayer.backgroundColor = UIColor.clear.cgColor
+        // Explicit belt-and-suspenders alongside the UIView-level isOpaque
+        // above — AVPlayerLayer's own isOpaque isn't guaranteed to inherit
+        // from the hosting UIView on every OS version, and this is the
+        // most commonly cited real-device gotcha for HEVC-with-alpha
+        // content rendering opaque despite a correctly-alpha-tagged asset.
+        playerLayer.isOpaque = false
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }

@@ -1,3 +1,4 @@
+from datetime import datetime, timezone as tzmod
 from schemas.users import User
 from db import DBManager
 from backend.interactions.blocks import BlockManager
@@ -154,3 +155,117 @@ class FriendsManager(DBManager):
         """
         self.delete("user_friends", {"user_id": self.user_id, "friend_id": friend_id})
         self.delete("user_friends", {"user_id": friend_id, "friend_id": self.user_id})
+
+    def get_friend_activity(self, limit: int = 20) -> dict:
+        """Friend-activity read surface for the dashboard's Friend Activity
+        hero card: each friend's most recent PUBLIC personal note (preview)
+        plus their last-activity timestamp, ordered most-recently-active
+        first, and a single "check in" nudge candidate -- the friend the
+        acting user has gone longest without directly messaging.
+
+        Block-respecting in both directions via the same defense-in-depth
+        `NOT EXISTS` pattern as `ActivityManager.friend_device_tokens`
+        (this subsystem's prior IDOR history means block state is
+        re-checked here rather than trusted to have fully unwound
+        `user_friends` already).
+
+        Highlights are deliberately excluded from content previews: unlike
+        notes (`public` boolean), highlights have no privacy flag today, so
+        there is no signal a given highlight is meant to be friend-visible.
+        A highlight still counts toward `last_activity_at` (via
+        ActivityManager.record_activity) -- it just never surfaces its
+        verse/color content to a friend. Note previews are further limited
+        to a friend's personal notes (`is_reply = false AND group_id IS
+        NULL`) so a group-shared or reply note's content -- which may be
+        visible to the friend only because of separate group membership --
+        never leaks to someone who is merely a friend and not a fellow
+        group member.
+
+        Args:
+            limit: Max number of friends to return in `friends_active`
+                (bounds the avatar-stack list; the mockup shows one primary
+                + a handful of others).
+
+        Returns:
+            dict: ``{"friends_active": [{"friend_id", "username",
+                "last_active_at", "note_preview": {"note_id", "title",
+                "text", "timestamp"} | None}, ...], "check_in":
+                {"friend_id", "username", "days_since_contact": int | None}
+                | None}``. `friends_active` is ordered by `last_active_at`
+                descending (friends with no tracked activity sort last).
+                `check_in` is None only when the user has no friends;
+                `days_since_contact` is None when the pair has never
+                messaged directly (still a valid, arguably stronger, nudge
+                candidate -- it sorts as if "longest ago").
+        """
+        self.cur.execute(
+            "SELECT uf.friend_id, u.username, ua.last_activity_at, "
+            "n._id, n.title, n.text, n.timestamp "
+            "FROM user_friends uf "
+            "JOIN users u ON u._id = uf.friend_id "
+            "LEFT JOIN user_activity ua ON ua.user_id = uf.friend_id "
+            "LEFT JOIN LATERAL ("
+            "  SELECT _id, title, text, timestamp FROM notes "
+            "  WHERE user_id = uf.friend_id AND public = TRUE "
+            "    AND is_reply = FALSE AND group_id IS NULL "
+            "  ORDER BY timestamp DESC LIMIT 1"
+            ") n ON TRUE "
+            "WHERE uf.user_id = %s "
+            "AND NOT EXISTS ("
+            "  SELECT 1 FROM blocked_users b "
+            "  WHERE (b.blocker_id = uf.friend_id AND b.blocked_id = uf.user_id) "
+            "     OR (b.blocker_id = uf.user_id AND b.blocked_id = uf.friend_id)"
+            ") "
+            "ORDER BY ua.last_activity_at DESC NULLS LAST "
+            "LIMIT %s",
+            (self.user_id, limit),
+        )
+        friends_active = [
+            {
+                "friend_id": str(r[0]),
+                "username": r[1],
+                "last_active_at": str(r[2]) if r[2] else None,
+                "note_preview": (
+                    {"note_id": str(r[3]), "title": r[4], "text": r[5], "timestamp": str(r[6])}
+                    if r[3] else None
+                ),
+            }
+            for r in self.cur.fetchall()
+        ]
+
+        check_in = None
+        self.cur.execute(
+            "SELECT uf.friend_id, u.username, "
+            "  (SELECT MAX(m.timestamp) FROM messages m "
+            "   JOIN message_recipients mr ON mr.message_id = m._id "
+            "   WHERE m.group_id IS NULL "
+            "     AND ((m.from_user = uf.user_id AND mr.user_id = uf.friend_id) "
+            "       OR (m.from_user = uf.friend_id AND mr.user_id = uf.user_id))"
+            "  ) AS last_contact "
+            "FROM user_friends uf "
+            "JOIN users u ON u._id = uf.friend_id "
+            "WHERE uf.user_id = %s "
+            "AND NOT EXISTS ("
+            "  SELECT 1 FROM blocked_users b "
+            "  WHERE (b.blocker_id = uf.friend_id AND b.blocked_id = uf.user_id) "
+            "     OR (b.blocker_id = uf.user_id AND b.blocked_id = uf.friend_id)"
+            ") "
+            "ORDER BY last_contact ASC NULLS FIRST "
+            "LIMIT 1",
+            (self.user_id,),
+        )
+        row = self.cur.fetchone()
+        if row:
+            friend_id, username, last_contact = row
+            days_since_contact = None
+            if last_contact:
+                if last_contact.tzinfo is None:
+                    last_contact = last_contact.replace(tzinfo=tzmod.utc)
+                days_since_contact = (datetime.now(tzmod.utc) - last_contact).days
+            check_in = {
+                "friend_id": str(friend_id),
+                "username": username,
+                "days_since_contact": days_since_contact,
+            }
+
+        return {"friends_active": friends_active, "check_in": check_in}

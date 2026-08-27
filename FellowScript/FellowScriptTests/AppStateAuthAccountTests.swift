@@ -263,11 +263,23 @@ final class ThrowingTestDataService: DataServiceProtocol {
     var commitHeartbeatResult: [String: String] = ["success": "saved note"]
     var commitHeartbeatError: Error?
     private(set) var commitHeartbeatCallCount = 0
+    // Task 20260825-scheduled-event-duplicate-fire, testing step: per-heartbeat-id
+    // overrides plus a call hook, so a single checkAndFire batch containing
+    // multiple due events can be scripted to respond differently per event
+    // (e.g. event A succeeds, event B is skipped) and to observe ordering
+    // (e.g. confirm A's fired state is persisted to UserDefaults before B's
+    // commitHeartbeat call even returns) — needed to prove the per-event
+    // immediate-persist fix in HeartbeatScheduler.checkAndFire.
+    var commitHeartbeatResultForId: [String: [String: String]] = [:]
+    private(set) var commitHeartbeatCallCountForId: [String: Int] = [:]
+    var onCommitHeartbeat: ((String) -> Void)?
 
     func commitHeartbeat(userId: String, agentId: String, heartbeatId: String, prompt: String) async throws -> [String: String] {
         commitHeartbeatCallCount += 1
+        commitHeartbeatCallCountForId[heartbeatId, default: 0] += 1
+        onCommitHeartbeat?(heartbeatId)
         if let commitHeartbeatError { throw commitHeartbeatError }
-        return commitHeartbeatResult
+        return commitHeartbeatResultForId[heartbeatId] ?? commitHeartbeatResult
     }
 
     func summarizeSession(userId: String, agentId: String, session: FSSession, groupId: String) async throws {
@@ -307,6 +319,27 @@ final class ThrowingTestDataService: DataServiceProtocol {
 
     func fetchFriendRequests(userId: String) async throws -> [(id: String, username: String)] {
         return try await MockDataService.shared.fetchFriendRequests(userId: userId)
+    }
+
+    // Controllable/observable — used by DashboardViewModel.load() tests
+    // (Dashboard's Editorial Hero Friend Activity card + check-in nudge).
+    // `fetchFriendActivityResult` overrides the return value (e.g. `.empty`
+    // for the "no friends"/"no recent activity" empty states); nil falls
+    // back to MockDataService's populated fixture, matching every other
+    // simple override seam in this double.
+    var fetchFriendActivityResult: FSFriendActivityFeed?
+    var fetchFriendActivityError: Error?
+    var fetchFriendActivityDelayNanoseconds: UInt64?
+    private(set) var fetchFriendActivityCallCount = 0
+
+    func fetchFriendActivity(userId: String) async throws -> FSFriendActivityFeed {
+        fetchFriendActivityCallCount += 1
+        if let fetchFriendActivityDelayNanoseconds {
+            try await Task.sleep(nanoseconds: fetchFriendActivityDelayNanoseconds)
+        }
+        if let fetchFriendActivityError { throw fetchFriendActivityError }
+        if let fetchFriendActivityResult { return fetchFriendActivityResult }
+        return try await MockDataService.shared.fetchFriendActivity(userId: userId)
     }
 
     func sendFriendRequest(userId: String, username: String) async throws {
@@ -373,36 +406,6 @@ final class ThrowingTestDataService: DataServiceProtocol {
         try await MockDataService.shared.leaveSession(userId: userId, sessionId: sessionId)
     }
 
-    func fetchNotifications(userId: String) async throws -> [FSNotification] {
-        return try await MockDataService.shared.fetchNotifications(userId: userId)
-    }
-
-    func createNotification(userId: String, name: String, prompt: String, timestamps: [String?]) async throws -> FSNotification {
-        return try await MockDataService.shared.createNotification(userId: userId, name: name, prompt: prompt, timestamps: timestamps)
-    }
-
-    // Controllable seam (task 20260808-ios-backend-integration-audit, step 19)
-    // for AccountViewModelUpdateNotificationErrorHandlingTests — proves the
-    // frontend step 18 fix: updateNotification now uses checkedRequestRaw
-    // (NetworkService) and AccountViewModel.updateNotification does do/catch
-    // instead of `try?`, so a server-side failure (e.g. the DB-write errors
-    // notifications.py's backend step 17 fix now re-raises instead of
-    // swallowing) surfaces via agentMsg and does NOT apply the edit locally.
-    var updateNotificationError: Error?
-    private(set) var updateNotificationCallCount = 0
-    private(set) var lastUpdateNotificationArgs: (userId: String, notifId: String, name: String, prompt: String, timestamps: [String?])?
-
-    func updateNotification(userId: String, notifId: String, name: String, prompt: String, timestamps: [String?]) async throws {
-        updateNotificationCallCount += 1
-        lastUpdateNotificationArgs = (userId, notifId, name, prompt, timestamps)
-        if let updateNotificationError { throw updateNotificationError }
-        try await MockDataService.shared.updateNotification(userId: userId, notifId: notifId, name: name, prompt: prompt, timestamps: timestamps)
-    }
-
-    func deleteNotification(userId: String, notifId: String) async throws {
-        try await MockDataService.shared.deleteNotification(userId: userId, notifId: notifId)
-    }
-
     // Controllable seam (task 20260808-ios-backend-integration-audit, step 19)
     // for AppStateRegisterDeviceTokenErrorHandlingTests — proves the frontend
     // step 18 fix: NetworkService.registerDeviceToken now uses
@@ -418,10 +421,6 @@ final class ThrowingTestDataService: DataServiceProtocol {
         lastRegisterDeviceTokenArgs = (userId, token)
         if let registerDeviceTokenError { throw registerDeviceTokenError }
         try await MockDataService.shared.registerDeviceToken(userId: userId, token: token)
-    }
-
-    func triggerNotification(userId: String, notifId: String) async throws -> [String: String] {
-        return try await MockDataService.shared.triggerNotification(userId: userId, notifId: notifId)
     }
 
     func joinCall(userId: String, sessionId: String) async throws -> ChimeJoinResponse {

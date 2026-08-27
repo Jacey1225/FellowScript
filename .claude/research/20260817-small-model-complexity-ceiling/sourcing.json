@@ -1,0 +1,6 @@
+{
+  "task_id": "20260817-small-model-complexity-ceiling",
+  "stage": "sourcing",
+  "result": "pass",
+  "summary": "Brief synthesizes 18 sources against the plan's 5 research steps: architectural/system-level techniques (context management, memory, execution feedback, self-compaction, RL stabilization) show no confirmed ceiling-raising effect and one negative/floor signal (ACM); two new benchmarks (HORIZON, OdysseyArena) make long-horizon collapse their primary subject but test only frontier models, not small ones; the fundamental-limit-vs-solvable-gap question remains genuinely unresolved, with direct sources arguing both directions; a distillation-cluster (SCoRe, AgenticQwen, ATOD, CacheRL) surfaces the single strongest ceiling-raising claim (7B student exceeding a 72B teacher) but it is unreplicated and flagged as such; both opportunistic secondary questions (live orchestration vs. distillation comparison; fine-tuning counter-evidence) were only partially answered. Reliability is mixed -- several sources are search-summary-only or partial-coverage, explicitly flagged inline -- but this reflects genuine thinness in the literature on this narrow question, not a gap severe enough to prevent an honest brief; all risks and unresolved gaps are captured in Risks and Open Questions for the critiquing stage to probe."
+}

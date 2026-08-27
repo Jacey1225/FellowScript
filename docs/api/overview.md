@@ -116,6 +116,21 @@ may still be populated.
 | POST | `/friends/{user_id}/accept/{friend_id}` | Accept a request |
 | DELETE | `/friends/{user_id}/{friend_id}` | Remove a friend |
 | GET | `/friends/{user_id}` | Friend list |
+| GET | `/friends/{user_id}/activity` | Friend-activity read surface for the dashboard's Friend Activity hero card: each friend's most recent public note preview + last-active timestamp (block-respecting both directions), plus a single "check in" nudge candidate (friend gone longest without a direct message). Highlights are not previewed (no privacy flag exists for them yet). |
+
+### `GET /friends/{user_id}/activity`
+
+**Response:** `200` with
+```json
+{
+  "friends_active": [
+    {"friend_id": "uuid", "username": "str", "last_active_at": "iso8601 | null",
+     "note_preview": {"note_id": "uuid", "title": "str", "text": "str", "timestamp": "iso8601"} | null}
+  ],
+  "check_in": {"friend_id": "uuid", "username": "str", "days_since_contact": "int | null"} | null
+}
+```
+`friends_active` is ordered most-recently-active first; `check_in` is `null` only when the user has no friends.
 
 ---
 

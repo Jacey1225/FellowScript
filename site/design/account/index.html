@@ -851,6 +851,62 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/git-deploy-plan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Git-Based Deploy Plan
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/ghcr-deploy-plan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    GHCR Server-Side Deploy Plan
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -939,8 +995,10 @@ separate "individual" plan; a 1-member group plan covers that case.</p>
 <p><strong>"What's included" disclosure (iOS)</strong> — both the active-subscriber row and the pre-purchase
 member-count picker include a tappable "What's included" row (<code>chevron.down</code>/<code>chevron.up</code>)
 that expands in place to list the plan's benefits: unlimited notes, unlimited agent events,
-unlimited agent notifications, and shared group access for up to the selected/purchased member
-count. Free-tier caps shown in each line are read live from <code>AccountViewModel.usage</code>
+and shared group access for up to the selected/purchased member count. (The former "unlimited
+agent notifications" line was removed 2026-08-26 along with the user-authored notification
+feature — see the Notifications note below.) Free-tier caps shown in each line are read live
+from <code>AccountViewModel.usage</code>
 (<code>FSUsage</code>, mirroring the backend's <code>FREE_LIMITS</code>/<code>NOTES_WINDOW_DAYS</code>) so they never drift out
 of sync with server-enforced limits; a static fallback covers the brief window before usage
 loads. Collapsed by default in both states, matching the app's existing progressive-disclosure
@@ -951,20 +1009,28 @@ pattern (e.g. <code>seatCountEditRow</code>).</p>
 <li><strong>Web</strong>: <code>DELETE /user/{user_id}</code> is called; on success the user is signed out and redirected to <code>/signin</code>.</li>
 <li><strong>iOS</strong>: <code>NetworkService.deleteUser(userId:)</code> is awaited first; <code>signOut()</code> is called after on <code>MainActor</code> (no race condition).</li>
 </ul>
-<p>The delete endpoint manually removes owned notes, nulls message and devotion author fields, then deletes the user row. All remaining related rows (subscriptions, highlights, bookmarks, notifications, agents) cascade automatically via FK constraints.</p>
+<p>The delete endpoint manually removes owned notes, nulls message and devotion author fields, then deletes the user row. All remaining related rows (subscriptions, highlights, bookmarks, agents) cascade automatically via FK constraints.</p>
 <hr />
 <h2 id="visual-design-ios">Visual Design (iOS)</h2>
 <p>The iOS Account page (<code>FellowScript/FellowScript/Account/AccountView.swift</code>) uses the same
 interactions as above, restyled to match the app's warm-bloom / glass-card visual language
 shared with the Dashboard, Chat, Notes, and Note Editor screens. Appearance-only — every
 binding, async flow (Subscription's purchase/restore/cancel/leave/seat-edit/join-request
-flows, Edit Profile save + timezone picker, Agent/Event/Notification create-toggle-delete,
+flows, Edit Profile save + timezone picker, Agent/Event create-toggle-delete,
 Two-Factor Authentication, Danger Zone's username-match delete gate), sheet, and alert is
 unchanged.</p>
+<p><strong>Notifications section removed (2026-08-26).</strong> The Account page previously had its own
+"Notifications" card (create/edit/delete a recurring AI-authored reminder, <code>NotificationSetupSheet</code>,
+a "View All" push to <code>NotificationsListView</code>) built on the now-removed user-authored notification
+CRUD/trigger endpoints (see <code>docs/api/overview.md</code> → Notifications). That whole card, its
+view-model state (<code>notifications</code>, <code>createNotification</code>/<code>updateNotification</code>/<code>deleteNotification</code>),
+and the <code>FSNotification</code> model were deleted from the iOS client in the same pass; device-token
+registration and push delivery are unaffected. No replacement UI exists yet for the backend's
+new activity-tracked reminder system.</p>
 <ul>
 <li><strong>Container</strong> — the root <code>List(.insetGrouped)</code> is replaced with a <code>ScrollView</code> +
   <code>VStack(spacing: 20)</code>, over <code>Theme.bgPage</code> plus two <code>RadialGradient</code> blooms (same values as
-  <code>ChatRootView</code>). Each of the 14 sections is its own <code>glassCard(cornerRadius: 20)</code> tile instead
+  <code>ChatRootView</code>). Each of the 13 sections is its own <code>glassCard(cornerRadius: 20)</code> tile instead
   of a flat <code>Theme.cardBg</code> list section; in-card <code>Divider().background(Theme.borderGoldFaint)</code>
   replaces native list row separators.</li>
 <li><strong>Section headers</strong> — the shared <code>sectionLabel(_:)</code> component (also used by
@@ -973,12 +1039,10 @@ unchanged.</p>
   avatar (translucent gold gradient fill, gold stroke), same size and position.</li>
 <li><strong>CTAs</strong> — plain-text-link buttons (Subscription's Start/seat-edit Save-Cancel/Change plan
   size/Restore Purchases/manage-plan actions, Edit Profile's Save Changes, Friend Requests'
-  Accept, Agents'/Events'/Notifications' "+ New …" rows, Danger Zone's Delete My Account) are
+  Accept, Agents'/Events' "+ New …" rows, Danger Zone's Delete My Account) are
   restyled into a small shared family: a solid gradient CTA pill for primary actions, a ghost
   outline pill for secondary/destructive actions, matching the pill language already shipped in
   Chat's segment toggle and the Note Editor's header chips.</li>
-<li><strong>Notifications "View All"</strong> — a small ghost pill next to the section label (the one new visual
-  composition this pass introduces; no new token).</li>
 <li><strong>Danger Zone</strong> — keeps its distinct red tint, now expressed as a tinted variant of the same
   glass card (<code>glassCard(tint: Theme.dangerBg, border: [...Theme.borderDanger])</code>) rather than a
   flat red fill. Sign Out stays in its own separate, neutral (non-danger-tinted) glass card.</li>

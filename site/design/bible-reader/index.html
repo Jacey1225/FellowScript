@@ -555,6 +555,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#left-dock-rail" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Left Dock Rail
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#notes-messaging-agent-chat-panels" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -873,6 +884,62 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/git-deploy-plan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Git-Based Deploy Plan
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/ghcr-deploy-plan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    GHCR Server-Side Deploy Plan
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -944,7 +1011,8 @@
 │    only — not under Notes)    │                            │
 └───────────────────────────────┴───────────────────────────┘
 </code></pre>
-<p>Any panel can be dragged to a new position: dropping it on an edge splits the space; dropping it in the center of another panel's tab strip groups them as tabs. A <strong>Reset Layout</strong> button (top right) restores this default arrangement at any time. The user's arrangement persists across visits (saved to <code>localStorage</code>); see <code>docs/architecture/frontend.md</code> for the implementation.</p>
+<p>Any panel can be dragged to a new position: dropping it on an edge splits the space; dropping it in the center of another panel's tab strip groups them as tabs. The user's arrangement persists across visits (saved to <code>localStorage</code>); see <code>docs/architecture/frontend.md</code> for the implementation.</p>
+<p>A fixed <strong>left dock rail</strong> (vertical icon column, full height below the nav header) sits to the left of the workspace with one icon per panel type. The currently active panel's icon shows filled/gold; every other panel's icon (closed, or open but backgrounded behind another tab) shows as a 60%-opacity outline. Clicking an icon reveals that panel if it's already open, or reopens it into a sensible default dock position if the user closed it — this is now how a closed panel gets brought back, replacing the old "Reset Layout" button (removed; the underlying reset-to-default capability still exists in code but has no UI trigger anymore).</p>
 <p>On narrow screens (≤1024px) this entire dockable system is replaced by a fixed layout: scripture text fills the screen, and a bottom tab bar opens Notes or Messages as a fullscreen overlay — no drag/split/tab behavior on mobile.</p>
 <hr />
 <h2 id="features">Features</h2>
@@ -969,6 +1037,13 @@
 <li>Active highlights overlay the verse text with the stored color at ~25% opacity</li>
 <li>Clicking a highlighted verse opens the highlight picker to remove or recolor</li>
 </ul>
+<h3 id="left-dock-rail">Left Dock Rail</h3>
+<ul>
+<li><code>ReaderDockRail</code> component: fixed vertical icon rail, one icon per dockable panel type (Bible, Notes, Highlights, Messaging, Agent Chat)</li>
+<li>Tracks the live dockview layout (<code>onDidAddPanel</code>/<code>onDidRemovePanel</code>/<code>onDidActivePanelChange</code>) so it always reflects which panels are currently open and which one is active</li>
+<li>Clicking a rail icon activates that panel if it's already open (including a backgrounded tab) or reopens it via <code>reopenPanel</code> (<code>frontend/src/lib/readerDockLayout.js</code>), which docks it back into the same relative position <code>buildDefaultLayout</code> would have used</li>
+<li>Desktop only, same <code>≤1024px</code> breakpoint as the rest of the dockable workspace</li>
+</ul>
 <h3 id="notes-messaging-agent-chat-panels">Notes, Messaging, Agent Chat panels</h3>
 <ul>
 <li><strong>Notes</strong> — personal or group notes, with its own group-selector dropdown</li>
@@ -979,9 +1054,10 @@
 <h2 id="navigation">Navigation</h2>
 <ul>
 <li>Logo / "FellowScript" in <code>AppNav</code> → <code>/</code> (home)</li>
-<li>Account icon → <code>/account</code></li>
+<li>Profile avatar (32px circular, gold ring) in <code>AppNav</code>'s top-right → <code>/account</code> if signed in, <code>/signin</code> otherwise</li>
 <li>Book/chapter changes stay within <code>/reader</code></li>
 </ul>
+<p><code>AppNav</code>'s desktop top-right shows only the profile avatar and the light/dark theme toggle — no text nav links, and no command-trigger/"Jump or Ask" overlay (removed; passage jumping is done via the mobile branch's own <code>BibleNavigator</code> controls and the desktop dockview BIBLE panel). The mobile hamburger <code>Drawer</code> still exposes Home/Read/Account as text menu items, independent of the desktop top-right.</p>
 
 
 

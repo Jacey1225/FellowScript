@@ -1,0 +1,40 @@
+# Style Brief — 20260826-friend-activity-dashboard-revision
+
+## Media type
+
+**Static.** The deliverable is a single self-contained HTML/CSS phone-shell mockup screen — no motion, duration, or interaction sequence requested. Both changes (removing two DOM elements, softening two gradient effects) are static-property edits. Confirmed by intake's media type hint; no reason to deviate.
+
+## Unified style direction
+
+This is a **single-reference revision**, not a from-scratch synthesis. The base file (`artifact-c535906c-1787795237-b41d.html`, "Friend Activity Dashboard, Editorial Hero" / Variant C) was read in full. Per the single-reference rule: stay recognizably faithful to it, apply subtle and specific improvements only where requested, do not invent a new style.
+
+**Everything preserved as-is** (explicitly out of scope): phone-shell chrome (dynamic island, status bar, home indicator, tab-bar pill), 458/430px shell dimensions, `.stage`/`.phone-shell`/`.screen` scaffold, Outfit/Lora/Inter font stack and the 36px editorial `.activity-headline` that defines "Variant C," all copy/content, avatar stack, check-in nudge row, note-resume CTA, `.glass-card`/`.glass-card.standard` blur/border treatment (`backdrop-filter: blur(22px/18px) saturate(170%/160%)`), and every color token not tied to the two flagged effects (`--grad-1..4`, `--gold*`, `--parchment*`, `--ink*` all keep their existing values — this is a restraint pass on two specific gradients, not a token rewrite).
+
+**Two targeted edits, both governed by the same "quiet luxury" instinct already present elsewhere in this file:**
+
+1. **Remove both `.sec-label` eyebrow elements** — `Friend Activity` (line 553, inside `.hero-card`'s `.eyebrow-row`) and `Pick Up Where You Left Off` (line 595, inside `.note-card`). This isn't just deletion — it's a spacing rebalance so the cards read as intentionally simpler, not broken:
+   - **`.eyebrow-row`** (`display:flex; justify-content:space-between`): with the label gone, the avatar stack is the row's only child. Under `space-between` a lone flex child collapses to `flex-start`, stranding the avatars on the left where the label used to sit — visually off since the avatar stack was designed as the row's right-hand anchor. Reassign the row to `justify-content: flex-end` (or drop the flex row entirely and right-align the avatar stack directly) so the avatars keep their original right-side position relative to the card edge, matching how the eye already reads this card from the original.
+   - **`.note-card`**: the label sat directly above `.note-headline` with no separate spacer — its own line-height plus the `.note-headline`'s `margin-top: 10px` supplied the card's top inset. Removing it without compensating leaves the headline crammed near the card's 16px top padding. Increase `.note-headline`'s `margin-top` (propose ~14–16px, roughly matching the vertical rhythm the label + margin used to occupy) so the card's internal top spacing reads the same as before, just without the label doing the work.
+   - Net effect: both cards should look like they were designed without eyebrow labels from the start, not like a piece was pulled out.
+
+2. **Soften both gold gradients — restraint, not removal, staying in the same hue family.** The file's own `body::before` backdrop glow (line 62) is the best in-file precedent for what "natural" already means here: `radial-gradient(760px 560px at 50% 8%, rgba(201, 132, 32, 0.16), transparent 60%)` — soft, single-stop, never fully opaque, wide falloff. Both flagged effects should move toward that same register:
+   - **`.screen` background wash** (lines 106–116): currently a hard 5-stop linear band that hits fully-opaque `--grad-1` (`#C98420`) for its first 12% before stepping down through `--grad-2`/`--grad-3`/`--grad-4` to transparent at 50% — this hard-edged, fully-saturated plateau is exactly the "fairly saturated" quality flagged. Replace the solid-hex banded stops with `rgba()` stops that never reach full opacity and fall off more gradually, e.g. in the shape of: `rgba(201, 132, 32, ~0.14)` at 0%, stepping down through two or three intermediate `rgba` stops in the 0.05–0.10 range, out to transparent by ~45–50%. This keeps the linear top-down direction (still legible as "warm light source at the top of the screen," per success criteria) while removing the banding and the opaque plateau. The ui-ux-pro-max style database's closest matching convention ("Modern Dark / Cinema Mobile," a premium dark-mode mobile pattern) specifies ambient glow blobs at **opacity 0.08–0.12, blur radius 30–50px** — corroborating the intake brief's own reasoning and giving a validated numeric anchor for "natural and subtle" in this exact idiom.
+   - **`.hero-glow`** (lines 200–210): already fairly restrained at `rgba(212, 146, 42, 0.10)` / `blur(50px)`. Per intake's read (the user's complaint landed more on the `.screen` wash than this element), give it a lighter, not total, pass: drop opacity to roughly **0.06–0.08** and/or widen the radial's falloff (e.g. `transparent 75-80%` instead of `70%`) so it settles as a soft ambient bloom sitting *under* the toned-down screen wash rather than competing with it — satisfying the success criterion that it read as "not obviously stronger or more saturated than" the screen wash.
+   - Both stay strictly within the existing gold/amber hue family (`--grad-*`, `--gold*` tokens) — no hue or theme change, only saturation/opacity/banding restraint.
+
+## Synthesis rationale
+
+Single reference, so no cross-reference blending was needed or attempted. The improvement direction was derived entirely from (a) the base file's own internal precedent — `body::before`'s already-restrained `rgba(201,132,32,0.16)` radial is the file's own working definition of "natural" gold ambience, so the revision leans on that rather than importing an external aesthetic — and (b) the ui-ux-pro-max skill's "Modern Dark (Cinema Mobile)" style entry, which independently corroborates the 0.08–0.12 opacity / 30–50px blur range for ambient glow in comparable premium dark-mode mobile UI. That convergence (file's own precedent + external style-intelligence match) is why the target ranges above are proposed with confidence rather than guessed. No new palette, typography, or layout ideas were introduced — this is a restraint/rebalance pass on an already-finished design, exactly as the single-reference rule calls for.
+
+## Carried-forward gaps
+
+From intake, still unresolved (not blocking, flagged forward for the spec/generation stages):
+
+- No exact final numeric values were locked by the user — the ranges above (screen wash ~0.14→transparent by 45–50%; hero-glow ~0.06–0.08 opacity) are proposed targets for the static-spec stage to finalize into exact CSS, not user-approved numbers.
+- Whether `body::before`'s page-level backdrop glow (lines 57–66, outside the phone shell) needs a matching touch-up is still open — it was and remains out of scope per the request, but now that it's being used as the *reference point* for "natural," the spec stage should sanity-check that the revised in-phone gradients don't end up reading as more restrained than the backdrop they're modeled on (i.e. avoid the odd result where the outer page glow is now the "boldest" gold element on screen).
+- No file naming/output location convention for the revised HTML — still deferred to the generation step.
+- No confirmation on whether "Variant C — Editorial Hero" captions (lines 518, 620) should be updated — presumed unchanged, carried forward as-is.
+
+New gap surfaced during synthesis:
+
+- The `.eyebrow-row`'s flex realignment (`space-between` → `flex-end`, or removing the flex wrapper) is a judgment call not explicitly specified by the user, since the request only named the label removal, not the layout consequence. This is a necessary, in-scope inference (the success criteria explicitly require no "misaligned avatar stack"), but the static-spec stage should treat the exact mechanism (flex-end vs. removing the row wrapper vs. an explicit margin) as its own decision to finalize, not something pre-locked here.

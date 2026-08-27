@@ -76,15 +76,6 @@
   --bib-ch-text:     rgba(242,242,242,0.55);
   --bible-bg:        #231610;
   --bible-text:      #E8D9BB;
-
-  /* Command-trigger ("Jump or Ask") pill states (design-notes.md §1/§4) — a
-     ghost-pill treatment (transparent fill, gold-tinted outline) distinct
-     from --pill-bg's filled-chip wash, retinted to the app's real --gold
-     rather than the design spec's muted antique-gold hex. */
-  --trigger-border:       rgba(255,198,26,0.35);
-  --trigger-border-hover: var(--gold);
-  --trigger-fill-hover:   rgba(255,255,255,0.04);
-  --trigger-fill-active:  rgba(255,255,255,0.08);
 }
 
 /* Reader-scoped warm canvas (design-notes.md §8.1, bounce revision).
@@ -118,14 +109,6 @@
   --bib-ch-text:     rgba(30,18,8,0.6);
   --bible-bg:        #F4E4C1;
   --bible-text:      #1A100A;
-
-  /* Light-mode equivalents for the command-trigger tokens (design-notes.md
-     §6 — neither source spec addresses light mode). --trigger-border-hover
-     keeps var(--gold) — gold itself doesn't shift between themes anywhere
-     else in this file, so no override needed here. */
-  --trigger-border:      rgba(160,100,18,0.35);
-  --trigger-fill-hover:  rgba(160,100,18,0.06);
-  --trigger-fill-active: rgba(160,100,18,0.12);
 }
 
 /* ── Reset & base ── */
@@ -239,8 +222,13 @@ body {
   border-bottom: none;
 }
 
+/* Cormorant Garamond (design tokens §4.3 — wordmark "Fellow"/"Script" rows),
+   not 'Playfair Display'. Scoped to .nav-logo only: Playfair Display stays
+   loaded/used elsewhere (Account/Admin/SignIn/Terms/Privacy Typography.Title
+   headings, theme.js's antd headerFontFamily) — those are separate,
+   unrelated usages of the same family name and are out of this fix's scope. */
 .nav-logo {
-  font-family: 'Playfair Display', serif;
+  font-family: 'Cormorant Garamond', serif;
   font-size: 1.45rem;
   font-weight: 700;
   letter-spacing: 0.02em;
@@ -305,113 +293,46 @@ body {
   background: rgba(255,198,26,0.2);
 }
 
-/* Reset Layout (dock-reset-btn) promoted to a solid-gold CTA, per
-   design-notes.md §4 — scoped so other .nav-pill-btn uses (font-size
-   ticker, bookmark widget, etc.) keep their low-opacity ghost-pill look. */
-.nav-pill-btn.dock-reset-btn {
-  background: linear-gradient(135deg, var(--gold-light), var(--gold) 60%, var(--gold-dim));
-  color: var(--ink);
-  font-family: 'Space Grotesk', sans-serif;
-  font-weight: 600;
+/* ── Header profile avatar (replaces the removed desktop Menu + Reader-only
+   "Jump or Ask" command trigger — 20260825-header-nav-profile-icon) ──
+   32px circular, 1.5px gold ring, per the ground-truth header spec; links to
+   /account (signed in) or /signin (signed out) via .nav-profile-link. */
+.nav-profile-link {
+  display: inline-flex;
+  line-height: 0;
 }
-.nav-pill-btn.dock-reset-btn:hover { filter: brightness(1.06); }
-
-/* ── Command-trigger pill ("Jump or Ask", design-notes.md §4) ──
-   Ghost-pill treatment (transparent fill, gold-tinted border) rather than
-   the ambient --pill-bg wash the other .nav-pill-btn uses, so it reads as
-   an outlined affordance — an anti-goal of the spec is it reading as "a
-   relabeled search bar", hence the deliberately narrow width. Reader-route
-   only (see AppNav.jsx / CommandTrigger.jsx). */
-.nav-pill-btn.cmd-trigger-btn {
-  background: transparent;
-  border: 1px solid var(--trigger-border);
-  min-width: 200px;
-  max-width: 240px;
-  height: 36px;
-  justify-content: flex-start;
-}
-.nav-pill-btn.cmd-trigger-btn:hover {
-  border-color: var(--trigger-border-hover);
-  background: var(--trigger-fill-hover);
-}
-.nav-pill-btn.cmd-trigger-btn.open,
-.nav-pill-btn.cmd-trigger-btn:active {
-  background: var(--trigger-fill-active);
-}
-/* No :focus-visible convention exists anywhere else in the codebase today
-   (design-notes.md §1/§7 flags this as a real gap, not spec nicety) — apply
-   it here and across the overlay's own interactive elements below. */
-.nav-pill-btn.cmd-trigger-btn:focus-visible {
-  outline: 2px solid var(--gold);
-  outline-offset: 2px;
-}
-.cmd-trigger-kbd {
-  margin-left: auto;
-  padding: 0.05rem 0.42rem;
-  border-radius: var(--radius-sm);
-  background: rgba(255,198,26,0.1);
-  color: rgba(255,198,26,0.7);
-  font-size: 0.62rem;
-  letter-spacing: 0.02em;
-  font-family: 'Inter', sans-serif;
-  flex-shrink: 0;
-}
-
-/* ── Command-trigger overlay (§3.3) — Jump/Ask segmented modal. The glass
-   fill/blur/border/radius live inline via CommandTrigger.jsx's Modal
-   `styles` prop (reusing --widget-bg/--widget-border/--radius-lg, the same
-   real tokens .bib-nav-widget already uses); this block only lays out the
-   overlay's own header/body/columns. */
-.cmd-overlay .ant-modal-content { box-shadow: none; }
-.cmd-overlay-header {
-  padding: 0.9rem 1rem 0.7rem;
-  border-bottom: 1px solid var(--bib-divider);
-  display: flex;
-  justify-content: center;
-}
-.cmd-overlay-body {
-  height: 440px;
-  overflow: hidden;
-}
-.cmd-overlay button:focus-visible,
-.cmd-overlay input:focus-visible,
-.cmd-overlay [tabindex]:focus-visible {
+.nav-profile-avatar:focus-visible {
   outline: 2px solid var(--gold);
   outline-offset: 2px;
 }
 
-/* Jump-to-passage's 3-column book/chapter/verse picker — reuses
-   .bib-section-label/.bib-books-grid/.bib-book-btn/.bib-ch-grid/.bib-ch-btn
-   (already styled below) for the columns' contents; these rules only lay
-   out the columns themselves. */
-.cmd-jump-cols {
-  display: flex;
-  height: 100%;
-}
-.cmd-jump-col {
-  flex: 1;
-  min-width: 0;
-  overflow-y: auto;
-  padding: 0.8rem;
-  display: flex;
-  flex-direction: column;
-}
-.cmd-jump-col + .cmd-jump-col { border-left: 1px solid var(--bib-divider); }
-.cmd-jump-hint {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  padding: 1rem;
-  text-align: center;
-  font-size: 0.72rem;
-  color: rgba(255,198,26,0.35);
-  font-family: 'Inter', sans-serif;
-  line-height: 1.6;
-}
-
-/* ── Bible nav dropdown widget ── */
+/* ── Bible nav dropdown widget (VerseSelector.jsx's "+ Add Verse" popup and
+   BibleNavigator.jsx's toolbar book/chapter dropdown both share this markup)
+   ── Warm Vellum Glass restyle (20260826-glass-verse-selector-messages):
+   was a near-opaque `background: var(--widget-bg)` fill (rgba(35,35,38,0.97)
+   dark / rgba(246,238,220,0.99) light) — the pre-glassmorphism opaque-dark
+   leftover the rest of the dockable-tabs UI already migrated off of (see
+   reader-dock.css's --panel-glass-bg/--border-glass/--shadow-glass). Both
+   consumers portal this widget to document.body (createPortal), so it can't
+   inherit those custom properties from the scoped .dockview-theme-abyss
+   ancestor — same situation as reader-dock.css's own
+   .notes-group-select-dropdown, which solves it with literal values matching
+   those tokens instead of var(...). Reusing that same literal glass here
+   (rather than a fresh set of numbers) keeps this second document.body
+   portal visually identical to the first. */
 .bib-nav-widget {
+  /* Pinned to their dark-theme values: [data-theme="light"] normally swaps
+     --bib-book-text/--bib-section-c/--bib-divider/--bib-ch-text to dark ink
+     meant to sit on the old light --widget-bg cream fill. Now that this
+     widget is an always-dark glass surface (matching the rest of the
+     theme-invariant Warm Vellum Glass system), those tokens must stay pinned
+     to their light-on-dark values too, or toggling to light theme would
+     leave dark ink text illegible against this dark glass. */
+  --bib-book-text: rgba(242,242,242,0.6);
+  --bib-section-c: rgba(255,198,26,0.5);
+  --bib-divider:   rgba(255,255,255,0.108);
+  --bib-ch-text:   rgba(242,242,242,0.55);
+
   position: absolute;
   top: calc(100% + 2px);
   left: 0;
@@ -419,14 +340,27 @@ body {
   width: min(680px, calc(100vw - var(--rail-w) - 3rem));
   transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   max-height: 460px;
-  background: var(--widget-bg);
-  border: none;
+  background: rgba(32,24,17,0.6);
+  border: 1px solid rgba(237,230,214,0.10);
   border-radius: 16px;
-  backdrop-filter: blur(20px);
-  box-shadow: none;
+  backdrop-filter: blur(16px) saturate(160%);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.35);
   display: flex;
   overflow: hidden;
   animation: bibWidgetIn 0.18s ease forwards;
+}
+
+/* Light-theme hover exceptions on the shared .bib-book-btn/.bib-ch-btn
+   classes (below) assume the old light --widget-bg cream fill and swap hover
+   text to dark ink — invisible against this widget's now always-dark glass.
+   Scoped back to the dark-theme hover treatment within .bib-nav-widget only,
+   so nothing else consuming these two button classes elsewhere is touched. */
+[data-theme="light"] .bib-nav-widget .bib-book-btn:hover {
+  background: rgba(255,198,26,0.1);
+  color: var(--parchment);
+}
+[data-theme="light"] .bib-nav-widget .bib-ch-btn:hover {
+  color: var(--parchment);
 }
 
 @keyframes bibWidgetIn {
@@ -563,14 +497,16 @@ body {
 }
 
 .card-title {
-  /* Spectral (design-notes.md §8.3, bounce revision) — already this app's
-     "this is scripture" voice (ScriptureChip/ScriptureNav labels); was
-     Space Grotesk (sans), which is why the reading surface didn't pick up
-     the reference mockup's serif treatment. .card-book-label stays on
-     Space Grotesk (serif-body/sans-caps-label pairing, unchanged). */
-  font-family: 'Spectral', serif;
+  /* Cormorant Garamond Semibold (design tokens §4.3 — "Reader chapter
+     numeral" row) — this is that numeral/heading specifically, not the
+     general reading-surface serif voice. .card-section-head/.section-head
+     (below) are a distinct italic caption role the ground-truth spec doesn't
+     name, so they intentionally stay on Spectral rather than being
+     blanket-moved here too. .card-book-label stays on Space Grotesk
+     (unchanged). */
+  font-family: 'Cormorant Garamond', serif;
   font-size: clamp(2.2rem, 4.5vw, 3.2rem);
-  font-weight: 700;
+  font-weight: 600;
   color: var(--bible-text);
   line-height: 1.1;
   transition: color 0.25s ease;
@@ -588,10 +524,14 @@ body {
 
 /* ── Chapter body text ── */
 .card-body {
-  /* Spectral (design-notes.md §8.3) — was unset, silently inheriting
-     body's Inter. .vnum (verse-number superscript) has no font-family of
-     its own and inherits this automatically. */
-  font-family: 'Spectral', serif;
+  /* Source Serif 4, falling back to Libre Baskerville (design tokens §4.3 —
+     "Reader body (scripture)" row). The request's own shorthand summary
+     ("Inter for body text") doesn't apply here: the ground-truth spec
+     explicitly assigns reading body text to Source Serif 4, not Inter, and
+     governs over the request's simplified framing. .vnum (verse-number
+     superscript) has no font-family of its own and inherits this
+     automatically. */
+  font-family: 'Source Serif 4', 'Libre Baskerville', serif;
   font-size: var(--bible-font-size, 1.08rem);
   font-weight: 400;
   line-height: var(--bible-line-height, 1.9);
@@ -846,12 +786,45 @@ body {
   to   { transform: translateX(0); }
 }
 
+/* Warm Vellum Glass restyle (20260826-glass-verse-selector-messages): was a
+   near-opaque rgba(8,5,2,0.99) flat fill — the same pre-glassmorphism
+   opaque-dark leftover the rest of the dockable-tabs UI already migrated off
+   of. Reuses that same warm-tinted fill hue but at a lighter opacity/blur
+   than the panel's own tokens, per the established "nested inside an
+   already-glass panel" precedent (reader-dock.css's .reader-dock-container
+   .note-card / .bible-panel-toolbar comments): stacking two full-strength
+   blurs the same way twice reads muddy, not "more glass." Still opaque
+   enough to read as sliding in over (covering) the contacts list beneath it,
+   rather than leaving it fully legible through.
+
+   createPortal'd to document.body (MessagingPanel.jsx, useHostRect) as of
+   20260826-notes-filter-panel-blur-increase: nested inside
+   .dockview-theme-abyss's .dv-groupview, that ancestor's own backdrop-filter
+   was found to suppress this overlay's independent backdrop-filter from
+   actually blurring the contacts list behind it, regardless of this rule's
+   own blur radius (confirmed live, not assumed from source) -- the same
+   compositing bug root-caused for .notes-filter-panel, which shares this
+   exact sibling-overlay-nested-in-already-blurred-ancestor structure.
+   Escaping via portal means this element (and its descendants, e.g.
+   .msg-bubble below, which still consumes var(--border-glass)) is no longer
+   inside .dockview-theme-abyss's cascade -- reader-dock.css redeclares
+   --border-glass on this same selector with the identical literal value
+   rather than duplicating it here, since Reader.dockOutlineFix.test.jsx
+   already asserts --border-glass/--shadow-glass stay single-sourced out of
+   global.css. `position` is now set inline (fixed + the tracked host rect)
+   in place of the `absolute; inset: 0` this rule used to carry, since that
+   relied on being a normal descendant of MessagingPanel's positioned
+   wrapper. `z-index` is likewise now set inline (see MessagingPanel.jsx):
+   this rule's old `z-index: 10` only ever had to beat its local sibling
+   .contacts-section, but once portaled to document.body this element
+   competes directly with .reader-dock-container (reader-dock.css,
+   z-index: 10, a document.body-level sibling once portaled) and the dock
+   rail (z-index: 15) instead -- at the old value it would paint behind the
+   very panel it's meant to cover. */
 .chat-overlay {
-  position: absolute;
-  inset: 0;
-  background: rgba(8,5,2,0.99);
+  background: rgba(20,14,9,0.4);
+  backdrop-filter: blur(10px) saturate(150%);
   animation: slideInFromRight 0.28s cubic-bezier(0.4,0,0.2,1) forwards;
-  z-index: 10;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -896,20 +869,36 @@ body {
   font-size: var(--pt-md);
   line-height: 1.5;
   word-break: break-word;
+  /* Frosted-glass bubble (20260826-glass-verse-selector-messages, per the
+     reference image's translucent/blurred rounded bubbles) — the lightest
+     blur in this nesting chain (.dv-groupview panel 16px -> .chat-overlay
+     10px -> bubble 6px here), continuing the "each nested glass layer gets a
+     lighter blur than its parent" rule the rest of this glass system already
+     follows, so three stacked full-strength blurs don't read muddy. */
+  backdrop-filter: blur(6px) saturate(140%);
 }
 
+/* Fill/text opacity bumped slightly from the pre-glass values (0.18/0.05 fill,
+   0.75 received text) — those were tuned for legibility against the old
+   near-opaque .chat-overlay backdrop; now that the backdrop itself is
+   translucent/blurred, bubbles need a bit more self-contrast (plus a
+   --border-glass-consistent hairline) to stay fully legible per the frosted-
+   glass acceptance criterion, in both light and dark theme (bubble text
+   colors here — var(--parchment), rgba(242,242,242,*) — have no
+   [data-theme="light"] override and were already theme-invariant before this
+   change, same as the rest of the messaging surface). */
 .msg-bubble.sent {
   align-self: flex-end;
-  background: rgba(255,198,26,0.18);
-  border: none;
+  background: rgba(255,198,26,0.22);
+  border: 1px solid rgba(255,198,26,0.22);
   color: var(--parchment);
 }
 
 .msg-bubble.received {
   align-self: flex-start;
-  background: rgba(255,255,255,0.05);
-  border: none;
-  color: rgba(242,242,242,0.75);
+  background: rgba(237,230,214,0.08);
+  border: 1px solid var(--border-glass);
+  color: rgba(242,242,242,0.8);
 }
 
 .msg-bubble-sender {
@@ -1044,18 +1033,7 @@ body {
 
   .fs-nav.ant-layout-header { padding: 0 1.1rem; }
 
-  /* Swap desktop menu for hamburger */
-  .desktop-menu { display: none !important; }
   .hamburger-btn.ant-btn { display: inline-flex; }
-
-  /* The command-trigger pill (200-240px) doesn't fit the 52px mobile header
-     alongside the logo/theme-toggle/hamburger, and ⌘K has no mobile
-     equivalent anyway — the mobile Reader branch already has its own
-     scripture-nav-bar navigation pills instead (BibleNavigator, font size,
-     bookmarks), so this isn't a functional regression, just keeping the
-     already-minimal mobile header minimal (design-notes.md/intake-spec.md
-     scope this restyle to desktop dockview chrome + header). */
-  .cmd-trigger-btn { display: none; }
 
   .scripture-nav-bar {
     padding: 0 0.8rem;

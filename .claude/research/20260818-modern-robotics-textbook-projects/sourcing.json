@@ -1,0 +1,6 @@
+{
+  "task_id": "20260818-modern-robotics-textbook-projects",
+  "stage": "sourcing",
+  "result": "pass",
+  "summary": "Brief confirms the actual 13-chapter structure of MR-v2.pdf (read directly via pdftotext, no syllabus fallback needed) with prerequisite ordering, and maps 4 hobbyist candidates (SO-ARM100/101 arm, LeKiwi mobile manipulator, Sawppy rover, Petoi Bittle quadruped) to build-phase chapter sequences, each backed by 3-4 independent buildability sources. Overall reliability is good: structure claims rest on a single authoritative primary source (the PDF itself, appropriately uncorroborated), project buildability claims are multiply corroborated. Key flagged risks: no candidate meaningfully exercises Ch.8 dynamics (all use position-controlled hobby servos) or Ch.7 closed chains, no single project covers all 13 chapters, and the 'vibe'/lifestyle-fit assessment is an unsourced qualitative judgment call left for downstream stages."
+}

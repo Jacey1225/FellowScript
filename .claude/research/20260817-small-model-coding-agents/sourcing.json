@@ -1,0 +1,6 @@
+{
+  "task_id": "20260817-small-model-coding-agents",
+  "stage": "sourcing",
+  "result": "pass",
+  "summary": "brief.md covers all 8 research steps and all major Scope categories (tool-use scaffolding, fine-tuning/distillation, RAG, multi-agent orchestration, prompting/reasoning scaffolds, benchmarks, named systems, and cross-category consensus/disagreement) using the 22 sources in sources.json, meeting the raised 20-source depth target. Reliability is mixed but well-disclosed: several claims rest on peer-reviewed or peer-reviewed-adjacent venues (NeurIPS 2025 Spotlight, ACL Findings EMNLP 2025, ACL workshop, PMLR) and multi-source corroboration (Devstral trajectory, BFCL), while others rest on single unreviewed arXiv preprints or vendor blogs, flagged accordingly in Risks. Notable substantive finding carried into the brief: sourced evidence directly contradicts itself on whether self-verification/self-critique scaffolds help or harm small-model performance, and architectural/system-level technique coverage is thin (one partial-coverage source). Both are surfaced for the critiquing stage to probe rather than resolved here."
+}

@@ -100,6 +100,10 @@ protocol DataServiceProtocol {
     func sendFriendRequest(userId: String, username: String) async throws
     func acceptFriendRequest(userId: String, username: String) async throws
     func removeFriend(userId: String, friendId: String) async throws
+    // Dashboard's Friend Activity hero card -- friend-only, block-respecting
+    // read of each friend's most recent public note + a "check in" nudge
+    // candidate. See FSFriendActivityFeed for the response shape.
+    func fetchFriendActivity(userId: String) async throws -> FSFriendActivityFeed
 
     // Reports / Blocks (Guideline 1.2)
     func reportUser(reportedUserId: String, reason: String, detail: String) async throws
@@ -120,13 +124,11 @@ protocol DataServiceProtocol {
     func joinSession(userId: String, sessionId: String) async throws
     func leaveSession(userId: String, sessionId: String) async throws
 
-    // Notifications
-    func fetchNotifications(userId: String) async throws -> [FSNotification]
-    func createNotification(userId: String, name: String, prompt: String, timestamps: [String?]) async throws -> FSNotification
-    func updateNotification(userId: String, notifId: String, name: String, prompt: String, timestamps: [String?]) async throws
-    func deleteNotification(userId: String, notifId: String) async throws
+    // Notifications (device-token registration + push delivery only — the
+    // user-authored notification CRUD/trigger surface was removed in
+    // 20260826-ios-notification-ui-removal, matching the backend removal in
+    // 20260826-activity-based-notifications)
     func registerDeviceToken(userId: String, token: String) async throws
-    func triggerNotification(userId: String, notifId: String) async throws -> [String: String]
 
     // Chime calls
     func joinCall(userId: String, sessionId: String) async throws -> ChimeJoinResponse
@@ -247,6 +249,29 @@ final class MockDataService: DataServiceProtocol {
                   toUsers: [mockUser.user_id, "friend-001", "friend-002"],
                   memberNames: ["Sarah", "Marcus"]),
     ]
+
+    // Mirrors the mockup's placeholder copy ("Sarah wrote a note today" /
+    // "Check in with Sarah · It's been 6 days"), sourced from mock friends
+    // "friend-001"/"friend-002" (Sarah/Marcus) so the Dashboard preview reads
+    // identically to the finalized Editorial Hero design.
+    static let mockFriendActivity = FSFriendActivityFeed(
+        friends_active: [
+            FSFriendActivityEntry(
+                friend_id: "friend-001", username: "Sarah",
+                last_active_at: "2026-08-26T09:14:00Z",
+                note_preview: FSFriendNotePreview(
+                    note_id: "note-sarah-001", title: "Morning reflection",
+                    text: "Started reading Psalm 23 again this morning. Reminded me how much I need to slow down and actually listen instead of just reading…",
+                    timestamp: "2026-08-26T09:14:00Z"
+                )
+            ),
+            FSFriendActivityEntry(
+                friend_id: "friend-002", username: "Marcus",
+                last_active_at: "2026-08-24T18:40:00Z", note_preview: nil
+            ),
+        ],
+        check_in: FSCheckInCandidate(friend_id: "friend-001", username: "Sarah", days_since_contact: 6)
+    )
 
     static let mockMessages: [FSMessage] = [
         FSMessage(id: "m1", text: "Did everyone finish the Psalm 23 reading?",          mine: false, sender: "Sarah",  timestamp: "2026-06-28T09:00:00"),
@@ -396,6 +421,7 @@ final class MockDataService: DataServiceProtocol {
     func sendFriendRequest(userId: String, username: String) async throws {}
     func acceptFriendRequest(userId: String, username: String) async throws {}
     func removeFriend(userId: String, friendId: String) async throws {}
+    func fetchFriendActivity(userId: String) async throws -> FSFriendActivityFeed { Self.mockFriendActivity }
 
     // Reports / Blocks (Guideline 1.2)
     func reportUser(reportedUserId: String, reason: String, detail: String) async throws {}
@@ -421,18 +447,7 @@ final class MockDataService: DataServiceProtocol {
     func leaveSession(userId: String, sessionId: String) async throws {}
 
     // Notifications
-    func fetchNotifications(userId: String) async throws -> [FSNotification] { [] }
-
-    func createNotification(userId: String, name: String, prompt: String, timestamps: [String?]) async throws -> FSNotification {
-        FSNotification(id: UUID().uuidString, user_id: userId, name: name, prompt: prompt, timestamps: timestamps)
-    }
-
-    func updateNotification(userId: String, notifId: String, name: String, prompt: String, timestamps: [String?]) async throws {}
-    func deleteNotification(userId: String, notifId: String) async throws {}
     func registerDeviceToken(userId: String, token: String) async throws {}
-    func triggerNotification(userId: String, notifId: String) async throws -> [String: String] {
-        ["name": "FellowScript", "content": "This is a sample notification."]
-    }
 
     func joinCall(userId: String, sessionId: String) async throws -> ChimeJoinResponse {
         throw AppError.networkError("Calls are not available in preview mode.")
@@ -465,9 +480,8 @@ final class MockDataService: DataServiceProtocol {
     static let mockActiveUsage = FSUsage(
         subscribed: true, plan_type: "group", window_days: 7,
         resources: [
-            "notes":               FSUsageResource(unlimited: true, used: 0, limit: 10, remaining: nil),
-            "agent_events":        FSUsageResource(unlimited: true, used: 0, limit: 1,  remaining: nil),
-            "agent_notifications": FSUsageResource(unlimited: true, used: 0, limit: 3,  remaining: nil),
+            "notes":        FSUsageResource(unlimited: true, used: 0, limit: 10, remaining: nil),
+            "agent_events": FSUsageResource(unlimited: true, used: 0, limit: 1,  remaining: nil),
         ]
     )
     func fetchUsage(userId: String) async throws -> FSUsage? {
@@ -508,10 +522,9 @@ enum AppError: LocalizedError {
         case .limitReached(let resource, _, let limit):
             let name: String
             switch resource {
-            case "notes":               name = "notes"
-            case "agent_events":        name = "agent events"
-            case "agent_notifications": name = "agent notifications"
-            default:                    name = resource
+            case "notes":        name = "notes"
+            case "agent_events": name = "agent events"
+            default:             name = resource
             }
             return "You've reached your free plan limit for \(name) (max \(limit)). "
                  + "Upgrade to a Group plan for unlimited access."

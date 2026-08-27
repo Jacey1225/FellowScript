@@ -1,0 +1,352 @@
+[
+  {
+    "url_or_ref": "https://www.nngroup.com/articles/dashboards-preattentive/",
+    "title": "Dashboards: Making Charts and Graphs Easier to Understand (NN/g)",
+    "type": "found",
+    "reliability_notes": "Nielsen Norman Group is a leading, evidence-based UX research organization; article is grounded in preattentive-processing perception research, not trend opinion. Primary/authoritative.",
+    "key_claims_supported": [
+      "Dashboards defined as single-page, at-a-glance data-visualization collections for fast action",
+      "Operational vs analytical dashboard distinction",
+      "Preattentive processing favors length and 2D position for quantitative data",
+      "Bar/line/scatter charts outperform pie charts, gauges, and 3D charts for dashboards",
+      "Color should encode category, not quantity/magnitude; ~8% of men have color-vision deficiency"
+    ],
+    "corroboration_count": 3
+  },
+  {
+    "url_or_ref": "https://www.nngroup.com/articles/progressive-disclosure/",
+    "title": "Progressive Disclosure (NN/g)",
+    "type": "found",
+    "reliability_notes": "Primary NN/g research article; foundational IA/interaction-design concept with cited usability rationale (learnability, efficiency, error reduction).",
+    "key_claims_supported": [
+      "Progressive disclosure shows essential options first, defers advanced/rare features to secondary screens",
+      "Improves learnability, efficiency, and error prevention",
+      "Requires correct primary/secondary feature split and clear disclosure mechanics",
+      "More than two disclosure levels tends to hurt usability"
+    ],
+    "corroboration_count": 2
+  },
+  {
+    "url_or_ref": "https://www.nngroup.com/articles/f-shaped-pattern-reading-web-content/",
+    "title": "F-Shaped Pattern of Reading on the Web: Misunderstood, But Still Relevant (NN/g)",
+    "type": "found",
+    "reliability_notes": "NN/g eye-tracking research; original and updated findings on scanning behavior. Primary/authoritative.",
+    "key_claims_supported": [
+      "Users scan in F/Z-shaped patterns: horizontal sweep top, shorter second sweep, vertical scan down the left",
+      "Most important content/metrics belong in the top-left / upper area"
+    ],
+    "corroboration_count": 2
+  },
+  {
+    "url_or_ref": "https://www.nngroup.com/articles/ten-usability-heuristics/",
+    "title": "10 Usability Heuristics for User Interface Design (NN/g, Jakob Nielsen)",
+    "type": "found",
+    "reliability_notes": "The canonical, most widely cited usability heuristics checklist in the UX field (1994, still primary reference). Authoritative.",
+    "key_claims_supported": [
+      "Visibility of system status, match with real world, user control/freedom, consistency/standards",
+      "Error prevention, recognition over recall, flexibility/efficiency, aesthetic/minimalist design",
+      "Help users recover from errors, help/documentation",
+      "Basis for catching dashboard anti-patterns via heuristic evaluation"
+    ],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "https://www.nngroup.com/articles/microinteractions/",
+    "title": "Microinteractions in User Experience (NN/g)",
+    "type": "found",
+    "reliability_notes": "Primary NN/g article on microinteractions, aligned with Dan Saffer's foundational framework.",
+    "key_claims_supported": [
+      "Microinteractions are small, single-purpose product moments (trigger, rules, feedback, loops/modes)",
+      "Used for hover/focus/click feedback and status changes"
+    ],
+    "corroboration_count": 2
+  },
+  {
+    "url_or_ref": "https://www.nngroup.com/articles/response-times-3-important-limits/",
+    "title": "Response Time Limits: Article by Jakob Nielsen (NN/g)",
+    "type": "found",
+    "reliability_notes": "Classic, widely cited NN/g research on the 0.1s/1s/10s response-time thresholds for perceived responsiveness. Primary/authoritative.",
+    "key_claims_supported": [
+      "0.1s feels instantaneous, 1s keeps flow of thought, 10s is the attention limit before users disengage",
+      "Feedback for hover/click interactions should appear within ~0.1s"
+    ],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "https://www.nngroup.com/articles/timing-exposing-content/",
+    "title": "Timing Guidelines for Exposing Hidden Content (NN/g)",
+    "type": "found",
+    "reliability_notes": "Primary NN/g guidance on hover-triggered content timing.",
+    "key_claims_supported": [
+      "Hover delay of 0.3-0.5s before showing hidden content, then reveal within 0.1s",
+      "Weak/absent hover signifiers create user uncertainty over time"
+    ],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "https://www.nngroup.com/articles/gestalt-proximity/",
+    "title": "Proximity Principle in Visual Design (NN/g)",
+    "type": "found",
+    "reliability_notes": "Primary NN/g article on Gestalt proximity as applied to UI grouping/hierarchy.",
+    "key_claims_supported": [
+      "Elements placed close together are perceived as related/grouped",
+      "Proximity underlies card-based grouping and widget layout in dashboards"
+    ],
+    "corroboration_count": 2
+  },
+  {
+    "url_or_ref": "https://ixdf.org/literature/topics/gestalt-principles",
+    "title": "What are the Gestalt Principles? (Interaction Design Foundation)",
+    "type": "found",
+    "reliability_notes": "Interaction Design Foundation is a recognized UX education body; article surveys proximity, similarity, closure, common region, figure-ground with academic grounding in Gestalt psychology.",
+    "key_claims_supported": [
+      "Gestalt principles (proximity, similarity, closure, common region, figure-ground) govern perceptual grouping in interfaces",
+      "Applied to reduce cognitive load and clarify widget/card relationships"
+    ],
+    "corroboration_count": 2
+  },
+  {
+    "url_or_ref": "https://ixdf.org/literature/article/micro-interactions-ux",
+    "title": "The Role of Micro-interactions in Modern UX (Interaction Design Foundation)",
+    "type": "found",
+    "reliability_notes": "IxDF educational body; corroborates NN/g and Dan Saffer's microinteraction framework.",
+    "key_claims_supported": [
+      "Microinteractions build usability, trust, and polish through small feedback moments"
+    ],
+    "corroboration_count": 2
+  },
+  {
+    "url_or_ref": "Dan Saffer, \"Microinteractions: Designing with Details\" (2013) — referenced via secondary summaries (Goodreads, IxDA Seattle, Medium/Andrew Clark review)",
+    "title": "Microinteractions: Designing with Details",
+    "type": "found",
+    "reliability_notes": "Foundational, widely cited UX book establishing the trigger/rules/feedback/loops-and-modes framework for microinteractions. Accessed via secondary summaries, not full text, but the framework is independently corroborated by NN/g's own microinteractions article.",
+    "key_claims_supported": [
+      "Every microinteraction has four parts: trigger, rules, feedback, loops and modes"
+    ],
+    "corroboration_count": 2
+  },
+  {
+    "url_or_ref": "https://webaim.org/articles/contrast/",
+    "title": "WebAIM: Contrast and Color Accessibility",
+    "type": "found",
+    "reliability_notes": "WebAIM is a leading, widely cited accessibility organization; article closely tracks the official WCAG 2 spec. Primary/authoritative.",
+    "key_claims_supported": [
+      "WCAG AA: 4.5:1 contrast for normal text, 3:1 for large text (18pt+/14pt+bold)",
+      "WCAG AAA: 7:1 normal text, 4.5:1 large text",
+      "1.4.11 Non-text Contrast: 3:1 for UI components/graphical objects in all states (hover/focus/active)",
+      "Contrast ratios cannot be rounded up to pass"
+    ],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "https://tink.uk/how-screen-readers-navigate-data-tables/",
+    "title": "How screen readers navigate data tables (Tink, Léonie Watson)",
+    "type": "found",
+    "reliability_notes": "Author is a recognized accessibility expert and former W3C WAI-ARIA working-group co-chair; primary practitioner authority on screen-reader behavior.",
+    "key_claims_supported": [
+      "Proper table markup (scope attributes, captions) enables screen-reader table navigation",
+      "Keyboard users need arrow-key navigation between cells/rows/columns (ARIA grid pattern)"
+    ],
+    "corroboration_count": 2
+  },
+  {
+    "url_or_ref": "https://www.amcharts.com/accessibility/accessible-charts/",
+    "title": "Accessibility in amCharts 5",
+    "type": "found",
+    "reliability_notes": "Vendor documentation from a widely used charting library; describes concrete ARIA implementation for interactive charts. Corroborates Tink and W3C WAI-ARIA Graphics Module guidance.",
+    "key_claims_supported": [
+      "Interactive charts need full keyboard operability (tab order, filters, tooltips)",
+      "Every chart should have an accessible tabular-data equivalent",
+      "aria-label/aria-describedby and live regions announce data values and updates"
+    ],
+    "corroboration_count": 2
+  },
+  {
+    "url_or_ref": "https://carbondesignsystem.com/data-visualization/chart-anatomy/ ; https://v10.carbondesignsystem.com/data-visualization/chart-types/",
+    "title": "Carbon Design System — Data Visualization: Chart Anatomy / Chart Types (IBM)",
+    "type": "found",
+    "reliability_notes": "Official design-system documentation from IBM's Carbon Design System, a major production design system. Primary source.",
+    "key_claims_supported": [
+      "Chart selection should start from the visualization's purpose",
+      "Guidance per chart family: bar (comparison), line/area (trends), stacked (proportional contribution), scatter (correlation), circular (part-to-whole)",
+      "Titles should be descriptive/qualitative and reflect the main insight"
+    ],
+    "corroboration_count": 2
+  },
+  {
+    "url_or_ref": "https://design.google/library/material-design-dark-theme ; https://codelabs.developers.google.com/codelabs/design-material-darktheme",
+    "title": "Material Design's Color Palette / Designing a dark theme with Material and Figma (Google Design)",
+    "type": "found",
+    "reliability_notes": "Official Google Material Design documentation and codelab. Primary source for a major, widely adopted design system.",
+    "key_claims_supported": [
+      "Dark theme should use dark gray (#121212), not true black, as the base surface",
+      "Elevation communicated via lighter overlay tints on raised surfaces rather than shadows",
+      "Less saturated, more luminous accent tones (recommend desaturating toward tone ~200) on dark surfaces",
+      "Recommends higher (15.8:1) text/background contrast in dark theme vs. AA minimum"
+    ],
+    "corroboration_count": 2
+  },
+  {
+    "url_or_ref": "https://www.onething.design/post/best-practices-for-dark-mode-ui-design",
+    "title": "10 Best Practices for Dark Mode UI Design",
+    "type": "found",
+    "reliability_notes": "Design-practice blog; not a primary standard, but content aligns closely with Material Design's official dark-theme guidance and WCAG contrast rules, providing independent corroboration.",
+    "key_claims_supported": [
+      "Avoid pure black backgrounds and pure white text (use off-white/light gray)",
+      "Surface hierarchy via progressively lighter layered surfaces (e.g. #0B0E13 base, #11151C card, #171C24 hover)",
+      "Use semi-bold/medium type weights on dark backgrounds; avoid thin fonts and italics",
+      "Secondary text/placeholder/disabled elements are the most common contrast failures in dark mode",
+      "Use tabular figures for aligned numeric columns"
+    ],
+    "corroboration_count": 2
+  },
+  {
+    "url_or_ref": "https://www.pencilandpaper.io/articles/ux-pattern-analysis-data-dashboards",
+    "title": "Dashboard Design UX Patterns Best Practices (Pencil & Paper)",
+    "type": "found",
+    "reliability_notes": "Credible design-practice publication with detailed, reasoned pattern analysis (not a listicle); widely referenced in the dashboard-design UX community.",
+    "key_claims_supported": [
+      "Curate dashboard content deliberately; 'we have it so why show it' is an anti-pattern",
+      "Top-down hierarchy: global numbers/most relevant data top-left, following F/Z scan patterns",
+      "Consistent card layout (title/legend/accessory placement) reduces visual noise",
+      "Avoid literal stoplight red-yellow-green; use intensity gradients; pair color with texture/pattern for colorblind users",
+      "Always show deltas/baselines for comparative context",
+      "Progressive disclosure via tooltips/hover; both global and module-level filters"
+    ],
+    "corroboration_count": 3
+  },
+  {
+    "url_or_ref": "https://www.pencilandpaper.io/articles/microinteractions-ux-interaction-patterns",
+    "title": "Interaction Patterns UX Design Guide (Pencil & Paper)",
+    "type": "found",
+    "reliability_notes": "Same credible design-practice publication as above; corroborates NN/g and IxDF on microinteractions/affordance.",
+    "key_claims_supported": [
+      "Affordances (raised buttons, text-field cursors, slider thumbs) signal how elements can be used",
+      "Hover/focus states provide visual guidance especially in complex interfaces"
+    ],
+    "corroboration_count": 2
+  },
+  {
+    "url_or_ref": "https://www.pencilandpaper.io/articles/empty-states",
+    "title": "Empty State UX Examples & Best Practices (Pencil & Paper)",
+    "type": "found",
+    "reliability_notes": "Credible design-practice publication; content corroborated by Toptal and UXPin empty-state guidance.",
+    "key_claims_supported": [
+      "Empty states should explain why the state is empty and provide a clear call-to-action",
+      "Avoid generic placeholder copy ('no data'); use positive, non-blaming language"
+    ],
+    "corroboration_count": 3
+  },
+  {
+    "url_or_ref": "https://www.toptal.com/designers/data-visualization/dashboard-design-best-practices",
+    "title": "Dashboard Design: Best Practices With Examples (Toptal)",
+    "type": "found",
+    "reliability_notes": "Toptal's design publication is a reasoned, evidence-referencing practitioner source (cites data-ink ratio, progressive disclosure) rather than a trend listicle.",
+    "key_claims_supported": [
+      "Effective dashboards are clear, fast, customizable, and prioritize data with drill-down",
+      "Progressive disclosure reduces error rates and improves efficiency",
+      "Data-ink ratio: minimize non-data pixels, use separate cards over screen-filling graphs",
+      "Dark themes suit extended-use B2B SaaS dashboards to reduce eye strain, with trade-offs"
+    ],
+    "corroboration_count": 3
+  },
+  {
+    "url_or_ref": "https://www.gooddata.ai/blog/six-principles-of-dashboard-information-architecture/",
+    "title": "Six Principles of Dashboard Information Architecture (GoodData)",
+    "type": "found",
+    "reliability_notes": "Vendor blog (GoodData is an analytics platform) — moderate reliability; used only as corroboration alongside NN/g and Pencil & Paper, not as a standalone claim source.",
+    "key_claims_supported": [
+      "Structure, navigation, hierarchy, grouping, labeling, and filtering as core dashboard IA principles"
+    ],
+    "corroboration_count": 2
+  },
+  {
+    "url_or_ref": "https://www.designsystems.com/space-grids-and-layouts/",
+    "title": "Spacing, grids, and layouts (designsystems.com)",
+    "type": "found",
+    "reliability_notes": "Aggregator/reference site surveying spacing conventions across major production design systems (Material, iOS HIG, Carbon, Fluent); moderate-to-good reliability as a cross-system corroborating source.",
+    "key_claims_supported": [
+      "8pt spacing grid (8/16/24/32/40/48px multiples), with 4px half-step, adopted across most major design systems",
+      "4pt baseline grid pairs with 8pt UI grid for predictable typographic scaling"
+    ],
+    "corroboration_count": 3
+  },
+  {
+    "url_or_ref": "https://studiomeyer.io/en/blog/webdesign-trends-2026-reality-check",
+    "title": "Web Design Trends 2026: What Actually Held Up After Six Months (Studio Meyer)",
+    "type": "found",
+    "reliability_notes": "Practitioner retrospective with concrete performance data (FPS drops, scroll-depth stats, adoption percentages) rather than a forward-looking trend roundup; more evidence-grounded than typical trend-listicle content, but represents a single agency's account.",
+    "key_claims_supported": [
+      "Bento grid layouts and dark mode proved durable/usability-grounded, now standard in major products",
+      "Glassmorphism 2.0 survives only in limited contexts (nav/modals) due to real performance cost (15-30% FPS drop from backdrop-filter blur)",
+      "Kinetic typography and heavy 3D/WebGL largely failed to deliver in production due to accessibility and performance costs",
+      "Token-based design systems, not superficial CSS trends, are what modern dark-mode implementations actually require"
+    ],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "https://www.orbix.studio/blogs/bento-grid-dashboard-design-aesthetics",
+    "title": "Bento Grid Dashboard Design: Complete Guide 2026 (Orbix Studio)",
+    "type": "found",
+    "reliability_notes": "Design-agency blog, SEO-content flavored — lower reliability, used only as volume corroboration for the bento-grid trend description, not as sole support for any claim.",
+    "key_claims_supported": [
+      "Bento grids use modular mixed-size blocks (large feature + small supporting) for dashboards/overview pages, improving scanability"
+    ],
+    "corroboration_count": 2
+  },
+  {
+    "url_or_ref": "https://www.smashingmagazine.com/2023/11/crafting-killer-brand-identity-digital-product/",
+    "title": "Crafting A Killer Brand Identity For A Digital Product (Smashing Magazine)",
+    "type": "found",
+    "reliability_notes": "Smashing Magazine is a long-established, reputable web-design publication with editorial review, stronger than typical listicle content.",
+    "key_claims_supported": [
+      "Differentiation in visually saturated markets comes from subtlety, restraint, and organic/human-scale design choices rather than louder aesthetics"
+    ],
+    "corroboration_count": 2
+  },
+  {
+    "url_or_ref": "https://prototypr.io/news/why-some-designs-look-messy-and-others-dont-ux-collective",
+    "title": "Why some designs look messy, and others don't (UX Collective / Prototypr)",
+    "type": "found",
+    "reliability_notes": "UX Collective is a large, editorially curated design-practice publication; moderate-to-good reliability, corroborates Smashing Magazine's differentiation argument from a different angle (visual order vs brand voice).",
+    "key_claims_supported": [
+      "Templated/mass-market design standardizes structure irrespective of content needs, producing genericness",
+      "A tight connection between content and form (rather than templated separation) is what produces distinctive, non-generic design"
+    ],
+    "corroboration_count": 2
+  },
+  {
+    "url_or_ref": "https://startingblockonline.org/dashboard-anti-patterns-12-mistakes-and-the-patterns-that-replace-them/",
+    "title": "Dashboard Anti-Patterns: 12 Mistakes—and the Patterns That Replace Them",
+    "type": "found",
+    "reliability_notes": "Independent design-practice article enumerating specific, falsifiable anti-patterns rather than generic trend advice; moderate reliability, corroborated by NN/g heuristics and Pencil & Paper on several specific points (context/hierarchy/chart-type mistakes).",
+    "key_claims_supported": [
+      "Common anti-patterns: metric overload, vanity-metric prominence, missing context, poor hierarchy, wrong chart types, excessive interactivity, unclear objectives",
+      "Working-memory limit (~5-9 elements) argues for capping metrics per screen",
+      "Truncated/non-zero Y-axes mislead viewers about magnitude of change"
+    ],
+    "corroboration_count": 2
+  },
+  {
+    "url_or_ref": "https://www.thedataschool.co.uk/calvin-gao/navigating-data-visualization-a-guide-to-chart-junk-awareness/",
+    "title": "Navigating Data Visualization: A Guide to Chart Junk Awareness (The Data School)",
+    "type": "found",
+    "reliability_notes": "Secondary explainer of Edward Tufte's original chartjunk/data-ink-ratio concept; The Data School is a data-visualization training organization. Corroborated independently by Toptal and NN/g's own chart-type guidance.",
+    "key_claims_supported": [
+      "Chartjunk (Tufte's term) refers to decorative elements (3D effects, shadows, excess gridlines) that reduce clarity",
+      "Data-to-ink ratio: most pixels should represent data, not decoration"
+    ],
+    "corroboration_count": 3
+  },
+  {
+    "url_or_ref": "https://www.freecodecamp.org/news/how-to-use-skeleton-screens-to-improve-perceived-website-performance/",
+    "title": "How to Use Skeleton Screens to Improve Perceived Website Performance (freeCodeCamp)",
+    "type": "found",
+    "reliability_notes": "freeCodeCamp is a well-established developer-education nonprofit publication; moderate-to-good reliability, corroborated by multiple independent design blogs on the same mechanism (perceived vs actual performance).",
+    "key_claims_supported": [
+      "Skeleton screens mimic final layout with placeholders, improving perceived load speed without changing actual load time",
+      "Preferred over spinners for content-heavy interfaces like dashboards and feeds because they convey structural progress"
+    ],
+    "corroboration_count": 3
+  }
+]

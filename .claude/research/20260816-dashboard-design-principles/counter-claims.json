@@ -1,0 +1,123 @@
+[
+  {
+    "target_claim": "Bar, line, and scatter charts consistently outperform pie charts, gauges, and 3D charts in dashboard contexts [nngroup.com/articles/dashboards-preattentive]",
+    "counter_claim": "Peer-reviewed and classic empirical research finds pie charts are about as accurate as bar charts for their core task (part-to-whole/proportion estimation), and better than stacked bar charts. Angle judgment, the usual justification for calling pie charts perceptually inferior, is actually the least reliable cue people use to read them (arc length and area are more reliable) -- so both the conclusion and the standard mechanism behind it are more nuanced than the brief's 'consistently outperform' framing suggests. This is a 'true but overstated / context-dependent' finding, not a flat reversal: the underlying preattentive-processing science (length/2D position as fast, accurate channels) is not itself disputed, and none of the counter-evidence defends 3D charts, gauges, or complex/many-slice pie charts.",
+    "counter_evidence": [
+      {
+        "url_or_ref": "journals.sagepub.com/doi/10.1177/14738716241259432 (Hill, A., 2025, \"Are pie charts evil? An assessment of the value of pie and donut charts compared to bar charts\", Information Visualization / SAGE)",
+        "title": "Are pie charts evil? An assessment of the value of pie and donut charts compared to bar charts",
+        "reliability_notes": "Peer-reviewed academic journal article (2025), University of Surrey, multi-metric methodology including pupillometry for cognitive load -- highest reliability tier available for this question, directly comparative (pie/donut vs. bar) rather than a study of pie charts in isolation.",
+        "how_it_contradicts": "Finds pie charts are as accurate as bar charts for estimating proportions (their primary function), directly complicating the 'consistently outperform' claim for the specific chart-family comparison the brief makes."
+      },
+      {
+        "url_or_ref": "eagereyes.org/blog/2016/an-illustrated-tour-of-the-pie-chart-study-results (Skau & Kosara, 2016)",
+        "title": "An Illustrated Tour of the Pie Chart Study Results",
+        "reliability_notes": "Robert Kosara is a recognized data-visualization researcher (Tableau Research); this is a primary-research summary, not an opinion blog. Note: the article itself does not directly compare pie to bar charts (a commenter on the piece flags this gap), so it is evidence about pie-chart mechanics, used here alongside the Hill 2025 study for the comparative claim.",
+        "how_it_contradicts": "Shows angle -- the perceptual channel usually cited as pie charts' weakness -- is the least-used/least-reliable cue in practice; readers instead rely on arc length and area, with mean errors of only ~1-2 percentage points in simple configurations. Undercuts the specific mechanism (angle as an inferior channel) used to justify the blanket anti-pie-chart rule."
+      },
+      {
+        "url_or_ref": "Simkin & Hastie (classic study, cited via secondary academic summaries in eagereyes.org and related literature reviews)",
+        "title": "Referenced finding that pie charts were as accurate as bar charts and more accurate than stacked bar charts",
+        "reliability_notes": "Accessed only via secondary citation in this pass, not the primary paper -- moderate reliability; corroborates rather than stands alone.",
+        "how_it_contradicts": "Independently corroborates the Hill 2025 finding that pie charts are not perceptually inferior to bar charts for their core task."
+      }
+    ],
+    "confidence_score": 0.7
+  },
+  {
+    "target_claim": "Material Design recommends higher text/background contrast (15.8:1) than the WCAG AA minimum for dark themes [design.google/library/material-design-dark-theme]",
+    "counter_claim": "Maximizing contrast on dark surfaces is not an unambiguous accessibility win. Accessibility specialists identify a 'halation' effect -- light text on a dark background appearing to bloom/blur -- that disproportionately affects users with astigmatism (a common condition), meaning very high contrast can create readability problems for some users even as it helps others. The credible position is 'no one-size-fits-all' (offer a choice / avoid forcing maximum contrast on everyone) rather than a strict ceiling contradicting Material's number outright -- this narrows the claim rather than reversing it, since Material's guidance is a design-system default, not a mandate that every user experience the same contrast level.",
+    "counter_evidence": [
+      {
+        "url_or_ref": "stephaniewalter.design/blog/dark-mode-accessibility-myth-debunked/",
+        "title": "Dark mode & accessibility myth debunked",
+        "reliability_notes": "Author is a UX researcher/designer specializing in accessibility; a recognized practitioner voice in this space, comparable in tier to the brief's own onething.design practitioner source, and more directly focused on accessibility than that source.",
+        "how_it_contradicts": "Directly argues against treating high contrast as universally beneficial in dark mode, citing halation effects on users with astigmatism, dyslexia, and other conditions, and recommends giving users a choice rather than defaulting everyone into maximum contrast."
+      },
+      {
+        "url_or_ref": "levelaccess.com/blog/accessibility-for-people-with-astigmatism/; boia.org/blog/dark-mode-can-improve-text-readability-but-not-for-everyone; accessibilitychecker.org/blog/dark-mode-accessibility/",
+        "title": "Astigmatism and Web Accessibility / Dark Mode Can Improve Text Readability -- But Not for Everyone",
+        "reliability_notes": "Accessibility-focused vendor/consultancy content -- moderate reliability, useful as convergent corroboration of the halation phenomenon across multiple independent accessibility-focused publishers rather than as a sole source.",
+        "how_it_contradicts": "Multiple independent sources converge on halation as a real, named phenomenon and on pure/near-maximum contrast as a potential source of eye strain and glare rather than a strict good, complicating the idea that higher contrast is unambiguously better in dark mode."
+      }
+    ],
+    "confidence_score": 0.55
+  },
+  {
+    "target_claim": "Glassmorphism causes a measured 15-30% FPS drop from backdrop-filter blur, and kinetic typography/heavy 3D/WebGL effects largely failed in production due to accessibility and performance costs [studiomeyer.io]",
+    "counter_claim": "No independent, high-reliability source corroborates the specific 15-30% FPS figure. Browser-vendor documentation (web.dev, MDN) confirms backdrop-filter carries a real performance cost but gives only a qualitative caution ('may harm performance, test before deploying') with no percentage figures at all -- neither confirming nor refuting Studio Meyer's specific number. Other sources citing similar-magnitude figures (~15-25% GPU cost) are themselves SEO-flavored design-content sites without primary benchmarking, so they constitute repetition of an unverified figure rather than independent verification. This is the brief's own flagged risk being confirmed as unresolved, not a counter-finding either way -- treat the specific numbers as illustrative, not established.",
+    "counter_evidence": [
+      {
+        "url_or_ref": "web.dev/articles/backdrop-filter; developer.mozilla.org/en-US/docs/Web/CSS/backdrop-filter",
+        "title": "Create OS-style backgrounds with backdrop-filter (web.dev); backdrop-filter CSS property (MDN)",
+        "reliability_notes": "Highest-reliability sources available on this question (browser vendor / standards documentation), but neither gives quantitative FPS/GPU figures -- only a general performance caution.",
+        "how_it_contradicts": "Does not corroborate or refute the specific 15-30% figure; its absence from the most authoritative available sources means the number remains unverified by anyone with no stake in the 2023-2026 trend narrative, exactly the gap the brief's own Open Questions section already flagged."
+      },
+      {
+        "url_or_ref": "codeformatter.in/blog-glassmorphism-generator.html; playground.halfaccessible.com/blog/glassmorphism-design-trend-implementation-guide",
+        "title": "Glassmorphism CSS Generator: Complete Design Guide; Glassmorphism Design Trend: Complete Implementation Guide",
+        "reliability_notes": "Low-tier SEO-flavored design-content sites, same reliability class as the brief's own excluded/low-weighted sources -- cited here only to show what independent-seeming corroboration for the FPS figure actually looks like (unsourced, similar-but-not-identical numbers), not as credible counter-evidence.",
+        "how_it_contradicts": "These sources report a similar-magnitude but not identical figure (~15-25% GPU cost) without citing any primary benchmark, meaning the apparent 'convergence' around a 15-30% range is likely different blogs repeating a similar unverified claim rather than independent confirmation."
+      }
+    ],
+    "confidence_score": 0.25
+  },
+  {
+    "target_claim": "Bento-grid layouts have proven durable and usability-grounded, improving scanability for overview/dashboard pages [studiomeyer.io; orbix.studio]",
+    "counter_claim": "No credible, independent source specific to dense analytical dashboards (as opposed to marketing/overview pages) was found either confirming or refuting whether bento grids hold up at high information density. The only claim found on this specific question (that overly dense dashboards decrease decision-making speed by ~30%) traces to a low-reliability, uncited design-agency blog comparable in tier to Orbix Studio -- the same reliability class already flagged as thin in the brief's own Risks section, not an improvement on it. This gap, already noted in the brief's Open Questions, remains genuinely open after a real search effort.",
+    "counter_evidence": [
+      {
+        "url_or_ref": "baltech.in/blog/bento-grids-for-ai-dashboards/",
+        "title": "Bento Grids for AI Dashboards: A Complete Guide to Modular, Explainable, and Responsive Layouts",
+        "reliability_notes": "Design-agency SEO content, uncited numeric claims -- low reliability, explicitly not treated as sufficient counter-evidence on its own, included only to document what was found during a genuine search effort.",
+        "how_it_contradicts": "Asserts dense dashboards hurt decision-making speed, which would complicate a blanket 'bento grids improve scanability' claim if it held up at high density -- but the claim itself is unsourced and no higher-reliability source corroborates it, so it cannot be treated as established counter-evidence."
+      }
+    ],
+    "confidence_score": 0.15
+  },
+  {
+    "target_claim": "Skeleton screens are preferred over spinners for content-heavy interfaces like dashboards and feeds because they convey structural progress rather than just 'something is happening' [freecodecamp.org]",
+    "counter_claim": "A controlled usability study found skeleton screens underperformed both loading spinners and blank screens on every measured metric -- perceived speed, subjective wait-time rating, and post-load task completion time -- suggesting the 'preferred' framing is not settled and may depend heavily on interface familiarity and wait-time length rather than being a general rule for content-heavy interfaces.",
+    "counter_evidence": [
+      {
+        "url_or_ref": "viget.com/articles/a-bone-to-pick-with-skeleton-screens",
+        "title": "A Bone to Pick with Skeleton Screens",
+        "reliability_notes": "Viget is a recognized UX/design agency; this is a described, methodologically transparent study (136 participants, three loading-animation conditions), making it a genuine empirical usability test rather than an opinion piece -- comparable in evidentiary weight to the freeCodeCamp source it contradicts, and arguably stronger since it is primary research rather than a synthesis article.",
+        "how_it_contradicts": "Directly tested skeleton screens against spinners and blank screens and found skeleton screens performed worst on all metrics (59% vs 74% agreed loading felt quick; 2.82s vs 2.41s perceived wait; 10.54s vs 9.49s task completion time), the opposite of the brief's 'preferred over spinners' framing."
+      }
+    ],
+    "confidence_score": 0.6
+  },
+  {
+    "target_claim": "Avoiding 'generic-feeling' dashboards is less about applying a stylistic flourish and more about ensuring visual decisions are driven by the dashboard's actual content and hierarchy rather than a reusable template [prototypr.io; smashingmagazine.com]",
+    "counter_claim": "For high-frequency-use, functional tools like dashboards, NN/g's own research argues familiarity should generally dominate over freshness or distinctiveness: 'a fresh design will be a worse design simply because it's new and thus breaks user expectations,' and experienced/frequent users specifically rely on automated, routine interaction patterns that novel or highly differentiated designs disrupt. This is a genuine complicating angle for data-dense, repeatedly-used interfaces (as opposed to the marketing/brand-facing products the brief's original sources address) but does not flatly contradict the brief's claim, since 'content-form fit' is not the same as 'be maximally novel' -- the brief's own claim never argued for stylistic distinctiveness for its own sake. Best read as: the case for content-driven distinctiveness is real but needs an explicit caveat about not breaking established interaction conventions for frequent users.",
+    "counter_evidence": [
+      {
+        "url_or_ref": "nngroup.com/articles/fresh-vs-familiar-aggressive-redesign/",
+        "title": "Fresh vs. Familiar: How Aggressively to Redesign",
+        "reliability_notes": "NN/g -- same reliability tier as several of the brief's own core sources (e.g. the preattentive-processing and progressive-disclosure articles), making this a comparably authoritative source directly on the familiarity-vs-distinctiveness question, though it addresses redesigns/change generally rather than 'genericness' specifically.",
+        "how_it_contradicts": "Argues that for interfaces used routinely by experienced users, familiarity should generally be prioritized over freshness, and that unfamiliar/distinctive changes actively frustrate users who depend on automated, practiced interaction patterns -- directly relevant to dashboards as high-frequency-use, functional (not brand-facing) interfaces, which is exactly the gap the brief's Open Questions section flagged."
+      }
+    ],
+    "confidence_score": 0.5
+  },
+  {
+    "target_claim": "Truncated or non-zero Y-axes are a specifically named anti-pattern because they mislead viewers about the magnitude of change [startingblockonline.org]",
+    "counter_claim": "Recognized data-visualization authorities treat the zero-baseline rule as strict for bar charts specifically but explicitly allow non-zero baselines for line charts (including compact trend widgets/sparklines common in dashboards) under specific conditions -- when the goal is to reveal small but meaningful differences between large values, paired with clear signaling to the reader that the axis doesn't start at zero. This makes the brief's claim true but overstated as an unqualified, chart-type-agnostic rule: it holds for bar charts but is a context-dependent guideline, not an absolute anti-pattern, for line-based trend widgets.",
+    "counter_evidence": [
+      {
+        "url_or_ref": "storytellingwithdata.com/blog/2014/02/a-little-math-on-non-zero-baselines",
+        "title": "a little math on non-zero baselines",
+        "reliability_notes": "Cole Nussbaumer Knaflic is a widely recognized data-visualization author/practitioner (\"Storytelling with Data\"); this post also cites Stephen Few, another established data-viz authority -- comparable reliability tier to the brief's own data-viz sources (Tufte, Carbon Design System).",
+        "how_it_contradicts": "States non-zero baselines must be avoided for bar charts but are acceptable for line charts when examining small differences between large values, provided the reader is alerted -- directly narrowing the brief's blanket 'truncated axes are an anti-pattern' framing to a chart-type-specific rule."
+      },
+      {
+        "url_or_ref": "Alberto Cairo, \"How Charts Lie\" (referenced via washingtonpost.com/business/2019/10/14/youve-been-reading-charts-wrong-heres-how-pro-does-it/ and related secondary coverage)",
+        "title": "How Charts Lie: Getting Smarter about Visual Information",
+        "reliability_notes": "Cairo is a recognized academic/journalist authority in data visualization (University of Miami); accessed via secondary press coverage rather than the primary book text in this pass, which is a moderate limitation.",
+        "how_it_contradicts": "Corroborates that non-zero baselines can be used with care in line graphs when zooming in on relevant variation, provided the reader isn't misled about the scale being used -- independently reinforcing the storytellingwithdata.com nuance from a second, independent data-viz authority."
+      }
+    ],
+    "confidence_score": 0.65
+  }
+]

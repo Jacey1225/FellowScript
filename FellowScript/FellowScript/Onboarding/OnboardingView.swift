@@ -412,7 +412,14 @@ private struct OBMockPhone: View {
     let step:      Int
     let activeTab: Int
 
-    private let tabs = ["house.fill", "book.fill", "note.text", "message.fill", "person.crop.circle"]
+    // Mirrors FloatingTabBar.swift's 5 destinations/labels/symbols.
+    private let tabs: [(symbol: String, label: String)] = [
+        ("house.fill",         "Home"),
+        ("book.fill",          "Bible"),
+        ("note.text",          "Notes"),
+        ("message.fill",       "Chat"),
+        ("person.crop.circle", "Account"),
+    ]
 
     var body: some View {
         ZStack {
@@ -440,18 +447,44 @@ private struct OBMockPhone: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .clipped()
 
-                // Tab bar
-                HStack(spacing: 0) {
+                // Tab bar — floating inset dark capsule, mirroring FloatingTabBar.swift:
+                // plain muted icons for inactive tabs, a gold-gradient capsule (icon +
+                // label) only on the active tab. Not a static full-bleed strip.
+                HStack(spacing: 3) {
                     ForEach(Array(tabs.enumerated()), id: \.offset) { item in
-                        Spacer()
-                        Image(systemName: item.element)
-                            .font(.system(size: 13))
-                            .foregroundColor(item.offset == activeTab ? Theme.gold : Theme.textMuted.opacity(0.45))
-                        Spacer()
+                        let isActive = item.offset == activeTab
+                        if isActive {
+                            HStack(spacing: 3) {
+                                Image(systemName: item.element.symbol)
+                                    .font(.system(size: 8, weight: .semibold))
+                                Text(item.element.label)
+                                    .font(.system(size: 6.5, weight: .bold))
+                            }
+                            .foregroundColor(Color(hex: "#24170A"))
+                            .padding(.horizontal, 8)
+                            .frame(height: 22)
+                            .background(
+                                LinearGradient(colors: [Theme.gold, Color(hex: "#EDAB3C")],
+                                               startPoint: .leading, endPoint: .trailing)
+                            )
+                            .clipShape(Capsule())
+                        } else {
+                            Image(systemName: item.element.symbol)
+                                .font(.system(size: 11, weight: .regular))
+                                .foregroundColor(Theme.tabInactive)
+                                .frame(width: 22, height: 22)
+                        }
                     }
                 }
-                .padding(.vertical, 7)
-                .background(Theme.navBg)
+                .frame(maxWidth: .infinity)
+                .padding(5)
+                .background(
+                    Capsule()
+                        .fill(Color(hex: "#120D08").opacity(0.94))
+                        .overlay(Capsule().stroke(Theme.gold.opacity(0.24), lineWidth: 0.75))
+                )
+                .padding(.horizontal, 10)
+                .padding(.bottom, 8)
             }
             .clipShape(RoundedRectangle(cornerRadius: 24))
         }
@@ -473,7 +506,8 @@ private struct OBMockPhone: View {
         case 8:  MockCreateGroup()
         case 9:  MockGroupSession()
         case 10: MockAIAgent()
-        case 11: MockNotifications()
+        case 11: MockAccount()
+        case 12: MockNotifications()
         default: MockHeartbeat()
         }
     }
@@ -483,52 +517,98 @@ private struct OBMockPhone: View {
 
 private struct MockDashboard: View {
     var body: some View {
-        VStack(spacing: 6) {
-            HStack {
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("Good morning").font(.system(size: 7, design: .serif)).foregroundColor(Theme.textMuted)
-                    Text("Joshua").font(.system(size: 11, weight: .bold, design: .rounded)).foregroundColor(Theme.parchment)
+        VStack(spacing: 0) {
+            // Warm gradient hero wash — approximates DashboardView's radial-gradient
+            // ground behind HeroHeader (HOME step, §2 rebuild).
+            ZStack(alignment: .topLeading) {
+                LinearGradient(
+                    colors: [Color(hex: "#C98420"), Color(hex: "#A0641A"), Color.clear],
+                    startPoint: .top, endPoint: .bottom
+                )
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("YOUR RHYTHM")
+                            .font(.system(size: 5, weight: .semibold)).tracking(1.5)
+                            .foregroundColor(Color(hex: "#1E140A").opacity(0.66))
+                        Text("Good evening, Joshua")
+                            .font(.system(size: 12, weight: .heavy))
+                            .foregroundColor(Color(hex: "#2A1B0B"))
+                        Text("Last read John 1 · 3 notes this week")
+                            .font(.system(size: 6, design: .serif))
+                            .foregroundColor(Color(hex: "#26190C").opacity(0.78))
+                    }
+                    Spacer()
+                    Circle().fill(Color(hex: "#2A1B0B")).frame(width: 20, height: 20)
+                        .overlay(Text("J").font(.system(size: 8, weight: .bold)).foregroundColor(Color(hex: "#F0AE40")))
                 }
-                Spacer()
-                Circle().fill(Theme.gold.opacity(0.18)).frame(width: 26, height: 26)
-                    .overlay(Image(systemName: "person.fill").font(.system(size: 9)).foregroundColor(Theme.gold))
+                .padding(.horizontal, 12).padding(.top, 8).padding(.bottom, 10)
+            }
+
+            VStack(spacing: 6) {
+                // "Revisit a Verse" — gold-filled hero card (RevisitVerseCard).
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("REVISIT A VERSE")
+                        .font(.system(size: 5, weight: .semibold)).tracking(1)
+                        .foregroundColor(Color(hex: "#241708").opacity(0.66))
+                    Text("Proverbs 27:17")
+                        .font(.system(size: 11, weight: .heavy))
+                        .foregroundColor(Color(hex: "#24170A"))
+                    HStack(spacing: 3) {
+                        Text("Open in the reader").font(.system(size: 6, weight: .bold))
+                        Image(systemName: "arrow.right").font(.system(size: 5.5, weight: .bold))
+                    }
+                    .foregroundColor(Color(hex: "#24170A").opacity(0.8))
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 10).padding(.vertical, 8)
+                .background(
+                    LinearGradient(colors: [Color(hex: "#EDAB3C"), Color(hex: "#D4922A"), Color(hex: "#B8761D")],
+                                   startPoint: .topLeading, endPoint: .bottomTrailing)
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+
+                // "Group Activity" — recent previews + "Continue reading" pill CTA
+                // (GroupActivityWidget).
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("GROUP ACTIVITY")
+                        .font(.system(size: 5, weight: .semibold)).tracking(1)
+                        .foregroundColor(Theme.gold)
+
+                    groupActivityRow("Sarah",           "See you at Bible study!", "2m ago")
+                    groupActivityRow("Wednesday Study", "Session tomorrow at 7pm", "3h ago")
+
+                    HStack {
+                        VStack(alignment: .leading, spacing: 0) {
+                            Text("Continue reading").font(.system(size: 7, weight: .heavy))
+                            Text("where you left off").font(.system(size: 5.5))
+                        }
+                        .foregroundColor(Color(hex: "#24170A"))
+                        Spacer()
+                        Image(systemName: "arrow.right").font(.system(size: 7)).foregroundColor(Color(hex: "#F0AE40"))
+                    }
+                    .padding(.horizontal, 8)
+                    .frame(height: 18)
+                    .background(LinearGradient(colors: [Theme.gold, Color(hex: "#EDAB3C")], startPoint: .leading, endPoint: .trailing))
+                    .clipShape(Capsule())
+                }
+                .padding(9)
+                .mockGlassCard(cornerRadius: 10)
             }
             .padding(.horizontal, 12).padding(.top, 6)
 
-            mockCard {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("VERSE OF THE DAY").font(.system(size: 5.5, design: .serif)).tracking(1).foregroundColor(Theme.gold)
-                    Text("\"As iron sharpens iron, so one person sharpens another.\"")
-                        .font(.system(size: 7, design: .serif)).italic()
-                        .foregroundColor(Theme.parchment).lineSpacing(2)
-                    Text("Proverbs 27:17").font(.system(size: 5.5, design: .serif)).foregroundColor(Theme.textGoldMuted)
-                }
-            }
-
-            mockCard {
-                HStack(spacing: 7) {
-                    Circle().fill(Theme.gold.opacity(0.15)).frame(width: 20, height: 20)
-                        .overlay(Image(systemName: "sparkles").font(.system(size: 7)).foregroundColor(Theme.gold))
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text("Daily Devotional Agent").font(.system(size: 6.5, design: .serif)).foregroundColor(Theme.parchment)
-                        Text("Psalm 23 reflection ready…").font(.system(size: 5.5, design: .serif)).foregroundColor(Theme.textMuted)
-                    }
-                    Spacer()
-                }
-            }
-
-            mockCard {
-                HStack(spacing: 7) {
-                    Image(systemName: "calendar").font(.system(size: 9)).foregroundColor(Theme.gold)
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text("Wednesday Night Study").font(.system(size: 6.5, design: .serif)).foregroundColor(Theme.parchment)
-                        Text("Tonight · 7:00 PM").font(.system(size: 5.5, design: .serif)).foregroundColor(Theme.textMuted)
-                    }
-                    Spacer()
-                }
-            }
-
             Spacer()
+        }
+    }
+
+    private func groupActivityRow(_ name: String, _ preview: String, _ time: String) -> some View {
+        HStack(alignment: .top, spacing: 5) {
+            Image(systemName: "bubble.left.fill").font(.system(size: 7)).foregroundColor(Theme.gold.opacity(0.65))
+            VStack(alignment: .leading, spacing: 1) {
+                Text(name).font(.system(size: 6.5, weight: .bold, design: .serif)).foregroundColor(Theme.parchment)
+                Text(preview).font(.system(size: 5.5, design: .serif)).foregroundColor(Theme.textSecondary).lineLimit(1)
+            }
+            Spacer()
+            Text(time).font(.system(size: 5, design: .serif)).foregroundColor(Theme.textMuted)
         }
     }
 }
@@ -714,31 +794,86 @@ private struct MockGroupNotes: View {
             }
             .padding(.horizontal, 12).padding(.vertical, 8).background(Theme.navBg)
 
-            // Toggle
-            HStack(spacing: 0) {
-                Text("My Notes")
-                    .font(.system(size: 7, design: .serif))
-                    .foregroundColor(Theme.ink)
-                    .frame(maxWidth: .infinity).padding(.vertical, 5)
-                    .background(Theme.gold)
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
-                Text("Group Notes")
-                    .font(.system(size: 7, design: .serif))
-                    .foregroundColor(Theme.parchment.opacity(0.55))
-                    .frame(maxWidth: .infinity).padding(.vertical, 5)
+            // Notes / Highlights toggle (mirrors NotesListView.notesHighlightsToggle;
+            // the retired "My Notes / Group Notes" toggle no longer exists in the real
+            // screen — §5 rebuild).
+            mockPillToggle {
+                mockSegment("Notes", active: true)
+                mockSegment("Highlights", active: false)
             }
-            .padding(3)
-            .background(Theme.cardBg)
-            .clipShape(RoundedRectangle(cornerRadius: 8))
-            .padding(.horizontal, 12).padding(.vertical, 6)
+            .padding(.horizontal, 12).padding(.top, 6)
 
+            // Group-scope chips (mirrors NotesListView.groupChips) — the real filter
+            // mechanism this mock's toggle used to (incorrectly) model.
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 5) {
+                    groupChip("Personal", selected: true)
+                    groupChip("Wednesday Study", selected: false)
+                    groupChip("Young Adults", selected: false)
+                }
+                .padding(.horizontal, 12)
+            }
+            .padding(.top, 6).padding(.bottom, 4)
+
+            // Note cards rebuilt per NoteRow's real fields — title + optional PUBLIC
+            // badge, optional verse-reference chip, preview, timestamp. No author
+            // avatar (NoteRow has none; this isn't a "group notes wall").
             VStack(spacing: 6) {
-                groupNoteCard("Sarah",  "Psalm 23 Reflection",   "Psalm 23:1",  "The Lord is my shepherd — what it means to lack nothing in a season of uncertainty…")
-                groupNoteCard("Marcus", "Romans 8 Deep Dive",    "Romans 8:28", "All things work together for good. This isn't prosperity theology — it's covenant promise…")
+                noteCard("Psalm 23 Reflection", verse: "Psalm 23:1",
+                         preview: "The Lord is my shepherd — what it means to lack nothing in a season of uncertainty…",
+                         time: "2h ago", isPublic: true)
+                noteCard("Romans 8 Deep Dive", verse: "Romans 8:28",
+                         preview: "All things work together for good. This isn't prosperity theology — it's covenant promise…",
+                         time: "1d ago", isPublic: false)
             }
             .padding(.horizontal, 12)
             Spacer()
         }
+    }
+
+    private func groupChip(_ title: String, selected: Bool) -> some View {
+        Text(title)
+            .font(.system(size: 6, weight: .bold))
+            .foregroundColor(selected ? Color(hex: "#24170A") : Theme.parchment.opacity(0.7))
+            .padding(.horizontal, 8)
+            .frame(height: 16)
+            .background(
+                selected
+                    ? LinearGradient(colors: [Theme.gold, Color(hex: "#EDAB3C")], startPoint: .leading, endPoint: .trailing)
+                    : LinearGradient(colors: [Theme.parchment.opacity(0.07), Theme.parchment.opacity(0.07)], startPoint: .leading, endPoint: .trailing)
+            )
+            .overlay(Capsule().stroke(selected ? Color.clear : Theme.parchment.opacity(0.14), lineWidth: 0.5))
+            .clipShape(Capsule())
+    }
+
+    private func noteCard(_ title: String, verse: String?, preview: String, time: String, isPublic: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(title).font(.system(size: 7.5, weight: .heavy)).foregroundColor(Theme.parchment).lineLimit(1)
+                Spacer()
+                if isPublic {
+                    Text("PUBLIC")
+                        .font(.system(size: 4.5, weight: .bold)).tracking(0.5)
+                        .foregroundColor(Theme.goldLight)
+                        .padding(.horizontal, 4).padding(.vertical, 1.5)
+                        .background(Theme.gold.opacity(0.14))
+                        .overlay(Capsule().stroke(Theme.gold.opacity(0.32), lineWidth: 0.5))
+                        .clipShape(Capsule())
+                }
+            }
+            if let verse {
+                Text(verse)
+                    .font(.system(size: 5.5, weight: .bold)).foregroundColor(Theme.goldLight)
+                    .padding(.horizontal, 5).padding(.vertical, 1.5)
+                    .background(Theme.gold.opacity(0.14))
+                    .overlay(Capsule().stroke(Theme.gold.opacity(0.32), lineWidth: 0.5))
+                    .clipShape(Capsule())
+            }
+            Text(preview).font(.system(size: 6, design: .serif)).foregroundColor(Theme.parchment.opacity(0.62)).lineLimit(2)
+            Text(time).font(.system(size: 5, design: .serif)).foregroundColor(Theme.textMuted)
+        }
+        .padding(8)
+        .mockGlassCard(cornerRadius: 10)
     }
 }
 
@@ -765,12 +900,42 @@ private struct MockFriendChat: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            // Header: decorative hamburger-circle (left) + "Chat" title + "+" (right) —
+            // mirrors ChatRootView.header. Title renamed from the stale "Messages".
             HStack {
-                Text("Messages").font(.system(size: 9, weight: .bold, design: .rounded)).foregroundColor(Theme.parchment)
+                Circle()
+                    .strokeBorder(Theme.parchment.opacity(0.18), lineWidth: 0.5)
+                    .background(Circle().fill(Theme.parchment.opacity(0.08)))
+                    .frame(width: 16, height: 16)
+                    .overlay(Image(systemName: "line.3.horizontal").font(.system(size: 6)).foregroundColor(Theme.goldLight))
+                Spacer()
+                Text("Chat").font(.system(size: 9, weight: .bold, design: .rounded)).foregroundColor(Theme.parchment)
                 Spacer()
                 Image(systemName: "plus").font(.system(size: 11)).foregroundColor(Theme.gold)
             }
             .padding(.horizontal, 12).padding(.vertical, 8).background(Theme.navBg)
+
+            // Friends / Groups / Agents toggle (mirrors ChatRootView.scopeToggle) —
+            // the single most visually identifying element of the real Chat screen,
+            // previously absent from this mock entirely.
+            mockPillToggle {
+                mockSegment("Friends", active: true)
+                mockSegment("Groups", active: false)
+                mockSegment("Agents", active: false)
+            }
+            .padding(.horizontal, 12).padding(.top, 6)
+
+            // Search field (mirrors ChatSearchField).
+            HStack(spacing: 5) {
+                Image(systemName: "magnifyingglass").font(.system(size: 7)).foregroundColor(Theme.parchment.opacity(0.4))
+                Text("Search conversations").font(.system(size: 6, design: .serif)).foregroundColor(Theme.parchment.opacity(0.4))
+                Spacer()
+            }
+            .padding(.horizontal, 8)
+            .frame(height: 16)
+            .background(Capsule().fill(Theme.parchment.opacity(0.06)))
+            .overlay(Capsule().stroke(Theme.parchment.opacity(0.12), lineWidth: 0.5))
+            .padding(.horizontal, 12).padding(.top, 6).padding(.bottom, 4)
 
             VStack(spacing: 0) {
                 row("S", "Sarah",           "See you at Bible study!",      "2m ago", unread: true)
@@ -822,9 +987,7 @@ private struct MockAddFriend: View {
                         .clipShape(RoundedRectangle(cornerRadius: 6))
                 }
                 .padding(10)
-                .background(Theme.cardBg)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
-                .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.borderGoldFaint, lineWidth: 1))
+                .mockGlassCard(cornerRadius: 10)
 
                 Text("Friend request sent once they accept you'll be connected.")
                     .font(.system(size: 6, design: .serif)).foregroundColor(Theme.textMuted)
@@ -929,9 +1092,7 @@ private struct MockGroupSession: View {
                 }
             }
             .padding(10)
-            .background(Theme.cardBg)
-            .clipShape(RoundedRectangle(cornerRadius: 12))
-            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Theme.borderGoldDim, lineWidth: 1))
+            .mockGlassCard(cornerRadius: 12)
             .padding(.horizontal, 10).padding(.top, 8)
 
             Spacer()
@@ -991,6 +1152,85 @@ private struct MockAIAgent: View {
             .padding(10)
             Spacer()
         }
+    }
+}
+
+// New ACCOUNT mock (§8) — Account was one of the 5 owner reference photos and had
+// no corresponding tour step at all; the pre-existing EVENTS steps only reference
+// "Account → Notifications" / "Account → Events" in body copy without ever showing
+// the screen itself. Compressed for mock-phone legibility: profile block + the
+// single most distinctive section (the 4-stat OVERVIEW row) + a one-line plan
+// nudge, deliberately not the full Subscription/Plan-Usage cards.
+private struct MockAccount: View {
+    var body: some View {
+        VStack(spacing: 0) {
+            // Plain left-aligned title, no hamburger/plus — the real AccountView uses
+            // a native large nav title with no header buttons.
+            HStack {
+                Text("Account").font(.system(size: 9, weight: .bold, design: .rounded)).foregroundColor(Theme.parchment)
+                Spacer()
+            }
+            .padding(.horizontal, 12).padding(.vertical, 8).background(Theme.navBg)
+
+            VStack(spacing: 10) {
+                // Profile block (mirrors profileHeader).
+                VStack(spacing: 5) {
+                    ZStack {
+                        Circle()
+                            .fill(LinearGradient(colors: [Color(hex: "#EDAB3C").opacity(0.32), Color(hex: "#B8761D").opacity(0.2)],
+                                                 startPoint: .topLeading, endPoint: .bottomTrailing))
+                            .frame(width: 30, height: 30)
+                        Text("J").font(.system(size: 11, design: .serif)).foregroundColor(Theme.goldLight)
+                    }
+                    .overlay(Circle().stroke(Theme.gold.opacity(0.5), lineWidth: 0.75))
+                    VStack(spacing: 1) {
+                        Text("Joshua").font(.system(size: 9, weight: .semibold, design: .serif)).foregroundColor(Theme.parchment)
+                        Text("joshua@example.com").font(.system(size: 6, design: .serif)).foregroundColor(Theme.textMuted)
+                    }
+                }
+                .padding(.top, 8)
+
+                // Overview stats (mirrors statsSection/StatBox) — the clearest visual
+                // signature of the real screen.
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("OVERVIEW").font(.system(size: 5, weight: .semibold)).tracking(1).foregroundColor(Theme.textGoldMuted)
+                    HStack {
+                        accountStat("12", "Friends")
+                        accountStat("3",  "Groups")
+                        accountStat("48", "Notes")
+                        accountStat("21", "Verses")
+                    }
+                }
+                .padding(9)
+                .mockGlassCard(cornerRadius: 10)
+
+                // Compact plan nudge — a deliberate simplification of the real
+                // Subscription + Plan Usage cards, which would be illegible/overflow
+                // at mock-phone scale.
+                HStack {
+                    Text("Free plan · Upgrade for unlimited")
+                        .font(.system(size: 6, weight: .semibold, design: .serif))
+                        .foregroundColor(Theme.goldLight)
+                    Spacer()
+                    Image(systemName: "chevron.right").font(.system(size: 6)).foregroundColor(Theme.gold.opacity(0.7))
+                }
+                .padding(.horizontal, 9).padding(.vertical, 6)
+                .background(Theme.gold.opacity(0.10))
+                .overlay(Capsule().stroke(Theme.gold.opacity(0.28), lineWidth: 0.75))
+                .clipShape(Capsule())
+            }
+            .padding(.horizontal, 12).padding(.top, 6)
+
+            Spacer()
+        }
+    }
+
+    private func accountStat(_ value: String, _ label: String) -> some View {
+        VStack(spacing: 1) {
+            Text(value).font(.system(size: 10, weight: .bold, design: .serif)).foregroundColor(Theme.gold)
+            Text(label).font(.system(size: 4.5, design: .serif)).tracking(0.5).textCase(.uppercase).foregroundColor(Theme.textMuted)
+        }
+        .frame(maxWidth: .infinity)
     }
 }
 
@@ -1056,9 +1296,7 @@ private struct MockHeartbeat: View {
                     .clipShape(RoundedRectangle(cornerRadius: 6))
                 }
                 .padding(10)
-                .background(Theme.cardBg)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
-                .overlay(RoundedRectangle(cornerRadius: 12).stroke(Theme.borderGoldDim, lineWidth: 1))
+                .mockGlassCard(cornerRadius: 12)
             }
             .padding(12)
             Spacer()
@@ -1067,24 +1305,6 @@ private struct MockHeartbeat: View {
 }
 
 // MARK: - Shared Helpers ──────────────────────────────────────────────────────
-
-private func groupNoteCard(_ author: String, _ title: String, _ verse: String, _ preview: String) -> some View {
-    VStack(alignment: .leading, spacing: 3) {
-        HStack {
-            Circle().fill(Theme.gold.opacity(0.18)).frame(width: 14, height: 14)
-                .overlay(Text(String(author.prefix(1))).font(.system(size: 6, weight: .bold)).foregroundColor(Theme.gold))
-            Text(author).font(.system(size: 6, design: .serif)).foregroundColor(Theme.textGoldMuted)
-            Spacer()
-            Text(verse).font(.system(size: 5.5, design: .serif)).foregroundColor(Theme.gold)
-        }
-        Text(title).font(.system(size: 7.5, weight: .medium, design: .serif)).foregroundColor(Theme.parchment)
-        Text(preview).font(.system(size: 6, design: .serif)).foregroundColor(Theme.textMuted).lineSpacing(1.5).lineLimit(2)
-    }
-    .padding(9)
-    .background(Theme.cardBg)
-    .clipShape(RoundedRectangle(cornerRadius: 10))
-    .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.borderGoldFaint, lineWidth: 1))
-}
 
 private func notifCard(_ icon: String, _ name: String, _ schedule: String, _ prompt: String) -> some View {
     VStack(alignment: .leading, spacing: 4) {
@@ -1102,18 +1322,60 @@ private func notifCard(_ icon: String, _ name: String, _ schedule: String, _ pro
             .foregroundColor(Theme.textMuted).lineSpacing(2).lineLimit(2)
     }
     .padding(9)
-    .background(Theme.cardBg)
-    .clipShape(RoundedRectangle(cornerRadius: 10))
-    .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.borderGoldFaint, lineWidth: 1))
+    .mockGlassCard(cornerRadius: 10)
 }
 
-private func mockCard<Content: View>(@ViewBuilder content: () -> Content) -> some View {
-    content()
-        .padding(9)
-        .background(Theme.cardBg)
-        .clipShape(RoundedRectangle(cornerRadius: 10))
-        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.borderGoldFaint, lineWidth: 0.5))
-        .padding(.horizontal, 12)
+// Miniaturized approximation of DashboardComponents.glassCard's frosted-material
+// treatment ("Replaces the old opaque Theme.cardBg fill") for use inside
+// OBMockPhone, where true .ultraThinMaterial backdrop blur won't render
+// meaningfully at ~10pt card heights: a translucent/tinted fill + soft gradient
+// hairline border instead of the retired flat Theme.cardBg + single-stroke look.
+private extension View {
+    func mockGlassCard(cornerRadius: CGFloat = 10) -> some View {
+        self
+            .background(
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .fill(Color.white.opacity(0.05))
+            )
+            .background(
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .fill(Theme.cardBg.opacity(0.55))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .strokeBorder(
+                        LinearGradient(colors: [Color.white.opacity(0.20), Theme.gold.opacity(0.12)],
+                                       startPoint: .topLeading, endPoint: .bottomTrailing),
+                        lineWidth: 0.75
+                    )
+            )
+    }
+}
+
+// Shared gold-gradient-active-capsule segment/toggle pattern — the same
+// component pattern as NotesListView.notesHighlightsToggle / ChatRootView.scopeToggle,
+// reused at mock scale by MockGroupNotes (Notes/Highlights) and MockFriendChat
+// (Friends/Groups/Agents).
+private func mockSegment(_ label: String, active: Bool) -> some View {
+    Text(label)
+        .font(.system(size: 6.5, weight: .bold))
+        .foregroundColor(active ? Color(hex: "#24170A") : Theme.parchment.opacity(0.55))
+        .frame(maxWidth: .infinity, minHeight: 16)
+        .background(
+            active
+                ? LinearGradient(colors: [Theme.gold, Color(hex: "#EDAB3C")], startPoint: .leading, endPoint: .trailing)
+                : LinearGradient(colors: [.clear, .clear], startPoint: .leading, endPoint: .trailing)
+        )
+        .clipShape(Capsule())
+}
+
+private func mockPillToggle<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+    HStack(spacing: 2) { content() }
+        .padding(2)
+        .background(
+            Capsule().fill(Theme.parchment.opacity(0.07))
+                .overlay(Capsule().stroke(Theme.parchment.opacity(0.13), lineWidth: 0.5))
+        )
 }
 
 // MARK: - CTA ─────────────────────────────────────────────────────────────────
@@ -1197,7 +1459,7 @@ private struct TourStep {
         .init(
             section: "HOME",
             heading: "Your spiritual command center",
-            body: "Your dashboard shows today's verse, your AI agent's latest insight, upcoming study sessions, and recent notes — all before you've had your coffee.",
+            body: "Your dashboard shows a verse to revisit, your circle's recent activity, and a one-tap way to continue right where you left off.",
             hint: "Everything starts here",
             activeTab: 0
         ),
@@ -1234,8 +1496,8 @@ private struct TourStep {
         .init(
             section: "NOTES",
             heading: "Your community's journal",
-            body: "Toggle to 'Group Notes' to see what your study partners have written. Every note is linked to the verse that inspired it.",
-            hint: "Toggle between My Notes and Group",
+            body: "Switch to Highlights to revisit verses you've marked, or tap a group chip to see what your study partners have written — every note is linked to the verse that inspired it.",
+            hint: "Tap a group chip to filter",
             activeTab: 2
         ),
         // COMMUNITY (steps 6–9)
@@ -1275,7 +1537,18 @@ private struct TourStep {
             hint: "Chat → Agents → +",
             activeTab: 3
         ),
-        // EVENTS (steps 11–12)
+        // ACCOUNT (step 11, new) — Account was one of the 5 owner reference photos
+        // and previously had no corresponding tour step at all; inserted here since
+        // the EVENTS steps' copy below already assumes the user is navigating
+        // within Account ("In Account → Notifications...", "In Account → Events...").
+        .init(
+            section: "ACCOUNT",
+            heading: "Your account, at a glance",
+            body: "See your friends, groups, notes, and verses at a glance, and manage your plan — all from the Account tab.",
+            hint: "Tap the Account tab",
+            activeTab: 4
+        ),
+        // EVENTS (steps 12–13, shifted from 11–12 by the new ACCOUNT step above)
         .init(
             section: "EVENTS",
             heading: "Your gentle daily nudge",

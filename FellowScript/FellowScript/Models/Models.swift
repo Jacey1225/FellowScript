@@ -149,7 +149,6 @@ struct FSUsage: Codable {
 
     var notes:              FSUsageResource { resources["notes"] ?? FSUsageResource() }
     var agentEvents:        FSUsageResource { resources["agent_events"] ?? FSUsageResource() }
-    var agentNotifications: FSUsageResource { resources["agent_notifications"] ?? FSUsageResource() }
 }
 
 // Billing details collected at checkout. Only NON-SENSITIVE fields are sent to
@@ -326,6 +325,42 @@ struct FSContact: Identifiable, Codable, Equatable {
     var lastMessageAt: String = ""  // ISO timestamp of the most recent message (for sorting)
 }
 
+// ── Friend activity feed (Dashboard's Friend Activity hero card) ───────────────
+// SOURCE: GET /friends/{user_id}/activity (FriendsManager.get_friend_activity).
+// Friend-only, block-respecting in both directions. `note_preview` is only ever
+// a friend's public, non-reply, non-group personal note — highlights never
+// surface content here (no privacy flag exists for them yet), though a
+// highlight still counts toward `last_active_at`.
+struct FSFriendNotePreview: Codable, Equatable {
+    let note_id:   String
+    let title:     String
+    let text:      String
+    let timestamp: String
+}
+
+struct FSFriendActivityEntry: Codable, Identifiable, Equatable {
+    var id: String { friend_id }
+    let friend_id:      String
+    let username:       String
+    let last_active_at: String?
+    let note_preview:   FSFriendNotePreview?
+
+    var initial: String { String(username.prefix(1)).uppercased() }
+}
+
+struct FSCheckInCandidate: Codable, Equatable {
+    let friend_id:          String
+    let username:           String
+    let days_since_contact: Int?
+}
+
+struct FSFriendActivityFeed: Codable, Equatable {
+    let friends_active: [FSFriendActivityEntry]
+    let check_in:       FSCheckInCandidate?
+
+    static let empty = FSFriendActivityFeed(friends_active: [], check_in: nil)
+}
+
 struct FSMessage: Identifiable, Codable {
     let id:        String
     let text:      String
@@ -491,59 +526,6 @@ extension FSHeartbeat {
             return fireDate
         }
         return nil
-    }
-}
-
-// ── Notification ──────────────────────────────────────────────────────────────
-struct FSNotification: Codable, Identifiable {
-    var id:         String    = UUID().uuidString
-    var user_id:    String    = ""
-    var name:       String    = ""
-    var prompt:     String    = ""
-    var timestamps: [String?] = Array(repeating: nil, count: 31)
-
-    enum CodingKeys: String, CodingKey {
-        case id = "_id"
-        case user_id, name, prompt, timestamps
-    }
-
-    init(id: String = UUID().uuidString, user_id: String = "", name: String = "",
-         prompt: String = "", timestamps: [String?] = Array(repeating: nil, count: 31)) {
-        self.id = id; self.user_id = user_id; self.name = name
-        self.prompt = prompt; self.timestamps = timestamps
-    }
-
-    init(from decoder: Decoder) throws {
-        let c = try decoder.container(keyedBy: CodingKeys.self)
-        id         = (try? c.decode(String.self,    forKey: .id))         ?? UUID().uuidString
-        user_id    = (try? c.decode(String.self,    forKey: .user_id))    ?? ""
-        name       = (try? c.decode(String.self,    forKey: .name))       ?? ""
-        prompt     = (try? c.decode(String.self,    forKey: .prompt))     ?? ""
-        var ts     = (try? c.decode([String?].self, forKey: .timestamps)) ?? []
-        while ts.count < 31 { ts.append(nil) }
-        timestamps = ts
-    }
-}
-
-extension FSNotification {
-    var activeCount: Int { timestamps.filter { $0 != nil }.count }
-
-    var recurrenceSummary: String {
-        let count = activeCount
-        if count == 0  { return "Not scheduled" }
-        if count >= 31 { return "Daily" }
-        return "\(count) day\(count == 1 ? "" : "s") / month"
-    }
-
-    var scheduledTime: String? {
-        guard let raw = timestamps.compactMap({ $0 }).first else { return nil }
-        let utcFmt = DateFormatter()
-        utcFmt.dateFormat = "HH:mm"
-        utcFmt.timeZone = TimeZone(identifier: "UTC")
-        guard let date = utcFmt.date(from: raw) else { return raw }
-        let display = DateFormatter()
-        display.timeStyle = .short
-        return display.string(from: date)
     }
 }
 

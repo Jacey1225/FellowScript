@@ -1,7 +1,7 @@
 import React, { useEffect, useLayoutEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Layout, Typography } from 'antd';
-import { MessageOutlined, BookOutlined, ReloadOutlined } from '@ant-design/icons';
+import { MessageOutlined, BookOutlined } from '@ant-design/icons';
 import { DockviewReact } from 'dockview-react';
 
 import AppNav           from '../components/AppNav.jsx';
@@ -21,12 +21,13 @@ import NotesPanelComponent       from '../components/panels/NotesPanel.jsx';
 import HighlightsPanelComponent  from '../components/panels/HighlightsPanel.jsx';
 import MessagingPanelComponent   from '../components/panels/MessagingPanel.jsx';
 import AgentChatPanelComponent   from '../components/panels/AgentChatPanel.jsx';
+import ReaderDockRail             from '../components/panels/ReaderDockRail.jsx';
 import {
   BibleReaderPanelContext, NotesPanelContext, HighlightsPanelContext,
   MessagingPanelContext, AgentChatPanelContext,
 } from '../context/ReaderPanelContexts.jsx';
 import {
-  PANEL_IDS, loadSavedLayout, buildDefaultLayout, saveLayout, resetLayout,
+  PANEL_IDS, loadSavedLayout, buildDefaultLayout, saveLayout, reopenPanel,
 } from '../lib/readerDockLayout.js';
 
 import { useAuth }        from '../context/AuthContext.jsx';
@@ -165,6 +166,15 @@ export default function Reader() {
   const dockviewApiRef  = useRef(null);
   const disposableRef   = useRef(null);
   const saveTimerRef    = useRef(null);
+  // Left dock rail (item 3) — which panel ids are currently present in the
+  // live layout, and which one is active/visible; kept as component state
+  // (rather than read imperatively) so the rail re-renders on every
+  // dockview panel add/remove/activate. railDisposablesRef holds the three
+  // DockviewApi subscriptions this drives, disposed alongside the existing
+  // layout-change one on unmount/re-ready.
+  const [openPanelIds, setOpenPanelIds]   = useState(() => new Set());
+  const [activePanelId, setActivePanelId] = useState(null);
+  const railDisposablesRef = useRef([]);
 
   // ── Init ────────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -258,10 +268,11 @@ export default function Reader() {
     return () => document.removeEventListener('click', hide);
   }, []);
 
-  // Clean up the dockview layout-change subscription on unmount.
+  // Clean up the dockview layout-change + rail subscriptions on unmount.
   useEffect(() => {
     return () => {
       disposableRef.current?.dispose();
+      railDisposablesRef.current.forEach(d => d?.dispose());
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     };
   }, []);
@@ -365,10 +376,33 @@ export default function Reader() {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
       saveTimerRef.current = setTimeout(() => saveLayout(api), 400);
     });
+
+    // Left dock rail (item 3) — mirror the live layout's open panels +
+    // active panel into React state so the rail re-renders on every add/
+    // remove/activate. Synced once eagerly (covers the just-loaded/built
+    // layout) plus on every subsequent lifecycle event.
+    const syncOpenPanels = () => setOpenPanelIds(new Set(api.panels.map(p => p.id)));
+    syncOpenPanels();
+    setActivePanelId(api.activePanel?.id ?? null);
+    railDisposablesRef.current.forEach(d => d?.dispose());
+    railDisposablesRef.current = [
+      api.onDidAddPanel(syncOpenPanels),
+      api.onDidRemovePanel(syncOpenPanels),
+      api.onDidActivePanelChange((e) => setActivePanelId(e?.panel?.id ?? null)),
+    ];
   }, []);
 
-  const handleResetLayout = useCallback(() => {
-    if (dockviewApiRef.current) resetLayout(dockviewApiRef.current);
+  // Rail icon click: activate the panel if it's already open (including a
+  // backgrounded tab, e.g. Highlights/Messages tabbed behind Notes), else
+  // reopen it in a sensible default position — this single entry point
+  // satisfies both "reveal" and "reopen" per the request's own framing
+  // ("when a user exits from one tab, they can pull it back up").
+  const handleRailSelect = useCallback((id) => {
+    const api = dockviewApiRef.current;
+    if (!api) return;
+    const panel = api.getPanel(id);
+    if (panel) panel.api.setActive();
+    else reopenPanel(api, id);
   }, []);
 
   // ── Derived ─────────────────────────────────────────────────────────────────
@@ -454,20 +488,6 @@ export default function Reader() {
   }), [user, agents, agentMessages, activeAgent, agentThinking, handleOpenAgent, handleCloseAgent,
        handleNewAgent, sendAgentMessage, curBook, curChapter, curVerse, allNotes, handleNavigateVerse]);
 
-  // AppNav's "Jump or Ask" command-trigger (design-spec §3.2-3.3) — a thin
-  // props bundle handing the header the exact same navigation/agent-chat
-  // machinery the dockview panels already use, so the overlay's Jump mode
-  // and Ask mode are real, not stubbed. See CommandTrigger.jsx.
-  const commandTriggerProps = useMemo(() => ({
-    books, curBook, curChapter, chapterCount: getChapterCount, verseCount,
-    onNavigate: handleNavigate, onNavigateVerse: handleNavigateVerse,
-    user, agents, activeAgent, agentMessages, agentThinking,
-    onOpenAgent: handleOpenAgent, onNewAgent: handleNewAgent, sendAgentMessage,
-    curVerse, allNotes,
-  }), [books, curBook, curChapter, getChapterCount, verseCount, handleNavigate, handleNavigateVerse,
-       user, agents, activeAgent, agentMessages, agentThinking, handleOpenAgent, handleNewAgent,
-       sendAgentMessage, curVerse, allNotes]);
-
   return (
     <BibleReaderPanelContext.Provider value={bibleReaderPanelValue}>
     <NotesPanelContext.Provider value={notesPanelValue}>
@@ -476,14 +496,15 @@ export default function Reader() {
     <AgentChatPanelContext.Provider value={agentChatPanelValue}>
       <Layout style={{ minHeight: '100vh', background: 'transparent', overflow: 'hidden' }}>
         <AppBloom variant="reader" />
-        <AppNav commandTrigger={commandTriggerProps} />
+        <AppNav />
 
         {isDesktop ? (
           <>
-            <button className="nav-pill-btn dock-reset-btn" onClick={handleResetLayout} title="Reset layout to default">
-              <ReloadOutlined style={{ fontSize: '0.72rem' }} />
-              <span>Reset Layout</span>
-            </button>
+            <ReaderDockRail
+              openPanelIds={openPanelIds}
+              activePanelId={activePanelId}
+              onSelect={handleRailSelect}
+            />
             <div className="reader-dock-container dockview-theme-abyss">
               <DockviewReact
                 components={PANEL_COMPONENTS}

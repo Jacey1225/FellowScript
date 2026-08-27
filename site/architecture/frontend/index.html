@@ -856,6 +856,62 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../git-deploy-plan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Git-Based Deploy Plan
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ghcr-deploy-plan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    GHCR Server-Side Deploy Plan
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -975,7 +1031,7 @@
 <tbody>
 <tr>
 <td><code>AppNav.jsx</code></td>
-<td>Persistent top navigation bar — logo (links to <code>/</code>), reader link, account link; collapses to a drawer on narrow screens</td>
+<td>Persistent top navigation bar — logo (links to <code>/</code>); desktop top-right shows only a profile avatar (routes to <code>/account</code> signed in, <code>/signin</code> otherwise) and the light/dark theme toggle. The mobile hamburger <code>Drawer</code> separately exposes Home/Read/Account as text menu items.</td>
 </tr>
 <tr>
 <td><code>NotesSidebar.jsx</code></td>
@@ -996,6 +1052,10 @@
 <tr>
 <td><code>panels/MessagingPanel.jsx</code> / <code>panels/AgentChatPanel.jsx</code></td>
 <td>Desktop dockview panels — friends/group DMs and the AI spiritual-guide chat, split apart so each can be positioned independently (previously combined behind one "Group" toggle)</td>
+</tr>
+<tr>
+<td><code>panels/ReaderDockRail.jsx</code></td>
+<td>Fixed left icon rail (desktop only) — one icon per dockable panel type; mirrors the live dockview layout's open/active panels into React state and reveals-or-reopens a panel on click. Replaces the old top-right "Reset Layout" button as the way to bring back a closed panel.</td>
 </tr>
 <tr>
 <td><code>ContactsPanel.jsx</code> / <code>ChatThread.jsx</code> / <code>AgentChatThread.jsx</code></td>
@@ -1062,7 +1122,7 @@
 <h2 id="reader-layout">Reader Layout</h2>
 <p><strong>Desktop</strong> (viewports &gt;1024px) uses <a href="https://github.com/mathuo/dockview"><code>dockview-react</code></a> to give the Reader page a VSCode-style dockable workspace: five independently-registered panels (Bible Reading, Notes, Highlights, Messaging, Agent Chat) that the user can drag to any edge (split), drop onto another panel (tab together), or resize. Key pieces, all under <code>frontend/src/</code>:</p>
 <ul>
-<li><code>lib/readerDockLayout.js</code> — <code>buildDefaultLayout(api)</code> (the single source of truth for the default arrangement: Bible reader filling the main area, Notes+Highlights+Messaging tabbed on the right spanning full height, Agent Chat docked below the reader only), plus <code>loadSavedLayout</code>/<code>saveLayout</code>/<code>resetLayout</code> for persistence to <code>localStorage['fs_reader_layout_v1']</code> (debounced on <code>api.onDidLayoutChange</code>, versioned so a future panel-set change can invalidate old saved layouts).</li>
+<li><code>lib/readerDockLayout.js</code> — <code>buildDefaultLayout(api)</code> (the single source of truth for the default arrangement: Bible reader filling the main area, Notes+Highlights+Messaging tabbed on the right spanning full height, Agent Chat docked below the reader only), plus <code>loadSavedLayout</code>/<code>saveLayout</code>/<code>resetLayout</code> for persistence to <code>localStorage['fs_reader_layout_v1']</code> (debounced on <code>api.onDidLayoutChange</code>, versioned so a future panel-set change can invalidate old saved layouts). <code>reopenPanel(api, id)</code> re-adds a closed panel using the same per-panel default-position rules as <code>buildDefaultLayout</code>, used by the left dock rail's click-to-reopen.</li>
 <li><code>context/ReaderPanelContexts.jsx</code> — five separate React contexts (one per panel), not dockview's own <code>params</code> mechanism (which only refreshes via an explicit imperative call) — <code>Reader.jsx</code> lifts all the data-fetching hooks (<code>useBible</code>, <code>useNotes</code>, <code>useMessaging</code>, <code>useAgentChat</code>, etc.) and feeds each panel a memoized context value, so e.g. an incoming chat message never re-renders the Bible panel.</li>
 <li><code>components/panels/*.jsx</code> — the five panel components registered with <code>DockviewReact</code> via a <code>components</code> map keyed by panel id.</li>
 <li><code>hooks/useIsDesktopViewport.js</code> — reactively decides which branch to mount (aligned to the same 1024px breakpoint the mobile CSS media query uses), so resizing across it cleanly swaps the dockview tree for the mobile layout instead of leaving one mounted-but-hidden.</li>
@@ -1117,6 +1177,18 @@
 <tr>
 <td><code>Chat/PillButton.swift</code>, <code>Chat/MessageGroupRow.swift</code>, <code>Chat/SegmentedDurationControl.swift</code>, <code>Chat/ChipToggle.swift</code></td>
 <td>Shared restyled Chat components (amber-gradient pill buttons, Slack-style grouped message rows, the duration segmented control, chip toggles) — per-feature component files, no separate shared <code>Theme/Components/</code> folder</td>
+</tr>
+<tr>
+<td><code>LoadingScreen/LoadingScreenView.swift</code>, <code>LoadingScreen/loading-screen.mov</code></td>
+<td>App-startup loading screen: an <code>AVQueuePlayer</code>/<code>AVPlayerLooper</code>-driven, muted, looping video (<code>loading-screen.mov</code> — HEVC with alpha, 1440×1440, re-exported from the 205MB ProRes source in <code>data/</code> via <code>avconvert --preset PresetHEVCHighestQualityWithAlpha</code>, AVFoundation's own alpha-aware export pipeline rather than ffmpeg, to eliminate a faint alpha-plane haze the ffmpeg-produced derivative showed only during live <code>AVPlayerLayer</code> playback) shown between sign-in and the app's first-load data being ready, displayed at a fixed 180×180pt icon/mark scale (not full-bleed) centered over <code>Theme.bgPage</code>. Falls back to a static branded placeholder if the asset fails to load/decode, and to a held representative frame (no playback) under <code>accessibilityReduceMotion</code>.</td>
+</tr>
+<tr>
+<td><code>Services/StartupCoordinator.swift</code></td>
+<td>Startup-readiness gate <code>ContentView</code> uses to decide when to swap <code>LoadingScreenView</code> for the main tab view. Owns the shared <code>NotesViewModel</code>/<code>BibleViewModel</code>/<code>ChatViewModel</code> instances used by the Notes/Bible/Chat tabs (account/user info is already resident on <code>AppState.currentUser</code>), races their existing <code>.load(service:userId:)</code> calls against a fixed 8s timeout, and reports ready on whichever finishes first — a still-pending source at timeout just falls through to that screen's own existing per-panel loading state rather than blocking the app open.</td>
+</tr>
+<tr>
+<td><code>Dashboard/DashboardView.swift</code>, <code>Dashboard/DashboardComponents.swift</code></td>
+<td>The home tab's "Editorial Hero" layout: a Friend Activity hero card (avatar stack of active friends, the most-recently-active friend's headline/timestamp — tap to open their chat — and, when they have one, a preview of their most recent public note), a check-in nudge row (the friend gone longest without a direct message), and a note-resume card (the user's own most recent note). Sourced from the new <code>GET /friends/{user_id}/activity</code> endpoint (<code>FriendsManager.get_friend_activity</code>) alongside the view's existing per-resource fetches (notes/highlights/bookmarks/agents/contacts), all cache-first via <code>DiskCache</code>. Replaces the former <code>GroupActivityWidget</code>; its "Continue reading" affordance lives on unchanged in <code>QuickActionsRow</code>'s "Read" quick action. <code>RevisitVerseCard</code>, <code>BookmarksWidget</code>, the notes/highlights stat cards, <code>MyGroupsRow</code>, and <code>QuickActionsRow</code> are demoted below the new hero section rather than removed. <code>glassCard()</code> gained an optional <code>blurBoost</code> parameter (default <code>0</code>, no behavior change for existing callers) — only the new hero and note-resume cards pass it, for the more-transparent/heavier-blur glass treatment ported from the "Editorial Hero" mockup.</td>
 </tr>
 </tbody>
 </table>

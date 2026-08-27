@@ -1,0 +1,6 @@
+{
+  "task_id": "20260818-lekiwi-3d-print-build-guide",
+  "stage": "evaluating-diffs",
+  "result": "pass",
+  "summary": "The chapter-mapped LeKiwi 3D-printed build guide holds structurally (print files, BOM split, five-phase assembly, software setup, and the full chapter mapping all trace to primary sources unchanged); the motor-ID pitfall is confirmed universal (not kit-specific) via driver source code, while the brief's 'thinly documented, smooth build' framing is disproven by independent GitHub design-file issues, and three figures (heat-set-insert durability, print/assembly time, real-world cost vs. the $482-499 baseline) remain unverified rather than confirmed."
+}
