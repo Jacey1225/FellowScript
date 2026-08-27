@@ -957,6 +957,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Friends">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#get-friendsuser_idactivity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GET /friends/{user_id}/activity
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1337,8 +1354,24 @@ may still be populated.</p>
 <td><code>/friends/{user_id}</code></td>
 <td>Friend list</td>
 </tr>
+<tr>
+<td>GET</td>
+<td><code>/friends/{user_id}/activity</code></td>
+<td>Friend-activity read surface for the dashboard's Friend Activity hero card: each friend's most recent public note preview + last-active timestamp (block-respecting both directions), plus a single "check in" nudge candidate (friend gone longest without a direct message). Highlights are not previewed (no privacy flag exists for them yet).</td>
+</tr>
 </tbody>
 </table>
+<h3 id="get-friendsuser_idactivity"><code>GET /friends/{user_id}/activity</code></h3>
+<p><strong>Response:</strong> <code>200</code> with</p>
+<pre><code class="language-json">{
+  &quot;friends_active&quot;: [
+    {&quot;friend_id&quot;: &quot;uuid&quot;, &quot;username&quot;: &quot;str&quot;, &quot;last_active_at&quot;: &quot;iso8601 | null&quot;,
+     &quot;note_preview&quot;: {&quot;note_id&quot;: &quot;uuid&quot;, &quot;title&quot;: &quot;str&quot;, &quot;text&quot;: &quot;str&quot;, &quot;timestamp&quot;: &quot;iso8601&quot;} | null}
+  ],
+  &quot;check_in&quot;: {&quot;friend_id&quot;: &quot;uuid&quot;, &quot;username&quot;: &quot;str&quot;, &quot;days_since_contact&quot;: &quot;int | null&quot;} | null
+}
+</code></pre>
+<p><code>friends_active</code> is ordered most-recently-active first; <code>check_in</code> is <code>null</code> only when the user has no friends.</p>
 <hr />
 <h2 id="messaging-websocket">Messaging (WebSocket)</h2>
 <p>Connect: <code>ws://&lt;host&gt;:8000/ws/{user_id}</code></p>
