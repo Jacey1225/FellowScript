@@ -12,10 +12,6 @@ final class DashboardViewModel: ObservableObject {
     var service: DataServiceProtocol = MockDataService.shared
 
     @Published var notes:          [String: FSNote]        = [:]
-    @Published var highlights:     [FSHighlight]           = []
-    @Published var bookmarks:      [FSBookmark]            = []
-    @Published var agents:         [FSAgent]               = []
-    @Published var lastAgentMsg:   FSAgentMessage?         = nil
     @Published var isLoading       = true
     // Editorial Hero's Friend Activity card + check-in nudge — GET
     // /friends/{userId}/activity, a new targeted endpoint alongside this
@@ -24,80 +20,33 @@ final class DashboardViewModel: ObservableObject {
     // that didn't exist at all before).
     @Published var friendActivity: FSFriendActivityFeed    = .empty
 
-    // Redesign-derived, all from real data (see load()).
-    @Published var myGroups:       [GroupSummary]          = []
-    @Published var notesThisWeek:  [Int]                   = Array(repeating: 0, count: 7)
-    @Published var revisitVerse:   FSHighlight?            = nil
-    @Published var lastReadTarget: BibleNavTarget?         = nil
-    @Published var subtitleLine:   String                  = ""
-
     func load(service: DataServiceProtocol, userId: String) async {
         self.service = service
         isLoading = true
         defer { isLoading = false }
-
-        // Synchronous, local-only fields render instantly (before any fetch).
-        lastReadTarget = decodeLastRead()
 
         // ── Cache-first: warm the cards from last-known data ─────────────────────
         if let cached: [String: FSNote] = await DiskCache.shared.load([String: FSNote].self, forKey: "notes:\(userId)") {
             notes = cached
             isLoading = false
         }
-        if let cachedHl: [String: String] = await DiskCache.shared.load([String: String].self, forKey: "highlights:\(userId)") {
-            highlights = cachedHl.map { FSHighlight.from(key: $0.key, color: $0.value) }.sorted { $0.book < $1.book }
-        }
-        if let cached: [FSAgent] = await DiskCache.shared.load([FSAgent].self, forKey: "agents:\(userId)") {
-            agents = cached
-        }
-        if let cached: FSAgentMessage = await DiskCache.shared.load(FSAgentMessage.self, forKey: "lastAgentMsg:\(userId)") {
-            lastAgentMsg = cached
-        }
         if let cached: FSFriendActivityFeed = await DiskCache.shared.load(FSFriendActivityFeed.self, forKey: "friendActivity:\(userId)") {
             friendActivity = cached
         }
-        recomputeDerived()
 
         // ── Fresh fetch (all via the injected service — the real backend) ────────
-        // Notes here are only ever used for the "this week" sparkline and the
-        // most-recent-note card, both of which read fine off the first
-        // backend-capped page (15, newest first) -- this view doesn't need
-        // to page through the full collection like NotesListView does.
+        // Notes here are only ever used for the most-recent-note card, which
+        // reads fine off the first backend-capped page (15, newest first) --
+        // this view doesn't need to page through the full collection like
+        // NotesListView does.
         async let notesTask          = try? service.fetchNotes(userId: userId, cursorCreatedAt: nil, cursorId: nil)
-        async let hlTask             = try? service.fetchHighlights(userId: userId)
-        async let bookmarksTask      = try? service.fetchBookmarks(userId: userId)
-        async let agentsTask         = try? service.fetchAgents(userId: userId)
-        async let contactsTask       = try? service.fetchContacts(userId: userId)
         async let friendActivityTask = try? service.fetchFriendActivity(userId: userId)
 
-        notes  = (await notesTask)?.notes ?? [:]
-        agents = (await agentsTask) ?? []
-
-        var hlDict: [String: String] = [:]
-        if let hl = await hlTask {
-            hlDict = hl
-            highlights = hl.map { FSHighlight.from(key: $0.key, color: $0.value) }.sorted { $0.book < $1.book }
-        }
-        if let bm = await bookmarksTask {
-            bookmarks = bm.map { FSBookmark.from(key: $0.key, label: $0.value) }.sorted { $0.book < $1.book }
-        }
-
-        // Last agent message for the (still-supported) agent quick action.
-        if let firstAgent = agents.first,
-           let msgs = try? await service.fetchAgentMessages(userId: userId, agentId: firstAgent.id) {
-            lastAgentMsg = msgs.last
-        }
-
-        let (contactList, _) = (await contactsTask) ?? ([], [:])
-        myGroups = buildMyGroups(contacts: contactList)
+        notes = (await notesTask)?.notes ?? [:]
         friendActivity = (await friendActivityTask) ?? .empty
-        recomputeDerived()
 
         // ── Write fresh data back to the shared cache ────────────────────────────
-        await DiskCache.shared.save(notes,  forKey: "notes:\(userId)")
-        await DiskCache.shared.save(agents, forKey: "agents:\(userId)")
-        await DiskCache.shared.save(hlDict, forKey: "highlights:\(userId)")
-        if let m = lastAgentMsg { await DiskCache.shared.save(m, forKey: "lastAgentMsg:\(userId)") }
+        await DiskCache.shared.save(notes, forKey: "notes:\(userId)")
         await DiskCache.shared.save(friendActivity, forKey: "friendActivity:\(userId)")
     }
 
@@ -116,88 +65,10 @@ final class DashboardViewModel: ObservableObject {
             let savedId = try await service.saveNote(note, editingId: editingId, userId: userId)
             var updated = note; updated.id = savedId
             notes[savedId] = updated
-            recomputeDerived()
             return nil
         } catch {
             return error.localizedDescription
         }
-    }
-
-    // ── Derivations (pure, from already-loaded data) ─────────────────────────────
-
-    private func recomputeDerived() {
-        notesThisWeek = computeNotesThisWeek()
-        revisitVerse  = pickRevisit()
-        subtitleLine  = computeSubtitle()
-    }
-
-    private func buildMyGroups(contacts: [FSContact]) -> [GroupSummary] {
-        contacts.filter { $0.type == .group }.map { c in
-            let initials = c.memberNames.prefix(3).map { String($0.prefix(1)).uppercased() }
-            let count    = max(c.memberNames.count, c.toUsers.count)
-            return GroupSummary(
-                id:             c.id,
-                title:          c.name.isEmpty ? "Group" : c.name,
-                subtitle:       count == 1 ? "1 member" : "\(count) members",
-                memberInitials: initials.isEmpty ? [String((c.name.isEmpty ? "G" : c.name).prefix(1)).uppercased()] : Array(initials)
-            )
-        }
-    }
-
-    private func computeNotesThisWeek() -> [Int] {
-        // index 0 = 6 days ago … index 6 = today (chronological, for the sparkline).
-        var buckets = Array(repeating: 0, count: 7)
-        let cal = Calendar.current
-        let today = cal.startOfDay(for: Date())
-        for n in notes.values {
-            guard let d = Self.parseDate(n.timestamp) else { continue }
-            let day  = cal.startOfDay(for: d)
-            let diff = cal.dateComponents([.day], from: day, to: today).day ?? 99
-            if diff >= 0 && diff < 7 { buckets[6 - diff] += 1 }
-        }
-        return buckets
-    }
-
-    private func pickRevisit() -> FSHighlight? {
-        if let h = highlights.randomElement() { return h }
-        // Fallback: a bookmark (chapter-level) presented as a verse-1 target.
-        if let b = bookmarks.randomElement() {
-            return FSHighlight(id: b.id, book: b.book, chapter: b.chapter, verse: 1, color: "#D4922A", username: nil)
-        }
-        return nil
-    }
-
-    private func computeSubtitle() -> String {
-        let weekCount  = notesThisWeek.reduce(0, +)
-        let notePhrase = weekCount == 1 ? "1 note this week" : "\(weekCount) notes this week"
-        if let t = lastReadTarget {
-            return "Last read \(t.book) \(t.chapter) · \(notePhrase)"
-        }
-        return notePhrase
-    }
-
-    private func decodeLastRead() -> BibleNavTarget? {
-        guard let data = UserDefaults.standard.data(forKey: "fs_bible_pos"),
-              let pos  = try? JSONDecoder().decode([String: String].self, from: data),
-              let book = pos["book"], !book.isEmpty
-        else { return nil }
-        let chapter = Int(pos["chapter"] ?? "1") ?? 1
-        return BibleNavTarget(book: book, chapter: chapter, verse: 1)
-    }
-
-    private static func parseDate(_ s: String) -> Date? {
-        if s.isEmpty { return nil }
-        let iso = ISO8601DateFormatter()
-        iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let d = iso.date(from: s) { return d }
-        iso.formatOptions = [.withInternetDateTime]
-        if let d = iso.date(from: s) { return d }
-        let df = DateFormatter()
-        for fmt in ["yyyy-MM-dd HH:mm:ss.SSSSSSZ", "yyyy-MM-dd HH:mm:ss.SSSSSS", "yyyy-MM-dd'T'HH:mm:ss", "yyyy-MM-dd"] {
-            df.dateFormat = fmt
-            if let d = df.date(from: s) { return d }
-        }
-        return nil
     }
 }
 
@@ -207,28 +78,9 @@ struct DashboardView: View {
     @StateObject private var vm = DashboardViewModel()
     @State private var showNewNote    = false
     @State private var showResumeNote = false
-    @State private var showAgentChat  = false
 
     private func openFriendChat(id: String, username: String) {
         appState.pendingChatContact = FSContact(id: id, name: username, type: .friend)
-    }
-
-    // Quick actions are built from availability so there are never dead buttons.
-    private var quickActions: [QuickAction] {
-        var actions: [QuickAction] = [
-            QuickAction(label: "New note", symbol: "square.and.pencil", tint: Theme.gold) {
-                showNewNote = true
-            },
-            QuickAction(label: "Read", symbol: "book", tint: Color(hex: "#6DBF7E")) {
-                appState.pendingBibleNav = vm.lastReadTarget ?? BibleNavTarget(book: "John", chapter: 1, verse: 1)
-            },
-        ]
-        if !vm.agents.isEmpty {
-            actions.append(QuickAction(label: "Ask agent", symbol: "sparkles", tint: Color(hex: "#7EB8E0")) {
-                showAgentChat = true
-            })
-        }
-        return actions
     }
 
     var body: some View {
@@ -253,8 +105,7 @@ struct DashboardView: View {
 
             ScrollView(.vertical, showsIndicators: false) {
                 LazyVStack(spacing: 10) {
-                    HeroHeader(username: appState.currentUser?.username ?? "friend",
-                               subtitle: vm.subtitleLine)
+                    HeroHeader(username: appState.currentUser?.username ?? "friend")
 
                     // ── Editorial Hero: Friend Activity ───────────────────────────────
                     FriendActivityHeroCard(feed: vm.friendActivity) { entry in
@@ -274,30 +125,6 @@ struct DashboardView: View {
                             showNewNote = true
                         }
                     }
-
-                    if let verse = vm.revisitVerse {
-                        RevisitVerseCard(verse: verse) {
-                            appState.pendingBibleNav = BibleNavTarget(book: verse.book, chapter: verse.chapter, verse: verse.verse)
-                        }
-                    }
-
-                    if !vm.bookmarks.isEmpty {
-                        BookmarksWidget(bookmarks: vm.bookmarks) { b in
-                            appState.pendingBibleNav = BibleNavTarget(book: b.book, chapter: b.chapter, verse: 1)
-                        }
-                    }
-
-                    HStack(spacing: 12) {
-                        NotesSparklineCard(counts: vm.notesThisWeek)
-                        HighlightsCountCard(highlights: vm.highlights)
-                    }
-                    .padding(.horizontal, 20)
-
-                    if !vm.myGroups.isEmpty {
-                        MyGroupsRow(groups: vm.myGroups)
-                    }
-
-                    QuickActionsRow(actions: quickActions)
                 }
                 .padding(.bottom, 150) // clears the floating tab bar
             }
@@ -318,9 +145,6 @@ struct DashboardView: View {
                     await vm.saveNote(saved, editingId: recent.0, userId: appState.currentUser?.user_id ?? "")
                 }
             }
-        }
-        .sheet(isPresented: $showAgentChat) {
-            if let a = vm.agents.first { AgentChatView(agent: a) }
         }
     }
 }

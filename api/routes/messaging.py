@@ -5,12 +5,16 @@ from backend.interactions.devotion import DevotionManager
 from backend.auth.dependencies import get_current_user, require_match, authenticate_ws
 from botocore.exceptions import ClientError
 import boto3
+import logging
 import uuid
 import json
 
 ws_router    = APIRouter(prefix="/message")
 chime_router = APIRouter(prefix="/chime")
 manager      = ConnectionManager()
+logger       = logging.getLogger(__name__)
+
+_CHIME_ERROR_DETAIL = "Could not start the call. Please try again."
 
 _SIGNAL_TYPES = frozenset({
     "call-invite", "call-accept", "call-reject", "call-end",
@@ -44,7 +48,8 @@ def _get_or_create_meeting(session_id: str) -> dict:
                 ExternalMeetingId=session_id,
             )
         except ClientError as e:
-            raise HTTPException(status_code=500, detail=str(e))
+            logger.error("Chime create_meeting failed for session %s: %s", session_id, e)
+            raise HTTPException(status_code=500, detail=_CHIME_ERROR_DETAIL)
 
         meeting_data     = resp["Meeting"]
         chime_meeting_id = meeting_data["MeetingId"]
@@ -58,7 +63,8 @@ def _create_attendee(chime_meeting_id: str, user_id: str) -> dict:
     try:
         resp = chime.create_attendee(MeetingId=chime_meeting_id, ExternalUserId=user_id)
     except ClientError as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("Chime create_attendee failed for meeting %s, user %s: %s", chime_meeting_id, user_id, e)
+        raise HTTPException(status_code=500, detail=_CHIME_ERROR_DETAIL)
     return resp["Attendee"]
 
 

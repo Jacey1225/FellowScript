@@ -4,11 +4,15 @@ from backend.interactions.devotion import DevotionManager
 from backend.auth.dependencies import get_current_user, require_match
 from backend.moderation.content_filter import check_clean, ContentRejected
 import boto3
+import logging
 import uuid
 from botocore.exceptions import ClientError
 
 chime = boto3.client("chime-sdk-meetings", region_name="us-east-1")
 devo_router = APIRouter(prefix="/devotions")
+logger = logging.getLogger(__name__)
+
+_CHIME_ERROR_DETAIL = "Could not start the call. Please try again."
 
 
 def _check_devotion_clean(devotion) -> None:
@@ -148,7 +152,8 @@ async def join_call(session_id: str, user_id: str, _: str = Depends(require_matc
                 chime_meeting_id = meeting_data["MeetingId"]
                 db.save_chime_meeting(session_id, chime_meeting_id, meeting_data)
             except ClientError as e:
-                raise HTTPException(status_code=500, detail=str(e))
+                logger.error("Chime create_meeting failed for session %s: %s", session_id, e)
+                raise HTTPException(status_code=500, detail=_CHIME_ERROR_DETAIL)
 
         try:
             attendee_resp = chime.create_attendee(
@@ -156,7 +161,11 @@ async def join_call(session_id: str, user_id: str, _: str = Depends(require_matc
                 ExternalUserId=user_id,
             )
         except ClientError as e:
-            raise HTTPException(status_code=500, detail=str(e))
+            logger.error(
+                "Chime create_attendee failed for session %s, meeting %s, user %s: %s",
+                session_id, chime_meeting_id, user_id, e,
+            )
+            raise HTTPException(status_code=500, detail=_CHIME_ERROR_DETAIL)
 
         return {"Meeting": meeting_data, "Attendee": attendee_resp["Attendee"]}
     finally:

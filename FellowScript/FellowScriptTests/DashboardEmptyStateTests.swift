@@ -40,10 +40,11 @@ final class FriendActivityHeroCardTests: XCTestCase {
         let sut = FriendActivityHeroCard(feed: .empty) { _ in }
 
         XCTAssertNoThrow(try sut.inspect().find(text: "Add a friend to see their notes and highlights here."))
-        // The "Friend activity" eyebrow label is part of THIS (no-friends)
-        // branch specifically -- the populated branches (avatarStackRow/
-        // activityRow) don't render it at all, see the next tests.
-        XCTAssertNoThrow(try sut.inspect().find(text: "Friend activity"))
+        // The "Friend activity" eyebrow label was leaked internal jargon not
+        // present in the approved mockup (task 20260827-dashboard-old-ui-cleanup)
+        // -- the no-friends empty state must not render it.
+        XCTAssertThrowsError(try sut.inspect().find(text: "Friend activity"),
+                              "the 'Friend activity' section label must not render -- it's not in the approved mockup") { _ in }
     }
 
     // MARK: Empty state 2 — friends exist, but none have any tracked activity
@@ -169,6 +170,12 @@ final class NoteResumeCardTests: XCTestCase {
         XCTAssertNoThrow(try sut.inspect().find(text: "capture a reflection"))
         XCTAssertThrowsError(try sut.inspect().find(text: "Open note"),
                               "the empty state must not show the populated 'Open note' pill copy") { _ in }
+        // "Pick up where you left off" was a leaked internal section-label
+        // string, not present in the approved mockup, and rendered
+        // unconditionally (outside the `if let note` branch) before task
+        // 20260827-dashboard-old-ui-cleanup -- must not render in either state.
+        XCTAssertThrowsError(try sut.inspect().find(text: "Pick up where you left off"),
+                              "the empty note-resume state must not render the removed section label") { _ in }
     }
 
     func test_nilNote_tappingCard_invokesOnOpen_soCallerCanOpenANewNoteInstead() throws {
@@ -179,8 +186,13 @@ final class NoteResumeCardTests: XCTestCase {
     }
 
     // MARK: Happy path — a real recent note (regression guard)
-
-    func test_populatedNote_rendersTitleAndPreview_andOpenNotePillCopy() throws {
+    //
+    // Updated for task 20260827-note-continue-island: the populated state's
+    // bottom control was replaced with the "Continue" capsule island (design-
+    // spec.md §2.2) — text-only, no icon — so this now asserts the new copy
+    // instead of the retired "Open note" / "where you left off" pill, and
+    // guards against a regression back to that old copy.
+    func test_populatedNote_rendersTitleAndPreview_andContinueLabel() throws {
         let note = FSNote(
             id: "note-1", user: "user-1", title: "Sunday Service 06/28",
             text: "Pastor Ed spoke on the courage of faith.", public: false, group_id: "",
@@ -189,9 +201,17 @@ final class NoteResumeCardTests: XCTestCase {
         let sut = NoteResumeCard(note: note) {}
 
         XCTAssertNoThrow(try sut.inspect().find(text: "Sunday Service 06/28"))
-        XCTAssertNoThrow(try sut.inspect().find(text: "Open note"))
-        XCTAssertNoThrow(try sut.inspect().find(text: "where you left off"))
+        XCTAssertNoThrow(try sut.inspect().find(button: "Continue"),
+                          "the populated state's control must be the new text-only 'Continue' capsule island")
         XCTAssertThrowsError(try sut.inspect().find(text: "You haven't written a note yet."))
+        XCTAssertThrowsError(try sut.inspect().find(text: "Open note"),
+                              "the retired 'Open note' pill copy must not regress back in") { _ in }
+        XCTAssertThrowsError(try sut.inspect().find(text: "where you left off"),
+                              "the retired 'where you left off' pill copy must not regress back in") { _ in }
+        // Regression guard: the populated state must not ALSO carry the
+        // removed "Pick up where you left off" section label above the card.
+        XCTAssertThrowsError(try sut.inspect().find(text: "Pick up where you left off"),
+                              "the populated note-resume state must not render the removed section label") { _ in }
     }
 
     func test_populatedNote_emptyTitle_fallsBackToUntitledNote_insteadOfBlankRow() throws {
@@ -203,5 +223,37 @@ final class NoteResumeCardTests: XCTestCase {
         let sut = NoteResumeCard(note: note) {}
         XCTAssertNoThrow(try sut.inspect().find(text: "Untitled note"),
                           "a note with an empty title must render a defined fallback label, never a blank row")
+    }
+}
+
+// MARK: - HeroHeader (coverage for task 20260827-dashboard-old-ui-cleanup)
+//
+// Proves the two leaked-jargon strings the mockup never had are gone --
+// the "YOUR RHYTHM" eyebrow and the "Last read X · N notes" subtitle line --
+// while the existing live time-of-day + username greeting behavior (kept per
+// the frontend gate's resolution of the spec's open question) still renders.
+final class HeroHeaderTests: XCTestCase {
+
+    func test_rendersGreetingWithUsername_noEyebrow_noSubtitleLine() throws {
+        let sut = HeroHeader(username: "Jacey")
+
+        XCTAssertNoThrow(try sut.inspect().find(textWhere: { text, _ in text.contains("Jacey") }),
+                          "the greeting line must still include the live username")
+        XCTAssertThrowsError(try sut.inspect().find(text: "YOUR RHYTHM"),
+                              "the 'YOUR RHYTHM' eyebrow is leaked internal jargon absent from the approved mockup") { _ in }
+        XCTAssertThrowsError(try sut.inspect().find(textWhere: { text, _ in text.contains("Last read") }),
+                              "the 'Last read X · N notes' subtitle line is leaked internal jargon absent from the approved mockup") { _ in }
+    }
+
+    func test_greeting_reflectsOneOfTheThreeTimeOfDayVariants() throws {
+        let sut = HeroHeader(username: "Jacey")
+
+        // Exactly one of the three greeting variants renders, proving the
+        // live time-of-day logic (not the mockup's static "Good morning,
+        // friend" copy) still drives the text.
+        let matches = ["Good morning, Jacey", "Good afternoon, Jacey", "Good evening, Jacey"]
+            .filter { text in (try? sut.inspect().find(text: text)) != nil }
+        XCTAssertEqual(matches.count, 1,
+                        "exactly one time-of-day greeting variant must render, got: \(matches)")
     }
 }

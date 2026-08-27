@@ -22,6 +22,19 @@
 // NotesListView.swift both only ever construct NoteEditorView with
 // isReadOnly: false) — that is pre-existing and unrelated to this task's
 // diff, so there is no live UI path to exercise it end-to-end here.
+//
+// Update (task: 20260827-dashboard-old-ui-cleanup): Dashboard's "New note"
+// quick action (QuickActionsRow) was removed as part of that task's sanctioned
+// scope (an accepted dashboard-shortcut tradeoff, not a bug — Notes/Bible/Chat
+// remain reachable via the tab bar; see that task's intake spec). With
+// MockDataService seeding non-empty notes for the "jacob" test user,
+// Dashboard's NoteResumeCard always resolves to the "resume existing note"
+// branch now, not "start a new note" — so creating a brand-new note is no
+// longer reachable from Dashboard at all for this fixture. Every test here
+// that opens a fresh NoteEditorView now goes through the Notes tab's
+// always-present "Create new note" entry point instead (openNewNoteEditor(_:)),
+// matching the path test_saveFAB_success... already used pre-task for its own,
+// unrelated reason (needing a real wired-up onSave closure).
 
 import XCTest
 
@@ -42,8 +55,9 @@ final class NoteEditorUITests: XCTestCase {
                 element.tap()
                 return
             }
-            // Dashboard's quick actions can sit below the fold on shorter
-            // simulators — scroll them into view rather than waiting forever.
+            // Elements (e.g. the Notes tab's controls) can sit below the fold
+            // on shorter simulators — scroll them into view rather than
+            // waiting forever.
             if element.exists {
                 app.scrollViews.firstMatch.swipeUp()
             }
@@ -92,10 +106,12 @@ final class NoteEditorUITests: XCTestCase {
 
         // Already onboarded + signed in from a prior test in this run — jump
         // back to the Home tab (a previous test may have left another tab
-        // selected) where Dashboard's "New note" quick action lives.
+        // selected). Dashboard no longer has a "New note" quick action (see
+        // the file-header note above), so readiness is proven via the
+        // always-present tab bar instead.
         if app.buttons["Home"].waitForExistence(timeout: 3) {
             app.buttons["Home"].tap()
-            XCTAssertTrue(app.buttons["New note"].waitForExistence(timeout: 5))
+            XCTAssertTrue(app.buttons["Notes"].waitForExistence(timeout: 5))
             return app
         }
 
@@ -149,14 +165,27 @@ final class NoteEditorUITests: XCTestCase {
         let deadline = Date().addingTimeInterval(20)
         while Date() < deadline {
             dismissSystemAlertIfPresent(app)
-            if app.buttons["New note"].exists { break }
+            if app.buttons["Notes"].exists { break }
             RunLoop.current.run(until: Date().addingTimeInterval(0.3))
         }
 
-        if !app.buttons["New note"].waitForExistence(timeout: 5) {
+        if !app.buttons["Notes"].waitForExistence(timeout: 5) {
             XCTFail("expected Dashboard to load (MockDataService.signIn) after submitting jacob/password.\n\(app.debugDescription)")
         }
         return app
+    }
+
+    /// Opens a brand-new NoteEditorView via the Notes tab's always-present
+    /// "Create new note" entry point (see the file-header note: Dashboard's
+    /// removed "New note" quick action is no longer a live path for this).
+    private func openNewNoteEditor(app: XCUIApplication) {
+        let notesTab = app.buttons["Notes"]
+        XCTAssertTrue(notesTab.waitForExistence(timeout: 5), "FloatingTabBar's Notes destination")
+        tapWhenHittable(notesTab, app: app)
+
+        let createNote = app.buttons["Create new note"]
+        XCTAssertTrue(createNote.waitForExistence(timeout: 5))
+        tapWhenHittable(createNote, app: app)
     }
 
     // MARK: - Cancel → dismiss() (ghost-chip, Option C)
@@ -164,15 +193,16 @@ final class NoteEditorUITests: XCTestCase {
     func test_cancelChip_dismissesNoteEditorWithoutSaving() {
         let app = signInAndReachDashboard()
 
-        tapWhenHittable(app.buttons["New note"], app: app)
+        openNewNoteEditor(app: app)
 
         let cancelChip = app.buttons["Cancel and discard changes"]
         XCTAssertTrue(cancelChip.waitForExistence(timeout: 5),
                      "the ghost-chip Cancel control's accessibilityLabel must be preserved verbatim")
         cancelChip.tap()
 
-        // Sheet dismissed — Dashboard's own controls are reachable again.
-        XCTAssertTrue(app.buttons["New note"].waitForExistence(timeout: 5),
+        // Sheet dismissed — back on the Notes tab, its own controls are
+        // reachable again.
+        XCTAssertTrue(app.buttons["Create new note"].waitForExistence(timeout: 5),
                       "tapping Cancel must still call dismiss() and close the editor")
     }
 
@@ -181,7 +211,7 @@ final class NoteEditorUITests: XCTestCase {
     func test_publicBadge_tapTogglesPrivatePublicState() {
         let app = signInAndReachDashboard()
 
-        tapWhenHittable(app.buttons["New note"], app: app)
+        openNewNoteEditor(app: app)
 
         let privateBadge = app.buttons["This note is private. Tap to make it public."]
         XCTAssertTrue(privateBadge.waitForExistence(timeout: 5),
@@ -205,16 +235,11 @@ final class NoteEditorUITests: XCTestCase {
         let app = signInAndReachDashboard()
 
         // Notes tab wires a real onSave closure through to MockDataService.saveNote
-        // (Dashboard's "New note" shortcut does not supply onSave, so use the
-        // Notes tab's "Create new note" entry point to exercise the full,
-        // real save round-trip handleSave() drives).
-        let notesTab = app.buttons["Notes"]
-        XCTAssertTrue(notesTab.waitForExistence(timeout: 5), "FloatingTabBar's Notes destination")
-        tapWhenHittable(notesTab, app: app)
-
-        let createNote = app.buttons["Create new note"]
-        XCTAssertTrue(createNote.waitForExistence(timeout: 5))
-        createNote.tap()
+        // (Dashboard's own note-resume affordance only ever opens an *existing*
+        // note now, per the file-header note — so this exercises the full,
+        // real save round-trip handleSave() drives via the Notes tab's
+        // "Create new note" entry point).
+        openNewNoteEditor(app: app)
 
         let titleField = app.textFields["Note title"]
         XCTAssertTrue(titleField.waitForExistence(timeout: 5))

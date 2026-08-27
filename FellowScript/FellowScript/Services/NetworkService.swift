@@ -109,6 +109,30 @@ final class NetworkService: DataServiceProtocol {
         }
     }
 
+    /// Logs + beacons a thrown fetch failure (a non-2xx HTTP response or
+    /// transport error surfaced by throwIfError()/URLSession) for a given
+    /// endpoint, then rethrows so the caller's own fallback behavior (e.g. a
+    /// `try? ... ?? .empty` degrade-to-cache pattern) is unchanged — this
+    /// only makes the failure visible, it never changes control flow.
+    ///
+    /// Complements decode(endpoint:) above: that one covers a 200 response
+    /// this client can't parse; this one covers the response never getting
+    /// that far at all (e.g. a 404/500). Both were silent before — a fetch
+    /// failure caught by a bare `try?` at the call site (as
+    /// DashboardViewModel.load() does for fetchFriendActivity) previously
+    /// vanished with zero signal, exactly the gap that let a stale-deploy
+    /// 404 on GET /friends/{user_id}/activity hide the check-in row with no
+    /// error trail anywhere. See 20260827-checkin-row-investigation.
+    private func reportFetchFailure<T>(endpoint: String, operation: () async throws -> T) async throws -> T {
+        do {
+            return try await operation()
+        } catch {
+            print("[NetworkService] fetch failed for \(endpoint): \(error)")
+            reportDecodeFailure(endpoint: endpoint, summary: String(describing: error))
+            throw error
+        }
+    }
+
     /// "\(short) (\(build))", e.g. "1.4.2 (37)" — matches
     /// `ClientErrorReport.client_app_version`'s documented format, the key
     /// signal for distinguishing an out-of-date client build from a genuine
@@ -637,9 +661,20 @@ final class NetworkService: DataServiceProtocol {
     // Dashboard's Friend Activity hero card. Declared server-side ahead of
     // /friends/{userId}/{friendId} so the literal "activity" path segment
     // matches first.
+    //
+    // Wrapped in reportFetchFailure so a thrown fetch-level error (any
+    // 4xx/5xx from throwIfError(), e.g. the 404 a stale-deploy build
+    // returned in 20260827-checkin-row-investigation) is logged + beaconed
+    // before it reaches DashboardViewModel.load()'s `try? ... ?? .empty` —
+    // that swallow still degrades to cache/.empty exactly as before, but the
+    // failure is no longer invisible. decode(endpoint:) below already covers
+    // the "200 but can't parse" half of this same silent-failure class.
     func fetchFriendActivity(userId: String) async throws -> FSFriendActivityFeed {
-        let data = try await get("/friends/\(userId)/activity")
-        return decode(FSFriendActivityFeed.self, from: data, endpoint: "/friends/{userId}/activity") ?? .empty
+        let endpoint = "/friends/{userId}/activity"
+        let data = try await reportFetchFailure(endpoint: endpoint) {
+            try await self.get("/friends/\(userId)/activity")
+        }
+        return decode(FSFriendActivityFeed.self, from: data, endpoint: endpoint) ?? .empty
     }
 
     // ── Reports / Blocks (Guideline 1.2) ────────────────────────────────────────
