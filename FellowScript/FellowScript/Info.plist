@@ -29,6 +29,28 @@
 	<array>
 		<string>remote-notification</string>
 	</array>
+	<!--
+	  Ember Glass typography (task 20260827-ember-glass-chat-rewrite): bundles
+	  Playfair Display + Inter as real custom fonts, replacing the previous
+	  Font.playfair()/Font.lora() builders, which silently resolved to system
+	  fonts (SF Pro Rounded / New York) despite their names. Font files live in
+	  FellowScript/Fonts/ (picked up automatically by the FellowScript target's
+	  file-system-synchronized group; no project.pbxproj edit needed) and are
+	  copied to the bundle root by the default Copy Bundle Resources phase, so
+	  each entry below is a bare filename, not a path. License check (SIL Open
+	  Font License 1.1, verified against the actual font files' OFL.txt, not
+	  assumed) is recorded in FellowScript/Fonts/NOTICE.md.
+	-->
+	<key>UIAppFonts</key>
+	<array>
+		<string>PlayfairDisplay-Regular.ttf</string>
+		<string>PlayfairDisplay-SemiBold.ttf</string>
+		<string>PlayfairDisplay-Bold.ttf</string>
+		<string>PlayfairDisplay-Italic.ttf</string>
+		<string>Inter-Regular.ttf</string>
+		<string>Inter-SemiBold.ttf</string>
+		<string>Inter-Bold.ttf</string>
+	</array>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>

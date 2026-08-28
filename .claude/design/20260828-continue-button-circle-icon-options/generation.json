@@ -1,0 +1,78 @@
+{
+  "task_id": "20260828-continue-button-circle-icon-options",
+  "step": 4,
+  "stage": "generation",
+  "result": "pass",
+  "openart_used": false,
+  "rework_of": "bounce 2 of 2 from design-critique (cap reached)",
+  "generated_assets": [
+    {
+      "type": "png",
+      "path": ".claude/design/20260828-continue-button-circle-icon-options/assets/comparison-sheet.png",
+      "description": "Rebuilt comparison sheet: 2x2 grid of the four full 1206x2622 device-frame screenshots (options 1-4) + a row of five 378x310 detail crops (options 1, 2, 3, 3b, 4) + a wide 1546x1134 'option 3 in context' crop + numeral/caption/rationale/empty-state-note chrome + a corrected locked-token footer, on the #151009 sheet ground. All text re-wrapped to fit its column (no overlap/clipping at full resolution -- verified by rendering at native size and re-reading full-res crops of the caption blocks and footer)."
+    },
+    {
+      "type": "png",
+      "path": ".claude/design/20260828-continue-button-circle-icon-options/assets/variant1_full.png",
+      "description": "Option 1 (play.fill control), plain card, no notch -- unchanged in substance from bounce 1, re-captured this session so the shared baseline (frame/scroll/relative-date-label) matches every other variant exactly."
+    },
+    {
+      "type": "png",
+      "path": ".claude/design/20260828-continue-button-circle-icon-options/assets/variant2_full.png",
+      "description": "Option 2 (chevron.right + gold arc), plain card, no notch. Arc rim re-rendered with .strokeBorder (was .stroke) so the 2pt stroke sits fully inside the circle's silhouette, and an AngularGradient with clear stops outside a +-70/+-45-degree window replaces the prior hard-cut ends with a ~25-degree fade at each end. A first attempt assumed SwiftUI's AngularGradient angle-0-at-top; measuring the rendered arc showed it centered on the circle's right side instead, so the stop locations were shifted -90 degrees and re-verified before this final capture (see notes)."
+    },
+    {
+      "type": "png",
+      "path": ".claude/design/20260828-continue-button-circle-icon-options/assets/variant3_full.png",
+      "description": "Option 3 (arrow.right two-tone, #24170A inner fill -- design-spec.md's own locked token, unchanged), plain card, no notch."
+    },
+    {
+      "type": "png",
+      "path": ".claude/design/20260828-continue-button-circle-icon-options/assets/variant3b_full.png",
+      "description": "NEW: the mitigated 'option 3b' critique asked for -- identical two-tone construction to option 3, inner fill lifted to #8C5C30 (measured 3.04:1 against page ground #1E1812, vs option 3's 1.01:1), so the two-tone idea can be judged once it's actually legible. Same card/plain-join treatment as 1/2/3."
+    },
+    {
+      "type": "png",
+      "path": ".claude/design/20260828-continue-button-circle-icon-options/assets/variant4_full.png",
+      "description": "Option 4 (play.fill + concave scoop) -- the only variant that keeps a card cutout: a plain circle, radius = (diameter/2)+12pt, centered on the button, replacing the old pill-chamfer-shaped notch that bounce 2 found leftover in options 1-3. Card is intentionally taller than options 1/2/3/3b (more bottom padding to clear the scoop near the note text) -- a property of this row's own 'test the notch' purpose, not a second uncontrolled variable, since 1/2/3/3b all still share one identical card geometry among themselves."
+    },
+    {
+      "type": "png",
+      "path": ".claude/design/20260828-continue-button-circle-icon-options/assets/variant1_crop.png",
+      "description": "Option 1 detail crop, 280x230 native (scaled 1.35x on the sheet), shared box across 1/2/3/3b anchored on the card's real corner: trailing edge flush with the box's right edge minus the ~60px physical margin to the screen's own edge (~79% across), top edge set 30px below the note's measured body-copy bottom (y=1749) so no line is ever clipped."
+    },
+    {
+      "type": "png",
+      "path": ".claude/design/20260828-continue-button-circle-icon-options/assets/variant2_crop.png",
+      "description": "Option 2 detail crop, same shared box as variant 1 -- the corrected (inside-silhouette, faded-end) arc is visible at native crop resolution."
+    },
+    {
+      "type": "png",
+      "path": ".claude/design/20260828-continue-button-circle-icon-options/assets/variant3_crop.png",
+      "description": "Option 3 detail crop, same shared box -- now shows the button genuinely breaching a flat, notch-free card edge (the bounce-2 fix), where bounce 1's tighter framing plus the leftover notch had hidden this."
+    },
+    {
+      "type": "png",
+      "path": ".claude/design/20260828-continue-button-circle-icon-options/assets/variant3b_crop.png",
+      "description": "NEW: option 3b's detail crop, same shared box, placed immediately next to variant3_crop.png on the sheet so the 3-vs-3b tradeoff (locked-token fill vs. legible mitigated fill) reads as a direct comparison."
+    },
+    {
+      "type": "png",
+      "path": ".claude/design/20260828-continue-button-circle-icon-options/assets/variant4_crop.png",
+      "description": "Option 4 detail crop, same box shifted down to match option 4's own (intentionally taller) card -- the concave scoop reads as a clean, deliberate bay around the button."
+    },
+    {
+      "type": "png",
+      "path": ".claude/design/20260828-continue-button-circle-icon-options/assets/variant3_context.png",
+      "description": "Unchanged in substance from bounce 1's fix, re-cropped from this session's own variant3_full.png: a 1146x840 native crop spanning from CheckInRow's send button down through the note-resume card, showing both 56/50pt dark-circle/gold-glyph buttons (paperplane.fill and option 3's arrow.right) in one frame for the vocabulary-repetition judgment."
+    }
+  ],
+  "summary": "Fixed critique's sole blocking fault (bounce 2 of 2, cap reached) and folded in the four riding-along fixes in one re-render. (1) THE NOTCH: root-caused to the prior pass's NotchedCardMaterial call still passing useNotch: true for variants 1-3 (the old pill's chamfered NoteResumeCardNotch, sized for a ~150pt pill's top-left corner, not the new 52pt circle's bottom-right one). Fixed by adding a variant-aware DebugAwareCardMaterial view-modifier: variants 1/2/3/3b now call the plain glassCard(cornerRadius:) overload (genuinely no notch), and variant 4 alone gets a new DebugVariantCircleScoop -- a plain circle, radius = (diameter/2)+12pt, centered on the button's own center -- subtracted from the card via the existing even-odd glassCard(shape:) mechanism. Verified after capture, not assumed: sampled the card's own boundary y at x=700/850 (left of the button, inside the card) for all five variants -- 1/2/3/3b land flat at y~1814-1820 (identical across all four, confirming no second moving variable among the 'plain' options), and the button's own top edge (y=1747 for 1/2, y=1742 for 3/3b) sits well above that boundary -- a genuine ~65-70px (22-23pt) breach into card material, not the 8pt gap bounce 2 found. Variant 4's boundary sits lower (y~1885) because its own bottom padding is larger (by design, to clear the scoop near the note text) -- checked that this is a property unique to option 4's own row, not present between 1/2/3/3b, which all share one identical card geometry. (2) Option 2's arc silhouette: switched .stroke to .strokeBorder; confirmed via radial pixel profile straight up from the button's center that the fill+arc combined silhouette now cuts off sharply at r=78px (matching options 1/3/4's own fill edge exactly), with zero bleed beyond it. (3) Option 2's arc fade: replaced the flat-opacity arc with an AngularGradient carrying clear stops outside a +-70-degree window and a ~25-degree ramp at each end -- verified via a 3-degree-step radial-color sweep showing a smooth ramp (244,216,164 down through 196,141,52) between deg 45 and deg 70, not a hard cut. A genuine false start here, disclosed rather than hidden: the first implementation assumed SwiftUI's AngularGradient places angle 0 at the top going clockwise; measuring the rendered screenshot against variant 1 showed the bright band centered on the circle's right side instead (~90 degrees off), so the stop locations were recomputed for AngularGradient's actual angle-0-at-right convention, re-built, and re-verified (now centered at top, +-45 degrees full bright, +-45..+-70 fading) before the final five-variant capture. (4) Option 3b: added as a genuinely new fifth button variant (CONTINUE_VARIANT=3b) sharing option 3's exact silhouette/position (confirmed byte-identical outer-ring bounding box between 3 and 3b) with only the inner fill changed to #8C5C30, measured at 3.04:1 against page ground #1E1812 (vs option 3's own unchanged 1.01:1) -- placed as its own full capture, detail crop, and sheet caption adjacent to option 3's, not a full second 2x2 grid frame (its full-device frame would be visually indistinguishable from option 3's at that scale). (5) Sheet footer: corrected the rim-highlight line to state option 2's #FBE8C0@0.8/2pt/.strokeBorder/faded-arc treatment as the one exception rather than asserting a uniform #F5D392@0.35 rim across all four, and corrected the option-3 caveat's breach claim now that 1/2/4 (and 3) all genuinely breach the card. All five variants (1, 2, 3, 3b, 4) were captured together in one XCUITest session (timestamps spanning 42 seconds) via a temporary CONTINUE_VARIANT-gated (1|2|3|3b|4) environment-variable branch added to DashboardComponents.swift plus a temporary _TempScreenshotTest.swift UI test in FellowScriptUITests (the project uses Xcode 16's file-system-synchronized groups, so no pbxproj edit was needed to add or remove it) -- reusing the existing UI-TESTING launch argument and MockDataService's 'Romans 8 Study Notes' fixture already wired up for other UI tests in this target, and terminate()+launch() (not reinstall) between variants so the session token persists and only the first launch needs the full sign-in flow. This directly applies the lesson from bounce 1's rework (recorded in the prior generation.json): recapturing only the changed variant on a different session risks FriendActivityHeroCard's relative-date label ('Yesterday' etc., computed live from Calendar.current against a fixed mock timestamp) drifting and silently introducing a second moving variable -- capturing all five in one continuous run holds it fixed. After capture, both DashboardComponents.swift and the temp UI test file were fully removed: DashboardComponents.swift was restored from a pre-edit backup taken before any edit in this session and verified byte-identical via direct diff (not just git status) -- exit code 0, matching MD5 checksums before and after -- and confirmed a clean production build (BUILD SUCCEEDED) afterward; _TempScreenshotTest.swift was deleted outright (it was a new file, not a modification to shipped code) and a repo-wide grep for CONTINUE_VARIANT/TEMP-GEN-STEP4/_TempScreenshotTest under FellowScript/ returns zero matches.",
+  "notes": [
+    "loop-count.json's critique cap (2) was already spent before this rework began (critique_note: 'the next critique pass must pass regardless of residual issues'). This generation pass fixed the one blocking issue (the leftover notch) plus every non-blocking issue critique named for this same re-render (issues 2, 3, 4, 6); issue 5 (option 4's unfilleted scoop-to-card-edge cusp) was left exactly as critique's own bounce-2 assessment already marked it: non-blocking, real, and out of scope for a follow-up /build pass if option 4 is chosen -- consistent with critique's explicit 'not for fixing' list, not an oversight.",
+    "git status/diff on DashboardComponents.swift after restoration matches the same pre-existing, unrelated uncommitted baseline the first generation pass already noted (substantial repo-wide uncommitted changes across many files predating this task) -- confirmed via git diff that every remaining hunk against HEAD predates this task's own edits, none of which remain.",
+    "Repo is inside a git working tree (FellowScript/) contrary to this session's own default assumption; used git diff (in addition to the byte-for-byte backup diff) as an extra restoration check, per this task's standing hygiene bar.",
+    "Detail-crop dimensions (280x230 native, 5-across) and the option-3-in-context crop (1146x840) diverge slightly from design-spec.md's approximate '~420x420' figure -- design-spec.md itself states 'exact export size is a generation-stage decision' and the crops were sized from this session's own measured text/card/button geometry (to guarantee zero clipped text and a genuine, verified card breach) rather than the spec's illustrative figure.",
+    "Option 3b is additive scope riding along per critique's explicit instruction ('this becomes more load-bearing once issue 1 is fixed... a 3b gives them something to actually choose') -- design-spec.md's own option matrix still names only options 1-4 as the deliverable's core comparison; 3b is presented as a comparison aid next to option 3, not a fifth co-equal option, and the sheet's own captions say so."
+  ]
+}

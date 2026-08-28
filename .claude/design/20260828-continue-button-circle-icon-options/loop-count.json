@@ -1,0 +1,13 @@
+{
+  "task_id": "20260828-continue-button-circle-icon-options",
+  "steps": {
+    "bounces": {
+      "4": 2
+    }
+  },
+  "critique": 2,
+  "critique_cap": 2,
+  "critique_note": "Cap spent. Critique pass 3 recorded a pass per the cap rule, with four residual issues documented in critique.md rather than bounced a third time.",
+  "escalate": true,
+  "escalation_reason": "Deliverable passes and satisfies every intake desirable, but ships with four unfixed residual issues the user should see before choosing an option: (1) detail crops clip the top ~26% of the button, so option 2's gold arc and most of option 4's scoop are absent from the crop row and must be judged from the full device frames instead; (2) the comparison sheet leaves ~39% of its canvas empty and its device frames shrank 21% vs the prior revision; (3) option 3b's contrast mitigation drops its glyph to 2.98:1 and its ring-vs-inner separation to 1.98:1, collapsing the two-tone construction it exists to test, and only the favourable 3.04:1 figure is stated on the sheet; (4) option 4's card is 25pt taller than the other options', making card height a second moving variable in that panel."
+}

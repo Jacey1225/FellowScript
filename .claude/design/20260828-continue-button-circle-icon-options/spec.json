@@ -1,0 +1,8 @@
+{
+  "task_id": "20260828-continue-button-circle-icon-options",
+  "step": 3,
+  "stage": "static-spec",
+  "result": "pass",
+  "generation_needed": true,
+  "summary": "Specced a 4-option comparison sheet for the circular 'Continue' affordance (play.fill, chevron.right, arrow.right two-tone, and play.fill-with-notch), each as a full 1206x2622 device frame plus a ~420x420 detail crop, composited into one sheet with fixed palette/geometry/shadow-stack carried unchanged from the prior pill spec. Flagged that generation must be a faithful SwiftUI render-and-screenshot pipeline against DashboardComponents.swift, not OpenArt text-to-image synthesis, since token-accurate reproduction is the deliverable's own success criterion."
+}

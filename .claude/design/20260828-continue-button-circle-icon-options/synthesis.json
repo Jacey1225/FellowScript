@@ -1,0 +1,8 @@
+{
+  "task_id": "20260828-continue-button-circle-icon-options",
+  "step": 2,
+  "stage": "synthesis",
+  "result": "pass",
+  "media_type": "static",
+  "summary": "Four static option pairs (full 1206x2622 device frame + ~2.5x detail crop each) of a circular Continue affordance overhanging the note-resume card's bottom-right corner, all sharing FellowScript's locked amber-on-dark tokens (#EEAC3F->#C88C2C fill, #24170A glyph, #F5D392 rim, 3-shadow stack) and a 42/58 overhang split translated proportionally from the prior pill spec: (1) play.fill solid 52pt as the control, (2) chevron.right with a gold arc rim sweep, (3) arrow.right in a 56/50pt two-tone nested circle matching CheckInRow's send button, (4) play.fill with a concave card scoop to test the notch question. Ghost/outlined circles are deliberately excluded on contrast and curated before/after evidence."
+}
