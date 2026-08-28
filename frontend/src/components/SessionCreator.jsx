@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Modal, Input, Button, Typography, DatePicker, Select, Switch } from 'antd';
-import { CloseOutlined, PlusOutlined } from '@ant-design/icons';
+import { CloseOutlined, PlusOutlined, ScheduleOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import VerseSelector from './VerseSelector.jsx';
 
@@ -107,10 +107,10 @@ export default function SessionCreator({
       footer={null}
       title={
         <Text style={{ fontFamily: "'Space Grotesk', sans-serif", color: 'var(--parchment)', fontSize: '1rem' }}>
-          {isEditing ? 'Edit Session' : 'Schedule a Session'}
+          {isEditing ? 'Edit Session' : 'Schedule'}
         </Text>
       }
-      styles={{ body: { paddingTop: '0.8rem' } }}
+      styles={{ body: { paddingTop: '0.8rem' }, header: { textAlign: 'center' } }}
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
 
@@ -231,22 +231,29 @@ export default function SessionCreator({
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
             <Switch size="small" checked={summarize} onChange={setSummarize} />
-            <Text style={{ ...labelStyle, marginBottom: 0 }}>Summarize with agent</Text>
+            <Text style={{ ...labelStyle, marginBottom: 0 }}>Summarize</Text>
           </div>
         </div>
 
         {/* Actions */}
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', paddingTop: '0.25rem' }}>
-          <Button onClick={handleClose}>Cancel</Button>
+          <Button
+            shape="circle"
+            icon={<CloseOutlined />}
+            onClick={handleClose}
+            aria-label="Cancel"
+            title="Cancel"
+          />
           <Button
             type="primary"
+            shape="circle"
+            icon={<ScheduleOutlined />}
             loading={loading}
             disabled={!title.trim() || !timeStart}
             onClick={handleSubmit}
-            style={{ fontFamily: "'Inter', sans-serif" }}
-          >
-            {isEditing ? 'Save Changes' : 'Schedule'}
-          </Button>
+            aria-label={isEditing ? 'Save Changes' : 'Schedule'}
+            title={isEditing ? 'Save Changes' : 'Schedule'}
+          />
         </div>
       </div>
     </Modal>

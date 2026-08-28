@@ -125,7 +125,7 @@ export default function ChatThread({
       </div>
 
       {/* Input */}
-      <div style={{ display: 'flex', gap: '0.4rem', padding: '0.65rem 0.8rem', borderTop: '1px solid rgba(255,255,255,0.09)', flexShrink: 0, alignItems: 'flex-end' }}>
+      <div style={{ display: 'flex', gap: '0.4rem', padding: '0.65rem 0.8rem', flexShrink: 0, alignItems: 'flex-end' }}>
         <Input
           value={text}
           onChange={e => setText(e.target.value)}
