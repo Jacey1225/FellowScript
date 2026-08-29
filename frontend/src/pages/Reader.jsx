@@ -1,20 +1,11 @@
 import React, { useEffect, useLayoutEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Layout, Typography } from 'antd';
-import { MessageOutlined, BookOutlined } from '@ant-design/icons';
+import { Layout } from 'antd';
 import { DockviewReact } from 'dockview-react';
 
 import AppNav           from '../components/AppNav.jsx';
 import AppBloom         from '../components/AppBloom.jsx';
-import BibleNavigator  from '../components/BibleNavigator.jsx';
-import BibleCard       from '../components/BibleCard.jsx';
-import NotesSidebar    from '../components/NotesSidebar.jsx';
-import HighlightPicker from '../components/HighlightPicker.jsx';
 import SessionCreator  from '../components/SessionCreator.jsx';
-import BookmarkButton  from '../components/BookmarkButton.jsx';
-import ContactsPanel   from '../components/ContactsPanel.jsx';
-import ChatThread       from '../components/ChatThread.jsx';
-import AgentChatThread  from '../components/AgentChatThread.jsx';
 
 import BibleReaderPanelComponent from '../components/panels/BibleReaderPanel.jsx';
 import NotesPanelComponent       from '../components/panels/NotesPanel.jsx';
@@ -38,20 +29,6 @@ import { useNotes }       from '../hooks/useNotes.js';
 import { useMessaging }   from '../hooks/useMessaging.js';
 import { useSessions }    from '../hooks/useSessions.js';
 import { useBookmarks }   from '../hooks/useBookmarks.js';
-import { useIsDesktopViewport } from '../hooks/useIsDesktopViewport.js';
-
-const { Text } = Typography;
-// Aligned with global.css's `@media (max-width: 1024px)` — the single
-// breakpoint that decides desktop-dockview vs. mobile-overlay layout.
-const MOBILE_BP = 1024;
-function isMobile() { return window.innerWidth <= MOBILE_BP; }
-
-const FONT_SIZES = [
-  { size: '1.08rem', lineHeight: '1.9'  },
-  { size: '1.22rem', lineHeight: '1.85' },
-  { size: '1.4rem',  lineHeight: '1.8'  },
-];
-const FONT_SIZE_LABELS = ['Default', 'Large', 'Largest'];
 
 // Registered once — dockview looks panels up by this id, matching PANEL_IDS.
 const PANEL_COMPONENTS = {
@@ -63,6 +40,11 @@ const PANEL_COMPONENTS = {
 };
 
 // ── Main Reader ───────────────────────────────────────────────────────────────
+// Desktop-only. Mobile devices are turned away before this ever mounts (see
+// MobileBlockGate in App.jsx) — this used to also carry a parallel mobile
+// bottom-tab-bar/overlay layout (dockview doesn't work in a hidden/zero-size
+// container), which is why some of the state below only ever fed the desktop
+// dockview panels even though a couple of hooks still read a bit oddly.
 
 export default function Reader() {
   const { user } = useAuth();
@@ -76,15 +58,6 @@ export default function Reader() {
   } = useBible();
 
   const [curVerse,       setCurVerse]       = useState(null);
-  // Highlight-picker popover state — only used by the mobile branch's own
-  // inline Bible-reading JSX below; the desktop dockview branch's
-  // BibleReaderPanel keeps an independent copy of this same local state,
-  // since the two render trees are mutually exclusive (only one is ever
-  // mounted at a time) but each needs its own picker/scroll-position state.
-  const [pickerVisible,  setPickerVisible]  = useState(false);
-  const [pickerPos,      setPickerPos]      = useState({ x: 0, y: 0 });
-  const [selectedVerse,  setSelectedVerse]  = useState(null);
-  const lastSpanRef = useRef(null);
 
   const {
     localHl, groupHighlights, groupUsernames,
@@ -129,25 +102,6 @@ export default function Reader() {
   const { bookmarks, loadBookmarks, addBookmark, removeBookmark } = useBookmarks({ user });
 
   const [contactsLoaded, setContactsLoaded] = useState(false);
-
-  // Mobile overlay state (unrelated to the desktop dockview layout below)
-  const [mobileSidebar, setMobileSidebar] = useState(null); // 'notes' | 'messages' | null
-  const isDesktop = useIsDesktopViewport();
-
-  // Bible font size — mobile-branch copy (see note on pickerVisible above).
-  const [fontSizeIdx, setFontSizeIdx] = useState(() => {
-    try { return Math.min(parseInt(localStorage.getItem('fs_font_size') || '0', 10), FONT_SIZES.length - 1); }
-    catch { return 0; }
-  });
-
-  useEffect(() => {
-    const { size, lineHeight } = FONT_SIZES[fontSizeIdx];
-    document.documentElement.style.setProperty('--bible-font-size', size);
-    document.documentElement.style.setProperty('--bible-line-height', lineHeight);
-    try { localStorage.setItem('fs_font_size', fontSizeIdx); } catch {}
-  }, [fontSizeIdx]);
-
-  const cycleFontSize = useCallback(() => setFontSizeIdx(i => (i + 1) % FONT_SIZES.length), []);
 
   // Warm Reader-scoped canvas (design-notes.md §8.1, bounce revision) — the
   // `page-reader` class is what paints the color underneath the fixed
@@ -243,8 +197,6 @@ export default function Reader() {
   }, []);
 
   // Scroll to top synchronously before paint whenever a new chapter loads without a target verse.
-  // #root is the mobile branch's real scroll container; inert on desktop, where
-  // the dockview panel manages its own internal scrolling instead.
   useLayoutEffect(() => {
     if (!chapterHTML || curVerse) return;
     const root = document.getElementById('root');
@@ -262,12 +214,6 @@ export default function Reader() {
     else window.scrollTo({ top: offset, behavior: 'smooth' });
   }, [chapterHTML]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => {
-    const hide = () => { setPickerVisible(false); lastSpanRef.current?.classList.remove('active'); lastSpanRef.current = null; };
-    document.addEventListener('click', hide);
-    return () => document.removeEventListener('click', hide);
-  }, []);
-
   // Clean up the dockview layout-change + rail subscriptions on unmount.
   useEffect(() => {
     return () => {
@@ -282,46 +228,18 @@ export default function Reader() {
     setBook(book);
     setChapter(ch, book, null);
     setCurVerse(null);
-    setPickerVisible(false);
   }, [setBook, setChapter]);
 
   const handleNavigateVerse = useCallback((book, ch, vs) => {
     setBook(book);
     setChapter(ch, book, null);
     setCurVerse(vs);
-    setPickerVisible(false);
   }, [setBook, setChapter]);
 
   const getChapterCount = useCallback((book) => chapterCount(book, null), [chapterCount]);
 
   const handlePrev = useCallback(() => { if (curChapter > 1) { setChapter(curChapter - 1, null, null); setCurVerse(null); } }, [curChapter, setChapter]);
   const handleNext = useCallback(() => { const mx = chapterCount(curBook, null); if (curChapter < mx) { setChapter(curChapter + 1, null, null); setCurVerse(null); } }, [curBook, curChapter, chapterCount, setChapter]);
-
-  const handleVerseClick = useCallback((span, vNum, e) => {
-    e.stopPropagation();
-    if (lastSpanRef.current && lastSpanRef.current !== span) lastSpanRef.current.classList.remove('active');
-    span.classList.add('active');
-    lastSpanRef.current = span;
-    setCurVerse(vNum);
-    setSelectedVerse(vNum);
-    const rect = span.getBoundingClientRect();
-    setPickerPos({ x: Math.max(8, Math.min(rect.left, window.innerWidth - 220)), y: rect.top > 80 ? rect.top - 52 : rect.bottom + 8 });
-    setPickerVisible(true);
-  }, []);
-
-  const handleHighlightColor = useCallback(async (color) => {
-    if (!selectedVerse) return;
-    await setHighlight(selectedVerse, color);
-    setPickerVisible(false);
-    lastSpanRef.current?.classList.remove('active'); lastSpanRef.current = null;
-  }, [selectedVerse, setHighlight]);
-
-  const handleClearHighlight = useCallback(async () => {
-    if (!selectedVerse) return;
-    await clearHighlight(selectedVerse);
-    setPickerVisible(false);
-    lastSpanRef.current?.classList.remove('active'); lastSpanRef.current = null;
-  }, [selectedVerse, clearHighlight]);
 
   const handleGroupChange = useCallback(async (groupId) => {
     await selectGroup(groupId, async (gid) => { if (gid) await loadGroupHighlights(gid); else clearGroupHighlights(); });
@@ -333,7 +251,6 @@ export default function Reader() {
     closeAgentChat();
     await openChat(contact);
     loadSessions(contact);
-    if (isMobile()) setMobileSidebar('messages');
   }, [openChat, loadSessions, closeAgentChat]);
 
   const handleCloseChat = useCallback(() => { closeChat(); }, [closeChat]);
@@ -341,7 +258,6 @@ export default function Reader() {
   const handleOpenAgent = useCallback(async (agent) => {
     closeChat();
     await openAgentChat(agent);
-    if (isMobile()) setMobileSidebar('messages');
   }, [openAgentChat, closeChat]);
 
   const handleCloseAgent = useCallback(() => { closeAgentChat(); }, [closeAgentChat]);
@@ -410,30 +326,6 @@ export default function Reader() {
   const chCount  = chapterCount(curBook, null);
   const notesData = { all: allNotes, filtered: filteredNotes, group: groupNotes, filteredGroup };
 
-  // Shared notes sidebar props (mobile only — desktop uses NotesPanelContext/HighlightsPanelContext)
-  const notesSidebarProps = {
-    user, notes: notesData, curBook, curChapter, curVerse,
-    groups, currentGroupId, onGroupChange: handleGroupChange,
-    onSaveNote: saveNote, onDeleteNote: deleteNote,
-    onReply: postReply, onLoadReplies: loadDetailReplies,
-    applyFilter, clearFilter, filterActive,
-    allNotes, groupNotes, groupLoading,
-    books, chapterCount: getChapterCount, verseCount,
-    localHl, groupHighlights, groupUsernames,
-    onNavigateVerse: handleNavigateVerse,
-  };
-
-  // Shared contacts props (mobile only — desktop uses MessagingPanelContext/AgentChatPanelContext)
-  const contactsProps = {
-    user, friends, groups: msgGroups, currentContact,
-    onOpen: handleOpenChat,
-    onAddFriend: addFriend, onRemoveFriend: removeFriend,
-    onReportUser: reportUser, onBlockUser: blockUser,
-    onCreateGroup: createGroup, onUpdateGroup: updateGroup, onLeaveGroup: leaveGroup,
-    loaded: contactsLoaded, onLoad: handleLoadContacts,
-    agents, activeAgent, onOpenAgent: handleOpenAgent, onNewAgent: handleNewAgent,
-  };
-
   // ── Desktop dockview panel context values ────────────────────────────────────
   const bibleReaderPanelValue = useMemo(() => ({
     user, curBook, curChapter, curVerse,
@@ -498,147 +390,18 @@ export default function Reader() {
         <AppBloom variant="reader" />
         <AppNav />
 
-        {isDesktop ? (
-          <>
-            <ReaderDockRail
-              openPanelIds={openPanelIds}
-              activePanelId={activePanelId}
-              onSelect={handleRailSelect}
-            />
-            <div className="reader-dock-container dockview-theme-abyss">
-              <DockviewReact
-                components={PANEL_COMPONENTS}
-                onReady={handleDockviewReady}
-                disableFloatingGroups
-              />
-            </div>
-          </>
-        ) : (
-          <>
-            <div className="scripture-nav-bar">
-              <BibleNavigator
-                books={books} curBook={curBook} curChapter={curChapter}
-                onNavigate={handleNavigate} chapterCount={getChapterCount}
-              />
-              <button
-                className={`nav-pill-btn${fontSizeIdx > 0 ? ' open' : ''}`}
-                onClick={cycleFontSize}
-                title={`Text size: ${FONT_SIZE_LABELS[fontSizeIdx]} — click to cycle`}
-                style={{ marginLeft: '0.5rem', gap: '0.25rem', letterSpacing: 0 }}
-              >
-                <span style={{ fontSize: '0.72rem', opacity: 0.7, lineHeight: 1 }}>A</span>
-                <span style={{ fontSize: '1rem', lineHeight: 1 }}>A</span>
-                {fontSizeIdx > 0 && (
-                  <span style={{ fontSize: '0.42rem', color: 'var(--gold)', letterSpacing: '0.05em', marginLeft: '0.1rem' }}>
-                    {'●'.repeat(fontSizeIdx)}
-                  </span>
-                )}
-              </button>
-              <BookmarkButton
-                user={user}
-                bookmarks={bookmarks}
-                curBook={curBook}
-                curChapter={curChapter}
-                onAdd={addBookmark}
-                onRemove={removeBookmark}
-                onNavigate={handleNavigate}
-              />
-            </div>
-
-            <main className="reader-main">
-              <BibleCard
-                loading={loading} loadError={loadError}
-                curBook={curBook} curChapter={curChapter}
-                chapterHTML={chapterHTML} chapterCount={chCount}
-                preamble={preamble}
-                onPrev={handlePrev} onNext={handleNext}
-                onVerseClick={handleVerseClick}
-                applyHighlights={applyHighlights}
-              />
-            </main>
-
-            <HighlightPicker
-              visible={pickerVisible} position={pickerPos}
-              onColor={handleHighlightColor} onClear={handleClearHighlight}
-            />
-
-            {/* ── Mobile: bottom tab bar ── */}
-            <div className="mobile-tab-bar">
-              <button
-                className={`mobile-tab${mobileSidebar === 'notes' ? ' active' : ''}`}
-                onClick={() => setMobileSidebar(v => v === 'notes' ? null : 'notes')}
-              >
-                <BookOutlined style={{ fontSize: 18 }} />
-                Notes
-              </button>
-              <button
-                className={`mobile-tab${mobileSidebar === 'messages' ? ' active' : ''}`}
-                onClick={() => setMobileSidebar(v => v === 'messages' ? null : 'messages')}
-              >
-                <MessageOutlined style={{ fontSize: 18 }} />
-                Messages
-              </button>
-            </div>
-
-            {/* ── Mobile overlays ── */}
-            <div className={`mobile-overlay${mobileSidebar === 'notes' ? ' open' : ''}`}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.9rem 1rem', borderBottom: '1px solid rgba(255,255,255,0.09)', background: 'rgba(6,4,1,0.98)', flexShrink: 0 }}>
-                <button onClick={() => setMobileSidebar(null)} style={{ background: 'none', border: 'none', color: 'rgba(255,198,26,0.65)', cursor: 'pointer', fontSize: '1.1rem' }}>✕</button>
-                <Text style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: '1rem', color: 'var(--parchment)' }}>Notes</Text>
-              </div>
-              <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-                <NotesSidebar {...notesSidebarProps} />
-              </div>
-            </div>
-
-            <div className={`mobile-overlay${mobileSidebar === 'messages' ? ' open' : ''}`}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.9rem 1rem', borderBottom: '1px solid rgba(255,255,255,0.09)', background: 'rgba(6,4,1,0.98)', flexShrink: 0 }}>
-                <button onClick={() => setMobileSidebar(null)} style={{ background: 'none', border: 'none', color: 'rgba(255,198,26,0.65)', cursor: 'pointer', fontSize: '1.1rem' }}>✕</button>
-                <Text style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: '1rem', color: 'var(--parchment)' }}>Messages</Text>
-              </div>
-              <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-                {activeAgent
-                  ? <AgentChatThread
-                      agent={activeAgent}
-                      messages={agentMessages}
-                      user={user}
-                      onBack={handleCloseAgent}
-                      onSend={sendAgentMessage}
-                      agentThinking={agentThinking}
-                      curBook={curBook}
-                      curChapter={curChapter}
-                      curVerse={curVerse}
-                      allNotes={allNotes}
-                      onNavigateVerse={handleNavigateVerse}
-                    />
-                  : currentContact
-                    ? <ChatThread
-                        contact={currentContact}
-                        messages={messages}
-                        groupMembers={groupMembers}
-                        user={user}
-                        onBack={handleCloseChat}
-                        onSend={sendMessage}
-                        sessions={sessions}
-                        activeSessionId={activeSessionId}
-                        talkingUserId={talkingUserId}
-                        onJoinSession={joinSession}
-                        onLeaveSession={handleLeaveSession}
-                        onOpenSessionCreator={() => openCreator()}
-                        onEditSession={openCreator}
-                        onDeleteSession={deleteSession}
-                        onNavigateVerse={handleNavigateVerse}
-                        videoEnabled={videoEnabled}
-                        videoTiles={videoTiles}
-                        onToggleVideo={toggleVideo}
-                        bindVideoTile={bindVideoTile}
-                      />
-                    : <ContactsPanel {...contactsProps} />
-                }
-              </div>
-            </div>
-          </>
-        )}
+        <ReaderDockRail
+          openPanelIds={openPanelIds}
+          activePanelId={activePanelId}
+          onSelect={handleRailSelect}
+        />
+        <div className="reader-dock-container dockview-theme-abyss">
+          <DockviewReact
+            components={PANEL_COMPONENTS}
+            onReady={handleDockviewReady}
+            disableFloatingGroups
+          />
+        </div>
 
         <SessionCreator
           open={showCreator}

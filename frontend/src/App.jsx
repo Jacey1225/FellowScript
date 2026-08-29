@@ -10,6 +10,7 @@ import VerifyMfa from './pages/VerifyMfa.jsx';
 import Privacy from './pages/Privacy.jsx';
 import Terms from './pages/Terms.jsx';
 import AdminGate from './components/AdminGate.jsx';
+import MobileBlockGate from './components/MobileBlockGate.jsx';
 import AdminDetections from './pages/AdminDetections.jsx';
 import AdminDetectionDetail from './pages/AdminDetectionDetail.jsx';
 
@@ -18,7 +19,7 @@ export default function App() {
     <HashRouter>
       <Routes>
         <Route path="/"       element={<Home />} />
-        <Route path="/reader" element={<Reader />} />
+        <Route path="/reader" element={<MobileBlockGate><Reader /></MobileBlockGate>} />
         <Route path="/account"   element={<Account />} />
         <Route path="/signin"    element={<SignIn />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
