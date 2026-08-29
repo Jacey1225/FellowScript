@@ -30,7 +30,7 @@ struct CompleteProfileView: View {
                     .multilineTextAlignment(.center)
 
                 Text("Apple didn't share a name or email for this sign-in, so we couldn't set them up for you. Please choose a username and email to continue — this only needs to happen once.")
-                    .font(.lora(Theme.fontSM))
+                    .font(.inter(Theme.fontSM))
                     .foregroundColor(Theme.textMuted)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, Theme.spacingLG)
@@ -52,7 +52,7 @@ struct CompleteProfileView: View {
 
                 if let errorMsg {
                     Text(errorMsg)
-                        .font(.lora(Theme.fontXS))
+                        .font(.inter(Theme.fontXS))
                         .foregroundColor(Theme.error)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, Theme.spacingLG)
@@ -63,7 +63,7 @@ struct CompleteProfileView: View {
                 Button(action: submit) {
                     HStack {
                         if saving { ProgressView().tint(Theme.ink) }
-                        Text("Continue").font(.lora(Theme.fontSM)).bold()
+                        Text("Continue").font(.inter(Theme.fontSM)).bold()
                     }
                     .foregroundColor(Theme.ink)
                     .frame(maxWidth: .infinity)

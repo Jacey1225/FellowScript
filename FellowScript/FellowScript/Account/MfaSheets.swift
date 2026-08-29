@@ -16,7 +16,7 @@ struct MfaSetupSheet: View {
         NavigationStack {
             VStack(spacing: Theme.spacingMD) {
                 Text("Enter the 6-digit code we just emailed you to confirm two-factor authentication.")
-                    .font(.lora(Theme.fontSM))
+                    .font(.inter(Theme.fontSM))
                     .foregroundColor(Theme.textMuted)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, Theme.spacingLG)
@@ -66,13 +66,13 @@ struct MfaDisableSheet: View {
         NavigationStack {
             VStack(spacing: Theme.spacingMD) {
                 Text("Enter your current password to turn off two-factor authentication.")
-                    .font(.lora(Theme.fontSM))
+                    .font(.inter(Theme.fontSM))
                     .foregroundColor(Theme.textMuted)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, Theme.spacingLG)
 
                 SecureField("Current password", text: $password)
-                    .font(.lora(Theme.fontBody))
+                    .font(.inter(Theme.fontBody))
                     .foregroundColor(Theme.parchment)
                     .padding(Theme.spacingMD)
                     .background(Theme.inputBg)

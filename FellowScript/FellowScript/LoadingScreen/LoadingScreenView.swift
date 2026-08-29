@@ -74,7 +74,7 @@ struct LoadingScreenView: View {
                 // unlike the decorative layers above, this stays in the
                 // accessibility tree.
                 Text("Loading…")
-                    .font(.lora(Theme.fontSM))
+                    .font(.inter(Theme.fontSM))
                     .foregroundColor(Theme.textSecondary)
             }
         }

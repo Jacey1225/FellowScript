@@ -168,7 +168,7 @@ struct AgentChatView: View {
                         HStack(spacing: 6) {
                             ProgressView().tint(Theme.gold).scaleEffect(0.75)
                             Text("Reconnecting…")
-                                .font(.lora(Theme.fontXS))
+                                .font(.inter(Theme.fontXS))
                                 .foregroundColor(Theme.textGoldMuted)
                         }
                         .padding(.horizontal, Theme.spacingSM)
@@ -212,7 +212,7 @@ struct AgentChatView: View {
                     // ── Input bar ──────────────────────────────────────────────
                     HStack(spacing: Theme.spacingSM) {
                         TextField("Ask about Scripture…", text: $inputText, axis: .vertical)
-                            .font(.lora(Theme.fontBody))
+                            .font(.inter(Theme.fontBody))
                             .foregroundColor(Theme.parchment)
                             .lineLimit(1...5)
                             .padding(.horizontal, Theme.spacingMD)
@@ -298,7 +298,7 @@ struct AgentMessageBubble: View {
                         )
                         .frame(maxWidth: UIScreen.main.bounds.width * 0.78, alignment: .trailing)
                     Text(message.formattedTime)
-                        .font(.lora(Theme.fontXXS))
+                        .font(.inter(Theme.fontXXS))
                         .foregroundColor(Theme.gold.opacity(0.40))
                 }
             }
@@ -309,7 +309,7 @@ struct AgentMessageBubble: View {
                 MarkdownBodyView(text: message.text, isMine: false, baseFontSize: Theme.fontBody)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 Text(message.formattedTime)
-                    .font(.lora(Theme.fontXXS))
+                    .font(.inter(Theme.fontXXS))
                     .foregroundColor(Theme.gold.opacity(0.40))
             }
             .frame(maxWidth: .infinity, alignment: .leading)

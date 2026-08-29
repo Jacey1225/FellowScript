@@ -89,18 +89,57 @@ enum Theme {
 }
 
 // ── Font builders ─────────────────────────────────────────────────────────────
-// lora()    → Apple New York serif   — elegant, built-in, great for reading
-// playfair()→ SF Pro Rounded         — modern, warm, friendly for headings & UI
-// verseRef()→ New York Light         — graceful for verse references
+// Ember Glass typography (task 20260827-ember-glass-chat-rewrite, design gate
+// §7): real bundled fonts, not system-font stand-ins. Font files live in
+// FellowScript/Fonts/*.ttf (picked up automatically by the FellowScript
+// target's file-system-synchronized group) and are registered in Info.plist's
+// UIAppFonts. License check (SIL Open Font License 1.1, verified against the
+// actual shipped font files) recorded in FellowScript/Fonts/NOTICE.md.
+//
+// playfair()→ real Playfair Display        — display-scale headings (18pt+);
+//              name is kept because it is now literally accurate (previously
+//              rendered SF Pro Rounded despite the name).
+// inter()   → real Inter                   — everything else; replaces the
+//              retired lora() (which rendered New York and would still have
+//              lied under a name/font mismatch — Lora is itself a distinct
+//              real Google-Fonts serif — so a correctly-named function was
+//              introduced instead of repointing the old name).
+// verseRef()→ real Playfair Display Italic — scripture verse references only
+//              (previously New York Light); the sole reusable italic role.
 extension Font {
-    static func lora(_ size: CGFloat, weight: Font.Weight = .regular) -> Font {
-        .system(size: size, weight: weight, design: .serif)
+    /// Only the weights actually bundled (Regular/SemiBold/Bold) are mapped;
+    /// anything else falls back to its nearest bundled neighbor rather than
+    /// silently resolving to no font at all.
+    private static func playfairPostScriptName(for weight: Font.Weight) -> String {
+        switch weight {
+        case .regular, .light, .thin, .ultraLight:
+            return "PlayfairDisplay-Regular"
+        case .medium, .semibold:
+            return "PlayfairDisplay-SemiBold"
+        default: // .bold, .heavy, .black, and any future case
+            return "PlayfairDisplay-Bold"
+        }
     }
+
+    private static func interPostScriptName(for weight: Font.Weight) -> String {
+        switch weight {
+        case .medium, .semibold:
+            return "Inter-SemiBold"
+        case .bold, .heavy, .black:
+            return "Inter-Bold"
+        default: // .regular, .light, .thin, .ultraLight, and any future case
+            return "Inter-Regular"
+        }
+    }
+
     static func playfair(_ size: CGFloat, weight: Font.Weight = .bold) -> Font {
-        .system(size: size, weight: weight, design: .rounded)
+        .custom(playfairPostScriptName(for: weight), size: size)
+    }
+    static func inter(_ size: CGFloat, weight: Font.Weight = .regular) -> Font {
+        .custom(interPostScriptName(for: weight), size: size)
     }
     static func verseRef(_ size: CGFloat) -> Font {
-        .system(size: size, weight: .light, design: .serif)
+        .custom("PlayfairDisplay-Italic", size: size)
     }
 }
 
@@ -118,6 +157,34 @@ extension Color {
     }
 }
 
+// ── Elevation mechanism (Ember Glass) ──────────────────────────────────────────
+// Design gate decision (task 20260827-ember-glass-chat-rewrite, §1): drop every
+// drop shadow — Chat had zero native blur to begin with, so this is an
+// explicit adoption of a flat/hairline elevation language, not a regression.
+// A surface's existing full-perimeter border stroke is kept unchanged; this
+// only adds a top-edge-only lit hairline (a 1px stroke with a light-to-clear
+// vertical gradient) so the surface still reads as "raised" without a shadow.
+// One reusable primitive here, applied identically everywhere a shadow used
+// to live (WidgetCard below; PillButton/RoundIconButton, SessionBanner,
+// SessionCreatorSheet, and message bubbles in the frontend step that follows)
+// so there is exactly one elevation language across all five surfaces named
+// in the acceptance criteria — no mixing.
+extension View {
+    func topEdgeHighlight<S: Shape>(_ shape: S, lineWidth: CGFloat = 1) -> some View {
+        overlay(alignment: .top) {
+            shape
+                .stroke(
+                    LinearGradient(
+                        colors: [Color.white.opacity(0.30), .clear],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    ),
+                    lineWidth: lineWidth
+                )
+        }
+    }
+}
+
 // ── Shared card modifier ──────────────────────────────────────────────────────
 struct WidgetCard: ViewModifier {
     var padding: CGFloat = Theme.spacingMD
@@ -131,7 +198,7 @@ struct WidgetCard: ViewModifier {
                 RoundedRectangle(cornerRadius: Theme.radiusLG)
                     .stroke(Theme.borderGoldDim, lineWidth: 1)
             )
-            .shadow(color: Color(hex: "#5C3800").opacity(0.30), radius: 12, x: 0, y: 5)
+            .topEdgeHighlight(RoundedRectangle(cornerRadius: Theme.radiusLG))
     }
 }
 

@@ -396,10 +396,10 @@ struct ChatRootView: View {
                 .font(.system(size: 40, weight: .light))
                 .foregroundColor(Theme.gold.opacity(0.30))
             Text(message)
-                .font(.lora(Theme.fontBody))
+                .font(.inter(Theme.fontBody))
                 .foregroundColor(Theme.textSecondary)
             Text(hint)
-                .font(.lora(Theme.fontSM))
+                .font(.inter(Theme.fontSM))
                 .foregroundColor(Theme.textMuted)
                 .multilineTextAlignment(.center)
             Spacer()
@@ -415,7 +415,7 @@ struct ChatRootView: View {
                 .font(.system(size: 34, weight: .light))
                 .foregroundColor(Theme.gold.opacity(0.30))
             Text("No matches for \u{201C}\(searchQuery)\u{201D}")
-                .font(.lora(Theme.fontBody))
+                .font(.inter(Theme.fontBody))
                 .foregroundColor(Theme.textSecondary)
                 .multilineTextAlignment(.center)
             Spacer()
@@ -652,7 +652,7 @@ struct AddFriendSheet: View {
             Form {
                 Section("Search by username") {
                     TextField("Username", text: $username)
-                        .font(.lora(Theme.fontBody))
+                        .font(.inter(Theme.fontBody))
                         .foregroundColor(Theme.parchment)
                         .autocapitalization(.none)
                         .accessibilityLabel("Enter username to add as friend")
@@ -693,7 +693,7 @@ struct AddGroupSheet: View {
             Form {
                 Section("Group name") {
                     TextField("Study Group", text: $groupName)
-                        .font(.lora(Theme.fontBody))
+                        .font(.inter(Theme.fontBody))
                         .foregroundColor(Theme.parchment)
                         .accessibilityLabel("Group name field")
                 }
@@ -701,7 +701,7 @@ struct AddGroupSheet: View {
                     ForEach(friends) { f in
                         HStack {
                             Text(f.name)
-                                .font(.lora(Theme.fontBody))
+                                .font(.inter(Theme.fontBody))
                                 .foregroundColor(Theme.parchment.opacity(0.70))
                             Spacer()
                             if selectedIds.contains(f.id) {

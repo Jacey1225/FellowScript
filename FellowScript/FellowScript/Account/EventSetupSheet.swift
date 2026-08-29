@@ -83,7 +83,7 @@ struct EventSetupSheet: View {
                     .padding(.top, Theme.spacingXL)
 
                 Text("Choose a schedule for this event.")
-                    .font(.lora(Theme.fontSM))
+                    .font(.inter(Theme.fontSM))
                     .foregroundColor(Theme.textMuted)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, Theme.spacingLG)
@@ -123,8 +123,8 @@ struct EventSetupSheet: View {
                     Image(systemName: icon).foregroundColor(Theme.gold)
                 }
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(title).font(.lora(Theme.fontBody)).foregroundColor(Theme.parchment)
-                    Text(description).font(.lora(Theme.fontSM)).foregroundColor(Theme.textMuted)
+                    Text(title).font(.inter(Theme.fontBody)).foregroundColor(Theme.parchment)
+                    Text(description).font(.inter(Theme.fontSM)).foregroundColor(Theme.textMuted)
                 }
                 Spacer()
                 Image(systemName: "chevron.right")
@@ -181,7 +181,7 @@ struct EventSetupSheet: View {
                         if sel { selectedWeekdays.remove(day.1) } else { selectedWeekdays.insert(day.1) }
                     }) {
                         Text(day.0)
-                            .font(.lora(Theme.fontSM))
+                            .font(.inter(Theme.fontSM))
                             .foregroundColor(sel ? Theme.ink : Theme.parchment.opacity(0.7))
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 10)
@@ -207,7 +207,7 @@ struct EventSetupSheet: View {
                         if sel { selectedMonthDays.remove(day) } else { selectedMonthDays.insert(day) }
                     }) {
                         Text("\(day)")
-                            .font(.lora(Theme.fontXS))
+                            .font(.inter(Theme.fontXS))
                             .foregroundColor(sel ? Theme.ink : Theme.parchment.opacity(0.7))
                             .frame(maxWidth: .infinity)
                             .aspectRatio(1, contentMode: .fit)
@@ -232,40 +232,40 @@ struct EventSetupSheet: View {
                             Text(agent.displayLabel).tag(agent.id)
                         }
                     }
-                    .font(.lora(Theme.fontBody))
+                    .font(.inter(Theme.fontBody))
                     .foregroundColor(Theme.parchment)
                 } header: {
                     Text("AGENT")
-                        .font(.lora(Theme.fontXXS)).tracking(4).foregroundColor(Theme.textGoldMuted)
+                        .font(.inter(Theme.fontXXS)).tracking(4).foregroundColor(Theme.textGoldMuted)
                 }
                 .listRowBackground(Theme.cardBg)
             }
 
             Section {
                 DatePicker("Time", selection: $selectedTime, displayedComponents: .hourAndMinute)
-                    .font(.lora(Theme.fontBody))
+                    .font(.inter(Theme.fontBody))
                     .labelsHidden()
                     .accentColor(Theme.gold)
             } header: {
                 Text("EVENT TIME")
-                    .font(.lora(Theme.fontXXS)).tracking(4).foregroundColor(Theme.textGoldMuted)
+                    .font(.inter(Theme.fontXXS)).tracking(4).foregroundColor(Theme.textGoldMuted)
             }
             .listRowBackground(Theme.cardBg)
 
             Section {
                 Text("The agent will respond to this prompt when the event fires and save the response as a note.")
-                    .font(.lora(Theme.fontSM))
+                    .font(.inter(Theme.fontSM))
                     .foregroundColor(Theme.textMuted)
                     .listRowBackground(Theme.cardBg)
                 TextEditor(text: $prompt)
-                    .font(.lora(Theme.fontBody))
+                    .font(.inter(Theme.fontBody))
                     .foregroundColor(Theme.parchment)
                     .scrollContentBackground(.hidden)
                     .frame(minHeight: 100)
                     .listRowBackground(Theme.cardBg)
             } header: {
                 Text("PROMPT")
-                    .font(.lora(Theme.fontXXS)).tracking(4).foregroundColor(Theme.textGoldMuted)
+                    .font(.inter(Theme.fontXXS)).tracking(4).foregroundColor(Theme.textGoldMuted)
             }
         }
         .scrollContentBackground(.hidden)

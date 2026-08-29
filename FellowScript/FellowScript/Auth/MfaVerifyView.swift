@@ -26,14 +26,14 @@ struct MfaVerifyView: View {
                         .font(.playfair(Theme.fontDisplayMD))
                         .foregroundColor(Theme.parchment)
                     Text("We emailed a 6-digit code to finish signing in.")
-                        .font(.lora(Theme.fontSM))
+                        .font(.inter(Theme.fontSM))
                         .foregroundColor(Theme.textMuted)
                         .multilineTextAlignment(.center)
                 }
 
                 if !errorMsg.isEmpty {
                     Text(errorMsg)
-                        .font(.lora(Theme.fontXS))
+                        .font(.inter(Theme.fontXS))
                         .foregroundColor(.red)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, Theme.spacingLG)
@@ -57,7 +57,7 @@ struct MfaVerifyView: View {
                 Button(action: { Task { await verify() } }) {
                     HStack {
                         if isLoading { ProgressView().tint(Theme.ink) }
-                        Text("Verify").font(.lora(Theme.fontSM)).bold()
+                        Text("Verify").font(.inter(Theme.fontSM)).bold()
                     }
                     .foregroundColor(Theme.ink)
                     .frame(maxWidth: .infinity)
@@ -70,7 +70,7 @@ struct MfaVerifyView: View {
                 .accessibilityLabel("Verify button")
 
                 Button("Back to sign in") { dismiss() }
-                    .font(.lora(Theme.fontSM))
+                    .font(.inter(Theme.fontSM))
                     .foregroundColor(Theme.textMuted)
 
                 Spacer()

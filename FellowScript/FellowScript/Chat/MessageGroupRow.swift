@@ -9,6 +9,15 @@
 // No new persisted/network data — purely a client-side grouping of messages
 // that are already loaded by ChatThreadViewModel.
 //
+// VISUAL: Ember Glass restyle (task 20260827-ember-glass-chat-rewrite, design
+// gate §1/§5/§10/§13) — bubbles snap to Theme.radiusLG (rounder), sent/
+// received fill opacity is turned up for stronger differentiation, bubbles
+// share the top-edge-hairline elevation language (no shadow), and real
+// day-boundary detection (Added item 5) is added below via
+// `ChatThreadRow`/`DayDividerRow` so ChatThreadView can interleave labeled
+// day dividers between MessageDisplayGroups — not merely a cosmetic divider
+// restyle.
+//
 // DEPENDENCY: Theme.swift, Models.swift (FSMessage)
 
 import SwiftUI
@@ -22,6 +31,10 @@ struct MessageDisplayGroup: Identifiable {
     let senderName:    String
     let timeLabel:     String
     let isOutgoing:    Bool
+    // Parsed send time of the group's first message, used purely for
+    // day-boundary detection (§13) — not displayed directly (timeLabel is
+    // the user-facing short time string already shown next to the name).
+    let date:          Date?
     let messages:      [FSMessage]
 }
 
@@ -42,6 +55,7 @@ extension MessageDisplayGroup {
                     senderName:    groups[lastIndex].senderName,
                     timeLabel:     groups[lastIndex].timeLabel,
                     isOutgoing:    groups[lastIndex].isOutgoing,
+                    date:          groups[lastIndex].date,
                     messages:      groups[lastIndex].messages + [message]
                 )
             } else {
@@ -52,11 +66,101 @@ extension MessageDisplayGroup {
                     senderName:    name,
                     timeLabel:     message.formattedTime,
                     isOutgoing:    message.mine,
+                    date:          parseTimestamp(message.timestamp),
                     messages:      [message]
                 ))
             }
         }
         return groups
+    }
+
+    /// Parses `FSMessage.timestamp` (ISO8601) into a `Date`, tolerating both
+    /// forms actually produced app-wide: the server's fractional-seconds
+    /// format and the client's own `sendMessage` stamp (no fractional
+    /// seconds). `FSMessage.formattedTime` only handles the fractional form,
+    /// which would silently drop the client's own just-sent messages from
+    /// day-boundary detection — this tries both rather than assuming one.
+    static func parseTimestamp(_ iso: String) -> Date? {
+        guard !iso.isEmpty else { return nil }
+        let withFractional = ISO8601DateFormatter()
+        withFractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = withFractional.date(from: iso) { return date }
+        let plain = ISO8601DateFormatter()
+        plain.formatOptions = [.withInternetDateTime]
+        return plain.date(from: iso)
+    }
+
+    /// Day-divider label contract (design gate §13): "Today"/"Yesterday" for
+    /// the two nearest days, else a short date ("Aug 25") — not all-caps,
+    /// matching `render-2-conversation-thread.png` literally.
+    static func dayLabel(for date: Date, calendar: Calendar = .current) -> String {
+        if calendar.isDateInToday(date) { return "Today" }
+        if calendar.isDateInYesterday(date) { return "Yesterday" }
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMM d"
+        return formatter.string(from: date)
+    }
+}
+
+// ── Thread row kind (message group vs. day divider) ────────────────────────
+/// `ChatThreadView`'s message list interleaves two distinct row kinds — a
+/// grouped set of bubbles, or a labeled day-boundary divider — in one
+/// ordered list so a single `ForEach` can render both (design gate §13).
+enum ChatThreadRow: Identifiable {
+    case group(MessageDisplayGroup)
+    case dayDivider(id: String, label: String)
+
+    var id: String {
+        switch self {
+        case .group(let group):        return group.id
+        case .dayDivider(let id, _):   return id
+        }
+    }
+}
+
+extension Array where Element == MessageDisplayGroup {
+    /// Interleaves a labeled day-divider row before the first group of each
+    /// new calendar day (real `Calendar.isDate(_:inSameDayAs:)` detection —
+    /// not a cosmetic restyle of the existing plain sender-group hairline,
+    /// which stays as-is for consecutive groups within the same day).
+    func withDayDividers(calendar: Calendar = .current) -> [ChatThreadRow] {
+        var rows: [ChatThreadRow] = []
+        var lastDay: Date? = nil
+        for group in self {
+            if let date = group.date {
+                if lastDay == nil || !calendar.isDate(date, inSameDayAs: lastDay!) {
+                    rows.append(.dayDivider(id: "day-\(group.id)",
+                                             label: MessageDisplayGroup.dayLabel(for: date, calendar: calendar)))
+                    lastDay = date
+                }
+            }
+            rows.append(.group(group))
+        }
+        return rows
+    }
+}
+
+/// Centered label flanked by hairlines, mirroring
+/// `render-2-conversation-thread.png` (design gate §13): normal case (not
+/// the uppercase-tracked `SectionEyebrow` style used elsewhere), distinct
+/// from — and rendered alongside — the existing plain unlabeled hairline
+/// between same-day sender groups.
+struct DayDividerRow: View {
+    let label: String
+
+    var body: some View {
+        HStack(spacing: Theme.spacingSM) {
+            Rectangle().fill(Theme.borderGoldFaint).frame(height: 1)
+            Text(label)
+                .font(.inter(Theme.fontXS))
+                .foregroundColor(Theme.textSecondary)
+                .fixedSize()
+            Rectangle().fill(Theme.borderGoldFaint).frame(height: 1)
+        }
+        .padding(.horizontal, Theme.spacingMD)
+        .padding(.vertical, Theme.spacingXS)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(label)
     }
 }
 
@@ -75,11 +179,11 @@ struct MessageGroupRow: View {
                 HStack(spacing: 8) {
                     if group.isOutgoing { Spacer(minLength: 0) }
                     Text(group.senderName)
-                        .font(.lora(Theme.fontSM, weight: .bold))
+                        .font(.inter(Theme.fontSM, weight: .bold))
                         .foregroundColor(Theme.parchment)
                     if !group.timeLabel.isEmpty {
                         Text(group.timeLabel)
-                            .font(.lora(Theme.fontXXS))
+                            .font(.inter(Theme.fontXXS))
                             .foregroundColor(Theme.textSecondary)
                     }
                     if !group.isOutgoing { Spacer(minLength: 0) }
@@ -87,21 +191,22 @@ struct MessageGroupRow: View {
 
                 ForEach(group.messages) { message in
                     Text(message.text)
-                        .font(.lora(Theme.fontBody))
+                        .font(.inter(Theme.fontBody))
                         .foregroundColor(Theme.parchment)
                         .multilineTextAlignment(group.isOutgoing ? .trailing : .leading)
                         .padding(.horizontal, 14)
                         .padding(.vertical, 10)
                         .background(
                             group.isOutgoing
-                                ? Theme.gold.opacity(0.10)
-                                : Color.white.opacity(0.03)
+                                ? Theme.gold.opacity(0.18)
+                                : Color.white.opacity(0.06)
                         )
                         .overlay(
-                            RoundedRectangle(cornerRadius: Theme.radius)
+                            RoundedRectangle(cornerRadius: Theme.radiusLG)
                                 .stroke(group.isOutgoing ? Theme.borderGoldDim : Theme.borderGoldFaint, lineWidth: 1)
                         )
-                        .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
+                        .clipShape(RoundedRectangle(cornerRadius: Theme.radiusLG))
+                        .topEdgeHighlight(RoundedRectangle(cornerRadius: Theme.radiusLG))
                         .accessibilityLabel("\(group.senderName): \(message.text)")
                 }
             }
@@ -123,7 +228,7 @@ struct MessageGroupRow: View {
             Circle()
                 .stroke(Theme.borderGoldDim, lineWidth: 1)
             Text(group.senderInitial)
-                .font(.lora(Theme.fontXS, weight: .bold))
+                .font(.inter(Theme.fontXS, weight: .bold))
                 .foregroundColor(group.isOutgoing ? Theme.ink : Theme.gold)
         }
         .frame(width: 32, height: 32)

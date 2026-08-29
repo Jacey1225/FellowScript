@@ -76,10 +76,10 @@ struct MinimizedCallBar: View {
                     }
                     VStack(alignment: .leading, spacing: 1) {
                         Text(call.session?.title ?? "In call")
-                            .font(.lora(Theme.fontSM, weight: .semibold))
+                            .font(.inter(Theme.fontSM, weight: .semibold))
                             .foregroundColor(.white).lineLimit(1)
                         Text("Tap to return to call")
-                            .font(.lora(Theme.fontXXS)).foregroundColor(.white.opacity(0.60))
+                            .font(.inter(Theme.fontXXS)).foregroundColor(.white.opacity(0.60))
                     }
                 }
             }
@@ -323,11 +323,11 @@ struct ChimeCallView: View {
                 VStack(spacing: 20) {
                     Image(systemName: "exclamationmark.triangle")
                         .font(.system(size: 44, weight: .light)).foregroundColor(.orange)
-                    Text(error).foregroundColor(.white.opacity(0.75)).font(.lora(Theme.fontSM))
+                    Text(error).foregroundColor(.white.opacity(0.75)).font(.inter(Theme.fontSM))
                         .multilineTextAlignment(.center).padding(.horizontal, 32)
                     HStack(spacing: 16) {
-                        Button("Minimize") { call.minimize() }.foregroundColor(Theme.gold).font(.lora(Theme.fontBody))
-                        Button("End Call") { call.end() }.foregroundColor(Theme.error).font(.lora(Theme.fontBody))
+                        Button("Minimize") { call.minimize() }.foregroundColor(Theme.gold).font(.inter(Theme.fontBody))
+                        Button("End Call") { call.end() }.foregroundColor(Theme.error).font(.inter(Theme.fontBody))
                     }
                 }
             } else {
@@ -370,7 +370,7 @@ struct ChimeCallView: View {
             Image(systemName: manager.isConnected ? "person.crop.circle.badge.clock" : "wifi")
                 .font(.system(size: 52, weight: .ultraLight)).foregroundColor(.white.opacity(0.22))
             Text(manager.isConnected ? "Waiting for others to join…" : "Connecting…")
-                .foregroundColor(.white.opacity(0.42)).font(.lora(Theme.fontSM))
+                .foregroundColor(.white.opacity(0.42)).font(.inter(Theme.fontSM))
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -384,9 +384,9 @@ struct ChimeCallView: View {
                 Image(systemName: "waveform").font(.system(size: 40, weight: .light)).foregroundColor(Theme.gold)
             }
             Text(count == 1 ? "1 person connected" : "\(count) people connected")
-                .foregroundColor(.white.opacity(0.80)).font(.lora(Theme.fontBody))
+                .foregroundColor(.white.opacity(0.80)).font(.inter(Theme.fontBody))
             Text("Audio call in progress")
-                .foregroundColor(.white.opacity(0.42)).font(.lora(Theme.fontXS))
+                .foregroundColor(.white.opacity(0.42)).font(.inter(Theme.fontXS))
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -423,11 +423,11 @@ struct ChimeCallView: View {
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(call.session?.title ?? "Study Session")
-                    .font(.lora(Theme.fontBody, weight: .semibold)).foregroundColor(.white)
+                    .font(.inter(Theme.fontBody, weight: .semibold)).foregroundColor(.white)
                 HStack(spacing: 5) {
                     Circle().fill(manager.isConnected ? Color.green : Color.orange).frame(width: 6, height: 6)
                     Text(manager.isConnected ? "Connected" : "Connecting…")
-                        .font(.lora(Theme.fontXS)).foregroundColor(.white.opacity(0.52))
+                        .font(.inter(Theme.fontXS)).foregroundColor(.white.opacity(0.52))
                 }
             }
             Spacer()
@@ -450,7 +450,7 @@ struct ChimeCallView: View {
                         Circle().fill(Color.red).frame(width: 62, height: 62)
                         Image(systemName: "phone.down.fill").font(.system(size: 24)).foregroundColor(.white)
                     }
-                    Text("End").font(.lora(Theme.fontXS)).foregroundColor(.white.opacity(0.65))
+                    Text("End").font(.inter(Theme.fontXS)).foregroundColor(.white.opacity(0.65))
                 }
             }
             .accessibilityLabel("End call")
@@ -467,7 +467,7 @@ struct ChimeCallView: View {
                     Circle().fill(active ? Color.white.opacity(0.14) : Color.red.opacity(0.70)).frame(width: 58, height: 58)
                     Image(systemName: icon).font(.system(size: 22, weight: .light)).foregroundColor(.white)
                 }
-                Text(label).font(.lora(Theme.fontXS)).foregroundColor(.white.opacity(0.65))
+                Text(label).font(.inter(Theme.fontXS)).foregroundColor(.white.opacity(0.65))
             }
         }
         .accessibilityLabel(label)
@@ -490,12 +490,12 @@ struct ChimeCallView: View {
                     .foregroundColor(.white.opacity(0.28))
                 Text("Live calls require the Amazon Chime SDK.")
                     .foregroundColor(.white.opacity(0.65))
-                    .font(.lora(Theme.fontSM))
+                    .font(.inter(Theme.fontSM))
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 32)
                 Button("Close") { call.end() }
                     .foregroundColor(Theme.gold)
-                    .font(.lora(Theme.fontBody))
+                    .font(.inter(Theme.fontBody))
                     .padding(.top, 8)
             }
         }

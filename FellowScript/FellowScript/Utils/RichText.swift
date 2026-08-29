@@ -596,7 +596,7 @@ struct MarkdownBodyView: View {
         case .bullet(let spans):
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text("•")
-                    .font(.lora(baseFontSize))
+                    .font(.inter(baseFontSize))
                     .foregroundColor(Theme.gold.opacity(0.65))
                 inlineText(spans, size: baseFontSize, color: isMine ? Theme.parchment : Theme.parchment.opacity(0.90))
                     .lineSpacing(3)
@@ -605,7 +605,7 @@ struct MarkdownBodyView: View {
         case .ordered(let num, let spans):
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text("\(num).")
-                    .font(.lora(baseFontSize))
+                    .font(.inter(baseFontSize))
                     .foregroundColor(Theme.gold.opacity(0.65))
                     .frame(minWidth: 18, alignment: .trailing)
                 inlineText(spans, size: baseFontSize, color: isMine ? Theme.parchment : Theme.parchment.opacity(0.90))
@@ -651,22 +651,22 @@ struct MarkdownBodyView: View {
         switch span {
         case .plain(let s):
             return Text(s)
-                .font(.lora(size))
+                .font(.inter(size))
                 .foregroundColor(color)
 
         case .bold(let s):
             return Text(s)
-                .font(.lora(size, weight: .bold))
+                .font(.inter(size, weight: .bold))
                 .foregroundColor(color)
 
         case .italic(let s):
             return Text(s)
-                .font(.lora(size).italic())
+                .font(.inter(size).italic())
                 .foregroundColor(color)
 
         case .boldItalic(let s):
             return Text(s)
-                .font(.lora(size, weight: .bold).italic())
+                .font(.inter(size, weight: .bold).italic())
                 .foregroundColor(color)
 
         case .code(let s):

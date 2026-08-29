@@ -117,7 +117,7 @@ struct NoteEditorView: View {
                                 if !isReadOnly {
                                     Button(action: { showVersePicker = true }) {
                                         Text("+ Verse")
-                                            .font(.lora(Theme.fontXS))
+                                            .font(.inter(Theme.fontXS))
                                             .foregroundColor(Theme.gold.opacity(0.70))
                                             .padding(.horizontal, Theme.spacingMD)
                                             .padding(.vertical, 4)
@@ -214,7 +214,7 @@ struct NoteEditorView: View {
                                     // can cause SwiftUI to recreate the UIViewRepresentable,
                                     // calling makeUIView a second time and resetting htmlOutput.
                                     Text("Start writing…")
-                                        .font(.lora(Theme.fontBody))
+                                        .font(.inter(Theme.fontBody))
                                         .foregroundColor(Theme.textMuted)
                                         .padding(.top, 2)
                                         .allowsHitTesting(false)
@@ -327,7 +327,7 @@ struct NoteEditorView: View {
                 Image(systemName: isPublic ? "globe" : "lock")
                     .font(.system(size: 12, weight: .semibold))
                 Text(isPublic ? "Public" : "Private")
-                    .font(.lora(Theme.fontXS))
+                    .font(.inter(Theme.fontXS))
             }
             .foregroundColor(Theme.textGoldMuted)
             .padding(.horizontal, Theme.spacingMD)

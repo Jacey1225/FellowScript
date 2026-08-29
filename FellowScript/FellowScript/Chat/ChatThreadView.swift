@@ -22,6 +22,17 @@
 // exists anywhere in the app) and are intentionally NOT reproduced here —
 // same "no fabricated data" precedent already established in ChatRootView.swift's
 // ContactRow.
+//
+// EMBER GLASS (task 20260827-ember-glass-chat-rewrite, design-notes.md):
+// §1 elevation — every surface here (Reconnecting pill, SessionBanner,
+// SessionCreatorSheet fields) drops its shadow (there wasn't one to begin
+// with here) in favor of Theme.topEdgeHighlight, matching PillButton/
+// WidgetCard/message bubbles — one elevation language, no mixing. §11/§12 —
+// adds the same whole-canvas ambient wash already shared by ChatRootView/
+// NotesListView/NoteEditorView (zero new tokens) plus small focal blooms
+// behind the header avatar and the SessionBanner calendar badge. §13 — real
+// day-boundary detection (ChatThreadRow/DayDividerRow in MessageGroupRow.swift)
+// interleaved into the message list.
 
 import SwiftUI
 import Combine
@@ -209,9 +220,26 @@ struct ChatThreadView: View {
         MessageDisplayGroup.grouped(from: vm.messages, me: user)
     }
 
+    // Interleaves labeled day-divider rows between MessageDisplayGroups
+    // (design gate §13) — real Calendar.isDate(inSameDayAs:) detection, not
+    // a cosmetic restyle of the existing plain sender-group hairline.
+    private var threadRows: [ChatThreadRow] {
+        messageGroups.withDayDividers()
+    }
+
     var body: some View {
         ZStack {
             Theme.bgPage.ignoresSafeArea()
+
+            // Warm bloom ground (shared visual language with ChatRootView/
+            // Notes) — Added item 2: whole-canvas ambient wash, identical
+            // values to ChatRootView.swift/NotesListView.swift/NoteEditorView.swift.
+            RadialGradient(colors: [Color(hex: "#D4922A").opacity(0.20), .clear],
+                           center: UnitPoint(x: 0.12, y: 0.16), startRadius: 10, endRadius: 380)
+                .ignoresSafeArea()
+            RadialGradient(colors: [Color(hex: "#B8761D").opacity(0.12), .clear],
+                           center: UnitPoint(x: 0.92, y: 0.60), startRadius: 10, endRadius: 340)
+                .ignoresSafeArea()
 
             VStack(spacing: 0) {
                 header
@@ -227,13 +255,22 @@ struct ChatThreadView: View {
                 }
 
                 // ── Reconnecting banner (dropped-socket lifecycle state) ───
+                // Same vm.isConnected-driven logic as before — restyled into
+                // a pill using the Ember Glass elevation language (§1) rather
+                // than bare floating text+spinner.
                 if !vm.isConnected {
                     HStack(spacing: 6) {
                         ProgressView().tint(Theme.gold).scaleEffect(0.75)
                         Text("Reconnecting…")
-                            .font(.lora(Theme.fontXS))
+                            .font(.inter(Theme.fontXS))
                             .foregroundColor(Theme.textGoldMuted)
                     }
+                    .padding(.horizontal, Theme.spacingSM)
+                    .padding(.vertical, 6)
+                    .background(Color.white.opacity(0.045))
+                    .overlay(Capsule().stroke(Theme.borderGoldFaint, lineWidth: 1))
+                    .clipShape(Capsule())
+                    .topEdgeHighlight(Capsule())
                     .padding(.horizontal, Theme.spacingSM)
                     .padding(.top, Theme.spacingXS)
                     .accessibilityLabel("Reconnecting to chat")
@@ -252,18 +289,36 @@ struct ChatThreadView: View {
                     .padding(.top, Theme.spacingXS)
                 }
 
-                // ── Message list (Slack-style grouped bubbles) ──────────────
+                // ── Message list (Slack-style grouped bubbles + day dividers) ──
                 ScrollViewReader { proxy in
                     ScrollView {
                         LazyVStack(spacing: 0) {
-                            ForEach(Array(messageGroups.enumerated()), id: \.element.id) { index, group in
-                                MessageGroupRow(group: group)
-                                    .id(group.id)
-                                if index < messageGroups.count - 1 {
-                                    Rectangle()
-                                        .fill(Theme.borderGoldFaint)
-                                        .frame(height: 1)
-                                        .padding(.horizontal, Theme.spacingMD)
+                            let rows = threadRows
+                            ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
+                                switch row {
+                                case .group(let group):
+                                    MessageGroupRow(group: group)
+                                        .id(row.id)
+                                case .dayDivider(_, let label):
+                                    DayDividerRow(label: label)
+                                        .id(row.id)
+                                }
+                                // Decision 2 (design step 1, fidelity pass):
+                                // no rendered line between two consecutive
+                                // same-day groups — only a spacing gap. This
+                                // reverses the original Ember Glass design
+                                // gate's §13 call to keep a plain unlabeled
+                                // hairline here, which didn't actually match
+                                // render-2-conversation-thread.png (no line
+                                // between non-day-boundary groups at all).
+                                // Day-divider hairlines (DayDividerRow) are
+                                // untouched — that specific line-flanking-a-
+                                // label motif still belongs at day boundaries
+                                // only.
+                                if index < rows.count - 1,
+                                   case .group = row,
+                                   case .group = rows[index + 1] {
+                                    Color.clear.frame(height: Theme.spacingSM)
                                 }
                             }
                         }
@@ -355,7 +410,7 @@ struct ChatThreadView: View {
 
                     HStack(spacing: 5) {
                         Text(contact.name)
-                            .font(.lora(Theme.fontHeading, weight: .bold))
+                            .font(.inter(Theme.fontHeading, weight: .bold))
                             .foregroundColor(Theme.parchment)
                             .lineLimit(1)
                         if contact.type == .group {
@@ -389,7 +444,7 @@ struct ChatThreadView: View {
         HStack(spacing: 10) {
             TextField("", text: $text,
                       prompt: Text("Type a message…").foregroundColor(Theme.textSecondary), axis: .vertical)
-                .font(.lora(Theme.fontBody))
+                .font(.inter(Theme.fontBody))
                 .foregroundColor(Theme.parchment)
                 .lineLimit(1...4)
                 .padding(.horizontal, Theme.spacingMD)
@@ -416,9 +471,6 @@ struct ChatThreadView: View {
         .padding(.top, Theme.spacingSM)
         .padding(.bottom, Theme.spacingMD)
         .background(Theme.bgPage.opacity(0.55))
-        .overlay(alignment: .top) {
-            Rectangle().fill(Theme.borderGoldFaint).frame(height: 1)
-        }
     }
 
     private func sendMessage() {
@@ -468,7 +520,7 @@ struct GroupMembersPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.spacingSM) {
             Text("Members")
-                .font(.lora(Theme.fontXXS)).tracking(3).textCase(.uppercase)
+                .font(.inter(Theme.fontXXS)).tracking(3).textCase(.uppercase)
                 .foregroundColor(Theme.gold.opacity(0.50))
 
             ScrollView(.horizontal, showsIndicators: false) {
@@ -497,11 +549,11 @@ struct GroupMembersPanel: View {
                     .fill(Theme.gold.opacity(0.12))
                     .frame(width: 26, height: 26)
                 Text(String(name.prefix(1)).uppercased())
-                    .font(.lora(Theme.fontXXS, weight: .bold))
+                    .font(.inter(Theme.fontXXS, weight: .bold))
                     .foregroundColor(Theme.gold)
             }
             Text(isMe ? "\(name) (you)" : name)
-                .font(.lora(Theme.fontXS))
+                .font(.inter(Theme.fontXS))
                 .foregroundColor(isMe ? Theme.gold : Theme.parchment.opacity(0.70))
         }
         .accessibilityLabel(isMe ? "\(name), you" : name)
@@ -524,7 +576,7 @@ struct GroupMembersPanel: View {
                         .foregroundColor(Theme.gold)
                 }
                 Text("Add")
-                    .font(.lora(Theme.fontXS))
+                    .font(.inter(Theme.fontXS))
                     .foregroundColor(Theme.gold.opacity(0.75))
             }
         }
@@ -551,7 +603,7 @@ struct AddGroupMembersSheet: View {
                             .font(.system(size: 36, weight: .light))
                             .foregroundColor(Theme.gold.opacity(0.35))
                         Text("All your friends are already in this group.")
-                            .font(.lora(Theme.fontSM))
+                            .font(.inter(Theme.fontSM))
                             .foregroundColor(Theme.textMuted)
                             .multilineTextAlignment(.center)
                             .padding(.horizontal, Theme.spacingXL)
@@ -562,7 +614,7 @@ struct AddGroupMembersSheet: View {
                             ForEach(candidates) { f in
                                 HStack {
                                     Text(f.name)
-                                        .font(.lora(Theme.fontBody))
+                                        .font(.inter(Theme.fontBody))
                                         .foregroundColor(Theme.parchment.opacity(0.70))
                                     Spacer()
                                     if selectedIds.contains(f.id) {
@@ -612,27 +664,56 @@ struct SessionBanner: View {
     @State private var showDetail = false
 
     var body: some View {
-        HStack(spacing: Theme.spacingMD) {
-            ZStack {
-                Circle().fill(Theme.gold.opacity(0.16))
-                Circle().stroke(Theme.borderGoldDim, lineWidth: 1)
-                Image(systemName: "calendar.badge.clock")
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundColor(Theme.gold)
-            }
-            .frame(width: 40, height: 40)
-            .accessibilityHidden(true)
+        // Decision 1 (design step 1, fidelity pass): split into an outer
+        // VStack — row 1 keeps the icon/title/time, row 2 is a new
+        // full-width Join+Details row below it — instead of one shared
+        // HStack. The original single-HStack skeleton starved the button
+        // row for width, causing "Join"'s label to text-wrap ("Jo"/"in")
+        // at realistic session-title lengths ("Wednesday Night Study"),
+        // and didn't match render-3-session-summary.png's two-row layout,
+        // which the original Ember Glass design gate never actually
+        // decided (it only addressed elevation §1 and the icon bloom §11).
+        VStack(alignment: .leading, spacing: Theme.spacingSM) {
+            HStack(spacing: Theme.spacingMD) {
+                ZStack {
+                    Circle().fill(Theme.gold.opacity(0.16))
+                    Circle().stroke(Theme.borderGoldDim, lineWidth: 1)
+                    Image(systemName: "calendar.badge.clock")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundColor(Theme.gold)
+                }
+                .frame(width: 40, height: 40)
+                // Added item 1: focal ambient bloom behind the calendar badge
+                // (design gate §11, visible in render-3-session-summary.png as a
+                // warm halo around the icon). Background sizing keeps the halo
+                // from being clipped to the badge's own 40x40 frame.
+                .background(
+                    RadialGradient(colors: [Theme.gold.opacity(0.35), .clear],
+                                   center: .center, startRadius: 2, endRadius: 40)
+                        .frame(width: 100, height: 100)
+                )
+                .accessibilityHidden(true)
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text(session.title)
-                    .font(.lora(Theme.fontSM, weight: .bold))
-                    .foregroundColor(Theme.parchment)
-                Text(session.formattedStart)
-                    .font(.lora(Theme.fontXS))
-                    .foregroundColor(Theme.textSecondary)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(session.title)
+                        .font(.inter(Theme.fontSM, weight: .bold))
+                        .foregroundColor(Theme.parchment)
+                    Text(session.formattedStart)
+                        .font(.inter(Theme.fontXS))
+                        .foregroundColor(Theme.textSecondary)
+                }
+                Spacer()
             }
-            Spacer()
-            HStack(spacing: 8) {
+
+            // Row 2 (design decision 1): a distinct, full-width Join+Details
+            // row below the title/time — not indented under the text — each
+            // button given .frame(maxWidth: .infinity) so together they span
+            // most of the card's content width, matching render-3. This also
+            // structurally resolves the Join-label wrap: with the row no
+            // longer sharing space with the title, "Join" has no plausible
+            // remaining wrap scenario at realistic title lengths (verified
+            // directly — see EmberGlassChatRegressionTests).
+            HStack(spacing: Theme.spacingSM) {
                 // Join call button — starts/joins the persistent call. Kept
                 // green (established call-affordance convention elsewhere in
                 // the app) — only the shape/typography is restyled, per the
@@ -647,8 +728,10 @@ struct SessionBanner: View {
                             .font(.system(size: 11))
                         Text("Join")
                             .font(.system(size: 12, weight: .bold))
+                            .fixedSize()
                     }
                     .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 7)
                     .background(Theme.success.opacity(0.82))
@@ -656,19 +739,26 @@ struct SessionBanner: View {
                 }
                 .accessibilityLabel("Join call for \(session.title)")
 
-                Button("Details") { showDetail = true }
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundColor(Theme.gold)
-                    .padding(.horizontal, Theme.spacingSM)
-                    .padding(.vertical, 7)
-                    .overlay(Capsule().stroke(Theme.borderGold, lineWidth: 1))
-                    .accessibilityLabel("View session details: \(session.title)")
+                Button {
+                    showDetail = true
+                } label: {
+                    Text("Details")
+                        .fixedSize()
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundColor(Theme.gold)
+                        .frame(maxWidth: .infinity)
+                        .padding(.horizontal, Theme.spacingSM)
+                        .padding(.vertical, 7)
+                        .overlay(Capsule().stroke(Theme.borderGold, lineWidth: 1))
+                }
+                .accessibilityLabel("View session details: \(session.title)")
             }
         }
         .padding(Theme.spacingMD)
         .background(Color.white.opacity(0.045))
         .clipShape(RoundedRectangle(cornerRadius: Theme.radiusXL))
         .overlay(RoundedRectangle(cornerRadius: Theme.radiusXL).stroke(Theme.borderGoldDim, lineWidth: 1))
+        .topEdgeHighlight(RoundedRectangle(cornerRadius: Theme.radiusXL))
         .sheet(isPresented: $showDetail) {
             SessionDetailSheet(session: session, onDelete: onDelete)
                 .environmentObject(appState)
@@ -708,7 +798,7 @@ struct SessionDetailSheet: View {
                                 Image(systemName: "video.fill")
                                     .font(.system(size: 16))
                                 Text("Join Audio & Video Call")
-                                    .font(.lora(Theme.fontBody, weight: .semibold))
+                                    .font(.inter(Theme.fontBody, weight: .semibold))
                             }
                             .foregroundColor(.white)
                             .frame(maxWidth: .infinity)
@@ -724,7 +814,7 @@ struct SessionDetailSheet: View {
                                 .font(.playfair(Theme.fontDisplayMD))
                                 .foregroundColor(Theme.parchment)
                             Text(session.formattedStart)
-                                .font(.lora(Theme.fontSM))
+                                .font(.inter(Theme.fontSM))
                                 .foregroundColor(Theme.textGoldMuted)
                         }
 
@@ -745,10 +835,10 @@ struct SessionDetailSheet: View {
                                 ForEach(Array(session.prompts.enumerated()), id: \.offset) { i, p in
                                     HStack(alignment: .top, spacing: Theme.spacingSM) {
                                         Text("\(i+1).")
-                                            .font(.lora(Theme.fontSM))
+                                            .font(.inter(Theme.fontSM))
                                             .foregroundColor(Theme.gold)
                                         Text(p)
-                                            .font(.lora(Theme.fontSM))
+                                            .font(.inter(Theme.fontSM))
                                             .foregroundColor(Theme.textSecondary)
                                             .fixedSize(horizontal: false, vertical: true)
                                     }
@@ -758,7 +848,7 @@ struct SessionDetailSheet: View {
 
                         if session.recurring {
                             Label("Repeats weekly", systemImage: "repeat")
-                                .font(.lora(Theme.fontSM))
+                                .font(.inter(Theme.fontSM))
                                 .foregroundColor(Theme.textGoldMuted)
                         }
 
@@ -771,7 +861,7 @@ struct SessionDetailSheet: View {
                                     } else {
                                         Image(systemName: "trash")
                                         Text("Delete Session")
-                                            .font(.lora(Theme.fontBody, weight: .semibold))
+                                            .font(.inter(Theme.fontBody, weight: .semibold))
                                     }
                                 }
                                 .foregroundColor(Theme.error)
@@ -883,22 +973,31 @@ struct SessionCreatorSheet: View {
 
     private var sheetHeader: some View {
         HStack {
-            Button("Cancel") { dismiss() }
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundColor(Theme.gold)
-                .buttonStyle(.plain)
+            RoundIconButton(systemIcon: "xmark", diameter: 36) { dismiss() }
+                .accessibilityLabel("Cancel")
 
             Spacer()
 
-            Text("Schedule a Session")
-                .font(.lora(Theme.fontDisplayMD, weight: .bold))
+            Text("Schedule")
+                .font(.inter(Theme.fontDisplayMD, weight: .bold))
                 .foregroundColor(Theme.parchment)
 
             Spacer()
 
-            PillButton(title: "Schedule") {
-                scheduleSession()
+            // Small circular CTA (mirrors the composer's send-button
+            // treatment) rather than plain RoundIconButton styling, so this
+            // sheet's primary action keeps its solid-gold weight after
+            // losing its "Schedule" pill label.
+            Button(action: scheduleSession) {
+                Image(systemName: "calendar")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundColor(Theme.ink)
+                    .frame(width: 36, height: 36)
+                    .background(Theme.goldGradient)
+                    .clipShape(Circle())
+                    .topEdgeHighlight(Circle())
             }
+            .buttonStyle(.plain)
             .disabled(title.isEmpty)
             .opacity(title.isEmpty ? 0.4 : 1)
             .accessibilityLabel("Schedule session")
@@ -912,13 +1011,14 @@ struct SessionCreatorSheet: View {
         VStack(alignment: .leading, spacing: 10) {
             SectionEyebrow(title: "Session Title")
             TextField("", text: $title, prompt: Text("Evening Study").foregroundColor(Theme.textSecondary))
-                .font(.lora(Theme.fontBody))
+                .font(.inter(Theme.fontBody))
                 .foregroundColor(Theme.parchment)
                 .padding(.horizontal, 18)
                 .padding(.vertical, 14)
                 .background(Color.white.opacity(0.045))
                 .overlay(RoundedRectangle(cornerRadius: Theme.radiusXL).stroke(Theme.borderGoldDim, lineWidth: 1))
                 .clipShape(RoundedRectangle(cornerRadius: Theme.radiusXL))
+                .topEdgeHighlight(RoundedRectangle(cornerRadius: Theme.radiusXL))
                 .accessibilityLabel("Session title")
         }
     }
@@ -949,7 +1049,7 @@ struct SessionCreatorSheet: View {
             ForEach(Array(prompts.enumerated()), id: \.offset) { i, p in
                 HStack {
                     Text(p)
-                        .font(.lora(Theme.fontSM))
+                        .font(.inter(Theme.fontSM))
                         .foregroundColor(Theme.parchment)
                         .frame(maxWidth: .infinity, alignment: .leading)
                     Button(action: { prompts.remove(at: i) }) {
@@ -963,12 +1063,13 @@ struct SessionCreatorSheet: View {
                 .background(Color.white.opacity(0.045))
                 .overlay(RoundedRectangle(cornerRadius: Theme.radiusXL).stroke(Theme.borderGoldDim, lineWidth: 1))
                 .clipShape(RoundedRectangle(cornerRadius: Theme.radiusXL))
+                .topEdgeHighlight(RoundedRectangle(cornerRadius: Theme.radiusXL))
             }
 
             HStack {
                 TextField("", text: $promptInput,
                           prompt: Text("Add a discussion question…").foregroundColor(Theme.textSecondary))
-                    .font(.lora(Theme.fontBody))
+                    .font(.inter(Theme.fontBody))
                     .foregroundColor(Theme.parchment)
                     .accessibilityLabel("Discussion prompt input")
 
@@ -988,6 +1089,7 @@ struct SessionCreatorSheet: View {
             .background(Color.white.opacity(0.045))
             .overlay(RoundedRectangle(cornerRadius: Theme.radiusXL).stroke(Theme.borderGoldDim, lineWidth: 1))
             .clipShape(RoundedRectangle(cornerRadius: Theme.radiusXL))
+            .topEdgeHighlight(RoundedRectangle(cornerRadius: Theme.radiusXL))
         }
     }
 
@@ -996,7 +1098,7 @@ struct SessionCreatorSheet: View {
             SectionEyebrow(title: "Session Options")
             HStack(spacing: 10) {
                 ChipToggle(title: "Repeat weekly", isOn: $recurring)
-                ChipToggle(title: "Summarize with agent", isOn: $summarize)
+                ChipToggle(title: "Summarize", isOn: $summarize)
             }
         }
     }

@@ -26,7 +26,7 @@ struct ForgotPasswordView: View {
                             .font(.playfair(Theme.fontDisplayMD))
                             .foregroundColor(Theme.parchment)
                         Text("Enter your account email and we'll send a reset link.")
-                            .font(.lora(Theme.fontSM))
+                            .font(.inter(Theme.fontSM))
                             .foregroundColor(Theme.textMuted)
                             .multilineTextAlignment(.center)
                     }
@@ -38,10 +38,10 @@ struct ForgotPasswordView: View {
                                 .font(.system(size: 32))
                                 .foregroundColor(Theme.gold)
                             Text("Check your email")
-                                .font(.lora(Theme.fontBody)).bold()
+                                .font(.inter(Theme.fontBody)).bold()
                                 .foregroundColor(Theme.parchment)
                             Text("If an account with that email exists, a password reset link has been sent. It expires in 30 minutes.")
-                                .font(.lora(Theme.fontSM))
+                                .font(.inter(Theme.fontSM))
                                 .foregroundColor(Theme.textMuted)
                                 .multilineTextAlignment(.center)
                         }
@@ -49,7 +49,7 @@ struct ForgotPasswordView: View {
                     } else {
                         if !errorMsg.isEmpty {
                             Text(errorMsg)
-                                .font(.lora(Theme.fontXS))
+                                .font(.inter(Theme.fontXS))
                                 .foregroundColor(.red)
                                 .padding(.horizontal, Theme.spacingLG)
                         }
@@ -64,7 +64,7 @@ struct ForgotPasswordView: View {
                         Button(action: { Task { await sendReset() } }) {
                             HStack {
                                 if isLoading { ProgressView().tint(Theme.ink) }
-                                Text("Send reset link").font(.lora(Theme.fontSM)).bold()
+                                Text("Send reset link").font(.inter(Theme.fontSM)).bold()
                             }
                             .foregroundColor(Theme.ink)
                             .frame(maxWidth: .infinity)

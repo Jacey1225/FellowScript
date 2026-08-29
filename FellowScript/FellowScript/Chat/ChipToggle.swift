@@ -26,8 +26,19 @@ struct ChipToggle: View {
                 Image(systemName: "checkmark")
                     .font(.system(size: 12, weight: .bold))
             }
+            // Fidelity pass fix: the longer "Summarize with agent" label
+            // wrapped to two lines at default Dynamic Type/device width,
+            // breaking equal-height alignment with the shorter, single-line
+            // "Repeat weekly" chip (render-1-schedule-sheet.png shows both
+            // as single-line, equal height). minimumScaleFactor keeps both
+            // chips on one line by shrinking text just enough to fit, rather
+            // than switching to unequal/content-sized widths — the row's
+            // 50/50 split (ChatThreadView.swift's sessionOptionsSection)
+            // and both chips' equal height are otherwise unaffected.
             Text(title)
                 .font(.system(size: 15, weight: .bold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
         }
         .foregroundColor(isOn ? Theme.ink : Theme.textSecondary)
         .frame(maxWidth: .infinity)
@@ -91,7 +102,7 @@ struct SectionEyebrow: View {
 
     var body: some View {
         Text(title.uppercased())
-            .font(.lora(Theme.fontXXS)).tracking(2)
+            .font(.inter(Theme.fontXXS)).tracking(2)
             .foregroundColor(Theme.gold.opacity(0.60))
     }
 }

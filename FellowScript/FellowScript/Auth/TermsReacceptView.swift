@@ -22,19 +22,19 @@ struct TermsReacceptView: View {
                     .multilineTextAlignment(.center)
 
                 Text("We've clarified our zero-tolerance policy for objectionable content and abusive behavior, including new in-app reporting and blocking tools. Please review our updated Terms of Service before continuing.")
-                    .font(.lora(Theme.fontSM))
+                    .font(.inter(Theme.fontSM))
                     .foregroundColor(Theme.textMuted)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, Theme.spacingLG)
 
                 Link("Read the updated Terms of Service",
                      destination: URL(string: "https://fellowscript.com/#/terms")!)
-                    .font(.lora(Theme.fontSM))
+                    .font(.inter(Theme.fontSM))
                     .foregroundColor(Theme.gold)
 
                 if let errorMessage {
                     Text(errorMessage)
-                        .font(.lora(Theme.fontSM))
+                        .font(.inter(Theme.fontSM))
                         .foregroundColor(Theme.error)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, Theme.spacingLG)
@@ -59,7 +59,7 @@ struct TermsReacceptView: View {
                 }) {
                     HStack {
                         if agreeing { ProgressView().tint(Theme.ink) }
-                        Text("I Agree").font(.lora(Theme.fontSM)).bold()
+                        Text("I Agree").font(.inter(Theme.fontSM)).bold()
                     }
                     .foregroundColor(Theme.ink)
                     .frame(maxWidth: .infinity)

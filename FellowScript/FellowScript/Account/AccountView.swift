@@ -619,7 +619,7 @@ struct AccountView: View {
                     .font(.playfair(Theme.fontDisplayMD))
                     .foregroundColor(Theme.parchment)
                 Text(vm.profileData?.email ?? "")
-                    .font(.lora(Theme.fontSM))
+                    .font(.inter(Theme.fontSM))
                     .foregroundColor(Theme.textMuted)
             }
         }
@@ -655,7 +655,7 @@ struct AccountView: View {
                 if !unlimited {
                     Divider().background(Theme.borderGoldFaint)
                     Text("You're on the free plan. Upgrade to a Group plan for unlimited notes and events.")
-                        .font(.lora(Theme.fontSM))
+                        .font(.inter(Theme.fontSM))
                         .foregroundColor(Theme.textGoldMuted)
                 }
             }
@@ -669,16 +669,16 @@ struct AccountView: View {
         return VStack(alignment: .leading, spacing: Theme.spacingXS + 2) {
             HStack(spacing: Theme.spacingSM) {
                 Text(label)
-                    .font(.lora(Theme.fontBody))
+                    .font(.inter(Theme.fontBody))
                     .foregroundColor(Theme.parchment)
                 if let hint, !unlimited {
                     Text(hint)
-                        .font(.lora(Theme.fontXS))
+                        .font(.inter(Theme.fontXS))
                         .foregroundColor(Theme.textMuted)
                 }
                 Spacer()
                 Text(unlimited ? "Unlimited" : "\(r.used) / \(r.limit)")
-                    .font(.lora(Theme.fontSM))
+                    .font(.inter(Theme.fontSM))
                     .foregroundColor(unlimited ? Theme.gold : (r.maxedOut ? Theme.error : Theme.textGoldMuted))
             }
             if !unlimited {
@@ -748,7 +748,7 @@ struct AccountView: View {
 
             if let msg = vm.subMsg {
                 Text(msg)
-                    .font(.lora(Theme.fontSM)).foregroundColor(Theme.error)
+                    .font(.inter(Theme.fontSM)).foregroundColor(Theme.error)
                     .padding(.horizontal, Theme.spacingSM).padding(.vertical, Theme.spacingXS + 2)
                     .background(Theme.error.opacity(0.10))
                     .clipShape(RoundedRectangle(cornerRadius: Theme.radiusSM))
@@ -762,7 +762,7 @@ struct AccountView: View {
 
     private func rowCaption(_ text: String) -> some View {
         Text(text)
-            .font(.lora(Theme.fontSM))
+            .font(.inter(Theme.fontSM))
             .foregroundColor(Theme.textMuted)
     }
 
@@ -776,10 +776,10 @@ struct AccountView: View {
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
                     Text("Group Plan")
-                        .font(.lora(Theme.fontBody)).foregroundColor(Theme.parchment)
+                        .font(.inter(Theme.fontBody)).foregroundColor(Theme.parchment)
                     let badge = plan.is_trial ? "Free trial" : (vm.autoRenewOff ? "Cancelling" : plan.status.capitalized)
                     Text(badge)
-                        .font(.lora(Theme.fontXXS)).tracking(1)
+                        .font(.inter(Theme.fontXXS)).tracking(1)
                         .padding(.horizontal, 7).padding(.vertical, 2)
                         .background((vm.autoRenewOff ? Theme.error : Theme.gold).opacity(0.15))
                         .foregroundColor(vm.autoRenewOff ? Theme.error : Theme.gold)
@@ -787,18 +787,18 @@ struct AccountView: View {
                 }
                 Text("\(plan.priceLabel)/mo · \(vm.isSubHost ? "You are the host" : "Member")"
                      + (plan.plan_type == "group" ? " · up to \(plan.max_members)" : ""))
-                    .font(.lora(Theme.fontXS)).foregroundColor(Theme.textMuted)
+                    .font(.inter(Theme.fontXS)).foregroundColor(Theme.textMuted)
                 // Trial / next-billing line (host only — they own billing).
                 if vm.isSubHost {
                     if vm.autoRenewOff {
                         Text("Auto-renew off · cancels \(Self.mediumDate(vm.planEndDate) ?? plan.nextBillingLabel) · access until then")
-                            .font(.lora(Theme.fontXS)).foregroundColor(Theme.error)
+                            .font(.inter(Theme.fontXS)).foregroundColor(Theme.error)
                     } else if !plan.nextBillingLabel.isEmpty {
                         Text(plan.is_trial
                              ? "🎁 \(plan.trial_days_remaining) day\(plan.trial_days_remaining == 1 ? "" : "s") left · first billing \(plan.nextBillingLabel)"
                              : "Next billing \(plan.nextBillingLabel)"
                              + (plan.card_last4.isEmpty ? "" : " · \(plan.card_brand.capitalized) •••• \(plan.card_last4)"))
-                            .font(.lora(Theme.fontXS)).foregroundColor(Theme.textGoldMuted)
+                            .font(.inter(Theme.fontXS)).foregroundColor(Theme.textGoldMuted)
                     }
                 }
             }
@@ -813,7 +813,7 @@ struct AccountView: View {
                 Text(String(m.username.prefix(1)).uppercased()).font(.playfair(Theme.fontXS)).foregroundColor(Theme.gold)
             }
             Text(m.username + (m.user_id == vm.profileData?.user_id ? " (you)" : ""))
-                .font(.lora(Theme.fontSM)).foregroundColor(Theme.parchment)
+                .font(.inter(Theme.fontSM)).foregroundColor(Theme.parchment)
             Spacer()
             if m.user_id != vm.profileData?.user_id {
                 Button { Task { await vm.removeMember(m.user_id) } } label: {
@@ -836,7 +836,7 @@ struct AccountView: View {
             } label: {
                 HStack {
                     Label("What's included", systemImage: "info.circle")
-                        .font(.lora(Theme.fontBody))
+                        .font(.inter(Theme.fontBody))
                         .foregroundColor(Theme.parchment)
                     Spacer()
                     Image(systemName: isExpanded.wrappedValue ? "chevron.up" : "chevron.down")
@@ -885,8 +885,8 @@ struct AccountView: View {
                 .padding(.top, 2)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 1) {
-                Text(title).font(.lora(Theme.fontSM)).foregroundColor(Theme.parchment)
-                Text(caption).font(.lora(Theme.fontXXS)).foregroundColor(Theme.textMuted)
+                Text(title).font(.inter(Theme.fontSM)).foregroundColor(Theme.parchment)
+                Text(caption).font(.inter(Theme.fontXXS)).foregroundColor(Theme.textMuted)
             }
             Spacer()
         }
@@ -900,8 +900,8 @@ struct AccountView: View {
                 Text(String(r.username.prefix(1)).uppercased()).font(.playfair(Theme.fontXS)).foregroundColor(Theme.gold)
             }
             VStack(alignment: .leading, spacing: 1) {
-                Text(r.username).font(.lora(Theme.fontSM)).foregroundColor(Theme.parchment)
-                Text("Wants to join").font(.lora(Theme.fontXS)).foregroundColor(Theme.textMuted)
+                Text(r.username).font(.inter(Theme.fontSM)).foregroundColor(Theme.parchment)
+                Text("Wants to join").font(.inter(Theme.fontXS)).foregroundColor(Theme.textMuted)
             }
             Spacer()
             Button { Task { await vm.acceptRequest(r.user_id) } } label: {
@@ -922,7 +922,7 @@ struct AccountView: View {
             Button { Task { await store.showManageSubscriptions() } } label: {
                 HStack(spacing: 6) {
                     Image(systemName: "gearshape")
-                    Text("Manage Subscription").font(.lora(Theme.fontSM))
+                    Text("Manage Subscription").font(.inter(Theme.fontSM))
                 }
                 .foregroundColor(Theme.gold)
                 .padding(.horizontal, 16).padding(.vertical, 8)
@@ -934,7 +934,7 @@ struct AccountView: View {
             } label: {
                 HStack(spacing: 6) {
                     Image(systemName: vm.isSubHost ? "trash" : "rectangle.portrait.and.arrow.right")
-                    Text(vm.isSubHost ? "Cancel Plan" : "Leave Plan").font(.lora(Theme.fontSM))
+                    Text(vm.isSubHost ? "Cancel Plan" : "Leave Plan").font(.inter(Theme.fontSM))
                 }
                 .foregroundColor(Theme.error)
                 .padding(.horizontal, 16).padding(.vertical, 8)
@@ -963,14 +963,14 @@ struct AccountView: View {
                 }
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Group — \(price)/mo")
-                        .font(.lora(Theme.fontBody)).foregroundColor(Theme.parchment)
+                        .font(.inter(Theme.fontBody)).foregroundColor(Theme.parchment)
                     Text("Free for 1 month · choose 1-8 members")
-                        .font(.lora(Theme.fontXS)).foregroundColor(Theme.textMuted)
+                        .font(.inter(Theme.fontXS)).foregroundColor(Theme.textMuted)
                 }
                 Spacer()
             }
             Stepper("Members: \(selectedMemberCount)", value: $selectedMemberCount, in: 1...8)
-                .font(.lora(Theme.fontSM)).foregroundColor(Theme.parchment)
+                .font(.inter(Theme.fontSM)).foregroundColor(Theme.parchment)
             benefitsDisclosure(memberCount: selectedMemberCount, isExpanded: $showBenefits)
             Button {
                 Task { await vm.purchasePlan(memberCount: selectedMemberCount) }
@@ -989,7 +989,7 @@ struct AccountView: View {
             HStack(spacing: Theme.spacingSM) {
                 Stepper("Members: \(editing)",
                         value: Binding(get: { editing }, set: { editMemberCount = $0 }), in: 1...8)
-                    .font(.lora(Theme.fontSM)).foregroundColor(Theme.parchment)
+                    .font(.inter(Theme.fontSM)).foregroundColor(Theme.parchment)
                 Button { Task { await vm.updateSeats(memberCount: editing); editMemberCount = nil } } label: {
                     gradientPill("Save", compact: true)
                 }
@@ -1015,10 +1015,10 @@ struct AccountView: View {
                 Text(String(j.hostName.prefix(1)).uppercased()).font(.playfair(Theme.fontXS)).foregroundColor(Theme.gold)
             }
             Text("\(j.hostName)'s Group · \(j.memberCount)/\(j.plan.max_members)")
-                .font(.lora(Theme.fontSM)).foregroundColor(Theme.parchment)
+                .font(.inter(Theme.fontSM)).foregroundColor(Theme.parchment)
             Spacer()
             Button(pending ? "Requested" : "Request") { Task { await vm.requestJoin(j.plan.id) } }
-                .font(.lora(Theme.fontXS)).foregroundColor(pending ? Theme.textMuted : Theme.gold)
+                .font(.inter(Theme.fontXS)).foregroundColor(pending ? Theme.textMuted : Theme.gold)
                 .buttonStyle(.borderless).disabled(pending || vm.subBusy)
         }
     }
@@ -1026,10 +1026,10 @@ struct AccountView: View {
     private func myRequestRow(_ r: FSSubRequest) -> some View {
         HStack {
             Image(systemName: "clock").foregroundColor(Theme.textGoldMuted)
-            Text("Pending group plan request").font(.lora(Theme.fontSM)).foregroundColor(Theme.textSecondary)
+            Text("Pending group plan request").font(.inter(Theme.fontSM)).foregroundColor(Theme.textSecondary)
             Spacer()
             Button("Cancel") { Task { await vm.cancelMyRequest(r.subscription_id) } }
-                .font(.lora(Theme.fontXS)).foregroundColor(Theme.textMuted).buttonStyle(.borderless)
+                .font(.inter(Theme.fontXS)).foregroundColor(Theme.textMuted).buttonStyle(.borderless)
         }
     }
 
@@ -1042,7 +1042,7 @@ struct AccountView: View {
                 HStack(spacing: Theme.spacingSM) {
                     Image(systemName: msg.type == .success ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
                     Text(msg.text)
-                        .font(.lora(Theme.fontSM))
+                        .font(.inter(Theme.fontSM))
                 }
                 .foregroundColor(msg.type == .success ? Theme.success : Theme.error)
                 .padding(.horizontal, Theme.spacingSM).padding(.vertical, Theme.spacingXS + 2)
@@ -1054,7 +1054,7 @@ struct AccountView: View {
             HStack {
                 Image(systemName: "person").foregroundColor(Theme.textGoldMuted).frame(width: 22)
                 TextField("Username", text: $username)
-                    .font(.lora(Theme.fontBody))
+                    .font(.inter(Theme.fontBody))
                     .foregroundColor(Theme.parchment)
                     .autocapitalization(.none)
                     .accessibilityLabel("Username field")
@@ -1065,7 +1065,7 @@ struct AccountView: View {
             HStack {
                 Image(systemName: "envelope").foregroundColor(Theme.textGoldMuted).frame(width: 22)
                 TextField("Email", text: $email)
-                    .font(.lora(Theme.fontBody))
+                    .font(.inter(Theme.fontBody))
                     .foregroundColor(Theme.parchment)
                     .keyboardType(.emailAddress)
                     .autocapitalization(.none)
@@ -1079,11 +1079,11 @@ struct AccountView: View {
                 HStack {
                     Image(systemName: "clock").foregroundColor(Theme.textGoldMuted).frame(width: 22)
                     Text("Timezone")
-                        .font(.lora(Theme.fontBody))
+                        .font(.inter(Theme.fontBody))
                         .foregroundColor(Theme.parchment)
                     Spacer()
                     Text(timezone)
-                        .font(.lora(Theme.fontSM))
+                        .font(.inter(Theme.fontSM))
                         .foregroundColor(Theme.textGoldMuted)
                     Image(systemName: "chevron.right")
                         .font(.system(size: 12))
@@ -1097,7 +1097,7 @@ struct AccountView: View {
             HStack {
                 Image(systemName: "lock").foregroundColor(Theme.textGoldMuted).frame(width: 22)
                 SecureField("New Password (leave blank to keep)", text: $password)
-                    .font(.lora(Theme.fontBody))
+                    .font(.inter(Theme.fontBody))
                     .foregroundColor(Theme.parchment)
                     .accessibilityLabel("New password field")
             }
@@ -1118,7 +1118,7 @@ struct AccountView: View {
 
             if vm.friendRequests.isEmpty {
                 Text("No pending friend requests.")
-                    .font(.lora(Theme.fontSM))
+                    .font(.inter(Theme.fontSM))
                     .foregroundColor(Theme.textMuted)
             } else {
                 ForEach(Array(vm.friendRequests.enumerated()), id: \.offset) { idx, req in
@@ -1130,8 +1130,8 @@ struct AccountView: View {
                                 .font(.playfair(Theme.fontSM)).foregroundColor(Theme.gold)
                         }
                         VStack(alignment: .leading) {
-                            Text(req.username).font(.lora(Theme.fontBody)).foregroundColor(Theme.parchment)
-                            Text("Wants to be your friend").font(.lora(Theme.fontXS)).foregroundColor(Theme.textMuted)
+                            Text(req.username).font(.inter(Theme.fontBody)).foregroundColor(Theme.parchment)
+                            Text("Wants to be your friend").font(.inter(Theme.fontXS)).foregroundColor(Theme.textMuted)
                         }
                         Spacer()
                         Button {
@@ -1165,13 +1165,13 @@ struct AccountView: View {
             sectionLabel("Agents")
 
             Text("Enabled agents participate in your chats and can summarize study sessions.")
-                .font(.lora(Theme.fontSM))
+                .font(.inter(Theme.fontSM))
                 .foregroundColor(Theme.textMuted)
 
             if vm.agents.isEmpty {
                 Divider().background(Theme.borderGoldFaint)
                 Text("No agents yet. Tap + to create one.")
-                    .font(.lora(Theme.fontSM))
+                    .font(.inter(Theme.fontSM))
                     .foregroundColor(Theme.textMuted)
             } else {
                 // Iterate over stable values (vm.agents), not ForEach($vm.agents) —
@@ -1194,10 +1194,10 @@ struct AccountView: View {
                         }
                         VStack(alignment: .leading, spacing: 2) {
                             Text(agent.displayLabel)
-                                .font(.lora(Theme.fontBody))
+                                .font(.inter(Theme.fontBody))
                                 .foregroundColor(Theme.parchment)
                             Text(agent.role.isEmpty ? "Default spiritual guide role" : String(agent.role.prefix(60)))
-                                .font(.lora(Theme.fontXS))
+                                .font(.inter(Theme.fontXS))
                                 .foregroundColor(Theme.textMuted)
                                 .lineLimit(1)
                         }
@@ -1265,13 +1265,13 @@ struct AccountView: View {
             sectionLabel("Events")
 
             Text("Events are AI-powered check-ins. When the scheduled time arrives, your agent responds to the prompt and saves a note.")
-                .font(.lora(Theme.fontSM))
+                .font(.inter(Theme.fontSM))
                 .foregroundColor(Theme.textMuted)
 
             if vm.events.isEmpty {
                 Divider().background(Theme.borderGoldFaint)
                 Text("No events yet. Tap + to schedule one.")
-                    .font(.lora(Theme.fontSM))
+                    .font(.inter(Theme.fontSM))
                     .foregroundColor(Theme.textMuted)
             } else {
                 ForEach(vm.events) { event in
@@ -1306,7 +1306,7 @@ struct AccountView: View {
 
             if !mfaMsg.isEmpty {
                 Text(mfaMsg)
-                    .font(.lora(Theme.fontXS))
+                    .font(.inter(Theme.fontXS))
                     .foregroundColor(mfaMsgIsError ? .red : Theme.gold)
             }
             Toggle(isOn: Binding(
@@ -1315,10 +1315,10 @@ struct AccountView: View {
             )) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Two-Factor Authentication")
-                        .font(.lora(Theme.fontBody))
+                        .font(.inter(Theme.fontBody))
                         .foregroundColor(Theme.parchment)
                     Text("Emails a 6-digit code to \(appState.currentUser?.email ?? "your email") every time you sign in.")
-                        .font(.lora(Theme.fontXXS))
+                        .font(.inter(Theme.fontXXS))
                         .foregroundColor(Theme.textMuted)
                 }
             }
@@ -1402,7 +1402,7 @@ struct AccountView: View {
             Button(action: { showBlockedUsers = true }) {
                 HStack {
                     Label("Blocked Users", systemImage: "hand.raised")
-                        .font(.lora(Theme.fontBody))
+                        .font(.inter(Theme.fontBody))
                         .foregroundColor(Theme.parchment)
                     Spacer()
                     Image(systemName: "chevron.right")
@@ -1423,7 +1423,7 @@ struct AccountView: View {
             Link(destination: URL(string: "https://fellowscript.com/#/privacy")!) {
                 HStack {
                     Label("Privacy Policy", systemImage: "hand.raised")
-                        .font(.lora(Theme.fontBody))
+                        .font(.inter(Theme.fontBody))
                         .foregroundColor(Theme.parchment)
                     Spacer()
                     Image(systemName: "arrow.up.right")
@@ -1437,7 +1437,7 @@ struct AccountView: View {
             Link(destination: URL(string: "https://fellowscript.com/#/terms")!) {
                 HStack {
                     Label("Terms of Service", systemImage: "doc.text")
-                        .font(.lora(Theme.fontBody))
+                        .font(.inter(Theme.fontBody))
                         .foregroundColor(Theme.parchment)
                     Spacer()
                     Image(systemName: "arrow.up.right")
@@ -1450,11 +1450,11 @@ struct AccountView: View {
 
             HStack {
                 Label("Version", systemImage: "info.circle")
-                    .font(.lora(Theme.fontBody))
+                    .font(.inter(Theme.fontBody))
                     .foregroundColor(Theme.parchment)
                 Spacer()
                 Text(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0")
-                    .font(.lora(Theme.fontSM))
+                    .font(.inter(Theme.fontSM))
                     .foregroundColor(Theme.textMuted)
             }
         }
@@ -1468,7 +1468,7 @@ struct AccountView: View {
         Button(action: appState.signOut) {
             Label("Sign Out", systemImage: "rectangle.portrait.and.arrow.right")
                 .foregroundColor(Theme.error)
-                .font(.lora(Theme.fontBody))
+                .font(.inter(Theme.fontBody))
         }
         .accessibilityLabel("Sign out of your account")
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -1479,18 +1479,18 @@ struct AccountView: View {
     private var dangerZone: some View {
         VStack(alignment: .leading, spacing: Theme.spacingSM) {
             Text("Danger Zone")
-                .font(.lora(Theme.fontXXS)).tracking(4)
+                .font(.inter(Theme.fontXXS)).tracking(4)
                 .foregroundColor(Theme.error.opacity(0.65))
 
             Text("Permanently deletes your account, all notes, highlights, and removes you from all groups and friend lists. This cannot be undone.")
-                .font(.lora(Theme.fontSM))
+                .font(.inter(Theme.fontSM))
                 .foregroundColor(Theme.textMuted)
                 .fixedSize(horizontal: false, vertical: true)
 
             HStack {
                 Image(systemName: "person").foregroundColor(Theme.error.opacity(0.60)).frame(width: 22)
                 TextField(appState.currentUser?.username ?? "yourname", text: $deleteConfirm)
-                    .font(.lora(Theme.fontBody))
+                    .font(.inter(Theme.fontBody))
                     .foregroundColor(Theme.parchment)
                     .autocapitalization(.none)
                     .accessibilityLabel("Type your username to confirm deletion")
@@ -1503,7 +1503,7 @@ struct AccountView: View {
             }) {
                 HStack(spacing: 6) {
                     Image(systemName: "trash")
-                    Text("Delete My Account").font(.lora(Theme.fontSM))
+                    Text("Delete My Account").font(.inter(Theme.fontSM))
                 }
                 .foregroundColor(Theme.error)
                 .padding(.horizontal, 16).padding(.vertical, 8)
@@ -1531,7 +1531,7 @@ struct AccountView: View {
     // outline pill and ghost icon+label pill mirror NoteEditorView's header chips) ─
     private func gradientPill(_ title: String, compact: Bool = false) -> some View {
         Text(title)
-            .font(.lora(compact ? Theme.fontXS : Theme.fontSM, weight: .semibold))
+            .font(.inter(compact ? Theme.fontXS : Theme.fontSM, weight: .semibold))
             .foregroundColor(Color(hex: "#24170A"))
             .padding(.horizontal, compact ? 14 : 20)
             .frame(height: compact ? 32 : 36)
@@ -1546,7 +1546,7 @@ struct AccountView: View {
                             labelColor: Color = Theme.textSecondary,
                             strokeColor: Color = Theme.parchment.opacity(0.14)) -> some View {
         Text(title)
-            .font(.lora(compact ? Theme.fontXS : Theme.fontSM))
+            .font(.inter(compact ? Theme.fontXS : Theme.fontSM))
             .foregroundColor(labelColor)
             .padding(.horizontal, compact ? 12 : 16)
             .frame(height: compact ? 32 : 36)
@@ -1556,7 +1556,7 @@ struct AccountView: View {
     private func ghostLabelPill(icon: String, _ title: String, color: Color = Theme.gold) -> some View {
         HStack(spacing: 6) {
             Image(systemName: icon)
-            Text(title).font(.lora(Theme.fontSM))
+            Text(title).font(.inter(Theme.fontSM))
         }
         .foregroundColor(color)
         .padding(.horizontal, 16).padding(.vertical, 8)
@@ -1603,7 +1603,7 @@ struct StatBox: View {
                 .font(.playfair(Theme.fontDisplayLG))
                 .foregroundColor(Theme.gold)
             Text(label)
-                .font(.lora(Theme.fontXXS)).tracking(3).textCase(.uppercase)
+                .font(.inter(Theme.fontXXS)).tracking(3).textCase(.uppercase)
                 .foregroundColor(Theme.textMuted)
         }
         .frame(maxWidth: .infinity)
@@ -1623,17 +1623,17 @@ struct NewAgentSheet: View {
             Form {
                 Section {
                     Text("Optionally give this agent a custom role. Leave blank to use the default spiritual guide role.")
-                        .font(.lora(Theme.fontSM))
+                        .font(.inter(Theme.fontSM))
                         .foregroundColor(Theme.textSecondary)
                     TextEditor(text: $role)
-                        .font(.lora(Theme.fontBody))
+                        .font(.inter(Theme.fontBody))
                         .foregroundColor(Theme.parchment)
                         .scrollContentBackground(.hidden)
                         .frame(minHeight: 80)
                         .accessibilityLabel("Agent role description")
                 } header: {
                     Text("Custom Role (optional)")
-                        .font(.lora(Theme.fontXXS)).tracking(4).foregroundColor(Theme.textGoldMuted)
+                        .font(.inter(Theme.fontXXS)).tracking(4).foregroundColor(Theme.textGoldMuted)
                 }
             }
             .scrollContentBackground(.hidden)
@@ -1675,7 +1675,7 @@ struct TimeZonePickerSheet: View {
                 Button(action: { onPick(tz); dismiss() }) {
                     HStack {
                         Text(tz)
-                            .font(.lora(Theme.fontBody))
+                            .font(.inter(Theme.fontBody))
                             .foregroundColor(Theme.parchment)
                         Spacer()
                         if tz == selected {
@@ -1716,7 +1716,7 @@ struct EventRow: View {
             }
             VStack(alignment: .leading, spacing: 2) {
                 Text(event.prompt.isEmpty ? "Untitled Event" : String(event.prompt.prefix(50)))
-                    .font(.lora(Theme.fontBody))
+                    .font(.inter(Theme.fontBody))
                     .foregroundColor(Theme.parchment)
                     .lineLimit(1)
                 HStack(spacing: 4) {
@@ -1724,7 +1724,7 @@ struct EventRow: View {
                     Text("·")
                     Text(agentName)
                 }
-                .font(.lora(Theme.fontXS))
+                .font(.inter(Theme.fontXS))
                 .foregroundColor(Theme.textMuted)
             }
             Spacer()

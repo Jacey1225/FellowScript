@@ -310,7 +310,7 @@ struct BibleReaderView: View {
                                 // Book label + chapter heading (mirrors card-book-label / card-title)
                                 VStack(alignment: .leading, spacing: Theme.spacingXS) {
                                     Text(vm.curBook.uppercased())
-                                        .font(.lora(Theme.fontXXS))
+                                        .font(.inter(Theme.fontXXS))
                                         .tracking(5)
                                         .foregroundColor(Theme.goldDim)
                                     Text("Chapter \(vm.curChapter)")
@@ -406,7 +406,7 @@ struct BibleReaderView: View {
                     }) {
                         HStack(spacing: 4) {
                             Text("\(vm.curBook) \(vm.curChapter)")
-                                .font(.lora(Theme.fontSM))
+                                .font(.inter(Theme.fontSM))
                                 .foregroundColor(Theme.parchment)
                             Image(systemName: "chevron.down")
                                 .font(.caption2)
@@ -558,7 +558,7 @@ struct VerseRow: View {
         HStack(alignment: .firstTextBaseline, spacing: 4) {
             // Verse number (mirrors .vnum in CSS)
             Text("\(num)")
-                .font(.lora(fontSize * 0.60, weight: .semibold))
+                .font(.inter(fontSize * 0.60, weight: .semibold))
                 .foregroundColor(Theme.gold)
                 .baselineOffset(6)
                 .frame(minWidth: 24, alignment: .trailing)
@@ -566,7 +566,7 @@ struct VerseRow: View {
 
             // Verse text
             Text(text)
-                .font(.lora(fontSize))
+                .font(.inter(fontSize))
                 .foregroundColor(Theme.bibleText)
                 .lineSpacing(fontSize * 0.55)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -658,7 +658,7 @@ struct BibleNavDropdown: View {
             case .bookList:
                 HStack {
                     Text("Select Passage")
-                        .font(.lora(Theme.fontSM))
+                        .font(.inter(Theme.fontSM))
                         .foregroundColor(Theme.goldDim)
                     Spacer()
                 }
@@ -670,7 +670,7 @@ struct BibleNavDropdown: View {
                 // no trailing "x" to balance against on the other side.
                 ZStack {
                     Text(book)
-                        .font(.lora(Theme.fontSM))
+                        .font(.inter(Theme.fontSM))
                         .foregroundColor(Theme.goldDim)
 
                     HStack {
@@ -681,7 +681,7 @@ struct BibleNavDropdown: View {
                                 Image(systemName: "chevron.left")
                                     .font(.subheadline.weight(.semibold))
                                 Text("Back")
-                                    .font(.lora(Theme.fontSM))
+                                    .font(.inter(Theme.fontSM))
                             }
                             .foregroundColor(Theme.goldDim)
                             .frame(minHeight: 44)
@@ -766,7 +766,7 @@ struct BibleNavDropdown: View {
     @ViewBuilder
     private func sectionLabel(_ title: String) -> some View {
         Text(title)
-            .font(.lora(Theme.fontXXS)).tracking(3)
+            .font(.inter(Theme.fontXXS)).tracking(3)
             .textCase(.uppercase)
             .foregroundColor(Theme.gold.opacity(0.45))
             .padding(.horizontal, Theme.spacingMD)
@@ -785,7 +785,7 @@ struct BibleNavDropdown: View {
         }) {
             HStack(spacing: Theme.spacingSM) {
                 Text(book)
-                    .font(.lora(Theme.fontBody))
+                    .font(.inter(Theme.fontBody))
                     .foregroundColor(isCurrent ? Theme.gold : Theme.parchment.opacity(0.70))
                 Spacer()
                 if isCurrent {
@@ -816,7 +816,7 @@ struct BibleNavDropdown: View {
         ScrollView(.vertical, showsIndicators: false) {
             VStack(alignment: .leading, spacing: Theme.spacingSM) {
                 Text("\(book.uppercased()) — \(count) CHAPTER\(count == 1 ? "" : "S")")
-                    .font(.lora(Theme.fontXXS)).tracking(4)
+                    .font(.inter(Theme.fontXXS)).tracking(4)
                     .foregroundColor(Theme.gold.opacity(0.55))
                     .padding(.bottom, Theme.spacingXS)
 
@@ -830,7 +830,7 @@ struct BibleNavDropdown: View {
                         let isActive = book == curBook && ch == curChapter
                         Button(action: { onSelect(book, ch) }) {
                             Text("\(ch)")
-                                .font(.lora(Theme.fontHeading))
+                                .font(.inter(Theme.fontHeading))
                                 .foregroundColor(isActive ? Theme.gold : Theme.parchment.opacity(0.70))
                                 .frame(maxWidth: .infinity, minHeight: 44)
                                 .background(isActive ? Theme.gold.opacity(0.20) : Color.clear)

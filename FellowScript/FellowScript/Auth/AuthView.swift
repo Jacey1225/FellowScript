@@ -69,7 +69,7 @@ struct AuthView: View {
                             HStack(spacing: Theme.spacingSM) {
                                 Image(systemName: "exclamationmark.circle.fill")
                                 Text(errorMsg)
-                                    .font(.lora(Theme.fontSM))
+                                    .font(.inter(Theme.fontSM))
                             }
                             .foregroundColor(Theme.error)
                             .padding(Theme.spacingSM)
@@ -124,7 +124,7 @@ struct AuthView: View {
                                     Spacer()
                                     Button(action: { showForgotPassword = true }) {
                                         Text("Forgot password?")
-                                            .font(.lora(Theme.fontXS))
+                                            .font(.inter(Theme.fontXS))
                                             .foregroundColor(Theme.gold)
                                     }
                                     .accessibilityLabel("Forgot password")
@@ -140,7 +140,7 @@ struct AuthView: View {
                                         .tint(Theme.ink)
                                 } else {
                                     Text(isSignIn ? "Sign In" : "Create Account")
-                                        .font(.lora(Theme.fontSM))
+                                        .font(.inter(Theme.fontSM))
                                         .tracking(2)
                                         .textCase(.uppercase)
                                 }
@@ -159,7 +159,7 @@ struct AuthView: View {
                         HStack {
                             Rectangle().fill(Theme.borderGoldDim).frame(height: 1)
                             Text("or")
-                                .font(.lora(Theme.fontXS))
+                                .font(.inter(Theme.fontXS))
                                 .foregroundColor(Theme.textMuted)
                             Rectangle().fill(Theme.borderGoldDim).frame(height: 1)
                         }
@@ -173,7 +173,7 @@ struct AuthView: View {
                                     Image(systemName: "globe")
                                         .foregroundColor(Theme.parchment)
                                     Text("Continue with Google")
-                                        .font(.lora(Theme.fontSM))
+                                        .font(.inter(Theme.fontSM))
                                         .foregroundColor(Theme.parchment)
                                 }
                             }
@@ -215,7 +215,7 @@ struct AuthView: View {
                         if !isSignIn {
                             VStack(spacing: 4) {
                                 Text("You must be 13 or older to create an account.")
-                                    .font(.lora(Theme.fontXXS))
+                                    .font(.inter(Theme.fontXXS))
                                     .foregroundColor(Theme.textMuted)
                                     .multilineTextAlignment(.center)
                                 HStack(spacing: 8) {
@@ -225,7 +225,7 @@ struct AuthView: View {
                                     Link("Privacy Policy",
                                          destination: URL(string: "https://fellowscript.com/#/privacy")!)
                                 }
-                                .font(.lora(Theme.fontXXS))
+                                .font(.inter(Theme.fontXXS))
                                 .foregroundColor(Theme.gold)
                             }
                             .padding(.top, Theme.spacingXS)
@@ -238,7 +238,7 @@ struct AuthView: View {
                                     Image(systemName: termsAccepted ? "checkmark.square.fill" : "square")
                                         .foregroundColor(termsAccepted ? Theme.gold : Theme.textMuted)
                                     Text("I agree to the zero-tolerance policy for objectionable content and abusive behavior in our Terms of Service.")
-                                        .font(.lora(Theme.fontXXS))
+                                        .font(.inter(Theme.fontXXS))
                                         .foregroundColor(Theme.textMuted)
                                         .multilineTextAlignment(.leading)
                                 }
@@ -383,7 +383,7 @@ struct AuthView: View {
         Button(action: action) {
             VStack(spacing: 4) {
                 Text(title)
-                    .font(.lora(Theme.fontSM))
+                    .font(.inter(Theme.fontSM))
                     .foregroundColor(selected ? Theme.gold : Theme.textMuted)
                 Rectangle()
                     .fill(selected ? Theme.gold : Color.clear)
@@ -412,12 +412,12 @@ struct FSTextField: View {
 
             if isSecure {
                 SecureField(placeholder, text: $text)
-                    .font(.lora(Theme.fontBody))
+                    .font(.inter(Theme.fontBody))
                     .foregroundColor(Theme.textPrimary)
                     .autocapitalization(.none)
             } else {
                 TextField(placeholder, text: $text)
-                    .font(.lora(Theme.fontBody))
+                    .font(.inter(Theme.fontBody))
                     .foregroundColor(Theme.textPrimary)
                     .autocapitalization(.none)
                     .disableAutocorrection(true)

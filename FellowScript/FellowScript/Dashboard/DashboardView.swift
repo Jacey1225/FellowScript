@@ -153,7 +153,7 @@ struct DashboardView: View {
 @ViewBuilder
 func sectionLabel(_ text: String) -> some View {
     Text(text)
-        .font(.lora(Theme.fontXXS))
+        .font(.inter(Theme.fontXXS))
         .tracking(5)
         .textCase(.uppercase)
         .foregroundColor(Theme.textGoldMuted)

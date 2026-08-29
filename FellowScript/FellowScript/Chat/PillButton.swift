@@ -6,6 +6,13 @@
 // and SessionCreatorSheet's header "Schedule" pill (mirrors chat.html's
 // `.schedule-pill` / schedule.html's `.fill-pill`).
 //
+// VISUAL: Ember Glass elevation (task 20260827-ember-glass-chat-rewrite,
+// design gate §1) — the drop shadow is retired in favor of a top-edge
+// hairline highlight (Theme.topEdgeHighlight), the same primitive
+// WidgetCard/message bubbles use, so PillButton/RoundIconButton share one
+// elevation language with the rest of Chat rather than being the lone
+// holdout still casting a shadow.
+//
 // DEPENDENCY: Theme.swift
 
 import SwiftUI
@@ -32,7 +39,7 @@ struct PillButton: View {
             .padding(.vertical, 10)
             .background(Theme.goldGradient)
             .clipShape(Capsule())
-            .shadow(color: Theme.goldDim.opacity(0.32), radius: 12, x: 0, y: 6)
+            .topEdgeHighlight(Capsule())
         }
         .buttonStyle(.plain)
     }
@@ -55,6 +62,7 @@ struct RoundIconButton: View {
                 .background(Color.white.opacity(0.05))
                 .overlay(Circle().stroke(Theme.borderGoldDim, lineWidth: 1))
                 .clipShape(Circle())
+                .topEdgeHighlight(Circle())
         }
         .buttonStyle(.plain)
     }
