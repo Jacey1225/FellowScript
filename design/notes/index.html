@@ -535,6 +535,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Notes Tab">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#ios-presentation-noterow-in-noteslistviewswift" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        iOS presentation (NoteRow in NotesListView.swift)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1070,7 +1087,7 @@
 <p>Displays all personal notes (or group public notes when a group is selected). Notes are always sorted by <strong>creation date, newest first</strong>.</p>
 <p>Each note card shows:
 - <strong>Title</strong> — Lora serif, bold
-- <strong>Public badge</strong> — gold tag if the note is shared with the group
+- <strong>Public badge</strong> — gold tag if the note is shared with the group (web; see the iOS presentation note below for the iOS treatment, which differs)
 - <strong>Verse references</strong> — clickable tags (<code>Genesis 1:1</code>) that navigate the reader to that verse
 - <strong>Body preview</strong> — up to 3 lines of plain text (HTML stripped)
 - <strong>Creation date</strong> — small, right-aligned, muted label: "Today", "Yesterday", "Jul 16", or "Jul 16, 2025" for older years</p>
@@ -1083,6 +1100,32 @@
 │                       Jul 19   │
 └────────────────────────────────┘
 </code></pre>
+<h3 id="ios-presentation-noterow-in-noteslistviewswift">iOS presentation (<code>NoteRow</code> in <code>NotesListView.swift</code>)</h3>
+<p>The iOS notes list row (<code>FellowScript/FellowScript/Notes/NotesListView.swift</code>,
+<code>NoteRow</code>) shows per-note author identity and the public/private state
+differently from the web <code>NoteCard</code> above:</p>
+<ul>
+<li><strong>Author chip</strong> — for a note in a group segment whose author username was
+  successfully captured, the top-right trailing slot shows a small gold
+  initials-circle + username label (reusing the app's existing avatar/chip
+  vocabulary), sourced from <code>FSNote.username</code> (stamped on by
+  <code>NetworkService.fetchGroupNotes</code> from the response's outer per-member
+  username key). The chip never renders on Personal-segment notes (always
+  the viewer, so it would be redundant), and never renders a placeholder for
+  a group note with a missing/uncaptured username — it's simply omitted.</li>
+<li><strong>Public/private indicator</strong> — the old standalone "PUBLIC" text badge is
+  gone on iOS. In its place, a small SF Symbol (<code>globe</code> for public,
+  <code>lock.fill</code> for private) sits next to the note's timestamp, on both
+  Personal and group segments, with a combined VoiceOver label (e.g. "Jul
+  19, private").</li>
+<li><strong>Author-only Edit/Delete</strong> — in a group segment, the context-menu Edit,
+  swipe-to-delete, and context-menu Delete actions, plus <code>NoteDetailView</code>'s
+  toolbar Edit pill, are only shown for a note the current user authored
+  (<code>FSNote.username</code> matches the viewer). Another member's group note shows
+  none of these — it's read-only to everyone but its author, matching the
+  backend's existing author-only enforcement on <code>PUT</code>/<code>DELETE /notes/{user_id}</code>.
+  Personal notes are unaffected, since they're always self-authored.</li>
+</ul>
 <hr />
 <h2 id="highlights-tab">Highlights Tab</h2>
 <p>Lists all verse highlights for the user (or group, if a group is selected) as clickable rows, sorted by book → chapter → verse. Clicking a row navigates the reader to that verse.</p>
