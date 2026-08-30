@@ -4,7 +4,7 @@ from fastapi import WebSocket
 from schemas.message import Message
 from db import DBManager
 from backend.interactions.push import send_push
-from backend.moderation.content_filter import check_clean, ContentRejected
+from backend.moderation.content_filter import check_clean, ContentRejected, rejection_message
 
 logger = logging.getLogger(__name__)
 
@@ -74,13 +74,13 @@ class ConnectionManager(DBManager):
         # HTTPException; reply only to the sender's own socket instead.
         try:
             check_clean(text=text)
-        except ContentRejected:
+        except ContentRejected as e:
             sender_ws = self.active_connections.get(from_user_id)
             if sender_ws:
                 await sender_ws.send_json({
                     "type": "error",
                     "reason": "message_rejected",
-                    "detail": "Your message contains language that isn't allowed under our community guidelines.",
+                    "detail": rejection_message(e),
                 })
             return
 

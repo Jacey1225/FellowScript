@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, Depends, Query
 from backend.interactions.groups import GroupsManager
 from backend.interactions.friends import  FriendsManager
 from backend.auth.dependencies import require_match
-from backend.moderation.content_filter import check_clean, ContentRejected
+from backend.moderation.content_filter import check_clean, ContentRejected, rejection_message
 from schemas.message import Group
 from routes.notes import NOTES_PAGE_SIZE
 
@@ -26,7 +26,7 @@ async def create_group(user_id: str, group: Group, _: str = Depends(require_matc
     try:
         check_clean(title=group.title)
     except ContentRejected as e:
-        raise HTTPException(status_code=422, detail=f"Your {e.field} contains language that isn't allowed under our community guidelines. Please revise and resubmit.")
+        raise HTTPException(status_code=422, detail=rejection_message(e))
     manager = GroupsManager(user_id)
     manager.create_group(group.users, group)
     return {"group_id": group.group_id}
@@ -154,7 +154,7 @@ async def update_group(user_id: str, group_id: str, group: Group, _: str = Depen
     try:
         check_clean(title=group.title)
     except ContentRejected as e:
-        raise HTTPException(status_code=422, detail=f"Your {e.field} contains language that isn't allowed under our community guidelines. Please revise and resubmit.")
+        raise HTTPException(status_code=422, detail=rejection_message(e))
     manager.update_group(group)
 
 

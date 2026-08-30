@@ -8,6 +8,7 @@ password-reset test pattern.
 Run with: cd api && ../.venv/bin/python tests/test_moderation.py
 """
 import os
+import time
 import uuid
 
 import _pathfix  # noqa: F401,E402
@@ -21,7 +22,14 @@ from fastapi.testclient import TestClient  # noqa: E402
 import main as main_module  # noqa: E402
 import backend.interactions.reports as reports_mod  # noqa: E402
 from backend.moderation import admin_actions  # noqa: E402
+from backend.moderation import content_filter  # noqa: E402
 from db import DBManager  # noqa: E402
+
+# A single, reusable genuinely-explicit marker term (from the real
+# _EXPLICIT_TERMS wordlist) used throughout the "still blocked" cases below,
+# so the DB-not-persisted checks can grep for one known needle.
+EXPLICIT_MARKER = "blowjob"
+assert EXPLICIT_MARKER in content_filter._EXPLICIT_TERMS, "test fixture drifted from the real wordlist"
 
 SENT_EMAILS = []
 reports_mod.send_email = lambda to, subject, html, text: SENT_EMAILS.append((to, subject, html, text))
@@ -36,6 +44,19 @@ def check(label: str, cond: bool, detail: str = ""):
     else:
         FAILED.append((label, detail))
         print(f"  FAIL {label}  -- {detail}")
+
+
+def _fails_closed_to_strictest_tier() -> bool:
+    """True if content_filter._active_terms() falls back to the strictest
+    known severity tier when CONTENT_FILTER_SEVERITY holds an unrecognized
+    value -- proving misconfiguration can't silently load an empty
+    (permissive, effectively allow-everything) wordlist."""
+    original = content_filter.CONTENT_FILTER_SEVERITY
+    content_filter.CONTENT_FILTER_SEVERITY = "not-a-real-tier"
+    try:
+        return content_filter._active_terms() == content_filter._SEVERITY_TIERS[content_filter._FAIL_CLOSED_SEVERITY]
+    finally:
+        content_filter.CONTENT_FILTER_SEVERITY = original
 
 
 def make_user(client, prefix, terms_accepted=True):
@@ -63,7 +84,12 @@ def main():
         cleanup_uids.append((uid3, r3.cookies.get("session")))
         check("terms_version stamped server-side", bool(r3.json().get("terms_version")), str(r3.json()))
 
-        print("\n=== 2. Content filter ===")
+        print("\n=== 2. Content filter -- severity-graded, app-wide (2026-08 relaxation) ===")
+        # Policy (see content_filter.py docstring): ordinary profanity is now
+        # ALLOWED everywhere check_clean() is used; only genuinely explicit
+        # content (explicit sexual acts, sexual exploitation, hateful slurs)
+        # is hard-rejected. This replaces the old "any profanity = reject"
+        # all-or-nothing policy the tests below used to assume.
         cookies3 = {"session": r3.cookies.get("session")}
         rn_clean = client.post(f"/notes/{uid3}", json={"user": uid3, "title": "Genesis reflections", "text": "A wonderful passage."}, cookies=cookies3)
         check("clean note accepted", rn_clean.status_code == 201, str(rn_clean.status_code))
@@ -83,11 +109,213 @@ def main():
             str(rn_bible.status_code) + " " + str(rn_bible.text),
         )
 
-        rn_dirty = client.post(f"/notes/{uid3}", json={"user": uid3, "title": "fuck this", "text": "whatever"}, cookies=cookies3)
-        check("profane note title rejected -> 422", rn_dirty.status_code == 422, str(rn_dirty.status_code))
+        print("\n--- 2a. Mild/borderline language is now allowed (new severity boundary, lower edge) ---")
+        rn_mild = client.post(
+            f"/notes/{uid3}",
+            json={"user": uid3, "title": "fuck this chapter is dense", "text": "damn, hell, this ass of a translation is hard to parse"},
+            cookies=cookies3,
+        )
+        check(
+            "note with ordinary profanity (fuck/damn/hell/ass) allowed under relaxed policy -> 201, not 422",
+            rn_mild.status_code == 201,
+            str(rn_mild.status_code) + " " + str(rn_mild.text),
+        )
 
-        rg_dirty = client.post(f"/groups/{uid3}", json={"group_id": str(uuid.uuid4()), "title": "shit group", "users": [uid3]}, cookies=cookies3)
-        check("profane group title rejected -> 422", rg_dirty.status_code == 422, str(rg_dirty.status_code))
+        rg_mild = client.post(f"/groups/{uid3}", json={"group_id": str(uuid.uuid4()), "title": "shit group", "users": [uid3]}, cookies=cookies3)
+        check(
+            "group title with ordinary profanity (shit) allowed under relaxed policy -> 201, not 422",
+            rg_mild.status_code == 201,
+            str(rg_mild.status_code) + " " + str(rg_mild.text),
+        )
+        mild_group_id = rg_mild.json().get("group_id") if rg_mild.status_code == 201 else None
+
+        rr_reply_mild = client.post(
+            f"/notes/reply/{rn_clean.json()['id']}",
+            json={"user": uid3, "title": "reply", "text": "damn, that's a good point"},
+            cookies=cookies3,
+        )
+        check(
+            "reply with mild profanity allowed under relaxed policy -> 201, not 422",
+            rr_reply_mild.status_code == 201,
+            str(rr_reply_mild.status_code) + " " + str(rr_reply_mild.text),
+        )
+
+        devo_mild_payload = {
+            "devotion_id": str(uuid.uuid4()), "user_id": uid3,
+            "devotion": {
+                "id": str(uuid.uuid4()), "title": "damn, this study is hard", "creator_id": uid3,
+                "prompts": ["what does this hell/damn passage mean to you?"],
+            },
+        }
+        rdevo_mild = client.post("/devotions/", json=devo_mild_payload, cookies=cookies3)
+        check(
+            "devotion with mild profanity allowed app-wide -> 201, not 422",
+            rdevo_mild.status_code == 201,
+            str(rdevo_mild.status_code) + " " + str(rdevo_mild.text),
+        )
+        # No manual cleanup needed: DELETE /user/{uid3} at the end of this
+        # test nulls devotions.creator_id (and from_user on any messages
+        # sent below) before removing the user row -- see main.py's
+        # delete_user docstring.
+
+        print("\n--- 2b. Genuinely explicit content is still hard-rejected everywhere (upper edge, app-wide) ---")
+        rn_explicit_title = client.post(
+            f"/notes/{uid3}",
+            json={"user": uid3, "title": f"note about {EXPLICIT_MARKER}", "text": "irrelevant"},
+            cookies=cookies3,
+        )
+        check("note title with genuinely explicit content still rejected -> 422", rn_explicit_title.status_code == 422, str(rn_explicit_title.status_code))
+        detail_title = rn_explicit_title.json().get("detail", "") if rn_explicit_title.status_code == 422 else ""
+        check(
+            "422 detail pinpoints the specific flagged content and names the field ('title')",
+            EXPLICIT_MARKER in detail_title and "title" in detail_title,
+            detail_title,
+        )
+        check(
+            "422 detail keeps a warm, on-brand tone (mentions FellowScript, not the old clinical boilerplate)",
+            "FellowScript" in detail_title and "isn't allowed under our community guidelines" not in detail_title,
+            detail_title,
+        )
+
+        rn_explicit_text = client.post(
+            f"/notes/{uid3}",
+            json={"user": uid3, "title": "fine title", "text": f"this note is about {EXPLICIT_MARKER} and nothing else"},
+            cookies=cookies3,
+        )
+        check("note text (not just title) with explicit content rejected -> 422", rn_explicit_text.status_code == 422, str(rn_explicit_text.status_code))
+        detail_text = rn_explicit_text.json().get("detail", "") if rn_explicit_text.status_code == 422 else ""
+        check("422 detail names the 'text' field, not 'title', when text is what's flagged", "text" in detail_text and EXPLICIT_MARKER in detail_text, detail_text)
+        check("rejected explicit note response carries no note id (never created)", "id" not in rn_explicit_text.json(), rn_explicit_text.json())
+
+        db_check = DBManager()
+        db_check.cur.execute("SELECT 1 FROM notes WHERE text LIKE %s", (f"%{EXPLICIT_MARKER}%",))
+        check("rejected explicit note is never persisted to the notes table", db_check.cur.fetchone() is None)
+        db_check.close()
+
+        rr_reply_explicit = client.post(
+            f"/notes/reply/{rn_clean.json()['id']}",
+            json={"user": uid3, "title": "reply", "text": f"{EXPLICIT_MARKER} content in a reply"},
+            cookies=cookies3,
+        )
+        check("reply with explicit content rejected -> 422", rr_reply_explicit.status_code == 422, str(rr_reply_explicit.status_code))
+
+        ru_explicit = client.put(
+            f"/notes/{uid3}",
+            params={"note_id": rn_clean.json()["id"]},
+            json={"user": uid3, "title": "fine", "text": f"edited to include {EXPLICIT_MARKER}"},
+            cookies=cookies3,
+        )
+        check("note update (PUT) with explicit content rejected -> 422", ru_explicit.status_code == 422, str(ru_explicit.status_code) + " " + str(ru_explicit.text))
+        r_after_edit = client.get(f"/notes/{uid3}", cookies=cookies3)
+        check(
+            "note update rejection did not persist the explicit edit",
+            EXPLICIT_MARKER not in str(r_after_edit.json()["notes"].get(rn_clean.json()["id"], {}).get("text", "")),
+            r_after_edit.text,
+        )
+
+        rg_explicit = client.post(f"/groups/{uid3}", json={"group_id": str(uuid.uuid4()), "title": f"{EXPLICIT_MARKER} group", "users": [uid3]}, cookies=cookies3)
+        check("group title with explicit content rejected -> 422", rg_explicit.status_code == 422, str(rg_explicit.status_code))
+
+        if mild_group_id:
+            rg_update_explicit = client.put(
+                f"/groups/{uid3}/{mild_group_id}",
+                json={"group_id": mild_group_id, "title": f"{EXPLICIT_MARKER} update", "users": [uid3]},
+                cookies=cookies3,
+            )
+            check("group update (PUT) with explicit content rejected -> 422", rg_update_explicit.status_code == 422, str(rg_update_explicit.status_code))
+
+        devo_explicit_payload = {
+            "devotion_id": str(uuid.uuid4()), "user_id": uid3,
+            "devotion": {"id": str(uuid.uuid4()), "title": f"{EXPLICIT_MARKER} study", "creator_id": uid3},
+        }
+        rdevo_explicit = client.post("/devotions/", json=devo_explicit_payload, cookies=cookies3)
+        check("devotion with explicit title rejected -> 422", rdevo_explicit.status_code == 422, str(rdevo_explicit.status_code))
+
+        print("\n--- 2c. Ambiguous input fails closed (Security Posture Q14) ---")
+        # The wordlist match has no free-text disambiguation -- a hit fires
+        # even in an innocuous, non-sexual context, so the system errs toward
+        # rejection rather than guessing intent from surrounding words.
+        rn_ambiguous = client.post(
+            f"/notes/{uid3}",
+            json={"user": uid3, "title": "doctor visit", "text": "Had an anal exam at the doctor today, all clear."},
+            cookies=cookies3,
+        )
+        check(
+            "ambiguous/non-sexual usage of an explicit-tier term still fails closed (rejected) -> 422",
+            rn_ambiguous.status_code == 422,
+            str(rn_ambiguous.status_code) + " " + str(rn_ambiguous.text),
+        )
+
+        print("\n--- 2d. Chat (websocket) shares the same relaxed-but-still-blocking policy ---")
+        cookie_hdr = {"cookie": f"session={r3.cookies.get('session')}"}
+        with client.websocket_connect(f"/message/ws/{uid3}", headers=cookie_hdr) as ws:
+            ws.send_json({
+                "to_users": [uid3],
+                "text": f"chat message with {EXPLICIT_MARKER} in it",
+                "group_id": None,
+                "timestamp": "2026-08-30T00:00:00Z",
+            })
+            frame = ws.receive_json()
+            check("explicit chat message gets an error frame back on the sender's own socket", frame.get("type") == "error", frame)
+            check("error frame reason identifies a moderation rejection", frame.get("reason") == "message_rejected", frame)
+            check(
+                "chat rejection detail also pinpoints the flagged content, same warm shape as HTTP routes",
+                EXPLICIT_MARKER in frame.get("detail", "") and "FellowScript" in frame.get("detail", ""),
+                frame,
+            )
+
+            chat_marker = f"chat-mild-{uuid.uuid4().hex[:8]}"
+            ws.send_json({
+                "to_users": [uid3],
+                "text": f"damn, {chat_marker}",
+                "group_id": None,
+                "timestamp": "2026-08-30T00:00:01Z",
+            })
+            # No live-delivery frame to read for the mild case (send_msg only
+            # messages *other* recipients, and the sender is the sole
+            # recipient here) -- assert via the persisted row instead, same
+            # DB-is-truth approach test_websocket_from_user_spoofing.py uses
+            # for this reason. Sleep while the socket is still open/
+            # registered so the server-side coroutine has time to process
+            # and persist the frame before the connection tears down.
+            time.sleep(0.3)
+
+        db_chat = DBManager()
+        db_chat.cur.execute("SELECT 1 FROM messages WHERE text LIKE %s", (f"%{chat_marker}%",))
+        check("chat message with mild profanity is allowed and persisted, not silently dropped", db_chat.cur.fetchone() is not None)
+        db_chat.cur.execute("SELECT 1 FROM messages WHERE text LIKE %s", (f"%{EXPLICIT_MARKER}%",))
+        check("rejected explicit chat message is never persisted", db_chat.cur.fetchone() is None)
+        db_chat.close()
+
+        print("\n=== 2e. Unit-level: check_clean/ContentRejected/rejection_message + fail-closed tier selection ===")
+        check("check_clean allows mild profanity across several ordinary swear words (no exception raised)",
+              content_filter.check_clean(text="damn, hell, shit, ass, bastard, bitch") is None)
+
+        try:
+            content_filter.check_clean(title="bad", text=f"contains {EXPLICIT_MARKER} explicitly")
+            check("check_clean raises ContentRejected for explicit content", False, "no exception raised")
+        except content_filter.ContentRejected as e:
+            check("ContentRejected.field names the offending field", e.field == "text", e.field)
+            check("ContentRejected.matched carries the specific flagged span", e.matched == EXPLICIT_MARKER, e.matched)
+            msg = content_filter.rejection_message(e)
+            check("rejection_message() quotes the matched span", f'"{EXPLICIT_MARKER}"' in msg, msg)
+            check("rejection_message() names the field", "text" in msg, msg)
+            check("rejection_message() reads warm/on-brand, not clinical", "FellowScript" in msg and "isn't allowed under our community guidelines" not in msg, msg)
+
+        # Multi-word explicit terms: _flagged_span best-effort-isolates a
+        # single word rather than misfiring or crashing on the word-count
+        # mismatch between the original and censored text.
+        try:
+            content_filter.check_clean(text="they filmed a gang bang video")
+            check("multi-word explicit term ('gang bang') still triggers rejection", False, "no exception raised")
+        except content_filter.ContentRejected as e:
+            check("multi-word match still yields a non-empty, usable matched span", bool(e.matched.strip()), repr(e.matched))
+
+        check(
+            "an unrecognized/misconfigured CONTENT_FILTER_SEVERITY fails closed to the strictest known tier, "
+            "not an empty/permissive list",
+            _fails_closed_to_strictest_tier(),
+        )
 
         print("\n=== 3. Report/flag mechanism ===")
         SENT_EMAILS.clear()

@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from schemas.devotion import DevotionRequest
 from backend.interactions.devotion import DevotionManager
 from backend.auth.dependencies import get_current_user, require_match
-from backend.moderation.content_filter import check_clean, ContentRejected
+from backend.moderation.content_filter import check_clean, ContentRejected, rejection_message
 import boto3
 import logging
 import uuid
@@ -19,7 +19,7 @@ def _check_devotion_clean(devotion) -> None:
     try:
         check_clean(title=devotion.title, prompts=" | ".join(devotion.prompts))
     except ContentRejected as e:
-        raise HTTPException(status_code=422, detail=f"Your {e.field} contains language that isn't allowed under our community guidelines. Please revise and resubmit.")
+        raise HTTPException(status_code=422, detail=rejection_message(e))
 
 
 @devo_router.post("/", status_code=201)

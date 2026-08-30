@@ -5,7 +5,7 @@ from backend.interactions.groups import GroupsManager
 from backend.subscription.limits import check_limit
 from backend.interactions.activity import ActivityManager
 from backend.auth.dependencies import get_current_user, require_match
-from backend.moderation.content_filter import check_clean, ContentRejected
+from backend.moderation.content_filter import check_clean, ContentRejected, rejection_message
 from datetime import datetime
 import uuid
 import logging
@@ -169,7 +169,7 @@ async def post_reply(note_id: str, reply: dict, current_user: str = Depends(get_
         try:
             check_clean(title=reply_note.title, text=reply_note.text)
         except ContentRejected as e:
-            raise HTTPException(status_code=422, detail=f"Your {e.field} contains language that isn't allowed under our community guidelines. Please revise and resubmit.")
+            raise HTTPException(status_code=422, detail=rejection_message(e))
         reply_id   = str(uuid.uuid4())
         db.insertion("notes", {
             "_id":            reply_id,
@@ -201,7 +201,7 @@ async def create_note(user_id: str, note_dict: dict, _: str = Depends(require_ma
         try:
             check_clean(title=note.title, text=note.text)
         except ContentRejected as e:
-            raise HTTPException(status_code=422, detail=f"Your {e.field} contains language that isn't allowed under our community guidelines. Please revise and resubmit.")
+            raise HTTPException(status_code=422, detail=rejection_message(e))
         db.insertion("notes", {
             "_id":        note_id,
             "user_id":    note.user,
@@ -368,7 +368,7 @@ async def update_note(user_id: str, note_id: str, note_dict: dict, _: str = Depe
         try:
             check_clean(title=note.title, text=note.text)
         except ContentRejected as e:
-            raise HTTPException(status_code=422, detail=f"Your {e.field} contains language that isn't allowed under our community guidelines. Please revise and resubmit.")
+            raise HTTPException(status_code=422, detail=rejection_message(e))
         db.update(
             "notes",
             {
