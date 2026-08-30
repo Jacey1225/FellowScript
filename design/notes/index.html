@@ -1158,7 +1158,7 @@ differently from the web <code>NoteCard</code> above:</p>
 <li>Body: <code>contentEditable</code> div with placeholder "Start writing…"</li>
 </ul>
 <h3 id="save-failure">Save failure</h3>
-<p>If the save is rejected — most commonly a 422 from the Guideline 1.2 content filter (<code>backend/moderation/content_filter.py</code>) — the editor stays open with the title/body exactly as typed and shows the server's message (a toast on web, an alert on iOS) instead of closing. The editor only dismisses after a save actually succeeds, so a flagged note can be revised and resubmitted without retyping it.</p>
+<p>If the save is rejected — most commonly a 422 from the Guideline 1.2 content filter (<code>backend/moderation/content_filter.py</code>) — the editor stays open with the title/body exactly as typed and shows the server's message (a toast on web, an alert on iOS) instead of closing. As of 2026-08, the filter only rejects genuinely explicit content (ordinary profanity is allowed), and the message names the specific flagged word/phrase in a warm, on-brand tone rather than a generic "contains language that isn't allowed" notice, so the user knows exactly what to revise. The editor only dismisses after a save actually succeeds, so a flagged note can be revised and resubmitted without retyping it.</p>
 <h3 id="ios-presentation-noteeditorviewswift">iOS presentation (<code>NoteEditorView.swift</code>)</h3>
 <p>The iOS editor (<code>FellowScript/FellowScript/Notes/NoteEditorView.swift</code>) uses the same
 interactions as above, restyled to match the app's warm-bloom / glass-card visual
