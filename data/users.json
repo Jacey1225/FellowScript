@@ -1,0 +1,202 @@
+{
+  "60aa9553-b147-4e09-9a6e-b3e3abcf57f0": {
+    "username": "jaceysimpson",
+    "email": "jaceysimps@gmail.com",
+    "hash_pass": "$2b$12$M0bJPwSeP0o2kH/j0AL/5eLx.NaB0eMj0Sp.drqIRbDPls9jeS8/6",
+    "friends": [
+      "3abbfaad-6ace-40a7-8e97-ec399ee350e7",
+      "066a5e8c-b77c-42e9-80d6-86bbfdd30ad5",
+      "4597daa8-068c-4616-8608-5d719cd62e07",
+      "2605d0b3-5570-4f12-b15f-a9d7c398e63d",
+      "ffcc7ee2-da3f-4b0f-acab-3b963d701566",
+      "179a5a43-4bd6-4160-ba93-b54a55cb96bb",
+      "22a2e51a-eb4b-4772-be7b-521de86721a6"
+    ],
+    "friend_requests": [],
+    "groups": [
+      "bf0ee831-8ad8-48e8-bac5-cdb8105db86f",
+      "b7fce9fc-3658-42c1-9e03-dde6c6b80c51",
+      "72ad3b30-bb59-44d4-bdba-72baa85392af",
+      "fd7fbf8b-d2cf-4fe6-ade5-d227c9d1da66"
+    ],
+    "highlights": {
+      "Jeremiah-42-10": "#E8861A",
+      "Jeremiah-41-10": "#F5C842",
+      "Exodus-10-1": "#F5C842",
+      "Ephesians-2-8": "#E8861A",
+      "Ephesians-2-10": "#E8861A",
+      "Exodus-10-3": "#F5C842",
+      "Jeremiah-41-11": "#F5C842",
+      "2 Timothy-2-1": "#5B9BD5",
+      "2 Timothy-2-4": "#E0607E",
+      "2 Timothy-1-6": "#4CAF78",
+      "2 Timothy-1-7": "#4CAF78",
+      "2 Timothy-1-8": "#4CAF78",
+      "2 Timothy-1-9": "#4CAF78",
+      "1 Corinthians-14-1": "#E0607E",
+      "1 Corinthians-13-3": "#E0607E",
+      "1 Corinthians-13-4": "#E0607E",
+      "1 Corinthians-13-5": "#E0607E",
+      "1 Corinthians-13-6": "#E0607E",
+      "1 Corinthians-13-7": "#E0607E",
+      "1 Corinthians-13-8": "#E0607E",
+      "1 Corinthians-13-9": "#E0607E",
+      "1 Corinthians-13-13": "#E0607E",
+      "Exodus-12-27": "#E0607E",
+      "Exodus-14-4": "#4CAF78",
+      "Exodus-14-11": "#4CAF78",
+      "Exodus-14-13": "#4CAF78",
+      "Exodus-14-18": "#4CAF78",
+      "Exodus-14-21": "#4CAF78",
+      "Exodus-14-30": "#E0607E",
+      "Exodus-15-2": "#F5C842",
+      "Matthew-7-23": "#5B9BD5",
+      "Matthew-7-22": "#5B9BD5",
+      "Romans-7-15": "#4CAF78",
+      "1 Samuel-13-6": "#E8861A",
+      "1 Samuel-13-9": "#E8861A",
+      "1 Samuel-15-24": "#E8861A",
+      "1 Samuel-15-25": "#E8861A",
+      "1 Samuel-15-35": "#E8861A",
+      "Esther-4-3": "#F5C842",
+      "Esther-4-4": "#F5C842",
+      "Esther-4-7": "#F5C842",
+      "Esther-4-8": "#F5C842",
+      "Esther-4-15": "#F5C842",
+      "Esther-5-2": "#F5C842",
+      "Esther-8-11": "#F5C842",
+      "1 Samuel-13-13": "#E8861A",
+      "1 Samuel-13-12": "#E8861A",
+      "Galatians-1-10": "#4CAF78",
+      "Galatians-1-11": "#4CAF78",
+      "Psalms-131-1": "#5B9BD5",
+      "Psalms-131-2": "#E0607E",
+      "Psalms-23-4": "#E8861A",
+      "Nehemiah-1-3": "#E8861A",
+      "Nehemiah-1-5": "#E8861A",
+      "Nehemiah-1-6": "#E8861A",
+      "Galatians-1-24": "#E0607E",
+      "Galatians-2-14": "#E8861A",
+      "Galatians-2-16": "#E0607E",
+      "Galatians-2-17": "#E0607E",
+      "Galatians-2-20": "#E0607E",
+      "Galatians-2-21": "#E0607E",
+      "Galatians-3-5": "#F5C842",
+      "Galatians-3-28": "#F5C842",
+      "Galatians-3-24": "#F5C842"
+    },
+    "bookmarks": {
+      "Galatians-4": "Galatians 4"
+    }
+  },
+  "3abbfaad-6ace-40a7-8e97-ec399ee350e7": {
+    "username": "timjkim",
+    "email": "timjkim210@gmail.com",
+    "hash_pass": "$2b$12$ienJfAFn9nOeEwo3dlMBOOyCP51B3Ia4z1rrIzkJHXHRbvTb7itHu",
+    "friends": [
+      "60aa9553-b147-4e09-9a6e-b3e3abcf57f0",
+      "4597daa8-068c-4616-8608-5d719cd62e07"
+    ],
+    "friend_requests": [],
+    "groups": [
+      "b7fce9fc-3658-42c1-9e03-dde6c6b80c51"
+    ],
+    "highlights": {
+      "Ephesians-1-4": "#F5C842",
+      "Ephesians-1-20": "#F5C842",
+      "Ephesians-1-19": "#F5C842"
+    },
+    "bookmarks": {}
+  },
+  "066a5e8c-b77c-42e9-80d6-86bbfdd30ad5": {
+    "username": "juliethiluna",
+    "email": "julietbatzorig1@gmail.com",
+    "hash_pass": "$2b$12$aPsXOpf67vNvrd6euDstVejBH0liAa3FKO/2zGCttO8ea6CggLXh6",
+    "friends": [
+      "60aa9553-b147-4e09-9a6e-b3e3abcf57f0"
+    ],
+    "friend_requests": [],
+    "groups": [
+      "bf0ee831-8ad8-48e8-bac5-cdb8105db86f"
+    ],
+    "highlights": {},
+    "bookmarks": {}
+  },
+  "4597daa8-068c-4616-8608-5d719cd62e07": {
+    "username": "eliasxcabrera",
+    "email": "eliasxcabrera@gmail.com",
+    "hash_pass": "$2b$12$oDsHXZ/o7pCue3EUCpu2TeimyNtqcT2avs6eJcOL.n6lQsNvtCpyu",
+    "friends": [
+      "60aa9553-b147-4e09-9a6e-b3e3abcf57f0",
+      "3abbfaad-6ace-40a7-8e97-ec399ee350e7"
+    ],
+    "friend_requests": [],
+    "groups": [
+      "b7fce9fc-3658-42c1-9e03-dde6c6b80c51"
+    ],
+    "highlights": {},
+    "bookmarks": {}
+  },
+  "2605d0b3-5570-4f12-b15f-a9d7c398e63d": {
+    "username": "jdotku",
+    "email": "javinkup@gmail.com",
+    "hash_pass": "$2b$12$XOWu/GmUieYB0/zqdjpoW.XgRD0qnwI7pfKGpzw4CdVu3XDXCSAzm",
+    "friends": [
+      "60aa9553-b147-4e09-9a6e-b3e3abcf57f0"
+    ],
+    "friend_requests": [],
+    "groups": [
+      "b7fce9fc-3658-42c1-9e03-dde6c6b80c51"
+    ],
+    "highlights": {},
+    "bookmarks": {}
+  },
+  "22a2e51a-eb4b-4772-be7b-521de86721a6": {
+    "username": "ctsimpson",
+    "email": "ctsimpson@icloud.com",
+    "hash_pass": "$2b$12$oG76A9vJxF0CY6YFPJHmVO9gMsflgPuIifaqTKLP3L6ZzU/gYosdi",
+    "friends": [
+      "60aa9553-b147-4e09-9a6e-b3e3abcf57f0"
+    ],
+    "friend_requests": [
+      "60aa9553-b147-4e09-9a6e-b3e3abcf57f0"
+    ],
+    "groups": [
+      "fd7fbf8b-d2cf-4fe6-ade5-d227c9d1da66"
+    ],
+    "highlights": {
+      "Genesis-1-8": "#4CAF78",
+      "1 John-5-18": "#4CAF78"
+    },
+    "bookmarks": {}
+  },
+  "ffcc7ee2-da3f-4b0f-acab-3b963d701566": {
+    "username": "2Timothy1-7",
+    "email": "celeste@goforth.pro",
+    "hash_pass": "$2b$12$sfrJfybmuIsYJcW4rnna3u93BFs7iIEr0YaGFuyin7og4JCD86poq",
+    "friends": [
+      "60aa9553-b147-4e09-9a6e-b3e3abcf57f0"
+    ],
+    "friend_requests": [],
+    "groups": [
+      "72ad3b30-bb59-44d4-bdba-72baa85392af"
+    ],
+    "highlights": {},
+    "bookmarks": {}
+  },
+  "179a5a43-4bd6-4160-ba93-b54a55cb96bb": {
+    "username": "TestUser",
+    "email": "jaceyevan@gmail.com",
+    "hash_pass": "$2b$12$23sHfr70TuNLwzn90LZnoePYR2GdeRXzYj6mpje.2UWgqyuajRsSu",
+    "friends": [
+      "60aa9553-b147-4e09-9a6e-b3e3abcf57f0"
+    ],
+    "friend_requests": [],
+    "groups": [],
+    "highlights": {
+      "Matthew-7-22": "#5B9BD5",
+      "Matthew-7-23": "#5B9BD5"
+    },
+    "bookmarks": {}
+  }
+}

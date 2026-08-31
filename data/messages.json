@@ -1,0 +1,495 @@
+[
+  {
+    "from_user": "60aa9553-b147-4e09-9a6e-b3e3abcf57f0",
+    "timestamp": "2026-05-14T06:46:15.750Z",
+    "to_users": [
+      "3abbfaad-6ace-40a7-8e97-ec399ee350e7",
+      "60aa9553-b147-4e09-9a6e-b3e3abcf57f0"
+    ],
+    "group_id": "082efb16-8605-4dbb-81a5-bb2a4bf7cb56",
+    "text": "Testing for bug fix in group messages"
+  },
+  {
+    "from_user": "60aa9553-b147-4e09-9a6e-b3e3abcf57f0",
+    "timestamp": "2026-05-14T06:52:16.254Z",
+    "to_users": [
+      "3abbfaad-6ace-40a7-8e97-ec399ee350e7",
+      "60aa9553-b147-4e09-9a6e-b3e3abcf57f0"
+    ],
+    "group_id": "082efb16-8605-4dbb-81a5-bb2a4bf7cb56",
+    "text": "Bug should be fixed"
+  },
+  {
+    "from_user": "60aa9553-b147-4e09-9a6e-b3e3abcf57f0",
+    "timestamp": "2026-05-14T06:54:02.625Z",
+    "to_users": [
+      "3abbfaad-6ace-40a7-8e97-ec399ee350e7",
+      "60aa9553-b147-4e09-9a6e-b3e3abcf57f0"
+    ],
+    "group_id": "082efb16-8605-4dbb-81a5-bb2a4bf7cb56",
+    "text": "All messages should now be isolated in its respective groups"
+  },
+  {
+    "from_user": "60aa9553-b147-4e09-9a6e-b3e3abcf57f0",
+    "timestamp": "2026-05-14T06:54:19.763Z",
+    "to_users": [
+      "3abbfaad-6ace-40a7-8e97-ec399ee350e7"
+    ],
+    "group_id": "",
+    "text": "Yo, just testing the messaging software here"
+  },
+  {
+    "from_user": "3abbfaad-6ace-40a7-8e97-ec399ee350e7",
+    "timestamp": "2026-05-14T16:18:34.770Z",
+    "to_users": [
+      "60aa9553-b147-4e09-9a6e-b3e3abcf57f0"
+    ],
+    "group_id": "",
+    "text": "Hello"
+  },
+  {
+    "from_user": "3abbfaad-6ace-40a7-8e97-ec399ee350e7",
+    "timestamp": "2026-05-14T16:18:46.103Z",
+    "to_users": [
+      "60aa9553-b147-4e09-9a6e-b3e3abcf57f0"
+    ],
+    "group_id": "",
+    "text": "Hm, I can't send a message in the group message"
+  },
+  {
+    "from_user": "3abbfaad-6ace-40a7-8e97-ec399ee350e7",
+    "timestamp": "2026-05-14T16:18:51.606Z",
+    "to_users": [
+      "3abbfaad-6ace-40a7-8e97-ec399ee350e7",
+      "60aa9553-b147-4e09-9a6e-b3e3abcf57f0"
+    ],
+    "group_id": "082efb16-8605-4dbb-81a5-bb2a4bf7cb56",
+    "text": "Hio"
+  },
+  {
+    "from_user": "3abbfaad-6ace-40a7-8e97-ec399ee350e7",
+    "timestamp": "2026-05-14T16:18:55.719Z",
+    "to_users": [
+      "3abbfaad-6ace-40a7-8e97-ec399ee350e7",
+      "60aa9553-b147-4e09-9a6e-b3e3abcf57f0"
+    ],
+    "group_id": "082efb16-8605-4dbb-81a5-bb2a4bf7cb56",
+    "text": "Oh nevermind"
+  },
+  {
+    "from_user": "3abbfaad-6ace-40a7-8e97-ec399ee350e7",
+    "timestamp": "2026-05-14T16:19:04.515Z",
+    "to_users": [
+      "60aa9553-b147-4e09-9a6e-b3e3abcf57f0"
+    ],
+    "group_id": "",
+    "text": "Nevermind, I was able to"
+  },
+  {
+    "from_user": "60aa9553-b147-4e09-9a6e-b3e3abcf57f0",
+    "timestamp": "2026-05-14T16:46:19.763Z",
+    "to_users": [
+      "3abbfaad-6ace-40a7-8e97-ec399ee350e7",
+      "60aa9553-b147-4e09-9a6e-b3e3abcf57f0"
+    ],
+    "group_id": "082efb16-8605-4dbb-81a5-bb2a4bf7cb56",
+    "text": "Yoo"
+  },
+  {
+    "from_user": "60aa9553-b147-4e09-9a6e-b3e3abcf57f0",
+    "timestamp": "2026-05-14T16:46:27.097Z",
+    "to_users": [
+      "3abbfaad-6ace-40a7-8e97-ec399ee350e7",
+      "60aa9553-b147-4e09-9a6e-b3e3abcf57f0"
+    ],
+    "group_id": "082efb16-8605-4dbb-81a5-bb2a4bf7cb56",
+    "text": "It should be fixed up now"
+  },
+  {
+    "from_user": "60aa9553-b147-4e09-9a6e-b3e3abcf57f0",
+    "timestamp": "2026-05-14T17:26:29.526Z",
+    "to_users": [
+      "066a5e8c-b77c-42e9-80d6-86bbfdd30ad5"
+    ],
+    "group_id": "",
+    "text": "Hi babyyyyy"
+  },
+  {
+    "from_user": "066a5e8c-b77c-42e9-80d6-86bbfdd30ad5",
+    "timestamp": "2026-05-14T17:27:14.180Z",
+    "to_users": [
+      "60aa9553-b147-4e09-9a6e-b3e3abcf57f0"
+    ],
+    "group_id": "",
+    "text": "let\u2019s kiss and makeout baby"
+  },
+  {
+    "from_user": "60aa9553-b147-4e09-9a6e-b3e3abcf57f0",
+    "timestamp": "2026-05-14T17:27:55.274Z",
+    "to_users": [
+      "066a5e8c-b77c-42e9-80d6-86bbfdd30ad5"
+    ],
+    "group_id": "",
+    "text": "Yayyy baby do u like it"
+  },
+  {
+    "from_user": "60aa9553-b147-4e09-9a6e-b3e3abcf57f0",
+    "timestamp": "2026-05-14T17:28:03.194Z",
+    "to_users": [
+      "066a5e8c-b77c-42e9-80d6-86bbfdd30ad5"
+    ],
+    "group_id": "",
+    "text": "I just finished it"
+  },
+  {
+    "from_user": "60aa9553-b147-4e09-9a6e-b3e3abcf57f0",
+    "timestamp": "2026-05-14T17:37:35.988Z",
+    "to_users": [
+      "3abbfaad-6ace-40a7-8e97-ec399ee350e7",
+      "60aa9553-b147-4e09-9a6e-b3e3abcf57f0"
+    ],
+    "group_id": "082efb16-8605-4dbb-81a5-bb2a4bf7cb56",
+    "text": "W shout on Ephesian 2:8-10. Been struggling with pride lately, and this is good to remind myself with"
+  },
+  {
+    "from_user": "60aa9553-b147-4e09-9a6e-b3e3abcf57f0",
+    "timestamp": "2026-05-14T17:38:32.403Z",
+    "to_users": [
+      "60aa9553-b147-4e09-9a6e-b3e3abcf57f0",
+      "066a5e8c-b77c-42e9-80d6-86bbfdd30ad5"
+    ],
+    "group_id": "bf0ee831-8ad8-48e8-bac5-cdb8105db86f",
+    "text": "hi baby this is a group so we can see each others notes and highlights"
+  },
+  {
+    "from_user": "60aa9553-b147-4e09-9a6e-b3e3abcf57f0",
+    "timestamp": "2026-05-15T03:58:37.344Z",
+    "to_users": [
+      "3abbfaad-6ace-40a7-8e97-ec399ee350e7"
+    ],
+    "group_id": "",
+    "text": "Yo anything u see yet that you\u2019d like to have to improve the experience yet?"
+  },
+  {
+    "from_user": "3abbfaad-6ace-40a7-8e97-ec399ee350e7",
+    "timestamp": "2026-05-15T05:32:46.574Z",
+    "to_users": [
+      "3abbfaad-6ace-40a7-8e97-ec399ee350e7",
+      "60aa9553-b147-4e09-9a6e-b3e3abcf57f0"
+    ],
+    "group_id": "082efb16-8605-4dbb-81a5-bb2a4bf7cb56",
+    "text": "woot"
+  },
+  {
+    "from_user": "60aa9553-b147-4e09-9a6e-b3e3abcf57f0",
+    "timestamp": "2026-05-15T06:45:04.002Z",
+    "to_users": [
+      "4597daa8-068c-4616-8608-5d719cd62e07"
+    ],
+    "group_id": "",
+    "text": "Yo yo"
+  },
+  {
+    "from_user": "4597daa8-068c-4616-8608-5d719cd62e07",
+    "timestamp": "2026-05-15T17:07:00.185Z",
+    "to_users": [
+      "60aa9553-b147-4e09-9a6e-b3e3abcf57f0"
+    ],
+    "group_id": "",
+    "text": "Hi"
+  },
+  {
+    "from_user": "3abbfaad-6ace-40a7-8e97-ec399ee350e7",
+    "timestamp": "2026-05-15T17:08:27.059Z",
+    "to_users": [
+      "60aa9553-b147-4e09-9a6e-b3e3abcf57f0",
+      "3abbfaad-6ace-40a7-8e97-ec399ee350e7",
+      "4597daa8-068c-4616-8608-5d719cd62e07"
+    ],
+    "group_id": "082efb16-8605-4dbb-81a5-bb2a4bf7cb56",
+    "text": "helloooo"
+  },
+  {
+    "from_user": "3abbfaad-6ace-40a7-8e97-ec399ee350e7",
+    "timestamp": "2026-05-15T17:09:57.153Z",
+    "to_users": [
+      "60aa9553-b147-4e09-9a6e-b3e3abcf57f0"
+    ],
+    "group_id": "",
+    "text": "Hmm, maybe eventually the ability to comment on notes? / start a thread/discussion?"
+  },
+  {
+    "from_user": "60aa9553-b147-4e09-9a6e-b3e3abcf57f0",
+    "timestamp": "2026-05-15T19:45:04.461Z",
+    "to_users": [
+      "3abbfaad-6ace-40a7-8e97-ec399ee350e7"
+    ],
+    "group_id": "",
+    "text": "Oh yea hah that was my goal to do today"
+  },
+  {
+    "from_user": "60aa9553-b147-4e09-9a6e-b3e3abcf57f0",
+    "timestamp": "2026-05-15T19:45:21.084Z",
+    "to_users": [
+      "3abbfaad-6ace-40a7-8e97-ec399ee350e7"
+    ],
+    "group_id": "",
+    "text": "What do you think about group streaks"
+  },
+  {
+    "from_user": "60aa9553-b147-4e09-9a6e-b3e3abcf57f0",
+    "timestamp": "2026-05-15T19:46:23.598Z",
+    "to_users": [
+      "60aa9553-b147-4e09-9a6e-b3e3abcf57f0",
+      "3abbfaad-6ace-40a7-8e97-ec399ee350e7",
+      "4597daa8-068c-4616-8608-5d719cd62e07"
+    ],
+    "group_id": "082efb16-8605-4dbb-81a5-bb2a4bf7cb56",
+    "text": "Oops I forgot to add users who posted a message"
+  },
+  {
+    "from_user": "60aa9553-b147-4e09-9a6e-b3e3abcf57f0",
+    "timestamp": "2026-05-15T19:46:25.998Z",
+    "to_users": [
+      "60aa9553-b147-4e09-9a6e-b3e3abcf57f0",
+      "3abbfaad-6ace-40a7-8e97-ec399ee350e7",
+      "4597daa8-068c-4616-8608-5d719cd62e07"
+    ],
+    "group_id": "082efb16-8605-4dbb-81a5-bb2a4bf7cb56",
+    "text": "I\u2019ll fix that"
+  },
+  {
+    "from_user": "60aa9553-b147-4e09-9a6e-b3e3abcf57f0",
+    "timestamp": "2026-05-15T19:46:31.483Z",
+    "to_users": [
+      "60aa9553-b147-4e09-9a6e-b3e3abcf57f0",
+      "3abbfaad-6ace-40a7-8e97-ec399ee350e7",
+      "4597daa8-068c-4616-8608-5d719cd62e07"
+    ],
+    "group_id": "082efb16-8605-4dbb-81a5-bb2a4bf7cb56",
+    "text": "Bobby is that u"
+  },
+  {
+    "from_user": "60aa9553-b147-4e09-9a6e-b3e3abcf57f0",
+    "timestamp": "2026-05-15T19:47:26.632Z",
+    "to_users": [
+      "3abbfaad-6ace-40a7-8e97-ec399ee350e7"
+    ],
+    "group_id": "",
+    "text": "I also wanted to have a feature that would save the book and chapter u were on so it\u2019s easy to come back to"
+  },
+  {
+    "from_user": "60aa9553-b147-4e09-9a6e-b3e3abcf57f0",
+    "timestamp": "2026-05-16T01:23:40.488Z",
+    "to_users": [
+      "60aa9553-b147-4e09-9a6e-b3e3abcf57f0",
+      "3abbfaad-6ace-40a7-8e97-ec399ee350e7",
+      "4597daa8-068c-4616-8608-5d719cd62e07"
+    ],
+    "group_id": "b7fce9fc-3658-42c1-9e03-dde6c6b80c51",
+    "text": "yo yo"
+  },
+  {
+    "from_user": "60aa9553-b147-4e09-9a6e-b3e3abcf57f0",
+    "timestamp": "2026-05-16T01:23:47.185Z",
+    "to_users": [
+      "60aa9553-b147-4e09-9a6e-b3e3abcf57f0",
+      "3abbfaad-6ace-40a7-8e97-ec399ee350e7",
+      "4597daa8-068c-4616-8608-5d719cd62e07"
+    ],
+    "group_id": "b7fce9fc-3658-42c1-9e03-dde6c6b80c51",
+    "text": "should be fixed now obby"
+  },
+  {
+    "from_user": "60aa9553-b147-4e09-9a6e-b3e3abcf57f0",
+    "timestamp": "2026-05-16T03:41:50.603Z",
+    "to_users": [
+      "60aa9553-b147-4e09-9a6e-b3e3abcf57f0",
+      "3abbfaad-6ace-40a7-8e97-ec399ee350e7",
+      "4597daa8-068c-4616-8608-5d719cd62e07"
+    ],
+    "group_id": "b7fce9fc-3658-42c1-9e03-dde6c6b80c51",
+    "text": "yall can reply to notes now"
+  },
+  {
+    "from_user": "2605d0b3-5570-4f12-b15f-a9d7c398e63d",
+    "timestamp": "2026-05-16T05:04:02.799Z",
+    "to_users": [
+      "60aa9553-b147-4e09-9a6e-b3e3abcf57f0",
+      "3abbfaad-6ace-40a7-8e97-ec399ee350e7",
+      "4597daa8-068c-4616-8608-5d719cd62e07",
+      "2605d0b3-5570-4f12-b15f-a9d7c398e63d"
+    ],
+    "group_id": "b7fce9fc-3658-42c1-9e03-dde6c6b80c51",
+    "text": "hi"
+  },
+  {
+    "from_user": "60aa9553-b147-4e09-9a6e-b3e3abcf57f0",
+    "timestamp": "2026-05-16T05:05:13.065Z",
+    "to_users": [
+      "60aa9553-b147-4e09-9a6e-b3e3abcf57f0",
+      "3abbfaad-6ace-40a7-8e97-ec399ee350e7",
+      "4597daa8-068c-4616-8608-5d719cd62e07",
+      "2605d0b3-5570-4f12-b15f-a9d7c398e63d"
+    ],
+    "group_id": "b7fce9fc-3658-42c1-9e03-dde6c6b80c51",
+    "text": "Hola amigo"
+  },
+  {
+    "from_user": "3abbfaad-6ace-40a7-8e97-ec399ee350e7",
+    "timestamp": "2026-05-17T03:47:16.041Z",
+    "to_users": [
+      "60aa9553-b147-4e09-9a6e-b3e3abcf57f0",
+      "3abbfaad-6ace-40a7-8e97-ec399ee350e7",
+      "4597daa8-068c-4616-8608-5d719cd62e07",
+      "2605d0b3-5570-4f12-b15f-a9d7c398e63d"
+    ],
+    "group_id": "b7fce9fc-3658-42c1-9e03-dde6c6b80c51",
+    "text": "Niceeeeee"
+  },
+  {
+    "from_user": "4597daa8-068c-4616-8608-5d719cd62e07",
+    "timestamp": "2026-05-17T20:45:11.796Z",
+    "to_users": [
+      "60aa9553-b147-4e09-9a6e-b3e3abcf57f0",
+      "3abbfaad-6ace-40a7-8e97-ec399ee350e7",
+      "4597daa8-068c-4616-8608-5d719cd62e07",
+      "2605d0b3-5570-4f12-b15f-a9d7c398e63d"
+    ],
+    "group_id": "b7fce9fc-3658-42c1-9e03-dde6c6b80c51",
+    "text": "Meow"
+  },
+  {
+    "from_user": "60aa9553-b147-4e09-9a6e-b3e3abcf57f0",
+    "timestamp": "2026-05-17T22:10:29.282Z",
+    "to_users": [
+      "60aa9553-b147-4e09-9a6e-b3e3abcf57f0",
+      "3abbfaad-6ace-40a7-8e97-ec399ee350e7",
+      "4597daa8-068c-4616-8608-5d719cd62e07",
+      "2605d0b3-5570-4f12-b15f-a9d7c398e63d"
+    ],
+    "group_id": "b7fce9fc-3658-42c1-9e03-dde6c6b80c51",
+    "text": "rawr"
+  },
+  {
+    "from_user": "60aa9553-b147-4e09-9a6e-b3e3abcf57f0",
+    "timestamp": "2026-05-20T23:17:45.720Z",
+    "to_users": [
+      "ffcc7ee2-da3f-4b0f-acab-3b963d701566"
+    ],
+    "group_id": "",
+    "text": "yo what's up cus"
+  },
+  {
+    "from_user": "60aa9553-b147-4e09-9a6e-b3e3abcf57f0",
+    "timestamp": "2026-05-20T23:18:11.117Z",
+    "to_users": [
+      "ffcc7ee2-da3f-4b0f-acab-3b963d701566"
+    ],
+    "group_id": "",
+    "text": "ill create a group for us that'll let us start getting into the Word together"
+  },
+  {
+    "from_user": "60aa9553-b147-4e09-9a6e-b3e3abcf57f0",
+    "timestamp": "2026-05-20T23:18:39.114Z",
+    "to_users": [
+      "60aa9553-b147-4e09-9a6e-b3e3abcf57f0",
+      "ffcc7ee2-da3f-4b0f-acab-3b963d701566"
+    ],
+    "group_id": "72ad3b30-bb59-44d4-bdba-72baa85392af",
+    "text": "yo yo"
+  },
+  {
+    "from_user": "ffcc7ee2-da3f-4b0f-acab-3b963d701566",
+    "timestamp": "2026-05-21T03:13:54.136Z",
+    "to_users": [
+      "60aa9553-b147-4e09-9a6e-b3e3abcf57f0"
+    ],
+    "group_id": "",
+    "text": "Aiyght"
+  },
+  {
+    "from_user": "ffcc7ee2-da3f-4b0f-acab-3b963d701566",
+    "timestamp": "2026-05-21T03:15:04.440Z",
+    "to_users": [
+      "60aa9553-b147-4e09-9a6e-b3e3abcf57f0",
+      "ffcc7ee2-da3f-4b0f-acab-3b963d701566"
+    ],
+    "group_id": "72ad3b30-bb59-44d4-bdba-72baa85392af",
+    "text": "iAm in"
+  },
+  {
+    "from_user": "60aa9553-b147-4e09-9a6e-b3e3abcf57f0",
+    "timestamp": "2026-05-21T06:42:20.558Z",
+    "to_users": [
+      "60aa9553-b147-4e09-9a6e-b3e3abcf57f0",
+      "ffcc7ee2-da3f-4b0f-acab-3b963d701566"
+    ],
+    "group_id": "72ad3b30-bb59-44d4-bdba-72baa85392af",
+    "text": "niceee, I also took your word and set up an onboarding tour to get users familiar with the platform if they're new thanks a lot man"
+  },
+  {
+    "from_user": "22a2e51a-eb4b-4772-be7b-521de86721a6",
+    "timestamp": "2026-06-01T03:59:18.500Z",
+    "to_users": [
+      "60aa9553-b147-4e09-9a6e-b3e3abcf57f0"
+    ],
+    "group_id": "",
+    "text": "Next page should scroll you back to the top of the next page.  Currently goes to the next page, but you are at the bottom of the page where you left off."
+  },
+  {
+    "from_user": "22a2e51a-eb4b-4772-be7b-521de86721a6",
+    "timestamp": "2026-06-01T04:02:27.003Z",
+    "to_users": [
+      "60aa9553-b147-4e09-9a6e-b3e3abcf57f0"
+    ],
+    "group_id": "",
+    "text": "Could use a bookmark feature. Again, following the design from Kindle, support multiple bookmarks. Bookmarks for marking pages and highlights for saving specific content.  Bookmarks with a short title would be nice so someone could describe what the page reference is"
+  },
+  {
+    "from_user": "22a2e51a-eb4b-4772-be7b-521de86721a6",
+    "timestamp": "2026-06-01T04:04:06.263Z",
+    "to_users": [
+      "60aa9553-b147-4e09-9a6e-b3e3abcf57f0"
+    ],
+    "group_id": "",
+    "text": "Text zoom feature would be nice for people who are old and have difficulty seeing."
+  },
+  {
+    "from_user": "60aa9553-b147-4e09-9a6e-b3e3abcf57f0",
+    "timestamp": "2026-06-01T06:13:04.197Z",
+    "to_users": [
+      "60aa9553-b147-4e09-9a6e-b3e3abcf57f0",
+      "22a2e51a-eb4b-4772-be7b-521de86721a6"
+    ],
+    "group_id": "fd7fbf8b-d2cf-4fe6-ade5-d227c9d1da66",
+    "text": "hey Dad!"
+  },
+  {
+    "from_user": "60aa9553-b147-4e09-9a6e-b3e3abcf57f0",
+    "timestamp": "2026-06-01T08:06:40.559Z",
+    "to_users": [
+      "22a2e51a-eb4b-4772-be7b-521de86721a6"
+    ],
+    "group_id": "",
+    "text": "hanks for the feedback, will try and get these implemented ASAP!"
+  },
+  {
+    "from_user": "60aa9553-b147-4e09-9a6e-b3e3abcf57f0",
+    "timestamp": "2026-06-01T08:07:12.463Z",
+    "to_users": [
+      "22a2e51a-eb4b-4772-be7b-521de86721a6"
+    ],
+    "group_id": "",
+    "text": "bookmarks would be fun to take on since most of the latest changes I've made were just vibe coded frontend stuf. I finally get to do something on my own hah"
+  },
+  {
+    "from_user": "60aa9553-b147-4e09-9a6e-b3e3abcf57f0",
+    "timestamp": "2026-06-01T08:10:26.524Z",
+    "to_users": [
+      "22a2e51a-eb4b-4772-be7b-521de86721a6"
+    ],
+    "group_id": "",
+    "text": "also what was the bug you found?"
+  }
+]
