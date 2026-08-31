@@ -11,3 +11,11 @@ fellowscript-ec2-key.pem
 # rotation/history remediation, out of scope for this gate).
 *.pem
 *.p8
+
+# Oversized reference/source assets — exceed GitHub's file-size limits
+# (data/loading-screen.mov was a 205MB ProRes-4444 source master for the
+# already-shipped, compressed FellowScript/FellowScript/LoadingScreen/
+# loading-screen.mov; data/new_bg.mp4 likewise unused at runtime). Purged
+# from git history 2026-08-31; kept on disk locally, never re-tracked.
+data/loading-screen.mov
+data/new_bg.mp4
