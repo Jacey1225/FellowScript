@@ -372,8 +372,14 @@ struct AgentMessageBubble: View {
     }
 
     var body: some View {
+        // Reserved counter-side gutter (task 20260831-agent-chat-width-
+        // separator): deliberately smaller than the opposite side's
+        // avatar(32)+HStack-spacing(12)=44pt gutter so the widened text
+        // column below reads as offset toward its sender's edge rather
+        // than centered — Theme.spacingLG keeps it on the existing
+        // spacing scale instead of the previous unlabeled "40" constant.
         HStack(alignment: .top, spacing: 12) {
-            if message.mine { Spacer(minLength: 40) }
+            if message.mine { Spacer(minLength: Theme.spacingLG) }
 
             if !message.mine { avatar }
 
@@ -414,13 +420,19 @@ struct AgentMessageBubble: View {
                             .padding(.vertical, Theme.spacingSM)
                     }
                 }
-                .frame(maxWidth: UIScreen.main.bounds.width * 0.78, alignment: message.mine ? .trailing : .leading)
+                // Widened from the previous 0.78 cap (task 20260831-agent-
+                // chat-width-separator) so the message column uses most of
+                // the screen width instead of reading as a narrow, near-
+                // centered block; still screen-relative (not a fixed point
+                // value) so it scales across device sizes per the mobile-
+                // first sizing convention already used here.
+                .frame(maxWidth: UIScreen.main.bounds.width * 0.90, alignment: message.mine ? .trailing : .leading)
             }
 
             if message.mine {
                 avatar
             } else {
-                Spacer(minLength: 40)
+                Spacer(minLength: Theme.spacingLG)
             }
         }
         .accessibilityElement(children: .combine)

@@ -633,9 +633,14 @@ struct MarkdownBodyView: View {
                 .overlay(RoundedRectangle(cornerRadius: 5).stroke(Theme.gold.opacity(0.15), lineWidth: 1))
 
         case .rule:
-            Divider()
-                .background(Theme.gold.opacity(0.18))
-                .padding(.vertical, 2)
+            // Compact separator removed (task 20260831-agent-chat-width-
+            // separator) — markdown horizontal rules (---, ***, ___) no
+            // longer draw a visible Divider() in agent chat responses. The
+            // block itself is still emitted by the parser rather than
+            // filtered out, so the surrounding VStack's inter-block
+            // `spacing: 4` still leaves a small, unobtrusive gap where the
+            // rule was, without rendering a line.
+            EmptyView()
         }
     }
 

@@ -80,7 +80,13 @@ final class AgentChatBubbleRemovalSourceTests: XCTestCase {
         let source = try readSource("FellowScript/Chat/AgentChatView.swift")
         guard let elseRange = source.range(of: "} else {"),
               let frameRange = source.range(
-                of: ".frame(maxWidth: UIScreen.main.bounds.width * 0.78",
+                // Cap widened from 0.78 to 0.90 by task 20260831-agent-chat-
+                // width-separator — this test only needs the marker to
+                // locate the shared frame modifier, not its exact factor
+                // (see AgentChatWidthSeparatorRegressionTests for coverage
+                // of the factor itself), so it's updated here to keep
+                // finding the boundary correctly.
+                of: ".frame(maxWidth: UIScreen.main.bounds.width * 0.90",
                 range: elseRange.upperBound..<source.endIndex
               ) else {
             XCTFail("could not locate AgentMessageBubble's else branch / shared frame modifier in the real source")
@@ -106,12 +112,17 @@ final class AgentChatBubbleRemovalSourceTests: XCTestCase {
     }
 
     func test_source_maxWidthWrapping_isSharedAcrossBothBranches() throws {
+        // Factor widened from 0.78 to 0.90 by task 20260831-agent-chat-
+        // width-separator (see AgentChatWidthSeparatorRegressionTests for
+        // dedicated coverage of that specific value) -- this test's own
+        // concern is unchanged: the wrap constraint must still be applied
+        // exactly once, to the shared Group wrapping both branches.
         let source = try readSource("FellowScript/Chat/AgentChatView.swift")
-        let marker = ".frame(maxWidth: UIScreen.main.bounds.width * 0.78, alignment: message.mine ? .trailing : .leading)"
+        let marker = ".frame(maxWidth: UIScreen.main.bounds.width * 0.90, alignment: message.mine ? .trailing : .leading)"
         let occurrences = source.components(separatedBy: marker).count - 1
         XCTAssertEqual(
             occurrences, 1,
-            "the 0.78-screen-width wrap constraint must be applied exactly once, to the shared Group " +
+            "the 0.90-screen-width wrap constraint must be applied exactly once, to the shared Group " +
             "wrapping both branches -- otherwise agent text (which has no visual container implying a " +
             "boundary) could regress to spanning the full screen edge-to-edge"
         )
