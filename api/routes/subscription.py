@@ -360,14 +360,23 @@ async def delete_subscription(subscription_id: str, current_user: str = Depends(
     """Cancel a plan and detach all of its members. Host only.
 
     If the plan is backed by a Stripe subscription, it is canceled in Stripe
-    first so billing stops, then the local row is removed.
+    first so billing stops. The local row is only removed once that
+    cancellation is confirmed — otherwise a Stripe-side failure would delete
+    FellowScript's own record while the subscription kept running and
+    billing the host, with no way to find it again.
+
+    Raises:
+        HTTPException 502: If Stripe cancellation could not be confirmed.
     """
     db = SubscriptionsManager()
     try:
         _require_host(db, subscription_id, current_user)
         stripe_sub = db.get_stripe_sub_id(subscription_id)
-        if stripe_sub:
-            stripe_service.cancel_subscription(stripe_sub)
+        if stripe_sub and not stripe_service.cancel_subscription(stripe_sub):
+            raise HTTPException(
+                status_code=502,
+                detail="Could not confirm cancellation with Stripe. Please try again.",
+            )
         db.delete_subscription(subscription_id)
     finally:
         db.close()

@@ -8,6 +8,7 @@ where (if anywhere) the status fails to update. Cleans up after.
 
 import _pathfix  # noqa: F401
 
+import sys
 import uuid
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -96,10 +97,12 @@ def main():
               and usage["subscribed"] is False
               and usage["resources"]["notes"]["unlimited"] is False)
         print("\nRESULT:", "✅ cancellation fully reflected" if ok else "❌ STALE — status did not propagate")
+        return ok
     finally:
         cleanup(uid)
         print(f"Cleaned up {uname}.")
 
 
 if __name__ == "__main__":
-    main()
+    if not main():
+        sys.exit(1)

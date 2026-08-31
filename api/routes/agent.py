@@ -214,7 +214,11 @@ async def summarize_session(user_id: str, agent_id: str, body: dict, _: str = De
     try:
         result     = db.lookup("agents", {"_id": agent_id})
         agent_role = list(result.values())[0].get("role", "") if result else ""
-        summary    = db._call_api(agent_role, [{"role": "user", "content": "\n".join(prompt_lines)}])
+        try:
+            summary = db._call_api(agent_role, [{"role": "user", "content": "\n".join(prompt_lines)}])
+        except Exception as e:
+            logger.error("OpenRouter session-summary error for agent %s: %s", agent_id, e)
+            raise HTTPException(status_code=502, detail="Could not generate session summary.")
 
         note_id = str(uuid.uuid4())
         db.cur.execute(

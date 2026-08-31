@@ -25,13 +25,21 @@ _SIGNAL_TYPES = frozenset({
 chime = boto3.client("chime-sdk-meetings", region_name="us-east-1")
 
 
-def _get_or_create_meeting(session_id: str) -> dict:
-    """Return the existing Chime meeting for a session, creating it if needed."""
+def _get_or_create_meeting(session_id: str, user_id: str) -> dict:
+    """Return the existing Chime meeting for a session, creating it if needed.
+
+    ``user_id`` must be authorized on the session (creator, existing
+    participant, or a member of the group/DM it belongs to) -- mirrors the
+    check ``devotion.py::join_call`` already applies to the same underlying
+    feature; this parallel chime_router implementation was missing it.
+    """
     db = DevotionManager()
     try:
         session = db.get_session(session_id)
         if not session:
             raise HTTPException(status_code=404, detail="Session not found")
+        if not db.is_authorized(session, user_id):
+            raise HTTPException(status_code=403, detail="Not authorized")
 
         chime_meeting_id = session.get("chime_meeting_id", "")
         meeting_data     = session.get("chime_meeting") or {}
@@ -103,9 +111,9 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str, msg_type: str =
 
 
 @chime_router.post("/{session_id}")
-async def start_meeting(session_id: str, _: str = Depends(get_current_user)) -> dict:
+async def start_meeting(session_id: str, current_user: str = Depends(get_current_user)) -> dict:
     """Get or create the Chime meeting for a session."""
-    return {"Meeting": _get_or_create_meeting(session_id)}
+    return {"Meeting": _get_or_create_meeting(session_id, current_user)}
 
 
 @chime_router.post("/{session_id}/{user_id}/attend")
@@ -116,6 +124,8 @@ async def join_meeting(session_id: str, user_id: str, _: str = Depends(require_m
         session = db.get_session(session_id)
         if not session:
             raise HTTPException(status_code=404, detail="Session not found")
+        if not db.is_authorized(session, user_id):
+            raise HTTPException(status_code=403, detail="Not authorized")
         chime_meeting_id = session.get("chime_meeting_id", "")
         if not chime_meeting_id:
             raise HTTPException(status_code=400, detail="No active meeting for this session")

@@ -9,6 +9,7 @@ Also verifies a plan still within grace is NOT dropped. Cleans up after.
 
 import _pathfix  # noqa: F401
 
+import sys
 import uuid
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -99,8 +100,11 @@ def scenario(label, days_past, expect_active):
 def main():
     r1 = scenario("within grace", 1, expect_active=True)    # 1d past, < 3d grace → keep
     r2 = scenario("lapsed", 10, expect_active=False)         # 10d past → expired + swept
-    print("\n" + ("✅ ALL GOOD" if (r1 and r2) else "❌ FAILURES"))
+    ok = r1 and r2
+    print("\n" + ("✅ ALL GOOD" if ok else "❌ FAILURES"))
+    return ok
 
 
 if __name__ == "__main__":
-    main()
+    if not main():
+        sys.exit(1)

@@ -116,7 +116,7 @@ function NoteEditor({ note, noteId, user, currentGroupId, books, chapterCount, v
   // content), so it must never be assigned to innerHTML raw.
   useEffect(() => {
     if (bodyRef.current) bodyRef.current.innerHTML = sanitizeNoteHtml(note?.text || '');
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
   // Auto-resize title textarea
   useEffect(() => {

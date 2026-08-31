@@ -40,7 +40,6 @@ export function useParallaxBlobs(refs) {
       window.removeEventListener('pointerleave', onLeave);
       scenes.forEach(s => s.motes.forEach(m => m.el.remove()));
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 }
 

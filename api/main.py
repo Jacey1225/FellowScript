@@ -110,6 +110,14 @@ app.add_middleware(
     ],
     allow_methods=["*"],
     allow_headers=["*"],
+    # Explicit rather than relying on the library default (False): the
+    # deployed frontend calls the API same-origin (reverse-proxied through
+    # fellowscript.com), so the session cookie never needs cross-origin
+    # credentialing. The one cross-origin entry above (localhost:5173, for
+    # local dev against the deployed API) is intentionally left without
+    # credentials for the same reason -- flip to True only if that dev
+    # workflow starts needing `credentials: 'include'` against this API.
+    allow_credentials=False,
 )
 
 app.include_router(notes_router)
@@ -151,16 +159,15 @@ def find_by_email(users: dict, email: str) -> tuple[str, dict] | None:
 
 
 def persist_new_user(user: User) -> None:
-    """Create a new user in BOTH stores — the single account-creation pipeline.
+    """Create a new user's base row in Postgres — the single account-creation pipeline.
 
-    Every provider (password signup, Google, Apple) must go through here so that:
-      • the JSON store gets a *complete* User record (friends, friend_requests,
-        groups, highlights, bookmarks — via User.model_dump), and
-      • the Postgres ``users`` table gets the row that all DBManager-based
-        features (friends, groups, notes, messages) query.
+    Every provider (password signup, Google, Apple) must go through here so
+    the Postgres ``users`` table gets the row that all DBManager-based
+    features (friends, groups, notes, messages) query.
 
-    Without the Postgres insert, an account exists for auth but is invisible to
-    every relational feature.
+    ``save_users_data`` writes only to Postgres now — there is no separate
+    JSON store to keep in sync. Without this insert, an account exists for
+    auth but is invisible to every relational feature.
     """
     save_users_data({user.user_id: user.model_dump(exclude={"user_id"})})
 
@@ -408,7 +415,8 @@ async def mfa_enable(user_id: str = Depends(get_current_user)) -> dict:
 
 
 @app.post("/auth/mfa/confirm")
-async def mfa_confirm(info: MFACode, user_id: str = Depends(get_current_user)) -> dict:
+@limiter.limit("10/minute")
+async def mfa_confirm(request: Request, info: MFACode, user_id: str = Depends(get_current_user)) -> dict:
     """Finish turning on 2FA by verifying the code sent by ``/auth/mfa/enable``.
 
     Raises:
@@ -425,7 +433,8 @@ async def mfa_confirm(info: MFACode, user_id: str = Depends(get_current_user)) -
 
 
 @app.post("/auth/mfa/disable")
-async def mfa_disable(info: MFADisable, user_id: str = Depends(get_current_user)) -> dict:
+@limiter.limit("10/minute")
+async def mfa_disable(request: Request, info: MFADisable, user_id: str = Depends(get_current_user)) -> dict:
     """Turn 2FA off. Requires re-entering the current password so a hijacked
     or unattended session can't silently remove the account's second factor.
 
@@ -529,17 +538,26 @@ async def logout(request: Request, response: Response) -> None:
 
 
 @app.get("/user/{user_id}")
-async def get_user(user_id: str, _: str = Depends(get_current_user)) -> dict:
+async def get_user(user_id: str, current_user: str = Depends(get_current_user)) -> dict:
     """Retrieve a single user's public profile.
 
     Any authenticated caller may look up any user (used to display friends'
     and group members' usernames) — only login is required, not ownership.
+    That stated purpose only needs a public projection, though, so fields
+    beyond it (email, mfa_enabled, friend_requests, suspended_at) are only
+    populated for the account owner looking up themselves; a lookup of
+    someone else's user_id gets those fields blanked out rather than removed
+    from the response, so callers built against the historical full-record
+    shape (e.g. iOS's FSUser, which requires an `email` key to decode) don't
+    need a parallel narrower schema.
 
     Args:
         user_id: UUID of the user to look up.
 
     Returns:
-        dict: The user's data (excludes hash_pass).
+        dict: The user's data (excludes hash_pass; email/mfa_enabled/
+            friend_requests/suspended_at are only real values when
+            user_id == the caller).
 
     Raises:
         HTTPException 404: If no user with the given ID exists.
@@ -547,8 +565,13 @@ async def get_user(user_id: str, _: str = Depends(get_current_user)) -> dict:
     users = load_users()
     if user_id not in users:
         raise HTTPException(status_code=404, detail="User not found")
-    data = users[user_id]
-    return {"user_id": user_id, **{k: v for k, v in data.items() if k != "hash_pass"}}
+    data = {k: v for k, v in users[user_id].items() if k != "hash_pass"}
+    if current_user != user_id:
+        data["email"]           = ""
+        data["mfa_enabled"]     = False
+        data["friend_requests"] = []
+        data["suspended_at"]    = None
+    return {"user_id": user_id, **data}
 
 
 @app.put("/user/{user_id}")

@@ -118,6 +118,20 @@ class ConnectionManager(DBManager):
         except Exception as e:
             logger.warning("Could not resolve sender username: %s", e)
 
+        # Batch-fetch device tokens for the whole recipient set once, rather
+        # than one query per offline recipient inside the loop below — the
+        # per-recipient delivery/eviction logic itself still has to stay
+        # per-recipient, only the token lookup is batched.
+        device_tokens: dict[str, str] = {}
+        try:
+            self.cur.execute(
+                "SELECT user_id, token FROM device_tokens WHERE user_id = ANY(%s::uuid[])",
+                (list(to_users),),
+            )
+            device_tokens = {str(r[0]): r[1] for r in self.cur.fetchall()}
+        except Exception as e:
+            logger.error("Batch device-token lookup failed: %s", e)
+
         for uid in to_users:
             if uid in blocked_relationships:
                 # Group message: still persisted for other members, but skip
@@ -142,13 +156,10 @@ class ConnectionManager(DBManager):
             if not ws and uid != from_user_id:
                 # Recipient is offline (or was just evicted above) — send APNs push notification
                 try:
-                    self.cur.execute(
-                        "SELECT token FROM device_tokens WHERE user_id = %s", (uid,)
-                    )
-                    token_row = self.cur.fetchone()
-                    if token_row:
+                    token = device_tokens.get(uid)
+                    if token:
                         body = text if len(text) <= 100 else text[:97] + "…"
-                        await send_push(token_row[0], sender_name, body)
+                        await send_push(token, sender_name, body)
                 except Exception as e:
                     logger.error("Push to %s failed: %s", uid, e)
 

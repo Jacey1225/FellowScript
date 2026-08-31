@@ -201,8 +201,12 @@ final class BibleNavDropdownUITests: XCTestCase {
     private func openPicker(_ app: XCUIApplication, jumpToOldTestament jump: Bool = true) -> Bool {
         let navPill = app.buttons["Navigate to book and chapter"]
         XCTAssertTrue(waitHittableThenTap(navPill, app: app), "expected the nav pill to open BibleNavDropdown")
-        XCTAssertTrue(app.staticTexts["Select Passage"].waitForExistence(timeout: 5),
-                      "expected Step 1's 'Select Passage' header to appear")
+        // Step 1 has no header bar (task 20260830-bible-nav-select-passage-
+        // removal removed the "Select Passage" label along with the bar
+        // itself) — the OT/NT toggle is now the first thing Step 1 renders,
+        // so it's the reliable "Step 1 is showing" anchor instead.
+        XCTAssertTrue(app.buttons["Old Testament"].waitForExistence(timeout: 5),
+                      "expected Step 1's OT/NT toggle to appear")
         guard jump else { return true }
         return waitHittableThenTap(app.buttons["Old Testament"], app: app)
     }
@@ -251,20 +255,21 @@ final class BibleNavDropdownUITests: XCTestCase {
         XCTAssertTrue(genesisRow.waitForExistence(timeout: 5))
         tapUntil(genesisRow, successElement: app.buttons["Back to book list"], app: app)
 
-        // Step 2: header replaces "Select Passage" with Back + book name;
-        // tapping the book row alone must not have selected/closed anything.
+        // Step 2: header shows Back + book name, replacing Step 1's content
+        // entirely (Step 1 has no header of its own to "replace" any more —
+        // see openPicker); tapping the book row alone must not have
+        // selected/closed anything.
         XCTAssertTrue(app.buttons["Back to book list"].exists,
                       "expected Step 2's Back control after tapping a book row")
-        XCTAssertFalse(app.staticTexts["Select Passage"].exists,
-                        "Step 2 must replace the Step 1 header title")
+        XCTAssertFalse(app.buttons["Old Testament"].exists,
+                        "Step 2 must replace Step 1's OT/NT toggle")
         XCTAssertTrue(chapterCell(app, 1).waitForExistence(timeout: 5),
                       "expected Genesis's chapter grid to render")
 
         // Back returns to Step 1 without closing the panel.
-        tapUntil(app.buttons["Back to book list"], successElement: app.staticTexts["Select Passage"], app: app)
-        XCTAssertTrue(app.staticTexts["Select Passage"].exists,
+        tapUntil(app.buttons["Back to book list"], successElement: app.buttons["Old Testament"], app: app)
+        XCTAssertTrue(app.buttons["Old Testament"].exists,
                       "Back must return to Step 1, not close the panel")
-        XCTAssertTrue(app.buttons["Old Testament"].exists)
 
         app.buttons["Navigate to book and chapter"].tap()
     }
@@ -290,7 +295,7 @@ final class BibleNavDropdownUITests: XCTestCase {
         // closes and the nav pill becomes reachable again.
         XCTAssertTrue(app.buttons["Navigate to book and chapter"].exists,
                       "expected the panel to close after selecting a chapter")
-        XCTAssertFalse(app.staticTexts["Select Passage"].exists)
+        XCTAssertFalse(app.buttons["Old Testament"].exists)
 
         // Reopen: Genesis must now show the current-book highlight.
         openPicker(app)
@@ -315,7 +320,7 @@ final class BibleNavDropdownUITests: XCTestCase {
         waitHittableThenTap(app.buttons["Navigate to book and chapter"], app: app)
         XCTAssertTrue(app.buttons["Navigate to book and chapter"].waitForExistence(timeout: 5),
                       "expected the panel to close and the nav pill to remain reachable")
-        XCTAssertFalse(app.staticTexts["Select Passage"].exists)
+        XCTAssertFalse(app.buttons["Old Testament"].exists)
     }
 
     func test_navPillToggle_dismissesPickerFromChapterGridStep() {

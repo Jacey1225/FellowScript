@@ -157,12 +157,12 @@ export default function Reader() {
         setChapter(1, firstBook, data);
       }
     });
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (user) { loadHighlights(); loadNotes(); loadGroups(); loadBookmarks(); connectWS(); loadAgents(); }
     return () => disconnectWS();
-  }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [user]);
 
   useEffect(() => { setOnSessionSignal(handleSignal); }, [setOnSessionSignal, handleSignal]);
 
@@ -179,7 +179,7 @@ export default function Reader() {
         try { localStorage.removeItem('fs_notes_group'); } catch {}
       }
     } catch {}
-  }, [user, groups]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [user, groups]);
 
   useEffect(() => {
     if (!curBook) return;
@@ -187,7 +187,7 @@ export default function Reader() {
     if (curChapter) params.ch = curChapter;
     if (curVerse)   params.vs = curVerse;
     setSearchParams(params, { replace: true });
-  }, [curBook, curChapter, curVerse]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [curBook, curChapter, curVerse]);
 
   useEffect(() => { setChapterRenderedCallback(() => loadHighlights()); }, [setChapterRenderedCallback, loadHighlights]);
 
@@ -201,7 +201,7 @@ export default function Reader() {
     if (!chapterHTML || curVerse) return;
     const root = document.getElementById('root');
     if (root) root.scrollTop = 0;
-  }, [chapterHTML]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [chapterHTML]);
 
   // Scroll to a specific verse after paint (needs the element in the DOM first)
   useEffect(() => {
@@ -212,7 +212,7 @@ export default function Reader() {
     const offset = el.getBoundingClientRect().top + (root ? root.scrollTop : window.scrollY) - 120;
     if (root) root.scrollTop = offset;
     else window.scrollTo({ top: offset, behavior: 'smooth' });
-  }, [chapterHTML]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [chapterHTML]);
 
   // Clean up the dockview layout-change + rail subscriptions on unmount.
   useEffect(() => {

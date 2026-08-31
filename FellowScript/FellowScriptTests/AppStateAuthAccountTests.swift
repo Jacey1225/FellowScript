@@ -114,7 +114,16 @@ final class ThrowingTestDataService: DataServiceProtocol {
         return try await MockDataService.shared.updateUser(userId: userId, body: body)
     }
 
+    // Controllable / observable (task 20260830-compliance-remediation, C4) --
+    // used by DeleteAccountAndActionRevertRegressionTests to prove the
+    // delete-account flow only signs out on confirmed success and surfaces
+    // an alert (never a silent sign-out) on failure.
+    var deleteUserError: Error?
+    private(set) var deleteUserCallCount = 0
+
     func deleteUser(userId: String) async throws {
+        deleteUserCallCount += 1
+        if let deleteUserError { throw deleteUserError }
         try await MockDataService.shared.deleteUser(userId: userId)
     }
 
@@ -163,7 +172,17 @@ final class ThrowingTestDataService: DataServiceProtocol {
         return try await MockDataService.shared.saveNote(note, editingId: editingId, userId: userId)
     }
 
+    // Controllable / observable (task 20260830-compliance-remediation, H6/H7)
+    // -- used by DeleteAccountAndActionRevertRegressionTests to prove
+    // NotesViewModel.deleteNote reverts its optimistic removal and surfaces
+    // saveError on failure, matching the sibling saveHighlight/clearHighlight
+    // pattern above.
+    var deleteNoteError: Error?
+    private(set) var deleteNoteCallCount = 0
+
     func deleteNote(noteId: String, userId: String) async throws {
+        deleteNoteCallCount += 1
+        if let deleteNoteError { throw deleteNoteError }
         try await MockDataService.shared.deleteNote(noteId: noteId, userId: userId)
     }
 
@@ -361,15 +380,33 @@ final class ThrowingTestDataService: DataServiceProtocol {
         try await MockDataService.shared.acceptFriendRequest(userId: userId, username: username)
     }
 
+    // Controllable / observable (task 20260830-compliance-remediation, H6/H7)
+    // -- used by DeleteAccountAndActionRevertRegressionTests to prove
+    // ChatViewModel.removeFriend/leaveGroup and ChatRootView's
+    // reportUser/blockUser revert their optimistic mutation and surface an
+    // error instead of a bare `try?` no-op.
+    var removeFriendError: Error?
+    private(set) var removeFriendCallCount = 0
+    var reportUserError: Error?
+    private(set) var reportUserCallCount = 0
+    var blockUserError: Error?
+    private(set) var blockUserCallCount = 0
+
     func removeFriend(userId: String, friendId: String) async throws {
+        removeFriendCallCount += 1
+        if let removeFriendError { throw removeFriendError }
         try await MockDataService.shared.removeFriend(userId: userId, friendId: friendId)
     }
 
     func reportUser(reportedUserId: String, reason: String, detail: String) async throws {
+        reportUserCallCount += 1
+        if let reportUserError { throw reportUserError }
         try await MockDataService.shared.reportUser(reportedUserId: reportedUserId, reason: reason, detail: detail)
     }
 
     func blockUser(userId: String, blockedId: String) async throws {
+        blockUserCallCount += 1
+        if let blockUserError { throw blockUserError }
         try await MockDataService.shared.blockUser(userId: userId, blockedId: blockedId)
     }
 
@@ -389,7 +426,12 @@ final class ThrowingTestDataService: DataServiceProtocol {
         try await MockDataService.shared.updateGroup(userId: userId, groupId: groupId, title: title, users: users)
     }
 
+    var leaveGroupError: Error?
+    private(set) var leaveGroupCallCount = 0
+
     func leaveGroup(userId: String, groupId: String) async throws {
+        leaveGroupCallCount += 1
+        if let leaveGroupError { throw leaveGroupError }
         try await MockDataService.shared.leaveGroup(userId: userId, groupId: groupId)
     }
 

@@ -73,9 +73,10 @@ def read_messages(host_user: str, users: list[str], group_id: str = "") -> tuple
 def format_messages(messages: list[dict]) -> list[dict]:
     new_messages = []
     for msg in messages:
-        if isinstance(msg.get("from_user"), str):
+        from_user = msg.get("from_user")
+        if isinstance(from_user, str):
             new_msg = Message(**msg)
-            uid: str = msg.get("from_user")  # type: ignore
+            uid: str = from_user
             users = fetch_users([uid])
             if users:
                 new_msg.from_user = users[-1].username

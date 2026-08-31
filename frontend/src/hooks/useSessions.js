@@ -96,7 +96,7 @@ export function useSessions({ user, wsRef, currentContact }) {
   useEffect(() => {
     if (currentContact) loadSessions();
     else setSessions([]);
-  }, [currentContact]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [currentContact]);
 
   useEffect(() => {
     const TWELVE_HOURS = 12 * 60 * 60 * 1000;
@@ -409,7 +409,7 @@ export function useSessions({ user, wsRef, currentContact }) {
       clearTimeout(talkStopTimer.current);
       talkStopTimer.current = setTimeout(() => setTalkingUserId(null), 1500);
     }
-  }, [user, currentContact, loadSessions]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [user, currentContact, loadSessions]);
 
   // ── Cleanup ───────────────────────────────────────────────────────────────
 

@@ -141,8 +141,11 @@ final class BibleNavDropdownBlurScreenshotUITests: XCTestCase {
 
         let navPill = app.buttons["Navigate to book and chapter"]
         XCTAssertTrue(waitHittableThenTap(navPill, app: app), "expected the nav pill to open BibleNavDropdown")
-        XCTAssertTrue(app.staticTexts["Select Passage"].waitForExistence(timeout: 5),
-                      "expected Step 1's 'Select Passage' header to appear")
+        // Step 1 has no header bar any more (task 20260830-bible-nav-select-
+        // passage-removal) — the OT/NT toggle is the first thing Step 1
+        // renders, so it's the reliable "Step 1 is showing" anchor.
+        XCTAssertTrue(app.buttons["Old Testament"].waitForExistence(timeout: 5),
+                      "expected Step 1's OT/NT toggle to appear")
 
         // Let the panel's open animation fully settle before capturing.
         RunLoop.current.run(until: Date().addingTimeInterval(0.6))

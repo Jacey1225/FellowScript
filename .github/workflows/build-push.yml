@@ -142,16 +142,12 @@ jobs:
         # (`python tests/test_x.py`) and exits non-zero on failure — this
         # loop runs every one and fails the job if any of them do.
         #
-        # Known gap, documented rather than silently papered over per this
-        # task's scope: tests/test_cancel_reflect.py and
-        # tests/test_expiry_reflect.py print a pass/fail line but never call
-        # sys.exit()/raise on failure, so a broken assertion inside either of
-        # those two specific files currently can't flip this loop's exit
-        # code. Every other file in tests/test_*.py does propagate failure
-        # correctly. Fixing those two is a test-suite change (owned by the
-        # testing gate on a task that has one), not a CI-authoring change,
-        # so it's left as-is here rather than patched as a side effect of
-        # writing this workflow.
+        # tests/test_cancel_reflect.py and tests/test_expiry_reflect.py used
+        # to print a pass/fail line without ever calling sys.exit()/raising
+        # on failure, so a broken assertion inside either couldn't flip this
+        # loop's exit code (compile-errors #8, compliance sweep
+        # 20260830-fellowscript-full-sweep). Both now sys.exit(1) on failure,
+        # matching every other file in tests/test_*.py.
         run: |
           set -uo pipefail
           failed=0

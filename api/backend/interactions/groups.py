@@ -37,13 +37,19 @@ class GroupsManager(DBManager):
         return self.user_id in (group_data.get("users") or [])
 
     def format_messages(self, messages: dict) -> list[dict]:
+        from_uids = {str(uid) for uid in (data.get("from_user", "") for data in messages.values()) if uid}
+        usernames: dict[str, str] = {}
+        if from_uids:
+            self.cur.execute(
+                "SELECT _id, username FROM users WHERE _id = ANY(%s::uuid[])",
+                (list(from_uids),),
+            )
+            usernames = {str(r[0]): r[1] for r in self.cur.fetchall()}
         result = []
         for _, data in messages.items():
-            from_uid = data.get("from_user", "")
-            user_result = self.lookup("users", {"_id": from_uid})
-            if user_result:
-                _, udata = list(user_result.items())[0]
-                data = {**data, "from_user": udata.get("username", from_uid)}
+            from_uid = str(data.get("from_user", "") or "")
+            if from_uid in usernames:
+                data = {**data, "from_user": usernames[from_uid]}
             result.append(data)
         return result
 
@@ -76,19 +82,29 @@ class GroupsManager(DBManager):
         _, group_data = list(group.items())[0]
         member_ids = [u for u in group_data.get("users", []) if u != self.user_id]
         blocked    = self._blocked_set()
-        usernames  = []
-        other_msgs = {}
-        for uid in member_ids:
-            user = self.lookup("users", {"_id": uid})
-            if user:
-                _, udata = list(user.items())[0]
-                # Roster stays unfiltered for transparency about who's in the
-                # group — only their message content is hidden below.
-                usernames.append(udata.get("username", ""))
-            if uid in blocked:
-                continue
-            msgs = self.lookup("messages", {"from_user": uid, "group_id": self.group_id})
-            other_msgs.update(msgs)
+        usernames: list = []
+        other_msgs: dict = {}
+        if member_ids:
+            self.cur.execute(
+                "SELECT _id, username FROM users WHERE _id = ANY(%s::uuid[])",
+                (member_ids,),
+            )
+            user_map = {str(r[0]): r[1] for r in self.cur.fetchall()}
+            # Roster stays unfiltered for transparency about who's in the
+            # group — only their message content is hidden below.
+            usernames = [user_map[uid] for uid in member_ids if uid in user_map]
+
+            unblocked_ids = [uid for uid in member_ids if uid not in blocked]
+            if unblocked_ids:
+                self.cur.execute(
+                    "SELECT * FROM messages WHERE from_user = ANY(%s::uuid[]) AND group_id = %s",
+                    (unblocked_ids, self.group_id),
+                )
+                cols = [desc[0] for desc in self.cur.description]
+                other_msgs = {
+                    row[0]: dict(zip(cols[1:], row[1:]))
+                    for row in self.cur.fetchall()
+                }
         host_msgs = self.lookup("messages", {"from_user": self.user_id, "group_id": self.group_id})
         return {
             "group":      group_data,
@@ -150,17 +166,21 @@ class GroupsManager(DBManager):
         )
         cols = [desc[0] for desc in self.cur.description]
         rows = self.cur.fetchall()
+        row_data = [(str(row[0]), dict(zip(cols[1:], row[1:]))) for row in rows]
+        distinct_uids = {str(data.get("user_id")) for _, data in row_data if data.get("user_id")}
+        username_map: dict[str, str] = {}
+        if distinct_uids:
+            self.cur.execute(
+                "SELECT _id, username FROM users WHERE _id = ANY(%s::uuid[])",
+                (list(distinct_uids),),
+            )
+            username_map = {str(r[0]): r[1] for r in self.cur.fetchall()}
         group_notes: dict = {}
-        for row in rows:
-            nid, data = str(row[0]), dict(zip(cols[1:], row[1:]))
+        for nid, data in row_data:
             uid = data.get("user_id")
             if not uid:
                 continue
-            user = self.lookup("users", {"_id": uid})
-            username = ""
-            if user:
-                _, udata = list(user.items())[0]
-                username = udata.get("username", "")
+            username = username_map.get(str(uid), "")
             if username not in group_notes:
                 group_notes[username] = {}
             group_notes[username][nid] = data
@@ -196,10 +216,15 @@ class GroupsManager(DBManager):
         if not group:
             return {}
         _, group_data = list(group.items())[0]
-        result = {}
-        for uid in group_data.get("users", []):
-            self.cur.execute("SELECT key, color FROM highlights WHERE user_id = %s", (uid,))
-            result[uid] = {row[0]: row[1] for row in self.cur.fetchall()}
+        member_ids = group_data.get("users", [])
+        result: dict = {uid: {} for uid in member_ids}
+        if member_ids:
+            self.cur.execute(
+                "SELECT user_id, key, color FROM highlights WHERE user_id = ANY(%s::uuid[])",
+                (member_ids,),
+            )
+            for user_id, key, color in self.cur.fetchall():
+                result.setdefault(str(user_id), {})[key] = color
         return result
 
     def remove_group(self) -> None:

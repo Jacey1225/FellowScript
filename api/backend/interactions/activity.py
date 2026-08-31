@@ -146,6 +146,29 @@ class ActivityManager(DBManager):
         )
         return self.cur.fetchall()
 
+    def friend_device_tokens_bulk(self, user_ids: list[str]) -> list[tuple]:
+        """(user_id, friend_id, token) for every user in ``user_ids``' friends
+        with a registered device token, excluding either direction of a
+        block — same predicate as ``friend_device_tokens`` but batched with
+        one ``ANY(%s)`` query instead of one call per transitioning user, for
+        callers (e.g. ``_friend_went_active_notify``) that process a whole
+        pending set at once.
+        """
+        if not user_ids:
+            return []
+        self.cur.execute(
+            "SELECT uf.user_id, uf.friend_id, dt.token FROM user_friends uf "
+            "JOIN device_tokens dt ON dt.user_id = uf.friend_id "
+            "WHERE uf.user_id = ANY(%s::uuid[]) "
+            "AND NOT EXISTS ("
+            "  SELECT 1 FROM blocked_users b "
+            "  WHERE (b.blocker_id = uf.friend_id AND b.blocked_id = uf.user_id) "
+            "     OR (b.blocker_id = uf.user_id AND b.blocked_id = uf.friend_id)"
+            ")",
+            (list(user_ids),),
+        )
+        return self.cur.fetchall()
+
     def mark_friends_notified(self, user_id: str, became_active_at: datetime) -> None:
         """Marks the transition notified only if it's still the same
         transition read by pending_friend_notifications() — guards against

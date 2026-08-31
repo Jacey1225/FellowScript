@@ -198,13 +198,33 @@ async def create_note(user_id: str, note_dict: dict, _: str = Depends(require_ma
         note_id = str(uuid.uuid4())
         note_dict.setdefault("user", user_id)
         note = Note(**note_dict)
+        # IDOR guard: a client-supplied group_id must be one the poster
+        # actually belongs to, mirroring community.py::fetch_group_notes's
+        # read-side check -- without this, any authenticated user could post
+        # into a group they were never invited to.
+        if note.group_id:
+            gm = GroupsManager(user_id, note.group_id)
+            try:
+                if not gm.is_member():
+                    raise HTTPException(status_code=403, detail="Not a member of this group")
+            finally:
+                gm.close()
         try:
             check_clean(title=note.title, text=note.text)
         except ContentRejected as e:
             raise HTTPException(status_code=422, detail=rejection_message(e))
         db.insertion("notes", {
             "_id":        note_id,
-            "user_id":    note.user,
+            # Deliberately the require_match-verified path param, NOT
+            # note.user: note_dict.setdefault("user", user_id) above only
+            # *defaults* the body's "user" field, it doesn't enforce it, so
+            # an unvalidated body could otherwise attribute the note to an
+            # arbitrary victim user_id -- authorship spoofing/impersonation,
+            # and (combined with the group_id membership check above being
+            # keyed on the real caller, not this field) a residual bypass of
+            # this same fix's intent. Mirrors post_reply's explicit
+            # `author != current_user` 403 a few endpoints up in this file.
+            "user_id":    user_id,
             "title":      note.title,
             "text":       note.text,
             "public":     note.public,
@@ -365,6 +385,15 @@ async def update_note(user_id: str, note_id: str, note_dict: dict, _: str = Depe
         if str(note_data.get("user_id")) != user_id:
             raise HTTPException(status_code=403, detail="Not authorized")
         note = Note(**note_dict)
+        # Same IDOR guard as create_note -- re-targeting an existing owned
+        # note at an arbitrary group_id must also require membership.
+        if note.group_id:
+            gm = GroupsManager(user_id, note.group_id)
+            try:
+                if not gm.is_member():
+                    raise HTTPException(status_code=403, detail="Not a member of this group")
+            finally:
+                gm.close()
         try:
             check_clean(title=note.title, text=note.text)
         except ContentRejected as e:

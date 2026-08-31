@@ -3,6 +3,31 @@
 
 import Foundation
 
+/// Decodes a field that's allowed to be entirely absent from a partial server
+/// row (returns `defaultValue`, exactly as the old `(try? ...) ?? default`
+/// call sites did), but no longer treats a field that's *present with the
+/// wrong shape* the same as one that's simply missing: `DecodingError`
+/// cases other than `.keyNotFound` (a type mismatch from an API contract
+/// change, a server bug, a bad migration) are logged instead of being
+/// silently masked behind the same plausible-looking default, mirroring
+/// `NetworkService.decode(endpoint:)`'s existing handling of this exact
+/// class of problem (compile-errors #4).
+private func decodeLenient<Key: CodingKey, T: Decodable>(
+    _ container: KeyedDecodingContainer<Key>,
+    forKey key: Key,
+    default defaultValue: T,
+    type: String
+) -> T {
+    do {
+        return try container.decode(T.self, forKey: key)
+    } catch DecodingError.keyNotFound {
+        return defaultValue
+    } catch {
+        print("[Models] \(type) — field \"\(key.stringValue)\" present but malformed, using default \(defaultValue): \(error)")
+        return defaultValue
+    }
+}
+
 // ── User ──────────────────────────────────────────────────────────────────────
 struct FSUser: Codable, Identifiable {
     let user_id:  String
@@ -40,14 +65,14 @@ extension FSUser {
         user_id     = try c.decode(String.self, forKey: .user_id)
         username    = try c.decode(String.self, forKey: .username)
         email       = try c.decode(String.self, forKey: .email)
-        friends     = (try? c.decode([String].self,         forKey: .friends))    ?? []
-        groups      = (try? c.decode([String].self,         forKey: .groups))     ?? []
-        notes       = (try? c.decode([String: FSNote].self, forKey: .notes))      ?? [:]
-        highlights  = (try? c.decode([String: String].self, forKey: .highlights)) ?? [:]
-        timezone    = (try? c.decode(String.self, forKey: .timezone)) ?? "UTC"
-        terms_reaccept_required = (try? c.decode(Bool.self, forKey: .terms_reaccept_required)) ?? false
-        mfa_enabled = (try? c.decode(Bool.self, forKey: .mfa_enabled)) ?? false
-        needs_profile_completion = (try? c.decode(Bool.self, forKey: .needs_profile_completion)) ?? false
+        friends     = decodeLenient(c, forKey: .friends,    default: [],    type: "FSUser")
+        groups      = decodeLenient(c, forKey: .groups,     default: [],    type: "FSUser")
+        notes       = decodeLenient(c, forKey: .notes,      default: [:],   type: "FSUser")
+        highlights  = decodeLenient(c, forKey: .highlights, default: [:],   type: "FSUser")
+        timezone    = decodeLenient(c, forKey: .timezone,   default: "UTC", type: "FSUser")
+        terms_reaccept_required = decodeLenient(c, forKey: .terms_reaccept_required, default: false, type: "FSUser")
+        mfa_enabled = decodeLenient(c, forKey: .mfa_enabled, default: false, type: "FSUser")
+        needs_profile_completion = decodeLenient(c, forKey: .needs_profile_completion, default: false, type: "FSUser")
     }
 }
 
@@ -88,18 +113,18 @@ struct FSSubscription: Codable, Identifiable {
 
     init(from decoder: Decoder) throws {
         let c        = try decoder.container(keyedBy: CodingKeys.self)
-        id           = (try? c.decode(String.self, forKey: .id))          ?? ""
-        user_id      = (try? c.decode(String.self, forKey: .user_id))     ?? ""
-        plan_type    = (try? c.decode(String.self, forKey: .plan_type))   ?? "free"
-        provider     = (try? c.decode(String.self, forKey: .provider))    ?? ""
-        status       = (try? c.decode(String.self, forKey: .status))      ?? "inactive"
-        price_cents  = (try? c.decode(Int.self,    forKey: .price_cents)) ?? 0
-        max_members  = (try? c.decode(Int.self,    forKey: .max_members)) ?? 1
-        card_brand   = (try? c.decode(String.self, forKey: .card_brand))  ?? ""
-        card_last4   = (try? c.decode(String.self, forKey: .card_last4))  ?? ""
-        is_trial     = (try? c.decode(Bool.self,   forKey: .is_trial))    ?? false
-        trial_days_remaining = (try? c.decode(Int.self, forKey: .trial_days_remaining)) ?? 0
-        next_billing_date    = (try? c.decode(String.self, forKey: .next_billing_date)) ?? ""
+        id           = decodeLenient(c, forKey: .id,          default: "",         type: "FSSubscription")
+        user_id      = decodeLenient(c, forKey: .user_id,     default: "",         type: "FSSubscription")
+        plan_type    = decodeLenient(c, forKey: .plan_type,   default: "free",     type: "FSSubscription")
+        provider     = decodeLenient(c, forKey: .provider,    default: "",         type: "FSSubscription")
+        status       = decodeLenient(c, forKey: .status,      default: "inactive", type: "FSSubscription")
+        price_cents  = decodeLenient(c, forKey: .price_cents, default: 0,          type: "FSSubscription")
+        max_members  = decodeLenient(c, forKey: .max_members, default: 1,          type: "FSSubscription")
+        card_brand   = decodeLenient(c, forKey: .card_brand,  default: "",         type: "FSSubscription")
+        card_last4   = decodeLenient(c, forKey: .card_last4,  default: "",         type: "FSSubscription")
+        is_trial     = decodeLenient(c, forKey: .is_trial,    default: false,      type: "FSSubscription")
+        trial_days_remaining = decodeLenient(c, forKey: .trial_days_remaining, default: 0,  type: "FSSubscription")
+        next_billing_date    = decodeLenient(c, forKey: .next_billing_date,    default: "", type: "FSSubscription")
     }
 
     var priceLabel: String { "$\(price_cents / 100)" }
@@ -235,17 +260,17 @@ struct FSNote: Codable, Identifiable {
 extension FSNote {
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        id        = (try? c.decode(String.self,               forKey: .id))        ?? UUID().uuidString
-        user      = (try? c.decode(String.self,               forKey: .user))      ?? ""
-        username  = (try? c.decode(String.self,               forKey: .username))  ?? ""
-        title     = (try? c.decode(String.self,               forKey: .title))     ?? ""
-        text      = (try? c.decode(String.self,               forKey: .text))      ?? ""
-        `public`  = (try? c.decode(Bool.self,                 forKey: .public))    ?? false
-        group_id  = (try? c.decode(String.self,               forKey: .group_id))  ?? ""
-        is_reply  = (try? c.decode(Bool.self,                 forKey: .is_reply))  ?? false
-        timestamp = (try? c.decode(String.self,               forKey: .timestamp)) ?? ""
-        verses    = (try? c.decode([[FSVerseComponent]].self, forKey: .verses))    ?? []
-        replies   = (try? c.decode([FSNote].self,             forKey: .replies))   ?? []
+        id        = decodeLenient(c, forKey: .id,        default: UUID().uuidString, type: "FSNote")
+        user      = decodeLenient(c, forKey: .user,      default: "",                type: "FSNote")
+        username  = decodeLenient(c, forKey: .username,  default: "",                type: "FSNote")
+        title     = decodeLenient(c, forKey: .title,     default: "",                type: "FSNote")
+        text      = decodeLenient(c, forKey: .text,      default: "",                type: "FSNote")
+        `public`  = decodeLenient(c, forKey: .public,    default: false,             type: "FSNote")
+        group_id  = decodeLenient(c, forKey: .group_id,  default: "",                type: "FSNote")
+        is_reply  = decodeLenient(c, forKey: .is_reply,  default: false,             type: "FSNote")
+        timestamp = decodeLenient(c, forKey: .timestamp, default: "",                type: "FSNote")
+        verses    = decodeLenient(c, forKey: .verses,    default: [[FSVerseComponent]](), type: "FSNote")
+        replies   = decodeLenient(c, forKey: .replies,   default: [FSNote](),        type: "FSNote")
     }
 }
 
@@ -498,12 +523,12 @@ struct FSAgent: Codable, Identifiable {
 extension FSAgent {
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        id      = (try? c.decode(String.self,   forKey: .id))      ?? UUID().uuidString
-        user_id = (try? c.decode(String.self,   forKey: .user_id)) ?? ""
-        name    = (try? c.decode(String.self,   forKey: .name))    ?? ""
-        role    = (try? c.decode(String.self,   forKey: .role))    ?? ""
-        enabled = (try? c.decode(Bool.self,     forKey: .enabled)) ?? true
-        chats   = (try? c.decode([String].self, forKey: .chats))   ?? []
+        id      = decodeLenient(c, forKey: .id,      default: UUID().uuidString, type: "FSAgent")
+        user_id = decodeLenient(c, forKey: .user_id, default: "",                type: "FSAgent")
+        name    = decodeLenient(c, forKey: .name,    default: "",                type: "FSAgent")
+        role    = decodeLenient(c, forKey: .role,    default: "",                type: "FSAgent")
+        enabled = decodeLenient(c, forKey: .enabled, default: true,              type: "FSAgent")
+        chats   = decodeLenient(c, forKey: .chats,   default: [String](),        type: "FSAgent")
     }
 }
 

@@ -27,7 +27,7 @@ function normalizeNote(n, username = '') {
     text:      n.text      ?? '',
     public:    n.public    ?? false,
     group_id:  n.group_id  ?? '',
-    verses:    n.verses    ?? [],
+    verses:    n.verses    ?? [[], []],
     replies:   n.replies   ?? [],
     is_reply:  n.is_reply  ?? false,
     timestamp: n.timestamp ?? '',
@@ -64,7 +64,9 @@ export function useNotes({ user, curBook, curChapter, vsValue }) {
       const data = unwrapNotesEnvelope(payload);
       setAllNotes(data);
       notesCache.current[''] = data;
-    } catch {}
+    } catch (err) {
+      console.error('Failed to load notes:', err);
+    }
   }, [user]);
 
   const loadGroupNotes = useCallback(async (groupId) => {
@@ -80,7 +82,9 @@ export function useNotes({ user, curBook, curChapter, vsValue }) {
         setGroupNotes(data);
         notesCache.current[groupId] = data;
       }
-    } catch {}
+    } catch (err) {
+      console.error('Failed to load group notes:', err);
+    }
     setGroupLoading(false);
   }, [user]);
 
@@ -97,11 +101,15 @@ export function useNotes({ user, curBook, curChapter, vsValue }) {
             const d = await r.json();
             return { id: gid, title: d.group?.title || gid.slice(0, 8) };
           }
-        } catch {}
+        } catch (err) {
+          console.error(`Failed to load group ${gid}:`, err);
+        }
         return { id: gid, title: gid.slice(0, 8) };
       }));
       setGroups(groupList);
-    } catch {}
+    } catch (err) {
+      console.error('Failed to load groups:', err);
+    }
   }, [user]);
 
   const selectGroup = useCallback(async (groupId, onHighlightsNeeded) => {
@@ -149,17 +157,28 @@ export function useNotes({ user, curBook, curChapter, vsValue }) {
         setAllNotes(prev => ({ ...prev, [savedId]: noteData }));
       }
       return true;
-    } catch { return false; }
+    } catch (err) {
+      console.error('Failed to save note:', err);
+      message.error('Could not save your note. Check your connection and try again.');
+      return false;
+    }
   }, [user, loadGroupNotes]);
 
   const deleteNote = useCallback(async (id) => {
     if (!user) return;
     try {
-      await fetch(`${API}/notes/${user.user_id}?note_id=${encodeURIComponent(id)}`, { method: 'DELETE' });
+      const res = await fetch(`${API}/notes/${user.user_id}?note_id=${encodeURIComponent(id)}`, { method: 'DELETE' });
+      if (!res.ok) {
+        message.error('Could not delete that note. Please try again.');
+        return;
+      }
       const deletedGroupId = allNotes[id]?.group_id;
       setAllNotes(prev => { const n = { ...prev }; delete n[id]; return n; });
       if (deletedGroupId) await loadGroupNotes(deletedGroupId);
-    } catch {}
+    } catch (err) {
+      console.error('Failed to delete note:', err);
+      message.error('Could not delete that note. Check your connection and try again.');
+    }
   }, [user, allNotes, loadGroupNotes]);
 
   const postReply = useCallback(async (noteId, text) => {
@@ -174,8 +193,13 @@ export function useNotes({ user, curBook, curChapter, vsValue }) {
         }),
       });
       if (await handleLimit(res, 'notes')) return false;
+      if (!res.ok) message.error('Could not post your reply. Please try again.');
       return res.ok;
-    } catch { return false; }
+    } catch (err) {
+      console.error('Failed to post reply:', err);
+      message.error('Could not post your reply. Check your connection and try again.');
+      return false;
+    }
   }, [user, currentGroupId]);
 
   const loadDetailReplies = useCallback(async (noteId) => {
@@ -183,7 +207,9 @@ export function useNotes({ user, curBook, curChapter, vsValue }) {
     try {
       const res = await fetch(`${API}/groups/${user.user_id}/${noteId}/${currentGroupId}/replies`);
       if (res.ok) return await res.json();
-    } catch {}
+    } catch (err) {
+      console.error('Failed to load note replies:', err);
+    }
     return [];
   }, [user, currentGroupId]);
 
@@ -270,7 +296,9 @@ export function useNotes({ user, curBook, curChapter, vsValue }) {
         setFilteredGroup(null);
       }
       setFilterActive(true);
-    } catch {}
+    } catch (err) {
+      console.error('Failed to apply filter/sort:', err);
+    }
   }, [user, allNotes, groupNotes, currentGroupId]);
 
   const clearFilter = useCallback(() => {

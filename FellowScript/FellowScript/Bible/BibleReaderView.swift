@@ -31,6 +31,13 @@ final class BibleViewModel: ObservableObject {
     // In-memory bible data: [book: [chapterStr]] where index 0 may be a preamble
     private var bibleData: [String: [String]] = [:]
 
+    // Hoisted to `static let` (optimization #8) -- these patterns are
+    // compile-time constants, but were previously recompiled on every
+    // parseVerses() call (every chapter navigation), which is meaningfully
+    // more expensive than matching for a short chapter string.
+    private static let firstVerseRegex = try! NSRegularExpression(pattern: #"^\s*\d+:(\d+)\s*"#)
+    private static let subsequentVerseRegex = try! NSRegularExpression(pattern: #"(?<!\d)(\d+)(?=[A-Za-z])"#)
+
     init() {
         // Restore last position
         if let saved = UserDefaults.standard.data(forKey: "fs_bible_pos"),
@@ -235,20 +242,17 @@ final class BibleViewModel: ObservableObject {
         var entries: [(num: Int, numStart: Int, textStart: Int)] = []
 
         // First verse: "chapter:verse " at the start of the string
-        if let rx = try? NSRegularExpression(pattern: #"^\s*\d+:(\d+)\s*"#),
-           let m  = rx.firstMatch(in: text, range: NSRange(location: 0, length: len)) {
+        if let m = Self.firstVerseRegex.firstMatch(in: text, range: NSRange(location: 0, length: len)) {
             let vNum = Int(ns.substring(with: m.range(at: 1))) ?? 1
             entries.append((vNum, m.range.location, NSMaxRange(m.range)))
         }
 
         // Subsequent verses: a digit sequence not preceded by a digit, immediately before a letter
         let searchFrom = entries.first?.textStart ?? 0
-        if let rx = try? NSRegularExpression(pattern: #"(?<!\d)(\d+)(?=[A-Za-z])"#) {
-            let range = NSRange(location: searchFrom, length: len - searchFrom)
-            for m in rx.matches(in: text, range: range) {
-                let vNum = Int(ns.substring(with: m.range(at: 1))) ?? 0
-                if vNum > 0 { entries.append((vNum, m.range.location, NSMaxRange(m.range))) }
-            }
+        let range = NSRange(location: searchFrom, length: len - searchFrom)
+        for m in Self.subsequentVerseRegex.matches(in: text, range: range) {
+            let vNum = Int(ns.substring(with: m.range(at: 1))) ?? 0
+            if vNum > 0 { entries.append((vNum, m.range.location, NSMaxRange(m.range))) }
         }
 
         guard !entries.isEmpty else { return BibleData.fallbackVerses }
@@ -662,14 +666,18 @@ struct BibleNavDropdown: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            header
-
-            Divider().background(Theme.borderGoldFaint)
-
+            // Step 1 (book list) has no header bar at all (task 20260830-
+            // bible-nav-select-passage-removal): the panel opens directly
+            // into the OT/NT toggle/book list, flush against the panel's
+            // rounded top edge, with no "Select Passage" label, no empty
+            // chrome strip, and no divider standing in for it. Step 2 keeps
+            // its "‹ Back  <Book>" header + divider exactly as shipped.
             switch step {
             case .bookList:
                 bookListStep
             case .chapterGrid(let book):
+                header(for: book)
+                Divider().background(Theme.borderGoldFaint)
                 chapterGridStep(for: book)
             }
         }
@@ -704,59 +712,39 @@ struct BibleNavDropdown: View {
         .frame(maxHeight: 430)
     }
 
-    // ── Header bar — "Select Passage" on Step 1, "‹ Back  <Book>" on Step 2.
-    // No in-panel close control: the nav-bar pill button that opened the
-    // panel is also what closes it (BibleReaderView's toolbar Button), so
-    // this header only needs to carry Step 1/Step 2 navigation chrome.
+    // ── Header bar — "‹ Back  <Book>" on Step 2 only. Step 1 (book list) has
+    // no header bar (see body: task 20260830-bible-nav-select-passage-
+    // removal removed the "Select Passage" label along with the bar itself,
+    // rather than just blanking its text). No in-panel close control: the
+    // nav-bar pill button that opened the panel is also what closes it
+    // (BibleReaderView's toolbar Button), so this header only needs to carry
+    // Step 2's back-navigation chrome.
     @ViewBuilder
-    private var header: some View {
-        Group {
-            switch step {
-            case .bookList:
-                HStack {
-                    Text("Select Passage")
-                        .font(.inter(Theme.fontSM))
-                        // Theme.goldDim -> Theme.goldLight (task 20260830-
-                        // bible-nav-dropdown-blur): goldDim's contrast against
-                        // this panel's now-translucent/blurred background dips
-                        // below the AA floor whenever bright verse content
-                        // (e.g. a highlighted verse) happens to sit right
-                        // behind the header -- confirmed via a worst-case
-                        // contrast check against the live-measured blurred
-                        // backdrop. goldLight (already an existing Theme
-                        // token) keeps this in the same warm-gold family
-                        // while clearing AA at that worst case.
-                        .foregroundColor(Theme.goldLight)
-                    Spacer()
-                }
+    private func header(for book: String) -> some View {
+        // Book name is truly centered via ZStack overlay (rather than
+        // a leading Back + trailing Spacer, which would skew it left
+        // by roughly half the Back button's width) now that there's
+        // no trailing "x" to balance against on the other side.
+        ZStack {
+            Text(book)
+                .font(.inter(Theme.fontSM))
+                .foregroundColor(Theme.goldLight)
 
-            case .chapterGrid(let book):
-                // Book name is truly centered via ZStack overlay (rather than
-                // a leading Back + trailing Spacer, which would skew it left
-                // by roughly half the Back button's width) now that there's
-                // no trailing "x" to balance against on the other side.
-                ZStack {
-                    Text(book)
-                        .font(.inter(Theme.fontSM))
-                        .foregroundColor(Theme.goldLight)
-
-                    HStack {
-                        Button(action: {
-                            withAnimation(.easeOut(duration: 0.18)) { step = .bookList }
-                        }) {
-                            HStack(spacing: 2) {
-                                Image(systemName: "chevron.left")
-                                    .font(.subheadline.weight(.semibold))
-                                Text("Back")
-                                    .font(.inter(Theme.fontSM))
-                            }
-                            .foregroundColor(Theme.goldLight)
-                            .frame(minHeight: 44)
-                        }
-                        .accessibilityLabel("Back to book list")
-                        Spacer()
+            HStack {
+                Button(action: {
+                    withAnimation(.easeOut(duration: 0.18)) { step = .bookList }
+                }) {
+                    HStack(spacing: 2) {
+                        Image(systemName: "chevron.left")
+                            .font(.subheadline.weight(.semibold))
+                        Text("Back")
+                            .font(.inter(Theme.fontSM))
                     }
+                    .foregroundColor(Theme.goldLight)
+                    .frame(minHeight: 44)
                 }
+                .accessibilityLabel("Back to book list")
+                Spacer()
             }
         }
         .padding(.horizontal, Theme.spacingMD)
@@ -965,7 +953,7 @@ enum BibleData {
         (6,  "There was a man sent from God, whose name was John."),
         (7,  "He came as a witness, to bear witness about the light, that all might believe through him."),
         (8,  "He was not the light, but came to bear witness about the light."),
-        (9,  "The true light, /Users/jaceysimpson/Vscode/FellowScript/frontend/node_modules/@aws-sdk/core/dist-types/ts3.4/submodules/protocols/query/QuerySerializerSettings.d.tswhich gives light to everyone, was coming into the world."),
+        (9,  "The true light, which gives light to everyone, was coming into the world."),
         (10, "He was in the world, and the world was made through him, yet the world did not know him."),
         (11, "He came to his own, and his own people did not receive him."),
         (12, "But to all who did receive him, who believed in his name, he gave the right to become children of God,"),

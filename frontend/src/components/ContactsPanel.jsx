@@ -184,7 +184,7 @@ export default function ContactsPanel({
     });
   };
 
-  useEffect(() => { if (!loaded) onLoad(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (!loaded) onLoad(); }, []);
 
   const handleAddFriend = async () => {
     if (!friendInput.trim()) return;

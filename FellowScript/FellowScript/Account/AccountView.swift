@@ -42,6 +42,10 @@ final class AccountViewModel: ObservableObject {
     // server state. Separate from limitMsg (which is titled "Free Plan Limit"
     // specifically) since these failures aren't always cap-related.
     @Published var agentMsg:  String?  = nil
+    // Same idea, for the friend-request accept flow (compile-errors #2) — a
+    // failed accept must surface something rather than silently vanishing
+    // the request from the UI.
+    @Published var friendMsg: String?  = nil
 
     // Subscription
     @Published var subscription:   FSSubscription? = nil
@@ -147,9 +151,20 @@ final class AccountViewModel: ObservableObject {
 
     func removeEvent(_ event: FSHeartbeat) {
         guard let uid = profileData?.user_id else { return }
+        let previous = events
         events.removeAll { $0.id == event.id }
         HeartbeatScheduler.scheduleAll(events: events)
-        Task { try? await service.deleteHeartbeat(userId: uid, agentId: event.agent_id, heartbeatId: event.id) }
+        Task {
+            do {
+                try await service.deleteHeartbeat(userId: uid, agentId: event.agent_id, heartbeatId: event.id)
+            } catch {
+                // Revert the optimistic removal so the UI and server can't
+                // permanently disagree with no signal to the user (compile-errors #2).
+                events = previous
+                HeartbeatScheduler.scheduleAll(events: events)
+                agentMsg = (error as? LocalizedError)?.errorDescription ?? "Could not delete event."
+            }
+        }
     }
 
     func updateEvent(_ event: FSHeartbeat, agentId: String, prompt: String, timestamps: [String?]) async {
@@ -209,9 +224,20 @@ final class AccountViewModel: ObservableObject {
 
     func deleteAgent(id: String) {
         guard let uid = profileData?.user_id else { return }
+        let previousAgents = agents
+        let previousEvents = events
         agents.removeAll { $0.id == id }
         events.removeAll { $0.agent_id == id }
-        Task { try? await service.deleteAgent(userId: uid, agentId: id) }
+        Task {
+            do {
+                try await service.deleteAgent(userId: uid, agentId: id)
+            } catch {
+                // Revert the optimistic removal (compile-errors #2).
+                agents = previousAgents
+                events = previousEvents
+                agentMsg = (error as? LocalizedError)?.errorDescription ?? "Could not delete agent."
+            }
+        }
     }
 
     func createAgent(role: String) async {
@@ -230,8 +256,17 @@ final class AccountViewModel: ObservableObject {
 
     func acceptRequest(username: String) async {
         guard let uid = profileData?.user_id else { return }
+        let previous = friendRequests
         friendRequests.removeAll { $0.username == username }
-        try? await service.acceptFriendRequest(userId: uid, username: username)
+        do {
+            try await service.acceptFriendRequest(userId: uid, username: username)
+        } catch {
+            // Revert: a failed accept must not silently vanish the request
+            // from the UI while the friendship was never established
+            // server-side (compile-errors #2).
+            friendRequests = previous
+            friendMsg = (error as? LocalizedError)?.errorDescription ?? "Could not accept friend request."
+        }
     }
 
     // ── Subscription ───────────────────────────────────────────────────────────
@@ -334,7 +369,15 @@ final class AccountViewModel: ObservableObject {
     func cancelPlan() async {
         guard let uid = profileData?.user_id, let plan = subscription else { return }
         subBusy = true; defer { subBusy = false }
-        try? await service.cancelSubscription(subscriptionId: plan.id)
+        do {
+            try await service.cancelSubscription(subscriptionId: plan.id)
+        } catch {
+            // loadSubscription() below still resyncs from server truth, so
+            // there's no revert bug here -- but a swallowed failure left the
+            // user with no explanation for why nothing visibly changed
+            // (compile-errors #3), unlike the sibling updateSeats/acceptRequest(_:).
+            subMsg = (error as? LocalizedError)?.errorDescription ?? "Could not cancel plan."
+        }
         await loadSubscription(userId: uid)
     }
 
@@ -353,13 +396,21 @@ final class AccountViewModel: ObservableObject {
     func leavePlan() async {
         guard let uid = profileData?.user_id, let plan = subscription else { return }
         subBusy = true; defer { subBusy = false }
-        try? await service.removeSubMember(subscriptionId: plan.id, userId: uid)
+        do {
+            try await service.removeSubMember(subscriptionId: plan.id, userId: uid)
+        } catch {
+            subMsg = (error as? LocalizedError)?.errorDescription ?? "Could not leave plan."
+        }
         await loadSubscription(userId: uid)
     }
 
     func removeMember(_ memberId: String) async {
         guard let uid = profileData?.user_id, let plan = subscription else { return }
-        try? await service.removeSubMember(subscriptionId: plan.id, userId: memberId)
+        do {
+            try await service.removeSubMember(subscriptionId: plan.id, userId: memberId)
+        } catch {
+            subMsg = (error as? LocalizedError)?.errorDescription ?? "Could not remove member."
+        }
         await loadSubscription(userId: uid)
     }
 
@@ -373,15 +424,31 @@ final class AccountViewModel: ObservableObject {
 
     func declineRequest(_ fromUserId: String) async {
         guard let uid = profileData?.user_id, let plan = subscription else { return }
+        let previous = subRequests
         subRequests.removeAll { $0.user_id == fromUserId }
-        try? await service.declineSubRequest(subscriptionId: plan.id, fromUserId: fromUserId)
+        do {
+            try await service.declineSubRequest(subscriptionId: plan.id, fromUserId: fromUserId)
+        } catch {
+            subRequests = previous
+            subMsg = (error as? LocalizedError)?.errorDescription ?? "Could not decline request."
+        }
         await loadSubscription(userId: uid)
     }
 
     func cancelMyRequest(_ subscriptionId: String) async {
         guard let uid = profileData?.user_id else { return }
+        // Unlike the sibling methods above, this one never resynced via
+        // loadSubscription() at all, so a failed decline previously left the
+        // client permanently believing the request was gone with zero
+        // self-healing and zero error surfaced (compile-errors #2).
+        let previous = mySubRequests
         mySubRequests.removeAll { $0.subscription_id == subscriptionId }
-        try? await service.declineSubRequest(subscriptionId: subscriptionId, fromUserId: uid)
+        do {
+            try await service.declineSubRequest(subscriptionId: subscriptionId, fromUserId: uid)
+        } catch {
+            mySubRequests = previous
+            subMsg = (error as? LocalizedError)?.errorDescription ?? "Could not cancel request."
+        }
     }
 }
 
@@ -446,6 +513,7 @@ struct AccountView: View {
     // Danger zone
     @State private var deleteConfirm  = ""
     @State private var showDeleteAlert = false
+    @State private var deleteAccountError: String? = nil
 
     var body: some View {
         NavigationStack {
@@ -569,6 +637,22 @@ struct AccountView: View {
         } message: {
             Text(vm.agentMsg ?? "")
         }
+        .alert("Friend Request Error", isPresented: Binding(
+            get:  { vm.friendMsg != nil },
+            set:  { if !$0 { vm.friendMsg = nil } }
+        )) {
+            Button("OK", role: .cancel) { vm.friendMsg = nil }
+        } message: {
+            Text(vm.friendMsg ?? "")
+        }
+        .alert("Couldn't Delete Account", isPresented: Binding(
+            get:  { deleteAccountError != nil },
+            set:  { if !$0 { deleteAccountError = nil } }
+        )) {
+            Button("OK", role: .cancel) { deleteAccountError = nil }
+        } message: {
+            Text(deleteAccountError ?? "")
+        }
         .alert("Rename Agent", isPresented: Binding(
             get:  { renameAgentId != nil },
             set:  { if !$0 { renameAgentId = nil } }
@@ -589,8 +673,19 @@ struct AccountView: View {
             Button("Delete", role: .destructive) {
                 let uid = appState.currentUser?.user_id ?? ""
                 Task {
-                    try? await appState.service.deleteUser(userId: uid)
-                    await MainActor.run { appState.signOut() }
+                    // C4: a swallowed failure here previously signed the user
+                    // out unconditionally, so a failed deletion looked
+                    // identical to a successful one -- only sign out on
+                    // confirmed success; surface an alert otherwise.
+                    do {
+                        try await appState.service.deleteUser(userId: uid)
+                        await MainActor.run { appState.signOut() }
+                    } catch {
+                        await MainActor.run {
+                            deleteAccountError = (error as? LocalizedError)?.errorDescription
+                                ?? "Could not delete your account. Please try again."
+                        }
+                    }
                 }
             }
         } message: {
@@ -980,6 +1075,20 @@ struct AccountView: View {
             // Stay tappable even if products haven't loaded — purchasePlan
             // surfaces a clear message instead of the button silently failing.
             .disabled(vm.subBusy || store.purchasing)
+
+            // Guideline 3.1.2: the purchase surface itself must clearly and
+            // conspicuously link to the Privacy Policy / Terms of Use, not
+            // only from privacySafetySection/legalSection further down this
+            // same scrollable screen (ios-guidelines High #3 / intake H14).
+            HStack(spacing: 6) {
+                Link("Privacy Policy", destination: URL(string: "https://fellowscript.com/#/privacy")!)
+                Text("·").foregroundColor(Theme.textMuted)
+                Link("Terms of Use", destination: URL(string: "https://fellowscript.com/#/terms")!)
+            }
+            .font(.inter(Theme.fontXXS))
+            .foregroundColor(Theme.textGoldMuted)
+            .frame(maxWidth: .infinity, alignment: .center)
+            .accessibilityElement(children: .contain)
         }
     }
 
@@ -1115,6 +1224,14 @@ struct AccountView: View {
     private var friendRequestsSection: some View {
         VStack(alignment: .leading, spacing: Theme.spacingSM) {
             sectionLabel("Friend Requests")
+
+            if let msg = vm.friendMsg {
+                Text(msg)
+                    .font(.inter(Theme.fontSM)).foregroundColor(Theme.error)
+                    .padding(.horizontal, Theme.spacingSM).padding(.vertical, Theme.spacingXS + 2)
+                    .background(Theme.error.opacity(0.10))
+                    .clipShape(RoundedRectangle(cornerRadius: Theme.radiusSM))
+            }
 
             if vm.friendRequests.isEmpty {
                 Text("No pending friend requests.")

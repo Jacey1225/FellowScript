@@ -115,14 +115,28 @@ def retrieve_subscription(subscription_id: str):
     )
 
 
-def cancel_subscription(subscription_id: str) -> None:
-    """Cancel a Stripe subscription immediately (best-effort)."""
+def cancel_subscription(subscription_id: str) -> bool:
+    """Cancel a Stripe subscription immediately.
+
+    Returns True if Stripe confirms the subscription is canceled (including
+    the "already canceled / not found" case, which is not a failure — there
+    is nothing left to bill). Returns False on a real failure (network error,
+    Stripe outage, etc.) so the caller can refuse to delete its local record
+    of a subscription that may still be live and billing.
+    """
     if not subscription_id:
-        return
+        return True
     try:
         stripe.Subscription.delete(subscription_id)
-    except Exception as e:  # already canceled / not found — safe to ignore
-        logger.warning("Stripe cancel failed for %s: %s", subscription_id, e)
+        return True
+    except stripe.error.InvalidRequestError as e:
+        # Already canceled / not found — nothing left to bill, safe to treat
+        # as a successful cancellation.
+        logger.warning("Stripe subscription %s already gone: %s", subscription_id, e)
+        return True
+    except Exception as e:
+        logger.error("Stripe cancel failed for %s: %s", subscription_id, e)
+        return False
 
 
 def card_from_subscription(sub) -> dict:

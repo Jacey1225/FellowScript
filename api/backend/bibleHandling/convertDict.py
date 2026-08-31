@@ -5,7 +5,17 @@ import spacy
 import os
 
 nlp = spacy.load("en_core_web_sm")
-main_path = "/Users/jaceysimpson/Vscode/FellowScript/"
+# One-off local content-generation tool (see api/backend/bibleHandling/archive/
+# for the superseded prototype notebook this replaced) -- not a served
+# feature, invoked only via its own __main__ block. Previously hardcoded to
+# a single developer's absolute machine path; resolved relative to this
+# file's location (repo root, three directories up) so it runs on any
+# checkout, with BIBLE_REPO_ROOT as an escape hatch if it's ever invoked from
+# somewhere that assumption doesn't hold.
+main_path = os.getenv(
+    "BIBLE_REPO_ROOT",
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", ".."),
+)
 
 def log_results(func):
     def wrapper(self, *args, **kwargs):

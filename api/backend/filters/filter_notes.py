@@ -48,13 +48,17 @@ class Filters:
             dict: Filtered notes in the same nested structure as ``self.notes``.
         """
         result = {}
+        debug = logger.isEnabledFor(logging.DEBUG)
         logger.info("filtering %d uid(s): %s", len(self.notes), list(self.notes.keys()))
         for uid, nid, note, data in self.filter_note():
-            logger.info("note title=%r user=%r verses=%s", note.title, note.user, note.verses)
+            if debug:
+                logger.debug("note title=%r user=%r verses=%s", note.title, note.user, note.verses)
             if not predicate(note):
-                logger.info("  -> filtered out")
+                if debug:
+                    logger.debug("  -> filtered out")
                 continue
-            logger.info("  -> matched")
+            if debug:
+                logger.debug("  -> matched")
             result.setdefault(uid, {})[nid] = data
         logger.info("filter result: %d notes", sum(len(v) for v in result.values()))
         return result
@@ -125,7 +129,7 @@ class Filters:
 
 
 class Sorting:
-    """Sorts a flat note collection by various criteria using quicksort."""
+    """Sorts a flat note collection by various criteria."""
 
     def __init__(self, notes: dict) -> None:
         """Initialise with a flat note mapping.
@@ -135,36 +139,11 @@ class Sorting:
         """
         self.notes = notes
 
-    def quicksort(self, notes_arr: list[list]) -> list[list]:
-        """Sort a list of ``[note_id, datetime]`` pairs in ascending date order.
-
-        Uses a median-pivot quicksort. Equal timestamps are grouped in the
-        middle partition.
-
-        Args:
-            notes_arr: List of ``[note_id, datetime]`` pairs to sort.
-
-        Returns:
-            list[list]: The input list sorted ascending by datetime value.
-        """
-        if len(notes_arr) <= 1:
-            return notes_arr
-
-        pivot = notes_arr[len(notes_arr) // 2][1]
-        left:   list = [[x, y] for x, y in notes_arr if y < pivot]
-        middle: list = [[x, y] for x, y in notes_arr if y == pivot]
-        right:  list = [[x, y] for x, y in notes_arr if y > pivot]
-        # `middle` holds only pivot-equal entries, already in sorted order relative
-        # to each other — recursing into it would re-select the same pivot forever
-        # whenever many/all entries share a value (e.g. unparseable timestamps).
-        return (self.quicksort(left) +
-                middle +
-                self.quicksort(right))
-
     def sort_date(self, descending: bool) -> dict:
         """Return notes sorted by their timestamp.
 
-        Parses each note's ``timestamp`` field, sorts ascending via quicksort,
+        Parses each note's ``timestamp`` field and sorts via Python's
+        built-in ``sorted()`` (Timsort — guaranteed O(n log n), stable),
         then reverses if ``descending`` is ``True``.
 
         Args:
@@ -185,13 +164,11 @@ class Sorting:
                     dt = dt.replace(tzinfo=timezone.utc)
             except (ValueError, TypeError):
                 dt = datetime.min.replace(tzinfo=timezone.utc)
-            date_list.append([nid, dt])
+            date_list.append((nid, dt))
 
-        sorted_list = self.quicksort(date_list)
-        if descending:
-            sorted_list = sorted_list[::-1]
+        date_list.sort(key=lambda pair: pair[1], reverse=descending)
 
         note_sorted = {}
-        for nid, _ in sorted_list:
+        for nid, _ in date_list:
             note_sorted[nid] = self.notes[nid]
         return note_sorted

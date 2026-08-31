@@ -78,10 +78,25 @@ enum GoogleAuthSession {
             .data(using: .utf8)
 
         do {
-            let (data, _) = try await URLSession.shared.data(for: request)
+            let (data, response) = try await URLSession.shared.data(for: request)
+            // Explicit status check so a 400/401 from Google with a clear
+            // error payload isn't treated identically to a transport failure
+            // (dependency-errors #6).
+            if let http = response as? HTTPURLResponse, http.statusCode >= 400 {
+                print("[GoogleAuthSession] token exchange failed with HTTP \(http.statusCode)")
+                return nil
+            }
             let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-            return json?["id_token"] as? String
+            guard let idToken = json?["id_token"] as? String else {
+                print("[GoogleAuthSession] token exchange response missing id_token")
+                return nil
+            }
+            return idToken
         } catch {
+            // Previously discarded with zero logging -- mirrors
+            // NetworkService.decode's pattern of always logging a failure
+            // instead of silently swallowing it (dependency-errors #6).
+            print("[GoogleAuthSession] token exchange failed: \(error)")
             return nil
         }
     }

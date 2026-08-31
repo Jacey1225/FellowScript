@@ -181,8 +181,19 @@ async def _friend_went_active_notify() -> None:
 
     am = ActivityManager()
     try:
-        for user_id, username, became_active_at in am.pending_friend_notifications():
-            for friend_id, token in am.friend_device_tokens(user_id):
+        pending = am.pending_friend_notifications()
+        # Batch the friend/device-token lookup for the whole pending set in
+        # one query instead of one per transitioning user — this set is
+        # usually small (only users who just became active since the job's
+        # last 5-minute run), but batching costs nothing when convenient.
+        tokens_by_user: dict[str, list[tuple[str, str]]] = {}
+        for user_id, friend_id, token in am.friend_device_tokens_bulk(
+            [user_id for user_id, _, _ in pending]
+        ):
+            tokens_by_user.setdefault(str(user_id), []).append((friend_id, token))
+
+        for user_id, username, became_active_at in pending:
+            for friend_id, token in tokens_by_user.get(str(user_id), []):
                 if not token:
                     continue
                 try:

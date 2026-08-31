@@ -5,6 +5,15 @@
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<!--
+	  Accurate as of this writing (verified: only CryptoKit.SHA256 for PKCE
+	  code-challenge hashing in Auth/GoogleAuthSession.swift, an export-exempt
+	  use -- no custom encryption exists beyond TLS/hashing anywhere in the
+	  target; ios-guidelines Low #6). This MUST flip to <true/> the moment any
+	  encryption beyond TLS/hashing is introduced (e.g. a future end-to-end
+	  encrypted messaging feature), with an export-compliance filing done at
+	  the same time -- do not let this drift silently as features are added.
+	-->
+	<!--
 	  ATS scoping decision (recorded 2026-08-17, task 20260817-fix-preexisting-test-failures):
 	  NSAllowsLocalNetworking is added to this single shared Info.plist, which is used for
 	  both Debug and Release builds (INFOPLIST_FILE = FellowScript/Info.plist for both

@@ -133,7 +133,15 @@ final class StoreKitManager: ObservableObject {
     /// false-success "restore" (mirrors purchase()'s handling).
     @discardableResult
     func restore(userId: String, service: DataServiceProtocol) async -> Bool {
-        try? await AppStore.sync()
+        // Logged instead of silently discarded (dependency-errors #9) --
+        // restore() still calls syncEntitlements() afterward regardless, so
+        // this doesn't change control flow, only whether a sync failure
+        // leaves a diagnostic trail.
+        do {
+            try await AppStore.sync()
+        } catch {
+            print("[StoreKitManager] AppStore.sync() failed during restore: \(error)")
+        }
         return await syncEntitlements(userId: userId, service: service)
     }
 
@@ -205,7 +213,14 @@ final class StoreKitManager: ObservableObject {
         #if os(iOS)
         guard let scene = UIApplication.shared.connectedScenes
             .first(where: { $0.activationState == .foregroundActive }) as? UIWindowScene else { return }
-        try? await AppStore.showManageSubscriptions(in: scene)
+        // Logged instead of silently discarded (dependency-errors #9) -- a
+        // failed presentation just means the sheet silently fails to show,
+        // but that should leave a diagnostic trail rather than none at all.
+        do {
+            try await AppStore.showManageSubscriptions(in: scene)
+        } catch {
+            print("[StoreKitManager] AppStore.showManageSubscriptions failed: \(error)")
+        }
         #endif
     }
 

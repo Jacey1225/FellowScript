@@ -46,9 +46,10 @@ COPY api/ .
 
 # Ownership for the app's own source is enough — no writable data directory
 # is needed at runtime (the app is stateless; the only on-disk data/ access
-# in this codebase is db.py's migrate_data()/main_notes_only(), one-off
-# manual migration entry points not invoked by the running app, and data/ is
-# excluded from the build context entirely — see .dockerignore).
+# in this codebase is scripts/migrate_json_to_postgres.py's migrate_data()/
+# main_notes_only(), one-off manual migration entry points not invoked by
+# the running app, and data/ is excluded from the build context entirely —
+# see .dockerignore).
 RUN chown -R app:app /app/api
 USER app
 

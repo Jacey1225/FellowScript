@@ -32,7 +32,7 @@ function useUsernames(participantIds) {
         }
       } catch {}
     });
-  }, [participantIds.join(',')]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [participantIds.join(',')]);
   return names;
 }
 

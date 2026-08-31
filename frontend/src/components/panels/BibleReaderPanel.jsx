@@ -69,7 +69,7 @@ export default function BibleReaderPanel() {
   useLayoutEffect(() => {
     if (!chapterHTML || curVerse) return;
     if (scrollRef.current) scrollRef.current.scrollTop = 0;
-  }, [chapterHTML]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [chapterHTML]);
 
   // Scroll to a specific verse after paint (needs the element in the DOM first).
   useEffect(() => {
@@ -78,7 +78,7 @@ export default function BibleReaderPanel() {
     if (!el) return;
     const offset = el.getBoundingClientRect().top + scrollRef.current.scrollTop - 120;
     scrollRef.current.scrollTop = offset;
-  }, [chapterHTML]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [chapterHTML]);
 
   const handleVerseClick = useCallback((span, vNum, e) => {
     e.stopPropagation();

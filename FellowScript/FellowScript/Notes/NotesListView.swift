@@ -234,8 +234,17 @@ final class NotesViewModel: ObservableObject {
     // gone from the caller's own list until the next full reload.
     func deleteNote(id: String, userId: String, isOwnNote: Bool) async {
         guard isOwnNote else { return }
+        let previous = notes[id]
         notes.removeValue(forKey: id)
-        try? await service.deleteNote(noteId: id, userId: userId)
+        do {
+            try await service.deleteNote(noteId: id, userId: userId)
+        } catch {
+            // Revert the optimistic removal -- contrast with saveHighlight/
+            // clearHighlight right below, which already do/catch, revert,
+            // and set saveError on failure (compile-errors #2).
+            if let previous { notes[id] = previous }
+            saveError = error.localizedDescription
+        }
     }
 
     func saveHighlight(book: String, chapter: Int, verse: Int, color: String, userId: String) async {

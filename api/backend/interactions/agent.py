@@ -2,7 +2,9 @@ import requests
 import asyncio
 import functools
 import logging
+import time
 import uuid
+from collections import deque
 from datetime import datetime
 from schemas.agent import Agent, AgentMessages, AgentHeartbeats
 from schemas.users import Note
@@ -26,6 +28,13 @@ HEADERS   = {
 }
 
 PROMPT = (Path(__file__).parent / "agent_prompt.txt").read_text(encoding="utf-8").strip()
+
+# Per-connection cap on the agent chat WebSocket: every HTTP write on
+# agent_router is gated by check_limit's free-tier caps, but connect_agent's
+# loop had no equivalent, so a connected client could otherwise trigger
+# unlimited billed OpenRouter calls (LLM10 Unbounded Consumption).
+_CHAT_RATE_LIMIT_MESSAGES = 20
+_CHAT_RATE_LIMIT_WINDOW_SECONDS = 60.0
 
 
 class AgentManager(DBManager):
@@ -238,7 +247,26 @@ class AgentManager(DBManager):
             "Respond with a create_note JSON block as specified in your instructions. "
             "Output only the JSON block and nothing else."
         )
-        response = self._call_api(agent_role, [{"role": "user", "content": note_prompt}])
+        try:
+            response = self._call_api(agent_role, [{"role": "user", "content": note_prompt}])
+        except Exception as e:
+            # Mirror connect_agent's handling of the same call: the claim
+            # above already committed, so an unhandled failure here would
+            # permanently burn today's fire slot with no note produced and
+            # no way to retry (commit_hb_response's own idempotency guard
+            # would report "already fired today" on any later attempt).
+            # Unset the claim so a retry can go through.
+            logger.error("OpenRouter API error in commit_hb_response for heartbeat %s: %s", heartbeat_id, e)
+            try:
+                self.cur.execute(
+                    "UPDATE agent_heartbeats SET last_fired = NULL WHERE _id = %s",
+                    (heartbeat_id,),
+                )
+                self.conn.commit()
+            except Exception as rollback_err:
+                logger.error("Failed to unset heartbeat claim for %s: %s", heartbeat_id, rollback_err)
+                self.conn.rollback()
+            return {"error": "I'm having trouble connecting right now. Please try again in a moment."}
         if "{" in response and "}" in response:
             start = response.find("{")
             end   = response.rfind("}") + 1
@@ -321,12 +349,28 @@ class AgentManager(DBManager):
         loop = asyncio.get_running_loop()
         agent_data = self.get_agent(agent_id) or {}
         agent_role = list(agent_data.values())[0].get("role", "") if agent_data else ""
+        # Sliding window of recent message timestamps, scoped to this one
+        # connection (one per user_id/agent_id pair -- see agent_ws_endpoint).
+        message_times: deque[float] = deque()
         try:
             while True:
                 payload      = await ws.receive_json()
                 user_content = payload.get("content", "").strip()
                 if not user_content:
                     continue
+
+                now_monotonic = time.monotonic()
+                while message_times and now_monotonic - message_times[0] > _CHAT_RATE_LIMIT_WINDOW_SECONDS:
+                    message_times.popleft()
+                if len(message_times) >= _CHAT_RATE_LIMIT_MESSAGES:
+                    await ws.send_json({
+                        "role":      "error",
+                        "content":   "You're sending messages too quickly. Please wait a moment and try again.",
+                        "agent_id":  agent_id,
+                        "timestamp": str(datetime.now()),
+                    })
+                    continue
+                message_times.append(now_monotonic)
 
                 user_ts = datetime.now()
                 # Persist user turn immediately so it survives even if the API call fails

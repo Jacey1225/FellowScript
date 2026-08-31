@@ -44,6 +44,10 @@ struct ChatRootView: View {
     // Guideline 1.2 report/block
     @State private var reportTarget:      FSContact? = nil
     @State private var blockConfirmTarget: FSContact? = nil
+    // Surfaced on a failed report/block instead of the previous silent
+    // `try?` no-op (compile-errors #2).
+    @State private var reportError: String? = nil
+    @State private var blockError:  String? = nil
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -152,6 +156,38 @@ struct ChatRootView: View {
             Button("OK", role: .cancel) { vm.agentError = nil }
         } message: {
             Text(vm.agentError ?? "")
+        }
+        .alert("Couldn't Send Report", isPresented: Binding(
+            get: { reportError != nil },
+            set: { if !$0 { reportError = nil } }
+        )) {
+            Button("OK", role: .cancel) { reportError = nil }
+        } message: {
+            Text(reportError ?? "")
+        }
+        .alert("Couldn't Block User", isPresented: Binding(
+            get: { blockError != nil },
+            set: { if !$0 { blockError = nil } }
+        )) {
+            Button("OK", role: .cancel) { blockError = nil }
+        } message: {
+            Text(blockError ?? "")
+        }
+        .alert("Couldn't Remove Friend", isPresented: Binding(
+            get: { vm.friendActionError != nil },
+            set: { if !$0 { vm.friendActionError = nil } }
+        )) {
+            Button("OK", role: .cancel) { vm.friendActionError = nil }
+        } message: {
+            Text(vm.friendActionError ?? "")
+        }
+        .alert("Couldn't Leave Group", isPresented: Binding(
+            get: { vm.groupActionError != nil },
+            set: { if !$0 { vm.groupActionError = nil } }
+        )) {
+            Button("OK", role: .cancel) { vm.groupActionError = nil }
+        } message: {
+            Text(vm.groupActionError ?? "")
         }
     }
 
@@ -277,7 +313,17 @@ struct ChatRootView: View {
         }
         .sheet(item: $reportTarget) { contact in
             ReportUserSheet(contact: contact) { reason, detail in
-                Task { try? await appState.service.reportUser(reportedUserId: contact.id, reason: reason, detail: detail) }
+                Task {
+                    do {
+                        try await appState.service.reportUser(reportedUserId: contact.id, reason: reason, detail: detail)
+                    } catch {
+                        // A failed report previously gave the user no
+                        // indication their abuse report never reached
+                        // moderation (compile-errors #2).
+                        reportError = (error as? LocalizedError)?.errorDescription
+                            ?? "Could not send report. Please try again."
+                    }
+                }
                 reportTarget = nil
             }
         }
@@ -289,9 +335,24 @@ struct ChatRootView: View {
             Button("Block", role: .destructive) {
                 guard let contact = blockConfirmTarget else { return }
                 let uid = appState.currentUser?.user_id ?? ""
+                let wasActive = activeContact?.id == contact.id
                 vm.friends.removeAll { $0.id == contact.id }
-                if activeContact?.id == contact.id { activeContact = nil }
-                Task { try? await appState.service.blockUser(userId: uid, blockedId: contact.id) }
+                if wasActive { activeContact = nil }
+                Task {
+                    do {
+                        try await appState.service.blockUser(userId: uid, blockedId: contact.id)
+                    } catch {
+                        // Revert: the confirmation dialog tells the user
+                        // they're now protected from this contact -- a
+                        // failed block must not leave that claim false with
+                        // no signal (compile-errors #2).
+                        if !vm.friends.contains(where: { $0.id == contact.id }) {
+                            vm.friends.append(contact)
+                        }
+                        blockError = (error as? LocalizedError)?.errorDescription
+                            ?? "Could not block this user. Please try again."
+                    }
+                }
                 blockConfirmTarget = nil
             }
             Button("Cancel", role: .cancel) { blockConfirmTarget = nil }
@@ -441,6 +502,11 @@ final class ChatViewModel: ObservableObject {
     // checkedRequestRaw and throws instead of fabricating a fake FSAgent with
     // a client-generated id on failure (backend step 11 finding #2).
     @Published var agentError: String? = nil
+    // Surfaced by removeFriend/leaveGroup below on a failed mutating call —
+    // both used to be a bare optimistic-remove-then-`try?` no-op with no
+    // revert and no signal to the user (compile-errors #2).
+    @Published var friendActionError: String? = nil
+    @Published var groupActionError:  String? = nil
 
     // Guards against a duplicate fetch when this instance is shared between
     // StartupCoordinator (which calls load() once up front to gate the
@@ -491,13 +557,29 @@ final class ChatViewModel: ObservableObject {
     }
 
     func removeFriend(id: String, userId: String) {
+        let previous = friends
         friends.removeAll { $0.id == id }
-        Task { try? await service.removeFriend(userId: userId, friendId: id) }
+        Task {
+            do {
+                try await service.removeFriend(userId: userId, friendId: id)
+            } catch {
+                friends = previous
+                friendActionError = (error as? LocalizedError)?.errorDescription ?? "Could not remove friend."
+            }
+        }
     }
 
     func leaveGroup(id: String, userId: String) {
+        let previous = groups
         groups.removeAll { $0.id == id }
-        Task { try? await service.leaveGroup(userId: userId, groupId: id) }
+        Task {
+            do {
+                try await service.leaveGroup(userId: userId, groupId: id)
+            } catch {
+                groups = previous
+                groupActionError = (error as? LocalizedError)?.errorDescription ?? "Could not leave group."
+            }
+        }
     }
 }
 

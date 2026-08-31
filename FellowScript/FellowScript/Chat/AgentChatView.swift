@@ -351,10 +351,16 @@ struct AgentChatView: View {
 // ── Agent message bubble ──────────────────────────────────────────────────────
 // Single-message equivalent of MessageGroupRow (FSAgentMessage's shape is
 // already ungrouped/one-bubble-per-message, so MessageDisplayGroup's
-// multi-message grouping machinery doesn't apply) — same avatar badge,
-// sender-name/time-label row, and bubble fill/stroke/corner-radius/
-// topEdgeHighlight treatment as the regular chat, including a real bubble
-// background for the agent's own responses (previously bare floating text).
+// multi-message grouping machinery doesn't apply) — same avatar badge and
+// sender-name/time-label row as the regular chat. The bubble fill/stroke/
+// corner-radius/topEdgeHighlight chrome, however, is intentionally
+// asymmetric here (task 20260830-agent-chat-bubble-removal): only the
+// user's own ("mine") message keeps the gold-tinted bubble container.
+// Agent responses render bare against the screen's ambient bgPage +
+// radial-gradient wash background — no fill/border/corner/edge-highlight —
+// per the user's "content sitting on the root background" request. This
+// intentionally diverges from MessageGroupRow's fully-symmetric treatment
+// (per-screen component divergence is an accepted preference here).
 struct AgentMessageBubble: View {
     let message: FSAgentMessage
     let agentName: String
@@ -385,17 +391,30 @@ struct AgentMessageBubble: View {
                     if !message.mine { Spacer(minLength: 0) }
                 }
 
-                MarkdownBodyView(text: message.text, isMine: message.mine, baseFontSize: Theme.fontBody)
-                    .padding(.horizontal, Theme.spacingMD)
-                    .padding(.vertical, Theme.spacingSM)
-                    .background(message.mine ? Theme.gold.opacity(0.18) : Color.white.opacity(0.06))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: Theme.radiusLG)
-                            .stroke(message.mine ? Theme.borderGoldDim : Theme.borderGoldFaint, lineWidth: 1)
-                    )
-                    .clipShape(RoundedRectangle(cornerRadius: Theme.radiusLG))
-                    .topEdgeHighlight(RoundedRectangle(cornerRadius: Theme.radiusLG))
-                    .frame(maxWidth: UIScreen.main.bounds.width * 0.78, alignment: message.mine ? .trailing : .leading)
+                Group {
+                    if message.mine {
+                        MarkdownBodyView(text: message.text, isMine: true, baseFontSize: Theme.fontBody)
+                            .padding(.horizontal, Theme.spacingMD)
+                            .padding(.vertical, Theme.spacingSM)
+                            .background(Theme.gold.opacity(0.18))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: Theme.radiusLG)
+                                    .stroke(Theme.borderGoldDim, lineWidth: 1)
+                            )
+                            .clipShape(RoundedRectangle(cornerRadius: Theme.radiusLG))
+                            .topEdgeHighlight(RoundedRectangle(cornerRadius: Theme.radiusLG))
+                    } else {
+                        // No fill/border/corner-radius/topEdgeHighlight — agent
+                        // responses sit directly on the chat's ambient
+                        // bgPage + radial-gradient background. Padding is kept
+                        // so the text still aligns with the sender-name/time
+                        // row above it.
+                        MarkdownBodyView(text: message.text, isMine: false, baseFontSize: Theme.fontBody)
+                            .padding(.horizontal, Theme.spacingMD)
+                            .padding(.vertical, Theme.spacingSM)
+                    }
+                }
+                .frame(maxWidth: UIScreen.main.bounds.width * 0.78, alignment: message.mine ? .trailing : .leading)
             }
 
             if message.mine {

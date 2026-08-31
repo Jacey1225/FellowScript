@@ -123,6 +123,30 @@ async def _resolve_account_id() -> str:
     return account_id
 
 
+# Env vars the spawned cloudwatch-mcp-server subprocess actually needs to
+# resolve AWS credentials/region and to find its own interpreter on $PATH.
+# Forwarding the *entire* parent environment (the previous behavior) would
+# also hand it every other secret this process holds (DB_PASSWORD,
+# STRIPE_SECRET_KEY, OPENROUTER_API_KEY, SES_*, ...) -- a bug or supply-chain
+# issue in this third-party package would then be able to exfiltrate all of
+# them, not just AWS access. HOME is included because boto3's credential
+# chain reads `~/.aws/credentials`/`~/.aws/config` when no explicit
+# AWS_ACCESS_KEY_ID is set.
+_SUBPROCESS_ENV_ALLOWLIST = (
+    "PATH", "HOME",
+    "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN",
+    "AWS_REGION", "AWS_DEFAULT_REGION", "AWS_PROFILE",
+    "CLOUDWATCH_REGION",
+)
+
+
+def _subprocess_env() -> dict[str, str]:
+    """Minimal environment for the cloudwatch-mcp-server subprocess -- only
+    the AWS-related vars (and PATH/HOME) it actually needs, not the full
+    parent environment."""
+    return {k: v for k, v in os.environ.items() if k in _SUBPROCESS_ENV_ALLOWLIST}
+
+
 class CloudWatchMCPClient:
     """Async context manager: spawns the MCP server subprocess once and
     reuses the session for every call made inside the `async with` block, so
@@ -156,7 +180,7 @@ class CloudWatchMCPClient:
             ) from e
 
         parts = shlex.split(self._command)
-        params = StdioServerParameters(command=parts[0], args=parts[1:], env=dict(os.environ))
+        params = StdioServerParameters(command=parts[0], args=parts[1:], env=_subprocess_env())
         self._stdio_ctx = stdio_client(params)
         read, write = await self._stdio_ctx.__aenter__()
         self._session = ClientSession(read, write)

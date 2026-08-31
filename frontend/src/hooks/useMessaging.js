@@ -1,5 +1,13 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
+import { message } from 'antd';
 import { API, WS_BASE } from '../config.js';
+
+// WS reconnect backoff: 3s -> 30s cap, doubling each failed attempt.
+const WS_RECONNECT_MIN_MS = 3000;
+const WS_RECONNECT_MAX_MS = 30000;
+// After this many consecutive failed attempts, the "reconnecting" indicator
+// switches to a firmer "offline" one rather than looking like it's about to succeed.
+const WS_OFFLINE_AFTER_ATTEMPTS = 3;
 
 export function useMessaging({ user }) {
   const [friends,        setFriends]        = useState([]);
@@ -7,16 +15,27 @@ export function useMessaging({ user }) {
   const [currentContact, setCurrentContact] = useState(null);
   const [messages,       setMessages]       = useState([]);
   const [groupMembers,   setGroupMembers]   = useState([]);
+  const [wsStatus,       setWsStatus]       = useState('connecting'); // 'connecting' | 'connected' | 'reconnecting' | 'offline'
   const wsRef              = useRef(null);
   const friendCache        = useRef({});
   const sessionSignalCbRef = useRef(null);
+  const reconnectAttemptsRef = useRef(0);
+  const reconnectTimeoutRef  = useRef(null);
 
   // ── WebSocket ──────────────────────────────────────────────────────────────
 
   const connectWS = useCallback(() => {
     if (!user) return;
+    clearTimeout(reconnectTimeoutRef.current);
     wsRef.current = new WebSocket(`${WS_BASE}/message/ws/${user.user_id}`);
     const SESSION_TYPES = new Set(['offer', 'answer', 'ice-candidate', 'session-created', 'session-joined', 'session-left', 'talking']);
+    wsRef.current.onopen = () => {
+      if (reconnectAttemptsRef.current > 0) {
+        message.success({ content: 'Reconnected.', key: 'fs-ws-status', duration: 2 });
+      }
+      reconnectAttemptsRef.current = 0;
+      setWsStatus('connected');
+    };
     wsRef.current.onmessage = e => {
       try {
         const data = JSON.parse(e.data);
@@ -36,16 +55,37 @@ export function useMessaging({ user }) {
           }
           return cc;
         });
-      } catch {}
+      } catch (err) {
+        console.error('Failed to parse incoming WS message:', err);
+      }
+    };
+    wsRef.current.onerror = (err) => {
+      console.error('Messaging WebSocket error:', err);
     };
     wsRef.current.onclose = () => {
-      // reconnect if still open
-      if (wsRef.current) setTimeout(connectWS, 3000);
+      // Reconnect with exponential backoff (3s -> 30s cap) unless this was an
+      // intentional disconnect (disconnectWS nulls onclose before closing).
+      if (!wsRef.current) return;
+      const attempt = reconnectAttemptsRef.current + 1;
+      reconnectAttemptsRef.current = attempt;
+      const delay = Math.min(WS_RECONNECT_MIN_MS * 2 ** (attempt - 1), WS_RECONNECT_MAX_MS);
+      const offline = attempt >= WS_OFFLINE_AFTER_ATTEMPTS;
+      setWsStatus(offline ? 'offline' : 'reconnecting');
+      message.warning({
+        content: offline ? "You're offline. Still trying to reconnect…" : 'Reconnecting…',
+        key: 'fs-ws-status',
+        duration: 0,
+      });
+      reconnectTimeoutRef.current = setTimeout(connectWS, delay);
     };
   }, [user]);
 
   const disconnectWS = useCallback(() => {
+    clearTimeout(reconnectTimeoutRef.current);
+    reconnectAttemptsRef.current = 0;
+    message.destroy('fs-ws-status');
     if (wsRef.current) { wsRef.current.onclose = null; wsRef.current.close(); wsRef.current = null; }
+    setWsStatus('connecting');
   }, []);
 
   const setOnSessionSignal = useCallback((cb) => { sessionSignalCbRef.current = cb; }, []);
@@ -60,7 +100,9 @@ export function useMessaging({ user }) {
     try {
       const res = await fetch(`${API}/user/${user.user_id}`);
       if (res.ok) freshUser = await res.json();
-    } catch {}
+    } catch (err) {
+      console.error('Failed to refresh user before loading contacts:', err);
+    }
 
     // Friends
     const friendIds = freshUser.friends || [];
@@ -69,7 +111,10 @@ export function useMessaging({ user }) {
         try {
           const r = await fetch(`${API}/user/${fid}`);
           if (r.ok) { const d = await r.json(); friendCache.current[fid] = d.username; }
-        } catch { friendCache.current[fid] = fid.slice(0, 8); }
+        } catch (err) {
+          console.error(`Failed to load friend ${fid}:`, err);
+          friendCache.current[fid] = fid.slice(0, 8);
+        }
       }
       const name = friendCache.current[fid] || fid.slice(0, 8);
       let preview = '';
@@ -83,7 +128,9 @@ export function useMessaging({ user }) {
             preview = all[all.length - 1].text || '';
           }
         }
-      } catch {}
+      } catch (err) {
+        console.error(`Failed to load message preview for friend ${fid}:`, err);
+      }
       return { id: fid, name, type: 'friend', toUsers: [fid], preview };
     }));
     setFriends(friendList);
@@ -106,7 +153,9 @@ export function useMessaging({ user }) {
           }
           return { id: gid, name: g.title || gid, type: 'group', toUsers: g.users || [], preview };
         }
-      } catch {}
+      } catch (err) {
+        console.error(`Failed to load group ${gid}:`, err);
+      }
       return { id: gid, name: gid.slice(0, 8), type: 'group', toUsers: [], preview: '' };
     }));
     setGroups(groupMap);
@@ -137,7 +186,10 @@ export function useMessaging({ user }) {
           sender: m.mine ? '' : (m.from_user || ''),
         })));
       }
-    } catch {}
+    } catch (err) {
+      console.error('Failed to open chat:', err);
+      message.error('Could not load that conversation. Check your connection and try again.');
+    }
   }, [user]);
 
   const closeChat = useCallback(() => {
@@ -172,9 +224,14 @@ export function useMessaging({ user }) {
       );
       if (res.ok || res.status === 204) return { ok: true };
       let detail = 'Request failed.';
-      try { const d = await res.json(); detail = d.detail || detail; } catch {}
+      try { const d = await res.json(); detail = d.detail || detail; } catch (err) {
+        console.error('Failed to parse add-friend error response:', err);
+      }
       return { ok: false, detail };
-    } catch { return { ok: false, detail: 'Could not reach the server.' }; }
+    } catch (err) {
+      console.error('Failed to send friend request:', err);
+      return { ok: false, detail: 'Could not reach the server.' };
+    }
   }, [user]);
 
   const removeFriend = useCallback(async (friendId) => {
@@ -185,7 +242,11 @@ export function useMessaging({ user }) {
         setFriends(prev => prev.filter(f => f.id !== friendId));
         return true;
       }
-    } catch {}
+      message.error('Could not remove that friend. Please try again.');
+    } catch (err) {
+      console.error('Failed to remove friend:', err);
+      message.error('Could not remove that friend. Check your connection and try again.');
+    }
     return false;
   }, [user]);
 
@@ -198,8 +259,14 @@ export function useMessaging({ user }) {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content_type: 'user', reported_user_id: reportedUserId, reason, detail }),
       });
-      return res.ok || res.status === 201;
-    } catch { return false; }
+      const ok = res.ok || res.status === 201;
+      if (!ok) message.error('Could not submit your report. Please try again.');
+      return ok;
+    } catch (err) {
+      console.error('Failed to submit report:', err);
+      message.error('Could not submit your report. Check your connection and try again.');
+      return false;
+    }
   }, [user]);
 
   const blockUser = useCallback(async (blockedId) => {
@@ -213,7 +280,9 @@ export function useMessaging({ user }) {
         setCurrentContact(cc => (cc && cc.id === blockedId ? null : cc));
         return true;
       }
-    } catch {}
+    } catch (err) {
+      console.error('Failed to block user:', err);
+    }
     return false;
   }, [user]);
 
@@ -229,8 +298,14 @@ export function useMessaging({ user }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ group_id: groupId, title, users: allUsers }),
       });
-      return res.ok || res.status === 201;
-    } catch { return false; }
+      const ok = res.ok || res.status === 201;
+      if (!ok) message.error('Could not create that group. Please try again.');
+      return ok;
+    } catch (err) {
+      console.error('Failed to create group:', err);
+      message.error('Could not create that group. Check your connection and try again.');
+      return false;
+    }
   }, [user]);
 
   const updateGroup = useCallback(async (groupId, title, memberIds) => {
@@ -246,7 +321,11 @@ export function useMessaging({ user }) {
         setGroups(prev => ({ ...prev, [groupId]: { title, users: allUsers } }));
         return true;
       }
-    } catch {}
+      message.error('Could not update that group. Please try again.');
+    } catch (err) {
+      console.error('Failed to update group:', err);
+      message.error('Could not update that group. Check your connection and try again.');
+    }
     return false;
   }, [user]);
 
@@ -254,12 +333,18 @@ export function useMessaging({ user }) {
     if (!user) return false;
     try {
       const res = await fetch(`${API}/groups/${user.user_id}/${groupId}`, { method: 'DELETE' });
-      return res.ok || res.status === 204;
-    } catch { return false; }
+      const ok = res.ok || res.status === 204;
+      if (!ok) message.error('Could not leave that group. Please try again.');
+      return ok;
+    } catch (err) {
+      console.error('Failed to leave group:', err);
+      message.error('Could not leave that group. Check your connection and try again.');
+      return false;
+    }
   }, [user]);
 
   return {
-    friends, groups, currentContact, messages, groupMembers,
+    friends, groups, currentContact, messages, groupMembers, wsStatus,
     wsRef, friendCache,
     connectWS, disconnectWS, setOnSessionSignal,
     loadContacts, openChat, closeChat, sendMessage,
