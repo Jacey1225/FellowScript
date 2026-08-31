@@ -1,5 +1,6 @@
 import psycopg2 as sql
 import os
+import re
 import logging
 from typing import Any
 from dotenv import load_dotenv
@@ -25,6 +26,50 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 logger = logging.getLogger(__name__)
+
+# ── Sensitive-value redaction for caught DB write errors ────────────────
+#
+# db-write-failure-signaling workflow, step 1 (Security Posture Q13:
+# proactively redact potentially-sensitive log content by default, in
+# every environment, not limited to a fixed known-fields list). A caught
+# sql.Error's own message can echo back the actual value that triggered
+# it -- most commonly postgres's constraint-violation DETAIL line, e.g.
+# `duplicate key value violates unique constraint "users_email_key"
+# DETAIL:  Key (email)=(someone@example.com) already exists.` -- and that
+# can happen for *any* column, not just email, so this deliberately
+# doesn't key off a fixed list of "sensitive" column names. Two
+# independent patterns: the `Key (col)=(value)` shape postgres uses for
+# unique/FK-violation DETAIL lines (redacts the value regardless of which
+# column it names), the `Failing row contains (...)` shape postgres uses
+# for NOT NULL and check-constraint violations (this one dumps *every*
+# column of the offending row -- not just the one that failed -- so on a
+# table like `users` a caught NOT NULL violation could otherwise echo the
+# raw email, phone, or password hash of the whole row into the log line),
+# and a plain email-shaped backstop for any other error text that happens
+# to echo one back outside either of those two DETAIL shapes.
+_DB_ERROR_KEY_VALUE_RE = re.compile(r"(Key \([^)]*\)=\()[^)]*(\))")
+_DB_ERROR_FAILING_ROW_RE = re.compile(r"(Failing row contains \()[^)]*(\))")
+_DB_ERROR_EMAIL_RE = re.compile(r"\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b")
+
+
+def _redact_db_error(e: sql.Error) -> str:
+    """Return a log-safe rendering of a caught DB error.
+
+    Strips the offending value out of postgres's "Key (col)=(value) ..."
+    detail line, blanks out the entire row dumped by a "Failing row
+    contains (...)" detail line (NOT NULL / check-constraint violations),
+    and scrubs any email-shaped text, so a constraint violation never
+    echoes a raw sensitive value into the log line this module emits --
+    that line ships to CloudWatch via the external agent `watchdog.py`
+    polls (see `DB_WRITE_FAILURE` marker below), so this is the point
+    before it ever leaves the process, not a downstream cleanup.
+    """
+    text = str(e)
+    text = _DB_ERROR_KEY_VALUE_RE.sub(r"\1[REDACTED]\2", text)
+    text = _DB_ERROR_FAILING_ROW_RE.sub(r"\1[REDACTED_ROW]\2", text)
+    text = _DB_ERROR_EMAIL_RE.sub("[REDACTED_EMAIL]", text)
+    return text
+
 
 def create_tables(cur):
     logger.info("Creating tables...")
@@ -321,6 +366,29 @@ def create_tables(cur):
         "timestamp TIMESTAMPTZ DEFAULT NOW(),"
         "content TEXT DEFAULT '')"
     )
+    # Migration for a pre-existing agent_messages table from an earlier
+    # schema (columns `conversation_id`/`role` instead of today's
+    # `agent_id`/`user_id`/`title`) -- same class of gap as the `agents`
+    # table's name/enabled columns above, and the same silent-failure
+    # consequence: db-write-failure-signaling workflow step 2 found this
+    # by having AgentManager.save_agent_message/note_via_hb's insertion()
+    # call finally raise on a caught error instead of swallowing it, which
+    # surfaced "column \"title\" of relation \"agent_messages\" does not
+    # exist" against any database whose agent_messages predates this
+    # column set -- previously every chat/heartbeat message write against
+    # such a database failed exactly this way and was reported as sent
+    # anyway. The old `conversation_id`/`role` columns are dropped outright
+    # (not just left in place) rather than merely added-around: no code
+    # reads either one, and the old `role` column's leftover NOT NULL
+    # constraint would otherwise reject every insert going forward too,
+    # since nothing populates it anymore -- same "nothing reads or writes
+    # it anymore" reasoning as the `notifications` DROP TABLE a few tables
+    # below.
+    cur.execute("ALTER TABLE agent_messages ADD COLUMN IF NOT EXISTS title VARCHAR(255) DEFAULT ''")
+    cur.execute("ALTER TABLE agent_messages ADD COLUMN IF NOT EXISTS agent_id UUID REFERENCES agents(_id) ON DELETE CASCADE")
+    cur.execute("ALTER TABLE agent_messages ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(_id) ON DELETE CASCADE")
+    cur.execute("ALTER TABLE agent_messages DROP COLUMN IF EXISTS conversation_id")
+    cur.execute("ALTER TABLE agent_messages DROP COLUMN IF EXISTS role")
 
     # One-time cleanup migration: the `notifications` table backed the
     # removed agentic/custom notification subsystem (user-authored AI-prompt
@@ -659,7 +727,20 @@ class DBManager:
         self.cur = self.conn.cursor()
         self.db_name = dbname
 
-    def insertion(self, table: str, values: dict[str, Any], conflict: str = "DO NOTHING"):
+    def insertion(self, table: str, values: dict[str, Any], conflict: str = "DO NOTHING") -> bool:
+        """Insert one row. Returns True on success, False if the write
+        failed (caught sql.Error) -- callers must check this signal rather
+        than assuming success, since a caught error here previously
+        returned None indistinguishably from the successful (also None)
+        path (db-write-failure-signaling workflow, step 1).
+
+        An `ON CONFLICT ... DO NOTHING` no-op (0 rows written because the
+        row already exists) is NOT treated as failure here: unlike
+        update/delete's zero-rows case below, a `DO NOTHING` conflict is
+        the caller's own explicitly-requested idempotent behavior, not an
+        unexpected miss -- it ran without error and did exactly what was
+        asked.
+        """
         cols = ", ".join(values.keys())
         placeholders = ", ".join(["%s"] * len(values))
         try:
@@ -668,9 +749,15 @@ class DBManager:
                 list(values.values())
             )
             self.conn.commit()
+            return True
         except sql.Error as e:
-            logger.error("Error inserting into %s: %s", table, e)
+            # DB_WRITE_FAILURE: dedicated, distinguishable marker matching
+            # the CLIENT_DECODE_FAILURE precedent (routes/monitoring.py) --
+            # see watchdog.py's _ERROR_SIGNAL_PATTERNS for the matching
+            # entry, checked before the generic "error_level" pattern.
+            logger.error("DB_WRITE_FAILURE op=insert table=%s error=%s", table, _redact_db_error(e))
             self.conn.rollback()
+            return False
 
     def lookup(self, table: str, conditions: dict[str, Any] = {}) -> dict:
         params = list(conditions.values())
@@ -692,16 +779,52 @@ class DBManager:
             self.conn.rollback()
             return {}
 
-    def delete(self, table: str, conditions: dict[str, Any]):
+    def delete(self, table: str, conditions: dict[str, Any]) -> bool:
+        """Delete rows matching conditions. Returns True only if the
+        DELETE both ran without a SQL error AND actually removed at least
+        one row.
+
+        Zero rows affected (no exception -- the WHERE clause just matched
+        nothing) is treated as failure too, not just "ran clean": with a
+        plain bool signal there's no third state to distinguish "deleted
+        something" from "matched nothing," and silently reporting the
+        latter as success is exactly the fake-success behavior this
+        workflow exists to remove (a delete targeting a row that doesn't
+        exist / was already removed / doesn't belong to the caller should
+        be just as visible to the caller as a real SQL error). Callers for
+        whom a zero-row delete is a legitimate, expected no-op (e.g.
+        idempotent cleanup) can treat a False return accordingly -- that's
+        a call-site decision, not this method's.
+
+        Deliberately does NOT log a DB_WRITE_FAILURE line for the
+        zero-rows case (only for the caught-exception path below): a
+        no-op delete isn't a DB failure, and logging every ordinary
+        zero-match delete as an "error" would flood the CloudWatch-backed
+        watchdog pipeline with false signals -- the same class of noisy,
+        self-amplifying false-positive this codebase has already had to
+        harden watchdog.py against (see its self-exclusion/circuit-breaker
+        comments).
+        """
         clauses = " AND ".join(f"{col} = %s" for col in conditions.keys())
         try:
             self.cur.execute(f"DELETE FROM {table} WHERE {clauses}", list(conditions.values()))
+            deleted = self.cur.rowcount > 0
             self.conn.commit()
+            return deleted
         except sql.Error as e:
-            logger.error("Error deleting from %s: %s", table, e)
+            logger.error("DB_WRITE_FAILURE op=delete table=%s error=%s", table, _redact_db_error(e))
             self.conn.rollback()
+            return False
 
-    def update(self, table: str, values: dict[str, Any], conditions: dict[str, Any]):
+    def update(self, table: str, values: dict[str, Any], conditions: dict[str, Any]) -> bool:
+        """Update rows matching conditions. Returns True only if the
+        UPDATE both ran without a SQL error AND actually changed at least
+        one row -- same zero-rows-counts-as-failure reasoning as `delete`
+        above (a plain bool signal has no room for a distinct "ran clean
+        but matched nothing" state), and same choice not to log
+        DB_WRITE_FAILURE for that no-op case, only for a real caught
+        error.
+        """
         set_clause = ", ".join(f"{col} = %s" for col in values.keys())
         where_clause = " AND ".join(f"{col} = %s" for col in conditions.keys())
         params = list(values.values()) + list(conditions.values())
@@ -710,10 +833,13 @@ class DBManager:
                 f"UPDATE {table} SET {set_clause} WHERE {where_clause}",
                 params
             )
+            updated = self.cur.rowcount > 0
             self.conn.commit()
+            return updated
         except sql.Error as e:
-            logger.error("Error updating %s: %s", table, e)
+            logger.error("DB_WRITE_FAILURE op=update table=%s error=%s", table, _redact_db_error(e))
             self.conn.rollback()
+            return False
 
     def close(self):
         self.cur.close()

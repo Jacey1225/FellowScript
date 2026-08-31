@@ -1,6 +1,7 @@
 import json
 import logging
 from db import DBManager
+from backend.errors import SaveFailedError
 from schemas.devotion import DevotionPlan
 
 logger = logging.getLogger(__name__)
@@ -64,7 +65,12 @@ class DevotionManager(DBManager):
         return self._to_plan(devotion_id, data)
 
     def remove_devotion(self, devotion_id: str) -> None:
-        self.delete("devotions", {"_id": devotion_id})
+        # Callers (routes/devotion.py::delete_devotion) already confirmed the
+        # session exists via read_devotion immediately before calling this,
+        # so a False return here is a real write failure, not an expected
+        # no-op.
+        if not self.delete("devotions", {"_id": devotion_id}):
+            raise SaveFailedError()
 
     def fetch_by_contact(self, contact_id: str, viewer_id: str | None = None) -> list[dict]:
         result = self.lookup("devotions", {"group_id": contact_id})

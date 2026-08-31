@@ -170,10 +170,22 @@ def main():
 
             # ── 4. Regression-proof: confirm this test would have caught the
             #      original bug, by re-narrowing the schema to the pre-fix
-            #      shape and showing the same request silently fails to
-            #      persist (201 returned, row absent) exactly as backend step
-            #      11 described. Schema is restored in `finally` either way.
-            print("\n=== 4. Regression-proof: reproduce the pre-fix schema and show it silently drops the row ===")
+            #      shape and showing the write now fails CLOSED (503, no row
+            #      created) instead of the old silent-drop (201 returned,
+            #      row absent) that backend step 11 described. Schema is
+            #      restored in `finally` either way.
+            #
+            #      task 20260831-db-write-failure-signaling: DBManager.
+            #      insertion/.update/.delete no longer swallow a caught
+            #      sql.Error as a fake-success None -- they return an
+            #      explicit bool, and every call site (including
+            #      AgentManager's create path here) now raises the shared
+            #      SaveFailedError on False, which main.py's app-wide
+            #      handler turns into a 503. So the exact schema this test
+            #      reverts to (missing name/enabled columns) now produces a
+            #      503, not the false-success 201 this test used to assert
+            #      as "the bug" -- that inversion IS the fix working.
+            print("\n=== 4. Regression-proof: reproduce the pre-fix schema and show it now fails closed (503) ===")
             db = DBManager()
             try:
                 # Clear this test's own agent rows first — they hold the full
@@ -189,19 +201,27 @@ def main():
             finally:
                 db.close()
 
+            # Snapshot the (empty, since step 4 cleared this user's agents
+            # above) agent set before the write attempt, so a phantom row
+            # would be visible by comparison after.
+            agents_before = client.get(f"/agent/{uid}", headers=cookie_header(token)).json()
+
             try:
                 r = client.post(f"/agent/{uid}", json={"user_id": uid, "chats": [], "enabled": True},
                                  headers=cookie_header(token))
-                check("pre-fix schema: route STILL returns 201 (false success — this is the bug)",
-                      r.status_code == 201, f"{r.status_code} {r.text}")
-                broken_agent_id = r.json().get("id")
+                check("pre-fix schema: route now correctly returns 503 (fail closed), "
+                      "not the old false-success 201",
+                      r.status_code == 503, f"{r.status_code} {r.text}")
+                check("503 body carries the shared 'couldn't be saved' message, no raw DB "
+                      "error (e.g. the dropped-column detail) leaked to the client",
+                      "couldn't be saved" in str(r.json().get("detail", "")).lower(), r.text)
 
                 r = client.get(f"/agent/{uid}", headers=cookie_header(token))
                 agents_after = r.json()
-                check("pre-fix schema: the 'created' agent is ABSENT from a fresh GET "
-                      "(proves the silent-drop bug is real and this test would have caught it)",
-                      broken_agent_id not in agents_after,
-                      f"broken_agent_id={broken_agent_id} present={broken_agent_id in agents_after}")
+                check("pre-fix schema: no phantom agent row was created (fail closed, not a "
+                      "partial/silent-drop write) -- the agent set is unchanged from before the attempt",
+                      set(agents_after.keys()) == set(agents_before.keys()),
+                      f"before={list(agents_before.keys())} after={list(agents_after.keys())}")
             finally:
                 # Restore the fixed schema so the rest of the suite (and any
                 # other test relying on the real schema) is unaffected.

@@ -22,6 +22,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from db import DBManager
+from backend.errors import SaveFailedError
 from schemas.watchdog import ErrorDetection
 from backend.monitoring.cloudwatch_mcp_client import (
     CloudWatchMCPClient,
@@ -88,6 +89,16 @@ _ERROR_SIGNAL_PATTERNS: list[tuple[str, "re.Pattern[str]"]] = [
     # client-decode-failure report would just get lumped into the generic
     # "error_level" bucket instead of its own distinguishable signal.
     ("client_decode_failure", re.compile(r"\bCLIENT_DECODE_FAILURE\b")),
+    # db-write-failure-signaling workflow, step 1: DBManager.insertion/
+    # .update/.delete (db.py) now log this literal marker via
+    # logger.error(...) on every caught sql.Error, mirroring the
+    # client_decode_failure precedent immediately above -- same ordering
+    # requirement applies (must be checked before the generic
+    # "error_level" pattern, for the same "every logger.error() line
+    # already contains the literal word ERROR" reason noted there), so DB
+    # write failures get their own separately-queryable signal instead of
+    # falling into the generic bucket.
+    ("db_write_failure", re.compile(r"\bDB_WRITE_FAILURE\b")),
     ("error_level", re.compile(r"\bERROR\b")),
     ("nginx_severity_tag", re.compile(r"\[(error|crit|emerg|alert)\]")),
     ("http_5xx", re.compile(r'"\s(5\d{2})\s')),  # nginx access log: 5xx status after the quoted request
@@ -266,7 +277,17 @@ class WatchdogManager(DBManager):
         return last_seen
 
     def set_cursor(self, log_group_name: str, last_seen_time: datetime) -> None:
-        self.insertion(
+        """Raises:
+            SaveFailedError: If the write fails. Every caller
+                (``_poll_one_group``, ``_check_4xx_rate_anomaly``) runs
+                inside ``run_cycle``'s existing per-group/per-check
+                ``try/except Exception: logger.error(...); continue`` --
+                this propagates into that, leaving the cursor unmoved for
+                a retry next cycle rather than silently advancing it as if
+                the position had actually been persisted (which would
+                permanently skip whatever window was in flight).
+        """
+        if not self.insertion(
             "log_group_cursors",
             {
                 "log_group_name": log_group_name,
@@ -276,10 +297,18 @@ class WatchdogManager(DBManager):
             conflict="(log_group_name) DO UPDATE SET "
             "last_seen_time = EXCLUDED.last_seen_time, "
             "updated_at = EXCLUDED.updated_at",
-        )
+        ):
+            raise SaveFailedError()
 
     def save_detection(self, detection: ErrorDetection) -> None:
-        self.insertion(
+        """Raises:
+            SaveFailedError: If the write fails -- same propagate-to-
+                run_cycle's-existing-handler reasoning as set_cursor above.
+                A detection that silently failed to persist would never
+                appear in the admin triage feed at all, the exact
+                fake-success-by-omission this workflow exists to remove.
+        """
+        if not self.insertion(
             "error_detections",
             {
                 "_id": detection.id,
@@ -292,7 +321,8 @@ class WatchdogManager(DBManager):
                 "detected_at": detection.detected_at,
                 "status": detection.status,
             },
-        )
+        ):
+            raise SaveFailedError()
 
     # ── Read-only queries (step 4: served to the future admin page) ────────
     #

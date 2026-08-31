@@ -12,6 +12,7 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 from db import DBManager
+from backend.errors import SaveFailedError
 from fastapi import WebSocket
 from starlette.websockets import WebSocketDisconnect
 import json
@@ -50,12 +51,13 @@ class AgentManager(DBManager):
     # ── Agent CRUD ────────────────────────────────────────────────────────────
 
     def create_agent(self, agent: Agent) -> str:
-        self.insertion(self.agent_table, {
+        if not self.insertion(self.agent_table, {
             "_id":     agent.id,
             "user_id": agent.user_id,
             "role":    agent.role,
             "chats":   agent.chats,
-        })
+        }):
+            raise SaveFailedError()
         return agent.id
 
     def get_agent(self, agent_id: str) -> dict | None:
@@ -74,13 +76,20 @@ class AgentManager(DBManager):
         return self.lookup(self.agent_table, {"user_id": self.user_id})
 
     def update_agent(self, agent: Agent) -> None:
-        self.update(
+        if not self.update(
             self.agent_table,
             {"role": agent.role, "chats": agent.chats},
             {"_id": agent.id, "user_id": self.user_id}
-        )
+        ):
+            raise SaveFailedError()
 
     def delete_agent(self, agent_id: str) -> None:
+        # The WHERE clause enforces ownership itself (unlike other deletes
+        # in this file, no separate owns_agent()/lookup precedes this) --
+        # a caller-not-owner and an already-deleted agent both come back as
+        # a zero-rows False, and neither should raise: the route intends a
+        # 204 either way rather than leaking which case it was. A real DB
+        # error is still visible via db.py's DB_WRITE_FAILURE log line.
         self.delete(self.agent_table, {"_id": agent_id, "user_id": self.user_id})
 
     # ── Heartbeat CRUD ────────────────────────────────────────────────────────
@@ -116,6 +125,7 @@ class AgentManager(DBManager):
             self.conn.rollback()
 
     def delete_heartbeat(self, heartbeat_id: str) -> None:
+        # Same idempotent/ownership-via-WHERE reasoning as delete_agent above.
         self.delete(self.hb_table, {"_id": heartbeat_id, "user_id": self.user_id})
 
     def note_via_hb(self, data: dict) -> str:
@@ -127,8 +137,15 @@ class AgentManager(DBManager):
             group_id=data.get("group_id", ""),
             verses=data.get("verses", [])
         )
+        # Historically the exact silent-fake-success case this workflow
+        # exists to remove: db.py's create_tables() comment on the
+        # `agents` table records a prior incident where a missing column
+        # made this INSERT fail, insertion() swallowed it, and the caller
+        # (commit_hb_response, via routes/agent.py's commit_heartbeat)
+        # still reported success with a generated id even though no note
+        # was ever persisted.
         note_id = str(uuid.uuid4())
-        self.insertion(self.note_table, {
+        if not self.insertion(self.note_table, {
             "_id":      note_id,
             "user_id":  note.user,
             "title":    note.title,
@@ -137,16 +154,18 @@ class AgentManager(DBManager):
             "group_id": note.group_id or None,
             "is_reply": note.is_reply,
             "timestamp": note.timestamp,
-        })
+        }):
+            raise SaveFailedError()
         for i, verse in enumerate(note.verses):
             if isinstance(verse, list) and len(verse) >= 3:
-                self.insertion("note_verses", {
+                if not self.insertion("note_verses", {
                     "note_id":  note_id,
                     "position": i,
                     "book":     verse[0],
                     "chapter":  verse[1],
                     "verse":    verse[2],
-                })
+                }):
+                    raise SaveFailedError()
         return note_id
 
     def save_context(self, heartbeat_id: str, context_text: str, note_id: str | None = None) -> None:
@@ -291,18 +310,27 @@ class AgentManager(DBManager):
     # ── Messages CRUD ─────────────────────────────────────────────────────────
 
     def save_agent_message(self, msg: AgentMessages) -> None:
-        self.insertion(self.msg_table, {
+        """Raises:
+            SaveFailedError: If the write fails. ``connect_agent``'s WS loop
+                (the only live caller) already wraps its whole message-
+                handling loop in a broad ``except Exception`` that logs and
+                closes the socket -- this propagates into that existing
+                handler rather than needing its own.
+        """
+        if not self.insertion(self.msg_table, {
             "title":     msg.title,
             "agent_id":  msg.agent_id,
             "user_id":   msg.user_id,
             "timestamp": msg.timestamp,
             "content":   msg.content,
-        })
+        }):
+            raise SaveFailedError()
 
     def get_messages(self, agent_id: str) -> dict:
         return self.lookup(self.msg_table, {"agent_id": agent_id, "user_id": self.user_id})
 
     def delete_message(self, message_id: str) -> None:
+        # Same idempotent/ownership-via-WHERE reasoning as delete_agent above.
         self.delete(self.msg_table, {"_id": message_id, "user_id": self.user_id})
 
     # ── AI Chat ───────────────────────────────────────────────────────────────

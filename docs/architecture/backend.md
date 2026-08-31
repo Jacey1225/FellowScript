@@ -71,6 +71,8 @@ All business logic lives here in `*Manager` classes that subclass `DBManager`. R
 
 `DBManager` (in `db.py`) provides four auto-committing helpers: `insertion`, `lookup`, `update`, `delete`. Raw cursor (`self.cur.execute`) is used for JOINs, array ops, and aggregations.
 
+`insertion`/`update`/`delete` return an explicit `bool` — `True` on success, `False` on a caught DB error, and (for `update`/`delete` only) also `False` on a real no-op (zero rows matched, no exception). Callers must check this signal rather than assume success: at a call site where the target row's existence was just confirmed, a `False` return is raised as `SaveFailedError` (`backend/errors.py`) — a plain exception most routes just let propagate, since `main.py` registers an app-wide handler that turns it into a `503 "Couldn't be saved. Please try again."` response, the same way `slowapi`'s `RateLimitExceeded` is wired up. A call site doing best-effort/idempotent cleanup (e.g. severing a friendship that may only exist in one direction) treats `False` as an acceptable no-op instead. A caught DB error is also logged with a dedicated `DB_WRITE_FAILURE` marker so the CloudWatch watchdog (`backend/monitoring/watchdog.py`) can classify it separately from other error types.
+
 ---
 
 ## Layer 3 — `routes/`

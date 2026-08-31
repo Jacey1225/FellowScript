@@ -2,6 +2,7 @@ import hashlib
 import secrets
 from datetime import datetime, timedelta, timezone
 from db import DBManager
+from backend.errors import SaveFailedError
 
 RESET_TOKEN_TTL_MINUTES = 30
 
@@ -22,11 +23,15 @@ class PasswordResetManager(DBManager):
         (the caller embeds it in the emailed reset link — never stored raw)."""
         token = secrets.token_urlsafe(32)
         expires_at = datetime.now(timezone.utc) + timedelta(minutes=RESET_TOKEN_TTL_MINUTES)
-        self.insertion("password_reset_tokens", {
+        # A token that's emailed but never actually persisted can never be
+        # resolved back -- the user would click a reset link that's dead
+        # on arrival despite the "email sent" response looking successful.
+        if not self.insertion("password_reset_tokens", {
             "user_id":    user_id,
             "token_hash": _hash_token(token),
             "expires_at": expires_at,
-        })
+        }):
+            raise SaveFailedError()
         return token
 
     def resolve(self, token: str) -> str | None:
@@ -47,5 +52,13 @@ class PasswordResetManager(DBManager):
         return str(data.get("user_id"))
 
     def consume(self, token: str) -> None:
-        """Mark a token used so it can never be replayed, even before expiry."""
-        self.update("password_reset_tokens", {"used": True}, {"token_hash": _hash_token(token)})
+        """Mark a token used so it can never be replayed, even before expiry.
+
+        Callers invoke this only right after ``resolve(token)`` confirmed
+        the row is valid, so a False return is a real write failure --
+        raising rather than silently continuing matters here specifically:
+        if "used" silently failed to persist, the same reset link would
+        stay valid and replayable.
+        """
+        if not self.update("password_reset_tokens", {"used": True}, {"token_hash": _hash_token(token)}):
+            raise SaveFailedError()

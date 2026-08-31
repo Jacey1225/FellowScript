@@ -3,6 +3,7 @@ import logging
 from fastapi import WebSocket
 from schemas.message import Message
 from db import DBManager
+from backend.errors import SaveFailedError
 from backend.interactions.push import send_push
 from backend.moderation.content_filter import check_clean, ContentRejected, rejection_message
 
@@ -23,6 +24,19 @@ class ConnectionManager(DBManager):
         self.active_connections: dict[str, WebSocket] = {}
 
     def save_message(self, msg: Message) -> None:
+        """Persist the message and its recipient links.
+
+        Raises:
+            SaveFailedError: If a ``message_recipients`` link fails to
+                write -- the message row itself was already committed by
+                the first successful ``insertion`` call below (they share
+                this manager's one connection), but a recipient who never
+                got linked would silently never see it delivered/loaded,
+                which is exactly the fake-success outcome this workflow
+                exists to remove. ``send_msg`` (the only caller) catches
+                this and tells the sender over their own socket, since
+                there's no HTTP response to raise into here.
+        """
         self.cur.execute(
             "INSERT INTO messages (from_user, group_id, text, timestamp) "
             "VALUES (%s, %s, %s, %s) RETURNING _id",
@@ -32,7 +46,9 @@ class ConnectionManager(DBManager):
         if row:
             message_id = str(row[0])
             for uid in msg.to_users:
-                self.insertion("message_recipients", {"message_id": message_id, "user_id": uid})
+                if not self.insertion("message_recipients", {"message_id": message_id, "user_id": uid}):
+                    self.conn.commit()
+                    raise SaveFailedError()
         self.conn.commit()
 
     async def connect(self, user_id: str, ws: WebSocket) -> None:
@@ -99,7 +115,22 @@ class ConnectionManager(DBManager):
             # DM with a blocked relationship — drop entirely, no save/delivery.
             return
 
-        self.save_message(Message(**payload))
+        try:
+            self.save_message(Message(**payload))
+        except SaveFailedError as e:
+            # Mirror the ContentRejected handling just above: no HTTP
+            # response exists on this path, so tell the sender's own
+            # socket rather than raising into the WS connection loop
+            # (which would otherwise crash this connection for an
+            # unrelated later message too).
+            sender_ws = self.active_connections.get(from_user_id)
+            if sender_ws:
+                await sender_ws.send_json({
+                    "type": "error",
+                    "reason": "message_not_saved",
+                    "detail": e.message,
+                })
+            return
 
         frame = {
             "from_user": from_user_id,

@@ -76,6 +76,27 @@ CASES = [
      "ERROR:    Exception in ASGI application",
      "error_level"),
 
+    # db-write-failure-signaling workflow, step 1: db.py's DBManager.
+    # insertion/.update/.delete now log a dedicated DB_WRITE_FAILURE marker
+    # (via logger.error(...)) on every caught sql.Error, matching the
+    # CLIENT_DECODE_FAILURE precedent above -- checked before the generic
+    # "error_level" pattern so DB write failures are separately queryable.
+    ("app: DB_WRITE_FAILURE marker (db.py's own [%(levelname)s] format, insert)",
+     "2026-08-31 13:49:21 [ERROR] DB_WRITE_FAILURE op=insert table=sessions "
+     "error=insert or update on table \"sessions\" violates foreign key constraint",
+     "db_write_failure"),
+    ("app: DB_WRITE_FAILURE marker still wins over the generic ERROR check "
+     "(both would match; db_write_failure is checked first, same ordering "
+     "guarantee as client_decode_failure)",
+     "2026-08-31 13:49:21 [ERROR] DB_WRITE_FAILURE op=update table=users error=x",
+     "db_write_failure"),
+    ("app: a plain ERROR line that happens to mention 'write failure' in "
+     "prose, but without the literal DB_WRITE_FAILURE marker, must NOT "
+     "false-positive as db_write_failure specifically (still flags as "
+     "error_level, just not the dedicated marker)",
+     "2026-08-11 22:43:48,123 [routes.notes] ERROR - a write failure occurred saving the note",
+     "error_level"),
+
     # /fellowscript/nginx/error
     ("nginx error log: [error] severity tag",
      "2026/08/11 22:43:48 [error] 12345#12345: *1 connect() failed (111: Connection refused) "

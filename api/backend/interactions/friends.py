@@ -1,6 +1,7 @@
 from datetime import datetime, timezone as tzmod
 from schemas.users import User
 from db import DBManager
+from backend.errors import SaveFailedError
 from backend.interactions.blocks import BlockManager
 
 
@@ -39,10 +40,11 @@ class FriendsManager(DBManager):
                 return {"error": "Cannot send request"}
         finally:
             blocks.close()
-        self.insertion("friend_requests", {
+        if not self.insertion("friend_requests", {
             "to_user_id":   friend_id,
             "from_user_id": self.user_id,
-        })
+        }):
+            raise SaveFailedError()
         return None
 
     def add_friend(self, friend_username: str) -> dict | None:
@@ -65,8 +67,15 @@ class FriendsManager(DBManager):
                 return {"error": "Cannot add this user"}
         finally:
             blocks.close()
-        self.insertion("user_friends", {"user_id": self.user_id, "friend_id": friend_id})
-        self.insertion("user_friends", {"user_id": friend_id, "friend_id": self.user_id})
+        if not self.insertion("user_friends", {"user_id": self.user_id, "friend_id": friend_id}):
+            raise SaveFailedError()
+        if not self.insertion("user_friends", {"user_id": friend_id, "friend_id": self.user_id}):
+            raise SaveFailedError()
+        # Best-effort cleanup of the now-accepted request row -- the
+        # friendship itself (the two inserts above) is already established,
+        # so a stray/already-gone request row here is not treated as this
+        # call's own failure (a real DB error is still visible via db.py's
+        # DB_WRITE_FAILURE log line).
         self.delete("friend_requests", {"to_user_id": self.user_id, "from_user_id": friend_id})
         return None
 
@@ -153,6 +162,10 @@ class FriendsManager(DBManager):
         Args:
             friend_id: UUID of the friend to remove.
         """
+        # Best-effort/idempotent: either direction may already be gone (a
+        # partial prior removal, a race with block_user's own cleanup), so
+        # a zero-rows False here is not treated as failure -- a real DB
+        # error is still visible via db.py's DB_WRITE_FAILURE log line.
         self.delete("user_friends", {"user_id": self.user_id, "friend_id": friend_id})
         self.delete("user_friends", {"user_id": friend_id, "friend_id": self.user_id})
 

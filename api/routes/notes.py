@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException, Depends, Query
 from schemas.users import Note
 from db import DBManager
+from backend.errors import SaveFailedError
 from backend.interactions.groups import GroupsManager
 from backend.subscription.limits import check_limit
 from backend.interactions.activity import ActivityManager
@@ -78,11 +79,12 @@ async def highlight_verse(user_id: str, verse: dict, _: str = Depends(require_ma
     key = f"{book}-{chapter}-{verse_n}"
     db = DBManager()
     try:
-        db.insertion(
+        if not db.insertion(
             "highlights",
             {"user_id": user_id, "key": key, "color": str(color)},
             conflict="(user_id, key) DO UPDATE SET color = EXCLUDED.color",
-        )
+        ):
+            raise SaveFailedError()
         _record_activity(user_id)
         return {"key": key, "color": color}
     finally:
@@ -93,6 +95,9 @@ async def highlight_verse(user_id: str, verse: dict, _: str = Depends(require_ma
 async def remove_highlight(user_id: str, key: str, _: str = Depends(require_match("user_id"))) -> dict:
     db = DBManager()
     try:
+        # Idempotent: removing a highlight that's already gone is a
+        # legitimate no-op, not a failure -- a real DB error is still
+        # visible via db.py's DB_WRITE_FAILURE log line.
         db.delete("highlights", {"user_id": user_id, "key": key})
         return {"success": "highlight removed"}
     finally:
@@ -122,11 +127,12 @@ async def add_bookmark(user_id: str, bookmark: dict, _: str = Depends(require_ma
     key = f"{book}-{chapter}"
     db = DBManager()
     try:
-        db.insertion(
+        if not db.insertion(
             "bookmarks",
             {"user_id": user_id, "key": key, "label": str(label)},
             conflict="(user_id, key) DO UPDATE SET label = EXCLUDED.label",
-        )
+        ):
+            raise SaveFailedError()
         return {"key": key, "label": label}
     finally:
         db.close()
@@ -136,6 +142,7 @@ async def add_bookmark(user_id: str, bookmark: dict, _: str = Depends(require_ma
 async def remove_bookmark(user_id: str, key: str, _: str = Depends(require_match("user_id"))) -> dict:
     db = DBManager()
     try:
+        # Idempotent, same reasoning as remove_highlight above.
         db.delete("bookmarks", {"user_id": user_id, "key": key})
         return {"success": "bookmark removed"}
     finally:
@@ -171,7 +178,7 @@ async def post_reply(note_id: str, reply: dict, current_user: str = Depends(get_
         except ContentRejected as e:
             raise HTTPException(status_code=422, detail=rejection_message(e))
         reply_id   = str(uuid.uuid4())
-        db.insertion("notes", {
+        if not db.insertion("notes", {
             "_id":            reply_id,
             "user_id":        reply_note.user,
             "title":          reply_note.title,
@@ -181,7 +188,8 @@ async def post_reply(note_id: str, reply: dict, current_user: str = Depends(get_
             "is_reply":       True,
             "parent_note_id": note_id,
             "timestamp":      reply_note.timestamp,
-        })
+        }):
+            raise SaveFailedError()
         _record_activity(author)
         return {"id": reply_id}
     finally:
@@ -213,7 +221,7 @@ async def create_note(user_id: str, note_dict: dict, _: str = Depends(require_ma
             check_clean(title=note.title, text=note.text)
         except ContentRejected as e:
             raise HTTPException(status_code=422, detail=rejection_message(e))
-        db.insertion("notes", {
+        if not db.insertion("notes", {
             "_id":        note_id,
             # Deliberately the require_match-verified path param, NOT
             # note.user: note_dict.setdefault("user", user_id) above only
@@ -232,16 +240,18 @@ async def create_note(user_id: str, note_dict: dict, _: str = Depends(require_ma
             "is_reply":   note.is_reply,
             "timestamp":  note.timestamp,
             "created_at": datetime.now(),
-        })
+        }):
+            raise SaveFailedError()
         for i, verse in enumerate(note.verses):
             if isinstance(verse, list) and len(verse) >= 3:
-                db.insertion("note_verses", {
+                if not db.insertion("note_verses", {
                     "note_id":  note_id,
                     "position": i,
                     "book":     verse[0],
                     "chapter":  verse[1],
                     "verse":    verse[2],
-                })
+                }):
+                    raise SaveFailedError()
         # NOTE: iOS's NetworkService.saveNote() decodes this response as
         # [String: String] (id -> value); a nested "data" object here used to
         # make that decode throw, so saveNote() silently fell back to the
@@ -398,7 +408,9 @@ async def update_note(user_id: str, note_id: str, note_dict: dict, _: str = Depe
             check_clean(title=note.title, text=note.text)
         except ContentRejected as e:
             raise HTTPException(status_code=422, detail=rejection_message(e))
-        db.update(
+        # `existing` above already confirmed the note exists, so a False
+        # return here is a real write failure, not an expected no-op.
+        if not db.update(
             "notes",
             {
                 "title":     note.title,
@@ -408,18 +420,24 @@ async def update_note(user_id: str, note_id: str, note_dict: dict, _: str = Depe
                 "timestamp": datetime.now(),   # bump so lists can sort by last-edited
             },
             {"_id": note_id},
-        )
-        # Sync note_verses: replace all existing verse rows with the ones from the PUT body.
+        ):
+            raise SaveFailedError()
+        # Sync note_verses: replace all existing verse rows with the ones
+        # from the PUT body. A note with no prior verses is a legitimate
+        # zero-rows no-op here, so this delete isn't checked; each fresh
+        # insertion below is checked, since a silently-dropped verse row
+        # would leave the note's scripture references incomplete.
         db.delete("note_verses", {"note_id": note_id})
         for i, verse in enumerate(note.verses):
             if isinstance(verse, list) and len(verse) >= 3:
-                db.insertion("note_verses", {
+                if not db.insertion("note_verses", {
                     "note_id":  note_id,
                     "position": i,
                     "book":     verse[0],
                     "chapter":  verse[1],
                     "verse":    verse[2],
-                })
+                }):
+                    raise SaveFailedError()
     finally:
         db.close()
 
@@ -434,7 +452,10 @@ async def delete_note(user_id: str, note_id: str, _: str = Depends(require_match
         _, note_data = list(existing.items())[0]
         if str(note_data.get("user_id")) != user_id:
             raise HTTPException(status_code=403, detail="Not authorized")
-        db.delete("notes", {"_id": note_id})
+        # `existing` above already confirmed the note exists, so a False
+        # return here is a real write failure, not an expected no-op.
+        if not db.delete("notes", {"_id": note_id}):
+            raise SaveFailedError()
         return {"success": "note deleted"}
     finally:
         db.close()

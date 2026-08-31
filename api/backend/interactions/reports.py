@@ -3,6 +3,7 @@ import os
 import uuid
 
 from db import DBManager
+from backend.errors import SaveFailedError
 from backend.email.ses_client import send_email, EmailSendError
 from backend.email.templates import content_report_email
 
@@ -62,7 +63,9 @@ class ReportsManager(DBManager):
                        reported_user_id: str, reason: str, detail: str) -> dict:
         resolved_user_id, snippet = self._resolve_content(content_type, content_id, reported_user_id)
         report_id = str(uuid.uuid4())
-        self.insertion("content_reports", {
+        # A Guideline 1.2 report/flag is compliance-relevant -- a failed
+        # write here must never look like a successfully filed report.
+        if not self.insertion("content_reports", {
             "_id": report_id,
             "reporter_id": self.reporter_id,
             "reported_user_id": resolved_user_id or None,
@@ -71,7 +74,8 @@ class ReportsManager(DBManager):
             "content_snippet": snippet,
             "reason": reason,
             "detail": detail,
-        })
+        }):
+            raise SaveFailedError()
 
         reporter_username = self._username(self.reporter_id)
         reported_username = self._username(resolved_user_id) if resolved_user_id else "(unknown)"

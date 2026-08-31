@@ -28,6 +28,8 @@ from typing import Any
 
 import requests
 
+from backend.errors import SaveFailedError
+
 from db import DBManager
 from backend.interactions.agent import MODELNAME, BASEURL, HEADERS
 from schemas.watchdog import DetectionReport
@@ -238,7 +240,16 @@ class DebugAgentManager(DBManager):
         return data
 
     def save_report(self, report: DetectionReport) -> None:
-        self.insertion(
+        """Raises:
+            SaveFailedError: If the write fails -- ``generate_report`` (the
+                only caller) catches this and folds it into the same
+                ``{"error": ...}`` shape it already returns for an
+                OpenRouter call failure, per this class's manager-error
+                convention (see generate_report's docstring), rather than
+                reporting a report id/detection status that never actually
+                persisted.
+        """
+        if not self.insertion(
             "error_detection_reports",
             {
                 "_id": report.id,
@@ -253,7 +264,8 @@ class DebugAgentManager(DBManager):
             "remediation_narrative = EXCLUDED.remediation_narrative, "
             "model = EXCLUDED.model, "
             "generated_at = EXCLUDED.generated_at",
-        )
+        ):
+            raise SaveFailedError()
 
     def get_report(self, detection_id: str) -> dict[str, Any] | None:
         result = self.lookup("error_detection_reports", {"detection_id": detection_id})
@@ -263,7 +275,14 @@ class DebugAgentManager(DBManager):
         return {"id": report_id, **data}
 
     def mark_diagnosed(self, detection_id: str) -> None:
-        self.update("error_detections", {"status": "diagnosed"}, {"_id": detection_id})
+        """Raises:
+            SaveFailedError: If the write fails. ``generate_report`` (the
+                only caller) already confirmed this detection exists via
+                ``_fetch_detection`` earlier in the same call, and catches
+                this the same way it catches ``save_report``'s failure.
+        """
+        if not self.update("error_detections", {"status": "diagnosed"}, {"_id": detection_id}):
+            raise SaveFailedError()
 
     def generate_report(self, detection_id: str) -> dict[str, Any]:
         """Fetch the detection, scrub its context, call OpenRouter, persist
@@ -324,8 +343,12 @@ class DebugAgentManager(DBManager):
             remediation_narrative=remediation_narrative,
             model=MODELNAME,
         )
-        self.save_report(report)
-        self.mark_diagnosed(detection_id)
+        try:
+            self.save_report(report)
+            self.mark_diagnosed(detection_id)
+        except SaveFailedError as e:
+            logger.error("Debug agent report persist failed for detection %s: %s", detection_id, e)
+            return {"error": "debug agent report failed to save"}
         return self.get_report(detection_id) or report.model_dump()
 
 

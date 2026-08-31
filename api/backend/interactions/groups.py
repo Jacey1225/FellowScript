@@ -1,6 +1,7 @@
 from schemas.users import User
 from schemas.message import Group
 from db import DBManager
+from backend.errors import SaveFailedError
 
 
 class GroupsManager(DBManager):
@@ -62,11 +63,12 @@ class GroupsManager(DBManager):
         """
         # Membership lives in the groups.users column; GET /user derives each
         # user's group list from it, so no separate per-user sync is needed.
-        self.insertion("groups", {
+        if not self.insertion("groups", {
             "_id":   group.group_id,
             "title": group.title,
             "users": group.users,
-        })
+        }):
+            raise SaveFailedError()
 
     def fetch_group(self) -> dict:
         """Retrieve full group data including members and message history.
@@ -235,7 +237,11 @@ class GroupsManager(DBManager):
         """
         if not self.group_id:
             return
-        self.delete("groups", {"_id": self.group_id})
+        # remove_group is only ever called after the caller already loaded
+        # this group (routes/community.py), so a False return here is a
+        # real write failure, not an expected no-op.
+        if not self.delete("groups", {"_id": self.group_id}):
+            raise SaveFailedError()
 
     def update_group(self, group: Group) -> None:
         """Replace a group's title and member list.
@@ -250,4 +256,7 @@ class GroupsManager(DBManager):
             return
         # groups.users is the single source of membership; GET /user derives each
         # member's group list from it, so updating this column is sufficient.
-        self.update("groups", {"title": group.title, "users": group.users}, {"_id": self.group_id})
+        # `existing` above already confirmed the row exists, so a False
+        # return is a real write failure, not an expected no-op.
+        if not self.update("groups", {"title": group.title, "users": group.users}, {"_id": self.group_id}):
+            raise SaveFailedError()

@@ -1,5 +1,6 @@
 from fastapi import FastAPI, HTTPException, Response, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 from routes.notes import notes_router
 from routes.messaging import ws_router, chime_router
@@ -29,6 +30,7 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from db import DBManager, BACKUP_DB_NAME
+from backend.errors import SaveFailedError
 from backend.rate_limiting import get_client_ip, limiter
 from backend.interactions.helpers import load_users_data, save_users_data, save_user_row
 from backend.subscription.subscriptions import SubscriptionsManager
@@ -100,6 +102,21 @@ app = FastAPI(lifespan=lifespan)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(SlowAPIMiddleware)
+
+
+async def _save_failed_handler(request: Request, exc: SaveFailedError) -> JSONResponse:
+    """App-wide handler for db-write-failure-signaling workflow, step 2: a
+    DBManager.insertion/.update/.delete call reported failure and the call
+    site raised instead of continuing as if it had succeeded. Registered
+    the same way slowapi's RateLimitExceeded is above, so every one of the
+    ~30+ call sites across routes/*.py and the *Manager classes they call
+    into reports the same 503 "couldn't be saved" response regardless of
+    which layer raised it -- no per-route try/except needed.
+    """
+    return JSONResponse(status_code=503, content={"detail": exc.message})
+
+
+app.add_exception_handler(SaveFailedError, _save_failed_handler)
 
 app.add_middleware(
     CORSMiddleware,
@@ -473,18 +490,28 @@ async def password_reset_request(request: Request, info: PasswordResetRequest) -
         uid, data = result
         pr = PasswordResetManager()
         try:
+            # Caught locally rather than left to propagate to the app-wide
+            # SaveFailedError handler: a 503 here would only ever happen on
+            # the "account exists" branch, which is exactly the kind of
+            # response-based signal this endpoint's constant-response
+            # design (see the docstring) exists to prevent. Logged instead,
+            # same as the EmailSendError case just below.
             token = pr.create_token(uid)
+        except SaveFailedError:
+            logger.error("Failed to persist password reset token for user %s", uid)
+            token = None
         finally:
             pr.close()
-        # The frontend is a HashRouter SPA — the router only reads the
-        # fragment, so the path/query must live after the '#' or this link
-        # would load the app at "/" and silently drop ?token=... entirely.
-        reset_link = f"https://fellowscript.com/#/reset-password?token={token}"
-        subject, html_body, text_body = password_reset_email(reset_link)
-        try:
-            send_email(data["email"], subject, html_body, text_body)
-        except EmailSendError:
-            logger.error("Failed to send password reset email to user %s", uid)
+        if token:
+            # The frontend is a HashRouter SPA — the router only reads the
+            # fragment, so the path/query must live after the '#' or this link
+            # would load the app at "/" and silently drop ?token=... entirely.
+            reset_link = f"https://fellowscript.com/#/reset-password?token={token}"
+            subject, html_body, text_body = password_reset_email(reset_link)
+            try:
+                send_email(data["email"], subject, html_body, text_body)
+            except EmailSendError:
+                logger.error("Failed to send password reset email to user %s", uid)
     return {"detail": "If an account with that email exists, a password reset link has been sent."}
 
 
@@ -512,7 +539,11 @@ async def password_reset_confirm(request: Request, info: PasswordResetConfirm) -
     new_hash = bcrypt.hashpw(info.new_password.encode(), bcrypt.gensalt()).decode()
     db = DBManager()
     try:
-        db.update("users", {"hash_pass": new_hash}, {"_id": uid})
+        # uid was just resolved from a still-valid, just-consumed reset
+        # token above, so the row is known to exist -- a False return here
+        # is a real write failure, not an expected no-op.
+        if not db.update("users", {"hash_pass": new_hash}, {"_id": uid}):
+            raise SaveFailedError()
     finally:
         db.close()
 
@@ -633,11 +664,15 @@ async def accept_terms(user_id: str, _: str = Depends(require_match("user_id")))
     """
     db = DBManager()
     try:
-        db.update(
+        # require_match already confirmed the caller is user_id -- an
+        # authenticated caller's own account is expected to exist, so
+        # False here is a real write failure, not an expected no-op.
+        if not db.update(
             "users",
             {"terms_accepted_at": datetime.now(timezone.utc), "terms_version": CURRENT_TERMS_VERSION},
             {"_id": user_id},
-        )
+        ):
+            raise SaveFailedError()
     finally:
         db.close()
     return {"terms_version": CURRENT_TERMS_VERSION}

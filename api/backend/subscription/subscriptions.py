@@ -1,6 +1,7 @@
 import uuid
 from datetime import datetime, timezone, timedelta
 from db import DBManager
+from backend.errors import SaveFailedError
 from schemas.subscription import (
     SubscriptionCreate,
     SubscriptionUpdate,
@@ -90,8 +91,14 @@ class SubscriptionsManager(DBManager):
              TRIAL_MONTHS, TRIAL_MONTHS),
         )
         self.conn.commit()
-        # The host is the plan's first member.
-        self.update("users", {"subscription_id": sub_id}, {"_id": sub.user_id})
+        # The host is the plan's first member. sub.user_id's row was just
+        # validated by the route (current_user == sub.user_id, an
+        # authenticated existing account), so a False return is a real
+        # write failure -- without it the plan above exists but is
+        # orphaned (no user points at it), while the route still reports
+        # the plan as successfully created.
+        if not self.update("users", {"subscription_id": sub_id}, {"_id": sub.user_id}):
+            raise SaveFailedError()
         return sub_id
 
     # ── Stripe billing (web) ──────────────────────────────────────────────────
@@ -155,7 +162,11 @@ class SubscriptionsManager(DBManager):
              card["exp_month"], card["exp_year"], trial_end, current_period_end),
         )
         self.conn.commit()
-        self.update("users", {"subscription_id": sub_id}, {"_id": user_id})
+        # Same reasoning as create_subscription: this INSERT just committed,
+        # so leaving user_id unpointed at it on a write failure here would
+        # be an orphaned plan reported as a successful checkout.
+        if not self.update("users", {"subscription_id": sub_id}, {"_id": user_id}):
+            raise SaveFailedError()
         return sub_id
 
     def update_status_from_stripe(self, stripe_sub_id: str, status: str,
@@ -243,7 +254,9 @@ class SubscriptionsManager(DBManager):
              price_cents, member_count, trial_end, current_period_end),
         )
         self.conn.commit()
-        self.update("users", {"subscription_id": sub_id}, {"_id": user_id})
+        # Same reasoning as upsert_from_stripe's new-row branch above.
+        if not self.update("users", {"subscription_id": sub_id}, {"_id": user_id}):
+            raise SaveFailedError()
         return sub_id
 
     def update_status_by_apple_txn(self, original_transaction_id: str, status: str,
@@ -375,7 +388,11 @@ class SubscriptionsManager(DBManager):
             (sub_id, user_id),
         )
         self.conn.commit()
-        self.update("users", {"subscription_id": sub_id}, {"_id": user_id})
+        # Same reasoning as create_subscription: a free plan the user isn't
+        # actually pointed at would leave usage limits computed as if they
+        # had no plan at all, despite signup reporting success.
+        if not self.update("users", {"subscription_id": sub_id}, {"_id": user_id}):
+            raise SaveFailedError()
         return sub_id
 
     def get_user_subscription(self, user_id: str) -> dict | None:
@@ -413,7 +430,13 @@ class SubscriptionsManager(DBManager):
             values["max_members"] = member_count
             values["price_cents"] = price_for(member_count)
         if values:
-            self.update("subscriptions", values, {"_id": subscription_id})
+            # The lookup above already confirmed the plan exists, so a
+            # False return is a real write failure -- raising rather than
+            # unconditionally returning True matters here specifically:
+            # the route reports {"ok": True} straight from this method's
+            # return value.
+            if not self.update("subscriptions", values, {"_id": subscription_id}):
+                raise SaveFailedError()
         return True
 
     def delete_subscription(self, subscription_id: str) -> None:
@@ -425,7 +448,13 @@ class SubscriptionsManager(DBManager):
             (subscription_id,),
         )
         self.conn.commit()
-        self.delete("subscriptions", {"_id": subscription_id})
+        # Every caller (the route's _require_host, cancel_by_stripe_sub /
+        # cancel_by_apple_txn's find_id_by_* lookup, and
+        # reconcile_expired_subscriptions' own just-queried id list) has
+        # already confirmed this row exists, so a False return is a real
+        # write failure, not an expected no-op.
+        if not self.delete("subscriptions", {"_id": subscription_id}):
+            raise SaveFailedError()
 
     # ── Members: read / delete ────────────────────────────────────────────────
 
@@ -494,10 +523,11 @@ class SubscriptionsManager(DBManager):
         row = self.cur.fetchone()
         if row and row[0] and str(row[0]) == subscription_id:
             return {"error": "Already a member of this plan"}
-        self.insertion("subscription_request", {
+        if not self.insertion("subscription_request", {
             "subscription_id": subscription_id,
             "from_user_id":    from_user_id,
-        })
+        }):
+            raise SaveFailedError()
         return None
 
     def get_requests(self, subscription_id: str) -> list[dict]:
@@ -548,15 +578,27 @@ class SubscriptionsManager(DBManager):
             return {"error": "No pending request from this user"}
         if self._member_count(subscription_id) >= (sdata.get("max_members") or 1):
             return {"error": "Plan is full"}
-        self.update("users", {"subscription_id": subscription_id}, {"_id": from_user_id})
-        self.delete("subscription_request", {
+        # The pending-request check above already confirmed both rows
+        # exist, so a False return from either write here is a real
+        # failure, not an expected no-op -- this is the enrollment itself,
+        # not best-effort cleanup.
+        if not self.update("users", {"subscription_id": subscription_id}, {"_id": from_user_id}):
+            raise SaveFailedError()
+        if not self.delete("subscription_request", {
             "subscription_id": subscription_id,
             "from_user_id":    from_user_id,
-        })
+        }):
+            raise SaveFailedError()
         return None
 
     def delete_request(self, subscription_id: str, from_user_id: str) -> None:
-        """Decline (host) or cancel (requester) a pending join request."""
+        """Decline (host) or cancel (requester) a pending join request.
+
+        Idempotent: no existence check precedes this (unlike accept_request
+        above) -- declining/cancelling an already-resolved or duplicate
+        request is a legitimate no-op, not a failure. A real DB error is
+        still visible via db.py's DB_WRITE_FAILURE log line.
+        """
         self.delete("subscription_request", {
             "subscription_id": subscription_id,
             "from_user_id":    from_user_id,

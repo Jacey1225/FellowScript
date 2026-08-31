@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException, WebSocket, Depends
 from backend.interactions.agent import AgentManager
+from backend.errors import SaveFailedError
 from backend.subscription.limits import check_limit
 from backend.auth.dependencies import require_match, authenticate_ws
 from schemas.agent import AgentHeartbeats
@@ -45,14 +46,15 @@ async def create_agent(user_id: str, body: dict, _: str = Depends(require_match(
     db = AgentManager(user_id)
     try:
         agent_id = str(uuid.uuid4())
-        db.insertion("agents", {
+        if not db.insertion("agents", {
             "_id":     agent_id,
             "name":    body.get("name") or "Spiritual Guide",
             "user_id": user_id,
             "role":    body.get("role") or DEFAULT_ROLE,
             "chats":   body.get("chats", []),
             "enabled": body.get("enabled", True),
-        })
+        }):
+            raise SaveFailedError()
         return {"id": agent_id}
     finally:
         db.close()
@@ -66,7 +68,11 @@ async def update_agent(user_id: str, agent_id: str, body: dict, _: str = Depends
             raise HTTPException(status_code=404, detail="Agent not found")
         updates = {k: body[k] for k in ("role", "chats", "enabled", "name") if k in body}
         if updates:
-            db.update("agents", updates, {"_id": agent_id, "user_id": user_id})
+            # owns_agent() above already confirmed the row exists, so a
+            # False return here is a real write failure, not an expected
+            # no-op.
+            if not db.update("agents", updates, {"_id": agent_id, "user_id": user_id}):
+                raise SaveFailedError()
         return {"ok": True}
     finally:
         db.close()

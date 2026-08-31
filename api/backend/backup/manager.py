@@ -2,6 +2,7 @@ import logging
 from datetime import datetime, timedelta, timezone as tzmod
 from zoneinfo import ZoneInfo
 from db import DBManager, BACKUP_DB_NAME
+from backend.errors import SaveFailedError
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +50,15 @@ class BackupManager:
     def backup_user(self, user_id: str) -> dict:
         """Copy user_id's profile row, last-24h notes/verses, and full
         highlights/bookmarks into the backup DB. Returns row counts per table.
+
+        Raises:
+            SaveFailedError: If any of the mirror writes below fails.
+                ``_run_nightly_backups`` (the only caller, scheduler.py)
+                already wraps each user's ``backup_user`` call in its own
+                ``try/except Exception: logger.error(...)`` and moves on to
+                the next due user -- this propagates into that rather than
+                the run silently reporting counts for a backup that didn't
+                actually all land.
         """
         since = datetime.now(tzmod.utc) - timedelta(days=1)
         now = datetime.now(tzmod.utc)
@@ -61,14 +71,15 @@ class BackupManager:
         if not row:
             return {"error": "user not found"}
         username, email, tzname = row
-        self.dest.insertion(
+        if not self.dest.insertion(
             "users",
             {"_id": user_id, "username": username, "email": email,
              "timezone": tzname, "backed_up_at": now},
             conflict="(_id) DO UPDATE SET username=EXCLUDED.username, "
                      "email=EXCLUDED.email, timezone=EXCLUDED.timezone, "
                      "backed_up_at=EXCLUDED.backed_up_at",
-        )
+        ):
+            raise SaveFailedError()
 
         # Notes created or edited in the last day (timestamp bumps on both).
         self.source.cur.execute(
@@ -82,7 +93,7 @@ class BackupManager:
         for (nid, uid, title, text, public, group_id, is_reply,
              parent_note_id, ts, created_at) in note_rows:
             note_ids.append(nid)
-            self.dest.insertion(
+            if not self.dest.insertion(
                 "notes",
                 {"_id": nid, "user_id": uid, "title": title, "text": text,
                  "public": public, "group_id": group_id, "is_reply": is_reply,
@@ -94,7 +105,8 @@ class BackupManager:
                          "parent_note_id=EXCLUDED.parent_note_id, "
                          "timestamp=EXCLUDED.timestamp, created_at=EXCLUDED.created_at, "
                          "backed_up_at=EXCLUDED.backed_up_at",
-            )
+            ):
+                raise SaveFailedError()
         counts["notes"] = len(note_ids)
 
         for nid in note_ids:
@@ -104,13 +116,14 @@ class BackupManager:
                 (nid,),
             )
             for (note_id, position, book, chapter, verse) in self.source.cur.fetchall():
-                self.dest.insertion(
+                if not self.dest.insertion(
                     "note_verses",
                     {"note_id": note_id, "position": position, "book": book,
                      "chapter": chapter, "verse": verse},
                     conflict="(note_id, position) DO UPDATE SET book=EXCLUDED.book, "
                              "chapter=EXCLUDED.chapter, verse=EXCLUDED.verse",
-                )
+                ):
+                    raise SaveFailedError()
                 counts["note_verses"] += 1
 
         # No modification timestamp exists on these tables at all, so mirror
@@ -119,24 +132,26 @@ class BackupManager:
             "SELECT key, color FROM highlights WHERE user_id = %s", (user_id,)
         )
         for key, color in self.source.cur.fetchall():
-            self.dest.insertion(
+            if not self.dest.insertion(
                 "highlights",
                 {"user_id": user_id, "key": key, "color": color, "backed_up_at": now},
                 conflict="(user_id, key) DO UPDATE SET color=EXCLUDED.color, "
                          "backed_up_at=EXCLUDED.backed_up_at",
-            )
+            ):
+                raise SaveFailedError()
             counts["highlights"] += 1
 
         self.source.cur.execute(
             "SELECT key, label FROM bookmarks WHERE user_id = %s", (user_id,)
         )
         for key, label in self.source.cur.fetchall():
-            self.dest.insertion(
+            if not self.dest.insertion(
                 "bookmarks",
                 {"user_id": user_id, "key": key, "label": label, "backed_up_at": now},
                 conflict="(user_id, key) DO UPDATE SET label=EXCLUDED.label, "
                          "backed_up_at=EXCLUDED.backed_up_at",
-            )
+            ):
+                raise SaveFailedError()
             counts["bookmarks"] += 1
 
         return counts

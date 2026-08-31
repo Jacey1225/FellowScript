@@ -2,6 +2,7 @@ import hashlib
 import secrets
 from datetime import datetime, timedelta, timezone
 from db import DBManager
+from backend.errors import SaveFailedError
 
 MFA_CODE_TTL_MINUTES = 10
 
@@ -26,11 +27,15 @@ class MFAManager(DBManager):
         """Issue a new code for ``user_id`` and return the raw digits to email."""
         code = _generate_code()
         expires_at = datetime.now(timezone.utc) + timedelta(minutes=MFA_CODE_TTL_MINUTES)
-        self.insertion("mfa_codes", {
+        # A code that's emailed but never actually persisted can never be
+        # verified back -- the user would be locked out of a login/setup
+        # flow that looked like it succeeded.
+        if not self.insertion("mfa_codes", {
             "user_id":    user_id,
             "code_hash":  _hash_code(code),
             "expires_at": expires_at,
-        })
+        }):
+            raise SaveFailedError()
         return code
 
     def verify(self, user_id: str, code: str) -> bool:
@@ -49,11 +54,21 @@ class MFAManager(DBManager):
             expires_at = expires_at.replace(tzinfo=timezone.utc)
         if expires_at < datetime.now(timezone.utc):
             return False
-        self.update("mfa_codes", {"used": True}, {"_id": code_id})
+        # code_id was just resolved above, so the row is known to exist --
+        # a False return here is a real write failure. Raising rather than
+        # still returning True matters here specifically: if the "used"
+        # flag silently failed to persist, the same code would stay valid
+        # and replayable, undermining the single-use guarantee this table
+        # exists for.
+        if not self.update("mfa_codes", {"used": True}, {"_id": code_id}):
+            raise SaveFailedError()
         return True
 
     def set_enabled(self, user_id: str, enabled: bool) -> None:
-        self.update("users", {"mfa_enabled": enabled}, {"_id": user_id})
+        # Called only for the authenticated caller's own account (routes
+        # enforce require_match upstream), so the row is known to exist.
+        if not self.update("users", {"mfa_enabled": enabled}, {"_id": user_id}):
+            raise SaveFailedError()
 
     def is_enabled(self, user_id: str) -> bool:
         result = self.lookup("users", {"_id": user_id})
