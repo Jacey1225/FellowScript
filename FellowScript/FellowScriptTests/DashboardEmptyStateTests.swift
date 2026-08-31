@@ -187,12 +187,16 @@ final class NoteResumeCardTests: XCTestCase {
 
     // MARK: Happy path — a real recent note (regression guard)
     //
-    // Updated for task 20260827-note-continue-island: the populated state's
-    // bottom control was replaced with the "Continue" capsule island (design-
-    // spec.md §2.2) — text-only, no icon — so this now asserts the new copy
-    // instead of the retired "Open note" / "where you left off" pill, and
-    // guards against a regression back to that old copy.
-    func test_populatedNote_rendersTitleAndPreview_andContinueLabel() throws {
+    // Updated for task 20260828-continue-button-circle-implementation: the
+    // populated state's bottom control was replaced with a circular icon-only
+    // Continue button (design-spec.md's Option 2) — no visible "Continue"
+    // text, so `find(button: "Continue")` no longer matches anything. Found
+    // instead by its distinct "Continue reading <title>" accessibility label
+    // (see NoteResumeCardContinueIslandTests.swift for the full construction
+    // coverage — this file only keeps its own pre-existing regression guard
+    // that the populated state's control renders at all and the old pill
+    // copy doesn't regress back in).
+    func test_populatedNote_rendersTitleAndPreview_andContinueControl() throws {
         let note = FSNote(
             id: "note-1", user: "user-1", title: "Sunday Service 06/28",
             text: "Pastor Ed spoke on the courage of faith.", public: false, group_id: "",
@@ -201,8 +205,12 @@ final class NoteResumeCardTests: XCTestCase {
         let sut = NoteResumeCard(note: note) {}
 
         XCTAssertNoThrow(try sut.inspect().find(text: "Sunday Service 06/28"))
-        XCTAssertNoThrow(try sut.inspect().find(button: "Continue"),
-                          "the populated state's control must be the new text-only 'Continue' capsule island")
+        XCTAssertNoThrow(
+            try sut.inspect().find(ViewType.Button.self, where: { button in
+                (try? button.accessibilityLabel().string()) == "Continue reading Sunday Service 06/28"
+            }),
+            "the populated state's control must be the new circular icon-only Continue button"
+        )
         XCTAssertThrowsError(try sut.inspect().find(text: "You haven't written a note yet."))
         XCTAssertThrowsError(try sut.inspect().find(text: "Open note"),
                               "the retired 'Open note' pill copy must not regress back in") { _ in }

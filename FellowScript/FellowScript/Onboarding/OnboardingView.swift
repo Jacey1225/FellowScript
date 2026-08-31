@@ -100,7 +100,7 @@ private struct OBWelcome: View {
                             .foregroundColor(Theme.gold)
                     }
                     Text("A Digital Scripture Community")
-                        .font(.lora(Theme.fontXXS))
+                        .font(.inter(Theme.fontXXS))
                         .tracking(3)
                         .textCase(.uppercase)
                         .foregroundColor(Theme.textMuted)
@@ -126,7 +126,7 @@ private struct OBWelcome: View {
             Button(action: onNext) {
                 HStack(spacing: 8) {
                     Text("Get Started")
-                        .font(.lora(Theme.fontSM)).tracking(2).textCase(.uppercase)
+                        .font(.inter(Theme.fontSM)).tracking(2).textCase(.uppercase)
                     Image(systemName: "arrow.right")
                         .font(.system(size: 12, weight: .medium))
                 }
@@ -164,14 +164,14 @@ private struct OBSurvey: View {
         VStack(spacing: 0) {
             VStack(spacing: 6) {
                 Text("Before we begin")
-                    .font(.lora(Theme.fontXXS)).tracking(4).textCase(.uppercase)
+                    .font(.inter(Theme.fontXXS)).tracking(4).textCase(.uppercase)
                     .foregroundColor(Theme.textGoldMuted)
                 Text("Which of these\nresonate with you?")
                     .font(.playfair(Theme.fontDisplayMD))
                     .foregroundColor(Theme.parchment)
                     .multilineTextAlignment(.center).lineSpacing(4)
                 Text("Select all that apply")
-                    .font(.lora(Theme.fontXS))
+                    .font(.inter(Theme.fontXS))
                     .foregroundColor(Theme.textMuted)
             }
             .padding(.top, 64).padding(.bottom, 24).padding(.horizontal, 28)
@@ -195,7 +195,7 @@ private struct OBSurvey: View {
 
             Button(action: onNext) {
                 Text(selected.isEmpty ? "Skip →" : "This is me →")
-                    .font(.lora(Theme.fontSM)).tracking(2).textCase(.uppercase)
+                    .font(.inter(Theme.fontSM)).tracking(2).textCase(.uppercase)
                     .foregroundColor(Theme.ink)
                     .frame(maxWidth: .infinity).padding(.vertical, 16)
                     .background(Theme.gold)
@@ -227,7 +227,7 @@ private struct OBPainCard: View {
                     }
                 }
                 Text(text)
-                    .font(.lora(Theme.fontBody))
+                    .font(.inter(Theme.fontBody))
                     .foregroundColor(isSelected ? Theme.parchment : Theme.parchment.opacity(0.60))
                     .multilineTextAlignment(.leading).lineSpacing(3)
                     .fixedSize(horizontal: false, vertical: true)
@@ -266,7 +266,7 @@ private struct OBBridge: View {
                     .multilineTextAlignment(.center).lineSpacing(4)
                 Rectangle().fill(Theme.borderGold).frame(width: 44, height: 1)
                 Text("Every feature in this app exists to make prayer and devotion a living, daily practice — not just a Sunday event.")
-                    .font(.lora(Theme.fontBody))
+                    .font(.inter(Theme.fontBody))
                     .foregroundColor(Theme.textSecondary)
                     .multilineTextAlignment(.center).lineSpacing(5)
                     .padding(.horizontal, 8)
@@ -275,7 +275,7 @@ private struct OBBridge: View {
             Spacer()
             Button(action: onNext) {
                 Text("Begin the Tour →")
-                    .font(.lora(Theme.fontSM)).tracking(2).textCase(.uppercase)
+                    .font(.inter(Theme.fontSM)).tracking(2).textCase(.uppercase)
                     .foregroundColor(Theme.ink)
                     .frame(maxWidth: .infinity).padding(.vertical, 16)
                     .background(Theme.gold)
@@ -302,12 +302,12 @@ private struct OBTour: View {
             // Top bar
             HStack {
                 Text(current.section)
-                    .font(.lora(Theme.fontXXS)).tracking(4).textCase(.uppercase)
+                    .font(.inter(Theme.fontXXS)).tracking(4).textCase(.uppercase)
                     .foregroundColor(Theme.textGoldMuted)
                 Spacer()
                 Button(action: onSkip) {
                     Text("Skip")
-                        .font(.lora(Theme.fontXS))
+                        .font(.inter(Theme.fontXS))
                         .foregroundColor(Theme.textMuted)
                 }
             }
@@ -331,7 +331,7 @@ private struct OBTour: View {
                     .multilineTextAlignment(.center).lineSpacing(3)
                     .fixedSize(horizontal: false, vertical: true)
                 Text(current.body)
-                    .font(.lora(Theme.fontSM))
+                    .font(.inter(Theme.fontSM))
                     .foregroundColor(Theme.textSecondary)
                     .multilineTextAlignment(.center).lineSpacing(4)
                     .fixedSize(horizontal: false, vertical: true)
@@ -340,7 +340,7 @@ private struct OBTour: View {
                         Image(systemName: "hand.tap")
                             .font(.system(size: 10))
                         Text(hint)
-                            .font(.lora(Theme.fontXXS)).tracking(1)
+                            .font(.inter(Theme.fontXXS)).tracking(1)
                     }
                     .foregroundColor(Theme.gold.opacity(0.65))
                     .padding(.top, 2)
@@ -389,7 +389,7 @@ private struct OBTour: View {
                 }) {
                     HStack(spacing: 6) {
                         Text(step == steps.count - 1 ? "Get Started" : "Next")
-                            .font(.lora(Theme.fontSM)).tracking(1).textCase(.uppercase)
+                            .font(.inter(Theme.fontSM)).tracking(1).textCase(.uppercase)
                         if step < steps.count - 1 {
                             Image(systemName: "arrow.right")
                                 .font(.system(size: 12, weight: .medium))
@@ -815,9 +815,10 @@ private struct MockGroupNotes: View {
             }
             .padding(.top, 6).padding(.bottom, 4)
 
-            // Note cards rebuilt per NoteRow's real fields — title + optional PUBLIC
-            // badge, optional verse-reference chip, preview, timestamp. No author
-            // avatar (NoteRow has none; this isn't a "group notes wall").
+            // Note cards rebuilt per NoteRow's real fields — title, optional
+            // verse-reference chip, preview, timestamp + public/private icon.
+            // No author chip: these mock cards represent the Personal segment
+            // (selected above), where NoteRow omits the author chip entirely.
             VStack(spacing: 6) {
                 noteCard("Psalm 23 Reflection", verse: "Psalm 23:1",
                          preview: "The Lord is my shepherd — what it means to lack nothing in a season of uncertainty…",
@@ -851,15 +852,6 @@ private struct MockGroupNotes: View {
             HStack {
                 Text(title).font(.system(size: 7.5, weight: .heavy)).foregroundColor(Theme.parchment).lineLimit(1)
                 Spacer()
-                if isPublic {
-                    Text("PUBLIC")
-                        .font(.system(size: 4.5, weight: .bold)).tracking(0.5)
-                        .foregroundColor(Theme.goldLight)
-                        .padding(.horizontal, 4).padding(.vertical, 1.5)
-                        .background(Theme.gold.opacity(0.14))
-                        .overlay(Capsule().stroke(Theme.gold.opacity(0.32), lineWidth: 0.5))
-                        .clipShape(Capsule())
-                }
             }
             if let verse {
                 Text(verse)
@@ -870,7 +862,12 @@ private struct MockGroupNotes: View {
                     .clipShape(Capsule())
             }
             Text(preview).font(.system(size: 6, design: .serif)).foregroundColor(Theme.parchment.opacity(0.62)).lineLimit(2)
-            Text(time).font(.system(size: 5, design: .serif)).foregroundColor(Theme.textMuted)
+            HStack(spacing: 2.5) {
+                Text(time).font(.system(size: 5, design: .serif)).foregroundColor(Theme.textMuted)
+                Image(systemName: isPublic ? "globe" : "lock.fill")
+                    .font(.system(size: 4.5))
+                    .foregroundColor(isPublic ? Theme.goldLight.opacity(0.8) : Theme.textMuted)
+            }
         }
         .padding(8)
         .mockGlassCard(cornerRadius: 10)
@@ -1398,7 +1395,7 @@ private struct OBCta: View {
                 }
                 .accessibilityLabel("FellowScript")
                 Text("A Digital Scripture Community")
-                    .font(.lora(Theme.fontXS)).tracking(3).textCase(.uppercase)
+                    .font(.inter(Theme.fontXS)).tracking(3).textCase(.uppercase)
                     .foregroundColor(Theme.parchment.opacity(0.50))
                     .multilineTextAlignment(.center)
                 Rectangle().fill(Theme.borderGold).frame(width: 48, height: 1)
@@ -1414,7 +1411,7 @@ private struct OBCta: View {
             VStack(spacing: Theme.spacingSM) {
                 Button(action: onCreate) {
                     Text("Create Account")
-                        .font(.lora(Theme.fontSM)).tracking(2).textCase(.uppercase)
+                        .font(.inter(Theme.fontSM)).tracking(2).textCase(.uppercase)
                         .foregroundColor(Theme.ink)
                         .frame(maxWidth: .infinity).padding(.vertical, Theme.spacingMD)
                         .background(Theme.parchment)
@@ -1422,7 +1419,7 @@ private struct OBCta: View {
                 }
                 Button(action: onSignIn) {
                     Text("Sign In")
-                        .font(.lora(Theme.fontSM)).tracking(2).textCase(.uppercase)
+                        .font(.inter(Theme.fontSM)).tracking(2).textCase(.uppercase)
                         .foregroundColor(Theme.parchment)
                         .frame(maxWidth: .infinity).padding(.vertical, Theme.spacingMD)
                         .background(Theme.parchment.opacity(0.10))
@@ -1437,7 +1434,7 @@ private struct OBCta: View {
                          destination: URL(string: "https://fellowscript.com/#/privacy")!)
                         .foregroundColor(Theme.parchment.opacity(0.65))
                 }
-                .font(.lora(Theme.fontXXS)).padding(.top, Theme.spacingXS)
+                .font(.inter(Theme.fontXXS)).padding(.top, Theme.spacingXS)
             }
             .padding(.horizontal, Theme.spacingXL).padding(.bottom, 80)
         }

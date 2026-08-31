@@ -298,7 +298,21 @@ struct BibleReaderView: View {
     var body: some View {
         NavigationStack {
             ZStack(alignment: .top) {
-                Theme.bibleBg.ignoresSafeArea()
+                Theme.bgPage.ignoresSafeArea()
+
+                // Warm bloom ground (shared visual language with
+                // Notes/Chat/Account — task 20260830-bible-reader-live-fix).
+                // Identical literal values to NotesListView.swift/
+                // ChatThreadView.swift/ChatRootView.swift/AccountView.swift;
+                // this was the one primary screen still shipping a flat
+                // `Theme.bgPage` fill with no bloom layer, confirmed live
+                // against the on-device screenshot the user attached.
+                RadialGradient(colors: [Color(hex: "#D4922A").opacity(0.20), .clear],
+                               center: UnitPoint(x: 0.12, y: 0.16), startRadius: 10, endRadius: 380)
+                    .ignoresSafeArea()
+                RadialGradient(colors: [Color(hex: "#B8761D").opacity(0.12), .clear],
+                               center: UnitPoint(x: 0.92, y: 0.60), startRadius: 10, endRadius: 340)
+                    .ignoresSafeArea()
 
                 if vm.isLoading {
                     ProgressView()
@@ -394,6 +408,26 @@ struct BibleReaderView: View {
             .animation(.spring(response: 0.3, dampingFraction: 0.9), value: showNavSheet)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                // .sharedBackgroundVisibility(.hidden) (task
+                // 20260830-bible-reader-live-fix): confirmed live (Simulator
+                // screenshot, pixel-sampled) that iOS 26 wraps each toolbar
+                // item's content in its own automatic Liquid Glass capsule
+                // chrome regardless of what the item draws — same mechanism
+                // already diagnosed and fixed for NoteDetailView's
+                // Close/Edit pills (task 20260829-note-detail-toolbar-visual-fix,
+                // see NotesListView.swift:1091-1105). On the leading pill this
+                // produced a genuine nested double-capsule (system chrome
+                // outside, this view's own `.background(Theme.gold.opacity(0.10))`
+                // capsule inside); on the trailing group it was the sole
+                // visible outline, since the font-size/bookmark buttons draw
+                // no background of their own. Applying the modifier to the
+                // `ToolbarItemGroup` as a whole (rather than splitting it
+                // into two separate `ToolbarItem`s) was confirmed live to
+                // remove the chrome from both children without disturbing
+                // the bookmark `Menu`'s tap/presentation behavior — no
+                // precedent existed either way since this is the only
+                // `ToolbarItemGroup` in the codebase, so this was resolved by
+                // testing rather than assumption.
                 ToolbarItem(placement: .navigationBarLeading) {
                     // Book/chapter pill button (mirrors nav-pill-btn in global.css).
                     // Doubles as the panel's open/close toggle — same button opens
@@ -416,10 +450,10 @@ struct BibleReaderView: View {
                         .padding(.vertical, 6)
                         .background(Theme.gold.opacity(0.10))
                         .clipShape(Capsule())
-                        .overlay(Capsule().stroke(Theme.borderGold, lineWidth: 1))
                     }
                     .accessibilityLabel("Navigate to book and chapter")
                 }
+                .sharedBackgroundVisibility(.hidden)
                 ToolbarItemGroup(placement: .navigationBarTrailing) {
                     // Font size cycle (Small → Medium → Large → X-Large → loop)
                     Button(action: cycleFontSize) {
@@ -456,6 +490,7 @@ struct BibleReaderView: View {
                     }
                     .accessibilityLabel("Bookmark options")
                 }
+                .sharedBackgroundVisibility(.hidden)
             }
         }
         .task {
@@ -638,7 +673,29 @@ struct BibleNavDropdown: View {
                 chapterGridStep(for: book)
             }
         }
-        .background(Theme.widgetBg)
+        // Translucent, strongly-blurred panel (task 20260830-bible-nav-dropdown-
+        // blur, replacing the prior opaque Theme.widgetBg fill): `.ultraThinMaterial`
+        // gives a real backdrop blur of the verse content scrolled behind the
+        // open panel -- confirmed live as the material with the most visible,
+        // clearly-blurred-not-opaque signal of the options tried here (an
+        // earlier `.regularMaterial` pass, and this same `.ultraThinMaterial`
+        // layered under too strong a tint, both measured as reading fully
+        // opaque live via pixel-correlation against real scrolled verse
+        // content -- see this task's testing-gate bounce history). `Theme.
+        // panelGlassTint` sits in front of it, at a low 0.14 opacity (down
+        // from an initial 0.35 that, live-measured, compounded with
+        // `.ultraThinMaterial`'s own dark-mode opacity into a near-fully-
+        // opaque composite -- correlation with the true backdrop was
+        // measured at -0.20, i.e. none), so the result still lands in the
+        // app's warm dark tone (not the material's default cool grey) and
+        // gives a small opacity floor for the panel's own text, without
+        // swallowing the material's blur signal. This is the *only* blur
+        // layer in the panel — the two inner-step backgrounds below are
+        // dropped to `.clear` rather than stacking a second blur, per this
+        // codebase's documented "second stacked blur reads muddy" precedent
+        // (20260826-glass-verse-selector-messages).
+        .background(Theme.panelGlassTint)
+        .background(.ultraThinMaterial)
         .clipShape(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
         )
@@ -659,7 +716,17 @@ struct BibleNavDropdown: View {
                 HStack {
                     Text("Select Passage")
                         .font(.inter(Theme.fontSM))
-                        .foregroundColor(Theme.goldDim)
+                        // Theme.goldDim -> Theme.goldLight (task 20260830-
+                        // bible-nav-dropdown-blur): goldDim's contrast against
+                        // this panel's now-translucent/blurred background dips
+                        // below the AA floor whenever bright verse content
+                        // (e.g. a highlighted verse) happens to sit right
+                        // behind the header -- confirmed via a worst-case
+                        // contrast check against the live-measured blurred
+                        // backdrop. goldLight (already an existing Theme
+                        // token) keeps this in the same warm-gold family
+                        // while clearing AA at that worst case.
+                        .foregroundColor(Theme.goldLight)
                     Spacer()
                 }
 
@@ -671,7 +738,7 @@ struct BibleNavDropdown: View {
                 ZStack {
                     Text(book)
                         .font(.inter(Theme.fontSM))
-                        .foregroundColor(Theme.goldDim)
+                        .foregroundColor(Theme.goldLight)
 
                     HStack {
                         Button(action: {
@@ -683,7 +750,7 @@ struct BibleNavDropdown: View {
                                 Text("Back")
                                     .font(.inter(Theme.fontSM))
                             }
-                            .foregroundColor(Theme.goldDim)
+                            .foregroundColor(Theme.goldLight)
                             .frame(minHeight: 44)
                         }
                         .accessibilityLabel("Back to book list")
@@ -694,6 +761,24 @@ struct BibleNavDropdown: View {
         }
         .padding(.horizontal, Theme.spacingMD)
         .padding(.vertical, Theme.spacingSM)
+        // Header gets its own near-opaque chrome strip (Theme.widgetBg,
+        // task 20260830-bible-nav-dropdown-blur second pass) rather than
+        // inheriting the outer panel's translucent .ultraThinMaterial +
+        // low-opacity Theme.panelGlassTint. Once the outer panel's tint was
+        // lowered (0.35 -> 0.14) to actually fix the "reads fully opaque"
+        // defect, a worst-case check (real backdrop content -- e.g. a
+        // bright highlighted verse -- scrolled directly behind the header)
+        // showed goldLight header/back/book-name text could drop as low as
+        // ~3.5-3.8:1, back under the AA floor, since that text has no solid
+        // backing of its own. Rather than raising the whole panel's tint
+        // again (which is what caused the original opacity bug), this gives
+        // just the header row a small solid strip -- the same "chrome bar
+        // stays solid, scrollable content stays glass" split iOS itself
+        // uses for translucent nav bars -- so header legibility no longer
+        // depends on whatever's scrolled behind the panel, while the book
+        // list / chapter grid below keeps the genuine, live-verified
+        // translucent blur.
+        .background(Theme.widgetBg)
     }
 
     // ── Step 1 — full-width, scrollable, OT/NT-grouped book list ─────────────
@@ -724,7 +809,12 @@ struct BibleNavDropdown: View {
                 .onAppear { proxy.scrollTo(curBook, anchor: .center) }
             }
         }
-        .background(Theme.islandBg)
+        // Dropped from Theme.islandBg to .clear: this step is layered on top
+        // of the outer panel's new translucent/blurred background (see
+        // body's .background(Theme.panelGlassTint)/.ultraThinMaterial above);
+        // keeping an opaque fill here would re-obscure the blurred backdrop
+        // for this step's entire visible area.
+        .background(Color.clear)
     }
 
     // ── OT/NT pill segmented control — scroll-jump only, not a filter, modeled
@@ -784,14 +874,23 @@ struct BibleNavDropdown: View {
             withAnimation(.easeOut(duration: 0.18)) { step = .chapterGrid(book) }
         }) {
             HStack(spacing: Theme.spacingSM) {
+                // isCurrent text/star: dark ink-on-solid-gold (task 20260830-
+                // bible-nav-dropdown-blur) rather than the prior gold-text-on-
+                // faint-gold-tint -- that combo's contrast depended on sitting
+                // over a near-opaque near-black panel; against this panel's
+                // new translucent/blurred background, gold-on-gold(0.16) can
+                // dip well below AA whenever bright content is behind it.
+                // Reuses this same file's existing dark-ink-on-gold-gradient
+                // pattern (testamentSegment's isActive segment, above) so
+                // legibility here no longer depends on the backdrop at all.
                 Text(book)
                     .font(.inter(Theme.fontBody))
-                    .foregroundColor(isCurrent ? Theme.gold : Theme.parchment.opacity(0.70))
+                    .foregroundColor(isCurrent ? Color(hex: "#24170A") : Theme.parchment.opacity(0.85))
                 Spacer()
                 if isCurrent {
                     Image(systemName: "star.fill")
                         .font(.caption2)
-                        .foregroundColor(Theme.gold)
+                        .foregroundColor(Color(hex: "#24170A"))
                 }
                 Image(systemName: "chevron.right")
                     .font(.caption)
@@ -800,7 +899,7 @@ struct BibleNavDropdown: View {
             .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
             .padding(.horizontal, Theme.spacingMD)
             .padding(.vertical, 7)
-            .background(isCurrent ? Theme.gold.opacity(0.16) : Color.clear)
+            .background(isCurrent ? Theme.gold.opacity(0.85) : Color.clear)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -829,11 +928,16 @@ struct BibleNavDropdown: View {
                     ForEach(1...count, id: \.self) { ch in
                         let isActive = book == curBook && ch == curChapter
                         Button(action: { onSelect(book, ch) }) {
+                            // Same dark-ink-on-solid-gold swap as bookRow's
+                            // isCurrent treatment above, for the same reason:
+                            // gold-on-gold(0.20) loses too much contrast once
+                            // this panel is a translucent/blurred surface
+                            // instead of a near-opaque one.
                             Text("\(ch)")
                                 .font(.inter(Theme.fontHeading))
-                                .foregroundColor(isActive ? Theme.gold : Theme.parchment.opacity(0.70))
+                                .foregroundColor(isActive ? Color(hex: "#24170A") : Theme.parchment.opacity(0.85))
                                 .frame(maxWidth: .infinity, minHeight: 44)
-                                .background(isActive ? Theme.gold.opacity(0.20) : Color.clear)
+                                .background(isActive ? Theme.gold.opacity(0.85) : Color.clear)
                                 .clipShape(RoundedRectangle(cornerRadius: Theme.radiusSM))
                         }
                         .accessibilityLabel(isActive ? "Chapter \(ch), current chapter" : "Chapter \(ch)")
@@ -843,7 +947,10 @@ struct BibleNavDropdown: View {
             }
             .padding(Theme.spacingMD)
         }
-        .background(Theme.widgetBg)
+        // Dropped from Theme.widgetBg to .clear — same reasoning as
+        // bookListStep above: avoid re-opaquing over the outer panel's
+        // translucent/blurred background.
+        .background(Color.clear)
     }
 }
 

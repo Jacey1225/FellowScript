@@ -180,6 +180,13 @@ struct FSSubRequest: Codable, Identifiable {
 struct FSNote: Codable, Identifiable {
     var id:        String  = UUID().uuidString
     var user:      String  = ""
+    // Author's display-ready username, stamped on by fetchGroupNotes from the
+    // outer "notes: { username: { note_id: {...} } }" response key (the
+    // decoded note payload itself carries only user_id, which becomes `user`
+    // above). Defaults to "" so Personal notes, MockDataService, and any
+    // other FSNote call site that doesn't populate it are unaffected — NoteRow
+    // treats an empty username as "no author to show," never a placeholder.
+    var username:  String  = ""
     var title:     String  = ""
     var text:      String  = ""
     var `public`:  Bool    = false
@@ -230,6 +237,7 @@ extension FSNote {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id        = (try? c.decode(String.self,               forKey: .id))        ?? UUID().uuidString
         user      = (try? c.decode(String.self,               forKey: .user))      ?? ""
+        username  = (try? c.decode(String.self,               forKey: .username))  ?? ""
         title     = (try? c.decode(String.self,               forKey: .title))     ?? ""
         text      = (try? c.decode(String.self,               forKey: .text))      ?? ""
         `public`  = (try? c.decode(Bool.self,                 forKey: .public))    ?? false
@@ -361,6 +369,44 @@ struct FSFriendActivityFeed: Codable, Equatable {
     static let empty = FSFriendActivityFeed(friends_active: [], check_in: nil)
 }
 
+/// Parses an ISO8601 timestamp string, tolerating both forms actually
+/// produced app-wide: the server's fractional-seconds format and the
+/// client's own stamp (no fractional seconds, e.g.
+/// `ChatThreadViewModel.sendMessage`'s `ISO8601DateFormatter().string(from:)`).
+/// Mirrors `MessageDisplayGroup.parseTimestamp` (MessageGroupRow.swift),
+/// which already needed this same dual-format retry for day-boundary
+/// detection on this same `FSMessage.timestamp` field — `FSSession.formattedStart`
+/// and `FSMessage.formattedTime` had the identical single-format-only gap
+/// (fidelity-pass audit) and are fixed here to share one implementation
+/// instead of each re-deriving it.
+///
+/// Testing bounce 1: both `ISO8601DateFormatter` variants above set
+/// `.withInternetDateTime`, which internally implies `.withTimeZone` — so a
+/// timezone-less string (no trailing `Z`/offset at all, e.g.
+/// `MockDataService.mockSession.time_start == "2026-07-02T19:00:00"`) fails
+/// both and used to fall through to the raw-string fallback. That's a
+/// distinct case from "missing fractional seconds but still has a
+/// timezone" — add an explicit `DateFormatter` fallback for the bare
+/// `yyyy-MM-dd'T'HH:mm:ss` shape, assuming the current calendar's time zone
+/// since the string carries none.
+func parseFlexibleISO8601(_ iso: String) -> Date? {
+    guard !iso.isEmpty else { return nil }
+    let withFractional = ISO8601DateFormatter()
+    withFractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    if let date = withFractional.date(from: iso) { return date }
+    let plain = ISO8601DateFormatter()
+    plain.formatOptions = [.withInternetDateTime]
+    if let date = plain.date(from: iso) { return date }
+    let noTimeZone = DateFormatter()
+    noTimeZone.locale = Locale(identifier: "en_US_POSIX")
+    noTimeZone.timeZone = TimeZone.current
+    for fmt in ["yyyy-MM-dd'T'HH:mm:ss.SSS", "yyyy-MM-dd'T'HH:mm:ss"] {
+        noTimeZone.dateFormat = fmt
+        if let date = noTimeZone.date(from: iso) { return date }
+    }
+    return nil
+}
+
 struct FSMessage: Identifiable, Codable {
     let id:        String
     let text:      String
@@ -369,15 +415,13 @@ struct FSMessage: Identifiable, Codable {
     let timestamp: String
 
     var formattedTime: String {
-        guard !timestamp.isEmpty else { return "" }
-        let df = ISO8601DateFormatter()
-        df.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let d = df.date(from: timestamp) {
-            let f = DateFormatter()
-            f.timeStyle = .short
-            return f.string(from: d)
-        }
-        return ""
+        // Fidelity-pass audit: same single-format gap as FSSession.formattedStart
+        // had — without the dual-format retry, a client-sent message (no
+        // fractional seconds) fails to parse and silently renders no time at all.
+        guard let d = parseFlexibleISO8601(timestamp) else { return "" }
+        let f = DateFormatter()
+        f.timeStyle = .short
+        return f.string(from: d)
     }
 }
 
@@ -397,9 +441,13 @@ struct FSSession: Codable, Identifiable {
 
     var formattedStart: String {
         guard !time_start.isEmpty else { return "" }
-        let df = ISO8601DateFormatter()
-        df.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let d = df.date(from: time_start) {
+        // Fidelity-pass fix: this only handled the fractional-seconds ISO8601
+        // form, so any timestamp lacking fractional seconds fell through to
+        // the raw-string fallback below (visible as e.g. "2026-07-02T19:00:00"
+        // in the SessionBanner instead of "Today · 8:00 PM"). Retry without
+        // fractional seconds before giving up, mirroring
+        // MessageDisplayGroup.parseTimestamp's existing dual-format retry.
+        if let d = parseFlexibleISO8601(time_start) {
             let f = DateFormatter()
             f.dateStyle = .medium
             f.timeStyle = .short

@@ -1,38 +1,56 @@
 // NoteResumeCardContinueIslandTests.swift — coverage for task
-// 20260827-note-continue-island, testing step (step 4).
+// 20260828-continue-button-circle-implementation, testing step (step 3).
 //
-// Covers the geometry-adjacent behavior called for by architecture step 4
-// and the intake spec's acceptance criteria for the new "Continue" capsule
-// island (design-spec.md §2.2/§2.3/§3/§4) that replaced NoteResumeCard's old
-// full-width "Open note / where you left off" pill:
+// Task 20260828-continue-button-circle-implementation replaced NoteResumeCard's
+// pill/capsule "Continue" island (text-only, chamfered corner, notched into the
+// card's bottom-right boundary) with design-spec.md's Option 2: a plain
+// circular icon-only Continue button (chevron.right glyph, no visible text)
+// sitting in a genuine breach/overlap over the card's own plain, un-notched
+// bottom-right corner. The entire chamfer/notch geometry subsystem this file
+// used to cover (`ContinueIslandShape`, `NoteResumeCardNotch`,
+// `NoteResumeCardShape`, `NotchedCardMaterial`, `chamferEdgeIntersections`,
+// `chamferGeometryIsValid`, `chamferTreatmentFitsIslandRadius`, the
+// `glassCard(shape:...)` overloads, the §4 `notchTreatmentFits`/
+// `fallbackContinueCapsule` fallback mechanism, and the hidden
+// `measuringLabel`-driven sizing) was deleted along with the pill — this file
+// no longer references any of it (confirmed by the dead-code-removal test
+// below), replaced with coverage for the new construction:
 //
-//   - text-only control, no trailing icon (design-spec.md §7 non-goal)
-//   - accessibility label "Continue reading <title>" (§4), including the
-//     "Untitled note" fallback
+//   - icon-only control (chevron.right glyph, no visible "Continue" text --
+//     the previous acceptance criterion is now inverted)
+//   - accessibility label "Continue reading <title>" (unchanged pattern),
+//     including the "Untitled note" fallback
 //   - tap wiring survives the restyle
-//   - `.contentShape(Rectangle())` (§3 step 9) — the chamfer must not shrink
-//     the tap target
-//   - the §2.2 44pt height floor survives at default measurement
-//   - the note == nil empty state never renders the island (confirms design
-//     step 1's decision holds structurally, not just by construction review)
-//   - the §4 Dynamic-Type/width fallback: a narrow available card width
-//     collapses the notch/island treatment to the full-width in-card capsule
-//     (proxying "Dynamic Type fallback threshold engagement" — the fallback
-//     is driven by the same live-measured-width comparison Dynamic Type
-//     growth also feeds, so a narrow container exercises the identical
-//     `notchTreatmentFits` code path a large type size would)
+//   - `.contentShape(Circle())` -- hit-testing must not be limited to the
+//     visually-reduced circular silhouette
+//   - the note == nil empty state never renders the circle button
+//   - the @ScaledMetric-driven `resolvedDiameter` clamps to 52...72 and never
+//     exceeds 45% of the live card width across the full 12-category Dynamic
+//     Type range at multiple device widths -- proving design-spec.md's claim
+//     that the retired §4 fallback capsule is genuinely never needed
+//   - source-pinned regression coverage for every construction detail this
+//     task locked that isn't reachable through ViewInspector (AngularGradient
+//     rim stop-window/color, LinearGradient fill direction/colors, glyph
+//     weight/size-formula/color/optical-offset, the unchanged shadow stack,
+//     the @ScaledMetric declaration/clamp) -- ViewInspector has no built-in
+//     support for AngularGradient's `ShapeStyle` internals or for
+//     @ScaledMetric's environment-driven scaling (confirmed empirically: no
+//     `AngularGradient`/`ScaledMetric` support exists anywhere in the
+//     ViewInspector package this target vendors), so this file follows the
+//     same source-string-pin technique this codebase already established for
+//     other private/ViewInspector-unreachable implementation details (see
+//     `LoadingScreenAssetTransparencyTests.
+//     test_loadingScreenSource_frameSize_isIconScale_notFullBleed`, and this
+//     file's own prior Reduce Motion / token-value pins, carried forward
+//     below).
 //
-// Reduce Motion's press-state substitution (§2.4) lives entirely inside
-// `ContinueIslandButtonStyle`, a `private` file-scoped type not reachable via
-// `@testable import` from this file, and ViewInspector's `.tap()` invokes a
-// Button's action directly without driving SwiftUI's real press-state
-// machinery (`configuration.isPressed` never becomes true), so the
-// press-time visual substitution can't be exercised behaviorally from an
-// XCTest. Rather than skip that acceptance criterion, this file pins the
-// exact substitution formula by reading the real shipped source, the same
-// technique this codebase already uses for a similarly unreachable
-// `private`/non-ViewInspectable implementation detail — see
-// LoadingScreenAssetTransparencyTests.test_loadingScreenSource_frameSize_isIconScale_notFullBleed.
+// Reduce Motion's press-state substitution (unchanged from the retired pill --
+// `ContinueIslandButtonStyle` itself was not touched by this task) still lives
+// entirely inside a `private` file-scoped type not reachable via `@testable
+// import`, and ViewInspector's `.tap()` invokes a Button's action directly
+// without driving SwiftUI's real press-state machinery, so that acceptance
+// criterion is still pinned by reading the real shipped source, exactly as
+// before.
 
 import XCTest
 import SwiftUI
@@ -49,29 +67,58 @@ final class NoteResumeCardContinueIslandTests: XCTestCase {
         )
     }
 
-    // ── Text-only control, no icon (design-spec.md §7 non-goal) ────────────
+    /// Reads the real shipped DashboardComponents.swift source -- used by
+    /// every source-pin test below, and by the dead-code-removal test.
+    private func componentSource() throws -> String {
+        let componentFile = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()          // FellowScriptTests/
+            .deletingLastPathComponent()          // FellowScript/ (repo-relative project root)
+            .appendingPathComponent("FellowScript/Dashboard/DashboardComponents.swift")
+        return try String(contentsOf: componentFile, encoding: .utf8)
+    }
 
-    func test_populatedNote_continueControl_isTextOnly_noIconGlyph() throws {
+    /// The circular Continue button is one of two `Button`s in the populated
+    /// card (the other is `cardBody`, whose accessibility label is "Resume
+    /// note: <title>") -- found by its own distinct "Continue reading
+    /// <title>" accessibility label rather than by any text content, since
+    /// the new button is icon-only and carries no "Continue" text to search
+    /// for (unlike the retired pill, which `find(button: "Continue")` could
+    /// match directly).
+    private func findContinueButton(in sut: NoteResumeCard) throws -> InspectableView<ViewType.Button> {
+        try sut.inspect().find(ViewType.Button.self, where: { button in
+            (try? button.accessibilityLabel().string())?.hasPrefix("Continue reading") ?? false
+        })
+    }
+
+    // ── Icon-only control, no text (inverts the retired pill's own
+    // "text-only, no icon" acceptance criterion) ───────────────────────────
+
+    func test_populatedNote_continueButton_rendersChevronGlyph_noVisibleContinueText() throws {
         let sut = NoteResumeCard(note: makeNote()) {}
+        let button = try findContinueButton(in: sut)
 
-        XCTAssertNoThrow(try sut.inspect().find(button: "Continue"))
+        let image = try button.find(ViewType.Image.self)
+        XCTAssertEqual(
+            try image.actualImage().name(), "chevron.right",
+            "Option 2's circular Continue button must render the chevron.right glyph"
+        )
         XCTAssertThrowsError(
-            try sut.inspect().find(ViewType.Image.self),
-            "the new Continue island must be text-only -- no trailing icon like the retired pill's circular arrow"
+            try button.find(text: "Continue"),
+            "the new circular button is icon-only -- no visible 'Continue' text label like the retired pill's"
         ) { _ in }
     }
 
-    // ── Accessibility label (§4) ────────────────────────────────────────────
+    // ── Accessibility label (unchanged pattern, carried forward) ───────────
 
     func test_populatedNote_continueButton_accessibilityLabel_includesNoteTitle() throws {
         let sut = NoteResumeCard(note: makeNote(title: "Sunday Service 06/28")) {}
-        let button = try sut.inspect().find(button: "Continue")
+        let button = try findContinueButton(in: sut)
         XCTAssertEqual(try button.accessibilityLabel().string(), "Continue reading Sunday Service 06/28")
     }
 
     func test_populatedNote_emptyTitle_continueButton_accessibilityLabelFallsBackToUntitledNote() throws {
         let sut = NoteResumeCard(note: makeNote(title: "")) {}
-        let button = try sut.inspect().find(button: "Continue")
+        let button = try findContinueButton(in: sut)
         XCTAssertEqual(try button.accessibilityLabel().string(), "Continue reading Untitled note",
                        "an empty note title must fall back to the same 'Untitled note' label used elsewhere in this component, not a blank/broken accessibility label")
     }
@@ -81,128 +128,285 @@ final class NoteResumeCardContinueIslandTests: XCTestCase {
     func test_populatedNote_tappingContinueButton_invokesOnOpen() throws {
         var opened = false
         let sut = NoteResumeCard(note: makeNote()) { opened = true }
-        try sut.inspect().find(button: "Continue").tap()
+        try findContinueButton(in: sut).tap()
         XCTAssertTrue(opened)
     }
 
-    // ── Tap target survives the chamfer (§3 step 9) ─────────────────────────
+    // ── Hit target: .contentShape(Circle()), not limited to the visually- ──
+    // reduced silhouette (design-spec.md's locked "Hit target" requirement)
 
-    func test_populatedNote_continueButton_hasContentShapeRectangle_soChamferDoesNotShrinkTapTarget() throws {
+    func test_populatedNote_continueButton_hasContentShapeCircle() throws {
         let sut = NoteResumeCard(note: makeNote()) {}
-        let button = try sut.inspect().find(button: "Continue")
+        let button = try findContinueButton(in: sut)
         XCTAssertNoThrow(
-            try button.contentShape(Rectangle.self),
-            "the Continue island must apply .contentShape(Rectangle()) so the visual chamfer cut doesn't also cut into the hit-testing area"
+            try button.contentShape(Circle.self),
+            "the circular Continue button must apply .contentShape(Circle()) so hit-testing isn't limited to the visually-reduced silhouette"
         )
     }
 
-    // ── §2.2 44pt height floor, at default (un-hosted) label measurement ──
-    // Un-hosted, `labelSize` stays at its `.zero` initial value, so
-    // `islandHeight` evaluates its `max(44, labelSize.height + 22)` floor
-    // directly — this pins that floor without needing a live layout pass.
+    // ── The circle button must never render in the empty (note == nil)
+    // state (design-spec.md's own explicit note that the empty state's
+    // original pill is untouched by this task) ─────────────────────────────
 
-    func test_populatedNote_continueIsland_defaultHeight_meetsFortyFourPointFloor() throws {
-        let sut = NoteResumeCard(note: makeNote()) {}
-        let label = try sut.inspect().find(text: "Continue")
-        let height = try label.fixedFrame().height
-        XCTAssertGreaterThanOrEqual(height, 44,
-                                     "design-spec.md §2.2's islandHeight formula floors at 44pt regardless of label measurement")
-    }
-
-    // ── The island must never render in the empty (note == nil) state ──────
-    // (design step 1's decision, design-notes.md — structural check, not
-    // just a design-review confirmation.)
-
-    func test_emptyState_neverRendersContinueControl() throws {
+    func test_emptyState_neverRendersContinueCircleButton() throws {
         let sut = NoteResumeCard(note: nil) {}
         XCTAssertThrowsError(
-            try sut.inspect().find(button: "Continue"),
-            "the note == nil empty state must keep its own original pill -- the Continue island must not render there"
+            try findContinueButton(in: sut),
+            "the note == nil empty state must keep its own original dark-circle/gold-arrow 'Start a note' button -- the populated-state circular Continue button must not render there"
         ) { _ in }
         // The empty state's own original control is untouched.
         XCTAssertNoThrow(try sut.inspect().find(text: "Start a note"))
     }
 
-    // ── §4 fallback: a narrow live-measured card width collapses the
-    // notch/island treatment back to a full-width in-card capsule ──────────
+    // ── @ScaledMetric diameter clamp + the retired §4 fallback claim ───────
     //
-    // `notchTreatmentFits` compares the live-measured island width against
-    // 45% of the live-measured card width (design-spec.md §4) — the same
-    // comparison that also fires when Dynamic Type grows the label. Forcing
-    // a narrow host width exercises that identical code path without
-    // depending on a specific Dynamic Type category being available in the
-    // test environment.
+    // ViewInspector has no support for @ScaledMetric (confirmed empirically
+    // -- no reference to `ScaledMetric` anywhere in the vendored
+    // ViewInspector package), so a plain `.environment(\.sizeCategory, ...)`
+    // override on an un-hosted `.inspect()` call cannot be trusted to drive
+    // its scaling. This instead hosts the real `NoteResumeCard` (mirroring
+    // this file's own pre-existing `chamferIsValid` sweep pattern for the
+    // retired pill) across all 12 standard Dynamic Type categories crossed
+    // with three device widths spanning design-spec.md §6's stated
+    // ~375-430pt range, and reads `resolvedDiameter`/`cardWidth` directly off
+    // the actually laid-out live instance via the `didAppear` hook.
+    //
+    // This is the direct, live-measured proof of design-spec.md's stated
+    // claim that the clamped 52...72 diameter can never exceed 45% of card
+    // width at any accessibility text size -- i.e. that the retired §4
+    // fallback capsule was never actually reachable and is safe to have
+    // removed outright, not just a claim taken on faith.
 
     @MainActor
-    private func settledContinueTexts(hostedIn width: CGFloat) throws -> [InspectableView<ViewType.Text>] {
-        let sut = NoteResumeCard(note: makeNote()) {}
-        ViewHosting.host(view: sut, size: CGSize(width: width, height: 500))
+    private func settledDiameterAndCardWidth(
+        category: ContentSizeCategory, width: CGFloat
+    ) throws -> (resolvedDiameter: CGFloat, cardWidth: CGFloat) {
+        var sut = NoteResumeCard(note: makeNote()) {}
+        var result: (CGFloat, CGFloat)?
+        let exp = expectation(description: "cardWidth settles for \(category) at width \(width)")
+        sut.didAppear = { view in
+            // Ignore the pre-measurement pass, and guard against `onAppear`
+            // and `onChange(of: cardWidth)` both firing with a settled
+            // value (`.onChange` can re-fire on a subsequent layout pass
+            // even once `cardWidth` has already settled) -- fulfilling more
+            // than once is an XCTestExpectation API violation.
+            guard view.cardWidth > 0, result == nil else { return }
+            result = (view.resolvedDiameter, view.cardWidth)
+            exp.fulfill()
+        }
+        let hosted = sut.environment(\.sizeCategory, category)
+        ViewHosting.host(view: hosted, size: CGSize(width: width, height: 500))
         defer { ViewHosting.expel() }
-
-        // GeometryReader-driven @State (labelSize/cardWidth) updates land on
-        // a subsequent render pass, not synchronously within the layout call
-        // above -- pump the run loop briefly so that pass completes before
-        // inspecting, mirroring this file's neighbors' use of a real
-        // XCTestExpectation-driven wait for async SwiftUI state settling
-        // (see NoteDetailViewDirectionBTests.test_tappingEditPill_setsShowEditorTrue).
-        let exp = expectation(description: "layout settles")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { exp.fulfill() }
         wait(for: [exp], timeout: 2)
-
-        return try sut.inspect().findAll(ViewType.Text.self).filter { (try? $0.string()) == "Continue" }
+        let settled = try XCTUnwrap(result, "cardWidth never settled for \(category) at width \(width)")
+        return (settled.0, settled.1)
     }
 
     @MainActor
-    func test_wideCardWidth_keepsNotchIslandTreatment_fixedSizeCapsule() throws {
-        // Wide enough that 45% of the live card width comfortably exceeds
-        // the "Continue" label's intrinsic island width.
-        let texts = try settledContinueTexts(hostedIn: 500)
+    func test_resolvedDiameter_staysClampedAndUnderFortyFivePercentOfCardWidth_acrossFullDynamicTypeRange_atMultipleDeviceWidths() throws {
+        let categories: [ContentSizeCategory] = [
+            .extraSmall, .small, .medium, .large,
+            .extraLarge, .extraExtraLarge, .extraExtraExtraLarge,
+            .accessibilityMedium, .accessibilityLarge, .accessibilityExtraLarge,
+            .accessibilityExtraExtraLarge, .accessibilityExtraExtraExtraLarge
+        ]
+        let widths: [CGFloat] = [375, 393, 430]
 
-        // The island's own button applies a fixed `.frame(width:height:)` to
-        // its label -- the always-present hidden measuring label only has
-        // `.fixedSize()`, not a `.frame(width:height:)`, so this uniquely
-        // identifies the island (not fallback, not the measuring label).
-        let islandLabel = texts.first { (try? $0.fixedFrame()) != nil }
-        XCTAssertNotNil(islandLabel, "at ample card width, the notch/island treatment (fixed-size capsule) should be active, not the full-width fallback")
+        for width in widths {
+            for category in categories {
+                let (resolvedDiameter, cardWidth) = try settledDiameterAndCardWidth(category: category, width: width)
 
-        // And the full-width fallback's `.frame(maxWidth: .infinity)` marker
-        // must NOT be present on any "Continue" text at this width.
-        let fallbackLabel = texts.first { (try? $0.flexFrame().maxWidth) == .infinity }
-        XCTAssertNil(fallbackLabel, "the §4 fallback capsule must not be active at ample card width")
+                XCTAssertGreaterThanOrEqual(
+                    resolvedDiameter, 52,
+                    "resolvedDiameter must never clamp below design-spec.md's locked 52pt floor -- failed at \(category), width \(width)"
+                )
+                XCTAssertLessThanOrEqual(
+                    resolvedDiameter, 72,
+                    "resolvedDiameter must never clamp above design-spec.md's locked 72pt ceiling -- failed at \(category), width \(width)"
+                )
+                XCTAssertGreaterThanOrEqual(
+                    resolvedDiameter, 44,
+                    "the 52pt clamp floor must clear the 44x44pt minimum touch target at every size -- failed at \(category), width \(width)"
+                )
+                XCTAssertLessThanOrEqual(
+                    resolvedDiameter, 0.45 * cardWidth,
+                    "resolvedDiameter must never exceed 45% of the live card width -- if this fails, design-spec.md's claim that the retired §4 fallback capsule is never needed does not actually hold at \(category), width \(width)"
+                )
+            }
+        }
     }
 
-    @MainActor
-    func test_narrowCardWidth_engagesFallbackCapsule_dropsNotchTreatment() throws {
-        // Narrow enough that the live card width's 45% threshold is smaller
-        // than the "Continue" label's own intrinsic island width, forcing
-        // the §4 fallback.
-        let texts = try settledContinueTexts(hostedIn: 90)
-
-        let fallbackLabel = texts.first { (try? $0.flexFrame().maxWidth) == .infinity }
-        XCTAssertNotNil(fallbackLabel, "a card too narrow for the notch/gutter/island geometry to fit must fall back to the full-width in-card capsule per design-spec.md §4")
-
-        let islandLabel = texts.first { (try? $0.fixedFrame()) != nil }
-        XCTAssertNil(islandLabel, "the fixed-size notch/island treatment must be fully collapsed once the fallback engages, not left rendering alongside it")
-    }
-
-    // ── Reduce Motion press substitution (§2.4) — source-pinned; see the
-    // file-header comment for why this can't be exercised behaviorally. ────
+    // ── Reduce Motion press substitution -- unchanged from the retired
+    // pill's own press state (ContinueIslandButtonStyle itself was not
+    // touched by this task); source-pinned, see the file-header comment for
+    // why this can't be exercised behaviorally. ────────────────────────────
 
     func test_source_reduceMotionPressSubstitution_dropsScaleAndUsesOpacityDipInstead() throws {
-        let thisFile = URL(fileURLWithPath: #filePath)
-        let componentFile = thisFile
-            .deletingLastPathComponent()          // FellowScriptTests/
-            .deletingLastPathComponent()          // FellowScript/ (repo-relative project root)
-            .appendingPathComponent("FellowScript/Dashboard/DashboardComponents.swift")
-        let source = try String(contentsOf: componentFile, encoding: .utf8)
+        let source = try componentSource()
 
         XCTAssertTrue(
             source.contains("scaleEffect(!reduceMotion && configuration.isPressed ? 0.96 : 1.0)"),
-            "Reduce Motion must suppress the press-state scale transform entirely (§2.4) -- found no `!reduceMotion &&`-guarded scaleEffect in DashboardComponents.swift"
+            "Reduce Motion must suppress the press-state scale transform entirely -- found no `!reduceMotion &&`-guarded scaleEffect in DashboardComponents.swift"
         )
         XCTAssertTrue(
             source.contains("opacity(reduceMotion && configuration.isPressed ? 0.92 : 1.0)"),
-            "Reduce Motion must substitute a brief opacity dip in place of the scale transform (§2.4/§4) -- found no matching reduceMotion-gated opacity dip in DashboardComponents.swift"
+            "Reduce Motion must substitute a brief opacity dip in place of the scale transform -- found no matching reduceMotion-gated opacity dip in DashboardComponents.swift"
         )
+    }
+
+    // ── Source-pinned construction details (design-spec.md's Option 2's
+    // exact locked values) -- not reachable via ViewInspector: AngularGradient
+    // has no `ShapeStyle` extraction support in this project's vendored
+    // ViewInspector, and colors/fonts applied via string-hex/system-image
+    // literals inside a `private` computed property aren't independently
+    // observable at runtime either. Pinned by reading the real shipped
+    // source, the same technique this file already used for the retired
+    // pill's own token values. ───────────────────────────────────────────
+
+    func test_source_glyphIsChevronRight_boldWeight_darkBrownColor_withOpticalOffset() throws {
+        let source = try componentSource()
+
+        XCTAssertTrue(
+            source.contains(#"Image(systemName: "chevron.right")"#),
+            "the Continue button's glyph must be chevron.right"
+        )
+        XCTAssertTrue(
+            source.contains(".font(.system(size: iconSize, weight: .bold))"),
+            "the glyph must be bold weight (not semibold -- semibold is option 1's icon weight) at the resolved-diameter-derived iconSize, not a static 20pt"
+        )
+        XCTAssertTrue(
+            source.contains("private var iconSize: CGFloat { resolvedDiameter * 0.38 }"),
+            "iconSize must be a fixed 38% of the resolved (post-clamp, post-@ScaledMetric) diameter"
+        )
+        XCTAssertTrue(
+            source.contains(".offset(x: -1)"),
+            "the glyph must carry the -1pt x-axis optical offset, nudging it toward the circle's leading edge"
+        )
+    }
+
+    func test_source_fillIsDiagonalGoldGradient_topLeadingToBottomTrailing() throws {
+        let source = try componentSource()
+
+        XCTAssertTrue(
+            source.contains(##"LinearGradient(colors: [Color(hex: "#EEAC3F"), Color(hex: "#C88C2C")],"##) &&
+            source.contains(".topLeading, endPoint: .bottomTrailing)"),
+            "the circle's fill must be LinearGradient(#EEAC3F -> #C88C2C) direction .topLeading -> .bottomTrailing -- a deliberate change from the retired pill's horizontal .leading -> .trailing, so the light direction agrees with the top rim highlight and the downward ambient shadow"
+        )
+    }
+
+    func test_source_rimIsStrokeBorderAngularGradient_correctlyCenteredOnTop() throws {
+        let source = try componentSource()
+
+        XCTAssertTrue(
+            source.contains(##"let rimColor = Color(hex: "#FBE8C0").opacity(0.8)"##),
+            "the option-2-specific rim color must be #FBE8C0 @ 0.8 -- not the other options' standard #F5D392 @ 0.35 top-fade rim"
+        )
+        XCTAssertTrue(
+            source.contains("Circle().strokeBorder(rimGradient, lineWidth: 2)"),
+            "the rim must be drawn .strokeBorder at 2pt, so the stroke sits fully inside the circle's own silhouette rather than bleeding past the fill edge"
+        )
+        // SwiftUI's AngularGradient places 0° at 3-o'clock, sweeping
+        // clockwise -- top is 270° in its own coordinate system. The
+        // generation pass's own disclosed false start got this wrong on the
+        // first attempt (assumed 0°-at-top); pin the corrected stop
+        // locations directly so a regression back to that false start (or
+        // any other offset) fails here.
+        let expectedStops = [
+            ".init(color: .clear, location: 0.0),",
+            ".init(color: .clear, location: 200.0 / 360.0),    // 270 - 70",
+            ".init(color: rimColor, location: 225.0 / 360.0),  // 270 - 45",
+            ".init(color: rimColor, location: 315.0 / 360.0),  // 270 + 45",
+            ".init(color: .clear, location: 340.0 / 360.0),    // 270 + 70",
+            ".init(color: .clear, location: 1.0),",
+        ]
+        for stop in expectedStops {
+            XCTAssertTrue(
+                source.contains(stop),
+                "expected AngularGradient stop `\(stop)` -- the rim must be full bright ±45° from top (270°±45° = 225°/315°), fading to clear by ±70° (200°/340°), correctly re-centered on top rather than the false start's un-shifted 0°-at-top assumption"
+            )
+        }
+    }
+
+    func test_source_shadowStack_unchangedFromRetiredPill_allThreeLayers() throws {
+        let source = try componentSource()
+
+        XCTAssertTrue(
+            source.contains(".shadow(color: .black.opacity(0.40), radius: gutter + 2, x: 0, y: 0)"),
+            "separation shadow layer must be unchanged: black @0.40, radius = gutter + 2 (14pt), 0/0 offset"
+        )
+        XCTAssertTrue(
+            source.contains(".shadow(color: .black.opacity(0.55), radius: 10, x: 0, y: 4)"),
+            "ambient shadow layer must be unchanged: black @0.55, radius 10, y+4"
+        )
+        XCTAssertTrue(
+            source.contains(".shadow(color: .black.opacity(0.40), radius: 3, x: 0, y: 1)"),
+            "contact shadow layer must be unchanged: black @0.40, radius 3, y+1"
+        )
+    }
+
+    func test_source_scaledMetricDiameter_declaredWithLockedBaseAndRelativeToSubheadline() throws {
+        let source = try componentSource()
+
+        XCTAssertTrue(
+            source.contains("@ScaledMetric(relativeTo: .subheadline) private var diameter: CGFloat = 52"),
+            "diameter must be @ScaledMetric(relativeTo: .subheadline) with a 52pt base value"
+        )
+        XCTAssertTrue(
+            source.contains("min(max(diameter, 52), 72)"),
+            "resolvedDiameter must clamp the scaled diameter to the locked 52...72 range"
+        )
+    }
+
+    // ── Card join: plain overlap, no notch -- the card must always use the
+    // plain glassCard(cornerRadius:) overload (generation.json's "THE NOTCH"
+    // fix), never a shape-based notch-cutting overload. ────────────────────
+
+    func test_source_cardBody_usesPlainGlassCardCornerRadiusOverload_noNotch() throws {
+        let source = try componentSource()
+
+        XCTAssertTrue(
+            source.contains(".glassCard(cornerRadius: cardCornerRadius, tint: Color(hex: \"#2A1B0B\").opacity(0.14), blurBoost: 4)"),
+            "the populated card's body must use the plain glassCard(cornerRadius:) overload -- the card join is a plain overlap with no notch, per design-spec.md's Option 2"
+        )
+    }
+
+    // ── Dead-code removal: the entire retired pill/chamfer/notch subsystem
+    // must be gone from the live source, not left as silent unreferenced
+    // cruft (intake-spec.md's open question 1, resolved by frontend as
+    // "delete outright") ────────────────────────────────────────────────
+
+    func test_source_retiredPillChamferNotchSubsystem_isFullyRemoved() throws {
+        let source = try componentSource()
+
+        // Strip `//` line comments before searching -- this file's own
+        // header-comment prose *legitimately* names several of these
+        // retired symbols when documenting their removal (e.g. "the
+        // `shape:`/split-stroke `glassCard` overloads... were removed by
+        // task 20260828-continue-button-circle-implementation"), which is
+        // exactly the kind of removal rationale the intake spec's open
+        // question 1 asked for, not dead code left in the live path. Only a
+        // reference in actual compiled code -- a real declaration or call
+        // site -- should fail this test.
+        let codeOnly = source
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .map { line -> Substring in
+                if let range = line.range(of: "//") { return line[..<range.lowerBound] }
+                return line
+            }
+            .joined(separator: "\n")
+
+        let retiredSymbols = [
+            "ContinueIslandShape", "NoteResumeCardNotch", "NoteResumeCardShape",
+            "NotchedCardMaterial", "chamferEdgeIntersections", "chamferGeometryIsValid",
+            "chamferTreatmentFitsIslandRadius", "notchTreatmentFits", "fallbackContinueCapsule",
+            "measuringLabel", "islandCornerRadius", "chamferJoin", "notchStrokeColor",
+            "func glassCard(shape:",
+        ]
+        for symbol in retiredSymbols {
+            XCTAssertFalse(
+                codeOnly.contains(symbol),
+                "the retired pill/chamfer/notch subsystem must be fully removed from DashboardComponents.swift's live code -- found a lingering reference to `\(symbol)` outside a comment"
+            )
+        }
     }
 }

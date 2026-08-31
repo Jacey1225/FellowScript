@@ -76,7 +76,19 @@ APPLE_PRODUCTS: dict[str, int] = {
 # is exactly how a dev/test device leaks a paid plan onto every account it signs
 # into. "Sandbox" is intentionally allowed because App Review exercises IAP in
 # sandbox; set APPLE_ALLOW_SANDBOX=false to also refuse sandbox on a pure-prod box.
-_ALLOW_SANDBOX = os.getenv("APPLE_ALLOW_SANDBOX", "true").lower() != "false"
+#
+# No implicit default: this gates whether a real-money-adjacent grant (a paid
+# plan) can be created from a non-production transaction, so an operator must
+# say explicitly which way a deployment should behave rather than the process
+# silently inheriting a permissive fallback if the var is ever left unset.
+_ALLOW_SANDBOX_RAW = os.getenv("APPLE_ALLOW_SANDBOX")
+if _ALLOW_SANDBOX_RAW is None:
+    raise RuntimeError(
+        "APPLE_ALLOW_SANDBOX is not set. Set it explicitly to \"true\" (non-production "
+        "deployments serving TestFlight/App Review, the current behavior) or \"false\" "
+        "(a pure-production deployment) — there is no implicit default."
+    )
+_ALLOW_SANDBOX = _ALLOW_SANDBOX_RAW.strip().lower() != "false"
 
 
 def is_accepted_environment(environment: str | None) -> bool:

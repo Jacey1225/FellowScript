@@ -18,10 +18,29 @@ enum Theme {
     static let islandBg    = Color(hex: "#180E06").opacity(0.93)
     static let widgetBg    = Color(hex: "#180E06").opacity(0.99)
     static let cardBg      = Color(hex: "#221508").opacity(0.90)
-    static let bibleBg     = Color(hex: "#1E1408")
     static let bibleText   = Color(hex: "#EDE1C3")
     static let inputBg     = Color(hex: "#180D05").opacity(0.72)
     static let dangerBg    = Color(hex: "#280808").opacity(0.75)
+    // Translucent panel glass (task 20260830-bible-nav-dropdown-blur): meant
+    // to sit as an overlay in front of a `.ultraThinMaterial` backdrop-blur
+    // layer (never as a background on its own), so a floating panel can show
+    // real blurred content behind it instead of an opaque fill, while still
+    // landing in this app's warm dark tone rather than the material's
+    // default cool system-grey. Built from the same base hue as islandBg/
+    // widgetBg above, just non-opaque. Mirrors the web app's Warm Vellum
+    // Glass panel tint (task 20260826-glass-verse-selector-messages),
+    // adapted to this token's own base hex rather than importing the web's.
+    // Opacity corrected 0.35 -> 0.14 (task 20260830-bible-nav-dropdown-blur,
+    // second pass): 0.35 live-measured as compounding with `.ultraThinMaterial`'s
+    // own dark-mode opacity into a near-fully-opaque composite (backdrop
+    // correlation -0.20, i.e. none) -- 0.14 verified live to keep a real,
+    // clearly-blurred-not-opaque backdrop signal (correlation up to ~0.57
+    // against the true backdrop in the panel's non-chrome areas). This token
+    // no longer carries the AA-contrast floor for panel text on its own --
+    // text that can't tolerate a variable/bright backdrop (e.g. the header
+    // row) gets its own dedicated near-opaque background instead; see
+    // BibleNavDropdown.header in BibleReaderView.swift.
+    static let panelGlassTint = Color(hex: "#180E06").opacity(0.14)
 
     // ── Borders ───────────────────────────────────────────────────────────────
     static let borderGold      = Color(hex: "#D4922A").opacity(0.32)
@@ -140,6 +159,17 @@ extension Font {
     }
     static func verseRef(_ size: CGFloat) -> Font {
         .custom("PlayfairDisplay-Italic", size: size)
+    }
+
+    /// Dynamic-Type-responsive `.inter` (task 20260828-note-reply-continuation-ios,
+    /// critique R7 partial): `.custom(_:size:)` above is a fixed point size that
+    /// never grows with the user's text-size setting. NoteDetailView's new reply
+    /// cards ("most text-dense new surface," per the source design critique) use
+    /// this `relativeTo:` overload instead so that one new surface scales, without
+    /// touching every other `.inter` call site's fixed sizing screen-wide.
+    static func interScaled(_ size: CGFloat, weight: Font.Weight = .regular,
+                             relativeTo textStyle: Font.TextStyle = .body) -> Font {
+        .custom(interPostScriptName(for: weight), size: size, relativeTo: textStyle)
     }
 }
 

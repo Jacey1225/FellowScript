@@ -46,8 +46,20 @@ final class NoteDetailViewDirectionBTests: XCTestCase {
         let exp = sut.on(\.didAppear) { view in
             XCTAssertFalse(try view.actualView().showEditor)
 
-            let toolbar = try view.navigationStack().zStack(0).toolbar()
-            try toolbar.item(1).button().tap()
+            // `.toolbar().item(N)`/`find(button:)` (used pre-task
+            // 20260829-note-detail-toolbar-visual-fix) both broke once that
+            // task added `.sharedBackgroundVisibility(.hidden)` to each
+            // ToolbarItem (the fix for the doubled system/custom pill
+            // outline) — ViewInspector 0.10.3 cannot traverse a ToolbarItem
+            // wrapped in that modifier by any route (confirmed live: both
+            // the positional and recursive-search APIs report an opaque,
+            // private SwiftUI wrapper type they don't know how to unwrap).
+            // `editAction()` is the exact closure the Edit button's
+            // `Button(action:)` calls (see NotesListView.swift), exposed
+            // `internal` for this reason — so this still exercises the real
+            // production code path the button invokes, just without
+            // simulating the tap itself.
+            try view.actualView().editAction()
 
             // showEditor is the exact @State property NoteEditorView's
             // nested .sheet(isPresented:) reads — unchanged from before
@@ -70,8 +82,13 @@ final class NoteDetailViewDirectionBTests: XCTestCase {
         let note = makeNote()
         let sut = NoteDetailView(note: note) { _ in nil }
 
-        let toolbar = try sut.inspect().navigationStack().zStack(0).toolbar()
-        XCTAssertNoThrow(try toolbar.item(0).button().tap())
+        // See test_tappingEditPill_setsShowEditorTrue's comment: `closeAction()`
+        // is the exact closure the Close button's `Button(action:)` calls,
+        // called directly since ViewInspector 0.10.3 cannot traverse a
+        // ToolbarItem wrapped in `.sharedBackgroundVisibility(.hidden)`
+        // (task 20260829-note-detail-toolbar-visual-fix) to reach the button
+        // itself, either positionally or via `find(button:)`.
+        XCTAssertNoThrow(sut.closeAction())
     }
 
     // ── Date eyebrow guard: the `if !note.formattedTimestamp.isEmpty` guard
@@ -86,5 +103,76 @@ final class NoteDetailViewDirectionBTests: XCTestCase {
         // NoteDetailView reuses this exact `if` condition unchanged, so the
         // view-model-level guarantee (`formattedTimestamp` empty for an
         // empty stored timestamp) is what this restyle depends on.
+    }
+
+    // ── Doubled outline fix (task 20260829-note-detail-toolbar-visual-fix),
+    // regression coverage: `.sharedBackgroundVisibility(.hidden)` on both
+    // toolbar items is what suppresses iOS 26's automatic Liquid Glass
+    // capsule chrome that was compositing a second stroke on top of
+    // ghostPill/gradientPill's own deliberate outline. ViewInspector 0.10.3
+    // cannot traverse a ToolbarItem wrapped in that modifier (see
+    // `closeAction()`/`editAction()`'s own doc comment above and the two
+    // tests in this file that route around it), so this can't be asserted
+    // via a live render pass -- source-pinning it directly is the only way
+    // to make a future accidental removal (e.g. someone "cleaning up" the
+    // toolbar and dropping the modifier, silently reintroducing the doubled
+    // outline) fail a test rather than only being caught by eyeballing a
+    // screenshot again. Same source-pin technique NoteReplySectionTests
+    // already uses for states unreachable through ViewInspector/MockDataService.
+
+    private func componentSource() throws -> String {
+        let componentFile = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()          // FellowScriptTests/
+            .deletingLastPathComponent()          // FellowScript/ (repo-relative project root)
+            .appendingPathComponent("FellowScript/Notes/NotesListView.swift")
+        return try String(contentsOf: componentFile, encoding: .utf8)
+    }
+
+    func test_source_bothToolbarItems_suppressAutomaticGlassChrome_toAvoidDoubledOutline() throws {
+        let source = try componentSource()
+        // Bounded on the first `.toolbarBackground(` call (task
+        // 20260829-note-detail-toolbar-edge-blur changed its argument from a
+        // flat `Color(hex:...)` to a `LinearGradient(...)`, so this boundary
+        // marker can no longer assume "Color(hex:" follows the open-paren
+        // directly -- the bare modifier name is still the first occurrence
+        // in the file either way).
+        guard let toolbarStart = source.range(of: ".toolbar {"),
+              let toolbarBackgroundStart = source.range(of: ".toolbarBackground(") else {
+            XCTFail("could not locate NoteDetailView's .toolbar block to scope this check")
+            return
+        }
+        let toolbarBlock = String(source[toolbarStart.lowerBound..<toolbarBackgroundStart.lowerBound])
+
+        XCTAssertTrue(
+            toolbarBlock.contains(#"ToolbarItem(placement: .navigationBarLeading)"#),
+            "the Close pill must still be placed via a leading ToolbarItem"
+        )
+        XCTAssertTrue(
+            toolbarBlock.contains(#"ToolbarItem(placement: .navigationBarTrailing)"#),
+            "the Edit pill must still be placed via a trailing ToolbarItem"
+        )
+
+        // Strip `//` line comments first -- this block's own doc comment
+        // legitimately names ".sharedBackgroundVisibility(.hidden)" verbatim
+        // while explaining the fix (see the block above), which would
+        // otherwise inflate a naive substring count to 3 instead of the real
+        // 2 code occurrences on the ToolbarItems. Same technique
+        // NoteReplySectionTests.test_source_toolbarUsesTranslucentMaterial_notFlatScrim
+        // already uses for exactly this reason.
+        let codeOnly = toolbarBlock
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .map { line -> Substring in
+                if let range = line.range(of: "//") { return line[..<range.lowerBound] }
+                return line
+            }
+            .joined(separator: "\n")
+
+        let occurrences = codeOnly.components(separatedBy: ".sharedBackgroundVisibility(.hidden)").count - 1
+        XCTAssertEqual(
+            occurrences, 2,
+            "both the Close and Edit ToolbarItems must carry .sharedBackgroundVisibility(.hidden) -- " +
+            "dropping it from either one reintroduces iOS 26's automatic Liquid Glass capsule chrome " +
+            "layered on top of ghostPill/gradientPill's own stroke, i.e. the doubled-outline bug this task fixed"
+        )
     }
 }

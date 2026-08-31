@@ -109,6 +109,8 @@ final class NotesLoadFailureHardeningTests: XCTestCase {
         XCTAssertEqual(page1.notes["11111111-1111-1111-1111-111111111111"]?.title, "Morning notes")
         XCTAssertEqual(page1.notes["11111111-1111-1111-1111-111111111111"]?.id, "11111111-1111-1111-1111-111111111111",
                         "note.id must be set from the dict key, not left at the default UUID")
+        XCTAssertEqual(page1.notes["11111111-1111-1111-1111-111111111111"]?.username, "",
+                        "Personal notes (fetchNotes, not fetchGroupNotes) carry no outer username key to stamp -- must default to empty, never crash or leak an unrelated value")
         XCTAssertTrue(page1.hasMore, "has_more:true must carry through to NotesPage.hasMore")
         XCTAssertEqual(page1.nextCursorCreatedAt, "2026-08-16 20:00:00.654321+00")
         XCTAssertEqual(page1.nextCursorId, "22222222-2222-2222-2222-222222222222")
@@ -182,6 +184,7 @@ final class NotesLoadFailureHardeningTests: XCTestCase {
         let note1 = page1.notes["44444444-4444-4444-4444-444444444444"]
         XCTAssertEqual(note1?.title, "Group note 1")
         XCTAssertEqual(note1?.user, "user-alice", "the DB's 'user_id' key must be remapped to FSNote's 'user' field")
+        XCTAssertEqual(note1?.username, "alice", "the outer 'notes[username]' key must be stamped onto the decoded note's new username field")
         XCTAssertEqual(note1?.group_id, "group-abc")
         XCTAssertTrue(page1.hasMore)
 
@@ -210,6 +213,8 @@ final class NotesLoadFailureHardeningTests: XCTestCase {
 
         XCTAssertEqual(page2.notes.count, 1)
         XCTAssertEqual(page2.notes["55555555-5555-5555-5555-555555555555"]?.user, "user-bob")
+        XCTAssertEqual(page2.notes["55555555-5555-5555-5555-555555555555"]?.username, "bob",
+                        "username must be re-stamped correctly on the next-page fetch too, not just the first page")
         XCTAssertFalse(page2.hasMore)
 
         try await waitForFireAndForgetBeacon()

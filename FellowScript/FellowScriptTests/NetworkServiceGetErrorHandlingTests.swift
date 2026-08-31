@@ -44,6 +44,14 @@ final class StubURLProtocol: URLProtocol {
         let url:    String   // full absoluteString, including query string
         let method: String
         let bodyData: Data?
+        // The built URLRequest's timeoutInterval -- added for
+        // 20260828-networkservice-get-hang-investigation to let tests verify
+        // NetworkService's four request-building helpers (get()/request()/
+        // requestRaw()/checkedRequestRaw()) actually attach the new defensive
+        // 30s bound rather than leaving it implicit/untested. Additive field,
+        // only ever populated by startLoading() below, so it's safe for the
+        // 7 other files sharing this harness.
+        let timeoutInterval: TimeInterval
         var bodyJSON: [String: Any]? {
             guard let bodyData, !bodyData.isEmpty else { return nil }
             return (try? JSONSerialization.jsonObject(with: bodyData)) as? [String: Any]
@@ -81,7 +89,8 @@ final class StubURLProtocol: URLProtocol {
             path: request.url?.path ?? "",
             url: request.url?.absoluteString ?? "",
             method: request.httpMethod ?? "GET",
-            bodyData: Self.readBody(from: request)
+            bodyData: Self.readBody(from: request),
+            timeoutInterval: request.timeoutInterval
         ))
         let response = HTTPURLResponse(
             url: request.url!,
@@ -162,5 +171,61 @@ final class NetworkServiceGetErrorHandlingTests: XCTestCase {
         XCTAssertEqual(user.user_id, "user-123")
         XCTAssertEqual(user.username, "alice")
         XCTAssertEqual(user.timezone, "America/Los_Angeles")
+    }
+
+    // MARK: - Request timeout hardening (20260828-networkservice-get-hang-investigation)
+    //
+    // get()/request()/requestRaw()/checkedRequestRaw() now attach an explicit
+    // 30s timeoutInterval to every request they build, so a stalled/
+    // black-holed connect phase can no longer hang indefinitely -- the one
+    // plausible mechanism identified for the never-reproduced hang this test
+    // class is named for (see that task's testing.json for the four real,
+    // no-mock reproduction attempts that all came back clean). These tests
+    // would catch a regression that silently drops the timeout from any of
+    // the four helpers (e.g. a future refactor), which nothing else in this
+    // suite currently checks.
+
+    func test_get_attachesThirtySecondTimeout() async throws {
+        StubURLProtocol.resetRequestLog()
+        StubURLProtocol.stubStatusCode = 200
+        StubURLProtocol.stubBody = #"{"user_id": "u1", "username": "a", "email": "a@example.com"}"#.data(using: .utf8)!
+
+        _ = try await NetworkService.shared.fetchUser(userId: "u1")
+
+        XCTAssertEqual(StubURLProtocol.requestLog.last?.timeoutInterval, 30,
+                        "get() (via fetchUser) must attach the 30s defensive timeout")
+    }
+
+    func test_request_attachesThirtySecondTimeout() async {
+        StubURLProtocol.resetRequestLog()
+        StubURLProtocol.stubStatusCode = 200
+        StubURLProtocol.stubBody = Data()
+
+        _ = try? await NetworkService.shared.logout()
+
+        XCTAssertEqual(StubURLProtocol.requestLog.last?.timeoutInterval, 30,
+                        "request() (via logout) must attach the 30s defensive timeout")
+    }
+
+    func test_requestRaw_attachesThirtySecondTimeout() async {
+        StubURLProtocol.resetRequestLog()
+        StubURLProtocol.stubStatusCode = 200
+        StubURLProtocol.stubBody = #"{"user_id": "u1", "username": "a", "email": "a@example.com"}"#.data(using: .utf8)!
+
+        _ = try? await NetworkService.shared.signIn(username: "a", password: "b")
+
+        XCTAssertEqual(StubURLProtocol.requestLog.last?.timeoutInterval, 30,
+                        "requestRaw() (via signIn) must attach the 30s defensive timeout")
+    }
+
+    func test_checkedRequestRaw_attachesThirtySecondTimeout() async {
+        StubURLProtocol.resetRequestLog()
+        StubURLProtocol.stubStatusCode = 200
+        StubURLProtocol.stubBody = Data()
+
+        _ = try? await NetworkService.shared.mfaEnable()
+
+        XCTAssertEqual(StubURLProtocol.requestLog.last?.timeoutInterval, 30,
+                        "checkedRequestRaw() (via mfaEnable) must attach the 30s defensive timeout")
     }
 }

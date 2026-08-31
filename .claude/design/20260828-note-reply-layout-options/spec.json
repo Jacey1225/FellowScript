@@ -1,0 +1,8 @@
+{
+  "task_id": "20260828-note-reply-layout-options",
+  "step": 3,
+  "stage": "static-spec",
+  "result": "pass",
+  "generation_needed": true,
+  "summary": "Specced a 3-option comparison sheet (1260x2736 device frames, 3 cols x 2 rows) for reply-thread placement on NoteDetailView: A-inline continuation, B-docked bottom drawer, C-pushed thread screen, sharing one locked Theme-token palette/typography and identical 3-author sample reply content across all frames, with side-rail excluded and stated. Generation requires real SwiftUI simulator captures composited together, not OpenArt text-to-image, per verifiability requirements against the app's real tokens."
+}

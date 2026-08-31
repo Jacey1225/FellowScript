@@ -1,0 +1,7 @@
+{
+  "task_id": "20260828-note-reply-layout-options",
+  "step": 1,
+  "stage": "intake",
+  "result": "pass",
+  "summary": "Captured a 3-option comparison deliverable for a note-reply-thread UI on FellowScript's iOS NoteDetailView, grounded in the real NoteDetailView/FSNote source and the existing (partial) reply data model (POST /notes/reply/{note_id}, GroupsManager.fetch_replies, FSNote.replies field) rather than treating replies as greenfield. Flagged forward that personal (non-group) notes have no wired GET-replies endpoint today, only group notes do. Media type hint: static (3 rendered mockups)."
+}

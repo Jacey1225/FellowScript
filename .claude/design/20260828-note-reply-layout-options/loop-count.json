@@ -1,0 +1,10 @@
+{
+  "task_id": "20260828-note-reply-layout-options",
+  "steps": {},
+  "critique": 1,
+  "escalate": false,
+  "critique_history": [
+    { "pass": 1, "result": "bounce", "bounce_to": "design-generation", "blocking_faults": 6 },
+    { "pass": 2, "result": "pass", "residual_issues": 7, "note": "all 6 blocking faults re-measured and confirmed fixed; residuals are mockup-fidelity and /build handoff notes, none decision-affecting" }
+  ]
+}

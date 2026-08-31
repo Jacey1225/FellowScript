@@ -167,6 +167,17 @@ final class ThrowingTestDataService: DataServiceProtocol {
         try await MockDataService.shared.deleteNote(noteId: noteId, userId: userId)
     }
 
+    // Stub conformance only (task 20260828-note-reply-continuation-ios) --
+    // no test in this file exercises replies; delegates like the other
+    // pass-through stubs above.
+    func fetchReplies(userId: String, noteId: String, groupId: String) async throws -> [FSNote] {
+        try await MockDataService.shared.fetchReplies(userId: userId, noteId: noteId, groupId: groupId)
+    }
+
+    func postReply(_ reply: FSNote, noteId: String) async throws -> String {
+        try await MockDataService.shared.postReply(reply, noteId: noteId)
+    }
+
     func fetchHighlights(userId: String) async throws -> [String: String] {
         return try await MockDataService.shared.fetchHighlights(userId: userId)
     }

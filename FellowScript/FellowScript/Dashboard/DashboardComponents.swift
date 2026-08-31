@@ -59,50 +59,14 @@ extension View {
             )
     }
 
-    // Shape-parameterized variant of `glassCard` above — identical material/
-    // tint/border treatment, but composed over an arbitrary `Shape` instead
-    // of a `RoundedRectangle`. Added for `NoteResumeCard`'s notched card body
-    // (design-spec.md §3 steps 3-4: the card's fill AND its 1pt hairline
-    // stroke must both follow the bottom-right notch/chamfer cut), which a
-    // plain `cornerRadius:` can't express. `eoFill` lets a shape that
-    // combines a boolean-subtraction (even-odd) path — like
-    // `NoteResumeCardShape` — fill correctly. Uses `.stroke` rather than the
-    // `.strokeBorder` the `cornerRadius:` overload uses above, since
-    // `strokeBorder` requires `InsettableShape` conformance (which a
-    // boolean-subtraction shape can't meaningfully provide) — at this 1pt
-    // hairline weight the outward-vs-inset difference is imperceptible.
-    // Every existing call site keeps using the `cornerRadius:` overload
-    // above, completely unchanged.
-    func glassCard<S: Shape>(
-        shape: S,
-        eoFill: Bool = false,
-        tint: Color = Color(hex: "#2A1B0B").opacity(0.20),
-        border: [Color] = [Color.white.opacity(0.20), Color(hex: "#D4922A").opacity(0.12)],
-        blurBoost: CGFloat = 0
-    ) -> some View {
-        let fillStyle = FillStyle(eoFill: eoFill)
-        return self
-            .background(
-                ZStack {
-                    shape.fill(.ultraThinMaterial, style: fillStyle)
-                    if blurBoost > 0 {
-                        shape.fill(.ultraThinMaterial, style: fillStyle)
-                            .opacity(0.6)
-                            .blur(radius: blurBoost)
-                    }
-                    shape.fill(tint, style: fillStyle)
-                }
-            )
-            .overlay(
-                shape.stroke(
-                    LinearGradient(
-                        colors: border,
-                        startPoint: .topLeading, endPoint: .bottomTrailing
-                    ),
-                    lineWidth: 1
-                )
-            )
-    }
+    // The `shape:`/split-stroke `glassCard` overloads that used to live here
+    // (added for `NoteResumeCard`'s notched card body, task
+    // 20260827-continue-island-shape-refinement) were removed by task
+    // 20260828-continue-button-circle-implementation: the circular Continue
+    // button's card join is a plain overlap with no notch (design-spec.md's
+    // Option 2, "THE NOTCH" fix in generation.json), so every call site now
+    // uses the plain `cornerRadius:` overload above. Confirmed via repo-wide
+    // grep that nothing else ever called the `shape:` overloads.
 }
 
 // ── Hero header + warm gradient ───────────────────────────────────────────────
@@ -318,193 +282,30 @@ struct CheckInRow: View {
     }
 }
 
-// ── Continue island geometry (design-spec.md §1/§2.3/§3) ───────────────────────
-// The card's bottom-right corner has a notch subtracted from it, and the new
-// "Continue" island's own top-left corner is chamfered to match — both built
-// from the same depth-off-the-arc construction so the 12pt gutter between
-// them stays constant-width through the diagonal, by construction, with no
-// extra reconciliation step (§3 step 3).
+// ── Continue circle button geometry (superseded pill/chamfer/notch system) ────
+// Task 20260828-continue-button-circle-implementation replaced the "Continue"
+// island's pill/chamfer silhouette and the card's matching bottom-right notch
+// with a plain circular icon button (design-spec.md's Option 2, in
+// .claude/design/20260828-continue-button-circle-icon-options/): the card
+// always uses the plain `glassCard(cornerRadius:)` overload (no notch), and
+// the button's own silhouette is a plain `Circle()` (no chamfer). The entire
+// depth-off-the-arc chamfer/notch geometry system this section used to hold
+// (`chamferEdgeIntersections`, `chamferGeometryIsValid`,
+// `chamferTreatmentFitsIslandRadius`, `ContinueIslandShape`,
+// `NoteResumeCardNotch`, `NoteResumeCardShape`, `NotchedCardMaterial`) was
+// removed along with it — confirmed via repo-wide grep that nothing besides
+// this file and its own test file ever referenced any of it. See
+// NoteResumeCard's `continueCircleButton`/`rimGradient` below for the new
+// construction.
 
-/// Depth-off-the-arc chamfer geometry per design-spec.md §2.3/§3 step 2:
-/// given a corner of `radius` whose two flat edges meet at
-/// `(center.x - radius, center.y - radius)`, returns where a chamfer facet
-/// cut `depth` into the arc at `angleDegrees` off horizontal actually
-/// crosses those two flat edges (the facet's angular span on the circle
-/// necessarily overruns the corner's own 90° quarter-arc — see §2.3 — so
-/// these crossing points, not the plain tangent points, are what the facet
-/// actually connects to). Shared by the island's own top-left corner and the
-/// card's derived notch (built at the notch's own inflated radius) so both
-/// facets stay parallel.
-private func chamferEdgeIntersections(
-    center: CGPoint, radius: CGFloat, depth: CGFloat, angleDegrees: Double
-) -> (onLeftEdge: CGPoint, onTopEdge: CGPoint) {
-    let h = Double(max(0, radius - depth))                 // sagitta: perpendicular distance from center
-    let psi = (270 - angleDegrees) * .pi / 180              // facet's perpendicular direction from center
-    let lineDir = psi - .pi / 2                             // facet's own line direction
-    let footX = Double(center.x) + h * cos(psi)
-    let footY = Double(center.y) + h * sin(psi)
-    let dx = cos(lineDir), dy = sin(lineDir)
-
-    let topY = Double(center.y - radius)
-    let tTop = dy != 0 ? (topY - footY) / dy : 0
-    let onTop = CGPoint(x: footX + tTop * dx, y: topY)
-
-    let leftX = Double(center.x - radius)
-    let tLeft = dx != 0 ? (leftX - footX) / dx : 0
-    let onLeft = CGPoint(x: leftX, y: footY + tLeft * dy)
-
-    return (onLeft, onTop)
-}
-
-/// The "Continue" island's own silhouette (design-spec.md §2.2): a capsule
-/// (full round on the right end and the bottom-left quarter) with the
-/// top-left corner replaced by the 8pt-depth, ~52°, 4pt-rounded-join
-/// chamfer from §1/§2.3/§3 step 2 — never an angle-and-run cut off the
-/// bounding box, which §2.3/§3 step 2 explicitly rules out as invisible at
-/// this corner radius.
-struct ContinueIslandShape: Shape {
-    var chamferDepth: CGFloat
-    var chamferAngle: Double
-    var joinRadius: CGFloat
-
-    func path(in rect: CGRect) -> Path {
-        let r = rect.height / 2
-        guard r > chamferDepth, rect.width > 2 * r else {
-            return Path(roundedRect: rect, cornerRadius: max(0, min(r, rect.width / 2)), style: .continuous)
-        }
-        let center = CGPoint(x: rect.minX + r, y: rect.minY + r)
-        let (onLeft, onTop) = chamferEdgeIntersections(center: center, radius: r, depth: chamferDepth, angleDegrees: chamferAngle)
-
-        // Built via CGMutablePath (not SwiftUI's Path directly) because the
-        // two chamfer-corner fillets need `addArc(tangent1End:tangent2End:
-        // radius:)`, which only exists on CGMutablePath/UIBezierPath, not on
-        // SwiftUI's own Path type. Path(_ cgPath:) bridges the result back.
-        let cgPath = CGMutablePath()
-        cgPath.move(to: CGPoint(x: rect.minX, y: rect.maxY - r))
-        cgPath.addArc(tangent1End: onLeft, tangent2End: onTop, radius: joinRadius)
-        cgPath.addArc(tangent1End: onTop, tangent2End: CGPoint(x: rect.maxX - r, y: rect.minY), radius: joinRadius)
-        cgPath.addLine(to: CGPoint(x: rect.maxX - r, y: rect.minY))
-        cgPath.addArc(center: CGPoint(x: rect.maxX - r, y: rect.midY), radius: r,
-                      startAngle: -.pi / 2, endAngle: .pi / 2, clockwise: false)
-        cgPath.addLine(to: CGPoint(x: rect.minX + r, y: rect.maxY))
-        cgPath.addArc(center: CGPoint(x: rect.minX + r, y: rect.maxY - r), radius: r,
-                      startAngle: .pi / 2, endAngle: .pi, clockwise: false)
-        cgPath.closeSubpath()
-        return Path(cgPath)
-    }
-}
-
-/// The card's bottom-right notch (design-spec.md §2.3/§3 step 3): the
-/// island's own top-left silhouette (top edge, chamfered corner, left edge)
-/// inflated outward by `gutter` on the sides facing the card interior. The
-/// notch's right/bottom sides deliberately extend past the card's own
-/// edges — the island sits flush with the card's trailing edge and
-/// overhangs its bottom edge, so no gutter is needed on those two sides,
-/// only where the notch's cut faces card material (top and left).
-struct NoteResumeCardNotch: Shape {
-    var islandWidth: CGFloat
-    var islandHeight: CGFloat
-    var gutter: CGFloat
-    var chamferDepth: CGFloat
-    var chamferAngle: Double
-    var joinRadius: CGFloat
-
-    func path(in rect: CGRect) -> Path {
-        let notchRadius = islandHeight / 2 + gutter   // §2.3: island radius inflated by the gutter
-        let islandTopInset = 0.42 * islandHeight        // §2.3: island's top edge, measured up from the card's bottom edge
-        let notchLeft = rect.maxX - islandWidth - gutter
-        let notchTop  = rect.maxY - islandTopInset - gutter
-        // Extend generously past the card's own bottom-right edge so the cut
-        // fully reaches the boundary regardless of the card's own corner
-        // radius there — this whole region is being subtracted anyway.
-        let overrun = max(rect.width, rect.height) + notchRadius
-        let notchRect = CGRect(
-            x: notchLeft, y: notchTop,
-            width: (rect.maxX - notchLeft) + overrun,
-            height: (rect.maxY - notchTop) + overrun
-        )
-
-        guard notchRadius > chamferDepth, notchRect.width > notchRadius, notchRect.height > notchRadius else {
-            return Path(notchRect)
-        }
-
-        let center = CGPoint(x: notchRect.minX + notchRadius, y: notchRect.minY + notchRadius)
-        let (onLeft, onTop) = chamferEdgeIntersections(center: center, radius: notchRadius, depth: chamferDepth, angleDegrees: chamferAngle)
-
-        // See ContinueIslandShape above: built via CGMutablePath for the
-        // same tangent-arc-fillet reason.
-        let cgPath = CGMutablePath()
-        cgPath.move(to: CGPoint(x: notchRect.minX, y: notchRect.maxY))
-        cgPath.addLine(to: CGPoint(x: notchRect.minX, y: onLeft.y))
-        cgPath.addArc(tangent1End: onLeft, tangent2End: onTop, radius: joinRadius)
-        cgPath.addArc(tangent1End: onTop, tangent2End: CGPoint(x: notchRect.maxX, y: notchRect.minY), radius: joinRadius)
-        cgPath.addLine(to: CGPoint(x: notchRect.maxX, y: notchRect.minY))
-        cgPath.addLine(to: CGPoint(x: notchRect.maxX, y: notchRect.maxY))
-        cgPath.closeSubpath()
-        return Path(cgPath)
-    }
-}
-
-/// The notched card body's fill/stroke shape: the existing rounded rect,
-/// boolean-subtracting the notch above (design-spec.md §3 step 4) — draw
-/// with an even-odd fill rule (`glassCard(shape:eoFill:...)`) so the notch
-/// actually cuts a hole rather than adding a second overlapping fill.
-struct NoteResumeCardShape: Shape {
-    var cornerRadius: CGFloat
-    var islandWidth: CGFloat
-    var islandHeight: CGFloat
-    var gutter: CGFloat
-    var chamferDepth: CGFloat
-    var chamferAngle: Double
-    var joinRadius: CGFloat
-
-    func path(in rect: CGRect) -> Path {
-        var path = Path(roundedRect: rect, cornerRadius: cornerRadius, style: .continuous)
-        path.addPath(NoteResumeCardNotch(
-            islandWidth: islandWidth, islandHeight: islandHeight, gutter: gutter,
-            chamferDepth: chamferDepth, chamferAngle: chamferAngle, joinRadius: joinRadius
-        ).path(in: rect))
-        return path
-    }
-}
-
-/// Wraps the card's title/preview content in the glass material, switching
-/// between the notched shape (island/notch treatment active) and the
-/// original plain rounded rect (§4 Dynamic Type fallback engaged) — the only
-/// two card-background states this component ever renders.
-private struct NotchedCardMaterial: ViewModifier {
-    var useNotch: Bool
-    var cornerRadius: CGFloat
-    var islandWidth: CGFloat
-    var islandHeight: CGFloat
-    var gutter: CGFloat
-    var chamferDepth: CGFloat
-    var chamferAngle: Double
-    var joinRadius: CGFloat
-
-    func body(content: Content) -> some View {
-        if useNotch {
-            content.glassCard(
-                shape: NoteResumeCardShape(
-                    cornerRadius: cornerRadius,
-                    islandWidth: islandWidth, islandHeight: islandHeight,
-                    gutter: gutter, chamferDepth: chamferDepth,
-                    chamferAngle: chamferAngle, joinRadius: joinRadius
-                ),
-                eoFill: true,
-                tint: Color(hex: "#2A1B0B").opacity(0.14),
-                blurBoost: 4
-            )
-        } else {
-            content.glassCard(cornerRadius: cornerRadius, tint: Color(hex: "#2A1B0B").opacity(0.14), blurBoost: 4)
-        }
-    }
-}
-
-/// Press-state styling for the "Continue" island / its fallback capsule
-/// (design-spec.md §2.4): scale to 0.96 with a one-step fill darkening,
-/// 150ms ease-out. Reduce Motion drops the scale transform entirely and
-/// substitutes a brief opacity dip alongside the same darkening.
+/// Press-state styling for the "Continue" circular button (design-spec.md's
+/// Option 2, carried unchanged from the retired pill/island's own press
+/// state): scale to 0.96 with a one-step fill darkening, 150ms ease-out.
+/// Reduce Motion drops the scale transform entirely and substitutes a brief
+/// opacity dip alongside the same darkening. Name kept as-is even though the
+/// "island" it originally styled is gone — this is still the one shared
+/// `ButtonStyle` for the Continue affordance, and renaming it is out of
+/// scope for a pure visual-construction swap.
 private struct ContinueIslandButtonStyle: ButtonStyle {
     var reduceMotion: Bool
 
@@ -523,46 +324,76 @@ private struct ContinueIslandButtonStyle: ButtonStyle {
 // a friend's. `note == nil` (no notes written yet) renders a defined empty
 // state that opens a fresh note instead of silently vanishing — and, per
 // design-spec.md §2.4 and this task's own design step 1 (design-notes.md),
-// that empty state keeps its original pill exactly as-is: the island/notch
-// treatment only ever applies to the populated (`note != nil`) branch.
+// that empty state keeps its original pill exactly as-is: the circular
+// Continue-button treatment only ever applies to the populated
+// (`note != nil`) branch.
 struct NoteResumeCard: View {
     let note:   FSNote?
     let onOpen: () -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var labelSize: CGSize = .zero
-    @State private var cardWidth: CGFloat = 0
 
-    // ── design-spec.md §5 tokens (component-internal — Bucket 2, fixed
-    // across every device width per §6) ─────────────────────────────────────
+    // Task 20260828-continue-button-circle-implementation: sizing is now
+    // @ScaledMetric-driven, not the old labelSize-measurement-driven
+    // approach (the "Continue" text label this used to measure is gone —
+    // the new button is icon-only). `@ScaledMetric(relativeTo: .subheadline)`
+    // scales the 52pt base value by the same Dynamic-Type text style the old
+    // island's own label used, so this stays behaviorally consistent with
+    // the prior sizing's growth curve without needing a live label
+    // measurement. `resolvedDiameter` below clamps the scaled result to
+    // design-spec.md's locked 52...72 range.
+    @ScaledMetric(relativeTo: .subheadline) private var diameter: CGFloat = 52
+
+    // Live-measured card width, kept only as a verification/regression hook
+    // now that there is no §4 fallback state to switch into: design-spec.md
+    // states that the clamped 52...72 diameter can never exceed 45% of card
+    // width at any accessibility text size, retiring the old fallback
+    // capsule entirely (open question 3 in intake-spec.md). This still
+    // measures the real card width live (mirroring the prior `cardWidth`/
+    // `didAppear` convention) so a regression test can pin
+    // `resolvedDiameter <= 0.45 * cardWidth` against the actually-laid-out
+    // view rather than taking the claim on faith — it no longer drives any
+    // rendering branch itself.
+    // Not `private` -- read directly by NoteResumeCardContinueIslandTests via
+    // the `didAppear` hook below (mirrors NoteDetailView's `showEditor`/
+    // `didAppear` convention in NotesListView.swift).
+    @State var cardWidth: CGFloat = 0
+
+    // Testing-only hook (default nil, zero runtime cost otherwise) — see
+    // NoteDetailView's identical pattern in NotesListView.swift.
+    internal var didAppear: ((Self) -> Void)?
+
+    // ── design-spec.md tokens (component-internal) ──────────────────────────
     private let gutter: CGFloat           = 12
-    private let chamferDepth: CGFloat     = 8
-    private let chamferAngle: Double      = 52
-    private let chamferJoin: CGFloat      = 4
     private let cardCornerRadius: CGFloat = 20   // unchanged from the existing card
 
-    // §2.2: height is a floor, width is intrinsic to the rendered label —
-    // both recompute live from `labelSize`, which itself is re-measured at
-    // every Dynamic Type change (see `measuringLabel` below), never a value
-    // computed once at design time.
-    private var islandHeight: CGFloat { max(44, labelSize.height + 22) }
-    private var islandWidth:  CGFloat { labelSize.width + 36 }
+    // design-spec.md's locked clamp: the @ScaledMetric-scaled diameter can
+    // grow past 72pt at the largest accessibility categories; clamping here
+    // keeps the button within the approved 52...72 range at every size.
+    //
+    // Not `private` -- read directly by NoteResumeCardContinueIslandTests via
+    // the `didAppear` hook, mirroring `cardWidth`'s identical testability
+    // convention above: ViewInspector has no support for @ScaledMetric (it
+    // can't thread a `.environment(\.sizeCategory, ...)` override through
+    // that property wrapper without a real host), so the regression sweep
+    // proving this clamps to 52...72 and never exceeds 45% of the live
+    // `cardWidth` reads this off the actual, live-hosted view instead.
+    var resolvedDiameter: CGFloat {
+        min(max(diameter, 52), 72)
+    }
+    // Icon size is a fixed 38% of the *resolved* (post-clamp,
+    // post-@ScaledMetric) diameter, not a static 20pt -- 20pt is simply what
+    // 38%-of-52 evaluates to at the default size.
+    private var iconSize: CGFloat { resolvedDiameter * 0.38 }
 
-    // §2.1: card bottom padding, rounded up to the nearest 4pt.
+    // Overhang/placement (unchanged mechanic, re-derived from diameter
+    // instead of island height): trailing edge of the circle flush with the
+    // card's trailing edge; 42% of the diameter sits above the card's bottom
+    // edge, 58% overhangs below it.
     private var derivedBottomPadding: CGFloat {
-        ((0.42 * islandHeight + gutter + 4) / 4).rounded(.up) * 4
+        ((0.42 * resolvedDiameter + gutter + 4) / 4).rounded(.up) * 4
     }
-    // §2.3/§3 step 8: 58% of the island's height sits below the card's own frame.
-    private var belowCardReserve: CGFloat { 0.58 * islandHeight }
-
-    // §4 fallback thresholds. The proportional width check (45% of
-    // `cardWidth`) is the operative trigger; the 48pt padding-cap check is a
-    // dead-code safety net under `.subheadline`, kept for completeness in
-    // case the label style ever changes.
-    private var notchTreatmentFits: Bool {
-        guard cardWidth > 0 else { return true }
-        return islandWidth <= 0.45 * cardWidth && derivedBottomPadding <= 48
-    }
+    private var belowCardReserve: CGFloat { 0.58 * resolvedDiameter }
 
     private var noteTitle: String {
         guard let note else { return "" }
@@ -577,7 +408,7 @@ struct NoteResumeCard: View {
         }
     }
 
-    // MARK: - Populated state — the new "Continue" island
+    // MARK: - Populated state — the circular "Continue" button
 
     @ViewBuilder
     private func populatedCard(_ note: FSNote) -> some View {
@@ -585,40 +416,28 @@ struct NoteResumeCard: View {
             cardBody(note)
                 .overlay(alignment: .bottomTrailing) {
                     // Bottom-trailing-aligned to the card's own frame, then
-                    // shifted down by 58% of the island's height (§2.3) — the
-                    // island's trailing edge lands flush with the card's
+                    // shifted down by 58% of the circle's diameter — the
+                    // circle's trailing edge lands flush with the card's
                     // trailing edge (both share the same outer 20pt margin
                     // below), and its top/bottom edges land exactly at
-                    // `cardBottomY − 0.42×islandHeight` /
-                    // `cardBottomY + 0.58×islandHeight` as specified.
-                    if notchTreatmentFits {
-                        continueIsland.offset(y: belowCardReserve)
-                    }
+                    // `cardBottomY − 0.42×diameter` /
+                    // `cardBottomY + 0.58×diameter` as specified.
+                    continueCircleButton.offset(y: belowCardReserve)
                 }
-                .overlay(alignment: .bottom) {
-                    if !notchTreatmentFits {
-                        fallbackContinueCapsule
-                            .padding(.horizontal, 16)
-                            .padding(.bottom, 16)
-                    }
-                }
-            // §2.3/§3 step 8: reserve the overhang as real layout space in
-            // this component's own container (rather than assuming the
-            // parent stack's incidental spacing covers it) — collapsed
-            // entirely once the fallback removes the overhang. Verified
-            // against the live view hierarchy (ContentView → TabView →
-            // DashboardView's ScrollView/LazyVStack → this card): none of
-            // those ancestors clip, and the ScrollView/LazyVStack's existing
-            // 150pt bottom padding for the floating tab bar comfortably
-            // clears the ≥16pt island-to-tab-bar gap on top of this
-            // reservation at every Dynamic Type size up to the point the
-            // §4 fallback engages.
-            if notchTreatmentFits {
-                Color.clear.frame(height: belowCardReserve)
-            }
+            // Reserve the overhang as real layout space in this component's
+            // own container (rather than assuming the parent stack's
+            // incidental spacing covers it). Verified against the live view
+            // hierarchy (ContentView → TabView → DashboardView's
+            // ScrollView/LazyVStack → this card): none of those ancestors
+            // clip, and the ScrollView/LazyVStack's existing 150pt bottom
+            // padding for the floating tab bar comfortably clears the
+            // ≥16pt button-to-tab-bar gap on top of this reservation.
+            Color.clear.frame(height: belowCardReserve)
         }
         .padding(.horizontal, 20)
-        .background(measuringLabel)
+        // Testing-only: see the `didAppear`/`cardWidth` comments above.
+        .onAppear { didAppear?(self) }
+        .onChange(of: cardWidth) { _, _ in didAppear?(self) }
     }
 
     private func cardBody(_ note: FSNote) -> some View {
@@ -638,19 +457,15 @@ struct NoteResumeCard: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Resume note: \(noteTitle)")
-        // §2.1: top/left/right padding unchanged (16pt); bottom padding is
-        // the derived value while the notch is active, or the original 16pt
-        // once the §4 fallback takes over (no notch to clear in that case).
         .padding(.top, 16)
         .padding(.horizontal, 16)
-        .padding(.bottom, notchTreatmentFits ? derivedBottomPadding : 16)
-        .modifier(NotchedCardMaterial(
-            useNotch: notchTreatmentFits,
-            cornerRadius: cardCornerRadius,
-            islandWidth: islandWidth, islandHeight: islandHeight,
-            gutter: gutter, chamferDepth: chamferDepth,
-            chamferAngle: chamferAngle, joinRadius: chamferJoin
-        ))
+        .padding(.bottom, derivedBottomPadding)
+        // Card join: plain overlap, no notch (design-spec.md's Option 2,
+        // generation.json's "THE NOTCH" fix) -- always the plain
+        // `glassCard(cornerRadius:)` overload, matching variants 1/2/3/3b's
+        // construction from the design pass, never the retired
+        // `glassCard(shape:)` notch-cutting overloads.
+        .glassCard(cornerRadius: cardCornerRadius, tint: Color(hex: "#2A1B0B").opacity(0.14), blurBoost: 4)
         .background(
             GeometryReader { geo in
                 Color.clear
@@ -660,104 +475,93 @@ struct NoteResumeCard: View {
         )
     }
 
-    // Hidden, zero-footprint "Continue" label solely for measuring
-    // `labelSize` at the live Dynamic Type size (§3 step 1/§4: island
-    // width/height and every derived notch/padding/reserve value must
-    // recompute from the *rendered* label, not a value computed once at
-    // design time). `.fixedSize()` makes this Text report its true
-    // intrinsic size regardless of the space proposed to it.
-    private var measuringLabel: some View {
-        Text("Continue")
-            .font(.subheadline.weight(.semibold))
-            .tracking(0.2)
-            .fixedSize()
-            .background(
-                GeometryReader { geo in
-                    Color.clear
-                        .onAppear { labelSize = geo.size }
-                        .onChange(of: geo.size) { _, new in labelSize = new }
-                }
-            )
-            .hidden()
+    // The gold arc rim (design-spec.md's Option 2, the one rim exception to
+    // the standard #F5D392@0.35 top-fade rim every other option uses):
+    // `#FBE8C0 @ 0.8`, 2pt, drawn `.strokeBorder` so the stroke sits fully
+    // inside the circle's own silhouette (never bleeding past the fill
+    // edge — a fix generation.json's own pass made after the first
+    // `.stroke()` attempt bled outside it).
+    //
+    // SwiftUI's `AngularGradient` places its 0° stop at the circle's
+    // 3-o'clock (right), sweeping clockwise -- NOT 0°-at-top as a naive
+    // reading might assume. The generation pass's own disclosed false start
+    // got this wrong on the first attempt (assumed 0°-at-top, rendered a
+    // band centered on the right instead) and had to shift every stop by
+    // −90° to actually center the bright band on top; top is therefore 270°
+    // in AngularGradient's own coordinate system. The window must read as
+    // full bright ±45° from top, fading to clear by ±70° (a ~25° ramp at
+    // each end) -- so the stop locations below are 270° ± {45, 70},
+    // expressed as `location = degrees / 360` across an explicit 0°...360°
+    // sweep.
+    private var rimGradient: AngularGradient {
+        let rimColor = Color(hex: "#FBE8C0").opacity(0.8)
+        return AngularGradient(
+            gradient: Gradient(stops: [
+                .init(color: .clear, location: 0.0),
+                .init(color: .clear, location: 200.0 / 360.0),    // 270 - 70
+                .init(color: rimColor, location: 225.0 / 360.0),  // 270 - 45
+                .init(color: rimColor, location: 315.0 / 360.0),  // 270 + 45
+                .init(color: .clear, location: 340.0 / 360.0),    // 270 + 70
+                .init(color: .clear, location: 1.0),
+            ]),
+            center: .center,
+            startAngle: .degrees(0),
+            endAngle: .degrees(360)
+        )
     }
 
-    // The "Continue" island itself (design-spec.md §2.2/§2.3/§3).
-    private var continueIsland: some View {
-        let shape = ContinueIslandShape(chamferDepth: chamferDepth, chamferAngle: chamferAngle, joinRadius: chamferJoin)
-        return Button(action: onOpen) {
-            Text("Continue")
-                .font(.subheadline.weight(.semibold))
-                .tracking(0.2)
-                .foregroundColor(Color(hex: "#24170A"))
-                .frame(width: islandWidth, height: islandHeight)
-                .background(
+    // The circular "Continue" button itself (design-spec.md's Option 2).
+    private var continueCircleButton: some View {
+        Button(action: onOpen) {
+            Circle()
+                .fill(
+                    // Direction is `.topLeading → .bottomTrailing` (a
+                    // deliberate change from the pill's horizontal
+                    // `.leading → .trailing`), so the light direction agrees
+                    // with the top rim highlight and the downward ambient
+                    // shadow.
                     LinearGradient(colors: [Color(hex: "#EEAC3F"), Color(hex: "#C88C2C")],
-                                   startPoint: .leading, endPoint: .trailing)
+                                   startPoint: .topLeading, endPoint: .bottomTrailing)
                 )
-                .clipShape(shape)
+                .frame(width: resolvedDiameter, height: resolvedDiameter)
                 .overlay(
-                    // Top rim (§2.2): a 1pt inner stroke meant to read on the
-                    // top edge only. Approximated here as a full-perimeter
-                    // stroke faded out via a top-to-bottom mask, rather than
-                    // a hand-trimmed top-only path — visually equivalent at
-                    // this shape's proportions and far simpler to keep in
-                    // sync with the live chamfer geometry above.
-                    shape
-                        .stroke(Color(hex: "#F5D392"), lineWidth: 1)
-                        .mask(
-                            LinearGradient(
-                                stops: [
-                                    .init(color: .white.opacity(0.35), location: 0.0),
-                                    .init(color: .white.opacity(0.35), location: 0.45),
-                                    .init(color: .clear, location: 0.6),
-                                ],
-                                startPoint: .top, endPoint: .bottom
-                            )
-                        )
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: iconSize, weight: .bold))
+                        .foregroundColor(Color(hex: "#24170A"))
+                        // Optical offset: -1pt on the x-axis, nudging the
+                        // glyph toward the circle's leading edge.
+                        .offset(x: -1)
                 )
-                // Three shadows (§2.2): separation (zero-offset, carves the
-                // top/left gutter — blur tied to `gutter + 2pt`), ambient,
-                // and contact, all layered on the same view.
+                .overlay(
+                    Circle().strokeBorder(rimGradient, lineWidth: 2)
+                )
+                // Shadow stack (unchanged from the pill, all three layers,
+                // same values): separation (zero-offset, carves the gutter —
+                // blur tied to `gutter + 2pt`), ambient, and contact.
                 .shadow(color: .black.opacity(0.40), radius: gutter + 2, x: 0, y: 0)
                 .shadow(color: .black.opacity(0.55), radius: 10, x: 0, y: 4)
                 .shadow(color: .black.opacity(0.40), radius: 3, x: 0, y: 1)
         }
         .buttonStyle(ContinueIslandButtonStyle(reduceMotion: reduceMotion))
-        // §3 step 9: the chamfer removes real material from the fill near
-        // the top-left corner; without this, SwiftUI would hit-test against
-        // that reduced fill instead of the nominal bounding rect.
-        .contentShape(Rectangle())
-        .accessibilityLabel("Continue reading \(noteTitle)")
-    }
-
-    // §4 fallback: full-width capsule fully inside the card's padding box,
-    // no notch/overhang, standard 16pt bottom padding restored above.
-    private var fallbackContinueCapsule: some View {
-        Button(action: onOpen) {
-            Text("Continue")
-                .font(.subheadline.weight(.semibold))
-                .tracking(0.2)
-                .foregroundColor(Color(hex: "#24170A"))
-                .frame(maxWidth: .infinity)
-                .frame(height: islandHeight)
-                .background(
-                    LinearGradient(colors: [Color(hex: "#EEAC3F"), Color(hex: "#C88C2C")],
-                                   startPoint: .leading, endPoint: .trailing)
-                )
-                .clipShape(Capsule())
-        }
-        .buttonStyle(ContinueIslandButtonStyle(reduceMotion: reduceMotion))
-        .contentShape(Rectangle())
+        // Hit target: always ≥ 44×44pt regardless of the 52-72pt visual
+        // diameter (the clamp floor of 52pt already clears 44pt, but this
+        // must still be explicit -- hit-testing must not be limited to the
+        // visually-reduced silhouette, matching the pill's own
+        // `.contentShape` convention for the same reason).
+        .contentShape(Circle())
         .accessibilityLabel("Continue reading \(noteTitle)")
     }
 
     // MARK: - Empty state (`note == nil`)
     //
     // Unchanged, pixel-for-pixel, per design step 1's decision
-    // (design-notes.md): the island/notch treatment and the card's derived
-    // height/padding apply only to the populated branch above. This branch
-    // is exactly the original implementation, preserved so
-    // `NoteResumeCardTests`'s existing empty-state assertions keep passing.
+    // (design-notes.md) and this task's own explicit scope (design-spec.md's
+    // "Empty-state reconciliation" note): the populated state's new
+    // light-fill/dark-glyph circular button is a stated intentional
+    // distinction from this branch's dark-fill/light-glyph look, not an
+    // inconsistency to fix. This branch is exactly the original
+    // implementation, preserved so `NoteResumeCardTests`'s existing
+    // empty-state assertions keep passing.
     private var emptyStateCard: some View {
         Button(action: onOpen) {
             VStack(alignment: .leading, spacing: 8) {

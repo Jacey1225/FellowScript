@@ -103,6 +103,7 @@ may still be populated.
 | POST | `/groups/{user_id}/{group_id}/join` | Join a group |
 | POST | `/groups/{user_id}/{group_id}/leave` | Leave a group |
 | GET | `/groups/{user_id}/{group_id}/notes` | One page (15) of public notes shared in the group, newest first. Keyset-paginated, same contract as `/notes/{user_id}` above (blocked users excluded server-side). |
+| GET | `/groups/{user_id}/{note_id}/{group_id}/replies` | All replies to a note shared in the group. Caller must be a group member. |
 | GET | `/groups/{group_id}/highlights` | All highlights in the group |
 
 ---

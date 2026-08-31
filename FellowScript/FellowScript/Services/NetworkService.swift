@@ -14,12 +14,25 @@ final class NetworkService: DataServiceProtocol {
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
+    // Defensive bound on every request built by the four helpers below. Chosen
+    // as half of URLSession's own 60s default (timeoutIntervalForRequest) --
+    // generous enough not to false-positive on a slow-but-alive connection,
+    // while making sure a stalled/black-holed connect phase (the one plausible
+    // mechanism identified for the never-reproduced NetworkServiceGetErrorHandlingTests
+    // hang -- see 20260828-networkservice-get-hang-investigation) can no longer
+    // hang indefinitely. This is defensive hardening, not a confirmed-bug fix:
+    // four real xcodebuild attempts (three prior + one full-suite re-attempt
+    // during this task) never reproduced the hang.
+    private static let requestTimeout: TimeInterval = 30
+
     private func url(_ path: String) -> URL {
         URL(string: apiBase + path)!
     }
 
     private func get(_ path: String) async throws -> Data {
-        let (data, response) = try await URLSession.shared.data(from: url(path))
+        var req = URLRequest(url: url(path))
+        req.timeoutInterval = Self.requestTimeout
+        let (data, response) = try await URLSession.shared.data(for: req)
         // Validate status like request()/checkedRequestRaw() do — previously this
         // never called throwIfError, so every fetch* built on it silently turned
         // an HTTP error (e.g. a 401 from an expired session) into a blank default
@@ -32,6 +45,7 @@ final class NetworkService: DataServiceProtocol {
     private func request(_ path: String, method: String, body: Encodable? = nil) async throws -> Data {
         var req = URLRequest(url: url(path))
         req.httpMethod = method
+        req.timeoutInterval = Self.requestTimeout
         if let body {
             req.setValue("application/json", forHTTPHeaderField: "Content-Type")
             req.httpBody = try JSONEncoder().encode(body)
@@ -44,6 +58,7 @@ final class NetworkService: DataServiceProtocol {
     private func requestRaw(_ path: String, method: String, jsonObject: Any) async throws -> Data {
         var req = URLRequest(url: url(path))
         req.httpMethod = method
+        req.timeoutInterval = Self.requestTimeout
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try JSONSerialization.data(withJSONObject: jsonObject)
         let (data, _) = try await URLSession.shared.data(for: req)
@@ -56,6 +71,7 @@ final class NetworkService: DataServiceProtocol {
     private func checkedRequestRaw(_ path: String, method: String, jsonObject: Any) async throws -> Data {
         var req = URLRequest(url: url(path))
         req.httpMethod = method
+        req.timeoutInterval = Self.requestTimeout
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try JSONSerialization.data(withJSONObject: jsonObject)
         let (data, response) = try await URLSession.shared.data(for: req)
@@ -344,11 +360,30 @@ final class NetworkService: DataServiceProtocol {
             return NotesPage(notes: [:], nextCursorCreatedAt: nil, nextCursorId: nil, hasMore: false)
         }
 
+        let groupNotesEndpoint = "GET /groups/{user_id}/{group_id}/notes"
         var result: [String: FSNote] = [:]
-        for (_, byNote) in outer {
-            guard let noteMap = byNote as? [String: Any] else { continue }
+        for (username, byNote) in outer {
+            guard let noteMap = byNote as? [String: Any] else {
+                let context = username.isEmpty ? "?" : username
+                print("[NetworkService] fetchGroupNotes: notes[\(context)] is not an object, skipping that member's notes")
+                reportDecodeFailure(endpoint: groupNotesEndpoint,
+                                     summary: "notes[username] value is not a JSON object")
+                continue
+            }
             for (noteId, rawFields) in noteMap {
-                guard var fields = rawFields as? [String: Any] else { continue }
+                // Previously this whole per-note pipeline (dict-cast, re-serialize,
+                // FSNote decode) collapsed into a single `guard ... else { continue }`
+                // with zero diagnostics — any one note's field-shape mismatch silently
+                // vanished with no trace of which step failed or why. Split into
+                // distinct, beaconed failure points (matching this file's existing
+                // reportDecodeFailure convention) so a future occurrence is visible
+                // instead of just manifesting as "other members' notes are missing".
+                guard var fields = rawFields as? [String: Any] else {
+                    print("[NetworkService] fetchGroupNotes: notes[\(username)][\(noteId)] value is not an object, dropping note")
+                    reportDecodeFailure(endpoint: groupNotesEndpoint,
+                                         summary: "notes[username][note_id] value is not a JSON object")
+                    continue
+                }
                 // The DB column is "user_id"; FSNote.CodingKey is "user"
                 fields["user"]     = fields["user_id"] ?? ""
                 fields["id"]       = noteId
@@ -357,10 +392,26 @@ final class NetworkService: DataServiceProtocol {
                 if fields["verses"]  == nil { fields["verses"]  = [[Any]]() }
                 if fields["replies"] == nil { fields["replies"] = [Any]() }
                 fields.removeValue(forKey: "user_id")
-                guard let noteData = try? JSONSerialization.data(withJSONObject: fields),
-                      var note = decode(FSNote.self, from: noteData) else { continue }
+
+                guard let noteData = try? JSONSerialization.data(withJSONObject: fields) else {
+                    print("[NetworkService] fetchGroupNotes: failed to re-serialize note \(noteId) (keys: \(fields.keys.sorted())), dropping note")
+                    reportDecodeFailure(endpoint: groupNotesEndpoint,
+                                         summary: "Failed to re-serialize note fields for JSON encoding (keys: \(fields.keys.sorted()))")
+                    continue
+                }
+                guard var note = decode(FSNote.self, from: noteData, endpoint: groupNotesEndpoint) else {
+                    // decode() already logs + beacons this case (endpoint is non-empty
+                    // here, unlike the previous unlabeled call), but add the note id
+                    // for correlation since decode()'s own summary doesn't have it.
+                    print("[NetworkService] fetchGroupNotes: FSNote decode failed for note \(noteId), dropping note")
+                    continue
+                }
                 note.id       = noteId
                 note.group_id = groupId
+                // Stamp the outer "notes[username]" key onto the decoded note so
+                // the UI can attribute authorship — the note payload itself only
+                // carries user_id (-> note.user), never a display-ready username.
+                note.username = username
                 result[noteId] = note
             }
         }
@@ -397,6 +448,108 @@ final class NetworkService: DataServiceProtocol {
 
     func deleteNote(noteId: String, userId: String) async throws {
         _ = try await request("/notes/\(userId)?note_id=\(encodeURIComponent(noteId))", method: "DELETE")
+    }
+
+    // ── Notes (replies) ──────────────────────────────────────────────────────
+    // GET  /groups/{userId}/{noteId}/{groupId}/replies   -- group notes (existing route, wired here for the first time)
+    // GET  /notes/{userId}/{noteId}/replies               -- personal notes (new backend route, this pass)
+    // POST /notes/reply/{noteId}                          body: {user, text, title, public, group_id, verses, replies, is_reply}
+    //
+    // Both GET routes share the same response contract: a raw `list[dict]`
+    // of reply rows on success, or `{"error": "cannot find note"}` (still
+    // HTTP 200 -- not a thrown 4xx) when the parent note doesn't exist or
+    // isn't visible to the caller. decode() below treats either a genuine
+    // parse failure or that error shape as "no replies", which
+    // NoteDetailView's Option A section renders identically to a true empty
+    // state -- per the spec, a loading/absent-data state must never show a
+    // stale/flashing zero-count, so collapsing both into [] is deliberate.
+
+    /// Fetches every reply to `noteId`, routing to the group or personal
+    /// replies endpoint depending on whether `groupId` is non-empty (pass
+    /// `note.group_id` straight through). Both backend routes return raw DB
+    /// rows via `GroupsManager.fetch_replies()` -- `user_id` only, no `_id`
+    /// or resolved `username` -- so this also:
+    /// (1) synthesizes a local `id` per reply, since the row's real `_id`
+    ///     isn't part of that response shape and SwiftUI only needs *a*
+    ///     stable identity for the current render pass, not one that
+    ///     survives a refetch;
+    /// (2) resolves each distinct author's display username via the
+    ///     existing `fetchUser` endpoint, concurrently -- mirroring
+    ///     `fetchContacts`'s per-friend username resolution above. A
+    ///     user_id that fails to resolve (deleted account, transient error)
+    ///     degrades to `FSNote.username == ""`, which NoteDetailView's
+    ///     reply cards already render as the deliberate author-less state
+    ///     documented on `FSNote.username` (Models.swift:183-189) -- not a
+    ///     crash or a placeholder.
+    func fetchReplies(userId: String, noteId: String, groupId: String) async throws -> [FSNote] {
+        let path: String
+        let endpoint: String
+        if groupId.isEmpty {
+            path     = "/notes/\(userId)/\(encodeURIComponent(noteId))/replies"
+            endpoint = "GET /notes/{user_id}/{note_id}/replies"
+        } else {
+            path     = "/groups/\(userId)/\(encodeURIComponent(noteId))/\(encodeURIComponent(groupId))/replies"
+            endpoint = "GET /groups/{user_id}/{note_id}/{group_id}/replies"
+        }
+        let data = try await reportFetchFailure(endpoint: endpoint) { try await self.get(path) }
+        guard let raw = decode([RawReplyNote].self, from: data, endpoint: endpoint) else { return [] }
+
+        let userIds = Set(raw.compactMap { $0.user_id }.filter { !$0.isEmpty })
+        var usernames: [String: String] = [:]
+        await withTaskGroup(of: (String, String?).self) { group in
+            for uid in userIds {
+                group.addTask { [self] in (uid, try? await self.fetchUser(userId: uid).username) }
+            }
+            for await (uid, name) in group {
+                if let name, !name.isEmpty { usernames[uid] = name }
+            }
+        }
+
+        return raw.map { r in
+            var note = FSNote()
+            note.id        = UUID().uuidString
+            note.user      = r.user_id ?? ""
+            note.username  = usernames[r.user_id ?? ""] ?? ""
+            note.title     = r.title ?? ""
+            note.text      = r.text ?? ""
+            note.public    = r.public ?? false
+            note.group_id  = r.group_id ?? ""
+            note.is_reply  = r.is_reply ?? true
+            note.timestamp = r.timestamp ?? r.created_at ?? ""
+            return note
+        }
+    }
+
+    /// Posts a reply via the existing `POST /notes/reply/{noteId}` route
+    /// (unchanged by this pass; only this client call is new). `reply.user`
+    /// must equal the authenticated caller -- `post_reply()` 403s otherwise
+    /// -- so callers must stamp it from `AppState.currentUser.user_id`, not
+    /// the parent note's author. checkedRequestRaw so a content-filter
+    /// rejection (422) or a free-tier notes-limit 403 (replies count
+    /// against the same weekly cap as any other note, per `post_reply()`)
+    /// throws instead of silently no-opping.
+    ///
+    /// Returns the new reply's id. Callers should append a local copy of
+    /// `reply` (with this id) to their in-memory replies list rather than
+    /// refetching -- the same optimistic, id-swap pattern
+    /// `NotesViewModel.saveNote(_:editingId:userId:)` already uses for the
+    /// main note save round-trip.
+    func postReply(_ reply: FSNote, noteId: String) async throws -> String {
+        let body: [String: Any] = [
+            "user":     reply.user,
+            "text":     reply.text,
+            "title":    reply.title,
+            "public":   reply.public,
+            "group_id": reply.group_id,
+            "verses":   [],
+            "replies":  [],
+            "is_reply": true,
+        ]
+        let data = try await checkedRequestRaw("/notes/reply/\(encodeURIComponent(noteId))", method: "POST", jsonObject: body)
+        guard let resp = decode([String: String].self, from: data), let id = resp["id"] else {
+            throw AppError.networkError(extractErrorDetail(from: data) ?? "Could not post reply.")
+        }
+        return id
     }
 
     // ── Highlights ────────────────────────────────────────────────────────────
@@ -1008,4 +1161,25 @@ private struct RawNotesPage: Decodable {
     let next_cursor_created_at: String?
     let next_cursor_id: String?
     let has_more: Bool
+}
+
+/// Raw shape of one item in `GET /notes/{user_id}/{note_id}/replies` and
+/// `GET /groups/{user_id}/{note_id}/{group_id}/replies`'s success response.
+/// Both routes return `GroupsManager.fetch_replies()`'s raw DB rows
+/// (`SELECT *` minus the primary key -- `DBManager.lookup()` keys its
+/// returned dict by `_id`, and `fetch_replies()` then drops that key via
+/// `.values()`) rather than the same field-remapping `GET /notes/{user_id}`
+/// applies to top-level notes. So there is no `id` in the payload, and the
+/// author key is `user_id`, not `user` -- `NetworkService.fetchReplies`
+/// remaps both when building each reply's `FSNote`.
+private struct RawReplyNote: Decodable {
+    let user_id:       String?
+    let title:          String?
+    let text:           String?
+    let `public`:       Bool?
+    let group_id:       String?
+    let is_reply:       Bool?
+    let parent_note_id: String?
+    let timestamp:      String?
+    let created_at:     String?
 }

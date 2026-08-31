@@ -64,6 +64,15 @@ protocol DataServiceProtocol {
     func saveNote(_ note: FSNote, editingId: String?, userId: String) async throws -> String
     func deleteNote(noteId: String, userId: String) async throws
 
+    // Notes (replies) -- NoteDetailView's Option A reply section. Route to
+    // the group or personal replies endpoint depending on whether groupId
+    // is empty (pass note.group_id straight through). reply.user in
+    // postReply must be the authenticated caller (the backend 403s
+    // otherwise); callers append the returned id locally rather than
+    // refetching, mirroring saveNote's optimistic id-swap pattern above.
+    func fetchReplies(userId: String, noteId: String, groupId: String) async throws -> [FSNote]
+    func postReply(_ reply: FSNote, noteId: String) async throws -> String
+
     // Highlights
     func fetchHighlights(userId: String) async throws -> [String: String]
     func saveHighlight(userId: String, book: String, chapter: Int, verse: Int, color: String) async throws
@@ -216,8 +225,76 @@ final class MockDataService: DataServiceProtocol {
             timestamp: "2026-07-08T10:15:00Z",
             verses: [[.string("Romans"), .int(8), .int(1)]], replies: []
         )
-        return ["note-001": n1, "note-002": n2, "note-003": n3, "note-grp-001": n4]
+        // Long personal note (task 20260829-note-detail-toolbar-edge-blur,
+        // testing gate): a dedicated long-body fixture, newest timestamp so
+        // it sorts to the top of the Notes list, purely so
+        // NoteDetailToolbarEdgeBlurUITests has a body tall enough to actually
+        // reach the top of the ScrollView underneath NoteDetailView's
+        // feathered toolbar scrim -- none of the four notes above are long
+        // enough to exercise the anti-scroll-collision guard this task's
+        // acceptance criteria requires confirming live. Additive only: no
+        // existing test asserts on MockDataService.mockNotes' count or this
+        // note's absence (checked: the "Pastor Ed"/"Sunday Service" fixtures
+        // referenced by DashboardEmptyStateTests/NoteResumeCardContinueIslandTests
+        // construct their own independent FSNote literals, not this dictionary).
+        let n5 = FSNote(
+            id: "note-long-001", user: mockUser.user_id,
+            title: "Long-Form Study Notes",
+            text: Array(repeating:
+                "Pastor Ed continued the study on the courage of faith, walking verse by verse through the passage and drawing out how complete dependence on God shaped every decision David made before the battle. ",
+                count: 40).joined(),
+            public: false, group_id: "", is_reply: false,
+            timestamp: "2026-08-29 08:00:00",
+            verses: [[.string("1 Samuel"), .int(23), .int(2)]], replies: []
+        )
+        // Group note authored by someone else (screenshot pass for tasks
+        // 20260829-notes-edit-author-gate and 20260829-notes-first-reply-
+        // empty-state -- neither task ever got a retained on-device
+        // screenshot). The only pre-existing group note (note-grp-001) is
+        // authored by the current mock user with `username` left unset
+        // entirely, which only ever exercises NotesListView.isAuthor /
+        // NoteDetailView.canEdit's deny-by-default "undecoded author"
+        // fallback -- never the genuine "someone else's note" comparison
+        // branch those gates exist for. This fixture is explicitly authored
+        // by a different mock user (Sarah) so both gates render their real,
+        // intended state live: no Edit/Delete affordance in NotesListView's
+        // swipe/context-menu or NoteDetailView's toolbar. It also has zero
+        // replies (absent from mockReplies below), covering the first-reply
+        // empty-state fixture need with the same note. Additive only, same
+        // reasoning as note-long-001 above -- no existing test asserts on
+        // MockDataService.mockNotes' count or this note's absence.
+        let n6 = FSNote(
+            id: "note-grp-002", user: "friend-001", username: "Sarah",
+            title: "Wednesday Group Reflections",
+            text: "<p>What stood out to everyone from this week's passage?</p>",
+            public: true, group_id: "group-abc", is_reply: false,
+            timestamp: "2026-08-20T09:00:00Z",
+            verses: [[.string("Romans"), .int(8), .int(6)]], replies: []
+        )
+        return ["note-001": n1, "note-002": n2, "note-003": n3, "note-grp-001": n4, "note-long-001": n5, "note-grp-002": n6]
     }()
+
+    // Keyed by parent note id. Exercises NoteDetailView's Option A reply
+    // section in previews/UI tests: two authored replies plus one
+    // author-less reply (empty username -- a real backend state, not
+    // hypothetical, per FSNote.username's doc comment) so the card's
+    // omit-monogram-and-name fallback gets covered without a live backend.
+    static let mockReplies: [String: [FSNote]] = [
+        "note-grp-001": [
+            FSNote(id: "reply-001", user: "friend-001", username: "Sarah",
+                   title: "", text: "This really convicted me this week — I keep defaulting to a flesh mindset without even noticing it.",
+                   public: true, group_id: "group-abc", is_reply: true,
+                   timestamp: "2026-07-08T11:02:00Z"),
+            FSNote(id: "reply-002", user: "friend-002", username: "Marcus",
+                   title: "", text: "Good breakdown. I think verse 6 ties right back into this too.",
+                   public: true, group_id: "group-abc", is_reply: true,
+                   timestamp: "2026-07-08T13:40:00Z"),
+            FSNote(id: "reply-003", user: "", username: "",
+                   title: "", text: "Amen to this.",
+                   public: true, group_id: "group-abc", is_reply: true,
+                   timestamp: "2026-07-08T15:00:00Z"),
+        ],
+    ]
 
     static let mockHighlights: [String: String] = [
         "John-1-1": "#F5E642",
@@ -363,6 +440,14 @@ final class MockDataService: DataServiceProtocol {
     }
 
     func deleteNote(noteId: String, userId: String) async throws {}
+
+    func fetchReplies(userId: String, noteId: String, groupId: String) async throws -> [FSNote] {
+        Self.mockReplies[noteId] ?? []
+    }
+
+    func postReply(_ reply: FSNote, noteId: String) async throws -> String {
+        UUID().uuidString
+    }
 
     // Highlights
     func fetchHighlights(userId: String) async throws -> [String: String] { Self.mockHighlights }

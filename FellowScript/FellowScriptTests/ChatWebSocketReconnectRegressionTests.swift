@@ -143,13 +143,28 @@ final class ChatWebSocketReconnectRegressionTests: XCTestCase {
 
         await vm.load(service: service, contact: contact, userId: "test-user")
 
-        // Let the reconnect loop run through several failure -> backoff ->
-        // retry cycles. The initial attempt fails almost instantly (loopback
-        // reset); the fix's backoff schedules the next attempt after ~1s,
-        // then ~2s. ~4.5s should be enough to observe at least 3 attempts.
-        try await Task.sleep(nanoseconds: 4_500_000_000)
-
-        await vm.disconnect()
+        // Wait for at least 3 logical connection attempts (raw TCP accepts
+        // coalesced across attemptGapThreshold-second bursts — see below),
+        // polling instead of sleeping a single fixed duration.
+        //
+        // task 20260828-agent-chat-reconnect-backoff-flake: preemptively
+        // hardened here too (same flakiness class, same technique) after
+        // the sibling AgentChatReconnectRegressionTests case hit it for
+        // real — the old fixed 4.5s window (the real backoff floor is 1s +
+        // 2s = 3s minimum before a 3rd attempt) left too little slack to
+        // reliably survive this sandbox's own CPU contention. This is the
+        // exact residual flakiness already documented for this test in task
+        // 20260817-fix-preexisting-test-failures ("11 clean / 3 failed" out
+        // of 14 isolated post-fix runs). Polling up to a generous
+        // maxObservationWindow (instead of a single fixed sleep) keeps the
+        // common-case runtime close to the old ~4.5s while giving real
+        // headroom under contention, without weakening what the test
+        // actually proves: it still requires >=3 real logical attempts and
+        // a growing backoff below, it just no longer race-loses against a
+        // too-tight fixed clock to observe the 3rd one.
+        let attemptGapThreshold: TimeInterval = 0.6
+        let maxObservationWindow: TimeInterval = 12.0
+        let pollInterval: UInt64 = 200_000_000 // 0.2s
 
         // Raw accepts, coalesced into logical connection attempts. A single
         // logical `connectWebSocket()` call — the initial connect or a
@@ -176,15 +191,32 @@ final class ChatWebSocketReconnectRegressionTests: XCTestCase {
         // observed real-delay overrun grow) while still comfortably
         // absorbing bursts observed to spread up to ~0.4s under this
         // sandbox's heavier contention.
-        let attemptGapThreshold: TimeInterval = 0.6
-        let rawTimestamps = listener.acceptTimestamps()
-        var attempts: [Date] = []
-        for ts in rawTimestamps {
-            if let last = attempts.last, ts.timeIntervalSince(last) < attemptGapThreshold {
-                continue // same burst as the previous logical attempt
+        func coalesce(_ raw: [Date]) -> [Date] {
+            var result: [Date] = []
+            for ts in raw {
+                if let last = result.last, ts.timeIntervalSince(last) < attemptGapThreshold {
+                    continue // same burst as the previous logical attempt
+                }
+                result.append(ts)
             }
-            attempts.append(ts)
+            return result
         }
+
+        let deadline = Date().addingTimeInterval(maxObservationWindow)
+        var attempts = coalesce(listener.acceptTimestamps())
+        while attempts.count < 3 && Date() < deadline {
+            try await Task.sleep(nanoseconds: pollInterval)
+            attempts = coalesce(listener.acceptTimestamps())
+        }
+        // Brief settle window past the 3rd attempt so an in-flight burst
+        // accept landing right after the loop exits doesn't get miscounted
+        // as a spurious 4th logical attempt.
+        try await Task.sleep(nanoseconds: 300_000_000)
+        attempts = coalesce(listener.acceptTimestamps())
+
+        await vm.disconnect()
+
+        let rawTimestamps = listener.acceptTimestamps()
 
         XCTAssertGreaterThanOrEqual(
             attempts.count, 3,
@@ -192,7 +224,7 @@ final class ChatWebSocketReconnectRegressionTests: XCTestCase {
             "Before the fix, receiveLoop()'s `.failure` case just returned and the socket never " +
             "reconnected again for the rest of the view's lifetime — only the single initial " +
             "attempt would show up here. Got \(attempts.count) logical attempt(s) " +
-            "(from \(rawTimestamps.count) raw accepts)."
+            "(from \(rawTimestamps.count) raw accepts) within \(maxObservationWindow)s."
         )
 
         if attempts.count >= 3 {

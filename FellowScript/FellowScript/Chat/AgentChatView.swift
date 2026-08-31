@@ -3,6 +3,17 @@
 // KEY STATE: messages, inputText, isThinking
 // INTERACTIONS: send message via WebSocket, receive streamed response, markdown rendering
 // DEPENDENCY: Theme.swift, Models.swift
+//
+// VISUAL: ported onto the "Ember Glass" language already established by
+// ChatThreadView.swift (task 20260830-agent-chat-visual-parity-ios) — same
+// custom in-body header (RoundIconButton + avatar-initial badge + identity
+// label + bottom hairline), same whole-canvas ambient RadialGradient wash,
+// same Reconnecting… pill, same MessageGroupRow-derived bubble/avatar/
+// sender-name treatment, same Capsule composer + circular gold-gradient send
+// button. The header intentionally omits the regular chat's "Schedule" pill
+// (agent chats have no scheduling concept) — a plain two-element header
+// (back + identity), not a truncated three-element one. Presentation-only:
+// AgentChatViewModel's websocket/reconnect/send lifecycle is untouched.
 
 import SwiftUI
 import Combine
@@ -157,100 +168,80 @@ struct AgentChatView: View {
     @StateObject private var vm = AgentChatViewModel()
     @State private var inputText = ""
 
+    private var userInitial: String {
+        let name = appState.currentUser?.username ?? ""
+        return name.isEmpty ? "U" : String(name.prefix(1)).uppercased()
+    }
+
     var body: some View {
-        NavigationStack {
-            ZStack {
-                Theme.bgPage.ignoresSafeArea()
+        ZStack {
+            Theme.bgPage.ignoresSafeArea()
 
-                VStack(spacing: 0) {
-                    // ── Reconnecting banner (dropped-socket lifecycle state) ───
-                    if !vm.isConnected {
-                        HStack(spacing: 6) {
-                            ProgressView().tint(Theme.gold).scaleEffect(0.75)
-                            Text("Reconnecting…")
-                                .font(.inter(Theme.fontXS))
-                                .foregroundColor(Theme.textGoldMuted)
-                        }
-                        .padding(.horizontal, Theme.spacingSM)
-                        .padding(.top, Theme.spacingXS)
-                        .accessibilityLabel("Reconnecting to agent")
+            // Warm bloom ground — identical values to ChatThreadView.swift/
+            // ChatRootView.swift/NotesListView.swift/NoteEditorView.swift, so
+            // this screen shares the same ambient background treatment.
+            RadialGradient(colors: [Color(hex: "#D4922A").opacity(0.20), .clear],
+                           center: UnitPoint(x: 0.12, y: 0.16), startRadius: 10, endRadius: 380)
+                .ignoresSafeArea()
+            RadialGradient(colors: [Color(hex: "#B8761D").opacity(0.12), .clear],
+                           center: UnitPoint(x: 0.92, y: 0.60), startRadius: 10, endRadius: 340)
+                .ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                header
+
+                // ── Reconnecting banner (dropped-socket lifecycle state) ───
+                if !vm.isConnected {
+                    HStack(spacing: 6) {
+                        ProgressView().tint(Theme.gold).scaleEffect(0.75)
+                        Text("Reconnecting…")
+                            .font(.inter(Theme.fontXS))
+                            .foregroundColor(Theme.textGoldMuted)
                     }
-
-                    // ── Message list ──────────────────────────────────────────
-                    ScrollViewReader { proxy in
-                        ScrollView {
-                            LazyVStack(alignment: .leading, spacing: Theme.spacingMD) {
-                                ForEach(vm.messages) { msg in
-                                    AgentMessageBubble(message: msg)
-                                        .id(msg.id)
-                                        .accessibilityLabel("\(msg.mine ? "You" : "Agent"): \(msg.text)")
-                                }
-
-                                if vm.isThinking {
-                                    HStack(spacing: Theme.spacingSM) {
-                                        TypingIndicator()
-                                        Spacer()
-                                    }
-                                    .padding(.leading, Theme.spacingMD)
-                                    .id("thinking")
-                                }
-                            }
-                            .padding(.horizontal, Theme.spacingMD)
-                            .padding(.vertical, Theme.spacingSM)
-                        }
-                        .onChange(of: vm.messages.count) { _ in
-                            if let last = vm.messages.last {
-                                withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
-                            }
-                        }
-                        .onChange(of: vm.isThinking) { t in
-                            if t { withAnimation { proxy.scrollTo("thinking", anchor: .bottom) } }
-                        }
-                    }
+                    .padding(.horizontal, Theme.spacingSM)
+                    .padding(.vertical, 6)
+                    .background(Color.white.opacity(0.045))
+                    .overlay(Capsule().stroke(Theme.borderGoldFaint, lineWidth: 1))
+                    .clipShape(Capsule())
+                    .topEdgeHighlight(Capsule())
+                    .padding(.horizontal, Theme.spacingSM)
+                    .padding(.top, Theme.spacingXS)
+                    .accessibilityLabel("Reconnecting to agent")
                 }
-                .safeAreaInset(edge: .bottom, spacing: 0) {
-                    // ── Input bar ──────────────────────────────────────────────
-                    HStack(spacing: Theme.spacingSM) {
-                        TextField("Ask about Scripture…", text: $inputText, axis: .vertical)
-                            .font(.inter(Theme.fontBody))
-                            .foregroundColor(Theme.parchment)
-                            .lineLimit(1...5)
-                            .padding(.horizontal, Theme.spacingMD)
-                            .padding(.vertical, Theme.spacingSM)
-                            .background(Theme.inputBg)
-                            .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
-                            .overlay(RoundedRectangle(cornerRadius: Theme.radius).stroke(Theme.borderGoldDim, lineWidth: 1))
-                            .submitLabel(.send)
-                            .onSubmit(sendMessage)
-                            .disabled(vm.isThinking)
-                            .accessibilityLabel("Message to agent")
 
-                        Button(action: sendMessage) {
-                            Image(systemName: vm.isThinking ? "circle.dotted" : "arrow.up.circle.fill")
-                                .font(.system(size: 32))
-                                .foregroundColor(inputText.isEmpty || vm.isThinking ? Theme.gold.opacity(0.35) : Theme.gold)
-                                .rotationEffect(vm.isThinking ? .degrees(360) : .zero)
-                                .animation(vm.isThinking ? .linear(duration: 1).repeatForever(autoreverses: false) : .default, value: vm.isThinking)
+                // ── Message list ──────────────────────────────────────────
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: Theme.spacingMD) {
+                            ForEach(vm.messages) { msg in
+                                AgentMessageBubble(message: msg, agentName: agent.displayLabel, userInitial: userInitial)
+                                    .id(msg.id)
+                            }
+
+                            if vm.isThinking {
+                                HStack(spacing: Theme.spacingSM) {
+                                    TypingIndicator()
+                                    Spacer()
+                                }
+                                .padding(.leading, Theme.spacingMD)
+                                .id("thinking")
+                            }
                         }
-                        .disabled(inputText.isEmpty || vm.isThinking)
-                        .accessibilityLabel(vm.isThinking ? "Waiting for agent response" : "Send message")
+                        .padding(.horizontal, Theme.spacingMD)
+                        .padding(.vertical, Theme.spacingSM)
                     }
-                    .padding(.horizontal, Theme.spacingMD)
-                    .padding(.vertical, Theme.spacingSM)
-                    .background(Theme.navBg)
-                    .overlay(alignment: .top) { Divider().background(Theme.borderGoldFaint) }
+                    .onChange(of: vm.messages.count) { _ in
+                        if let last = vm.messages.last {
+                            withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
+                        }
+                    }
+                    .onChange(of: vm.isThinking) { t in
+                        if t { withAnimation { proxy.scrollTo("thinking", anchor: .bottom) } }
+                    }
                 }
             }
-            .navigationTitle(agent.displayLabel)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button(action: { dismiss() }) {
-                        Image(systemName: "xmark")
-                            .foregroundColor(Theme.gold)
-                    }
-                    .accessibilityLabel("Close agent chat")
-                }
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                composer
             }
         }
         .preferredColorScheme(.dark)
@@ -269,6 +260,86 @@ struct AgentChatView: View {
         }
     }
 
+    // ── Header: back · avatar/name — no "Schedule" pill (agent chats have no
+    // scheduling concept), so this reads as an intentional two-element
+    // header rather than the regular chat's three-element one. Mirrors
+    // ChatThreadView.header's exact visual language otherwise. ──────────────
+    private var header: some View {
+        HStack(spacing: 14) {
+            RoundIconButton(systemIcon: "chevron.left") { dismiss() }
+                .accessibilityLabel("Go back")
+
+            HStack(spacing: 12) {
+                ZStack {
+                    Circle().fill(Theme.gold.opacity(0.18))
+                    Circle().stroke(Theme.borderGoldDim, lineWidth: 1)
+                    Text(String(agent.displayLabel.prefix(1)).uppercased())
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(Theme.gold)
+                }
+                .frame(width: 38, height: 38)
+
+                Text(agent.displayLabel)
+                    .font(.inter(Theme.fontHeading, weight: .bold))
+                    .foregroundColor(Theme.parchment)
+                    .lineLimit(1)
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(agent.displayLabel)
+
+            Spacer(minLength: 8)
+        }
+        .padding(.horizontal, Theme.spacingMD)
+        .padding(.top, Theme.spacingSM)
+        .padding(.bottom, Theme.spacingSM)
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(Theme.borderGoldFaint).frame(height: 1)
+        }
+    }
+
+    // ── Composer (mirrors ChatThreadView.composer) ─────────────────────────
+    private var composer: some View {
+        HStack(spacing: 10) {
+            TextField("", text: $inputText,
+                      prompt: Text("Ask about Scripture…").foregroundColor(Theme.textSecondary), axis: .vertical)
+                .font(.inter(Theme.fontBody))
+                .foregroundColor(Theme.parchment)
+                .lineLimit(1...5)
+                .padding(.horizontal, Theme.spacingMD)
+                .padding(.vertical, Theme.spacingSM)
+                .background(Color.white.opacity(0.05))
+                .overlay(Capsule().stroke(Theme.borderGoldDim, lineWidth: 1))
+                .clipShape(Capsule())
+                .submitLabel(.send)
+                .onSubmit(sendMessage)
+                .disabled(vm.isThinking)
+                .accessibilityLabel("Message to agent")
+
+            Button(action: sendMessage) {
+                ZStack {
+                    Circle()
+                        .fill(
+                            inputText.isEmpty || vm.isThinking
+                                ? AnyShapeStyle(Theme.gold.opacity(0.35))
+                                : AnyShapeStyle(Theme.goldGradient)
+                        )
+                    Image(systemName: vm.isThinking ? "circle.dotted" : "arrow.up")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundColor(Theme.ink)
+                        .rotationEffect(vm.isThinking ? .degrees(360) : .zero)
+                        .animation(vm.isThinking ? .linear(duration: 1).repeatForever(autoreverses: false) : .default, value: vm.isThinking)
+                }
+                .frame(width: 38, height: 38)
+            }
+            .disabled(inputText.isEmpty || vm.isThinking)
+            .accessibilityLabel(vm.isThinking ? "Waiting for agent response" : "Send message")
+        }
+        .padding(.horizontal, Theme.spacingMD)
+        .padding(.top, Theme.spacingSM)
+        .padding(.bottom, Theme.spacingMD)
+        .background(Theme.bgPage.opacity(0.55))
+    }
+
     private func sendMessage() {
         let trimmed = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
@@ -278,44 +349,77 @@ struct AgentChatView: View {
 }
 
 // ── Agent message bubble ──────────────────────────────────────────────────────
+// Single-message equivalent of MessageGroupRow (FSAgentMessage's shape is
+// already ungrouped/one-bubble-per-message, so MessageDisplayGroup's
+// multi-message grouping machinery doesn't apply) — same avatar badge,
+// sender-name/time-label row, and bubble fill/stroke/corner-radius/
+// topEdgeHighlight treatment as the regular chat, including a real bubble
+// background for the agent's own responses (previously bare floating text).
 struct AgentMessageBubble: View {
     let message: FSAgentMessage
+    let agentName: String
+    let userInitial: String
+
+    private var senderName: String { message.mine ? "You" : agentName }
+    private var senderInitial: String {
+        message.mine ? userInitial : String(agentName.prefix(1)).uppercased()
+    }
 
     var body: some View {
-        if message.mine {
-            // User message: right-aligned bubble
-            HStack(alignment: .top) {
-                Spacer(minLength: 60)
-                VStack(alignment: .trailing, spacing: 2) {
-                    MarkdownBodyView(text: message.text, isMine: true)
-                        .padding(.horizontal, Theme.spacingMD)
-                        .padding(.vertical, Theme.spacingSM)
-                        .background(Theme.gold.opacity(0.18))
-                        .clipShape(RoundedRectangle(cornerRadius: Theme.radiusLG))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: Theme.radiusLG)
-                                .stroke(Theme.gold.opacity(0.30), lineWidth: 1)
-                        )
-                        .frame(maxWidth: UIScreen.main.bounds.width * 0.78, alignment: .trailing)
-                    Text(message.formattedTime)
-                        .font(.inter(Theme.fontXXS))
-                        .foregroundColor(Theme.gold.opacity(0.40))
+        HStack(alignment: .top, spacing: 12) {
+            if message.mine { Spacer(minLength: 40) }
+
+            if !message.mine { avatar }
+
+            VStack(alignment: message.mine ? .trailing : .leading, spacing: 5) {
+                HStack(spacing: 8) {
+                    if message.mine { Spacer(minLength: 0) }
+                    Text(senderName)
+                        .font(.inter(Theme.fontSM, weight: .bold))
+                        .foregroundColor(Theme.parchment)
+                    if !message.formattedTime.isEmpty {
+                        Text(message.formattedTime)
+                            .font(.inter(Theme.fontXXS))
+                            .foregroundColor(Theme.textSecondary)
+                    }
+                    if !message.mine { Spacer(minLength: 0) }
                 }
+
+                MarkdownBodyView(text: message.text, isMine: message.mine, baseFontSize: Theme.fontBody)
+                    .padding(.horizontal, Theme.spacingMD)
+                    .padding(.vertical, Theme.spacingSM)
+                    .background(message.mine ? Theme.gold.opacity(0.18) : Color.white.opacity(0.06))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: Theme.radiusLG)
+                            .stroke(message.mine ? Theme.borderGoldDim : Theme.borderGoldFaint, lineWidth: 1)
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: Theme.radiusLG))
+                    .topEdgeHighlight(RoundedRectangle(cornerRadius: Theme.radiusLG))
+                    .frame(maxWidth: UIScreen.main.bounds.width * 0.78, alignment: message.mine ? .trailing : .leading)
             }
-            .accessibilityLabel("You: \(message.text)")
-        } else {
-            // Agent response: full-width floating text, no bubble
-            VStack(alignment: .leading, spacing: Theme.spacingXS) {
-                MarkdownBodyView(text: message.text, isMine: false, baseFontSize: Theme.fontBody)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                Text(message.formattedTime)
-                    .font(.inter(Theme.fontXXS))
-                    .foregroundColor(Theme.gold.opacity(0.40))
+
+            if message.mine {
+                avatar
+            } else {
+                Spacer(minLength: 40)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.vertical, Theme.spacingXS)
-            .accessibilityLabel("Agent: \(message.text)")
         }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(senderName): \(message.text)")
+    }
+
+    private var avatar: some View {
+        ZStack {
+            Circle()
+                .fill(message.mine ? AnyShapeStyle(Theme.goldGradient) : AnyShapeStyle(Theme.gold.opacity(0.18)))
+            Circle()
+                .stroke(Theme.borderGoldDim, lineWidth: 1)
+            Text(senderInitial)
+                .font(.inter(Theme.fontXS, weight: .bold))
+                .foregroundColor(message.mine ? Theme.ink : Theme.gold)
+        }
+        .frame(width: 32, height: 32)
+        .accessibilityHidden(true)
     }
 }
 

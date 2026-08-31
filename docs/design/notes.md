@@ -10,7 +10,7 @@ Displays all personal notes (or group public notes when a group is selected). No
 
 Each note card shows:
 - **Title** — Lora serif, bold
-- **Public badge** — gold tag if the note is shared with the group
+- **Public badge** — gold tag if the note is shared with the group (web; see the iOS presentation note below for the iOS treatment, which differs)
 - **Verse references** — clickable tags (`Genesis 1:1`) that navigate the reader to that verse
 - **Body preview** — up to 3 lines of plain text (HTML stripped)
 - **Creation date** — small, right-aligned, muted label: "Today", "Yesterday", "Jul 16", or "Jul 16, 2025" for older years
@@ -25,6 +25,33 @@ Each note card shows:
 │                       Jul 19   │
 └────────────────────────────────┘
 ```
+
+### iOS presentation (`NoteRow` in `NotesListView.swift`)
+
+The iOS notes list row (`FellowScript/FellowScript/Notes/NotesListView.swift`,
+`NoteRow`) shows per-note author identity and the public/private state
+differently from the web `NoteCard` above:
+
+- **Author chip** — for a note in a group segment whose author username was
+  successfully captured, the top-right trailing slot shows a small gold
+  initials-circle + username label (reusing the app's existing avatar/chip
+  vocabulary), sourced from `FSNote.username` (stamped on by
+  `NetworkService.fetchGroupNotes` from the response's outer per-member
+  username key). The chip never renders on Personal-segment notes (always
+  the viewer, so it would be redundant), and never renders a placeholder for
+  a group note with a missing/uncaptured username — it's simply omitted.
+- **Public/private indicator** — the old standalone "PUBLIC" text badge is
+  gone on iOS. In its place, a small SF Symbol (`globe` for public,
+  `lock.fill` for private) sits next to the note's timestamp, on both
+  Personal and group segments, with a combined VoiceOver label (e.g. "Jul
+  19, private").
+- **Author-only Edit/Delete** — in a group segment, the context-menu Edit,
+  swipe-to-delete, and context-menu Delete actions, plus `NoteDetailView`'s
+  toolbar Edit pill, are only shown for a note the current user authored
+  (`FSNote.username` matches the viewer). Another member's group note shows
+  none of these — it's read-only to everyone but its author, matching the
+  backend's existing author-only enforcement on `PUT`/`DELETE /notes/{user_id}`.
+  Personal notes are unaffected, since they're always self-authored.
 
 ---
 
@@ -72,7 +99,7 @@ All formatting uses `execCommand` on a `contentEditable` div. The toolbar button
 - Body: `contentEditable` div with placeholder "Start writing…"
 
 ### Save failure
-If the save is rejected — most commonly a 422 from the Guideline 1.2 content filter (`backend/moderation/content_filter.py`) — the editor stays open with the title/body exactly as typed and shows the server's message (a toast on web, an alert on iOS) instead of closing. The editor only dismisses after a save actually succeeds, so a flagged note can be revised and resubmitted without retyping it.
+If the save is rejected — most commonly a 422 from the Guideline 1.2 content filter (`backend/moderation/content_filter.py`) — the editor stays open with the title/body exactly as typed and shows the server's message (a toast on web, an alert on iOS) instead of closing. As of 2026-08, the filter only rejects genuinely explicit content (ordinary profanity is allowed), and the message names the specific flagged word/phrase in a warm, on-brand tone rather than a generic "contains language that isn't allowed" notice, so the user knows exactly what to revise. The editor only dismisses after a save actually succeeds, so a flagged note can be revised and resubmitted without retyping it.
 
 ### iOS presentation (`NoteEditorView.swift`)
 
