@@ -66,6 +66,10 @@ jobs:
 
     env:
       DB_PASSWORD: ci-only-ephemeral-password
+      # apple_service.py fails fast at import time if this is unset (no
+      # implicit default, by design). CI is a non-production test run, same
+      # as local dev's own .env, so "true" is the correct value here.
+      APPLE_ALLOW_SANDBOX: "true"
       # api/tests/_pathfix.py-importing scripts set these themselves via
       # os.environ.setdefault(...), but api/main.py's module-level AWS/boto3
       # client construction runs before any test file gets a chance to do
