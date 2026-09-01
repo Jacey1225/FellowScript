@@ -125,6 +125,7 @@
 				377EC3C22FF5BDB300971A07 /* Sources */,
 				377EC3C32FF5BDB300971A07 /* Frameworks */,
 				377EC3C42FF5BDB300971A07 /* Resources */,
+				AA3333333333333333333001 /* Patch AmazonChimeSDK Privacy Manifest */,
 			);
 			buildRules = (
 			);
@@ -260,6 +261,27 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		AA3333333333333333333001 /* Patch AmazonChimeSDK Privacy Manifest */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Patch AmazonChimeSDK Privacy Manifest";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# AmazonChimeSDK 0.27.3/0.27.4 ship a PrivacyInfo.xcprivacy whose\n# NSPrivacyCollectedDataTypePurposes entry is a free-text sentence\n# instead of one of Apple's fixed enum constants, which App Store\n# Connect rejects at submission time with ITMS-91056 (\"Invalid privacy\n# manifest\") -- confirmed unfixed as of the 0.27.4 release (upstream\n# bug, not something we can fix by upgrading). This patches the copy\n# embedded in the built product in place, before the app is signed,\n# swapping the free-text value for the closest matching valid purpose\n# (the collected data -- battery/charging/memory diagnostics -- is\n# genuinely app-functionality diagnostics, so this is an accurate fix,\n# not just a validator workaround).\nFRAMEWORK_PRIVACY=\"$CODESIGNING_FOLDER_PATH/Frameworks/AmazonChimeSDK.framework/PrivacyInfo.xcprivacy\"\nif [ -f \"$FRAMEWORK_PRIVACY\" ]; then\n  /usr/libexec/PlistBuddy -c \"Set :NSPrivacyCollectedDataTypes:0:NSPrivacyCollectedDataTypePurposes:0 NSPrivacyCollectedDataTypePurposeAppFunctionality\" \"$FRAMEWORK_PRIVACY\"\n  echo \"Patched AmazonChimeSDK PrivacyInfo.xcprivacy purpose value.\"\nelse\n  echo \"warning: AmazonChimeSDK.framework PrivacyInfo.xcprivacy not found at $FRAMEWORK_PRIVACY -- skipping patch (framework path may have changed).\"\nfi\n";
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		377EC3C22FF5BDB300971A07 /* Sources */ = {
