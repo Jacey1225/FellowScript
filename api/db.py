@@ -438,6 +438,17 @@ def create_tables(cur):
         # INACTIVITY_THRESHOLD window rather than on every scheduler poll.
         "guilt_reminder_sent_at TIMESTAMPTZ)"
     )
+    # CREATE TABLE IF NOT EXISTS above doesn't retroactively add columns to
+    # an already-existing table (same precedent as agentic_context.note_id
+    # below), so this column needs its own idempotent ALTER. Which of
+    # note_created / note_edited / verse_highlighted (see
+    # backend/interactions/activity.py's NOTE_CREATED/NOTE_EDITED/
+    # VERSE_HIGHLIGHTED constants) produced the current last_activity_at,
+    # so _friend_went_active_notify can name the action instead of sending a
+    # generic "came back" push. Nullable: rows written before this column
+    # existed, or a write that didn't pass a recognized type, fall back to
+    # that generic text rather than failing the job.
+    cur.execute("ALTER TABLE user_activity ADD COLUMN IF NOT EXISTS last_activity_type TEXT")
 
     cur.execute(
         "CREATE TABLE IF NOT EXISTS agentic_context"

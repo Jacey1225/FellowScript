@@ -4,7 +4,7 @@ from db import DBManager
 from backend.errors import SaveFailedError
 from backend.interactions.groups import GroupsManager
 from backend.subscription.limits import check_limit
-from backend.interactions.activity import ActivityManager
+from backend.interactions.activity import ActivityManager, NOTE_CREATED, NOTE_EDITED, VERSE_HIGHLIGHTED
 from backend.auth.dependencies import get_current_user, require_match
 from backend.moderation.content_filter import check_clean, ContentRejected, rejection_message
 from datetime import datetime
@@ -23,14 +23,19 @@ logger = logging.getLogger(__name__)
 NOTES_PAGE_SIZE = 15
 
 
-def _record_activity(user_id: str) -> None:
+def _record_activity(user_id: str, activity_type: str) -> None:
     """Best-effort activity-tracking bump — feeds the fixed-notification
     scheduled jobs (backend/interactions/scheduler.py). Never lets an
     activity-tracking failure fail the note/highlight write it's attached
-    to; logs and moves on."""
+    to; logs and moves on.
+
+    activity_type (NOTE_CREATED / NOTE_EDITED / VERSE_HIGHLIGHTED) is
+    persisted alongside the bump so _friend_went_active_notify can name the
+    action instead of sending a generic "came back" push; every call site
+    below passes its own type explicitly."""
     activity = ActivityManager()
     try:
-        activity.record_activity(user_id)
+        activity.record_activity(user_id, activity_type)
     except Exception as e:
         logger.error("Failed to record activity for %s: %s", user_id, e)
     finally:
@@ -85,7 +90,7 @@ async def highlight_verse(user_id: str, verse: dict, _: str = Depends(require_ma
             conflict="(user_id, key) DO UPDATE SET color = EXCLUDED.color",
         ):
             raise SaveFailedError()
-        _record_activity(user_id)
+        _record_activity(user_id, VERSE_HIGHLIGHTED)
         return {"key": key, "color": color}
     finally:
         db.close()
@@ -190,7 +195,9 @@ async def post_reply(note_id: str, reply: dict, current_user: str = Depends(get_
             "timestamp":      reply_note.timestamp,
         }):
             raise SaveFailedError()
-        _record_activity(author)
+        # A reply folds into NOTE_CREATED for notification purposes -- see
+        # activity.py's module docstring on that constant for why.
+        _record_activity(author, NOTE_CREATED)
         return {"id": reply_id}
     finally:
         db.close()
@@ -273,7 +280,7 @@ async def create_note(user_id: str, note_dict: dict, _: str = Depends(require_ma
         # resetting the victim's midday/guilt dedup markers. See
         # .claude/pipeline/20260826-activity-based-notifications security
         # review (step 3).
-        _record_activity(user_id)
+        _record_activity(user_id, NOTE_CREATED)
         return {"id": note_id}
     finally:
         db.close()
@@ -438,6 +445,15 @@ async def update_note(user_id: str, note_id: str, note_dict: dict, _: str = Depe
                     "verse":    verse[2],
                 }):
                     raise SaveFailedError()
+        # Same activity-tracking bump as create_note/post_reply/
+        # highlight_verse -- previously missing here, which meant an edit
+        # never counted as activity or could queue a friend notification.
+        # Keyed off the require_match-verified user_id path param, matching
+        # the same IDOR-avoidance reasoning as create_note's own comment
+        # above (note.user_id was already re-validated against user_id
+        # earlier in this handler, so this call can't be pointed at a
+        # victim's activity row either).
+        _record_activity(user_id, NOTE_EDITED)
     finally:
         db.close()
 

@@ -183,9 +183,25 @@ async def _friend_went_active_notify() -> None:
     any un-notified transition, sends once per friend, then marks it
     notified — so a user oscillating active/inactive never re-triggers their
     friends more than once per real (>24h-gap) transition.
+
+    The push body names the action (note created/edited, verse highlighted)
+    via `_FRIEND_ACTIVITY_TEXT` below, keyed off the transition's
+    `last_activity_type`. A missing/unrecognized type (e.g. a pre-migration
+    row with no type set) falls back to the original generic "came back"
+    text rather than raising -- consistent with this job's existing
+    per-user-isolated, best-effort posture, not a new hard-failure mode.
+    Like the rest of this file, never put note/highlight content (title,
+    text, book/chapter/verse) in the push body or in any log line here.
     """
-    from backend.interactions.activity import ActivityManager
+    from backend.interactions.activity import ActivityManager, NOTE_CREATED, NOTE_EDITED, VERSE_HIGHLIGHTED
     from backend.interactions.push import send_push
+
+    _FRIEND_ACTIVITY_TEXT = {
+        NOTE_CREATED: "{username} created a new note.",
+        NOTE_EDITED: "{username} edited a note.",
+        VERSE_HIGHLIGHTED: "{username} highlighted a verse.",
+    }
+    _FALLBACK_TEXT = "{username} just came back to FellowScript."
 
     am = ActivityManager()
     try:
@@ -196,16 +212,17 @@ async def _friend_went_active_notify() -> None:
         # last 5-minute run), but batching costs nothing when convenient.
         tokens_by_user: dict[str, list[tuple[str, str]]] = {}
         for user_id, friend_id, token in am.friend_device_tokens_bulk(
-            [user_id for user_id, _, _ in pending]
+            [user_id for user_id, _, _, _ in pending]
         ):
             tokens_by_user.setdefault(str(user_id), []).append((friend_id, token))
 
-        for user_id, username, became_active_at in pending:
+        for user_id, username, became_active_at, last_activity_type in pending:
+            body = _FRIEND_ACTIVITY_TEXT.get(last_activity_type, _FALLBACK_TEXT).format(username=username)
             for friend_id, token in tokens_by_user.get(str(user_id), []):
                 if not token:
                     continue
                 try:
-                    await send_push(token, "Friend Activity", f"{username} just came back to FellowScript.")
+                    await send_push(token, "Friend Activity", body)
                 except Exception as e:
                     logger.error("Friend-went-active push failed (%s -> %s): %s", user_id, friend_id, e)
             am.mark_friends_notified(user_id, became_active_at)

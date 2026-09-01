@@ -23,6 +23,18 @@ logger = logging.getLogger(__name__)
 # the same state boundary from either side.
 INACTIVITY_THRESHOLD = timedelta(hours=24)
 
+# Closed set of activity-type labels persisted on `user_activity.
+# last_activity_type`, used only to pick action-specific wording in
+# scheduler.py::_friend_went_active_notify. A reply (post_reply) folds into
+# NOTE_CREATED rather than getting its own type -- nothing distinguishes how
+# a friend should read "posted a note" vs. "replied to a note" today, and a
+# 4th concrete type (e.g. a distinct reply wording) is easy to add to this
+# set later if that changes. Deliberately just these three plain strings,
+# not a speculative generic templating/i18n system.
+NOTE_CREATED = "note_created"
+NOTE_EDITED = "note_edited"
+VERSE_HIGHLIGHTED = "verse_highlighted"
+
 
 class ActivityManager(DBManager):
     """Reads/writes `user_activity` — no `__init__` override needed since
@@ -32,7 +44,9 @@ class ActivityManager(DBManager):
 
     # ── Write path (called from note/highlight creation) ───────────────────
 
-    def record_activity(self, user_id: str, now: datetime | None = None) -> None:
+    def record_activity(
+        self, user_id: str, activity_type: str | None = None, now: datetime | None = None
+    ) -> None:
         """Bump `last_activity_at` for user_id; mark a transition if they
         were inactive (no prior row, or prior activity older than
         INACTIVITY_THRESHOLD).
@@ -40,6 +54,15 @@ class ActivityManager(DBManager):
         A transition resets the midday/guilt reminder dedup markers (a fresh
         activity window has started) and nulls `friend_notified_at`, which
         queues `_friend_went_active_notify` to broadcast it once.
+
+        `activity_type` (one of NOTE_CREATED / NOTE_EDITED / VERSE_HIGHLIGHTED,
+        or None) is persisted to `last_activity_type` on every call, not just
+        on a transition, so it always reflects the most recent activity --
+        `_friend_went_active_notify` reads it to compose action-specific push
+        text. Left optional (default None) rather than required so call
+        sites/tests that only care about the transition/dedup semantics
+        aren't forced to supply one; a None or unrecognized value just means
+        the notification falls back to generic text, it never fails the write.
         """
         now = now or datetime.now(tzmod.utc)
         self.cur.execute(
@@ -55,22 +78,26 @@ class ActivityManager(DBManager):
                 self.cur.execute(
                     "INSERT INTO user_activity "
                     "(user_id, last_activity_at, became_active_at, "
-                    " friend_notified_at, midday_reminder_sent_date, guilt_reminder_sent_at) "
-                    "VALUES (%s, %s, %s, NULL, NULL, NULL) "
+                    " friend_notified_at, midday_reminder_sent_date, guilt_reminder_sent_at, "
+                    " last_activity_type) "
+                    "VALUES (%s, %s, %s, NULL, NULL, NULL, %s) "
                     "ON CONFLICT (user_id) DO UPDATE SET "
                     "last_activity_at = EXCLUDED.last_activity_at, "
                     "became_active_at = EXCLUDED.became_active_at, "
                     "friend_notified_at = NULL, "
                     "midday_reminder_sent_date = NULL, "
-                    "guilt_reminder_sent_at = NULL",
-                    (user_id, now, now),
+                    "guilt_reminder_sent_at = NULL, "
+                    "last_activity_type = EXCLUDED.last_activity_type",
+                    (user_id, now, now, activity_type),
                 )
             else:
                 self.cur.execute(
-                    "INSERT INTO user_activity (user_id, last_activity_at) "
-                    "VALUES (%s, %s) "
-                    "ON CONFLICT (user_id) DO UPDATE SET last_activity_at = EXCLUDED.last_activity_at",
-                    (user_id, now),
+                    "INSERT INTO user_activity (user_id, last_activity_at, last_activity_type) "
+                    "VALUES (%s, %s, %s) "
+                    "ON CONFLICT (user_id) DO UPDATE SET "
+                    "last_activity_at = EXCLUDED.last_activity_at, "
+                    "last_activity_type = EXCLUDED.last_activity_type",
+                    (user_id, now, activity_type),
                 )
             self.conn.commit()
         except Exception as e:
@@ -115,11 +142,14 @@ class ActivityManager(DBManager):
         self.conn.commit()
 
     def pending_friend_notifications(self) -> list[tuple]:
-        """(user_id, username, became_active_at) for every user whose most
-        recent inactive→active transition hasn't been broadcast to friends
-        yet."""
+        """(user_id, username, became_active_at, last_activity_type) for
+        every user whose most recent inactive→active transition hasn't been
+        broadcast to friends yet. last_activity_type lets the caller compose
+        action-specific text without a second query; it may be NULL (pre-
+        migration row, or a write that didn't pass a recognized type)."""
         self.cur.execute(
-            "SELECT u._id, u.username, ua.became_active_at FROM user_activity ua "
+            "SELECT u._id, u.username, ua.became_active_at, ua.last_activity_type "
+            "FROM user_activity ua "
             "JOIN users u ON u._id = ua.user_id "
             "WHERE ua.became_active_at IS NOT NULL AND ua.friend_notified_at IS NULL"
         )
