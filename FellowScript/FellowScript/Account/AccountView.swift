@@ -141,7 +141,6 @@ final class AccountViewModel: ObservableObject {
         do {
             try await service.addHeartbeat(userId: uid, agentId: agentId, heartbeat: hb)
             events.append(hb)
-            HeartbeatScheduler.scheduleAll(events: events)
             await refreshUsage()
         } catch {
             // Free-tier cap (or other failure): don't add the event, tell the user.
@@ -153,7 +152,6 @@ final class AccountViewModel: ObservableObject {
         guard let uid = profileData?.user_id else { return }
         let previous = events
         events.removeAll { $0.id == event.id }
-        HeartbeatScheduler.scheduleAll(events: events)
         Task {
             do {
                 try await service.deleteHeartbeat(userId: uid, agentId: event.agent_id, heartbeatId: event.id)
@@ -161,7 +159,6 @@ final class AccountViewModel: ObservableObject {
                 // Revert the optimistic removal so the UI and server can't
                 // permanently disagree with no signal to the user (compile-errors #2).
                 events = previous
-                HeartbeatScheduler.scheduleAll(events: events)
                 agentMsg = (error as? LocalizedError)?.errorDescription ?? "Could not delete event."
             }
         }
@@ -176,7 +173,6 @@ final class AccountViewModel: ObservableObject {
             if let i = events.firstIndex(where: { $0.id == event.id }) {
                 events[i] = updated
             }
-            HeartbeatScheduler.scheduleAll(events: events)
         } catch {
             // Server rejected the edit — leave the pre-existing event untouched
             // rather than applying it locally, and tell the user.

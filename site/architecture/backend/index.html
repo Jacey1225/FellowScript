@@ -1465,9 +1465,14 @@
 <td>every 90s</td>
 <td>Polls the 5 CloudWatch log groups the agent ships (<code>nginx access/error</code>, <code>syslog</code>, <code>auth</code>, <code>app</code>) via <code>WatchdogManager.run_cycle</code>, detects errors, assembles context, persists to <code>error_detections</code>, and triggers the debugging agent once per new detection (see <code>backend/monitoring/</code> above)</td>
 </tr>
+<tr>
+<td><code>_fire_due_heartbeats</code></td>
+<td>every <code>HEARTBEAT_POLL_INTERVAL_SECONDS</code> (60s)</td>
+<td>Scans <code>agent_heartbeats</code> for any event whose UTC <code>HH:mm</code> slot for today has passed and hasn't fired yet, then fires it via <code>AgentManager.commit_hb_response</code> — the same atomic, per-calendar-day <code>last_fired</code> claim that route-triggered fires have always used remains the sole dedup mechanism, so a concurrent poll cycle or a stray client call can't double-fire. On a real fire, sends a push via <code>send_push</code> identifying the event generically (agent name only, never prompt/note content) with <code>heartbeat_id</code>/<code>agent_id</code> riding in the payload's <code>data</code> for the client to resolve locally.</td>
+</tr>
 </tbody>
 </table>
-<p>Heartbeat (AI agent event) firing is <strong>not</strong> scheduled server-side — it's driven entirely client-side by iOS's <code>HeartbeatScheduler.checkAndFire</code>, which calls the same <code>commit_heartbeat</code> endpoint on app foreground.</p>
+<p>Heartbeat (AI agent event) firing is now scheduled <strong>server-side</strong> by <code>_fire_due_heartbeats</code> above — it fires on time whether or not any client has the app open. The former client-side trigger, iOS's <code>HeartbeatScheduler</code> (<code>scheduleAll</code>/<code>checkAndFire</code>, polled on <code>scenePhase</code> foreground), was removed in full (2026-09-01); <code>commit_heartbeat</code> itself is unchanged and still does the actual generation/persistence work, just no longer reachable from iOS.</p>
 
 
 

@@ -25,6 +25,45 @@ The fix replaced the rolling window with a calendar-day boundary check
      the past relative to today) still succeeds normally — the legitimate
      once-per-day cadence is not regressed.
 
+Extended for task 20260901-heartbeat-backend-scheduling (testing step 4,
+re-verification pass against the reworked per-user-local-timezone claim):
+the calendar-day boundary above is no longer a fixed UTC date — it's
+computed in the OWNING USER's own local timezone (`users.timezone`), per
+that task's timezone_handling revision. `test_local_day_boundary_crossing_not_utc_day`
+below proves the claim actually follows the user's local calendar day and
+not a fixed UTC date, using an extreme-offset timezone
+(Pacific/Kiritimati, UTC+14) chosen specifically so "today" in that user's
+local calendar and "today" in UTC disagree across most of any real
+wall-clock day — a regression back to a fixed-UTC comparison would fail
+this test (either double-firing within the same local day, or refusing a
+legitimate fire on a new local day) regardless of what time this suite
+happens to run.
+
+Extended again for testing step 4's RE-VERIFY/EXTEND pass against the
+async-blocking-fix rework (architecture.json's revision block, 2026-09-01):
+that rework moved every call to `commit_hb_response` (from both
+scheduler.py's `_fire_due_heartbeats` and routes/agent.py's
+`commit_heartbeat`) onto `loop.run_in_executor`'s thread pool, i.e. real OS
+worker threads, rather than the single asyncio event-loop thread. Every
+concurrency test in this file up to this point (and in
+test_heartbeat_backend_scheduling.py's own concurrent-poll-cycle test) only
+exercises concurrency at the asyncio-task level within a single thread (or
+two independent `asyncio.run()` calls on two threads, each fully serial
+internally) — none of them directly prove the claim's exactly-once
+guarantee holds when multiple REAL threads call `commit_hb_response` for
+the SAME heartbeat_id at genuinely the same wall-clock instant, which is
+now the actual production shape of the race (N thread-pool workers, each
+mid-fire for a due candidate, one of which could be this exact heartbeat if
+two poll cycles or a poll cycle and a stale client overlap).
+`test_concurrent_real_threads_exactly_once_claim` below closes that gap:
+it lines up several real `threading.Thread`s (via a `threading.Barrier`) —
+one exactly matching how `loop.run_in_executor`'s default `ThreadPoolExecutor`
+dispatches work — each with its own `AgentManager` instance (own connection,
+matching the thread_safety_boundary decision: one instance per candidate,
+never shared across threads), and confirms Postgres's row-level locking on
+the `UPDATE ... WHERE ... RETURNING` claim still arbitrates to exactly one
+winner regardless of which OS thread issues it.
+
 Uses a FakeManager subclass to stub _call_api (as test_agent_context.py
 does), so no real LLM call is made and the test is deterministic.
 
@@ -33,6 +72,9 @@ Run:  cd api && ../.venv/bin/python tests/test_commit_heartbeat_idempotency.py
 import _pathfix  # noqa: F401
 
 import uuid
+from datetime import timedelta, timezone as tzmod
+from datetime import datetime as real_datetime
+from zoneinfo import ZoneInfo
 
 from db import DBManager
 from backend.interactions.agent import AgentManager
@@ -67,6 +109,20 @@ def make_user() -> str:
     try:
         db.insertion("users", {"_id": uid, "username": f"hbidem_{uid[:8]}",
                                "email": f"hbidem_{uid[:8]}@example.com", "hash_pass": "x"})
+    finally:
+        db.close()
+    return uid
+
+
+def make_user_with_timezone(prefix: str, tzname: str) -> str:
+    uid = str(uuid.uuid4())
+    db = DBManager()
+    try:
+        db.insertion("users", {
+            "_id": uid, "username": f"{prefix}_{uid[:8]}",
+            "email": f"{prefix}_{uid[:8]}@example.com", "hash_pass": "x",
+            "timezone": tzname,
+        })
     finally:
         db.close()
     return uid
@@ -122,6 +178,21 @@ def set_last_fired(hb_id: str, sql_expr: str):
         db.close()
 
 
+def set_last_fired_absolute(hb_id: str, when) -> None:
+    """Back-date agent_heartbeats.last_fired to an exact Python datetime
+    (passed as a bound parameter, never interpolated into SQL text) — used
+    where the test needs to compute the timestamp itself (e.g. via
+    zoneinfo) rather than expressing it as a SQL-side expression."""
+    db = DBManager()
+    try:
+        db.cur.execute(
+            "UPDATE agent_heartbeats SET last_fired = %s WHERE _id = %s", (when, hb_id)
+        )
+        db.conn.commit()
+    finally:
+        db.close()
+
+
 def cleanup(user_id: str):
     db = DBManager()
     try:
@@ -129,6 +200,132 @@ def cleanup(user_id: str):
         db.delete("users", {"_id": user_id})  # cascades agents/heartbeats/context
     finally:
         db.close()
+
+
+def test_local_day_boundary_crossing_not_utc_day():
+    """The claim's calendar-day boundary must follow the OWNING USER's own
+    local timezone, not a fixed UTC date (task 20260901-heartbeat-backend-
+    scheduling's timezone_handling revision).
+
+    Pacific/Kiritimati (UTC+14) is used deliberately: at a +14 offset, the
+    instant of "local midnight" is 14 hours away from UTC midnight, so for
+    the large majority of any real wall-clock day, "today" in this user's
+    local calendar and "today" in UTC are genuinely different calendar
+    dates. That makes this test's two assertions below actually exercise
+    the local-vs-UTC distinction regardless of what time this suite happens
+    to run — a regression back to a fixed `AT TIME ZONE 'UTC'` comparison
+    would fail at least one of them on almost any given real run, rather
+    than only on a specific flaky time window.
+    """
+    print("\n=== 6. Day-boundary crossing: the claim follows the user's OWN local "
+          "calendar day, not a fixed UTC date ===")
+    tzname = "Pacific/Kiritimati"  # UTC+14 — far enough from UTC to force local/UTC date divergence
+    uid = make_user_with_timezone("hbtzday", tzname)
+    agent_id = make_agent(uid)
+    hb_id = make_heartbeat(agent_id, uid)
+    manager = FakeManager(uid)
+
+    try:
+        result1 = manager.commit_hb_response(agent_id, hb_id, "Reflect on today.")
+        check("first fire (real 'now') succeeds", result1 == {"success": "saved note"}, str(result1))
+        check("exactly one note after first fire", note_count_for_heartbeat(hb_id) == 1,
+              str(note_count_for_heartbeat(hb_id)))
+
+        now_real = real_datetime.now(tzmod.utc)
+        local_now = now_real.astimezone(ZoneInfo(tzname))
+        local_midnight = local_now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+        # 1 second before the user's OWN local midnight is unambiguously
+        # "yesterday" in that user's calendar, no matter what UTC calendar
+        # date that same instant falls on (at +14 it is very often still
+        # "today" in UTC — exactly what a fixed-UTC boundary would get
+        # wrong, treating this as same-day and refusing to re-fire).
+        set_last_fired_absolute(hb_id, local_midnight - timedelta(seconds=1))
+        result2 = manager.commit_hb_response(agent_id, hb_id, "Reflect on today.")
+        check(
+            "a fire 1s before the user's OWN local midnight is 'yesterday' locally — "
+            "claim succeeds again (legitimate new local day)",
+            result2 == {"success": "saved note"}, str(result2),
+        )
+        check("a second note now exists", note_count_for_heartbeat(hb_id) == 2,
+              str(note_count_for_heartbeat(hb_id)))
+
+        # Exactly the user's own local midnight (start of today, locally) —
+        # same local calendar day as "now" — must be skipped, even though
+        # this absolute instant is frequently a *different* UTC calendar
+        # date than the real current UTC date (proving the code isn't
+        # silently still comparing UTC dates).
+        set_last_fired_absolute(hb_id, local_midnight)
+        result3 = manager.commit_hb_response(agent_id, hb_id, "Reflect on today.")
+        check(
+            "a fire at the user's OWN local midnight (today, locally) is skipped — no double fire",
+            result3 == {"skipped": "already fired today"}, str(result3),
+        )
+        check("still exactly two notes (no duplicate from the same-local-day reopen)",
+              note_count_for_heartbeat(hb_id) == 2, str(note_count_for_heartbeat(hb_id)))
+    finally:
+        cleanup(uid)
+
+
+def test_concurrent_real_threads_exactly_once_claim():
+    """N real OS threads (a threading.Barrier lines them up to fire at the
+    same instant), each with its own AgentManager instance/connection —
+    matching production's loop.run_in_executor(None, ...) thread-pool shape
+    exactly — call commit_hb_response for the SAME heartbeat_id
+    concurrently. Exactly one must win the claim and produce exactly one
+    note; every other thread must see 'already fired today', never a
+    partial/duplicate write or a claim-failed error caused by the
+    concurrency itself.
+    """
+    print("\n=== 7. Real OS-thread concurrency (matching production's run_in_executor "
+          "thread pool): N threads calling commit_hb_response for the SAME heartbeat_id "
+          "at once still produce exactly one success and exactly one note ===")
+    import threading
+    import concurrent.futures
+
+    uid = make_user()
+    agent_id = make_agent(uid)
+    hb_id = make_heartbeat(agent_id, uid)
+
+    N = 8
+    barrier = threading.Barrier(N, timeout=10)
+    results: list = [None] * N
+    errors: list[Exception] = []
+
+    def fire(i: int):
+        # Fresh AgentManager per thread, own connection — same shape as
+        # scheduler.py's per-candidate `am = AgentManager(user_id=user_id)`,
+        # never sharing one instance's connection/cursor across threads.
+        manager = FakeManager(uid)
+        try:
+            barrier.wait()  # line every thread up to call commit_hb_response together
+            results[i] = manager.commit_hb_response(agent_id, hb_id, "Reflect on today.")
+        except Exception as e:
+            errors.append(e)
+        finally:
+            manager.close()
+
+    try:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=N) as pool:
+            futures = [pool.submit(fire, i) for i in range(N)]
+            for f in futures:
+                f.result(timeout=30)
+
+        check(f"all {N} concurrent real-thread callers completed without raising",
+              not errors, str(errors))
+
+        successes = [r for r in results if r == {"success": "saved note"}]
+        skipped = [r for r in results if r == {"skipped": "already fired today"}]
+        check(f"exactly ONE of {N} concurrent real-thread callers won the atomic claim",
+              len(successes) == 1, str(results))
+        check(f"the other {N - 1} concurrent real-thread callers were cleanly skipped "
+              "(no claim-failed/error responses caused by the concurrency itself)",
+              len(skipped) == N - 1, str(results))
+        check("exactly one note/context row exists network-wide despite "
+              f"{N} genuinely concurrent real OS threads",
+              note_count_for_heartbeat(hb_id) == 1, str(note_count_for_heartbeat(hb_id)))
+    finally:
+        cleanup(uid)
 
 
 def main():
@@ -224,6 +421,9 @@ def main():
 
     finally:
         cleanup(uid)
+
+    test_local_day_boundary_crossing_not_utc_day()
+    test_concurrent_real_threads_exactly_once_claim()
 
     print(f"\n{'='*60}")
     if FAILED:

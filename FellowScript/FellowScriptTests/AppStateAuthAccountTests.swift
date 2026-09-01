@@ -271,35 +271,52 @@ final class ThrowingTestDataService: DataServiceProtocol {
         try await MockDataService.shared.deleteAgent(userId: userId, agentId: agentId)
     }
 
+    // Controllable / observable seams for the heartbeat CRUD calls
+    // (task 20260901-heartbeat-backend-scheduling, testing step: replacement
+    // regression coverage for the deleted HeartbeatSchedulerRegressionTests.swift
+    // — those three call sites used to also call the now-removed
+    // HeartbeatScheduler.scheduleAll(events:); HeartbeatCRUDRegressionTests.swift
+    // uses these seams to prove AccountViewModel's create/delete/update event
+    // flows still behave correctly (optimistic update/revert, error surfacing)
+    // now that call is gone.)
+    var addHeartbeatError: Error?
+    var deleteHeartbeatError: Error?
+    var updateHeartbeatError: Error?
+
     func addHeartbeat(userId: String, agentId: String, heartbeat: FSHeartbeat) async throws {
+        if let addHeartbeatError { throw addHeartbeatError }
         try await MockDataService.shared.addHeartbeat(userId: userId, agentId: agentId, heartbeat: heartbeat)
     }
 
     func deleteHeartbeat(userId: String, agentId: String, heartbeatId: String) async throws {
+        if let deleteHeartbeatError { throw deleteHeartbeatError }
         try await MockDataService.shared.deleteHeartbeat(userId: userId, agentId: agentId, heartbeatId: heartbeatId)
     }
 
     func updateHeartbeat(userId: String, heartbeatId: String, heartbeat: FSHeartbeat) async throws {
+        if let updateHeartbeatError { throw updateHeartbeatError }
         try await MockDataService.shared.updateHeartbeat(userId: userId, heartbeatId: heartbeatId, heartbeat: heartbeat)
     }
 
-    // Controllable / observable (task 20260808-ios-backend-integration-audit,
-    // step 13) — used by HeartbeatSchedulerRegressionTests to prove
-    // HeartbeatScheduler.checkAndFire (backend step 11 finding #1's fix)
-    // only marks an event fired / posts its "saved" notification when the
-    // result actually contains a "success" key, not on any all-string dict
-    // (e.g. {"error": ...} or {"skipped": ...}) that used to decode fine into
-    // [String: String] and pass a bare `result != nil` check.
+    // Controllable / observable seam for `commitHeartbeat`. Originally added
+    // (task 20260808-ios-backend-integration-audit, step 13; extended by
+    // 20260825-scheduled-event-duplicate-fire) to drive the now-removed
+    // HeartbeatScheduler.checkAndFire (client-side heartbeat firing was moved
+    // to the backend in 20260901-heartbeat-backend-scheduling, along with
+    // HeartbeatSchedulerRegressionTests.swift, which exercised this seam).
+    // Left in place — still valid DataServiceProtocol conformance and a
+    // reusable seam for `commitHeartbeat`, though nothing in the app calls
+    // it client-side anymore (firing is server-only now; see
+    // scheduler.py::_fire_due_heartbeats). Testing gate's replacement
+    // coverage decision: since no client-side firing logic survives to
+    // regression-test, HeartbeatSchedulerRegressionTests.swift's actual
+    // replacement is HeartbeatCRUDRegressionTests.swift, which proves the
+    // create/delete/update event flows above (the real surviving call sites
+    // that used to also call the removed HeartbeatScheduler.scheduleAll)
+    // still behave correctly with that call gone.
     var commitHeartbeatResult: [String: String] = ["success": "saved note"]
     var commitHeartbeatError: Error?
     private(set) var commitHeartbeatCallCount = 0
-    // Task 20260825-scheduled-event-duplicate-fire, testing step: per-heartbeat-id
-    // overrides plus a call hook, so a single checkAndFire batch containing
-    // multiple due events can be scripted to respond differently per event
-    // (e.g. event A succeeds, event B is skipped) and to observe ordering
-    // (e.g. confirm A's fired state is persisted to UserDefaults before B's
-    // commitHeartbeat call even returns) — needed to prove the per-event
-    // immediate-persist fix in HeartbeatScheduler.checkAndFire.
     var commitHeartbeatResultForId: [String: [String: String]] = [:]
     private(set) var commitHeartbeatCallCountForId: [String: Int] = [:]
     var onCommitHeartbeat: ((String) -> Void)?

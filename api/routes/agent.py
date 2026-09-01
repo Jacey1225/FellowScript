@@ -6,6 +6,8 @@ from backend.auth.dependencies import require_match, authenticate_ws
 from schemas.agent import AgentHeartbeats
 from schemas.agent import _DEFAULT_ROLE as DEFAULT_ROLE
 from datetime import datetime
+import asyncio
+import functools
 import uuid
 import logging
 
@@ -142,7 +144,18 @@ async def commit_heartbeat(user_id: str, agent_id: str, heartbeat_id: str, body:
     # once-per-day claim, so a denied request doesn't burn today's fire slot:
     # claiming first and denying after would soft-throttle the user to zero
     # notes for the rest of the day even if their cap frees up later.
-    gate = check_limit(user_id, "notes")
+    #
+    # Both check_limit and commit_hb_response are sync/psycopg2 calls on this
+    # route's `async def` handler, which shares the process's one event loop
+    # with every other request and the scheduler.py heartbeat-firing job --
+    # commit_hb_response's internal LLM call in particular can block for up
+    # to 60s (its `requests.post(..., timeout=60)`). Offloaded via
+    # loop.run_in_executor, matching connect_agent's existing offload of the
+    # identical `_call_api` call and scheduler.py's `_fire_due_heartbeats`
+    # offload of this same client-triggerable defect's server-triggered
+    # twin.
+    loop = asyncio.get_running_loop()
+    gate = await loop.run_in_executor(None, functools.partial(check_limit, user_id, "notes"))
     if not gate["allowed"]:
         raise HTTPException(status_code=403, detail=gate)
 
@@ -151,7 +164,9 @@ async def commit_heartbeat(user_id: str, agent_id: str, heartbeat_id: str, body:
         content = body.get("prompt", None)
         if not content:
             return {"error": "heartbeat prompt not found"}
-        result = db.commit_hb_response(agent_id, heartbeat_id, content)
+        result = await loop.run_in_executor(
+            None, functools.partial(db.commit_hb_response, agent_id, heartbeat_id, content)
+        )
         return result
     finally:
         db.close()

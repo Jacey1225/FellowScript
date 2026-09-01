@@ -206,33 +206,42 @@ class AgentManager(DBManager):
         if not owned:
             return {"error": "heartbeat not found"}
 
-        # Idempotency guard. Heartbeats fire client-side only — iOS's
-        # HeartbeatScheduler.checkAndFire calls this on every app foreground
-        # (there is no server-side cron job for heartbeats; see
-        # scheduler.py::start_scheduler's comment) — so a single stubborn
-        # client that backgrounds/foregrounds repeatedly the same day is the
-        # only caller, and it can call this endpoint any number of times,
-        # any distance apart, for the same already-fired slot.
+        # Idempotency guard. Heartbeats can now fire from either the
+        # server-side poller (scheduler.py::_fire_due_heartbeats) or a
+        # still-running/older client's own call to this route, so more than
+        # one caller for the same heartbeat on the same day is an expected
+        # case to guard against, not just a stubborn single client
+        # foregrounding repeatedly.
         #
         # A rolling time window (previously 2 minutes) cannot enforce "at
         # most once per day": once more time than the window has elapsed
         # since the first fire, a same-day reopen claims again and produces
         # a second note. The durable invariant is a calendar-day boundary,
         # not a rolling duration, so claim atomically based on whether
-        # last_fired already falls on today's UTC date — matching the UTC
-        # "HH:mm" convention timestamps are stored/interpreted in
-        # (AgentHeartbeats.timestamps / HeartbeatScheduler.swift). Postgres
-        # row locking still guarantees exactly one concurrent caller wins
-        # the claim; any other caller (same instant or same day) gets no
-        # row and skips.
+        # last_fired already falls on today's date.
+        #
+        # That calendar-day boundary is computed in the owning user's own
+        # local timezone (users.timezone — the same IANA field the nightly
+        # backup job already reads via BackupManager.users_due_now), not a
+        # fixed UTC date: heartbeats are meant to fire against each user's
+        # own clock (per the timezone_handling revision), so "today" for the
+        # purpose of this claim must mean the same "today" the poller used
+        # to decide the heartbeat was due. Falls back to 'UTC' via COALESCE
+        # if a user row somehow has no timezone set, matching every other
+        # per-user-timezone job's default. Postgres row locking still
+        # guarantees exactly one concurrent caller wins the claim; any other
+        # caller (same instant or same local day) gets no row and skips.
         try:
             self.cur.execute(
                 "UPDATE agent_heartbeats SET last_fired = NOW() "
-                "WHERE _id = %s "
-                "AND (last_fired IS NULL "
-                "OR (last_fired AT TIME ZONE 'UTC')::date < (NOW() AT TIME ZONE 'UTC')::date) "
-                "RETURNING _id",
-                (heartbeat_id,),
+                "FROM users "
+                "WHERE agent_heartbeats._id = %s "
+                "AND users._id = %s "
+                "AND (agent_heartbeats.last_fired IS NULL "
+                "OR (agent_heartbeats.last_fired AT TIME ZONE COALESCE(users.timezone, 'UTC'))::date "
+                "< (NOW() AT TIME ZONE COALESCE(users.timezone, 'UTC'))::date) "
+                "RETURNING agent_heartbeats._id",
+                (heartbeat_id, self.user_id),
             )
             claimed = self.cur.fetchone()
             self.conn.commit()

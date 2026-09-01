@@ -50,7 +50,6 @@ struct FellowScriptApp: App {
             ? MockDataService.shared
             : NetworkService.shared
     )
-    @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
         WindowGroup {
@@ -60,25 +59,6 @@ struct FellowScriptApp: App {
                 .onReceive(NotificationCenter.default.publisher(for: .apnsTokenReceived)) { note in
                     if let token = note.object as? String {
                         appState.registerDeviceToken(token)
-                    }
-                }
-                .onChange(of: scenePhase) { _, phase in
-                    guard phase == .active,
-                          let uid = appState.currentUser?.user_id else { return }
-                    Task {
-                        // Fire any heartbeat events whose time has passed
-                        let agents = (try? await appState.service.fetchAgents(userId: uid)) ?? []
-                        var allEvents: [FSHeartbeat] = []
-                        for agent in agents {
-                            let hbs = (try? await appState.service.fetchHeartbeats(
-                                userId: uid, agentId: agent.id
-                            )) ?? []
-                            allEvents.append(contentsOf: hbs)
-                        }
-                        await HeartbeatScheduler.checkAndFire(
-                            userId: uid, events: allEvents, service: appState.service
-                        )
-                        HeartbeatScheduler.scheduleAll(events: allEvents)
                     }
                 }
         }

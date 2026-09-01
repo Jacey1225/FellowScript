@@ -21,6 +21,14 @@ scheduler = AsyncIOScheduler()
 # file. See backend/monitoring/watchdog.py's `_SELF_LOGGER_NAMES`.
 _watchdog_logger = logger.getChild("watchdog")
 
+# Heartbeats are scheduled to the minute ("HH:mm", AgentHeartbeats.timestamps,
+# interpreted in the owning user's own local timezone -- see
+# _fire_due_heartbeats below), so a 1-minute cadence is the tightest useful
+# precision -- matches the existing `_run_nightly_backups` cadence. Named per
+# this file's proactive-configuration precedent (WATCHDOG_POLL_INTERVAL_SECONDS)
+# rather than an inline magic literal.
+HEARTBEAT_POLL_INTERVAL_SECONDS = 60
+
 
 async def _run_nightly_backups() -> None:
     """Mirror each due user's recent data into the separate backup database.
@@ -207,6 +215,187 @@ async def _friend_went_active_notify() -> None:
         am.close()
 
 
+async def _fire_due_heartbeats() -> None:
+    """Server-side heartbeat firing: scan every heartbeat that hasn't fired
+    yet today (in its owning user's own local calendar) for an "HH:mm" slot
+    (AgentHeartbeats.timestamps, indexed by day-of-month, interpreted as
+    local to that user's timezone) that has already passed in that user's
+    local time, fire it, and push the owning user a generic notification
+    identifying which event fired.
+
+    Runs every HEARTBEAT_POLL_INTERVAL_SECONDS. This replaces the client-only
+    trigger (former iOS HeartbeatScheduler.checkAndFire) -- firing now happens
+    regardless of whether any device has the app open -- but dedup is NOT
+    reinvented here: AgentManager.commit_hb_response's existing atomic
+    calendar-day claim (`last_fired` UPDATE-with-WHERE, now itself computed
+    in the owning user's local timezone rather than a fixed UTC date) is the
+    sole mechanism that makes it safe for this poller to race a client's own
+    late call, or a slow previous poll cycle, for the same heartbeat. This
+    job's own candidate-selection query below uses the same
+    last-fired-in-local-calendar predicate purely as a cheap pre-filter to
+    skip obviously-already-fired rows; it is not itself a claim and never
+    substitutes for one.
+
+    Heartbeats' stored "HH:mm" strings are unchanged (AgentHeartbeats /
+    EventSetupSheet.swift still author them the same way), but per the
+    timezone_handling revision they're now interpreted as local to the
+    owning user's `users.timezone` (IANA name, via zoneinfo) rather than
+    literal UTC -- matching the existing per-user-local-time precedent
+    already used for the nightly backup job (BackupManager.users_due_now)
+    and the midday/guilt reminder jobs above. A user whose stored timezone
+    is missing/invalid is skipped for this cycle (fail-closed) rather than
+    guessed at with a UTC fallback, since firing at the wrong local time is
+    exactly the bug this revision is fixing.
+
+    Per-heartbeat errors (a bad claim, an LLM failure, a push failure) are
+    caught, logged, and skipped so one user's failure can't abort the whole
+    cycle -- matching every other job in this file. A candidate we can't
+    confidently resolve (e.g. the initial scan query itself fails) is left
+    for the next cycle rather than guessed at, per this project's fail-closed
+    posture.
+
+    Every sync/psycopg2 call this function makes (the due-scan query, the
+    per-candidate `check_limit` call, `commit_hb_response` itself, and the
+    post-fire device-token/agent-name lookups) is offloaded via
+    `loop.run_in_executor`, matching `_run_nightly_backups`' own offload of
+    `bm.users_due_now`/`bm.backup_user` -- this is an `async def` on the
+    process's one shared event loop, so an unwrapped sync DB call or (via
+    commit_hb_response's internal `_call_api`) a blocking `requests.post` with
+    a 60s timeout would otherwise stall every other coroutine on the loop for
+    the call's duration. The per-candidate loop stays strictly sequential
+    (each offloaded call is awaited before the next begins) rather than
+    fanned out with `asyncio.gather`/`create_task`, so the outer `db`
+    connection and each candidate's own fresh `AgentManager` connection are
+    each only ever touched by one thread at a time -- see the
+    thread_safety_boundary decision in this task's architecture.json.
+    """
+    import asyncio
+    import functools
+    from backend.interactions.agent import AgentManager
+    from backend.interactions.push import send_push
+    from backend.subscription.limits import check_limit
+
+    def _scan_candidates():
+        db.cur.execute(
+            "SELECT ah._id, ah.agent_id, ah.user_id, ah.timestamps, ah.prompt, u.timezone "
+            "FROM agent_heartbeats ah "
+            "JOIN users u ON u._id = ah.user_id "
+            "WHERE ah.last_fired IS NULL "
+            "OR (ah.last_fired AT TIME ZONE COALESCE(u.timezone, 'UTC'))::date "
+            "< (NOW() AT TIME ZONE COALESCE(u.timezone, 'UTC'))::date"
+        )
+        return db.cur.fetchall()
+
+    def _post_fire_lookups(agent_id_: str, user_id_: str):
+        token_rows = db.lookup("device_tokens", {"user_id": user_id_})
+        token = list(token_rows.values())[0].get("token") if token_rows else None
+        agent_row = db.lookup("agents", {"_id": agent_id_})
+        agent_name = list(agent_row.values())[0].get("name", "") if agent_row else ""
+        return token, agent_name
+
+    loop = asyncio.get_running_loop()
+    db = DBManager()
+    try:
+        try:
+            candidates = await loop.run_in_executor(None, _scan_candidates)
+        except Exception as e:
+            logger.error("Heartbeat due-scan query failed: %s", e)
+            return
+
+        now_utc = datetime.now(tzmod.utc)
+        for heartbeat_id, agent_id, user_id, timestamps, prompt, tzname in candidates:
+            heartbeat_id, agent_id, user_id = str(heartbeat_id), str(agent_id), str(user_id)
+            try:
+                try:
+                    local = now_utc.astimezone(ZoneInfo(tzname or "UTC"))
+                except Exception:
+                    logger.warning(
+                        "Skipping heartbeat %s — invalid timezone %r for user %s",
+                        heartbeat_id, tzname, user_id,
+                    )
+                    continue
+
+                day_idx = local.day - 1  # timestamps is 0-indexed: index i == day i+1
+                if not timestamps or day_idx >= len(timestamps):
+                    continue
+                time_str = timestamps[day_idx]
+                if not time_str:
+                    continue
+                try:
+                    hour, minute = (int(p) for p in time_str.split(":")[:2])
+                    scheduled = local.replace(hour=hour, minute=minute, second=0, microsecond=0)
+                except (ValueError, TypeError):
+                    logger.warning(
+                        "Heartbeat %s has an unparseable time slot for today — skipping.",
+                        heartbeat_id,
+                    )
+                    continue
+                if scheduled > local:
+                    continue  # today's local slot hasn't arrived yet
+
+                # Same weekly notes-cap gate commit_heartbeat applies before
+                # calling commit_hb_response -- firing server-side must not let
+                # a free user at their cap mint unlimited notes just because no
+                # client ever calls the route anymore. Offloaded: check_limit
+                # opens its own sync psycopg2 connection (LimitsManager).
+                gate = await loop.run_in_executor(
+                    None, functools.partial(check_limit, user_id, "notes")
+                )
+                if not gate["allowed"]:
+                    continue
+
+                am = AgentManager(user_id=user_id)
+                try:
+                    # The whole call -- ownership check, the atomic claim
+                    # query, the internal blocking LLM call, and the
+                    # note/context writes -- is offloaded as one executor
+                    # unit so this one candidate's own connection/cursor is
+                    # only ever touched by the single worker thread running
+                    # it, for its full duration (see thread_safety_boundary).
+                    result = await loop.run_in_executor(
+                        None,
+                        functools.partial(am.commit_hb_response, agent_id, heartbeat_id, prompt or "")
+                    )
+                finally:
+                    am.close()
+
+                if "success" not in result:
+                    # "skipped" (claim already taken -- a concurrent poll cycle
+                    # or a still-running client beat us to it) and "error"
+                    # (LLM/parse/claim failure) both mean no push is warranted.
+                    continue
+
+                token, agent_name = await loop.run_in_executor(
+                    None, functools.partial(_post_fire_lookups, agent_id, user_id)
+                )
+                if not token:
+                    continue
+
+                title = agent_name or "Scheduled Event"
+                # No prompt/note content in the alert -- a remote push transits
+                # Apple's infrastructure and is composed directly by this
+                # backend, a different trust surface than the old per-device
+                # local notification (which did truncate the prompt). Identify
+                # the event generically in the alert; heartbeat_id/agent_id ride
+                # in the payload's data for the client to resolve locally.
+                ok = await send_push(
+                    token,
+                    title,
+                    "Your agent responded to a scheduled event. Check your notes.",
+                    data={"heartbeat_id": heartbeat_id, "agent_id": agent_id},
+                )
+                if not ok:
+                    logger.warning(
+                        "Heartbeat %s fired but push failed for user %s", heartbeat_id, user_id
+                    )
+            except Exception as e:
+                logger.error("Heartbeat fire cycle error for %s: %s", heartbeat_id, e)
+    except Exception as e:
+        logger.error("Heartbeat scheduler job error: %s", e)
+    finally:
+        db.close()
+
+
 def start_scheduler() -> None:
     # The former `notify_check` cron job (agentic/custom notification firing)
     # was removed in full along with that subsystem — see
@@ -215,10 +404,18 @@ def start_scheduler() -> None:
     # below (midday, guilt, friend-went-active), all delivered via the same
     # send_push/device_tokens pipeline the old subsystem used.
     #
-    # Heartbeats are fired client-side only (iOS HeartbeatScheduler.checkAndFire
-    # on app foreground) — no server-side cron job for them.
+    # Heartbeats now fire server-side too (see _fire_due_heartbeats below) --
+    # the former iOS-only trigger (HeartbeatScheduler.checkAndFire on app
+    # foreground) was removed; a heartbeat fires on time whether or not any
+    # client ever has the app open. Fire time is resolved per-user-local
+    # (users.timezone), not a fixed UTC slot -- see _fire_due_heartbeats'
+    # docstring. commit_hb_response's existing calendar-day claim remains the
+    # sole dedup mechanism; its day boundary is likewise now computed in the
+    # owning user's local timezone rather than a fixed UTC date.
     scheduler.add_job(_run_nightly_backups, "cron", minute="*", id="backup_check",
                       replace_existing=True)
+    scheduler.add_job(_fire_due_heartbeats, "interval", seconds=HEARTBEAT_POLL_INTERVAL_SECONDS,
+                      id="heartbeat_fire", replace_existing=True)
     # Midday/guilt reminders: a 15-minute poll is coarse enough to be cheap
     # but fine enough that the local-noon / >24h windows are never missed by
     # more than 15 minutes — each job's own dedup marker (not job frequency)

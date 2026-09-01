@@ -52,7 +52,17 @@ def _apns_jwt() -> str:
     return token
 
 
-async def send_push(device_token: str, title: str, body: str) -> bool:
+async def send_push(
+    device_token: str, title: str, body: str, data: dict | None = None
+) -> bool:
+    """Send an APNs alert push. ``data`` (optional) is merged into the
+    payload alongside (not inside) ``aps`` -- standard APNs practice for
+    passing identifiers a client needs to resolve the alert to specific
+    local state (e.g. which heartbeat/agent fired) without putting anything
+    sensitive in the alert title/body itself, which transits Apple's
+    infrastructure and (unlike a client-scheduled local notification) is
+    composed directly by this backend.
+    """
     if not all([KEY_ID, TEAM_ID, BUNDLE_ID, KEY_PATH]):
         logger.warning("APNs not fully configured — skipping push")
         return False
@@ -73,6 +83,8 @@ async def send_push(device_token: str, title: str, body: str) -> bool:
             "sound": "default",
         }
     }
+    if data:
+        payload.update(data)
 
     for env in _host_order():
         url = f"{APNS_HOSTS[env]}/3/device/{device_token}"
