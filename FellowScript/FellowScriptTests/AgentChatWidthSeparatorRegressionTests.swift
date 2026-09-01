@@ -122,11 +122,23 @@ final class MarkdownRuleDividerRemovalRenderTests: XCTestCase {
 final class AgentChatWidthSourceTests: XCTestCase {
 
     func test_source_maxWidthCap_widenedTo0_90_stillScreenRelative() throws {
+        // Cap widened further, from 0.90 to 0.95, by task
+        // 20260831-agent-chat-header-removal (once the avatar+header column
+        // was removed entirely, 0.90 was still comfortably non-binding, so
+        // the header-removal task raised it again for headroom while the
+        // real width gain comes from the freed avatar column, not this
+        // cap). This test's own concern — old sub-cap values must be gone
+        // and the cap stays screen-relative — is unchanged; only the pinned
+        // literal is updated here, per this file's own established
+        // precedent (see AgentChatBubbleRemovalSourceTests, which updated
+        // its own pinned 0.78→0.90 marker for exactly this reason).
         let source = try readProjectSource("FellowScript/Chat/AgentChatView.swift")
         XCTAssertFalse(source.contains("UIScreen.main.bounds.width * 0.78"),
                        "the old 0.78 cap must be gone — this task deliberately widens it")
-        XCTAssertTrue(source.contains(".frame(maxWidth: UIScreen.main.bounds.width * 0.90, alignment: message.mine ? .trailing : .leading)"),
-                      "the message-content max-width cap must be widened to 0.90 of the screen width " +
+        XCTAssertFalse(source.contains("UIScreen.main.bounds.width * 0.90"),
+                       "the superseded 0.90 cap must be gone — task 20260831-agent-chat-header-removal widened it to 0.95")
+        XCTAssertTrue(source.contains(".frame(maxWidth: UIScreen.main.bounds.width * 0.95, alignment: message.mine ? .trailing : .leading)"),
+                      "the message-content max-width cap must be widened to 0.95 of the screen width " +
                       "(still a UIScreen.main.bounds.width-relative factor, not a fixed point value, per " +
                       "the mobile-first sizing convention already used on this screen)")
     }
@@ -211,8 +223,12 @@ final class AgentChatWidthRenderTests: XCTestCase {
         // not literally edge-to-edge) -- guards against a future edit
         // accidentally setting the factor to 1.0 or dropping the cap
         // entirely, which the string-based source test wouldn't catch if
-        // someone reformatted the literal (e.g. "0.90" -> "0.9").
-        let newCap = UIScreen.main.bounds.width * 0.90
+        // someone reformatted the literal (e.g. "0.95" -> "0.9").
+        //
+        // Updated to 0.95 (from 0.90) by task 20260831-agent-chat-header-
+        // removal — see this file's own test_source_maxWidthCap_widenedTo0_90_stillScreenRelative
+        // for the source-level pin of the same current value.
+        let newCap = UIScreen.main.bounds.width * 0.95
         let oldCap = UIScreen.main.bounds.width * 0.78
         XCTAssertGreaterThan(newCap, oldCap, "widened cap must be strictly larger than the old cap")
         XCTAssertLessThan(newCap, UIScreen.main.bounds.width, "widened cap must still leave some margin, not span the full screen edge-to-edge")

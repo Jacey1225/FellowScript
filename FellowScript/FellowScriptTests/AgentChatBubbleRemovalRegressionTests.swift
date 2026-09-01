@@ -80,13 +80,16 @@ final class AgentChatBubbleRemovalSourceTests: XCTestCase {
         let source = try readSource("FellowScript/Chat/AgentChatView.swift")
         guard let elseRange = source.range(of: "} else {"),
               let frameRange = source.range(
-                // Cap widened from 0.78 to 0.90 by task 20260831-agent-chat-
-                // width-separator — this test only needs the marker to
-                // locate the shared frame modifier, not its exact factor
-                // (see AgentChatWidthSeparatorRegressionTests for coverage
-                // of the factor itself), so it's updated here to keep
-                // finding the boundary correctly.
-                of: ".frame(maxWidth: UIScreen.main.bounds.width * 0.90",
+                // Cap widened 0.78 -> 0.90 by task 20260831-agent-chat-
+                // width-separator, then 0.90 -> 0.95 by task
+                // 20260831-agent-chat-header-removal (once the avatar/header
+                // column was removed, 0.90 was still non-binding headroom)
+                // — this test only needs the marker to locate the shared
+                // frame modifier, not its exact factor (see
+                // AgentChatWidthSeparatorRegressionTests for coverage of the
+                // factor itself), so it's updated here to keep finding the
+                // boundary correctly.
+                of: ".frame(maxWidth: UIScreen.main.bounds.width * 0.95",
                 range: elseRange.upperBound..<source.endIndex
               ) else {
             XCTFail("could not locate AgentMessageBubble's else branch / shared frame modifier in the real source")
@@ -112,17 +115,18 @@ final class AgentChatBubbleRemovalSourceTests: XCTestCase {
     }
 
     func test_source_maxWidthWrapping_isSharedAcrossBothBranches() throws {
-        // Factor widened from 0.78 to 0.90 by task 20260831-agent-chat-
-        // width-separator (see AgentChatWidthSeparatorRegressionTests for
-        // dedicated coverage of that specific value) -- this test's own
-        // concern is unchanged: the wrap constraint must still be applied
-        // exactly once, to the shared Group wrapping both branches.
+        // Factor widened 0.78 -> 0.90 by task 20260831-agent-chat-width-
+        // separator, then 0.90 -> 0.95 by task 20260831-agent-chat-header-
+        // removal (see AgentChatWidthSeparatorRegressionTests for dedicated
+        // coverage of the current value) -- this test's own concern is
+        // unchanged: the wrap constraint must still be applied exactly
+        // once, to the shared Group wrapping both branches.
         let source = try readSource("FellowScript/Chat/AgentChatView.swift")
-        let marker = ".frame(maxWidth: UIScreen.main.bounds.width * 0.90, alignment: message.mine ? .trailing : .leading)"
+        let marker = ".frame(maxWidth: UIScreen.main.bounds.width * 0.95, alignment: message.mine ? .trailing : .leading)"
         let occurrences = source.components(separatedBy: marker).count - 1
         XCTAssertEqual(
             occurrences, 1,
-            "the 0.90-screen-width wrap constraint must be applied exactly once, to the shared Group " +
+            "the 0.95-screen-width wrap constraint must be applied exactly once, to the shared Group " +
             "wrapping both branches -- otherwise agent text (which has no visual container implying a " +
             "boundary) could regress to spanning the full screen edge-to-edge"
         )
@@ -159,35 +163,45 @@ final class AgentMessageBubbleRenderTests: XCTestCase {
     }
 
     func test_agentMessage_rendersTextAndAccessibilityLabel() throws {
+        // Task 20260831-agent-chat-header-removal removed the visible
+        // sender-name/avatar row entirely, so "Spiritual Guide" no longer
+        // renders as its own Text -- it survives only inside the combined
+        // accessibility label. See AgentChatHeaderRemovalRegressionTests
+        // for dedicated coverage of the row's removal; this test's own
+        // remaining concern is that the message text and accessibility
+        // label contract both still work post-removal.
         let message = makeMessage(mine: false, text: "Consider Psalm 23.")
         let sut = AgentMessageBubble(message: message, agentName: "Spiritual Guide", userInitial: "J")
 
         XCTAssertNoThrow(try sut.inspect().find(text: "Consider Psalm 23."),
                           "agent response text must still render after the bubble chrome removal")
-        XCTAssertNoThrow(try sut.inspect().find(text: "Spiritual Guide"),
-                          "the agent's sender name row must still render")
 
         let root = try sut.inspect().find(ViewType.HStack.self, where: { h in
             (try? h.accessibilityLabel().string()) == "Spiritual Guide: Consider Psalm 23."
         })
         XCTAssertEqual(try root.accessibilityLabel().string(), "Spiritual Guide: Consider Psalm 23.",
-                       "the combined accessibility label contract must survive the visual-only change")
+                       "the combined accessibility label contract must survive the visual-only change, " +
+                       "carrying sender identity for VoiceOver even though the visible row is gone")
     }
 
     func test_mineMessage_rendersTextAndAccessibilityLabel() throws {
+        // Task 20260831-agent-chat-header-removal removed the visible
+        // sender-name/avatar row entirely, so "You" no longer renders as
+        // its own Text -- it survives only inside the combined
+        // accessibility label (see comment above and
+        // AgentChatHeaderRemovalRegressionTests).
         let message = makeMessage(mine: true, text: "Thank you.")
         let sut = AgentMessageBubble(message: message, agentName: "Spiritual Guide", userInitial: "J")
 
         XCTAssertNoThrow(try sut.inspect().find(text: "Thank you."),
                           "the user's own outgoing text must still render")
-        XCTAssertNoThrow(try sut.inspect().find(text: "You"),
-                          "the user's own sender-name row must still read \"You\", unchanged")
 
         let root = try sut.inspect().find(ViewType.HStack.self, where: { h in
             (try? h.accessibilityLabel().string()) == "You: Thank you."
         })
         XCTAssertEqual(try root.accessibilityLabel().string(), "You: Thank you.",
-                       "the combined accessibility label contract must survive the visual-only change")
+                       "the combined accessibility label contract must survive the visual-only change, " +
+                       "carrying sender identity for VoiceOver even though the visible row is gone")
     }
 }
 
