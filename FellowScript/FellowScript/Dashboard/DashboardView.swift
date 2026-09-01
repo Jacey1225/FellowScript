@@ -128,6 +128,18 @@ struct DashboardView: View {
                 }
                 .padding(.bottom, 150) // clears the floating tab bar
             }
+            // Pull-to-refresh (task 20260831-interaction-polish-conventions):
+            // wired directly to this screen's existing reload method.
+            // `vm.isLoading` isn't read anywhere in this view's body (unlike
+            // NotesListView/ChatRootView, which gate their whole list on it),
+            // so re-running `load()` here can't blank the screen mid-refresh
+            // the way it would there — no separate refresh()/showLoadingSpinner
+            // split is needed for this screen.
+            .refreshable {
+                if let uid = appState.currentUser?.user_id {
+                    await vm.load(service: appState.service, userId: uid)
+                }
+            }
         }
         .task {
             if let uid = appState.currentUser?.user_id {

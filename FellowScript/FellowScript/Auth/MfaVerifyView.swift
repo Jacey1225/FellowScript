@@ -76,6 +76,10 @@ struct MfaVerifyView: View {
                 Spacer()
             }
         }
+        // Shared keyboard-dismiss convention (task
+        // 20260831-interaction-polish-conventions) — covers the code field
+        // above.
+        .dismissesKeyboardOnScrollAndTap()
     }
 
     private func verify() async {

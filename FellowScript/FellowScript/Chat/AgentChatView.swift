@@ -249,6 +249,12 @@ struct AgentChatView: View {
             }
         }
         .preferredColorScheme(.dark)
+        // Shared keyboard-dismiss convention (task
+        // 20260831-interaction-polish-conventions) — covers the composer
+        // TextField. Same "no pull-to-refresh" reasoning as
+        // ChatThreadView.swift: a live WebSocket thread with no existing
+        // older-message pagination for an overscroll gesture to drive.
+        .dismissesKeyboardOnScrollAndTap()
         .task {
             let uid = appState.currentUser?.user_id ?? ""
             await vm.load(service: appState.service, agentId: agent.id, userId: uid)

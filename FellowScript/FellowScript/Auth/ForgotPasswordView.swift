@@ -85,6 +85,10 @@ struct ForgotPasswordView: View {
                     Button("Close") { dismiss() }.foregroundColor(Theme.textGoldMuted)
                 }
             }
+            // Shared keyboard-dismiss convention (task
+            // 20260831-interaction-polish-conventions) — covers the email
+            // field above.
+            .dismissesKeyboardOnScrollAndTap()
         }
         .preferredColorScheme(.dark)
     }

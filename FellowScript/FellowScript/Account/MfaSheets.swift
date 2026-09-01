@@ -35,6 +35,9 @@ struct MfaSetupSheet: View {
             }
             .padding(.top, Theme.spacingLG)
             .background(Theme.bgPage)
+            // Shared keyboard-dismiss convention (task
+            // 20260831-interaction-polish-conventions).
+            .dismissesKeyboardOnScrollAndTap()
             .navigationTitle("Confirm 2FA")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -83,6 +86,9 @@ struct MfaDisableSheet: View {
             }
             .padding(.top, Theme.spacingLG)
             .background(Theme.bgPage)
+            // Shared keyboard-dismiss convention (task
+            // 20260831-interaction-polish-conventions).
+            .dismissesKeyboardOnScrollAndTap()
             .navigationTitle("Turn Off 2FA")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

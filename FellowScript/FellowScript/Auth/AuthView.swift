@@ -256,6 +256,10 @@ struct AuthView: View {
                 }
             }
         }
+        // Shared keyboard-dismiss convention (task
+        // 20260831-interaction-polish-conventions) — covers the
+        // username/email/password fields above.
+        .dismissesKeyboardOnScrollAndTap()
         .onAppear { isSignIn = initialSignIn }
         .fullScreenCover(isPresented: Binding(
             get: { pendingMfaUserId != nil },

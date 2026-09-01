@@ -45,6 +45,16 @@ struct BlockedUsersView: View {
                     .listRowBackground(Theme.cardBg)
                 }
                 .listStyle(.plain)
+                // Pull-to-refresh (task 20260831-interaction-polish-conventions):
+                // wired to this screen's existing reload method. Passes
+                // `showSpinner: false` so an already-populated list isn't
+                // replaced by the full-screen spinner branch above mid-refresh
+                // (the "no regressions to existing scroll ... behavior"
+                // requirement) — SwiftUI's own native `.refreshable` spinner
+                // is the only loading affordance shown during a refresh.
+                .refreshable {
+                    await load(showSpinner: false)
+                }
                 .scrollContentBackground(.hidden)
             }
         }
@@ -54,10 +64,10 @@ struct BlockedUsersView: View {
         .task { await load() }
     }
 
-    private func load() async {
-        isLoading = true
+    private func load(showSpinner: Bool = true) async {
+        if showSpinner { isLoading = true }
         blocked = (try? await service.fetchBlockedUsers(userId: userId)) ?? []
-        isLoading = false
+        if showSpinner { isLoading = false }
     }
 
     private func unblock(_ user: FSBlockedUser) async {

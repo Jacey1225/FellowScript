@@ -47,6 +47,10 @@ struct ReportUserSheet: View {
             }
             .scrollContentBackground(.hidden)
             .background(Theme.bgPage)
+            // Shared keyboard-dismiss convention (task
+            // 20260831-interaction-polish-conventions) — covers the
+            // "Additional details" TextEditor.
+            .dismissesKeyboardOnScrollAndTap()
             .navigationTitle("Report \(contact.name)")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

@@ -337,6 +337,19 @@ struct ChatThreadView: View {
             }
         }
         .preferredColorScheme(.dark)
+        // Shared keyboard-dismiss convention (task
+        // 20260831-interaction-polish-conventions) — covers the composer
+        // TextField. No pull-to-refresh here: this is a live WebSocket
+        // thread (new messages arrive over the socket, not via a batch
+        // reload), and there's no existing older-message pagination for an
+        // overscroll-at-top gesture to trigger — adding one would be new
+        // data-fetch/pagination logic, out of this task's bounds. No
+        // tap-outside-dismiss either: GroupMembersPanel below renders inline
+        // in the VStack flow (pushing the message list down), not as a
+        // floating ZStack overlay layered over other content, so it isn't
+        // the kind of custom overlay this task's tap-outside-dismiss
+        // convention targets.
+        .dismissesKeyboardOnScrollAndTap()
         .task {
             let uid = appState.currentUser?.user_id ?? ""
             memberNames = contact.memberNames

@@ -36,6 +36,11 @@ struct EventSetupSheet: View {
                 }
         }
         .preferredColorScheme(.dark)
+        // Shared keyboard-dismiss convention (task
+        // 20260831-interaction-polish-conventions) — applied at the
+        // NavigationStack root so it covers detailsScreen's prompt
+        // TextEditor regardless of which pushed screen is showing.
+        .dismissesKeyboardOnScrollAndTap()
         .onAppear {
             if selectedAgentId.isEmpty {
                 selectedAgentId = agents.first?.id ?? ""

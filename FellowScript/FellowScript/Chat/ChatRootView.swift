@@ -85,6 +85,10 @@ struct ChatRootView: View {
                 }
             }
         }
+        // Shared keyboard-dismiss convention (task
+        // 20260831-interaction-polish-conventions) — covers this screen's
+        // search field.
+        .dismissesKeyboardOnScrollAndTap()
         .task {
             await vm.load(service: appState.service, userId: appState.currentUser?.user_id ?? "")
         }
@@ -306,9 +310,44 @@ struct ChatRootView: View {
                         .accessibilityLabel("Chat with \(contact.name)")
                 }
                 .listStyle(.plain)
+                // Pull-to-refresh (task 20260831-interaction-polish-conventions)
+                // — see ChatViewModel.refresh's comment. Friends/groups/agents
+                // share the same fetch, so each of this file's three lists
+                // wires the identical call.
+                .refreshable {
+                    await vm.refresh(service: appState.service, userId: appState.currentUser?.user_id ?? "")
+                }
                 .scrollContentBackground(.hidden)
-                .contentMargins(.top, 8, for: .scrollContent)
+                // Breathing room + top-edge feather (task
+                // 20260831-notes-messages-list-scroll-blur): the search field
+                // sits directly above this List with no gap, so rows
+                // scrolling up used to hit a hard clip flush against it -- a
+                // live scrolled-state screenshot of the equivalent Notes list
+                // showed a card visibly colliding with/reading as
+                // overlapping the row above, not just "unblurred."
+                // `.contentMargins(.top:)` alone only offsets the AT-REST
+                // position (scrollOffset 0); it does not create a persistent
+                // gap once scrolled, since content still travels all the way
+                // to the List's own top-edge frame boundary while scrolling.
+                // The real fix needs both halves: the `.padding(.top:)`
+                // below (OUTSIDE the List, after the mask) moves the List's
+                // own clipping frame a genuine, scroll-independent
+                // Theme.spacingLG away from the search field, so even a
+                // fully-scrolled row's top edge stays clear of it -- no
+                // overlap, ever, regardless of scroll offset.
+                // `.contentMargins(.top:)` keeps a smaller matching inset so
+                // the first row also isn't flush against the List's own
+                // (now further-away) top edge at rest. scrollTopEdgeFeather
+                // (Theme.swift) adapts NoteDetailView's ScrollView `.mask`
+                // precedent for List so rows fade out smoothly as they
+                // approach that inner top edge while scrolling, instead of
+                // hard-clipping there. Neither of these is a background
+                // overlay/panel -- both operate on the List's own frame/
+                // alpha, nothing new is drawn behind or in front of it.
+                .contentMargins(.top, Theme.spacingSM, for: .scrollContent)
                 .contentMargins(.bottom, 110, for: .scrollContent)
+                .scrollTopEdgeFeather()
+                .padding(.top, Theme.spacingLG)
             }
         }
         .sheet(item: $reportTarget) { contact in
@@ -397,9 +436,19 @@ struct ChatRootView: View {
                         .accessibilityLabel("Open group: \(contact.name)")
                 }
                 .listStyle(.plain)
+                // See friendsList's identical treatment above (task
+                // 20260831-interaction-polish-conventions).
+                .refreshable {
+                    await vm.refresh(service: appState.service, userId: appState.currentUser?.user_id ?? "")
+                }
                 .scrollContentBackground(.hidden)
-                .contentMargins(.top, 8, for: .scrollContent)
+                // See friendsList's identical treatment above (task
+                // 20260831-notes-messages-list-scroll-blur) -- same header,
+                // same seam, same fix.
+                .contentMargins(.top, Theme.spacingSM, for: .scrollContent)
                 .contentMargins(.bottom, 110, for: .scrollContent)
+                .scrollTopEdgeFeather()
+                .padding(.top, Theme.spacingLG)
             }
         }
     }
@@ -430,9 +479,19 @@ struct ChatRootView: View {
                         .accessibilityLabel("Chat with agent: \(agent.displayLabel)")
                 }
                 .listStyle(.plain)
+                // See friendsList's identical treatment above (task
+                // 20260831-interaction-polish-conventions).
+                .refreshable {
+                    await vm.refresh(service: appState.service, userId: appState.currentUser?.user_id ?? "")
+                }
                 .scrollContentBackground(.hidden)
-                .contentMargins(.top, 8, for: .scrollContent)
+                // See friendsList's identical treatment above (task
+                // 20260831-notes-messages-list-scroll-blur) -- same header,
+                // same seam, same fix.
+                .contentMargins(.top, Theme.spacingSM, for: .scrollContent)
                 .contentMargins(.bottom, 110, for: .scrollContent)
+                .scrollTopEdgeFeather()
+                .padding(.top, Theme.spacingLG)
             }
         }
     }
@@ -517,14 +576,28 @@ final class ChatViewModel: ObservableObject {
     func load(service: DataServiceProtocol, userId: String) async {
         guard !hasLoadedOnce else { return }
         hasLoadedOnce = true
+        await fetchAndCache(service: service, userId: userId, showLoadingSpinner: true)
+    }
+
+    /// Pull-to-refresh entry point (task 20260831-interaction-polish-conventions)
+    /// — see NotesViewModel.refresh's identical rationale: re-runs `load()`'s
+    /// fetch+cache-write flow bypassing the StartupCoordinator dedup guard,
+    /// without flipping `isLoading` (which ChatRootView's body uses to swap
+    /// its whole content for a loading state) so an already-populated
+    /// friends/groups/agents list isn't replaced mid-refresh.
+    func refresh(service: DataServiceProtocol, userId: String) async {
+        await fetchAndCache(service: service, userId: userId, showLoadingSpinner: false)
+    }
+
+    private func fetchAndCache(service: DataServiceProtocol, userId: String, showLoadingSpinner: Bool) async {
         self.service = service
-        isLoading = true
-        defer { isLoading = false }
+        if showLoadingSpinner { isLoading = true }
+        defer { if showLoadingSpinner { isLoading = false } }
 
         // ── Cache-first: show last-known contacts/agents instantly ───────────────
         if let cached: [FSContact] = await DiskCache.shared.load([FSContact].self, forKey: "friends:\(userId)") {
             friends = cached
-            isLoading = false
+            if showLoadingSpinner { isLoading = false }
         }
         if let cached: [FSContact] = await DiskCache.shared.load([FSContact].self, forKey: "groupContacts:\(userId)") {
             groups = cached
@@ -742,6 +815,9 @@ struct AddFriendSheet: View {
             }
             .scrollContentBackground(.hidden)
             .background(Theme.bgPage)
+            // Shared keyboard-dismiss convention (task
+            // 20260831-interaction-polish-conventions).
+            .dismissesKeyboardOnScrollAndTap()
             .navigationTitle("Add Friend")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -803,6 +879,9 @@ struct AddGroupSheet: View {
             }
             .scrollContentBackground(.hidden)
             .background(Theme.bgPage)
+            // Shared keyboard-dismiss convention (task
+            // 20260831-interaction-polish-conventions).
+            .dismissesKeyboardOnScrollAndTap()
             .navigationTitle("New Group")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

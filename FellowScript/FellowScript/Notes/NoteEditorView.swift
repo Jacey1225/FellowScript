@@ -242,9 +242,6 @@ struct NoteEditorView: View {
                         .padding(.bottom, UIScreen.main.bounds.height * 0.55)
                         .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    // Let the keyboard properly inset the scroll view (shrinks frame
-                    // above keyboard) so content can scroll up into view while typing.
-                    .scrollDismissesKeyboard(.interactively)
                 }
 
                 // Save FAB — floats above the writing card, bottom-right,
@@ -288,6 +285,15 @@ struct NoteEditorView: View {
             }
         }
         .preferredColorScheme(.dark)
+        // Reconciled onto the app-wide shared keyboard-dismiss convention
+        // (task 20260831-interaction-polish-conventions) — this was
+        // previously a one-off `.scrollDismissesKeyboard(.interactively)` on
+        // just the writing ScrollView; that same interactive-drag behavior
+        // now comes from the shared modifier (applied here, at the screen
+        // root, so it also covers the title TextField) and gains
+        // tap-outside-to-dismiss for free, with no change to the existing
+        // scroll-to-dismiss feel.
+        .dismissesKeyboardOnScrollAndTap()
         .onAppear { populate() }
         .sheet(isPresented: $showVersePicker) {
             VersePicker { book, ch, vs in

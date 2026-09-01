@@ -573,6 +573,18 @@ struct AccountView: View {
                     .padding(.top, Theme.spacingMD)
                     .padding(.bottom, 150) // clears the floating tab bar
                 }
+                // Pull-to-refresh (task 20260831-interaction-polish-conventions):
+                // wired to this screen's existing reload method
+                // (refreshAccountData(), below) rather than replaying the
+                // whole `.task` verbatim — see that method's own comment for
+                // why the StoreKit calls stay out of it. `vm.isLoading` isn't
+                // read anywhere in this view's body (unlike NotesListView/
+                // ChatRootView, which gate their whole list on it), so this
+                // can call vm.load() directly with no risk of blanking the
+                // screen mid-refresh.
+                .refreshable {
+                    await refreshAccountData()
+                }
             }
             .navigationTitle("Account")
             .navigationBarTitleDisplayMode(.large)
@@ -580,6 +592,10 @@ struct AccountView: View {
                 BlockedUsersView(userId: appState.currentUser?.user_id ?? "", service: appState.service)
             }
         }
+        // Shared keyboard-dismiss convention (task
+        // 20260831-interaction-polish-conventions) — covers every TextField
+        // in this screen's Edit Profile / Danger Zone sections below.
+        .dismissesKeyboardOnScrollAndTap()
         .task {
             if let user = appState.currentUser {
                 await vm.load(service: appState.service, user: user)
@@ -1707,6 +1723,29 @@ struct AccountView: View {
         }
         password = ""
     }
+
+    /// Pull-to-refresh's reload method (task
+    /// 20260831-interaction-polish-conventions): re-runs the profile/agents/
+    /// events/usage/friend-requests fetch (`vm.load`) and the subscription
+    /// fetch (`vm.loadSubscription`), same as `.task` above, then reseeds
+    /// this screen's local @State fields from the freshly-fetched profile —
+    /// identical to `.task`'s own seeding. Deliberately does NOT re-run
+    /// `store.startListening()`/`loadProducts()`/`syncEntitlements()`: those
+    /// are one-time StoreKit session bootstrapping for this app launch, not
+    /// this screen's own "reload my data" concern, and re-invoking entitlement
+    /// sync on every pull-to-refresh would be new business logic beyond
+    /// "wiring the existing reload method into `.refreshable`" (out of this
+    /// task's bounds) with its own side effects worth not introducing here.
+    private func refreshAccountData() async {
+        guard let user = appState.currentUser else { return }
+        await vm.load(service: appState.service, user: user)
+        let freshUser = vm.profileData ?? user
+        username   = freshUser.username
+        email      = freshUser.email
+        timezone   = freshUser.timezone
+        mfaEnabled = freshUser.mfa_enabled
+        await vm.loadSubscription(userId: user.user_id)
+    }
 }
 
 // ── Stat box ──────────────────────────────────────────────────────────────────
@@ -1755,6 +1794,9 @@ struct NewAgentSheet: View {
             }
             .scrollContentBackground(.hidden)
             .background(Theme.bgPage)
+            // Shared keyboard-dismiss convention (task
+            // 20260831-interaction-polish-conventions).
+            .dismissesKeyboardOnScrollAndTap()
             .navigationTitle("New Agent")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

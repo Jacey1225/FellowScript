@@ -288,6 +288,10 @@ struct BibleReaderView: View {
         _vm = StateObject(wrappedValue: vm)
     }
 
+    // Reduce Motion (task 20260831-interaction-polish-conventions, preference
+    // profile Q14.3) — read by the tap-outside-to-dismiss animation below.
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     @AppStorage("bibleReaderFontSizeIndex") private var fontSizeIndex: Int = 1
     @State private var showNavSheet      = false
     @State private var showBookmarks     = false
@@ -387,11 +391,24 @@ struct BibleReaderView: View {
                     )
                 }
 
-                // Drop-down nav overlay — slides in from top. Closing is now
-                // driven solely by re-tapping the nav-bar pill button (see the
-                // toolbar's Button below) or by selecting a chapter below —
-                // the panel itself no longer owns a close control.
+                // Drop-down nav overlay — slides in from top. Closing was
+                // previously driven solely by re-tapping the nav-bar pill
+                // button or by selecting a chapter below; task
+                // 20260831-interaction-polish-conventions adds this app's
+                // shared tap-outside-to-dismiss convention as a third way to
+                // close it (the audit's sole ZStack-based custom overlay —
+                // see Theme.swift's TapOutsideDismissCatcher). The catcher is
+                // placed immediately BEFORE BibleNavDropdown in this same
+                // ZStack so it sits behind the panel in z-order: taps on the
+                // panel's own opaque/blurred content still land on the
+                // panel, and only a tap elsewhere on screen reaches this
+                // catcher.
                 if showNavSheet {
+                    TapOutsideDismissCatcher {
+                        showNavSheet = false
+                    }
+                    .zIndex(9)
+
                     BibleNavDropdown(
                         books:      vm.books.isEmpty ? BibleData.bookNames : vm.books,
                         curBook:    vm.curBook,
@@ -400,7 +417,7 @@ struct BibleReaderView: View {
                         onSelect:   { book, ch in
                             vm.setBook(book)
                             vm.setChapter(ch)
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.9)) {
+                            withAnimation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.9)) {
                                 showNavSheet = false
                             }
                         }
@@ -409,7 +426,14 @@ struct BibleReaderView: View {
                     .zIndex(10)
                 }
             }
-            .animation(.spring(response: 0.3, dampingFraction: 0.9), value: showNavSheet)
+            // Reduce Motion (preference profile Q14.3): task
+            // 20260831-interaction-polish-conventions made this panel
+            // dismissible by a new gesture (tap outside), so its open/close
+            // animation now honors the system Reduce Motion setting rather
+            // than always spring-animating — none of this screen's other
+            // pre-existing `withAnimation` calls are touched here, only the
+            // ones this task's new interaction actually drives.
+            .animation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.9), value: showNavSheet)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 // .sharedBackgroundVisibility(.hidden) (task
@@ -497,6 +521,17 @@ struct BibleReaderView: View {
                 .sharedBackgroundVisibility(.hidden)
             }
         }
+        // No pull-to-refresh on this screen (task
+        // 20260831-interaction-polish-conventions audit, resolving the
+        // spec's open question on refresh applicability): the verse content
+        // itself comes from a bundled bible.json in the app bundle, not a
+        // network-synced feed with a "new data since cache" concept — an
+        // overscroll here would just re-render the same static chapter text.
+        // The only network-synced data on this screen (highlights,
+        // bookmarks) already updates optimistically on every write via
+        // vm.persistHighlight/persistToggleBookmark, with no batch "reload"
+        // a pull gesture would meaningfully trigger. No keyboard-dismiss
+        // wiring either — this screen has no text input of its own.
         .task {
             if let uid = appState.currentUser?.user_id {
                 await vm.load(service: appState.service, userId: uid)

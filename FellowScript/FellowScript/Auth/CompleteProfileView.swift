@@ -77,6 +77,10 @@ struct CompleteProfileView: View {
                 .accessibilityLabel("Continue with this username and email")
             }
         }
+        // Shared keyboard-dismiss convention (task
+        // 20260831-interaction-polish-conventions) — covers the
+        // username/email fields above.
+        .dismissesKeyboardOnScrollAndTap()
     }
 
     private func submit() {

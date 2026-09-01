@@ -111,14 +111,33 @@ final class NotesViewModel: ObservableObject {
     func load(service: DataServiceProtocol, userId: String) async {
         guard !hasLoadedOnce else { return }
         hasLoadedOnce = true
+        await fetchAndCache(service: service, userId: userId, showLoadingSpinner: true)
+    }
+
+    /// Pull-to-refresh entry point (task 20260831-interaction-polish-conventions):
+    /// re-runs the exact same fetch+cache-write flow as `load()`, deliberately
+    /// bypassing `hasLoadedOnce` — that guard exists only to stop a duplicate
+    /// INITIAL fetch racing StartupCoordinator's own preload of this same
+    /// view model, not to block a later, explicit, user-triggered
+    /// pull-to-refresh. Keeps `showLoadingSpinner: false` so the screen's
+    /// existing populated list stays on screen throughout — refreshing
+    /// "behind" SwiftUI's own native `.refreshable` spinner — instead of
+    /// flipping `isLoading` and replacing the whole list with this screen's
+    /// full-screen "no data yet" spinner, which would lose scroll position
+    /// (the "no regressions to existing scroll ... behavior" requirement).
+    func refresh(service: DataServiceProtocol, userId: String) async {
+        await fetchAndCache(service: service, userId: userId, showLoadingSpinner: false)
+    }
+
+    private func fetchAndCache(service: DataServiceProtocol, userId: String, showLoadingSpinner: Bool) async {
         self.service = service
-        isLoading = true
-        defer { isLoading = false }
+        if showLoadingSpinner { isLoading = true }
+        defer { if showLoadingSpinner { isLoading = false } }
 
         // ── Cache-first: show last-known data instantly, then revalidate ──────────
         if let cached: [String: FSNote] = await DiskCache.shared.load([String: FSNote].self, forKey: "notes:\(userId)") {
             notes = cached
-            isLoading = false
+            if showLoadingSpinner { isLoading = false }
         }
         if let cached: [String: String] = await DiskCache.shared.load([String: String].self, forKey: "highlights:\(userId)") {
             highlights = cached
@@ -564,9 +583,46 @@ struct NotesListView: View {
                     }
                 }
                 .listStyle(.plain)
+                // Pull-to-refresh (task 20260831-interaction-polish-conventions):
+                // wired straight to NotesViewModel's existing reload method
+                // (its new `refresh()` entry point — see that method's own
+                // comment for why this isn't just `vm.load()` again). Both
+                // tabs below share this same view model/underlying fetch, so
+                // either tab's `.refreshable` refreshes notes, highlights,
+                // and groups together.
+                .refreshable {
+                    await vm.refresh(service: appState.service, userId: appState.currentUser?.user_id ?? "")
+                }
                 .scrollContentBackground(.hidden)
-                .contentMargins(.top, 10, for: .scrollContent)
+                // Breathing room + top-edge feather (task
+                // 20260831-notes-messages-list-scroll-blur): groupChips sits
+                // directly above this List with no gap, so rows scrolling up
+                // used to hit a hard clip flush against the chip row -- a
+                // live scrolled-state screenshot showed a card visibly
+                // colliding with/reading as overlapping the chips, not just
+                // "unblurred." `.contentMargins(.top:)` alone only offsets
+                // the AT-REST position (scrollOffset 0); it does not create
+                // a persistent gap once scrolled, since content still
+                // travels all the way to the List's own top-edge frame
+                // boundary while scrolling. The real fix needs both halves:
+                // the `.padding(.top:)` below (OUTSIDE the List, after the
+                // mask) moves the List's own clipping frame a genuine,
+                // scroll-independent Theme.spacingLG away from groupChips,
+                // so even a fully-scrolled row's top edge stays clear of the
+                // chip row -- no overlap, ever, regardless of scroll offset.
+                // `.contentMargins(.top:)` keeps a smaller matching inset so
+                // the first row also isn't flush against the List's own
+                // (now further-away) top edge at rest. scrollTopEdgeFeather
+                // (Theme.swift) adapts NoteDetailView's ScrollView `.mask`
+                // precedent for List so rows fade out smoothly as they
+                // approach that inner top edge while scrolling, instead of
+                // hard-clipping there. Neither of these is a background
+                // overlay/panel -- both operate on the List's own frame/
+                // alpha, nothing new is drawn behind or in front of it.
+                .contentMargins(.top, Theme.spacingSM, for: .scrollContent)
                 .contentMargins(.bottom, 100, for: .scrollContent)
+                .scrollTopEdgeFeather()
+                .padding(.top, Theme.spacingLG)
             }
         }
     }
@@ -609,9 +665,20 @@ struct NotesListView: View {
                         .accessibilityAddTraits(.isButton)
                 }
                 .listStyle(.plain)
+                // See notesTab's identical treatment above (task
+                // 20260831-interaction-polish-conventions) — same vm.refresh(),
+                // same shared underlying fetch.
+                .refreshable {
+                    await vm.refresh(service: appState.service, userId: appState.currentUser?.user_id ?? "")
+                }
                 .scrollContentBackground(.hidden)
-                .contentMargins(.top, 10, for: .scrollContent)
+                // See notesTab's identical treatment above (task
+                // 20260831-notes-messages-list-scroll-blur) -- same header,
+                // same seam, same fix.
+                .contentMargins(.top, Theme.spacingSM, for: .scrollContent)
                 .contentMargins(.bottom, 100, for: .scrollContent)
+                .scrollTopEdgeFeather()
+                .padding(.top, Theme.spacingLG)
             }
         }
     }
@@ -1411,6 +1478,10 @@ private struct ReplyComposerSheet: View {
             }
             .scrollContentBackground(.hidden)
             .background(Theme.bgPage)
+            // Shared keyboard-dismiss convention (task
+            // 20260831-interaction-polish-conventions) — this sheet's
+            // TextEditor is the reply body.
+            .dismissesKeyboardOnScrollAndTap()
             .navigationTitle("Add a Reply")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

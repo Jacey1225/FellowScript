@@ -238,6 +238,56 @@ extension View {
     }
 }
 
+// ── Scroll top-edge feather (List content fades under a custom header) ───────
+// Adapts the ScrollView content-edge `.mask` technique from NoteDetailView
+// (task 20260830-note-detail-scroll-fade-toolbar-bg) for `List`: masking the
+// List itself (not its content, and not a separate overlay/background panel
+// -- this only alters the List's own alpha compositing, so nothing new is
+// drawn on top of or behind the screen) anchors the gradient to the List's
+// own fixed on-screen frame, so it fades consistently regardless of scroll
+// offset, rather than scrolling away with the content -- confirmed live to
+// composite identically on `List` as it does on `ScrollView`, no adaptation
+// needed for the mask mechanism itself (task
+// 20260831-notes-messages-list-scroll-blur).
+//
+// IMPORTANT, learned mid-task from a live scrolled-state screenshot: this
+// mask alone does NOT create breathing room -- `.contentMargins(.top:)` only
+// offsets the AT-REST scroll position, not a persistent scrolled-state
+// buffer, so a row can still scroll to within a hair of the List's own
+// top-edge frame boundary, which sits flush against whatever custom
+// header/toggle/chip row is directly above it in the enclosing VStack. Right
+// up against that boundary, the row's own rounded card corner/shadow reads
+// as visibly colliding with the header row above, not just "unblurred."
+// Fixing that requires an actual structural gap between the header content
+// and the List's own frame -- ordinary `.padding(.top:)` OUTSIDE this mask
+// (call-site convention below), not more `.contentMargins`. This modifier
+// only owns the edge-fade half of the fix; the persistent gap is the other,
+// separate half every call site must also apply.
+//
+// One reusable modifier here rather than five hand-rolled copies, following
+// this file's own topEdgeHighlight/widgetCard pattern above -- used by every
+// custom-header list screen (NotesListView's notesTab/highlightsTab,
+// ChatRootView's friendsList/groupsList/agentsList), all of which needed
+// visually identical treatment.
+extension View {
+    func scrollTopEdgeFeather(height: CGFloat = 56) -> some View {
+        mask(
+            VStack(spacing: 0) {
+                LinearGradient(
+                    stops: [
+                        .init(color: .clear, location: 0),
+                        .init(color: .black.opacity(0.55), location: 0.55),
+                        .init(color: .black, location: 1)
+                    ],
+                    startPoint: .top, endPoint: .bottom
+                )
+                .frame(height: height)
+                Color.black
+            }
+        )
+    }
+}
+
 // ── Gold gradient (amber-gradient buttons/chips) ───────────────────────────
 // Composed entirely from the existing goldLight/goldDim tokens above — no new
 // hex literals. Several restyled Chat surfaces (PillButton, SegmentedDuration-
@@ -250,4 +300,96 @@ extension Theme {
         startPoint: .topLeading,
         endPoint: .bottomTrailing
     )
+}
+
+// ── Shared interaction conventions (task 20260831-interaction-polish-conventions) ──
+// Three app-wide gestures — pull-to-refresh, scroll/tap keyboard dismissal,
+// tap-outside-to-dismiss for custom overlays — built once here (this file's
+// existing topEdgeHighlight/widgetCard/scrollTopEdgeFeather pattern above:
+// one reusable modifier, applied at every relevant call site) rather than as
+// three-times-or-more bespoke per-screen logic, per this app's "abstract it
+// by default when logic is actually shared" convention.
+//
+// Pull-to-refresh itself needs no new shared modifier — native `.refreshable`
+// is already the one-line, one-mechanism primitive SwiftUI provides (its
+// spinner motion is system-driven and already Reduce-Motion aware on its
+// own), so each in-scope List/ScrollView call site below just wires
+// `.refreshable { await <that screen's existing reload method> }` directly.
+// What DOES need sharing is keyboard dismissal and tap-outside-dismiss,
+// below.
+
+// ── Keyboard dismiss on scroll or tap ─────────────────────────────────────
+// Resolves the audit's open question on scroll-dismiss timing: NoteEditorView
+// was the only screen with any keyboard-dismiss handling before this task
+// (`.scrollDismissesKeyboard(.interactively)` on its writing ScrollView) —
+// that interactive-drag precedent becomes the app-wide default here rather
+// than staying a NoteEditorView-only special case, and NoteEditorView itself
+// is reconciled to call this same shared modifier instead of carrying its
+// own copy.
+//
+// Composes two independent pieces so every text-input screen gets identical
+// behavior:
+//   1. `.scrollDismissesKeyboard(.interactively)` is an environment value —
+//      applying it once near a screen's root also covers any List/ScrollView
+//      further down that screen's hierarchy, no per-scroll-container repeats
+//      needed.
+//   2. A `simultaneousGesture` tap recognizer resigns first responder
+//      app-wide, rather than requiring every screen to plumb its own
+//      `@FocusState` out to a background tap target. `simultaneous` (not a
+//      plain `.onTapGesture`) so this never blocks or steals a tap meant for
+//      a button, list row, or other control underneath it — it only *also*
+//      dismisses the keyboard alongside whatever that tap already does,
+//      matching this task's "tapping on the page should dismiss it" ask
+//      without breaking any existing tap gesture on touched screens (the "no
+//      regressions to existing scroll, focus, or gesture behavior"
+//      requirement).
+extension View {
+    func dismissesKeyboardOnScrollAndTap() -> some View {
+        self
+            .scrollDismissesKeyboard(.interactively)
+            .simultaneousGesture(
+                TapGesture().onEnded {
+                    UIApplication.shared.sendAction(
+                        #selector(UIResponder.resignFirstResponder),
+                        to: nil, from: nil, for: nil
+                    )
+                }
+            )
+    }
+}
+
+// ── Tap-outside-to-dismiss for custom ZStack-based overlays ──────────────
+// Native `.sheet`/`.popover` already dismiss on background tap by system
+// default and need no help here — this is only for this app's own custom-
+// built floating overlays (a `ZStack` layer drawn over the rest of the
+// screen, e.g. BibleReaderView's BibleNavDropdown). The audit found exactly
+// one such overlay in the app today (BibleReaderView's book/chapter
+// dropdown) — the Notes filter/sort control is a native `Menu` (already
+// system-dismissed) and NoteEditorView's inline color-swatch row is laid out
+// in-flow inside its own horizontal toolbar, not floated over other content,
+// so neither needed this. Resolves the audit's overlay-nesting open
+// question: no overlay in the app today opens a second overlay on top of
+// itself, so this is single-level only — a future nested case can layer a
+// second catcher+content pair the same way this one does, without needing a
+// new mechanism.
+//
+// Placed as a plain sibling immediately BEFORE the popup/menu content in the
+// same ZStack (call sites below), so it sits behind that content in z-order:
+// the popup's own opaque/blurred background already makes it fully
+// hit-testable across its frame, so taps land on the popup itself there,
+// and only fall through to this catcher for the rest of the screen — no
+// extra `.contentShape` bookkeeping needed on the popup content itself.
+struct TapOutsideDismissCatcher: View {
+    let onDismiss: () -> Void
+
+    var body: some View {
+        // Fully `Color.clear` is NOT hit-testable in SwiftUI — a
+        // near-zero-but-nonzero opacity is the standard workaround to keep
+        // this catcher invisible while still receiving taps.
+        Color.black.opacity(0.0001)
+            .ignoresSafeArea()
+            .contentShape(Rectangle())
+            .onTapGesture(perform: onDismiss)
+            .accessibilityHidden(true)
+    }
 }
