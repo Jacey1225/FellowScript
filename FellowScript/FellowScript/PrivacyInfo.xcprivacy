@@ -2,15 +2,6 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<!--
-	  ios-guidelines Critical #1 / intake C5: UserDefaults is a "required
-	  reason" API category and is called directly in production code
-	  (Bible/BibleReaderView.swift, Account/HeartbeatScheduler.swift,
-	  Services/AppState.swift) -- all three call sites only ever touch
-	  app-namespaced keys (e.g. "fs_hb_last_fired", "fs_bible_pos"), never
-	  keys shared with another developer's app or App Group, so reason
-	  CA92.1 ("Access info from same app, in App Group only") applies.
-	-->
 	<key>NSPrivacyAccessedAPITypes</key>
 	<array>
 		<dict>
@@ -22,24 +13,10 @@
 			</array>
 		</dict>
 	</array>
-	<!--
-	  No tracking/IDFA usage found anywhere in the target (ios-guidelines
-	  Low #7, confirmed clean baseline) -- update this and the collected
-	  data types below together if that ever changes.
-	-->
 	<key>NSPrivacyTracking</key>
 	<false/>
 	<key>NSPrivacyTrackingDomains</key>
 	<array/>
-	<!--
-	  Populated from the data categories already documented in
-	  frontend/src/pages/Privacy.jsx section 2 ("Information We Collect")
-	  -- keep these two in sync as features are added (ios-guidelines
-	  Medium #5). None of this data is used for tracking or third-party
-	  advertising (see Privacy.jsx section 3), so every entry below sets
-	  NSPrivacyCollectedDataTypeTracking to false and scopes purposes to
-	  app functionality.
-	-->
 	<key>NSPrivacyCollectedDataTypes</key>
 	<array>
 		<dict>
