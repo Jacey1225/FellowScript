@@ -789,6 +789,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="iOS App">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#shared-interaction-conventions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Shared interaction conventions
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
     </ul>
@@ -1190,9 +1207,20 @@
 <td><code>Dashboard/DashboardView.swift</code>, <code>Dashboard/DashboardComponents.swift</code></td>
 <td>The home tab's "Editorial Hero" layout, and its <em>entire</em> content: a single greeting header (time-of-day + live username, no eyebrow/subtitle text), a Friend Activity hero card (avatar stack of active friends, the most-recently-active friend's headline/timestamp — tap to open their chat — and, when they have one, a preview of their most recent public note), a check-in nudge row (the friend gone longest without a direct message), and a note-resume card (the user's own most recent note). Sourced from <code>GET /friends/{user_id}/activity</code> (<code>FriendsManager.get_friend_activity</code>) plus the view's own notes fetch, both cache-first via <code>DiskCache</code>. Replaces the former <code>GroupActivityWidget</code>. The pre-existing <code>RevisitVerseCard</code>, <code>BookmarksWidget</code>, the notes/highlights stat cards, <code>MyGroupsRow</code>, and <code>QuickActionsRow</code> (and their backing <code>DashboardViewModel</code> state/fetches) have been removed outright, not just demoted below the hero — the Editorial Hero content is the whole dashboard now, matching the approved mockup exactly (no leaked internal labels like "YOUR RHYTHM"/"FRIEND ACTIVITY"/"PICK UP WHERE YOU LEFT OFF" either). <code>glassCard()</code> still carries its optional <code>blurBoost</code> parameter (default <code>0</code>, no behavior change for other callers) — only the hero and note-resume cards pass it, for the more-transparent/heavier-blur glass treatment ported from the "Editorial Hero" mockup.</td>
 </tr>
+<tr>
+<td><code>Theme/Theme.swift</code></td>
+<td>Besides design tokens, hosts this app's shared, reusable interaction-convention modifiers (task <code>20260831-interaction-polish-conventions</code>) — see "Shared interaction conventions" below.</td>
+</tr>
 </tbody>
 </table>
 <p>Account deletion on iOS: the delete request is awaited before <code>signOut()</code> is called (correct async sequencing — no race condition).</p>
+<h3 id="shared-interaction-conventions">Shared interaction conventions</h3>
+<p>Three gestures are implemented once in <code>Theme.swift</code> and applied consistently across every relevant screen, rather than as bespoke per-screen logic:</p>
+<ul>
+<li><strong>Pull-to-refresh</strong> — native <code>.refreshable</code>, wired to each screen's existing reload method. Applied to <code>NotesListView</code> (notes + highlights tabs), <code>DashboardView</code>, <code>ChatRootView</code> (friends/groups/agents lists), <code>AccountView</code>, and <code>BlockedUsersView</code>. <code>NotesViewModel</code>, <code>ChatViewModel</code> gained a <code>refresh(service:userId:)</code> entry point that bypasses their <code>hasLoadedOnce</code> startup-dedup guard and skips the full-screen loading-spinner branch, so an already-populated list stays on screen (under SwiftUI's own native refresh spinner) instead of being replaced mid-refresh. Not applied to <code>BibleReaderView</code> (static bundled chapter content, no "new data since cache" concept) or the live WebSocket chat threads (<code>ChatThreadView</code>/<code>AgentChatView</code> — no existing older-message pagination for an overscroll gesture to drive).</li>
+<li><strong>Keyboard dismiss on scroll or tap</strong> — <code>View.dismissesKeyboardOnScrollAndTap()</code> composes <code>.scrollDismissesKeyboard(.interactively)</code> with a <code>simultaneousGesture</code> tap recognizer that resigns first responder app-wide. Applied to every screen with text input (Auth, Account, Chat composers/search/sheets, Notes editor/reply sheet, MFA/report/event sheets). Reconciles <code>NoteEditorView</code>'s prior one-off <code>.scrollDismissesKeyboard(.interactively)</code> onto this same shared modifier.</li>
+<li><strong>Tap-outside-to-dismiss</strong> — <code>Theme.TapOutsideDismissCatcher</code>, a near-zero-opacity full-screen tap catcher placed behind a custom <code>ZStack</code>-based overlay's own content. Applied to <code>BibleReaderView</code>'s book/chapter nav dropdown (<code>BibleNavDropdown</code>) — the only custom overlay of this kind in the app; native <code>.sheet</code>/<code>.popover</code> presentations already dismiss on background tap by default and need no help here.</li>
+</ul>
 
 
 
