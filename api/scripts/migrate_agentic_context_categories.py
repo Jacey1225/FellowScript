@@ -70,6 +70,58 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def _parse_pg_text_array(raw) -> list[str]:
+    """Parse a PostgreSQL ``text[]`` value into a Python list of strings.
+
+    Some connection setups (confirmed against production here) don't
+    register psycopg2's array typecaster, so ``context`` arrives as the
+    raw wire-format literal (e.g. ``'{"a","b"}'``) instead of an
+    already-parsed list -- silently breaking every downstream consumer
+    that assumes a list, exactly as this script's own dry run discovered
+    (100% of production rows fell through as "unparseable" before this
+    fix, matching entries[0] resolving to a single ``'{'`` character).
+    Already-a-list values (e.g. from a connection that *does* typecast,
+    or from tests constructing rows directly) pass through unchanged.
+    """
+    if isinstance(raw, list):
+        return raw
+    if not raw:
+        return []
+    s = raw.strip()
+    if not (s.startswith("{") and s.endswith("}")):
+        return [raw]
+    s = s[1:-1]
+    elements: list[str] = []
+    i, n = 0, len(s)
+    while i < n:
+        if s[i] == '"':
+            j = i + 1
+            buf = []
+            while j < n:
+                c = s[j]
+                if c == "\\" and j + 1 < n:
+                    buf.append(s[j + 1])
+                    j += 2
+                    continue
+                if c == '"':
+                    j += 1
+                    break
+                buf.append(c)
+                j += 1
+            elements.append("".join(buf))
+            i = j
+        else:
+            j = i
+            while j < n and s[j] != ",":
+                j += 1
+            token = s[i:j].strip()
+            elements.append(None if token.upper() == "NULL" else token)
+            i = j
+        while i < n and s[i] == ",":
+            i += 1
+    return elements
+
+
 def _extract_title_and_prefix(context_entry: str) -> tuple[str, str] | None:
     """Split a legacy "<title>: <text prefix>" summary back into its two
     parts (the exact format `f"{title}: {text[:300]}"` used to produce).
@@ -121,7 +173,7 @@ def migrate(cur, dry_run: bool = False) -> dict:
     rows = find_unlinked_rows(cur)
     counts["total"] = len(rows)
     for context_id, heartbeat_id, user_id, context_array in rows:
-        entries = context_array or []
+        entries = _parse_pg_text_array(context_array)
         if not entries:
             logger.warning(
                 "SKIP agentic_context %s: no note_id and no context text to match against.",
