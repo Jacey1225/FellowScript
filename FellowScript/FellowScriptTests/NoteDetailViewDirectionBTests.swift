@@ -119,6 +119,21 @@ final class NoteDetailViewDirectionBTests: XCTestCase {
     // outline) fail a test rather than only being caught by eyeballing a
     // screenshot again. Same source-pin technique NoteReplySectionTests
     // already uses for states unreachable through ViewInspector/MockDataService.
+    //
+    // Updated by task 20260902-ios-deployment-target-lower: the bare
+    // `.sharedBackgroundVisibility(.hidden)` call at each ToolbarItem was
+    // replaced by a single reusable `ToolbarContent.suppressAutomaticGlassChrome()`
+    // helper (Theme.swift) that gates the same call behind
+    // `if #available(iOS 26, *)` so the app's floor could drop from 26.5 to
+    // 18.0 -- the underlying OS behavior being suppressed doesn't exist
+    // pre-26, so this is a true no-op there, not a behavior change. The bare
+    // literal no longer appears at the call site itself (it now lives only
+    // inside the shared helper's own definition), so this test's source-pin
+    // is updated to count occurrences of the new helper's name instead of
+    // the old literal -- re-pointing the pin to match the current
+    // implementation rather than leaving it to pass vacuously (0 == 0) or
+    // fail outright, per this app's test-integrity preference (freely update
+    // a stale pin to match current reality, don't let it rot).
 
     private func componentSource() throws -> String {
         let componentFile = URL(fileURLWithPath: #filePath)
@@ -153,10 +168,10 @@ final class NoteDetailViewDirectionBTests: XCTestCase {
         )
 
         // Strip `//` line comments first -- this block's own doc comment
-        // legitimately names ".sharedBackgroundVisibility(.hidden)" verbatim
-        // while explaining the fix (see the block above), which would
-        // otherwise inflate a naive substring count to 3 instead of the real
-        // 2 code occurrences on the ToolbarItems. Same technique
+        // legitimately names the helper verbatim while explaining the fix
+        // (see the block above), which would otherwise inflate a naive
+        // substring count above the real 2 code occurrences on the
+        // ToolbarItems. Same technique
         // NoteReplySectionTests.test_source_toolbarUsesTranslucentMaterial_notFlatScrim
         // already uses for exactly this reason.
         let codeOnly = toolbarBlock
@@ -167,10 +182,19 @@ final class NoteDetailViewDirectionBTests: XCTestCase {
             }
             .joined(separator: "\n")
 
-        let occurrences = codeOnly.components(separatedBy: ".sharedBackgroundVisibility(.hidden)").count - 1
+        // Re-pinned by task 20260902-ios-deployment-target-lower: the call
+        // sites now route through the reusable
+        // `.suppressAutomaticGlassChrome()` helper (Theme.swift), which
+        // internally gates the original `.sharedBackgroundVisibility(.hidden)`
+        // call behind `if #available(iOS 26, *)` so the app's deployment
+        // target could drop to 18.0 -- the bare literal no longer appears at
+        // the call site, only inside the helper's own definition, so this
+        // pin now counts the helper name instead of re-checking against a
+        // string that would no longer be found here at all.
+        let occurrences = codeOnly.components(separatedBy: ".suppressAutomaticGlassChrome()").count - 1
         XCTAssertEqual(
             occurrences, 2,
-            "both the Close and Edit ToolbarItems must carry .sharedBackgroundVisibility(.hidden) -- " +
+            "both the Close and Edit ToolbarItems must carry .suppressAutomaticGlassChrome() -- " +
             "dropping it from either one reintroduces iOS 26's automatic Liquid Glass capsule chrome " +
             "layered on top of ghostPill/gradientPill's own stroke, i.e. the doubled-outline bug this task fixed"
         )

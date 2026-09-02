@@ -114,12 +114,30 @@ struct EventSetupSheet: View {
             }
             .frame(maxWidth: .infinity)
         }
-        .background(Theme.bgPage.ignoresSafeArea())
+        // Warm-bloom-ground background (task 20260902-submenu-visual-redesign,
+        // via the shared Theme.warmBloomBackground() modifier) — same
+        // treatment on this and the other two steps below so the whole
+        // multi-step flow reads consistently.
+        .warmBloomBackground()
         .navigationTitle(isEditing ? "Edit Event" : "New Event")
         .navigationBarTitleDisplayMode(.inline)
+        // Follow-up polish (task 20260902-submenu-followup-polish): ghost-
+        // chip Cancel (see ChatRootView.swift's sheetGhostCancelLabel for the
+        // shared recipe/rationale) plus a `.principal` title item -- this
+        // screen has no trailing toolbar item at all, so the default inline
+        // title was never actually centered (it centers within the
+        // leading/trailing gap, and an empty trailing side still counts as
+        // asymmetric against a non-empty leading Cancel).
         .toolbar {
             ToolbarItem(placement: .navigationBarLeading) {
-                Button("Cancel") { dismiss() }.foregroundColor(Theme.textGoldMuted)
+                Button(action: { dismiss() }) { cancelGhostChip }
+                    .buttonStyle(.plain)
+            }
+            .suppressAutomaticGlassChrome()
+            ToolbarItem(placement: .principal) {
+                Text(isEditing ? "Edit Event" : "New Event")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundColor(Theme.parchment)
             }
         }
     }
@@ -164,7 +182,7 @@ struct EventSetupSheet: View {
             }
             .padding(Theme.spacingLG)
         }
-        .background(Theme.bgPage.ignoresSafeArea())
+        .warmBloomBackground()
         .navigationTitle("Select Days")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -235,115 +253,159 @@ struct EventSetupSheet: View {
 
     // ── Step 3: Details (agent + time + prompt) ───────────────────────────────
 
+    // Visual redesign (task 20260902-submenu-visual-redesign): converted from
+    // native Form/Section to ScrollView/VStack + widgetCard(), matching
+    // recurrenceScreen/dayPickerScreen's existing shell above in this same
+    // file — this was the one screen in the flow still on Form. Same section
+    // order, same headers (carried over verbatim), same group-picker Menu
+    // content/behavior (untouched — that's task 20260902-group-tagged-
+    // devotions' logic, only its visual container changes here).
     private var detailsScreen: some View {
-        Form {
-            if agents.count > 1 {
-                Section {
-                    Picker("Agent", selection: $selectedAgentId) {
-                        ForEach(agents) { agent in
-                            Text(agent.displayLabel).tag(agent.id)
-                        }
-                    }
-                    .font(.inter(Theme.fontBody))
-                    .foregroundColor(Theme.parchment)
-                } header: {
-                    Text("AGENT")
-                        .font(.inter(Theme.fontXXS)).tracking(4).foregroundColor(Theme.textGoldMuted)
-                }
-                .listRowBackground(Theme.cardBg)
-            }
-
-            Section {
-                DatePicker("Time", selection: $selectedTime, displayedComponents: .hourAndMinute)
-                    .font(.inter(Theme.fontBody))
-                    .labelsHidden()
-                    .accentColor(Theme.gold)
-            } header: {
-                Text("EVENT TIME")
-                    .font(.inter(Theme.fontXXS)).tracking(4).foregroundColor(Theme.textGoldMuted)
-            }
-            .listRowBackground(Theme.cardBg)
-
-            // Task 20260902-group-tagged-devotions: gold pill-button trigger
-            // (same visual recipe as Chat/PillButton.swift's amber-gradient
-            // pill — Theme.goldGradient + Theme.ink text on a Capsule) that
-            // drops down a submenu of the user's groups, plus a "No Group"
-            // option. Selecting a group here is what sets group_id on the
-            // heartbeat; when it fires, the note it generates inherits this
-            // group_id automatically.
-            Section {
-                HStack {
-                    Spacer()
-                    Menu {
-                        Button(action: { selectedGroupId = "" }) {
-                            Label("No Group", systemImage: selectedGroupId.isEmpty ? "checkmark" : "person.crop.circle")
-                        }
-                        if !sortedGroups.isEmpty {
-                            Divider()
-                            ForEach(sortedGroups) { group in
-                                Button(action: { selectedGroupId = group.id }) {
-                                    Label(group.title.isEmpty ? "Untitled Group" : group.title,
-                                          systemImage: selectedGroupId == group.id ? "checkmark" : "person.3")
-                                }
+        ScrollView {
+            VStack(alignment: .leading, spacing: Theme.spacingLG) {
+                if agents.count > 1 {
+                    VStack(alignment: .leading, spacing: Theme.spacingSM) {
+                        Text("AGENT")
+                            .font(.inter(Theme.fontXXS)).tracking(4).foregroundColor(Theme.textGoldMuted)
+                        Picker("Agent", selection: $selectedAgentId) {
+                            ForEach(agents) { agent in
+                                Text(agent.displayLabel).tag(agent.id)
                             }
                         }
-                    } label: {
-                        HStack(spacing: 6) {
-                            Image(systemName: "person.3.fill").font(.system(size: 13, weight: .bold))
-                            Text(selectedGroupLabel).font(.system(size: 15, weight: .bold))
-                        }
-                        .foregroundColor(Theme.ink)
-                        .padding(.horizontal, 18)
-                        .padding(.vertical, 10)
-                        .background(Theme.goldGradient)
-                        .clipShape(Capsule())
-                        .topEdgeHighlight(Capsule())
+                        .font(.inter(Theme.fontBody))
+                        .foregroundColor(Theme.parchment)
                     }
-                    Spacer()
+                    .widgetCard()
                 }
-                .padding(.vertical, 4)
-            } header: {
-                Text("GROUP")
-                    .font(.inter(Theme.fontXXS)).tracking(4).foregroundColor(Theme.textGoldMuted)
-            } footer: {
-                Text("Optionally tie this event's notes to one of your groups. Leave as No Group to keep it personal.")
-                    .font(.inter(Theme.fontXS))
-                    .foregroundColor(Theme.textMuted)
-            }
-            .listRowBackground(Theme.cardBg)
 
-            Section {
-                Text("The agent will respond to this prompt when the event fires and save the response as a note.")
-                    .font(.inter(Theme.fontSM))
-                    .foregroundColor(Theme.textMuted)
-                    .listRowBackground(Theme.cardBg)
-                TextEditor(text: $prompt)
-                    .font(.inter(Theme.fontBody))
-                    .foregroundColor(Theme.parchment)
-                    .scrollContentBackground(.hidden)
-                    .frame(minHeight: 100)
-                    .listRowBackground(Theme.cardBg)
-            } header: {
-                Text("PROMPT")
-                    .font(.inter(Theme.fontXXS)).tracking(4).foregroundColor(Theme.textGoldMuted)
+                // Follow-up polish (task 20260902-submenu-followup-polish,
+                // item 2): Event Time and Group were two stacked full-width
+                // cards, which the reporter flagged as an awkward layout --
+                // combined into one row/card here. Both controls' own
+                // behavior is untouched: the DatePicker binding below and
+                // the group-picker Menu's content/logic (task
+                // 20260902-group-tagged-devotions) are moved verbatim, just
+                // re-parented into a shared HStack instead of two
+                // `.widgetCard()`s. Spacing between the two halves uses the
+                // existing Theme.spacingMD scale rather than an ad hoc value.
+                //
+                // Testing bounce fix (still 20260902-submenu-followup-polish):
+                // an even 50/50 split left the GROUP half too narrow for its
+                // gold Menu pill, truncating "No Group" to "No Gro...". The
+                // compact hourAndMinute DatePicker only needs its own
+                // intrinsic width, so EVENT TIME no longer stretches to fill
+                // half the row -- it sizes to content and GROUP (still
+                // `maxWidth: .infinity`) absorbs the rest of the row's width.
+                HStack(alignment: .top, spacing: Theme.spacingMD) {
+                    VStack(alignment: .leading, spacing: Theme.spacingSM) {
+                        Text("EVENT TIME")
+                            .font(.inter(Theme.fontXXS)).tracking(4).foregroundColor(Theme.textGoldMuted)
+                        DatePicker("Time", selection: $selectedTime, displayedComponents: .hourAndMinute)
+                            .font(.inter(Theme.fontBody))
+                            .labelsHidden()
+                            .accentColor(Theme.gold)
+                    }
+                    .fixedSize(horizontal: true, vertical: false)
+
+                    // Task 20260902-group-tagged-devotions: gold pill-button
+                    // trigger (same visual recipe as Chat/PillButton.swift's
+                    // amber-gradient pill — Theme.goldGradient + Theme.ink
+                    // text on a Capsule) that drops down a submenu of the
+                    // user's groups, plus a "No Group" option. Selecting a
+                    // group here is what sets group_id on the heartbeat;
+                    // when it fires, the note it generates inherits this
+                    // group_id automatically.
+                    VStack(alignment: .leading, spacing: Theme.spacingSM) {
+                        Text("GROUP")
+                            .font(.inter(Theme.fontXXS)).tracking(4).foregroundColor(Theme.textGoldMuted)
+                        HStack {
+                            Spacer()
+                            Menu {
+                                Button(action: { selectedGroupId = "" }) {
+                                    Label("No Group", systemImage: selectedGroupId.isEmpty ? "checkmark" : "person.crop.circle")
+                                }
+                                if !sortedGroups.isEmpty {
+                                    Divider()
+                                    ForEach(sortedGroups) { group in
+                                        Button(action: { selectedGroupId = group.id }) {
+                                            Label(group.title.isEmpty ? "Untitled Group" : group.title,
+                                                  systemImage: selectedGroupId == group.id ? "checkmark" : "person.3")
+                                        }
+                                    }
+                                }
+                            } label: {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "person.3.fill").font(.system(size: 13, weight: .bold))
+                                    Text(selectedGroupLabel).font(.system(size: 15, weight: .bold))
+                                }
+                                .foregroundColor(Theme.ink)
+                                .padding(.horizontal, 18)
+                                .padding(.vertical, 10)
+                                .background(Theme.goldGradient)
+                                .clipShape(Capsule())
+                                .topEdgeHighlight(Capsule())
+                                // Testing bounce fix: hug the label's own
+                                // content width (same recipe as this file's
+                                // cancelGhostChip) so the pill never gets
+                                // squeezed/truncated by its half of the row,
+                                // regardless of group-name length.
+                                .fixedSize()
+                            }
+                            Spacer()
+                        }
+                        .padding(.vertical, 4)
+                        Text("Optionally tie this event's notes to one of your groups. Leave as No Group to keep it personal.")
+                            .font(.inter(Theme.fontXS))
+                            .foregroundColor(Theme.textMuted)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .widgetCard()
+
+                VStack(alignment: .leading, spacing: Theme.spacingSM) {
+                    Text("PROMPT")
+                        .font(.inter(Theme.fontXXS)).tracking(4).foregroundColor(Theme.textGoldMuted)
+                    Text("The agent will respond to this prompt when the event fires and save the response as a note.")
+                        .font(.inter(Theme.fontSM))
+                        .foregroundColor(Theme.textMuted)
+                    TextEditor(text: $prompt)
+                        .font(.inter(Theme.fontBody))
+                        .foregroundColor(Theme.parchment)
+                        .scrollContentBackground(.hidden)
+                        .frame(minHeight: 100)
+                }
+                .widgetCard()
+
+                Spacer(minLength: Theme.spacingXL)
             }
+            .padding(Theme.spacingLG)
         }
-        .scrollContentBackground(.hidden)
-        .background(Theme.bgPage)
+        .warmBloomBackground()
         .navigationTitle("Details")
         .navigationBarTitleDisplayMode(.inline)
+        // Follow-up polish (task 20260902-submenu-followup-polish):
+        // Update/Save reuses PillButton's amber-gradient recipe directly
+        // (same as the other three sheets' primary actions). A `.principal`
+        // title item keeps "Details" centered regardless of this now-wider
+        // trailing pill's width against the automatic system back button on
+        // the leading side.
         .toolbar {
+            ToolbarItem(placement: .principal) {
+                Text("Details")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundColor(Theme.parchment)
+            }
             ToolbarItem(placement: .navigationBarTrailing) {
-                Button(isEditing ? "Update" : "Save") {
+                PillButton(title: isEditing ? "Update" : "Save") {
                     onSave(selectedAgentId,
                            prompt.trimmingCharacters(in: .whitespaces),
                            buildTimestamps(),
                            selectedGroupId.isEmpty ? nil : selectedGroupId)
                     dismiss()
                 }
-                .foregroundColor(Theme.gold)
                 .disabled(prompt.trimmingCharacters(in: .whitespaces).isEmpty || selectedAgentId.isEmpty)
             }
+            .suppressAutomaticGlassChrome()
         }
     }
 
@@ -357,6 +419,20 @@ struct EventSetupSheet: View {
         guard !selectedGroupId.isEmpty else { return "No Group" }
         let title = groups[selectedGroupId]?.title ?? ""
         return title.isEmpty ? "Group" : title
+    }
+
+    // Ghost-chip Cancel label (see ChatRootView.swift's sheetGhostCancelLabel
+    // for the shared recipe/rationale comment -- bespoke per-sheet copy here
+    // rather than a new cross-file shared component per this task's spec).
+    private var cancelGhostChip: some View {
+        Text("Cancel")
+            .font(.inter(Theme.fontSM))
+            .foregroundColor(Theme.textSecondary)
+            .fixedSize()
+            .padding(.horizontal, 16)
+            .frame(height: 36)
+            .background(Capsule().fill(Theme.parchment.opacity(0.06)))
+            .overlay(Capsule().stroke(Theme.parchment.opacity(0.12), lineWidth: 1))
     }
 
     private func buildTimestamps() -> [String?] {

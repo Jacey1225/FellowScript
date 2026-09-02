@@ -928,8 +928,10 @@ struct NoteDetailView: View {
     // Toolbar button actions, extracted to named methods (task
     // 20260829-note-detail-toolbar-visual-fix) rather than inline closures.
     // Not `private`, for the same reason `showEditor` above isn't: this
-    // toolbar's `ToolbarItem`s now carry `.sharedBackgroundVisibility(.hidden)`
-    // (the fix for the doubled system/custom pill outline), and ViewInspector
+    // toolbar's `ToolbarItem`s now carry `.suppressAutomaticGlassChrome()`
+    // (task 20260902-ios-deployment-target-lower's iOS-26-only-gated wrapper
+    // around what was `.sharedBackgroundVisibility(.hidden)` directly — the
+    // fix for the doubled system/custom pill outline), and ViewInspector
     // 0.10.3 cannot traverse a `ToolbarItem` wrapped in that modifier down to
     // its `Button` (confirmed live — it reports an opaque
     // `ModifiedContent<ToolbarItem, PlatterVisibilityModifier>` it doesn't
@@ -993,7 +995,14 @@ struct NoteDetailView: View {
     // real time gap once `replies`/`repliesLoaded` have actually settled.
     // Inert in production: `.onReceive` below is a no-op unless a test
     // registers a callback via `inspection.inspect(...)`.
+    // Gated to Debug (task 20260902-ios-deployment-target-lower), matching
+    // Inspection.swift's own `#if DEBUG` — see that file for why (test-only
+    // scaffolding that also happens to trigger a Release/WMO compiler crash
+    // at the lowered 18.0 deployment target). Tests build against Debug, so
+    // this is a no-op change for FellowScriptTests/FellowScriptUITests.
+    #if DEBUG
     internal let inspection = Inspection<Self>()
+    #endif
 
     var body: some View {
         NavigationStack {
@@ -1170,7 +1179,7 @@ struct NoteDetailView: View {
                     }
                     .buttonStyle(.plain)
                 }
-                .sharedBackgroundVisibility(.hidden)
+                .suppressAutomaticGlassChrome()
                 if canEdit {
                     ToolbarItem(placement: .navigationBarTrailing) {
                         Button(action: editAction) {
@@ -1178,7 +1187,7 @@ struct NoteDetailView: View {
                         }
                         .buttonStyle(.plain)
                     }
-                    .sharedBackgroundVisibility(.hidden)
+                    .suppressAutomaticGlassChrome()
                 }
             }
             // R1 (critique polish, task 20260828-note-reply-continuation-ios),
@@ -1264,7 +1273,9 @@ struct NoteDetailView: View {
         .task(id: note.id) {
             await loadReplies()
         }
+        #if DEBUG
         .onReceive(inspection.notice) { self.inspection.visit(self, $0) }
+        #endif
     }
 
     // ── Replies: data ──────────────────────────────────────────────────────

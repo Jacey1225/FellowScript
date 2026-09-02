@@ -797,6 +797,12 @@ struct AgentRow: View {
 }
 
 // ── Add friend sheet ──────────────────────────────────────────────────────────
+// Visual redesign (task 20260902-submenu-visual-redesign): moved off native
+// Form/Section onto the shared warm-bloom-ground background + widgetCard()
+// layout used across the app's primary screens (this sheet's own before-shot
+// was flagged as the literal "huge wasted space below one field" complaint
+// this task fixes — hence the added .medium detent below). Logic/callback
+// wiring and the existing accessibility label are unchanged.
 struct AddFriendSheet: View {
     let onSend: (String) -> Void
     @Environment(\.dismiss) private var dismiss
@@ -804,41 +810,74 @@ struct AddFriendSheet: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section("Search by username") {
+            ScrollView {
+                VStack(alignment: .leading, spacing: Theme.spacingSM) {
+                    Text("SEARCH BY USERNAME")
+                        .font(.inter(Theme.fontXXS)).tracking(4)
+                        .foregroundColor(Theme.textGoldMuted)
                     TextField("Username", text: $username)
                         .font(.inter(Theme.fontBody))
                         .foregroundColor(Theme.parchment)
                         .autocapitalization(.none)
                         .accessibilityLabel("Enter username to add as friend")
                 }
+                .widgetCard()
+                .padding(Theme.spacingLG)
             }
-            .scrollContentBackground(.hidden)
-            .background(Theme.bgPage)
+            .warmBloomBackground()
             // Shared keyboard-dismiss convention (task
             // 20260831-interaction-polish-conventions).
             .dismissesKeyboardOnScrollAndTap()
             .navigationTitle("Add Friend")
             .navigationBarTitleDisplayMode(.inline)
+            // Follow-up polish (task 20260902-submenu-followup-polish):
+            // plain system-styled toolbar Buttons picked up iOS's automatic
+            // Liquid Glass capsule chrome instead of this app's own button
+            // language. Cancel gets the established ghost-chip dismiss
+            // recipe (NoteEditorView.cancelChip / NotesListView.ghostPill),
+            // Send Request reuses PillButton's amber-gradient recipe
+            // directly. A `.principal` title item centers "Add Friend"
+            // independent of these two items' widths -- the default inline
+            // title only centers within the leading/trailing gap, which the
+            // old asymmetric Cancel/Send-Request widths visibly threw off.
+            // `.sharedBackgroundVisibility(.hidden)` on both custom items
+            // avoids the doubled Liquid Glass + own-stroke outline
+            // NotesListView's ghostPill/gradientPill toolbar items already
+            // had to work around.
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cancel") { dismiss() }.foregroundColor(Theme.textGoldMuted)
+                    Button(action: { dismiss() }) { sheetGhostCancelLabel }
+                        .buttonStyle(.plain)
+                }
+                .suppressAutomaticGlassChrome()
+                ToolbarItem(placement: .principal) {
+                    Text("Add Friend")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundColor(Theme.parchment)
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Send Request") {
+                    PillButton(title: "Send Request") {
                         onSend(username)
                         dismiss()
                     }
-                    .foregroundColor(Theme.gold)
                     .disabled(username.isEmpty)
                 }
+                .suppressAutomaticGlassChrome()
             }
         }
+        .presentationDetents([.medium])
+        .presentationDragIndicator(.visible)
         .preferredColorScheme(.dark)
     }
 }
 
 // ── Add group sheet (mirrors GroupModal in MessagingSidebar.jsx) ───────────────
+// Visual redesign (task 20260902-submenu-visual-redesign): same Form-to-
+// widgetCard() migration as AddFriendSheet above, with member rows moved from
+// a List into a plain VStack + Divider so the whole sheet sits on the shared
+// warm-bloom-ground background instead of native grouped-list chrome. Member
+// count is variable, so this gets [.medium, .large] rather than a fixed
+// detent, so a long member list isn't clipped.
 struct AddGroupSheet: View {
     let friends:  [FSContact]
     let onCreate: (String, [String]) -> Void
@@ -848,56 +887,107 @@ struct AddGroupSheet: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section("Group name") {
-                    TextField("Study Group", text: $groupName)
-                        .font(.inter(Theme.fontBody))
-                        .foregroundColor(Theme.parchment)
-                        .accessibilityLabel("Group name field")
-                }
-                Section("Members") {
-                    ForEach(friends) { f in
-                        HStack {
-                            Text(f.name)
-                                .font(.inter(Theme.fontBody))
-                                .foregroundColor(Theme.parchment.opacity(0.70))
-                            Spacer()
-                            if selectedIds.contains(f.id) {
-                                Image(systemName: "checkmark")
-                                    .foregroundColor(Theme.gold)
+            ScrollView {
+                VStack(spacing: Theme.spacingLG) {
+                    VStack(alignment: .leading, spacing: Theme.spacingSM) {
+                        Text("GROUP NAME")
+                            .font(.inter(Theme.fontXXS)).tracking(4)
+                            .foregroundColor(Theme.textGoldMuted)
+                        TextField("Study Group", text: $groupName)
+                            .font(.inter(Theme.fontBody))
+                            .foregroundColor(Theme.parchment)
+                            .accessibilityLabel("Group name field")
+                    }
+                    .widgetCard()
+
+                    VStack(alignment: .leading, spacing: Theme.spacingSM) {
+                        Text("MEMBERS")
+                            .font(.inter(Theme.fontXXS)).tracking(4)
+                            .foregroundColor(Theme.textGoldMuted)
+                        VStack(spacing: 0) {
+                            ForEach(Array(friends.enumerated()), id: \.element.id) { index, f in
+                                HStack {
+                                    Text(f.name)
+                                        .font(.inter(Theme.fontBody))
+                                        .foregroundColor(Theme.parchment.opacity(0.70))
+                                    Spacer()
+                                    if selectedIds.contains(f.id) {
+                                        Image(systemName: "checkmark")
+                                            .foregroundColor(Theme.gold)
+                                    }
+                                }
+                                .padding(.vertical, Theme.spacingSM)
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    if selectedIds.contains(f.id) { selectedIds.remove(f.id) }
+                                    else                           { selectedIds.insert(f.id) }
+                                }
+                                .accessibilityLabel("\(f.name). \(selectedIds.contains(f.id) ? "Selected" : "Not selected")")
+                                .accessibilityAddTraits(selectedIds.contains(f.id) ? .isSelected : [])
+
+                                if index < friends.count - 1 {
+                                    Divider().opacity(0.15)
+                                }
                             }
                         }
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            if selectedIds.contains(f.id) { selectedIds.remove(f.id) }
-                            else                           { selectedIds.insert(f.id) }
-                        }
-                        .accessibilityLabel("\(f.name). \(selectedIds.contains(f.id) ? "Selected" : "Not selected")")
-                        .accessibilityAddTraits(selectedIds.contains(f.id) ? .isSelected : [])
                     }
+                    .widgetCard()
                 }
+                .padding(Theme.spacingLG)
             }
-            .scrollContentBackground(.hidden)
-            .background(Theme.bgPage)
+            .warmBloomBackground()
             // Shared keyboard-dismiss convention (task
             // 20260831-interaction-polish-conventions).
             .dismissesKeyboardOnScrollAndTap()
             .navigationTitle("New Group")
             .navigationBarTitleDisplayMode(.inline)
+            // Follow-up polish (task 20260902-submenu-followup-polish): same
+            // ghost-chip-Cancel / PillButton-Create / centered-`.principal`-
+            // title treatment as AddFriendSheet above -- see its toolbar
+            // comment for the full rationale.
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cancel") { dismiss() }.foregroundColor(Theme.textGoldMuted)
+                    Button(action: { dismiss() }) { sheetGhostCancelLabel }
+                        .buttonStyle(.plain)
+                }
+                .suppressAutomaticGlassChrome()
+                ToolbarItem(placement: .principal) {
+                    Text("New Group")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundColor(Theme.parchment)
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Create") {
+                    PillButton(title: "Create") {
                         onCreate(groupName, Array(selectedIds))
                         dismiss()
                     }
-                    .foregroundColor(Theme.gold)
                     .disabled(groupName.isEmpty)
                 }
+                .suppressAutomaticGlassChrome()
             }
         }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
         .preferredColorScheme(.dark)
     }
+}
+
+// ── Shared ghost-chip Cancel label for this file's sheets (task
+// 20260902-submenu-followup-polish) -- matches the app's established
+// ghost-chip dismiss recipe (NoteEditorView.cancelChip's icon-chip variant,
+// NotesListView.ghostPill's text-chip variant): a faint parchment-tinted
+// capsule fill + stroke, muted text, rather than a second gold-filled pill,
+// so Cancel doesn't visually compete with each sheet's one true primary gold
+// action. `.fixedSize()` matches NotesListView.ghostPill's own fix for the
+// same problem -- the leading toolbar slot proposes a very narrow width on
+// iOS 26 that otherwise wraps/truncates the label.
+fileprivate var sheetGhostCancelLabel: some View {
+    Text("Cancel")
+        .font(.inter(Theme.fontSM))
+        .foregroundColor(Theme.textSecondary)
+        .fixedSize()
+        .padding(.horizontal, 16)
+        .frame(height: 36)
+        .background(Capsule().fill(Theme.parchment.opacity(0.06)))
+        .overlay(Capsule().stroke(Theme.parchment.opacity(0.12), lineWidth: 1))
 }

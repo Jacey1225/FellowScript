@@ -19,6 +19,22 @@
 //   internal let inspection = Inspection<Self>()
 //   .onReceive(inspection.notice) { self.inspection.visit(self, $0) }
 
+// Gated to Debug only (task 20260902-ios-deployment-target-lower): this type
+// exists purely as ViewInspector test-support scaffolding and has no
+// production behavior — it should never have been compiled into the shipping
+// Release binary in the first place. Separately, with IPHONEOS_DEPLOYMENT_TARGET
+// lowered to 18.0, Release's whole-module -O build hits a deterministic Swift
+// 6.3.3 compiler crash (EarlyPerfInliner SIL pass) specifically on this
+// generic class's implicit deinit (`@$s12FellowScript10InspectionCfD`) —
+// reproduced consistently, isolated via A/B (crashes only with both the
+// lowered deployment target AND this file's Release compilation present;
+// reverting either one independently avoids the crash). Excluding it from
+// Release removes the crashing symbol from that compilation unit entirely,
+// which is correct on both counts: it's test-only code that has no business
+// shipping, and doing so also sidesteps the toolchain bug. Debug builds (all
+// app runs, and both FellowScriptTests/FellowScriptUITests, which build
+// against the Debug configuration per the shared scheme) are unaffected.
+#if DEBUG
 import Combine
 import SwiftUI
 
@@ -32,3 +48,4 @@ internal final class Inspection<V> {
         }
     }
 }
+#endif

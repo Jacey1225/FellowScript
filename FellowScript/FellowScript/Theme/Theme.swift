@@ -238,6 +238,32 @@ extension View {
     }
 }
 
+// ── Shared "warm bloom ground" background ─────────────────────────────────────
+// Extracted (task 20260902-submenu-visual-redesign) from the identical
+// two-RadialGradient wash duplicated across DashboardView.swift,
+// AccountView.swift, NotesListView.swift, ChatRootView.swift, and
+// BibleReaderView.swift (task 20260901-dashboard-background-consistency made
+// those five uniform). This is the exact same hex/opacity/anchor/radius
+// recipe, just reusable, so the four submenu sheets in this task (and any
+// future screen) pick up one shared call rather than a 6th/7th/8th/9th hand
+// copy. The five pre-existing call sites are intentionally left as their own
+// inline copies for this task — not repointed at this modifier, to keep this
+// change scoped to the four sheets that actually need it.
+extension View {
+    func warmBloomBackground() -> some View {
+        background(
+            ZStack {
+                Theme.bgPage
+                RadialGradient(colors: [Color(hex: "#D4922A").opacity(0.20), .clear],
+                               center: UnitPoint(x: 0.12, y: 0.16), startRadius: 10, endRadius: 380)
+                RadialGradient(colors: [Color(hex: "#B8761D").opacity(0.12), .clear],
+                               center: UnitPoint(x: 0.92, y: 0.60), startRadius: 10, endRadius: 340)
+            }
+            .ignoresSafeArea()
+        )
+    }
+}
+
 // ── Scroll top-edge feather (List content fades under a custom header) ───────
 // Adapts the ScrollView content-edge `.mask` technique from NoteDetailView
 // (task 20260830-note-detail-scroll-fade-toolbar-bg) for `List`: masking the
@@ -379,6 +405,38 @@ extension View {
 // hit-testable across its frame, so taps land on the popup itself there,
 // and only fall through to this catcher for the rest of the screen — no
 // extra `.contentShape` bookkeeping needed on the popup content itself.
+// ── iOS-26-only toolbar chrome suppression (task
+// 20260902-ios-deployment-target-lower) ──────────────────────────────────
+// `.sharedBackgroundVisibility(.hidden)` is itself an iOS-26-only API: it
+// suppresses an iOS-26-exclusive OS behavior (the system auto-wrapping each
+// toolbar item's content in its own Liquid Glass capsule chrome, which is
+// what produced the doubled-outline bug this call was originally added to
+// fix at 12 call sites across BibleReaderView, ChatRootView, NotesListView,
+// EventSetupSheet, and AccountView). That auto-wrap behavior does not exist
+// pre-iOS-26, so omitting the call there is a true no-op, not a visual
+// compromise — confirmed by the prior investigation (task
+// 20260902-ios-min-deployment-target) as the one genuine blocker to lowering
+// `IPHONEOS_DEPLOYMENT_TARGET` below 26.
+//
+// One reusable `ToolbarContent` modifier here (this file's established
+// topEdgeHighlight/widgetCard/scrollTopEdgeFeather pattern: one shared
+// definition rather than N inline branches) replaces what would otherwise be
+// 12 separate `if #available(iOS 26, *) { ... } else { ... }` copies at
+// each call site. `@ToolbarContentBuilder` (rather than marking this whole
+// function `@available(iOS 26, *)`) is required so the function itself
+// stays callable from an 18.0-floor build, branching internally at runtime
+// instead.
+extension ToolbarContent {
+    @ToolbarContentBuilder
+    func suppressAutomaticGlassChrome() -> some ToolbarContent {
+        if #available(iOS 26, *) {
+            self.sharedBackgroundVisibility(.hidden)
+        } else {
+            self
+        }
+    }
+}
+
 struct TapOutsideDismissCatcher: View {
     let onDismiss: () -> Void
 

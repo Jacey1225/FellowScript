@@ -1885,6 +1885,11 @@ struct StatBox: View {
 }
 
 // ── New agent sheet ───────────────────────────────────────────────────────────
+// Visual redesign (task 20260902-submenu-visual-redesign): moved off native
+// Form/Section onto the shared warm-bloom-ground background + widgetCard()
+// layout; the "CUSTOM ROLE (OPTIONAL)" header keeps its already-correct
+// styling, just moved out of Form's header: closure into a plain Text above
+// the card. .medium detent and callback wiring unchanged.
 struct NewAgentSheet: View {
     @Binding var role: String
     let onCreate: () -> Void
@@ -1892,40 +1897,69 @@ struct NewAgentSheet: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section {
-                    Text("Optionally give this agent a custom role. Leave blank to use the default spiritual guide role.")
-                        .font(.inter(Theme.fontSM))
-                        .foregroundColor(Theme.textSecondary)
-                    TextEditor(text: $role)
-                        .font(.inter(Theme.fontBody))
-                        .foregroundColor(Theme.parchment)
-                        .scrollContentBackground(.hidden)
-                        .frame(minHeight: 80)
-                        .accessibilityLabel("Agent role description")
-                } header: {
-                    Text("Custom Role (optional)")
+            ScrollView {
+                VStack(alignment: .leading, spacing: Theme.spacingSM) {
+                    Text("CUSTOM ROLE (OPTIONAL)")
                         .font(.inter(Theme.fontXXS)).tracking(4).foregroundColor(Theme.textGoldMuted)
+
+                    VStack(alignment: .leading, spacing: Theme.spacingSM) {
+                        Text("Optionally give this agent a custom role. Leave blank to use the default spiritual guide role.")
+                            .font(.inter(Theme.fontSM))
+                            .foregroundColor(Theme.textSecondary)
+                        TextEditor(text: $role)
+                            .font(.inter(Theme.fontBody))
+                            .foregroundColor(Theme.parchment)
+                            .scrollContentBackground(.hidden)
+                            .frame(minHeight: 80)
+                            .accessibilityLabel("Agent role description")
+                    }
+                    .widgetCard()
                 }
+                .padding(Theme.spacingLG)
             }
-            .scrollContentBackground(.hidden)
-            .background(Theme.bgPage)
+            .warmBloomBackground()
             // Shared keyboard-dismiss convention (task
             // 20260831-interaction-polish-conventions).
             .dismissesKeyboardOnScrollAndTap()
             .navigationTitle("New Agent")
             .navigationBarTitleDisplayMode(.inline)
+            // Follow-up polish (task 20260902-submenu-followup-polish): same
+            // ghost-chip-Cancel / PillButton-Create / centered-`.principal`-
+            // title treatment as ChatRootView's AddFriendSheet/AddGroupSheet
+            // -- see AddFriendSheet's toolbar comment for the full rationale.
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cancel") { dismiss() }.foregroundColor(Theme.textGoldMuted)
+                    Button(action: { dismiss() }) { cancelGhostChip }
+                        .buttonStyle(.plain)
+                }
+                .suppressAutomaticGlassChrome()
+                ToolbarItem(placement: .principal) {
+                    Text("New Agent")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundColor(Theme.parchment)
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Create") { onCreate(); dismiss() }.foregroundColor(Theme.gold)
+                    PillButton(title: "Create") { onCreate(); dismiss() }
                 }
+                .suppressAutomaticGlassChrome()
             }
         }
         .presentationDetents([.medium])
         .preferredColorScheme(.dark)
+    }
+
+    // Ghost-chip Cancel label (see ChatRootView.swift's sheetGhostCancelLabel
+    // for the shared recipe/rationale comment -- bespoke per-sheet copy here
+    // rather than a new cross-file shared component per this task's spec).
+    private var cancelGhostChip: some View {
+        Text("Cancel")
+            .font(.inter(Theme.fontSM))
+            .foregroundColor(Theme.textSecondary)
+            .fixedSize()
+            .padding(.horizontal, 16)
+            .frame(height: 36)
+            .background(Capsule().fill(Theme.parchment.opacity(0.06)))
+            .overlay(Capsule().stroke(Theme.parchment.opacity(0.12), lineWidth: 1))
     }
 }
 

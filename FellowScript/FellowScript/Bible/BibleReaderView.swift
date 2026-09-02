@@ -481,7 +481,7 @@ struct BibleReaderView: View {
                     }
                     .accessibilityLabel("Navigate to book and chapter")
                 }
-                .sharedBackgroundVisibility(.hidden)
+                .suppressAutomaticGlassChrome()
                 ToolbarItemGroup(placement: .navigationBarTrailing) {
                     // Font size cycle (Small → Medium → Large → X-Large → loop)
                     Button(action: cycleFontSize) {
@@ -518,7 +518,7 @@ struct BibleReaderView: View {
                     }
                     .accessibilityLabel("Bookmark options")
                 }
-                .sharedBackgroundVisibility(.hidden)
+                .suppressAutomaticGlassChrome()
             }
         }
         // No pull-to-refresh on this screen (task
