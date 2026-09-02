@@ -1552,7 +1552,7 @@ be updated to describe it once it lands.</p>
 </tr>
 <tr>
 <td><code>agent_heartbeats</code></td>
-<td><code>_id</code>, <code>user_id FK→users ON DELETE CASCADE</code>, <code>last_fired TIMESTAMPTZ</code></td>
+<td><code>_id</code>, <code>user_id FK→users ON DELETE CASCADE</code>, <code>last_fired TIMESTAMPTZ</code>, <code>group_id FK→groups ON DELETE SET NULL</code> (nullable — 2026-09-02)</td>
 </tr>
 <tr>
 <td><code>agentic_context</code></td>
@@ -1561,6 +1561,7 @@ be updated to describe it once it lands.</p>
 </tbody>
 </table>
 <p><code>agentic_context</code> gives each heartbeat continuity with its own past output: every time <code>AgentManager.commit_hb_response()</code> generates a note, it saves a summary here keyed by <code>heartbeat_id</code>, and the next fire for that same heartbeat includes prior summaries in its prompt as "Previous context from past responses." Context is scoped per-heartbeat — heartbeats don't share history with each other, and manually-written notes never feed into this loop. <code>note_id</code> links each summary to the note it was distilled from; deleting that note (from any path — the notes route, account deletion, or the moderation CLI) cascades away its context row too, so a deleted note stops appearing in future prompts.</p>
+<p><code>agent_heartbeats.group_id</code> (2026-09-02) optionally ties a scheduled event to one of the user's groups, set via the iOS/web event-setup UI's gold group-picker button. <code>add_heartbeat</code>/<code>update_heartbeat</code> validate a submitted <code>group_id</code> against the caller's own <code>GroupsManager.is_member()</code> before persisting it (mirroring <code>notes.py</code>'s create/update IDOR guard), and <code>ON DELETE SET NULL</code> lets a heartbeat survive as ungrouped if its group is later deleted. When a grouped heartbeat fires, <code>commit_hb_response</code> reads <code>group_id</code> off the heartbeat row itself (not the LLM's response) and threads it into the note it generates, so the note is visible to other group members via the existing group-notes read path; an ungrouped heartbeat's note is unaffected.</p>
 <hr />
 <h3 id="password_reset_tokens-mfa_codes"><code>password_reset_tokens</code> / <code>mfa_codes</code></h3>
 <table>
