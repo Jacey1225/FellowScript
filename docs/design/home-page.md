@@ -46,7 +46,17 @@ Mock group conversation showing the collaborative note/chat experience — sampl
 
 "Most popular" badge displayed on the Individual plan.
 
-### 7. Quote CTA
+### 7. On Your Desktop
+Two-card section between Pricing and the closing Quote CTA, offering the Tauri-based desktop app (a dedicated window onto the same live, cookie-authenticated reader — not an offline/bundled build).
+
+- **macOS card** (primary, live): icon badge, "Signed, notarized, ready" title, one-line description, "Download for Mac" button, and a metadata line (architecture support + file size, no OS-version claim).
+- **Windows card** (recessed, "Coming soon" badge): "Still in the workshop" title, description, platform-coverage line, metadata line — intentionally has no clickable control at all, by design (not a disabled button).
+
+Both platform badges use the official `simple-icons` (MIT-licensed) Apple and Windows brand marks, not hand-authored approximations.
+
+The macOS "Download for Mac" button now links live to the real GitHub Release asset (`desktop-v0.1.0/FellowScript.dmg`) — no longer a placeholder. Per the user's decision, no minimum-macOS-version claim is displayed at all; the metadata line shows only two verified facts: architecture support (Apple silicon & Intel) and file size (3 MB) from the actual built `.dmg`.
+
+### 8. Quote CTA
 Final call-to-action with 2 Timothy 1:6 as the closing verse, and a "Join FellowScript" button.
 
 ---
