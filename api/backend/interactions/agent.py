@@ -39,6 +39,18 @@ PROMPT = (Path(__file__).parent / "agent_prompt.txt").read_text(encoding="utf-8"
 _CHAT_RATE_LIMIT_MESSAGES = 20
 _CHAT_RATE_LIMIT_WINDOW_SECONDS = 60.0
 
+# Bounded retry cap for _generate_and_save_note's JSON-parse-failure path
+# (the LLM's response comes back either with no "{"/"}" pair at all, or with
+# one that doesn't parse as JSON). Confirmed intermittent rather than
+# deterministic per-model output-formatting noise, so a few retries
+# meaningfully cut user-visible failures without ever retrying indefinitely.
+# This is a TOTAL attempt count (first try + retries), always compared with
+# a fixed for-range loop -- a future delay/backoff between attempts could be
+# added at the single `self._call_api(...)` call site inside that loop
+# without restructuring it, so this constant intentionally isn't split into
+# a separate "retries" + "backoff" pair until that's actually needed.
+_HB_JSON_PARSE_MAX_ATTEMPTS = 3
+
 
 class AgentManager(DBManager):
     def __init__(self, user_id: str):
@@ -485,36 +497,80 @@ class AgentManager(DBManager):
             "including a \"theme\" field naming this note's central theme. "
             "Output only the JSON block and nothing else."
         )
-        try:
-            response = self._call_api(agent_role, [{"role": "user", "content": note_prompt}])
-        except Exception as e:
-            logger.error("OpenRouter API error in commit_hb_response for heartbeat %s: %s", heartbeat_id, e)
-            if on_llm_error:
-                on_llm_error()
-            return {"error": "I'm having trouble connecting right now. Please try again in a moment."}
-        if "{" in response and "}" in response:
-            start = response.find("{")
-            end   = response.rfind("}") + 1
-            json_str = response[start:end]
+        # Retry loop covers only the JSON-parse-failure branches below (no
+        # "{"/"}" pair found, or a found pair that doesn't json.loads) --
+        # this is a transient LLM output-formatting glitch that a same-input
+        # retry can plausibly fix. It deliberately does NOT wrap the
+        # connection-error except below: that's a different failure mode
+        # (the API call itself raising) with its own on_llm_error unwind,
+        # out of scope for this retry per the intake spec, and returns
+        # immediately exactly as before on the first such error.
+        response_dict = None
+        parse_failed  = True
+        for attempt in range(1, _HB_JSON_PARSE_MAX_ATTEMPTS + 1):
+            attempt_prompt = note_prompt
+            if attempt > 1:
+                # Only appended on retries -- the first attempt's prompt is
+                # byte-for-byte the original note_prompt. Telling the model
+                # its last attempt was rejected for invalid JSON gives it a
+                # concrete, correctable reason (stray prose, unescaped
+                # quotes, truncated output) rather than just re-asking the
+                # same question and hoping for a different formatting roll.
+                attempt_prompt = (
+                    f"{note_prompt}\n\n"
+                    f"NOTE: Your previous attempt ({attempt - 1} of "
+                    f"{_HB_JSON_PARSE_MAX_ATTEMPTS - 1} allowed retries) was rejected because it "
+                    "was not valid JSON. Respond with ONLY a single valid JSON create_note block "
+                    "and nothing else."
+                )
             try:
-                response_dict = json.loads(json_str)
-            except (json.JSONDecodeError, ValueError) as e:
-                logger.error("JSON parse error in commit_hb_response: %s | raw: %.200s", e, json_str)
-                return {"error": "invalid response"}
-            if response_dict.get("__action", "") == "create_note":
-                new_note_id = self.note_via_hb(response_dict, group_id=effective_group_id)
-                # Linking context to note_id means deleting the note (from any
-                # path) cascades this context row away too — see the FK on
-                # agentic_context in db.py. get_context() recomputes the
-                # CHAPTERS/VERSES/THEME aggregate live from notes/note_verses/
-                # notes.theme via this link, so no free-text summary needs to
-                # be captured here anymore.
-                self.save_context(heartbeat_id, new_note_id)
-                return {"success": "saved note"}
+                response = self._call_api(agent_role, [{"role": "user", "content": attempt_prompt}])
+            except Exception as e:
+                logger.error("OpenRouter API error in commit_hb_response for heartbeat %s: %s", heartbeat_id, e)
+                if on_llm_error:
+                    on_llm_error()
+                return {"error": "I'm having trouble connecting right now. Please try again in a moment."}
+
+            if "{" in response and "}" in response:
+                start = response.find("{")
+                end   = response.rfind("}") + 1
+                json_str = response[start:end]
+                try:
+                    response_dict = json.loads(json_str)
+                    parse_failed = False
+                    break
+                except (json.JSONDecodeError, ValueError) as e:
+                    logger.error(
+                        "JSON parse error in commit_hb_response (attempt %d/%d) for heartbeat %s: %s | raw: %.200s",
+                        attempt, _HB_JSON_PARSE_MAX_ATTEMPTS, heartbeat_id, e, json_str,
+                    )
             else:
-                return {"error": "cannot find action"}
-        else:
+                logger.error(
+                    "Malformed LLM response in commit_hb_response (attempt %d/%d) for heartbeat %s: "
+                    "no JSON object found | raw: %.200s",
+                    attempt, _HB_JSON_PARSE_MAX_ATTEMPTS, heartbeat_id, response,
+                )
+
+        if parse_failed:
+            logger.error(
+                "commit_hb_response giving up for heartbeat %s after %d attempts -- all returned "
+                "unparseable JSON.",
+                heartbeat_id, _HB_JSON_PARSE_MAX_ATTEMPTS,
+            )
             return {"error": "invalid response"}
+
+        if response_dict.get("__action", "") == "create_note":
+            new_note_id = self.note_via_hb(response_dict, group_id=effective_group_id)
+            # Linking context to note_id means deleting the note (from any
+            # path) cascades this context row away too — see the FK on
+            # agentic_context in db.py. get_context() recomputes the
+            # CHAPTERS/VERSES/THEME aggregate live from notes/note_verses/
+            # notes.theme via this link, so no free-text summary needs to
+            # be captured here anymore.
+            self.save_context(heartbeat_id, new_note_id)
+            return {"success": "saved note"}
+        else:
+            return {"error": "cannot find action"}
     # ── Messages CRUD ─────────────────────────────────────────────────────────
 
     def save_agent_message(self, msg: AgentMessages) -> None:
