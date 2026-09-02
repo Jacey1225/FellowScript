@@ -159,10 +159,12 @@ be updated to describe it once it lands.
 | Table | Key columns |
 |---|---|
 | `agents` | `_id`, `user_id FK→users ON DELETE CASCADE`, `config JSONB` |
-| `agent_heartbeats` | `_id`, `user_id FK→users ON DELETE CASCADE`, `last_fired TIMESTAMPTZ` |
+| `agent_heartbeats` | `_id`, `user_id FK→users ON DELETE CASCADE`, `last_fired TIMESTAMPTZ`, `group_id FK→groups ON DELETE SET NULL` (nullable — 2026-09-02) |
 | `agentic_context` | `_id`, `heartbeat_id FK→agent_heartbeats ON DELETE CASCADE`, `user_id FK→users ON DELETE CASCADE`, `note_id FK→notes ON DELETE CASCADE` (nullable), `context TEXT[]` |
 
 `agentic_context` gives each heartbeat continuity with its own past output: every time `AgentManager.commit_hb_response()` generates a note, it saves a summary here keyed by `heartbeat_id`, and the next fire for that same heartbeat includes prior summaries in its prompt as "Previous context from past responses." Context is scoped per-heartbeat — heartbeats don't share history with each other, and manually-written notes never feed into this loop. `note_id` links each summary to the note it was distilled from; deleting that note (from any path — the notes route, account deletion, or the moderation CLI) cascades away its context row too, so a deleted note stops appearing in future prompts.
+
+`agent_heartbeats.group_id` (2026-09-02) optionally ties a scheduled event to one of the user's groups, set via the iOS/web event-setup UI's gold group-picker button. `add_heartbeat`/`update_heartbeat` validate a submitted `group_id` against the caller's own `GroupsManager.is_member()` before persisting it (mirroring `notes.py`'s create/update IDOR guard), and `ON DELETE SET NULL` lets a heartbeat survive as ungrouped if its group is later deleted. When a grouped heartbeat fires, `commit_hb_response` reads `group_id` off the heartbeat row itself (not the LLM's response) and threads it into the note it generates, so the note is visible to other group members via the existing group-notes read path; an ungrouped heartbeat's note is unaffected.
 
 ---
 

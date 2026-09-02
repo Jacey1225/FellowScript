@@ -72,6 +72,24 @@ styling — proposed copy, see `.claude/pipeline/20260901-heartbeat-manual-force
 free-tier cap hit (the existing "Free Plan Limit" alert), or any other failure (the existing
 "Agent Error" alert). No equivalent control exists on web yet.
 
+**Group tagging (2026-09-02).** The event-setup details step (iOS: `EventSetupSheet`'s
+`detailsScreen`; web: the event modal's details step, `evStep === 2`) has a gold pill-button
+that drops down a submenu of the user's groups, plus a "No Group" option, styled with the
+same filled-gold-pill visual system used elsewhere (iOS: `Theme.goldGradient` on a `Capsule`,
+matching `Chat/PillButton.swift`; web: the `--gold`/`--gold-dim`/`--gold-light` gradient
+already used by `.note-editor-save`). Selecting a group sets `group_id` on the heartbeat being
+created/edited; it round-trips through `add_heartbeat`/`update_heartbeat`/`get_heartbeats` and
+is visible again when the event is reopened for editing on either platform. The group list is
+sourced from data each platform already fetches elsewhere (iOS: `NetworkService.fetchContacts`;
+web: per-id `GET /groups/{user_id}/{group_id}` lookups, mirroring `useNotes.js`'s `loadGroups`)
+rather than a new endpoint. Server-side, a submitted `group_id` is validated against the
+authenticated user's own group membership before being persisted (mirroring `notes.py`'s
+create/update IDOR guard) — a `group_id` for a group the caller doesn't belong to is rejected
+with 403 rather than silently trusted. When a grouped heartbeat fires, the note it generates
+inherits that `group_id` automatically (sourced from the heartbeat row itself, not from the
+LLM's own response) so group members can see it via the existing group-notes read path; an
+ungrouped heartbeat continues to fire and produce a personal note exactly as before.
+
 ---
 
 ## Visual Design (iOS)

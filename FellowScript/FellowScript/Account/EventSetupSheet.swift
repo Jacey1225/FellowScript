@@ -7,8 +7,12 @@ import SwiftUI
 
 struct EventSetupSheet: View {
     let agents:   [FSAgent]
+    // Task 20260902-group-tagged-devotions: the user's own groups, sourced
+    // by the caller from the existing NetworkService.fetchContacts(userId:)
+    // data (no new fetch path) so the group picker below can list them.
+    var groups:   [String: FSGroup] = [:]
     var existing: FSHeartbeat? = nil
-    let onSave:   (_ agentId: String, _ prompt: String, _ timestamps: [String?]) -> Void
+    let onSave:   (_ agentId: String, _ prompt: String, _ timestamps: [String?], _ groupId: String?) -> Void
 
     @Environment(\.dismiss) private var dismiss
 
@@ -22,6 +26,8 @@ struct EventSetupSheet: View {
     @State private var selectedTime                    = Date()
     @State private var prompt                          = ""
     @State private var path:              [SetupScreen] = []
+    // "" means no group / personal.
+    @State private var selectedGroupId:   String       = ""
 
     private var isEditing: Bool { existing != nil }
 
@@ -56,6 +62,7 @@ struct EventSetupSheet: View {
     private func prefill(from hb: FSHeartbeat) {
         prompt          = hb.prompt
         selectedAgentId = hb.agent_id.isEmpty ? (agents.first?.id ?? "") : hb.agent_id
+        selectedGroupId = hb.group_id ?? ""
 
         // Extract time: timestamps store UTC "HH:mm"; DateFormatter with UTC tz
         // returns a Date whose local representation the DatePicker will display.
@@ -257,6 +264,54 @@ struct EventSetupSheet: View {
             }
             .listRowBackground(Theme.cardBg)
 
+            // Task 20260902-group-tagged-devotions: gold pill-button trigger
+            // (same visual recipe as Chat/PillButton.swift's amber-gradient
+            // pill — Theme.goldGradient + Theme.ink text on a Capsule) that
+            // drops down a submenu of the user's groups, plus a "No Group"
+            // option. Selecting a group here is what sets group_id on the
+            // heartbeat; when it fires, the note it generates inherits this
+            // group_id automatically.
+            Section {
+                HStack {
+                    Spacer()
+                    Menu {
+                        Button(action: { selectedGroupId = "" }) {
+                            Label("No Group", systemImage: selectedGroupId.isEmpty ? "checkmark" : "person.crop.circle")
+                        }
+                        if !sortedGroups.isEmpty {
+                            Divider()
+                            ForEach(sortedGroups) { group in
+                                Button(action: { selectedGroupId = group.id }) {
+                                    Label(group.title.isEmpty ? "Untitled Group" : group.title,
+                                          systemImage: selectedGroupId == group.id ? "checkmark" : "person.3")
+                                }
+                            }
+                        }
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "person.3.fill").font(.system(size: 13, weight: .bold))
+                            Text(selectedGroupLabel).font(.system(size: 15, weight: .bold))
+                        }
+                        .foregroundColor(Theme.ink)
+                        .padding(.horizontal, 18)
+                        .padding(.vertical, 10)
+                        .background(Theme.goldGradient)
+                        .clipShape(Capsule())
+                        .topEdgeHighlight(Capsule())
+                    }
+                    Spacer()
+                }
+                .padding(.vertical, 4)
+            } header: {
+                Text("GROUP")
+                    .font(.inter(Theme.fontXXS)).tracking(4).foregroundColor(Theme.textGoldMuted)
+            } footer: {
+                Text("Optionally tie this event's notes to one of your groups. Leave as No Group to keep it personal.")
+                    .font(.inter(Theme.fontXS))
+                    .foregroundColor(Theme.textMuted)
+            }
+            .listRowBackground(Theme.cardBg)
+
             Section {
                 Text("The agent will respond to this prompt when the event fires and save the response as a note.")
                     .font(.inter(Theme.fontSM))
@@ -282,7 +337,8 @@ struct EventSetupSheet: View {
                 Button(isEditing ? "Update" : "Save") {
                     onSave(selectedAgentId,
                            prompt.trimmingCharacters(in: .whitespaces),
-                           buildTimestamps())
+                           buildTimestamps(),
+                           selectedGroupId.isEmpty ? nil : selectedGroupId)
                     dismiss()
                 }
                 .foregroundColor(Theme.gold)
@@ -292,6 +348,16 @@ struct EventSetupSheet: View {
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
+
+    private var sortedGroups: [FSGroup] {
+        groups.values.sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+    }
+
+    private var selectedGroupLabel: String {
+        guard !selectedGroupId.isEmpty else { return "No Group" }
+        let title = groups[selectedGroupId]?.title ?? ""
+        return title.isEmpty ? "Group" : title
+    }
 
     private func buildTimestamps() -> [String?] {
         let f = DateFormatter(); f.dateFormat = "HH:mm"

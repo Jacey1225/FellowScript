@@ -77,6 +77,13 @@ class Note(BaseModel):
     verses: list = Field(
         default_factory=list,
         description="list of [book, chapter, verse] references")
+    theme: str = Field(
+        default_factory=str,
+        description="short phrase naming the note's central theme; only "
+                     "populated for heartbeat-generated notes (note_via_hb), "
+                     "which feed it back into that heartbeat's future "
+                     "CHAPTERS/VERSES/THEME context -- manually-created notes "
+                     "leave this blank")
     replies: list[str] = Field(
         default_factory=list, 
         description="list of note IDs that were sent as replies to a " \

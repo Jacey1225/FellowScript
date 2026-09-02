@@ -207,6 +207,17 @@ def create_tables(cur):
         "timestamp TIMESTAMPTZ DEFAULT NOW())"
     )
     cur.execute("ALTER TABLE notes ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()")
+    # Backs the heartbeat-context restructure (CHAPTERS/VERSES/THEME):
+    # AgentManager.note_via_hb persists the LLM's self-reported "theme"
+    # field here per note (see agent_prompt.txt's create_note schema).
+    # get_context() reads it back live, joined through agentic_context's
+    # heartbeat_id -> note_id link, rather than maintaining a separate
+    # written-to THEME cache that could drift from the notes it
+    # summarizes. Manually-created notes (routes/notes.py) simply leave
+    # this at its default -- theme is only meaningful for heartbeat-
+    # generated notes, which are the only ones fed back into a future
+    # heartbeat's context.
+    cur.execute("ALTER TABLE notes ADD COLUMN IF NOT EXISTS theme TEXT DEFAULT ''")
     # Speeds up the free-tier weekly note count (LimitsManager).
     cur.execute(
         "CREATE INDEX IF NOT EXISTS idx_notes_user_timestamp "
@@ -350,11 +361,20 @@ def create_tables(cur):
         # re-checking on every app foreground) can't create more than one
         # note for the same scheduled slot — see the UTC-calendar-day claim
         # in AgentManager.commit_hb_response.
-        "last_fired TIMESTAMPTZ)"
+        "last_fired TIMESTAMPTZ,"
+        # Optional group this scheduled event is tied to. Nullable -- an
+        # event can remain personal/ungrouped exactly as before. When set,
+        # the note a fire of this heartbeat generates inherits this value
+        # (see AgentManager.commit_hb_response/note_via_hb) rather than the
+        # per-fire LLM response ever supplying it.
+        "group_id UUID REFERENCES groups(_id) ON DELETE SET NULL)"
     )
-    # Migration for databases created before last_fired existed.
+    # Migrations for databases created before these columns existed.
     cur.execute(
         "ALTER TABLE agent_heartbeats ADD COLUMN IF NOT EXISTS last_fired TIMESTAMPTZ"
+    )
+    cur.execute(
+        "ALTER TABLE agent_heartbeats ADD COLUMN IF NOT EXISTS group_id UUID REFERENCES groups(_id) ON DELETE SET NULL"
     )
 
     cur.execute(
@@ -462,6 +482,16 @@ def create_tables(cur):
         # also remove its trace from the agent's future "previous context"
         # prompts, not just the note itself.
         "note_id UUID REFERENCES notes(_id) ON DELETE CASCADE,"
+        # Legacy free-text summary column, kept (not dropped) so pre-restructure
+        # rows remain readable by anything that still inspects it directly (e.g.
+        # a one-off audit query) and so the migrate_agentic_context_categories.py
+        # backfill script has the old data to read from. AgentManager.save_context
+        # no longer writes to it as of the CHAPTERS/VERSES/THEME restructure --
+        # this table's job now is purely the durable heartbeat_id -> note_id link;
+        # get_context() recomputes the CHAPTERS/VERSES/THEME aggregate live from
+        # notes + note_verses + notes.theme via that link on every read, rather
+        # than maintaining a second written-to cache that could drift from the
+        # notes it summarizes.
         "context TEXT[] DEFAULT '{}')"
     )
     cur.execute("ALTER TABLE agentic_context ADD COLUMN IF NOT EXISTS note_id UUID REFERENCES notes(_id) ON DELETE CASCADE")

@@ -1043,6 +1043,23 @@ banner, usage refreshed), the same-instant concurrent-forced-fire race (same ban
 styling — proposed copy, see <code>.claude/pipeline/20260901-heartbeat-manual-force-fire/frontend.json</code>),
 free-tier cap hit (the existing "Free Plan Limit" alert), or any other failure (the existing
 "Agent Error" alert). No equivalent control exists on web yet.</p>
+<p><strong>Group tagging (2026-09-02).</strong> The event-setup details step (iOS: <code>EventSetupSheet</code>'s
+<code>detailsScreen</code>; web: the event modal's details step, <code>evStep === 2</code>) has a gold pill-button
+that drops down a submenu of the user's groups, plus a "No Group" option, styled with the
+same filled-gold-pill visual system used elsewhere (iOS: <code>Theme.goldGradient</code> on a <code>Capsule</code>,
+matching <code>Chat/PillButton.swift</code>; web: the <code>--gold</code>/<code>--gold-dim</code>/<code>--gold-light</code> gradient
+already used by <code>.note-editor-save</code>). Selecting a group sets <code>group_id</code> on the heartbeat being
+created/edited; it round-trips through <code>add_heartbeat</code>/<code>update_heartbeat</code>/<code>get_heartbeats</code> and
+is visible again when the event is reopened for editing on either platform. The group list is
+sourced from data each platform already fetches elsewhere (iOS: <code>NetworkService.fetchContacts</code>;
+web: per-id <code>GET /groups/{user_id}/{group_id}</code> lookups, mirroring <code>useNotes.js</code>'s <code>loadGroups</code>)
+rather than a new endpoint. Server-side, a submitted <code>group_id</code> is validated against the
+authenticated user's own group membership before being persisted (mirroring <code>notes.py</code>'s
+create/update IDOR guard) — a <code>group_id</code> for a group the caller doesn't belong to is rejected
+with 403 rather than silently trusted. When a grouped heartbeat fires, the note it generates
+inherits that <code>group_id</code> automatically (sourced from the heartbeat row itself, not from the
+LLM's own response) so group members can see it via the existing group-notes read path; an
+ungrouped heartbeat continues to fire and produce a personal note exactly as before.</p>
 <hr />
 <h2 id="visual-design-ios">Visual Design (iOS)</h2>
 <p>The iOS Account page (<code>FellowScript/FellowScript/Account/AccountView.swift</code>) uses the same

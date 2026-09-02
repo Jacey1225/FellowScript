@@ -26,6 +26,11 @@ class AgentHeartbeats(BaseModel):
         )
     )
     prompt: str = Field(default_factory=str)
+    # The group this scheduled event is tied to, if any -- set from the
+    # gold dropdown-trigger group picker on the event-setup screens.
+    # None/omitted keeps the heartbeat personal/ungrouped exactly as before
+    # this field existed.
+    group_id: Optional[str] = None
 class AgentMessages(BaseModel):
     chat_id: str
     title: str = Field(default="")

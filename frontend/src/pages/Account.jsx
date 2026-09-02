@@ -3,13 +3,13 @@ import { useNavigate, Link } from 'react-router-dom';
 import {
   Layout, Card, Form, Input, Button, Typography,
   Avatar, Spin, Alert, Divider, Row, Col,
-  Switch, Modal, Checkbox, Select, TimePicker, Progress, message,
+  Switch, Modal, Checkbox, Select, TimePicker, Progress, message, Dropdown,
 } from 'antd';
 import {
   UserOutlined, MailOutlined, LockOutlined,
   LogoutOutlined, DeleteOutlined, RobotOutlined,
   PlusOutlined, ThunderboltOutlined, EditOutlined,
-  CheckOutlined, CloseOutlined, CalendarOutlined,
+  CheckOutlined, CloseOutlined, CalendarOutlined, TeamOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
@@ -191,8 +191,16 @@ export default function Account() {
   const [evTime,        setEvTime]        = useState(dayjs());
   const [evAgentId,     setEvAgentId]     = useState('');
   const [evPrompt,      setEvPrompt]      = useState('');
+  const [evGroupId,     setEvGroupId]     = useState(''); // '' = No Group / personal
   const [evSaving,      setEvSaving]      = useState(false);
   const [editingEvent,  setEditingEvent]  = useState(null); // FSHeartbeat being edited
+
+  // The user's own groups (id + display title), for the event modal's gold
+  // group-picker dropdown. profileData.groups only carries bare ids (see
+  // loadProfile below), so this mirrors useNotes.js's existing loadGroups
+  // pattern (GET /groups/{user_id}/{group_id} per id) rather than adding a
+  // new group-listing endpoint.
+  const [userGroups,    setUserGroups]    = useState([]);
 
   const loadProfile = useCallback(async () => {
     if (!user) { navigate('/signin'); return; }
@@ -206,6 +214,27 @@ export default function Account() {
       const data = profileRes.ok ? await profileRes.json() : user;
       setProfileData(data);
       form.setFieldsValue({ username: data.username || '', email: data.email || '', timezone: data.timezone || 'UTC' });
+
+      // Resolve display titles for the event modal's group picker (task
+      // 20260902-group-tagged-devotions) — data.groups is bare ids only.
+      const groupIds = data.groups || [];
+      if (groupIds.length > 0) {
+        const groupList = await Promise.all(groupIds.map(async gid => {
+          try {
+            const r = await fetch(`${API}/groups/${user.user_id}/${gid}`);
+            if (r.ok) {
+              const d = await r.json();
+              return { id: gid, title: d.group?.title || gid.slice(0, 8) };
+            }
+          } catch (err) {
+            console.error(`Failed to load group ${gid}:`, err);
+          }
+          return { id: gid, title: gid.slice(0, 8) };
+        }));
+        setUserGroups(groupList);
+      } else {
+        setUserGroups([]);
+      }
 
       if (notesRes.ok) {
         const notesData = await notesRes.json();
@@ -348,6 +377,7 @@ export default function Account() {
     setEvTime(dayjs());
     setEvAgentId(agents[0]?.id || '');
     setEvPrompt('');
+    setEvGroupId('');
     setEvModal(true);
   };
 
@@ -370,6 +400,7 @@ export default function Account() {
     setEvTime(dayjs.utc().hour(h).minute(m).local());
     setEvAgentId(ev.agent_id || agents[0]?.id || '');
     setEvPrompt(ev.prompt || '');
+    setEvGroupId(ev.group_id || '');
     setEvStep(recur === 'daily' ? 2 : 1);
     setEvModal(true);
   };
@@ -380,7 +411,9 @@ export default function Account() {
     try {
       const utcTime    = toUTCTime(evTime);
       const timestamps = buildTimestamps(evRecur, evWeekdays, evMonthDays, utcTime);
-      const body       = { timestamps, prompt: evPrompt.trim() };
+      // group_id: '' (rather than omitting the key) matches the server's own
+      // `body.get("group_id") or None` falsy check in api/routes/agent.py.
+      const body       = { timestamps, prompt: evPrompt.trim(), group_id: evGroupId || '' };
 
       if (editingEvent) {
         // Update existing heartbeat
@@ -391,7 +424,7 @@ export default function Account() {
         if (res.ok) {
           setEvents(prev => prev.map(e =>
             e._id === editingEvent._id
-              ? { ...e, timestamps, prompt: evPrompt.trim(), agent_id: evAgentId }
+              ? { ...e, timestamps, prompt: evPrompt.trim(), agent_id: evAgentId, group_id: evGroupId || null }
               : e
           ));
           setEvModal(false);
@@ -632,6 +665,37 @@ export default function Account() {
         <div>
           <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.7rem', letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(200,134,26,0.55)', display: 'block', marginBottom: 6 }}>Event Time</Text>
           <TimePicker value={evTime} onChange={v => v && setEvTime(v)} format="HH:mm" use12Hours={false} style={{ width: '100%' }} />
+        </div>
+        {/* Gold dropdown-trigger + group submenu (task 20260902-group-tagged-devotions).
+            Same filled-gold-pill visual recipe as the note editor's .note-editor-save
+            button (global.css) -- gradient + dark ink text on a pill -- rather than
+            a new button style. Selecting a group sets group_id on the heartbeat;
+            when it fires, the note it generates inherits this group_id automatically. */}
+        <div>
+          <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.7rem', letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(200,134,26,0.55)', display: 'block', marginBottom: 6 }}>Group</Text>
+          <Dropdown
+            trigger={['click']}
+            menu={{
+              items: [
+                { key: '', label: 'No Group' },
+                ...userGroups.map(g => ({ key: g.id, label: g.title })),
+              ],
+              onClick: ({ key }) => setEvGroupId(key),
+            }}
+          >
+            <button
+              type="button"
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 8,
+                padding: '0.5rem 1.1rem', borderRadius: 999, border: 'none', cursor: 'pointer',
+                background: 'linear-gradient(135deg, var(--gold-light), var(--gold) 60%, var(--gold-dim))',
+                color: 'var(--ink)', fontFamily: "'Space Grotesk', sans-serif", fontWeight: 600, fontSize: '0.82rem',
+              }}
+            >
+              <TeamOutlined />
+              {evGroupId ? (userGroups.find(g => g.id === evGroupId)?.title || 'Group') : 'No Group'}
+            </button>
+          </Dropdown>
         </div>
         <div>
           <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.7rem', letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(200,134,26,0.55)', display: 'block', marginBottom: 6 }}>Prompt</Text>

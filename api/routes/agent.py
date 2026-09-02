@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException, WebSocket, Depends
 from backend.interactions.agent import AgentManager
+from backend.interactions.groups import GroupsManager
 from backend.errors import SaveFailedError
 from backend.subscription.limits import check_limit
 from backend.auth.dependencies import require_match, authenticate_ws
@@ -13,6 +14,21 @@ import logging
 
 agent_router = APIRouter(prefix="/agent")
 logger = logging.getLogger(__name__)
+
+
+def _require_group_membership(user_id: str, group_id: str) -> None:
+    """IDOR guard: a client-supplied heartbeat group_id must be one
+    ``user_id`` actually belongs to, mirroring notes.py's create_note/
+    update_note guard -- without this, any authenticated user could tie a
+    scheduled event (and, on fire, the note it generates) to a group they
+    were never invited to.
+    """
+    gm = GroupsManager(user_id, group_id)
+    try:
+        if not gm.is_member():
+            raise HTTPException(status_code=403, detail="Not a member of this group")
+    finally:
+        gm.close()
 
 
 # ── WebSocket ─────────────────────────────────────────────────────────────────
@@ -121,6 +137,9 @@ async def get_heartbeats(user_id: str, agent_id: str, _: str = Depends(require_m
 
 @agent_router.put("/{user_id}/{heartbeat_id}/update_heartbeats")
 async def update_heartbeat(user_id: str, heartbeat_id: str, body: dict, _: str = Depends(require_match("user_id"))) -> dict:
+    group_id = body.get("group_id") or None
+    if group_id:
+        _require_group_membership(user_id, group_id)
     db = AgentManager(user_id)
     try:
         heartbeat = AgentHeartbeats(
@@ -128,6 +147,7 @@ async def update_heartbeat(user_id: str, heartbeat_id: str, body: dict, _: str =
             user_id=user_id,
             timestamps=body.get("timestamps", [None] * 31),
             prompt=body.get("prompt", ""),
+            group_id=group_id,
         )
         db.update_heartbeat(heartbeat_id, heartbeat)
         return {"ok": True}
@@ -188,6 +208,9 @@ async def add_heartbeat(user_id: str, agent_id: str, body: dict, _: str = Depend
     gate = check_limit(user_id, "agent_events")
     if not gate["allowed"]:
         raise HTTPException(status_code=403, detail=gate)
+    group_id = body.get("group_id") or None
+    if group_id:
+        _require_group_membership(user_id, group_id)
     db = AgentManager(user_id)
     try:
         heartbeat = AgentHeartbeats(
@@ -195,6 +218,7 @@ async def add_heartbeat(user_id: str, agent_id: str, body: dict, _: str = Depend
             user_id=user_id,
             timestamps=body.get("timestamps", [None] * 31),
             prompt=body.get("prompt", ""),
+            group_id=group_id,
         )
         db.add_heartbeat(heartbeat)
         return {"ok": True}

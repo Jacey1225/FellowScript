@@ -572,10 +572,14 @@ struct FSHeartbeat: Codable, Identifiable {
     var user_id:    String    = ""
     var timestamps: [String?] = Array(repeating: nil, count: 31)
     var prompt:     String    = ""
+    // Task 20260902-group-tagged-devotions: which of the user's groups (if
+    // any) this scheduled agent event is tied to. nil/"" means personal —
+    // the note it generates on fire stays ungrouped exactly as before.
+    var group_id:   String?   = nil
 
     enum CodingKeys: String, CodingKey {
         case id = "_id"
-        case agent_id, user_id, timestamps, prompt
+        case agent_id, user_id, timestamps, prompt, group_id
     }
 }
 
