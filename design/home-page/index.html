@@ -1106,10 +1106,11 @@
 <h3 id="7-on-your-desktop">7. On Your Desktop</h3>
 <p>Two-card section between Pricing and the closing Quote CTA, offering the Tauri-based desktop app (a dedicated window onto the same live, cookie-authenticated reader — not an offline/bundled build).</p>
 <ul>
-<li><strong>macOS card</strong> (primary, live): icon badge, "Signed, notarized, ready" title, one-line description, "Download for Mac" button, and a metadata line (platform/size/min-OS-version).</li>
+<li><strong>macOS card</strong> (primary, live): icon badge, "Signed, notarized, ready" title, one-line description, "Download for Mac" button, and a metadata line (architecture support + file size, no OS-version claim).</li>
 <li><strong>Windows card</strong> (recessed, "Coming soon" badge): "Still in the workshop" title, description, platform-coverage line, metadata line — intentionally has no clickable control at all, by design (not a disabled button).</li>
 </ul>
-<p>The macOS download URL and the advertised minimum macOS version are still open placeholders pending real hosting (GitHub Releases/CDN/backend route) and a verified minimum OS floor — until both are sourced, the download button points at a placeholder anchor rather than a real link, and the version renders as a bracketed "TBC" placeholder rather than an invented number.</p>
+<p>Both platform badges use the official <code>simple-icons</code> (MIT-licensed) Apple and Windows brand marks, not hand-authored approximations.</p>
+<p>The macOS "Download for Mac" button now links live to the real GitHub Release asset (<code>desktop-v0.1.0/FellowScript.dmg</code>) — no longer a placeholder. Per the user's decision, no minimum-macOS-version claim is displayed at all; the metadata line shows only two verified facts: architecture support (Apple silicon &amp; Intel) and file size (3 MB) from the actual built <code>.dmg</code>.</p>
 <h3 id="8-quote-cta">8. Quote CTA</h3>
 <p>Final call-to-action with 2 Timothy 1:6 as the closing verse, and a "Join FellowScript" button.</p>
 <hr />
