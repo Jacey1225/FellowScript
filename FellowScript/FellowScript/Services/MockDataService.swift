@@ -96,6 +96,13 @@ protocol DataServiceProtocol {
     func addHeartbeat(userId: String, agentId: String, heartbeat: FSHeartbeat) async throws
     func deleteHeartbeat(userId: String, agentId: String, heartbeatId: String) async throws
     func updateHeartbeat(userId: String, heartbeatId: String, heartbeat: FSHeartbeat) async throws
+    // Always a forced/manual fire server-side (see NetworkService's
+    // implementation) — the only caller is the "execute now" trigger, which
+    // per task 20260901-heartbeat-manual-force-fire must succeed regardless
+    // of any earlier fire today. A successful call returns {"success": ...};
+    // a skip now only means the narrower same-instant concurrent-forced-fire
+    // race, e.g. {"skipped": "a forced fire for this event is already in
+    // progress"} — it can no longer mean "already fired today".
     func commitHeartbeat(userId: String, agentId: String, heartbeatId: String, prompt: String) async throws -> [String: String]
     func summarizeSession(userId: String, agentId: String, session: FSSession, groupId: String) async throws
 

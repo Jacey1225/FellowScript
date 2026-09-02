@@ -142,6 +142,13 @@ final class ThrowingTestDataService: DataServiceProtocol {
     var fetchNotesPageQueue: [NotesPage] = []
     private(set) var fetchNotesCallCount = 0
     private(set) var fetchNotesCursors: [(created: String?, id: String?)] = []
+    // Controllable (task 20260901-dashboard-stale-reload-ui, testing step 2) --
+    // lets DashboardStaleReloadRegressionTests prove DashboardViewModel.load()
+    // no longer wipes already-good notes to empty on a thrown fetchNotes
+    // error, mirroring the existing fetchContactsError/fetchFriendActivityError
+    // seams on this same double.
+    var fetchNotesError: Error?
+    var fetchNotesDelayNanoseconds: UInt64?
 
     var fetchGroupNotesPageQueue: [NotesPage] = []
     private(set) var fetchGroupNotesCallCount = 0
@@ -152,6 +159,10 @@ final class ThrowingTestDataService: DataServiceProtocol {
     func fetchNotes(userId: String, cursorCreatedAt: String?, cursorId: String?) async throws -> NotesPage {
         fetchNotesCallCount += 1
         fetchNotesCursors.append((cursorCreatedAt, cursorId))
+        if let fetchNotesDelayNanoseconds {
+            try await Task.sleep(nanoseconds: fetchNotesDelayNanoseconds)
+        }
+        if let fetchNotesError { throw fetchNotesError }
         if !fetchNotesPageQueue.isEmpty { return fetchNotesPageQueue.removeFirst() }
         return try await MockDataService.shared.fetchNotes(userId: userId, cursorCreatedAt: cursorCreatedAt, cursorId: cursorId)
     }
@@ -320,11 +331,25 @@ final class ThrowingTestDataService: DataServiceProtocol {
     var commitHeartbeatResultForId: [String: [String: String]] = [:]
     private(set) var commitHeartbeatCallCountForId: [String: Int] = [:]
     var onCommitHeartbeat: ((String) -> Void)?
+    // Controllable (task 20260901-heartbeat-manual-trigger-button, testing
+    // step) -- forces a real suspension point (Task.sleep, same technique as
+    // the existing fetchNotesDelayNanoseconds seam above) inside the mocked
+    // network round-trip so a concurrent second call for the same heartbeat
+    // has an actual window to run its own guard check while the first call
+    // is still in flight. Without this, this fully-synchronous mock's async
+    // call never truly yields the MainActor mid-flight, so two racing calls
+    // just serialize end-to-end instead of overlapping -- which would make
+    // AccountViewModel.fireHeartbeatNow's firingHeartbeatIds guard untestable
+    // (it would "pass" even if the guard were deleted entirely).
+    var commitHeartbeatDelayNanoseconds: UInt64?
 
     func commitHeartbeat(userId: String, agentId: String, heartbeatId: String, prompt: String) async throws -> [String: String] {
         commitHeartbeatCallCount += 1
         commitHeartbeatCallCountForId[heartbeatId, default: 0] += 1
         onCommitHeartbeat?(heartbeatId)
+        if let commitHeartbeatDelayNanoseconds {
+            try await Task.sleep(nanoseconds: commitHeartbeatDelayNanoseconds)
+        }
         if let commitHeartbeatError { throw commitHeartbeatError }
         return commitHeartbeatResultForId[heartbeatId] ?? commitHeartbeatResult
     }
@@ -497,7 +522,15 @@ final class ThrowingTestDataService: DataServiceProtocol {
         return try await MockDataService.shared.joinCall(userId: userId, sessionId: sessionId)
     }
 
+    // Observable (task 20260901-heartbeat-manual-trigger-button, testing step)
+    // -- proves fireHeartbeatNow's success path really calls refreshUsage()
+    // (which calls this), rather than merely assuming it from reading the
+    // implementation. Behavior is unchanged (still forwards to
+    // MockDataService.shared) for every pre-existing caller of this seam.
+    private(set) var fetchUsageCallCount = 0
+
     func fetchUsage(userId: String) async throws -> FSUsage? {
+        fetchUsageCallCount += 1
         return try await MockDataService.shared.fetchUsage(userId: userId)
     }
 

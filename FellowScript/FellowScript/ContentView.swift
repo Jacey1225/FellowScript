@@ -140,7 +140,15 @@ struct ContentView: View {
     private var mainTabView: some View {
         ZStack(alignment: .bottom) {
             TabView(selection: $selectedTab) {
-                DashboardView()
+                // Task 20260901-dashboard-stale-reload-ui: now passes
+                // StartupCoordinator's shared `dashboardVM` (mirroring the
+                // other three tabs below) instead of DashboardView owning a
+                // brand-new `DashboardViewModel()` locally -- so this
+                // instance (and whatever it already has loaded) survives
+                // ContentView's `if startup.isReady { mainTabView } else {
+                // LoadingScreenView() }` structural swap tearing this whole
+                // subtree down and rebuilding it, same as its siblings.
+                DashboardView(vm: startup.dashboardVM)
                     .tag(Tab.home)
                     .toolbar(.hidden, for: .tabBar)
                 // Pass StartupCoordinator's shared view-model instances —

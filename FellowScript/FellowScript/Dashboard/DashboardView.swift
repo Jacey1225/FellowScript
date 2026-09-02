@@ -42,8 +42,26 @@ final class DashboardViewModel: ObservableObject {
         async let notesTask          = try? service.fetchNotes(userId: userId, cursorCreatedAt: nil, cursorId: nil)
         async let friendActivityTask = try? service.fetchFriendActivity(userId: userId)
 
-        notes = (await notesTask)?.notes ?? [:]
-        friendActivity = (await friendActivityTask) ?? .empty
+        // Bug fix (task 20260901-dashboard-stale-reload-ui): a failed/thrown
+        // fetch used to unconditionally overwrite `notes`/`friendActivity`
+        // with an empty fallback (`?? [:]` / `?? .empty`), discarding the
+        // real, already-good cache-warmed (or previous-fetch) value that was
+        // on screen a moment earlier -- so a reload that hit a transient
+        // network failure could wipe good data down to nothing instead of
+        // leaving the last-known-good snapshot visible. `try?` collapses any
+        // thrown error to nil, and a *successful* fetch always yields a
+        // non-nil result (even a genuinely empty one, e.g. no notes yet) --
+        // so nil here always means "the fetch failed," never "the backend
+        // said there's nothing." Only overwrite on an actual non-nil (i.e.
+        // successful) result; on failure, simply leave whatever was already
+        // there (cache-warmed or otherwise) in place -- it still always
+        // converges to current data the next time a fetch succeeds.
+        if let freshNotes = (await notesTask)?.notes {
+            notes = freshNotes
+        }
+        if let freshActivity = await friendActivityTask {
+            friendActivity = freshActivity
+        }
 
         // ── Write fresh data back to the shared cache ────────────────────────────
         await DiskCache.shared.save(notes, forKey: "notes:\(userId)")
@@ -75,7 +93,40 @@ final class DashboardViewModel: ObservableObject {
 // ── Dashboard root ────────────────────────────────────────────────────────────
 struct DashboardView: View {
     @EnvironmentObject var appState: AppState
-    @StateObject private var vm = DashboardViewModel()
+    @StateObject private var vm: DashboardViewModel
+
+    // Required (no default): task 20260901-dashboard-stale-reload-ui moved
+    // DashboardViewModel to be a StartupCoordinator-owned shared instance
+    // (mirroring BibleViewModel/NotesViewModel/ChatViewModel -- see
+    // BibleReaderView's identical init(vm:) rationale). Previously this was
+    // `@StateObject private var vm = DashboardViewModel()`, created locally
+    // by this view alone -- unlike its three tab siblings, which are all
+    // mounted with StartupCoordinator's shared instances. That made
+    // DashboardView the one screen whose view model was NOT preserved
+    // across ContentView's `if startup.isReady { mainTabView } else {
+    // LoadingScreenView() }` structural swap: any isReady:false->true
+    // transition (i.e. a real reset()/start() sign-out-then-sign-in cycle)
+    // destroys and rebuilds the whole mainTabView subtree, which used to
+    // hand this screen a brand-new DashboardViewModel() with no memory of
+    // what was already on screen -- while Bible/Notes/Chat's shared
+    // instances (owned above that swap, on StartupCoordinator itself)
+    // survived it untouched. ContentView.mainTabView is the only call site
+    // and always passes StartupCoordinator's shared `dashboardVM`.
+    //
+    // Deliberately NOT added to StartupCoordinator.start()'s own async load
+    // race (unlike notesVM/bibleVM/chatVM): Dashboard doesn't need to gate
+    // the startup loading screen, and doing so would need this view model to
+    // grow the same hasLoadedOnce-guarded load()/refresh() split those three
+    // have (to dedupe StartupCoordinator's own preload against this screen's
+    // `.task`) -- which would in turn require `.refreshable` below to switch
+    // from `vm.load()` to a new `vm.refresh()`, a real behavior change this
+    // task doesn't need to make. `load()` stays exactly as re-callable as it
+    // already was (`.task` and `.refreshable` both still call it directly);
+    // only its *ownership* moved.
+    init(vm: DashboardViewModel) {
+        _vm = StateObject(wrappedValue: vm)
+    }
+
     @State private var showNewNote    = false
     @State private var showResumeNote = false
 
@@ -87,21 +138,20 @@ struct DashboardView: View {
         ZStack(alignment: .top) {
             Theme.bgPage.ignoresSafeArea()
 
-            // Warm gradient backdrop — anchored to the very top (bleeds under the
-            // status bar) and fading into the page so the hero blends into the
-            // content instead of ending on a hard edge. Fixed: content scrolls
-            // over it. Stops concentrate the warmth in the top ~46%.
-            LinearGradient(
-                stops: [
-                    .init(color: Color(hex: "#C98420"),               location: 0.00),
-                    .init(color: Color(hex: "#A0641A"),               location: 0.09),
-                    .init(color: Color(hex: "#6B4315"),               location: 0.20),
-                    .init(color: Color(hex: "#3A2612").opacity(0.55), location: 0.32),
-                    .init(color: .clear,                              location: 0.46),
-                ],
-                startPoint: .top, endPoint: .bottom
-            )
-            .ignoresSafeArea()
+            // Warm bloom ground (shared visual language with Account/Notes/
+            // Chat/Bible) — task 20260901-dashboard-background-consistency
+            // replaced Dashboard's bespoke top-anchored linear "hero" gradient
+            // (the one visible outlier) with the same two-RadialGradient
+            // treatment every other screen already uses, so Dashboard's
+            // background now reads as the same system as its tab siblings.
+            // Identical hex/opacity/anchor/radius to AccountView.swift,
+            // NotesListView.swift, ChatRootView.swift, BibleReaderView.swift.
+            RadialGradient(colors: [Color(hex: "#D4922A").opacity(0.20), .clear],
+                           center: UnitPoint(x: 0.12, y: 0.16), startRadius: 10, endRadius: 380)
+                .ignoresSafeArea()
+            RadialGradient(colors: [Color(hex: "#B8761D").opacity(0.12), .clear],
+                           center: UnitPoint(x: 0.92, y: 0.60), startRadius: 10, endRadius: 340)
+                .ignoresSafeArea()
 
             ScrollView(.vertical, showsIndicators: false) {
                 LazyVStack(spacing: 10) {

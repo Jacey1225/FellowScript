@@ -37,6 +37,17 @@ final class StartupCoordinator: ObservableObject {
     private(set) var notesVM = NotesViewModel()
     private(set) var bibleVM = BibleViewModel()
     private(set) var chatVM  = ChatViewModel()
+    // Added by task 20260901-dashboard-stale-reload-ui: DashboardView used to
+    // own its own local `DashboardViewModel()`, the one screen not covered
+    // by this shared-instance model -- so it alone got a brand-new,
+    // memoryless view model whenever ContentView's `if isReady { mainTabView
+    // } else { LoadingScreenView() }` swap tore the whole subtree down and
+    // rebuilt it (a real reset()/start() sign-out-then-sign-in cycle).
+    // Recreated by reset() below, same as the other three, so a subsequent
+    // sign-in starts Dashboard fresh too rather than showing the previous
+    // account's leftover state. Deliberately NOT included in start()'s async
+    // load race below -- see DashboardView.init(vm:)'s comment for why.
+    private(set) var dashboardVM = DashboardViewModel()
 
     /// Startup readiness ceiling. Kept inside one loading-screen video loop
     /// (~9.7s) so the user never sees it visibly loop back to the start
@@ -81,5 +92,6 @@ final class StartupCoordinator: ObservableObject {
         notesVM = NotesViewModel()
         bibleVM = BibleViewModel()
         chatVM  = ChatViewModel()
+        dashboardVM = DashboardViewModel()
     }
 }

@@ -143,7 +143,10 @@ async def commit_heartbeat(user_id: str, agent_id: str, heartbeat_id: str, body:
     # scheduled event fires. Checked here, before commit_hb_response's
     # once-per-day claim, so a denied request doesn't burn today's fire slot:
     # claiming first and denying after would soft-throttle the user to zero
-    # notes for the rest of the day even if their cap frees up later.
+    # notes for the rest of the day even if their cap frees up later. This
+    # gate applies identically to a forced/manual fire (see `force` below) --
+    # forced fires are not exempt from the weekly notes cap, only from the
+    # once-per-day claim.
     #
     # Both check_limit and commit_hb_response are sync/psycopg2 calls on this
     # route's `async def` handler, which shares the process's one event loop
@@ -164,8 +167,16 @@ async def commit_heartbeat(user_id: str, agent_id: str, heartbeat_id: str, body:
         content = body.get("prompt", None)
         if not content:
             return {"error": "heartbeat prompt not found"}
+        # `force`: a manual/UI-triggered fire that must succeed even if this
+        # heartbeat already fired today (by schedule or an earlier manual
+        # force-fire) -- see commit_hb_response's forced branch. Defaults to
+        # False so the scheduler's own call into this same manager method
+        # (scheduler.py::_fire_due_heartbeats, which never sends a body at
+        # all) and any not-yet-updated caller keep today's unforced,
+        # once-per-day-claimed behavior unchanged.
+        force = bool(body.get("force", False))
         result = await loop.run_in_executor(
-            None, functools.partial(db.commit_hb_response, agent_id, heartbeat_id, content)
+            None, functools.partial(db.commit_hb_response, agent_id, heartbeat_id, content, force=force)
         )
         return result
     finally:

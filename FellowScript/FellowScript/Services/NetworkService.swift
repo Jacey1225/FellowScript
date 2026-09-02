@@ -691,9 +691,27 @@ final class NetworkService: DataServiceProtocol {
     }
 
     func commitHeartbeat(userId: String, agentId: String, heartbeatId: String, prompt: String) async throws -> [String: String] {
-        let data = try await requestRaw(
+        // checked — the route gates this on the same free-tier "notes" cap as
+        // addHeartbeat/createEvent, and a manual "execute now" trigger (task
+        // 20260901-heartbeat-manual-trigger-button) must surface that 403 as
+        // AppError.limitReached rather than silently decoding an empty/error
+        // JSON body as if the fire succeeded (this previously used the
+        // unchecked requestRaw, which never validated the HTTP status).
+        //
+        // "force": true — this method's one and only caller is
+        // AccountViewModel.fireHeartbeatNow, the manual "execute now" trigger,
+        // which per task 20260901-heartbeat-manual-force-fire must always
+        // succeed regardless of whether this heartbeat already fired today
+        // (by schedule or an earlier manual force-fire), without disturbing
+        // the scheduler's own once-per-day claim (api/backend/interactions/
+        // agent.py::commit_hb_response's forced branch never touches
+        // last_fired). Since every call through this client method IS a
+        // manual/forced fire, force is sent unconditionally here rather than
+        // threading an unused parameter through the protocol for a case
+        // (an unforced client-triggered fire) nothing in this app calls.
+        let data = try await checkedRequestRaw(
             "/agent/\(userId)/\(agentId)/\(heartbeatId)/commit_heartbeat", method: "POST",
-            jsonObject: ["prompt": prompt]
+            jsonObject: ["prompt": prompt, "force": true]
         )
         return decode([String: String].self, from: data) ?? [:]
     }

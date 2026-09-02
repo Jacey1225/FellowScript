@@ -90,13 +90,28 @@ struct HeroHeader: View {
     }
 
     var body: some View {
-        // Text only — the warm backdrop is provided by DashboardView so it can
+        // Text only — the backdrop is provided by DashboardView so it can
         // fade smoothly past this header rather than ending on a hard edge.
+        //
+        // Task 20260901-dashboard-background-consistency: this greeting text
+        // used to be a dark ink (#2A1B0B), which relied on the bespoke,
+        // strong top-anchored linear "hero" gradient's bright warm fill for
+        // contrast. That gradient is gone (replaced with the same subtle
+        // two-RadialGradient bloom over Theme.bgPage every other screen
+        // uses), so dark-on-dark here would fail WCAG AA. Per the spec's
+        // explicit allowance ("adjust text color/weight only if needed to
+        // preserve [legibility], without reintroducing a bespoke background
+        // treatment"), swapping to Theme.parchment — the same token every
+        // other headline sitting directly on this exact bgPage+bloom
+        // background already uses (AccountView's profile name,
+        // FriendActivityHeroCard's activity headline, NoteResumeCard's
+        // title) — restores contrast (>14:1 against bare bgPage, >10:1 at
+        // the bloom's brightest point) without inventing a new treatment.
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 6) {
                 Text("\(greeting), \(username)")
                     .font(.system(size: 27, weight: .heavy))
-                    .foregroundColor(Color(hex: "#2A1B0B"))
+                    .foregroundColor(Theme.parchment)
                     .lineLimit(2)
             }
             Spacer()

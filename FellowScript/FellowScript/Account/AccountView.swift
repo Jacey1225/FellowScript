@@ -47,6 +47,18 @@ final class AccountViewModel: ObservableObject {
     // the request from the UI.
     @Published var friendMsg: String?  = nil
 
+    // Manual "execute now" heartbeat trigger (task
+    // 20260901-heartbeat-manual-trigger-button). Heartbeat ids currently
+    // mid-fire, so the per-row button can disable itself and show a spinner
+    // instead of allowing a double-tap to race two requests for the same
+    // heartbeat.
+    @Published var firingHeartbeatIds: Set<String> = []
+    // Non-error, self-dismissing confirmation shown in the Events section
+    // for a manual fire's success/already-fired-today outcome — distinct
+    // from limitMsg/agentMsg, which are reserved (per this screen's existing
+    // convention) for the free-tier cap and genuine failures respectively.
+    @Published var eventFireMsg: (type: AlertType, text: String)? = nil
+
     // Subscription
     @Published var subscription:   FSSubscription? = nil
     @Published var subMembers:     [FSSubMember]   = []   // group members (host view)
@@ -145,6 +157,86 @@ final class AccountViewModel: ObservableObject {
         } catch {
             // Free-tier cap (or other failure): don't add the event, tell the user.
             limitMsg = (error as? LocalizedError)?.errorDescription ?? "Could not create event."
+        }
+    }
+
+    /// Manually fires a single heartbeat on demand (task
+    /// 20260901-heartbeat-manual-trigger-button), via the same server-side
+    /// endpoint/code path the scheduler uses for automatic due firing. As of
+    /// task 20260901-heartbeat-manual-force-fire, this always sends a forced
+    /// request (NetworkService.commitHeartbeat sends `"force": true`
+    /// unconditionally), so it succeeds even if this heartbeat already fired
+    /// today — by schedule or an earlier manual force-fire — without
+    /// disturbing the scheduler's own once-per-day claim.
+    /// Distinguishes the endpoint's four possible outcomes rather than
+    /// collapsing them into one generic message:
+    ///   - success            → refreshUsage() (mirrors createEvent) + a
+    ///                          self-dismissing eventFireMsg confirmation.
+    ///   - {"skipped": ...}   → NOTE: this can no longer mean "already fired
+    ///                          today" (force bypasses that gate entirely) —
+    ///                          it now only means the server's narrower
+    ///                          same-instant concurrent-forced-fire guard
+    ///                          denied this request (e.g. two devices tapping
+    ///                          within the same instant, slipping past this
+    ///                          client's own firingHeartbeatIds guard). Still
+    ///                          a non-error eventFireMsg, not a failure.
+    ///                          PROPOSED COPY, pending explicit approval per
+    ///                          this task's UX creative-freedom preference
+    ///                          (not silently finalized) — see frontend.json.
+    ///   - 403 (notes cap)    → limitMsg, the same "Free Plan Limit" alert
+    ///                          createEvent already uses.
+    ///   - anything else      → agentMsg, the same "Agent Error" alert other
+    ///                          event mutations already use. This also covers
+    ///                          an in-band `{"error": ...}` response body
+    ///                          (e.g. an unowned/missing heartbeat, or an
+    ///                          upstream LLM failure) that the server returns
+    ///                          with a 200 rather than throwing.
+    func fireHeartbeatNow(_ event: FSHeartbeat) async {
+        guard let uid = profileData?.user_id else { return }
+        // Guards the double-tap race directly (rather than merely disabling
+        // the button visually): a second call for the same heartbeat while
+        // one is already in flight is a no-op.
+        guard !firingHeartbeatIds.contains(event.id) else { return }
+        firingHeartbeatIds.insert(event.id)
+        do {
+            let result = try await service.commitHeartbeat(
+                userId: uid, agentId: event.agent_id, heartbeatId: event.id, prompt: event.prompt
+            )
+            firingHeartbeatIds.remove(event.id)
+            if result["skipped"] != nil {
+                // "Already fired today" is no longer a possible/accurate
+                // reason for a manual tap now that it always force-fires —
+                // the only remaining skip case is the narrower same-instant
+                // race. See PROPOSED COPY note above.
+                showEventFireMsg(.warning, "Already firing — try again in a moment.")
+            } else if let serverError = result["error"] {
+                agentMsg = serverError
+            } else {
+                await refreshUsage()
+                showEventFireMsg(.success, "Event fired — check your notes.")
+            }
+        } catch let error as AppError {
+            firingHeartbeatIds.remove(event.id)
+            if case .limitReached = error {
+                limitMsg = error.errorDescription ?? "You've reached your free plan limit for notes."
+            } else {
+                agentMsg = error.errorDescription ?? "Could not fire event."
+            }
+        } catch {
+            firingHeartbeatIds.remove(event.id)
+            agentMsg = (error as? LocalizedError)?.errorDescription ?? "Could not fire event."
+        }
+    }
+
+    /// Shows a self-dismissing eventFireMsg (mirrors saveProfile's identical
+    /// editMsg-clearing delay elsewhere in this view). Only clears if it's
+    /// still the same message by the time the delay elapses, so a fast
+    /// second fire's message isn't clobbered by the first one's timer.
+    private func showEventFireMsg(_ type: AlertType, _ text: String) {
+        eventFireMsg = (type, text)
+        Task {
+            try? await Task.sleep(nanoseconds: 2_500_000_000)
+            if eventFireMsg?.text == text { eventFireMsg = nil }
         }
     }
 
@@ -1397,6 +1489,23 @@ struct AccountView: View {
                 .font(.inter(Theme.fontSM))
                 .foregroundColor(Theme.textMuted)
 
+            // Manual "execute now" confirmation (task
+            // 20260901-heartbeat-manual-trigger-button) — mirrors
+            // editProfileSection's editMsg banner pattern. Free-tier-cap and
+            // genuine-failure outcomes go through the existing limitMsg/
+            // agentMsg alerts below instead of this banner.
+            if let msg = vm.eventFireMsg {
+                HStack(spacing: Theme.spacingSM) {
+                    Image(systemName: msg.type == .success ? "checkmark.circle.fill" : "clock.arrow.circlepath")
+                    Text(msg.text)
+                        .font(.inter(Theme.fontSM))
+                }
+                .foregroundColor(msg.type == .success ? Theme.success : Theme.gold)
+                .padding(.horizontal, Theme.spacingSM).padding(.vertical, Theme.spacingXS + 2)
+                .background((msg.type == .success ? Theme.success : Theme.gold).opacity(0.10))
+                .clipShape(RoundedRectangle(cornerRadius: Theme.radiusSM))
+            }
+
             if vm.events.isEmpty {
                 Divider().background(Theme.borderGoldFaint)
                 Text("No events yet. Tap + to schedule one.")
@@ -1408,8 +1517,10 @@ struct AccountView: View {
                     EventRow(
                         event:     event,
                         agentName: agentName(for: event.agent_id),
+                        isFiring:  vm.firingHeartbeatIds.contains(event.id),
                         onEdit:    { activeSheet = .editEvent(event) },
-                        onDelete:  { vm.removeEvent(event) }
+                        onDelete:  { vm.removeEvent(event) },
+                        onFire:    { Task { await vm.fireHeartbeatNow(event) } }
                     )
                 }
             }
@@ -1860,8 +1971,11 @@ struct TimeZonePickerSheet: View {
 struct EventRow: View {
     let event:     FSHeartbeat
     let agentName: String
+    // Manual "execute now" trigger (task 20260901-heartbeat-manual-trigger-button).
+    let isFiring:  Bool
     let onEdit:    () -> Void
     let onDelete:  () -> Void
+    let onFire:    () -> Void
 
     var body: some View {
         HStack(spacing: Theme.spacingMD) {
@@ -1883,6 +1997,25 @@ struct EventRow: View {
                 .foregroundColor(Theme.textMuted)
             }
             Spacer()
+            // Always-visible "execute now": unlike Edit/Delete (which stay in
+            // the long-press context menu below), this fires immediately on
+            // tap rather than needing that menu discovered first. A separate
+            // glyph from the row's own bolt.fill identity icon above avoids
+            // visually implying the row icon itself is tappable.
+            Button(action: onFire) {
+                ZStack {
+                    Circle().fill(Theme.gold.opacity(0.16)).frame(width: 28, height: 28)
+                    if isFiring {
+                        ProgressView().tint(Theme.gold).scaleEffect(0.7)
+                    } else {
+                        Image(systemName: "play.fill").foregroundColor(Theme.gold).font(.caption2)
+                    }
+                }
+            }
+            .buttonStyle(.plain)
+            .disabled(isFiring)
+            .accessibilityLabel(isFiring ? "Firing event now" : "Fire event now")
+            .accessibilityHint("Immediately runs this event's agent and saves a note, without waiting for its schedule.")
             // Discoverability hint: signals a long-press context menu is available.
             Image(systemName: "ellipsis")
                 .foregroundColor(Theme.textMuted)
@@ -1900,6 +2033,7 @@ struct EventRow: View {
         .accessibilityHint("Double-tap and hold for options.")
         .accessibilityAction(named: "Edit", onEdit)
         .accessibilityAction(named: "Delete", onDelete)
+        .accessibilityAction(named: "Fire Now", onFire)
     }
 }
 

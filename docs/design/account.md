@@ -47,6 +47,31 @@ Account deletion requires the user to type their username as confirmation, then 
 
 The delete endpoint manually removes owned notes, nulls message and devotion author fields, then deletes the user row. All remaining related rows (subscriptions, highlights, bookmarks, agents) cascade automatically via FK constraints.
 
+### Events
+
+Each event row lists one scheduled agent heartbeat (recurring AI check-in that generates and
+saves a note when it fires). Edit/Delete are reachable via a long-press context menu on both
+platforms.
+
+**Manual "execute now" trigger (iOS only, 2026-09-01; force-fire, 2026-09-01).** Each `EventRow`
+also has an always-visible yellow play-button that fires that specific heartbeat immediately, via
+the same `POST /agent/{user_id}/{agent_id}/{heartbeat_id}/commit_heartbeat` endpoint the
+server-side scheduler uses for automatic due-heartbeat firing, but always sending `"force": true`
+in the request body. A forced fire **always succeeds** (generates and saves a note) even if the
+heartbeat already fired today — by schedule or an earlier manual force-fire — without disturbing
+the scheduler's own once-per-day claim: the scheduler still fires each heartbeat at most once per
+user-local calendar day regardless of how many forced fires also happen that day. The button
+disables itself (with a spinner) while its own request is in flight, so it can't be double-tapped
+into firing two overlapping requests for the same heartbeat; server-side, a narrower claim
+independent of the daily one also denies a second concurrent forced fire for the same heartbeat
+(e.g. two devices tapping at once), rather than letting both through. Firing still counts against
+the same weekly free-tier notes cap as any other note-producing action, unlimited per day
+otherwise. The button surfaces its outcomes distinctly: success (self-dismissing confirmation
+banner, usage refreshed), the same-instant concurrent-forced-fire race (same banner, non-error
+styling — proposed copy, see `.claude/pipeline/20260901-heartbeat-manual-force-fire/frontend.json`),
+free-tier cap hit (the existing "Free Plan Limit" alert), or any other failure (the existing
+"Agent Error" alert). No equivalent control exists on web yet.
+
 ---
 
 ## Visual Design (iOS)

@@ -198,13 +198,16 @@ class AgentManager(DBManager):
             self.conn.rollback()
             return []
 
-    def commit_hb_response(self, agent_id: str, heartbeat_id: str, heartbeat_content: str):
+    def commit_hb_response(self, agent_id: str, heartbeat_id: str, heartbeat_content: str, force: bool = False):
         # Ownership guard: heartbeat_id/agent_id come straight off the URL, so
         # confirm both belong to self.user_id before claiming the fire or
         # spending an LLM call on someone else's heartbeat.
         owned = self.lookup(self.hb_table, {"_id": heartbeat_id, "agent_id": agent_id, "user_id": self.user_id})
         if not owned:
             return {"error": "heartbeat not found"}
+
+        if force:
+            return self._commit_hb_response_forced(agent_id, heartbeat_id, heartbeat_content)
 
         # Idempotency guard. Heartbeats can now fire from either the
         # server-side poller (scheduler.py::_fire_due_heartbeats) or a
@@ -253,6 +256,92 @@ class AgentManager(DBManager):
             logger.info("Heartbeat %s already fired today — skipping duplicate.", heartbeat_id)
             return {"skipped": "already fired today"}
 
+        def _unset_claim() -> None:
+            # Mirror connect_agent's handling of the same call: the claim
+            # above already committed, so an unhandled LLM failure would
+            # permanently burn today's fire slot with no note produced and
+            # no way to retry (commit_hb_response's own idempotency guard
+            # would report "already fired today" on any later attempt).
+            # Unset the claim so a retry can go through.
+            try:
+                self.cur.execute(
+                    "UPDATE agent_heartbeats SET last_fired = NULL WHERE _id = %s",
+                    (heartbeat_id,),
+                )
+                self.conn.commit()
+            except Exception as rollback_err:
+                logger.error("Failed to unset heartbeat claim for %s: %s", heartbeat_id, rollback_err)
+                self.conn.rollback()
+
+        return self._generate_and_save_note(agent_id, heartbeat_id, heartbeat_content, on_llm_error=_unset_claim)
+
+    def _commit_hb_response_forced(self, agent_id: str, heartbeat_id: str, heartbeat_content: str):
+        """Manual/forced heartbeat fire: deliberately bypasses the
+        once-per-day `last_fired` claim/gate above so a manual trigger
+        always proceeds (modulo the weekly notes cap already checked by the
+        route before this is ever reached), but this path must never read,
+        write, or reset `last_fired` itself -- that column, and the
+        day-boundary invariant it enforces, belong solely to the unforced
+        path above. scheduler.py's `_fire_due_heartbeats` due-scan
+        pre-filter and its own claim both key off `last_fired` and are
+        completely unaffected by any number of forced fires happening the
+        same day (see architecture.json's forced_path_persistence decision
+        -- option (a): no new persisted state for the forced path itself).
+
+        Two forced fires for the same heartbeat racing concurrently (a
+        double-tap that slips past the client's in-flight guard, or two
+        devices tapping near-simultaneously) must not both succeed and
+        produce two notes for the same instant -- guarded here by a
+        session-scoped Postgres advisory lock keyed on the heartbeat id,
+        entirely independent of `last_fired`. This is a try-acquire, fail
+        closed the way this project's security posture requires for any
+        concurrency-relevant check that can't be confidently resolved: if
+        another forced fire for this exact heartbeat is already in flight,
+        this call skips rather than racing it through.
+        """
+        try:
+            self.cur.execute("SELECT pg_try_advisory_lock(hashtext(%s)::bigint)", (heartbeat_id,))
+            acquired = self.cur.fetchone()[0]
+            self.conn.commit()
+        except Exception as e:
+            logger.error("Forced-fire advisory lock attempt failed for %s: %s", heartbeat_id, e)
+            self.conn.rollback()
+            return {"error": "claim failed"}
+        if not acquired:
+            logger.info(
+                "Forced heartbeat fire for %s skipped — another forced fire for it is already in flight.",
+                heartbeat_id,
+            )
+            return {"skipped": "a forced fire for this event is already in progress"}
+
+        # Distinguishable from the automatic/unforced fire's log lines above
+        # (Preference Q11 — auditability): this is a deliberate bypass of the
+        # daily gate and should leave its own visible record of when/how
+        # often that happened, separate from ordinary scheduled-fire logging.
+        logger.info(
+            "Forced/manual heartbeat fire for %s (user=%s) — bypassing the daily claim.",
+            heartbeat_id, self.user_id,
+        )
+        try:
+            return self._generate_and_save_note(agent_id, heartbeat_id, heartbeat_content)
+        finally:
+            try:
+                self.cur.execute("SELECT pg_advisory_unlock(hashtext(%s)::bigint)", (heartbeat_id,))
+                self.conn.commit()
+            except Exception as e:
+                logger.error("Failed to release forced-fire advisory lock for %s: %s", heartbeat_id, e)
+                self.conn.rollback()
+
+    def _generate_and_save_note(
+        self, agent_id: str, heartbeat_id: str, heartbeat_content: str, on_llm_error=None,
+    ):
+        """Shared by both the unforced (claim-gated) and forced (advisory-
+        lock-gated) paths above: build the note prompt, call the LLM, and
+        persist the resulting note + context. `on_llm_error`, if given, is
+        called before returning the connection-trouble error so a caller
+        that already claimed some piece of state (e.g. the unforced path's
+        `last_fired` UPDATE) can unwind it and allow a retry.
+        """
         result     = self.lookup(self.agent_table, {"_id": agent_id})
         agent_role = list(result.values())[0].get("role", "") if result else ""
         context    = self.get_context(heartbeat_id)
@@ -278,22 +367,9 @@ class AgentManager(DBManager):
         try:
             response = self._call_api(agent_role, [{"role": "user", "content": note_prompt}])
         except Exception as e:
-            # Mirror connect_agent's handling of the same call: the claim
-            # above already committed, so an unhandled failure here would
-            # permanently burn today's fire slot with no note produced and
-            # no way to retry (commit_hb_response's own idempotency guard
-            # would report "already fired today" on any later attempt).
-            # Unset the claim so a retry can go through.
             logger.error("OpenRouter API error in commit_hb_response for heartbeat %s: %s", heartbeat_id, e)
-            try:
-                self.cur.execute(
-                    "UPDATE agent_heartbeats SET last_fired = NULL WHERE _id = %s",
-                    (heartbeat_id,),
-                )
-                self.conn.commit()
-            except Exception as rollback_err:
-                logger.error("Failed to unset heartbeat claim for %s: %s", heartbeat_id, rollback_err)
-                self.conn.rollback()
+            if on_llm_error:
+                on_llm_error()
             return {"error": "I'm having trouble connecting right now. Please try again in a moment."}
         if "{" in response and "}" in response:
             start = response.find("{")
