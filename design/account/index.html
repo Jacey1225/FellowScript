@@ -627,6 +627,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#events" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Events
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1010,6 +1021,21 @@ pattern (e.g. <code>seatCountEditRow</code>).</p>
 <li><strong>iOS</strong>: <code>NetworkService.deleteUser(userId:)</code> is awaited first; <code>signOut()</code> is called after on <code>MainActor</code> (no race condition).</li>
 </ul>
 <p>The delete endpoint manually removes owned notes, nulls message and devotion author fields, then deletes the user row. All remaining related rows (subscriptions, highlights, bookmarks, agents) cascade automatically via FK constraints.</p>
+<h3 id="events">Events</h3>
+<p>Each event row lists one scheduled agent heartbeat (recurring AI check-in that generates and
+saves a note when it fires). Edit/Delete are reachable via a long-press context menu on both
+platforms.</p>
+<p><strong>Manual "execute now" trigger (iOS only, 2026-09-01).</strong> Each <code>EventRow</code> also has an
+always-visible yellow play-button that fires that specific heartbeat immediately, via the same
+<code>POST /agent/{user_id}/{agent_id}/{heartbeat_id}/commit_heartbeat</code> endpoint the server-side
+scheduler uses for automatic due-heartbeat firing. The button disables itself (with a spinner)
+while its own request is in flight, so it can't be double-tapped into firing two overlapping
+requests for the same heartbeat. Firing is idempotent per calendar day per heartbeat regardless
+of caller, and counts against the same weekly free-tier notes cap as any other note-producing
+action — the button surfaces all four outcomes distinctly: success (self-dismissing confirmation
+banner, usage refreshed), already-fired-today (same banner, non-error styling), free-tier cap hit
+(the existing "Free Plan Limit" alert), or any other failure (the existing "Agent Error" alert).
+No equivalent control exists on web yet.</p>
 <hr />
 <h2 id="visual-design-ios">Visual Design (iOS)</h2>
 <p>The iOS Account page (<code>FellowScript/FellowScript/Account/AccountView.swift</code>) uses the same
