@@ -599,6 +599,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#visual-design-ios" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Visual Design (iOS)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#real-time-behavior" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -979,6 +990,16 @@
 - <strong>Leave group</strong> — removes the user from the group
 - <strong>Group selector</strong> — the compact dropdown in the Notes sidebar tab bar also switches the messaging sidebar to the selected group</p>
 <p>Group highlights (members' colored verse highlights) are visible as overlays in the scripture view when a group is selected.</p>
+<hr />
+<h2 id="visual-design-ios">Visual Design (iOS)</h2>
+<p><strong>Add-friend / add-group sheets restyled (2026-09-02).</strong> iOS's <code>AddFriendSheet</code> and <code>AddGroupSheet</code>
+(<code>Chat/ChatRootView.swift</code>) previously sat on a flat <code>Theme.bgPage</code> fill with native <code>Form</code>/<code>Section</code>
+chrome, unlike the rest of the app. Both now use the shared <code>Theme.warmBloomBackground()</code> modifier
+(the same two-<code>RadialGradient</code> wash used app-wide) and a custom <code>ScrollView</code> + <code>widgetCard()</code> layout
+in place of <code>Form</code>. <code>AddFriendSheet</code> gained a <code>.medium</code> presentation detent (previously full-height
+with a large empty area below its one field); <code>AddGroupSheet</code> gained <code>[.medium, .large]</code> so a longer
+member list isn't clipped. Appearance-only — <code>onSend</code>/<code>onCreate</code> wiring, member-row selection
+behavior, and existing accessibility labels are unchanged.</p>
 <hr />
 <h2 id="real-time-behavior">Real-Time Behavior</h2>
 <p>The WebSocket connection (<code>/ws/{user_id}</code>) handles:</p>

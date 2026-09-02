@@ -1097,6 +1097,15 @@ new activity-tracked reminder system.</p>
   glass card (<code>glassCard(tint: Theme.dangerBg, border: [...Theme.borderDanger])</code>) rather than a
   flat red fill. Sign Out stays in its own separate, neutral (non-danger-tinted) glass card.</li>
 </ul>
+<p><strong>Submenu sheets restyled (2026-09-02).</strong> <code>NewAgentSheet</code> and <code>EventSetupSheet</code> (all three steps —
+<code>recurrenceScreen</code>, <code>dayPickerScreen</code>, <code>detailsScreen</code>) previously sat on a flat <code>Theme.bgPage</code>
+fill, <code>detailsScreen</code> still using native <code>Form</code>/<code>Section</code> chrome unlike its own sibling steps.
+Both now use the same warm-bloom-ground background as the rest of the app, extracted into a new
+shared <code>Theme.warmBloomBackground()</code> modifier (<code>Theme.swift</code>) so the two-<code>RadialGradient</code> recipe
+has one call point instead of a per-screen copy; <code>detailsScreen</code> moved off <code>Form</code>/<code>Section</code> onto
+the <code>ScrollView</code> + <code>VStack</code> + <code>widgetCard()</code> shell its sibling steps already used, same section
+order and headers. Appearance-only — the group-picker <code>Menu</code> added by the group-tagging feature
+above, <code>onSave</code>/<code>onCreate</code>, <code>prefill(from:)</code>, and all existing accessibility labels are unchanged.</p>
 
 
 
