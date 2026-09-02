@@ -354,7 +354,10 @@ final class MockDataService: DataServiceProtocol {
                 last_active_at: "2026-08-24T18:40:00Z", note_preview: nil
             ),
         ],
-        check_in: FSCheckInCandidate(friend_id: "friend-001", username: "Sarah", days_since_contact: 6)
+        check_in_candidates: [
+            FSCheckInCandidate(friend_id: "friend-001", username: "Sarah", days_since_contact: 6),
+            FSCheckInCandidate(friend_id: "friend-002", username: "Marcus", days_since_contact: 12),
+        ]
     )
 
     static let mockMessages: [FSMessage] = [

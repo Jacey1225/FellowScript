@@ -169,12 +169,25 @@ class FriendsManager(DBManager):
         self.delete("user_friends", {"user_id": self.user_id, "friend_id": friend_id})
         self.delete("user_friends", {"user_id": friend_id, "friend_id": self.user_id})
 
+    # Size of the "check in" nudge candidate pool (see get_friend_activity).
+    # Bounded rather than unbounded so the nudge keeps its stated purpose --
+    # surfacing a genuinely-neglected friend -- instead of degrading into a
+    # pick from the user's entire friend list regardless of recency.
+    CHECK_IN_POOL_SIZE = 5
+
     def get_friend_activity(self, limit: int = 20) -> dict:
         """Friend-activity read surface for the dashboard's Friend Activity
         hero card: each friend's most recent PUBLIC personal note (preview)
         plus their last-activity timestamp, ordered most-recently-active
-        first, and a single "check in" nudge candidate -- the friend the
-        acting user has gone longest without directly messaging.
+        first, and a bounded "check in" nudge candidate pool -- the friends
+        the acting user has gone longest without directly messaging.
+
+        The check-in pool is intentionally bounded (`CHECK_IN_POOL_SIZE`,
+        capped at the user's actual friend count via `LIMIT`) rather than
+        covering the whole friend list: the nudge's purpose is surfacing a
+        genuinely-neglected friend, so the client is expected to pick
+        (e.g. randomly) from within this "longest since contact" pool, not
+        from friends who were recently contacted.
 
         Block-respecting in both directions via the same defense-in-depth
         `NOT EXISTS` pattern as `ActivityManager.friend_device_tokens`
@@ -202,12 +215,15 @@ class FriendsManager(DBManager):
         Returns:
             dict: ``{"friends_active": [{"friend_id", "username",
                 "last_active_at", "note_preview": {"note_id", "title",
-                "text", "timestamp"} | None}, ...], "check_in":
-                {"friend_id", "username", "days_since_contact": int | None}
-                | None}``. `friends_active` is ordered by `last_active_at`
+                "text", "timestamp"} | None}, ...], "check_in_candidates":
+                [{"friend_id", "username", "days_since_contact": int | None},
+                ...]}``. `friends_active` is ordered by `last_active_at`
                 descending (friends with no tracked activity sort last).
-                `check_in` is None only when the user has no friends;
-                `days_since_contact` is None when the pair has never
+                `check_in_candidates` is ordered longest-since-contact
+                first, capped at `CHECK_IN_POOL_SIZE` entries (or the
+                friend count, whichever is smaller), and is an empty list
+                only when the user has no friends; a candidate's
+                `days_since_contact` is None when that pair has never
                 messaged directly (still a valid, arguably stronger, nudge
                 candidate -- it sorts as if "longest ago").
         """
@@ -246,7 +262,6 @@ class FriendsManager(DBManager):
             for r in self.cur.fetchall()
         ]
 
-        check_in = None
         self.cur.execute(
             "SELECT uf.friend_id, u.username, "
             "  (SELECT MAX(m.timestamp) FROM messages m "
@@ -264,21 +279,20 @@ class FriendsManager(DBManager):
             "     OR (b.blocker_id = uf.user_id AND b.blocked_id = uf.friend_id)"
             ") "
             "ORDER BY last_contact ASC NULLS FIRST "
-            "LIMIT 1",
-            (self.user_id,),
+            "LIMIT %s",
+            (self.user_id, self.CHECK_IN_POOL_SIZE),
         )
-        row = self.cur.fetchone()
-        if row:
-            friend_id, username, last_contact = row
+        check_in_candidates = []
+        for friend_id, username, last_contact in self.cur.fetchall():
             days_since_contact = None
             if last_contact:
                 if last_contact.tzinfo is None:
                     last_contact = last_contact.replace(tzinfo=tzmod.utc)
                 days_since_contact = (datetime.now(tzmod.utc) - last_contact).days
-            check_in = {
+            check_in_candidates.append({
                 "friend_id": str(friend_id),
                 "username": username,
                 "days_since_contact": days_since_contact,
-            }
+            })
 
-        return {"friends_active": friends_active, "check_in": check_in}
+        return {"friends_active": friends_active, "check_in_candidates": check_in_candidates}

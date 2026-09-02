@@ -20,14 +20,18 @@ Covers:
      surfaces content (highlights have no privacy flag today).
   6. Block scoping, both directions -- a blocked-in-either-direction "friend"
      (stale/bypassed user_friends row) is excluded from both friends_active
-     and the check_in candidate, mirroring ActivityManager.friend_device_tokens'
+     and check_in_candidates, mirroring ActivityManager.friend_device_tokens'
      defense-in-depth re-check.
   7. Ordering -- friends_active is ordered by last_active_at desc, with
      never-active friends sorting last.
-  8. check_in candidate selection -- picks the friend gone longest without a
-     direct message; a never-messaged friend is a valid (null-days) candidate.
+  8. check_in_candidates selection -- ordered longest-since-contact first; a
+     never-messaged friend is a valid (null-days) candidate.
   9. Cross-user leakage -- a non-friend's public note never surfaces for a
      user who isn't their friend.
+  10. check_in_candidates pool is bounded to FriendsManager.CHECK_IN_POOL_SIZE
+      (task 20260902-dashboard-friend-randomization) even when the caller has
+      more eligible friends than that, and still ordered longest-since-contact
+      first within the bounded pool.
 
 Run:  cd api && ../.venv/bin/python tests/test_friend_activity.py
 """
@@ -47,6 +51,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 from db import DBManager  # noqa: E402
 import main as main_module  # noqa: E402
 from backend.interactions.activity import ActivityManager  # noqa: E402
+from backend.interactions.friends import FriendsManager  # noqa: E402
 from backend.interactions.websockets import ConnectionManager  # noqa: E402
 from schemas.message import Message  # noqa: E402
 
@@ -215,7 +220,8 @@ def test_empty_states(client):
         check("no friends -> 200", r.status_code == 200, r.text)
         body = r.json()
         check("no friends -> friends_active is an empty list", body["friends_active"] == [], body)
-        check("no friends -> check_in is None", body["check_in"] is None, body)
+        check("no friends -> check_in_candidates is an empty list",
+              body["check_in_candidates"] == [], body)
 
         r2 = get_activity(client, uid_a, token_a)
         body2 = r2.json()
@@ -227,9 +233,10 @@ def test_empty_states(client):
         check("friend with zero activity has note_preview None",
               body2["friends_active"][0]["note_preview"] is None, body2)
         check("never-messaged friend is still a valid check_in candidate",
-              body2["check_in"] is not None and body2["check_in"]["friend_id"] == uid_b, body2)
+              len(body2["check_in_candidates"]) == 1
+              and body2["check_in_candidates"][0]["friend_id"] == uid_b, body2)
         check("never-messaged check_in candidate has days_since_contact None",
-              body2["check_in"]["days_since_contact"] is None, body2)
+              body2["check_in_candidates"][0]["days_since_contact"] is None, body2)
     finally:
         cleanup(uid_lonely, uid_a, uid_b)
 
@@ -354,9 +361,12 @@ def test_block_scoping_both_directions(client):
         check("C blocked A: C excluded from friends_active despite the stale user_friends row",
               uid_c not in ids, body)
         check("real unblocked friend D still present", uid_d in ids, body)
-        check("check_in candidate is never a blocked-in-either-direction contact",
-              body["check_in"] is not None and body["check_in"]["friend_id"] not in (uid_b, uid_c),
+        candidate_ids = {c["friend_id"] for c in body["check_in_candidates"]}
+        check("check_in_candidates never includes a blocked-in-either-direction contact",
+              uid_b not in candidate_ids and uid_c not in candidate_ids,
               body)
+        check("real unblocked friend D still eligible as a check_in candidate",
+              uid_d in candidate_ids, body)
     finally:
         cleanup(uid_a, uid_b, uid_c, uid_d)
 
@@ -388,10 +398,10 @@ def test_ordering_most_recently_active_first(client):
         cleanup(uid_a, uid_old, uid_new, uid_never)
 
 
-# ── 8. check_in candidate selection ─────────────────────────────────────────
+# ── 8. check_in_candidates selection ────────────────────────────────────────
 
 def test_check_in_selects_longest_since_contact(client):
-    print("\n=== 8. check_in nudge: picks the longest-since-contact friend ===")
+    print("\n=== 8. check_in_candidates: longest-since-contact ordered first ===")
     uid_a, token_a = signup(client, "ci_a")
     uid_recent, _ = signup(client, "ci_recent")
     uid_stale, _ = signup(client, "ci_stale")
@@ -404,14 +414,62 @@ def test_check_in_selects_longest_since_contact(client):
 
         r = get_activity(client, uid_a, token_a)
         body = r.json()
-        check("check_in picks the friend gone longest without direct contact",
-              body["check_in"]["friend_id"] == uid_stale, body)
+        candidates = body["check_in_candidates"]
+        check("check_in_candidates includes both friends",
+              len(candidates) == 2, body)
+        check("check_in_candidates orders the friend gone longest without contact first",
+              candidates[0]["friend_id"] == uid_stale, body)
+        check("the more-recently-contacted friend still appears, just second",
+              candidates[1]["friend_id"] == uid_recent, body)
         check("days_since_contact is a positive int for a real past message",
-              isinstance(body["check_in"]["days_since_contact"], int)
-              and body["check_in"]["days_since_contact"] > 0,
+              isinstance(candidates[0]["days_since_contact"], int)
+              and candidates[0]["days_since_contact"] > 0,
               body)
     finally:
         cleanup(uid_a, uid_recent, uid_stale)
+
+
+# ── 10. check_in_candidates pool is bounded (CHECK_IN_POOL_SIZE) ───────────
+
+def test_check_in_pool_bounded_to_pool_size(client):
+    print("\n=== 10. check_in_candidates is bounded to CHECK_IN_POOL_SIZE, still ordered ===")
+    pool_size = FriendsManager.CHECK_IN_POOL_SIZE
+    uid_a, token_a = signup(client, "pool_a")
+    # One more friend than the pool size, each with a distinct, strictly
+    # increasing last-contact date -- oldest-contact friend must still make
+    # the bounded pool and sort first; a friend contacted even later than all
+    # the others must be excluded once the pool is full.
+    friend_ids = []
+    try:
+        for i in range(pool_size + 1):
+            uid_f, _ = signup(client, f"pool_f{i}")
+            friend_ids.append(uid_f)
+            make_friends(uid_a, uid_f)
+            # i=0 is contacted longest ago (2026-01-01), each subsequent
+            # friend more recently, so friend_ids[-1] (the (pool_size+1)th)
+            # is the MOST recently contacted -- expected to be excluded from
+            # the bounded pool.
+            send_direct_message(uid_a, uid_f, "hi", datetime(2026, 1, 1 + i, tzinfo=tzmod.utc))
+
+        r = get_activity(client, uid_a, token_a)
+        body = r.json()
+        candidates = body["check_in_candidates"]
+        check(f"check_in_candidates is capped at CHECK_IN_POOL_SIZE ({pool_size}) "
+              f"even though the caller has {pool_size + 1} eligible friends",
+              len(candidates) == pool_size, body)
+
+        candidate_ids = [c["friend_id"] for c in candidates]
+        check("the longest-since-contact friend (contacted first, i.e. longest ago) is in the bounded pool",
+              friend_ids[0] in candidate_ids, body)
+        check("the most-recently-contacted friend is excluded once the pool is full",
+              friend_ids[-1] not in candidate_ids, body)
+        check("bounded pool is still ordered longest-since-contact first",
+              candidates[0]["friend_id"] == friend_ids[0], body)
+        days = [c["days_since_contact"] for c in candidates]
+        check("days_since_contact is non-increasing across the ordered bounded pool",
+              days == sorted(days, reverse=True), body)
+    finally:
+        cleanup(uid_a, *friend_ids)
 
 
 # ── 9. Cross-user leakage ────────────────────────────────────────────────────
@@ -428,7 +486,7 @@ def test_cross_user_leakage_non_friend_never_surfaces(client):
         r = get_activity(client, uid_a, token_a)
         body = r.json()
         check("a non-friend's public note never appears for a user who isn't their friend",
-              body["friends_active"] == [] and body["check_in"] is None, body)
+              body["friends_active"] == [] and body["check_in_candidates"] == [], body)
     finally:
         cleanup(uid_a, uid_stranger)
 
@@ -449,6 +507,7 @@ def main():
         test_ordering_most_recently_active_first(client)
         test_check_in_selects_longest_since_contact(client)
         test_cross_user_leakage_non_friend_never_surfaces(client)
+        test_check_in_pool_bounded_to_pool_size(client)
 
     print(f"\n{'='*60}")
     if FAILED:

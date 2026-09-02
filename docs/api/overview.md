@@ -117,7 +117,7 @@ may still be populated.
 | POST | `/friends/{user_id}/accept/{friend_id}` | Accept a request |
 | DELETE | `/friends/{user_id}/{friend_id}` | Remove a friend |
 | GET | `/friends/{user_id}` | Friend list |
-| GET | `/friends/{user_id}/activity` | Friend-activity read surface for the dashboard's Friend Activity hero card: each friend's most recent public note preview + last-active timestamp (block-respecting both directions), plus a single "check in" nudge candidate (friend gone longest without a direct message). Highlights are not previewed (no privacy flag exists for them yet). |
+| GET | `/friends/{user_id}/activity` | Friend-activity read surface for the dashboard's Friend Activity hero card: each friend's most recent public note preview + last-active timestamp (block-respecting both directions), plus a bounded "check in" nudge candidate pool (up to 5 friends gone longest without a direct message). Highlights are not previewed (no privacy flag exists for them yet). |
 
 ### `GET /friends/{user_id}/activity`
 
@@ -128,10 +128,12 @@ may still be populated.
     {"friend_id": "uuid", "username": "str", "last_active_at": "iso8601 | null",
      "note_preview": {"note_id": "uuid", "title": "str", "text": "str", "timestamp": "iso8601"} | null}
   ],
-  "check_in": {"friend_id": "uuid", "username": "str", "days_since_contact": "int | null"} | null
+  "check_in_candidates": [
+    {"friend_id": "uuid", "username": "str", "days_since_contact": "int | null"}
+  ]
 }
 ```
-`friends_active` is ordered most-recently-active first; `check_in` is `null` only when the user has no friends.
+`friends_active` is ordered most-recently-active first. `check_in_candidates` is ordered longest-since-contact first, capped at 5 entries (or the friend count, whichever is smaller), and is an empty list only when the user has no friends — the client picks among these candidates rather than the whole friend list, to keep the nudge targeted at genuinely-neglected friends.
 
 ---
 

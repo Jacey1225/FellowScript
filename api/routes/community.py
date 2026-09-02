@@ -221,7 +221,7 @@ async def get_friend_activity(user_id: str, _: str = Depends(require_match("user
         user_id: UUID of the requesting user (their own friend list only).
 
     Returns:
-        dict: ``{"friends_active": [...], "check_in": {...} | None}`` --
+        dict: ``{"friends_active": [...], "check_in_candidates": [...]}`` --
             see ``FriendsManager.get_friend_activity`` for the full shape.
     """
     manager = FriendsManager(user_id)

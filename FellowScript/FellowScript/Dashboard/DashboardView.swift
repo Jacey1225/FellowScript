@@ -19,6 +19,18 @@ final class DashboardViewModel: ObservableObject {
     // consolidating the other 5 was out of scope, this is the read surface
     // that didn't exist at all before).
     @Published var friendActivity: FSFriendActivityFeed    = .empty
+    // Task 20260902-dashboard-friend-randomization: the friend actually
+    // surfaced in FriendActivityHeroCard/CheckInRow, picked at random from
+    // `friendActivity`'s already-fetched lists. Stored here (not derived as
+    // a computed property inside a View's `body`) and only ever reassigned
+    // once, at the end of `load()` below -- so a re-render triggered by some
+    // unrelated @Published change (`notes`, `isLoading`, ...) never reshuffles
+    // who's shown; only an actual completed load does. `.randomElement()` on
+    // an empty list is nil, so 0-candidate feeds fall back to the same "no
+    // pick" behavior the old deterministic `.first`/single-candidate code
+    // had -- no special-casing needed for the 0/1-friend empty states.
+    @Published var heroFriendPick: FSFriendActivityEntry?
+    @Published var checkInPick:    FSCheckInCandidate?
 
     func load(service: DataServiceProtocol, userId: String) async {
         self.service = service
@@ -62,6 +74,18 @@ final class DashboardViewModel: ObservableObject {
         if let freshActivity = await friendActivityTask {
             friendActivity = freshActivity
         }
+
+        // Task 20260902-dashboard-friend-randomization: re-roll exactly once
+        // per `load()` call, here, after `friendActivity` has fully settled
+        // for this call (cache-warm, then possibly superseded by a
+        // successful fresh fetch per the stale-reload fix above). Rolling
+        // separately at the cache-warm assignment too would re-randomize the
+        // pick a second time within the same call even when the underlying
+        // data hasn't actually changed -- a visible thrash the acceptance
+        // criteria specifically calls out, not the same thing as the
+        // existing (accepted) cache-then-fresh data transition itself.
+        heroFriendPick = friendActivity.friends_active.randomElement()
+        checkInPick    = friendActivity.check_in_candidates.randomElement()
 
         // ── Write fresh data back to the shared cache ────────────────────────────
         await DiskCache.shared.save(notes, forKey: "notes:\(userId)")
@@ -158,11 +182,11 @@ struct DashboardView: View {
                     HeroHeader(username: appState.currentUser?.username ?? "friend")
 
                     // ── Editorial Hero: Friend Activity ───────────────────────────────
-                    FriendActivityHeroCard(feed: vm.friendActivity) { entry in
+                    FriendActivityHeroCard(feed: vm.friendActivity, primary: vm.heroFriendPick) { entry in
                         openFriendChat(id: entry.friend_id, username: entry.username)
                     }
 
-                    if let checkIn = vm.friendActivity.check_in {
+                    if let checkIn = vm.checkInPick {
                         CheckInRow(checkIn: checkIn) {
                             openFriendChat(id: checkIn.friend_id, username: checkIn.username)
                         }

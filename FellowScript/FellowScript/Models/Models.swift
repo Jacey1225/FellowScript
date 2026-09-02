@@ -389,9 +389,18 @@ struct FSCheckInCandidate: Codable, Equatable {
 
 struct FSFriendActivityFeed: Codable, Equatable {
     let friends_active: [FSFriendActivityEntry]
-    let check_in:       FSCheckInCandidate?
+    // Task 20260902-dashboard-friend-randomization: was a single
+    // server-picked `check_in: FSCheckInCandidate?` winner (longest since
+    // contact). The backend (FriendsManager.get_friend_activity, step 1 of
+    // this task) now returns a bounded top-N "longest since contact" pool
+    // instead, ordered longest-since-contact first, so the client has an
+    // actual candidate set to randomize among for CheckInRow -- rather than
+    // randomizing across every friend, which would defeat the nudge's
+    // stated purpose of surfacing neglected friends. Empty (not nil) when
+    // the user has no friends at all.
+    let check_in_candidates: [FSCheckInCandidate]
 
-    static let empty = FSFriendActivityFeed(friends_active: [], check_in: nil)
+    static let empty = FSFriendActivityFeed(friends_active: [], check_in_candidates: [])
 }
 
 /// Parses an ISO8601 timestamp string, tolerating both forms actually

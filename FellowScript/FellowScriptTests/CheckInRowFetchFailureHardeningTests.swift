@@ -31,11 +31,16 @@
 //   2. Same for a 500, proving this isn't 404-specific.
 //   3. Happy-path regression guard: a real, non-empty check_in payload decodes
 //      correctly and never fires the beacon.
-//   4. The true-empty state (200, `friends_active: [], check_in: null` — a
-//      real user with no friends) also never fires the beacon — proving the
-//      beacon genuinely distinguishes "the backend said there's nothing to
-//      show" from "the request itself failed," which is exactly the
-//      distinguishability the architecture step called for.
+//   4. The true-empty state (200, `friends_active: [], check_in_candidates:
+//      []` — a real user with no friends) also never fires the beacon —
+//      proving the beacon genuinely distinguishes "the backend said there's
+//      nothing to show" from "the request itself failed," which is exactly
+//      the distinguishability the architecture step called for.
+//
+// Updated for task 20260902-dashboard-friend-randomization: the response's
+// single `check_in` winner became a `check_in_candidates` list -- test 3's
+// stub payload and assertions below were updated to that shape; nothing
+// about the beacon logic itself changed.
 //   5. End-to-end through the real call path: DashboardViewModel.load() using
 //      the real NetworkService still degrades to `.empty` on a fetch failure
 //      (row correctly stays hidden, unchanged from before this fix) — but the
@@ -148,16 +153,17 @@ final class CheckInRowFetchFailureHardeningTests: XCTestCase {
           "friends_active": [
             {"friend_id": "friend-001", "username": "Sarah", "last_active_at": "2026-08-26T09:14:00Z", "note_preview": null}
           ],
-          "check_in": {"friend_id": "friend-001", "username": "Sarah", "days_since_contact": 9}
+          "check_in_candidates": [{"friend_id": "friend-001", "username": "Sarah", "days_since_contact": 9}]
         }
         """#.data(using: .utf8)!
 
         let feed = try await NetworkService.shared.fetchFriendActivity(userId: "user-123")
 
         XCTAssertEqual(feed.friends_active.count, 1)
-        XCTAssertEqual(feed.check_in?.friend_id, "friend-001")
-        XCTAssertEqual(feed.check_in?.username, "Sarah")
-        XCTAssertEqual(feed.check_in?.days_since_contact, 9)
+        XCTAssertEqual(feed.check_in_candidates.count, 1)
+        XCTAssertEqual(feed.check_in_candidates.first?.friend_id, "friend-001")
+        XCTAssertEqual(feed.check_in_candidates.first?.username, "Sarah")
+        XCTAssertEqual(feed.check_in_candidates.first?.days_since_contact, 9)
 
         try await waitForFireAndForgetBeacon()
         XCTAssertTrue(friendActivityBeacons().isEmpty,
@@ -168,7 +174,7 @@ final class CheckInRowFetchFailureHardeningTests: XCTestCase {
 
     func test_fetchFriendActivity_trueEmptyState_on200_doesNotFireBeacon() async throws {
         StubURLProtocol.stubStatusCode = 200
-        StubURLProtocol.stubBody = #"{"friends_active": [], "check_in": null}"#.data(using: .utf8)!
+        StubURLProtocol.stubBody = #"{"friends_active": [], "check_in_candidates": []}"#.data(using: .utf8)!
 
         let feed = try await NetworkService.shared.fetchFriendActivity(userId: "user-123")
 
@@ -192,7 +198,7 @@ final class CheckInRowFetchFailureHardeningTests: XCTestCase {
 
         // On-screen outcome is unchanged by this fix: CheckInRow still stays
         // hidden exactly as it did before (DashboardView's
-        // `if let checkIn = vm.friendActivity.check_in` correctly omits it),
+        // `if let checkIn = vm.checkInPick` correctly omits it),
         // indistinguishable at the UI layer from a real "no friends" empty
         // state -- this fix does not (and per the architecture step, cannot
         // by itself) change that.

@@ -828,7 +828,10 @@ final class NetworkService: DataServiceProtocol {
         _ = try await request("/friends/\(userId)/\(encodeURIComponent(friendId))", method: "DELETE")
     }
 
-    // GET /friends/{userId}/activity → {friends_active: [...], check_in: {...}|null}
+    // GET /friends/{userId}/activity → {friends_active: [...], check_in_candidates: [...]}
+    // (check_in_candidates: task 20260902-dashboard-friend-randomization —
+    // a bounded top-N "longest since contact" pool, was a single check_in
+    // winner object|null.)
     // Dashboard's Friend Activity hero card. Declared server-side ahead of
     // /friends/{userId}/{friendId} so the literal "activity" path segment
     // matches first.

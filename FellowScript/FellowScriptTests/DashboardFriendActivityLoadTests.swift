@@ -20,8 +20,8 @@
 //      no friends at all, and friends with zero tracked activity — both
 //      come through vm.friendActivity unchanged from what the backend
 //      reported (nothing invented/defaulted client-side), and in
-//      particular vm.friendActivity.check_in stays nil so DashboardView's
-//      `if let checkIn = vm.friendActivity.check_in` correctly omits the
+//      particular vm.friendActivity.check_in_candidates stays empty so
+//      DashboardView's `if let checkIn = vm.checkInPick` correctly omits the
 //      CheckInRow rather than rendering a bogus nudge.
 //   3. A service failure (fetchFriendActivity throws) is handled the same
 //      way every other load() source already is (`try?` + `?? .empty`
@@ -34,6 +34,14 @@
 //      resolves) — mirrors this file's sibling StartupCoordinatorTests'
 //      real-time-wait technique for proving cache-first behavior rather
 //      than just reading the source.
+//
+// Updated for task 20260902-dashboard-friend-randomization: the backend's
+// single `check_in` winner became a `check_in_candidates` pool, and
+// DashboardViewModel gained heroFriendPick/checkInPick, rerolled once per
+// load() from friends_active/check_in_candidates respectively. This file's
+// existing assertions on vm.friendActivity itself are unaffected by that --
+// randomization is exercised separately in
+// DashboardFriendRandomizationTests.swift.
 
 import XCTest
 @testable import FellowScript
@@ -62,7 +70,7 @@ final class DashboardFriendActivityLoadTests: XCTestCase {
         XCTAssertEqual(vm.friendActivity, MockDataService.mockFriendActivity,
                         "vm.friendActivity must be populated from exactly what the service returned")
         XCTAssertFalse(vm.friendActivity.friends_active.isEmpty)
-        XCTAssertNotNil(vm.friendActivity.check_in)
+        XCTAssertFalse(vm.friendActivity.check_in_candidates.isEmpty)
     }
 
     // MARK: 2 — empty states the acceptance criteria explicitly call out
@@ -77,8 +85,10 @@ final class DashboardFriendActivityLoadTests: XCTestCase {
 
         XCTAssertEqual(vm.friendActivity, FSFriendActivityFeed.empty)
         XCTAssertTrue(vm.friendActivity.friends_active.isEmpty)
-        XCTAssertNil(vm.friendActivity.check_in,
+        XCTAssertTrue(vm.friendActivity.check_in_candidates.isEmpty,
                       "no friends must never produce a check-in candidate")
+        XCTAssertNil(vm.heroFriendPick, "no friends -> no hero pick")
+        XCTAssertNil(vm.checkInPick, "no candidates -> no check-in pick")
     }
 
     func test_load_friendsWithNoTrackedActivity_stillPopulatesFriendsActive_withNilLastActiveAndNilPreview() async {
@@ -94,7 +104,9 @@ final class DashboardFriendActivityLoadTests: XCTestCase {
                 FSFriendActivityEntry(friend_id: "friend-quiet", username: "Quiet Friend",
                                        last_active_at: nil, note_preview: nil)
             ],
-            check_in: FSCheckInCandidate(friend_id: "friend-quiet", username: "Quiet Friend", days_since_contact: nil)
+            check_in_candidates: [
+                FSCheckInCandidate(friend_id: "friend-quiet", username: "Quiet Friend", days_since_contact: nil)
+            ]
         )
         service.fetchFriendActivityResult = neverActiveFeed
         let userId = freshUserId()
@@ -106,7 +118,8 @@ final class DashboardFriendActivityLoadTests: XCTestCase {
         XCTAssertEqual(vm.friendActivity.friends_active.count, 1)
         XCTAssertNil(vm.friendActivity.friends_active[0].last_active_at)
         XCTAssertNil(vm.friendActivity.friends_active[0].note_preview)
-        XCTAssertNil(vm.friendActivity.check_in?.days_since_contact)
+        XCTAssertEqual(vm.friendActivity.check_in_candidates.count, 1)
+        XCTAssertNil(vm.friendActivity.check_in_candidates[0].days_since_contact)
     }
 
     // MARK: 3 — a thrown fetch is handled like every other load() source

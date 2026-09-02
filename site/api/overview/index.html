@@ -1362,7 +1362,7 @@ may still be populated.</p>
 <tr>
 <td>GET</td>
 <td><code>/friends/{user_id}/activity</code></td>
-<td>Friend-activity read surface for the dashboard's Friend Activity hero card: each friend's most recent public note preview + last-active timestamp (block-respecting both directions), plus a single "check in" nudge candidate (friend gone longest without a direct message). Highlights are not previewed (no privacy flag exists for them yet).</td>
+<td>Friend-activity read surface for the dashboard's Friend Activity hero card: each friend's most recent public note preview + last-active timestamp (block-respecting both directions), plus a bounded "check in" nudge candidate pool (up to 5 friends gone longest without a direct message). Highlights are not previewed (no privacy flag exists for them yet).</td>
 </tr>
 </tbody>
 </table>
@@ -1373,10 +1373,12 @@ may still be populated.</p>
     {&quot;friend_id&quot;: &quot;uuid&quot;, &quot;username&quot;: &quot;str&quot;, &quot;last_active_at&quot;: &quot;iso8601 | null&quot;,
      &quot;note_preview&quot;: {&quot;note_id&quot;: &quot;uuid&quot;, &quot;title&quot;: &quot;str&quot;, &quot;text&quot;: &quot;str&quot;, &quot;timestamp&quot;: &quot;iso8601&quot;} | null}
   ],
-  &quot;check_in&quot;: {&quot;friend_id&quot;: &quot;uuid&quot;, &quot;username&quot;: &quot;str&quot;, &quot;days_since_contact&quot;: &quot;int | null&quot;} | null
+  &quot;check_in_candidates&quot;: [
+    {&quot;friend_id&quot;: &quot;uuid&quot;, &quot;username&quot;: &quot;str&quot;, &quot;days_since_contact&quot;: &quot;int | null&quot;}
+  ]
 }
 </code></pre>
-<p><code>friends_active</code> is ordered most-recently-active first; <code>check_in</code> is <code>null</code> only when the user has no friends.</p>
+<p><code>friends_active</code> is ordered most-recently-active first. <code>check_in_candidates</code> is ordered longest-since-contact first, capped at 5 entries (or the friend count, whichever is smaller), and is an empty list only when the user has no friends — the client picks among these candidates rather than the whole friend list, to keep the nudge targeted at genuinely-neglected friends.</p>
 <hr />
 <h2 id="messaging-websocket">Messaging (WebSocket)</h2>
 <p>Connect: <code>ws://&lt;host&gt;:8000/ws/{user_id}</code></p>

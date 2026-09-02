@@ -140,12 +140,22 @@ struct HeroHeader: View {
 // the community/friend-activity emphasis the redesign is built around.
 struct FriendActivityHeroCard: View {
     let feed: FSFriendActivityFeed
+    // Task 20260902-dashboard-friend-randomization: the headline friend used
+    // to always be `feed.friends_active.first` (most-recently-active). It's
+    // now a random pick from that same list, re-rolled by the caller once
+    // per `DashboardViewModel.load()` call and threaded in here rather than
+    // derived as a computed property in this view -- a computed property
+    // read from `body` would re-roll on every unrelated SwiftUI re-render
+    // (e.g. `notes`/`isLoading` changing elsewhere on the dashboard), not
+    // just on an actual refresh. Defaults to nil (falling back to `.first`
+    // below) so call sites/previews/tests that don't thread a pick through
+    // keep the prior deterministic behavior.
+    var primary: FSFriendActivityEntry? = nil
     let onOpenFriend: (FSFriendActivityEntry) -> Void
 
-    // Most-recently-active friend (feed is already ordered by last_active_at
-    // desc, nulls last) — nil `last_active_at` here means *no* friend has any
-    // tracked activity, which is a distinct empty state from "no friends".
-    private var primary: FSFriendActivityEntry? { feed.friends_active.first }
+    // nil `last_active_at` here means *no* friend has any tracked activity,
+    // which is a distinct empty state from "no friends".
+    private var resolvedPrimary: FSFriendActivityEntry? { primary ?? feed.friends_active.first }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -153,9 +163,9 @@ struct FriendActivityHeroCard: View {
                 noFriendsState
             } else {
                 avatarStackRow
-                if let primary, primary.last_active_at != nil {
-                    activityRow(primary)
-                    if let preview = primary.note_preview {
+                if let resolvedPrimary, resolvedPrimary.last_active_at != nil {
+                    activityRow(resolvedPrimary)
+                    if let preview = resolvedPrimary.note_preview {
                         Divider().background(Color.white.opacity(0.08)).padding(.top, 16)
                         Text(preview.text)
                             .font(.system(size: 17))

@@ -54,7 +54,7 @@ final class FriendActivityHeroCardTests: XCTestCase {
             friends_active: [
                 FSFriendActivityEntry(friend_id: "f1", username: "Sarah", last_active_at: nil, note_preview: nil),
             ],
-            check_in: nil
+            check_in_candidates: []
         )
         let sut = FriendActivityHeroCard(feed: feed) { _ in }
 
@@ -75,7 +75,7 @@ final class FriendActivityHeroCardTests: XCTestCase {
                                                         timestamp: isoNow())
                 )
             ],
-            check_in: nil
+            check_in_candidates: []
         )
         let sut = FriendActivityHeroCard(feed: feed) { _ in }
 
@@ -92,7 +92,7 @@ final class FriendActivityHeroCardTests: XCTestCase {
             friends_active: [
                 FSFriendActivityEntry(friend_id: "f2", username: "Marcus", last_active_at: isoNow(), note_preview: nil)
             ],
-            check_in: nil
+            check_in_candidates: []
         )
         let sut = FriendActivityHeroCard(feed: feed) { _ in }
 
@@ -104,7 +104,7 @@ final class FriendActivityHeroCardTests: XCTestCase {
     func test_tappingActivityRow_invokesOnOpenFriend_withPrimaryEntry() throws {
         var opened: FSFriendActivityEntry?
         let entry = FSFriendActivityEntry(friend_id: "f1", username: "Sarah", last_active_at: isoNow(), note_preview: nil)
-        let feed = FSFriendActivityFeed(friends_active: [entry], check_in: nil)
+        let feed = FSFriendActivityFeed(friends_active: [entry], check_in_candidates: [])
         let sut = FriendActivityHeroCard(feed: feed) { opened = $0 }
 
         // activityRow's Button is the only Button in the populated (single
