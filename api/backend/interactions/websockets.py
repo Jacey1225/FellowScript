@@ -168,6 +168,15 @@ class ConnectionManager(DBManager):
                 # Group message: still persisted for other members, but skip
                 # delivery to any recipient in a blocked relationship with the sender.
                 continue
+            if uid == from_user_id:
+                # Group `to_users` includes the sender (see ChatThreadView.swift's
+                # `contact.toUsers`), but the sender already has their own
+                # optimistic local copy of this message — echoing it back over
+                # their own live socket would duplicate it in their thread. Skip
+                # entirely: no WS echo, and no push either (the existing
+                # `uid != from_user_id` guard below already excludes self-push,
+                # so this is a no-op there, just made explicit up front).
+                continue
             ws = self.active_connections.get(uid)
             if ws:
                 # Recipient is online — deliver via WebSocket. A send can fail

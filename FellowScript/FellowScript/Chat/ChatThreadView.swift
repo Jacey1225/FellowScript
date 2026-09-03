@@ -149,14 +149,38 @@ final class ChatThreadViewModel: ObservableObject {
                    let data = text.data(using: .utf8),
                    let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                    let msgText = json["text"] as? String {
-                    let incoming = FSMessage(
-                        id:        (json["id"] as? String) ?? UUID().uuidString,
-                        text:      msgText,
-                        mine:      false,
-                        sender:    (json["from_user"] as? String) ?? "",
-                        timestamp: (json["timestamp"] as? String) ?? ""
-                    )
-                    Task { @MainActor in self.messages.append(incoming) }
+                    let fromUser = (json["from_user"] as? String) ?? ""
+                    // Self-echo guard (group-chat duplication fix, task
+                    // 20260902-group-chat-message-duplication): a group send
+                    // is fanned out to every member in `to_users`, which the
+                    // client populates as the full member list *including
+                    // the sender* (sendMessage() above / contact.toUsers).
+                    // Backend step 1 stops re-delivering that live frame
+                    // back to from_user_id at the source, but this check
+                    // stays as defense-in-depth on the client, matching this
+                    // method's existing standard of not leaning on a single
+                    // fragile assumption (see the reconnect/backoff comments
+                    // above). Without it, the sender's own message would
+                    // render twice: once from the optimistic local echo in
+                    // sendMessage() (labeled "You"), and again here as an
+                    // ordinary inbound message — with a raw user-id sender
+                    // label, since this path has no "is this me" lookup.
+                    // This is an explicit, visible skip (logged, not a bare
+                    // silent drop) of a known, expected case — distinct from
+                    // the unparseable-frame case below, which is a genuine
+                    // "couldn't understand this frame" gap.
+                    if !fromUser.isEmpty, fromUser == self.wsUserId {
+                        print("[ChatThreadViewModel] dropping self-echoed inbound frame from_user=\(fromUser) — already shown via optimistic local append")
+                    } else {
+                        let incoming = FSMessage(
+                            id:        (json["id"] as? String) ?? UUID().uuidString,
+                            text:      msgText,
+                            mine:      false,
+                            sender:    fromUser,
+                            timestamp: (json["timestamp"] as? String) ?? ""
+                        )
+                        Task { @MainActor in self.messages.append(incoming) }
+                    }
                 }
                 // Keep listening regardless of whether this particular frame
                 // parsed (e.g. a non-text control frame) — previously an
