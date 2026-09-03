@@ -155,10 +155,10 @@ final class AccountViewModel: ObservableObject {
         if let fresh = try? await service.fetchUsage(userId: uid) { usage = fresh }
     }
 
-    func createEvent(agentId: String, prompt: String, timestamps: [String?], groupId: String? = nil) async {
+    func createEvent(agentId: String, prompt: String, timestamps: [String?], groupId: String? = nil, notesPublic: Bool = false) async {
         guard let uid = profileData?.user_id else { return }
         let hb = FSHeartbeat(id: UUID().uuidString, agent_id: agentId, user_id: uid,
-                             timestamps: timestamps, prompt: prompt, group_id: groupId)
+                             timestamps: timestamps, prompt: prompt, group_id: groupId, notes_public: notesPublic)
         do {
             try await service.addHeartbeat(userId: uid, agentId: agentId, heartbeat: hb)
             events.append(hb)
@@ -265,10 +265,10 @@ final class AccountViewModel: ObservableObject {
         }
     }
 
-    func updateEvent(_ event: FSHeartbeat, agentId: String, prompt: String, timestamps: [String?], groupId: String? = nil) async {
+    func updateEvent(_ event: FSHeartbeat, agentId: String, prompt: String, timestamps: [String?], groupId: String? = nil, notesPublic: Bool = false) async {
         guard let uid = profileData?.user_id else { return }
         let updated = FSHeartbeat(id: event.id, agent_id: agentId, user_id: uid,
-                                  timestamps: timestamps, prompt: prompt, group_id: groupId)
+                                  timestamps: timestamps, prompt: prompt, group_id: groupId, notes_public: notesPublic)
         do {
             try await service.updateHeartbeat(userId: uid, heartbeatId: event.id, heartbeat: updated)
             if let i = events.firstIndex(where: { $0.id == event.id }) {
@@ -721,12 +721,12 @@ struct AccountView: View {
                     Task { await vm.createAgent(role: role) }
                 }
             case .newEvent:
-                EventSetupSheet(agents: vm.agents, groups: vm.groups) { agentId, prompt, timestamps, groupId in
-                    Task { await vm.createEvent(agentId: agentId, prompt: prompt, timestamps: timestamps, groupId: groupId) }
+                EventSetupSheet(agents: vm.agents, groups: vm.groups) { agentId, prompt, timestamps, groupId, notesPublic in
+                    Task { await vm.createEvent(agentId: agentId, prompt: prompt, timestamps: timestamps, groupId: groupId, notesPublic: notesPublic) }
                 }
             case .editEvent(let event):
-                EventSetupSheet(agents: vm.agents, groups: vm.groups, existing: event) { agentId, prompt, timestamps, groupId in
-                    Task { await vm.updateEvent(event, agentId: agentId, prompt: prompt, timestamps: timestamps, groupId: groupId) }
+                EventSetupSheet(agents: vm.agents, groups: vm.groups, existing: event) { agentId, prompt, timestamps, groupId, notesPublic in
+                    Task { await vm.updateEvent(event, agentId: agentId, prompt: prompt, timestamps: timestamps, groupId: groupId, notesPublic: notesPublic) }
                 }
             case .timezonePicker:
                 TimeZonePickerSheet(selected: timezone) { picked in

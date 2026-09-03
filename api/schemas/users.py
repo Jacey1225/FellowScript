@@ -72,7 +72,17 @@ class Note(BaseModel):
     title: str = Field(default_factory=str)
     user: str = Field(default_factory=str)
     text: str = Field(default_factory=str)
-    public: bool = Field(default_factory=bool)
+    public: bool = Field(
+        default_factory=bool,
+        description="Does NOT gate visibility -- a note's visibility is "
+                     "derived purely from group_id (empty = owner-only, set "
+                     "= visible to that group's members; see "
+                     "_can_view_note). This flag instead gates whether a "
+                     "non-owner member of the note's group may EDIT it "
+                     "(default False = owner-only edit, matching the "
+                     "column's existing deny-by-default). Meaningless for "
+                     "notes with no group_id, since there's no one else to "
+                     "grant edit access to.")
     group_id: str = Field(default_factory=str)
     verses: list = Field(
         default_factory=list,

@@ -92,6 +92,36 @@ describe('useNotes.loadNotes — fails safe on a malformed/missing envelope (def
   });
 });
 
+describe('useNotes.postReply — public defaults to false (edit-permission deny-by-default)', () => {
+  // Task 20260903-notes-public-repurpose, clarification answer 7: `public`
+  // now means "group members may edit," not "visible" -- a reply already
+  // inherits group_id visibility, so defaulting this open is no longer
+  // justified. Proves the actual request body sent to POST /notes/reply/...
+  // carries public: false, not the old hardcoded true.
+  test('the POST body sent for a new reply has public: false', async () => {
+    // First fetch: selectGroup's loadGroupNotes call.
+    global.fetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ notes: {}, next_cursor_created_at: null, next_cursor_id: null, has_more: false }),
+    });
+    // Second fetch: the postReply call itself.
+    global.fetch.mockResolvedValueOnce({
+      ok: true,
+      status: 201,
+      json: async () => ({ id: 'reply-1' }),
+    });
+
+    const { result } = renderHook(() => useNotes({ user: USER }));
+    await act(async () => { await result.current.selectGroup('group-abc'); });
+    await act(async () => { await result.current.postReply('note-1', 'a reply body'); });
+
+    const replyCall = global.fetch.mock.calls.find(([url]) => url.includes('/notes/reply/'));
+    expect(replyCall).toBeTruthy();
+    const sentBody = JSON.parse(replyCall[1].body);
+    expect(sentBody.public).toBe(false);
+  });
+});
+
 describe('useNotes.loadGroupNotes — unwraps the keyset-paginated envelope', () => {
   test('groupNotes becomes payload.notes (username -> {note_id: note}), not the whole envelope', async () => {
     global.fetch.mockResolvedValueOnce({

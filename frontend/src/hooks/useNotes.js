@@ -188,7 +188,11 @@ export function useNotes({ user, curBook, curChapter, vsValue }) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          user: user.user_id, text, title: '', public: true,
+          // Deny-by-default (Security Posture Q2): `public` now controls
+          // group-edit permission, not visibility -- every reply is already
+          // visible to the whole group via its inherited group_id, so there
+          // is no reason to default this open.
+          user: user.user_id, text, title: '', public: false,
           group_id: currentGroupId, replies: [], verses: [[], []], is_reply: true,
         }),
       });

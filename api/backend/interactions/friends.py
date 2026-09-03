@@ -177,10 +177,25 @@ class FriendsManager(DBManager):
 
     def get_friend_activity(self, limit: int = 20) -> dict:
         """Friend-activity read surface for the dashboard's Friend Activity
-        hero card: each friend's most recent PUBLIC personal note (preview)
-        plus their last-activity timestamp, ordered most-recently-active
-        first, and a bounded "check in" nudge candidate pool -- the friends
-        the acting user has gone longest without directly messaging.
+        hero card: each friend's most recent note preview drawn from a
+        group note the *viewer* (`self.user_id`) can also see -- plus their
+        last-activity timestamp, ordered most-recently-active first, and a
+        bounded "check in" nudge candidate pool -- the friends the acting
+        user has gone longest without directly messaging.
+
+        Note-preview data source (post `notes.public` repurposing, task
+        20260903-notes-public-repurpose): `notes.public` no longer means
+        visibility, and a friend's personal notes (`group_id IS NULL`) are
+        now unconditionally private to their owner, so they are no longer a
+        valid preview source at all -- a friendship alone never implies
+        note visibility. Instead this pulls the friend's most recent
+        *group* note (`group_id IS NOT NULL`, `is_reply = false`) whose
+        group the viewer also currently belongs to (shared membership,
+        checked against `groups.users`) -- i.e. only a note the viewer
+        could already see for themselves via the group notes feed, never a
+        friend's private content. A friend with no such shared-group note
+        (including one with only personal notes, or group notes in groups
+        the viewer isn't in) simply gets `note_preview: None`.
 
         The check-in pool is intentionally bounded (`CHECK_IN_POOL_SIZE`,
         capped at the user's actual friend count via `LIMIT`) rather than
@@ -196,16 +211,11 @@ class FriendsManager(DBManager):
         `user_friends` already).
 
         Highlights are deliberately excluded from content previews: unlike
-        notes (`public` boolean), highlights have no privacy flag today, so
-        there is no signal a given highlight is meant to be friend-visible.
-        A highlight still counts toward `last_activity_at` (via
-        ActivityManager.record_activity) -- it just never surfaces its
-        verse/color content to a friend. Note previews are further limited
-        to a friend's personal notes (`is_reply = false AND group_id IS
-        NULL`) so a group-shared or reply note's content -- which may be
-        visible to the friend only because of separate group membership --
-        never leaks to someone who is merely a friend and not a fellow
-        group member.
+        notes, highlights have no group/visibility scoping today, so there
+        is no signal a given highlight is meant to be friend- or
+        group-visible. A highlight still counts toward `last_activity_at`
+        (via ActivityManager.record_activity) -- it just never surfaces its
+        verse/color content to a friend.
 
         Args:
             limit: Max number of friends to return in `friends_active`
@@ -235,8 +245,12 @@ class FriendsManager(DBManager):
             "LEFT JOIN user_activity ua ON ua.user_id = uf.friend_id "
             "LEFT JOIN LATERAL ("
             "  SELECT _id, title, text, timestamp FROM notes "
-            "  WHERE user_id = uf.friend_id AND public = TRUE "
-            "    AND is_reply = FALSE AND group_id IS NULL "
+            "  WHERE user_id = uf.friend_id AND is_reply = FALSE "
+            "    AND group_id IS NOT NULL "
+            "    AND EXISTS ("
+            "      SELECT 1 FROM groups g "
+            "      WHERE g._id = notes.group_id AND uf.user_id::text = ANY(g.users)"
+            "    ) "
             "  ORDER BY timestamp DESC LIMIT 1"
             ") n ON TRUE "
             "WHERE uf.user_id = %s "

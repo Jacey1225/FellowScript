@@ -29,6 +29,12 @@ struct NoteEditorView: View {
     @EnvironmentObject var appState: AppState
 
     @State private var titleVal    = ""
+    // Task 20260903-notes-public-repurpose: repurposed from a visibility
+    // flag to a group-edit-permission flag -- whether other members of this
+    // note's group may edit it, not whether it's visible to them (visibility
+    // is now group_id-only). Only meaningful, and only surfaced in the UI,
+    // once the note actually has a group (see isGroupNote/editPermissionBadge
+    // below).
     @State private var isPublic    = false
     @State private var verseList:  [VerseRef] = []
     @State private var showVersePicker = false
@@ -95,7 +101,17 @@ struct NoteEditorView: View {
                         Spacer()
 
                         if !isReadOnly {
-                            publicBadge
+                            // Group_id attachment is decoupled from this
+                            // toggle (mirrors the web NoteEditor's
+                            // handleSave -- see below): a note opened in a
+                            // group context always gets tagged into that
+                            // group regardless of this flag, so the control
+                            // is hidden (not shown disabled) for a note with
+                            // no group, where it would have no one else to
+                            // grant edit access to.
+                            if isGroupNote {
+                                editPermissionBadge
+                            }
                         } else {
                             doneChip
                         }
@@ -327,12 +343,22 @@ struct NoteEditorView: View {
         .accessibilityLabel("Cancel and discard changes")
     }
 
-    private var publicBadge: some View {
+    // Whether this note has (or, for a new note, will have -- see handleSave)
+    // a group attached. Drives whether the edit-permission control below is
+    // shown at all: a personal note has no other group member who could
+    // edit it, regardless of `isPublic`.
+    private var isGroupNote: Bool { !(note?.group_id ?? groupId).isEmpty }
+
+    // Relabeled from the old visibility "Public"/"Private" badge (task
+    // 20260903-notes-public-repurpose): `isPublic` now means "other group
+    // members may edit this note," not "visible to them" -- visibility is
+    // group_id-only. Mirrors the web NoteEditor's "Allow group to edit" Switch.
+    private var editPermissionBadge: some View {
         Button(action: { isPublic.toggle() }) {
             HStack(spacing: 6) {
-                Image(systemName: isPublic ? "globe" : "lock")
+                Image(systemName: isPublic ? "pencil" : "lock")
                     .font(.system(size: 12, weight: .semibold))
-                Text(isPublic ? "Public" : "Private")
+                Text(isPublic ? "Group Can Edit" : "Owner Only")
                     .font(.inter(Theme.fontXS))
             }
             .foregroundColor(Theme.textGoldMuted)
@@ -341,7 +367,9 @@ struct NoteEditorView: View {
             .background(Capsule().fill(Theme.parchment.opacity(0.06)))
             .overlay(Capsule().stroke(Theme.parchment.opacity(0.12), lineWidth: 1))
         }
-        .accessibilityLabel(isPublic ? "This note is public. Tap to make it private." : "This note is private. Tap to make it public.")
+        .accessibilityLabel(isPublic
+            ? "Other members of this group can edit this note. Tap to make it owner-only."
+            : "Only you can edit this note. Tap to allow other group members to edit it.")
     }
 
     private var doneChip: some View {
@@ -443,6 +471,12 @@ struct NoteEditorView: View {
             title:     titleVal.isEmpty ? "Untitled" : titleVal,
             text:      html,
             public:    isPublic,
+            // Already decoupled from `isPublic` (task 20260903-notes-public-
+            // repurpose): group attachment is its own decision -- a note
+            // opened in a group context (`groupId`) always gets tagged into
+            // that group, or keeps its own existing group_id when editing,
+            // regardless of the edit-permission toggle above. Mirrors the
+            // web NoteEditor's equivalent handleSave decoupling.
             group_id:  note?.group_id ?? groupId,
             is_reply:  note?.is_reply ?? false,
             timestamp: ISO8601DateFormatter().string(from: Date()),

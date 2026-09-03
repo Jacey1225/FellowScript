@@ -44,9 +44,10 @@ def _record_activity(user_id: str, activity_type: str) -> None:
 
 def _can_view_note(note_data: dict, user_id: str) -> bool:
     """True if user_id may view (and therefore reply to) this note: its
-    owner, a public note, or a note shared in a group the user belongs to."""
-    if note_data.get("public"):
-        return True
+    owner, or a note shared in a group the user belongs to. Visibility is
+    now derived purely from group_id -- ``public`` no longer gates
+    visibility at all; it instead gates whether a non-owner group member
+    may *edit* the note (see update_note)."""
     if str(note_data.get("user_id") or "") == user_id:
         return True
     group_id = note_data.get("group_id")
@@ -393,15 +394,51 @@ async def get_notes_count(user_id: str, _: str = Depends(require_match("user_id"
 
 @notes_router.put("/{user_id}")
 async def update_note(user_id: str, note_id: str, note_dict: dict, _: str = Depends(require_match("user_id"))) -> None:
+    """Update an existing note.
+
+    The owner may always edit their own note. A non-owner may edit an
+    existing note iff it currently has a group_id, the caller is a member
+    of that group, and the note's stored `public` value is True -- `public`
+    no longer means "visible to others" (see _can_view_note); it means
+    "group members other than the owner may edit this note". Deny-by-default:
+    any lookup/membership failure or ambiguity denies the edit rather than
+    allowing it.
+    """
     db = DBManager()
     try:
         existing = db.lookup("notes", {"_id": note_id})
         if not existing:
             raise HTTPException(status_code=404, detail="Note not found")
         _, note_data = list(existing.items())[0]
-        if str(note_data.get("user_id")) != user_id:
-            raise HTTPException(status_code=403, detail="Not authorized")
+        is_owner = str(note_data.get("user_id") or "") == user_id
+        if not is_owner:
+            # Non-owner group-edit branch (new authorization surface): only
+            # reachable when the note already has a group_id, the caller is
+            # a current member of THAT group (never a client-supplied one --
+            # see the retargeting guard just below), and the note's owner
+            # opted it into group-editing via public == True. Any failure
+            # here (no group_id, not a member, public not True, or a
+            # GroupsManager lookup miss) falls through to the 403 below --
+            # fail closed, not open.
+            existing_group_id = note_data.get("group_id")
+            allowed = False
+            if existing_group_id and note_data.get("public"):
+                gm = GroupsManager(user_id, existing_group_id)
+                try:
+                    allowed = gm.is_member()
+                finally:
+                    gm.close()
+            if not allowed:
+                raise HTTPException(status_code=403, detail="Not authorized")
         note = Note(**note_dict)
+        if not is_owner and (note.group_id or None) != note_data.get("group_id"):
+            # IDOR guard: a non-owner's edit was only authorized by their
+            # membership in the note's CURRENT group. Without this check the
+            # same request could smuggle a different (or empty) group_id
+            # through the payload, either stripping the note out of the
+            # group whose membership authorized the edit, or retargeting it
+            # at a different group the caller may not belong to.
+            raise HTTPException(status_code=403, detail="Not authorized")
         # Same IDOR guard as create_note -- re-targeting an existing owned
         # note at an arbitrary group_id must also require membership.
         if note.group_id:

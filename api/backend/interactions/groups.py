@@ -121,8 +121,8 @@ class GroupsManager(DBManager):
         cursor_created_at: str | None = None,
         cursor_id: str | None = None,
     ) -> dict:
-        """Retrieve one page of public, non-reply notes belonging to the
-        group, newest first, using keyset pagination anchored on
+        """Retrieve one page of non-reply notes belonging to the group,
+        newest first, using keyset pagination anchored on
         (created_at, _id) rather than OFFSET -- so a note created or deleted
         between page loads can't shift another row's position and cause
         drift, duplicates, or skipped notes. Blocked-user exclusion

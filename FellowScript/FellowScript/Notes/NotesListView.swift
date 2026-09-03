@@ -27,7 +27,6 @@ final class NotesViewModel: ObservableObject {
     @Published var currentGroupId:    String?             = nil   // nil = Personal
     @Published var activeTab:         NoteTab             = .notes
     @Published var sortOrder:         SortOrder           = .newest
-    @Published var visibilityFilter:  VisibilityFilter    = .all
     @Published var isLoading          = true
     // True while a scroll-triggered "next page" fetch for the current
     // segment (Personal or a group) is in flight -- guards against firing a
@@ -56,34 +55,26 @@ final class NotesViewModel: ObservableObject {
         case oldest = "Oldest First"
     }
 
-    enum VisibilityFilter: String, CaseIterable {
-        case all     = "All Notes"
-        case privateOnly = "Private Only"
-        case publicOnly  = "Public Only"
-    }
-
     var isFiltered: Bool {
-        sortOrder != .newest || visibilityFilter != .all
+        sortOrder != .newest
     }
 
     func resetFilters() {
-        sortOrder        = .newest
-        visibilityFilter = .all
+        sortOrder = .newest
     }
 
-    // Notes filtered and sorted per active settings
+    // Notes filtered and sorted per active settings. Display is group_id-only
+    // (task 20260903-notes-public-repurpose): `public` no longer has any say
+    // in which notes are shown -- only in whether a non-owner group member
+    // may edit one, so the old VisibilityFilter (Private/Public Only) menu
+    // and its filter branch here were removed entirely rather than repurposed.
     var filteredNotes: [(String, FSNote)] {
-        var result = notes.filter { _, note in
+        let result = notes.filter { _, note in
             if let gid = currentGroupId {
                 return note.group_id == gid
             } else {
                 return note.group_id.isEmpty
             }
-        }
-        switch visibilityFilter {
-        case .all:         break
-        case .privateOnly: result = result.filter { !$0.value.public }
-        case .publicOnly:  result = result.filter {  $0.value.public }
         }
         return result.sorted {
             sortOrder == .newest
@@ -413,13 +404,6 @@ struct NotesListView: View {
                         }
                     }
                 }
-                Section("Visibility") {
-                    ForEach(NotesViewModel.VisibilityFilter.allCases, id: \.self) { filter in
-                        Button(action: { vm.visibilityFilter = filter }) {
-                            Label(filter.rawValue, systemImage: vm.visibilityFilter == filter ? "checkmark" : "eye")
-                        }
-                    }
-                }
                 if vm.isFiltered {
                     Divider()
                     Button(role: .destructive, action: { vm.resetFilters() }) {
@@ -546,7 +530,7 @@ struct NotesListView: View {
                                 Task { await vm.loadMoreIfNeeded(userId: uid) }
                             }
                             .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                                if canModify(note) {
+                                if canDelete(note) {
                                     Button(role: .destructive) {
                                         let uid = appState.currentUser?.user_id ?? ""
                                         Task { await vm.deleteNote(id: id, userId: uid, isOwnNote: true) }
@@ -556,13 +540,15 @@ struct NotesListView: View {
                                 }
                             }
                             .contextMenu {
-                                if canModify(note) {
+                                if canEdit(note) {
                                     Button("Edit", systemImage: "pencil") {
                                         editingNote    = note
                                         editingId      = id
                                         editingGroupId = note.group_id
                                         showEditor     = true
                                     }
+                                }
+                                if canDelete(note) {
                                     Button("Delete", systemImage: "trash", role: .destructive) {
                                         let uid = appState.currentUser?.user_id ?? ""
                                         Task { await vm.deleteNote(id: id, userId: uid, isOwnNote: true) }
@@ -730,18 +716,30 @@ struct NotesListView: View {
         showEditor     = true
     }
 
-    // Gates the swipe/context-menu Edit and Delete affordances (task
-    // 20260829-notes-edit-author-gate): a group note is only editable/
-    // deletable by its author — `filteredNotes` returns every group member's
-    // notes filtered only by group_id, with no authorship filter, so without
-    // this check every member saw Edit/Delete on every note in the segment
-    // even though the backend was always going to reject a non-author's
-    // write with 403. Personal notes (no group_id) need no check: they're
-    // always self-authored already. Mirrors NoteRow.showsAuthorChip's
-    // deny-by-default fallback: an empty/undecoded `note.username` for a
-    // group note hides the affordance rather than assuming authorship.
-    private func canModify(_ note: FSNote) -> Bool {
+    // Gates the swipe/context-menu Delete (and, via canEdit below, the
+    // context-menu Edit) affordances (task 20260829-notes-edit-author-gate,
+    // extended by 20260903-notes-public-repurpose step 5): a group note is
+    // always deletable/editable by its author — `filteredNotes` returns
+    // every group member's notes filtered only by group_id, with no
+    // authorship filter, so without this check every member saw Edit/Delete
+    // on every note in the segment even though the backend was always going
+    // to reject a non-author's write with 403. Personal notes (no group_id)
+    // need no check: they're always self-authored already. Mirrors
+    // NoteRow.showsAuthorChip's deny-by-default fallback: an empty/undecoded
+    // `note.username` for a group note hides the affordance rather than
+    // assuming authorship.
+    private func canDelete(_ note: FSNote) -> Bool {
         Self.isAuthor(of: note, currentUsername: appState.currentUser?.username)
+    }
+
+    // Edit is a strictly wider gate than Delete (task
+    // 20260903-notes-public-repurpose): a non-author group member may also
+    // edit (never delete) a group note whose author left `public`
+    // (edit-permission) on -- the server enforces the identical split
+    // between update_note's new non-owner branch and delete_note's
+    // still-owner-only gate; this only drives which affordance(s) appear.
+    private func canEdit(_ note: FSNote) -> Bool {
+        canDelete(note) || (!note.group_id.isEmpty && note.public)
     }
 
     // Testability seam (task 20260829-notes-edit-author-gate, testing gate):
@@ -751,7 +749,7 @@ struct NotesListView: View {
     // ViewInspector 0.10.3 (this project's checked-in version) has no
     // support for inspecting `.swipeActions`/`.contextMenu` conditionals, so
     // that route (used elsewhere in this file for `closeAction`/
-    // `editAction`) isn't available here. No behavior change: `canModify`
+    // `editAction`) isn't available here. No behavior change: `canDelete`
     // above still reads `appState.currentUser?.username` at both real call
     // sites (swipeActions Delete, contextMenu Edit/Delete); this only
     // exposes the comparison itself for testing. Deny-by-default: an empty/
@@ -774,6 +772,15 @@ struct NoteRow: View {
     // for a group note whose username failed to decode/capture (an honest
     // "no chip" is a harmless diagnostic signal, not a bug to paper over).
     private var showsAuthorChip: Bool { !note.group_id.isEmpty && !note.username.isEmpty }
+
+    // Edit-permission indicator (task 20260903-notes-public-repurpose,
+    // step 5): `note.public` no longer means "visible" -- it means "other
+    // group members may edit this note" -- so, like the web NoteCard badge,
+    // it's only meaningful (and only shown) on a group note. A Personal note
+    // has no other group member who could edit it regardless of this flag,
+    // so no indicator renders there at all (unlike the old globe/lock
+    // visibility cue, which intentionally applied to both segments).
+    private var showsEditableIndicator: Bool { !note.group_id.isEmpty && note.public }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {
@@ -829,13 +836,17 @@ struct NoteRow: View {
                 Text(note.formattedTimestamp)
                     .font(.system(size: 11))
                     .foregroundColor(Theme.textMuted)
-                Image(systemName: note.public ? "globe" : "lock.fill")
-                    .font(.system(size: 9))
-                    .foregroundColor(note.public ? Theme.goldLight.opacity(0.8) : Theme.textMuted)
-                    .accessibilityHidden(true)
+                if showsEditableIndicator {
+                    Image(systemName: "pencil.circle.fill")
+                        .font(.system(size: 9))
+                        .foregroundColor(Theme.goldLight.opacity(0.8))
+                        .accessibilityHidden(true)
+                }
             }
             .accessibilityElement(children: .combine)
-            .accessibilityLabel("\(note.formattedTimestamp), \(note.public ? "public" : "private")")
+            .accessibilityLabel(showsEditableIndicator
+                ? "\(note.formattedTimestamp), editable by group"
+                : note.formattedTimestamp)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 16)
@@ -943,17 +954,22 @@ struct NoteDetailView: View {
     internal func closeAction() { dismiss() }
     internal func editAction()  { showEditor = true }
 
-    // Gates the toolbar Edit pill (task 20260829-notes-edit-author-gate):
-    // this view previously showed Edit unconditionally, despite already
-    // having both `note.username` (the author, used by NoteRow's
-    // showsAuthorChip) and `username` (the viewer, passed in from the call
-    // site) available to compare. A group note is only editable by its
-    // author; a personal note (no group_id) needs no check — always
-    // self-authored already. Deny-by-default: an empty/undecoded
-    // `note.username` or `username` for a group note hides Edit rather than
-    // assuming authorship, mirroring NoteRow.showsAuthorChip's same fallback.
+    // Gates the toolbar Edit pill (task 20260829-notes-edit-author-gate,
+    // extended by 20260903-notes-public-repurpose step 5): this view
+    // previously showed Edit unconditionally, despite already having both
+    // `note.username` (the author, used by NoteRow's showsAuthorChip) and
+    // `username` (the viewer, passed in from the call site) available to
+    // compare. A group note is editable by its author, OR by any group
+    // member (mirroring the server's update_note non-owner branch) when the
+    // note's own `public` flag grants group-edit permission; a personal note
+    // (no group_id) needs no check — always self-authored already.
+    // Deny-by-default: an empty/undecoded `note.username` or `username` for
+    // a group note hides Edit rather than assuming authorship, mirroring
+    // NoteRow.showsAuthorChip's same fallback -- the public-flag branch below
+    // is purely additive on top of that, never a way around it.
     internal var canEdit: Bool {
         guard !note.group_id.isEmpty else { return true }
+        if note.public { return true }
         guard !note.username.isEmpty, !username.isEmpty else { return false }
         return note.username == username
     }
@@ -1450,11 +1466,18 @@ struct NoteDetailView: View {
 }
 
 // ── Reply composer sheet ──────────────────────────────────────────────────────
-// Minimal Form-based sheet mirroring ReportUserSheet.swift's existing idiom
-// (Cancel leading, primary action trailing) rather than reusing the full
-// rich-text NoteEditorView, which is scoped to notes, not replies.
-// Group-notes-only gating (NoteDetailView.isGroupNote / postReplyDraft) all
-// lives in the caller — this sheet is presentation-agnostic.
+// Visual redesign (task 20260903-notes-reply-submenu-restyle): migrated off
+// the plain Form/Section layout onto the same warm-bloom-ground +
+// widgetCard() + PillButton/ghost-chip-Cancel recipe already established for
+// AddFriendSheet (Chat/ChatRootView.swift) and EventSetupSheet's Details step
+// (Account/EventSetupSheet.swift) — this was the one submenu sheet the two
+// prior redesign tasks (20260902-submenu-visual-redesign,
+// 20260902-submenu-followup-polish) missed. Single-field shape mirrors
+// AddFriendSheet directly (caption + one field, Cancel leading / primary
+// action trailing) rather than reusing the full rich-text NoteEditorView,
+// which is scoped to notes, not replies. Group-notes-only gating
+// (NoteDetailView.isGroupNote / postReplyDraft) all lives in the caller —
+// this sheet is presentation-agnostic.
 private struct ReplyComposerSheet: View {
     /// Returns nil on success (dismisses), or an error message shown inline.
     let onPost: (String) async -> String?
@@ -1470,39 +1493,58 @@ private struct ReplyComposerSheet: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section("Reply") {
-                    TextEditor(text: $text)
-                        .frame(minHeight: 120)
-                        .font(.interScaled(Theme.fontBody))
-                        .foregroundColor(Theme.parchment)
-                        .scrollContentBackground(.hidden)
-                }
-                .listRowBackground(Theme.cardBg)
+            ScrollView {
+                VStack(alignment: .leading, spacing: Theme.spacingLG) {
+                    VStack(alignment: .leading, spacing: Theme.spacingSM) {
+                        Text("REPLY")
+                            .font(.inter(Theme.fontXXS)).tracking(4).foregroundColor(Theme.textGoldMuted)
+                        TextEditor(text: $text)
+                            .frame(minHeight: 120)
+                            .font(.interScaled(Theme.fontBody))
+                            .foregroundColor(Theme.parchment)
+                            .scrollContentBackground(.hidden)
+                            .accessibilityLabel("Reply text")
+                    }
+                    .widgetCard()
 
-                if let errorMessage {
-                    Text(errorMessage)
-                        .font(.interScaled(Theme.fontSM))
-                        .foregroundColor(Theme.error)
-                        .listRowBackground(Color.clear)
+                    if let errorMessage {
+                        Text(errorMessage)
+                            .font(.interScaled(Theme.fontSM))
+                            .foregroundColor(Theme.error)
+                    }
                 }
+                .padding(Theme.spacingLG)
             }
-            .scrollContentBackground(.hidden)
-            .background(Theme.bgPage)
+            .warmBloomBackground()
             // Shared keyboard-dismiss convention (task
             // 20260831-interaction-polish-conventions) — this sheet's
             // TextEditor is the reply body.
             .dismissesKeyboardOnScrollAndTap()
             .navigationTitle("Add a Reply")
             .navigationBarTitleDisplayMode(.inline)
+            // Follow-up polish recipe (ChatRootView.swift's AddFriendSheet /
+            // EventSetupSheet's Details step): ghost-chip Cancel leading,
+            // gold PillButton primary action trailing, a `.principal` title
+            // item so "Add a Reply" centers independent of the asymmetric
+            // Cancel/Post widths (the exact shape that caused visible
+            // off-centering last time), and `.suppressAutomaticGlassChrome()`
+            // on both custom items so iOS 26's automatic Liquid Glass toolbar
+            // chrome doesn't double up against each item's own capsule/pill
+            // chrome.
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cancel") { dismiss() }
-                        .foregroundColor(Theme.textGoldMuted)
+                    Button(action: { dismiss() }) { cancelGhostChip }
+                        .buttonStyle(.plain)
                         .disabled(isPosting)
                 }
+                .suppressAutomaticGlassChrome()
+                ToolbarItem(placement: .principal) {
+                    Text("Add a Reply")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundColor(Theme.parchment)
+                }
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(isPosting ? "Posting…" : "Post") {
+                    PillButton(title: isPosting ? "Posting…" : "Post") {
                         Task {
                             isPosting = true
                             errorMessage = await onPost(text)
@@ -1512,9 +1554,25 @@ private struct ReplyComposerSheet: View {
                     }
                     .disabled(!canPost)
                 }
+                .suppressAutomaticGlassChrome()
             }
         }
         .preferredColorScheme(.dark)
+    }
+
+    // Ghost-chip Cancel label (see ChatRootView.swift's sheetGhostCancelLabel
+    // for the shared recipe/rationale comment -- bespoke per-sheet copy here
+    // rather than a new cross-file shared component, matching
+    // EventSetupSheet's cancelGhostChip precedent).
+    private var cancelGhostChip: some View {
+        Text("Cancel")
+            .font(.inter(Theme.fontSM))
+            .foregroundColor(Theme.textSecondary)
+            .fixedSize()
+            .padding(.horizontal, 16)
+            .frame(height: 36)
+            .background(Capsule().fill(Theme.parchment.opacity(0.06)))
+            .overlay(Capsule().stroke(Theme.parchment.opacity(0.12), lineWidth: 1))
     }
 }
 

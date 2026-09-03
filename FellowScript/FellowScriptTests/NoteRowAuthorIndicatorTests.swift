@@ -128,48 +128,60 @@ final class NoteRowAuthorIndicatorTests: XCTestCase {
                           "Personal notes must still render their title/content normally -- no regression from the author-chip changes")
     }
 
-    // MARK: 4 — visibility cue: correct SF Symbol + combined accessibility label
+    // MARK: 4 — edit-permission cue (task 20260903-notes-public-repurpose,
+    // step 5): the old globe/lock VISIBILITY cue (shown on both segments) was
+    // replaced by a group-notes-only pencil.circle.fill EDIT-PERMISSION cue,
+    // since `note.public` no longer means "visible" -- it means "other group
+    // members may edit this note," which is meaningless for a Personal note
+    // (no other member exists who could edit it).
 
-    func test_publicNote_showsGlobeIcon() throws {
+    func test_groupNote_public_showsPencilEditableIcon() throws {
         let sut = NoteRow(note: groupNote(isPublic: true))
         let image = try sut.inspect().find(ViewType.Image.self)
-        XCTAssertEqual(try image.actualImage().name(), "globe",
-                        "a public note must show the globe SF Symbol next to its timestamp")
+        XCTAssertEqual(try image.actualImage().name(), "pencil.circle.fill",
+                        "a group note with public == true must show the pencil.circle.fill edit-permission icon")
     }
 
-    func test_privateNote_showsLockIcon() throws {
+    func test_groupNote_notPublic_showsNoEditableIconAtAll() throws {
+        // Unlike the old lock.fill (a visibility cue always shown for a
+        // non-public note), a group note that ISN'T group-editable shows no
+        // icon at all next to the timestamp -- there's no "not editable"
+        // glyph, only an opt-in "editable" one.
         let sut = NoteRow(note: groupNote(isPublic: false))
-        let image = try sut.inspect().find(ViewType.Image.self)
-        XCTAssertEqual(try image.actualImage().name(), "lock.fill",
-                        "a private note must show the lock.fill SF Symbol next to its timestamp")
+        XCTAssertThrowsError(try sut.inspect().find(ViewType.Image.self),
+                              "a non-public group note must render no edit-permission icon") { _ in }
     }
 
-    func test_publicNote_timestampRow_accessibilityLabel_combinesTimestampAndPublicState() throws {
+    func test_groupNote_public_timestampRow_accessibilityLabel_combinesTimestampAndEditableState() throws {
         let note = groupNote(isPublic: true)
         let sut = NoteRow(note: note)
         let row = try sut.inspect().find(ViewType.HStack.self, where: { h in
-            (try? h.accessibilityLabel().string())?.hasSuffix("public") ?? false
+            (try? h.accessibilityLabel().string())?.hasSuffix("editable by group") ?? false
         })
-        XCTAssertEqual(try row.accessibilityLabel().string(), "\(note.formattedTimestamp), public",
-                        "VoiceOver must read one coherent phrase for the timestamp+visibility icon, not two fragments")
+        XCTAssertEqual(try row.accessibilityLabel().string(), "\(note.formattedTimestamp), editable by group",
+                        "VoiceOver must read one coherent phrase for the timestamp+edit-permission icon, not two fragments")
     }
 
-    func test_privateNote_timestampRow_accessibilityLabel_combinesTimestampAndPrivateState() throws {
+    func test_groupNote_notPublic_timestampRow_accessibilityLabel_isJustTheTimestamp() throws {
+        // No icon means no extra wording either -- the label collapses back
+        // to the plain timestamp (no "private"/"not editable" phrasing, since
+        // deny-by-default here is silence, not a negative-state announcement).
         let note = groupNote(isPublic: false)
         let sut = NoteRow(note: note)
         let row = try sut.inspect().find(ViewType.HStack.self, where: { h in
-            (try? h.accessibilityLabel().string())?.hasSuffix("private") ?? false
+            (try? h.accessibilityLabel().string()) == note.formattedTimestamp
         })
-        XCTAssertEqual(try row.accessibilityLabel().string(), "\(note.formattedTimestamp), private")
+        XCTAssertEqual(try row.accessibilityLabel().string(), note.formattedTimestamp)
     }
 
-    func test_personalSegment_visibilityIcon_stillAppliesToo() throws {
-        // Per design-notes.md: "visibility icon still applies to Personal
-        // notes too (no reason to hide it there -- VisibilityFilter applies
-        // across both segments)" -- this is a strict improvement over the old
-        // behavior, where only `public` notes had any visible mark at all.
+    func test_personalNote_neverShowsEditableIndicatorIcon_evenWhenPublicIsTrue() throws {
+        // Personal notes have no other group member who could ever be
+        // granted edit access, so the indicator never renders there
+        // regardless of the (otherwise meaningless) stored public value --
+        // a deliberate departure from the old globe/lock cue, which
+        // intentionally applied to both segments.
         let sut = NoteRow(note: personalNote(isPublic: true))
-        let image = try sut.inspect().find(ViewType.Image.self)
-        XCTAssertEqual(try image.actualImage().name(), "globe")
+        XCTAssertThrowsError(try sut.inspect().find(ViewType.Image.self),
+                              "a Personal note must never show the edit-permission icon") { _ in }
     }
 }

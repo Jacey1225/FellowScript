@@ -15,9 +15,13 @@ can't be used to probe which private note ids exist.
 This proves:
   1. A non-owner, non-member caller cannot reply to another user's private
      (non-public, non-group) note — gets the generic "cannot find note" body.
-  2. Anyone can still reply to a PUBLIC note (behavior preserved).
+  2. A personal note's `public` value no longer grants view/reply access to a
+     stranger (task 20260903-notes-public-repurpose: `public` now means
+     "group members may edit," not "visible to others" -- visibility is
+     group_id-only, so a stranger still can't reply even when public=True).
   3. A group member can reply to a note shared in their group even when it's
-     not public (behavior preserved — group sharing still works).
+     not "public" in the new edit-permission sense (behavior preserved —
+     group sharing still works regardless of the edit-permission flag).
   4. A non-member cannot reply to a note shared in a group they don't belong
      to (the actual access-control gap this finding closes).
   5. The owner can always reply to their own note (behavior preserved).
@@ -115,11 +119,13 @@ def main():
                   r.status_code == 201 and r.json().get("error") == "cannot find note", str(r.status_code) + " " + str(r.json()))
             check("no reply id returned to the stranger", "id" not in r.json(), str(r.json()))
 
-            print("\n=== 2. Public note: anyone can still reply (behavior preserved) ===")
+            print("\n=== 2. Personal note with public=True: stranger still cannot reply "
+                  "(public no longer grants visibility -- it's an edit-permission flag now) ===")
             public_note_id = make_note(client, uid_owner, token_owner, public=True)
             r = reply(client, public_note_id, uid_stranger, token_stranger)
-            check("stranger reply to PUBLIC note -> succeeds with an id",
-                  r.status_code == 201 and "id" in r.json(), str(r.status_code) + " " + str(r.json()))
+            check("stranger reply to a personal public=True note -> generic 'cannot find note' error",
+                  r.status_code == 201 and r.json().get("error") == "cannot find note",
+                  str(r.status_code) + " " + str(r.json()))
 
             print("\n=== 3. Group-shared note (not public): group member CAN reply (behavior preserved) ===")
             group_note_id = make_note(client, uid_owner, token_owner, public=False, group_id=group_id)

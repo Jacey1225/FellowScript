@@ -576,10 +576,17 @@ struct FSHeartbeat: Codable, Identifiable {
     // any) this scheduled agent event is tied to. nil/"" means personal —
     // the note it generates on fire stays ungrouped exactly as before.
     var group_id:   String?   = nil
+    // Task 20260903-notes-public-repurpose, step 6: deny-by-default
+    // edit-permission this heartbeat stamps onto every note it generates on
+    // fire (mirrors notes.public's post-repurpose meaning -- whether other
+    // members of group_id may edit the AI-generated note, not visibility).
+    // Configured explicitly on the event-editing screen (EventSetupSheet),
+    // never inferred from the per-fire LLM response.
+    var notes_public: Bool    = false
 
     enum CodingKeys: String, CodingKey {
         case id = "_id"
-        case agent_id, user_id, timestamps, prompt, group_id
+        case agent_id, user_id, timestamps, prompt, group_id, notes_public
     }
 }
 

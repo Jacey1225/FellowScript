@@ -103,13 +103,22 @@ final class NotesListViewAuthorGateTests: XCTestCase {
 }
 
 // MARK: - NoteDetailView.canEdit (toolbar Edit pill gate)
+//
+// Extended by task 20260903-notes-public-repurpose, step 5:
+// `note.public` is checked BEFORE the deny-by-default username-matching
+// fallback (see NoteDetailView.canEdit's own doc comment) -- a group note
+// with public == true is editable by ANY viewer (mirroring the server's new
+// update_note non-owner branch), regardless of username data; public ==
+// false falls through to the original author-only comparison, preserving
+// every deny-by-default guarantee task 20260829-notes-edit-author-gate
+// established.
 
 final class NoteDetailViewCanEditGateTests: XCTestCase {
 
-    private func groupNote(username: String) -> FSNote {
+    private func groupNote(username: String, public isPublic: Bool = true) -> FSNote {
         FSNote(
             id: "note-1", user: "user-alice", username: username, title: "Group note",
-            text: "body", public: true, group_id: "group-abc",
+            text: "body", public: isPublic, group_id: "group-abc",
             timestamp: "2026-08-20 10:00:00"
         )
     }
@@ -130,28 +139,57 @@ final class NoteDetailViewCanEditGateTests: XCTestCase {
 
     @MainActor
     func test_groupNote_viewerIsAuthor_canEditIsTrue() {
-        let sut = NoteDetailView(note: groupNote(username: "alice"), username: "alice") { _ in nil }
-        XCTAssertTrue(sut.canEdit, "the note's own author must still see the Edit pill")
+        let sut = NoteDetailView(note: groupNote(username: "alice", public: false), username: "alice") { _ in nil }
+        XCTAssertTrue(sut.canEdit, "the note's own author must still see the Edit pill even when public is false")
+    }
+
+    // MARK: public == true -- the new non-owner group-edit capability
+
+    @MainActor
+    func test_groupNote_public_viewerIsNotAuthor_canEditIsTrue() {
+        // The new capability this task adds: a non-owner group member sees
+        // the Edit pill when the note's owner opted it into public == true,
+        // mirroring the server's new update_note non-owner branch.
+        let sut = NoteDetailView(note: groupNote(username: "alice", public: true), username: "bob") { _ in nil }
+        XCTAssertTrue(sut.canEdit, "a non-author must see the Edit pill on a public == true group note")
     }
 
     @MainActor
-    func test_groupNote_viewerIsNotAuthor_canEditIsFalse() {
-        // The exact reported gap for NoteDetailView's toolbar Edit pill:
+    func test_groupNote_public_withEmptyNoteUsername_canEditIsTrue() {
+        // note.public is checked before the username-matching fallback, so
+        // an undecoded/uncaptured note author no longer blocks the pill when
+        // the note itself is public == true.
+        let sut = NoteDetailView(note: groupNote(username: "", public: true), username: "alice") { _ in nil }
+        XCTAssertTrue(sut.canEdit, "public == true grants Edit regardless of missing note-author username data")
+    }
+
+    @MainActor
+    func test_groupNote_public_withEmptyViewerUsername_canEditIsTrue() {
+        let sut = NoteDetailView(note: groupNote(username: "alice", public: true), username: "") { _ in nil }
+        XCTAssertTrue(sut.canEdit, "public == true grants Edit even for an unresolved viewer identity")
+    }
+
+    // MARK: public == false -- original deny-by-default author-only gate, unchanged
+
+    @MainActor
+    func test_groupNote_notPublic_viewerIsNotAuthor_canEditIsFalse() {
+        // The original reported gap for NoteDetailView's toolbar Edit pill,
+        // still guarded when the note is NOT opted into group-editing:
         // opening another member's note must show no Edit affordance.
-        let sut = NoteDetailView(note: groupNote(username: "alice"), username: "bob") { _ in nil }
-        XCTAssertFalse(sut.canEdit, "a non-author must not see the Edit pill on another member's group note")
+        let sut = NoteDetailView(note: groupNote(username: "alice", public: false), username: "bob") { _ in nil }
+        XCTAssertFalse(sut.canEdit, "a non-author must not see the Edit pill on a non-public group note")
     }
 
     @MainActor
-    func test_groupNote_withEmptyNoteUsername_canEditIsFalse() {
-        let sut = NoteDetailView(note: groupNote(username: ""), username: "alice") { _ in nil }
-        XCTAssertFalse(sut.canEdit, "an undecoded/uncaptured note author must fail closed")
+    func test_groupNote_notPublic_withEmptyNoteUsername_canEditIsFalse() {
+        let sut = NoteDetailView(note: groupNote(username: "", public: false), username: "alice") { _ in nil }
+        XCTAssertFalse(sut.canEdit, "an undecoded/uncaptured note author must still fail closed when not public")
     }
 
     @MainActor
-    func test_groupNote_withEmptyViewerUsername_canEditIsFalse() {
-        let sut = NoteDetailView(note: groupNote(username: "alice"), username: "") { _ in nil }
-        XCTAssertFalse(sut.canEdit, "an unresolved viewer identity must fail closed, not default to showing Edit")
+    func test_groupNote_notPublic_withEmptyViewerUsername_canEditIsFalse() {
+        let sut = NoteDetailView(note: groupNote(username: "alice", public: false), username: "") { _ in nil }
+        XCTAssertFalse(sut.canEdit, "an unresolved viewer identity must still fail closed when not public")
     }
 }
 

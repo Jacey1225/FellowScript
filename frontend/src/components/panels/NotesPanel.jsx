@@ -166,7 +166,12 @@ function NoteEditor({ note, noteId, user, currentGroupId, books, chapterCount, v
   const handleSave = async () => {
     const ok = await onSave({
       user:     user.user_id,
-      group_id: isPublic && currentGroupId ? currentGroupId : '',
+      // Group attachment is now its own decision, independent of the
+      // edit-permission toggle below: a note opened in a group context
+      // always gets tagged into that group. `public` no longer has any say
+      // in *whether* the note is shared -- only in whether other group
+      // members may edit it once it's there.
+      group_id: currentGroupId || '',
       replies:  note?.replies || [],
       title:    titleVal.trim() || 'Untitled',
       text:     bodyRef.current?.innerHTML || '',
@@ -251,9 +256,17 @@ function NoteEditor({ note, noteId, user, currentGroupId, books, chapterCount, v
       <div className="note-editor-header">
         <button className="note-editor-action-btn note-editor-cancel" onClick={onBack}>Cancel</button>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flex: 1, justifyContent: 'center' }}>
-          <Switch size="small" checked={isPublic} onChange={setIsPublic}
-            style={{ background: isPublic ? 'rgba(255,198,26,0.8)' : undefined }} />
-          <span style={{ fontSize: '0.72rem', color: 'rgba(242,242,242,0.55)', fontFamily: "'Inter', sans-serif" }}>Public</span>
+          {/* Edit-permission toggle only means anything once the note has a
+              group -- a personal note (no currentGroupId) has no one else
+              who could edit it, so the control is hidden rather than shown
+              disabled. */}
+          {currentGroupId && (
+            <>
+              <Switch size="small" checked={isPublic} onChange={setIsPublic}
+                style={{ background: isPublic ? 'rgba(255,198,26,0.8)' : undefined }} />
+              <span style={{ fontSize: '0.72rem', color: 'rgba(242,242,242,0.55)', fontFamily: "'Inter', sans-serif" }}>Allow group to edit</span>
+            </>
+          )}
         </div>
         <button className="note-editor-action-btn note-editor-save" onClick={handleSave}>Save</button>
       </div>
@@ -345,7 +358,14 @@ function NoteEditor({ note, noteId, user, currentGroupId, books, chapterCount, v
 
 function NoteCard({ id, note, owner, isOwn, onEdit, onDelete, onOpen, onNavigateVerse }) {
   const verses  = validVerses(note.verses);
-  const canEdit = !owner || isOwn;
+  // A personal note (no owner label shown) is always the caller's own, and
+  // an author can always edit/delete their own note. A non-owner group
+  // member can now also edit (but never delete) if the note's author left
+  // `public` (edit-permission) on -- the server enforces the same split in
+  // update_note (edit branch) / delete_note (still owner-only); this only
+  // drives which affordance(s) appear.
+  const canDelete = !owner || isOwn;
+  const canEdit   = canDelete || note.public;
 
   return (
     <div
@@ -361,15 +381,21 @@ function NoteCard({ id, note, owner, isOwn, onEdit, onDelete, onOpen, onNavigate
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '0.5rem', marginBottom: '0.4rem' }}>
         <Text strong style={{ fontFamily: "'Inter', sans-serif", fontSize: '0.85rem', color: 'var(--parchment)', lineHeight: 1.3 }}>
           {note.title || 'Untitled'}
-          {note.public && <Tag style={{ marginLeft: 6, fontSize: '0.52rem', letterSpacing: '0.12em' }}>Public</Tag>}
+          {/* Edit-permission indicator, not a visibility flag anymore -- only
+              meaningful (and only shown) on a group note. */}
+          {owner && note.public && <Tag style={{ marginLeft: 6, fontSize: '0.52rem', letterSpacing: '0.12em' }}>Editable</Tag>}
           {owner && <Tag color="gold" style={{ marginLeft: 4, fontSize: '0.52rem' }}>{owner}</Tag>}
         </Text>
-        {canEdit && (
+        {(canEdit || canDelete) && (
           <div style={{ display: 'flex', gap: 2, flexShrink: 0 }} onClick={e => e.stopPropagation()}>
-            <Button type="text" size="small" icon={<EditOutlined />} onClick={() => onEdit(id)}
-              style={{ color: 'rgba(255,198,26,0.45)', padding: '0 4px' }} />
-            <Button type="text" size="small" icon={<DeleteOutlined />} onClick={() => onDelete(id)}
-              style={{ color: 'rgba(255,198,26,0.45)', padding: '0 4px' }} />
+            {canEdit && (
+              <Button type="text" size="small" icon={<EditOutlined />} onClick={() => onEdit(id)}
+                style={{ color: 'rgba(255,198,26,0.45)', padding: '0 4px' }} />
+            )}
+            {canDelete && (
+              <Button type="text" size="small" icon={<DeleteOutlined />} onClick={() => onDelete(id)}
+                style={{ color: 'rgba(255,198,26,0.45)', padding: '0 4px' }} />
+            )}
           </div>
         )}
       </div>
@@ -598,10 +624,13 @@ export default function NotesPanel() {
     const list = [];
     if (currentGroupId) {
       const myUsername = user?.username || '';
+      // Display is group_id-only now: the backend already returns every note
+      // that matches this group, so every one of them belongs in the list --
+      // `public` no longer means "visible," only "group members may edit."
       const groupSrc   = notes.filteredGroup || notes.group || {};
       Object.entries(groupSrc).forEach(([uname, noteMap]) => {
         Object.entries(noteMap).forEach(([id, note]) => {
-          if (note.public) list.push([id, note, uname, uname === myUsername]);
+          list.push([id, note, uname, uname === myUsername]);
         });
       });
     } else {

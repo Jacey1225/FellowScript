@@ -367,7 +367,18 @@ def create_tables(cur):
         # the note a fire of this heartbeat generates inherits this value
         # (see AgentManager.commit_hb_response/note_via_hb) rather than the
         # per-fire LLM response ever supplying it.
-        "group_id UUID REFERENCES groups(_id) ON DELETE SET NULL)"
+        "group_id UUID REFERENCES groups(_id) ON DELETE SET NULL,"
+        # Deny-by-default (task 20260903-notes-public-repurpose, step 3):
+        # explicit, user-configured value for the `public` field of every
+        # note this heartbeat generates on fire -- i.e. whether other
+        # members of `group_id` may edit the AI-generated note, mirroring
+        # notes.public's post-repurpose meaning (edit permission, not
+        # visibility). Set from the event-editing screen at configuration
+        # time (add_heartbeat/update_heartbeat), never from the per-fire
+        # LLM response -- the model has no basis to decide a group-edit
+        # grant any more than it has a basis to decide group_id itself
+        # (see note_via_hb's docstring on that same reasoning for group_id).
+        "notes_public BOOLEAN DEFAULT FALSE)"
     )
     # Migrations for databases created before these columns existed.
     cur.execute(
@@ -375,6 +386,9 @@ def create_tables(cur):
     )
     cur.execute(
         "ALTER TABLE agent_heartbeats ADD COLUMN IF NOT EXISTS group_id UUID REFERENCES groups(_id) ON DELETE SET NULL"
+    )
+    cur.execute(
+        "ALTER TABLE agent_heartbeats ADD COLUMN IF NOT EXISTS notes_public BOOLEAN DEFAULT FALSE"
     )
 
     cur.execute(

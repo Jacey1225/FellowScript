@@ -148,6 +148,10 @@ async def update_heartbeat(user_id: str, heartbeat_id: str, body: dict, _: str =
             timestamps=body.get("timestamps", [None] * 31),
             prompt=body.get("prompt", ""),
             group_id=group_id,
+            # Deny-by-default: an omitted/falsy body value keeps the note
+            # this event generates owner-only-editable, matching
+            # AgentHeartbeats.notes_public's own default.
+            notes_public=bool(body.get("notes_public", False)),
         )
         db.update_heartbeat(heartbeat_id, heartbeat)
         return {"ok": True}
@@ -219,6 +223,10 @@ async def add_heartbeat(user_id: str, agent_id: str, body: dict, _: str = Depend
             timestamps=body.get("timestamps", [None] * 31),
             prompt=body.get("prompt", ""),
             group_id=group_id,
+            # Deny-by-default: an omitted/falsy body value keeps the note
+            # this event generates owner-only-editable, matching
+            # AgentHeartbeats.notes_public's own default.
+            notes_public=bool(body.get("notes_public", False)),
         )
         db.add_heartbeat(heartbeat)
         return {"ok": True}
@@ -276,12 +284,22 @@ async def summarize_session(user_id: str, agent_id: str, body: dict, _: str = De
             logger.error("OpenRouter session-summary error for agent %s: %s", agent_id, e)
             raise HTTPException(status_code=502, detail="Could not generate session summary.")
 
+        # `public` here means group-edit permission (task
+        # 20260903-notes-public-repurpose), not visibility -- visibility of
+        # this note is already group_id-only. Unlike a heartbeat-fired note
+        # (note_via_hb/_generate_and_save_note), a session summary has no
+        # `agent_heartbeats` row to read a configured value from -- a study
+        # session is a live, one-off flow, not a scheduled event -- so this
+        # was previously hardcoded True (every summary group-editable).
+        # Deny-by-default per Security Posture Q2/Q14: default closed unless
+        # the caller explicitly opts a summary into group-editing.
+        notes_public = bool(body.get("notes_public", False))
         note_id = str(uuid.uuid4())
         db.cur.execute(
             "INSERT INTO notes (_id, user_id, title, text, public, group_id, is_reply, timestamp) "
             "VALUES (%s,%s,%s,%s,%s,%s,%s,%s)",
             (note_id, user_id, f"Session Summary — {title}", summary,
-             True, group_id or None, False, datetime.now())
+             notes_public, group_id or None, False, datetime.now())
         )
         db.conn.commit()
         return {"ok": True, "note_id": note_id}

@@ -9,13 +9,16 @@ Covers:
      friend list (403 on mismatch, 401 unauthenticated).
   2. Empty states -- no friends at all, and a friend with zero tracked
      activity, both render a defined shape rather than an error or crash.
-  3. Privacy scoping of note previews -- a friend's PUBLIC personal note
-     surfaces; a PRIVATE note never leaks into the preview, matching the
-     privacy decision documented in FriendsManager.get_friend_activity's
-     docstring, even though it still bumps last_active_at.
-  4. Group-shared and reply notes -- excluded from the preview even when
-     public, since "friend" visibility isn't the same grant as group
-     membership or reply-thread visibility.
+  3. Note preview data source (post task 20260903-notes-public-repurpose):
+     a friend's PERSONAL notes (group_id IS NULL) are now unconditionally
+     private and NEVER surface in the preview regardless of their `public`
+     value (which now means edit-permission, not visibility) -- they still
+     bump last_active_at. A friend's GROUP note surfaces in the preview only
+     when the viewer shares membership in that specific group; reply notes
+     are excluded (personal/group notes only, is_reply=false).
+  4. Cross-group scoping -- a friend's group note in a group the viewer does
+     NOT belong to is excluded from the preview (shared membership isn't
+     implied by friendship alone).
   5. Highlight-only activity -- counts toward last_active_at but never
      surfaces content (highlights have no privacy flag today).
   6. Block scoping, both directions -- a blocked-in-either-direction "friend"
@@ -241,10 +244,10 @@ def test_empty_states(client):
         cleanup(uid_lonely, uid_a, uid_b)
 
 
-# ── 3. Note preview privacy scoping ─────────────────────────────────────────
+# ── 3. Note preview data source: personal notes never preview ──────────────
 
 def test_note_privacy_scoping(client):
-    print("\n=== 3. Note preview privacy scoping (public vs private) ===")
+    print("\n=== 3. Personal notes never surface in note_preview (public or not) ===")
     uid_a, token_a = signup(client, "priv_a")
     uid_b, token_b = signup(client, "priv_b")
     try:
@@ -255,56 +258,103 @@ def test_note_privacy_scoping(client):
 
         r = get_activity(client, uid_a, token_a)
         entry = r.json()["friends_active"][0]
-        check("private note does not leak into note_preview",
+        check("personal public=False note does not leak into note_preview",
               entry["note_preview"] is None, entry)
-        check("private note still counts toward last_active_at",
+        check("personal note still counts toward last_active_at",
               entry["last_active_at"] is not None, entry)
 
-        note_id = create_note(client, token_b, uid_b, "Sunday reflections",
-                              "a public note", public=True, timestamp="2026-08-21 08:00:00")
+        create_note(client, token_b, uid_b, "Sunday reflections",
+                    "a public=True note", public=True, timestamp="2026-08-21 08:00:00")
 
         r2 = get_activity(client, uid_a, token_a)
         entry2 = r2.json()["friends_active"][0]
-        check("public personal note surfaces in note_preview",
-              entry2["note_preview"] is not None and entry2["note_preview"]["note_id"] == note_id,
-              entry2)
-        check("note_preview text matches the public note's text",
-              entry2["note_preview"]["text"] == "a public note", entry2)
+        check("personal public=True note ALSO never surfaces in note_preview -- "
+              "`public` is an edit-permission flag now, not visibility; personal "
+              "notes are unconditionally private regardless of its value",
+              entry2["note_preview"] is None, entry2)
     finally:
         cleanup(uid_a, uid_b)
 
 
-# ── 4. Group-shared and reply notes excluded ────────────────────────────────
+# ── 4. Group note preview: shared-membership scoped ─────────────────────────
 
 def test_group_and_reply_notes_excluded(client):
-    print("\n=== 4. Group-shared and reply notes excluded from preview ===")
+    print("\n=== 4. Group note preview is scoped to the viewer's shared group membership ===")
     uid_a, token_a = signup(client, "grp_a")
     uid_b, token_b = signup(client, "grp_b")
+    uid_outsider, token_outsider = signup(client, "grp_outsider")
+    gid = None
+    gid_other = None
+    try:
+        make_friends(uid_a, uid_b)
+        make_friends(uid_a, uid_outsider)
+        gid = create_group(client, token_b, uid_b, [uid_a])
+
+        note_id = create_note(client, token_b, uid_b, "Group note", "shared with the group",
+                               public=False, group_id=gid, timestamp="2026-08-20 08:00:00")
+
+        r = get_activity(client, uid_a, token_a)
+        entry = r.json()["friends_active"][0]
+        check("a friend's group note surfaces in note_preview when the viewer "
+              "shares membership in that group, regardless of `public` "
+              "(visibility is group_id-only now, not gated on the edit-permission flag)",
+              entry["note_preview"] is not None and entry["note_preview"]["note_id"] == note_id,
+              entry)
+
+        # uid_outsider is a's friend but NOT a member of gid -- b's group note
+        # must not surface for them even though they're friends with b's friend.
+        gid_other = create_group(client, token_a, uid_a, [])  # unrelated group, keeps uid_outsider out of gid
+        r2 = get_activity(client, uid_outsider, token_outsider)
+        # uid_outsider isn't even friends with uid_b directly, but assert via a's
+        # own outsider-relative check too: b is not outsider's friend at all here,
+        # so nothing should reference uid_b -- the real cross-group check is below.
+        check("outsider (not a member of b's group) sees no entry referencing b's group note "
+              "via any friend path in their own feed",
+              all(e.get("note_preview") is None or e["note_preview"]["note_id"] != note_id
+                  for e in r2.json()["friends_active"]),
+              r2.json())
+
+        create_note(client, token_b, uid_b, "A reply", "reply body",
+                    public=True, is_reply=True, group_id=gid, timestamp="2026-08-21 08:00:00")
+
+        r3 = get_activity(client, uid_a, token_a)
+        entry3 = r3.json()["friends_active"][0]
+        check("reply notes are excluded from note_preview (is_reply=false only) -- "
+              "the group note from above still wins as the most recent qualifying note",
+              entry3["note_preview"] is not None and entry3["note_preview"]["note_id"] == note_id,
+              entry3)
+    finally:
+        if gid:
+            delete_group(gid)
+        if gid_other:
+            delete_group(gid_other)
+        cleanup(uid_a, uid_b, uid_outsider)
+
+
+# ── 4b. Cross-group scoping: friend's note in a group viewer doesn't share ──
+
+def test_group_note_excluded_when_viewer_not_a_member(client):
+    print("\n=== 4b. Friend's group note excluded from preview when viewer isn't in that group ===")
+    uid_a, token_a = signup(client, "xgrp_a")
+    uid_b, token_b = signup(client, "xgrp_b")
+    uid_c, token_c = signup(client, "xgrp_c")  # b's groupmate, not a's
     gid = None
     try:
         make_friends(uid_a, uid_b)
-        gid = create_group(client, token_b, uid_b, [uid_a])
+        gid = create_group(client, token_b, uid_b, [uid_c])  # a is NOT in this group
 
-        create_note(client, token_b, uid_b, "Group note", "shared with the group",
+        create_note(client, token_b, uid_b, "Group note (a not a member)", "should not leak to a",
                     public=True, group_id=gid, timestamp="2026-08-20 08:00:00")
 
         r = get_activity(client, uid_a, token_a)
         entry = r.json()["friends_active"][0]
-        check("public group note is excluded from a mere friend's note_preview "
-              "(group membership is not the same grant as friendship)",
+        check("friend's group note is excluded from note_preview when the viewer "
+              "does not share membership in that group",
               entry["note_preview"] is None, entry)
-
-        create_note(client, token_b, uid_b, "A reply", "reply body",
-                    public=True, is_reply=True, timestamp="2026-08-21 08:00:00")
-
-        r2 = get_activity(client, uid_a, token_a)
-        entry2 = r2.json()["friends_active"][0]
-        check("public reply note is excluded from note_preview (personal notes only)",
-              entry2["note_preview"] is None, entry2)
     finally:
         if gid:
             delete_group(gid)
-        cleanup(uid_a, uid_b)
+        cleanup(uid_a, uid_b, uid_c)
 
 
 # ── 5. Highlight-only activity ──────────────────────────────────────────────
@@ -502,6 +552,7 @@ def main():
         test_empty_states(client)
         test_note_privacy_scoping(client)
         test_group_and_reply_notes_excluded(client)
+        test_group_note_excluded_when_viewer_not_a_member(client)
         test_highlight_only_activity_no_content_leak(client)
         test_block_scoping_both_directions(client)
         test_ordering_most_recently_active_first(client)

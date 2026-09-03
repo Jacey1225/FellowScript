@@ -12,7 +12,10 @@ struct EventSetupSheet: View {
     // data (no new fetch path) so the group picker below can list them.
     var groups:   [String: FSGroup] = [:]
     var existing: FSHeartbeat? = nil
-    let onSave:   (_ agentId: String, _ prompt: String, _ timestamps: [String?], _ groupId: String?) -> Void
+    // notesPublic: task 20260903-notes-public-repurpose, step 6 -- the
+    // deny-by-default edit-permission choice for every note this event
+    // generates on fire, mirroring notes.public's post-repurpose meaning.
+    let onSave:   (_ agentId: String, _ prompt: String, _ timestamps: [String?], _ groupId: String?, _ notesPublic: Bool) -> Void
 
     @Environment(\.dismiss) private var dismiss
 
@@ -28,6 +31,10 @@ struct EventSetupSheet: View {
     @State private var path:              [SetupScreen] = []
     // "" means no group / personal.
     @State private var selectedGroupId:   String       = ""
+    // Deny-by-default (task 20260903-notes-public-repurpose, step 6): only
+    // meaningful once a group is selected -- an ungrouped/personal event's
+    // notes have no other group member who could edit them.
+    @State private var notesPublic:       Bool         = false
 
     private var isEditing: Bool { existing != nil }
 
@@ -63,6 +70,7 @@ struct EventSetupSheet: View {
         prompt          = hb.prompt
         selectedAgentId = hb.agent_id.isEmpty ? (agents.first?.id ?? "") : hb.agent_id
         selectedGroupId = hb.group_id ?? ""
+        notesPublic     = hb.notes_public
 
         // Extract time: timestamps store UTC "HH:mm"; DateFormatter with UTC tz
         // returns a Date whose local representation the DatePicker will display.
@@ -362,6 +370,31 @@ struct EventSetupSheet: View {
                 }
                 .widgetCard()
 
+                // Edit-permission control (task 20260903-notes-public-repurpose,
+                // step 6): only meaningful once this event is tied to a group --
+                // an ungrouped/personal event's notes have no other group
+                // member who could edit them, so the control is hidden rather
+                // than shown disabled, mirroring NoteEditorView's own
+                // edit-permission toggle (hidden outside a group context).
+                if !selectedGroupId.isEmpty {
+                    VStack(alignment: .leading, spacing: Theme.spacingSM) {
+                        Text("EDIT PERMISSION")
+                            .font(.inter(Theme.fontXXS)).tracking(4).foregroundColor(Theme.textGoldMuted)
+                        Toggle(isOn: $notesPublic) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(notesPublic ? "Group Can Edit" : "Owner Only")
+                                    .font(.inter(Theme.fontBody))
+                                    .foregroundColor(Theme.parchment)
+                                Text("Whether other members of \(selectedGroupLabel) may edit the notes this event generates.")
+                                    .font(.inter(Theme.fontXS))
+                                    .foregroundColor(Theme.textMuted)
+                            }
+                        }
+                        .tint(Theme.gold)
+                    }
+                    .widgetCard()
+                }
+
                 VStack(alignment: .leading, spacing: Theme.spacingSM) {
                     Text("PROMPT")
                         .font(.inter(Theme.fontXXS)).tracking(4).foregroundColor(Theme.textGoldMuted)
@@ -400,7 +433,11 @@ struct EventSetupSheet: View {
                     onSave(selectedAgentId,
                            prompt.trimmingCharacters(in: .whitespaces),
                            buildTimestamps(),
-                           selectedGroupId.isEmpty ? nil : selectedGroupId)
+                           selectedGroupId.isEmpty ? nil : selectedGroupId,
+                           // Fail closed: an ungrouped event can't carry a
+                           // meaningful edit-permission grant regardless of
+                           // whatever the (hidden) toggle's stale state is.
+                           selectedGroupId.isEmpty ? false : notesPublic)
                     dismiss()
                 }
                 .disabled(prompt.trimmingCharacters(in: .whitespaces).isEmpty || selectedAgentId.isEmpty)

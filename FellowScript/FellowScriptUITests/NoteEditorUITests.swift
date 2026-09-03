@@ -188,6 +188,26 @@ final class NoteEditorUITests: XCTestCase {
         tapWhenHittable(createNote, app: app)
     }
 
+    // Task 20260903-notes-public-repurpose, step 5: the edit-permission badge
+    // is only meaningful (and only shown) once the note actually has a
+    // group_id -- opens the editor from the "Wednesday Night Study" group
+    // segment (MockDataService's seeded "group-abc") instead of Personal, so
+    // NotesListView.startNewNote() sets editingGroupId to a real group and
+    // NoteEditorView.isGroupNote resolves true.
+    private func openNewNoteEditorInGroup(app: XCUIApplication) {
+        let notesTab = app.buttons["Notes"]
+        XCTAssertTrue(notesTab.waitForExistence(timeout: 5), "FloatingTabBar's Notes destination")
+        tapWhenHittable(notesTab, app: app)
+
+        let groupChip = app.buttons["Wednesday Night Study"]
+        XCTAssertTrue(groupChip.waitForExistence(timeout: 5), "MockDataService's seeded group segment chip")
+        tapWhenHittable(groupChip, app: app)
+
+        let createNote = app.buttons["Create new note"]
+        XCTAssertTrue(createNote.waitForExistence(timeout: 5))
+        tapWhenHittable(createNote, app: app)
+    }
+
     // MARK: - Cancel → dismiss() (ghost-chip, Option C)
 
     func test_cancelChip_dismissesNoteEditorWithoutSaving() {
@@ -206,25 +226,50 @@ final class NoteEditorUITests: XCTestCase {
                       "tapping Cancel must still call dismiss() and close the editor")
     }
 
-    // MARK: - Public toggle (icon-badge pill, Option C) still drives $isPublic
+    // MARK: - Edit-permission badge (task 20260903-notes-public-repurpose, step 5)
+    //
+    // Relabeled from the old visibility "Public"/"Private" icon-badge pill:
+    // `isPublic` now means "other group members may edit this note," not
+    // "visible to them" (visibility is group_id-only) -- so the badge is
+    // only shown once the note actually has a group, and its labels/icons
+    // changed to communicate edit permission instead.
 
-    func test_publicBadge_tapTogglesPrivatePublicState() {
+    func test_editPermissionBadge_hiddenForAPersonalNote() {
+        // A brand-new Personal note (no group_id) has no other group member
+        // who could be granted edit access, so the badge must not exist at
+        // all -- not shown-and-disabled, genuinely absent -- unlike the old
+        // always-shown-on-every-note visibility pill.
         let app = signInAndReachDashboard()
 
         openNewNoteEditor(app: app)
 
-        let privateBadge = app.buttons["This note is private. Tap to make it public."]
-        XCTAssertTrue(privateBadge.waitForExistence(timeout: 5),
-                      "a brand-new note must default to private, shown via the icon-badge Public pill")
-        privateBadge.tap()
+        XCTAssertFalse(app.buttons["This note is private. Tap to make it public."].waitForExistence(timeout: 2),
+                       "the old visibility-labeled badge must not exist under the new semantics")
+        XCTAssertFalse(app.buttons["Only you can edit this note. Tap to allow other group members to edit it."].exists,
+                       "a Personal note must show no edit-permission badge at all")
 
-        let publicBadge = app.buttons["This note is public. Tap to make it private."]
-        XCTAssertTrue(publicBadge.waitForExistence(timeout: 3),
-                      "tapping the icon-badge Public pill must still flip the underlying $isPublic binding")
+        app.buttons["Cancel and discard changes"].tap()
+    }
+
+    func test_editPermissionBadge_tapTogglesOwnerOnlyGroupCanEditState() {
+        let app = signInAndReachDashboard()
+
+        openNewNoteEditorInGroup(app: app)
+
+        let ownerOnlyBadge = app.buttons["Only you can edit this note. Tap to allow other group members to edit it."]
+        XCTAssertTrue(ownerOnlyBadge.waitForExistence(timeout: 5),
+                      "a brand-new group note must default to owner-only edit permission, "
+                      + "shown via the relabeled icon-badge pill")
+        ownerOnlyBadge.tap()
+
+        let groupCanEditBadge = app.buttons["Other members of this group can edit this note. Tap to make it owner-only."]
+        XCTAssertTrue(groupCanEditBadge.waitForExistence(timeout: 3),
+                      "tapping the icon-badge pill must still flip the underlying $isPublic binding")
 
         // Tapping again must flip it back — proves it's a real toggle, not one-shot.
-        publicBadge.tap()
-        XCTAssertTrue(app.buttons["This note is private. Tap to make it public."].waitForExistence(timeout: 3))
+        groupCanEditBadge.tap()
+        XCTAssertTrue(app.buttons["Only you can edit this note. Tap to allow other group members to edit it."]
+                        .waitForExistence(timeout: 3))
 
         app.buttons["Cancel and discard changes"].tap()
     }

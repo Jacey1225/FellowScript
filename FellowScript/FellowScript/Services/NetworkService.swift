@@ -671,9 +671,10 @@ final class NetworkService: DataServiceProtocol {
         // group_id: "" (rather than omitting the key) matches the server's
         // own `body.get("group_id") or None` falsy check in api/routes/agent.py.
         let body: [String: Any] = [
-            "timestamps": tsArray,
-            "prompt":     heartbeat.prompt,
-            "group_id":   heartbeat.group_id ?? "",
+            "timestamps":   tsArray,
+            "prompt":       heartbeat.prompt,
+            "group_id":     heartbeat.group_id ?? "",
+            "notes_public": heartbeat.notes_public,
         ]
         // checked so a free-tier 403 surfaces as AppError.limitReached
         _ = try await checkedRequestRaw("/agent/\(userId)/\(agentId)/heartbeat", method: "POST", jsonObject: body)
@@ -689,10 +690,11 @@ final class NetworkService: DataServiceProtocol {
         // would leave the UI showing an edit the server never saved.
         let tsArray = heartbeat.timestamps.map { $0 != nil ? $0! as Any : NSNull() as Any }
         let body: [String: Any] = [
-            "agent_id":   heartbeat.agent_id,
-            "timestamps": tsArray,
-            "prompt":     heartbeat.prompt,
-            "group_id":   heartbeat.group_id ?? "",
+            "agent_id":     heartbeat.agent_id,
+            "timestamps":   tsArray,
+            "prompt":       heartbeat.prompt,
+            "group_id":     heartbeat.group_id ?? "",
+            "notes_public": heartbeat.notes_public,
         ]
         _ = try await checkedRequestRaw("/agent/\(userId)/\(heartbeatId)/update_heartbeats", method: "PUT", jsonObject: body)
     }

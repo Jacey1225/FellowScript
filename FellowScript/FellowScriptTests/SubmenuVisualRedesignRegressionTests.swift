@@ -125,9 +125,17 @@ final class SubmenuVisualRedesignRegressionTests: XCTestCase {
         // Each of these must still carry its own inline two-RadialGradient
         // duplicate (per design-notes.md §2/§7) rather than calling the new
         // shared modifier -- repointing them was explicitly out of bounds.
+        //
+        // NotesListView.swift is checked separately, scoped to NoteDetailView
+        // only (below): task 20260903-notes-reply-submenu-restyle later
+        // extended `.warmBloomBackground()` to that same file's
+        // ReplyComposerSheet, which was correctly out of scope for THIS
+        // (predecessor) task but is a legitimate, spec'd adoption by that
+        // subsequent task -- mirroring how AccountView.swift/ChatRootView.swift
+        // are already handled below (root screen keeps its own duplicate,
+        // their own in-scope sheets do use the shared modifier).
         let untouchedFiles = [
             "FellowScript/Dashboard/DashboardView.swift",
-            "FellowScript/Notes/NotesListView.swift",
             "FellowScript/Bible/BibleReaderView.swift",
         ]
         for path in untouchedFiles {
@@ -137,6 +145,18 @@ final class SubmenuVisualRedesignRegressionTests: XCTestCase {
             XCTAssertFalse(source.contains(".warmBloomBackground()"),
                            "\(path) must not have been swept into this task's shared-modifier adoption")
         }
+
+        let notesSource = try readSource("FellowScript/Notes/NotesListView.swift")
+        guard let detailStart = notesSource.range(of: "struct NoteDetailView: View {"),
+              let detailEnd = notesSource.range(of: "\n// ── Reply composer sheet", range: detailStart.upperBound..<notesSource.endIndex) else {
+            XCTFail("could not scope NoteDetailView's own body within NotesListView.swift")
+            return
+        }
+        let noteDetailViewBody = String(notesSource[detailStart.upperBound..<detailEnd.lowerBound])
+        XCTAssertTrue(noteDetailViewBody.contains("Theme.bgPage.ignoresSafeArea()"),
+                      "NoteDetailView's own root-screen background duplicate must remain untouched by this task")
+        XCTAssertFalse(noteDetailViewBody.contains(".warmBloomBackground()"),
+                       "NoteDetailView itself must not have been swept into this task's shared-modifier adoption")
 
         // AccountView.swift and ChatRootView.swift DO contain
         // `.warmBloomBackground()` now (their own in-scope sheets use it),

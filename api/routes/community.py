@@ -64,8 +64,8 @@ async def fetch_group_notes(
     cursor_id: str | None = Query(default=None, description="_id of the last note seen on the previous page; omit (with cursor_created_at) to fetch the first page"),
     _: str = Depends(require_match("user_id")),
 ) -> dict:
-    """Retrieve one page of public notes shared within a group, newest
-    first, using keyset pagination anchored on (created_at, _id). Blocked
+    """Retrieve one page of notes shared within a group, newest first,
+    using keyset pagination anchored on (created_at, _id). Blocked
     users' notes are excluded at the SQL level, so a full page always
     contains NOTES_PAGE_SIZE visible notes.
 

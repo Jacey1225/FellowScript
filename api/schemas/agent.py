@@ -31,6 +31,13 @@ class AgentHeartbeats(BaseModel):
     # None/omitted keeps the heartbeat personal/ungrouped exactly as before
     # this field existed.
     group_id: Optional[str] = None
+    # Deny-by-default: mirrors notes.public's post-repurpose meaning for
+    # every note this heartbeat generates on fire -- whether other members
+    # of `group_id` may edit that AI-generated note (not visibility, which
+    # stays group_id-only). Set explicitly from the event-editing screen at
+    # configuration time (task 20260903-notes-public-repurpose, step 3);
+    # never inferred from the per-fire LLM response or defaulted to True.
+    notes_public: bool = Field(default=False)
 class AgentMessages(BaseModel):
     chat_id: str
     title: str = Field(default="")
