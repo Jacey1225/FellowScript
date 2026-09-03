@@ -190,16 +190,41 @@ struct AuthView: View {
                         .accessibilityLabel("Continue with Google")
 
                         // Sign in with Apple — required by Guideline 4.8 whenever a
-                        // third-party social login (Google) is offered. Uses the native
-                        // SignInWithAppleButton so styling stays compliant.
-                        SignInWithAppleButton(.continue) { request in
-                            request.requestedScopes = [.fullName, .email]
-                        } onCompletion: { result in
-                            handleAppleCompletion(result)
+                        // third-party social login (Google) is offered.
+                        //
+                        // Root cause (task 20260903-apple-signin-no-response): SwiftUI's
+                        // SignInWithAppleButton (the ASAuthorizationAppleIDButton-backed
+                        // UIViewRepresentable) never invoked its own request-building
+                        // closure on tap in this view — confirmed live via 4 separate
+                        // real XCUITest tap reproductions (full view, with/without the
+                        // shared dismissesKeyboardOnScrollAndTap() modifier ruled out as
+                        // the cause, with .disabled forced false, and a bare
+                        // SignInWithAppleButton with zero surrounding modifiers in an
+                        // isolated top-level ZStack) — every other Button in this exact
+                        // view (Google, tab toggle, submit) fired reliably across the
+                        // same taps. That isolates the bug to the native control's own
+                        // UIKit touch-to-target-action forwarding, not this app's
+                        // layout/gestures/state. Manually driving ASAuthorizationController
+                        // from a plain SwiftUI Button (still Apple's own native auth
+                        // APIs underneath — see AppleAuthSession.swift, same
+                        // withCheckedContinuation + presentation-anchor pattern already
+                        // established by GoogleAuthSession's ASWebAuthenticationSession
+                        // bridge) sidesteps the broken control while keeping every
+                        // downstream piece (handleAppleCompletion, AppState,
+                        // NetworkService, backend) unchanged.
+                        Button(action: { Task { await performAppleSignIn() } }) {
+                            HStack(spacing: Theme.spacingSM) {
+                                Image(systemName: "apple.logo")
+                                    .font(.system(size: 18, weight: .medium))
+                                Text("Continue with Apple")
+                                    .font(.inter(Theme.fontSM))
+                            }
+                            .foregroundColor(.black)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 50)
+                            .background(Color.white)
+                            .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
                         }
-                        .signInWithAppleButtonStyle(.white)
-                        .frame(height: 50)
-                        .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
                         .padding(.top, Theme.spacingSM)
                         .disabled(appleLoading || googleLoading || isLoading)
                         .overlay {
@@ -311,6 +336,16 @@ struct AuthView: View {
         } catch {
             errorMsg = error.localizedDescription
         }
+    }
+
+    /// Manually drives ASAuthorizationController (via AppleAuthSession) rather
+    /// than relying on SignInWithAppleButton's own touch handling — see the
+    /// button's comment above for why. Feeds the exact same
+    /// Result<ASAuthorization, Error> shape into handleAppleCompletion, so
+    /// every downstream success/failure/cancellation branch is unchanged.
+    private func performAppleSignIn() async {
+        let result = await AppleAuthSession.signIn(requestedScopes: [.fullName, .email])
+        handleAppleCompletion(result)
     }
 
     private func handleAppleCompletion(_ result: Result<ASAuthorization, Error>) {
