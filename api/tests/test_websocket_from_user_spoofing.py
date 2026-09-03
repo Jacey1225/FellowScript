@@ -172,6 +172,15 @@ def main():
         async def disconnect(self, user_id):
             pass
 
+        def touch(self, user_id):
+            # No-op stand-in for ConnectionManager.touch (task
+            # 20260902-chat-push-notification-failure) -- websocket_endpoint
+            # now calls this for every received frame to feed the heartbeat
+            # liveness check. Irrelevant to what this suite proves
+            # (from_user spoofing), so it only needs to exist so the
+            # endpoint's call doesn't raise AttributeError.
+            pass
+
         async def send_msg(self, payload):
             captured["msg"] = dict(payload)
             raise _StopLoop()

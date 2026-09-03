@@ -85,6 +85,13 @@ logger = logging.getLogger(__name__)
 async def lifespan(_: FastAPI):
     from backend.interactions.scheduler import start_scheduler
     start_scheduler()
+    # WS connection-liveness heartbeat (task
+    # 20260902-chat-push-notification-failure) — must start after a live
+    # event loop exists, not at ConnectionManager's module-import-time
+    # construction in routes/messaging.py, hence wiring it here rather than
+    # in __init__.
+    from routes.messaging import manager as ws_manager
+    ws_manager.start_heartbeat()
     yield
 
 

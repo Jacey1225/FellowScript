@@ -1,4 +1,6 @@
+import asyncio
 import logging
+import time
 
 from fastapi import WebSocket
 from schemas.message import Message
@@ -13,6 +15,34 @@ logger = logging.getLogger(__name__)
 class ConnectionManager(DBManager):
     """Manages active WebSocket connections keyed by user ID."""
 
+    # `active_connections` presence alone used to be treated as proof a
+    # recipient was online. It isn't: a TCP-level `ws.send_json()` can
+    # succeed into a backgrounded/suspended (or killed, or network-dropped)
+    # client that will never surface the frame as a notification, so
+    # send_msg's `ws truthy` check never fell through to the offline-push
+    # branch for those recipients (task
+    # 20260902-chat-push-notification-failure). HEARTBEAT_INTERVAL/TIMEOUT
+    # drive a periodic background liveness probe (`run_heartbeat_check`,
+    # started once via `start_heartbeat` from the app's lifespan) that
+    # proactively evicts anything that hasn't proven it's alive recently —
+    # feeding the *existing* evict-then-push fallback already in send_msg by
+    # keeping `active_connections`/`last_seen` accurate, without touching
+    # that fallback itself.
+    #
+    # "Proof of life" here is either (a) a probe `send_json` actually
+    # raising -- the fastest, unambiguous signal, since a truly closed
+    # connection (a clean client-side disconnect, or the OS tearing down a
+    # killed process's sockets) surfaces as a write failure quickly -- or
+    # (b) any inbound frame at all from that user's own connection (`touch`,
+    # called from `websocket_endpoint`'s receive loop for every frame,
+    # including a future explicit "pong" reply). HEARTBEAT_TIMEOUT is
+    # deliberately generous (a few missed probe intervals, not one) so a
+    # genuinely-foreground user who simply hasn't sent anything recently
+    # isn't mistaken for stale and doesn't get an over-notifying duplicate
+    # push -- see the acceptance criteria in this task's intake spec.
+    HEARTBEAT_INTERVAL = 25.0
+    HEARTBEAT_TIMEOUT   = 70.0
+
     def __init__(self) -> None:
         super().__init__()
         # This manager is a long-lived module-level singleton, so its Postgres
@@ -22,6 +52,8 @@ class ConnectionManager(DBManager):
         # that can block DDL and stall vacuum until the next write.
         self.conn.autocommit = True
         self.active_connections: dict[str, WebSocket] = {}
+        self.last_seen: dict[str, float] = {}
+        self._heartbeat_task: "asyncio.Task | None" = None
 
     def save_message(self, msg: Message) -> None:
         """Persist the message and its recipient links.
@@ -60,6 +92,7 @@ class ConnectionManager(DBManager):
         """
         await ws.accept()
         self.active_connections[user_id] = ws
+        self.last_seen[user_id] = time.monotonic()
 
     async def disconnect(self, user_id: str) -> None:
         """Remove a user's WebSocket from the active registry on disconnect.
@@ -68,6 +101,63 @@ class ConnectionManager(DBManager):
             user_id: UUID of the disconnecting user.
         """
         self.active_connections.pop(user_id, None)
+        self.last_seen.pop(user_id, None)
+
+    def touch(self, user_id: str) -> None:
+        """Record proof of life for ``user_id``'s connection.
+
+        Called by ``websocket_endpoint`` for every frame it receives on that
+        user's own socket (a real chat/signal send, or any future explicit
+        "pong" reply) -- this is what lets `run_heartbeat_check` tell a
+        quiet-but-live connection apart from a genuinely stale one.
+        """
+        if user_id in self.active_connections:
+            self.last_seen[user_id] = time.monotonic()
+
+    def start_heartbeat(self) -> None:
+        """Start the periodic background liveness-probe loop.
+
+        Idempotent -- safe to call more than once (e.g. if it's ever wired
+        into more than one startup hook). Must be called from within a
+        running event loop; the app's ``lifespan`` is the intended caller,
+        not module import time, since this module-level singleton is
+        constructed before any event loop exists.
+        """
+        if self._heartbeat_task is None or self._heartbeat_task.done():
+            self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
+
+    async def _heartbeat_loop(self) -> None:
+        while True:
+            await asyncio.sleep(self.HEARTBEAT_INTERVAL)
+            await self.run_heartbeat_check()
+
+    async def run_heartbeat_check(self) -> None:
+        """One heartbeat tick: probe every registered connection and evict
+        anything that hasn't proven liveness within HEARTBEAT_TIMEOUT.
+
+        Split out from `_heartbeat_loop` (which just sleeps and calls this)
+        so tests can drive a single tick deterministically instead of
+        waiting on real timers.
+        """
+        now = time.monotonic()
+        for uid in list(self.active_connections.keys()):
+            ws = self.active_connections.get(uid)
+            if ws is None:
+                continue
+            try:
+                await ws.send_json({"type": "ping"})
+            except Exception as e:
+                logger.warning("Heartbeat ping to %s failed, evicting stale connection: %s", uid, e)
+                self.active_connections.pop(uid, None)
+                self.last_seen.pop(uid, None)
+                continue
+            if now - self.last_seen.get(uid, now) > self.HEARTBEAT_TIMEOUT:
+                logger.warning(
+                    "No liveness from %s in over %.0fs, evicting stale connection",
+                    uid, self.HEARTBEAT_TIMEOUT,
+                )
+                self.active_connections.pop(uid, None)
+                self.last_seen.pop(uid, None)
 
     async def send_msg(self, payload: dict) -> None:
         """Persist a chat message, deliver it to online recipients via WebSocket,
@@ -194,7 +284,20 @@ class ConnectionManager(DBManager):
                     self.active_connections.pop(uid, None)
                     ws = None
             if not ws and uid != from_user_id:
-                # Recipient is offline (or was just evicted above) — send APNs push notification
+                # Recipient is offline (or was just evicted above, whether by
+                # a live send failure or the heartbeat eviction in
+                # run_heartbeat_check) — send APNs push notification.
+                #
+                # Flagged, not fixed, here (task
+                # 20260902-chat-push-notification-failure, step 1): if
+                # `token` is missing (recipient never registered a device
+                # token) or `send_push` itself fails (env mismatch retry
+                # exhausted, expired token, etc.), this is a silent no-op —
+                # only logged, no retry/backoff and no surfaced signal to the
+                # sender or any monitoring. That's a separate, likely
+                # lower-priority gap from the stale-connection root cause
+                # this step addresses; out of scope here, left for future
+                # triage per the intake spec's open questions.
                 try:
                     token = device_tokens.get(uid)
                     if token:

@@ -250,6 +250,19 @@ async def test_websocket_endpoint_disconnect_runs_on_any_exception():
         async def disconnect(self, user_id):
             disconnect_calls.append(user_id)
 
+        def touch(self, user_id):
+            # No-op stand-in for ConnectionManager.touch (task
+            # 20260902-chat-push-notification-failure, backend step 1) —
+            # websocket_endpoint now calls this for every received frame to
+            # feed the heartbeat liveness check. This fake doesn't exercise
+            # heartbeat behavior at all, so recording proof-of-life has
+            # nothing to do; it only needs to exist so the endpoint's call
+            # doesn't raise AttributeError, which is a direct, expected
+            # consequence of extending the ConnectionManager interface (sync,
+            # not async, matching the real touch()'s signature) rather than a
+            # defect in this test double.
+            pass
+
         async def send_msg(self, payload):
             # Simulate an unexpected, non-WebSocketDisconnect failure escaping
             # the dispatch call (e.g. a malformed payload, a DB error) —

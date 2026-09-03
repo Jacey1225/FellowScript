@@ -118,6 +118,40 @@ final class ChatThreadViewModel: ObservableObject {
         wsTask = nil
     }
 
+    // ── App-lifecycle wiring (task 20260902-chat-push-notification-failure) ──
+    // Previously the socket was only ever closed by onDisappear (the chat
+    // *view* leaving the hierarchy), not by the app being backgrounded. A
+    // backgrounded-but-still-foreground-view chat (user hits the Home button
+    // without navigating away) left active_connections[uid] registered
+    // server-side well after the app could no longer surface an incoming
+    // frame as a notification, so the server's `ws.send_json` "succeeded"
+    // and never fell through to the APNs push branch. The backend heartbeat
+    // (step 1) is the real backstop for every disconnection mode including a
+    // force-quit or dropped network the client can never self-report, but
+    // proactively closing here shrinks the race window for the common
+    // graceful-backgrounding case instead of waiting out that timeout.
+    //
+    // Reuses the same isDisconnecting-guarded disconnect() as onDisappear —
+    // an intentional close either way, so the existing `.failure` handling
+    // in receiveLoop() correctly treats this as "not a real drop" and never
+    // schedules a reconnect on its own.
+    func handleAppBackgrounded() {
+        guard !isDisconnecting else { return }
+        disconnect()
+    }
+
+    // Mirrors load()'s initial connectWebSocket call, but only resumes a
+    // connection this view model itself closed via handleAppBackgrounded()
+    // — if the view never finished its initial load (wsBase still empty) or
+    // disconnect() was called for view teardown instead, there's nothing to
+    // resume here.
+    func handleAppForegrounded() {
+        guard isDisconnecting, !wsBase.isEmpty else { return }
+        isDisconnecting = false
+        reconnectAttempt = 0
+        connectWebSocket(wsBase: wsBase, userId: wsUserId)
+    }
+
     private func connectWebSocket(wsBase: String, userId: String) {
         self.wsBase   = wsBase
         self.wsUserId = userId
@@ -224,6 +258,14 @@ struct ChatThreadView: View {
     @StateObject private var vm = ChatThreadViewModel()
 
     @Environment(\.dismiss) private var dismiss
+    // Drives handleAppBackgrounded()/handleAppForegrounded() below — only
+    // .background is treated as "actually gone," not the transient .inactive
+    // state SwiftUI also reports for things like a Control Center swipe, an
+    // incoming-call/permission overlay, or the app-switcher gesture. Reacting
+    // to .inactive too would disconnect (and then have to reconnect) during
+    // ordinary foreground interactions that never left the app, which is the
+    // opposite of what this task is trying to fix.
+    @Environment(\.scenePhase) private var scenePhase
     @State private var text:        String = ""
     @State private var showMembers: Bool   = false
     @State private var showSession: Bool   = false
@@ -387,6 +429,17 @@ struct ChatThreadView: View {
             }
         }
         .onDisappear { vm.disconnect() }
+        // App-lifecycle wiring (task 20260902-chat-push-notification-failure)
+        // — complements onDisappear above, which only fires when this view
+        // itself leaves the hierarchy, not when the whole app is backgrounded
+        // while the chat thread is still the visible screen.
+        .onChange(of: scenePhase) { phase in
+            if phase == .background {
+                vm.handleAppBackgrounded()
+            } else if phase == .active {
+                vm.handleAppForegrounded()
+            }
+        }
         .sheet(isPresented: $showAddMembers) {
             AddGroupMembersSheet(
                 candidates: friends.filter { !memberIds.contains($0.id) }

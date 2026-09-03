@@ -86,13 +86,28 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str, msg_type: str =
     try:
         try:
             while True:
-                payload      = await websocket.receive_json()
+                payload = await websocket.receive_json()
+                # Any frame at all on this socket is proof of life for the
+                # heartbeat liveness check (ConnectionManager.run_heartbeat_check)
+                # — a real chat/signal send, or a future explicit "pong" reply.
+                # This doesn't need to gate the blocking receive_json() call
+                # above with its own timeout: the heartbeat's periodic probe
+                # runs as an independent background task
+                # (ConnectionManager.start_heartbeat), decoupled from whatever
+                # this particular connection's receive loop is doing.
+                manager.touch(user_id)
                 # Never trust the client-supplied sender identity — a connected
                 # user could otherwise claim to be anyone in `from_user` and
                 # impersonate them in DMs/group chat/call signaling, bypassing
                 # block enforcement (which keys off this field).
                 payload["from_user"] = session_user
                 effective_type = payload.get("type") or msg_type
+                if effective_type == "pong":
+                    # Client-side reply to our heartbeat ping (not sent by the
+                    # current iOS client yet, but harmless/inert here for any
+                    # client — including a future one, or the web client —
+                    # that does reply) — touch() above already recorded it.
+                    continue
                 if effective_type in _SIGNAL_TYPES:
                     await manager.send_sig(payload)
                 else:

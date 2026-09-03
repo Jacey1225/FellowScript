@@ -382,6 +382,25 @@ final class MockDataService: DataServiceProtocol {
         creator_id: mockUser.user_id, participants: [mockUser.user_id]
     )
 
+    // Demo Events (heartbeat) fixture — task 20260902-onboarding-tour-real-
+    // screenshots. AccountView's Events section (vm.events, populated from
+    // fetchHeartbeats) previously always rendered empty ("No events yet.")
+    // under MockDataService, which is a real gap for the onboarding tour's
+    // EVENTS step: its screenshot must show populated, representative
+    // content, not an empty state. One-off seeding only, per the intake
+    // spec's explicitly in-scope allowance ("Any one-off seeding of a demo/
+    // sample account's content ... a scheduled event ... purely so the
+    // screenshots look populated") — not a durable feature change. All 31
+    // timestamps slots filled so `scheduleSummary` reads "Every day",
+    // matching the daily-devotional framing already used by the tour's
+    // (now-deleted) hand-drawn MockHeartbeat mock.
+    static let mockHeartbeat = FSHeartbeat(
+        id: "heartbeat-001", agent_id: mockAgents[0].id, user_id: mockUser.user_id,
+        timestamps: Array(repeating: "13:00", count: 31),
+        prompt: "Reflect on a Psalm and how God's faithfulness applies to my day.",
+        group_id: nil
+    )
+
     // ── Protocol conformance ──────────────────────────────────────────────────
 
     // Auth
@@ -476,7 +495,9 @@ final class MockDataService: DataServiceProtocol {
         Self.mockAgentMessages
     }
 
-    func fetchHeartbeats(userId: String, agentId: String) async throws -> [FSHeartbeat] { [] }
+    func fetchHeartbeats(userId: String, agentId: String) async throws -> [FSHeartbeat] {
+        agentId == Self.mockHeartbeat.agent_id ? [Self.mockHeartbeat] : []
+    }
 
     func createAgent(userId: String, role: String) async throws -> FSAgent {
         FSAgent(id: UUID().uuidString, user_id: userId, role: role, enabled: true, chats: [])
