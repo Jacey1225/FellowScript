@@ -1165,6 +1165,11 @@
 <td>Total count of the user's personal notes: <code>{ "count": int }</code>. Unpaginated, for summary displays.</td>
 </tr>
 <tr>
+<td>GET</td>
+<td><code>/notes/{user_id}/search?q=</code></td>
+<td>Keyword search (case-insensitive substring) over the user's personal notes' <code>title</code>/<code>text</code>, excluding replies and group notes. Returns every match in one response — not keyset-paginated, since the result set is already bounded by the query. Same response shape as <code>GET /notes/{user_id}</code> minus the pagination fields.</td>
+</tr>
+<tr>
 <td>POST</td>
 <td><code>/notes/{user_id}</code></td>
 <td>Create a note. Body: <code>{ title, text, public, group_id, verses: [[book, ch, v], …] }</code></td>
@@ -1310,6 +1315,11 @@ may still be populated.</p>
 <td>GET</td>
 <td><code>/groups/{user_id}/{group_id}/notes</code></td>
 <td>One page (15) of public notes shared in the group, newest first. Keyset-paginated, same contract as <code>/notes/{user_id}</code> above (blocked users excluded server-side).</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/groups/{user_id}/{group_id}/notes/search?q=</code></td>
+<td>Keyword search (case-insensitive substring) over the group's notes' <code>title</code>/<code>text</code>. Returns every match in one response (not keyset-paginated), blocked users excluded server-side. Caller must be a group member.</td>
 </tr>
 <tr>
 <td>GET</td>
