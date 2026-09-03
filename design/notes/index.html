@@ -549,6 +549,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#search-ios-task-20260903-notes-keyword-search" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Search (iOS, task 20260903-notes-keyword-search)
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1144,6 +1155,35 @@ differently from the web <code>NoteCard</code> above:</p>
   flag is <code>true</code> — mirroring the backend's <code>update_note</code> non-owner branch.
   A non-author, non-public group note is read-only to everyone but its
   author. Personal notes are unaffected, since they're always self-authored.</li>
+</ul>
+<h3 id="search-ios-task-20260903-notes-keyword-search">Search (iOS, task <code>20260903-notes-keyword-search</code>)</h3>
+<p>A custom-styled search field (<code>NotesSearchField</code> in <code>NotesListView.swift</code>,
+matching the glass/gold capsule treatment already used by <code>ChatRootView</code>'s
+conversation search — not a bare system <code>.searchable()</code>) sits at the top of
+the Notes tab, above the group chips. It's Notes-tab only — Highlights has no
+search.</p>
+<ul>
+<li><strong>Backend-driven, not a client-side filter</strong> — because notes are
+  server-paginated (<code>NotesViewModel.notes</code> only holds pages already fetched),
+  search calls dedicated endpoints (<code>GET /notes/{user_id}/search</code>,
+  <code>GET /groups/{user_id}/{group_id}/notes/search</code>) that return every matching
+  note in one bounded response, so a keyword can surface an older note the
+  client hasn't paginated in yet. Matches title and/or body text; replies are
+  excluded server-side, same as every other notes list.</li>
+<li><strong>Segment-scoped</strong> — search respects whichever segment (Personal or a
+  selected group) is currently active, consistent with <code>currentGroupId</code>/
+  <code>filteredNotes</code> everywhere else on this screen. Switching groups mid-search
+  re-queries the new segment rather than showing stale results.</li>
+<li><strong>Debounce</strong> — ~300ms after the last keystroke (<code>NotesViewModel.
+  scheduleSearch</code>) before firing a request, cancelling any still-in-flight
+  search for a superseded query.</li>
+<li><strong>Loading / empty states</strong> — a plain spinner replaces the magnifying-glass
+  icon while a query is in flight; a minimal single-line "No notes found for
+  ‘…’" message (no illustration) covers the no-match case, per this app's
+  default empty-state treatment.</li>
+<li><strong>Clearing</strong> — the field's fade-in <code>×</code> button (a functional state cue, not
+  decorative motion) resets the query and returns to the normal unfiltered,
+  paginated list with no lingering search state.</li>
 </ul>
 <hr />
 <h2 id="highlights-tab">Highlights Tab</h2>
