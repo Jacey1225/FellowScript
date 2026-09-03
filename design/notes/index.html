@@ -699,6 +699,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#ai-generated-note-edit-permission-scheduled-events" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        AI-Generated Note Edit Permission (Scheduled Events)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#creation-date-storage" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1081,13 +1092,16 @@
 
 
 <h1 id="notes">Notes</h1>
-<p>The Notes sidebar (<code>NotesSidebar</code>) appears in the right panel of the Reader. It has two tabs — Notes and Highlights — and a full rich-text editor for creating and editing notes.</p>
+<p>The Notes panel (<code>NotesPanel</code>, docked in the Reader) has two tabs — Notes and Highlights — and a full rich-text editor for creating and editing notes.</p>
+<blockquote>
+<p><strong><code>public</code> is an edit-permission flag, not a visibility flag (as of 2026-09, task <code>20260903-notes-public-repurpose</code>).</strong> Visibility is <code>group_id</code>-only: an empty/null <code>group_id</code> means the note is private to its owner; a set <code>group_id</code> means it's visible to every member of that group, regardless of <code>public</code>. <code>public</code> now controls whether other members of the note's group may <em>edit</em> it (deny-by-default — <code>False</code>, the column's existing default, means owner-only edit). The note's own owner can always edit/delete it; delete stays owner-only for everyone else, even when <code>public</code> is <code>True</code>.</p>
+</blockquote>
 <hr />
 <h2 id="notes-tab">Notes Tab</h2>
-<p>Displays all personal notes (or group public notes when a group is selected). Notes are always sorted by <strong>creation date, newest first</strong>.</p>
+<p>Displays all personal notes (or every group member's notes when a group is selected — display is <code>group_id</code>-only, no longer re-filtered by <code>public</code>). Notes are always sorted by <strong>creation date, newest first</strong>.</p>
 <p>Each note card shows:
 - <strong>Title</strong> — Lora serif, bold
-- <strong>Public badge</strong> — gold tag if the note is shared with the group (web; see the iOS presentation note below for the iOS treatment, which differs)
+- <strong>Editable badge</strong> — gold "Editable" tag, group notes only, shown when <code>public</code> is <code>True</code> (i.e. other group members may edit this note) — not a visibility indicator (web; see the iOS presentation note below for the iOS treatment, which differs)
 - <strong>Verse references</strong> — clickable tags (<code>Genesis 1:1</code>) that navigate the reader to that verse
 - <strong>Body preview</strong> — up to 3 lines of plain text (HTML stripped)
 - <strong>Creation date</strong> — small, right-aligned, muted label: "Today", "Yesterday", "Jul 16", or "Jul 16, 2025" for older years</p>
@@ -1102,7 +1116,7 @@
 </code></pre>
 <h3 id="ios-presentation-noterow-in-noteslistviewswift">iOS presentation (<code>NoteRow</code> in <code>NotesListView.swift</code>)</h3>
 <p>The iOS notes list row (<code>FellowScript/FellowScript/Notes/NotesListView.swift</code>,
-<code>NoteRow</code>) shows per-note author identity and the public/private state
+<code>NoteRow</code>) shows per-note author identity and edit-permission state
 differently from the web <code>NoteCard</code> above:</p>
 <ul>
 <li><strong>Author chip</strong> — for a note in a group segment whose author username was
@@ -1113,18 +1127,23 @@ differently from the web <code>NoteCard</code> above:</p>
   username key). The chip never renders on Personal-segment notes (always
   the viewer, so it would be redundant), and never renders a placeholder for
   a group note with a missing/uncaptured username — it's simply omitted.</li>
-<li><strong>Public/private indicator</strong> — the old standalone "PUBLIC" text badge is
-  gone on iOS. In its place, a small SF Symbol (<code>globe</code> for public,
-  <code>lock.fill</code> for private) sits next to the note's timestamp, on both
-  Personal and group segments, with a combined VoiceOver label (e.g. "Jul
-  19, private").</li>
-<li><strong>Author-only Edit/Delete</strong> — in a group segment, the context-menu Edit,
-  swipe-to-delete, and context-menu Delete actions, plus <code>NoteDetailView</code>'s
-  toolbar Edit pill, are only shown for a note the current user authored
-  (<code>FSNote.username</code> matches the viewer). Another member's group note shows
-  none of these — it's read-only to everyone but its author, matching the
-  backend's existing author-only enforcement on <code>PUT</code>/<code>DELETE /notes/{user_id}</code>.
-  Personal notes are unaffected, since they're always self-authored.</li>
+<li><strong>Editable-by-group indicator</strong> — a small <code>pencil.circle.fill</code> SF Symbol
+  sits next to the note's timestamp, shown only for a group note with
+  <code>public == true</code> (mirroring the web "Editable" badge), with a combined
+  VoiceOver label (e.g. "Jul 19, editable by group"). Personal notes never
+  show this indicator — there's no other group member who could edit one
+  regardless of the flag — and the old always-shown <code>globe</code>/<code>lock.fill</code>
+  visibility cue (and the Private-Only/Public-Only <code>VisibilityFilter</code> sort
+  menu that went with it) were removed entirely, since visibility no longer
+  depends on <code>public</code>.</li>
+<li><strong>Edit/Delete affordances</strong> — in a group segment, swipe-to-delete and the
+  context-menu Delete action are shown only for the note's own author
+  (<code>FSNote.username</code> matches the viewer) — delete stays owner-only. The
+  context-menu Edit action, and <code>NoteDetailView</code>'s toolbar Edit pill, are
+  shown for the author <em>or</em> for any group member when the note's <code>public</code>
+  flag is <code>true</code> — mirroring the backend's <code>update_note</code> non-owner branch.
+  A non-author, non-public group note is read-only to everyone but its
+  author. Personal notes are unaffected, since they're always self-authored.</li>
 </ul>
 <hr />
 <h2 id="highlights-tab">Highlights Tab</h2>
@@ -1132,7 +1151,7 @@ differently from the web <code>NoteCard</code> above:</p>
 <p>Group view shows a colored dot and the username of each member's highlight.</p>
 <hr />
 <h2 id="group-selector">Group Selector</h2>
-<p>A compact dropdown on the right side of the tab bar switches between <strong>Personal</strong> (your own notes) and any study groups you belong to. In group view, all members' public notes appear.</p>
+<p>A compact dropdown on the right side of the tab bar switches between <strong>Personal</strong> (your own notes) and any study groups you belong to. In group view, all members' notes for that group appear — display is <code>group_id</code>-only, not filtered by <code>public</code>.</p>
 <hr />
 <h2 id="filter-sort-panel">Filter &amp; Sort Panel</h2>
 <p>The filter icon (top-right of the Notes header) opens a panel with:
@@ -1144,7 +1163,12 @@ differently from the web <code>NoteCard</code> above:</p>
 <h3 id="header-bar">Header bar</h3>
 <ul>
 <li>Cancel button (left)</li>
-<li>Public toggle (centre) — switch to share the note with the current group</li>
+<li>"Allow group to edit" toggle (centre) — switch controlling whether other
+  members of the current group may edit this note; shown only when the
+  editor is open in a group context (a personal note has no other group
+  member to grant edit access to). Group attachment itself is separate and
+  automatic: opening the editor from a group tab always tags the note with
+  that group's id, independent of this toggle.</li>
 <li>Save button (right)</li>
 </ul>
 <h3 id="verse-bar">Verse bar</h3>
@@ -1178,15 +1202,17 @@ pairing described above are unchanged.</p>
   old dashed outline; the <code>VerseTag</code> capsule's border uses the same glass
   hairline gradient as <code>glassCard()</code> instead of a flat gold stroke.</li>
 <li><strong>Header controls</strong> — Cancel is a 36×36pt ghost icon chip (<code>xmark</code>); the
-  Public toggle is an icon-badge pill (<code>globe</code>/<code>lock</code> + "Public"/"Private")
-  that flips state on tap; Save is relocated out of the header to a 48×48pt
-  gradient circular FAB pinned bottom-right, floating above the writing card.
-  It shows a <code>checkmark</code> icon, swaps to a spinner while saving, and is
-  disabled while saving — identical state logic to before, just repositioned.</li>
-<li><strong>Read-only mode</strong> — still hides the Public badge, Save FAB, "+ Verse", and
-  toolbar; a small top-trailing <code>checkmark</code> icon chip ("Done") replaces the
-  old text button in the position where Save would otherwise be, and still
-  dismisses the editor.</li>
+  edit-permission control is an icon-badge pill (<code>pencil</code>/<code>lock</code> +
+  "Group Can Edit"/"Owner Only") that flips state on tap, shown only for a
+  note that has a group (mirrors the web toggle's same group-context gate);
+  Save is relocated out of the header to a 48×48pt gradient circular FAB
+  pinned bottom-right, floating above the writing card. It shows a
+  <code>checkmark</code> icon, swaps to a spinner while saving, and is disabled while
+  saving — identical state logic to before, just repositioned.</li>
+<li><strong>Read-only mode</strong> — still hides the edit-permission badge, Save FAB,
+  "+ Verse", and toolbar; a small top-trailing <code>checkmark</code> icon chip ("Done")
+  replaces the old text button in the position where Save would otherwise
+  be, and still dismisses the editor.</li>
 </ul>
 <hr />
 <h2 id="note-detail">Note Detail</h2>
@@ -1219,6 +1245,19 @@ unchanged.</p>
 <li><strong>Divider</strong> — a 1pt <code>Theme.goldGradient</code> rule in place of the old plain
   <code>Divider()</code>, same position/role.</li>
 </ul>
+<hr />
+<h2 id="ai-generated-note-edit-permission-scheduled-events">AI-Generated Note Edit Permission (Scheduled Events)</h2>
+<p>Scheduled agent "heartbeat" events (<code>AgentHeartbeats</code>, configured via iOS's
+<code>EventSetupSheet</code>) can be tied to a group, so the note the agent generates on
+fire inherits that group's <code>group_id</code>. A dedicated "EDIT PERMISSION" toggle
+on the event's Details screen — shown only once a group is selected, mirroring
+<code>NoteEditorView</code>'s own group-gated control — sets a deny-by-default
+<code>notes_public</code> field on the heartbeat (<code>agent_heartbeats.notes_public</code>,
+default <code>False</code>). This is stored explicitly at configuration time rather than
+inferred from the agent's per-fire response: it's threaded through to every
+note that heartbeat generates, controlling whether other group members may
+edit that AI-authored note (never whether it's visible — visibility is still
+<code>group_id</code>-only, same as any other note).</p>
 <hr />
 <h2 id="creation-date-storage">Creation Date Storage</h2>
 <p><code>created_at</code> is set at INSERT time and never modified on edits. <code>timestamp</code> is bumped on every edit. The frontend sorts by <code>created_at</code> (falling back to <code>timestamp</code> for legacy notes) and displays <code>created_at</code> as the date label on each card.</p>
