@@ -716,6 +716,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#reply-edit-task-20260904-reply-edit-button" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reply Edit (task 20260904-reply-edit-button)
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1315,6 +1326,33 @@ uses on save — stored through the existing <code>post_reply</code> endpoint wi
 backend changes, since notes and replies already share one <code>text</code> column and
 content-filter path. The composer omits <code>NoteEditorView</code>'s title field, verse
 tagging, and edit-permission toggle — those don't apply to a reply.</p>
+<h4 id="reply-edit-task-20260904-reply-edit-button">Reply Edit (task <code>20260904-reply-edit-button</code>)</h4>
+<p>Each reply card (<code>NoteDetailView.replyCard</code>) shows a top-right <code>gradientPill</code>
+"Edit", the same pill/idiom as the parent note's own toolbar Edit — gated by
+a per-reply mirror of <code>canEdit</code> (the reply's own author, or any group member
+when the reply's own <code>public</code>/group-edit flag allows it; hidden, not
+disabled, when authorship can't be confidently resolved). Tapping it opens
+the same <code>NoteEditorView</code> the parent note uses, pre-populated with that
+reply's real title/text/verses.</p>
+<p>Two plumbing fixes underpin this, both scoped narrowly rather than as a new
+endpoint or editor:</p>
+<ul>
+<li><strong>Real reply ids</strong> — <code>GroupsManager.fetch_replies</code> now re-attaches each
+  reply's real row id (previously discarded once <code>lookup()</code>'s result was
+  unwrapped into a flat list) under an <code>"id"</code> key, which flows through the
+  group-replies route unchanged. <code>NetworkService.fetchReplies</code> decodes that
+  id onto <code>FSNote.id</code> instead of synthesizing a throwaway UUID, so a reply's
+  identity survives past the current render pass.</li>
+<li><strong>Save path keyed off the note actually being saved</strong> — the reply Edit
+  sheet calls <code>service.saveNote(_:editingId:userId:)</code> directly (the same
+  <code>PUT /notes/{userId}?note_id=</code> endpoint the parent note's edit flow already
+  uses) with <code>editingId: saved.id</code>, then patches the matching entry in
+  <code>NoteDetailView</code>'s own <code>replies</code> array in place — no full reload, and no
+  write to <code>NotesViewModel.notes</code> (which would otherwise make the reply
+  wrongly appear as a top-level note in the main Notes list). A save failure
+  surfaces as the same inline error <code>NoteEditorView</code> already shows for the
+  parent note's edit flow.</li>
+</ul>
 <hr />
 <h2 id="ai-generated-note-edit-permission-scheduled-events">AI-Generated Note Edit Permission (Scheduled Events)</h2>
 <p>Scheduled agent "heartbeat" events (<code>AgentHeartbeats</code>, configured via iOS's
