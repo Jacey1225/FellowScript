@@ -78,7 +78,7 @@ os.environ.setdefault("AWS_DEFAULT_REGION", "us-east-1")
 
 import backend.interactions.push as push  # noqa: E402
 
-PASSED, FAILED = [], []
+PASSED, FAILED, SKIPPED = [], [], []
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _REAL_LOCAL_KEY_PATH = os.path.normpath(
@@ -86,6 +86,23 @@ _REAL_LOCAL_KEY_PATH = os.path.normpath(
 )
 
 _VARS = ("APPLE_KEY_ID", "APPLE_TEAM_ID", "APPLE_BUNDLE_ID", "APPLE_KEY_PATH")
+
+# GitHub Actions (and most other CI providers) set CI=true automatically.
+# The two tests this gates depend on state that only exists on a real
+# dev/prod machine and must never exist in CI: a real, downloaded-once
+# Apple .p8 signing key committed nowhere (test 1), and a checked-out
+# ~/.env file with production-shaped values (test 8, which deliberately
+# reads THIS machine's own .env to prove/disprove a machine-local
+# regression). CI's own APPLE_* values are provided directly as workflow
+# env vars instead of a .env file -- by design, not an oversight -- so
+# neither test's premise applies there. Skipping (not failing) keeps their
+# real diagnostic value on a local/prod machine intact.
+_IN_CI = os.getenv("CI", "").strip().lower() in ("1", "true")
+
+
+def skip(label: str, reason: str):
+    SKIPPED.append(label)
+    print(f"  SKIP {label}  -- {reason}")
 
 
 def check(label: str, cond: bool, detail: str = ""):
@@ -108,6 +125,11 @@ def _set_valid_env():
 def test_valid_config_passes_and_mints_a_real_jwt():
     print("=== 1. Valid config (real local .p8) -> validate_apns_config() passes, "
           "_apns_jwt() mints a real ES256 token ===")
+    if _IN_CI:
+        skip("valid-config/real-JWT test",
+             "CI has no real .p8 key (by design -- never committed); this test's "
+             "premise only applies to a local dev or production machine")
+        return
     check("prerequisite: the real local AuthKey_DNZPK26TF2.p8 exists on this machine "
           "(if this fails, the test itself can't prove anything -- not a product bug)",
           os.path.isfile(_REAL_LOCAL_KEY_PATH), _REAL_LOCAL_KEY_PATH)
@@ -296,6 +318,12 @@ def test_app_boot_with_current_repo_env_STILL_BROKEN_regression():
           "real app with this machine's actual, current .env crashes lifespan, breaking "
           "every one of the 29+ existing test files that boot TestClient(main_module.app) "
           "===")
+    if _IN_CI:
+        skip("app-boot-with-.env test",
+             "CI has no .env file at all (by design -- gitignored, never checked "
+             "out); CI gets its APPLE_* config from workflow env vars instead, so "
+             "this machine-local-.env regression test has no CI equivalent to check")
+        return
     # Deliberately restore the REAL environment (not the synthetic valid one used by
     # tests 1-7 above) by reloading push.py with no env overrides in place, then
     # attempt exactly what every other test file's main() already does.
@@ -348,14 +376,15 @@ def main():
         importlib.reload(push)
 
     print(f"\n{'='*60}")
+    skipped_note = f", {len(SKIPPED)} skipped" if SKIPPED else ""
     if FAILED:
-        print(f"RESULT: {len(PASSED)} passed, {len(FAILED)} FAILED")
+        print(f"RESULT: {len(PASSED)} passed, {len(FAILED)} FAILED{skipped_note}")
         for label, detail in FAILED:
             print(f"  X {label} -- {detail}")
         print("STATUS: FAIL")
         raise SystemExit(1)
     else:
-        print(f"RESULT: {len(PASSED)} passed, 0 failed")
+        print(f"RESULT: {len(PASSED)} passed, 0 failed{skipped_note}")
         print("STATUS: ALL PASS")
 
 
