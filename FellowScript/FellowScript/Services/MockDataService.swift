@@ -68,6 +68,18 @@ protocol DataServiceProtocol {
     func searchNotes(userId: String, query: String) async throws -> [String: FSNote]
     func searchGroupNotes(userId: String, groupId: String, query: String) async throws -> [String: FSNote]
 
+    // Notes (single fetch by id) -- task 20260903-friend-activity-note-navigation.
+    // Backs the Friend Activity hero card's note-preview tap target: fetches
+    // one note the caller may not own (a friend's shared group note), so
+    // unlike the segment-scoped reads above this is permission-checked
+    // server-side per-call (GET /notes/{user_id}/note/{note_id}, `user_id`
+    // is the *viewer*) rather than merely scoped to the caller's own notes.
+    // Throws AppError.networkError with the identical user-facing message
+    // for both a missing note and one the viewer can no longer see -- the
+    // server returns the identical response for both, so the client can't
+    // and shouldn't try to distinguish them either.
+    func fetchNote(userId: String, noteId: String) async throws -> FSNote
+
     // Notes (write)
     func saveNote(_ note: FSNote, editingId: String?, userId: String) async throws -> String
     func deleteNote(noteId: String, userId: String) async throws
@@ -483,6 +495,19 @@ final class MockDataService: DataServiceProtocol {
         }
     }
     func searchGroupNotes(userId: String, groupId: String, query: String) async throws -> [String: FSNote] { [:] }
+
+    // Mirrors the real endpoint's IDOR-safe contract: a missing/unknown id
+    // throws the same AppError.notFound a not-visible-to-this-viewer note
+    // would, so previews/tests exercising the tap-to-open flow's error path
+    // don't need a second mock fixture set to simulate "denied" separately
+    // from "doesn't exist" -- the server never lets the client tell them
+    // apart either.
+    func fetchNote(userId: String, noteId: String) async throws -> FSNote {
+        guard let note = Self.mockNotes[noteId] else {
+            throw AppError.networkError("That note is no longer available.")
+        }
+        return note
+    }
 
     func saveNote(_ note: FSNote, editingId: String?, userId: String) async throws -> String {
         editingId ?? note.id

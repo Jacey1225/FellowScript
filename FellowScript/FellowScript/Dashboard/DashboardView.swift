@@ -153,9 +153,37 @@ struct DashboardView: View {
 
     @State private var showNewNote    = false
     @State private var showResumeNote = false
+    // Task 20260903-friend-activity-note-navigation: presented via
+    // `.sheet(item:)` exactly like NotesListView's own `detailNote`, in
+    // place on Dashboard -- no tab switch, no new cross-tab navigation
+    // infrastructure (appState.pendingChatContact below is the one existing
+    // exception to that, predating this task, for chat only).
+    @State private var friendNote:          FSNote? = nil
+    @State private var isLoadingFriendNote  = false
+    @State private var friendNoteLoadError: String? = nil
 
     private func openFriendChat(id: String, username: String) {
         appState.pendingChatContact = FSContact(id: id, name: username, type: .friend)
+    }
+
+    // Fetches the full note behind a Friend Activity note-preview tap.
+    // Server-side permission-checked on every call (GET
+    // /notes/{user_id}/note/{note_id} -- never trusts the preview data
+    // already on screen as proof the note is still visible), so this
+    // gracefully surfaces the "deleted/no-longer-visible between preview
+    // load and tap time" case via `friendNoteLoadError` rather than
+    // crashing or silently doing nothing.
+    private func openFriendNote(_ preview: FSFriendNotePreview) {
+        guard let uid = appState.currentUser?.user_id, !isLoadingFriendNote else { return }
+        isLoadingFriendNote = true
+        Task {
+            do {
+                friendNote = try await appState.service.fetchNote(userId: uid, noteId: preview.note_id)
+            } catch {
+                friendNoteLoadError = error.localizedDescription
+            }
+            isLoadingFriendNote = false
+        }
     }
 
     var body: some View {
@@ -182,9 +210,17 @@ struct DashboardView: View {
                     HeroHeader(username: appState.currentUser?.username ?? "friend")
 
                     // ── Editorial Hero: Friend Activity ───────────────────────────────
-                    FriendActivityHeroCard(feed: vm.friendActivity, primary: vm.heroFriendPick) { entry in
-                        openFriendChat(id: entry.friend_id, username: entry.username)
-                    }
+                    FriendActivityHeroCard(
+                        feed: vm.friendActivity,
+                        primary: vm.heroFriendPick,
+                        onOpenFriend: { entry in
+                            openFriendChat(id: entry.friend_id, username: entry.username)
+                        },
+                        onOpenNote: { preview in
+                            openFriendNote(preview)
+                        },
+                        isLoadingNotePreview: isLoadingFriendNote
+                    )
 
                     if let checkIn = vm.checkInPick {
                         CheckInRow(checkIn: checkIn) {
@@ -231,6 +267,37 @@ struct DashboardView: View {
                     await vm.saveNote(saved, editingId: recent.0, userId: appState.currentUser?.user_id ?? "")
                 }
             }
+        }
+        // Task 20260903-friend-activity-note-navigation: mirrors
+        // NotesListView's `.sheet(item: $detailNote)` -- presented in place
+        // on Dashboard, no tab switch. Saves go straight through
+        // `appState.service` rather than `vm.saveNote` deliberately: this is
+        // a friend's shared group note, not one of this screen's own
+        // `notes` (which back `recentNote`/NoteResumeCard) -- merging it
+        // into that dict would risk NoteResumeCard picking up a friend's
+        // note as "your" most recent note to resume.
+        .sheet(item: $friendNote) { note in
+            NoteDetailView(
+                note:     note,
+                userId:   appState.currentUser?.user_id ?? "",
+                username: appState.currentUser?.username ?? "",
+                service:  appState.service
+            ) { saved in
+                do {
+                    _ = try await appState.service.saveNote(saved, editingId: note.id, userId: appState.currentUser?.user_id ?? "")
+                    return nil
+                } catch {
+                    return error.localizedDescription
+                }
+            }
+        }
+        .alert("Could Not Open Note", isPresented: Binding(
+            get: { friendNoteLoadError != nil },
+            set: { if !$0 { friendNoteLoadError = nil } }
+        )) {
+            Button("OK") { friendNoteLoadError = nil }
+        } message: {
+            Text(friendNoteLoadError ?? "That note is no longer available.")
         }
     }
 }

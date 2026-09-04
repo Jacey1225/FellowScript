@@ -431,6 +431,78 @@ async def search_notes(
         db.close()
 
 
+@notes_router.get("/{user_id}/note/{note_id}")
+async def get_note(user_id: str, note_id: str, _: str = Depends(require_match("user_id"))) -> dict:
+    """Fetch a single note by id -- backs the friend-activity-feed "open this
+    note" entry point (tapping a friend's note_preview) and any other
+    single-note-by-id lookup.
+
+    Always does a fresh ``notes`` lookup and re-derives visibility via
+    ``_can_view_note`` on every call -- never trusts the friend-activity
+    feed's own prior filtering, or any client-supplied preview data, as
+    proof of access (deny-by-default). A missing note and a
+    found-but-not-visible note return the byte-identical
+    ``{"error": "cannot find note"}`` response (same shape as ``post_reply``
+    above), so note-id enumeration can't distinguish "doesn't exist" from
+    "exists but you can't see it".
+
+    Args:
+        user_id: UUID of the authenticated viewer (not necessarily the
+            note's owner) -- verified against the session via require_match.
+        note_id: UUID of the note to fetch.
+
+    Returns:
+        dict: the note on success, in the same per-note shape as
+            ``GET /{user_id}``/``GET /{user_id}/search`` (including
+            "verses" and an always-empty "replies" list), plus a
+            "username" field (the owner's display name) those two routes
+            omit -- they only ever return the caller's own notes, so the
+            client already knows the owner; here the note may belong to a
+            friend, and NoteDetailView's canEdit gate needs the owner's
+            username (not just user_id) to compare against the viewer's own
+            username. ``{"error": "cannot find note"}`` if the note doesn't
+            exist or the viewer isn't permitted to see it.
+    """
+    db = DBManager()
+    try:
+        existing = db.lookup("notes", {"_id": note_id})
+        if not existing:
+            return {"error": "cannot find note"}
+        _, note_data = list(existing.items())[0]
+        # Same "cannot find note" message for missing vs. not-visible as
+        # post_reply above -- closes the enumeration oracle.
+        if not _can_view_note(note_data, user_id):
+            return {"error": "cannot find note"}
+        db.cur.execute(
+            "SELECT position, book, chapter::text, verse::text "
+            "FROM note_verses WHERE note_id = %s ORDER BY position",
+            (note_id,)
+        )
+        verses = [[r[1], r[2], r[3]] for r in db.cur.fetchall()]
+        owner_id = str(note_data.get("user_id") or "")
+        username = ""
+        if owner_id:
+            owner = db.lookup("users", {"_id": owner_id})
+            if owner:
+                _, owner_data = list(owner.items())[0]
+                username = owner_data.get("username") or ""
+        return {
+            "user":       owner_id,
+            "username":   username,
+            "title":      note_data.get("title"),
+            "text":       note_data.get("text"),
+            "public":     note_data.get("public"),
+            "group_id":   str(note_data.get("group_id") or ""),
+            "is_reply":   note_data.get("is_reply"),
+            "timestamp":  str(note_data.get("timestamp") or ""),
+            "created_at": str(note_data.get("created_at") or ""),
+            "verses":     verses,
+            "replies":    [],
+        }
+    finally:
+        db.close()
+
+
 @notes_router.get("/{user_id}/count")
 async def get_notes_count(user_id: str, _: str = Depends(require_match("user_id"))) -> dict:
     """Total count of a user's personal (non-reply, non-group) notes.

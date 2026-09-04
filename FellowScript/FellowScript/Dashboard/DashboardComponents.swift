@@ -152,6 +152,21 @@ struct FriendActivityHeroCard: View {
     // keep the prior deterministic behavior.
     var primary: FSFriendActivityEntry? = nil
     let onOpenFriend: (FSFriendActivityEntry) -> Void
+    // Task 20260903-friend-activity-note-navigation: distinct tap target on
+    // the note-preview text block below, separate from activityRow's own
+    // Button (which stays wired to onOpenFriend/chat, unchanged). Defaulted
+    // (not required) so every pre-existing call site/preview/test that only
+    // supplies onOpenFriend (all of DashboardEmptyStateTests.swift and
+    // DashboardFriendRandomizationTests.swift) keeps compiling unchanged.
+    var onOpenNote: (FSFriendNotePreview) -> Void = { _ in }
+    // True while DashboardView has an in-flight fetch for the tapped
+    // preview's full note -- shows a small inline spinner next to the
+    // preview text and disables re-tapping mid-fetch, per the UI/UX
+    // preference profile's "minimal feedback, only where genuinely
+    // ambiguous" guidance (this is a real network round-trip with a
+    // plausible failure mode, so *some* feedback is warranted, just not
+    // more than this).
+    var isLoadingNotePreview: Bool = false
 
     // nil `last_active_at` here means *no* friend has any tracked activity,
     // which is a distinct empty state from "no friends".
@@ -167,12 +182,7 @@ struct FriendActivityHeroCard: View {
                     activityRow(resolvedPrimary)
                     if let preview = resolvedPrimary.note_preview {
                         Divider().background(Color.white.opacity(0.08)).padding(.top, 16)
-                        Text(preview.text)
-                            .font(.system(size: 17))
-                            .foregroundColor(Theme.parchment.opacity(0.85))
-                            .lineLimit(4)
-                            .padding(.top, 16)
-                            .padding(.leading, 32)
+                        notePreviewRow(preview, friendUsername: resolvedPrimary.username)
                     }
                 } else {
                     Text("No recent activity from your friends yet.")
@@ -247,6 +257,36 @@ struct FriendActivityHeroCard: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("\(entry.username): \(headline(entry)). Tap to open chat.")
+    }
+
+    // Distinct tap target from activityRow's headline Button above (task
+    // 20260903-friend-activity-note-navigation) -- taps the note preview
+    // itself, not the friend's avatar/name, and opens the full note rather
+    // than the friend's chat thread. Own sibling accessibilityLabel, per
+    // the spec's callout that activityRow's existing "...Tap to open chat."
+    // label needs a distinguishable counterpart here.
+    private func notePreviewRow(_ preview: FSFriendNotePreview, friendUsername: String) -> some View {
+        Button(action: { onOpenNote(preview) }) {
+            HStack(alignment: .top, spacing: 8) {
+                Text(preview.text)
+                    .font(.system(size: 17))
+                    .foregroundColor(Theme.parchment.opacity(0.85))
+                    .lineLimit(4)
+                    .multilineTextAlignment(.leading)
+                if isLoadingNotePreview {
+                    ProgressView()
+                        .tint(Theme.gold)
+                        .padding(.top, 3)
+                }
+            }
+            .padding(.top, 16)
+            .padding(.leading, 32)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(isLoadingNotePreview)
+        .accessibilityLabel("\(friendUsername)'s note preview. Tap to open note.")
     }
 
     private func headline(_ entry: FSFriendActivityEntry) -> String {

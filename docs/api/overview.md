@@ -36,6 +36,7 @@ All signup paths automatically create a `plan_type='free'` subscription row for 
 | GET | `/notes/{user_id}` | One page (15) of the user's personal notes (excludes replies and group notes), newest first. Keyset-paginated — see below. |
 | GET | `/notes/{user_id}/count` | Total count of the user's personal notes: `{ "count": int }`. Unpaginated, for summary displays. |
 | GET | `/notes/{user_id}/search?q=` | Keyword search (case-insensitive substring) over the user's personal notes' `title`/`text`, excluding replies and group notes. Returns every match in one response — not keyset-paginated, since the result set is already bounded by the query. Same response shape as `GET /notes/{user_id}` minus the pagination fields. |
+| GET | `/notes/{user_id}/note/{note_id}` | Fetch a single note by id, permission-checked (owner or shared group membership). `{user_id}` is the *viewer*, not necessarily the note's owner. Returns `{"error": "cannot find note"}` — identical for a missing note and a not-visible one, so note-id enumeration can't tell them apart — otherwise the note, same per-note shape as `GET /notes/{user_id}` plus a `username` field (the owner's display name, since this route can return a note the caller doesn't own). |
 | POST | `/notes/{user_id}` | Create a note. Body: `{ title, text, public, group_id, verses: [[book, ch, v], …] }` |
 | PUT | `/notes/{user_id}?note_id=` | Update a note (owner only). Replaces verse list. Bumps `timestamp`. |
 | DELETE | `/notes/{user_id}?note_id=` | Delete a note (owner only) |
