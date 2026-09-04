@@ -94,6 +94,37 @@ async def fetch_group_notes(
     return manager.fetch_notes(limit=NOTES_PAGE_SIZE, cursor_created_at=cursor_created_at, cursor_id=cursor_id)
 
 
+@group_router.get("/{user_id}/{group_id}/notes/search")
+async def search_group_notes(
+    user_id: str,
+    group_id: str,
+    q: str = Query(..., min_length=1, description="Keyword to match (case-insensitive substring) against note title or text"),
+    _: str = Depends(require_match("user_id")),
+) -> dict:
+    """Search notes shared within a group by keyword against title/text.
+
+    Returns every matching note in one response rather than a keyset-
+    paginated page -- see GroupsManager.search_notes for why that's safe
+    here (bounded by the query, not a full-collection dump).
+
+    Args:
+        user_id: UUID of the requesting user.
+        group_id: ID of the group whose notes to search.
+        q: Keyword to match (ILIKE substring, case-insensitive) against
+            title or text.
+
+    Returns:
+        dict: ``{"notes": {username: {note_id: note data}}}``, newest first.
+
+    Raises:
+        HTTPException 403: If the caller is not a member of the group.
+    """
+    manager = GroupsManager(user_id, group_id)
+    if not manager.is_member():
+        raise HTTPException(status_code=403, detail="Not a member of this group")
+    return manager.search_notes(q)
+
+
 @group_router.get("/{user_id}/{note_id}/{group_id}/replies")
 async def fetch_group_replies(user_id: str, note_id: str, group_id: str, _: str = Depends(require_match("user_id"))) -> list[dict] | dict[str, str]:
     """Retrieve all replies attached to a specific note in a group.

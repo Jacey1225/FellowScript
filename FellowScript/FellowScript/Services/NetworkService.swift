@@ -428,7 +428,91 @@ final class NetworkService: DataServiceProtocol {
     // through the whole capped collection to compute one.
     func fetchNotesCount(userId: String) async throws -> Int {
         let data = try await get("/notes/\(userId)/count")
-        return decode([String: Int].self, from: data)?["count"] ?? 0
+        // task 20260903-account-stats-not-loading: this was previously the
+        // untagged decode(...) form, so a decode failure here (distinct from
+        // a thrown HTTP/network error, which the caller already handles)
+        // produced zero server-side signal -- it silently collapsed to the
+        // same "0 notes" the account genuinely having no notes would show.
+        // Tagged now so a recurrence is visible via reportDecodeFailure/CloudWatch.
+        return decode([String: Int].self, from: data, endpoint: "GET /notes/{user_id}/count")?["count"] ?? 0
+    }
+
+    // ── Notes (keyword search) ───────────────────────────────────────────────
+    // GET /notes/{userId}/search?q=...                   -- Personal notes
+    // GET /groups/{userId}/{groupId}/notes/search?q=...  -- group notes
+    // Both are segment-scoped exactly like fetchNotes/fetchGroupNotes above,
+    // and both return every matching (non-reply) note in one flat response
+    // rather than a keyset-paginated page -- bounded by the query itself,
+    // not a full-collection dump, so the "no unpaginated full-fetch mode"
+    // contract on the list endpoints above doesn't apply here (task
+    // 20260903-notes-keyword-search).
+
+    func searchNotes(userId: String, query: String) async throws -> [String: FSNote] {
+        let data = try await get("/notes/\(userId)/search?q=\(encodeURIComponent(query))")
+        guard let raw = decode(RawSearchNotes.self, from: data, endpoint: "GET /notes/{user_id}/search") else {
+            return [:]
+        }
+        var dict = raw.notes
+        for (key, var note) in dict { note.id = key; dict[key] = note }
+        return dict
+    }
+
+    func searchGroupNotes(userId: String, groupId: String, query: String) async throws -> [String: FSNote] {
+        let raw = try await get("/groups/\(userId)/\(groupId)/notes/search?q=\(encodeURIComponent(query))")
+        // Response shape mirrors fetchGroupNotes's { notes: { username: { note_id: {...} } } }
+        // (see GroupsManager.search_notes) -- same per-note fields, just no
+        // cursor/has_more since this isn't paginated.
+        guard let top = (try? JSONSerialization.jsonObject(with: raw)) as? [String: Any],
+              let outer = top["notes"] as? [String: Any] else {
+            let context = groupId.isEmpty ? "?" : groupId
+            print("[NetworkService] searchGroupNotes decode failed for group \(context): unexpected response shape")
+            reportDecodeFailure(endpoint: "GET /groups/{user_id}/{group_id}/notes/search",
+                                 summary: "Unexpected response shape (missing/invalid top-level 'notes' object)")
+            return [:]
+        }
+
+        let searchEndpoint = "GET /groups/{user_id}/{group_id}/notes/search"
+        var result: [String: FSNote] = [:]
+        for (username, byNote) in outer {
+            guard let noteMap = byNote as? [String: Any] else {
+                let context = username.isEmpty ? "?" : username
+                print("[NetworkService] searchGroupNotes: notes[\(context)] is not an object, skipping that member's notes")
+                reportDecodeFailure(endpoint: searchEndpoint,
+                                     summary: "notes[username] value is not a JSON object")
+                continue
+            }
+            for (noteId, rawFields) in noteMap {
+                guard var fields = rawFields as? [String: Any] else {
+                    print("[NetworkService] searchGroupNotes: notes[\(username)][\(noteId)] value is not an object, dropping note")
+                    reportDecodeFailure(endpoint: searchEndpoint,
+                                         summary: "notes[username][note_id] value is not a JSON object")
+                    continue
+                }
+                // The DB column is "user_id"; FSNote.CodingKey is "user"
+                fields["user"]     = fields["user_id"] ?? ""
+                fields["id"]       = noteId
+                fields["group_id"] = groupId
+                if fields["verses"]  == nil { fields["verses"]  = [[Any]]() }
+                if fields["replies"] == nil { fields["replies"] = [Any]() }
+                fields.removeValue(forKey: "user_id")
+
+                guard let noteData = try? JSONSerialization.data(withJSONObject: fields) else {
+                    print("[NetworkService] searchGroupNotes: failed to re-serialize note \(noteId) (keys: \(fields.keys.sorted())), dropping note")
+                    reportDecodeFailure(endpoint: searchEndpoint,
+                                         summary: "Failed to re-serialize note fields for JSON encoding (keys: \(fields.keys.sorted()))")
+                    continue
+                }
+                guard var note = decode(FSNote.self, from: noteData, endpoint: searchEndpoint) else {
+                    print("[NetworkService] searchGroupNotes: FSNote decode failed for note \(noteId), dropping note")
+                    continue
+                }
+                note.id       = noteId
+                note.group_id = groupId
+                note.username = username
+                result[noteId] = note
+            }
+        }
+        return result
     }
 
     // ── Notes (write) ─────────────────────────────────────────────────────────
@@ -559,7 +643,11 @@ final class NetworkService: DataServiceProtocol {
 
     func fetchHighlights(userId: String) async throws -> [String: String] {
         let data = try await get("/notes/highlight/\(userId)")
-        return decode([String: String].self, from: data) ?? [:]
+        // task 20260903-account-stats-not-loading: tagged like fetchNotesCount
+        // above -- a decode failure here (e.g. a value shape the plain
+        // [String: String] decode doesn't tolerate) previously vanished
+        // indistinguishably from "this account really has zero highlights".
+        return decode([String: String].self, from: data, endpoint: "GET /notes/highlight/{user_id}") ?? [:]
     }
 
     func saveHighlight(userId: String, book: String, chapter: Int, verse: Int, color: String) async throws {
@@ -602,7 +690,12 @@ final class NetworkService: DataServiceProtocol {
 
     func fetchAgents(userId: String) async throws -> [FSAgent] {
         let data = try await get("/agent/\(userId)")
-        guard let dict = decode([String: FSAgent].self, from: data) else { return [] }
+        // task 20260903-account-stats-not-loading: tagged like the two above.
+        // FSAgent's own Decodable init is lenient per-field (see Models.swift),
+        // so a failure here can only come from the top-level payload not being
+        // a `{uuid: {...}}` object at all -- rare, but still worth a signal
+        // rather than silently reading as "zero agents".
+        guard let dict = decode([String: FSAgent].self, from: data, endpoint: "GET /agent/{user_id}") else { return [] }
         return dict.map { key, val in
             FSAgent(id: key, user_id: val.user_id, name: val.name,
                     role: val.role, enabled: val.enabled, chats: val.chats)
@@ -1191,6 +1284,13 @@ private struct RawNotesPage: Decodable {
     let next_cursor_created_at: String?
     let next_cursor_id: String?
     let has_more: Bool
+}
+
+/// Raw shape of `GET /notes/{user_id}/search`'s success response --
+/// `{"notes": {note_id: note_data}}`, same per-note fields as RawNotesPage
+/// but with no cursor/has_more (search returns every match in one response).
+private struct RawSearchNotes: Decodable {
+    let notes: [String: FSNote]
 }
 
 /// Raw shape of one item in `GET /notes/{user_id}/{note_id}/replies` and

@@ -60,6 +60,14 @@ protocol DataServiceProtocol {
     func fetchGroupNotes(userId: String, groupId: String, cursorCreatedAt: String?, cursorId: String?) async throws -> NotesPage
     func fetchNotesCount(userId: String) async throws -> Int
 
+    // Notes (keyword search) -- task 20260903-notes-keyword-search. Segment-
+    // scoped exactly like fetchNotes/fetchGroupNotes above (Personal vs a
+    // specific group), matching title/text. Unlike those, this is bounded
+    // by the query itself rather than a keyset page, so it returns every
+    // match in one flat dict -- no cursor, no hasMore.
+    func searchNotes(userId: String, query: String) async throws -> [String: FSNote]
+    func searchGroupNotes(userId: String, groupId: String, query: String) async throws -> [String: FSNote]
+
     // Notes (write)
     func saveNote(_ note: FSNote, editingId: String?, userId: String) async throws -> String
     func deleteNote(noteId: String, userId: String) async throws
@@ -463,6 +471,18 @@ final class MockDataService: DataServiceProtocol {
         NotesPage(notes: [:], nextCursorCreatedAt: nil, nextCursorId: nil, hasMore: false)
     }
     func fetchNotesCount(userId: String) async throws -> Int { Self.mockNotes.count }
+
+    // Keyword search over the same small mock fixture set -- case-insensitive
+    // substring match against title/text, mirroring the backend's ILIKE
+    // behavior closely enough for previews/tests that run against this mock.
+    func searchNotes(userId: String, query: String) async throws -> [String: FSNote] {
+        let q = query.lowercased()
+        guard !q.isEmpty else { return [:] }
+        return Self.mockNotes.filter { _, note in
+            note.title.lowercased().contains(q) || note.text.lowercased().contains(q)
+        }
+    }
+    func searchGroupNotes(userId: String, groupId: String, query: String) async throws -> [String: FSNote] { [:] }
 
     func saveNote(_ note: FSNote, editingId: String?, userId: String) async throws -> String {
         editingId ?? note.id

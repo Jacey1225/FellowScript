@@ -60,6 +60,36 @@ differently from the web `NoteCard` above:
   A non-author, non-public group note is read-only to everyone but its
   author. Personal notes are unaffected, since they're always self-authored.
 
+### Search (iOS, task `20260903-notes-keyword-search`)
+
+A custom-styled search field (`NotesSearchField` in `NotesListView.swift`,
+matching the glass/gold capsule treatment already used by `ChatRootView`'s
+conversation search — not a bare system `.searchable()`) sits at the top of
+the Notes tab, above the group chips. It's Notes-tab only — Highlights has no
+search.
+
+- **Backend-driven, not a client-side filter** — because notes are
+  server-paginated (`NotesViewModel.notes` only holds pages already fetched),
+  search calls dedicated endpoints (`GET /notes/{user_id}/search`,
+  `GET /groups/{user_id}/{group_id}/notes/search`) that return every matching
+  note in one bounded response, so a keyword can surface an older note the
+  client hasn't paginated in yet. Matches title and/or body text; replies are
+  excluded server-side, same as every other notes list.
+- **Segment-scoped** — search respects whichever segment (Personal or a
+  selected group) is currently active, consistent with `currentGroupId`/
+  `filteredNotes` everywhere else on this screen. Switching groups mid-search
+  re-queries the new segment rather than showing stale results.
+- **Debounce** — ~300ms after the last keystroke (`NotesViewModel.
+  scheduleSearch`) before firing a request, cancelling any still-in-flight
+  search for a superseded query.
+- **Loading / empty states** — a plain spinner replaces the magnifying-glass
+  icon while a query is in flight; a minimal single-line "No notes found for
+  ‘…’" message (no illustration) covers the no-match case, per this app's
+  default empty-state treatment.
+- **Clearing** — the field's fade-in `×` button (a functional state cue, not
+  decorative motion) resets the query and returns to the normal unfiltered,
+  paginated list with no lingering search state.
+
 ---
 
 ## Highlights Tab

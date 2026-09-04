@@ -155,6 +155,27 @@ final class ThrowingTestDataService: DataServiceProtocol {
     private(set) var fetchGroupNotesCursors: [(created: String?, id: String?)] = []
 
     var fetchNotesCountResult: Int?
+    // Controllable / observable (task 20260903-account-stats-not-loading,
+    // testing step) -- lets AccountStatsLoadRegressionTests drive
+    // AccountViewModel.load()'s notes-count/highlights/agents fetch path
+    // through a genuine throw (to prove statsMsg surfaces instead of
+    // silently collapsing to 0/empty) and through an artificial delay (to
+    // simulate a slower, superseded load() call racing a faster, fresher
+    // one -- proving the loadGeneration guard, not finish order, decides
+    // which call's results actually get committed).
+    var fetchNotesCountError: Error?
+    var fetchNotesCountDelayNanoseconds: UInt64?
+    private(set) var fetchNotesCountCallCount = 0
+
+    var fetchHighlightsResult: [String: String]?
+    var fetchHighlightsError: Error?
+    var fetchHighlightsDelayNanoseconds: UInt64?
+    private(set) var fetchHighlightsCallCount = 0
+
+    var fetchAgentsResult: [FSAgent]?
+    var fetchAgentsError: Error?
+    var fetchAgentsDelayNanoseconds: UInt64?
+    private(set) var fetchAgentsCallCount = 0
 
     func fetchNotes(userId: String, cursorCreatedAt: String?, cursorId: String?) async throws -> NotesPage {
         fetchNotesCallCount += 1
@@ -175,12 +196,58 @@ final class ThrowingTestDataService: DataServiceProtocol {
     }
 
     func fetchNotesCount(userId: String) async throws -> Int {
+        fetchNotesCountCallCount += 1
+        if let fetchNotesCountDelayNanoseconds {
+            try await Task.sleep(nanoseconds: fetchNotesCountDelayNanoseconds)
+        }
+        if let fetchNotesCountError { throw fetchNotesCountError }
         if let fetchNotesCountResult { return fetchNotesCountResult }
         return try await MockDataService.shared.fetchNotesCount(userId: userId)
     }
 
     func saveNote(_ note: FSNote, editingId: String?, userId: String) async throws -> String {
         return try await MockDataService.shared.saveNote(note, editingId: editingId, userId: userId)
+    }
+
+    // Controllable / observable (task 20260903-notes-keyword-search, testing
+    // step 3) -- used by NotesSearchRegressionTests to drive
+    // NotesViewModel's search debounce/segment-routing through exact
+    // results (including results NOT present in any already-loaded page,
+    // proving search isn't capped to `notes`) without touching the network.
+    // An unset result falls back to MockDataService's own real (small,
+    // fixture-backed) search behavior so every other suite using this
+    // double is unaffected.
+    var searchNotesResult: [String: FSNote]?
+    private(set) var searchNotesCallCount = 0
+    private(set) var lastSearchNotesQuery: String?
+    private(set) var lastSearchNotesUserId: String?
+    // Lets a test simulate a slow response landing after a newer keystroke
+    // has already superseded it, to prove NotesViewModel.runSearch's
+    // `query == searchText` staleness guard actually discards it.
+    var searchNotesDelayNanoseconds: UInt64?
+
+    var searchGroupNotesResult: [String: FSNote]?
+    private(set) var searchGroupNotesCallCount = 0
+    private(set) var lastSearchGroupNotesQuery: String?
+    private(set) var lastSearchGroupNotesGroupId: String?
+
+    func searchNotes(userId: String, query: String) async throws -> [String: FSNote] {
+        searchNotesCallCount += 1
+        lastSearchNotesQuery = query
+        lastSearchNotesUserId = userId
+        if let searchNotesDelayNanoseconds {
+            try await Task.sleep(nanoseconds: searchNotesDelayNanoseconds)
+        }
+        if let searchNotesResult { return searchNotesResult }
+        return try await MockDataService.shared.searchNotes(userId: userId, query: query)
+    }
+
+    func searchGroupNotes(userId: String, groupId: String, query: String) async throws -> [String: FSNote] {
+        searchGroupNotesCallCount += 1
+        lastSearchGroupNotesQuery = query
+        lastSearchGroupNotesGroupId = groupId
+        if let searchGroupNotesResult { return searchGroupNotesResult }
+        return try await MockDataService.shared.searchGroupNotes(userId: userId, groupId: groupId, query: query)
     }
 
     // Controllable / observable (task 20260830-compliance-remediation, H6/H7)
@@ -209,6 +276,12 @@ final class ThrowingTestDataService: DataServiceProtocol {
     }
 
     func fetchHighlights(userId: String) async throws -> [String: String] {
+        fetchHighlightsCallCount += 1
+        if let fetchHighlightsDelayNanoseconds {
+            try await Task.sleep(nanoseconds: fetchHighlightsDelayNanoseconds)
+        }
+        if let fetchHighlightsError { throw fetchHighlightsError }
+        if let fetchHighlightsResult { return fetchHighlightsResult }
         return try await MockDataService.shared.fetchHighlights(userId: userId)
     }
 
@@ -255,6 +328,12 @@ final class ThrowingTestDataService: DataServiceProtocol {
     }
 
     func fetchAgents(userId: String) async throws -> [FSAgent] {
+        fetchAgentsCallCount += 1
+        if let fetchAgentsDelayNanoseconds {
+            try await Task.sleep(nanoseconds: fetchAgentsDelayNanoseconds)
+        }
+        if let fetchAgentsError { throw fetchAgentsError }
+        if let fetchAgentsResult { return fetchAgentsResult }
         return try await MockDataService.shared.fetchAgents(userId: userId)
     }
 

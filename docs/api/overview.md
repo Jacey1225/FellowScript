@@ -35,6 +35,7 @@ All signup paths automatically create a `plan_type='free'` subscription row for 
 |---|---|---|
 | GET | `/notes/{user_id}` | One page (15) of the user's personal notes (excludes replies and group notes), newest first. Keyset-paginated — see below. |
 | GET | `/notes/{user_id}/count` | Total count of the user's personal notes: `{ "count": int }`. Unpaginated, for summary displays. |
+| GET | `/notes/{user_id}/search?q=` | Keyword search (case-insensitive substring) over the user's personal notes' `title`/`text`, excluding replies and group notes. Returns every match in one response — not keyset-paginated, since the result set is already bounded by the query. Same response shape as `GET /notes/{user_id}` minus the pagination fields. |
 | POST | `/notes/{user_id}` | Create a note. Body: `{ title, text, public, group_id, verses: [[book, ch, v], …] }` |
 | PUT | `/notes/{user_id}?note_id=` | Update a note (owner only). Replaces verse list. Bumps `timestamp`. |
 | DELETE | `/notes/{user_id}?note_id=` | Delete a note (owner only) |
@@ -103,6 +104,7 @@ may still be populated.
 | POST | `/groups/{user_id}/{group_id}/join` | Join a group |
 | POST | `/groups/{user_id}/{group_id}/leave` | Leave a group |
 | GET | `/groups/{user_id}/{group_id}/notes` | One page (15) of public notes shared in the group, newest first. Keyset-paginated, same contract as `/notes/{user_id}` above (blocked users excluded server-side). |
+| GET | `/groups/{user_id}/{group_id}/notes/search?q=` | Keyword search (case-insensitive substring) over the group's notes' `title`/`text`. Returns every match in one response (not keyset-paginated), blocked users excluded server-side. Caller must be a group member. |
 | GET | `/groups/{user_id}/{note_id}/{group_id}/replies` | All replies to a note shared in the group. Caller must be a group member. |
 | GET | `/groups/{group_id}/highlights` | All highlights in the group |
 

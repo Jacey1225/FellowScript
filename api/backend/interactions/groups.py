@@ -195,6 +195,58 @@ class GroupsManager(DBManager):
             "has_more": has_more,
         }
 
+    def search_notes(self, q: str) -> dict:
+        """Search the group's non-reply notes by keyword against title/text.
+
+        Unlike ``fetch_notes``, this returns every matching note in one
+        response rather than a keyset-paginated page -- the pagination
+        contract there exists to bound a full-collection dump, but a
+        keyword search is already bounded by the query itself. Same
+        blocked-user exclusion as ``fetch_notes`` (SQL-level, not a
+        post-fetch Python filter).
+
+        Args:
+            q: Keyword to match (ILIKE substring, case-insensitive) against
+                title or text.
+
+        Returns:
+            dict: ``{"notes": {username: {note_id: note data}}}``, newest first.
+        """
+        pattern = f"%{q}%"
+        self.cur.execute(
+            "SELECT _id, user_id, title, text, public, group_id, is_reply, "
+            "parent_note_id, timestamp, created_at FROM notes "
+            "WHERE group_id = %s AND is_reply = false "
+            "AND (title ILIKE %s OR text ILIKE %s) "
+            "AND user_id NOT IN ("
+            "SELECT blocked_id FROM blocked_users WHERE blocker_id = %s "
+            "UNION SELECT blocker_id FROM blocked_users WHERE blocked_id = %s"
+            ") "
+            "ORDER BY created_at DESC, _id DESC",
+            (self.group_id, pattern, pattern, self.user_id, self.user_id),
+        )
+        cols = [desc[0] for desc in self.cur.description]
+        rows = self.cur.fetchall()
+        row_data = [(str(row[0]), dict(zip(cols[1:], row[1:]))) for row in rows]
+        distinct_uids = {str(data.get("user_id")) for _, data in row_data if data.get("user_id")}
+        username_map: dict[str, str] = {}
+        if distinct_uids:
+            self.cur.execute(
+                "SELECT _id, username FROM users WHERE _id = ANY(%s::uuid[])",
+                (list(distinct_uids),),
+            )
+            username_map = {str(r[0]): r[1] for r in self.cur.fetchall()}
+        group_notes: dict = {}
+        for nid, data in row_data:
+            uid = data.get("user_id")
+            if not uid:
+                continue
+            username = username_map.get(str(uid), "")
+            if username not in group_notes:
+                group_notes[username] = {}
+            group_notes[username][nid] = data
+        return {"notes": group_notes}
+
     def fetch_replies(self, note_id: str) -> list[dict]:
         """Retrieve all replies for a given note.
 

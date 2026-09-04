@@ -367,6 +367,70 @@ async def get_notes(
         db.close()
 
 
+@notes_router.get("/{user_id}/search")
+async def search_notes(
+    user_id: str,
+    q: str = Query(..., min_length=1, description="Keyword to match (case-insensitive substring) against note title or text"),
+    _: str = Depends(require_match("user_id")),
+) -> dict:
+    """Search a user's personal (non-reply, non-group) notes by keyword
+    against title and/or text.
+
+    Unlike GET /{user_id}, this returns every matching note in one response
+    rather than a NOTES_PAGE_SIZE page -- the "no unpaginated full-fetch
+    mode" rule on that endpoint exists to bound a full-collection dump; a
+    keyword search is instead bounded by the query itself, so there's no
+    equivalent drift/duplication risk from returning the whole match set at
+    once.
+
+    Args:
+        user_id: UUID of the notes' owner.
+        q: Keyword to match (ILIKE substring, case-insensitive) against
+            title or text.
+
+    Returns:
+        dict: ``{"notes": {note_id: note data}}``, newest first. Same
+            per-note shape as GET /{user_id} (including "verses" and an
+            always-empty "replies" list).
+    """
+    db = DBManager()
+    try:
+        pattern = f"%{q}%"
+        db.cur.execute(
+            "SELECT n._id, n.user_id, n.title, n.text, n.public, n.group_id, n.is_reply, n.timestamp, n.created_at "
+            "FROM notes n "
+            "WHERE n.user_id = %s AND n.is_reply = false AND n.group_id IS NULL "
+            "AND (n.title ILIKE %s OR n.text ILIKE %s) "
+            "ORDER BY n.created_at DESC, n._id DESC",
+            (user_id, pattern, pattern),
+        )
+        rows = db.cur.fetchall()
+        result = {}
+        for row in rows:
+            nid = str(row[0])
+            db.cur.execute(
+                "SELECT position, book, chapter::text, verse::text "
+                "FROM note_verses WHERE note_id = %s ORDER BY position",
+                (nid,)
+            )
+            verses = [[r[1], r[2], r[3]] for r in db.cur.fetchall()]
+            result[nid] = {
+                "user":       str(row[1] or ""),
+                "title":      row[2],
+                "text":       row[3],
+                "public":     row[4],
+                "group_id":   row[5] or "",
+                "is_reply":   row[6],
+                "timestamp":  str(row[7] or ""),
+                "created_at": str(row[8] or ""),
+                "verses":     verses,
+                "replies":    [],
+            }
+        return {"notes": result}
+    finally:
+        db.close()
+
+
 @notes_router.get("/{user_id}/count")
 async def get_notes_count(user_id: str, _: str = Depends(require_match("user_id"))) -> dict:
     """Total count of a user's personal (non-reply, non-group) notes.

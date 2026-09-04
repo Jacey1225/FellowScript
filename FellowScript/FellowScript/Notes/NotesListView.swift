@@ -24,7 +24,16 @@ final class NotesViewModel: ObservableObject {
     @Published var notes:             [String: FSNote]    = [:]
     @Published var highlights:        [String: String]    = [:]
     @Published var groups:            [FSGroup]           = []
-    @Published var currentGroupId:    String?             = nil   // nil = Personal
+    @Published var currentGroupId:    String?             = nil {  // nil = Personal
+        didSet {
+            // Re-run an active search against the newly-selected segment --
+            // search is segment-scoped exactly like filteredNotes, so
+            // switching groups mid-search should re-query rather than keep
+            // showing stale results from the old segment.
+            guard currentGroupId != oldValue, isSearchActive else { return }
+            scheduleSearch()
+        }
+    }
     @Published var activeTab:         NoteTab             = .notes
     @Published var sortOrder:         SortOrder           = .newest
     @Published var isLoading          = true
@@ -215,6 +224,113 @@ final class NotesViewModel: ObservableObject {
             cursorCreatedAt: page.nextCursorCreatedAt, cursorId: page.nextCursorId, hasMore: page.hasMore)
     }
 
+    // ── Keyword search (task 20260903-notes-keyword-search) ────────────────
+    // Search is segment-scoped exactly like filteredNotes (Personal vs the
+    // selected group) and queries the dedicated backend search endpoints --
+    // bounded by the query itself, not paginated -- rather than filtering
+    // `notes`, so results aren't silently capped to whatever pages happen
+    // to already be loaded client-side (the whole point of this feature:
+    // finding an older, not-yet-paginated-in note).
+    @Published var searchText: String = "" {
+        didSet {
+            guard searchText != oldValue else { return }
+            scheduleSearch()
+        }
+    }
+    @Published private(set) var searchResults: [(String, FSNote)] = []
+    @Published private(set) var isSearching = false
+
+    private var searchTask: Task<Void, Never>? = nil
+    private var searchUserId: String = ""
+    // ~300ms: no specific value was requested by the spec; this is a
+    // sensible default for a keystroke-driven live search that avoids
+    // firing a network request per character.
+    private static let searchDebounceNanoseconds: UInt64 = 300_000_000
+
+    // Post-pass hardening (crash-investigation addendum, 2026-09-03): every
+    // other cancellation site (scheduleSearch's own re-schedule, clearSearch)
+    // already cancels searchTask, but nothing previously cancelled it if this
+    // instance was deallocated while a debounce/search was still in flight
+    // (e.g. StartupCoordinator.reset() swapping in a fresh NotesViewModel
+    // mid-search). The in-flight Task already captures self weakly, so this
+    // was never a retain-cycle/leak risk, but explicitly cancelling here is
+    // correct hygiene -- it stops the pending debounce sleep or in-flight
+    // network call promptly instead of letting it run to completion against
+    // a nil weak self. Investigated a reported SIGABRT/malloc-corruption
+    // crash in NotesViewModel deinit (via DashboardStaleReloadRegressionTests.
+    // test_reset_recreatesDashboardVM_freshInstance_notReusingPreviousAccountsState,
+    // surfaced by a different task's testing gate) but could not reproduce it
+    // here across 8 separate runs (6x that test in isolation, the full
+    // DashboardStaleReloadRegressionTests class, and a 13-class cluster run
+    // covering every Notes*/Dashboard*/StartupCoordinator test file) -- all
+    // passed cleanly. Adding this deinit regardless as defense-in-depth,
+    // since it's a genuine (if previously harmless) gap either way.
+    deinit {
+        searchTask?.cancel()
+    }
+
+    var isSearchActive: Bool {
+        !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    /// Called once (alongside `load`) from NotesListView's `.task` so every
+    /// later debounced search knows which user to query without threading
+    /// userId through every keystroke.
+    func configureSearch(userId: String) {
+        searchUserId = userId
+    }
+
+    private func scheduleSearch() {
+        searchTask?.cancel()
+        guard isSearchActive else {
+            isSearching = false
+            searchResults = []
+            return
+        }
+        let query = searchText
+        let gid = currentGroupId
+        let uid = searchUserId
+        searchTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: Self.searchDebounceNanoseconds)
+            guard !Task.isCancelled else { return }
+            await self?.runSearch(query: query, groupId: gid, userId: uid)
+        }
+    }
+
+    private func runSearch(query: String, groupId: String?, userId: String) async {
+        guard !userId.isEmpty else { return }
+        isSearching = true
+        defer { isSearching = false }
+
+        let matches: [String: FSNote]
+        if let gid = groupId {
+            matches = (try? await service.searchGroupNotes(userId: userId, groupId: gid, query: query)) ?? [:]
+        } else {
+            matches = (try? await service.searchNotes(userId: userId, query: query)) ?? [:]
+        }
+        guard !Task.isCancelled else { return }
+        // Guard against a slow response landing after the user has since
+        // changed the query or cleared search entirely (query != searchText
+        // means a newer keystroke/debounce already superseded this result).
+        guard query == searchText, isSearchActive else { return }
+        searchResults = matches.sorted {
+            sortOrder == .newest
+                ? $0.value.timestamp > $1.value.timestamp
+                : $0.value.timestamp < $1.value.timestamp
+        }
+    }
+
+    /// Clears the query and any in-flight/completed search state, returning
+    /// the Notes tab to the normal unfiltered, paginated list with nothing
+    /// left lingering (per the "no lingering state bugs" acceptance
+    /// criterion).
+    func clearSearch() {
+        searchTask?.cancel()
+        searchText = ""
+        searchResults = []
+        isSearching = false
+    }
+
     @Published var saveError: String? = nil
 
     func saveNote(_ note: FSNote, editingId: String?, userId: String) async -> Bool {
@@ -327,6 +443,10 @@ struct NotesListView: View {
                     .padding(.top, 16)
 
                 if vm.activeTab == .notes {
+                    NotesSearchField(text: $vm.searchText, isSearching: vm.isSearching)
+                        .padding(.horizontal, 20)
+                        .padding(.top, 14)
+
                     groupChips
                         .padding(.top, 14)
                 }
@@ -345,6 +465,7 @@ struct NotesListView: View {
         }
         .task {
             if let uid = appState.currentUser?.user_id {
+                vm.configureSearch(userId: uid)
                 await vm.load(service: appState.service, userId: uid)
             }
         }
@@ -509,108 +630,153 @@ struct NotesListView: View {
     }
 
     // ── Notes tab ─────────────────────────────────────────────────────────────
+    // While a search is active, the segment-scoped search results (already a
+    // flat, non-paginated match set from the backend -- see
+    // NotesViewModel.runSearch) replace the normal paginated `filteredNotes`
+    // list entirely, so pagination/loadMoreIfNeeded never fires for search
+    // results. Clearing search (NotesViewModel.isSearchActive false again)
+    // falls straight back through to the untouched original list path below.
     private var notesTab: some View {
         Group {
-            if vm.filteredNotes.isEmpty {
+            if vm.isSearchActive {
+                if vm.searchResults.isEmpty {
+                    if vm.isSearching {
+                        // Plain spinner placeholder (UI/UX pref Q17) while the
+                        // debounced query for this text is in flight and
+                        // there's nothing to show yet.
+                        VStack { Spacer(); ProgressView().tint(Theme.gold); Spacer() }
+                    } else {
+                        searchNoResultsState
+                    }
+                } else {
+                    notesList(vm.searchResults, enablePagination: false)
+                }
+            } else if vm.filteredNotes.isEmpty {
                 notesEmptyState
             } else {
-                List {
-                    ForEach(vm.filteredNotes, id: \.0) { id, note in
-                        NoteRow(note: note)
-                            .listRowBackground(Color.clear)
-                            .listRowSeparator(.hidden)
-                            .listRowInsets(EdgeInsets(top: 6, leading: 20, bottom: 6, trailing: 20))
-                            .onTapGesture { detailNote = note }
-                            .onAppear {
-                                // Bottom-of-list trigger for the next backend-capped page
-                                // (15 at a time). Firing on the last row lets the fetch
-                                // start slightly before the user hits the true bottom.
-                                guard id == vm.filteredNotes.last?.0 else { return }
-                                let uid = appState.currentUser?.user_id ?? ""
-                                Task { await vm.loadMoreIfNeeded(userId: uid) }
-                            }
-                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                                if canDelete(note) {
-                                    Button(role: .destructive) {
-                                        let uid = appState.currentUser?.user_id ?? ""
-                                        Task { await vm.deleteNote(id: id, userId: uid, isOwnNote: true) }
-                                    } label: {
-                                        Label("Delete", systemImage: "trash")
-                                    }
-                                }
-                            }
-                            .contextMenu {
-                                if canEdit(note) {
-                                    Button("Edit", systemImage: "pencil") {
-                                        editingNote    = note
-                                        editingId      = id
-                                        editingGroupId = note.group_id
-                                        showEditor     = true
-                                    }
-                                }
-                                if canDelete(note) {
-                                    Button("Delete", systemImage: "trash", role: .destructive) {
-                                        let uid = appState.currentUser?.user_id ?? ""
-                                        Task { await vm.deleteNote(id: id, userId: uid, isOwnNote: true) }
-                                    }
-                                }
-                            }
-                            .accessibilityLabel("Note: \(note.title.isEmpty ? "Untitled" : note.title). \(note.preview)")
-                    }
-                    if vm.isLoadingMore && vm.hasMoreForCurrentSegment {
-                        HStack {
-                            Spacer()
-                            ProgressView().tint(Theme.gold)
-                            Spacer()
-                        }
-                        .listRowBackground(Color.clear)
-                        .listRowSeparator(.hidden)
-                        .accessibilityLabel("Loading more notes")
-                    }
-                }
-                .listStyle(.plain)
-                // Pull-to-refresh (task 20260831-interaction-polish-conventions):
-                // wired straight to NotesViewModel's existing reload method
-                // (its new `refresh()` entry point — see that method's own
-                // comment for why this isn't just `vm.load()` again). Both
-                // tabs below share this same view model/underlying fetch, so
-                // either tab's `.refreshable` refreshes notes, highlights,
-                // and groups together.
-                .refreshable {
-                    await vm.refresh(service: appState.service, userId: appState.currentUser?.user_id ?? "")
-                }
-                .scrollContentBackground(.hidden)
-                // Breathing room + top-edge feather (task
-                // 20260831-notes-messages-list-scroll-blur): groupChips sits
-                // directly above this List with no gap, so rows scrolling up
-                // used to hit a hard clip flush against the chip row -- a
-                // live scrolled-state screenshot showed a card visibly
-                // colliding with/reading as overlapping the chips, not just
-                // "unblurred." `.contentMargins(.top:)` alone only offsets
-                // the AT-REST position (scrollOffset 0); it does not create
-                // a persistent gap once scrolled, since content still
-                // travels all the way to the List's own top-edge frame
-                // boundary while scrolling. The real fix needs both halves:
-                // the `.padding(.top:)` below (OUTSIDE the List, after the
-                // mask) moves the List's own clipping frame a genuine,
-                // scroll-independent Theme.spacingLG away from groupChips,
-                // so even a fully-scrolled row's top edge stays clear of the
-                // chip row -- no overlap, ever, regardless of scroll offset.
-                // `.contentMargins(.top:)` keeps a smaller matching inset so
-                // the first row also isn't flush against the List's own
-                // (now further-away) top edge at rest. scrollTopEdgeFeather
-                // (Theme.swift) adapts NoteDetailView's ScrollView `.mask`
-                // precedent for List so rows fade out smoothly as they
-                // approach that inner top edge while scrolling, instead of
-                // hard-clipping there. Neither of these is a background
-                // overlay/panel -- both operate on the List's own frame/
-                // alpha, nothing new is drawn behind or in front of it.
-                .contentMargins(.top, Theme.spacingSM, for: .scrollContent)
-                .contentMargins(.bottom, 100, for: .scrollContent)
-                .scrollTopEdgeFeather()
-                .padding(.top, Theme.spacingLG)
+                notesList(vm.filteredNotes, enablePagination: true)
             }
         }
+    }
+
+    // Minimal single-message no-results state (UI/UX pref Q17: empty states
+    // default to minimal, not an illustrated/on-brand production).
+    private var searchNoResultsState: some View {
+        VStack {
+            Spacer()
+            Text("No notes found for \u{201C}\(vm.searchText)\u{201D}")
+                .font(.inter(Theme.fontSM))
+                .foregroundColor(Theme.textMuted)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, Theme.spacingXL)
+            Spacer()
+        }
+        .accessibilityLabel("No notes found for \(vm.searchText)")
+    }
+
+    // Shared list rendering for both the normal paginated notes list and an
+    // active search's flat result set -- identical row content/affordances
+    // (tap to open, swipe/context-menu edit-delete gating) either way;
+    // `enablePagination` just gates whether the bottom-of-list trigger fires
+    // `loadMoreIfNeeded` (search results are already the full match set, so
+    // there's nothing further to page in).
+    @ViewBuilder
+    private func notesList(_ items: [(String, FSNote)], enablePagination: Bool) -> some View {
+        List {
+            ForEach(items, id: \.0) { id, note in
+                NoteRow(note: note)
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(EdgeInsets(top: 6, leading: 20, bottom: 6, trailing: 20))
+                    .onTapGesture { detailNote = note }
+                    .onAppear {
+                        // Bottom-of-list trigger for the next backend-capped page
+                        // (15 at a time). Firing on the last row lets the fetch
+                        // start slightly before the user hits the true bottom.
+                        guard enablePagination, id == items.last?.0 else { return }
+                        let uid = appState.currentUser?.user_id ?? ""
+                        Task { await vm.loadMoreIfNeeded(userId: uid) }
+                    }
+                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                        if canDelete(note) {
+                            Button(role: .destructive) {
+                                let uid = appState.currentUser?.user_id ?? ""
+                                Task { await vm.deleteNote(id: id, userId: uid, isOwnNote: true) }
+                            } label: {
+                                Label("Delete", systemImage: "trash")
+                            }
+                        }
+                    }
+                    .contextMenu {
+                        if canEdit(note) {
+                            Button("Edit", systemImage: "pencil") {
+                                editingNote    = note
+                                editingId      = id
+                                editingGroupId = note.group_id
+                                showEditor     = true
+                            }
+                        }
+                        if canDelete(note) {
+                            Button("Delete", systemImage: "trash", role: .destructive) {
+                                let uid = appState.currentUser?.user_id ?? ""
+                                Task { await vm.deleteNote(id: id, userId: uid, isOwnNote: true) }
+                            }
+                        }
+                    }
+                    .accessibilityLabel("Note: \(note.title.isEmpty ? "Untitled" : note.title). \(note.preview)")
+            }
+            if enablePagination && vm.isLoadingMore && vm.hasMoreForCurrentSegment {
+                HStack {
+                    Spacer()
+                    ProgressView().tint(Theme.gold)
+                    Spacer()
+                }
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+                .accessibilityLabel("Loading more notes")
+            }
+        }
+        .listStyle(.plain)
+        // Pull-to-refresh (task 20260831-interaction-polish-conventions):
+        // wired straight to NotesViewModel's existing reload method
+        // (its new `refresh()` entry point — see that method's own
+        // comment for why this isn't just `vm.load()` again). Both
+        // tabs below share this same view model/underlying fetch, so
+        // either tab's `.refreshable` refreshes notes, highlights,
+        // and groups together.
+        .refreshable {
+            await vm.refresh(service: appState.service, userId: appState.currentUser?.user_id ?? "")
+        }
+        .scrollContentBackground(.hidden)
+        // Breathing room + top-edge feather (task
+        // 20260831-notes-messages-list-scroll-blur): groupChips sits
+        // directly above this List with no gap, so rows scrolling up
+        // used to hit a hard clip flush against the chip row -- a
+        // live scrolled-state screenshot showed a card visibly
+        // colliding with/reading as overlapping the chips, not just
+        // "unblurred." `.contentMargins(.top:)` alone only offsets
+        // the AT-REST position (scrollOffset 0); it does not create
+        // a persistent gap once scrolled, since content still
+        // travels all the way to the List's own top-edge frame
+        // boundary while scrolling. The real fix needs both halves:
+        // the `.padding(.top:)` below (OUTSIDE the List, after the
+        // mask) moves the List's own clipping frame a genuine,
+        // scroll-independent Theme.spacingLG away from groupChips,
+        // so even a fully-scrolled row's top edge stays clear of the
+        // chip row -- no overlap, ever, regardless of scroll offset.
+        // `.contentMargins(.top:)` keeps a smaller matching inset so
+        // the first row also isn't flush against the List's own
+        // (now further-away) top edge at rest. scrollTopEdgeFeather
+        // (Theme.swift) adapts NoteDetailView's ScrollView `.mask`
+        // precedent for List so rows fade out smoothly as they
+        // approach that inner top edge while scrolling, instead of
+        // hard-clipping there. Neither of these is a background
+        // overlay/panel -- both operate on the List's own frame/
+        // alpha, nothing new is drawn behind or in front of it.
+        .contentMargins(.top, Theme.spacingSM, for: .scrollContent)
+        .contentMargins(.bottom, 100, for: .scrollContent)
+        .scrollTopEdgeFeather()
+        .padding(.top, Theme.spacingLG)
     }
 
     // ── Highlights tab ────────────────────────────────────────────────────────
@@ -759,6 +925,54 @@ struct NotesListView: View {
         guard !note.group_id.isEmpty else { return true }
         guard !note.username.isEmpty, let me = currentUsername, !me.isEmpty else { return false }
         return note.username == me
+    }
+}
+
+// ── Notes search field (task 20260903-notes-keyword-search) ──────────────────
+// Custom-styled to this app's glass/gold visual language (UI/UX pref Q12:
+// build custom to fit the synthesized visual system, not a bare/system
+// `.searchable()`/SearchBar skin) -- mirrors ChatRootView.ChatSearchField's
+// same capsule/glass treatment, plus a plain-spinner loading affordance
+// (UI/UX pref Q17) swapped in for the magnifying-glass icon while a
+// debounced query is in flight, and a subtle functional fade on the clear
+// button's appearance (UI/UX pref Q18: functional, not purely decorative).
+private struct NotesSearchField: View {
+    @Binding var text: String
+    var isSearching: Bool
+
+    var body: some View {
+        HStack(spacing: 9) {
+            if isSearching {
+                ProgressView()
+                    .tint(Theme.parchment.opacity(0.5))
+                    .scaleEffect(0.75)
+                    .frame(width: 14, height: 14)
+            } else {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(Theme.parchment.opacity(0.4))
+            }
+            TextField("", text: $text, prompt: Text("Search notes")
+                .foregroundColor(Theme.parchment.opacity(0.4)))
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(Theme.parchment)
+                .textInputAutocapitalization(.never)
+                .accessibilityLabel("Search notes")
+            if !text.isEmpty {
+                Button(action: { text = "" }) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 14))
+                        .foregroundColor(Theme.parchment.opacity(0.35))
+                }
+                .transition(.opacity)
+                .accessibilityLabel("Clear search")
+            }
+        }
+        .padding(.horizontal, 14)
+        .frame(height: 42)
+        .background(Capsule().fill(Theme.parchment.opacity(0.06)))
+        .overlay(Capsule().stroke(Theme.parchment.opacity(0.12), lineWidth: 1))
+        .animation(.easeOut(duration: 0.18), value: text.isEmpty)
     }
 }
 
