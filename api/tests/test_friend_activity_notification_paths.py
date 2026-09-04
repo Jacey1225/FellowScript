@@ -368,11 +368,19 @@ def test_highlight_verse_triggers_content_aware_transition_notification(client):
 
         check("friend receives a push after the scheduled job runs",
               len(push.calls) == 1 and push.calls[0][0] == f"tok-{uid_friend}", str(push.calls))
-        check("the push names the action (highlighted a verse) instead of the "
-              "old generic 'came back' text -- no mention of John 3:16 or any "
-              "other verse-specific content",
-              "John" not in push.calls[0][2] and "3:16" not in push.calls[0][2]
-              and "highlighted a verse" in push.calls[0][2]
+        # Round 2 of task 20260904-friend-activity-push-triggers deliberately
+        # reversed the prior "never mention the verse" contract asserted here:
+        # a highlight notification now carries the real verse reference (and,
+        # when bible_text can resolve it, the actual verse text) in the push
+        # body -- see test_friend_activity_push_triggers.py for the fallback
+        # cases (a text-lookup miss, and the highlight row itself being
+        # unresolvable) this file doesn't cover.
+        check("the push names the action and now includes the real verse "
+              "reference (John 3:16) per the Round 2 content-aware decision, "
+              "instead of the old fully-generic 'came back'/'highlighted a "
+              "verse' text",
+              "John" in push.calls[0][2] and "3:16" in push.calls[0][2]
+              and "highlighted" in push.calls[0][2]
               and "came back to FellowScript" not in push.calls[0][2],
               str(push.calls))
     finally:

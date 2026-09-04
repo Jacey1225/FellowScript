@@ -120,7 +120,7 @@ may still be populated.
 | POST | `/friends/{user_id}/accept/{friend_id}` | Accept a request |
 | DELETE | `/friends/{user_id}/{friend_id}` | Remove a friend |
 | GET | `/friends/{user_id}` | Friend list |
-| GET | `/friends/{user_id}/activity` | Friend-activity read surface for the dashboard's Friend Activity hero card: each friend's most recent public note preview + last-active timestamp (block-respecting both directions), plus a bounded "check in" nudge candidate pool (up to 5 friends gone longest without a direct message). Highlights are not previewed (no privacy flag exists for them yet). |
+| GET | `/friends/{user_id}/activity` | Friend-activity read surface for the dashboard's Friend Activity hero card: each friend's most recent group note preview, most recent highlight preview (with real verse text), last-active timestamp + activity type (block-respecting both directions), plus a bounded "check in" nudge candidate pool (up to 5 friends gone longest without a direct message). |
 
 ### `GET /friends/{user_id}/activity`
 
@@ -129,14 +129,17 @@ may still be populated.
 {
   "friends_active": [
     {"friend_id": "uuid", "username": "str", "last_active_at": "iso8601 | null",
-     "note_preview": {"note_id": "uuid", "title": "str", "text": "str", "timestamp": "iso8601"} | null}
+     "activity_type": "note_created | note_edited | note_replied | verse_highlighted | null",
+     "note_preview": {"note_id": "uuid", "title": "str", "text": "str", "timestamp": "iso8601"} | null,
+     "highlight_preview": {"book": "str", "chapter": "int", "verse": "int", "color": "str",
+                            "verse_text": "str | null", "timestamp": "iso8601"} | null}
   ],
   "check_in_candidates": [
     {"friend_id": "uuid", "username": "str", "days_since_contact": "int | null"}
   ]
 }
 ```
-`friends_active` is ordered most-recently-active first. `check_in_candidates` is ordered longest-since-contact first, capped at 5 entries (or the friend count, whichever is smaller), and is an empty list only when the user has no friends — the client picks among these candidates rather than the whole friend list, to keep the nudge targeted at genuinely-neglected friends.
+`friends_active` is ordered most-recently-active first. `activity_type` is the friend's most recent tracked activity type, so the client can label the entry (created/edited/replied/highlighted) without a second request. `note_preview` is only populated from a *group* note the caller shares membership in — a friend's personal notes stay private to them regardless of friendship. `highlight_preview` is populated for any friend's most recent highlight, including its real verse text where resolvable — friendship alone is sufficient grant to see a friend's highlight (a deliberate widening; previously highlights had no visibility to anyone). `check_in_candidates` is ordered longest-since-contact first, capped at 5 entries (or the friend count, whichever is smaller), and is an empty list only when the user has no friends — the client picks among these candidates rather than the whole friend list, to keep the nudge targeted at genuinely-neglected friends.
 
 ---
 
@@ -179,10 +182,15 @@ CRUD + AI-trigger + scheduling endpoints under `/notification/{user_id}/...`
 |---|---|---|
 | POST | `/notification/{user_id}/device-token` | Register/update the caller's APNs device token |
 
-**Replacement pending**: a backend activity-tracked/fixed-notification system
-(reminders derived from real note/highlight activity, plus a cross-user
-"friend went active" push) is being built as a follow-up step in the same
-task and will be documented here once it lands.
+A backend activity-tracked, fixed-notification system now drives every push
+in the app — no user-configurable triggers, just a fixed set of jobs
+(`backend/interactions/scheduler.py`, see
+[Background Scheduler](../architecture/backend.md#background-scheduler)):
+a midday nudge, a >24h "guilt" nudge, and a cross-user "friend went active"
+push, the last of which names the specific action (create/edit/reply/
+highlight) and, for a highlight, includes real verse text resolved from a
+bundled Bible-text asset. It fires once per inactive→active transition
+(>24h gap), not on every individual note/highlight/reply.
 
 ---
 

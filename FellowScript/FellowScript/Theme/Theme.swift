@@ -369,18 +369,102 @@ extension Theme {
 //      without breaking any existing tap gesture on touched screens (the "no
 //      regressions to existing scroll, focus, or gesture behavior"
 //      requirement).
+// Task 20260904-notes-keyboard-dismiss-fix: NoteEditorView's title TextField/
+// body RichTextEditorView and ReplyComposerSheet's reply-body
+// RichTextEditorView each render as ordinary inline descendants inside the
+// same ScrollView/VStack this modifier wraps at their screen root — unlike
+// the Chat composer (ChatThreadView/AgentChatView, task
+// 20260903-message-composer-keyboard-dismiss), which sits OUTSIDE this
+// gesture's attached subtree entirely because it's added via
+// `.safeAreaInset`, a structural sibling boundary Notes' two screens don't
+// have. So plain SwiftUI `TapGesture` — which fires on any tap anywhere in
+// the attached subtree, with no visibility into which UIKit view actually
+// received the touch — can't be reordered around the same seam here; taps
+// meant to reposition the cursor inside an already-focused title/body/reply
+// editor were racing this gesture's keyboard-resign action and losing.
+//
+// Fixed at the source instead of per-screen: `UIGestureRecognizerRepresentable`
+// (iOS 18+, safely available at this app's 18.0 deployment floor) lets a
+// SwiftUI view wrap a real `UITapGestureRecognizer` and give it a genuine
+// `UIGestureRecognizerDelegate`, which SwiftUI's own `TapGesture` has no
+// equivalent for. The delegate's `shouldReceive touch:` hook inspects
+// `UITouch.view` (and its ancestors) directly, so it can simply decline to
+// recognize a tap that landed on — or inside — an active
+// UITextField/UITextView, regardless of where that control sits in the
+// SwiftUI view tree. This generalizes to both Notes screens'
+// inline-descendant structure and leaves every other call site's behavior
+// unchanged: scroll-to-dismiss is untouched (still a separate
+// `.scrollDismissesKeyboard` call), tap-elsewhere-to-dismiss still fires for
+// taps that don't land on a text-input control (the recognizer's
+// `cancelsTouchesInView = false` plus `shouldRecognizeSimultaneouslyWith`
+// returning true reproduce the old `.simultaneousGesture`'s "never blocks or
+// steals a tap meant for a button/list row underneath it" guarantee), and
+// Chat's two already-fixed screens keep working exactly as before — their
+// composer's TextField is already outside this gesture's attached subtree
+// via `.safeAreaInset`, so the text-input exclusion is simply never invoked
+// for it there; it's inert, not a behavior change.
+// Extracted as a plain, non-private function (rather than inline in the
+// delegate below) so it's directly testable with a bare `UIView`/
+// `UITextField`/`UITextView` object graph, with no need to spin up a live
+// `UITouch` or gesture recognizer instance — see
+// NotesKeyboardDismissFixRegressionTests.swift. A real touch inside a
+// UITextView usually lands on one of its private internal subviews (e.g. its
+// selection/content view), not the UITextView instance itself, which is why
+// this walks the full ancestor chain rather than checking only `view` alone.
+func isOrIsNestedInTextInputControl(_ view: UIView?) -> Bool {
+    var candidate = view
+    while let v = candidate {
+        if v is UITextField || v is UITextView { return true }
+        candidate = v.superview
+    }
+    return false
+}
+
+private struct KeyboardResignTapGesture: UIGestureRecognizerRepresentable {
+    final class Coordinator: NSObject, UIGestureRecognizerDelegate {
+        /// Declines to recognize (a no-op) when the tap landed on, or
+        /// inside, an active text-input control — leaving that control's
+        /// own native tap-to-reposition-cursor handling as the only thing
+        /// that fires.
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+            !isOrIsNestedInTextInputControl(touch.view)
+        }
+
+        /// Matches the prior `.simultaneousGesture` semantics: this never
+        /// blocks or steals a tap meant for a button, list row, or other
+        /// control underneath it.
+        func gestureRecognizer(
+            _ gestureRecognizer: UIGestureRecognizer,
+            shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
+        ) -> Bool {
+            true
+        }
+    }
+
+    func makeCoordinator(converter: CoordinateSpaceConverter) -> Coordinator {
+        Coordinator()
+    }
+
+    func makeUIGestureRecognizer(context: Context) -> UITapGestureRecognizer {
+        let recognizer = UITapGestureRecognizer()
+        recognizer.delegate = context.coordinator
+        recognizer.cancelsTouchesInView = false
+        return recognizer
+    }
+
+    func handleUIGestureRecognizerAction(_ recognizer: UITapGestureRecognizer, context: Context) {
+        UIApplication.shared.sendAction(
+            #selector(UIResponder.resignFirstResponder),
+            to: nil, from: nil, for: nil
+        )
+    }
+}
+
 extension View {
     func dismissesKeyboardOnScrollAndTap() -> some View {
         self
             .scrollDismissesKeyboard(.interactively)
-            .simultaneousGesture(
-                TapGesture().onEnded {
-                    UIApplication.shared.sendAction(
-                        #selector(UIResponder.resignFirstResponder),
-                        to: nil, from: nil, for: nil
-                    )
-                }
-            )
+            .gesture(KeyboardResignTapGesture())
     }
 }
 

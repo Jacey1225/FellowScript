@@ -4,7 +4,8 @@ from db import DBManager
 from backend.errors import SaveFailedError
 from backend.interactions.groups import GroupsManager
 from backend.subscription.limits import check_limit
-from backend.interactions.activity import ActivityManager, NOTE_CREATED, NOTE_EDITED, VERSE_HIGHLIGHTED
+from backend.interactions.activity import ActivityManager, NOTE_CREATED, NOTE_EDITED, NOTE_REPLIED, VERSE_HIGHLIGHTED
+from backend.interactions.bible_text import is_valid_reference
 from backend.auth.dependencies import get_current_user, require_match
 from backend.moderation.content_filter import check_clean, ContentRejected, rejection_message
 from datetime import datetime
@@ -29,10 +30,11 @@ def _record_activity(user_id: str, activity_type: str) -> None:
     activity-tracking failure fail the note/highlight write it's attached
     to; logs and moves on.
 
-    activity_type (NOTE_CREATED / NOTE_EDITED / VERSE_HIGHLIGHTED) is
-    persisted alongside the bump so _friend_went_active_notify can name the
-    action instead of sending a generic "came back" push; every call site
-    below passes its own type explicitly."""
+    activity_type (NOTE_CREATED / NOTE_EDITED / NOTE_REPLIED /
+    VERSE_HIGHLIGHTED) is persisted alongside the bump so
+    _friend_went_active_notify can name the action instead of sending a
+    generic "came back" push; every call site below passes its own type
+    explicitly."""
     activity = ActivityManager()
     try:
         activity.record_activity(user_id, activity_type)
@@ -82,13 +84,32 @@ async def highlight_verse(user_id: str, verse: dict, _: str = Depends(require_ma
     color   = verse.get("color")
     if not all([book, chapter, verse_n, color]):
         raise HTTPException(status_code=400, detail="book, chapter, verse, color required")
-    key = f"{book}-{chapter}-{verse_n}"
+    # Reference must be a real (book, chapter, verse) per bible_text's loaded
+    # dataset -- see is_valid_reference's docstring (task
+    # 20260904-friend-activity-push-triggers): this field is now exposed
+    # verbatim to friends (push body + widget) when verse text can't be
+    # resolved, so an unvalidated book/chapter/verse would be a stored
+    # content-injection vector into a friend's device notification, not just
+    # this user's own private data as before.
+    try:
+        chapter_i, verse_i = int(chapter), int(verse_n)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="chapter and verse must be integers")
+    if not is_valid_reference(book, chapter_i, verse_i):
+        raise HTTPException(status_code=400, detail="Not a recognized Bible reference")
+    key = f"{book}-{chapter_i}-{verse_i}"
     db = DBManager()
     try:
+        # timestamp is explicit (not left to the column's DEFAULT NOW()) so
+        # a re-highlight of an already-highlighted verse also refreshes it --
+        # ActivityManager.most_recent_highlight and get_friend_activity's
+        # highlight_preview both need "most recently written", not "first
+        # ever written", and DEFAULT NOW() only applies on the INSERT path,
+        # never on an ON CONFLICT UPDATE.
         if not db.insertion(
             "highlights",
-            {"user_id": user_id, "key": key, "color": str(color)},
-            conflict="(user_id, key) DO UPDATE SET color = EXCLUDED.color",
+            {"user_id": user_id, "key": key, "color": str(color), "timestamp": datetime.now()},
+            conflict="(user_id, key) DO UPDATE SET color = EXCLUDED.color, timestamp = EXCLUDED.timestamp",
         ):
             raise SaveFailedError()
         _record_activity(user_id, VERSE_HIGHLIGHTED)
@@ -196,9 +217,11 @@ async def post_reply(note_id: str, reply: dict, current_user: str = Depends(get_
             "timestamp":      reply_note.timestamp,
         }):
             raise SaveFailedError()
-        # A reply folds into NOTE_CREATED for notification purposes -- see
-        # activity.py's module docstring on that constant for why.
-        _record_activity(author, NOTE_CREATED)
+        # NOTE_REPLIED (task 20260904-friend-activity-push-triggers): a reply
+        # used to fold into NOTE_CREATED -- now its own type so
+        # _friend_went_active_notify can name "replied to {owner}'s note"
+        # specifically instead of a generic "created a new note".
+        _record_activity(author, NOTE_REPLIED)
         return {"id": reply_id}
     finally:
         db.close()

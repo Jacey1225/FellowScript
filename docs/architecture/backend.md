@@ -187,7 +187,7 @@ Unlike other managers, `BackupManager` doesn't subclass `DBManager` directly —
 **Level 1 (FK → Level 0)**
 - `notes` — `_id`, `user_id`, `title`, `text`, `public`, `group_id`, `timestamp`, `created_at`
 - `messages` — `_id`, `from_user`, `group_id`, `content`, `is_dm`, `timestamp`
-- `highlights` — `(user_id, key)` composite PK, `color`
+- `highlights` — `(user_id, key)` composite PK, `color`, `timestamp` (set on insert, refreshed on re-highlight)
 - `bookmarks` — `(user_id, key)` composite PK, `label`
 - `notifications` — `_id`, `user_id`, `type`, `message`, `read`
 - `agents` — `_id`, `user_id`, `config JSONB`
@@ -206,7 +206,7 @@ Unlike other managers, `BackupManager` doesn't subclass `DBManager` directly —
 
 `backend/interactions/scheduler.py` runs on startup (via `lifespan`), using APScheduler. Current jobs:
 
-The former `_fire_due_notifications` job (fired user-authored "agentic" notifications on their scheduled time-of-day) was removed in full (2026-08-26) along with that subsystem. A replacement set of fixed-notification jobs (activity-tracked reminders + friend-went-active) is pending as a follow-up step in the same task.
+The former `_fire_due_notifications` job (fired user-authored "agentic" notifications on their scheduled time-of-day) was removed in full (2026-08-26) along with that subsystem, replaced by the fixed-notification jobs below (activity-tracked reminders + friend-went-active), backed by `backend/interactions/activity.py`'s `ActivityManager` and `user_activity` table.
 
 | Job | Cadence | Does |
 |---|---|---|
@@ -214,5 +214,12 @@ The former `_fire_due_notifications` job (fired user-authored "agentic" notifica
 | `_reconcile_trials` | every hour | Advances elapsed trials to active, and removes subscriptions whose paid period lapsed past the grace window |
 | `_run_error_watchdog` | every 90s | Polls the 5 CloudWatch log groups the agent ships (`nginx access/error`, `syslog`, `auth`, `app`) via `WatchdogManager.run_cycle`, detects errors, assembles context, persists to `error_detections`, and triggers the debugging agent once per new detection (see `backend/monitoring/` above) |
 | `_fire_due_heartbeats` | every `HEARTBEAT_POLL_INTERVAL_SECONDS` (60s) | Scans `agent_heartbeats` for any event whose UTC `HH:mm` slot for today has passed and hasn't fired yet, then fires it via `AgentManager.commit_hb_response` — the same atomic, per-calendar-day `last_fired` claim that route-triggered fires have always used remains the sole dedup mechanism, so a concurrent poll cycle or a stray client call can't double-fire. On a real fire, sends a push via `send_push` identifying the event generically (agent name only, never prompt/note content) with `heartbeat_id`/`agent_id` riding in the payload's `data` for the client to resolve locally. |
+| `_midday_no_activity_reminder` | every 15 min | Gentle nudge once a user's local clock reads noon and they've had no tracked activity (note/highlight) yet that day; deduped once/local-day via `midday_reminder_sent_date` |
+| `_guilt_no_activity_reminder` | every 15 min | More urgent nudge once a user has gone longer than 24h since their last tracked activity; deduped once per 24h window via `guilt_reminder_sent_at` |
+| `_friend_went_active_notify` | every 5 min | Notifies a user's friends (block-respecting both directions) the first time that user transitions from inactive (>24h) to active — not on every individual note/highlight/reply. The push body names the specific action via `last_activity_type`: "created a new note", "edited a note", "replied to {note owner}'s note" (`NOTE_REPLIED` — resolves the parent note's owner at send time), or a real-verse-content highlight line (`VERSE_HIGHLIGHTED` — resolves the user's most recent highlight and its verse text via the bundled `bible_text` module at send time; falls back to a reference-only or fully generic line if either lookup misses). Never logs note/highlight/verse content — that's only ever in the push body itself. |
 
 Heartbeat (AI agent event) firing is now scheduled **server-side** by `_fire_due_heartbeats` above — it fires on time whether or not any client has the app open. The former client-side trigger, iOS's `HeartbeatScheduler` (`scheduleAll`/`checkAndFire`, polled on `scenePhase` foreground), was removed in full (2026-09-01); `commit_heartbeat` itself is unchanged and still does the actual generation/persistence work, just no longer reachable from iOS.
+
+### `backend/interactions/bible_text.py`
+
+In-process, lazily-loaded lookup over a bundled static copy of `bible.json` (the same asset the iOS Bible reader ships, copied into `api/backend/interactions/bible_data/bible.json`) — no database table, no outbound network call, since the content never changes at runtime. Exposes `verse_text(book, chapter, verse) -> str | None` (parses a chapter's flowing-text blob into per-verse strings on first access, cached after) and `parse_highlight_key(key) -> (book, chapter, verse) | None` (splits a `highlights.key` value back into its parts). Both return `None` on any miss rather than raising; callers (the friend-went-active push job, `FriendsManager.get_friend_activity`) fall back to reference-only or fully generic text.

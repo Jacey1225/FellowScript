@@ -363,15 +363,30 @@ final class MockDataService: DataServiceProtocol {
             FSFriendActivityEntry(
                 friend_id: "friend-001", username: "Sarah",
                 last_active_at: "2026-08-26T09:14:00Z",
+                activity_type: "note_created",
                 note_preview: FSFriendNotePreview(
                     note_id: "note-sarah-001", title: "Morning reflection",
                     text: "Started reading Psalm 23 again this morning. Reminded me how much I need to slow down and actually listen instead of just reading…",
                     timestamp: "2026-08-26T09:14:00Z"
-                )
+                ),
+                highlight_preview: nil
             ),
+            // Task 20260904-friend-activity-push-triggers: demonstrates the
+            // new verse_highlighted entry shape (real verse content via
+            // highlight_preview, Round 2's friendship-alone visibility
+            // widening) in previews/mock-mode rather than only note-backed
+            // entries.
             FSFriendActivityEntry(
                 friend_id: "friend-002", username: "Marcus",
-                last_active_at: "2026-08-24T18:40:00Z", note_preview: nil
+                last_active_at: "2026-08-24T18:40:00Z",
+                activity_type: "verse_highlighted",
+                note_preview: nil,
+                highlight_preview: FSFriendHighlightPreview(
+                    book: "Romans", chapter: 8, verse: 28,
+                    color: "#5B9BD5",
+                    verse_text: "And we know that in all things God works for the good of those who love him, who have been called according to his purpose.",
+                    timestamp: "2026-08-24T18:40:00Z"
+                )
             ),
         ],
         check_in_candidates: [

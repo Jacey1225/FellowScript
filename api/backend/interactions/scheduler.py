@@ -184,24 +184,59 @@ async def _friend_went_active_notify() -> None:
     notified — so a user oscillating active/inactive never re-triggers their
     friends more than once per real (>24h-gap) transition.
 
-    The push body names the action (note created/edited, verse highlighted)
-    via `_FRIEND_ACTIVITY_TEXT` below, keyed off the transition's
-    `last_activity_type`. A missing/unrecognized type (e.g. a pre-migration
-    row with no type set) falls back to the original generic "came back"
-    text rather than raising -- consistent with this job's existing
-    per-user-isolated, best-effort posture, not a new hard-failure mode.
-    Like the rest of this file, never put note/highlight content (title,
-    text, book/chapter/verse) in the push body or in any log line here.
+    The push body names the action via `_FRIEND_ACTIVITY_TEXT` below (note
+    created/edited) or one of the two composed branches in `_compose_body`
+    just under it (replied, verse highlighted — task
+    20260904-friend-activity-push-triggers), keyed off the transition's
+    `last_activity_type`. NOTE_REPLIED and VERSE_HIGHLIGHTED each need one
+    extra per-user lookup (the reply's parent-note owner; the highlight's
+    book/chapter/verse + resolved verse text) — deliberately not batched
+    across the whole pending set: that set is already small (bounded by the
+    >24h transition gate), so a per-user lookup here costs nothing worth
+    batching for. A missing/unrecognized type (e.g. a pre-migration row with
+    no type set), or either new lookup coming up empty, falls back to a
+    generic/reference-only text rather than raising — consistent with this
+    job's existing per-user-isolated, best-effort posture, not a new
+    hard-failure mode. Like the rest of this file, never put note/highlight
+    content (title, text, book/chapter/verse, verse text) in any log line
+    here — the push body is the one deliberately user-facing surface for
+    that content now (Security Posture Q13 in the intake spec: redaction
+    applies to logs, not to this now-intentionally-user-facing surface).
     """
-    from backend.interactions.activity import ActivityManager, NOTE_CREATED, NOTE_EDITED, VERSE_HIGHLIGHTED
+    from backend.interactions.activity import (
+        ActivityManager, NOTE_CREATED, NOTE_EDITED, NOTE_REPLIED, VERSE_HIGHLIGHTED,
+    )
+    from backend.interactions.bible_text import verse_text
     from backend.interactions.push import send_push
 
     _FRIEND_ACTIVITY_TEXT = {
         NOTE_CREATED: "{username} created a new note.",
         NOTE_EDITED: "{username} edited a note.",
-        VERSE_HIGHLIGHTED: "{username} highlighted a verse.",
     }
     _FALLBACK_TEXT = "{username} just came back to FellowScript."
+    # Used only when last_activity_type says VERSE_HIGHLIGHTED but the
+    # highlight row itself can't be resolved at all (e.g. a race with a
+    # since-removed highlight) — distinct from the "resolved but no verse
+    # text" case below, which gets a reference-only fallback instead.
+    _HIGHLIGHT_FALLBACK_TEXT = "{username} highlighted a verse."
+
+    def _compose_body(am: "ActivityManager", user_id: str, username: str, last_activity_type: str | None) -> str:
+        if last_activity_type == NOTE_REPLIED:
+            resolved = am.most_recent_reply(user_id)
+            if resolved:
+                _, owner_username = resolved
+                return f"{username} replied to {owner_username}'s note."
+            return f"{username} replied to a note."
+        if last_activity_type == VERSE_HIGHLIGHTED:
+            ref = am.most_recent_highlight(user_id)
+            if not ref:
+                return _HIGHLIGHT_FALLBACK_TEXT.format(username=username)
+            book, chapter, verse = ref
+            text = verse_text(book, chapter, verse)
+            if text:
+                return f'{username} highlighted "{text}" ({book} {chapter}:{verse}).'
+            return f"{username} highlighted {book} {chapter}:{verse}."
+        return _FRIEND_ACTIVITY_TEXT.get(last_activity_type, _FALLBACK_TEXT).format(username=username)
 
     am = ActivityManager()
     try:
@@ -217,7 +252,7 @@ async def _friend_went_active_notify() -> None:
             tokens_by_user.setdefault(str(user_id), []).append((friend_id, token))
 
         for user_id, username, became_active_at, last_activity_type in pending:
-            body = _FRIEND_ACTIVITY_TEXT.get(last_activity_type, _FALLBACK_TEXT).format(username=username)
+            body = _compose_body(am, user_id, username, last_activity_type)
             for friend_id, token in tokens_by_user.get(str(user_id), []):
                 if not token:
                     continue

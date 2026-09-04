@@ -132,6 +132,19 @@ struct HeroHeader: View {
     }
 }
 
+// Mirrors activity.py's closed activity-type string set (NOTE_CREATED/
+// NOTE_EDITED/NOTE_REPLIED/VERSE_HIGHLIGHTED) -- plain string constants, not
+// a Swift enum, so `FSFriendActivityEntry.activity_type` (a plain optional
+// String) can carry an unrecognized/future value without failing to decode
+// the whole feed; unmatched values fall through to `headline`'s existing
+// generic fallback below instead.
+private enum FriendActivityType {
+    static let created     = "note_created"
+    static let edited      = "note_edited"
+    static let replied     = "note_replied"
+    static let highlighted = "verse_highlighted"
+}
+
 // ── Friend Activity hero card ("Editorial Hero" mockup) ────────────────────────
 // Ports `.hero-card` from friend-activity-dashboard-revised.html: an avatar
 // stack of active friends, the most-recently-active friend's headline +
@@ -180,7 +193,18 @@ struct FriendActivityHeroCard: View {
                 avatarStackRow
                 if let resolvedPrimary, resolvedPrimary.last_active_at != nil {
                     activityRow(resolvedPrimary)
-                    if let preview = resolvedPrimary.note_preview {
+                    // Task 20260904-friend-activity-push-triggers: a
+                    // verse_highlighted entry shows the new highlight_preview
+                    // (real verse content, per Round 2) instead of the note
+                    // preview -- a highlight and a group-note preview are
+                    // never both present for the same entry today, but this
+                    // ordering keeps note_preview as the fallback body
+                    // content for every other activity type unchanged.
+                    if resolvedPrimary.activity_type == FriendActivityType.highlighted,
+                       let highlight = resolvedPrimary.highlight_preview {
+                        Divider().background(Color.white.opacity(0.08)).padding(.top, 16)
+                        highlightPreviewRow(highlight, friendUsername: resolvedPrimary.username)
+                    } else if let preview = resolvedPrimary.note_preview {
                         Divider().background(Color.white.opacity(0.08)).padding(.top, 16)
                         notePreviewRow(preview, friendUsername: resolvedPrimary.username)
                     }
@@ -291,9 +315,74 @@ struct FriendActivityHeroCard: View {
 
     private func headline(_ entry: FSFriendActivityEntry) -> String {
         let when = dayWord(entry.last_active_at)
-        return entry.note_preview != nil
-            ? "\(entry.username) wrote a note \(when)"
-            : "\(entry.username) was active \(when)"
+        switch entry.activity_type {
+        case FriendActivityType.created:
+            return "\(entry.username) wrote a note \(when)"
+        case FriendActivityType.edited:
+            return "\(entry.username) edited a note \(when)"
+        case FriendActivityType.replied:
+            return "\(entry.username) replied to a note \(when)"
+        case FriendActivityType.highlighted:
+            return "\(entry.username) highlighted a verse \(when)"
+        default:
+            // nil (no tracked activity_type yet) or an unrecognized future
+            // value this build doesn't know about -- same safe-generic-
+            // fallback posture as the backend's own missing-type handling,
+            // keyed off whether a note preview is present at all (matches
+            // this headline's pre-Round-1 behavior exactly).
+            return entry.note_preview != nil
+                ? "\(entry.username) wrote a note \(when)"
+                : "\(entry.username) was active \(when)"
+        }
+    }
+
+    // Distinct read-only preview for a verse_highlighted entry (task
+    // 20260904-friend-activity-push-triggers, Round 2): shown instead of
+    // notePreviewRow when the headline friend's most recent activity is a
+    // highlight. No tap action -- unlike notePreviewRow there's no "open
+    // full note" equivalent in scope here, just a body snippet plus a
+    // subtle attribution affordance for whose highlight it is, reusing
+    // HighlightRow's existing color-circle + username-capsule visual
+    // language (NotesListView.swift) rather than inventing a new pattern.
+    private func highlightPreviewRow(_ preview: FSFriendHighlightPreview, friendUsername: String) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Circle()
+                .fill(Color(hex: preview.color))
+                .frame(width: 10, height: 10)
+                .shadow(color: .black.opacity(0.30), radius: 2)
+                .padding(.top, 6)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 4) {
+                // verse_text is nil on a backend bible-text lookup miss --
+                // fall back to reference-only content rather than blanking
+                // the row (same posture as the push body's own fallback).
+                Text(preview.verse_text ?? "\(preview.book) \(preview.chapter):\(preview.verse)")
+                    .font(.system(size: 17))
+                    .foregroundColor(Theme.parchment.opacity(0.85))
+                    .lineLimit(4)
+                    .multilineTextAlignment(.leading)
+                HStack(spacing: 6) {
+                    Text("\(preview.book) \(preview.chapter):\(preview.verse)")
+                        .font(.system(size: 11))
+                        .foregroundColor(Theme.parchment.opacity(0.55))
+                    Text(friendUsername)
+                        .font(.system(size: 10.5, weight: .semibold))
+                        .foregroundColor(Theme.gold.opacity(0.65))
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Theme.gold.opacity(0.10))
+                        .clipShape(Capsule())
+                }
+            }
+        }
+        .padding(.top, 16)
+        .padding(.leading, 32)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(
+            "\(friendUsername) highlighted \(preview.book) \(preview.chapter):\(preview.verse)"
+            + (preview.verse_text.map { ": \($0)" } ?? "") + "."
+        )
     }
 
     private func dayWord(_ iso: String?) -> String {

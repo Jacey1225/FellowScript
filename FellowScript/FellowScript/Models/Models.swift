@@ -360,10 +360,15 @@ struct FSContact: Identifiable, Codable, Equatable {
 
 // ── Friend activity feed (Dashboard's Friend Activity hero card) ───────────────
 // SOURCE: GET /friends/{user_id}/activity (FriendsManager.get_friend_activity).
-// Friend-only, block-respecting in both directions. `note_preview` is only ever
-// a friend's public, non-reply, non-group personal note — highlights never
-// surface content here (no privacy flag exists for them yet), though a
-// highlight still counts toward `last_active_at`.
+// Friend-only, block-respecting in both directions. `note_preview` is a
+// friend's most recent *group* note the viewer shares group membership with
+// (group-membership-gated; a friend's personal notes stay private to their
+// owner regardless of friendship — post notes-public-repurpose). Highlights
+// are different (task 20260904-friend-activity-push-triggers, Round 2):
+// friendship alone is now sufficient grant to see a friend's highlight,
+// including its real verse content, via `highlight_preview` below — a
+// deliberate widening of the prior "zero visibility" rule, since unlike
+// notes a highlight never had any group/ownership scoping to preserve.
 struct FSFriendNotePreview: Codable, Equatable {
     let note_id:   String
     let title:     String
@@ -371,12 +376,42 @@ struct FSFriendNotePreview: Codable, Equatable {
     let timestamp: String
 }
 
+// `verse_text` is nil on a backend bible-text lookup miss (bad/unrecognized
+// reference) — the client falls back to showing just the book/chapter/verse
+// reference in that case rather than dropping the entry.
+struct FSFriendHighlightPreview: Codable, Equatable {
+    let book:       String
+    let chapter:    Int
+    let verse:      Int
+    let color:      String
+    let verse_text: String?
+    let timestamp:  String
+}
+
 struct FSFriendActivityEntry: Codable, Identifiable, Equatable {
     var id: String { friend_id }
     let friend_id:      String
     let username:       String
     let last_active_at: String?
-    let note_preview:   FSFriendNotePreview?
+    // One of activity.py's NOTE_CREATED/NOTE_EDITED/NOTE_REPLIED/
+    // VERSE_HIGHLIGHTED closed string set, or nil (no tracked activity yet).
+    // Plain string (not a Swift enum) on purpose, matching the backend's own
+    // plain-string-constant convention -- an unrecognized/future value the
+    // client doesn't know about yet degrades to the existing generic
+    // fallback in FriendActivityHeroCard.headline rather than failing to
+    // decode the whole feed. Defaulted so pre-existing call sites (fixtures,
+    // tests) that predate this field keep compiling unchanged.
+    // `var` (not `let`), deliberately: a `let` stored property with a
+    // literal default value is treated by Codable's synthesis as fixed
+    // forever -- it's dropped from both `init(from decoder:)` (so a real
+    // value in the JSON response would silently never decode) and the
+    // memberwise initializer's parameter list entirely (confirmed live).
+    // `var` keeps both: decoding still overwrites this from the response
+    // when present, and the memberwise init still accepts it as a named,
+    // defaulted argument for fixtures/tests/previews that supply one.
+    var activity_type:     String?                  = nil
+    let note_preview:      FSFriendNotePreview?
+    var highlight_preview: FSFriendHighlightPreview? = nil
 
     var initial: String { String(username.prefix(1)).uppercased() }
 }

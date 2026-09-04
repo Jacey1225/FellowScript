@@ -1813,7 +1813,7 @@ private struct ReplyComposerSheet: View {
                             .accessibilityLabel("Reply text")
                         }
                     }
-                    .widgetCard()
+                    .glassCard(cornerRadius: 20)
 
                     if let errorMessage {
                         Text(errorMessage)

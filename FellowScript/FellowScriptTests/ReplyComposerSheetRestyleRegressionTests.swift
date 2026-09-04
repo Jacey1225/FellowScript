@@ -15,7 +15,9 @@
 // real shipped source directly rather than hosting the private struct.
 //
 // This file proves:
-//   A. Visual migration: warmBloomBackground(), widgetCard()-wrapped field,
+//   A. Visual migration: warmBloomBackground(), the reply field's card
+//      recipe (glassCard(cornerRadius: 20) as of task
+//      20260904-reply-field-background-match; originally widgetCard()),
 //      ghost-chip Cancel, gold PillButton Post, and a `.principal` centered
 //      title — replacing the old Form/Section + plain-text Cancel/Post.
 //   B. No behavioral regression: onPost/postReplyDraft wiring, canPost
@@ -42,6 +44,17 @@
 // unrelated to that change and stays exactly as this task originally wrote
 // it. See ReplyComposerRichTextRegressionTests.swift for that task's own,
 // fuller coverage of the new rich-text wiring itself.
+//
+// Updated by task 20260904-reply-field-background-match: per the user's
+// explicit request, the reply body field's card recipe was swapped from the
+// opaque widgetCard() fill to the translucent glassCard(cornerRadius: 20)
+// recipe NoteEditorView's own body field uses (matching that field's
+// background exactly), deliberately diverging from the widgetCard()-matches-
+// other-submenu-sheets precedent this file originally pinned for that one
+// field. Only the one assertion checking the field's card modifier was
+// updated (test_replyFieldIsWrappedInGlassCard_notFormSection, formerly
+// test_replyFieldIsWrappedInWidgetCard_notFormSection); every other
+// assertion in this file is unaffected by this style-only change.
 
 import XCTest
 import SwiftUI
@@ -77,12 +90,17 @@ final class ReplyComposerSheetRestyleRegressionTests: XCTestCase {
                        "the old flat Theme.bgPage fill must be gone")
     }
 
-    func test_replyFieldIsWrappedInWidgetCard_notFormSection() throws {
+    func test_replyFieldIsWrappedInGlassCard_notFormSection() throws {
         let body = try sheetBody(try componentSource())
         XCTAssertFalse(body.contains("Form {"), "must no longer use a plain Form")
         XCTAssertFalse(body.contains(#"Section("Reply")"#), "must no longer use a plain Form Section")
-        XCTAssertTrue(body.contains(".widgetCard()"),
-                      "the reply field must be wrapped in the shared widgetCard() card recipe")
+        // Updated by task 20260904-reply-field-background-match: the reply
+        // field's card recipe was switched from the opaque widgetCard() fill
+        // to the same translucent glassCard(cornerRadius: 20) recipe
+        // NoteEditorView's body field uses, per the user's explicit request
+        // to match that field's background exactly.
+        XCTAssertTrue(body.contains(".glassCard(cornerRadius: 20)"),
+                      "the reply field must be wrapped in the glassCard(cornerRadius: 20) recipe, matching NoteEditorView's body field")
         // Superseded by task 20260903-notes-reply-rich-text: the plain
         // TextEditor(text: $text) binding this test originally pinned was
         // replaced by the same RichTextEditorView stack NoteEditorView uses,

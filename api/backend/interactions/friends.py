@@ -3,6 +3,7 @@ from schemas.users import User
 from db import DBManager
 from backend.errors import SaveFailedError
 from backend.interactions.blocks import BlockManager
+from backend.interactions.bible_text import parse_highlight_key, verse_text
 
 
 class FriendsManager(DBManager):
@@ -210,12 +211,21 @@ class FriendsManager(DBManager):
         re-checked here rather than trusted to have fully unwound
         `user_friends` already).
 
-        Highlights are deliberately excluded from content previews: unlike
-        notes, highlights have no group/visibility scoping today, so there
-        is no signal a given highlight is meant to be friend- or
-        group-visible. A highlight still counts toward `last_activity_at`
-        (via ActivityManager.record_activity) -- it just never surfaces its
-        verse/color content to a friend.
+        Highlights (task 20260904-friend-activity-push-triggers, Round 2):
+        friendship alone is sufficient grant to see a friend's highlight,
+        including its real verse content -- a deliberate widening of the
+        prior rule (highlights had zero visibility to anyone, friend or
+        not), since unlike notes a highlight never had any group/ownership
+        scoping to preserve. This does NOT reopen note/reply visibility --
+        the group-membership-gated `note_preview` above is untouched. Each
+        friend's most recent highlight (by `highlights.timestamp`) is
+        resolved to `highlight_preview`, still subject to the same
+        block-respecting `NOT EXISTS` predicate as everything else in this
+        query (defense-in-depth, same reasoning as
+        `ActivityManager.friend_device_tokens`). Verse text is resolved via
+        `bible_text.verse_text`; a lookup miss just leaves `verse_text: None`
+        in the preview (client decides how to degrade) rather than dropping
+        the whole entry.
 
         Args:
             limit: Max number of friends to return in `friends_active`
@@ -224,22 +234,29 @@ class FriendsManager(DBManager):
 
         Returns:
             dict: ``{"friends_active": [{"friend_id", "username",
-                "last_active_at", "note_preview": {"note_id", "title",
-                "text", "timestamp"} | None}, ...], "check_in_candidates":
-                [{"friend_id", "username", "days_since_contact": int | None},
-                ...]}``. `friends_active` is ordered by `last_active_at`
-                descending (friends with no tracked activity sort last).
-                `check_in_candidates` is ordered longest-since-contact
-                first, capped at `CHECK_IN_POOL_SIZE` entries (or the
-                friend count, whichever is smaller), and is an empty list
-                only when the user has no friends; a candidate's
-                `days_since_contact` is None when that pair has never
-                messaged directly (still a valid, arguably stronger, nudge
-                candidate -- it sorts as if "longest ago").
+                "last_active_at", "activity_type": str | None,
+                "note_preview": {"note_id", "title", "text", "timestamp"} |
+                None, "highlight_preview": {"book", "chapter", "verse",
+                "color", "verse_text": str | None, "timestamp"} | None},
+                ...], "check_in_candidates": [{"friend_id", "username",
+                "days_since_contact": int | None}, ...]}``. `friends_active`
+                is ordered by `last_active_at` descending (friends with no
+                tracked activity sort last). `activity_type` is the friend's
+                `last_activity_type` (one of activity.py's NOTE_CREATED/
+                NOTE_EDITED/NOTE_REPLIED/VERSE_HIGHLIGHTED, or None) so the
+                client can pick per-type title wording without a second
+                round trip. `check_in_candidates` is ordered
+                longest-since-contact first, capped at `CHECK_IN_POOL_SIZE`
+                entries (or the friend count, whichever is smaller), and is
+                an empty list only when the user has no friends; a
+                candidate's `days_since_contact` is None when that pair has
+                never messaged directly (still a valid, arguably stronger,
+                nudge candidate -- it sorts as if "longest ago").
         """
         self.cur.execute(
-            "SELECT uf.friend_id, u.username, ua.last_activity_at, "
-            "n._id, n.title, n.text, n.timestamp "
+            "SELECT uf.friend_id, u.username, ua.last_activity_at, ua.last_activity_type, "
+            "n._id, n.title, n.text, n.timestamp, "
+            "h.key, h.color, h.timestamp "
             "FROM user_friends uf "
             "JOIN users u ON u._id = uf.friend_id "
             "LEFT JOIN user_activity ua ON ua.user_id = uf.friend_id "
@@ -253,6 +270,11 @@ class FriendsManager(DBManager):
             "    ) "
             "  ORDER BY timestamp DESC LIMIT 1"
             ") n ON TRUE "
+            "LEFT JOIN LATERAL ("
+            "  SELECT key, color, timestamp FROM highlights "
+            "  WHERE user_id = uf.friend_id "
+            "  ORDER BY timestamp DESC LIMIT 1"
+            ") h ON TRUE "
             "WHERE uf.user_id = %s "
             "AND NOT EXISTS ("
             "  SELECT 1 FROM blocked_users b "
@@ -263,18 +285,35 @@ class FriendsManager(DBManager):
             "LIMIT %s",
             (self.user_id, limit),
         )
-        friends_active = [
-            {
-                "friend_id": str(r[0]),
-                "username": r[1],
-                "last_active_at": str(r[2]) if r[2] else None,
+        friends_active = []
+        for r in self.cur.fetchall():
+            (friend_id, username, last_active_at, last_activity_type,
+             note_id, note_title, note_text, note_ts,
+             h_key, h_color, h_ts) = r
+            highlight_preview = None
+            if h_key:
+                parsed = parse_highlight_key(h_key)
+                if parsed:
+                    book, chapter, verse = parsed
+                    highlight_preview = {
+                        "book": book,
+                        "chapter": chapter,
+                        "verse": verse,
+                        "color": h_color,
+                        "verse_text": verse_text(book, chapter, verse),
+                        "timestamp": str(h_ts) if h_ts else None,
+                    }
+            friends_active.append({
+                "friend_id": str(friend_id),
+                "username": username,
+                "last_active_at": str(last_active_at) if last_active_at else None,
+                "activity_type": last_activity_type,
                 "note_preview": (
-                    {"note_id": str(r[3]), "title": r[4], "text": r[5], "timestamp": str(r[6])}
-                    if r[3] else None
+                    {"note_id": str(note_id), "title": note_title, "text": note_text, "timestamp": str(note_ts)}
+                    if note_id else None
                 ),
-            }
-            for r in self.cur.fetchall()
-        ]
+                "highlight_preview": highlight_preview,
+            })
 
         self.cur.execute(
             "SELECT uf.friend_id, u.username, "

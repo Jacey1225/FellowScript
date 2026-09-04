@@ -185,6 +185,17 @@ def create_tables(cur):
         "color VARCHAR(16) NOT NULL,"
         "PRIMARY KEY (user_id, key))"
     )
+    # CREATE TABLE IF NOT EXISTS above doesn't retroactively add columns to
+    # an already-existing table (same precedent as user_activity.
+    # last_activity_type below), so this needs its own idempotent ALTER. Task
+    # 20260904-friend-activity-push-triggers: ActivityManager.
+    # most_recent_highlight and FriendsManager.get_friend_activity's new
+    # highlight_preview both need "this friend's most recent highlight",
+    # which wasn't derivable before -- highlight_verse (routes/notes.py) now
+    # sets/refreshes this on every write (including a re-highlight of an
+    # already-highlighted verse, via its ON CONFLICT clause), so it reflects
+    # last-written, not first-written.
+    cur.execute("ALTER TABLE highlights ADD COLUMN IF NOT EXISTS timestamp TIMESTAMPTZ DEFAULT NOW()")
 
     cur.execute(
         "CREATE TABLE IF NOT EXISTS bookmarks"

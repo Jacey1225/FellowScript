@@ -7,8 +7,12 @@
 //      wired directly to each screen's existing reload method); covered by
 //      PullToRefreshRegressionTests.swift, not this file.
 //   2. `View.dismissesKeyboardOnScrollAndTap()` — scroll-interactive keyboard
-//      dismissal + a `simultaneousGesture` tap-to-resign-first-responder,
-//      applied at 18 call sites across 12 screens/sheets.
+//      dismissal + a tap-to-resign-first-responder gesture, applied at 18+
+//      call sites across 12+ screens/sheets. (Task
+//      20260904-notes-keyboard-dismiss-fix later replaced the tap side with
+//      a UIKit-backed `UIGestureRecognizerRepresentable` so it can exclude
+//      taps landing on an active text-input control — see
+//      NotesKeyboardDismissFixRegressionTests.swift.)
 //   3. `TapOutsideDismissCatcher` — an invisible full-screen tap target for
 //      this app's one custom ZStack-based overlay (BibleReaderView's
 //      BibleNavDropdown).
@@ -86,23 +90,44 @@ final class SharedInteractionModifierSourceTests: XCTestCase {
     }
 
     func test_dismissesKeyboardOnScrollAndTap_usesSimultaneousGesture_notPlainOnTapGesture() throws {
-        // A plain `.onTapGesture` would swallow taps meant for buttons/rows
-        // underneath it -- the "no regressions to existing ... gesture
-        // behavior" acceptance criterion. `.simultaneousGesture` lets the
-        // keyboard-dismiss side effect ride alongside whatever the tap
-        // already does, rather than intercepting it.
+        // Updated for task 20260904-notes-keyboard-dismiss-fix: a plain
+        // `.onTapGesture` would swallow taps meant for buttons/rows
+        // underneath it, and SwiftUI's own `TapGesture` (even wrapped in
+        // `.simultaneousGesture`) has no visibility into which UIKit view a
+        // tap actually landed on -- which is exactly what let it dismiss the
+        // keyboard when a tap landed inside an already-focused
+        // UITextField/UITextView meant only to reposition the cursor (the
+        // Notes bug this task fixed). The modifier now wraps a real
+        // UITapGestureRecognizer via `UIGestureRecognizerRepresentable`
+        // (`.gesture(KeyboardResignTapGesture())`), whose delegate
+        // reproduces the old simultaneousGesture guarantee explicitly via
+        // `cancelsTouchesInView = false` +
+        // `shouldRecognizeSimultaneouslyWith` returning true, while adding a
+        // `shouldReceive touch:` check that excludes text-input controls.
         let source = try readThemeSource()
         guard let range = source.range(of: "func dismissesKeyboardOnScrollAndTap() -> some View {") else {
             XCTFail("shared keyboard-dismiss modifier not found in Theme.swift")
             return
         }
         let body = String(source[range.upperBound...].prefix(600))
-        XCTAssertTrue(body.contains(".simultaneousGesture("),
-                      "must use simultaneousGesture so this never blocks/steals a tap meant for underlying controls")
-        XCTAssertFalse(body.contains(".onTapGesture {") ,
+        XCTAssertTrue(body.contains(".gesture(KeyboardResignTapGesture())"),
+                      "must wrap the UIKit-backed KeyboardResignTapGesture via .gesture(), not a plain SwiftUI TapGesture")
+        XCTAssertFalse(body.contains(".onTapGesture {"),
                        "must not use a plain, gesture-stealing .onTapGesture for the dismiss tap")
-        XCTAssertTrue(body.contains("resignFirstResponder"),
+
+        guard let structRange = source.range(of: "struct KeyboardResignTapGesture: UIGestureRecognizerRepresentable {") else {
+            XCTFail("KeyboardResignTapGesture not found in Theme.swift")
+            return
+        }
+        let structBody = String(source[structRange.upperBound...].prefix(2000))
+        XCTAssertTrue(structBody.contains("resignFirstResponder"),
                       "the tap must resign first responder to actually dismiss the keyboard")
+        XCTAssertTrue(structBody.contains("cancelsTouchesInView = false"),
+                      "must not swallow touches meant for underlying controls (the prior simultaneousGesture guarantee)")
+        XCTAssertTrue(structBody.contains("shouldRecognizeSimultaneouslyWith"),
+                      "must explicitly allow simultaneous recognition with other gesture recognizers underneath it")
+        XCTAssertTrue(structBody.contains("shouldReceive touch"),
+                      "must gate recognition on which UIKit view the touch actually landed on")
     }
 
     func test_tapOutsideDismissCatcher_isHitTestable_nearZeroOpacity_notFullyClear() throws {

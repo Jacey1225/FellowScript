@@ -25,14 +25,17 @@ INACTIVITY_THRESHOLD = timedelta(hours=24)
 
 # Closed set of activity-type labels persisted on `user_activity.
 # last_activity_type`, used only to pick action-specific wording in
-# scheduler.py::_friend_went_active_notify. A reply (post_reply) folds into
-# NOTE_CREATED rather than getting its own type -- nothing distinguishes how
-# a friend should read "posted a note" vs. "replied to a note" today, and a
-# 4th concrete type (e.g. a distinct reply wording) is easy to add to this
-# set later if that changes. Deliberately just these three plain strings,
+# scheduler.py::_friend_went_active_notify. Deliberately just plain strings,
 # not a speculative generic templating/i18n system.
+#
+# NOTE_REPLIED (task 20260904-friend-activity-push-triggers) used to fold
+# into NOTE_CREATED -- nothing distinguished how a friend should read "posted
+# a note" vs. "replied to a note". It's now its own type so the push/widget
+# can name "replied to {owner}'s note" specifically; see post_reply
+# (routes/notes.py) and _friend_went_active_notify's NOTE_REPLIED branch.
 NOTE_CREATED = "note_created"
 NOTE_EDITED = "note_edited"
+NOTE_REPLIED = "note_replied"
 VERSE_HIGHLIGHTED = "verse_highlighted"
 
 
@@ -198,6 +201,43 @@ class ActivityManager(DBManager):
             (list(user_ids),),
         )
         return self.cur.fetchall()
+
+    def most_recent_reply(self, user_id: str) -> tuple[str, str] | None:
+        """(parent_note owner's user_id, owner's username) for user_id's most
+        recent reply, or None if they have no reply or its parent note/owner
+        row can't be resolved (deleted note, orphaned FK). Feeds
+        `_friend_went_active_notify`'s NOTE_REPLIED push text -- a None here
+        is exactly the "safe generic fallback" case that caller already
+        handles, never raised.
+        """
+        self.cur.execute(
+            "SELECT p.user_id, u.username FROM notes n "
+            "JOIN notes p ON p._id = n.parent_note_id "
+            "JOIN users u ON u._id = p.user_id "
+            "WHERE n.user_id = %s AND n.is_reply = TRUE "
+            "ORDER BY n.timestamp DESC LIMIT 1",
+            (user_id,),
+        )
+        row = self.cur.fetchone()
+        return (str(row[0]), row[1]) if row else None
+
+    def most_recent_highlight(self, user_id: str) -> tuple[str, int, int] | None:
+        """(book, chapter, verse) for user_id's most recently written
+        highlight (by `highlights.timestamp`), or None if they have none or
+        the stored key can't be parsed. Feeds `_friend_went_active_notify`'s
+        VERSE_HIGHLIGHTED push text and `FriendsManager.get_friend_activity`'s
+        `highlight_preview` -- both resolve the actual verse text separately
+        via `bible_text.verse_text`; this only returns the reference.
+        """
+        from backend.interactions.bible_text import parse_highlight_key
+
+        self.cur.execute(
+            "SELECT key FROM highlights WHERE user_id = %s "
+            "ORDER BY timestamp DESC LIMIT 1",
+            (user_id,),
+        )
+        row = self.cur.fetchone()
+        return parse_highlight_key(row[0]) if row else None
 
     def mark_friends_notified(self, user_id: str, became_active_at: datetime) -> None:
         """Marks the transition notified only if it's still the same

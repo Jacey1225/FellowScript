@@ -95,6 +95,9 @@ Verse references linked to a note (many-to-one).
 | `user_id` | UUID FK → `users` | Composite PK with `key` |
 | `key` | TEXT | `"{book}-{chapter}-{verse}"` |
 | `color` | TEXT | Hex color string |
+| `timestamp` | TIMESTAMPTZ | Set on insert and refreshed on re-highlight (`ON CONFLICT`). Backs "this friend's most recently highlighted verse" for the friend-activity widget/push (see [Friend Activity](../api/overview.md#get-friendsuser_idactivity) and the Background Scheduler section below) |
+
+A friend can see another friend's most recent highlight (including its real verse text, resolved via the bundled `bible.json` at read/send time) — friendship alone is sufficient grant; there is no separate per-highlight privacy flag. This does not extend to notes, whose group-membership/ownership visibility rules are unchanged.
 
 ---
 
