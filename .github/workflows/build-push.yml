@@ -86,6 +86,18 @@ jobs:
       # matter what -- not a real Google client ID, just needs to be the same
       # non-empty value on both sides of this same-process comparison.
       CLIENT_ID: ci-test-google-client-id
+      # push.py's validate_apns_config() now fails fast at app boot (commit
+      # 51c1d3f2) instead of silently degrading -- correct for prod, but it
+      # means every test file that boots the real app via
+      # TestClient(main_module.app) now needs *some* value here, same as
+      # DB_PASSWORD/CLIENT_ID above. These are throwaway CI values; the file
+      # at APPLE_KEY_PATH only needs to exist and be readable (validate_apns_
+      # config() checks that, never parses its content at startup -- real
+      # ES256-signing tests already carry their own fixture key).
+      APPLE_KEY_ID: ci-test-apns-key-id
+      APPLE_TEAM_ID: ci-test-apple-team-id
+      APPLE_BUNDLE_ID: com.fellowscript.app
+      APPLE_KEY_PATH: ${{ github.workspace }}/ci-dummy-apns-key.p8
 
     steps:
       - name: Checkout
@@ -98,6 +110,13 @@ jobs:
 
       - name: Install dependencies
         run: pip install --no-cache-dir -r requirements.txt
+
+      - name: Create dummy APNs key for CI boot
+        # Not a real key -- validate_apns_config() only checks this file
+        # exists and is readable at app-boot time (see the APPLE_KEY_PATH
+        # comment above); it never parses key content outside the tests
+        # that carry their own real fixture key.
+        run: echo "-----BEGIN PRIVATE KEY-----" > "${{ env.APPLE_KEY_PATH }}"
 
       - name: Bootstrap schema
         working-directory: api
