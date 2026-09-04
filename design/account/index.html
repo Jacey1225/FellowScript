@@ -1068,7 +1068,25 @@ shared with the Dashboard, Chat, Notes, and Note Editor screens. Appearance-only
 binding, async flow (Subscription's purchase/restore/cancel/leave/seat-edit/join-request
 flows, Edit Profile save + timezone picker, Agent/Event create-toggle-delete,
 Two-Factor Authentication, Danger Zone's username-match delete gate), sheet, and alert is
-unchanged.</p>
+unchanged, aside from the new "Account Details" alert noted below.</p>
+<p><strong>Overview stats reliability fix (2026-09-03).</strong> The Overview row's Notes/Verses counts and the
+Agents/Events sections could get stuck showing 0/empty for an account that actually had data.
+Root cause: <code>AccountViewModel.load()</code> had no guard against overlapping calls (the initial
+<code>.task</code> on mount plus a <code>.refreshable</code> pull, or a <code>.task</code> re-fire) — whichever call finished
+last won, even if it was a stale/cancelled one whose fetches fell back to their <code>0</code>/<code>[]</code>
+defaults, silently overwriting a faster call's correct notes-count/highlights/agents/events
+data in both <code>@Published</code> state and the <code>DiskCache</code> entries those write back to (so the bad
+zero then reappeared on the next cache-first read too). <code>load()</code> now resolves each call's
+results into local variables and only commits them (to <code>@Published</code> state and the cache) if no
+newer call has started since — a superseded call's results are discarded instead of clobbering
+a fresher one's. Separately, a genuine notes/highlights/agents fetch or decode failure (as
+opposed to the account genuinely having none) now surfaces a new "Account Details" alert
+(<code>AccountViewModel.statsMsg</code>) instead of silently rendering identically to "zero", matching this
+screen's existing Free Plan Limit / Agent Error / Friend Request Error alert convention; pull-to-
+refresh (already on this screen) is the retry path. <code>NetworkService.fetchNotesCount</code>/
+<code>fetchHighlights</code>/<code>fetchAgents</code> also now tag their <code>decode()</code> calls with an <code>endpoint:</code> string
+like their sibling fetch functions, so a decode failure reports via
+<code>reportDecodeFailure</code>/CloudWatch instead of being silent.</p>
 <p><strong>Notifications section removed (2026-08-26).</strong> The Account page previously had its own
 "Notifications" card (create/edit/delete a recurring AI-authored reminder, <code>NotificationSetupSheet</code>,
 a "View All" push to <code>NotificationsListView</code>) built on the now-removed user-authored notification
