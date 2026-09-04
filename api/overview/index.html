@@ -1508,7 +1508,12 @@ creator, immediately on creation; <code>_fire_due_session_reminders</code> sends
 "Session Starting" push to every member once the session's <code>time_start</code>
 arrives, exactly once (see <a href="../../architecture/data/#devotions"><code>devotions.reminder_sent_at</code></a>).
 Both carry <code>devotion_id</code>/<code>group_id</code> in the payload's <code>data</code> for the client
-to resolve locally.</p>
+to resolve locally. The iOS client resolves it: tapping either push
+(<code>AppDelegate.userNotificationCenter(_:didReceive:)</code>) opens that session's
+chat thread directly (<code>AppState.openSession(groupId:)</code>), splitting a DM room
+key (<code>"uidA|uidB"</code>) to the other participant or treating any other value as
+a real group id — the same cross-tab navigation the Dashboard's Friend
+Activity widget already uses.</p>
 <hr />
 <h2 id="agent-ai-check-ins">Agent (AI Check-ins)</h2>
 <table>
