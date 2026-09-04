@@ -1087,6 +1087,24 @@ refresh (already on this screen) is the retry path. <code>NetworkService.fetchNo
 <code>fetchHighlights</code>/<code>fetchAgents</code> also now tag their <code>decode()</code> calls with an <code>endpoint:</code> string
 like their sibling fetch functions, so a decode failure reports via
 <code>reportDecodeFailure</code>/CloudWatch instead of being silent.</p>
+<p><strong>Events section fetch/decode failure fix (2026-09-03).</strong> The Overview stats reliability fix
+above (<code>fetchNotesCount</code>/<code>fetchHighlights</code>/<code>fetchAgents</code>) missed one sibling call:
+<code>NetworkService.fetchHeartbeats</code> still did a bare <code>decode(...) ?? []</code> with no <code>endpoint:</code> tag, so
+a decode failure on the Events section's own fetch — e.g. a production DB migration that adds a
+required-looking column to <code>agent_heartbeats</code> landing after the backend code that reads it, this
+task's actual root cause — silently rendered as "No events yet" with zero
+<code>reportDecodeFailure</code>/CloudWatch signal, exactly like the pre-fix notes/highlights/agents calls
+did. <code>fetchHeartbeats</code> is now tagged the same way, and <code>AccountViewModel.load()</code>'s per-agent
+heartbeats fetch (a <code>withTaskGroup</code> over each agent's own <code>fetchHeartbeats</code> call) now folds a
+genuine per-agent failure into the same <code>statsFailed</code>/<code>statsMsg</code> path the notes/highlights/agents
+fetches already use, rather than swallowing it via <code>(try? ...) ?? []</code>; the "Account Details" alert
+copy was extended to mention events alongside notes/highlights/agents. Separately, <code>FSHeartbeat</code>'s
+<code>Decodable</code> conformance is now a custom <code>init(from:)</code> using the same <code>decodeLenient</code> helper
+<code>FSUser</code>/<code>FSAgent</code> already use — previously every field but <code>group_id</code> (which is <code>Optional</code> and so
+already decoded leniently) was effectively required despite the struct declaring in-code defaults,
+since Swift's synthesized <code>Decodable</code> conformance doesn't honor those defaults; one row missing one
+column (e.g. <code>notes_public</code> again, on a future schema/deploy race of the same shape) would have
+failed decoding of the <em>entire</em> <code>[FSHeartbeat]</code> array response, not just that row.</p>
 <p><strong>Notifications section removed (2026-08-26).</strong> The Account page previously had its own
 "Notifications" card (create/edit/delete a recurring AI-authored reminder, <code>NotificationSetupSheet</code>,
 a "View All" push to <code>NotificationsListView</code>) built on the now-removed user-authored notification
