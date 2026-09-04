@@ -51,6 +51,17 @@ final class AccountViewModel: ObservableObject {
     // failed accept must surface something rather than silently vanishing
     // the request from the UI.
     @Published var friendMsg: String?  = nil
+    // Shown when the notes-count/highlights/agents fetch genuinely fails
+    // (network/HTTP error or decode failure) on the *current* load() call —
+    // task 20260903-account-stats-not-loading. Previously these three
+    // silently collapsed to 0/empty on any failure, which looked visually
+    // identical to the account genuinely having no notes/highlights/agents.
+    @Published var statsMsg: String?  = nil
+
+    // Bumped at the start of every load() call; a call only commits its
+    // results if it's still the most recent one when it finishes. See
+    // load()'s own comment for why this is needed.
+    private var loadGeneration = 0
 
     // Manual "execute now" heartbeat trigger (task
     // 20260901-heartbeat-manual-trigger-button). Heartbeat ids currently
@@ -98,6 +109,25 @@ final class AccountViewModel: ObservableObject {
         profileData = user
         let uid = user.user_id
 
+        // Re-entrancy guard (task 20260903-account-stats-not-loading):
+        // load() can run more than once concurrently -- the initial `.task`
+        // on AccountView's mount plus a `.refreshable` pull (or a `.task`
+        // re-fire), with no de-duplication between them. Previously every
+        // invocation unconditionally overwrote noteCount/highlightCount/
+        // agents/events (and their DiskCache entries) with whatever ITS OWN
+        // fetch produced -- including the `?? 0`/`?? []` fallback of a call
+        // that failed or got cancelled mid-flight. Whichever call happened
+        // to *finish* last won, even if it was the failing one, so a
+        // slower/cancelled call could silently clobber a faster, fully
+        // correct call's results. And because the clobbered (zeroed) result
+        // was also the one written to the cache, the bad zero then
+        // persisted into the very next load's cache-first read too.
+        // `generation` makes each call check, right before it commits
+        // anything, whether a newer call has since started; if so it
+        // discards its own now-stale result instead of writing it anywhere.
+        loadGeneration += 1
+        let generation = loadGeneration
+
         // ── Cache-first: show last-known account data instantly ──────────────────
         if let cached: FSUser = await DiskCache.shared.load(FSUser.self, forKey: "user:\(uid)") {
             profileData = cached
@@ -123,24 +153,60 @@ final class AccountViewModel: ObservableObject {
         // Reused for the event-setup group picker (see `groups` above) --
         // no dedicated group-listing fetch is added for this.
         async let fetchedContacts      = service.fetchContacts(userId: user.user_id)
-        if let freshUser = try? await fetchedUser { profileData = freshUser }
-        agents        = (try? await fetchedAgents)        ?? []
-        noteCount      = (try? await fetchedNoteCount)          ?? 0
-        highlightCount = (try? await fetchedHighlights)?.count ?? 0
-        usage          = (try? await fetchedUsage) ?? usage
-        friendRequests = (try? await service.fetchFriendRequests(userId: user.user_id)) ?? []
-        if let (_, groupMap) = try? await fetchedContacts { groups = groupMap }
+
+        // Resolve everything into LOCAL results first -- not @Published --
+        // so a superseded call's failures never touch shared state before
+        // the generation check below. `statsFailed` distinguishes "this
+        // fetch genuinely threw" from "this account really has zero", which
+        // a bare `?? 0`/`?? []` can't do.
+        let userResult = try? await fetchedUser
+
+        var statsFailed = false
+        let agentsResult: [FSAgent]
+        do { agentsResult = try await fetchedAgents } catch { agentsResult = []; statsFailed = true }
+        let noteCountResult: Int
+        do { noteCountResult = try await fetchedNoteCount } catch { noteCountResult = 0; statsFailed = true }
+        let highlightCountResult: Int
+        do { highlightCountResult = try await (fetchedHighlights).count } catch { highlightCountResult = 0; statsFailed = true }
+
+        let usageResult          = try? await fetchedUsage
+        let friendRequestsResult = (try? await service.fetchFriendRequests(userId: user.user_id)) ?? []
+        let contactsResult       = try? await fetchedContacts
 
         var allEvents: [FSHeartbeat] = []
         await withTaskGroup(of: [FSHeartbeat].self) { group in
-            for agent in agents {
+            for agent in agentsResult {
                 group.addTask {
                     (try? await service.fetchHeartbeats(userId: user.user_id, agentId: agent.id)) ?? []
                 }
             }
             for await hbs in group { allEvents.append(contentsOf: hbs) }
         }
+
+        // A newer load() call has started since this one began -- discard
+        // this call's results entirely instead of letting a stale call
+        // overwrite whatever the newer call already committed (or is about
+        // to). This is what actually fixes the persistent-zero bug: the
+        // slower of two overlapping calls no longer wins just by finishing last.
+        guard generation == loadGeneration else { return }
+
+        if let userResult { profileData = userResult }
+        agents         = agentsResult
+        noteCount      = noteCountResult
+        highlightCount = highlightCountResult
+        usage          = usageResult ?? usage
+        friendRequests = friendRequestsResult
+        if let (_, groupMap) = contactsResult { groups = groupMap }
         events = allEvents
+
+        // A genuine fetch/decode failure on notes/highlights/agents no
+        // longer looks visually identical to "this account has none" --
+        // surface it via this screen's existing alert convention. Pull-to-
+        // refresh (already on this screen) is the retry path; no new
+        // bespoke retry control is introduced.
+        if statsFailed {
+            statsMsg = "We couldn't load some of your notes, highlights, or agents just now. Pull down to refresh and try again."
+        }
 
         // ── Write fresh account data back to the cache ────────────────────────────
         if let fresh = profileData { await DiskCache.shared.save(fresh, forKey: "user:\(uid)") }
@@ -749,6 +815,14 @@ struct AccountView: View {
             Button("OK", role: .cancel) { vm.agentMsg = nil }
         } message: {
             Text(vm.agentMsg ?? "")
+        }
+        .alert("Account Details", isPresented: Binding(
+            get:  { vm.statsMsg != nil },
+            set:  { if !$0 { vm.statsMsg = nil } }
+        )) {
+            Button("OK", role: .cancel) { vm.statsMsg = nil }
+        } message: {
+            Text(vm.statsMsg ?? "")
         }
         .alert("Friend Request Error", isPresented: Binding(
             get:  { vm.friendMsg != nil },

@@ -100,7 +100,26 @@ shared with the Dashboard, Chat, Notes, and Note Editor screens. Appearance-only
 binding, async flow (Subscription's purchase/restore/cancel/leave/seat-edit/join-request
 flows, Edit Profile save + timezone picker, Agent/Event create-toggle-delete,
 Two-Factor Authentication, Danger Zone's username-match delete gate), sheet, and alert is
-unchanged.
+unchanged, aside from the new "Account Details" alert noted below.
+
+**Overview stats reliability fix (2026-09-03).** The Overview row's Notes/Verses counts and the
+Agents/Events sections could get stuck showing 0/empty for an account that actually had data.
+Root cause: `AccountViewModel.load()` had no guard against overlapping calls (the initial
+`.task` on mount plus a `.refreshable` pull, or a `.task` re-fire) — whichever call finished
+last won, even if it was a stale/cancelled one whose fetches fell back to their `0`/`[]`
+defaults, silently overwriting a faster call's correct notes-count/highlights/agents/events
+data in both `@Published` state and the `DiskCache` entries those write back to (so the bad
+zero then reappeared on the next cache-first read too). `load()` now resolves each call's
+results into local variables and only commits them (to `@Published` state and the cache) if no
+newer call has started since — a superseded call's results are discarded instead of clobbering
+a fresher one's. Separately, a genuine notes/highlights/agents fetch or decode failure (as
+opposed to the account genuinely having none) now surfaces a new "Account Details" alert
+(`AccountViewModel.statsMsg`) instead of silently rendering identically to "zero", matching this
+screen's existing Free Plan Limit / Agent Error / Friend Request Error alert convention; pull-to-
+refresh (already on this screen) is the retry path. `NetworkService.fetchNotesCount`/
+`fetchHighlights`/`fetchAgents` also now tag their `decode()` calls with an `endpoint:` string
+like their sibling fetch functions, so a decode failure reports via
+`reportDecodeFailure`/CloudWatch instead of being silent.
 
 **Notifications section removed (2026-08-26).** The Account page previously had its own
 "Notifications" card (create/edit/delete a recurring AI-authored reminder, `NotificationSetupSheet`,
@@ -129,3 +148,13 @@ new activity-tracked reminder system.
 - **Danger Zone** — keeps its distinct red tint, now expressed as a tinted variant of the same
   glass card (`glassCard(tint: Theme.dangerBg, border: [...Theme.borderDanger])`) rather than a
   flat red fill. Sign Out stays in its own separate, neutral (non-danger-tinted) glass card.
+
+**Submenu sheets restyled (2026-09-02).** `NewAgentSheet` and `EventSetupSheet` (all three steps —
+`recurrenceScreen`, `dayPickerScreen`, `detailsScreen`) previously sat on a flat `Theme.bgPage`
+fill, `detailsScreen` still using native `Form`/`Section` chrome unlike its own sibling steps.
+Both now use the same warm-bloom-ground background as the rest of the app, extracted into a new
+shared `Theme.warmBloomBackground()` modifier (`Theme.swift`) so the two-`RadialGradient` recipe
+has one call point instead of a per-screen copy; `detailsScreen` moved off `Form`/`Section` onto
+the `ScrollView` + `VStack` + `widgetCard()` shell its sibling steps already used, same section
+order and headers. Appearance-only — the group-picker `Menu` added by the group-tagging feature
+above, `onSave`/`onCreate`, `prefill(from:)`, and all existing accessibility labels are unchanged.
