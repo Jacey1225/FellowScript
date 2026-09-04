@@ -50,7 +50,7 @@ services:
     #    reachability to the instance metadata service (169.254.169.254),
     #    so boto3's default chain keeps resolving it with zero config here.
     environment:
-      APPLE_KEY_PATH: /secrets/AuthKey_22G3F2KMHS.p8
+      APPLE_KEY_PATH: /secrets/AuthKey_DNZPK26TF2.p8
       AWS_SHARED_CREDENTIALS_FILE: /secrets/aws/credentials
       AWS_CONFIG_FILE: /secrets/aws/config
 
@@ -59,7 +59,7 @@ services:
     # ~/.aws/config are kept as their own separate mounts, not merged into
     # .env or into each other.
     volumes:
-      - ./AuthKey_22G3F2KMHS.p8:/secrets/AuthKey_22G3F2KMHS.p8:ro
+      - ./AuthKey_DNZPK26TF2.p8:/secrets/AuthKey_DNZPK26TF2.p8:ro
       - ${HOME}/.aws/credentials:/secrets/aws/credentials:ro
       - ${HOME}/.aws/config:/secrets/aws/config:ro
 

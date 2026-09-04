@@ -3,6 +3,16 @@
 api/backend/interactions/push.py's validate_apns_config()/APNsConfigError,
 api/main.py's lifespan wiring).
 
+NOTE (testing step 5, final re-run, 2026-09-03): the Apple key was rotated a
+second time mid-task, from AuthKey_22G3F2KMHS.p8 to AuthKey_DNZPK26TF2.p8
+(the prior key was found Sandbox-restricted in Apple Developer Portal). This
+file's "real local key" fixture below was updated to point at the new,
+currently-live key so test 1 proves a real ES256 mint against the key that's
+actually configured today, not a retired one. The old AuthKey_22G3F2KMHS.p8
+file is left in place on disk (Apple keys can only be downloaded once, so
+deleting it would be irreversible) but is no longer referenced by any live
+config or by this test.
+
 Background: push.py used to silently degrade on APNs misconfiguration
 (`if not all([KEY_ID, TEAM_ID, BUNDLE_ID, KEY_PATH]): return False`, and a
 broad `except Exception` around opening KEY_PATH that only logged and
@@ -72,7 +82,7 @@ PASSED, FAILED = [], []
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _REAL_LOCAL_KEY_PATH = os.path.normpath(
-    os.path.join(_HERE, "..", "..", "AuthKey_22G3F2KMHS.p8")
+    os.path.join(_HERE, "..", "..", "AuthKey_DNZPK26TF2.p8")
 )
 
 _VARS = ("APPLE_KEY_ID", "APPLE_TEAM_ID", "APPLE_BUNDLE_ID", "APPLE_KEY_PATH")
@@ -98,7 +108,7 @@ def _set_valid_env():
 def test_valid_config_passes_and_mints_a_real_jwt():
     print("=== 1. Valid config (real local .p8) -> validate_apns_config() passes, "
           "_apns_jwt() mints a real ES256 token ===")
-    check("prerequisite: the real local AuthKey_22G3F2KMHS.p8 exists on this machine "
+    check("prerequisite: the real local AuthKey_DNZPK26TF2.p8 exists on this machine "
           "(if this fails, the test itself can't prove anything -- not a product bug)",
           os.path.isfile(_REAL_LOCAL_KEY_PATH), _REAL_LOCAL_KEY_PATH)
 
