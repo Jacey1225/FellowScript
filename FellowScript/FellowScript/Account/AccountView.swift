@@ -51,11 +51,12 @@ final class AccountViewModel: ObservableObject {
     // failed accept must surface something rather than silently vanishing
     // the request from the UI.
     @Published var friendMsg: String?  = nil
-    // Shown when the notes-count/highlights/agents fetch genuinely fails
-    // (network/HTTP error or decode failure) on the *current* load() call —
-    // task 20260903-account-stats-not-loading. Previously these three
-    // silently collapsed to 0/empty on any failure, which looked visually
-    // identical to the account genuinely having no notes/highlights/agents.
+    // Shown when the notes-count/highlights/agents/events fetch genuinely
+    // fails (network/HTTP error or decode failure) on the *current* load()
+    // call — task 20260903-account-stats-not-loading (notes/highlights/
+    // agents), extended to events by 20260903-account-events-not-loading.
+    // Previously these silently collapsed to 0/empty on any failure, which
+    // looked visually identical to the account genuinely having none.
     @Published var statsMsg: String?  = nil
 
     // Bumped at the start of every load() call; a call only commits its
@@ -173,14 +174,23 @@ final class AccountViewModel: ObservableObject {
         let friendRequestsResult = (try? await service.fetchFriendRequests(userId: user.user_id)) ?? []
         let contactsResult       = try? await fetchedContacts
 
+        // task 20260903-account-events-not-loading: previously `(try? ...)
+        // ?? []` swallowed a genuine per-agent fetch/decode failure (e.g.
+        // this task's root cause -- a missing-column decode throw) exactly
+        // like the pre-fix notes/highlights/agents fetches did, rendering
+        // identically to "this agent really has no events configured". Track
+        // failures into `statsFailed` (below) the same way those three
+        // already do, rather than adding a bespoke second failure flag/message.
         var allEvents: [FSHeartbeat] = []
-        await withTaskGroup(of: [FSHeartbeat].self) { group in
+        await withTaskGroup(of: [FSHeartbeat]?.self) { group in
             for agent in agentsResult {
                 group.addTask {
-                    (try? await service.fetchHeartbeats(userId: user.user_id, agentId: agent.id)) ?? []
+                    try? await service.fetchHeartbeats(userId: user.user_id, agentId: agent.id)
                 }
             }
-            for await hbs in group { allEvents.append(contentsOf: hbs) }
+            for await hbs in group {
+                if let hbs { allEvents.append(contentsOf: hbs) } else { statsFailed = true }
+            }
         }
 
         // A newer load() call has started since this one began -- discard
@@ -199,13 +209,16 @@ final class AccountViewModel: ObservableObject {
         if let (_, groupMap) = contactsResult { groups = groupMap }
         events = allEvents
 
-        // A genuine fetch/decode failure on notes/highlights/agents no
+        // A genuine fetch/decode failure on notes/highlights/agents/events no
         // longer looks visually identical to "this account has none" --
         // surface it via this screen's existing alert convention. Pull-to-
         // refresh (already on this screen) is the retry path; no new
-        // bespoke retry control is introduced.
+        // bespoke retry control is introduced. (task
+        // 20260903-account-events-not-loading extended this to cover events,
+        // the one section the original 20260903-account-stats-not-loading
+        // fix missed.)
         if statsFailed {
-            statsMsg = "We couldn't load some of your notes, highlights, or agents just now. Pull down to refresh and try again."
+            statsMsg = "We couldn't load some of your notes, highlights, agents, or events just now. Pull down to refresh and try again."
         }
 
         // ── Write fresh account data back to the cache ────────────────────────────

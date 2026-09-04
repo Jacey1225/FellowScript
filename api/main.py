@@ -29,7 +29,7 @@ from jwt import PyJWKClient
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
-from db import DBManager, BACKUP_DB_NAME
+from db import DBManager, BACKUP_DB_NAME, _connect, create_tables
 from backend.errors import SaveFailedError
 from backend.rate_limiting import get_client_ip, limiter
 from backend.interactions.helpers import load_users_data, save_users_data, save_user_row
@@ -83,6 +83,31 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    # Self-healing schema migration (task 20260903-account-events-not-loading,
+    # step 2) — apply create_tables()'s CREATE TABLE IF NOT EXISTS / ALTER
+    # TABLE ... ADD COLUMN IF NOT EXISTS statements on every boot, so a code
+    # change that adds a column (e.g. agent_heartbeats.notes_public, task
+    # 20260903-notes-public-repurpose) can never again ship and silently
+    # outrun the live schema. Before this, create_tables() was only ever
+    # invoked by hand (api/scripts/migrate_json_to_postgres.py, or an ad hoc
+    # SSH session) — nothing ran it automatically, despite
+    # docs/architecture/data.md already (incorrectly, until now) documenting
+    # "these run on every server startup." All statements inside
+    # create_tables() are idempotent (IF NOT EXISTS / ADD COLUMN IF NOT
+    # EXISTS), so re-running it against an already-current schema on every
+    # restart is a safe no-op — this is the smallest fix that closes the
+    # gap, not a new migration-framework dependency. Deliberately not caught,
+    # same posture as validate_apns_config() below: a schema that fails to
+    # apply should stop the deploy loudly rather than let the app serve
+    # traffic against a schema it doesn't actually have.
+    _migration_conn = _connect()
+    try:
+        create_tables(_migration_conn.cursor())
+        _migration_conn.commit()
+        logger.info("Schema migration check complete (create_tables ran at startup).")
+    finally:
+        _migration_conn.close()
+
     # Eager APNs config validation (task
     # 20260903-push-notifications-not-delivering) — must run before the app
     # starts serving traffic, so a misconfigured/unreadable push credential

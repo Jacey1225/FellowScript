@@ -177,6 +177,23 @@ final class ThrowingTestDataService: DataServiceProtocol {
     var fetchAgentsDelayNanoseconds: UInt64?
     private(set) var fetchAgentsCallCount = 0
 
+    // Controllable / observable (task 20260903-account-events-not-loading,
+    // testing step) -- lets AccountEventsDecodeFailureRegressionTests drive
+    // AccountViewModel.load()'s per-agent fetchHeartbeats fetch (inside its
+    // withTaskGroup) through a genuine throw, proving a real per-agent
+    // failure now feeds `statsFailed`/`statsMsg` (this task's fix to the one
+    // fetch 20260903-account-stats-not-loading's own fix missed) instead of
+    // silently collapsing to "no events configured". Keyed by agentId so a
+    // multi-agent test can make exactly one agent's heartbeats fail while
+    // another's still succeed. An unset/empty-for-that-agent result falls
+    // back to MockDataService's own real behavior, same convention as every
+    // other seam on this double.
+    var fetchHeartbeatsResultsByAgent: [String: [FSHeartbeat]] = [:]
+    var fetchHeartbeatsErrorsByAgent: [String: Error] = [:]
+    var fetchHeartbeatsDelayNanoseconds: UInt64?
+    private(set) var fetchHeartbeatsCallCount = 0
+    private(set) var fetchHeartbeatsCalledAgentIds: [String] = []
+
     func fetchNotes(userId: String, cursorCreatedAt: String?, cursorId: String?) async throws -> NotesPage {
         fetchNotesCallCount += 1
         fetchNotesCursors.append((cursorCreatedAt, cursorId))
@@ -248,6 +265,14 @@ final class ThrowingTestDataService: DataServiceProtocol {
         lastSearchGroupNotesGroupId = groupId
         if let searchGroupNotesResult { return searchGroupNotesResult }
         return try await MockDataService.shared.searchGroupNotes(userId: userId, groupId: groupId, query: query)
+    }
+
+    // Task 20260903-friend-activity-note-navigation: not independently
+    // controllable/observable, unlike the seams above -- no test in this
+    // suite exercises the new tap-to-open-note flow, this conformer just
+    // needs to keep satisfying DataServiceProtocol.
+    func fetchNote(userId: String, noteId: String) async throws -> FSNote {
+        return try await MockDataService.shared.fetchNote(userId: userId, noteId: noteId)
     }
 
     // Controllable / observable (task 20260830-compliance-remediation, H6/H7)
@@ -342,6 +367,13 @@ final class ThrowingTestDataService: DataServiceProtocol {
     }
 
     func fetchHeartbeats(userId: String, agentId: String) async throws -> [FSHeartbeat] {
+        fetchHeartbeatsCallCount += 1
+        fetchHeartbeatsCalledAgentIds.append(agentId)
+        if let fetchHeartbeatsDelayNanoseconds {
+            try await Task.sleep(nanoseconds: fetchHeartbeatsDelayNanoseconds)
+        }
+        if let error = fetchHeartbeatsErrorsByAgent[agentId] { throw error }
+        if let result = fetchHeartbeatsResultsByAgent[agentId] { return result }
         return try await MockDataService.shared.fetchHeartbeats(userId: userId, agentId: agentId)
     }
 

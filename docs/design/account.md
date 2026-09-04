@@ -121,6 +121,25 @@ refresh (already on this screen) is the retry path. `NetworkService.fetchNotesCo
 like their sibling fetch functions, so a decode failure reports via
 `reportDecodeFailure`/CloudWatch instead of being silent.
 
+**Events section fetch/decode failure fix (2026-09-03).** The Overview stats reliability fix
+above (`fetchNotesCount`/`fetchHighlights`/`fetchAgents`) missed one sibling call:
+`NetworkService.fetchHeartbeats` still did a bare `decode(...) ?? []` with no `endpoint:` tag, so
+a decode failure on the Events section's own fetch — e.g. a production DB migration that adds a
+required-looking column to `agent_heartbeats` landing after the backend code that reads it, this
+task's actual root cause — silently rendered as "No events yet" with zero
+`reportDecodeFailure`/CloudWatch signal, exactly like the pre-fix notes/highlights/agents calls
+did. `fetchHeartbeats` is now tagged the same way, and `AccountViewModel.load()`'s per-agent
+heartbeats fetch (a `withTaskGroup` over each agent's own `fetchHeartbeats` call) now folds a
+genuine per-agent failure into the same `statsFailed`/`statsMsg` path the notes/highlights/agents
+fetches already use, rather than swallowing it via `(try? ...) ?? []`; the "Account Details" alert
+copy was extended to mention events alongside notes/highlights/agents. Separately, `FSHeartbeat`'s
+`Decodable` conformance is now a custom `init(from:)` using the same `decodeLenient` helper
+`FSUser`/`FSAgent` already use — previously every field but `group_id` (which is `Optional` and so
+already decoded leniently) was effectively required despite the struct declaring in-code defaults,
+since Swift's synthesized `Decodable` conformance doesn't honor those defaults; one row missing one
+column (e.g. `notes_public` again, on a future schema/deploy race of the same shape) would have
+failed decoding of the *entire* `[FSHeartbeat]` array response, not just that row.
+
 **Notifications section removed (2026-08-26).** The Account page previously had its own
 "Notifications" card (create/edit/delete a recurring AI-authored reminder, `NotificationSetupSheet`,
 a "View All" push to `NotificationsListView`) built on the now-removed user-authored notification

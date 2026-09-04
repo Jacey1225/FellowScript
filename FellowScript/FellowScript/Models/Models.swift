@@ -590,6 +590,31 @@ struct FSHeartbeat: Codable, Identifiable {
     }
 }
 
+// Task 20260903-account-events-not-loading: the synthesized Decodable
+// conformance ignores each property's in-struct default and instead treats
+// every non-Optional field (notes_public included) as required -- a missing
+// key throws for that row, and since fetchHeartbeats decodes a whole
+// `[FSHeartbeat]` array in one call, ONE row missing ONE column (e.g. this
+// task's root cause: notes_public added to the schema before the production
+// migration actually landed) silently failed decoding of every heartbeat,
+// collapsing a real user's entire Events section to "no events yet" with no
+// signal. Same decodeLenient helper FSUser/FSAgent already use for this
+// exact class of problem, applied here so a future schema/deploy mismatch on
+// any one field degrades that field to its default rather than hiding real
+// user data end-to-end again.
+extension FSHeartbeat {
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id           = decodeLenient(c, forKey: .id,           default: UUID().uuidString,               type: "FSHeartbeat")
+        agent_id     = decodeLenient(c, forKey: .agent_id,     default: "",                               type: "FSHeartbeat")
+        user_id      = decodeLenient(c, forKey: .user_id,      default: "",                               type: "FSHeartbeat")
+        timestamps   = decodeLenient(c, forKey: .timestamps,   default: Array(repeating: nil, count: 31), type: "FSHeartbeat")
+        prompt       = decodeLenient(c, forKey: .prompt,       default: "",                               type: "FSHeartbeat")
+        group_id     = decodeLenient(c, forKey: .group_id,     default: nil,                              type: "FSHeartbeat")
+        notes_public = decodeLenient(c, forKey: .notes_public, default: false,                            type: "FSHeartbeat")
+    }
+}
+
 extension FSHeartbeat {
     var activeCount: Int { timestamps.compactMap { $0 }.count }
 

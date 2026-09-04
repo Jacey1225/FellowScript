@@ -515,6 +515,40 @@ final class NetworkService: DataServiceProtocol {
         return result
     }
 
+    // ── Notes (single fetch by id) ───────────────────────────────────────────
+    // GET /notes/{userId}/note/{noteId} -- task
+    // 20260903-friend-activity-note-navigation. Backs the Friend Activity
+    // hero card's note-preview tap target. Response is the note fields
+    // directly at the top level (no `notes: {...}` wrapper -- this is
+    // always exactly one note), plus a `username` field for the owner: this
+    // is the one notes-read endpoint that can return a note the caller
+    // doesn't own, so NoteDetailView.canEdit needs the owner's username to
+    // compare against the viewer's own (see backend step 2's summary).
+    //
+    // On a missing-or-not-visible note the server returns the identical
+    // `{"error": "cannot find note"}` body (implicit 200, not an
+    // HTTPException) that post_reply already established, so note-id
+    // enumeration can't distinguish the two cases -- checked for explicitly
+    // here since FSNote's own lenient Decodable (every field defaulted)
+    // would otherwise happily decode that error body into a garbage
+    // "empty" note instead of surfacing the failure.
+    func fetchNote(userId: String, noteId: String) async throws -> FSNote {
+        let endpoint = "GET /notes/{user_id}/note/{note_id}"
+        let data = try await get("/notes/\(userId)/note/\(encodeURIComponent(noteId))")
+        // Same user-visible message for both branches (missing vs. no-longer-
+        // visible), matching the server's own identical-response IDOR-safe
+        // contract for this endpoint -- this client never has grounds to
+        // say anything more specific than "not available" either.
+        if let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any], obj["error"] != nil {
+            throw AppError.networkError("That note is no longer available.")
+        }
+        guard var note = decode(FSNote.self, from: data, endpoint: endpoint) else {
+            throw AppError.networkError("That note is no longer available.")
+        }
+        note.id = noteId
+        return note
+    }
+
     // ── Notes (write) ─────────────────────────────────────────────────────────
     // POST /notes/{userId}                      body: FSNote fields
     // PUT  /notes/{userId}?note_id={id}         body: FSNote fields
@@ -714,7 +748,14 @@ final class NetworkService: DataServiceProtocol {
 
     func fetchHeartbeats(userId: String, agentId: String) async throws -> [FSHeartbeat] {
         let data = try await get("/agent/\(userId)/\(agentId)/heartbeats")
-        return decode([FSHeartbeat].self, from: data) ?? []
+        // task 20260903-account-events-not-loading: tagged like the sibling
+        // fetches (fetchNotesCount/fetchHighlights/fetchAgents) fixed earlier
+        // today -- this was the one fetch that fix missed. A decode failure
+        // here (e.g. the missing-column production-migration gap that caused
+        // this exact task) previously vanished indistinguishably from "this
+        // agent really has zero events", with no reportDecodeFailure/CloudWatch
+        // signal at all.
+        return decode([FSHeartbeat].self, from: data, endpoint: "GET /agent/{user_id}/{agent_id}/heartbeats") ?? []
     }
 
     // ── Agents (write) ────────────────────────────────────────────────────────
