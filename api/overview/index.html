@@ -1170,6 +1170,11 @@
 <td>Keyword search (case-insensitive substring) over the user's personal notes' <code>title</code>/<code>text</code>, excluding replies and group notes. Returns every match in one response — not keyset-paginated, since the result set is already bounded by the query. Same response shape as <code>GET /notes/{user_id}</code> minus the pagination fields.</td>
 </tr>
 <tr>
+<td>GET</td>
+<td><code>/notes/{user_id}/note/{note_id}</code></td>
+<td>Fetch a single note by id, permission-checked (owner or shared group membership). <code>{user_id}</code> is the <em>viewer</em>, not necessarily the note's owner. Returns <code>{"error": "cannot find note"}</code> — identical for a missing note and a not-visible one, so note-id enumeration can't tell them apart — otherwise the note, same per-note shape as <code>GET /notes/{user_id}</code> plus a <code>username</code> field (the owner's display name, since this route can return a note the caller doesn't own).</td>
+</tr>
+<tr>
 <td>POST</td>
 <td><code>/notes/{user_id}</code></td>
 <td>Create a note. Body: <code>{ title, text, public, group_id, verses: [[book, ch, v], …] }</code></td>

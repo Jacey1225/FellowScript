@@ -702,6 +702,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="iOS presentation (NoteDetailView in NotesListView.swift)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#reply-composer-replycomposersheet" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reply composer (ReplyComposerSheet)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
         
       </ul>
@@ -1285,6 +1302,19 @@ unchanged.</p>
 <li><strong>Divider</strong> — a 1pt <code>Theme.goldGradient</code> rule in place of the old plain
   <code>Divider()</code>, same position/role.</li>
 </ul>
+<h4 id="reply-composer-replycomposersheet">Reply composer (<code>ReplyComposerSheet</code>)</h4>
+<p>The reply input presented from <code>NoteDetailView</code> ("Add a Reply") carries the
+same rich-text formatting capability as <code>NoteEditorView</code>: a Bold / Italic /
+Underline / Highlight / Text color toolbar above the writing area, reusing
+<code>RichTextEditorController</code> / <code>RichTextEditorView</code> / <code>FormatButton</code> verbatim
+from <code>Utils/RichText.swift</code> and <code>NoteEditorView.swift</code>. Each reply composer
+session gets its own <code>RichTextEditorController</code> instance (independent of any
+open <code>NoteEditorView</code>). A posted reply's <code>text</code> is HTML, produced by the same
+live-content → tracked-output → plain-text fallback chain <code>NoteEditorView</code>
+uses on save — stored through the existing <code>post_reply</code> endpoint with no
+backend changes, since notes and replies already share one <code>text</code> column and
+content-filter path. The composer omits <code>NoteEditorView</code>'s title field, verse
+tagging, and edit-permission toggle — those don't apply to a reply.</p>
 <hr />
 <h2 id="ai-generated-note-edit-permission-scheduled-events">AI-Generated Note Edit Permission (Scheduled Events)</h2>
 <p>Scheduled agent "heartbeat" events (<code>AgentHeartbeats</code>, configured via iOS's
