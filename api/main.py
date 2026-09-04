@@ -83,6 +83,17 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    # Eager APNs config validation (task
+    # 20260903-push-notifications-not-delivering) — must run before the app
+    # starts serving traffic, so a misconfigured/unreadable push credential
+    # fails loudly at boot instead of degrading every push silently and
+    # indefinitely (the prior failure mode: a file-permission mismatch on
+    # the live host's AuthKey_*.p8 recurred in logs for 48+ hours with no
+    # other signal). Deliberately not caught here — an invalid deployment
+    # should refuse to start.
+    from backend.interactions.push import validate_apns_config
+    validate_apns_config()
+
     from backend.interactions.scheduler import start_scheduler
     start_scheduler()
     # WS connection-liveness heartbeat (task

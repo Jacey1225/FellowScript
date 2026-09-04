@@ -27,6 +27,76 @@ _ENV_MISMATCH_REASONS = {"BadDeviceToken", "BadEnvironmentKeyInToken"}
 _jwt_cache: tuple[str, float] | None = None
 
 
+class APNsConfigError(RuntimeError):
+    """APNs is unconfigured, or its ``.p8`` credential file can't be read.
+
+    Deliberately never swallowed inside this module -- per this project's
+    fail-fast Configuration Philosophy (see task
+    20260903-push-notifications-not-delivering), a missing/unreadable APNs
+    credential must surface loudly instead of degrading every push
+    silently and indefinitely. That's exactly what the pattern this
+    replaces (``if not all([...]): return False`` plus a broad
+    ``except Exception`` around opening ``KEY_PATH``) let happen: a
+    file-ownership mismatch on the live host's ``AuthKey_*.p8`` recurred in
+    production logs roughly every 15 minutes for 48+ hours with no signal
+    beyond a buried per-push warning.
+
+    ``validate_apns_config()`` is called once, eagerly, from ``main.py``'s
+    ``lifespan`` at process startup (alongside ``start_heartbeat()``/
+    ``start_scheduler()``), so a misconfigured deployment fails at boot
+    rather than after however many silent pushes. ``_apns_jwt()`` also
+    re-validates on every cache-refresh, so if config drifts invalid while
+    already running (e.g. permissions revoked on the mounted key, the
+    actual failure mode found live here) it fails this same loud, specific
+    way rather than reverting to silence. Every ``send_push`` call site
+    already isolates its own per-send/per-job failures in its own
+    try/except (see ``websockets.py``'s ``send_msg``, ``scheduler.py``'s
+    reminder jobs) -- so letting this propagate can't crash the whole
+    process, it just always shows up as a specific, named error in that
+    caller's log instead of a generic one.
+    """
+
+
+def _missing_config_vars() -> list[str]:
+    return [
+        name for name, value in (
+            ("APPLE_KEY_ID", KEY_ID),
+            ("APPLE_TEAM_ID", TEAM_ID),
+            ("APPLE_BUNDLE_ID", BUNDLE_ID),
+            ("APPLE_KEY_PATH", KEY_PATH),
+        )
+        if not value
+    ]
+
+
+def validate_apns_config() -> None:
+    """Eagerly validate every APNs env var is set and ``APPLE_KEY_PATH``
+    resolves to a file this process can actually read.
+
+    Raises ``APNsConfigError`` naming exactly which environment variable is
+    missing, or exactly why the ``.p8`` file couldn't be read -- never the
+    key material itself, per this project's log-redaction posture.
+    """
+    missing = _missing_config_vars()
+    if missing:
+        raise APNsConfigError(
+            "APNs is not configured: missing required environment "
+            f"variable(s) {', '.join(missing)}. There is no implicit "
+            "default for push credentials -- set them explicitly."
+        )
+    if not os.path.isfile(KEY_PATH):
+        raise APNsConfigError(f"APPLE_KEY_PATH ({KEY_PATH}) does not exist.")
+    try:
+        with open(KEY_PATH, "r") as f:
+            f.read(1)
+    except OSError as e:
+        raise APNsConfigError(
+            f"APPLE_KEY_PATH ({KEY_PATH}) exists but could not be read: "
+            f"{e.strerror or e.__class__.__name__}. Check the file's "
+            "ownership/permissions match the runtime process's user."
+        ) from e
+
+
 def _host_order() -> list[str]:
     primary = os.getenv("APNS_ENV", "production").lower()
     if primary not in APNS_HOSTS:
@@ -40,6 +110,7 @@ def _apns_jwt() -> str:
     now = time.time()
     if _jwt_cache and now < _jwt_cache[1]:
         return _jwt_cache[0]
+    validate_apns_config()
     with open(KEY_PATH, "r") as f:
         private_key = f.read()
     token = jwt.encode(
@@ -62,15 +133,13 @@ async def send_push(
     sensitive in the alert title/body itself, which transits Apple's
     infrastructure and (unlike a client-scheduled local notification) is
     composed directly by this backend.
+
+    Raises:
+        APNsConfigError: If APNs is unconfigured or its credential file
+            can't be read -- see that class's docstring for why this is
+            allowed to propagate rather than being swallowed here.
     """
-    if not all([KEY_ID, TEAM_ID, BUNDLE_ID, KEY_PATH]):
-        logger.warning("APNs not fully configured — skipping push")
-        return False
-    try:
-        token = _apns_jwt()
-    except Exception as e:
-        logger.error("Failed to generate APNs JWT: %s", e)
-        return False
+    token = _apns_jwt()
 
     headers = {
         "authorization": f"bearer {token}",
