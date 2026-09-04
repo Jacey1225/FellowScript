@@ -398,24 +398,43 @@ struct ChatThreadView: View {
                     }
                 }
             }
+            // Shared keyboard-dismiss convention (task
+            // 20260831-interaction-polish-conventions) — covers header/
+            // banners/message list. No pull-to-refresh here: this is a live
+            // WebSocket thread (new messages arrive over the socket, not via
+            // a batch reload), and there's no existing older-message
+            // pagination for an overscroll-at-top gesture to trigger —
+            // adding one would be new data-fetch/pagination logic, out of
+            // this task's bounds. No tap-outside-dismiss either:
+            // GroupMembersPanel above renders inline in the VStack flow
+            // (pushing the message list down), not as a floating ZStack
+            // overlay layered over other content, so it isn't the kind of
+            // custom overlay this task's tap-outside-dismiss convention
+            // targets.
+            //
+            // Applied HERE — to this VStack, before `.safeAreaInset` adds
+            // the composer below — rather than to the outer ZStack as
+            // before (task 20260903-message-composer-keyboard-dismiss).
+            // `.safeAreaInset`'s content is laid out as a sibling to the
+            // view it's chained onto, not a descendant of it, so a
+            // `.simultaneousGesture` attached before `.safeAreaInset` never
+            // receives touches that land inside the composer — fixing the
+            // reported bug where tapping inside the composer's TextField to
+            // reposition the cursor mid-text (rather than tapping outside
+            // it) immediately dismissed the keyboard instead of just moving
+            // the cursor. Tapping the message list / header / banners still
+            // dismisses exactly as before; scroll-to-dismiss on the message
+            // list (`.scrollDismissesKeyboard(.interactively)`, part of this
+            // same shared modifier) is unaffected by the reordering since it
+            // targets the ScrollView, which stays inside this VStack either
+            // way. See AgentChatView.swift for the identical fix applied to
+            // the same latent pattern there.
+            .dismissesKeyboardOnScrollAndTap()
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 composer
             }
         }
         .preferredColorScheme(.dark)
-        // Shared keyboard-dismiss convention (task
-        // 20260831-interaction-polish-conventions) — covers the composer
-        // TextField. No pull-to-refresh here: this is a live WebSocket
-        // thread (new messages arrive over the socket, not via a batch
-        // reload), and there's no existing older-message pagination for an
-        // overscroll-at-top gesture to trigger — adding one would be new
-        // data-fetch/pagination logic, out of this task's bounds. No
-        // tap-outside-dismiss either: GroupMembersPanel below renders inline
-        // in the VStack flow (pushing the message list down), not as a
-        // floating ZStack overlay layered over other content, so it isn't
-        // the kind of custom overlay this task's tap-outside-dismiss
-        // convention targets.
-        .dismissesKeyboardOnScrollAndTap()
         .task {
             let uid = appState.currentUser?.user_id ?? ""
             memberNames = contact.memberNames

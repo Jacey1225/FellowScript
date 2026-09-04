@@ -244,17 +244,31 @@ struct AgentChatView: View {
                     }
                 }
             }
+            // Shared keyboard-dismiss convention (task
+            // 20260831-interaction-polish-conventions) — covers header/
+            // reconnecting-banner/message list. Same "no pull-to-refresh"
+            // reasoning as ChatThreadView.swift: a live WebSocket thread
+            // with no existing older-message pagination for an
+            // overscroll gesture to drive.
+            //
+            // Applied HERE — to this VStack, before `.safeAreaInset` adds
+            // the composer below — rather than to the outer ZStack as
+            // before (task 20260903-message-composer-keyboard-dismiss).
+            // `.safeAreaInset`'s content is laid out as a sibling to the
+            // view it's chained onto, not a descendant of it, so a
+            // `.simultaneousGesture` attached before `.safeAreaInset` never
+            // receives touches that land inside the composer — fixing the
+            // reported bug where tapping inside the composer's TextField to
+            // reposition the cursor mid-text (rather than tapping outside
+            // it) immediately dismissed the keyboard instead of just moving
+            // the cursor. See ChatThreadView.swift for the identical fix
+            // applied to the same latent pattern there.
+            .dismissesKeyboardOnScrollAndTap()
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 composer
             }
         }
         .preferredColorScheme(.dark)
-        // Shared keyboard-dismiss convention (task
-        // 20260831-interaction-polish-conventions) — covers the composer
-        // TextField. Same "no pull-to-refresh" reasoning as
-        // ChatThreadView.swift: a live WebSocket thread with no existing
-        // older-message pagination for an overscroll gesture to drive.
-        .dismissesKeyboardOnScrollAndTap()
         .task {
             let uid = appState.currentUser?.user_id ?? ""
             await vm.load(service: appState.service, agentId: agent.id, userId: uid)
