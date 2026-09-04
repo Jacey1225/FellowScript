@@ -1501,6 +1501,14 @@ push, the last of which names the specific action (create/edit/reply/
 highlight) and, for a highlight, includes real verse text resolved from a
 bundled Bible-text asset. It fires once per inactive→active transition
 (&gt;24h gap), not on every individual note/highlight/reply.</p>
+<p>Two more pushes cover session/devotion scheduling (2026-09-04), both to the
+session's resolved group/DM members (<code>DevotionManager.resolve_members</code>):
+<code>POST /devotions/</code> sends a "New Session" push to every member except the
+creator, immediately on creation; <code>_fire_due_session_reminders</code> sends a
+"Session Starting" push to every member once the session's <code>time_start</code>
+arrives, exactly once (see <a href="../../architecture/data/#devotions"><code>devotions.reminder_sent_at</code></a>).
+Both carry <code>devotion_id</code>/<code>group_id</code> in the payload's <code>data</code> for the client
+to resolve locally.</p>
 <hr />
 <h2 id="agent-ai-check-ins">Agent (AI Check-ins)</h2>
 <table>

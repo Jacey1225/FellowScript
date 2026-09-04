@@ -1502,6 +1502,11 @@
 <td>every 5 min</td>
 <td>Notifies a user's friends (block-respecting both directions) the first time that user transitions from inactive (&gt;24h) to active — not on every individual note/highlight/reply. The push body names the specific action via <code>last_activity_type</code>: "created a new note", "edited a note", "replied to {note owner}'s note" (<code>NOTE_REPLIED</code> — resolves the parent note's owner at send time), or a real-verse-content highlight line (<code>VERSE_HIGHLIGHTED</code> — resolves the user's most recent highlight and its verse text via the bundled <code>bible_text</code> module at send time; falls back to a reference-only or fully generic line if either lookup misses). Never logs note/highlight/verse content — that's only ever in the push body itself.</td>
 </tr>
+<tr>
+<td><code>_fire_due_session_reminders</code></td>
+<td>every <code>SESSION_REMINDER_POLL_INTERVAL_SECONDS</code> (60s, 2026-09-04)</td>
+<td>Scans <code>devotions</code> for any session whose <code>time_start</code> (absolute TIMESTAMPTZ) has passed and hasn't been reminded yet, atomically claims it (<code>UPDATE devotions SET reminder_sent_at = NOW() WHERE reminder_sent_at IS NULL</code>), then pushes every resolved member (<code>DevotionManager.resolve_members</code> — creator, participants, and the group/DM roster, the same membership concept <code>is_authorized</code> already encodes). One-shot dedup via <code>reminder_sent_at</code>, not a rolling time window — see <a href="../data/#devotions"><code>devotions.reminder_sent_at</code></a>.</td>
+</tr>
 </tbody>
 </table>
 <p>Heartbeat (AI agent event) firing is now scheduled <strong>server-side</strong> by <code>_fire_due_heartbeats</code> above — it fires on time whether or not any client has the app open. The former client-side trigger, iOS's <code>HeartbeatScheduler</code> (<code>scheduleAll</code>/<code>checkAndFire</code>, polled on <code>scenePhase</code> foreground), was removed in full (2026-09-01); <code>commit_heartbeat</code> itself is unchanged and still does the actual generation/persistence work, just no longer reachable from iOS.</p>

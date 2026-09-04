@@ -1540,6 +1540,16 @@ be updated to describe it once it lands.</p>
 <td>UUID[]</td>
 <td></td>
 </tr>
+<tr>
+<td><code>time_start</code> / <code>time_end</code></td>
+<td>TIMESTAMPTZ</td>
+<td>Absolute scheduled window, set via the session-creator UI</td>
+</tr>
+<tr>
+<td><code>reminder_sent_at</code></td>
+<td>TIMESTAMPTZ, nullable (2026-09-04)</td>
+<td>Atomic one-shot claim marker for the <code>time_start</code> reminder push — <code>_fire_due_session_reminders</code> (see <a href="../backend/#background-scheduler">Background Scheduler</a>) claims a session via <code>UPDATE ... WHERE reminder_sent_at IS NULL</code>, so a session is reminded exactly once regardless of poll cadence or concurrent pollers. Not a per-day/rolling window like the heartbeat/midday markers — a session's reminder is a one-shot event, since <code>recurring</code> doesn't currently drive any actual recurrence-computation</td>
+</tr>
 </tbody>
 </table>
 <hr />
