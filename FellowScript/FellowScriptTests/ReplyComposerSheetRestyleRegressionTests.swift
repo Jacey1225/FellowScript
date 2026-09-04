@@ -26,6 +26,22 @@
 //      modifiers are all still present and unchanged.
 //   C. Reply list display (replyCard) and postReplyDraft's own posting logic
 //      are untouched by this restyle (out-of-scope guard).
+//
+// Updated by task 20260903-notes-reply-rich-text: that task replaced the
+// plain `TextEditor(text: $text)` body field (and the `text` @State string
+// it bound to) with the same RichTextEditorController/RichTextEditorView
+// stack NoteEditorView already used, so a reply's posted body is HTML with
+// real formatting instead of a plain string. Three assertions below were
+// pinned to that now-superseded plain-text wiring
+// (`TextEditor(text: $text)`, `onPost(text)`, and canPost's raw-`text`
+// gate) — updated here to the new extractedHTML()-based wiring per that
+// task's own acceptance criteria ("existing ReplyComposerSheet tests still
+// compile and pass, or are updated only for the text -> HTML-content wiring
+// change"). Every other assertion in this file (visual migration, posting-
+// state handling, error display, dismiss timing, out-of-scope guards) is
+// unrelated to that change and stays exactly as this task originally wrote
+// it. See ReplyComposerRichTextRegressionTests.swift for that task's own,
+// fuller coverage of the new rich-text wiring itself.
 
 import XCTest
 import SwiftUI
@@ -67,8 +83,17 @@ final class ReplyComposerSheetRestyleRegressionTests: XCTestCase {
         XCTAssertFalse(body.contains(#"Section("Reply")"#), "must no longer use a plain Form Section")
         XCTAssertTrue(body.contains(".widgetCard()"),
                       "the reply field must be wrapped in the shared widgetCard() card recipe")
-        XCTAssertTrue(body.contains("TextEditor(text: $text)"),
-                      "the reply TextEditor binding must be preserved verbatim")
+        // Superseded by task 20260903-notes-reply-rich-text: the plain
+        // TextEditor(text: $text) binding this test originally pinned was
+        // replaced by the same RichTextEditorView stack NoteEditorView uses,
+        // so a reply's body is HTML with real formatting instead of plain
+        // text. See this file's header note and
+        // ReplyComposerRichTextRegressionTests.swift for that task's own
+        // fuller coverage of the new wiring.
+        XCTAssertFalse(body.contains("TextEditor(text: $text)"),
+                       "the old plain TextEditor(text:) binding must be fully replaced by RichTextEditorView")
+        XCTAssertTrue(body.contains("RichTextEditorView("),
+                      "the reply body must now be backed by RichTextEditorView, matching NoteEditorView's rich-text stack")
         XCTAssertTrue(body.contains("Theme.textGoldMuted"),
                       "the field's section-label caption must use the established gold-muted caption color, matching AddFriendSheet's shape")
     }
@@ -128,14 +153,21 @@ final class ReplyComposerSheetRestyleRegressionTests: XCTestCase {
         let body = try sheetBody(try componentSource())
         XCTAssertTrue(body.contains("let onPost: (String) async -> String?"),
                       "the onPost closure's signature must be unchanged")
-        XCTAssertTrue(body.contains("errorMessage = await onPost(text)"),
-                      "Post must still invoke onPost with the composed reply text and capture its result as errorMessage")
+        // Superseded by task 20260903-notes-reply-rich-text: onPost is now
+        // invoked with the extracted HTML content, not the removed plain
+        // `text` @State string -- same onPost signature/contract, different
+        // (now-formatted) content.
+        XCTAssertTrue(body.contains("errorMessage = await onPost(extractedHTML())"),
+                      "Post must invoke onPost with the extracted HTML reply content and capture its result as errorMessage")
     }
 
     func test_canPostGating_nonEmptyTrimmedTextAndNotAlreadyPosting() throws {
         let body = try sheetBody(try componentSource())
-        XCTAssertTrue(body.contains("!text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !isPosting"),
-                      "canPost must still require non-empty trimmed text AND that a post isn't already in flight")
+        // Superseded by task 20260903-notes-reply-rich-text: canPost gates on
+        // the extracted HTML/text content now, since the raw `text` @State
+        // string it used to check no longer exists.
+        XCTAssertTrue(body.contains("!extractedHTML().trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !isPosting"),
+                      "canPost must still require non-empty trimmed (now extracted) content AND that a post isn't already in flight")
         XCTAssertTrue(body.contains(".disabled(!canPost)"),
                       "the Post PillButton must still be disabled whenever canPost is false")
     }

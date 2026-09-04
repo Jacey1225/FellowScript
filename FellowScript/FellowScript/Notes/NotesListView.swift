@@ -1697,27 +1697,121 @@ private struct ReplyComposerSheet: View {
     let onPost: (String) async -> String?
 
     @Environment(\.dismiss) private var dismiss
-    @State private var text = ""
+    // A reply composer is a distinct, independent editing session from any
+    // open NoteEditorView, so it gets its own controller instance rather
+    // than sharing one (task 20260903-notes-reply-rich-text).
+    @StateObject private var rtc = RichTextEditorController()
     @State private var isPosting = false
     @State private var errorMessage: String?
+    @State private var showColorPicker = false
+
+    // Fallback chain mirrors NoteEditorView.handleSave(): prefer the live
+    // UITextView content, then the tracked @Published value, then a
+    // plain-text-to-<br> fallback read straight from the live text view —
+    // defense against transient empty-string conditions. A reply has no
+    // prior note text to fall back to, so the final fallback is "".
+    private func extractedHTML() -> String {
+        let liveHTML    = rtc.currentHTML()
+        let trackedHTML = rtc.htmlOutput
+        let tvText      = rtc.textView?.text ?? ""
+        if !liveHTML.isEmpty {
+            return liveHTML
+        } else if !trackedHTML.isEmpty {
+            return trackedHTML
+        } else if !tvText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return tvText
+                .replacingOccurrences(of: "\u{2029}", with: "<br>")
+                .replacingOccurrences(of: "\u{2028}", with: "<br>")
+                .replacingOccurrences(of: "\r\n", with: "<br>")
+                .replacingOccurrences(of: "\r", with: "<br>")
+                .replacingOccurrences(of: "\n", with: "<br>")
+        } else {
+            return ""
+        }
+    }
 
     private var canPost: Bool {
-        !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !isPosting
+        !extractedHTML().trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !isPosting
     }
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: Theme.spacingLG) {
+                    // ── Format toolbar (verbatim from NoteEditorView's
+                    // toolbar, adapted to this sheet's compact layout — no
+                    // isReadOnly gate since a reply composer is always
+                    // editable, no verse/title affordances since a reply
+                    // has neither) ───────────────────────────────────────
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            FormatButton(label: "Bold",      bold: true,           isActive: rtc.isBold)         { rtc.toggleBold() }
+                            FormatButton(label: "Italic",    italic: true,         isActive: rtc.isItalic)       { rtc.toggleItalic() }
+                            FormatButton(label: "Underline", underline: true,      isActive: rtc.isUnderline)    { rtc.toggleUnderline() }
+                            FormatButton(label: "Highlight", highlightStyle: true, isActive: rtc.isHighlight)    { rtc.toggleHighlight() }
+
+                            // Color button: lights up when cursor is in custom-colored text.
+                            // Clicking while active resets the color; otherwise opens the picker.
+                            FormatButton(label: "Text color", colorBar: true, isActive: rtc.hasCustomColor) {
+                                if rtc.hasCustomColor { rtc.resetColor() }
+                                else { showColorPicker.toggle() }
+                            }
+
+                            if showColorPicker {
+                                // Reset to default
+                                Button {
+                                    showColorPicker = false
+                                    rtc.resetColor()
+                                } label: {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .foregroundColor(Theme.parchment.opacity(0.50))
+                                        .font(.system(size: 24))
+                                }
+                                ForEach(Array(zip(Theme.highlightColors, Theme.highlightHex)), id: \.1) { color, hex in
+                                    Button {
+                                        showColorPicker = false
+                                        rtc.applyTextColor(UIColor(color))
+                                    } label: {
+                                        Circle()
+                                            .fill(color)
+                                            .frame(width: 28, height: 28)
+                                            .overlay(Circle().stroke(Color.white.opacity(0.22), lineWidth: 1.5))
+                                            .shadow(color: color.opacity(0.45), radius: 4, x: 0, y: 2)
+                                    }
+                                    .transition(.scale.combined(with: .opacity))
+                                    .accessibilityLabel("Apply \(hex) color")
+                                }
+                            }
+                        }
+                        .padding(.horizontal, Theme.spacingMD)
+                        .padding(.vertical, 10)
+                    }
+                    .animation(.spring(response: 0.25), value: showColorPicker)
+                    .glassCard(cornerRadius: 16)
+
                     VStack(alignment: .leading, spacing: Theme.spacingSM) {
                         Text("REPLY")
                             .font(.inter(Theme.fontXXS)).tracking(4).foregroundColor(Theme.textGoldMuted)
-                        TextEditor(text: $text)
-                            .frame(minHeight: 120)
-                            .font(.interScaled(Theme.fontBody))
-                            .foregroundColor(Theme.parchment)
-                            .scrollContentBackground(.hidden)
+
+                        // Body — rich text editor. Same ZStack structure as
+                        // NoteEditorView: the placeholder Text stays in the
+                        // ZStack unconditionally so SwiftUI never recreates
+                        // the UIViewRepresentable and resets htmlOutput.
+                        ZStack(alignment: .topLeading) {
+                            Text("Write a reply…")
+                                .font(.inter(Theme.fontBody))
+                                .foregroundColor(Theme.textMuted)
+                                .padding(.top, 2)
+                                .allowsHitTesting(false)
+                                .opacity(rtc.htmlOutput.isEmpty ? 1 : 0)
+                            RichTextEditorView(
+                                controller:  rtc,
+                                initialHTML: "",
+                                placeholder: "Write a reply…"
+                            )
+                            .frame(maxWidth: .infinity, minHeight: 120)
                             .accessibilityLabel("Reply text")
+                        }
                     }
                     .widgetCard()
 
@@ -1732,7 +1826,7 @@ private struct ReplyComposerSheet: View {
             .warmBloomBackground()
             // Shared keyboard-dismiss convention (task
             // 20260831-interaction-polish-conventions) — this sheet's
-            // TextEditor is the reply body.
+            // rich-text editor is the reply body.
             .dismissesKeyboardOnScrollAndTap()
             .navigationTitle("Add a Reply")
             .navigationBarTitleDisplayMode(.inline)
@@ -1761,7 +1855,7 @@ private struct ReplyComposerSheet: View {
                     PillButton(title: isPosting ? "Posting…" : "Post") {
                         Task {
                             isPosting = true
-                            errorMessage = await onPost(text)
+                            errorMessage = await onPost(extractedHTML())
                             isPosting = false
                             if errorMessage == nil { dismiss() }
                         }

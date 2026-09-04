@@ -210,6 +210,21 @@ unchanged.
 - **Divider** — a 1pt `Theme.goldGradient` rule in place of the old plain
   `Divider()`, same position/role.
 
+#### Reply composer (`ReplyComposerSheet`)
+
+The reply input presented from `NoteDetailView` ("Add a Reply") carries the
+same rich-text formatting capability as `NoteEditorView`: a Bold / Italic /
+Underline / Highlight / Text color toolbar above the writing area, reusing
+`RichTextEditorController` / `RichTextEditorView` / `FormatButton` verbatim
+from `Utils/RichText.swift` and `NoteEditorView.swift`. Each reply composer
+session gets its own `RichTextEditorController` instance (independent of any
+open `NoteEditorView`). A posted reply's `text` is HTML, produced by the same
+live-content → tracked-output → plain-text fallback chain `NoteEditorView`
+uses on save — stored through the existing `post_reply` endpoint with no
+backend changes, since notes and replies already share one `text` column and
+content-filter path. The composer omits `NoteEditorView`'s title field, verse
+tagging, and edit-permission toggle — those don't apply to a reply.
+
 ---
 
 ## AI-Generated Note Edit Permission (Scheduled Events)
