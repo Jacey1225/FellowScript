@@ -1377,7 +1377,7 @@ may still be populated.</p>
 <tr>
 <td>GET</td>
 <td><code>/friends/{user_id}/activity</code></td>
-<td>Friend-activity read surface for the dashboard's Friend Activity hero card: each friend's most recent public note preview + last-active timestamp (block-respecting both directions), plus a bounded "check in" nudge candidate pool (up to 5 friends gone longest without a direct message). Highlights are not previewed (no privacy flag exists for them yet).</td>
+<td>Friend-activity read surface for the dashboard's Friend Activity hero card: each friend's most recent group note preview, most recent highlight preview (with real verse text), last-active timestamp + activity type (block-respecting both directions), plus a bounded "check in" nudge candidate pool (up to 5 friends gone longest without a direct message).</td>
 </tr>
 </tbody>
 </table>
@@ -1386,14 +1386,17 @@ may still be populated.</p>
 <pre><code class="language-json">{
   &quot;friends_active&quot;: [
     {&quot;friend_id&quot;: &quot;uuid&quot;, &quot;username&quot;: &quot;str&quot;, &quot;last_active_at&quot;: &quot;iso8601 | null&quot;,
-     &quot;note_preview&quot;: {&quot;note_id&quot;: &quot;uuid&quot;, &quot;title&quot;: &quot;str&quot;, &quot;text&quot;: &quot;str&quot;, &quot;timestamp&quot;: &quot;iso8601&quot;} | null}
+     &quot;activity_type&quot;: &quot;note_created | note_edited | note_replied | verse_highlighted | null&quot;,
+     &quot;note_preview&quot;: {&quot;note_id&quot;: &quot;uuid&quot;, &quot;title&quot;: &quot;str&quot;, &quot;text&quot;: &quot;str&quot;, &quot;timestamp&quot;: &quot;iso8601&quot;} | null,
+     &quot;highlight_preview&quot;: {&quot;book&quot;: &quot;str&quot;, &quot;chapter&quot;: &quot;int&quot;, &quot;verse&quot;: &quot;int&quot;, &quot;color&quot;: &quot;str&quot;,
+                            &quot;verse_text&quot;: &quot;str | null&quot;, &quot;timestamp&quot;: &quot;iso8601&quot;} | null}
   ],
   &quot;check_in_candidates&quot;: [
     {&quot;friend_id&quot;: &quot;uuid&quot;, &quot;username&quot;: &quot;str&quot;, &quot;days_since_contact&quot;: &quot;int | null&quot;}
   ]
 }
 </code></pre>
-<p><code>friends_active</code> is ordered most-recently-active first. <code>check_in_candidates</code> is ordered longest-since-contact first, capped at 5 entries (or the friend count, whichever is smaller), and is an empty list only when the user has no friends — the client picks among these candidates rather than the whole friend list, to keep the nudge targeted at genuinely-neglected friends.</p>
+<p><code>friends_active</code> is ordered most-recently-active first. <code>activity_type</code> is the friend's most recent tracked activity type, so the client can label the entry (created/edited/replied/highlighted) without a second request. <code>note_preview</code> is only populated from a <em>group</em> note the caller shares membership in — a friend's personal notes stay private to them regardless of friendship. <code>highlight_preview</code> is populated for any friend's most recent highlight, including its real verse text where resolvable — friendship alone is sufficient grant to see a friend's highlight (a deliberate widening; previously highlights had no visibility to anyone). <code>check_in_candidates</code> is ordered longest-since-contact first, capped at 5 entries (or the friend count, whichever is smaller), and is an empty list only when the user has no friends — the client picks among these candidates rather than the whole friend list, to keep the nudge targeted at genuinely-neglected friends.</p>
 <hr />
 <h2 id="messaging-websocket">Messaging (WebSocket)</h2>
 <p>Connect: <code>ws://&lt;host&gt;:8000/ws/{user_id}</code></p>
@@ -1489,10 +1492,15 @@ CRUD + AI-trigger + scheduling endpoints under <code>/notification/{user_id}/...
 </tr>
 </tbody>
 </table>
-<p><strong>Replacement pending</strong>: a backend activity-tracked/fixed-notification system
-(reminders derived from real note/highlight activity, plus a cross-user
-"friend went active" push) is being built as a follow-up step in the same
-task and will be documented here once it lands.</p>
+<p>A backend activity-tracked, fixed-notification system now drives every push
+in the app — no user-configurable triggers, just a fixed set of jobs
+(<code>backend/interactions/scheduler.py</code>, see
+<a href="../../architecture/backend/#background-scheduler">Background Scheduler</a>):
+a midday nudge, a &gt;24h "guilt" nudge, and a cross-user "friend went active"
+push, the last of which names the specific action (create/edit/reply/
+highlight) and, for a highlight, includes real verse text resolved from a
+bundled Bible-text asset. It fires once per inactive→active transition
+(&gt;24h gap), not on every individual note/highlight/reply.</p>
 <hr />
 <h2 id="agent-ai-check-ins">Agent (AI Check-ins)</h2>
 <table>

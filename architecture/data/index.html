@@ -1394,8 +1394,14 @@
 <td>TEXT</td>
 <td>Hex color string</td>
 </tr>
+<tr>
+<td><code>timestamp</code></td>
+<td>TIMESTAMPTZ</td>
+<td>Set on insert and refreshed on re-highlight (<code>ON CONFLICT</code>). Backs "this friend's most recently highlighted verse" for the friend-activity widget/push (see <a href="../../api/overview/#get-friendsuser_idactivity">Friend Activity</a> and the Background Scheduler section below)</td>
+</tr>
 </tbody>
 </table>
+<p>A friend can see another friend's most recent highlight (including its real verse text, resolved via the bundled <code>bible.json</code> at read/send time) — friendship alone is sufficient grant; there is no separate per-highlight privacy flag. This does not extend to notes, whose group-membership/ownership visibility rules are unchanged.</p>
 <hr />
 <h3 id="bookmarks"><code>bookmarks</code></h3>
 <table>

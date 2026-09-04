@@ -833,6 +833,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Background Scheduler">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#backendinteractionsbible_textpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        backend/interactions/bible_text.py
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
     </ul>
@@ -1426,7 +1443,7 @@
 <p><strong>Level 1 (FK → Level 0)</strong>
 - <code>notes</code> — <code>_id</code>, <code>user_id</code>, <code>title</code>, <code>text</code>, <code>public</code>, <code>group_id</code>, <code>timestamp</code>, <code>created_at</code>
 - <code>messages</code> — <code>_id</code>, <code>from_user</code>, <code>group_id</code>, <code>content</code>, <code>is_dm</code>, <code>timestamp</code>
-- <code>highlights</code> — <code>(user_id, key)</code> composite PK, <code>color</code>
+- <code>highlights</code> — <code>(user_id, key)</code> composite PK, <code>color</code>, <code>timestamp</code> (set on insert, refreshed on re-highlight)
 - <code>bookmarks</code> — <code>(user_id, key)</code> composite PK, <code>label</code>
 - <code>notifications</code> — <code>_id</code>, <code>user_id</code>, <code>type</code>, <code>message</code>, <code>read</code>
 - <code>agents</code> — <code>_id</code>, <code>user_id</code>, <code>config JSONB</code>
@@ -1440,7 +1457,7 @@
 <hr />
 <h2 id="background-scheduler">Background Scheduler</h2>
 <p><code>backend/interactions/scheduler.py</code> runs on startup (via <code>lifespan</code>), using APScheduler. Current jobs:</p>
-<p>The former <code>_fire_due_notifications</code> job (fired user-authored "agentic" notifications on their scheduled time-of-day) was removed in full (2026-08-26) along with that subsystem. A replacement set of fixed-notification jobs (activity-tracked reminders + friend-went-active) is pending as a follow-up step in the same task.</p>
+<p>The former <code>_fire_due_notifications</code> job (fired user-authored "agentic" notifications on their scheduled time-of-day) was removed in full (2026-08-26) along with that subsystem, replaced by the fixed-notification jobs below (activity-tracked reminders + friend-went-active), backed by <code>backend/interactions/activity.py</code>'s <code>ActivityManager</code> and <code>user_activity</code> table.</p>
 <table>
 <thead>
 <tr>
@@ -1470,9 +1487,26 @@
 <td>every <code>HEARTBEAT_POLL_INTERVAL_SECONDS</code> (60s)</td>
 <td>Scans <code>agent_heartbeats</code> for any event whose UTC <code>HH:mm</code> slot for today has passed and hasn't fired yet, then fires it via <code>AgentManager.commit_hb_response</code> — the same atomic, per-calendar-day <code>last_fired</code> claim that route-triggered fires have always used remains the sole dedup mechanism, so a concurrent poll cycle or a stray client call can't double-fire. On a real fire, sends a push via <code>send_push</code> identifying the event generically (agent name only, never prompt/note content) with <code>heartbeat_id</code>/<code>agent_id</code> riding in the payload's <code>data</code> for the client to resolve locally.</td>
 </tr>
+<tr>
+<td><code>_midday_no_activity_reminder</code></td>
+<td>every 15 min</td>
+<td>Gentle nudge once a user's local clock reads noon and they've had no tracked activity (note/highlight) yet that day; deduped once/local-day via <code>midday_reminder_sent_date</code></td>
+</tr>
+<tr>
+<td><code>_guilt_no_activity_reminder</code></td>
+<td>every 15 min</td>
+<td>More urgent nudge once a user has gone longer than 24h since their last tracked activity; deduped once per 24h window via <code>guilt_reminder_sent_at</code></td>
+</tr>
+<tr>
+<td><code>_friend_went_active_notify</code></td>
+<td>every 5 min</td>
+<td>Notifies a user's friends (block-respecting both directions) the first time that user transitions from inactive (&gt;24h) to active — not on every individual note/highlight/reply. The push body names the specific action via <code>last_activity_type</code>: "created a new note", "edited a note", "replied to {note owner}'s note" (<code>NOTE_REPLIED</code> — resolves the parent note's owner at send time), or a real-verse-content highlight line (<code>VERSE_HIGHLIGHTED</code> — resolves the user's most recent highlight and its verse text via the bundled <code>bible_text</code> module at send time; falls back to a reference-only or fully generic line if either lookup misses). Never logs note/highlight/verse content — that's only ever in the push body itself.</td>
+</tr>
 </tbody>
 </table>
 <p>Heartbeat (AI agent event) firing is now scheduled <strong>server-side</strong> by <code>_fire_due_heartbeats</code> above — it fires on time whether or not any client has the app open. The former client-side trigger, iOS's <code>HeartbeatScheduler</code> (<code>scheduleAll</code>/<code>checkAndFire</code>, polled on <code>scenePhase</code> foreground), was removed in full (2026-09-01); <code>commit_heartbeat</code> itself is unchanged and still does the actual generation/persistence work, just no longer reachable from iOS.</p>
+<h3 id="backendinteractionsbible_textpy"><code>backend/interactions/bible_text.py</code></h3>
+<p>In-process, lazily-loaded lookup over a bundled static copy of <code>bible.json</code> (the same asset the iOS Bible reader ships, copied into <code>api/backend/interactions/bible_data/bible.json</code>) — no database table, no outbound network call, since the content never changes at runtime. Exposes <code>verse_text(book, chapter, verse) -&gt; str | None</code> (parses a chapter's flowing-text blob into per-verse strings on first access, cached after) and <code>parse_highlight_key(key) -&gt; (book, chapter, verse) | None</code> (splits a <code>highlights.key</code> value back into its parts). Both return <code>None</code> on any miss rather than raising; callers (the friend-went-active push job, <code>FriendsManager.get_friend_activity</code>) fall back to reference-only or fully generic text.</p>
 
 
 
