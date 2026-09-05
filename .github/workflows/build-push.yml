@@ -98,6 +98,16 @@ jobs:
       APPLE_TEAM_ID: ci-test-apple-team-id
       APPLE_BUNDLE_ID: com.fellowscript.app
       APPLE_KEY_PATH: ${{ github.workspace }}/ci-dummy-apns-key.p8
+      # validate_attachment_config()/validate_gif_config() (task
+      # 20260904-messaging-attachments) fail fast at app boot the same way
+      # validate_apns_config() does above -- same rationale, same fix:
+      # throwaway CI values so TestClient(main_module.app) can boot. Neither
+      # validator makes a live network/AWS call at startup, only checks these
+      # are non-empty, so dummy values are sufficient here.
+      S3_BUCKET_NAME: ci-test-bucket
+      S3_REGION: us-east-1
+      GIF_PROVIDER: giphy
+      GIF_PROVIDER_API_KEY: ci-test-gif-key
 
     steps:
       - name: Checkout
