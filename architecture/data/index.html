@@ -1481,18 +1481,28 @@
 </tr>
 <tr>
 <td><code>group_id</code></td>
-<td>UUID FK → <code>groups</code></td>
-<td></td>
+<td>UUID FK → <code>groups</code> (SET NULL on delete)</td>
+<td>Null for a DM</td>
 </tr>
 <tr>
-<td><code>content</code></td>
-<td>TEXT</td>
-<td></td>
+<td><code>text</code></td>
+<td>TEXT NOT NULL</td>
+<td>Defaults to <code>""</code> — an attachment-only message carries no text</td>
 </tr>
 <tr>
-<td><code>is_dm</code></td>
-<td>BOOLEAN</td>
-<td></td>
+<td><code>attachment_kind</code></td>
+<td>TEXT, nullable</td>
+<td><code>image</code> / <code>video</code> / <code>file</code> / <code>gif</code>, or null for a text-only message (task 20260904-messaging-attachments)</td>
+</tr>
+<tr>
+<td><code>attachment_key</code></td>
+<td>TEXT, nullable</td>
+<td>S3 object key for <code>image</code>/<code>video</code>/<code>file</code> only — never a URL, and never set for <code>gif</code>. Resolved to a fresh presigned GET at read time (<code>backend/interactions/attachments.py</code>), never returned to a client as-is</td>
+</tr>
+<tr>
+<td><code>attachment_meta</code></td>
+<td>JSONB DEFAULT <code>'{}'</code></td>
+<td>Kind-specific: GIF provider id/url/width/height, or a file's display filename — GIF bytes never touch our own storage at all</td>
 </tr>
 <tr>
 <td><code>timestamp</code></td>
@@ -1501,6 +1511,7 @@
 </tr>
 </tbody>
 </table>
+<p>A DM's recipient link lives in <code>message_recipients</code> (<code>message_id</code>, <code>user_id</code> composite PK), joined against this table — see <code>FriendsManager.read_friend</code>.</p>
 <hr />
 <h3 id="notifications-removed"><code>notifications</code> (removed)</h3>
 <p>The <code>notifications</code> table backed the former user-authored ("agentic")

@@ -985,6 +985,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Messaging (WebSocket)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#attachments-task-20260904-messaging-attachments" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Attachments (task 20260904-messaging-attachments)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1399,7 +1416,7 @@ may still be populated.</p>
 <p><code>friends_active</code> is ordered most-recently-active first. <code>activity_type</code> is the friend's most recent tracked activity type, so the client can label the entry (created/edited/replied/highlighted) without a second request. <code>note_preview</code> is only populated from a <em>group</em> note the caller shares membership in — a friend's personal notes stay private to them regardless of friendship. <code>highlight_preview</code> is populated for any friend's most recent highlight, including its real verse text where resolvable — friendship alone is sufficient grant to see a friend's highlight (a deliberate widening; previously highlights had no visibility to anyone). <code>check_in_candidates</code> is ordered longest-since-contact first, capped at 5 entries (or the friend count, whichever is smaller), and is an empty list only when the user has no friends — the client picks among these candidates rather than the whole friend list, to keep the nudge targeted at genuinely-neglected friends.</p>
 <hr />
 <h2 id="messaging-websocket">Messaging (WebSocket)</h2>
-<p>Connect: <code>ws://&lt;host&gt;:8000/ws/{user_id}</code></p>
+<p>Connect: <code>ws://&lt;host&gt;:8000/message/ws/{user_id}</code></p>
 <p>Messages are JSON payloads with a <code>type</code> field:</p>
 <table>
 <thead>
@@ -1427,7 +1444,46 @@ may still be populated.</p>
 </tr>
 </tbody>
 </table>
-<p>REST history: <code>GET /messages/{group_id}</code> returns past messages for a group.</p>
+<p>REST history: <code>GET /message/messages/{host_user}/?guest_user=...</code> returns past DMs between two users; group history comes back from <code>GroupsManager</code>'s group-read call.</p>
+<h3 id="attachments-task-20260904-messaging-attachments">Attachments (task 20260904-messaging-attachments)</h3>
+<p>A message may carry an attachment instead of (or alongside) <code>text</code> — send/receive payloads gain three optional fields:</p>
+<pre><code class="language-json">{
+  &quot;text&quot;: &quot;&quot;,
+  &quot;attachment_kind&quot;: &quot;image | video | file | gif | null&quot;,
+  &quot;attachment_key&quot;: &quot;server-issued S3 object key (image/video/file only, request-side) | null&quot;,
+  &quot;attachment_meta&quot;: {&quot;...&quot;: &quot;kind-specific -- e.g. gif's provider id/url/width/height, or file's display filename&quot;}
+}
+</code></pre>
+<p>On receive (live WebSocket delivery, or DM/group history load), the server never hands back the raw stored <code>attachment_key</code> — it resolves it to a fresh, short-lived presigned GET at read time instead:</p>
+<pre><code class="language-json">{
+  &quot;attachment_kind&quot;: &quot;image | video | file | gif | null&quot;,
+  &quot;attachment_meta&quot;: {&quot;...&quot;: &quot;...&quot;},
+  &quot;attachment_url&quot;: &quot;presigned GET url (image/video/file), or null for gif -- gif's url already lives in attachment_meta&quot;
+}
+</code></pre>
+<p>An attachment_kind outside <code>image</code>/<code>video</code>/<code>file</code>/<code>gif</code>, or one missing the reference its kind actually needs, is silently dropped server-side (never persisted) rather than saved with a broken reference.</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Route</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>POST</td>
+<td><code>/message/upload-url/{user_id}</code></td>
+<td>Self-scoped (caller must be <code>user_id</code>). Body: <code>{"attachment_kind", "content_type", "size_bytes"?}</code>. Returns a presigned S3 POST policy: <code>{"url", "fields", "object_key", "expires_in"}</code> — upload the raw file directly to <code>url</code> with <code>fields</code> (multipart form), then reference <code>object_key</code> as <code>attachment_key</code> in the message you send. <code>400</code> for an unsupported kind/content-type combination; <code>503</code> if attachment uploads aren't configured yet.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/message/gif-search?q=</code></td>
+<td>Authenticated. Proxies a GIF search to the configured provider (GIPHY/Tenor) so the provider API key never reaches the client. Returns <code>{"results": [{"id", "url", "preview_url", "width", "height"}]}</code>. <code>502</code> if the provider call fails, <code>503</code> if GIF search isn't configured yet.</td>
+</tr>
+</tbody>
+</table>
+<p>Per-kind upload limits (server-enforced via the presigned POST policy's <code>content-length-range</code>, not just advisory): image ≤15MB (<code>image/jpeg</code>, <code>image/png</code>, <code>image/webp</code>, <code>image/heic</code>), video ≤250MB (<code>video/mp4</code>, <code>video/quicktime</code>), file ≤50MB (<code>application/pdf</code>, <code>text/plain</code>, <code>.doc</code>/<code>.docx</code>/<code>.xlsx</code>). GIFs never upload to our own storage at all — only the provider's id/url is stored.</p>
 <hr />
 <h2 id="subscriptions">Subscriptions</h2>
 <table>
