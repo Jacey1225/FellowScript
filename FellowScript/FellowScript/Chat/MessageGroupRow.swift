@@ -166,6 +166,12 @@ struct DayDividerRow: View {
 
 struct MessageGroupRow: View {
     let group: MessageDisplayGroup
+    // Task 20260904-messaging-attachments: keyed by FSMessage.id — see
+    // MessageAttachments.swift's LocalAttachmentPreview doc comment. Empty
+    // for every screen except this one's own thread, so every other
+    // (nonexistent) caller of MessageGroupRow is unaffected; there is none
+    // today besides ChatThreadView.
+    var localAttachmentPreviews: [String: LocalAttachmentPreview] = [:]
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
@@ -190,24 +196,7 @@ struct MessageGroupRow: View {
                 }
 
                 ForEach(group.messages) { message in
-                    Text(message.text)
-                        .font(.inter(Theme.fontBody))
-                        .foregroundColor(Theme.parchment)
-                        .multilineTextAlignment(group.isOutgoing ? .trailing : .leading)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 10)
-                        .background(
-                            group.isOutgoing
-                                ? Theme.gold.opacity(0.18)
-                                : Color.white.opacity(0.06)
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: Theme.radiusLG)
-                                .stroke(group.isOutgoing ? Theme.borderGoldDim : Theme.borderGoldFaint, lineWidth: 1)
-                        )
-                        .clipShape(RoundedRectangle(cornerRadius: Theme.radiusLG))
-                        .topEdgeHighlight(RoundedRectangle(cornerRadius: Theme.radiusLG))
-                        .accessibilityLabel("\(group.senderName): \(message.text)")
+                    bubble(for: message)
                 }
             }
 
@@ -219,6 +208,70 @@ struct MessageGroupRow: View {
         }
         .padding(.horizontal, Theme.spacingMD)
         .padding(.vertical, Theme.spacingSM)
+    }
+
+    /// One message bubble. Reuses the exact same container (background/
+    /// stroke/clipShape/topEdgeHighlight chain) for every message regardless
+    /// of `attachment_kind` (design gate §4) — only the content inside
+    /// changes, and only image/video/gif drop the container's inner text
+    /// padding (edge-to-edge media); `file` and plain text keep it.
+    @ViewBuilder
+    private func bubble(for message: FSMessage) -> some View {
+        let isMedia = ["image", "video", "gif"].contains(message.attachmentKind ?? "")
+        Group {
+            if let kind = message.attachmentKind, !kind.isEmpty {
+                // A caption riding alongside an attachment (`text` and
+                // `attachment_kind` can both be set — design gate's wire
+                // contract note) renders below the attachment content,
+                // inside the same bubble.
+                VStack(alignment: group.isOutgoing ? .trailing : .leading, spacing: 0) {
+                    AttachmentContentView(message: message, localPreview: localAttachmentPreviews[message.id])
+                        .padding(isMedia ? 0 : 14)
+                        .padding(.vertical, isMedia ? 0 : 10)
+                    if !message.text.isEmpty {
+                        Text(message.text)
+                            .font(.inter(Theme.fontBody))
+                            .foregroundColor(Theme.parchment)
+                            .multilineTextAlignment(group.isOutgoing ? .trailing : .leading)
+                            .padding(.horizontal, 14)
+                            .padding(.bottom, 10)
+                            .padding(.top, isMedia ? 6 : 0)
+                    }
+                }
+            } else {
+                Text(message.text)
+                    .font(.inter(Theme.fontBody))
+                    .foregroundColor(Theme.parchment)
+                    .multilineTextAlignment(group.isOutgoing ? .trailing : .leading)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+            }
+        }
+        .background(
+            group.isOutgoing
+                ? Theme.gold.opacity(0.18)
+                : Color.white.opacity(0.06)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.radiusLG)
+                .stroke(group.isOutgoing ? Theme.borderGoldDim : Theme.borderGoldFaint, lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: Theme.radiusLG))
+        .topEdgeHighlight(RoundedRectangle(cornerRadius: Theme.radiusLG))
+        .accessibilityLabel(accessibilityLabel(for: message))
+    }
+
+    /// Extends the pre-existing `"{sender}: {text}"` pattern with a
+    /// per-kind label (design gate §4) — never both at once (an attachment
+    /// message with `text` empty has nothing to append).
+    private func accessibilityLabel(for message: FSMessage) -> String {
+        switch message.attachmentKind {
+        case "image": return "\(group.senderName): photo attachment"
+        case "video": return "\(group.senderName): video attachment, tap to play"
+        case "gif":   return "\(group.senderName): GIF attachment"
+        case "file":  return "\(group.senderName): file attachment, \(message.attachmentMeta?.filename ?? "file"), double tap to download"
+        default:      return "\(group.senderName): \(message.text)"
+        }
     }
 
     private var avatar: some View {

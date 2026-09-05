@@ -2,6 +2,7 @@ from schemas.users import User
 from schemas.message import Group
 from db import DBManager
 from backend.errors import SaveFailedError
+from backend.interactions.attachments import generate_download_url
 
 
 class GroupsManager(DBManager):
@@ -51,6 +52,23 @@ class GroupsManager(DBManager):
             from_uid = str(data.get("from_user", "") or "")
             if from_uid in usernames:
                 data = {**data, "from_user": usernames[from_uid]}
+            # Task 20260904-messaging-attachments / security step 5 fix:
+            # render via a fresh, short-lived presigned GET issued at read
+            # time -- the stored attachment_key itself is never handed to
+            # the client (see backend/interactions/attachments.py), mirroring
+            # FriendsManager._format_dm_row's DM equivalent. `data` here
+            # originates from a raw `SELECT *`/`lookup()` row (fetch_group),
+            # so attachment_key must be popped unconditionally rather than
+            # merely read -- leaving it in `data` would otherwise ride
+            # straight through to the client on every group history response,
+            # defeating the whole point of resolving it to a short-lived URL
+            # instead of a permanent, cacheable object key. None for a
+            # text-only message or a gif (whose url already lives in
+            # attachment_meta).
+            data = dict(data)
+            attachment_key = data.pop("attachment_key", None)
+            if attachment_key:
+                data["attachment_url"] = generate_download_url(attachment_key)
             result.append(data)
         return result
 

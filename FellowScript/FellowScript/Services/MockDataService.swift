@@ -131,6 +131,14 @@ protocol DataServiceProtocol {
     func fetchFriendMessages(userId: String, friendId: String) async throws -> [FSMessage]
     func fetchGroupMessages(userId: String, groupId: String) async throws -> [FSMessage]
 
+    // Attachments (task 20260904-messaging-attachments): request a presigned
+    // S3 POST policy, then upload the raw bytes directly to S3 with it — the
+    // server never receives them. GIF search is a thin authenticated proxy
+    // so the provider API key never reaches the client.
+    func requestAttachmentUploadURL(userId: String, attachmentKind: String, contentType: String, sizeBytes: Int?) async throws -> FSUploadURLInfo
+    func uploadAttachment(fileData: Data, contentType: String, uploadInfo: FSUploadURLInfo) async throws
+    func searchGifs(query: String) async throws -> [FSGifResult]
+
     // Friends
     func fetchFriendRequests(userId: String) async throws -> [(id: String, username: String)]
     func sendFriendRequest(userId: String, username: String) async throws
@@ -590,6 +598,17 @@ final class MockDataService: DataServiceProtocol {
 
     func fetchGroupMessages(userId: String, groupId: String) async throws -> [FSMessage] {
         Self.mockMessages
+    }
+
+    func requestAttachmentUploadURL(userId: String, attachmentKind: String, contentType: String, sizeBytes: Int?) async throws -> FSUploadURLInfo {
+        FSUploadURLInfo(url: "https://mock-bucket.s3.amazonaws.com", fields: [:], object_key: "attachments/\(userId)/mock", expires_in: 300)
+    }
+
+    func uploadAttachment(fileData: Data, contentType: String, uploadInfo: FSUploadURLInfo) async throws {}
+
+    func searchGifs(query: String) async throws -> [FSGifResult] {
+        guard !query.isEmpty else { return [] }
+        return [FSGifResult(id: "mock-gif-1", url: "https://example.com/mock.gif", preview_url: "https://example.com/mock-preview.gif", width: 220, height: 180)]
     }
 
     // Friends

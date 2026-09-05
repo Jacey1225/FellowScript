@@ -1,15 +1,27 @@
 import asyncio
+import json
 import logging
 import time
 
 from fastapi import WebSocket
-from schemas.message import Message
+from schemas.message import Message, ATTACHMENT_KINDS
 from db import DBManager
 from backend.errors import SaveFailedError
+from backend.interactions.attachments import generate_download_url
 from backend.interactions.push import send_push
 from backend.moderation.content_filter import check_clean, ContentRejected, rejection_message
 
 logger = logging.getLogger(__name__)
+
+# Push-notification fallback body for an attachment-only message (empty
+# `text`) -- otherwise the push would show a blank body. Purely cosmetic;
+# has no bearing on what's actually persisted/rendered in-thread.
+_ATTACHMENT_PUSH_LABELS = {
+    "image": "📷 Photo",
+    "video": "🎥 Video",
+    "file":  "📎 File",
+    "gif":   "GIF",
+}
 
 
 class ConnectionManager(DBManager):
@@ -70,9 +82,13 @@ class ConnectionManager(DBManager):
                 there's no HTTP response to raise into here.
         """
         self.cur.execute(
-            "INSERT INTO messages (from_user, group_id, text, timestamp) "
-            "VALUES (%s, %s, %s, %s) RETURNING _id",
-            (msg.from_user, msg.group_id or None, msg.text, str(msg.timestamp))
+            "INSERT INTO messages "
+            "(from_user, group_id, text, timestamp, attachment_kind, attachment_key, attachment_meta) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING _id",
+            (
+                msg.from_user, msg.group_id or None, msg.text, str(msg.timestamp),
+                msg.attachment_kind, msg.attachment_key, json.dumps(msg.attachment_meta or {}),
+            )
         )
         row = self.cur.fetchone()
         if row:
@@ -175,11 +191,46 @@ class ConnectionManager(DBManager):
         text         = payload.get("text", "")
         group_id     = payload.get("group_id")
 
+        # Attachment support (task 20260904-messaging-attachments). Fail
+        # closed (Security Posture Q14): a message that claims an
+        # attachment_kind but doesn't carry the reference that kind actually
+        # needs, or names a kind outside the recognized enum, is dropped
+        # entirely rather than persisted with an ambiguous/broken reference
+        # -- mirrors the existing early-return-on-empty-to_users pattern
+        # above. A message with no attachment_kind at all (the ordinary
+        # text-only case) is completely unaffected by any of this.
+        attachment_kind = payload.get("attachment_kind")
+        attachment_key  = payload.get("attachment_key")
+        attachment_meta = payload.get("attachment_meta") or {}
+        if attachment_kind is not None:
+            if attachment_kind not in ATTACHMENT_KINDS:
+                logger.warning(
+                    "Dropping message from %s: unrecognized attachment_kind=%r",
+                    from_user_id, attachment_kind,
+                )
+                return
+            if attachment_kind == "gif":
+                # GIFs never populate attachment_key (no upload of our own) --
+                # the provider's url must be present in attachment_meta instead.
+                if not attachment_meta.get("url"):
+                    logger.warning("Dropping message from %s: gif attachment missing url", from_user_id)
+                    return
+            elif not attachment_key:
+                logger.warning(
+                    "Dropping message from %s: %s attachment missing object key",
+                    from_user_id, attachment_kind,
+                )
+                return
+
         # Guideline 1.2 content filter — this is the one message-creation path
         # with no HTTP request/response cycle, so a rejection can't be a normal
-        # HTTPException; reply only to the sender's own socket instead.
+        # HTTPException; reply only to the sender's own socket instead. A
+        # user-supplied filename riding along a "file" attachment is passed
+        # through too -- it's just as much a free-text side channel as `text`
+        # itself (Security Posture Q7: don't trust a single boundary).
+        attachment_filename = attachment_meta.get("filename") if attachment_kind == "file" else None
         try:
-            check_clean(text=text)
+            check_clean(text=text, attachment_filename=attachment_filename)
         except ContentRejected as e:
             sender_ws = self.active_connections.get(from_user_id)
             if sender_ws:
@@ -227,6 +278,13 @@ class ConnectionManager(DBManager):
             "text":      text,
             "group_id":  group_id,
             "timestamp": payload.get("timestamp"),
+            "attachment_kind": attachment_kind,
+            "attachment_meta": attachment_meta,
+            # Freshly presigned at delivery time, never the stored key
+            # itself (see attachments.py's module docstring) -- None for a
+            # text-only message or a gif (whose url already lives in
+            # attachment_meta above).
+            "attachment_url": generate_download_url(attachment_key) if attachment_key else None,
         }
 
         # Resolve sender username once for the notification title
@@ -301,7 +359,12 @@ class ConnectionManager(DBManager):
                 try:
                     token = device_tokens.get(uid)
                     if token:
-                        body = text if len(text) <= 100 else text[:97] + "…"
+                        if text:
+                            body = text if len(text) <= 100 else text[:97] + "…"
+                        else:
+                            # Attachment-only message (empty text) — fall back
+                            # to a per-kind label so the push isn't blank.
+                            body = _ATTACHMENT_PUSH_LABELS.get(attachment_kind, "")
                         await send_push(token, sender_name, body)
                 except Exception as e:
                     logger.error("Push to %s failed: %s", uid, e)

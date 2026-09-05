@@ -966,6 +966,195 @@ body {
 .msg-bubble-markdown hr         { border: none; border-top: 1px solid rgba(255,255,255,0.108); margin: 0.6em 0; }
 .msg-bubble-markdown blockquote { border-left: 2px solid rgba(255,255,255,0.21); padding-left: 0.65em; margin: 0.4em 0; color: rgba(242,242,242,0.55); font-style: italic; }
 
+/* ── Attachments (task 20260904-messaging-attachments, design gate §1-§4) ──
+   Uses only root-level tokens (--gold/--parchment/--radius-md/--card-bg/
+   --card-border), never --border-glass/--shadow-glass -- those are only
+   ever defined scoped to .dockview-theme-abyss/.chat-overlay
+   (reader-dock.css), and antd's Modal/Popover portal their content straight
+   to document.body, a CSS-tree sibling of .chat-overlay rather than a
+   descendant, so a --border-glass reference there would resolve to nothing. */
+
+/* A media (image/video/gif) attachment bubble drops the container's own
+   text padding for edge-to-edge content (design gate §4) -- .msg-bubble's
+   own padding is overridden back to zero here, same clipping radius. */
+.msg-bubble.msg-bubble-media {
+  padding: 0;
+  overflow: hidden;
+}
+
+.attachment-media {
+  display: block;
+  width: 100%;
+  max-width: 220px;
+  max-height: 260px;
+  object-fit: cover;
+  border-radius: var(--radius-md);
+  background: rgba(255,198,26,0.08);
+}
+
+.attachment-video-placeholder {
+  width: 220px;
+  height: 160px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,0.45);
+  border: none;
+  cursor: pointer;
+}
+
+.attachment-gif-static {
+  position: relative;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  background: none;
+}
+.attachment-gif-play-badge {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 2rem;
+  color: rgba(255,198,26,0.85);
+}
+
+.attachment-unavailable {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 90px;
+  padding: 0.6rem;
+  font-size: 0.7rem;
+  color: rgba(242,242,242,0.55);
+  background: rgba(255,198,26,0.06);
+}
+
+.attachment-caption {
+  padding: 0.4rem 0.75rem 0.55rem;
+}
+
+.attachment-file-row {
+  /* No extra padding here — the parent .msg-bubble (unaffected by
+     .msg-bubble-media, since "file" isn't media, design gate §4) already
+     supplies the standard bubble padding this row sits inside. */
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--parchment);
+  text-decoration: none;
+}
+.attachment-file-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.8rem;
+}
+
+/* Attach action sheet (design gate §1) -- content of the antd Popover
+   anchored to the composer's paperclip button. */
+.attach-menu-popover .ant-popover-inner {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+}
+.attach-menu {
+  display: flex;
+  flex-direction: column;
+  min-width: 180px;
+}
+.attach-menu-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.6rem 0.4rem;
+  background: none;
+  border: none;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  color: var(--parchment);
+  font-size: 0.82rem;
+  font-family: 'Inter', sans-serif;
+  text-align: left;
+  cursor: pointer;
+}
+.attach-menu-row:last-child { border-bottom: none; }
+.attach-menu-row:hover { background: rgba(255,198,26,0.08); }
+.attach-menu-row .anticon { color: var(--gold); }
+
+/* GIF-search sheet (design gate §2) */
+.gif-sheet-modal .ant-modal-content {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+}
+.gif-sheet-modal .ant-modal-title,
+.gif-sheet-modal .ant-modal-close { color: var(--parchment); }
+.gif-sheet-centered {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 140px;
+  text-align: center;
+  padding: 0 1rem;
+}
+.gif-sheet-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  max-height: 360px;
+  overflow-y: auto;
+}
+.gif-sheet-cell {
+  border: none;
+  padding: 0;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  cursor: pointer;
+  min-height: 88px;
+  background: rgba(255,198,26,0.08);
+}
+.gif-sheet-cell img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+/* Staged (pre-send) attachment preview chip (design gate §3) */
+.staged-attachment-chip {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 0.8rem 0.4rem;
+  padding: 0.35rem 0.5rem;
+  background: rgba(255,255,255,0.045);
+  border: 1px solid rgba(255,198,26,0.12);
+  border-radius: var(--radius-md);
+}
+.staged-attachment-thumb {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  overflow: hidden;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255,198,26,0.08);
+}
+.staged-attachment-thumb img,
+.staged-attachment-thumb video { width: 100%; height: 100%; object-fit: cover; }
+.staged-attachment-meta { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.staged-attachment-retry {
+  background: none;
+  border: none;
+  padding: 0;
+  color: #E06060;
+  font-size: 0.62rem;
+  text-align: left;
+  cursor: pointer;
+}
+.staged-attachment-remove {
+  background: none;
+  border: none;
+  padding: 6px;
+  cursor: pointer;
+  display: flex;
+}
+
 /* ── Scrollbar ── */
 ::-webkit-scrollbar { width: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }

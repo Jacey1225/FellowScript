@@ -1,8 +1,12 @@
-from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect, Depends
+from fastapi import APIRouter, HTTPException, Request, WebSocket, WebSocketDisconnect, Depends
 from backend.interactions.websockets import ConnectionManager
 from backend.interactions.friends import FriendsManager
 from backend.interactions.devotion import DevotionManager
+from backend.interactions.attachments import generate_upload_policy, AttachmentConfigError
+from backend.interactions.gif_search import search_gifs, GifConfigError, GifSearchError
 from backend.auth.dependencies import get_current_user, require_match, authenticate_ws
+from backend.rate_limiting import limiter
+from schemas.message import UploadUrlRequest
 from botocore.exceptions import ClientError
 import boto3
 import logging
@@ -159,6 +163,65 @@ async def read_dm(host_user: str, guest_user: str, _: str = Depends(require_matc
         return {"payload": result}
     finally:
         friend_manager.close()
+
+
+@ws_router.post("/upload-url/{user_id}")
+@limiter.limit("30/minute")
+async def request_upload_url(
+    request: Request,
+    user_id: str,
+    info: UploadUrlRequest,
+    _: str = Depends(require_match("user_id")),
+) -> dict:
+    """Issue a presigned S3 POST policy for a direct-to-S3 attachment upload.
+
+    Authenticated + self-scoped (``require_match``): a user can only ever
+    request an upload URL for themselves. Deny-by-default -- an
+    ``attachment_kind``/``content_type`` combination outside the per-kind
+    allowlist is rejected (400) rather than falling back to a generic
+    bucket (Security Posture Q2/Q14). The client uploads the raw bytes
+    directly to S3 with the returned ``url``/``fields``; the server never
+    receives them.
+
+    Raises:
+        HTTPException 400: If ``attachment_kind``/``content_type`` isn't a
+            recognized, allowed combination.
+        HTTPException 503: If attachment uploads aren't configured yet
+            (missing S3_BUCKET_NAME/S3_REGION).
+    """
+    try:
+        return generate_upload_policy(user_id, info.attachment_kind, info.content_type)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except AttachmentConfigError as e:
+        logger.error("Attachment upload requested but not configured: %s", e)
+        raise HTTPException(status_code=503, detail="Attachment uploads are not available right now.")
+
+
+@ws_router.get("/gif-search")
+@limiter.limit("30/minute")
+async def gif_search(request: Request, q: str, _: str = Depends(get_current_user)) -> dict:
+    """Authenticated GIF search, proxied server-side so the provider API key
+    never reaches the client (Security Posture Q2/Q6). Returns only the
+    fields the composer needs, not the provider's raw response.
+
+    Rate-limited per client IP (mirrors this file's other endpoints) so one
+    account can't burn the shared provider quota/cost for everyone.
+
+    Raises:
+        HTTPException 503: If GIF search isn't configured yet (missing/
+            unrecognized GIF_PROVIDER or GIF_PROVIDER_API_KEY).
+        HTTPException 502: If the configured provider's API call itself fails.
+    """
+    try:
+        results = await search_gifs(q)
+    except GifConfigError as e:
+        logger.error("GIF search requested but not configured: %s", e)
+        raise HTTPException(status_code=503, detail="GIF search is not available right now.")
+    except GifSearchError as e:
+        logger.warning("GIF search failed: %s", e)
+        raise HTTPException(status_code=502, detail="Couldn't reach the GIF search provider — please try again.")
+    return {"results": results}
 
 
 @ws_router.post("/friend-request")

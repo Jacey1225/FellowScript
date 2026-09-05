@@ -1,14 +1,244 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Button, Avatar, Typography, Input } from 'antd';
-import { SendOutlined, ArrowLeftOutlined, TeamOutlined } from '@ant-design/icons';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { Button, Avatar, Typography, Input, Popover, Modal, Spin } from 'antd';
+import {
+  SendOutlined, ArrowLeftOutlined, TeamOutlined, PaperClipOutlined,
+  PictureOutlined, FileOutlined, SmileOutlined, PlayCircleOutlined,
+  DownloadOutlined, CloseCircleFilled, SearchOutlined,
+} from '@ant-design/icons';
 import SessionWidget from './SessionWidget.jsx';
 
 const { Text } = Typography;
+
+// Task 20260904-messaging-attachments — security step 1's concrete per-kind
+// limits (advisory client-side pre-flight only; real enforcement is the
+// presigned POST policy's content-length-range condition, S3-side).
+const ATTACHMENT_LIMITS = {
+  image: { maxBytes: 15  * 1024 * 1024, accept: 'image/jpeg,image/png,image/webp,image/heic', oversizeCopy: 'Photos can be up to 15MB.' },
+  video: { maxBytes: 250 * 1024 * 1024, accept: 'video/mp4,video/quicktime',                    oversizeCopy: 'Videos can be up to 250MB.' },
+  file:  { maxBytes: 50  * 1024 * 1024, accept: '.pdf,.txt,.doc,.docx,.xlsx',                   oversizeCopy: 'Files can be up to 50MB.' },
+};
+
+function kindForFile(file) {
+  if (file.type.startsWith('image/')) return 'image';
+  if (file.type.startsWith('video/')) return 'video';
+  return 'file';
+}
+
+function prefersReducedMotion() {
+  return typeof window !== 'undefined' && !!window.matchMedia &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
+// ── Per-kind attachment rendering inside the existing message bubble (design gate §4) ──
+function AttachmentContent({ message }) {
+  const [videoPlaying, setVideoPlaying] = useState(false);
+  const [gifTapped, setGifTapped] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const kind = message.attachmentKind;
+  const meta = message.attachmentMeta || {};
+
+  if (!kind) return null;
+
+  if (kind === 'image') {
+    if (failed || !message.attachmentUrl) {
+      return <div className="attachment-unavailable">Image unavailable</div>;
+    }
+    return (
+      <img
+        src={message.attachmentUrl}
+        alt="photo attachment"
+        className="attachment-media"
+        onError={() => setFailed(true)}
+      />
+    );
+  }
+
+  if (kind === 'video') {
+    if (failed || !message.attachmentUrl) {
+      return <div className="attachment-unavailable">Video unavailable</div>;
+    }
+    if (videoPlaying) {
+      return (
+        // eslint-disable-next-line jsx-a11y/media-has-caption
+        <video src={message.attachmentUrl} className="attachment-media" controls autoPlay onError={() => setFailed(true)} />
+      );
+    }
+    return (
+      <button
+        type="button"
+        className="attachment-media attachment-video-placeholder"
+        onClick={() => setVideoPlaying(true)}
+        aria-label="video attachment, tap to play"
+      >
+        <PlayCircleOutlined style={{ fontSize: 40, color: 'var(--gold)' }} />
+      </button>
+    );
+  }
+
+  if (kind === 'gif') {
+    const playableUrl = meta.url || message.attachmentUrl;
+    if (failed || !playableUrl) {
+      return <div className="attachment-unavailable">Image unavailable</div>;
+    }
+    // The one place reduced-motion changes default behavior, not just
+    // disables a decorative transition (design gate §4/§6) — browsers
+    // auto-loop an animated <img> gif with no OS-level pause mechanism, so
+    // this is handled at the app level: a static preview frame + tap-to-play
+    // affordance instead of the looping original.
+    if (prefersReducedMotion() && !gifTapped) {
+      return (
+        <button
+          type="button"
+          className="attachment-media attachment-gif-static"
+          onClick={() => setGifTapped(true)}
+          aria-label="GIF attachment, tap to play"
+        >
+          <img src={meta.preview_url || playableUrl} alt="" className="attachment-media" onError={() => setFailed(true)} />
+          <PlayCircleOutlined className="attachment-gif-play-badge" />
+        </button>
+      );
+    }
+    return <img src={playableUrl} alt="GIF attachment" className="attachment-media" onError={() => setFailed(true)} />;
+  }
+
+  if (kind === 'file') {
+    const filename = meta.filename || 'File';
+    return (
+      <a
+        href={message.attachmentUrl || undefined}
+        target="_blank" rel="noreferrer"
+        className="attachment-file-row"
+        aria-label={`file attachment, ${filename}, download`}
+      >
+        <FileOutlined style={{ color: 'var(--gold)' }} />
+        <span className="attachment-file-name">{filename}</span>
+        <DownloadOutlined style={{ color: 'rgba(242,242,242,0.55)' }} />
+      </a>
+    );
+  }
+
+  return null;
+}
+
+// ── GIF-search sheet (design gate §2) ────────────────────────────────────────
+function GifSearchModal({ open, onClose, onSearchGifs, onSelect }) {
+  const [query, setQuery]     = useState('');
+  const [results, setResults] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError]     = useState(null);
+  const debounceRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) { setQuery(''); setResults([]); setError(null); setLoading(false); }
+  }, [open]);
+
+  useEffect(() => {
+    clearTimeout(debounceRef.current);
+    setError(null);
+    const trimmed = query.trim();
+    if (!trimmed) { setResults([]); setLoading(false); return; }
+    // Debounce ~350ms (design gate §2) — the endpoint is rate-limited
+    // server-side at 30/min, so this isn't merely a UX nicety.
+    debounceRef.current = setTimeout(async () => {
+      setLoading(true);
+      try {
+        const gifs = await onSearchGifs(trimmed);
+        setResults(gifs);
+      } catch (err) {
+        console.error('GIF search failed:', err);
+        setError("Couldn't load GIFs right now — try again in a moment.");
+      } finally {
+        setLoading(false);
+      }
+    }, 350);
+    return () => clearTimeout(debounceRef.current);
+  }, [query, onSearchGifs]);
+
+  return (
+    <Modal open={open} onCancel={onClose} footer={null} title="Search GIFs" destroyOnHidden className="gif-sheet-modal">
+      <Input
+        prefix={<SearchOutlined style={{ color: 'rgba(242,242,242,0.55)' }} />}
+        placeholder="Search GIFs"
+        value={query}
+        onChange={e => setQuery(e.target.value)}
+        autoFocus
+        style={{ marginBottom: '0.75rem' }}
+      />
+      {loading && (
+        <div className="gif-sheet-centered"><Spin /></div>
+      )}
+      {!loading && error && (
+        <div className="gif-sheet-centered"><Text style={{ color: 'rgba(242,242,242,0.55)', fontSize: '0.8rem', textAlign: 'center' }}>{error}</Text></div>
+      )}
+      {!loading && !error && results.length === 0 && (
+        <div className="gif-sheet-centered">
+          <Text style={{ color: 'rgba(242,242,242,0.55)', fontSize: '0.8rem' }}>
+            {query.trim() ? 'No results' : 'Search for a GIF to send.'}
+          </Text>
+        </div>
+      )}
+      {!loading && !error && results.length > 0 && (
+        <div className="gif-sheet-grid">
+          {results.map(gif => (
+            <button
+              type="button"
+              key={gif.id}
+              className="gif-sheet-cell"
+              onClick={() => { onSelect(gif); onClose(); }}
+              aria-label="GIF result"
+            >
+              <img src={gif.preview_url} alt="" />
+            </button>
+          ))}
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+// ── Staged (pre-send) attachment preview chip (design gate §3) ──────────────
+function StagedAttachmentChip({ staged, onRemove, onRetry }) {
+  const label = staged.kind === 'file' ? (staged.fileName || 'File')
+    : staged.kind === 'image' ? 'Photo'
+    : staged.kind === 'video' ? 'Video'
+    : 'GIF';
+  return (
+    <div className="staged-attachment-chip">
+      <div className="staged-attachment-thumb">
+        {staged.kind === 'image' && staged.previewUrl && <img src={staged.previewUrl} alt="" />}
+        {staged.kind === 'video' && staged.previewUrl && (
+          // eslint-disable-next-line jsx-a11y/media-has-caption
+          <video src={staged.previewUrl} muted />
+        )}
+        {staged.kind === 'gif' && staged.previewUrl && <img src={staged.previewUrl} alt="" />}
+        {staged.kind === 'file' && <FileOutlined style={{ color: 'var(--gold)' }} />}
+      </div>
+      <div className="staged-attachment-meta">
+        <Text style={{ fontSize: '0.7rem', color: 'rgba(242,242,242,0.55)' }}>{label}</Text>
+        {staged.uploadState === 'failed' && (
+          <button type="button" className="staged-attachment-retry" onClick={onRetry}>
+            Couldn't send — tap to retry
+          </button>
+        )}
+      </div>
+      {staged.uploadState === 'uploading' && <Spin size="small" />}
+      <button
+        type="button"
+        className="staged-attachment-remove"
+        onClick={onRemove}
+        aria-label="Remove attachment"
+      >
+        <CloseCircleFilled style={{ color: 'rgba(242,242,242,0.55)' }} />
+      </button>
+    </div>
+  );
+}
 
 // ── Chat thread (iMessage style) ──────────────────────────────────────────────
 
 export default function ChatThread({
   contact, messages, groupMembers, user, onBack, onSend,
+  onRequestUploadUrl, onUploadToS3, onSearchGifs,
   sessions, activeSessionId, talkingUserId,
   onJoinSession, onLeaveSession, onOpenSessionCreator,
   onEditSession, onDeleteSession, onNavigateVerse,
@@ -16,15 +246,129 @@ export default function ChatThread({
 }) {
   const [text, setText]               = useState('');
   const [showMembers, setShowMembers] = useState(false);
+  const [showAttachMenu, setShowAttachMenu] = useState(false);
+  const [showGifSheet, setShowGifSheet]     = useState(false);
+  const [staged, setStaged]                 = useState(null); // { kind, file, previewUrl, fileName, meta, uploadState, objectKey }
+  const [attachmentError, setAttachmentError] = useState(null);
   const endRef = useRef(null);
+  const photoVideoInputRef = useRef(null);
+  const fileInputRef       = useRef(null);
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
-  const handleSend = () => {
-    if (!text.trim()) return;
-    onSend(text.trim());
-    setText('');
+  // Staged previewUrl is a `URL.createObjectURL(file)` blob URL — release it
+  // once no longer staged/replaced, so this doesn't leak memory across a long
+  // session.
+  useEffect(() => () => {
+    if (staged?.previewUrl && staged.kind !== 'gif') URL.revokeObjectURL(staged.previewUrl);
+  }, [staged]);
+
+  const startUpload = useCallback((attachment) => {
+    setStaged(prev => (prev && prev.id === attachment.id) ? { ...prev, uploadState: 'uploading' } : prev);
+    onRequestUploadUrl(attachment.kind, attachment.file.type, attachment.file.size)
+      .then(info => onUploadToS3(info, attachment.file).then(() => info))
+      .then(info => {
+        setStaged(prev => (prev && prev.id === attachment.id) ? { ...prev, uploadState: 'uploaded', objectKey: info.object_key } : prev);
+      })
+      .catch(err => {
+        console.error('Attachment upload failed:', err);
+        setStaged(prev => (prev && prev.id === attachment.id) ? { ...prev, uploadState: 'failed' } : prev);
+      });
+  }, [onRequestUploadUrl, onUploadToS3]);
+
+  const stageFile = useCallback((file, forcedKind) => {
+    const kind = forcedKind || kindForFile(file);
+    const limits = ATTACHMENT_LIMITS[kind];
+    if (limits && file.size > limits.maxBytes) {
+      setAttachmentError(limits.oversizeCopy);
+      return;
+    }
+    setAttachmentError(null);
+    // A blob: URL works directly as an <img>/<video> src with no upload
+    // round trip — used for both the staged-preview chip and (for image/
+    // video) the sender's own optimistic echo, since the server's freshly
+    // presigned attachment_url is only ever resolved after a real upload +
+    // round trip, and the WS self-echo guard means this client never gets
+    // its own message delivered back to it (ChatThread.jsx's design gate
+    // §4 rendering falls back to this local URL when attachmentUrl is
+    // absent, matching iOS's LocalAttachmentPreview approach).
+    const previewUrl = (kind === 'image' || kind === 'video') ? URL.createObjectURL(file) : null;
+    const meta = kind === 'file' ? { filename: file.name } : {};
+    const attachment = {
+      id: `${Date.now()}-${Math.random()}`,
+      kind, file, previewUrl, fileName: file.name, meta,
+      uploadState: 'uploading', objectKey: null,
+    };
+    setStaged(attachment);
+    startUpload(attachment);
+  }, [startUpload]);
+
+  const handlePhotoVideoChange = (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (file) stageFile(file);
   };
+
+  const handleFileChange = (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (file) stageFile(file, 'file');
+  };
+
+  const handleGifSelected = (gif) => {
+    setAttachmentError(null);
+    setStaged({
+      id: `${Date.now()}-${Math.random()}`,
+      kind: 'gif', file: null, previewUrl: gif.preview_url, fileName: null,
+      meta: { url: gif.url, preview_url: gif.preview_url, width: gif.width, height: gif.height },
+      uploadState: 'idle', objectKey: null,
+    });
+  };
+
+  const canSend = (() => {
+    const hasText = !!text.trim();
+    if (!staged) return hasText;
+    if (staged.uploadState === 'uploading' || staged.uploadState === 'failed') return false;
+    return true;
+  })();
+
+  const handleSend = () => {
+    if (!canSend) return;
+    const trimmed = text.trim();
+    if (!trimmed && !staged) return;
+    if (staged) {
+      const attachment = {
+        kind: staged.kind,
+        meta: staged.meta,
+        objectKey: staged.objectKey,
+        localUrl: (staged.kind === 'image' || staged.kind === 'video') ? staged.previewUrl : null,
+      };
+      onSend(trimmed, attachment);
+    } else {
+      // No second argument for a plain text-only send — keeps `onSend`'s
+      // call shape identical to before this feature for the common case
+      // (useMessaging.js's `sendMessage(text, attachment = null)` already
+      // defaults the omitted param).
+      onSend(trimmed);
+    }
+    setText('');
+    setStaged(null);
+    setAttachmentError(null);
+  };
+
+  const attachMenuContent = (
+    <div className="attach-menu">
+      <button type="button" className="attach-menu-row" onClick={() => { setShowAttachMenu(false); photoVideoInputRef.current?.click(); }}>
+        <PictureOutlined /> <span>Photo &amp; Video</span>
+      </button>
+      <button type="button" className="attach-menu-row" onClick={() => { setShowAttachMenu(false); fileInputRef.current?.click(); }}>
+        <FileOutlined /> <span>File</span>
+      </button>
+      <button type="button" className="attach-menu-row" onClick={() => { setShowAttachMenu(false); setShowGifSheet(true); }}>
+        <SmileOutlined /> <span>GIF</span>
+      </button>
+    </div>
+  );
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
@@ -110,22 +454,67 @@ export default function ChatThread({
             <Text style={{ fontSize: '0.72rem', color: 'rgba(242,242,242,0.22)', fontFamily: "'Inter', sans-serif" }}>No messages yet. Say hello!</Text>
           </div>
         )}
-        {messages.map((m, i) => (
-          <div key={i} className={`msg-bubble ${m.mine ? 'sent' : 'received'}`}>
-            {!m.mine && m.sender && <div className="msg-bubble-sender">{m.sender}</div>}
-            {m.text}
-            {m.timestamp && (
-              <div className="msg-bubble-meta">
-                {new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-              </div>
-            )}
-          </div>
-        ))}
+        {messages.map((m, i) => {
+          const isMedia = ['image', 'video', 'gif'].includes(m.attachmentKind);
+          const ariaLabel = m.attachmentKind === 'image' ? `${m.sender || 'You'}: photo attachment`
+            : m.attachmentKind === 'video' ? `${m.sender || 'You'}: video attachment, tap to play`
+            : m.attachmentKind === 'gif'   ? `${m.sender || 'You'}: GIF attachment`
+            : m.attachmentKind === 'file'  ? `${m.sender || 'You'}: file attachment, ${m.attachmentMeta?.filename || 'file'}, download`
+            : undefined;
+          return (
+            <div
+              key={i}
+              className={`msg-bubble ${m.mine ? 'sent' : 'received'} ${isMedia ? 'msg-bubble-media' : ''}`}
+              aria-label={ariaLabel}
+            >
+              {!m.mine && m.sender && !isMedia && <div className="msg-bubble-sender">{m.sender}</div>}
+              {m.attachmentKind ? <AttachmentContent message={m} /> : m.text}
+              {m.attachmentKind && m.text && (
+                <div className={isMedia ? 'attachment-caption' : undefined}>{m.text}</div>
+              )}
+              {m.timestamp && (
+                <div className="msg-bubble-meta">
+                  {new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </div>
+              )}
+            </div>
+          );
+        })}
         <div ref={endRef} />
       </div>
 
+      {/* Staged attachment + inline error */}
+      {staged && (
+        <StagedAttachmentChip
+          staged={staged}
+          onRemove={() => { setStaged(null); setAttachmentError(null); }}
+          onRetry={() => startUpload(staged)}
+        />
+      )}
+      {attachmentError && (
+        <div style={{ padding: '0 0.9rem', color: 'rgba(242,242,242,0.55)', fontSize: '0.7rem' }}>{attachmentError}</div>
+      )}
+
       {/* Input */}
       <div style={{ display: 'flex', gap: '0.4rem', padding: '0.65rem 0.8rem', flexShrink: 0, alignItems: 'flex-end' }}>
+        <Popover
+          open={showAttachMenu}
+          onOpenChange={setShowAttachMenu}
+          trigger="click"
+          placement="topLeft"
+          content={attachMenuContent}
+          overlayClassName="attach-menu-popover"
+        >
+          <Button
+            type="text"
+            icon={<PaperClipOutlined />}
+            aria-label="Attach a photo, video, file, or GIF"
+            style={{ color: 'rgba(255,198,26,0.75)', flexShrink: 0, width: 44, height: 44 }}
+          />
+        </Popover>
+        <input ref={photoVideoInputRef} type="file" accept="image/*,video/*" style={{ display: 'none' }} onChange={handlePhotoVideoChange} />
+        <input ref={fileInputRef} type="file" accept={ATTACHMENT_LIMITS.file.accept} style={{ display: 'none' }} onChange={handleFileChange} />
+
         <Input
           value={text}
           onChange={e => setText(e.target.value)}
@@ -136,10 +525,18 @@ export default function ChatThread({
         <Button
           type="primary" shape="circle" icon={<SendOutlined />}
           onClick={handleSend}
-          disabled={!text.trim()}
+          disabled={!canSend}
+          aria-label="Send message"
           style={{ flexShrink: 0 }}
         />
       </div>
+
+      <GifSearchModal
+        open={showGifSheet}
+        onClose={() => setShowGifSheet(false)}
+        onSearchGifs={onSearchGifs}
+        onSelect={handleGifSelected}
+      />
     </div>
   );
 }

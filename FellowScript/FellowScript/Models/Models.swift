@@ -476,12 +476,42 @@ func parseFlexibleISO8601(_ iso: String) -> Date? {
     return nil
 }
 
+// Task 20260904-messaging-attachments: free-form `attachment_meta` from the
+// wire, typed against the two shapes backend step 2 actually produces
+// (`{"filename": ...}` for `file`; `{"url", "preview_url", "width",
+// "height"}` for `gif`, mirroring `GifSearchResult`) rather than a generic
+// AnyCodable bag — every field is optional so either shape (or neither, for
+// an ordinary text-only message) decodes cleanly.
+struct FSAttachmentMeta: Codable, Equatable {
+    var filename:   String? = nil
+    var url:        String? = nil
+    var previewUrl: String? = nil
+    var width:      Int?    = nil
+    var height:     Int?    = nil
+
+    enum CodingKeys: String, CodingKey {
+        case filename
+        case url
+        case previewUrl = "preview_url"
+        case width
+        case height
+    }
+}
+
 struct FSMessage: Identifiable, Codable {
     let id:        String
     let text:      String
     let mine:      Bool
     let sender:    String
     let timestamp: String
+    // Design gate §4 wire contract: `attachment_kind` is `null | "image" |
+    // "video" | "file" | "gif"`; `attachment_url` is a freshly presigned GET
+    // already resolved server-side (image/video/file only — a "gif" reads
+    // its playable URL out of `attachment_meta.url` instead, same as
+    // `GifSearchResult`). The raw S3 object key is never sent to the client.
+    var attachmentKind: String?         = nil
+    var attachmentURL:  String?         = nil
+    var attachmentMeta: FSAttachmentMeta? = nil
 
     var formattedTime: String {
         // Fidelity-pass audit: same single-format gap as FSSession.formattedStart
@@ -492,6 +522,36 @@ struct FSMessage: Identifiable, Codable {
         f.timeStyle = .short
         return f.string(from: d)
     }
+}
+
+// ── Attachments (task 20260904-messaging-attachments) ─────────────────────────
+
+/// A message's recognized attachment kinds — mirrors the backend's
+/// `ATTACHMENT_KINDS` (api/schemas/message.py) exactly, as a source of truth
+/// both the composer's picker and the thread's renderer key off.
+enum FSAttachmentKind: String {
+    case image, video, file, gif
+}
+
+/// `POST /message/upload-url/{user_id}` response — a presigned S3 POST
+/// policy the client uploads the raw file straight to, never through our
+/// own server. `fields` must ride along as form fields in that multipart
+/// POST (order doesn't matter, but every key must be present).
+struct FSUploadURLInfo: Codable {
+    let url:        String
+    let fields:     [String: String]
+    let object_key: String
+    let expires_in: Int
+}
+
+/// One `GET /message/gif-search` result — mirrors the backend's
+/// `GifSearchResult` schema field-for-field.
+struct FSGifResult: Codable, Identifiable {
+    let id:          String
+    let url:         String
+    let preview_url: String
+    let width:       Int
+    let height:      Int
 }
 
 // ── Study Sessions ────────────────────────────────────────────────────────────

@@ -128,10 +128,14 @@ A friend can see another friend's most recent highlight (including its real vers
 |---|---|---|
 | `_id` | UUID PK DEFAULT gen_random_uuid() | |
 | `from_user` | UUID FK → `users` (SET NULL on delete) | Nulled when author is deleted |
-| `group_id` | UUID FK → `groups` | |
-| `content` | TEXT | |
-| `is_dm` | BOOLEAN | |
+| `group_id` | UUID FK → `groups` (SET NULL on delete) | Null for a DM |
+| `text` | TEXT NOT NULL | Defaults to `""` — an attachment-only message carries no text |
+| `attachment_kind` | TEXT, nullable | `image` / `video` / `file` / `gif`, or null for a text-only message (task 20260904-messaging-attachments) |
+| `attachment_key` | TEXT, nullable | S3 object key for `image`/`video`/`file` only — never a URL, and never set for `gif`. Resolved to a fresh presigned GET at read time (`backend/interactions/attachments.py`), never returned to a client as-is |
+| `attachment_meta` | JSONB DEFAULT `'{}'` | Kind-specific: GIF provider id/url/width/height, or a file's display filename — GIF bytes never touch our own storage at all |
 | `timestamp` | TIMESTAMPTZ | |
+
+A DM's recipient link lives in `message_recipients` (`message_id`, `user_id` composite PK), joined against this table — see `FriendsManager.read_friend`.
 
 ---
 

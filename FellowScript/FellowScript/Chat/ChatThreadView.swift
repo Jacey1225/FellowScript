@@ -43,6 +43,11 @@ import Combine
 final class ChatThreadViewModel: ObservableObject {
     @Published var messages: [FSMessage] = []
     @Published var sessions: [FSSession] = []
+    // Task 20260904-messaging-attachments: the sender's own optimistic echo
+    // of an attachment-carrying message (see sendMessage below) — keyed by
+    // FSMessage.id. See MessageAttachments.swift's LocalAttachmentPreview
+    // doc comment for why this exists.
+    @Published var localAttachmentPreviews: [String: LocalAttachmentPreview] = [:]
     // Surfaced in the view as a small "Reconnecting…" banner. Previously a
     // dropped socket (network blip, backgrounding, Cloudflare/nginx idle
     // timeout, or the server evicting a stale connection) gave no visible
@@ -94,7 +99,11 @@ final class ChatThreadViewModel: ObservableObject {
         connectWebSocket(wsBase: service.wsBase, userId: userId)
     }
 
-    func sendMessage(text: String, contact: FSContact, userId: String) {
+    /// `attachment` is a fully-uploaded (or gif, never-uploaded)
+    /// `StagedAttachment` — the composer is responsible for driving the
+    /// upload to completion (and disabling send until it is) before calling
+    /// this, per design gate §3.
+    func sendMessage(text: String, attachment: StagedAttachment?, contact: FSContact, userId: String) {
         let iso = ISO8601DateFormatter().string(from: Date())
         var body: [String: Any] = ["from_user": userId, "timestamp": iso, "text": text]
         if contact.type == .group {
@@ -104,11 +113,48 @@ final class ChatThreadViewModel: ObservableObject {
             body["to_users"] = [contact.id]
             body["group_id"] = ""
         }
+
+        var attachmentKind: String? = nil
+        var attachmentMeta: FSAttachmentMeta? = nil
+        var localPreview: LocalAttachmentPreview? = nil
+
+        if let attachment {
+            attachmentKind = attachment.kind.rawValue
+            body["attachment_kind"] = attachment.kind.rawValue
+            body["attachment_meta"] = attachment.outgoingMeta
+            switch attachment.kind {
+            case .gif:
+                attachmentMeta = FSAttachmentMeta(
+                    filename: nil, url: attachment.gifResult?.url, previewUrl: attachment.gifResult?.preview_url,
+                    width: attachment.gifResult?.width, height: attachment.gifResult?.height
+                )
+            case .file:
+                attachmentMeta = FSAttachmentMeta(filename: attachment.fileName)
+            case .image, .video:
+                attachmentMeta = FSAttachmentMeta(width: attachment.width, height: attachment.height)
+            }
+            if case .uploaded(let objectKey) = attachment.uploadState {
+                body["attachment_key"] = objectKey
+            }
+            localPreview = LocalAttachmentPreview(image: attachment.image, videoURL: attachment.videoURL)
+        }
+
         if let data = try? JSONSerialization.data(withJSONObject: body),
            let str  = String(data: data, encoding: .utf8) {
             wsTask?.send(.string(str)) { _ in }
         }
-        messages.append(FSMessage(id: UUID().uuidString, text: text, mine: true, sender: "", timestamp: iso))
+        let messageId = UUID().uuidString
+        // No `attachmentURL` on the optimistic echo — image/video render from
+        // `localAttachmentPreviews` instead (see field doc comment above);
+        // `gifContent` already prefers `attachmentMeta.url` over
+        // `attachmentURL`, so a gif renders correctly with neither.
+        messages.append(FSMessage(
+            id: messageId, text: text, mine: true, sender: "", timestamp: iso,
+            attachmentKind: attachmentKind, attachmentURL: nil, attachmentMeta: attachmentMeta
+        ))
+        if let localPreview {
+            localAttachmentPreviews[messageId] = localPreview
+        }
     }
 
     func disconnect() {
@@ -206,12 +252,27 @@ final class ChatThreadViewModel: ObservableObject {
                     if !fromUser.isEmpty, fromUser == self.wsUserId {
                         print("[ChatThreadViewModel] dropping self-echoed inbound frame from_user=\(fromUser) — already shown via optimistic local append")
                     } else {
+                        // Task 20260904-messaging-attachments: attachment_kind/
+                        // attachment_meta/attachment_url ride along on the same
+                        // frame — null/absent for an ordinary text-only message.
+                        // attachment_meta is decoded via the same FSAttachmentMeta
+                        // shape NetworkService.swift's history-load path uses, so
+                        // a live-delivered attachment renders identically to one
+                        // loaded from history.
+                        var attachmentMeta: FSAttachmentMeta? = nil
+                        if let metaDict = json["attachment_meta"] as? [String: Any], !metaDict.isEmpty,
+                           let metaData = try? JSONSerialization.data(withJSONObject: metaDict) {
+                            attachmentMeta = try? JSONDecoder().decode(FSAttachmentMeta.self, from: metaData)
+                        }
                         let incoming = FSMessage(
                             id:        (json["id"] as? String) ?? UUID().uuidString,
                             text:      msgText,
                             mine:      false,
                             sender:    fromUser,
-                            timestamp: (json["timestamp"] as? String) ?? ""
+                            timestamp: (json["timestamp"] as? String) ?? "",
+                            attachmentKind: json["attachment_kind"] as? String,
+                            attachmentURL:  json["attachment_url"] as? String,
+                            attachmentMeta: attachmentMeta
                         )
                         Task { @MainActor in self.messages.append(incoming) }
                     }
@@ -281,6 +342,14 @@ struct ChatThreadView: View {
     // 422 on a disallowed title) instead of the previous silent no-op — see
     // backend step 8 finding #1.
     @State private var membersErrorMsg: String? = nil
+
+    // ── Attachments (task 20260904-messaging-attachments, design gate §1–§3) ──
+    @State private var showAttachSheet       = false
+    @State private var showPhotoVideoPicker  = false
+    @State private var showDocumentPicker    = false
+    @State private var showGifSheet          = false
+    @State private var stagedAttachment: StagedAttachment? = nil
+    @State private var attachmentErrorMsg: String? = nil
 
     private var messageGroups: [MessageDisplayGroup] {
         MessageDisplayGroup.grouped(from: vm.messages, me: user)
@@ -363,7 +432,7 @@ struct ChatThreadView: View {
                             ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
                                 switch row {
                                 case .group(let group):
-                                    MessageGroupRow(group: group)
+                                    MessageGroupRow(group: group, localAttachmentPreviews: vm.localAttachmentPreviews)
                                         .id(row.id)
                                 case .dayDivider(_, let label):
                                     DayDividerRow(label: label)
@@ -549,45 +618,182 @@ struct ChatThreadView: View {
     }
 
     // ── Composer (mirrors chat.html's flush full-width `.input-bar`) ──────────
+    // Task 20260904-messaging-attachments (design gate §1/§3): adds the
+    // attach affordance and the staged (pre-send) attachment preview chip
+    // directly above the text field — everything else about the composer is
+    // unchanged.
     private var composer: some View {
-        HStack(spacing: 10) {
-            TextField("", text: $text,
-                      prompt: Text("Type a message…").foregroundColor(Theme.textSecondary), axis: .vertical)
-                .font(.inter(Theme.fontBody))
-                .foregroundColor(Theme.parchment)
-                .lineLimit(1...4)
-                .padding(.horizontal, Theme.spacingMD)
-                .padding(.vertical, Theme.spacingSM)
-                .background(Color.white.opacity(0.05))
-                .overlay(Capsule().stroke(Theme.borderGoldDim, lineWidth: 1))
-                .clipShape(Capsule())
-                .submitLabel(.send)
-                .onSubmit(sendMessage)
-                .accessibilityLabel("Message input field")
-
-            Button(action: sendMessage) {
-                Image(systemName: "arrow.up")
-                    .font(.system(size: 16, weight: .bold))
-                    .foregroundColor(Theme.ink)
-                    .frame(width: 38, height: 38)
-                    .background(text.isEmpty ? AnyShapeStyle(Theme.gold.opacity(0.35)) : AnyShapeStyle(Theme.goldGradient))
-                    .clipShape(Circle())
+        VStack(alignment: .leading, spacing: 0) {
+            if let staged = stagedAttachment {
+                StagedAttachmentChipView(
+                    attachment: staged,
+                    onRemove: { stagedAttachment = nil; attachmentErrorMsg = nil },
+                    onRetry: { startUpload(staged) }
+                )
             }
-            .disabled(text.isEmpty)
-            .accessibilityLabel("Send message")
+            if let attachmentErrorMsg {
+                Text(attachmentErrorMsg)
+                    .font(.inter(Theme.fontXS))
+                    .foregroundColor(Theme.textSecondary)
+                    .padding(.horizontal, Theme.spacingMD)
+                    .padding(.top, Theme.spacingXS)
+            }
+            HStack(spacing: 10) {
+                attachButton
+
+                TextField("", text: $text,
+                          prompt: Text("Type a message…").foregroundColor(Theme.textSecondary), axis: .vertical)
+                    .font(.inter(Theme.fontBody))
+                    .foregroundColor(Theme.parchment)
+                    .lineLimit(1...4)
+                    .padding(.horizontal, Theme.spacingMD)
+                    .padding(.vertical, Theme.spacingSM)
+                    .background(Color.white.opacity(0.05))
+                    .overlay(Capsule().stroke(Theme.borderGoldDim, lineWidth: 1))
+                    .clipShape(Capsule())
+                    .submitLabel(.send)
+                    .onSubmit(sendMessage)
+                    .accessibilityLabel("Message input field")
+
+                Button(action: sendMessage) {
+                    Image(systemName: "arrow.up")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundColor(Theme.ink)
+                        .frame(width: 38, height: 38)
+                        .background(canSend ? AnyShapeStyle(Theme.goldGradient) : AnyShapeStyle(Theme.gold.opacity(0.35)))
+                        .clipShape(Circle())
+                }
+                .disabled(!canSend)
+                .accessibilityLabel("Send message")
+            }
+            .padding(.horizontal, Theme.spacingMD)
+            .padding(.top, Theme.spacingSM)
+            .padding(.bottom, Theme.spacingMD)
         }
-        .padding(.horizontal, Theme.spacingMD)
-        .padding(.top, Theme.spacingSM)
-        .padding(.bottom, Theme.spacingMD)
         .background(Theme.bgPage.opacity(0.55))
+        .sheet(isPresented: $showAttachSheet) {
+            AttachActionSheet(
+                onPickPhotoVideo: { showAttachSheet = false; showPhotoVideoPicker = true },
+                onPickFile:       { showAttachSheet = false; showDocumentPicker = true },
+                onPickGif:        { showAttachSheet = false; showGifSheet = true }
+            )
+        }
+        .sheet(isPresented: $showPhotoVideoPicker) {
+            PhotoVideoPicker { attachment in handlePicked(attachment) }
+                .ignoresSafeArea()
+        }
+        .sheet(isPresented: $showDocumentPicker) {
+            DocumentPicker { attachment in handlePicked(attachment) }
+                .ignoresSafeArea()
+        }
+        .sheet(isPresented: $showGifSheet) {
+            GifSearchSheet(service: appState.service) { attachment in
+                attachmentErrorMsg = nil
+                stagedAttachment = attachment
+            }
+        }
+    }
+
+    // 44pt tap target over a visually-36pt glyph (design gate §1) — the
+    // composer's pre-existing send button (38pt) is a known, out-of-scope-
+    // to-retrofit-here undersized precedent; the new attach control doesn't
+    // inherit it.
+    private var attachButton: some View {
+        Button(action: { showAttachSheet = true }) {
+            Image(systemName: "paperclip")
+                .font(.system(size: 36 * 0.4, weight: .semibold))
+                .foregroundColor(Theme.gold)
+                .frame(width: 36, height: 36)
+                .background(Color.white.opacity(0.05))
+                .overlay(Circle().stroke(Theme.borderGoldDim, lineWidth: 1))
+                .clipShape(Circle())
+                .topEdgeHighlight(Circle())
+        }
+        .buttonStyle(.plain)
+        .frame(width: 44, height: 44)
+        .contentShape(Circle())
+        .accessibilityLabel("Attach a photo, video, file, or GIF")
+    }
+
+    // Matches "send is otherwise disabled only when there is neither text nor
+    // a staged attachment" (design gate §3), plus: stays disabled while an
+    // image/video/file upload is in flight or has failed (the one genuinely
+    // ambiguous state this feature adds), enabling once uploaded or
+    // immediately for a staged GIF (nothing of ours to upload).
+    private var canSend: Bool {
+        let hasText = !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        guard let staged = stagedAttachment else { return hasText }
+        switch staged.uploadState {
+        case .uploading, .failed: return false
+        case .idle, .uploaded:    return true
+        }
+    }
+
+    private func handlePicked(_ attachment: StagedAttachment?) {
+        guard let attachment else { return }
+        if let sizeError = oversizeError(for: attachment) {
+            attachmentErrorMsg = sizeError
+            return
+        }
+        attachmentErrorMsg = nil
+        stagedAttachment = attachment
+        if attachment.kind != .gif {
+            startUpload(attachment)
+        }
+    }
+
+    /// Advisory client-side check before even requesting an upload URL
+    /// (design gate §3) — real enforcement is the presigned POST policy's
+    /// content-length-range condition (security step 1), not this. Phrased
+    /// from security step 1's actual concrete per-kind limits.
+    private func oversizeError(for attachment: StagedAttachment) -> String? {
+        guard let data = attachment.fileData else { return nil }
+        let maxBytes: Int
+        switch attachment.kind {
+        case .image: maxBytes = 15  * 1024 * 1024
+        case .video: maxBytes = 250 * 1024 * 1024
+        case .file:  maxBytes = 50  * 1024 * 1024
+        case .gif:   return nil
+        }
+        guard data.count <= maxBytes else {
+            return AttachmentErrorCopy.forOversize(kind: attachment.kind)
+        }
+        return nil
+    }
+
+    private func startUpload(_ attachment: StagedAttachment) {
+        attachment.uploadState = .uploading
+        guard let data = attachment.fileData else {
+            attachment.uploadState = .failed
+            return
+        }
+        let uid = appState.currentUser?.user_id ?? ""
+        Task {
+            do {
+                let info = try await appState.service.requestAttachmentUploadURL(
+                    userId: uid, attachmentKind: attachment.kind.rawValue,
+                    contentType: attachment.contentType, sizeBytes: data.count
+                )
+                try await appState.service.uploadAttachment(
+                    fileData: data, contentType: attachment.contentType, uploadInfo: info
+                )
+                await MainActor.run { attachment.uploadState = .uploaded(objectKey: info.object_key) }
+            } catch {
+                // Manual tap-to-retry only, no automatic retry loop (design
+                // gate §3 / intake's explicit "not required for v1").
+                await MainActor.run { attachment.uploadState = .failed }
+            }
+        }
     }
 
     private func sendMessage() {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
+        guard canSend, (!trimmed.isEmpty || stagedAttachment != nil) else { return }
         let uid = appState.currentUser?.user_id ?? ""
-        vm.sendMessage(text: trimmed, contact: contact, userId: uid)
+        vm.sendMessage(text: trimmed, attachment: stagedAttachment, contact: contact, userId: uid)
         text = ""
+        stagedAttachment = nil
+        attachmentErrorMsg = nil
     }
 
     private func addMembers(_ selected: [FSContact]) {

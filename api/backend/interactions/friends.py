@@ -2,6 +2,7 @@ from datetime import datetime, timezone as tzmod
 from schemas.users import User
 from db import DBManager
 from backend.errors import SaveFailedError
+from backend.interactions.attachments import generate_download_url
 from backend.interactions.blocks import BlockManager
 from backend.interactions.bible_text import parse_highlight_key, verse_text
 
@@ -111,6 +112,22 @@ class FriendsManager(DBManager):
         )
         return [{"user_id": r[0], "username": r[1], "email": r[2]} for r in self.cur.fetchall()]
 
+    @staticmethod
+    def _format_dm_row(from_username: str, row: tuple) -> dict:
+        """Shape one ``messages`` row (as selected in ``read_friend``) into
+        the dict the client expects, resolving ``attachment_key`` to a
+        fresh presigned GET (never handing back the stored key itself --
+        see backend/interactions/attachments.py)."""
+        _id, text, timestamp, attachment_kind, attachment_key, attachment_meta = row
+        return {
+            "from_user": from_username,
+            "text": text,
+            "timestamp": str(timestamp),
+            "attachment_kind": attachment_kind,
+            "attachment_meta": attachment_meta or {},
+            "attachment_url": generate_download_url(attachment_key) if attachment_key else None,
+        }
+
     def read_friend(self, friend_id: str) -> dict:
         """Fetch a friend's profile and the shared DM history.
 
@@ -131,25 +148,29 @@ class FriendsManager(DBManager):
         finally:
             blocks.close()
         _, friend_data = list(result.items())[0]
+        # Task 20260904-messaging-attachments: attachment_kind/attachment_meta
+        # ride along with text/timestamp; attachment_key itself is never
+        # handed to the client -- it's resolved to a fresh, short-lived
+        # presigned GET at read time instead (see _format_dm_row below).
         self.cur.execute(
-            "SELECT m._id, m.text, m.timestamp FROM messages m "
+            "SELECT m._id, m.text, m.timestamp, m.attachment_kind, m.attachment_key, m.attachment_meta "
+            "FROM messages m "
             "JOIN message_recipients mr ON m._id = mr.message_id "
             "WHERE m.from_user = %s AND mr.user_id = %s AND m.group_id IS NULL",
             (self.user_id, friend_id)
         )
         host_msgs = [
-            {"from_user": self.user.username, "text": r[1], "timestamp": str(r[2])}
-            for r in self.cur.fetchall()
+            self._format_dm_row(self.user.username, r) for r in self.cur.fetchall()
         ]
         self.cur.execute(
-            "SELECT m._id, m.text, m.timestamp FROM messages m "
+            "SELECT m._id, m.text, m.timestamp, m.attachment_kind, m.attachment_key, m.attachment_meta "
+            "FROM messages m "
             "JOIN message_recipients mr ON m._id = mr.message_id "
             "WHERE m.from_user = %s AND mr.user_id = %s AND m.group_id IS NULL",
             (friend_id, self.user_id)
         )
         other_msgs = [
-            {"from_user": friend_data.get("username", ""), "text": r[1], "timestamp": str(r[2])}
-            for r in self.cur.fetchall()
+            self._format_dm_row(friend_data.get("username", ""), r) for r in self.cur.fetchall()
         ]
         return {
             "friend":     {k: v for k, v in friend_data.items() if k != "hash_pass"},

@@ -142,7 +142,7 @@ final class ChatGroupSelfEchoDedupRegressionTests: XCTestCase {
 
         // ── 1. Sender sends a message: optimistic local echo appended immediately ──
         let sentText = "Hey everyone, see you Wednesday!"
-        await vm.sendMessage(text: sentText, contact: contact, userId: senderId)
+        await vm.sendMessage(text: sentText, attachment: nil, contact: contact, userId: senderId)
 
         let afterOptimistic = await vm.messages
         XCTAssertEqual(afterOptimistic.filter { $0.text == sentText }.count, 1,

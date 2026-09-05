@@ -145,7 +145,7 @@ may still be populated.
 
 ## Messaging (WebSocket)
 
-Connect: `ws://<host>:8000/ws/{user_id}`
+Connect: `ws://<host>:8000/message/ws/{user_id}`
 
 Messages are JSON payloads with a `type` field:
 
@@ -155,7 +155,39 @@ Messages are JSON payloads with a `type` field:
 | `dm` | send / receive | Direct message to another user |
 | `activity` | receive | Member activity broadcast (reading, highlighting, noting) |
 
-REST history: `GET /messages/{group_id}` returns past messages for a group.
+REST history: `GET /message/messages/{host_user}/?guest_user=...` returns past DMs between two users; group history comes back from `GroupsManager`'s group-read call.
+
+### Attachments (task 20260904-messaging-attachments)
+
+A message may carry an attachment instead of (or alongside) `text` — send/receive payloads gain three optional fields:
+
+```json
+{
+  "text": "",
+  "attachment_kind": "image | video | file | gif | null",
+  "attachment_key": "server-issued S3 object key (image/video/file only, request-side) | null",
+  "attachment_meta": {"...": "kind-specific -- e.g. gif's provider id/url/width/height, or file's display filename"}
+}
+```
+
+On receive (live WebSocket delivery, or DM/group history load), the server never hands back the raw stored `attachment_key` — it resolves it to a fresh, short-lived presigned GET at read time instead:
+
+```json
+{
+  "attachment_kind": "image | video | file | gif | null",
+  "attachment_meta": {"...": "..."},
+  "attachment_url": "presigned GET url (image/video/file), or null for gif -- gif's url already lives in attachment_meta"
+}
+```
+
+An attachment_kind outside `image`/`video`/`file`/`gif`, or one missing the reference its kind actually needs, is silently dropped server-side (never persisted) rather than saved with a broken reference.
+
+| Method | Route | Description |
+|---|---|---|
+| POST | `/message/upload-url/{user_id}` | Self-scoped (caller must be `user_id`). Body: `{"attachment_kind", "content_type", "size_bytes"?}`. Returns a presigned S3 POST policy: `{"url", "fields", "object_key", "expires_in"}` — upload the raw file directly to `url` with `fields` (multipart form), then reference `object_key` as `attachment_key` in the message you send. `400` for an unsupported kind/content-type combination; `503` if attachment uploads aren't configured yet. |
+| GET | `/message/gif-search?q=` | Authenticated. Proxies a GIF search to the configured provider (GIPHY/Tenor) so the provider API key never reaches the client. Returns `{"results": [{"id", "url", "preview_url", "width", "height"}]}`. `502` if the provider call fails, `503` if GIF search isn't configured yet. |
+
+Per-kind upload limits (server-enforced via the presigned POST policy's `content-length-range`, not just advisory): image ≤15MB (`image/jpeg`, `image/png`, `image/webp`, `image/heic`), video ≤250MB (`video/mp4`, `video/quicktime`), file ≤50MB (`application/pdf`, `text/plain`, `.doc`/`.docx`/`.xlsx`). GIFs never upload to our own storage at all — only the provider's id/url is stored.
 
 ---
 

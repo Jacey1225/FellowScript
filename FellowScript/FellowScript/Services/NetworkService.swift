@@ -936,8 +936,8 @@ final class NetworkService: DataServiceProtocol {
     func fetchFriendMessages(userId: String, friendId: String) async throws -> [FSMessage] {
         let data = try await get("/friends/\(userId)/\(friendId)")
         guard let resp = decode(RawChatResponse.self, from: data) else { return [] }
-        let mine  = (resp.host_msgs  ?? []).map { m in FSMessage(id: m.id ?? UUID().uuidString, text: m.text ?? "", mine: true,  sender: "",       timestamp: m.timestamp ?? "") }
-        let theirs = (resp.other_msgs ?? []).map { m in FSMessage(id: m.id ?? UUID().uuidString, text: m.text ?? "", mine: false, sender: m.from_user ?? "", timestamp: m.timestamp ?? "") }
+        let mine  = (resp.host_msgs  ?? []).map { m in FSMessage(id: m.id ?? UUID().uuidString, text: m.text ?? "", mine: true,  sender: "",       timestamp: m.timestamp ?? "", attachmentKind: m.attachment_kind, attachmentURL: m.attachment_url, attachmentMeta: m.attachment_meta) }
+        let theirs = (resp.other_msgs ?? []).map { m in FSMessage(id: m.id ?? UUID().uuidString, text: m.text ?? "", mine: false, sender: m.from_user ?? "", timestamp: m.timestamp ?? "", attachmentKind: m.attachment_kind, attachmentURL: m.attachment_url, attachmentMeta: m.attachment_meta) }
         return (mine + theirs).sorted { $0.timestamp < $1.timestamp }
     }
 
@@ -945,9 +945,85 @@ final class NetworkService: DataServiceProtocol {
     func fetchGroupMessages(userId: String, groupId: String) async throws -> [FSMessage] {
         let data = try await get("/groups/\(userId)/\(groupId)")
         guard let resp = decode(RawGroupResponse.self, from: data) else { return [] }
-        let mine  = (resp.host_msgs  ?? []).map { m in FSMessage(id: m.id ?? UUID().uuidString, text: m.text ?? "", mine: true,  sender: "",          timestamp: m.timestamp ?? "") }
-        let theirs = (resp.other_msgs ?? []).map { m in FSMessage(id: m.id ?? UUID().uuidString, text: m.text ?? "", mine: false, sender: m.from_user ?? "", timestamp: m.timestamp ?? "") }
+        let mine  = (resp.host_msgs  ?? []).map { m in FSMessage(id: m.id ?? UUID().uuidString, text: m.text ?? "", mine: true,  sender: "",          timestamp: m.timestamp ?? "", attachmentKind: m.attachment_kind, attachmentURL: m.attachment_url, attachmentMeta: m.attachment_meta) }
+        let theirs = (resp.other_msgs ?? []).map { m in FSMessage(id: m.id ?? UUID().uuidString, text: m.text ?? "", mine: false, sender: m.from_user ?? "", timestamp: m.timestamp ?? "", attachmentKind: m.attachment_kind, attachmentURL: m.attachment_url, attachmentMeta: m.attachment_meta) }
         return (mine + theirs).sorted { $0.timestamp < $1.timestamp }
+    }
+
+    // ── Attachments (task 20260904-messaging-attachments) ────────────────────
+    // Wire contract per design-notes.md's "Wire contract" section / backend
+    // step 2: request a presigned S3 POST policy over plain HTTP, then upload
+    // the raw bytes directly to S3 with it — this server never receives the
+    // file itself. GIF search is a thin authenticated proxy (backend step 2)
+    // so the provider API key never reaches this client.
+
+    private struct AttachmentUploadURLBody: Encodable {
+        let attachment_kind: String
+        let content_type:    String
+        let size_bytes:      Int?
+    }
+
+    // POST /message/upload-url/{userId} → {url, fields, object_key, expires_in}
+    func requestAttachmentUploadURL(userId: String, attachmentKind: String, contentType: String, sizeBytes: Int?) async throws -> FSUploadURLInfo {
+        let body = AttachmentUploadURLBody(attachment_kind: attachmentKind, content_type: contentType, size_bytes: sizeBytes)
+        let data = try await request("/message/upload-url/\(userId)", method: "POST", body: body)
+        guard let info = decode(FSUploadURLInfo.self, from: data, endpoint: "/message/upload-url") else {
+            throw AppError.networkError("Could not prepare that upload. Please try again.")
+        }
+        return info
+    }
+
+    /// Uploads raw bytes directly to S3 using the presigned POST policy from
+    /// `requestAttachmentUploadURL` — a multipart/form-data POST straight to
+    /// `uploadInfo.url`, not this app's own API (`apiBase` is deliberately
+    /// unused here). `uploadInfo.fields` must ride ahead of the file part
+    /// (S3's presigned-POST contract), and every field key must be present
+    /// exactly as issued — the policy's signature covers them.
+    func uploadAttachment(fileData: Data, contentType: String, uploadInfo: FSUploadURLInfo) async throws {
+        guard let uploadURL = URL(string: uploadInfo.url) else {
+            throw AppError.networkError("Could not reach upload storage.")
+        }
+        let boundary = "Boundary-\(UUID().uuidString)"
+        var req = URLRequest(url: uploadURL)
+        req.httpMethod = "POST"
+        req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+
+        var body = Data()
+        func appendField(_ name: String, _ value: String) {
+            body.append("--\(boundary)\r\n".data(using: .utf8)!)
+            body.append("Content-Disposition: form-data; name=\"\(name)\"\r\n\r\n".data(using: .utf8)!)
+            body.append("\(value)\r\n".data(using: .utf8)!)
+        }
+        for (key, value) in uploadInfo.fields {
+            appendField(key, value)
+        }
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"file\"; filename=\"upload\"\r\n".data(using: .utf8)!)
+        body.append("Content-Type: \(contentType)\r\n\r\n".data(using: .utf8)!)
+        body.append(fileData)
+        body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
+        req.httpBody = body
+
+        let (_, response) = try await URLSession.shared.data(for: req)
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            let status = (response as? HTTPURLResponse)?.statusCode ?? -1
+            print("[NetworkService] Attachment upload to S3 failed with status \(status)")
+            throw AppError.networkError("Upload failed. Please try again.")
+        }
+    }
+
+    private struct RawGifSearchResponse: Decodable {
+        let results: [FSGifResult]
+    }
+
+    // GET /message/gif-search?q= → {results: [...]}
+    func searchGifs(query: String) async throws -> [FSGifResult] {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return [] }
+        let encoded = trimmed.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? trimmed
+        let data = try await get("/message/gif-search?q=\(encoded)")
+        guard let resp = decode(RawGifSearchResponse.self, from: data, endpoint: "/message/gif-search") else { return [] }
+        return resp.results
     }
 
     // ── Friends ───────────────────────────────────────────────────────────────
@@ -1286,6 +1362,13 @@ private struct RawMsg: Decodable {
     let text:      String?
     let from_user: String?
     let timestamp: String
+    // Task 20260904-messaging-attachments: null/absent for an ordinary
+    // text-only message. `attachment_url` (image/video/file only) is a
+    // freshly presigned GET the server resolves at read time — never a
+    // durable/storable URL.
+    let attachment_kind: String?
+    let attachment_meta: FSAttachmentMeta?
+    let attachment_url:  String?
 }
 
 private struct RawChatResponse: Decodable {

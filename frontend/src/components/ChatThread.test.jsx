@@ -93,7 +93,16 @@ describe('ChatThread — send behavior (functional regression guard)', () => {
   test('clicking the send button calls onSend; the button is disabled when the input is empty', () => {
     const { onSend } = renderThread();
     const input = screen.getByPlaceholderText('Message…');
-    const sendBtn = input.parentElement.querySelector('button');
+    // Selector updated for task 20260904-messaging-attachments (testing step
+    // 6): the composer row gained a second button (the attach affordance,
+    // aria-label="Attach a photo, video, file, or GIF") to the left of the
+    // send button, so a positional `input.parentElement.querySelector('button')`
+    // now matches the attach button first instead of send. Locate the send
+    // button by its stable aria-label instead of position -- this is a
+    // design-required DOM restructuring, not a functional regression; the
+    // send-disabled/onSend behavior itself is unchanged (see this file's
+    // other two send-behavior tests, which never broke).
+    const sendBtn = screen.getByLabelText('Send message');
     expect(sendBtn).toBeDisabled();
 
     fireEvent.change(input, { target: { value: 'hi' } });

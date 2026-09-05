@@ -119,6 +119,17 @@ async def lifespan(_: FastAPI):
     from backend.interactions.push import validate_apns_config
     validate_apns_config()
 
+    # Eager attachment/GIF-search config validation (task
+    # 20260904-messaging-attachments) -- same rationale as validate_apns_config
+    # just above: a misconfigured deployment (missing S3_BUCKET_NAME/
+    # S3_REGION, or an unset/unrecognized GIF_PROVIDER/GIF_PROVIDER_API_KEY)
+    # must fail loudly at boot, not degrade every upload/GIF-search request
+    # silently and indefinitely. Deliberately not caught here.
+    from backend.interactions.attachments import validate_attachment_config
+    from backend.interactions.gif_search import validate_gif_config
+    validate_attachment_config()
+    validate_gif_config()
+
     from backend.interactions.scheduler import start_scheduler
     start_scheduler()
     # WS connection-liveness heartbeat (task

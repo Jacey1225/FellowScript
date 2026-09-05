@@ -51,6 +51,14 @@ export function useMessaging({ user }) {
               mine: false,
               timestamp: data.timestamp,
               sender: data.from_user || '',
+              // Task 20260904-messaging-attachments: null/absent for an
+              // ordinary text-only message. attachment_url (image/video/file
+              // only) is a freshly presigned GET the server resolves at
+              // delivery time -- never a durable/storable URL. A "gif"
+              // instead carries its playable URL in attachment_meta.url.
+              attachmentKind: data.attachment_kind || null,
+              attachmentMeta: data.attachment_meta || null,
+              attachmentUrl:  data.attachment_url || null,
             }]);
           }
           return cc;
@@ -184,6 +192,15 @@ export function useMessaging({ user }) {
         setMessages(all.map(m => ({
           text: m.text, mine: m.mine, timestamp: m.timestamp,
           sender: m.mine ? '' : (m.from_user || ''),
+          // Task 20260904-messaging-attachments — see this file's WS
+          // onmessage handler above for the field-shape rationale. Note:
+          // never read `m.attachment_key` here even if a raw backend
+          // response happens to include it (group-message history rows) —
+          // the client only ever renders from `attachment_url`/
+          // `attachment_meta`, matching the DM path's contract exactly.
+          attachmentKind: m.attachment_kind || null,
+          attachmentMeta: m.attachment_meta || null,
+          attachmentUrl:  m.attachment_url || null,
         })));
       }
     } catch (err) {
@@ -199,8 +216,13 @@ export function useMessaging({ user }) {
   }, []);
 
   // ── Send message ──────────────────────────────────────────────────────────
-
-  const sendMessage = useCallback((text) => {
+  // `attachment`, when present, is `{ kind, meta, objectKey }` — `kind` is one
+  // of "image"/"video"/"file"/"gif" (design gate §1 wire contract), `meta` is
+  // the free-form `attachment_meta` dict to send (filename for file; url/
+  // preview_url/width/height for gif; width/height for image/video), and
+  // `objectKey` is the S3 object key from a completed upload (image/video/
+  // file only — always absent for gif, which never uploads bytes of ours).
+  const sendMessage = useCallback((text, attachment = null) => {
     if (!user || !currentContact || !wsRef.current || wsRef.current.readyState !== 1) return;
     const payload = {
       from_user: user.user_id,
@@ -209,9 +231,71 @@ export function useMessaging({ user }) {
       group_id:  currentContact.group_id || '',
       text,
     };
+    if (attachment) {
+      payload.attachment_kind = attachment.kind;
+      payload.attachment_meta = attachment.meta || {};
+      if (attachment.objectKey) payload.attachment_key = attachment.objectKey;
+    }
     wsRef.current.send(JSON.stringify(payload));
-    setMessages(prev => [...prev, { text, mine: true, timestamp: payload.timestamp, sender: '' }]);
+    setMessages(prev => [...prev, {
+      text, mine: true, timestamp: payload.timestamp, sender: '',
+      attachmentKind: attachment ? attachment.kind : null,
+      attachmentMeta: attachment ? (attachment.meta || null) : null,
+      // No attachmentUrl on the optimistic echo for image/video/file — the
+      // composer keeps the local object URL alive for its own preview
+      // (ChatThread.jsx's stagedPreviewUrl) separately from this history
+      // entry; a gif renders correctly from attachmentMeta.url alone, same
+      // as a real delivered/loaded message (design gate §4).
+      attachmentUrl: (attachment && attachment.kind === 'gif') ? null : (attachment?.localUrl || null),
+    }]);
   }, [user, currentContact]);
+
+  // ── Attachments (task 20260904-messaging-attachments) ─────────────────────
+  // Wire contract per design-notes.md / backend step 2: request a presigned
+  // S3 POST policy over plain HTTP, then upload the raw bytes directly to S3
+  // with it — this server never receives the file itself. GIF search is a
+  // thin authenticated proxy so the provider API key never reaches this
+  // client.
+
+  const requestUploadUrl = useCallback(async (attachmentKind, contentType, sizeBytes) => {
+    if (!user) throw new Error('Not signed in.');
+    const res = await fetch(`${API}/message/upload-url/${user.user_id}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ attachment_kind: attachmentKind, content_type: contentType, size_bytes: sizeBytes }),
+    });
+    if (!res.ok) {
+      let detail = "That file type isn't supported here.";
+      try { const d = await res.json(); detail = d.detail || detail; } catch (err) {
+        console.error('Failed to parse upload-url error response:', err);
+      }
+      throw new Error(detail);
+    }
+    return res.json(); // { url, fields, object_key, expires_in }
+  }, [user]);
+
+  /// Uploads raw bytes directly to S3 using the presigned POST policy from
+  /// `requestUploadUrl` — a multipart/form-data POST straight to
+  /// `uploadInfo.url` (not this app's own API). `uploadInfo.fields` must ride
+  /// ahead of the file part (S3's presigned-POST contract).
+  const uploadToS3 = useCallback(async (uploadInfo, file) => {
+    const form = new FormData();
+    Object.entries(uploadInfo.fields || {}).forEach(([key, value]) => form.append(key, value));
+    form.append('file', file);
+    const res = await fetch(uploadInfo.url, { method: 'POST', body: form });
+    if (!res.ok && res.status !== 204) {
+      throw new Error('Upload failed. Please try again.');
+    }
+  }, []);
+
+  const searchGifs = useCallback(async (query) => {
+    const trimmed = (query || '').trim();
+    if (!trimmed) return [];
+    const res = await fetch(`${API}/message/gif-search?q=${encodeURIComponent(trimmed)}`);
+    if (!res.ok) throw new Error("Couldn't load GIFs right now — try again in a moment.");
+    const data = await res.json();
+    return data.results || [];
+  }, []);
 
   // ── Friend actions ────────────────────────────────────────────────────────
 
@@ -350,5 +434,6 @@ export function useMessaging({ user }) {
     loadContacts, openChat, closeChat, sendMessage,
     addFriend, removeFriend, createGroup, updateGroup, leaveGroup,
     reportUser, blockUser,
+    requestUploadUrl, uploadToS3, searchGifs,
   };
 }

@@ -507,6 +507,22 @@ final class ThrowingTestDataService: DataServiceProtocol {
         return try await MockDataService.shared.fetchGroupMessages(userId: userId, groupId: groupId)
     }
 
+    // Stub conformance only (task 20260904-messaging-attachments) -- no test
+    // in this file exercises attachment upload/GIF-search; delegates like the
+    // other pass-through stubs above (e.g. fetchReplies/postReply) so this
+    // double keeps satisfying DataServiceProtocol.
+    func requestAttachmentUploadURL(userId: String, attachmentKind: String, contentType: String, sizeBytes: Int?) async throws -> FSUploadURLInfo {
+        return try await MockDataService.shared.requestAttachmentUploadURL(userId: userId, attachmentKind: attachmentKind, contentType: contentType, sizeBytes: sizeBytes)
+    }
+
+    func uploadAttachment(fileData: Data, contentType: String, uploadInfo: FSUploadURLInfo) async throws {
+        try await MockDataService.shared.uploadAttachment(fileData: fileData, contentType: contentType, uploadInfo: uploadInfo)
+    }
+
+    func searchGifs(query: String) async throws -> [FSGifResult] {
+        return try await MockDataService.shared.searchGifs(query: query)
+    }
+
     func fetchFriendRequests(userId: String) async throws -> [(id: String, username: String)] {
         return try await MockDataService.shared.fetchFriendRequests(userId: userId)
     }

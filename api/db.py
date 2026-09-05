@@ -243,6 +243,24 @@ def create_tables(cur):
         "text TEXT NOT NULL,"
         "timestamp TIMESTAMPTZ DEFAULT NOW())"
     )
+    # Attachment support (task 20260904-messaging-attachments): nullable,
+    # coexisting with `text` rather than a new table -- a message may now
+    # carry an image/video/file/gif attachment alongside or instead of text.
+    # `attachment_key` stores only the S3 *object key* (never a URL) for
+    # image/video/file kinds; rendering issues a fresh, short-lived presigned
+    # GET at read time (backend/interactions/attachments.py) instead of ever
+    # persisting a URL, so a leaked/stored value alone can't grant durable
+    # access. GIF attachments never populate attachment_key at all -- only
+    # the provider's id/url (in attachment_meta) is stored; GIF bytes never
+    # touch our own storage, per the existing no-hosting design decision.
+    # Recognized attachment_kind values are enforced at the app layer
+    # (ConnectionManager.send_msg fails closed on anything not in
+    # schemas.message.ATTACHMENT_KINDS) rather than a DB CHECK constraint,
+    # since `ALTER TABLE ... ADD CONSTRAINT` has no idempotent
+    # `IF NOT EXISTS` form and this function re-runs on every boot.
+    cur.execute("ALTER TABLE messages ADD COLUMN IF NOT EXISTS attachment_kind TEXT")
+    cur.execute("ALTER TABLE messages ADD COLUMN IF NOT EXISTS attachment_key TEXT")
+    cur.execute("ALTER TABLE messages ADD COLUMN IF NOT EXISTS attachment_meta JSONB DEFAULT '{}'")
 
     cur.execute(
         "CREATE TABLE IF NOT EXISTS devotions"
