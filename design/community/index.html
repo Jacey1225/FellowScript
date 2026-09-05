@@ -621,6 +621,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#study-sessions-calls-2026-09-04" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Study Sessions &amp; Calls (2026-09-04)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#real-time-behavior" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1039,6 +1050,15 @@ tap-to-play control — the one place this feature changes default behavior for 
 rather than just disabling a decorative transition.</p>
 <p>Exactly one attachment is supported per message (no multi-file selection); a caption (<code>text</code>) can
 still ride alongside it. See <code>docs/api/overview.md</code>'s Attachments section for the wire contract.</p>
+<hr />
+<h2 id="study-sessions-calls-2026-09-04">Study Sessions &amp; Calls (2026-09-04)</h2>
+<p>A chat thread can host a live voice/video study session (Amazon Chime SDK) via the session
+island shown above the message list (<code>SessionWidget</code>). Joining creates/fetches the Chime meeting
+and requests an attendee token before connecting. A failure at either of those two steps — e.g.
+the server can't reach Chime — used to fail with no visible signal at all. It now surfaces an
+inline error message with a <strong>Retry</strong> button directly on the affected session's card; retrying
+just re-runs the join flow, and the error clears automatically as soon as a join attempt (retry
+or fresh) starts.</p>
 <hr />
 <h2 id="real-time-behavior">Real-Time Behavior</h2>
 <p>The WebSocket connection (<code>/ws/{user_id}</code>) handles:</p>
