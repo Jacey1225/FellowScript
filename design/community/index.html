@@ -1013,8 +1013,10 @@ member list isn't clipped. Appearance-only — <code>onSend</code>/<code>onCreat
 behavior, and existing accessibility labels are unchanged.</p>
 <hr />
 <h2 id="attachments-2026-09-04">Attachments (2026-09-04)</h2>
-<p>The composer (both iOS <code>ChatThreadView</code> and web <code>ChatThread</code>) gained an attach affordance next to
-the text field, opening a small action sheet with three options:</p>
+<p>The composer (both iOS <code>ChatThreadView</code> and web <code>ChatThread</code>) has a plus-icon attach affordance
+next to the text field. Tapping it opens a single horizontal row of three gold pill buttons
+(icon + label, the same treatment used elsewhere in the app) directly above the text field —
+not a bottom sheet/modal — with three options:</p>
 <ul>
 <li><strong>Photo &amp; Video</strong> — the platform's native picker (iOS <code>PHPickerViewController</code>; web <code>&lt;input
   type="file" accept="image/*,video/*"&gt;</code>). The picked file uploads directly to S3 using a
