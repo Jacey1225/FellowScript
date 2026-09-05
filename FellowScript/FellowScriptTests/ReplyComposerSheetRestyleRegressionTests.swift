@@ -55,6 +55,15 @@
 // updated (test_replyFieldIsWrappedInGlassCard_notFormSection, formerly
 // test_replyFieldIsWrappedInWidgetCard_notFormSection); every other
 // assertion in this file is unaffected by this style-only change.
+//
+// Updated by task 20260904-reply-field-text-padding: the background-match
+// swap above dropped widgetCard()'s internal padding, leaving the "REPLY"
+// label and placeholder/cursor flush against the glass card's edge instead
+// of inset like NoteEditorView's body field. Fixed by adding back
+// .padding(Theme.spacingMD) immediately before .glassCard(cornerRadius: 20)
+// on the reply-body VStack, mirroring NoteEditorView.swift's own recipe
+// exactly. test_replyFieldHasPaddingBeforeGlassCard_matchingNoteEditor below
+// pins this.
 
 import XCTest
 import SwiftUI
@@ -114,6 +123,21 @@ final class ReplyComposerSheetRestyleRegressionTests: XCTestCase {
                       "the reply body must now be backed by RichTextEditorView, matching NoteEditorView's rich-text stack")
         XCTAssertTrue(body.contains("Theme.textGoldMuted"),
                       "the field's section-label caption must use the established gold-muted caption color, matching AddFriendSheet's shape")
+    }
+
+    func test_replyFieldHasPaddingBeforeGlassCard_matchingNoteEditor() throws {
+        let body = try sheetBody(try componentSource())
+        // Pinned by task 20260904-reply-field-text-padding: widgetCard()
+        // applied its padding internally, but glassCard() is a pure
+        // .background() modifier with no padding of its own -- so the
+        // background-match swap onto glassCard(cornerRadius: 20) needs an
+        // explicit .padding(Theme.spacingMD) immediately before it, mirroring
+        // NoteEditorView.swift's own body-field recipe exactly, or the
+        // "REPLY" label/placeholder/cursor sit flush against the card edge.
+        XCTAssertTrue(
+            body.contains(".padding(Theme.spacingMD)\n                    .glassCard(cornerRadius: 20)"),
+            "the reply-body VStack must carry .padding(Theme.spacingMD) immediately before .glassCard(cornerRadius: 20), matching NoteEditorView's body field inset"
+        )
     }
 
     func test_cancelIsGhostChip_notPlainButton() throws {

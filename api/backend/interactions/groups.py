@@ -254,11 +254,23 @@ class GroupsManager(DBManager):
             note_id: ID of the parent note whose replies to fetch.
 
         Returns:
-            list[dict]: List of reply note dicts.
+            list[dict]: List of reply note dicts. Each dict now carries its
+                own real row id under ``"id"`` -- ``lookup()`` keys its
+                returned mapping by ``_id`` but that key was previously
+                discarded once unwrapped into this flat list, leaving
+                editors with no way to target the right row. Callers
+                editing a reply need this real id to update the correct
+                row via the existing ``PUT /notes/{user_id}?note_id=``
+                path (no new endpoint or schema change -- just re-attaching
+                the id ``lookup()`` already had).
         """
         blocked = self._blocked_set()
         replies = self.lookup("notes", {"is_reply": True, "parent_note_id": note_id})
-        return [r for r in replies.values() if str(r.get("user_id")) not in blocked]
+        return [
+            {**data, "id": str(rid)}
+            for rid, data in replies.items()
+            if str(data.get("user_id")) not in blocked
+        ]
 
     def fetch_highlights(self) -> dict:
         """Retrieve highlight data for all members of the group.

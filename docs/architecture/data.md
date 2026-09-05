@@ -154,6 +154,8 @@ be updated to describe it once it lands.
 | `creator_id` | UUID FK → `users` (SET NULL on delete) | Nulled when creator is deleted |
 | `title` | TEXT | |
 | `participants` | UUID[] | |
+| `time_start` / `time_end` | TIMESTAMPTZ | Absolute scheduled window, set via the session-creator UI |
+| `reminder_sent_at` | TIMESTAMPTZ, nullable (2026-09-04) | Atomic one-shot claim marker for the `time_start` reminder push — `_fire_due_session_reminders` (see [Background Scheduler](backend.md#background-scheduler)) claims a session via `UPDATE ... WHERE reminder_sent_at IS NULL`, so a session is reminded exactly once regardless of poll cadence or concurrent pollers. Not a per-day/rolling window like the heartbeat/midday markers — a session's reminder is a one-shot event, since `recurring` doesn't currently drive any actual recurrence-computation |
 
 ---
 

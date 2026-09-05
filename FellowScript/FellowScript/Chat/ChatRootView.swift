@@ -93,10 +93,19 @@ struct ChatRootView: View {
             await vm.load(service: appState.service, userId: appState.currentUser?.user_id ?? "")
         }
         .onChange(of: appState.pendingChatContact) { _, target in
-            // Opened from the dashboard community widget — jump to that conversation.
+            // Opened from the dashboard community widget, or from a tap on a
+            // session-created/session-reminder push (AppState.openSession) —
+            // jump to that conversation.
             if let t = target {
                 selectedSegment = (t.type == .group) ? 1 : 0
-                activeContact = t
+                // AppState.openSession only knows the target's raw id/type
+                // (a push payload carries no name/member list) — prefer the
+                // matching already-loaded contact from vm.friends/vm.groups
+                // when one exists, so a group opened this way still has its
+                // real `toUsers` for message routing (see
+                // ChatThreadViewModel.sendMessage) instead of an empty list.
+                let resolved = (t.type == .group ? vm.groups : vm.friends).first { $0.id == t.id }
+                activeContact = resolved ?? t
                 appState.pendingChatContact = nil
             }
         }

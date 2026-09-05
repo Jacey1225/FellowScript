@@ -261,6 +261,18 @@ def create_tables(cur):
         "chime_meeting_id VARCHAR(255) DEFAULT '',"
         "chime_meeting JSONB DEFAULT '{}')"
     )
+    # Session-start reminder push dedup (task
+    # 20260904-session-push-notifications): a session's time_start reminder
+    # must fire exactly once, ever — not a per-day/rolling-window guard.
+    # Per the explicit precedent in
+    # .claude/pipeline/20260825-scheduled-event-duplicate-fire, a rolling
+    # time window is not sufficient to prevent a duplicate fire for this
+    # "fires once when a scheduled moment arrives" family of jobs; the
+    # scheduler claims a session atomically via
+    # `UPDATE ... WHERE reminder_sent_at IS NULL`, so Postgres row locking
+    # guarantees at most one concurrent claim wins regardless of how many
+    # poll cycles or concurrent pollers see the row as a candidate.
+    cur.execute("ALTER TABLE devotions ADD COLUMN IF NOT EXISTS reminder_sent_at TIMESTAMPTZ")
 
     cur.execute(
         "CREATE TABLE IF NOT EXISTS agents"

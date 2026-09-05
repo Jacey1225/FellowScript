@@ -225,6 +225,35 @@ backend changes, since notes and replies already share one `text` column and
 content-filter path. The composer omits `NoteEditorView`'s title field, verse
 tagging, and edit-permission toggle — those don't apply to a reply.
 
+#### Reply Edit (task `20260904-reply-edit-button`)
+
+Each reply card (`NoteDetailView.replyCard`) shows a top-right `gradientPill`
+"Edit", the same pill/idiom as the parent note's own toolbar Edit — gated by
+a per-reply mirror of `canEdit` (the reply's own author, or any group member
+when the reply's own `public`/group-edit flag allows it; hidden, not
+disabled, when authorship can't be confidently resolved). Tapping it opens
+the same `NoteEditorView` the parent note uses, pre-populated with that
+reply's real title/text/verses.
+
+Two plumbing fixes underpin this, both scoped narrowly rather than as a new
+endpoint or editor:
+
+- **Real reply ids** — `GroupsManager.fetch_replies` now re-attaches each
+  reply's real row id (previously discarded once `lookup()`'s result was
+  unwrapped into a flat list) under an `"id"` key, which flows through the
+  group-replies route unchanged. `NetworkService.fetchReplies` decodes that
+  id onto `FSNote.id` instead of synthesizing a throwaway UUID, so a reply's
+  identity survives past the current render pass.
+- **Save path keyed off the note actually being saved** — the reply Edit
+  sheet calls `service.saveNote(_:editingId:userId:)` directly (the same
+  `PUT /notes/{userId}?note_id=` endpoint the parent note's edit flow already
+  uses) with `editingId: saved.id`, then patches the matching entry in
+  `NoteDetailView`'s own `replies` array in place — no full reload, and no
+  write to `NotesViewModel.notes` (which would otherwise make the reply
+  wrongly appear as a top-level note in the main Notes list). A save failure
+  surfaces as the same inline error `NoteEditorView` already shows for the
+  parent note's edit flow.
+
 ---
 
 ## AI-Generated Note Edit Permission (Scheduled Events)

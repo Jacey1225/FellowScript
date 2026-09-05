@@ -584,13 +584,18 @@ final class NetworkService: DataServiceProtocol {
 
     /// Fetches every reply to `noteId`, routing to the group or personal
     /// replies endpoint depending on whether `groupId` is non-empty (pass
-    /// `note.group_id` straight through). Both backend routes return raw DB
-    /// rows via `GroupsManager.fetch_replies()` -- `user_id` only, no `_id`
-    /// or resolved `username` -- so this also:
-    /// (1) synthesizes a local `id` per reply, since the row's real `_id`
-    ///     isn't part of that response shape and SwiftUI only needs *a*
-    ///     stable identity for the current render pass, not one that
-    ///     survives a refetch;
+    /// `note.group_id` straight through). The group route's backing
+    /// `GroupsManager.fetch_replies()` now carries each reply's real row id
+    /// under `"id"` (task 20260904-reply-edit-button, backend step 1 --
+    /// previously discarded once `lookup()`'s result was unwrapped into a
+    /// flat list), so this:
+    /// (1) decodes that real `id` per reply and uses it as `FSNote.id`,
+    ///     falling back to a synthesized UUID only if the field is ever
+    ///     absent (e.g. the personal-notes replies route, which has no
+    ///     server-side implementation yet and is unreachable from
+    ///     `NoteDetailView` today) -- a real id is required for a reply
+    ///     Edit save to `PUT /notes/{userId}?note_id=` the correct row
+    ///     rather than a throwaway one with no relationship to it;
     /// (2) resolves each distinct author's display username via the
     ///     existing `fetchUser` endpoint, concurrently -- mirroring
     ///     `fetchContacts`'s per-friend username resolution above. A
@@ -625,7 +630,7 @@ final class NetworkService: DataServiceProtocol {
 
         return raw.map { r in
             var note = FSNote()
-            note.id        = UUID().uuidString
+            note.id        = r.id ?? UUID().uuidString
             note.user      = r.user_id ?? ""
             note.username  = usernames[r.user_id ?? ""] ?? ""
             note.title     = r.title ?? ""
@@ -1344,6 +1349,15 @@ private struct RawSearchNotes: Decodable {
 /// author key is `user_id`, not `user` -- `NetworkService.fetchReplies`
 /// remaps both when building each reply's `FSNote`.
 private struct RawReplyNote: Decodable {
+    // Real DB row id (task 20260904-reply-edit-button, backend step 1):
+    // `GroupsManager.fetch_replies` now re-attaches the id `lookup()` already
+    // had (previously discarded once unwrapped into a flat list) under this
+    // key. Optional -- the personal-notes replies route has no server-side
+    // implementation yet (out of scope; `NoteDetailView` never calls that
+    // branch), so this stays nil there and `fetchReplies` below falls back
+    // to a synthesized id rather than crashing a decode that's otherwise
+    // still valid.
+    let id:             String?
     let user_id:       String?
     let title:          String?
     let text:           String?

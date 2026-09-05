@@ -488,6 +488,22 @@ struct NotesListView: View {
             }
         }
         .sheet(item: $detailNote) { note in
+            // `editingId: saved.id` (not the outer `note.id`) -- task
+            // 20260904-reply-edit-button: this closure now backs both the
+            // parent note's own Edit flow AND NoteDetailView's new per-reply
+            // Edit flow, which passes a *different* note (the reply) through
+            // to `saved`. `NoteEditorView.handleSave` always stamps
+            // `saved.id` from whichever `noteId` it was opened with (see
+            // NoteEditorView.swift), so `saved.id` already correctly
+            // identifies the row actually being edited -- the parent note's
+            // own id when editing the parent, or a reply's real row id
+            // (surfaced by backend step 1 / NetworkService.fetchReplies) when
+            // editing a reply. Closing over the outer `note.id` instead would
+            // silently PUT every reply edit onto the parent note's row
+            // (found during intake verification), so this is a required fix,
+            // not a stylistic one -- `saved.id` and `note.id` were previously
+            // always equal for the parent-note-only case this closure used
+            // to serve, so this is a no-op change for that existing flow.
             NoteDetailView(
                 note:     note,
                 userId:   appState.currentUser?.user_id ?? "",
@@ -495,7 +511,7 @@ struct NotesListView: View {
                 service:  vm.service
             ) { saved in
                 let uid = appState.currentUser?.user_id ?? ""
-                let ok = await vm.saveNote(saved, editingId: note.id, userId: uid)
+                let ok = await vm.saveNote(saved, editingId: saved.id, userId: uid)
                 if ok { return nil }
                 let msg = vm.saveError
                 vm.saveError = nil
@@ -1188,6 +1204,24 @@ struct NoteDetailView: View {
         return note.username == username
     }
 
+    // Per-reply Edit gate (task 20260904-reply-edit-button), corrected by the
+    // security gate's 2026-09-04 review: a reply must always be private for
+    // editing purposes, regardless of the parent note's/group's edit
+    // permissions -- unlike `canEdit` above (which does have a legitimate
+    // owner-or-group-edit-permission branch via `public`), a reply's own
+    // `public`/`group_id` must never grant a non-author group member edit
+    // access. This is now author-match-only: no group_id fail-open branch,
+    // no public-flag exception. Deny-by-default/fail-closed: an
+    // empty/undecoded username on either side hides Edit rather than
+    // assuming authorship -- unlike the parent note's case, an unresolved
+    // group_id/username here is never safe to read as "personal note,
+    // always self-authored," since a reply only ever exists on a group note
+    // in this app's model.
+    private func canEdit(_ reply: FSNote) -> Bool {
+        guard !reply.username.isEmpty, !username.isEmpty else { return false }
+        return reply.username == username
+    }
+
     // ── Reply section state ───────────────────────────────────────────────
     // Group notes only (mid-task product-intent correction, task
     // 20260828-note-reply-continuation-ios): replies are a group-note-only
@@ -1205,6 +1239,14 @@ struct NoteDetailView: View {
     @State private var repliesLoaded       = false
     @State private var showAllReplies      = false
     @State private var showReplyComposer   = false
+    // Which reply (if any) is currently open in the shared NoteEditorView
+    // (task 20260904-reply-edit-button). `.sheet(item:)` rather than a
+    // second `showEditor`-style Bool + separately-tracked FSNote? pair --
+    // this view already has exactly one thing being edited at a time
+    // (either the parent note via `showEditor`, or one reply via this),
+    // and `.sheet(item:)` gives that "one reply, or none" invariant for
+    // free instead of needing a second bool kept in sync by hand.
+    @State private var editingReply:       FSNote?  = nil
 
     private var displayedReplies: [FSNote] {
         showAllReplies ? replies : Array(replies.prefix(5))
@@ -1493,6 +1535,47 @@ struct NoteDetailView: View {
             .sheet(isPresented: $showReplyComposer) {
                 ReplyComposerSheet(onPost: postReplyDraft)
             }
+            // Reply Edit sheet (task 20260904-reply-edit-button): same
+            // NoteEditorView/flow the parent note's own Edit uses above --
+            // `note`/`noteId` are the tapped reply's, not the parent note's,
+            // so NoteEditorView.handleSave stamps `saved.id` with the
+            // reply's real row id (surfaced by backend step 1) rather than
+            // the parent note's. Deliberately calls `service.saveNote(...)`
+            // directly instead of reusing this view's own `onSave` closure:
+            // that closure ultimately forwards through
+            // NotesViewModel.saveNote, which also writes the saved note into
+            // `vm.notes[savedId]` -- correct for the parent-note case (that
+            // dict backs the main Notes list this note already belongs to),
+            // but wrong for a reply, which would then wrongly appear as a
+            // top-level note in that list. Calling the same underlying
+            // `PUT /notes/{userId}?note_id=` endpoint directly (no new
+            // endpoint) and updating only this view's own `replies` array on
+            // success keeps a reply edit confined to reply state, per the
+            // "editing a reply never mutates the parent note's row" /
+            // no-full-reload acceptance criteria -- and surfaces a
+            // save failure as the same inline error NoteEditorView already
+            // shows for the parent note's edit flow, per the
+            // don't-silently-substitute convention.
+            .sheet(item: $editingReply) { reply in
+                NoteEditorView(
+                    note:       reply,
+                    noteId:     reply.id,
+                    groupId:    note.group_id,
+                    isReadOnly: false
+                ) { saved in
+                    do {
+                        _ = try await service.saveNote(saved, editingId: saved.id, userId: userId)
+                        if let idx = replies.firstIndex(where: { $0.id == saved.id }) {
+                            replies[idx] = saved
+                        }
+                        return nil
+                    } catch {
+                        return error.localizedDescription
+                    }
+                }
+                .presentationDetents([.large])
+                .presentationCompactAdaptation(.fullScreenCover)
+            }
         }
         .preferredColorScheme(.dark)
         .onAppear { didAppear?(self) }
@@ -1601,6 +1684,27 @@ struct NoteDetailView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .widgetCard(padding: Theme.spacingMD)
+        // Per-reply Edit pill (task 20260904-reply-edit-button), top-right of
+        // the card per spec, reusing the exact gradientPill/editAction idiom
+        // already used for the parent note's own toolbar Edit pill above --
+        // no new button style. `.overlay(alignment:)` rather than folding
+        // this into the header HStack: the header's own layout already
+        // branches on whether `reply.username` is empty, and this needs to
+        // sit top-right regardless of which of those branches rendered.
+        // Deny-by-default: hidden entirely (not shown disabled) when
+        // `canEdit(reply)` is false, mirroring the parent toolbar's own
+        // `if canEdit` gating just above.
+        .overlay(alignment: .topTrailing) {
+            if canEdit(reply) {
+                Button {
+                    editingReply = reply
+                } label: {
+                    gradientPill("Edit", compact: true)
+                }
+                .buttonStyle(.plain)
+                .padding(Theme.spacingMD)
+            }
+        }
     }
 
     private func replyMonogram(_ username: String) -> some View {
@@ -1813,6 +1917,7 @@ private struct ReplyComposerSheet: View {
                             .accessibilityLabel("Reply text")
                         }
                     }
+                    .padding(Theme.spacingMD)
                     .glassCard(cornerRadius: 20)
 
                     if let errorMessage {

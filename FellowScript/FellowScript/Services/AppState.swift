@@ -158,6 +158,30 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// Called when the user taps a session-created/session-reminder push
+    /// (FellowScriptApp.AppDelegate's `didReceive response:` posts
+    /// `.sessionPushTapped` with the push's `group_id`). Reuses the existing
+    /// `pendingChatContact` cross-tab navigation (predates this task — see
+    /// DashboardView.openFriendChat / ChatRootView's onChange) rather than a
+    /// new mechanism.
+    ///
+    /// `group_id` is one of two shapes, per `DevotionManager.resolve_members`
+    /// mirroring `is_authorized`'s own three-way membership split: a real
+    /// group id, or a DM room key `"uidA|uidB"` (see
+    /// `ChatThreadViewModel.roomKey`). A DM key resolves to the *other*
+    /// user id (a DM's `FSContact.id` is the friend's id, not the room key
+    /// itself) so `ChatThreadViewModel.roomKey` recomputes the same key the
+    /// push's own room key already was.
+    func openSession(groupId: String) {
+        guard let uid = currentUser?.user_id, !groupId.isEmpty else { return }
+        if groupId.contains("|") {
+            guard let friendId = groupId.split(separator: "|").map(String.init).first(where: { $0 != uid }) else { return }
+            pendingChatContact = FSContact(id: friendId, name: "", type: .friend)
+        } else {
+            pendingChatContact = FSContact(id: groupId, name: "", type: .group)
+        }
+    }
+
     func registerDeviceToken(_ token: String) {
         guard let uid = currentUser?.user_id else { return }
         // No UI surface for this background sync (nothing polls "is my token

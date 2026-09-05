@@ -29,6 +29,11 @@ _watchdog_logger = logger.getChild("watchdog")
 # rather than an inline magic literal.
 HEARTBEAT_POLL_INTERVAL_SECONDS = 60
 
+# A session's time_start is a real-time user-facing moment (unlike the
+# coarse daily/24h midday/guilt windows), so this polls at the same tight
+# cadence as heartbeats rather than the 15-minute reminder jobs' cadence.
+SESSION_REMINDER_POLL_INTERVAL_SECONDS = 60
+
 
 async def _run_nightly_backups() -> None:
     """Mirror each due user's recent data into the separate backup database.
@@ -448,6 +453,112 @@ async def _fire_due_heartbeats() -> None:
         db.close()
 
 
+async def _fire_due_session_reminders() -> None:
+    """Send exactly one reminder push per session, once its ``time_start``
+    arrives.
+
+    Runs every SESSION_REMINDER_POLL_INTERVAL_SECONDS. ``time_start`` is an
+    absolute TIMESTAMPTZ (not a per-user-local recurring "HH:mm" slot like
+    heartbeats), so a session becomes a candidate the instant
+    ``time_start <= NOW()`` and — because a session's reminder is a one-shot
+    "fires once, ever" event, not a daily recurrence (the `recurring` flag
+    doesn't currently drive any actual recurrence-computation; see this
+    task's intake spec) — stays a candidate on every later poll cycle until
+    it's actually claimed. Per the explicit precedent in
+    .claude/pipeline/20260825-scheduled-event-duplicate-fire (a rolling
+    time-window guard was *not* sufficient to prevent a duplicate fire for
+    this same family of "fires once when a scheduled moment arrives" jobs),
+    dedup here is a single atomic claim
+    (``UPDATE ... WHERE reminder_sent_at IS NULL``), not a window check.
+    Postgres row locking guarantees at most one concurrent ``UPDATE`` can
+    match ``reminder_sent_at IS NULL`` for a given row, so this poller
+    safely races itself across cycles and any concurrent poll.
+
+    Member resolution reuses ``DevotionManager.resolve_members`` (the same
+    creator/participants/group-or-DM-roster membership concept
+    ``is_authorized`` already encodes) rather than a new definition, and
+    device-token lookup is batched via ``device_tokens_bulk`` for the whole
+    resolved set. Per-recipient push failures (no token, a transient APNs
+    error) are caught and logged, never aborting the rest of the batch --
+    matching every other job in this file. No session content beyond the
+    title (the deliberately user-facing push-body surface, same posture as
+    ``_friend_went_active_notify``) is put in a log line.
+    """
+    import asyncio
+    import functools
+    from backend.interactions.devotion import DevotionManager
+    from backend.interactions.push import send_push
+
+    def _scan_candidates():
+        db.cur.execute(
+            "SELECT _id FROM devotions "
+            "WHERE time_start IS NOT NULL AND time_start <= NOW() "
+            "AND reminder_sent_at IS NULL"
+        )
+        return [str(r[0]) for r in db.cur.fetchall()]
+
+    def _claim(session_id: str) -> bool:
+        # The atomic claim itself -- this, not the scan above, is what makes
+        # double-fire across repeated poll cycles/concurrent polls
+        # impossible (see docstring).
+        db.cur.execute(
+            "UPDATE devotions SET reminder_sent_at = NOW() "
+            "WHERE _id = %s AND reminder_sent_at IS NULL",
+            (session_id,),
+        )
+        claimed = db.cur.rowcount == 1
+        db.conn.commit()
+        return claimed
+
+    loop = asyncio.get_running_loop()
+    db = DevotionManager()
+    try:
+        try:
+            candidate_ids = await loop.run_in_executor(None, _scan_candidates)
+        except Exception as e:
+            logger.error("Session-reminder due-scan query failed: %s", e)
+            return
+
+        for session_id in candidate_ids:
+            try:
+                claimed = await loop.run_in_executor(None, functools.partial(_claim, session_id))
+                if not claimed:
+                    continue  # a concurrent poll cycle (or this same cycle, re-entrant) already claimed it
+
+                session = await loop.run_in_executor(None, functools.partial(db.get_session, session_id))
+                if not session:
+                    continue
+                members = await loop.run_in_executor(
+                    None, functools.partial(db.resolve_members, session)
+                )
+                if not members:
+                    continue
+                tokens = await loop.run_in_executor(
+                    None, functools.partial(db.device_tokens_bulk, members)
+                )
+
+                session_title = session.get("title") or ""
+                body = f'"{session_title}" is starting now.' if session_title \
+                    else "Your scheduled session is starting now."
+                for uid in members:
+                    token = tokens.get(uid)
+                    if not token:
+                        continue
+                    try:
+                        await send_push(
+                            token, "Session Starting", body,
+                            data={"devotion_id": session_id, "group_id": str(session.get("group_id") or "")},
+                        )
+                    except Exception as e:
+                        logger.error("Session-reminder push failed (%s -> %s): %s", session_id, uid, e)
+            except Exception as e:
+                logger.error("Session-reminder fire cycle error for %s: %s", session_id, e)
+    except Exception as e:
+        logger.error("Session-reminder scheduler job error: %s", e)
+    finally:
+        db.close()
+
+
 def start_scheduler() -> None:
     # The former `notify_check` cron job (agentic/custom notification firing)
     # was removed in full along with that subsystem — see
@@ -468,6 +579,13 @@ def start_scheduler() -> None:
                       replace_existing=True)
     scheduler.add_job(_fire_due_heartbeats, "interval", seconds=HEARTBEAT_POLL_INTERVAL_SECONDS,
                       id="heartbeat_fire", replace_existing=True)
+    # Session time_start reminder push (task 20260904-session-push-notifications)
+    # -- a real-time user-facing moment, so this polls at the same tight
+    # cadence as heartbeats rather than the coarser midday/guilt cadence.
+    # reminder_sent_at's atomic claim (not job frequency) is what caps each
+    # session to exactly one reminder ever, regardless of poll rate.
+    scheduler.add_job(_fire_due_session_reminders, "interval", seconds=SESSION_REMINDER_POLL_INTERVAL_SECONDS,
+                      id="session_reminder_fire", replace_existing=True)
     # Midday/guilt reminders: a 15-minute poll is coarse enough to be cheap
     # but fine enough that the local-noon / >24h windows are never missed by
     # more than 15 minutes — each job's own dedup marker (not job frequency)

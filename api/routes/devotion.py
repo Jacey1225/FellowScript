@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Depends
-from schemas.devotion import DevotionRequest
+from schemas.devotion import DevotionRequest, DevotionPlan
 from backend.interactions.devotion import DevotionManager
 from backend.auth.dependencies import get_current_user, require_match
 from backend.moderation.content_filter import check_clean, ContentRejected, rejection_message
@@ -22,6 +22,41 @@ def _check_devotion_clean(devotion) -> None:
         raise HTTPException(status_code=422, detail=rejection_message(e))
 
 
+async def _notify_session_created(db: DevotionManager, devotion: DevotionPlan, session_id: str, creator_id: str) -> None:
+    """Push the session's other group/DM members that a new session was
+    scheduled -- everyone ``resolve_members`` returns except the creator
+    themselves. Per-recipient failure (missing/expired token, a transient
+    APNs error) is caught and logged, never allowed to fail the create call
+    itself -- same isolation posture as every other push send in this
+    project (``scheduler.py``'s jobs, ``websockets.py``'s ``send_msg``).
+    """
+    from backend.interactions.push import send_push
+
+    session = {
+        "creator_id": creator_id,
+        "participants": devotion.participants,
+        "group_id": devotion.group_id,
+    }
+    members = [uid for uid in db.resolve_members(session) if uid != creator_id]
+    if not members:
+        return
+    tokens = db.device_tokens_bulk(members)
+    creator_name = db.get_username(creator_id) or "Someone"
+    body = f'{creator_name} scheduled a new session: "{devotion.title}".' if devotion.title \
+        else f"{creator_name} scheduled a new session."
+    for uid in members:
+        token = tokens.get(uid)
+        if not token:
+            continue
+        try:
+            await send_push(
+                token, "New Session", body,
+                data={"devotion_id": session_id, "group_id": devotion.group_id},
+            )
+        except Exception as e:
+            logger.error("Session-created push failed (%s -> %s): %s", session_id, uid, e)
+
+
 @devo_router.post("/", status_code=201)
 async def create_devotion(req: DevotionRequest, current_user: str = Depends(get_current_user)) -> dict:
     if req.user_id != current_user:
@@ -30,6 +65,7 @@ async def create_devotion(req: DevotionRequest, current_user: str = Depends(get_
     db = DevotionManager()
     try:
         session_id = db.save_devotion(req.devotion)
+        await _notify_session_created(db, req.devotion, session_id, current_user)
         return {"id": session_id}
     finally:
         db.close()

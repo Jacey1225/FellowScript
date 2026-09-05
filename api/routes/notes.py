@@ -556,12 +556,18 @@ async def update_note(user_id: str, note_id: str, note_dict: dict, _: str = Depe
     """Update an existing note.
 
     The owner may always edit their own note. A non-owner may edit an
-    existing note iff it currently has a group_id, the caller is a member
-    of that group, and the note's stored `public` value is True -- `public`
-    no longer means "visible to others" (see _can_view_note); it means
-    "group members other than the owner may edit this note". Deny-by-default:
-    any lookup/membership failure or ambiguity denies the edit rather than
-    allowing it.
+    existing ordinary (non-reply) note iff it currently has a group_id, the
+    caller is a member of that group, and the note's stored `public` value
+    is True -- `public` no longer means "visible to others" (see
+    _can_view_note); it means "group members other than the owner may edit
+    this note". Deny-by-default: any lookup/membership failure or ambiguity
+    denies the edit rather than allowing it.
+
+    A reply (`is_reply` True) is always author-only for editing purposes,
+    regardless of its own `public`/`group_id` values -- unlike an ordinary
+    note, a reply has no legitimate owner-or-group-edit-permission exception
+    at all, so the non-owner branch below is skipped entirely for replies
+    and any non-author edit attempt is rejected outright.
     """
     db = DBManager()
     try:
@@ -571,6 +577,11 @@ async def update_note(user_id: str, note_id: str, note_dict: dict, _: str = Depe
         _, note_data = list(existing.items())[0]
         is_owner = str(note_data.get("user_id") or "") == user_id
         if not is_owner:
+            if note_data.get("is_reply"):
+                # Author-only: a reply's own public/group_id must never
+                # grant a non-author edit, so there is no group-edit branch
+                # to evaluate here -- fail closed straight to the 403 below.
+                raise HTTPException(status_code=403, detail="Not authorized")
             # Non-owner group-edit branch (new authorization surface): only
             # reachable when the note already has a group_id, the caller is
             # a current member of THAT group (never a client-supplied one --

@@ -192,6 +192,20 @@ highlight) and, for a highlight, includes real verse text resolved from a
 bundled Bible-text asset. It fires once per inactive→active transition
 (>24h gap), not on every individual note/highlight/reply.
 
+Two more pushes cover session/devotion scheduling (2026-09-04), both to the
+session's resolved group/DM members (`DevotionManager.resolve_members`):
+`POST /devotions/` sends a "New Session" push to every member except the
+creator, immediately on creation; `_fire_due_session_reminders` sends a
+"Session Starting" push to every member once the session's `time_start`
+arrives, exactly once (see [`devotions.reminder_sent_at`](../architecture/data.md#devotions)).
+Both carry `devotion_id`/`group_id` in the payload's `data` for the client
+to resolve locally. The iOS client resolves it: tapping either push
+(`AppDelegate.userNotificationCenter(_:didReceive:)`) opens that session's
+chat thread directly (`AppState.openSession(groupId:)`), splitting a DM room
+key (`"uidA|uidB"`) to the other participant or treating any other value as
+a real group id — the same cross-tab navigation the Dashboard's Friend
+Activity widget already uses.
+
 ---
 
 ## Agent (AI Check-ins)

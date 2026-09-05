@@ -42,6 +42,66 @@ class DevotionManager(DBManager):
             self.conn.rollback()
             return False
 
+    def resolve_members(self, session: dict) -> list[str]:
+        """Every user_id this session's own membership rules (``is_authorized``
+        above) would grant access to: the creator, any existing participants,
+        and the full group/DM roster. Returns a deduped list rather than
+        checking one candidate user at a time -- the push-notification call
+        sites (creation push, time_start reminder) need the whole audience at
+        once, but the membership concept itself is deliberately the same one
+        ``is_authorized`` already encodes, not a new definition (task
+        20260904-session-push-notifications).
+        """
+        members: set[str] = set()
+        creator_id = str(session.get("creator_id") or "")
+        if creator_id:
+            members.add(creator_id)
+        members.update(session.get("participants") or [])
+        group_id = str(session.get("group_id") or "")
+        if not group_id:
+            return list(members)
+        if "|" in group_id:
+            members.update(group_id.split("|"))
+            return list(members)
+        try:
+            self.cur.execute("SELECT users FROM groups WHERE _id = %s", (group_id,))
+            row = self.cur.fetchone()
+            if row and row[0]:
+                members.update(str(u) for u in row[0])
+        except Exception as e:
+            logger.warning("Devotion group-roster resolve failed for group_id=%s: %s", group_id, e)
+            self.conn.rollback()
+        return list(members)
+
+    def device_tokens_bulk(self, user_ids: list[str]) -> dict[str, str]:
+        """{user_id: token} for every user in ``user_ids`` with a registered
+        device token -- one batched query instead of one per recipient,
+        matching the existing bulk-lookup pattern (``websockets.py``'s
+        ``send_msg``, ``ActivityManager.friend_device_tokens_bulk``).
+        """
+        if not user_ids:
+            return {}
+        try:
+            self.cur.execute(
+                "SELECT user_id, token FROM device_tokens WHERE user_id = ANY(%s::uuid[])",
+                (list(user_ids),),
+            )
+            return {str(r[0]): r[1] for r in self.cur.fetchall()}
+        except Exception as e:
+            logger.error("Devotion batch device-token lookup failed: %s", e)
+            self.conn.rollback()
+            return {}
+
+    def get_username(self, user_id: str) -> str:
+        """Best-effort display name for a push body (e.g. "{username}
+        scheduled a new session"); empty string if the user can't be
+        resolved -- callers fall back to a generic label rather than fail."""
+        result = self.lookup("users", {"_id": user_id})
+        if not result:
+            return ""
+        _, data = list(result.items())[0]
+        return data.get("username", "") or ""
+
     def save_devotion(self, devotion: DevotionPlan) -> str:
         self.cur.execute(
             "INSERT INTO devotions (_id, title, time_start, time_end, recurring, "
