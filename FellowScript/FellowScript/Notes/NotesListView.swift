@@ -152,12 +152,28 @@ final class NotesViewModel: ObservableObject {
         async let hlTask       = try? service.fetchHighlights(userId: userId)
         async let contactsTask = try? service.fetchContacts(userId: userId)
 
-        var allNotes: [String: FSNote] = [:]
-        var newPageState: [String: NotesPageState] = [:]
+        // Bug fix (task 20260904-notes-group-refresh-null-data): this used to
+        // build `allNotes`/`newPageState` from a fresh empty accumulator and
+        // then unconditionally overwrite `notes`/`pageState` with it, even
+        // though a failed personal-notes fetch or an individual failed
+        // group's `fetchGroupNotes` call (`try?` collapses either to nil,
+        // and the loop below's `guard let page else { continue }` simply
+        // skipped merging that segment) meant the accumulator never had that
+        // segment's data in it -- so one transient fetch failure silently
+        // wiped that segment's (or, if the personal fetch failed, every
+        // group's) already-good notes down to nothing. Mirrors the
+        // DashboardViewModel.load() fix (20260901-dashboard-stale-reload-ui):
+        // only ever splice a segment's fresh result into `notes`/`pageState`
+        // on that segment's own proven (non-nil) success; a segment whose
+        // fetch fails this round simply keeps whatever was already there.
+        var freshNotes: [String: FSNote] = [:]
+        var newPageState = pageState
+        var personalSucceeded = false
         if let page = await notesTask {
-            allNotes.merge(page.notes) { _, new in new }
+            freshNotes.merge(page.notes) { _, new in new }
             newPageState[Self.personalKey] = NotesPageState(
                 cursorCreatedAt: page.nextCursorCreatedAt, cursorId: page.nextCursorId, hasMore: page.hasMore)
+            personalSucceeded = true
         }
         if let h = await hlTask { highlights = h }
 
@@ -167,7 +183,8 @@ final class NotesViewModel: ObservableObject {
             groups = loadedGroups
         }
 
-        // Fetch each group's first page in parallel and merge into allNotes.
+        // Fetch each group's first page in parallel and merge into freshNotes.
+        var succeededGroupIds: Set<String> = []
         await withTaskGroup(of: (String, NotesPage?).self) { group in
             for g in loadedGroups {
                 group.addTask {
@@ -175,20 +192,36 @@ final class NotesViewModel: ObservableObject {
                 }
             }
             for await (gid, page) in group {
-                guard let page else { continue }
-                allNotes.merge(page.notes) { _, new in new }
+                guard let page else { continue }   // this group's fetch failed this round -- leave its existing notes/pageState alone
+                freshNotes.merge(page.notes) { _, new in new }
                 newPageState[gid] = NotesPageState(
                     cursorCreatedAt: page.nextCursorCreatedAt, cursorId: page.nextCursorId, hasMore: page.hasMore)
+                succeededGroupIds.insert(gid)
             }
         }
 
-        notes     = allNotes
+        // Splice: drop the existing entries for only the segments that
+        // actually succeeded this round (so their stale notes don't linger
+        // alongside the fresh ones), then merge in those segments' fresh
+        // notes. Any segment that failed -- or, for a group, was never even
+        // attempted because contactsTask itself failed -- keeps its prior
+        // notes/pageState untouched, exactly matching the acceptance bar.
+        var mergedNotes = notes
+        if personalSucceeded {
+            mergedNotes = mergedNotes.filter { !$0.value.group_id.isEmpty }
+        }
+        if !succeededGroupIds.isEmpty {
+            mergedNotes = mergedNotes.filter { !succeededGroupIds.contains($0.value.group_id) }
+        }
+        mergedNotes.merge(freshNotes) { _, new in new }
+
+        notes     = mergedNotes
         pageState = newPageState
 
         // ── Write fresh data back to the cache ────────────────────────────────────
-        await DiskCache.shared.save(allNotes,   forKey: "notes:\(userId)")
-        await DiskCache.shared.save(highlights, forKey: "highlights:\(userId)")
-        await DiskCache.shared.save(groups,     forKey: "groups:\(userId)")
+        await DiskCache.shared.save(mergedNotes, forKey: "notes:\(userId)")
+        await DiskCache.shared.save(highlights,  forKey: "highlights:\(userId)")
+        await DiskCache.shared.save(groups,      forKey: "groups:\(userId)")
     }
 
     /// Fetches and appends the next backend-capped page of 15 for whichever

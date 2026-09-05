@@ -153,6 +153,12 @@ final class ThrowingTestDataService: DataServiceProtocol {
     var fetchGroupNotesPageQueue: [NotesPage] = []
     private(set) var fetchGroupNotesCallCount = 0
     private(set) var fetchGroupNotesCursors: [(created: String?, id: String?)] = []
+    // Controllable / observable (task 20260904-notes-group-refresh-null-data,
+    // testing coverage) -- keyed by groupId so a test can make exactly one
+    // group's fetchGroupNotes call fail while another group's (or the
+    // personal fetchNotes call's) succeeds, mirroring the existing
+    // fetchHeartbeatsErrorsByAgent per-id seam on this same double.
+    var fetchGroupNotesErrorsByGroup: [String: Error] = [:]
 
     var fetchNotesCountResult: Int?
     // Controllable / observable (task 20260903-account-stats-not-loading,
@@ -208,6 +214,7 @@ final class ThrowingTestDataService: DataServiceProtocol {
     func fetchGroupNotes(userId: String, groupId: String, cursorCreatedAt: String?, cursorId: String?) async throws -> NotesPage {
         fetchGroupNotesCallCount += 1
         fetchGroupNotesCursors.append((cursorCreatedAt, cursorId))
+        if let error = fetchGroupNotesErrorsByGroup[groupId] { throw error }
         if !fetchGroupNotesPageQueue.isEmpty { return fetchGroupNotesPageQueue.removeFirst() }
         return try await MockDataService.shared.fetchGroupNotes(userId: userId, groupId: groupId, cursorCreatedAt: cursorCreatedAt, cursorId: cursorId)
     }
