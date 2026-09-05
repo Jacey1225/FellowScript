@@ -2,6 +2,19 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<!-- Hardcoded "development" here is expected to be Xcode's own
+	     substitution target: CODE_SIGN_STYLE = Automatic for both the Debug
+	     and Release configs of the main target (this is the one shared
+	     entitlements file for both), so Xcode normally rewrites this to
+	     "production" at archive/export time based on the actual
+	     distribution provisioning profile. Not independently verified in
+	     this repo (would require inspecting a signed, archived .ipa's
+	     embedded entitlements -- ios-guidelines #3, 20260904-frontend-arch-
+	     sweep). If push notifications (session-created/reminder pushes,
+	     AppState.registerDeviceToken/openSession) silently stop arriving in
+	     a shipped build, this is the first thing to check: run
+	     `codesign -d --entitlements :- YourApp.app` against the archived
+	     .ipa and confirm this key actually reads "production" there. -->
 	<key>aps-environment</key>
 	<string>development</string>
 	<key>com.apple.developer.applesignin</key>

@@ -88,15 +88,19 @@ class FriendsManager(DBManager):
         who wants to connect.
 
         Returns:
-            list[dict]: ``[{"user_id": str, "username": str}, ...]``.
+            list[dict]: ``[{"user_id": str, "username": str,
+                "profile_photo_url": str | None}, ...]``.
         """
         self.cur.execute(
-            "SELECT u._id, u.username FROM users u "
+            "SELECT u._id, u.username, u.profile_photo_key FROM users u "
             "JOIN friend_requests fr ON u._id = fr.from_user_id "
             "WHERE fr.to_user_id = %s",
             (self.user_id,)
         )
-        return [{"user_id": r[0], "username": r[1]} for r in self.cur.fetchall()]
+        return [
+            {"user_id": r[0], "username": r[1], "profile_photo_url": generate_download_url(r[2])}
+            for r in self.cur.fetchall()
+        ]
 
     def get_friends(self) -> list[dict]:
         """Return the full friend list for the acting user.
@@ -105,12 +109,15 @@ class FriendsManager(DBManager):
             list[dict]: List of friend user records with ``hash_pass`` excluded.
         """
         self.cur.execute(
-            "SELECT u._id, u.username, u.email FROM users u "
+            "SELECT u._id, u.username, u.email, u.profile_photo_key FROM users u "
             "JOIN user_friends uf ON u._id = uf.friend_id "
             "WHERE uf.user_id = %s",
             (self.user_id,)
         )
-        return [{"user_id": r[0], "username": r[1], "email": r[2]} for r in self.cur.fetchall()]
+        return [
+            {"user_id": r[0], "username": r[1], "email": r[2], "profile_photo_url": generate_download_url(r[3])}
+            for r in self.cur.fetchall()
+        ]
 
     @staticmethod
     def _format_dm_row(from_username: str, row: tuple) -> dict:
@@ -172,8 +179,14 @@ class FriendsManager(DBManager):
         other_msgs = [
             self._format_dm_row(friend_data.get("username", ""), r) for r in self.cur.fetchall()
         ]
+        # Same raw-key-never-leaves-the-server treatment as hash_pass just
+        # below -- friend_data here is a raw `lookup()` row, so
+        # profile_photo_key must be popped unconditionally and resolved to a
+        # fresh presigned GET (task 20260905-profile-photo).
+        friend_view = {k: v for k, v in friend_data.items() if k != "hash_pass"}
+        friend_view["profile_photo_url"] = generate_download_url(friend_view.pop("profile_photo_key", None))
         return {
-            "friend":     {k: v for k, v in friend_data.items() if k != "hash_pass"},
+            "friend":     friend_view,
             "host_msgs":  host_msgs,
             "other_msgs": other_msgs,
         }
@@ -255,11 +268,12 @@ class FriendsManager(DBManager):
 
         Returns:
             dict: ``{"friends_active": [{"friend_id", "username",
-                "last_active_at", "activity_type": str | None,
-                "note_preview": {"note_id", "title", "text", "timestamp"} |
-                None, "highlight_preview": {"book", "chapter", "verse",
-                "color", "verse_text": str | None, "timestamp"} | None},
-                ...], "check_in_candidates": [{"friend_id", "username",
+                "profile_photo_url": str | None, "last_active_at",
+                "activity_type": str | None, "note_preview": {"note_id",
+                "title", "text", "timestamp"} | None, "highlight_preview":
+                {"book", "chapter", "verse", "color", "verse_text": str |
+                None, "timestamp"} | None}, ...], "check_in_candidates":
+                [{"friend_id", "username", "profile_photo_url": str | None,
                 "days_since_contact": int | None}, ...]}``. `friends_active`
                 is ordered by `last_active_at` descending (friends with no
                 tracked activity sort last). `activity_type` is the friend's
@@ -275,7 +289,7 @@ class FriendsManager(DBManager):
                 nudge candidate -- it sorts as if "longest ago").
         """
         self.cur.execute(
-            "SELECT uf.friend_id, u.username, ua.last_activity_at, ua.last_activity_type, "
+            "SELECT uf.friend_id, u.username, u.profile_photo_key, ua.last_activity_at, ua.last_activity_type, "
             "n._id, n.title, n.text, n.timestamp, "
             "h.key, h.color, h.timestamp "
             "FROM user_friends uf "
@@ -308,7 +322,7 @@ class FriendsManager(DBManager):
         )
         friends_active = []
         for r in self.cur.fetchall():
-            (friend_id, username, last_active_at, last_activity_type,
+            (friend_id, username, profile_photo_key, last_active_at, last_activity_type,
              note_id, note_title, note_text, note_ts,
              h_key, h_color, h_ts) = r
             highlight_preview = None
@@ -327,6 +341,7 @@ class FriendsManager(DBManager):
             friends_active.append({
                 "friend_id": str(friend_id),
                 "username": username,
+                "profile_photo_url": generate_download_url(profile_photo_key),
                 "last_active_at": str(last_active_at) if last_active_at else None,
                 "activity_type": last_activity_type,
                 "note_preview": (
@@ -337,7 +352,7 @@ class FriendsManager(DBManager):
             })
 
         self.cur.execute(
-            "SELECT uf.friend_id, u.username, "
+            "SELECT uf.friend_id, u.username, u.profile_photo_key, "
             "  (SELECT MAX(m.timestamp) FROM messages m "
             "   JOIN message_recipients mr ON mr.message_id = m._id "
             "   WHERE m.group_id IS NULL "
@@ -357,7 +372,7 @@ class FriendsManager(DBManager):
             (self.user_id, self.CHECK_IN_POOL_SIZE),
         )
         check_in_candidates = []
-        for friend_id, username, last_contact in self.cur.fetchall():
+        for friend_id, username, profile_photo_key, last_contact in self.cur.fetchall():
             days_since_contact = None
             if last_contact:
                 if last_contact.tzinfo is None:
@@ -366,6 +381,7 @@ class FriendsManager(DBManager):
             check_in_candidates.append({
                 "friend_id": str(friend_id),
                 "username": username,
+                "profile_photo_url": generate_download_url(profile_photo_key),
                 "days_since_contact": days_since_contact,
             })
 

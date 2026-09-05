@@ -1,0 +1,40 @@
+{
+  "task_id": "20260902-download-section",
+  "step": 4,
+  "stage": "generation",
+  "result": "pass",
+  "openart_used": false,
+  "generated_assets": [
+    {
+      "type": "coded-html-preview",
+      "path": ".claude/design/20260902-download-section/preview.html",
+      "description": "Isolated static HTML/CSS implementation of design-spec.md v3's exact tokens and structure. Updated from the prior pass: macOS surface changed to rgba(255,244,230,0.055) and Windows to rgba(255,244,230,0.028) (both additive, one shared scale per §5/§6), backdrop-filter dropped, Windows action-slot text changed to 15px/400/left-aligned, and the metadata line now renders the literal bracketed placeholder \"macOS ⟨MIN VERSION — TBC⟩\" instead of an invented version number."
+    },
+    {
+      "type": "screenshot",
+      "path": ".claude/design/20260902-download-section/preview-390.png",
+      "description": "Isolated render at 390px width (mobile, single-column stacking) — re-rendered against the v3 tokens."
+    },
+    {
+      "type": "screenshot",
+      "path": ".claude/design/20260902-download-section/preview-1280.png",
+      "description": "Isolated render at 1280px width — re-rendered against the v3 tokens."
+    },
+    {
+      "type": "screenshot",
+      "path": ".claude/design/20260902-download-section/preview-1440.png",
+      "description": "Isolated render at 1440px width — re-rendered against the v3 tokens. Visually confirms the macOS card now composites visibly brighter than the Windows card (the v2 inversion is fixed) and the metadata placeholder renders as bracketed unresolved text, not a plausible number."
+    },
+    {
+      "type": "coded-html-preview",
+      "path": ".claude/design/20260902-download-section/preview-context.html",
+      "description": "New in-context page (spec §12, v3 requirement) built from real Home.jsx markup/tokens: the full Pricing section (LIGHT_BG/LIGHT_INK, real plans data lifted from Home.jsx:337-378) immediately above the Download section, and the full Closing CTA section (INK, real centered bloom and blockquote lifted verbatim from Home.jsx:380-395) immediately below. Two zero-height marker spans (#seam1 at the Pricing/Download boundary, #seam2 at the Download/Closing-CTA boundary) let the crop tool locate the exact seams programmatically rather than by eyeballing."
+    },
+    {
+      "type": "screenshot",
+      "path": ".claude/design/20260902-download-section/preview-context-1440.png",
+      "description": "1440px-wide crop spanning [seam1 − 200px .. seam2 + 400px] — the Pricing card row's bottom edge and light→dark seam above, the full Download section, and the Closing CTA's bloom + opening blockquote lines below. Confirms both of spec §12's open questions: (1) the light→dark edge at the Pricing boundary lands as a clean flat transition, not an abrupt cut; (2) the Download section's quiet top-right orb and the Closing CTA's much larger, brighter centered bloom read as a considered glow-then-bloom sequence rather than two competing smudges, and the doubled INK run reads as one continuous dark block rather than breaking the page's light/dark alternation."
+    }
+  ],
+  "summary": "Regenerated against design-spec.md v3. openart was correctly not invoked — every value in this spec is a precise token lifted from the live Home.jsx, so an AI-generated image would blur exact values; this is unchanged reasoning from prior passes. Rebuilt preview.html with the v3-fixed additive surface scale (macOS rgba(255,244,230,0.055) vs. Windows rgba(255,244,230,0.028), both against INK) and re-rendered all three isolated widths (390/1280/1440) via headless Chrome (CDP Page.captureScreenshot at deviceScaleFactor 1, matching the prior pass's convention) — visually confirmed the macOS card now composites brighter than the Windows card on every channel, fixing the measured hierarchy inversion from critique pass 2. Also fixed the Windows action-slot register (15px/400/left-aligned) and replaced the invented 'macOS 12+' claim with the literal bracketed placeholder 'macOS ⟨MIN VERSION — TBC⟩' per spec §8's new rule — confirmed rendering as visibly unresolved text in the screenshot, not a plausible number. Built the new required in-context render: preview-context.html assembles the real Pricing section tail (LIGHT_BG/LIGHT_INK, real plans data) and the real Closing CTA head (INK, real centered bloom, real blockquote) verbatim from Home.jsx around the fixed Download section, using two zero-height marker spans measured via CDP Runtime.evaluate to locate the exact section seams, then cropped with PIL to [seam1-200px .. seam2+400px] at 1440px width. The resulting preview-context-1440.png directly answers both open questions from spec §12: the light→dark seam at the Pricing boundary is clean, not abrupt, and the Download orb reads as a quiet setup for the Closing CTA's brighter bloom rather than competing with it — the 'Download glows, Closing CTA blooms' rule holds up under an actual in-context render. No blocking issues found in this render pass; all three v3 fixes (surface hierarchy, placeholder literalism, in-context adjacency) are independently visible in the rendered artifacts, not just asserted in spec text."
+}

@@ -60,7 +60,10 @@ describe('reader-dock.css — .notes-filter-panel (Notes "Filter & Sort" popup) 
 
 describe('NotesPanel.jsx — FilterPanel component', () => {
   test('FilterPanel root no longer sets an inline opaque rgba(6,4,1,0.98) background, and instead relies on the .notes-filter-panel CSS class', () => {
-    const src = fs.readFileSync(path.join(__dirname, '../components/panels/NotesPanel.jsx'), 'utf8');
+    // FilterPanel moved out of NotesPanel.jsx into its own file (readability
+    // #10, 20260904-frontend-arch-sweep) -- same component, same behavior,
+    // reorganized location.
+    const src = fs.readFileSync(path.join(__dirname, '../components/panels/notes/FilterPanel.jsx'), 'utf8');
     const match = src.match(/function FilterPanel\([^)]*\)\s*\{[\s\S]*?\n\}/);
     expect(match, 'expected a FilterPanel function').toBeTruthy();
     const body = match[0];
@@ -105,7 +108,10 @@ describe('NotesPanel.jsx — main viewing panel background (no Notes-specific op
   });
 
   test('NoteDetail\'s own root wrapper div carries no inline background style (only its nested verse-tag buttons/replies do, which is unrelated and unchanged)', () => {
-    const src = fs.readFileSync(path.join(__dirname, '../components/panels/NotesPanel.jsx'), 'utf8');
+    // NoteDetail moved out of NotesPanel.jsx into its own file (readability
+    // #10, 20260904-frontend-arch-sweep) -- same component, same behavior,
+    // reorganized location.
+    const src = fs.readFileSync(path.join(__dirname, '../components/panels/notes/NoteDetail.jsx'), 'utf8');
     // Check the *root* wrapper div's own style object specifically, not the
     // whole function body (which legitimately contains unrelated
     // `background:` on nested verse-tag buttons/reply blocks).
@@ -117,7 +123,10 @@ describe('NotesPanel.jsx — main viewing panel background (no Notes-specific op
 
 describe('NotesPanel.jsx — no functional regression from the presentation-only changes', () => {
   test('FilterPanel still exposes onApply/onClear/onClose with unchanged sort/filter state wiring', () => {
-    const src = fs.readFileSync(path.join(__dirname, '../components/panels/NotesPanel.jsx'), 'utf8');
+    // FilterPanel moved out of NotesPanel.jsx into its own file (readability
+    // #10, 20260904-frontend-arch-sweep) -- same component, same behavior,
+    // reorganized location.
+    const src = fs.readFileSync(path.join(__dirname, '../components/panels/notes/FilterPanel.jsx'), 'utf8');
     expect(src).toMatch(/function FilterPanel\(\{ onApply, onClear, onClose, groupUsernames \}\)/);
     expect(src).toMatch(/onClick=\{\(\) => onApply\(\{ sortVal, filterType, filterVal \}\)\}/);
     expect(src).toMatch(/onClick=\{\(\) => \{ setSortVal\(''\); setFilterType\(''\); setFilterVal\(''\); onClear\(\); \}\}/);

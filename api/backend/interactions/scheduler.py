@@ -34,6 +34,28 @@ HEARTBEAT_POLL_INTERVAL_SECONDS = 60
 # cadence as heartbeats rather than the 15-minute reminder jobs' cadence.
 SESSION_REMINDER_POLL_INTERVAL_SECONDS = 60
 
+# A session's time_start is a one-shot absolute moment with no lower bound
+# on the due-scan query (`time_start <= NOW() AND reminder_sent_at IS
+# NULL`) -- unlike heartbeats, whose candidate selection recomputes
+# "scheduled" against the CURRENT local day every cycle and so can only
+# ever fire today's slot (see _fire_due_heartbeats' docstring), a session
+# has no such structural bound. That gap let a brand-new job's first-ever
+# poll cycle treat an arbitrarily old pre-existing row as a live "starting
+# now" candidate: the session_reminder_fire job didn't exist until
+# 2026-09-04 (task 20260904-session-push-notifications), and on its first
+# scan it fired a "starting now" push for a devotions row whose time_start
+# had passed 39 days earlier (see this task's root-cause write-up,
+# .claude/pipeline/20260905-scheduled-event-trigger-gap/backend.json). A
+# candidate claimed past this cutoff is a fail-closed skip, not a fire --
+# Security Posture Q14 in that task's intake spec treats "can't confidently
+# judge this still meaningful to fire" the same as any other fail-closed
+# case. 1 hour is generous enough to ride out a redeploy/brief scheduler
+# outage without dropping a genuinely-recent reminder, while still refusing
+# to fire a "starting now" push that would read as obviously wrong to the
+# recipient. Named per this file's own WATCHDOG_POLL_INTERVAL_SECONDS /
+# HEARTBEAT_POLL_INTERVAL_SECONDS precedent rather than an inline literal.
+SESSION_REMINDER_STALE_AFTER_SECONDS = 3600
+
 
 async def _run_nightly_backups() -> None:
     """Mirror each due user's recent data into the separate backup database.
@@ -445,6 +467,18 @@ async def _fire_due_heartbeats() -> None:
                     logger.warning(
                         "Heartbeat %s fired but push failed for user %s", heartbeat_id, user_id
                     )
+                else:
+                    # Explicit success-path log -- previously this job only
+                    # logged on the failure/warning path, so "did this
+                    # heartbeat actually fire, and when" had no answer from
+                    # logs alone (see this task's intake spec, acceptance
+                    # criteria). No prompt/note content here, matching the
+                    # rest of this file's redaction posture -- heartbeat_id/
+                    # agent_id/user_id only.
+                    logger.info(
+                        "Heartbeat fired: heartbeat=%s agent=%s user=%s",
+                        heartbeat_id, agent_id, user_id,
+                    )
             except Exception as e:
                 logger.error("Heartbeat fire cycle error for %s: %s", heartbeat_id, e)
     except Exception as e:
@@ -483,6 +517,17 @@ async def _fire_due_session_reminders() -> None:
     matching every other job in this file. No session content beyond the
     title (the deliberately user-facing push-body surface, same posture as
     ``_friend_went_active_notify``) is put in a log line.
+
+    A candidate whose ``time_start`` is older than
+    ``SESSION_REMINDER_STALE_AFTER_SECONDS`` (see that constant's docstring)
+    is still claimed -- the atomic claim is what makes "fired" vs
+    "skipped-as-stale" mutually exclusive and permanent, exactly like the
+    "fired" case -- but no push is sent for it, and a distinct INFO log
+    line records the skip. A push is only ever sent for a candidate that's
+    both claimed *and* within the freshness cutoff, logged with its own
+    distinct INFO line on send -- so "fired" / "skipped-stale" /
+    "not-yet-due" (the last simply never becoming a candidate at all) are
+    each independently answerable from logs, not just correct in behavior.
     """
     import asyncio
     import functools
@@ -491,11 +536,11 @@ async def _fire_due_session_reminders() -> None:
 
     def _scan_candidates():
         db.cur.execute(
-            "SELECT _id FROM devotions "
+            "SELECT _id, time_start FROM devotions "
             "WHERE time_start IS NOT NULL AND time_start <= NOW() "
             "AND reminder_sent_at IS NULL"
         )
-        return [str(r[0]) for r in db.cur.fetchall()]
+        return [(str(r[0]), r[1]) for r in db.cur.fetchall()]
 
     def _claim(session_id: str) -> bool:
         # The atomic claim itself -- this, not the scan above, is what makes
@@ -514,16 +559,29 @@ async def _fire_due_session_reminders() -> None:
     db = DevotionManager()
     try:
         try:
-            candidate_ids = await loop.run_in_executor(None, _scan_candidates)
+            candidates = await loop.run_in_executor(None, _scan_candidates)
         except Exception as e:
             logger.error("Session-reminder due-scan query failed: %s", e)
             return
 
-        for session_id in candidate_ids:
+        for session_id, time_start in candidates:
             try:
                 claimed = await loop.run_in_executor(None, functools.partial(_claim, session_id))
                 if not claimed:
                     continue  # a concurrent poll cycle (or this same cycle, re-entrant) already claimed it
+
+                staleness_seconds = (datetime.now(tzmod.utc) - time_start).total_seconds() if time_start else 0.0
+                if staleness_seconds > SESSION_REMINDER_STALE_AFTER_SECONDS:
+                    # Fail-closed: claimed (so it never gets rescanned), but
+                    # deliberately not pushed -- an arbitrarily stale
+                    # "starting now" push is worse than no push. See
+                    # SESSION_REMINDER_STALE_AFTER_SECONDS's docstring for
+                    # the confirmed case this guards against.
+                    logger.info(
+                        "Session-reminder skipped as stale: session=%s scheduled %.0fs ago (cutoff %ds)",
+                        session_id, staleness_seconds, SESSION_REMINDER_STALE_AFTER_SECONDS,
+                    )
+                    continue
 
                 session = await loop.run_in_executor(None, functools.partial(db.get_session, session_id))
                 if not session:
@@ -549,6 +607,12 @@ async def _fire_due_session_reminders() -> None:
                             token, "Session Starting", body,
                             data={"devotion_id": session_id, "group_id": str(session.get("group_id") or "")},
                         )
+                        # Explicit success-path log -- previously this job
+                        # only logged on the failure path, so "did this
+                        # session's reminder actually fire" had no answer
+                        # from logs alone. No session title/content here,
+                        # matching this file's existing redaction posture.
+                        logger.info("Session-reminder fired: session=%s user=%s", session_id, uid)
                     except Exception as e:
                         logger.error("Session-reminder push failed (%s -> %s): %s", session_id, uid, e)
             except Exception as e:

@@ -1,0 +1,8 @@
+{
+  "task_id": "20260904-frontend-arch-sweep",
+  "step": 4,
+  "gate": "dependency-error",
+  "result": "pass",
+  "finding_count": 12,
+  "summary": "Reviewed all 161 in-scope files (iOS SwiftUI app, React/Vite SPA, legacy static JS tree) plus frontend/package.json and the iOS SPM package references/Package.resolved. iOS shows clear evidence of a prior dependency-error remediation pass (NetworkService.swift, StoreKitManager.swift, GoogleAuthSession.swift, ChimeCallView.swift all cite specific prior fixes). Findings concentrate on the React web app and legacy JS tree, which lack equivalent treatment: 1 Critical (useSessions.js Chime call-join fails completely silently, unlike the fixed iOS equivalent), 4 High (tour.js imports driver.js live from a CDN with no SRI/fallback and can break reader.js's module load; SubscriptionCard.jsx cancelPlan() never checks the DELETE response and can show false success on a billing action; Account.jsx's agent toggle/rename apply optimistic state without checking success, reproducing a bug already fixed on the iOS side; useAgentChat.js swallows nearly every failure with zero logging or user feedback, including the scheduled heartbeat monitor), 4 Medium (MessageAttachments.swift picker failures show no error; legacy messaging.js group actions fail with only a code comment; useMessaging.js's blockUser lacks the message.error() its siblings all have; API base URL hardcoded in two config files instead of env-injected), 3 Low (NetworkService.swift's hardcoded 30s timeout and no retry policy; floating SPM version requirements, mitigated by a committed Package.resolved; DiskCache.swift's silent try? on all file I/O)."
+}

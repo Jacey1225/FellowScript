@@ -182,6 +182,8 @@ body {
 .request-row:last-child { border-bottom: none; }
 
 .request-avatar {
+  position: relative;
+  overflow: hidden;
   width: 36px; height: 36px;
   border-radius: 50%;
   background: rgba(200,134,26,0.15);
@@ -193,6 +195,19 @@ body {
   font-size: 0.85rem;
   color: var(--gold);
   flex-shrink: 0;
+}
+
+/* Task 20260905-profile-photo: layered on top of the initials fallback
+   already in the DOM (see account.html's avatarHtml) -- object-fit: cover
+   fills the circle regardless of the source image's aspect ratio; removes
+   itself on load error, revealing the initials underneath. */
+.request-avatar .avatar-photo {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
 }
 
 .request-info { flex: 1; }

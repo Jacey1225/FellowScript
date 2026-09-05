@@ -16,12 +16,13 @@ export function clearPersistedUser() {
 export async function saveSession(userId, lastPage = '') {
   if (!userId) return;
   try {
-    await fetch(`${API}/session/`, {
+    const res = await fetch(`${API}/session/`, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({ user_id: userId, last_page: lastPage }),
     });
-  } catch { /* offline */ }
+    if (!res.ok) console.warn('[session] saveSession failed', userId, res.status);
+  } catch (err) { console.error('[session] saveSession error:', userId, err); }
 }
 
 // Returns session object { user_id, last_page, last_login, expiration } if valid,
@@ -30,9 +31,12 @@ export async function validateSession(userId) {
   if (!userId) return null;
   try {
     const res = await fetch(`${API}/session/${userId}`);
-    if (!res.ok) return null;
+    if (!res.ok) { console.warn('[session] validateSession failed', userId, res.status); return null; }
     const data = await res.json();
     if (data.error) return null;
     return data.success;
-  } catch { return undefined; } // undefined = offline, don't log out
+  } catch (err) {
+    console.error('[session] validateSession error:', userId, err);
+    return undefined; // undefined = offline, don't log out
+  }
 }

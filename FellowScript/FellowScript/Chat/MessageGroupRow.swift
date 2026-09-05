@@ -36,6 +36,15 @@ struct MessageDisplayGroup: Identifiable {
     // the user-facing short time string already shown next to the name).
     let date:          Date?
     let messages:      [FSMessage]
+    // Task 20260905-profile-photo: FSMessage carries no sender id/photo of
+    // its own (`sender` is a plain display-name string) -- ChatThreadView
+    // resolves this from data it already has (the outgoing case uses `me`;
+    // a DM's incoming case uses the contact's own already-fetched photo; a
+    // group's incoming case uses ChatThreadViewModel's per-member
+    // GET /user/{id} resolution, keyed by username) and threads it in here.
+    // nil falls back to the existing initial-circle treatment in `avatar`
+    // below, exactly like every other surface's fallback.
+    var senderPhotoURL: String? = nil
 }
 
 extension MessageDisplayGroup {
@@ -43,7 +52,12 @@ extension MessageDisplayGroup {
     /// and, for received messages, the same `sender` id) into display groups,
     /// preserving order. Pure transformation of already-loaded real data —
     /// no fabrication.
-    static func grouped(from messages: [FSMessage], me: FSUser?) -> [MessageDisplayGroup] {
+    /// `photoByUsername` (task 20260905-profile-photo): a username → photo
+    /// URL lookup for every *received* message's sender (a DM's single
+    /// contact, or a group's other members) -- defaulted empty so every
+    /// pre-existing call site/preview/test that doesn't supply one keeps
+    /// compiling and rendering the initials-only avatar exactly as before.
+    static func grouped(from messages: [FSMessage], me: FSUser?, photoByUsername: [String: String] = [:]) -> [MessageDisplayGroup] {
         var groups: [MessageDisplayGroup] = []
         for message in messages {
             if let lastIndex = groups.indices.last,
@@ -56,7 +70,8 @@ extension MessageDisplayGroup {
                     timeLabel:     groups[lastIndex].timeLabel,
                     isOutgoing:    groups[lastIndex].isOutgoing,
                     date:          groups[lastIndex].date,
-                    messages:      groups[lastIndex].messages + [message]
+                    messages:      groups[lastIndex].messages + [message],
+                    senderPhotoURL: groups[lastIndex].senderPhotoURL
                 )
             } else {
                 let name = message.mine ? "You" : (message.sender.isEmpty ? "Them" : message.sender)
@@ -67,7 +82,8 @@ extension MessageDisplayGroup {
                     timeLabel:     message.formattedTime,
                     isOutgoing:    message.mine,
                     date:          parseTimestamp(message.timestamp),
-                    messages:      [message]
+                    messages:      [message],
+                    senderPhotoURL: message.mine ? me?.profile_photo_url : photoByUsername[name]
                 ))
             }
         }
@@ -265,14 +281,23 @@ struct MessageGroupRow: View {
     /// per-kind label (design gate §4) — never both at once (an attachment
     /// message with `text` empty has nothing to append).
     private func accessibilityLabel(for message: FSMessage) -> String {
-        switch message.attachmentKind {
-        case "image": return "\(group.senderName): photo attachment"
-        case "video": return "\(group.senderName): video attachment, tap to play"
-        case "gif":   return "\(group.senderName): GIF attachment"
-        case "file":  return "\(group.senderName): file attachment, \(message.attachmentMeta?.filename ?? "file"), double tap to download"
-        default:      return "\(group.senderName): \(message.text)"
+        // compile-errors #3 (20260904-frontend-arch-sweep): switches on the
+        // actual FSAttachmentKind enum (exhaustive, no default:) instead of
+        // the raw wire string -- see FSMessage.attachmentKindEnum. An
+        // unrecognized/nil kind falls into the same "plain text" branch a
+        // stringly-typed `default:` used to catch.
+        guard let kind = message.attachmentKindEnum else {
+            return "\(group.senderName): \(message.text)"
+        }
+        switch kind {
+        case .image: return "\(group.senderName): photo attachment"
+        case .video: return "\(group.senderName): video attachment, tap to play"
+        case .gif:   return "\(group.senderName): GIF attachment"
+        case .file:  return "\(group.senderName): file attachment, \(message.attachmentMeta?.filename ?? "file"), double tap to download"
         }
     }
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var avatar: some View {
         ZStack {
@@ -283,6 +308,25 @@ struct MessageGroupRow: View {
             Text(group.senderInitial)
                 .font(.inter(Theme.fontXS, weight: .bold))
                 .foregroundColor(group.isOutgoing ? Theme.ink : Theme.gold)
+            // Task 20260905-profile-photo: layered over the existing
+            // gradient/initial circle above rather than replacing it, so a
+            // missing/loading/failed photo just shows that same initials
+            // treatment underneath -- never a broken image.
+            if let photoURL = group.senderPhotoURL, !photoURL.isEmpty, let url = URL(string: photoURL) {
+                AsyncImage(
+                    url: url,
+                    transaction: Transaction(animation: reduceMotion ? nil : .easeIn(duration: 0.25))
+                ) { phase in
+                    if let image = phase.image {
+                        image
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(width: 32, height: 32)
+                            .clipShape(Circle())
+                            .transition(.opacity)
+                    }
+                }
+            }
         }
         .frame(width: 32, height: 32)
         .accessibilityHidden(true)

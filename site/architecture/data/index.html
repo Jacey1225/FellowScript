@@ -1394,8 +1394,14 @@
 <td>TEXT</td>
 <td>Hex color string</td>
 </tr>
+<tr>
+<td><code>timestamp</code></td>
+<td>TIMESTAMPTZ</td>
+<td>Set on insert and refreshed on re-highlight (<code>ON CONFLICT</code>). Backs "this friend's most recently highlighted verse" for the friend-activity widget/push (see <a href="../../api/overview/#get-friendsuser_idactivity">Friend Activity</a> and the Background Scheduler section below)</td>
+</tr>
 </tbody>
 </table>
+<p>A friend can see another friend's most recent highlight (including its real verse text, resolved via the bundled <code>bible.json</code> at read/send time) — friendship alone is sufficient grant; there is no separate per-highlight privacy flag. This does not extend to notes, whose group-membership/ownership visibility rules are unchanged.</p>
 <hr />
 <h3 id="bookmarks"><code>bookmarks</code></h3>
 <table>
@@ -1475,18 +1481,28 @@
 </tr>
 <tr>
 <td><code>group_id</code></td>
-<td>UUID FK → <code>groups</code></td>
-<td></td>
+<td>UUID FK → <code>groups</code> (SET NULL on delete)</td>
+<td>Null for a DM</td>
 </tr>
 <tr>
-<td><code>content</code></td>
-<td>TEXT</td>
-<td></td>
+<td><code>text</code></td>
+<td>TEXT NOT NULL</td>
+<td>Defaults to <code>""</code> — an attachment-only message carries no text</td>
 </tr>
 <tr>
-<td><code>is_dm</code></td>
-<td>BOOLEAN</td>
-<td></td>
+<td><code>attachment_kind</code></td>
+<td>TEXT, nullable</td>
+<td><code>image</code> / <code>video</code> / <code>file</code> / <code>gif</code>, or null for a text-only message (task 20260904-messaging-attachments)</td>
+</tr>
+<tr>
+<td><code>attachment_key</code></td>
+<td>TEXT, nullable</td>
+<td>S3 object key for <code>image</code>/<code>video</code>/<code>file</code> only — never a URL, and never set for <code>gif</code>. Resolved to a fresh presigned GET at read time (<code>backend/interactions/attachments.py</code>), never returned to a client as-is</td>
+</tr>
+<tr>
+<td><code>attachment_meta</code></td>
+<td>JSONB DEFAULT <code>'{}'</code></td>
+<td>Kind-specific: GIF provider id/url/width/height, or a file's display filename — GIF bytes never touch our own storage at all</td>
 </tr>
 <tr>
 <td><code>timestamp</code></td>
@@ -1495,6 +1511,7 @@
 </tr>
 </tbody>
 </table>
+<p>A DM's recipient link lives in <code>message_recipients</code> (<code>message_id</code>, <code>user_id</code> composite PK), joined against this table — see <code>FriendsManager.read_friend</code>.</p>
 <hr />
 <h3 id="notifications-removed"><code>notifications</code> (removed)</h3>
 <p>The <code>notifications</code> table backed the former user-authored ("agentic")
@@ -1533,6 +1550,16 @@ be updated to describe it once it lands.</p>
 <td><code>participants</code></td>
 <td>UUID[]</td>
 <td></td>
+</tr>
+<tr>
+<td><code>time_start</code> / <code>time_end</code></td>
+<td>TIMESTAMPTZ</td>
+<td>Absolute scheduled window, set via the session-creator UI</td>
+</tr>
+<tr>
+<td><code>reminder_sent_at</code></td>
+<td>TIMESTAMPTZ, nullable (2026-09-04)</td>
+<td>Atomic one-shot claim marker for the <code>time_start</code> reminder push — <code>_fire_due_session_reminders</code> (see <a href="../backend/#background-scheduler">Background Scheduler</a>) claims a session via <code>UPDATE ... WHERE reminder_sent_at IS NULL</code>, so a session is reminded exactly once regardless of poll cadence or concurrent pollers. Not a per-day/rolling window like the heartbeat/midday markers — a session's reminder is a one-shot event, since <code>recurring</code> doesn't currently drive any actual recurrence-computation</td>
 </tr>
 </tbody>
 </table>

@@ -412,9 +412,16 @@ final class ThrowingTestDataService: DataServiceProtocol {
     var deleteHeartbeatError: Error?
     var updateHeartbeatError: Error?
 
-    func addHeartbeat(userId: String, agentId: String, heartbeat: FSHeartbeat) async throws {
+    // idempotencyKey param added alongside the protocol requirement (task
+    // 20260905-heartbeat-timezone-duplicate-bugs, step 4) -- forwarded
+    // as-is, not asserted on here; recorded coverage for it is the testing
+    // gate's own scope.
+    var lastAddHeartbeatIdempotencyKey: String?
+
+    func addHeartbeat(userId: String, agentId: String, heartbeat: FSHeartbeat, idempotencyKey: String?) async throws {
+        lastAddHeartbeatIdempotencyKey = idempotencyKey
         if let addHeartbeatError { throw addHeartbeatError }
-        try await MockDataService.shared.addHeartbeat(userId: userId, agentId: agentId, heartbeat: heartbeat)
+        try await MockDataService.shared.addHeartbeat(userId: userId, agentId: agentId, heartbeat: heartbeat, idempotencyKey: idempotencyKey)
     }
 
     func deleteHeartbeat(userId: String, agentId: String, heartbeatId: String) async throws {
@@ -499,7 +506,16 @@ final class ThrowingTestDataService: DataServiceProtocol {
         return try await MockDataService.shared.fetchContacts(userId: userId)
     }
 
+    // Controllable (task 20260904-compliance-security-fixes testing gate):
+    // lets a test force the network fetch in ChatThreadViewModel.load() to
+    // fail via `try?`, so `messages` is left exactly as the cache-first read
+    // set it -- used by ChatThreadCacheIsolationRegressionTests to observe
+    // the cache-first value alone, undisturbed by MockDataService's
+    // userId-agnostic fixture overwriting it a moment later.
+    var fetchFriendMessagesError: Error?
+
     func fetchFriendMessages(userId: String, friendId: String) async throws -> [FSMessage] {
+        if let fetchFriendMessagesError { throw fetchFriendMessagesError }
         return try await MockDataService.shared.fetchFriendMessages(userId: userId, friendId: friendId)
     }
 

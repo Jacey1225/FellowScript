@@ -69,6 +69,65 @@ extension View {
     // grep that nothing else ever called the `shape:` overloads.
 }
 
+// ── Shared avatar (task 20260905-profile-photo) ─────────────────────────────
+// A small photo-with-initials-fallback circle, reused by every Dashboard/
+// Chat/Notes surface that shows a user's identity via a plain initial
+// circle today: HeroHeader/FriendActivityHeroCard below, MessageGroupRow's
+// bubble avatars, and NoteDetailView's reply monogram. Deliberately NOT
+// used by AccountView+Profile.swift's own profile-header avatar -- that one
+// has its own bespoke gradient/Playfair-display treatment plus an upload
+// affordance, and per this task's UI/UX preference profile (Q12: no forced
+// cross-platform/cross-surface abstraction), a shared small-avatar
+// component doesn't need to also cover that larger, editable, differently-
+// styled case.
+//
+// Falls back to (and stays showing, underneath) the initials circle
+// whenever `photoURL` is nil/empty, still loading, or fails to load --
+// never a broken-image icon or blank space. The photo crossfades in via
+// `AsyncImage`'s own `transaction:` (applied automatically on every phase
+// change, including the initial load), respecting `prefers-reduced-motion`
+// (UI/UX Q14/Q18) by dropping the animation entirely rather than skipping
+// the photo.
+struct AvatarView: View {
+    let initial:     String
+    var photoURL:    String? = nil
+    var diameter:    CGFloat = 32
+    var fillColor:   Color   = Color(hex: "#24170A")
+    var textColor:   Color   = Theme.goldLight
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var resolvedURL: URL? {
+        guard let photoURL, !photoURL.isEmpty else { return nil }
+        return URL(string: photoURL)
+    }
+
+    var body: some View {
+        ZStack {
+            Circle().fill(fillColor)
+            Text(initial)
+                .font(.system(size: diameter * 0.42, weight: .bold))
+                .foregroundColor(textColor)
+            if let resolvedURL {
+                AsyncImage(
+                    url: resolvedURL,
+                    transaction: Transaction(animation: reduceMotion ? nil : .easeIn(duration: 0.25))
+                ) { phase in
+                    if let image = phase.image {
+                        image
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(width: diameter, height: diameter)
+                            .clipShape(Circle())
+                            .transition(.opacity)
+                    }
+                }
+            }
+        }
+        .frame(width: diameter, height: diameter)
+    }
+}
+
 // ── Hero header + warm gradient ───────────────────────────────────────────────
 // Matches the approved mockup's header treatment: a single greeting line,
 // nothing above or below it (no "YOUR RHYTHM" eyebrow, no "Last read..."
@@ -79,6 +138,11 @@ extension View {
 // *structure* (single line, no eyebrow/subtitle), not literal static text.
 struct HeroHeader: View {
     let username: String
+    // Task 20260905-profile-photo: the viewer's own photo -- defaulted nil
+    // so any pre-existing preview/test call site that only supplies
+    // `username` keeps compiling and rendering the initials-only avatar
+    // unchanged.
+    var photoURL: String? = nil
 
     private var greeting: String {
         let h = Calendar.current.component(.hour, from: Date())
@@ -116,15 +180,14 @@ struct HeroHeader: View {
             }
             Spacer()
             // Identity avatar (decorative — not a control, so no dead button).
-            Circle()
-                .fill(Color(hex: "#2A1B0B"))
-                .frame(width: 44, height: 44)
-                .overlay(
-                    Text(String(username.prefix(1)).uppercased())
-                        .font(.system(size: 16, weight: .bold))
-                        .foregroundColor(Color(hex: "#F0AE40"))
-                )
-                .accessibilityHidden(true)
+            AvatarView(
+                initial:   String(username.prefix(1)).uppercased(),
+                photoURL:  photoURL,
+                diameter:  44,
+                fillColor: Color(hex: "#2A1B0B"),
+                textColor: Color(hex: "#F0AE40")
+            )
+            .accessibilityHidden(true)
         }
         .padding(.horizontal, 20)
         .padding(.top, 14)
@@ -235,10 +298,8 @@ struct FriendActivityHeroCard: View {
             Spacer()
             HStack(spacing: -9) {
                 ForEach(Array(feed.friends_active.prefix(4))) { f in
-                    Circle().fill(Color(hex: "#24170A"))
-                        .frame(width: 28, height: 28)
+                    AvatarView(initial: f.initial, photoURL: f.profile_photo_url, diameter: 28)
                         .overlay(Circle().stroke(Theme.bgPage, lineWidth: 2))
-                        .overlay(Text(f.initial).font(.system(size: 12, weight: .bold)).foregroundColor(Theme.goldLight))
                 }
                 if feed.friends_active.count > 4 {
                     Circle().fill(Color(hex: "#24170A"))
@@ -255,9 +316,7 @@ struct FriendActivityHeroCard: View {
     private func activityRow(_ entry: FSFriendActivityEntry) -> some View {
         Button(action: { onOpenFriend(entry) }) {
             HStack(alignment: .top, spacing: 14) {
-                Circle().fill(Color(hex: "#24170A"))
-                    .frame(width: 32, height: 32)
-                    .overlay(Text(entry.initial).font(.system(size: 14, weight: .bold)).foregroundColor(Theme.goldLight))
+                AvatarView(initial: entry.initial, photoURL: entry.profile_photo_url, diameter: 32)
                     .padding(.top, 4)
                 VStack(alignment: .leading, spacing: 4) {
                     Text(headline(entry))

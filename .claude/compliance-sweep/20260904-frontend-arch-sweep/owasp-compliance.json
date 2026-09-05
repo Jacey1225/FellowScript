@@ -1,0 +1,8 @@
+{
+  "task_id": "20260904-frontend-arch-sweep",
+  "step": 6,
+  "gate": "owasp-compliance",
+  "result": "pass",
+  "finding_count": 7,
+  "summary": "Reviewed all 161 in-scope files across the iOS SwiftUI app, React/Vite SPA, and legacy static tree against OWASP Top 10:2025 / ASVS 5.0, tracing each candidate to a concrete code path rather than a keyword match. 3 High findings: a stored-XSS bypass in RichText.jsx's note-HTML sanitizer (cleanNode unwraps disallowed tags without re-scanning/re-stripping promoted children, letting an event-handler attribute survive into dangerouslySetInnerHTML), an unescaped group-username-to-innerHTML injection in the legacy notes.js filter panel (the one lapse in an otherwise-consistent escHtml() pattern), and a cross-account DiskCache key collision in ChatThreadView.swift that can surface one iOS account's cached friend-DM history to a different account signed in later on the same device. 2 Medium findings: full note content logged via console.log/print in every environment (notes.js, NotesListView.swift), and a flagged-forward observation that every surface's authorization model rests on client-supplied user_id path/body params whose actual enforcement lives in the out-of-scope api/ backend. 1 Low finding: DiskCache.swift sets no explicit file-protection class on cached PII-adjacent data. Several suspected issues (NetworkService.swift's unchecked requestRaw on auth endpoints, StoreKitManager's transaction verification, AdminGate's client-side check) were traced and confirmed to already fail closed or be documented defense-in-depth, and are recorded as ruled-out rather than omitted."
+}

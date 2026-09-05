@@ -8,6 +8,7 @@ from backend.interactions.activity import ActivityManager, NOTE_CREATED, NOTE_ED
 from backend.interactions.bible_text import is_valid_reference
 from backend.auth.dependencies import get_current_user, require_match
 from backend.moderation.content_filter import check_clean, ContentRejected, rejection_message
+from backend.interactions.attachments import generate_download_url
 from datetime import datetime
 import uuid
 import logging
@@ -483,8 +484,11 @@ async def get_note(user_id: str, note_id: str, _: str = Depends(require_match("u
             client already knows the owner; here the note may belong to a
             friend, and NoteDetailView's canEdit gate needs the owner's
             username (not just user_id) to compare against the viewer's own
-            username. ``{"error": "cannot find note"}`` if the note doesn't
-            exist or the viewer isn't permitted to see it.
+            username. Also includes "profile_photo_url" (str | None, task
+            20260905-profile-photo) -- the owner's photo resolved to a
+            fresh presigned GET, for the author indicator; None if they
+            have no photo set. ``{"error": "cannot find note"}`` if the
+            note doesn't exist or the viewer isn't permitted to see it.
     """
     db = DBManager()
     try:
@@ -504,14 +508,20 @@ async def get_note(user_id: str, note_id: str, _: str = Depends(require_match("u
         verses = [[r[1], r[2], r[3]] for r in db.cur.fetchall()]
         owner_id = str(note_data.get("user_id") or "")
         username = ""
+        profile_photo_url = None
         if owner_id:
             owner = db.lookup("users", {"_id": owner_id})
             if owner:
                 _, owner_data = list(owner.items())[0]
                 username = owner_data.get("username") or ""
+                # task 20260905-profile-photo: author indicator resolves the
+                # owner's photo the same way every other identity surface
+                # does -- a fresh presigned GET at read time, never the raw key.
+                profile_photo_url = generate_download_url(owner_data.get("profile_photo_key"))
         return {
             "user":       owner_id,
             "username":   username,
+            "profile_photo_url": profile_photo_url,
             "title":      note_data.get("title"),
             "text":       note_data.get("text"),
             "public":     note_data.get("public"),

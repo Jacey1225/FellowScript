@@ -1426,6 +1426,8 @@ body.msg-open .reader-main {
 }
 
 .msg-avatar {
+  position: relative;
+  overflow: hidden;
   width: 32px; height: 32px;
   border-radius: 50%;
   background: rgba(200,134,26,0.15);
@@ -1437,6 +1439,18 @@ body.msg-open .reader-main {
   font-size: 0.75rem;
   color: var(--gold);
   flex-shrink: 0;
+}
+
+/* Task 20260905-profile-photo: layered on top of the initials fallback
+   already in the DOM (see messaging.js's avatarHtml) -- object-fit: cover
+   fills the circle regardless of the source image's aspect ratio. */
+.avatar-photo {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
 }
 
 .msg-contact-info {
@@ -1545,6 +1559,8 @@ body.msg-open .reader-main {
 }
 
 .msg-group-member-avatar {
+  position: relative;
+  overflow: hidden;
   width: 26px; height: 26px;
   border-radius: 50%;
   background: rgba(200,134,26,0.12);

@@ -70,6 +70,12 @@ final class StartupCoordinator: ObservableObject {
         // once it resolves, rather than being torn down mid-fetch.
         Task {
             async let notes: Void = notesVM.load(service: service, userId: userId)
+            // bibleVM.load() here is deliberately lightweight (highlights/
+            // bookmarks only) — the 4.2MB bible.json decode is NOT part of
+            // this startup race. It's loaded lazily, gated behind the Bible
+            // tab's own first appearance (see BibleViewModel.loadBibleContent(),
+            // called only from BibleReaderView's `.task`), so cold launch
+            // never pays that decode cost. Task 20260904-compliance-performance-fixes.
             async let bible: Void = bibleVM.load(service: service, userId: userId)
             async let chat: Void  = chatVM.load(service: service, userId: userId)
             _ = await (notes, bible, chat)

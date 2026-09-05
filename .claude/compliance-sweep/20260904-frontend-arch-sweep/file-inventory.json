@@ -1,0 +1,992 @@
+{
+  "task_id": "20260904-frontend-arch-sweep",
+  "root": "/Users/jaceysimpson/Vscode/FellowScript",
+  "files": [
+    {
+      "path": "FellowScript/FellowScript/Account/AccountView.swift",
+      "language": "swift",
+      "loc": 2174
+    },
+    {
+      "path": "FellowScript/FellowScript/Account/BlockedUsersView.swift",
+      "language": "swift",
+      "loc": 80
+    },
+    {
+      "path": "FellowScript/FellowScript/Account/EventSetupSheet.swift",
+      "language": "swift",
+      "loc": 507
+    },
+    {
+      "path": "FellowScript/FellowScript/Account/MfaSheets.swift",
+      "language": "swift",
+      "loc": 111
+    },
+    {
+      "path": "FellowScript/FellowScript/Auth/AppleAuthSession.swift",
+      "language": "swift",
+      "loc": 74
+    },
+    {
+      "path": "FellowScript/FellowScript/Auth/AuthView.swift",
+      "language": "swift",
+      "loc": 473
+    },
+    {
+      "path": "FellowScript/FellowScript/Auth/CompleteProfileView.swift",
+      "language": "swift",
+      "loc": 101
+    },
+    {
+      "path": "FellowScript/FellowScript/Auth/ForgotPasswordView.swift",
+      "language": "swift",
+      "loc": 109
+    },
+    {
+      "path": "FellowScript/FellowScript/Auth/GoogleAuthSession.swift",
+      "language": "swift",
+      "loc": 137
+    },
+    {
+      "path": "FellowScript/FellowScript/Auth/MfaVerifyView.swift",
+      "language": "swift",
+      "loc": 96
+    },
+    {
+      "path": "FellowScript/FellowScript/Auth/TermsReacceptView.swift",
+      "language": "swift",
+      "loc": 77
+    },
+    {
+      "path": "FellowScript/FellowScript/Bible/BibleReaderView.swift",
+      "language": "swift",
+      "loc": 1035
+    },
+    {
+      "path": "FellowScript/FellowScript/Chat/AgentChatView.swift",
+      "language": "swift",
+      "loc": 474
+    },
+    {
+      "path": "FellowScript/FellowScript/Chat/ChatRootView.swift",
+      "language": "swift",
+      "loc": 1002
+    },
+    {
+      "path": "FellowScript/FellowScript/Chat/ChatThreadView.swift",
+      "language": "swift",
+      "loc": 1449
+    },
+    {
+      "path": "FellowScript/FellowScript/Chat/ChimeCallView.swift",
+      "language": "swift",
+      "loc": 505
+    },
+    {
+      "path": "FellowScript/FellowScript/Chat/ChimeModels.swift",
+      "language": "swift",
+      "loc": 28
+    },
+    {
+      "path": "FellowScript/FellowScript/Chat/ChipToggle.swift",
+      "language": "swift",
+      "loc": 108
+    },
+    {
+      "path": "FellowScript/FellowScript/Chat/MessageAttachments.swift",
+      "language": "swift",
+      "loc": 682
+    },
+    {
+      "path": "FellowScript/FellowScript/Chat/MessageGroupRow.swift",
+      "language": "swift",
+      "loc": 290
+    },
+    {
+      "path": "FellowScript/FellowScript/Chat/PillButton.swift",
+      "language": "swift",
+      "loc": 69
+    },
+    {
+      "path": "FellowScript/FellowScript/Chat/ReportUserSheet.swift",
+      "language": "swift",
+      "loc": 71
+    },
+    {
+      "path": "FellowScript/FellowScript/Chat/SegmentedDurationControl.swift",
+      "language": "swift",
+      "loc": 71
+    },
+    {
+      "path": "FellowScript/FellowScript/ContentView.swift",
+      "language": "swift",
+      "loc": 179
+    },
+    {
+      "path": "FellowScript/FellowScript/Dashboard/DashboardComponents.swift",
+      "language": "swift",
+      "loc": 785
+    },
+    {
+      "path": "FellowScript/FellowScript/Dashboard/DashboardView.swift",
+      "language": "swift",
+      "loc": 313
+    },
+    {
+      "path": "FellowScript/FellowScript/Dashboard/FloatingTabBar.swift",
+      "language": "swift",
+      "loc": 74
+    },
+    {
+      "path": "FellowScript/FellowScript/FellowScript.entitlements",
+      "language": "entitlements (config)",
+      "loc": 12
+    },
+    {
+      "path": "FellowScript/FellowScript/FellowScript.storekit",
+      "language": "storekit (config)",
+      "loc": 225
+    },
+    {
+      "path": "FellowScript/FellowScript/FellowScriptApp.swift",
+      "language": "swift",
+      "loc": 98
+    },
+    {
+      "path": "FellowScript/FellowScript/Info.plist",
+      "language": "plist (config)",
+      "loc": 83
+    },
+    {
+      "path": "FellowScript/FellowScript/LoadingScreen/LoadingScreenView.swift",
+      "language": "swift",
+      "loc": 154
+    },
+    {
+      "path": "FellowScript/FellowScript/Models/Models.swift",
+      "language": "swift",
+      "loc": 730
+    },
+    {
+      "path": "FellowScript/FellowScript/Notes/NoteEditorView.swift",
+      "language": "swift",
+      "loc": 614
+    },
+    {
+      "path": "FellowScript/FellowScript/Notes/NotesListView.swift",
+      "language": "swift",
+      "loc": 2024
+    },
+    {
+      "path": "FellowScript/FellowScript/Onboarding/OnboardingView.swift",
+      "language": "swift",
+      "loc": 716
+    },
+    {
+      "path": "FellowScript/FellowScript/PrivacyInfo.xcprivacy",
+      "language": "xcprivacy (config)",
+      "loc": 96
+    },
+    {
+      "path": "FellowScript/FellowScript/Services/AppState.swift",
+      "language": "swift",
+      "loc": 199
+    },
+    {
+      "path": "FellowScript/FellowScript/Services/DiskCache.swift",
+      "language": "swift",
+      "loc": 63
+    },
+    {
+      "path": "FellowScript/FellowScript/Services/MockDataService.swift",
+      "language": "swift",
+      "loc": 729
+    },
+    {
+      "path": "FellowScript/FellowScript/Services/NetworkService.swift",
+      "language": "swift",
+      "loc": 1453
+    },
+    {
+      "path": "FellowScript/FellowScript/Services/StartupCoordinator.swift",
+      "language": "swift",
+      "loc": 97
+    },
+    {
+      "path": "FellowScript/FellowScript/Services/StoreKitManager.swift",
+      "language": "swift",
+      "loc": 242
+    },
+    {
+      "path": "FellowScript/FellowScript/Theme/Theme.swift",
+      "language": "swift",
+      "loc": 537
+    },
+    {
+      "path": "FellowScript/FellowScript/Utils/Inspection.swift",
+      "language": "swift",
+      "loc": 51
+    },
+    {
+      "path": "FellowScript/FellowScript/Utils/RichText.swift",
+      "language": "swift",
+      "loc": 811
+    },
+    {
+      "path": "frontend/src/App.jsx",
+      "language": "jsx",
+      "loc": 40
+    },
+    {
+      "path": "frontend/src/components/AdminGate.jsx",
+      "language": "jsx",
+      "loc": 29
+    },
+    {
+      "path": "frontend/src/components/AdminGate.test.jsx",
+      "language": "jsx",
+      "loc": 54
+    },
+    {
+      "path": "frontend/src/components/AgentChatThread.jsx",
+      "language": "jsx",
+      "loc": 176
+    },
+    {
+      "path": "frontend/src/components/AppBloom.jsx",
+      "language": "jsx",
+      "loc": 35
+    },
+    {
+      "path": "frontend/src/components/AppBloom.test.jsx",
+      "language": "jsx",
+      "loc": 130
+    },
+    {
+      "path": "frontend/src/components/AppNav.jsx",
+      "language": "jsx",
+      "loc": 131
+    },
+    {
+      "path": "frontend/src/components/AppNav.test.jsx",
+      "language": "jsx",
+      "loc": 97
+    },
+    {
+      "path": "frontend/src/components/BibleCard.jsx",
+      "language": "jsx",
+      "loc": 107
+    },
+    {
+      "path": "frontend/src/components/BibleNavigator.jsx",
+      "language": "jsx",
+      "loc": 143
+    },
+    {
+      "path": "frontend/src/components/BookmarkButton.jsx",
+      "language": "jsx",
+      "loc": 192
+    },
+    {
+      "path": "frontend/src/components/ChatThread.attachments.test.jsx",
+      "language": "jsx",
+      "loc": 330
+    },
+    {
+      "path": "frontend/src/components/ChatThread.jsx",
+      "language": "jsx",
+      "loc": 542
+    },
+    {
+      "path": "frontend/src/components/ChatThread.test.jsx",
+      "language": "jsx",
+      "loc": 131
+    },
+    {
+      "path": "frontend/src/components/ContactsPanel.jsx",
+      "language": "jsx",
+      "loc": 346
+    },
+    {
+      "path": "frontend/src/components/DetectionDetailOverlay.jsx",
+      "language": "jsx",
+      "loc": 423
+    },
+    {
+      "path": "frontend/src/components/DetectionDetailOverlay.test.jsx",
+      "language": "jsx",
+      "loc": 534
+    },
+    {
+      "path": "frontend/src/components/DonationButton.jsx",
+      "language": "jsx",
+      "loc": 110
+    },
+    {
+      "path": "frontend/src/components/HighlightPicker.jsx",
+      "language": "jsx",
+      "loc": 30
+    },
+    {
+      "path": "frontend/src/components/MessagingSidebar.jsx",
+      "language": "jsx",
+      "loc": 290
+    },
+    {
+      "path": "frontend/src/components/MobileBlockGate.jsx",
+      "language": "jsx",
+      "loc": 41
+    },
+    {
+      "path": "frontend/src/components/MobileBlockGate.test.jsx",
+      "language": "jsx",
+      "loc": 62
+    },
+    {
+      "path": "frontend/src/components/RichText.jsx",
+      "language": "jsx",
+      "loc": 413
+    },
+    {
+      "path": "frontend/src/components/RichText.test.jsx",
+      "language": "jsx",
+      "loc": 110
+    },
+    {
+      "path": "frontend/src/components/ScriptureNav.jsx",
+      "language": "jsx",
+      "loc": 83
+    },
+    {
+      "path": "frontend/src/components/SessionCreator.jsx",
+      "language": "jsx",
+      "loc": 261
+    },
+    {
+      "path": "frontend/src/components/SessionCreator.test.jsx",
+      "language": "jsx",
+      "loc": 175
+    },
+    {
+      "path": "frontend/src/components/SessionWidget.jsx",
+      "language": "jsx",
+      "loc": 356
+    },
+    {
+      "path": "frontend/src/components/SubscriptionCard.jsx",
+      "language": "jsx",
+      "loc": 464
+    },
+    {
+      "path": "frontend/src/components/VerseSelector.jsx",
+      "language": "jsx",
+      "loc": 189
+    },
+    {
+      "path": "frontend/src/components/panels/AgentChatPanel.jsx",
+      "language": "jsx",
+      "loc": 100
+    },
+    {
+      "path": "frontend/src/components/panels/BibleReaderPanel.jsx",
+      "language": "jsx",
+      "loc": 161
+    },
+    {
+      "path": "frontend/src/components/panels/HighlightsPanel.jsx",
+      "language": "jsx",
+      "loc": 133
+    },
+    {
+      "path": "frontend/src/components/panels/MessagingPanel.jsx",
+      "language": "jsx",
+      "loc": 96
+    },
+    {
+      "path": "frontend/src/components/panels/NotesPanel.groupEditPermission.test.jsx",
+      "language": "jsx",
+      "loc": 184
+    },
+    {
+      "path": "frontend/src/components/panels/NotesPanel.jsx",
+      "language": "jsx",
+      "loc": 834
+    },
+    {
+      "path": "frontend/src/components/panels/NotesPanel.test.jsx",
+      "language": "jsx",
+      "loc": 100
+    },
+    {
+      "path": "frontend/src/components/panels/ReaderDockRail.jsx",
+      "language": "jsx",
+      "loc": 59
+    },
+    {
+      "path": "frontend/src/config.js",
+      "language": "js",
+      "loc": 2
+    },
+    {
+      "path": "frontend/src/context/AuthContext.jsx",
+      "language": "jsx",
+      "loc": 54
+    },
+    {
+      "path": "frontend/src/context/ReaderPanelContexts.jsx",
+      "language": "jsx",
+      "loc": 20
+    },
+    {
+      "path": "frontend/src/hooks/useAgentChat.js",
+      "language": "js",
+      "loc": 242
+    },
+    {
+      "path": "frontend/src/hooks/useBible.js",
+      "language": "js",
+      "loc": 101
+    },
+    {
+      "path": "frontend/src/hooks/useBookmarks.js",
+      "language": "js",
+      "loc": 40
+    },
+    {
+      "path": "frontend/src/hooks/useFocusTrap.js",
+      "language": "js",
+      "loc": 56
+    },
+    {
+      "path": "frontend/src/hooks/useHighlights.js",
+      "language": "js",
+      "loc": 111
+    },
+    {
+      "path": "frontend/src/hooks/useHostRect.js",
+      "language": "js",
+      "loc": 50
+    },
+    {
+      "path": "frontend/src/hooks/useHostRect.test.jsx",
+      "language": "jsx",
+      "loc": 160
+    },
+    {
+      "path": "frontend/src/hooks/useIsDesktopViewport.js",
+      "language": "js",
+      "loc": 26
+    },
+    {
+      "path": "frontend/src/hooks/useMessaging.attachments.test.js",
+      "language": "js",
+      "loc": 188
+    },
+    {
+      "path": "frontend/src/hooks/useMessaging.js",
+      "language": "js",
+      "loc": 439
+    },
+    {
+      "path": "frontend/src/hooks/useMessaging.test.js",
+      "language": "js",
+      "loc": 144
+    },
+    {
+      "path": "frontend/src/hooks/useNotes-error-surfacing.test.js",
+      "language": "js",
+      "loc": 92
+    },
+    {
+      "path": "frontend/src/hooks/useNotes.js",
+      "language": "js",
+      "loc": 329
+    },
+    {
+      "path": "frontend/src/hooks/useNotes.test.js",
+      "language": "js",
+      "loc": 148
+    },
+    {
+      "path": "frontend/src/hooks/useParallaxBlobs.js",
+      "language": "js",
+      "loc": 94
+    },
+    {
+      "path": "frontend/src/hooks/useSessions.js",
+      "language": "js",
+      "loc": 438
+    },
+    {
+      "path": "frontend/src/hooks/useTheme.js",
+      "language": "js",
+      "loc": 14
+    },
+    {
+      "path": "frontend/src/lib/deviceGate.js",
+      "language": "js",
+      "loc": 18
+    },
+    {
+      "path": "frontend/src/lib/deviceGate.test.js",
+      "language": "js",
+      "loc": 38
+    },
+    {
+      "path": "frontend/src/lib/readerDockLayout.js",
+      "language": "js",
+      "loc": 137
+    },
+    {
+      "path": "frontend/src/lib/remediationMarkdown.js",
+      "language": "js",
+      "loc": 133
+    },
+    {
+      "path": "frontend/src/lib/remediationMarkdown.test.js",
+      "language": "js",
+      "loc": 181
+    },
+    {
+      "path": "frontend/src/main.jsx",
+      "language": "jsx",
+      "loc": 37
+    },
+    {
+      "path": "frontend/src/pages/Account.jsx",
+      "language": "jsx",
+      "loc": 1133
+    },
+    {
+      "path": "frontend/src/pages/AdminDetectionDetail.jsx",
+      "language": "jsx",
+      "loc": 374
+    },
+    {
+      "path": "frontend/src/pages/AdminDetectionDetail.test.jsx",
+      "language": "jsx",
+      "loc": 344
+    },
+    {
+      "path": "frontend/src/pages/AdminDetections.jsx",
+      "language": "jsx",
+      "loc": 491
+    },
+    {
+      "path": "frontend/src/pages/AdminDetections.test.jsx",
+      "language": "jsx",
+      "loc": 443
+    },
+    {
+      "path": "frontend/src/pages/ForgotPassword.jsx",
+      "language": "jsx",
+      "loc": 80
+    },
+    {
+      "path": "frontend/src/pages/Home.download-section.test.jsx",
+      "language": "jsx",
+      "loc": 76
+    },
+    {
+      "path": "frontend/src/pages/Home.jsx",
+      "language": "jsx",
+      "loc": 568
+    },
+    {
+      "path": "frontend/src/pages/Privacy.jsx",
+      "language": "jsx",
+      "loc": 258
+    },
+    {
+      "path": "frontend/src/pages/Reader.dockGlassAudit.test.jsx",
+      "language": "jsx",
+      "loc": 84
+    },
+    {
+      "path": "frontend/src/pages/Reader.dockGlassFix.test.jsx",
+      "language": "jsx",
+      "loc": 107
+    },
+    {
+      "path": "frontend/src/pages/Reader.dockNotesGlassToolbar.test.jsx",
+      "language": "jsx",
+      "loc": 133
+    },
+    {
+      "path": "frontend/src/pages/Reader.dockOutlineFix.test.jsx",
+      "language": "jsx",
+      "loc": 114
+    },
+    {
+      "path": "frontend/src/pages/Reader.dockPortalBlurFix.test.jsx",
+      "language": "jsx",
+      "loc": 112
+    },
+    {
+      "path": "frontend/src/pages/Reader.dockRail.test.jsx",
+      "language": "jsx",
+      "loc": 370
+    },
+    {
+      "path": "frontend/src/pages/Reader.dockToolbarRadiusFix.test.jsx",
+      "language": "jsx",
+      "loc": 155
+    },
+    {
+      "path": "frontend/src/pages/Reader.dockVerseMessagesGlass.test.jsx",
+      "language": "jsx",
+      "loc": 145
+    },
+    {
+      "path": "frontend/src/pages/Reader.dockview.persistence.test.jsx",
+      "language": "jsx",
+      "loc": 196
+    },
+    {
+      "path": "frontend/src/pages/Reader.dockview.test.jsx",
+      "language": "jsx",
+      "loc": 167
+    },
+    {
+      "path": "frontend/src/pages/Reader.jsx",
+      "language": "jsx",
+      "loc": 427
+    },
+    {
+      "path": "frontend/src/pages/ResetPassword.jsx",
+      "language": "jsx",
+      "loc": 86
+    },
+    {
+      "path": "frontend/src/pages/SignIn.jsx",
+      "language": "jsx",
+      "loc": 316
+    },
+    {
+      "path": "frontend/src/pages/Terms.jsx",
+      "language": "jsx",
+      "loc": 215
+    },
+    {
+      "path": "frontend/src/pages/VerifyMfa.jsx",
+      "language": "jsx",
+      "loc": 119
+    },
+    {
+      "path": "frontend/src/styles/global.css",
+      "language": "css",
+      "loc": 1523
+    },
+    {
+      "path": "frontend/src/styles/reader-dock.css",
+      "language": "css",
+      "loc": 601
+    },
+    {
+      "path": "frontend/src/test/setup.js",
+      "language": "js",
+      "loc": 16
+    },
+    {
+      "path": "frontend/src/theme.js",
+      "language": "js",
+      "loc": 116
+    },
+    {
+      "path": "frontend/src/utils.js",
+      "language": "js",
+      "loc": 105
+    },
+    {
+      "path": "frontend/src/utils.test.js",
+      "language": "js",
+      "loc": 78
+    },
+    {
+      "path": "frontend/account.html",
+      "language": "html",
+      "loc": 331
+    },
+    {
+      "path": "frontend/reader.html",
+      "language": "html",
+      "loc": 319
+    },
+    {
+      "path": "frontend/signin.html",
+      "language": "html",
+      "loc": 220
+    },
+    {
+      "path": "frontend/css/account.css",
+      "language": "css",
+      "loc": 336
+    },
+    {
+      "path": "frontend/css/base.css",
+      "language": "css",
+      "loc": 151
+    },
+    {
+      "path": "frontend/css/index.css",
+      "language": "css",
+      "loc": 417
+    },
+    {
+      "path": "frontend/css/reader.css",
+      "language": "css",
+      "loc": 2283
+    },
+    {
+      "path": "frontend/css/signin.css",
+      "language": "css",
+      "loc": 195
+    },
+    {
+      "path": "frontend/css/tour.css",
+      "language": "css",
+      "loc": 105
+    },
+    {
+      "path": "frontend/js/bible.js",
+      "language": "js",
+      "loc": 251
+    },
+    {
+      "path": "frontend/js/config.js",
+      "language": "js",
+      "loc": 11
+    },
+    {
+      "path": "frontend/js/dashboard.js",
+      "language": "js",
+      "loc": 170
+    },
+    {
+      "path": "frontend/js/highlights.js",
+      "language": "js",
+      "loc": 130
+    },
+    {
+      "path": "frontend/js/messaging.js",
+      "language": "js",
+      "loc": 444
+    },
+    {
+      "path": "frontend/js/notes.js",
+      "language": "js",
+      "loc": 670
+    },
+    {
+      "path": "frontend/js/notes.test.js",
+      "language": "js (test)",
+      "loc": 152
+    },
+    {
+      "path": "frontend/js/reader.js",
+      "language": "js",
+      "loc": 218
+    },
+    {
+      "path": "frontend/js/session.js",
+      "language": "js",
+      "loc": 38
+    },
+    {
+      "path": "frontend/js/tour.js",
+      "language": "js",
+      "loc": 340
+    },
+    {
+      "path": "frontend/js/utils.js",
+      "language": "js",
+      "loc": 42
+    },
+    {
+      "path": "frontend/js/utils.test.js",
+      "language": "js (test)",
+      "loc": 55
+    }
+  ],
+  "excluded": [
+    {
+      "path": "FellowScript/FellowScript/Assets.xcassets/AppIcon.appiconset/Contents.json",
+      "reason": "generated/boilerplate (Xcode asset-catalog metadata, not authored code)"
+    },
+    {
+      "path": "FellowScript/FellowScript/Assets.xcassets/AppIcon.appiconset/fellowscript-app-icon-1024.png",
+      "reason": "binary (image asset)"
+    },
+    {
+      "path": "FellowScript/FellowScript/Assets.xcassets/Contents.json",
+      "reason": "generated/boilerplate (Xcode asset-catalog metadata, not authored code)"
+    },
+    {
+      "path": "FellowScript/FellowScript/Assets.xcassets/FellowScriptMark.imageset/Contents.json",
+      "reason": "generated/boilerplate (Xcode asset-catalog metadata, not authored code)"
+    },
+    {
+      "path": "FellowScript/FellowScript/Assets.xcassets/FellowScriptMark.imageset/fellowscript-mark-1024.png",
+      "reason": "binary (image asset)"
+    },
+    {
+      "path": "FellowScript/FellowScript/Assets.xcassets/OnboardingTour/Contents.json",
+      "reason": "generated/boilerplate (Xcode asset-catalog metadata, not authored code)"
+    },
+    {
+      "path": "FellowScript/FellowScript/Assets.xcassets/OnboardingTour/tour-account.imageset/Contents.json",
+      "reason": "generated/boilerplate (Xcode asset-catalog metadata, not authored code)"
+    },
+    {
+      "path": "FellowScript/FellowScript/Assets.xcassets/OnboardingTour/tour-account.imageset/tour-account.png",
+      "reason": "binary (image asset)"
+    },
+    {
+      "path": "FellowScript/FellowScript/Assets.xcassets/OnboardingTour/tour-add-friend.imageset/Contents.json",
+      "reason": "generated/boilerplate (Xcode asset-catalog metadata, not authored code)"
+    },
+    {
+      "path": "FellowScript/FellowScript/Assets.xcassets/OnboardingTour/tour-add-friend.imageset/tour-add-friend.png",
+      "reason": "binary (image asset)"
+    },
+    {
+      "path": "FellowScript/FellowScript/Assets.xcassets/OnboardingTour/tour-ai-agent.imageset/Contents.json",
+      "reason": "generated/boilerplate (Xcode asset-catalog metadata, not authored code)"
+    },
+    {
+      "path": "FellowScript/FellowScript/Assets.xcassets/OnboardingTour/tour-ai-agent.imageset/tour-ai-agent.png",
+      "reason": "binary (image asset)"
+    },
+    {
+      "path": "FellowScript/FellowScript/Assets.xcassets/OnboardingTour/tour-bible-nav.imageset/Contents.json",
+      "reason": "generated/boilerplate (Xcode asset-catalog metadata, not authored code)"
+    },
+    {
+      "path": "FellowScript/FellowScript/Assets.xcassets/OnboardingTour/tour-bible-nav.imageset/tour-bible-nav.png",
+      "reason": "binary (image asset)"
+    },
+    {
+      "path": "FellowScript/FellowScript/Assets.xcassets/OnboardingTour/tour-create-group.imageset/Contents.json",
+      "reason": "generated/boilerplate (Xcode asset-catalog metadata, not authored code)"
+    },
+    {
+      "path": "FellowScript/FellowScript/Assets.xcassets/OnboardingTour/tour-create-group.imageset/tour-create-group.png",
+      "reason": "binary (image asset)"
+    },
+    {
+      "path": "FellowScript/FellowScript/Assets.xcassets/OnboardingTour/tour-create-note.imageset/Contents.json",
+      "reason": "generated/boilerplate (Xcode asset-catalog metadata, not authored code)"
+    },
+    {
+      "path": "FellowScript/FellowScript/Assets.xcassets/OnboardingTour/tour-create-note.imageset/tour-create-note.png",
+      "reason": "binary (image asset)"
+    },
+    {
+      "path": "FellowScript/FellowScript/Assets.xcassets/OnboardingTour/tour-dashboard.imageset/Contents.json",
+      "reason": "generated/boilerplate (Xcode asset-catalog metadata, not authored code)"
+    },
+    {
+      "path": "FellowScript/FellowScript/Assets.xcassets/OnboardingTour/tour-dashboard.imageset/tour-dashboard.png",
+      "reason": "binary (image asset)"
+    },
+    {
+      "path": "FellowScript/FellowScript/Assets.xcassets/OnboardingTour/tour-friend-chat.imageset/Contents.json",
+      "reason": "generated/boilerplate (Xcode asset-catalog metadata, not authored code)"
+    },
+    {
+      "path": "FellowScript/FellowScript/Assets.xcassets/OnboardingTour/tour-friend-chat.imageset/tour-friend-chat.png",
+      "reason": "binary (image asset)"
+    },
+    {
+      "path": "FellowScript/FellowScript/Assets.xcassets/OnboardingTour/tour-group-notes.imageset/Contents.json",
+      "reason": "generated/boilerplate (Xcode asset-catalog metadata, not authored code)"
+    },
+    {
+      "path": "FellowScript/FellowScript/Assets.xcassets/OnboardingTour/tour-group-notes.imageset/tour-group-notes.png",
+      "reason": "binary (image asset)"
+    },
+    {
+      "path": "FellowScript/FellowScript/Assets.xcassets/OnboardingTour/tour-group-session.imageset/Contents.json",
+      "reason": "generated/boilerplate (Xcode asset-catalog metadata, not authored code)"
+    },
+    {
+      "path": "FellowScript/FellowScript/Assets.xcassets/OnboardingTour/tour-group-session.imageset/tour-group-session.png",
+      "reason": "binary (image asset)"
+    },
+    {
+      "path": "FellowScript/FellowScript/Assets.xcassets/OnboardingTour/tour-heartbeat.imageset/Contents.json",
+      "reason": "generated/boilerplate (Xcode asset-catalog metadata, not authored code)"
+    },
+    {
+      "path": "FellowScript/FellowScript/Assets.xcassets/OnboardingTour/tour-heartbeat.imageset/tour-heartbeat.png",
+      "reason": "binary (image asset)"
+    },
+    {
+      "path": "FellowScript/FellowScript/Assets.xcassets/OnboardingTour/tour-highlights.imageset/Contents.json",
+      "reason": "generated/boilerplate (Xcode asset-catalog metadata, not authored code)"
+    },
+    {
+      "path": "FellowScript/FellowScript/Assets.xcassets/OnboardingTour/tour-highlights.imageset/tour-highlights.png",
+      "reason": "binary (image asset)"
+    },
+    {
+      "path": "FellowScript/FellowScript/Bible/bible.json",
+      "reason": "data (4.2MB Bible translation text blob, not architecture-relevant code)"
+    },
+    {
+      "path": "FellowScript/FellowScript/Bible/bible.json.bak-20260712-232858",
+      "reason": "generated (dated backup file, not part of the build)"
+    },
+    {
+      "path": "FellowScript/FellowScript/Fonts/Inter-Bold.ttf",
+      "reason": "binary (font asset)"
+    },
+    {
+      "path": "FellowScript/FellowScript/Fonts/Inter-Regular.ttf",
+      "reason": "binary (font asset)"
+    },
+    {
+      "path": "FellowScript/FellowScript/Fonts/Inter-SemiBold.ttf",
+      "reason": "binary (font asset)"
+    },
+    {
+      "path": "FellowScript/FellowScript/Fonts/NOTICE.md",
+      "reason": "documentation/license text, not code"
+    },
+    {
+      "path": "FellowScript/FellowScript/Fonts/OFL-Inter.txt",
+      "reason": "documentation/license text, not code"
+    },
+    {
+      "path": "FellowScript/FellowScript/Fonts/OFL-PlayfairDisplay.txt",
+      "reason": "documentation/license text, not code"
+    },
+    {
+      "path": "FellowScript/FellowScript/Fonts/PlayfairDisplay-Bold.ttf",
+      "reason": "binary (font asset)"
+    },
+    {
+      "path": "FellowScript/FellowScript/Fonts/PlayfairDisplay-Italic.ttf",
+      "reason": "binary (font asset)"
+    },
+    {
+      "path": "FellowScript/FellowScript/Fonts/PlayfairDisplay-Regular.ttf",
+      "reason": "binary (font asset)"
+    },
+    {
+      "path": "FellowScript/FellowScript/Fonts/PlayfairDisplay-SemiBold.ttf",
+      "reason": "binary (font asset)"
+    },
+    {
+      "path": "FellowScript/FellowScript/LoadingScreen/loading-screen.mov",
+      "reason": "binary (video asset)"
+    },
+    {
+      "path": "FellowScript/FellowScript/Onboarding/TOUR_SCREENSHOT_CAPTURE.md",
+      "reason": "documentation/license text, not code"
+    }
+  ],
+  "total_reviewable": 161,
+  "result": "pass",
+  "summary": "Frontend-wide scope (web + iOS): 46 reviewable iOS SwiftUI/config files under FellowScript/FellowScript/ (tests excluded), 94 reviewable React/JS/CSS files under frontend/src/ (Vite/React SPA), plus 21 reviewable files under the legacy static frontend tree (frontend/{account,reader,signin}.html, frontend/css/**, frontend/js/**) confirmed actively maintained and served separately by nginx alongside the React app; backend api/ remains out of scope. 44 iOS files excluded as binary assets, asset-catalog metadata, license docs, or the bible.json data blob/backup."
+}

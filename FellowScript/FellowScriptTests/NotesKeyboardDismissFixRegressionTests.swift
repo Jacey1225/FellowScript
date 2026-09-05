@@ -184,9 +184,14 @@ final class NotesScreensStillUseSharedModifierTests: XCTestCase {
     }
 
     func test_notesListView_replyComposerSheet_stillAppliesSharedModifierExactlyOnce() throws {
-        let source = try readSource("FellowScript/Notes/NotesListView.swift")
-        guard let sheetRange = source.range(of: "private struct ReplyComposerSheet: View {") else {
-            XCTFail("ReplyComposerSheet not found in NotesListView.swift")
+        // ReplyComposerSheet moved out of NotesListView.swift into its own
+        // file in the compliance-readability-cleanup task's split
+        // (readability #6, 20260904-frontend-arch-sweep) -- same type, same
+        // behavior, and no longer `private` since a sibling-file split
+        // requires at least internal visibility.
+        let source = try readSource("FellowScript/Notes/ReplyComposerSheet.swift")
+        guard let sheetRange = source.range(of: "struct ReplyComposerSheet: View {") else {
+            XCTFail("ReplyComposerSheet not found in ReplyComposerSheet.swift")
             return
         }
         let sheetBody = String(source[sheetRange.upperBound...].prefix(12000))

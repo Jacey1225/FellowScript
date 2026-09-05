@@ -10,6 +10,7 @@ struct ContentView: View {
     @ObservedObject private var call = CallController.shared
     @StateObject private var startup = StartupCoordinator()
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var selectedTab: Tab = .home
 
     enum Tab: Int {
@@ -80,8 +81,8 @@ struct ContentView: View {
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
-        .animation(.spring(response: 0.30, dampingFraction: 0.85), value: call.inCall)
-        .animation(.spring(response: 0.30, dampingFraction: 0.85), value: call.isExpanded)
+        .motionAwareAnimation(.spring(response: 0.30, dampingFraction: 0.85), value: call.inCall, reduceMotion: reduceMotion)
+        .motionAwareAnimation(.spring(response: 0.30, dampingFraction: 0.85), value: call.isExpanded, reduceMotion: reduceMotion)
         // Expanded full-screen call
         .fullScreenCover(isPresented: $call.isExpanded) {
             ChimeCallView().environmentObject(appState)
@@ -122,12 +123,12 @@ struct ContentView: View {
                 startup.reset()
             }
         }
-        .animation(.easeInOut(duration: 0.25), value: appState.isAuthenticated)
+        .motionAwareAnimation(.easeInOut(duration: 0.25), value: appState.isAuthenticated, reduceMotion: reduceMotion)
         // Loading screen → mainTabView crossfade — a single ~350ms dissolve
         // at whatever point the video happened to be in its loop, not a
         // hard cut and not a wait for the loop to finish (see
         // LoadingScreenView / StartupCoordinator).
-        .animation(.easeOut(duration: 0.35), value: startup.isReady)
+        .motionAwareAnimation(.easeOut(duration: 0.35), value: startup.isReady, reduceMotion: reduceMotion)
         .tint(Theme.gold)
     }
 

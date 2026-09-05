@@ -1,7 +1,7 @@
 // Messaging sidebar: WebSocket, contacts list, chat view, friend/group management.
 
 import { API, WS_BASE, user } from './config.js';
-import { escHtml }            from './utils.js';
+import { escHtml, compareTimestamps } from './utils.js';
 
 const msgSidebar      = document.getElementById('msg-sidebar');
 const msgToggle       = document.getElementById('msg-toggle');
@@ -28,10 +28,31 @@ const groupCancel     = document.getElementById('msg-group-cancel');
 export let  msgWs        = null;
 export const friendCache = {};   // { uid: username } — shared with notes.js
 
+// Task 20260905-profile-photo: friendCache above is a bare username string,
+// shared with notes.js, so a photo URL rides alongside it in its own cache
+// rather than changing that shape. memberCache is the same idea for a
+// group's resolved members -- GroupsManager.fetch_group only ever returns a
+// bare username list (no ids, no photos), so each member is instead
+// resolved from the group's own `toUsers` id list via the same GET
+// /user/{id} endpoint friend resolution already uses below.
+const friendPhotoCache = {}; // { uid: photoUrl|null }
+const memberCache      = {}; // { uid: { username, photoUrl } }
+
 let friendsData    = [];
 let groupsData     = {};
 let currentContact = null;
 let editingGroupId = null;
+
+// Renders an avatar's inner HTML: the initials fallback always sits in the
+// DOM, with the photo (if any) layered on top via CSS (`.avatar-photo` is
+// absolutely positioned, see reader.css) -- a failed/expired image just
+// removes itself on error, revealing the initials underneath rather than a
+// broken-image icon (no surface regresses to a broken image or blank space).
+function avatarHtml(name, photoUrl) {
+  const initial = escHtml(((name || '?')[0] || '?').toUpperCase());
+  if (!photoUrl) return initial;
+  return `${initial}<img class="avatar-photo" src="${escHtml(photoUrl)}" alt="" onerror="this.remove()" />`;
+}
 
 // ── Init ────────────────────────────────────────────────────────────────────
 
@@ -130,7 +151,7 @@ export function connectWS() {
           (data.group_id || '') === (currentContact.group_id || '')) {
         _appendBubble(data.text || JSON.stringify(data), false, data.timestamp, data.from_user || '');
       }
-    } catch { /* non-JSON frame */ }
+    } catch (err) { console.error('[messaging] WS onmessage: malformed frame', err); }
   };
   msgWs.onclose = () => {
     if (msgSidebar.classList.contains('open')) setTimeout(connectWS, 3000);
@@ -145,7 +166,8 @@ export async function loadContactList() {
   try {
     const res = await fetch(`${API}/user/${user.user_id}`);
     if (res.ok) freshUser = await res.json();
-  } catch { /* use session data */ }
+    else console.warn('[messaging] loadContactList: /user fetch failed', res.status);
+  } catch (err) { console.error('[messaging] loadContactList: /user fetch error', err); }
 
   // Friends
   const friendsList = document.getElementById('msg-friends-list');
@@ -159,8 +181,13 @@ export async function loadContactList() {
       if (!friendCache[fid]) {
         try {
           const r = await fetch(`${API}/user/${fid}`);
-          if (r.ok) { const d = await r.json(); friendCache[fid] = d.username; }
-        } catch { friendCache[fid] = fid.slice(0, 8); }
+          if (r.ok) {
+            const d = await r.json();
+            friendCache[fid] = d.username;
+            friendPhotoCache[fid] = d.profile_photo_url || null;
+          }
+          else console.warn('[messaging] friend name lookup failed', fid, r.status);
+        } catch (err) { console.error('[messaging] friend name lookup error', fid, err); friendCache[fid] = fid.slice(0, 8); }
       }
       const name = friendCache[fid] || fid.slice(0, 8);
       friendsData.push({ id: fid, name });
@@ -172,13 +199,15 @@ export async function loadContactList() {
           const md  = await mr.json();
           const all = [...(md.payload?.host_msgs || []), ...(md.payload?.other_msgs || [])];
           if (all.length) {
-            all.sort((a, b) => (a.timestamp || '') < (b.timestamp || '') ? -1 : 1);
+            all.sort(compareTimestamps);
             preview = all[all.length - 1].text || '';
           }
+        } else {
+          console.warn('[messaging] preview fetch failed', fid, mr.status);
         }
-      } catch { /* no preview */ }
+      } catch (err) { console.error('[messaging] preview fetch error', fid, err); }
 
-      return _contactItem(name, 'friend', fid, [fid], preview);
+      return _contactItem(name, 'friend', fid, [fid], preview, friendPhotoCache[fid] || null);
     }));
     friendsList.innerHTML = '';
     items.forEach(item => friendsList.appendChild(item));
@@ -201,12 +230,13 @@ export async function loadContactList() {
           const allMsgs = [...(data.host_msgs || []), ...(data.other_msgs || [])];
           let preview = '';
           if (allMsgs.length) {
-            allMsgs.sort((a, b) => (a.timestamp || '') < (b.timestamp || '') ? -1 : 1);
+            allMsgs.sort(compareTimestamps);
             preview = allMsgs[allMsgs.length - 1].text || '';
           }
           return _contactItem(g.title || gid, 'group', gid, g.users || [], preview);
         }
-      } catch { /* fall through */ }
+        console.warn('[messaging] group fetch failed', gid, r.status);
+      } catch (err) { console.error('[messaging] group fetch error', gid, err); }
       return _contactItem(gid.slice(0, 8), 'group', gid, []);
     }));
     groupsList.innerHTML = '';
@@ -214,11 +244,11 @@ export async function loadContactList() {
   }
 }
 
-function _contactItem(name, type, id, toUsers, preview = '') {
+function _contactItem(name, type, id, toUsers, preview = '', photoUrl = null) {
   const div = document.createElement('div');
   div.className = 'msg-contact-item';
   div.innerHTML =
-    `<div class="msg-avatar">${escHtml(name[0].toUpperCase())}</div>` +
+    `<div class="msg-avatar">${avatarHtml(name, photoUrl)}</div>` +
     `<div class="msg-contact-info">` +
       `<span class="msg-contact-name">${escHtml(name)}</span>` +
       (preview ? `<span class="msg-contact-preview">${escHtml(preview)}</span>` : '') +
@@ -256,8 +286,19 @@ async function _submitAddFriend() {
     } else if (res.status === 404) {
       addFriendInput.style.borderColor = 'rgba(220,80,80,0.6)';
       setTimeout(() => { addFriendInput.style.borderColor = ''; }, 1500);
+    } else {
+      // Any other failure (500, expired session...) previously vanished with
+      // no signal at all -- distinguish it from the "not found" case above
+      // with the same border-flash idiom, and log it.
+      console.warn('[messaging] add-friend request failed', res.status);
+      addFriendInput.style.borderColor = 'rgba(220,80,80,0.6)';
+      setTimeout(() => { addFriendInput.style.borderColor = ''; }, 1500);
     }
-  } catch { /* server unreachable */ }
+  } catch (err) {
+    console.error('[messaging] add-friend request error:', err);
+    addFriendInput.style.borderColor = 'rgba(220,80,80,0.6)';
+    setTimeout(() => { addFriendInput.style.borderColor = ''; }, 1500);
+  }
 }
 
 async function _removeFriend(friendId, rowEl) {
@@ -267,8 +308,16 @@ async function _removeFriend(friendId, rowEl) {
       `${API}/friends/${user.user_id}/${encodeURIComponent(friendId)}`,
       { method: 'DELETE' }
     );
-    if (res.ok || res.status === 204) rowEl.remove();
-  } catch { /* server unreachable */ }
+    if (res.ok || res.status === 204) {
+      rowEl.remove();
+    } else {
+      console.warn('[messaging] remove-friend failed', friendId, res.status);
+      alert('Could not remove that friend. Please try again.');
+    }
+  } catch (err) {
+    console.error('[messaging] remove-friend error:', friendId, err);
+    alert('Could not remove that friend. Check your connection and try again.');
+  }
 }
 
 // ── Groups ────────────────────────────────────────────────────────────────────
@@ -326,8 +375,18 @@ async function _submitGroup() {
         groupsData[editingGroupId] = { title, users: allUsers };
         _resetGroupForm();
         loadContactList();
+      } else {
+        // Previously failed with only this code comment and no UI signal
+        // (dependency-errors #7) -- the form stayed open with no indication
+        // anything went wrong, so a failed update looked identical to one
+        // still in progress.
+        console.warn('[messaging] group update failed', editingGroupId, res.status);
+        alert('Could not update that group. Please try again.');
       }
-    } catch { /* server unreachable */ }
+    } catch (err) {
+      console.error('[messaging] group update error:', editingGroupId, err);
+      alert('Could not update that group. Check your connection and try again.');
+    }
   } else {
     const groupId = crypto.randomUUID();
     try {
@@ -336,8 +395,17 @@ async function _submitGroup() {
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({ group_id: groupId, title, users: allUsers }),
       });
-      if (res.ok || res.status === 201) { _resetGroupForm(); loadContactList(); }
-    } catch { /* server unreachable */ }
+      if (res.ok || res.status === 201) {
+        _resetGroupForm();
+        loadContactList();
+      } else {
+        console.warn('[messaging] group create failed', groupId, res.status);
+        alert('Could not create that group. Please try again.');
+      }
+    } catch (err) {
+      console.error('[messaging] group create error:', groupId, err);
+      alert('Could not create that group. Check your connection and try again.');
+    }
   }
 }
 
@@ -360,8 +428,17 @@ async function _leaveGroup(groupId, itemEl) {
           sel.dispatchEvent(new Event('change'));
         }
       }
+    } else {
+      // Previously failed with only a code comment and no UI signal
+      // (dependency-errors #7) -- the row stayed in the list with no
+      // indication the leave didn't actually happen.
+      console.warn('[messaging] leave-group failed', groupId, res.status);
+      alert('Could not leave that group. Please try again.');
     }
-  } catch { /* offline */ }
+  } catch (err) {
+    console.error('[messaging] leave-group error:', groupId, err);
+    alert('Could not leave that group. Check your connection and try again.');
+  }
 }
 
 // ── Chat ──────────────────────────────────────────────────────────────────────
@@ -385,16 +462,34 @@ async function _openChat(name, type, id, toUsers) {
       const data = await res.json();
 
       if (type === 'group') {
-        const members = data.members || [];
+        // fetch_group's own `data.members` is a bare list of usernames (no
+        // ids, no photos) -- resolve the richer { user_id, username,
+        // photoUrl } shape from `toUsers` (the group's full member-id list,
+        // self already excluded by the caller) via the same GET /user/{id}
+        // endpoint friend resolution uses, cached per id.
+        const resolvedMembers = await Promise.all((toUsers || []).map(async uid => {
+          if (uid === user.user_id) return null;
+          if (memberCache[uid]) return { user_id: uid, ...memberCache[uid] };
+          try {
+            const r = await fetch(`${API}/user/${uid}`);
+            if (r.ok) {
+              const d = await r.json();
+              const resolved = { username: d.username || uid.slice(0, 8), photoUrl: d.profile_photo_url || null };
+              memberCache[uid] = resolved;
+              return { user_id: uid, ...resolved };
+            }
+          } catch (err) { console.error('[messaging] group member resolve error', uid, err); }
+          return { user_id: uid, username: uid.slice(0, 8), photoUrl: null };
+        }));
         msgGroupMembers.innerHTML =
           `<div class="msg-group-member">
-            <div class="msg-group-member-avatar">${escHtml((user.username || 'Y')[0].toUpperCase())}</div>
+            <div class="msg-group-member-avatar">${avatarHtml(user.username || 'You', user.profile_photo_url)}</div>
             <span class="msg-group-member-name is-you">${escHtml(user.username || 'You')} (you)</span>
           </div>` +
-          members.map(m => {
-            const uname = m.username || m.user_id?.slice(0, 8) || '?';
+          resolvedMembers.filter(Boolean).map(m => {
+            const uname = m.username || '?';
             return `<div class="msg-group-member">
-              <div class="msg-group-member-avatar">${escHtml(uname[0].toUpperCase())}</div>
+              <div class="msg-group-member-avatar">${avatarHtml(uname, m.photoUrl)}</div>
               <span class="msg-group-member-name">${escHtml(uname)}</span>
             </div>`;
           }).join('');
@@ -403,10 +498,14 @@ async function _openChat(name, type, id, toUsers) {
       const all = [
         ...(data.host_msgs  || []).map(m => ({ ...m, mine: true  })),
         ...(data.other_msgs || []).map(m => ({ ...m, mine: false })),
-      ].sort((a, b) => (a.timestamp > b.timestamp ? 1 : -1));
+      ].sort(compareTimestamps);
       all.forEach(m => _appendBubble(m.text, m.mine, m.timestamp, m.mine ? '' : (m.from_user || '')));
+    } else {
+      console.warn('[messaging] _openChat: fetch failed', id, res.status);
+      msgMessages.innerHTML = '<p class="msg-empty">Could not load messages.</p>';
     }
-  } catch {
+  } catch (err) {
+    console.error('[messaging] _openChat error:', id, err);
     msgMessages.innerHTML = '<p class="msg-empty">Could not load messages.</p>';
   }
 

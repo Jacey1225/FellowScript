@@ -1068,7 +1068,72 @@ shared with the Dashboard, Chat, Notes, and Note Editor screens. Appearance-only
 binding, async flow (Subscription's purchase/restore/cancel/leave/seat-edit/join-request
 flows, Edit Profile save + timezone picker, Agent/Event create-toggle-delete,
 Two-Factor Authentication, Danger Zone's username-match delete gate), sheet, and alert is
-unchanged.</p>
+unchanged, aside from the new "Account Details" alert noted below.</p>
+<p><strong>Overview stats reliability fix (2026-09-03).</strong> The Overview row's Notes/Verses counts and the
+Agents/Events sections could get stuck showing 0/empty for an account that actually had data.
+Root cause: <code>AccountViewModel.load()</code> had no guard against overlapping calls (the initial
+<code>.task</code> on mount plus a <code>.refreshable</code> pull, or a <code>.task</code> re-fire) — whichever call finished
+last won, even if it was a stale/cancelled one whose fetches fell back to their <code>0</code>/<code>[]</code>
+defaults, silently overwriting a faster call's correct notes-count/highlights/agents/events
+data in both <code>@Published</code> state and the <code>DiskCache</code> entries those write back to (so the bad
+zero then reappeared on the next cache-first read too). <code>load()</code> now resolves each call's
+results into local variables and only commits them (to <code>@Published</code> state and the cache) if no
+newer call has started since — a superseded call's results are discarded instead of clobbering
+a fresher one's. Separately, a genuine notes/highlights/agents fetch or decode failure (as
+opposed to the account genuinely having none) now surfaces a new "Account Details" alert
+(<code>AccountViewModel.statsMsg</code>) instead of silently rendering identically to "zero", matching this
+screen's existing Free Plan Limit / Agent Error / Friend Request Error alert convention; pull-to-
+refresh (already on this screen) is the retry path. <code>NetworkService.fetchNotesCount</code>/
+<code>fetchHighlights</code>/<code>fetchAgents</code> also now tag their <code>decode()</code> calls with an <code>endpoint:</code> string
+like their sibling fetch functions, so a decode failure reports via
+<code>reportDecodeFailure</code>/CloudWatch instead of being silent.</p>
+<p><strong>Events section fetch/decode failure fix (2026-09-03).</strong> The Overview stats reliability fix
+above (<code>fetchNotesCount</code>/<code>fetchHighlights</code>/<code>fetchAgents</code>) missed one sibling call:
+<code>NetworkService.fetchHeartbeats</code> still did a bare <code>decode(...) ?? []</code> with no <code>endpoint:</code> tag, so
+a decode failure on the Events section's own fetch — e.g. a production DB migration that adds a
+required-looking column to <code>agent_heartbeats</code> landing after the backend code that reads it, this
+task's actual root cause — silently rendered as "No events yet" with zero
+<code>reportDecodeFailure</code>/CloudWatch signal, exactly like the pre-fix notes/highlights/agents calls
+did. <code>fetchHeartbeats</code> is now tagged the same way, and <code>AccountViewModel.load()</code>'s per-agent
+heartbeats fetch (a <code>withTaskGroup</code> over each agent's own <code>fetchHeartbeats</code> call) now folds a
+genuine per-agent failure into the same <code>statsFailed</code>/<code>statsMsg</code> path the notes/highlights/agents
+fetches already use, rather than swallowing it via <code>(try? ...) ?? []</code>; the "Account Details" alert
+copy was extended to mention events alongside notes/highlights/agents. Separately, <code>FSHeartbeat</code>'s
+<code>Decodable</code> conformance is now a custom <code>init(from:)</code> using the same <code>decodeLenient</code> helper
+<code>FSUser</code>/<code>FSAgent</code> already use — previously every field but <code>group_id</code> (which is <code>Optional</code> and so
+already decoded leniently) was effectively required despite the struct declaring in-code defaults,
+since Swift's synthesized <code>Decodable</code> conformance doesn't honor those defaults; one row missing one
+column (e.g. <code>notes_public</code> again, on a future schema/deploy race of the same shape) would have
+failed decoding of the <em>entire</em> <code>[FSHeartbeat]</code> array response, not just that row.</p>
+<p><strong>Overview stats reliability fix, extended to all 7 concurrent fetches (2026-09-05, task
+20260904-compliance-error-handling-consistency, H8).</strong> The two fixes above only fed
+<code>statsFailed</code>/<code>statsMsg</code> from 3 of <code>load()</code>'s 7 concurrent fetches (agents, notes count,
+highlights) plus the per-agent events fetch — the other 4 (profile, usage, friend requests,
+contacts) still degraded silently via a bare <code>try?</code>, exactly the same silent-failure pattern
+those fixes addressed everywhere else in this function. All 7 now set <code>statsFailed</code> on a
+genuine thrown failure; the "Account Details" alert copy was broadened accordingly ("notes,
+highlights, agents, events, or profile/usage info"). <code>profileData</code>/<code>usage</code>/<code>groups</code> still keep
+their last-known value on a failed fetch (unchanged), while agents/notes/highlights/friend
+requests still reset to empty on failure (unchanged) — only the failure-visibility signal is
+new, not each field's existing keep-vs-reset behavior.</p>
+<p><strong>Attachment picker failures now surface an error (2026-09-05, dependency-errors #6).</strong>
+<code>PhotoVideoPicker</code>/<code>DocumentPicker</code> (<code>Chat/MessageAttachments.swift</code>) previously called
+<code>onPicked(nil)</code> identically for a plain user cancellation and for a genuine failure (a file
+copy/decode error, an unsupported picked item), so <code>ChatThreadView.handlePicked</code> could only ever
+treat both as a no-op. Both pickers now also accept an <code>onFailure</code> closure, fired only on a real
+failure (never on cancellation) and wired to the composer's existing <code>attachmentErrorMsg</code> inline
+message.</p>
+<p><strong><code>NetworkService.fetchBookmarks</code> decode failure now tagged (2026-09-05, readability #7).</strong>
+<code>fetchBookmarks</code> was the one sibling of <code>fetchHighlights</code>/<code>fetchNotesCount</code>/<code>fetchAgents</code>/
+<code>fetchHeartbeats</code> not covered by the earlier <code>endpoint:</code>-tagging passes above; it now tags its
+<code>decode(...)</code> call the same way, so a bookmarks decode failure reports via
+<code>reportDecodeFailure</code>/CloudWatch instead of silently reading as "no bookmarks."</p>
+<p><strong><code>StoreKitManager.currentRenewal()</code> no longer collapses a fetch failure into "no active
+renewal" (2026-09-05, compile-errors #5).</strong> <code>sub.status</code>'s thrown failure was previously
+discarded via <code>try?</code>, identical to the genuine "no active subscription" <code>nil</code> return. The thrown
+case is now caught and logged (<code>print(...)</code>, matching <code>restore()</code>'s existing convention) before
+still returning <code>nil</code> — this method's return type has no room for a distinct "fetch failed"
+case, so the caller-visible behavior is unchanged, but a failure now leaves a diagnostic trail.</p>
 <p><strong>Notifications section removed (2026-08-26).</strong> The Account page previously had its own
 "Notifications" card (create/edit/delete a recurring AI-authored reminder, <code>NotificationSetupSheet</code>,
 a "View All" push to <code>NotificationsListView</code>) built on the now-removed user-authored notification
@@ -1097,6 +1162,15 @@ new activity-tracked reminder system.</p>
   glass card (<code>glassCard(tint: Theme.dangerBg, border: [...Theme.borderDanger])</code>) rather than a
   flat red fill. Sign Out stays in its own separate, neutral (non-danger-tinted) glass card.</li>
 </ul>
+<p><strong>Submenu sheets restyled (2026-09-02).</strong> <code>NewAgentSheet</code> and <code>EventSetupSheet</code> (all three steps —
+<code>recurrenceScreen</code>, <code>dayPickerScreen</code>, <code>detailsScreen</code>) previously sat on a flat <code>Theme.bgPage</code>
+fill, <code>detailsScreen</code> still using native <code>Form</code>/<code>Section</code> chrome unlike its own sibling steps.
+Both now use the same warm-bloom-ground background as the rest of the app, extracted into a new
+shared <code>Theme.warmBloomBackground()</code> modifier (<code>Theme.swift</code>) so the two-<code>RadialGradient</code> recipe
+has one call point instead of a per-screen copy; <code>detailsScreen</code> moved off <code>Form</code>/<code>Section</code> onto
+the <code>ScrollView</code> + <code>VStack</code> + <code>widgetCard()</code> shell its sibling steps already used, same section
+order and headers. Appearance-only — the group-picker <code>Menu</code> added by the group-tagging feature
+above, <code>onSave</code>/<code>onCreate</code>, <code>prefill(from:)</code>, and all existing accessibility labels are unchanged.</p>
 
 
 

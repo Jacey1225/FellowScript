@@ -1,9 +1,28 @@
+// Escaping coverage here is kept identical to the legacy tree's escHtml
+// (frontend/js/utils.js) on purpose -- same name, same "safe for innerHTML"
+// contract, both surfaces. If you widen/narrow this escaping, make the
+// matching edit there too (readability #H15, 20260904-frontend-arch-sweep).
 export function escHtml(str) {
   return String(str ?? '')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+// Proper three-way comparator for message-timestamp sorting (logic-errors
+// #5, 20260904-frontend-arch-sweep) -- returns 0 for equal values instead of
+// the `a > b ? 1 : -1` idiom this codebase used previously, which is not a
+// valid Array#sort comparator (never returns 0) and can produce
+// engine-dependent orderings for two equal-timestamp messages (e.g. an
+// optimistic echo landing in the same instant as a history reload).
+export function compareTimestamps(a, b) {
+  const ta = a?.timestamp ?? '';
+  const tb = b?.timestamp ?? '';
+  if (ta > tb) return 1;
+  if (ta < tb) return -1;
+  return 0;
 }
 
 export function hexWithAlpha(hex, alpha) {
@@ -45,6 +64,11 @@ export function verseRefLabel(verses) {
   }
 }
 
+// buildChapterHTML/versesToHTML/extractVerseNums below mirror
+// frontend/js/bible.js's _buildHTML/_versesToHTML/_extractVerseNums -- same
+// regex-based chapter-string tokenizer, independently maintained because the
+// legacy tree has no shared build step with this app. Keep the two in sync by
+// hand (readability #H14, 20260904-frontend-arch-sweep).
 // Build HTML for a chapter string (verse spans, section heads)
 export function buildChapterHTML(chStr) {
   let text = chStr.replace(/\[\d+\]/g, '');

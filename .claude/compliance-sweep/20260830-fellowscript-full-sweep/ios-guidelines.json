@@ -1,0 +1,8 @@
+{
+  "task_id": "20260830-fellowscript-full-sweep",
+  "step": 7,
+  "gate": "ios-guidelines",
+  "result": "pass",
+  "finding_count": 7,
+  "summary": "Reviewed FellowScript's iOS app target (Info.plist, entitlements, SPM deps, Swift source) against App Store guideline requirements since the appstore skill itself could not be loaded (disable-model-invocation). 1 Critical: no PrivacyInfo.xcprivacy exists anywhere despite confirmed production UserDefaults usage (a required-reason API) in BibleReaderView/HeartbeatScheduler/AppState. 2 High: AmazonChimeSDK 0.27.3 (the one third-party SDK actually shipped in the app binary) has unverified privacy-manifest coverage; Privacy Policy/Terms links exist only in a separate Account section, not on the subscription purchase screen itself (Guideline 3.1.2 risk). 2 Medium: aps-environment hardcoded to 'development' in the entitlements file shared by Debug/Release; no codebase mechanism keeps the App Store Connect privacy nutrition label in sync with the in-app policy. 2 Low forward-looking notes on encryption-flag drift and ATT baseline. Also confirmed several guideline requirements already correctly implemented (UGC report/block, Sign in with Apple parity, in-app account deletion, subscription restore, accurate camera/mic usage strings, no HIG system-affordance overrides)."
+}

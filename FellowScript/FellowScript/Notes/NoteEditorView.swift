@@ -26,6 +26,7 @@ struct NoteEditorView: View {
     var onSave:     ((FSNote) async -> String?)? = nil
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @EnvironmentObject var appState: AppState
 
     @State private var titleVal    = ""
@@ -199,7 +200,7 @@ struct NoteEditorView: View {
                             .padding(.horizontal, Theme.spacingMD)
                             .padding(.vertical, 10)
                         }
-                        .animation(.spring(response: 0.25), value: showColorPicker)
+                        .motionAwareAnimation(.spring(response: 0.25), value: showColorPicker, reduceMotion: reduceMotion)
                         .glassCard(cornerRadius: 16)
                         .padding(.horizontal, Theme.spacingMD)
                         .padding(.top, Theme.spacingSM)

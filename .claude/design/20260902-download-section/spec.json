@@ -1,0 +1,8 @@
+{
+  "task_id": "20260902-download-section",
+  "step": 3,
+  "stage": "static-spec",
+  "result": "pass",
+  "generation_needed": true,
+  "summary": "v3 respec fixing all three blocking issues from critique pass 2. (1) Re-derived both card surfaces on one shared additive scale so the primary macOS card provably measures brighter than the recessed Windows card on every RGB channel: macOS rgba(255,244,230,0.055) -> rgb(36,30,27), Windows rgba(255,244,230,0.028) -> rgb(30,24,21), both against INK rgb(23,18,15) -- arithmetic shown per-channel in §5 so it's independently checkable; re-verified metadata text still clears AA at 5.91:1 on the brighter macOS surface (was 6.07:1) and with more headroom on the dimmer Windows surface; dropped the now-inert backdrop-filter. (2) Removed the invented 'macOS 12+' claim -- confirmed by direct read that tauri.conf.json sets no minimumSystemVersion at all, added a §8 rule that Blocking placeholders must render as a literal bracketed placeholder (e.g. macOS <MIN VERSION - TBC>) in every preview, never a plausible number. (3) §12 now requires one additional 1440px render showing the section in real page context -- Pricing section's tail (LIGHT_BG/LIGHT_INK) above and the Closing CTA's actual centered bloom (radial-gradient circle at 45% 40%, rgba(240,179,106,0.4)...) below, both lifted verbatim from Home.jsx -- alongside the existing isolated 390/1280/1440 renders, so the doubled-dark-run bookend and the orb-to-bloom adjacency can actually be judged. Also fixed the minor Issue 4 (Windows action-slot text changed from 14.5px/600/centered to 15px/400/left-aligned so it no longer reads as a ghost button)."
+}

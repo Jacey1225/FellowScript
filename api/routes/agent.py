@@ -209,14 +209,45 @@ async def commit_heartbeat(user_id: str, agent_id: str, heartbeat_id: str, body:
 
 @agent_router.post("/{user_id}/{agent_id}/heartbeat", status_code=201)
 async def add_heartbeat(user_id: str, agent_id: str, body: dict, _: str = Depends(require_match("user_id"))) -> dict:
-    gate = check_limit(user_id, "agent_events")
-    if not gate["allowed"]:
-        raise HTTPException(status_code=403, detail=gate)
-    group_id = body.get("group_id") or None
-    if group_id:
-        _require_group_membership(user_id, group_id)
     db = AgentManager(user_id)
     try:
+        # `idempotency_key`: optional client-generated token (task
+        # 20260905-heartbeat-timezone-duplicate-bugs, step 4) identifying
+        # this Save attempt -- a double-submit reusing the same key must
+        # return the FIRST attempt's row id instead of creating a second
+        # row (see AgentManager.add_heartbeat's docstring). Omitted
+        # entirely for a not-yet-updated client, which still works, just
+        # without dedup protection.
+        idempotency_key = body.get("idempotency_key")
+
+        # Bounce fix (testing gate, step 5): a dedup hit must short-circuit
+        # BEFORE check_limit is ever consulted. check_limit's agent_events
+        # count is a plain COUNT(*) over agent_heartbeats -- a repeat POST
+        # carrying the same idempotency_key as an already-persisted row
+        # creates no new resource, so it must never be charged against the
+        # free-tier cap. Checking the gate first (the pre-bounce ordering)
+        # meant a free user's very first successful save (limit=1) made
+        # their own legitimate retry/double-tap of that same save 403,
+        # defeating this task's own "return the existing row" design for
+        # exactly the scenario it exists to protect. This lookup runs on
+        # every request that carries a key (a cheap indexed point lookup
+        # against the new UNIQUE index), not just after a 403, so it also
+        # covers the case where the user is already over their limit for
+        # an unrelated reason.
+        if idempotency_key:
+            existing = db.lookup(db.hb_table, {
+                "user_id": user_id, "agent_id": agent_id,
+                "idempotency_key": idempotency_key,
+            })
+            if existing:
+                return {"ok": True, "id": list(existing.keys())[0]}
+
+        gate = check_limit(user_id, "agent_events")
+        if not gate["allowed"]:
+            raise HTTPException(status_code=403, detail=gate)
+        group_id = body.get("group_id") or None
+        if group_id:
+            _require_group_membership(user_id, group_id)
         heartbeat = AgentHeartbeats(
             agent_id=agent_id,
             user_id=user_id,
@@ -228,8 +259,18 @@ async def add_heartbeat(user_id: str, agent_id: str, body: dict, _: str = Depend
             # AgentHeartbeats.notes_public's own default.
             notes_public=bool(body.get("notes_public", False)),
         )
-        db.add_heartbeat(heartbeat)
-        return {"ok": True}
+        # A genuinely concurrent repeat (two requests with the same key
+        # racing each other, neither yet committed when the lookup above
+        # ran) is still made safe here, not by this route-level lookup:
+        # AgentManager.add_heartbeat's own UniqueViolation handling is what
+        # makes the dedup race-safe (Q28), since Postgres's constraint --
+        # not a check-then-insert race in application code -- decides the
+        # winner. The lookup above only shortcuts the *already-settled*
+        # case so it doesn't have to pay the quota gate.
+        hb_id = db.add_heartbeat(heartbeat, idempotency_key=idempotency_key)
+        if hb_id is None:
+            raise SaveFailedError()
+        return {"ok": True, "id": hb_id}
     finally:
         db.close()
 

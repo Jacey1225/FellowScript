@@ -16,7 +16,8 @@ export default function MessagingPanel() {
     loaded, onLoad, sendMessage,
     onRequestUploadUrl, onUploadToS3, onSearchGifs,
     sessions, activeSessionId, talkingUserId,
-    onJoinSession, onLeaveSession, onOpenSessionCreator, onEditSession, onDeleteSession,
+    onJoinSession, onLeaveSession, joinError, onClearJoinError,
+    onOpenSessionCreator, onEditSession, onDeleteSession,
     onNavigateVerse,
     videoEnabled, videoTiles, onToggleVideo, bindVideoTile,
   } = useMessagingPanel() || {};
@@ -79,6 +80,8 @@ export default function MessagingPanel() {
             talkingUserId={talkingUserId}
             onJoinSession={onJoinSession}
             onLeaveSession={onLeaveSession}
+            joinError={joinError}
+            onClearJoinError={onClearJoinError}
             onOpenSessionCreator={onOpenSessionCreator}
             onEditSession={onEditSession}
             onDeleteSession={onDeleteSession}

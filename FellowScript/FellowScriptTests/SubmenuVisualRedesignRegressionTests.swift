@@ -96,7 +96,9 @@ final class SubmenuVisualRedesignRegressionTests: XCTestCase {
     }
 
     func test_newAgentSheet_appliesSharedWarmBloomBackground() throws {
-        let source = try readSource("FellowScript/Account/AccountView.swift")
+        // NewAgentSheet moved to AccountSupportingViews.swift in the
+        // compliance-readability-cleanup task's AccountView.swift split.
+        let source = try readSource("FellowScript/Account/AccountSupportingViews.swift")
         guard let structRange = source.range(of: "struct NewAgentSheet: View {") else {
             XCTFail("NewAgentSheet not found"); return
         }
@@ -146,13 +148,17 @@ final class SubmenuVisualRedesignRegressionTests: XCTestCase {
                            "\(path) must not have been swept into this task's shared-modifier adoption")
         }
 
-        let notesSource = try readSource("FellowScript/Notes/NotesListView.swift")
-        guard let detailStart = notesSource.range(of: "struct NoteDetailView: View {"),
-              let detailEnd = notesSource.range(of: "\n// ── Reply composer sheet", range: detailStart.upperBound..<notesSource.endIndex) else {
-            XCTFail("could not scope NoteDetailView's own body within NotesListView.swift")
+        // NoteDetailView (and ReplyComposerSheet, checked separately by its
+        // own restyle regression suite) moved out of NotesListView.swift into
+        // their own files in the compliance-readability-cleanup task's split
+        // -- NoteDetailView.swift now contains nothing but this one struct,
+        // so no end-of-body marker is needed.
+        let notesSource = try readSource("FellowScript/Notes/NoteDetailView.swift")
+        guard let detailStart = notesSource.range(of: "struct NoteDetailView: View {") else {
+            XCTFail("could not locate NoteDetailView in NoteDetailView.swift")
             return
         }
-        let noteDetailViewBody = String(notesSource[detailStart.upperBound..<detailEnd.lowerBound])
+        let noteDetailViewBody = String(notesSource[detailStart.upperBound..<notesSource.endIndex])
         XCTAssertTrue(noteDetailViewBody.contains("Theme.bgPage.ignoresSafeArea()"),
                       "NoteDetailView's own root-screen background duplicate must remain untouched by this task")
         XCTAssertFalse(noteDetailViewBody.contains(".warmBloomBackground()"),
@@ -200,7 +206,7 @@ final class SubmenuVisualRedesignRegressionTests: XCTestCase {
     }
 
     func test_newAgentSheet_noLongerUsesFormOrSection() throws {
-        let source = try readSource("FellowScript/Account/AccountView.swift")
+        let source = try readSource("FellowScript/Account/AccountSupportingViews.swift")
         guard let structRange = source.range(of: "struct NewAgentSheet: View {") else {
             XCTFail("NewAgentSheet not found"); return
         }
@@ -253,7 +259,7 @@ final class SubmenuVisualRedesignRegressionTests: XCTestCase {
     }
 
     func test_newAgentSheet_onCreateCallback_unchanged() throws {
-        let source = try readSource("FellowScript/Account/AccountView.swift")
+        let source = try readSource("FellowScript/Account/AccountSupportingViews.swift")
         guard let structRange = source.range(of: "struct NewAgentSheet: View {") else {
             XCTFail("NewAgentSheet not found"); return
         }
@@ -332,7 +338,7 @@ final class SubmenuVisualRedesignRegressionTests: XCTestCase {
     }
 
     func test_newAgentSheet_keepsExistingMediumDetent_unchanged() throws {
-        let source = try readSource("FellowScript/Account/AccountView.swift")
+        let source = try readSource("FellowScript/Account/AccountSupportingViews.swift")
         guard let structRange = source.range(of: "struct NewAgentSheet: View {") else {
             XCTFail("NewAgentSheet not found"); return
         }
@@ -350,7 +356,7 @@ final class SubmenuVisualRedesignRegressionTests: XCTestCase {
     // MARK: - G. Out-of-bounds guard: sheets not named in scope are untouched
 
     func test_timeZonePickerSheet_andReportUserSheet_notSweptIn() throws {
-        let accountSource = try readSource("FellowScript/Account/AccountView.swift")
+        let accountSource = try readSource("FellowScript/Account/AccountSupportingViews.swift")
         guard let tzRange = accountSource.range(of: "struct TimeZonePickerSheet: View {") else {
             XCTFail("TimeZonePickerSheet not found"); return
         }

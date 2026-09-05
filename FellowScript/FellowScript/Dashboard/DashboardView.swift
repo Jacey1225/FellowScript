@@ -207,7 +207,10 @@ struct DashboardView: View {
 
             ScrollView(.vertical, showsIndicators: false) {
                 LazyVStack(spacing: 10) {
-                    HeroHeader(username: appState.currentUser?.username ?? "friend")
+                    HeroHeader(
+                        username: appState.currentUser?.username ?? "friend",
+                        photoURL: appState.currentUser?.profile_photo_url
+                    )
 
                     // ── Editorial Hero: Friend Activity ───────────────────────────────
                     FriendActivityHeroCard(

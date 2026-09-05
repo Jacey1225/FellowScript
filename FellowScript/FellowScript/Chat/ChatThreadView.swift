@@ -48,6 +48,13 @@ final class ChatThreadViewModel: ObservableObject {
     // FSMessage.id. See MessageAttachments.swift's LocalAttachmentPreview
     // doc comment for why this exists.
     @Published var localAttachmentPreviews: [String: LocalAttachmentPreview] = [:]
+    // Task 20260905-profile-photo: username → photo URL for every *other*
+    // participant in this thread, resolved once per load() (see below) --
+    // FSMessage.sender is a plain display-name string with no id/photo of
+    // its own, so this is threaded into MessageDisplayGroup.grouped(...)
+    // by ChatThreadView rather than requiring a backend change to stamp a
+    // photo onto every message.
+    @Published var photoByUsername: [String: String] = [:]
     // Surfaced in the view as a small "Reconnecting…" banner. Previously a
     // dropped socket (network blip, backgrounding, Cloudflare/nginx idle
     // timeout, or the server evicting a stale connection) gave no visible
@@ -78,7 +85,12 @@ final class ChatThreadViewModel: ObservableObject {
         let sessionKey = Self.roomKey(contact: contact, userId: userId)
 
         // ── Cache-first: show the last-seen thread instantly ─────────────────────
-        if let cached: [FSMessage] = await DiskCache.shared.load([FSMessage].self, forKey: "messages:\(contact.id)") {
+        // Keyed by sessionKey (sorted [userId, contact.id] for a friend DM, or
+        // the group id) rather than bare contact.id — every other DiskCache
+        // call site already namespaces by user, and bare contact.id let two
+        // different accounts sharing a device collide on the same friend's
+        // message-history cache entry.
+        if let cached: [FSMessage] = await DiskCache.shared.load([FSMessage].self, forKey: "messages:\(sessionKey)") {
             messages = cached
         }
         if let cached: [FSSession] = await DiskCache.shared.load([FSSession].self, forKey: "sessions:\(sessionKey)") {
@@ -87,16 +99,47 @@ final class ChatThreadViewModel: ObservableObject {
 
         if contact.type == .group {
             messages = (try? await service.fetchGroupMessages(userId: userId, groupId: contact.id)) ?? messages
+            await resolveGroupMemberPhotos(contact: contact, service: service, viewerId: userId)
         } else {
             messages = (try? await service.fetchFriendMessages(userId: userId, friendId: contact.id)) ?? messages
+            // A DM's only other participant is `contact` itself, already
+            // resolved with its photo by fetchContacts -- no extra fetch.
+            if let photoUrl = contact.photoUrl { photoByUsername[contact.name] = photoUrl }
         }
         sessions = (try? await service.fetchSessionsForContact(contactId: sessionKey)) ?? sessions
 
         // ── Persist the fresh thread for the next open ───────────────────────────
-        await DiskCache.shared.save(messages, forKey: "messages:\(contact.id)")
+        await DiskCache.shared.save(messages, forKey: "messages:\(sessionKey)")
         await DiskCache.shared.save(sessions, forKey: "sessions:\(sessionKey)")
 
         connectWebSocket(wsBase: service.wsBase, userId: userId)
+    }
+
+    /// Resolves every other group member's username → photo URL (task
+    /// 20260905-profile-photo) so a group thread's received-message
+    /// avatars can show a real photo, not just initials -- `FSMessage.sender`
+    /// is a plain username string with no id, so unlike a DM (whose single
+    /// other participant is already `contact` itself) this needs its own
+    /// per-member `GET /user/{id}` resolution, mirroring the interface gap
+    /// the React/legacy-static frontends already closed the same way
+    /// (frontend.json) rather than requiring a backend change to stamp a
+    /// photo onto every message. Best-effort: a member who fails to
+    /// resolve just keeps that sender on the initials fallback.
+    private func resolveGroupMemberPhotos(contact: FSContact, service: DataServiceProtocol, viewerId: String) async {
+        let memberIds = contact.toUsers.filter { $0 != viewerId }
+        guard !memberIds.isEmpty else { return }
+        await withTaskGroup(of: (String, String?)?.self) { group in
+            for mid in memberIds {
+                group.addTask {
+                    guard let u = try? await service.fetchUser(userId: mid), !u.username.isEmpty else { return nil }
+                    return (u.username, u.profile_photo_url)
+                }
+            }
+            for await result in group {
+                guard let (username, url) = result else { continue }
+                photoByUsername[username] = url
+            }
+        }
     }
 
     /// `attachment` is a fully-uploaded (or gif, never-uploaded)
@@ -327,6 +370,7 @@ struct ChatThreadView: View {
     // ordinary foreground interactions that never left the app, which is the
     // opposite of what this task is trying to fix.
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var text:        String = ""
     @State private var showMembers: Bool   = false
     @State private var showSession: Bool   = false
@@ -351,15 +395,27 @@ struct ChatThreadView: View {
     @State private var stagedAttachment: StagedAttachment? = nil
     @State private var attachmentErrorMsg: String? = nil
 
-    private var messageGroups: [MessageDisplayGroup] {
-        MessageDisplayGroup.grouped(from: vm.messages, me: user)
-    }
+    // Memoized (High H12): these two used to be plain computed properties,
+    // so SwiftUI re-ran the grouping + day-divider pass in full on every
+    // render of this view -- including every composer keystroke (`text`'s
+    // @State) and every other unrelated @State toggle, not just an actual
+    // new/changed message. Cached in @State now and recomputed only from
+    // `.onChange(of: vm.messages.count)` below, which already existed here
+    // (for the scroll-to-bottom behavior) as the same "did the message list
+    // actually change" signal.
+    @State private var messageGroups: [MessageDisplayGroup] = []
+    @State private var threadRows:    [ChatThreadRow]       = []
 
-    // Interleaves labeled day-divider rows between MessageDisplayGroups
-    // (design gate §13) — real Calendar.isDate(inSameDayAs:) detection, not
-    // a cosmetic restyle of the existing plain sender-group hairline.
-    private var threadRows: [ChatThreadRow] {
-        messageGroups.withDayDividers()
+    // Recomputes both caches from the current vm.messages/user -- called
+    // once up front (via `.task`, so the very first render after load()
+    // populates vm.messages isn't stuck showing an empty cache) and again
+    // any time vm.messages.count changes thereafter.
+    private func recomputeMessageGroups() {
+        messageGroups = MessageDisplayGroup.grouped(from: vm.messages, me: user, photoByUsername: vm.photoByUsername)
+        // Interleaves labeled day-divider rows between MessageDisplayGroups
+        // (design gate §13) — real Calendar.isDate(inSameDayAs:) detection,
+        // not a cosmetic restyle of the existing plain sender-group hairline.
+        threadRows = messageGroups.withDayDividers()
     }
 
     var body: some View {
@@ -461,8 +517,9 @@ struct ChatThreadView: View {
                         .padding(.bottom, Theme.spacingSM)
                     }
                     .onChange(of: vm.messages.count) { _ in
+                        recomputeMessageGroups()
                         if let lastGroup = messageGroups.last {
-                            withAnimation { proxy.scrollTo(lastGroup.id, anchor: .bottom) }
+                            withMotionAwareAnimation(.default, reduceMotion: reduceMotion) { proxy.scrollTo(lastGroup.id, anchor: .bottom) }
                         }
                     }
                 }
@@ -509,6 +566,13 @@ struct ChatThreadView: View {
             memberNames = contact.memberNames
             memberIds   = contact.toUsers
             await vm.load(service: appState.service, contact: contact, userId: uid)
+            // Populates the messageGroups/threadRows cache for the first
+            // render after load() -- `.onChange(of: vm.messages.count)`
+            // covers every later change, but wouldn't fire for this initial
+            // population if the disk-cache read and the fresh fetch happen
+            // to land on the exact same count (e.g. re-opening a thread with
+            // no new messages since last time).
+            recomputeMessageGroups()
             // Load the viewer's friends so the add-members picker can offer those
             // who aren't already in the group.
             if contact.type == .group {
@@ -573,7 +637,7 @@ struct ChatThreadView: View {
 
             Button(action: {
                 if contact.type == .group {
-                    withAnimation { showMembers.toggle() }
+                    withMotionAwareAnimation(.default, reduceMotion: reduceMotion) { showMembers.toggle() }
                 }
             }) {
                 HStack(spacing: 12) {
@@ -638,6 +702,16 @@ struct ChatThreadView: View {
                     .padding(.horizontal, Theme.spacingMD)
                     .padding(.top, Theme.spacingXS)
             }
+            // Task 20260904-attach-picker-layout-polish: renders directly
+            // above the text field in a single horizontal row instead of a
+            // from-the-bottom `.sheet` — see AttachPickerRow's doc comment.
+            if showAttachSheet {
+                AttachPickerRow(
+                    onPickPhotoVideo: { showAttachSheet = false; showPhotoVideoPicker = true },
+                    onPickFile:       { showAttachSheet = false; showDocumentPicker = true },
+                    onPickGif:        { showAttachSheet = false; showGifSheet = true }
+                )
+            }
             HStack(spacing: 10) {
                 attachButton
 
@@ -671,20 +745,19 @@ struct ChatThreadView: View {
             .padding(.bottom, Theme.spacingMD)
         }
         .background(Theme.bgPage.opacity(0.55))
-        .sheet(isPresented: $showAttachSheet) {
-            AttachActionSheet(
-                onPickPhotoVideo: { showAttachSheet = false; showPhotoVideoPicker = true },
-                onPickFile:       { showAttachSheet = false; showDocumentPicker = true },
-                onPickGif:        { showAttachSheet = false; showGifSheet = true }
-            )
-        }
         .sheet(isPresented: $showPhotoVideoPicker) {
-            PhotoVideoPicker { attachment in handlePicked(attachment) }
-                .ignoresSafeArea()
+            PhotoVideoPicker(
+                onPicked: { attachment in handlePicked(attachment) },
+                onFailure: { attachmentErrorMsg = "Couldn't load that attachment. Please try again." }
+            )
+            .ignoresSafeArea()
         }
         .sheet(isPresented: $showDocumentPicker) {
-            DocumentPicker { attachment in handlePicked(attachment) }
-                .ignoresSafeArea()
+            DocumentPicker(
+                onPicked: { attachment in handlePicked(attachment) },
+                onFailure: { attachmentErrorMsg = "Couldn't load that file. Please try again." }
+            )
+            .ignoresSafeArea()
         }
         .sheet(isPresented: $showGifSheet) {
             GifSearchSheet(service: appState.service) { attachment in
@@ -699,8 +772,8 @@ struct ChatThreadView: View {
     // to-retrofit-here undersized precedent; the new attach control doesn't
     // inherit it.
     private var attachButton: some View {
-        Button(action: { showAttachSheet = true }) {
-            Image(systemName: "paperclip")
+        Button(action: { showAttachSheet.toggle() }) {
+            Image(systemName: "plus")
                 .font(.system(size: 36 * 0.4, weight: .semibold))
                 .foregroundColor(Theme.gold)
                 .frame(width: 36, height: 36)

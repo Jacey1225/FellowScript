@@ -219,7 +219,11 @@ final class PullToRefreshWiringSourceTests: XCTestCase {
     }
 
     func test_notesListView_bothTabs_refreshableCallsVmRefresh() throws {
-        let source = try readSource("FellowScript/Notes/NotesListView.swift")
+        // notesTab/highlightsTab (and their .refreshable wiring) moved to
+        // NotesListView+List.swift in the compliance-readability-cleanup
+        // task's NotesListView.swift split (readability #6, 20260904-
+        // frontend-arch-sweep) -- same behavior.
+        let source = try readSource("FellowScript/Notes/NotesListView+List.swift")
         let occurrences = source.components(separatedBy: "await vm.refresh(service: appState.service, userId: appState.currentUser?.user_id ?? \"\")").count - 1
         XCTAssertEqual(occurrences, 2, "both the Notes tab and Highlights tab must wire .refreshable to vm.refresh(), sharing the same underlying fetch")
     }
@@ -251,11 +255,17 @@ final class PullToRefreshWiringSourceTests: XCTestCase {
         XCTAssertTrue(refreshableBody.contains("await refreshAccountData()"),
                       "AccountView's .refreshable must call its dedicated refreshAccountData() reload method")
 
-        guard let methodRange = source.range(of: "private func refreshAccountData() async {") else {
-            XCTFail("refreshAccountData() not found in AccountView")
+        // refreshAccountData() moved to AccountView+Misc.swift in the
+        // compliance-readability-cleanup task's AccountView.swift split
+        // (readability #6, 20260904-frontend-arch-sweep) -- same behavior,
+        // and no longer `private` since an extension in a sibling file
+        // requires at least internal visibility.
+        let miscSource = try readSource("FellowScript/Account/AccountView+Misc.swift")
+        guard let methodRange = miscSource.range(of: "func refreshAccountData() async {") else {
+            XCTFail("refreshAccountData() not found in AccountView+Misc.swift")
             return
         }
-        let methodBody = String(source[methodRange.upperBound...].prefix(400))
+        let methodBody = String(miscSource[methodRange.upperBound...].prefix(400))
         XCTAssertTrue(methodBody.contains("await vm.load(service: appState.service, user: user)"),
                       "refreshAccountData() must call vm.load(), the same reload path as the screen's own .task")
         XCTAssertFalse(methodBody.contains("store.startListening()") && methodBody.contains("loadProducts()"),

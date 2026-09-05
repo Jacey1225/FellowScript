@@ -1,0 +1,8 @@
+{
+  "task_id": "20260830-fellowscript-full-sweep",
+  "step": 4,
+  "gate": "dependency-error",
+  "result": "pass",
+  "finding_count": 9,
+  "summary": "Reviewed all manifest/lockfiles (requirements.txt, frontend + desktop package.json/lock, Cargo.toml/lock, Package.resolved) and call sites at every third-party/network/subprocess/DB boundary (Stripe, Apple StoreKit, AWS SES/STS/CloudWatch, OpenRouter LLM, APNs, CloudWatch MCP subprocess, nightly-backup DB mirror, iOS NetworkService/StoreKitManager/GoogleAuthSession, and fetch/WebSocket layers of both frontend stacks). 2 High findings: Stripe cancellation failure is swallowed then the local plan is deleted anyway (orphaned live billing), and an unhandled OpenRouter call in the heartbeat-commit path burns the once-per-day claim already committed to the DB before it. 4 Medium findings: an inconsistent unhandled OpenRouter call in summarize_session, pervasive empty catch{} blocks discarding fetch failures across both the legacy and React frontends, no backoff/cap on WebSocket reconnect in both frontends, and a silently-discarded Google OAuth token-exchange failure with zero logging. 3 Low findings: one overly-wide Cargo dependency range, frontend's caret-range manifest (mitigated by a clean npm audit + committed lockfile), and two try?-swallowed StoreKit calls. No critical findings; requirements.txt and Package.resolved are exemplary (fully pinned); accidentally-committed node_modules/__pycache__ flagged forward again per Step 2/3's note."
+}

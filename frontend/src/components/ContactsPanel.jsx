@@ -82,6 +82,7 @@ function ContactRow({ contact, active, onOpen, onRemove, onEdit, onReport, onBlo
     >
       <Avatar
         size={30}
+        src={contact.photoUrl}
         style={{ background: 'rgba(255,198,26,0.15)', border: 'none', color: 'var(--gold)', fontSize: '0.72rem', flexShrink: 0, fontFamily: "'Space Grotesk', sans-serif" }}
       >
         {contact.name[0].toUpperCase()}

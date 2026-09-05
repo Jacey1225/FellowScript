@@ -1,0 +1,8 @@
+{
+  "task_id": "20260904-frontend-arch-sweep",
+  "step": 5,
+  "gate": "logic-error",
+  "result": "pass",
+  "finding_count": 5,
+  "summary": "Reviewed all 161 files in file-inventory.json across the iOS app, React SPA, and legacy static tree, with codegraph-traced call paths through the concurrency-sensitive areas the plan flagged (NetworkService.swift, ChimeCallView.swift/CallController, useMessaging/useAgentChat/useSessions). Headline finding: a confirmed, reproducible bug where deleting a group note never refreshes the group's note list, present independently in both frontend/src/hooks/useNotes.js and frontend/js/notes.js (root-caused against the backend's GET /notes/{user_id} query, which structurally excludes group notes from the state deleteNote checks). The legacy implementation additionally never checks the delete request's response status, silently treating failed deletes as successful. Also found: an impure setState-updater side effect in useMessaging.js risking duplicated chat messages under React 18 StrictMode double-invocation, a heartbeat scheduler in useAgentChat.js with no catch-up for a missed exact-minute tick, and several non-transitive sort comparators used for message ordering. No findings in ChatThreadViewModel's reconnect/backoff logic, CallController's join guard, NetworkService's status-validation helpers, useHostRect/useFocusTrap, or the admin-gate auth flows, which were all traced and found correct."
+}

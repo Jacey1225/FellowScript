@@ -1,0 +1,8 @@
+{
+  "task_id": "20260830-fellowscript-full-sweep",
+  "result": "pass",
+  "total_findings": 62,
+  "critical_count": 7,
+  "high_count": 21,
+  "summary": "FellowScript's codebase shows real, documented hardening work in places (auth/session layer, webhook verification, a 46-file regression suite) but is not currently compliant: it has two live secret-exposure incidents (real user PII/password hashes and an SSH key committed to git), a foundational DB write-path bug that silently reports failed writes as success across 30+ call sites, three authorization gaps letting authenticated users read or write data they shouldn't, and an actively-maintained dead frontend burning ongoing engineering effort for no production benefit."
+}

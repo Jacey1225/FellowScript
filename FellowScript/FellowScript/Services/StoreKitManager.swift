@@ -165,8 +165,23 @@ final class StoreKitManager: ObservableObject {
     struct EntitlementRenewal { let willAutoRenew: Bool; let expirationDate: Date? }
 
     func currentRenewal() async -> EntitlementRenewal? {
-        guard let sub = products.first(where: { $0.subscription != nil })?.subscription,
-              let statuses = try? await sub.status else { return nil }
+        guard let sub = products.first(where: { $0.subscription != nil })?.subscription else { return nil }
+        let statuses: [Product.SubscriptionInfo.Status]
+        do {
+            statuses = try await sub.status
+        } catch {
+            // compile-errors #5: `try?` previously made a thrown status-fetch
+            // failure (e.g. a transient StoreKit/network error) indistinguishable
+            // from "no active renewal" -- both silently returned nil here, so a
+            // caller (SubscriptionCard) couldn't tell a real fetch failure from a
+            // genuine "you don't have an active subscription" state. Logged
+            // instead of silently discarded, matching restore()'s
+            // print(...)-on-catch convention above -- still returns nil either
+            // way since this method's return type has no room for a distinct
+            // "failed" case, but now leaves a diagnostic trail rather than none.
+            print("[StoreKitManager] currentRenewal() status fetch failed: \(error)")
+            return nil
+        }
         for status in statuses {
             guard case .verified(let txn) = status.transaction,
                   Self.productIDs.contains(txn.productID),

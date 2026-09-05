@@ -28,7 +28,8 @@ export async function loadHighlights() {
   try {
     const res = await fetch(`${API}/notes/highlight/${user.user_id}`);
     if (res.ok) localHl = await res.json();
-  } catch { /* offline */ }
+    else console.warn('[highlights] loadHighlights failed', res.status);
+  } catch (err) { console.error('[highlights] loadHighlights error:', err); }
 }
 
 export function applyHighlights() {
@@ -93,38 +94,77 @@ export function closeHlPicker() {
 
 // ── Picker swatch / clear events ────────────────────────────────────────────
 
+// Briefly flashes the verse span's background red -- same "flash to signal
+// failure" idiom already used elsewhere in this codebase (messaging.js's
+// add-friend input) -- so a failed highlight write isn't completely silent
+// even though this action has no dedicated toast/alert surface of its own.
+function _flashVerseError(verseNum) {
+  const span = document.getElementById(`vs${verseNum}`);
+  if (!span) return;
+  const prevBg = span.style.background;
+  span.style.background = 'rgba(220,80,80,0.35)';
+  setTimeout(() => { span.style.background = prevBg; }, 900);
+}
+
 export function initHighlightPicker() {
   hlPicker.querySelectorAll('.hl-swatch').forEach(swatch => {
     swatch.addEventListener('click', async e => {
       e.stopPropagation();
       if (!user || !hlTargetV || !curBook || !curChapter) return;
-      const color    = swatch.dataset.color;
-      const verseNum = hlTargetV;
-      const key      = `${curBook}-${curChapter}-${verseNum}`;
-      localHl[key]   = color;
+      const color     = swatch.dataset.color;
+      const verseNum  = hlTargetV;
+      const key       = `${curBook}-${curChapter}-${verseNum}`;
+      const prevColor = localHl[key]; // undefined if it wasn't highlighted before
+      localHl[key]    = color;
       applyHighlights();
       closeHlPicker();
       try {
-        await fetch(`${API}/notes/highlight/${user.user_id}`, {
+        const res = await fetch(`${API}/notes/highlight/${user.user_id}`, {
           method:  'POST',
           headers: { 'Content-Type': 'application/json' },
           body:    JSON.stringify({ book: curBook, chapter: curChapter, verse: verseNum, color }),
         });
-      } catch { /* offline */ }
+        if (!res.ok) {
+          // Roll back the optimistic set rather than leaving a highlight
+          // applied that the server never actually persisted (same bug
+          // class as the optimistic-mutation-without-rollback fix already
+          // applied to useBookmarks.js/useHighlights.js in the React layer).
+          console.warn('[highlights] set failed', key, res.status);
+          if (prevColor === undefined) delete localHl[key]; else localHl[key] = prevColor;
+          applyHighlights();
+          _flashVerseError(verseNum);
+        }
+      } catch (err) {
+        console.error('[highlights] set error:', key, err);
+        if (prevColor === undefined) delete localHl[key]; else localHl[key] = prevColor;
+        applyHighlights();
+        _flashVerseError(verseNum);
+      }
     });
   });
 
   hlPicker.querySelector('.hl-clear').addEventListener('click', async e => {
     e.stopPropagation();
     if (!user || !hlTargetV || !curBook || !curChapter) return;
-    const key = `${curBook}-${curChapter}-${hlTargetV}`;
+    const verseNum  = hlTargetV;
+    const key       = `${curBook}-${curChapter}-${verseNum}`;
+    const prevColor = localHl[key];
     delete localHl[key];
     applyHighlights();
     closeHlPicker();
     try {
-      await fetch(`${API}/notes/highlight/${user.user_id}/${encodeURIComponent(key)}`, {
+      const res = await fetch(`${API}/notes/highlight/${user.user_id}/${encodeURIComponent(key)}`, {
         method: 'DELETE',
       });
-    } catch { /* offline */ }
+      if (!res.ok) {
+        console.warn('[highlights] clear failed', key, res.status);
+        if (prevColor !== undefined) { localHl[key] = prevColor; applyHighlights(); }
+        _flashVerseError(verseNum);
+      }
+    } catch (err) {
+      console.error('[highlights] clear error:', key, err);
+      if (prevColor !== undefined) { localHl[key] = prevColor; applyHighlights(); }
+      _flashVerseError(verseNum);
+    }
   });
 }

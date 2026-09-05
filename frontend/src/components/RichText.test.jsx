@@ -68,6 +68,49 @@ describe('sanitizeNoteHtml — XSS payloads are neutralized', () => {
     expect(out).toContain('<b>bold</b>');
   });
 
+  // Regression test — OWASP H1 (compliance sweep 20260904-frontend-arch-sweep):
+  // cleanNode() unwrapped a disallowed tag (splicing its children back into
+  // the parent) without recursively re-scanning the promoted fragment first.
+  // A single unwrap pass therefore left one level of newly-promoted children
+  // completely unvisited, so an *allowed* tag carrying a disallowed
+  // event-handler attribute nested directly inside a disallowed wrapper
+  // survived attribute-stripping entirely and reached dangerouslySetInnerHTML
+  // intact. Fixed by recursively cleaning the unwrapped DocumentFragment
+  // before splicing it in, so every promoted node is visited regardless of
+  // how many ancestor wrappers get unwrapped around it.
+  test('strips onclick from an allowed tag nested directly inside a disallowed wrapper (unwrap-bypass regression)', () => {
+    // <a> is disallowed (not in ALLOWED_TAGS) and gets unwrapped; its child
+    // <span onclick=...> is an ALLOWED tag, so before the fix it was promoted
+    // straight into the parent by the unwrap branch without ever being run
+    // back through the disallowed-attribute-stripping logic. (<a>, unlike
+    // <script>/<style>/<iframe>/<noembed>/<noframes>, uses ordinary child-
+    // element parsing rather than HTML's "raw text" tokenizer rules, so its
+    // content really does become a real <span> element to test against.)
+    const out = sanitizeNoteHtml('<a href="javascript:alert(1)"><span onclick="alert(document.cookie)">click me</span></a>');
+    expect(out.toLowerCase()).not.toContain('onclick');
+    expect(out.toLowerCase()).not.toContain('<a ');
+    expect(out).toContain('click me');
+    // Re-parse and check the DOM directly (not just the string) — proves no
+    // attribute node named onclick survived on any element, not merely that
+    // the substring "onclick" doesn't appear in the serialized markup.
+    const reparsed = document.createElement('div');
+    reparsed.innerHTML = out;
+    const span = reparsed.querySelector('span');
+    expect(span).not.toBeNull();
+    expect(span.hasAttribute('onclick')).toBe(false);
+  });
+
+  test('strips onclick from an allowed tag nested two levels inside stacked disallowed wrappers', () => {
+    // A deeper nesting (<center><marquee><span onclick>) exercises the same
+    // recursive-unwrap fix across more than one unwrap pass, using two more
+    // disallowed-but-ordinarily-parsed wrapper tags.
+    const out = sanitizeNoteHtml('<center><marquee><span onclick="alert(1)">x</span></marquee></center>');
+    expect(out.toLowerCase()).not.toContain('onclick');
+    expect(out.toLowerCase()).not.toContain('<center');
+    expect(out.toLowerCase()).not.toContain('<marquee');
+    expect(out).toContain('x');
+  });
+
   test('empty/null input returns empty string, never throws', () => {
     expect(sanitizeNoteHtml('')).toBe('');
     expect(sanitizeNoteHtml(null)).toBe('');

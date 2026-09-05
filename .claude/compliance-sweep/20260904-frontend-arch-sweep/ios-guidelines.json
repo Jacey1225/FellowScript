@@ -1,0 +1,8 @@
+{
+  "task_id": "20260904-frontend-arch-sweep",
+  "step": 7,
+  "gate": "ios-guidelines",
+  "result": "pass",
+  "finding_count": 6,
+  "summary": "Reviewed FellowScript/FellowScript/ (Xcode project, 46 files) against Apple App Store Review Guidelines and privacy-manifest requirements (the appstore skill itself could not be loaded — reserved for explicit user invocation — so standard public guideline text was used directly). No Critical/High findings: the target already implements Guideline 1.2 zero-tolerance re-consent, 4.8 equal-prominence Sign in with Apple, 5.1.1(v) in-app account deletion, 3.1.2/3.1.3(b) StoreKit-native trial with no external checkout, correct export-compliance flag, and accurate camera/microphone usage strings with no ATT/IDFA exposure. 3 Medium findings: inconsistent Reduce Motion support across 10+ animation-heavy files, a silently-failing AmazonChimeSDK privacy-manifest patch build phase (warns instead of failing the build if the framework path changes), and a hardcoded aps-environment=development entitlement (likely corrected by Xcode's automatic signing at archive, but unverified) that push notifications depend on. 3 Low findings: a hand-built Sign in with Apple button that won't auto-track future HIG spec changes, a noted scope boundary on Guideline 1.2's backend-side moderation-response requirement, and a reminder to recheck AmazonChimeSDK's privacy-manifest currency as its version changes."
+}

@@ -14,6 +14,7 @@ from routes.donation import donation_router
 from routes.reports import report_router
 from routes.blocks import block_router
 from routes.monitoring import monitoring_router
+from routes.profile_photo import profile_photo_router
 from schemas.users import SignUp, Login, UpdateUser, User, CURRENT_TERMS_VERSION
 from datetime import datetime, timezone
 from pydantic import BaseModel
@@ -33,6 +34,7 @@ from db import DBManager, BACKUP_DB_NAME, _connect, create_tables
 from backend.errors import SaveFailedError
 from backend.rate_limiting import get_client_ip, limiter
 from backend.interactions.helpers import load_users_data, save_users_data, save_user_row
+from backend.interactions.attachments import generate_download_url, delete_object
 from backend.subscription.subscriptions import SubscriptionsManager
 from backend.auth.sessions import SessionManager
 from backend.auth.password_reset import PasswordResetManager
@@ -206,6 +208,7 @@ app.include_router(donation_router)
 app.include_router(report_router)
 app.include_router(block_router)
 app.include_router(monitoring_router)
+app.include_router(profile_photo_router)
 
 main_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 user_path = "data/users.json"
@@ -651,6 +654,15 @@ async def get_user(user_id: str, current_user: str = Depends(get_current_user)) 
     if user_id not in users:
         raise HTTPException(status_code=404, detail="User not found")
     data = {k: v for k, v in users[user_id].items() if k != "hash_pass"}
+    # Never hand back the raw S3 object key (task 20260905-profile-photo) --
+    # resolve it to a fresh, short-lived presigned GET at read time instead,
+    # mirroring attachments.py's own no-permanent-URL precedent. This is the
+    # canonical point group member lists / chat participants / friend lookups
+    # already resolve a user's public identity through (see groups.py's "GET
+    # /user derives each member's info" comment), so enriching it here covers
+    # every one of those surfaces without a dedicated per-surface change.
+    photo_key = data.pop("profile_photo_key", None)
+    data["profile_photo_url"] = generate_download_url(photo_key)
     if current_user != user_id:
         data["email"]           = ""
         data["mfa_enabled"]     = False
@@ -705,7 +717,14 @@ async def update_user(user_id: str, info: UpdateUser, _: str = Depends(require_m
     except Exception as e:
         logger.error("update_user: failed to persist %s: %s", user_id, e)
         raise HTTPException(status_code=500, detail="Failed to save profile changes") from e
-    return {"user_id": user_id, **{k: v for k, v in users[user_id].items() if k != "hash_pass"}}
+    data = {k: v for k, v in users[user_id].items() if k != "hash_pass"}
+    # Same raw-key-never-leaves-the-server treatment as GET /user/{user_id}
+    # above -- this route can't itself change the photo (that's the
+    # dedicated routes/profile_photo.py flow), but it echoes back the
+    # user's current one alongside every other field it already returns.
+    photo_key = data.pop("profile_photo_key", None)
+    data["profile_photo_url"] = generate_download_url(photo_key)
+    return {"user_id": user_id, **data}
 
 
 @app.post("/user/{user_id}/accept-terms")
@@ -750,9 +769,11 @@ async def delete_user(user_id: str, _: str = Depends(require_match("user_id"))) 
     """
     db = DBManager()
     try:
-        db.cur.execute("SELECT 1 FROM users WHERE _id = %s", (user_id,))
-        if not db.cur.fetchone():
+        db.cur.execute("SELECT profile_photo_key FROM users WHERE _id = %s", (user_id,))
+        row = db.cur.fetchone()
+        if not row:
             raise HTTPException(status_code=404, detail="User not found")
+        photo_key = row[0]
         # Tables whose FK to users has no ON DELETE rule must be handled manually.
         db.cur.execute("DELETE FROM notes    WHERE user_id   = %s", (user_id,))
         db.cur.execute("UPDATE messages   SET from_user   = NULL WHERE from_user   = %s", (user_id,))
@@ -761,6 +782,14 @@ async def delete_user(user_id: str, _: str = Depends(require_match("user_id"))) 
         db.conn.commit()
     finally:
         db.close()
+
+    # task 20260905-profile-photo: a deleted account's S3 photo object (if
+    # any) must not survive the account it belonged to -- best-effort,
+    # logged not raised (see attachments.delete_object), same fail-soft
+    # posture as the backup-DB purge below: a cleanup hiccup here must never
+    # make account deletion itself appear to fail once the primary-DB row
+    # is already gone.
+    delete_object(photo_key)
 
     # The nightly-backup database is a separate, FK-less mirror (see
     # backend/backup/manager.py) — deleting the primary row above does not

@@ -7,6 +7,7 @@ struct OnboardingView: View {
 
     private enum Phase: Hashable { case welcome, survey, bridge, tour, cta }
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var phase         = Phase.welcome
     @State private var selectedPains = Set<Int>()
     @State private var tourStep      = 0
@@ -60,7 +61,7 @@ struct OnboardingView: View {
             // animation transactions on the same value. This alone turned out
             // not to be the cause of the bug described below, but it's a
             // legitimate SwiftUI footgun worth avoiding regardless.
-            .animation(.easeInOut(duration: 0.32), value: phase)
+            .motionAwareAnimation(.easeInOut(duration: 0.32), value: phase, reduceMotion: reduceMotion)
         }
         .fullScreenCover(isPresented: $showAuth) {
             AuthView(initialSignIn: authSignIn, onComplete: onComplete)
@@ -76,6 +77,7 @@ struct OnboardingView: View {
 
 private struct OBWelcome: View {
     let onNext: () -> Void
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var appeared = false
 
     var body: some View {
@@ -88,7 +90,7 @@ private struct OBWelcome: View {
                     .aspectRatio(contentMode: .fit)
                     .frame(width: 56, height: 56)
                     .scaleEffect(appeared ? 1 : 0.5)
-                    .animation(.spring(response: 0.7, dampingFraction: 0.72).delay(0.1), value: appeared)
+                    .motionAwareAnimation(.spring(response: 0.7, dampingFraction: 0.72).delay(0.1), value: appeared, reduceMotion: reduceMotion)
 
                 VStack(spacing: 6) {
                     HStack(spacing: 0) {
@@ -119,7 +121,7 @@ private struct OBWelcome: View {
             .padding(.horizontal, 32)
             .opacity(appeared ? 1 : 0)
             .offset(y: appeared ? 0 : 18)
-            .animation(.easeOut(duration: 0.55).delay(0.15), value: appeared)
+            .motionAwareAnimation(.easeOut(duration: 0.55).delay(0.15), value: appeared, reduceMotion: reduceMotion)
 
             Spacer()
 
@@ -139,7 +141,7 @@ private struct OBWelcome: View {
             .padding(.horizontal, 32)
             .padding(.bottom, 56)
             .opacity(appeared ? 1 : 0)
-            .animation(.easeOut(duration: 0.4).delay(0.45), value: appeared)
+            .motionAwareAnimation(.easeOut(duration: 0.4).delay(0.45), value: appeared, reduceMotion: reduceMotion)
         }
         .onAppear { appeared = true }
     }
@@ -150,6 +152,7 @@ private struct OBWelcome: View {
 private struct OBSurvey: View {
     @Binding var selected: Set<Int>
     let onNext: () -> Void
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private let pains = [
         "I struggle to read the Bible consistently",
@@ -183,7 +186,7 @@ private struct OBSurvey: View {
                             text: pains[i],
                             isSelected: selected.contains(i)
                         ) {
-                            withAnimation(.spring(response: 0.25)) {
+                            withMotionAwareAnimation(.spring(response: 0.25), reduceMotion: reduceMotion) {
                                 if selected.contains(i) { selected.remove(i) }
                                 else { selected.insert(i) }
                             }
@@ -292,6 +295,7 @@ private struct OBTour: View {
     @Binding var step: Int
     let onFinish: () -> Void
     let onSkip:   () -> Void
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private let steps = TourStep.all
 
@@ -321,7 +325,7 @@ private struct OBTour: View {
                     insertion: .move(edge: .trailing).combined(with: .opacity),
                     removal:   .move(edge: .leading).combined(with: .opacity)
                 ))
-                .animation(.easeInOut(duration: 0.26), value: step)
+                .motionAwareAnimation(.easeInOut(duration: 0.26), value: step, reduceMotion: reduceMotion)
 
             // Text
             VStack(spacing: 7) {
@@ -347,7 +351,7 @@ private struct OBTour: View {
                 }
             }
             .padding(.horizontal, 28).padding(.top, 14)
-            .animation(.easeInOut(duration: 0.2), value: step)
+            .motionAwareAnimation(.easeInOut(duration: 0.2), value: step, reduceMotion: reduceMotion)
 
             Spacer(minLength: 8)
 
@@ -361,7 +365,7 @@ private struct OBTour: View {
                                  ? Theme.gold.opacity(0.32)
                                  : Theme.gold.opacity(0.10)))
                         .frame(width: i == step ? 18 : 6, height: 6)
-                        .animation(.spring(response: 0.28), value: step)
+                        .motionAwareAnimation(.spring(response: 0.28), value: step, reduceMotion: reduceMotion)
                 }
             }
             .padding(.bottom, 10)
@@ -369,7 +373,7 @@ private struct OBTour: View {
             // Nav buttons
             HStack(spacing: 12) {
                 if step > 0 {
-                    Button(action: { withAnimation(.easeInOut(duration: 0.26)) { step -= 1 } }) {
+                    Button(action: { withMotionAwareAnimation(.easeInOut(duration: 0.26), reduceMotion: reduceMotion) { step -= 1 } }) {
                         Image(systemName: "chevron.left")
                             .font(.system(size: 14, weight: .medium))
                             .foregroundColor(Theme.parchment.opacity(0.55))
@@ -383,7 +387,7 @@ private struct OBTour: View {
                 }
                 Button(action: {
                     if step < steps.count - 1 {
-                        withAnimation(.easeInOut(duration: 0.26)) { step += 1 }
+                        withMotionAwareAnimation(.easeInOut(duration: 0.26), reduceMotion: reduceMotion) { step += 1 }
                     } else {
                         onFinish()
                     }

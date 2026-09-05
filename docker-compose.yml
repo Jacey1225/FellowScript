@@ -71,3 +71,41 @@ services:
     memswap_limit: 1500m # equal to mem_limit == no container swap
     cpus: "1.5"
     restart: unless-stopped
+
+    # Fixes the CloudWatch log-durability gap found in
+    # .claude/pipeline/20260905-scheduled-event-trigger-gap: the
+    # CloudWatch agent's /fellowscript/app log source (a host file,
+    # /home/ubuntu/uvicorn.log) stopped being written to when this service
+    # containerized, so essentially no backend application-log content
+    # (including scheduler/heartbeat activity) has reached durable storage
+    # since 2026-08-11. Streaming stdout/stderr to CloudWatch directly via
+    # Docker's own `awslogs` driver, as they're emitted, fixes both halves
+    # of that gap in one change: (1) it doesn't depend on the app writing
+    # to any container-local file, so there's no dead file path for the
+    # host-side CloudWatch agent to mistakenly keep tailing, and (2) it
+    # has no dependency on any container-local file surviving a redeploy
+    # (Decision/Security Posture Q11 in that task: a redeploy recreating
+    # this container must not be a de facto log-retention boundary — the
+    # prior `json-file` default drops all prior log history the moment the
+    # container is recreated).
+    #
+    # Credentials: `awslogs` is implemented by the Docker daemon itself (a
+    # host process), which resolves AWS credentials via its own default
+    # chain -- including the EC2 instance metadata service -- independent
+    # of this service's `network_mode: host` or in-container AWS env vars
+    # above. No new secret/credential wiring: this rides the same
+    # FellowScriptCloudWatchRole instance-role chain already relied on for
+    # boto3 elsewhere (Decision 3, docker-phase1-backend-deploy) -- nothing
+    # extra to configure for it here, matching that decision's explicit
+    # "do nothing extra for FellowScriptCloudWatchRole" precedent.
+    # `awslogs-create-group: "false"` is deliberate: /fellowscript/app
+    # already exists (previously fed by the now-retired host-file tail),
+    # so the role only needs `logs:CreateLogStream` / `logs:PutLogEvents`
+    # on it, not `logs:CreateLogGroup` -- see step 5's security review.
+    logging:
+      driver: awslogs
+      options:
+        awslogs-region: us-east-1
+        awslogs-group: /fellowscript/app
+        awslogs-stream: fellowscript-api
+        awslogs-create-group: "false"

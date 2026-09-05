@@ -3,6 +3,10 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <!-- Deployment-specific value (Configuration Q2) -- the one canonical
+       override point for this no-build page's API base URL; js/config.js
+       falls back to its own bundled default when this is absent. -->
+  <meta name="api-base" content="https://fellowscript.com/api" />
   <title>FellowScript — Account</title>
   <link rel="icon" type="image/svg+xml" href="tab_logo.svg" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -104,6 +108,16 @@
 
     function escHtml(s) {
       return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    // Task 20260905-profile-photo: the initials fallback always sits in the
+    // DOM; a photo (if any) layers on top via CSS (.avatar-photo, see
+    // account.css) and removes itself on load error, revealing the
+    // initials underneath rather than a broken-image icon.
+    function avatarHtml(name, photoUrl) {
+      const initial = escHtml(((name || '?')[0] || '?').toUpperCase());
+      if (!photoUrl) return initial;
+      return `${initial}<img class="avatar-photo" src="${escHtml(photoUrl)}" alt="" onerror="this.remove()" />`;
     }
 
     function showFeedback(id, text, type) {
@@ -217,16 +231,17 @@
       listEl.innerHTML = '';
       await Promise.all(requestIds.map(async uid => {
         let username = uid.slice(0, 8);
+        let photoUrl = null;
         try {
           const res = await fetch(`${API}/user/${uid}`);
-          if (res.ok) { const d = await res.json(); username = d.username || username; }
+          if (res.ok) { const d = await res.json(); username = d.username || username; photoUrl = d.profile_photo_url || null; }
         } catch { /* use truncated id */ }
 
         const row = document.createElement('div');
         row.className = 'request-row';
         row.id = `req-${uid}`;
         row.innerHTML = `
-          <div class="request-avatar">${escHtml(username[0].toUpperCase())}</div>
+          <div class="request-avatar">${avatarHtml(username, photoUrl)}</div>
           <div class="request-info">
             <div class="request-name">${escHtml(username)}</div>
             <div class="request-sub">Wants to be your friend</div>

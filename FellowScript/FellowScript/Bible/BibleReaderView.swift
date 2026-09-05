@@ -53,27 +53,63 @@ final class BibleViewModel: ObservableObject {
     // calls load() the first time BibleReaderView is lazily mounted).
     private var hasLoadedOnce = false
 
+    // Separate guard for the 4.2MB bible.json decode (Critical C2 fix, task
+    // 20260904-compliance-performance-fixes). Deliberately independent of
+    // hasLoadedOnce above: load() below runs from StartupCoordinator's
+    // startup race on every cold launch and must stay cheap (just the
+    // highlights/bookmarks network fetch), while the actual bible.json
+    // parse must fire exactly once, and only the first time this screen's
+    // own `.task` runs — i.e. the first time the Bible tab is actually
+    // opened, never at launch.
+    private var hasLoadedBibleContent = false
+
+    // Startup-critical path: called both by StartupCoordinator's readiness
+    // race (every cold launch) and by this screen's own `.task` (guarded by
+    // hasLoadedOnce so the second call is a no-op). Loads only the
+    // lightweight per-user data (highlights/bookmarks) — NOT bible.json.
+    // The 4.2MB translation content is loaded lazily; see loadBibleContent().
     func load(service: DataServiceProtocol, userId: String) async {
         guard !hasLoadedOnce else { return }
         hasLoadedOnce = true
         self.service = service
-        // Fetch from bundled bible.json in the app bundle
+        await loadUserData(userId: userId)
+    }
+
+    // True lazy load of the bundled bible.json (4.2MB): deliberately NOT
+    // called anywhere in StartupCoordinator — only BibleReaderView's own
+    // `.task` calls this, so the decode cost is paid the first time the
+    // Bible tab is actually opened, not at cold launch. The heavy
+    // Data(contentsOf:)+JSONDecoder work runs in a detached background
+    // Task; this method (and BibleViewModel itself) stays @MainActor, and
+    // only hops back to it to assign the decoded result to the published
+    // bibleData/books properties.
+    func loadBibleContent() async {
+        guard !hasLoadedBibleContent else { return }
+        hasLoadedBibleContent = true
+
         guard let url = Bundle.main.url(forResource: "bible", withExtension: "json") else {
             loadMockContent()
-            await loadUserData(userId: userId)
             return
         }
+
+        let decoded: [String: [String]]?
         do {
-            let data = try Data(contentsOf: url)
-            let decoded = try JSONDecoder().decode([String: [String]].self, from: data)
+            decoded = try await Task.detached(priority: .userInitiated) {
+                let data = try Data(contentsOf: url)
+                return try JSONDecoder().decode([String: [String]].self, from: data)
+            }.value
+        } catch {
+            decoded = nil
+        }
+
+        if let decoded {
             bibleData = decoded
             books = Array(decoded.keys).sorted()
             isLoading = false
             setChapter(curChapter)
-        } catch {
+        } else {
             loadMockContent()
         }
-        await loadUserData(userId: userId)
     }
 
     private func loadUserData(userId: String) async {
@@ -536,6 +572,11 @@ struct BibleReaderView: View {
             if let uid = appState.currentUser?.user_id {
                 await vm.load(service: appState.service, userId: uid)
             }
+            // Lazy bible.json decode (Critical C2): this is the one and only
+            // trigger point for it — deliberately not part of vm.load() above
+            // or StartupCoordinator's preload race, so the 4.2MB parse only
+            // happens once this screen (the Bible tab) has actually appeared.
+            await vm.loadBibleContent()
         }
         .onChange(of: appState.pendingBibleNav) { _, target in
             guard let t = target else { return }

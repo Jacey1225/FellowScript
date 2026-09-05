@@ -105,7 +105,19 @@ def create_tables(cur):
         # error-detection monitoring endpoints, routes/monitoring.py) via
         # backend/auth/dependencies.py::require_admin. Distinct from the
         # unrelated `role` column on the `agents` table (AI persona config).
-        "is_admin BOOLEAN NOT NULL DEFAULT FALSE)"
+        "is_admin BOOLEAN NOT NULL DEFAULT FALSE,"
+        # S3 object key for the user's profile photo (task 20260905-profile-
+        # photo) -- nullable (most rows have none, falling back to an
+        # initials avatar client-side). Mirrors attachments.py's convention
+        # exactly: only the object key is ever persisted, never a full/
+        # permanent URL -- rendering resolves it to a fresh, short-lived
+        # presigned GET at read time (see backend/interactions/attachments.py
+        # ::generate_download_url). Deliberately excluded from
+        # helpers.py::_upsert_user_row's INSERT/UPDATE column list, same as
+        # suspended_at -- only the dedicated upload/confirm/remove endpoints
+        # in routes/profile_photo.py may ever set or clear it, never a
+        # routine PUT /user/{id} profile edit.
+        "profile_photo_key TEXT)"
     )
     # Migrations for databases created before the social-sign-in columns existed.
     cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS apple_sub TEXT")
@@ -117,6 +129,7 @@ def create_tables(cur):
     cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS suspended_at TIMESTAMPTZ")
     cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS needs_profile_completion BOOLEAN NOT NULL DEFAULT FALSE")
     cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT FALSE")
+    cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_photo_key TEXT")
 
     # One-time admin seed, re-applied (idempotently) every time create_tables()
     # runs -- i.e. on every non-destructive schema-apply deploy step (see
@@ -395,13 +408,31 @@ def create_tables(cur):
         "(_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
         "agent_id UUID REFERENCES agents(_id) ON DELETE CASCADE,"
         "user_id UUID REFERENCES users(_id) ON DELETE CASCADE,"
+        # 31-item list indexed by day-of-month (index i == day i+1), each
+        # slot an "HH:mm" string or null. Interpreted as literal wall-clock
+        # time local to the OWNING USER's own `users.timezone` (IANA name),
+        # not UTC -- see the timezone_handling revision
+        # (.claude/pipeline/20260901-heartbeat-backend-scheduling) and its
+        # scheduler.py::_fire_due_heartbeats / AgentManager.commit_hb_response
+        # consumers. iOS (EventSetupSheet.swift) authors/reads this same
+        # field as the device's own local wall-clock digits (task
+        # 20260905-heartbeat-timezone-duplicate-bugs, step 3) so the two
+        # sides agree on one semantic; a user whose account `users.timezone`
+        # doesn't match their device's actual current timezone will still
+        # see a mismatch, but that is a separate timezone-accuracy concern
+        # (see that task's own open questions), not a storage-format one.
         "timestamps JSONB DEFAULT '[]',"
         "prompt TEXT DEFAULT '',"
         # Timestamp of the most recent fire. Used to make commit_hb_response
         # idempotent so repeated same-day calls (e.g. the iOS client
         # re-checking on every app foreground) can't create more than one
-        # note for the same scheduled slot — see the UTC-calendar-day claim
-        # in AgentManager.commit_hb_response.
+        # note for the same scheduled slot — the calendar-day boundary this
+        # claims against is computed in the OWNING USER's own local timezone
+        # (users.timezone), not a fixed UTC date -- see the per-user-local
+        # calendar-day claim in AgentManager.commit_hb_response (this was
+        # UTC-calendar-day before the timezone_handling revision; this
+        # comment previously went stale and wasn't updated along with that
+        # change -- see task 20260905-heartbeat-timezone-duplicate-bugs).
         "last_fired TIMESTAMPTZ,"
         # Optional group this scheduled event is tied to. Nullable -- an
         # event can remain personal/ungrouped exactly as before. When set,
@@ -419,7 +450,20 @@ def create_tables(cur):
         # LLM response -- the model has no basis to decide a group-edit
         # grant any more than it has a basis to decide group_id itself
         # (see note_via_hb's docstring on that same reasoning for group_id).
-        "notes_public BOOLEAN DEFAULT FALSE)"
+        "notes_public BOOLEAN DEFAULT FALSE,"
+        # Bug 2 fix (task 20260905-heartbeat-timezone-duplicate-bugs): a
+        # client-generated token, one per Save *attempt* (not regenerated on
+        # an internal retry of that same attempt -- see EventSetupSheet.swift
+        # step 4). Paired with the UNIQUE index below on
+        # (user_id, agent_id, idempotency_key), this is what actually makes
+        # double-submit protection concurrency-safe (Q28): two near-
+        # simultaneous INSERTs racing on the same key can't both land, since
+        # Postgres itself -- not a check-then-insert race in application code
+        # -- enforces the constraint. Nullable only so a pre-migration row
+        # (or a call from a not-yet-updated client, which
+        # AgentManager.add_heartbeat backfills with a server-generated key
+        # that provides no dedup protection) isn't rejected by this ALTER.
+        "idempotency_key TEXT)"
     )
     # Migrations for databases created before these columns existed.
     cur.execute(
@@ -430,6 +474,28 @@ def create_tables(cur):
     )
     cur.execute(
         "ALTER TABLE agent_heartbeats ADD COLUMN IF NOT EXISTS notes_public BOOLEAN DEFAULT FALSE"
+    )
+    cur.execute(
+        "ALTER TABLE agent_heartbeats ADD COLUMN IF NOT EXISTS idempotency_key TEXT"
+    )
+    # A UNIQUE index, not a plain column-level UNIQUE constraint: uniqueness
+    # is scoped to the (user_id, agent_id, idempotency_key) triple, not to
+    # idempotency_key alone -- two different users' (or one user's two
+    # different agents') attempts landing on coincidentally-identical tokens
+    # must never collide with each other. `ALTER TABLE ... ADD CONSTRAINT`
+    # has no idempotent `IF NOT EXISTS` form (same gap noted on the
+    # `messages.attachment_kind` ALTERs above), so this uses
+    # `CREATE UNIQUE INDEX IF NOT EXISTS` instead, which enforces the
+    # identical guarantee and re-runs cleanly on every boot.
+    #
+    # NULL is allowed and deliberately never collides with another NULL
+    # (standard SQL/Postgres unique-index semantics) -- every row that
+    # predates this column, including the two known duplicate rows this
+    # very task investigated, has idempotency_key = NULL and so cannot block
+    # this index's creation or each other.
+    cur.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_agent_heartbeats_idempotency "
+        "ON agent_heartbeats (user_id, agent_id, idempotency_key)"
     )
 
     cur.execute(

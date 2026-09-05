@@ -170,11 +170,27 @@ export default function SubscriptionCard({ userId, onPlanChange }) {
 
   const cancelPlan = async () => {
     setBusy('cancel');
+    let ok = false;
     try {
-      await fetch(`${API}/subscriptions/${plan.id}`, { method: 'DELETE' });
-      await load(); onPlanChange?.(); flash('success', 'Plan canceled.');
-    } catch { flash('error', 'Could not cancel plan.'); }
-    finally { setBusy(''); }
+      const res = await fetch(`${API}/subscriptions/${plan.id}`, { method: 'DELETE' });
+      ok = res.ok || res.status === 204;
+      // Never assume success from a fetch that merely didn't throw -- a
+      // non-2xx response (e.g. the Stripe-side cancellation failing
+      // server-side) must not report "Plan canceled" (Architecture Q27:
+      // propagate the failure instead of silently treating it as success).
+      if (!ok) {
+        const d = await res.json().catch(() => ({}));
+        flash('error', d.detail || 'Could not cancel plan. Please try again.');
+      }
+    } catch {
+      flash('error', 'Could not reach the server.');
+    }
+    // Always resync from server truth (mirrors the sibling updateSeats/
+    // leavePlan actions above) so the UI can't drift from what actually
+    // happened server-side even when the DELETE itself failed.
+    await load();
+    if (ok) { onPlanChange?.(); flash('success', 'Plan canceled.'); }
+    setBusy('');
   };
 
   const leavePlan = async () => {

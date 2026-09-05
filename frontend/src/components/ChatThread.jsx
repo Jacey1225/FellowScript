@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Button, Avatar, Typography, Input, Popover, Modal, Spin } from 'antd';
 import {
-  SendOutlined, ArrowLeftOutlined, TeamOutlined, PaperClipOutlined,
+  SendOutlined, ArrowLeftOutlined, TeamOutlined, PlusOutlined,
   PictureOutlined, FileOutlined, SmileOutlined, PlayCircleOutlined,
   DownloadOutlined, CloseCircleFilled, SearchOutlined,
 } from '@ant-design/icons';
@@ -241,6 +241,7 @@ export default function ChatThread({
   onRequestUploadUrl, onUploadToS3, onSearchGifs,
   sessions, activeSessionId, talkingUserId,
   onJoinSession, onLeaveSession, onOpenSessionCreator,
+  joinError, onClearJoinError,
   onEditSession, onDeleteSession, onNavigateVerse,
   videoEnabled, videoTiles, onToggleVideo, bindVideoTile,
 }) {
@@ -356,17 +357,35 @@ export default function ChatThread({
     setAttachmentError(null);
   };
 
+  // Task 20260904-attach-picker-layout-polish: same gold-gradient pill
+  // treatment already used inline for NotesPanel.jsx's "New Note"/"New" and
+  // AgentChatPanel.jsx's "New Agent Chat" buttons -- reused verbatim here
+  // rather than a new button style, per Q1/Q12 (hold to the established
+  // system once it exists).
+  const attachPillStyle = {
+    background: 'linear-gradient(135deg, var(--gold-light), var(--gold) 60%, var(--gold-dim))',
+    border: 'none',
+    color: 'var(--ink)',
+    fontFamily: "'Space Grotesk', sans-serif",
+    fontWeight: 600,
+    borderRadius: 999,
+    minHeight: 44,
+  };
+
   const attachMenuContent = (
     <div className="attach-menu">
-      <button type="button" className="attach-menu-row" onClick={() => { setShowAttachMenu(false); photoVideoInputRef.current?.click(); }}>
-        <PictureOutlined /> <span>Photo &amp; Video</span>
-      </button>
-      <button type="button" className="attach-menu-row" onClick={() => { setShowAttachMenu(false); fileInputRef.current?.click(); }}>
-        <FileOutlined /> <span>File</span>
-      </button>
-      <button type="button" className="attach-menu-row" onClick={() => { setShowAttachMenu(false); setShowGifSheet(true); }}>
-        <SmileOutlined /> <span>GIF</span>
-      </button>
+      <Button className="attach-menu-row" icon={<PictureOutlined />} style={attachPillStyle}
+        onClick={() => { setShowAttachMenu(false); photoVideoInputRef.current?.click(); }}>
+        Photo &amp; Video
+      </Button>
+      <Button className="attach-menu-row" icon={<FileOutlined />} style={attachPillStyle}
+        onClick={() => { setShowAttachMenu(false); fileInputRef.current?.click(); }}>
+        File
+      </Button>
+      <Button className="attach-menu-row" icon={<SmileOutlined />} style={attachPillStyle}
+        onClick={() => { setShowAttachMenu(false); setShowGifSheet(true); }}>
+        GIF
+      </Button>
     </div>
   );
 
@@ -414,6 +433,8 @@ export default function ChatThread({
         talkingUserId={talkingUserId}
         onJoin={onJoinSession}
         onLeave={onLeaveSession}
+        joinError={joinError}
+        onClearJoinError={onClearJoinError}
         onEdit={onEditSession}
         onDelete={onDeleteSession}
         onNavigateVerse={onNavigateVerse}
@@ -428,7 +449,7 @@ export default function ChatThread({
         <div style={{ padding: '0.7rem 1rem', borderBottom: '1px solid rgba(255,255,255,0.072)', background: 'rgba(255,198,26,0.04)', maxHeight: 160, overflowY: 'auto', flexShrink: 0 }}>
           <Text style={{ fontSize: '0.55rem', letterSpacing: '0.18em', textTransform: 'uppercase', color: 'rgba(255,198,26,0.45)', display: 'block', marginBottom: '0.4rem' }}>Members</Text>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', marginBottom: '0.3rem' }}>
-            <Avatar size={22} style={{ background: 'rgba(255,198,26,0.12)', border: 'none', color: 'var(--gold)', fontSize: '0.55rem' }}>
+            <Avatar size={22} src={user?.profile_photo_url} style={{ background: 'rgba(255,198,26,0.12)', border: 'none', color: 'var(--gold)', fontSize: '0.55rem' }}>
               {(user?.username || 'Y')[0].toUpperCase()}
             </Avatar>
             <Text style={{ fontSize: '0.72rem', color: 'var(--gold)', fontFamily: "'Inter', sans-serif" }}>{user?.username} (you)</Text>
@@ -437,7 +458,7 @@ export default function ChatThread({
             const uname = m.username || m.user_id?.slice(0, 8) || '?';
             return (
               <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', marginBottom: '0.3rem' }}>
-                <Avatar size={22} style={{ background: 'rgba(255,198,26,0.12)', border: 'none', color: 'var(--gold)', fontSize: '0.55rem' }}>
+                <Avatar size={22} src={m.photoUrl} style={{ background: 'rgba(255,198,26,0.12)', border: 'none', color: 'var(--gold)', fontSize: '0.55rem' }}>
                   {uname[0].toUpperCase()}
                 </Avatar>
                 <Text style={{ fontSize: '0.72rem', color: 'rgba(242,242,242,0.65)', fontFamily: "'Inter', sans-serif" }}>{uname}</Text>
@@ -501,13 +522,13 @@ export default function ChatThread({
           open={showAttachMenu}
           onOpenChange={setShowAttachMenu}
           trigger="click"
-          placement="topLeft"
+          placement="top"
           content={attachMenuContent}
           overlayClassName="attach-menu-popover"
         >
           <Button
             type="text"
-            icon={<PaperClipOutlined />}
+            icon={<PlusOutlined />}
             aria-label="Attach a photo, video, file, or GIF"
             style={{ color: 'rgba(255,198,26,0.75)', flexShrink: 0, width: 44, height: 44 }}
           />

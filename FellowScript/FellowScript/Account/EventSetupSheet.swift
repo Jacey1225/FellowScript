@@ -15,9 +15,24 @@ struct EventSetupSheet: View {
     // notesPublic: task 20260903-notes-public-repurpose, step 6 -- the
     // deny-by-default edit-permission choice for every note this event
     // generates on fire, mirroring notes.public's post-repurpose meaning.
-    let onSave:   (_ agentId: String, _ prompt: String, _ timestamps: [String?], _ groupId: String?, _ notesPublic: Bool) -> Void
+    // idempotencyKey (task 20260905-heartbeat-timezone-duplicate-bugs, step
+    // 4): a fresh UUID generated once per Save tap (see the toolbar action
+    // below), threaded all the way to the server's `idempotency_key` body
+    // field so a double-submit that still manages to fire this closure
+    // twice for the same attempt is deduped server-side rather than
+    // creating two rows.
+    let onSave:   (_ agentId: String, _ prompt: String, _ timestamps: [String?], _ groupId: String?, _ notesPublic: Bool, _ idempotencyKey: String) -> Void
 
     @Environment(\.dismiss) private var dismiss
+
+    // In-flight/disable guard (task 20260905-heartbeat-timezone-duplicate-bugs,
+    // step 4): PillButton has no built-in debounce or disabled-while-saving
+    // state, and the toolbar action below dispatches onSave as a
+    // fire-and-forget call before calling dismiss() -- a rapid double-tap
+    // before the sheet actually finishes dismissing could otherwise invoke
+    // onSave twice. This is a complementary client-side UX guard only; the
+    // durable fix is the server-side idempotency_key + UNIQUE index (step 2).
+    @State private var isSaving = false
 
     enum Recurrence { case daily, weekly, monthly }
     enum SetupScreen: Hashable { case days, details }
@@ -72,12 +87,19 @@ struct EventSetupSheet: View {
         selectedGroupId = hb.group_id ?? ""
         notesPublic     = hb.notes_public
 
-        // Extract time: timestamps store UTC "HH:mm"; DateFormatter with UTC tz
-        // returns a Date whose local representation the DatePicker will display.
+        // Extract time: timestamps store literal local wall-clock "HH:mm" in
+        // the owning user's timezone (task
+        // 20260905-heartbeat-timezone-duplicate-bugs, Bug 1 -- matches the
+        // backend's scheduler.py/agent.py interpretation since the
+        // 20260901-heartbeat-backend-scheduling revision; this screen
+        // previously double-converted through a hardcoded UTC timezone,
+        // which is what caused a 9:00 AM pick to fire hours off). Parse with
+        // the device's own local timezone so the digits round-trip back to
+        // the DatePicker unchanged.
         let nonNil = hb.timestamps.enumerated().compactMap { idx, ts in ts.map { (idx, $0) } }
         if let firstTime = nonNil.first?.1 {
             let f = DateFormatter(); f.dateFormat = "HH:mm"
-            f.timeZone = TimeZone(identifier: "UTC")
+            f.timeZone = TimeZone.current
             if let parsed = f.date(from: firstTime) { selectedTime = parsed }
         }
 
@@ -430,6 +452,18 @@ struct EventSetupSheet: View {
             }
             ToolbarItem(placement: .navigationBarTrailing) {
                 PillButton(title: isEditing ? "Update" : "Save") {
+                    // In-flight guard (task
+                    // 20260905-heartbeat-timezone-duplicate-bugs, step 4):
+                    // bail out immediately if a save is already dispatched
+                    // for this attempt -- combined with .disabled(isSaving)
+                    // below, a rapid double-tap before dismiss() actually
+                    // removes the sheet can't fire onSave a second time.
+                    guard !isSaving else { return }
+                    isSaving = true
+                    // One token per attempt, generated here (not regenerated
+                    // on any internal retry of this same attempt) -- see the
+                    // onSave doc comment above.
+                    let idempotencyKey = UUID().uuidString
                     onSave(selectedAgentId,
                            prompt.trimmingCharacters(in: .whitespaces),
                            buildTimestamps(),
@@ -437,10 +471,11 @@ struct EventSetupSheet: View {
                            // Fail closed: an ungrouped event can't carry a
                            // meaningful edit-permission grant regardless of
                            // whatever the (hidden) toggle's stale state is.
-                           selectedGroupId.isEmpty ? false : notesPublic)
+                           selectedGroupId.isEmpty ? false : notesPublic,
+                           idempotencyKey)
                     dismiss()
                 }
-                .disabled(prompt.trimmingCharacters(in: .whitespaces).isEmpty || selectedAgentId.isEmpty)
+                .disabled(isSaving || prompt.trimmingCharacters(in: .whitespaces).isEmpty || selectedAgentId.isEmpty)
             }
             .suppressAutomaticGlassChrome()
         }
@@ -472,9 +507,17 @@ struct EventSetupSheet: View {
             .overlay(Capsule().stroke(Theme.parchment.opacity(0.12), lineWidth: 1))
     }
 
+    // Formats/stores the selected time as literal local wall-clock "HH:mm"
+    // (task 20260905-heartbeat-timezone-duplicate-bugs, Bug 1) -- previously
+    // hardcoded TimeZone(identifier: "UTC"), double-converting a value the
+    // backend now interprets as local time in the owning user's
+    // users.timezone (per the 20260901-heartbeat-backend-scheduling
+    // revision), which caused a 9:00 AM pick to be stored/fired as if it
+    // meant 9:00 AM UTC. iOS is the side that changes to match the
+    // backend's now-sole-authority interpretation, not the reverse.
     private func buildTimestamps() -> [String?] {
         let f = DateFormatter(); f.dateFormat = "HH:mm"
-        f.timeZone = TimeZone(identifier: "UTC")
+        f.timeZone = TimeZone.current
         let timeStr = f.string(from: selectedTime)
         var ts: [String?] = Array(repeating: nil, count: 31)
 

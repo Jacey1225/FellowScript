@@ -178,21 +178,26 @@ final class ReplyComposerRichTextControllerTests: XCTestCase {
 
 final class ReplyComposerSheetWiringSourceTests: XCTestCase {
 
+    // ReplyComposerSheet moved out of NotesListView.swift into its own file
+    // in the compliance-readability-cleanup task's split (readability #6,
+    // 20260904-frontend-arch-sweep) -- same type, same behavior, and no
+    // longer `private` since a sibling-file split requires at least internal
+    // visibility.
     private func componentSource() throws -> String {
         let componentFile = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()          // FellowScriptTests/
             .deletingLastPathComponent()          // FellowScript/ (repo-relative project root)
-            .appendingPathComponent("FellowScript/Notes/NotesListView.swift")
+            .appendingPathComponent("FellowScript/Notes/ReplyComposerSheet.swift")
         return try String(contentsOf: componentFile, encoding: .utf8)
     }
 
     /// Isolates ReplyComposerSheet's own body — from its declaration to the
-    /// end of the file, since it's the last top-level declaration in
-    /// NotesListView.swift — so these assertions can't accidentally match
-    /// unrelated text elsewhere in the (very large) shared file.
+    /// end of the file, since it's the only top-level declaration in
+    /// ReplyComposerSheet.swift now — so these assertions can't accidentally
+    /// match unrelated text elsewhere.
     private func replyComposerSection() throws -> String {
         let source = try componentSource()
-        guard let start = source.range(of: "private struct ReplyComposerSheet: View {") else {
+        guard let start = source.range(of: "struct ReplyComposerSheet: View {") else {
             XCTFail("could not locate ReplyComposerSheet to scope this check")
             return ""
         }

@@ -141,7 +141,9 @@ final class BibleReaderConsistencyRegressionTests: XCTestCase {
         // spec's own investigation notes (AccountView.swift:929) — confirms
         // the fix was scoped to BibleReaderView's one pill, not a global
         // strip of every Capsule().stroke(Theme.borderGold, ...) occurrence.
-        let source = try readSource("FellowScript/Account/AccountView.swift")
+        // The compliance-readability-cleanup task's AccountView.swift split
+        // moved this pill into AccountView+Subscription.swift.
+        let source = try readSource("FellowScript/Account/AccountView+Subscription.swift")
         XCTAssertTrue(
             source.contains(".overlay(Capsule().stroke(Theme.borderGold, lineWidth: 1))"),
             "AccountView's own bordered pill is an established, unrelated use of Theme.borderGold and must be unaffected by the Bible reader's outline removal"

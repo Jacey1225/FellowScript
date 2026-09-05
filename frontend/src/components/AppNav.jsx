@@ -62,6 +62,12 @@ export default function AppNav() {
             <Avatar
               size={32}
               icon={!user ? <UserOutlined /> : undefined}
+              // Task 20260905-profile-photo: antd's Avatar falls back to the
+              // icon/children below automatically both when `src` is
+              // falsy (no photo set) and when the image itself fails to
+              // load (e.g. an expired presigned URL) -- no extra
+              // onError wiring needed here for the initials fallback.
+              src={user ? user.profile_photo_url : undefined}
               style={{
                 background: user ? 'rgba(200,134,26,0.12)' : 'transparent',
                 border: '1.5px solid var(--gold)',

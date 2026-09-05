@@ -78,6 +78,17 @@ the production stall. Test 10 below closes that gap directly:
      probe keeps waking up on schedule throughout, because the blocking
      call runs on a separate thread-pool worker thread instead.
 
+Extended for task 20260905-scheduled-event-trigger-gap, backend step 3
+(explicit success-path logging -- this job previously only logged on the
+failure/warning path, so "did this heartbeat actually fire" had no answer
+from logs alone):
+
+  11. A fired heartbeat emits an INFO-level "Heartbeat fired: ..." log line
+      naming only heartbeat_id/agent_id/user_id -- no prompt/note content --
+      so a future "was this supposed to fire and did it" is answerable from
+      logs alone, matching the redaction posture already proven for the push
+      payload in test 6.
+
 Uses a monkeypatched `AgentManager._call_api` (same technique as
 test_commit_heartbeat_idempotency.py / test_commit_heartbeat_notes_cap.py) so
 no real LLM call is made, and a capturing fake `send_push` (same technique as
@@ -92,6 +103,7 @@ import _pathfix  # noqa: F401,E402
 
 import asyncio
 import importlib
+import logging
 import os
 import sys
 import uuid
@@ -257,6 +269,20 @@ class _CapturingPush:
     async def __call__(self, token: str, title: str, body: str, data: dict | None = None) -> bool:
         self.calls.append((token, title, body, data))
         return True
+
+
+class _CapturingLogHandler(logging.Handler):
+    """Same technique as test_friend_activity_push_triggers.py /
+    test_client_error_report_endpoint.py -- a real logging.Handler attached
+    to the module logger, not a mock, so log-line assertions prove what a
+    real log consumer (e.g. CloudWatch) would actually see."""
+
+    def __init__(self):
+        super().__init__()
+        self.records: list[str] = []
+
+    def emit(self, record):
+        self.records.append(self.format(record))
 
 
 class _FrozenDateTime(datetime):
@@ -643,6 +669,47 @@ def test_event_loop_stays_responsive_during_slow_llm_call():
         cleanup(uid)
 
 
+# ── 11. Success-path logging (task 20260905-scheduled-event-trigger-gap) ───
+
+def test_due_heartbeat_fire_emits_info_success_log_line():
+    print("\n=== 11. A fired heartbeat emits an INFO 'Heartbeat fired: ...' log line naming "
+          "only heartbeat/agent/user ids -- no prompt/note content ===")
+    now = datetime(2026, 3, 15, 14, 30, tzinfo=tzmod.utc)
+    uid = make_user("hblogfire")
+    agent_id = make_agent(uid, name="Log Line Agent")
+    hb_id = make_heartbeat(agent_id, uid, due_timestamps_for(now, "14:00"))
+    set_device_token(uid, f"tok-{uid}")
+    push = _CapturingPush()
+    push_module.send_push = push
+    freeze_scheduler_time(now)
+
+    handler = _CapturingLogHandler()
+    scheduler_logger = logging.getLogger("backend.interactions.scheduler")
+    scheduler_logger.addHandler(handler)
+    prior_level = scheduler_logger.level
+    scheduler_logger.setLevel(logging.DEBUG)
+    try:
+        asyncio.run(run_job())
+        fired_lines = [r for r in handler.records if "Heartbeat fired" in r]
+        check("exactly one 'Heartbeat fired' log line was emitted",
+              len(fired_lines) == 1, str(handler.records))
+        check("the fired log line names the heartbeat id",
+              fired_lines and hb_id in fired_lines[0], str(fired_lines))
+        check("the fired log line names the agent id",
+              fired_lines and agent_id in fired_lines[0], str(fired_lines))
+        check("the fired log line names the user id",
+              fired_lines and uid in fired_lines[0], str(fired_lines))
+        check("no reflection-prompt content (the fixture's actual prompt text) leaked into "
+              "any log line emitted by this job -- ids only, matching the redaction posture "
+              "already proven for the push payload in test 6",
+              not any("Write a reflection on today" in r for r in handler.records),
+              str(handler.records))
+    finally:
+        scheduler_logger.removeHandler(handler)
+        scheduler_logger.setLevel(prior_level)
+        cleanup(uid)
+
+
 # ── 7. Pre-deployment smoke test: real app boots with the job registered ───
 
 def test_real_app_boots_with_heartbeat_job_registered():
@@ -672,6 +739,7 @@ def main():
         test_cross_timezone_users_diverge_from_naive_utc_but_fire_correctly()
         test_day_boundary_crossing_indexes_by_local_day_not_utc_day()
         test_event_loop_stays_responsive_during_slow_llm_call()
+        test_due_heartbeat_fire_emits_info_success_log_line()
         test_real_app_boots_with_heartbeat_job_registered()
     finally:
         AgentManager._call_api = original_call_api

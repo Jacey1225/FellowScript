@@ -11,6 +11,7 @@ import SwiftUI
 struct FloatingTabBar: View {
     @Binding var selection: ContentView.Tab
     var inCallBarVisible: Bool = false   // shift up when MinimizedCallBar is showing
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private let items: [(tab: ContentView.Tab, label: String, symbol: String)] = [
         (.home,    "Home",    "house.fill"),
@@ -25,7 +26,7 @@ struct FloatingTabBar: View {
             ForEach(items, id: \.tab) { item in
                 let isSelected = selection == item.tab
                 Button {
-                    withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+                    withMotionAwareAnimation(.spring(response: 0.32, dampingFraction: 0.82), reduceMotion: reduceMotion) {
                         selection = item.tab
                     }
                 } label: {

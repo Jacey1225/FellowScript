@@ -1,0 +1,7 @@
+{
+  "task_id": "20260902-download-section",
+  "step": 1,
+  "stage": "intake",
+  "result": "pass",
+  "summary": "Captured request for a new Download section on the FellowScript homepage (macOS .dmg live, Windows anticipated). Pulled exact design tokens, fonts, section rhythm, and reusable components (PillButton, Ico, card patterns, Blobs) directly from the live Home.jsx source rather than just the 5 reference screenshots, plus confirmed the built .dmg artifact and app icons in the desktop/ subproject. Logged gaps (placement slot, Windows CTA behavior, version/size display, OS auto-detect, hosting URL for the .dmg) for the synthesis/spec stages. Media type hint: static."
+}

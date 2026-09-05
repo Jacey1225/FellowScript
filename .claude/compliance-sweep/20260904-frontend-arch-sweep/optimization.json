@@ -1,0 +1,8 @@
+{
+  "task_id": "20260904-frontend-arch-sweep",
+  "step": 8,
+  "gate": "optimization",
+  "result": "pass",
+  "finding_count": 6,
+  "summary": "Traced hot paths via codegraph_explore across all three in-scope surfaces per file-inventory.json: iOS NetworkService/BibleReaderView/NotesListView/ChatThreadView, and React/legacy useMessaging.js/useNotes.js/notes.js. Headline findings: (Critical) bible.json's 4.2MB JSON decode runs synchronously on BibleViewModel's MainActor, blocking UI during app startup and first Bible-tab open; (High) ChatThreadView's message-grouping + day-divider computed properties re-run unmemoized on every SwiftUI render including composer keystrokes, with an O(n^2)-worst-case grouping algorithm underneath; (High) an N+1 fetch-per-friend/per-group pattern is duplicated independently across useMessaging.js, useNotes.js, and legacy notes.js instead of a batched contacts/groups endpoint; (Medium) both the React and legacy notes filter/sort flows round-trip already-in-memory note data through backend /filter/ and /sort/ endpoints instead of computing locally, and NotesListView's filteredNotes re-filters/re-sorts the full notes dict on every render; (Low) NetworkService allocates a fresh JSONEncoder/JSONDecoder per call across its 75 call sites instead of reusing a shared instance, unlike DiskCache.swift's own correctly-cached encoder/decoder in the same codebase."
+}

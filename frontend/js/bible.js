@@ -49,7 +49,8 @@ export async function loadBible() {
     stateLoad.style.display = 'none';
     stateWelc.style.display = 'block';
     return true;
-  } catch {
+  } catch (err) {
+    console.error('[bible] loadBible error:', err);
     stateLoad.innerHTML =
       '<p style="color:rgba(200,134,26,0.65);font-size:.8rem;letter-spacing:.15em;text-transform:uppercase">' +
       'Could not load scripture data.</p>';
@@ -153,6 +154,11 @@ function _populateVerses(chStr) {
   vsSel.disabled = nums.length === 0;
 }
 
+// _extractVerseNums/_buildHTML/_versesToHTML below mirror
+// frontend/src/utils.js's extractVerseNums/buildChapterHTML/versesToHTML --
+// same regex-based chapter-string tokenizer, independently maintained because
+// this legacy tree has no shared build step with the React app. Keep the two
+// in sync by hand (readability #H14, 20260904-frontend-arch-sweep).
 function _extractVerseNums(chStr) {
   const text = chStr.replace(/\[\d+\]/g, '');
   const nums = new Set();

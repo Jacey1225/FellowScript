@@ -34,6 +34,55 @@ function normalizeNote(n, username = '') {
   };
 }
 
+// Compliance sweep, optimization #4 -- applyFilter's notes are already in
+// memory client-side (allNotes/groupNotes/notesCache); round-tripping them
+// through POST /filter/ and POST /sort/ just to re-derive the same
+// predicate the backend already applies is pure overhead. These two
+// functions mirror api/backend/filters/filter_notes.py's Filters/Sorting
+// classes exactly (same predicates, same nested-dict shape in/out) so a
+// caller gets identical results without the network round trip.
+function localFilterNotes(notes, toFilter) {
+  let predicate;
+  if (toFilter.book) {
+    const needle = toFilter.book.toLowerCase();
+    predicate = note => (note.verses || []).some(v => v && String(v[0] ?? '').toLowerCase().includes(needle));
+  } else if (toFilter.date) {
+    const target = toFilter.date.slice(0, 10);
+    predicate = note => (note.timestamp || '').slice(0, 10) === target;
+  } else if (toFilter.users) {
+    predicate = note => toFilter.users.includes(note.user);
+  } else if (toFilter.title) {
+    const needle = toFilter.title.toLowerCase();
+    predicate = note => (note.title || '').toLowerCase().includes(needle);
+  } else {
+    return notes;
+  }
+
+  const result = {};
+  for (const [uid, byId] of Object.entries(notes)) {
+    for (const [nid, note] of Object.entries(byId)) {
+      if (!predicate(note)) continue;
+      (result[uid] ??= {})[nid] = note;
+    }
+  }
+  return result;
+}
+
+// `descending`: true = newest first, matching Sorting.sort_date's
+// `reverse=descending`. An unparseable timestamp sorts as the oldest
+// possible value, matching the backend's datetime.min fallback.
+function localSortNotesByDate(flatNotes, descending) {
+  const withDates = Object.entries(flatNotes).map(([nid, note]) => {
+    const t = Date.parse(note.timestamp);
+    return [nid, Number.isNaN(t) ? -Infinity : t];
+  });
+  withDates.sort((a, b) => (descending ? b[1] - a[1] : a[1] - b[1]));
+
+  const sorted = {};
+  for (const [nid] of withDates) sorted[nid] = flatNotes[nid];
+  return sorted;
+}
+
 export function useNotes({ user, curBook, curChapter, vsValue }) {
   const [allNotes,        setAllNotes]        = useState({});
   const [groupNotes,      setGroupNotes]      = useState({});
@@ -44,6 +93,15 @@ export function useNotes({ user, curBook, curChapter, vsValue }) {
   const [filterActive,    setFilterActive]    = useState(false);
   const [groupLoading,    setGroupLoading]    = useState(false);
   const notesCache = useRef({});
+  // H13 (compliance sweep) -- client-side dedup for loadGroups' N+1
+  // fetch-per-group pattern, mirroring useMessaging.js's friendCache/
+  // groupEntryCache. Keyed by group id, populated once and reused on any
+  // later loadGroups() call so an already-resolved group's title isn't
+  // re-fetched. A real batched endpoint (this task's own deferred H13
+  // follow-up, see intake-spec.md's Open Questions) would additionally let
+  // this share results with useMessaging.js's own per-group cache instead
+  // of each hook fetching/caching independently.
+  const groupMetaCache = useRef({});
 
   // ── Load ──────────────────────────────────────────────────────────────────
 
@@ -95,11 +153,14 @@ export function useNotes({ user, curBook, curChapter, vsValue }) {
       if (!res.ok) return;
       const data = await res.json();
       const groupList = await Promise.all((data.groups || []).map(async gid => {
+        if (groupMetaCache.current[gid]) return groupMetaCache.current[gid];
         try {
           const r = await fetch(`${API}/groups/${user.user_id}/${gid}`);
           if (r.ok) {
             const d = await r.json();
-            return { id: gid, title: d.group?.title || gid.slice(0, 8) };
+            const entry = { id: gid, title: d.group?.title || gid.slice(0, 8) };
+            groupMetaCache.current[gid] = entry;
+            return entry;
           }
         } catch (err) {
           console.error(`Failed to load group ${gid}:`, err);
@@ -172,14 +233,35 @@ export function useNotes({ user, curBook, curChapter, vsValue }) {
         message.error('Could not delete that note. Please try again.');
         return;
       }
-      const deletedGroupId = allNotes[id]?.group_id;
+      // The backend's own GET /notes/{user_id} filters to group_id IS NULL,
+      // so a group note is never present in allNotes to begin with --
+      // looking up its group_id there always misses, and the group's note
+      // list silently never refreshed after a delete. groupNotes (loaded
+      // for whichever group is currently selected) is the only place a
+      // group note's data actually lives client-side, so check there too,
+      // scoped to the currently selected group tab.
+      let deletedGroupId = allNotes[id]?.group_id || null;
+      if (!deletedGroupId && currentGroupId) {
+        const inCurrentGroup = Object.values(groupNotes).some(notes => notes[id]);
+        if (inCurrentGroup) deletedGroupId = currentGroupId;
+      }
       setAllNotes(prev => { const n = { ...prev }; delete n[id]; return n; });
-      if (deletedGroupId) await loadGroupNotes(deletedGroupId);
+      if (deletedGroupId) {
+        setGroupNotes(prev => {
+          const next = {};
+          for (const [uname, notes] of Object.entries(prev)) {
+            const { [id]: _removed, ...rest } = notes;
+            next[uname] = rest;
+          }
+          return next;
+        });
+        await loadGroupNotes(deletedGroupId);
+      }
     } catch (err) {
       console.error('Failed to delete note:', err);
       message.error('Could not delete that note. Check your connection and try again.');
     }
-  }, [user, allNotes, loadGroupNotes]);
+  }, [user, allNotes, groupNotes, currentGroupId, loadGroupNotes]);
 
   const postReply = useCallback(async (noteId, text) => {
     if (!user || !currentGroupId || !text) return false;
@@ -219,7 +301,7 @@ export function useNotes({ user, curBook, curChapter, vsValue }) {
 
   // ── Filter / sort ─────────────────────────────────────────────────────────
 
-  const applyFilter = useCallback(async ({ sortVal, filterType, filterVal, activeTab }) => {
+  const applyFilter = useCallback(({ sortVal, filterType, filterVal, activeTab }) => {
     const isGroupTab = !!currentGroupId;
     const hasFilter  = !!(filterType && filterVal);
     const hasSort    = !!sortVal;
@@ -257,16 +339,12 @@ export function useNotes({ user, curBook, curChapter, vsValue }) {
         payload = { [user.user_id]: subset };
       }
 
+      // Compliance sweep, optimization #4 -- notes here are already fully
+      // in memory (allNotes/groupNotes/notesCache above), so filter/sort is
+      // done locally via localFilterNotes/localSortNotesByDate instead of
+      // round-tripping through POST /filter/ and POST /sort/.
       let result = payload;
-
-      if (hasFilter) {
-        const res = await fetch(`${API}/filter/`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ notes: result, to_filter: toFilter }),
-        });
-        if (res.ok) result = await res.json();
-      }
+      if (hasFilter) result = localFilterNotes(result, toFilter);
 
       if (hasSort) {
         const flatNotes = {}, noteToUser = {};
@@ -275,21 +353,14 @@ export function useNotes({ user, curBook, curChapter, vsValue }) {
             flatNotes[nid] = data; noteToUser[nid] = key;
           }
         }
-        const res = await fetch(`${API}/sort/`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ notes: flatNotes, to_sort: toSort }),
-        });
-        if (res.ok) {
-          const sortedFlat = await res.json();
-          const sortedResult = {};
-          for (const [nid, data] of Object.entries(sortedFlat)) {
-            const key = noteToUser[nid];
-            if (!sortedResult[key]) sortedResult[key] = {};
-            sortedResult[key][nid] = data;
-          }
-          result = sortedResult;
+        const sortedFlat = localSortNotesByDate(flatNotes, toSort.date);
+        const sortedResult = {};
+        for (const [nid, data] of Object.entries(sortedFlat)) {
+          const key = noteToUser[nid];
+          if (!sortedResult[key]) sortedResult[key] = {};
+          sortedResult[key][nid] = data;
         }
+        result = sortedResult;
       }
 
       if (isGroupTab) {

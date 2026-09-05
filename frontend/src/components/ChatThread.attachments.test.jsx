@@ -87,6 +87,35 @@ describe('ChatThread — attach menu', () => {
   });
 });
 
+// Task 20260904-attach-picker-layout-polish: trigger icon is a plus (not a
+// paperclip), the picker renders as one horizontal row of three self-
+// contained gold-pill rows (icon + text each), not a stacked column.
+describe('ChatThread — attach picker layout polish', () => {
+  test('attach trigger shows a plus icon, not a paperclip, at the existing 44x44 tap target', () => {
+    const { container } = renderThread();
+    const trigger = screen.getByLabelText('Attach a photo, video, file, or GIF');
+    expect(container.querySelector('.anticon-plus')).toBeInTheDocument();
+    expect(container.querySelector('.anticon-paperclip')).not.toBeInTheDocument();
+    expect(trigger.style.width).toBe('44px');
+    expect(trigger.style.height).toBe('44px');
+  });
+
+  test('the three picker options render as self-contained icon+text pills in a single row container', () => {
+    renderThread();
+    fireEvent.click(screen.getByLabelText('Attach a photo, video, file, or GIF'));
+    // The Popover's content portals to document.body, not the render container.
+    const menu = document.querySelector('.attach-menu');
+    expect(menu).toBeInTheDocument();
+    const rows = menu.querySelectorAll('.attach-menu-row');
+    expect(rows.length).toBe(3);
+    rows.forEach(row => {
+      // Each pill is its own icon+text button (no shared column divider row).
+      expect(row.querySelector('.anticon')).toBeInTheDocument();
+      expect(row.textContent.trim().length).toBeGreaterThan(0);
+    });
+  });
+});
+
 describe('ChatThread — staged attachment upload flow', () => {
   test('picking a photo stages it, requests an upload URL, uploads to S3, then enables send with the resulting object key', async () => {
     const { onRequestUploadUrl, onUploadToS3, onSend } = renderThread();

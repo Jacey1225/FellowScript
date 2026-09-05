@@ -6,6 +6,7 @@ import {
   LogLevel,
   MeetingSessionConfiguration,
 } from 'amazon-chime-sdk-js';
+import { message } from 'antd';
 import { API } from '../config.js';
 
 // For 1-on-1 friend chats the two users each see the other as currentContact,
@@ -24,6 +25,14 @@ export function useSessions({ user, wsRef, currentContact }) {
   const [editingSession,  setEditingSession]  = useState(null);
   const [videoEnabled,    setVideoEnabled]    = useState(false);
   const [videoTiles,      setVideoTiles]      = useState([]);
+  // { sessionId, message } for the call-join failure this session most
+  // recently hit, or null. Chime call-join used to fail completely
+  // silently on a meeting-creation or attendee-token fetch error (no
+  // error, no retry, no signal) -- this surfaces an explicit, retryable
+  // error state instead, matching the already-fixed iOS
+  // CallController.joinError behavior (Architecture Q27: propagate
+  // failures upward rather than silently substituting a default).
+  const [joinError,       setJoinError]       = useState(null);
 
   const sessionsRef       = useRef([]);
   const activeIdRef       = useRef(null);
@@ -59,16 +68,26 @@ export function useSessions({ user, wsRef, currentContact }) {
     if (!chimeSession.current) return;
     if (videoEnabledRef.current) {
       chimeSession.current.audioVideo.stopLocalVideoTile();
-      try { await chimeSession.current.audioVideo.stopVideoInput(); } catch {}
+      try {
+        await chimeSession.current.audioVideo.stopVideoInput();
+      } catch (err) {
+        console.error('Failed to stop video input:', err);
+      }
       setVideoEnabled(false);
     } else {
       try {
         const inputs = await chimeSession.current.audioVideo.listVideoInputDevices();
-        if (!inputs.length) return;
+        if (!inputs.length) {
+          message.error('No camera found. Please connect one and try again.');
+          return;
+        }
         await chimeSession.current.audioVideo.startVideoInput(inputs[0].deviceId);
         chimeSession.current.audioVideo.startLocalVideoTile();
         setVideoEnabled(true);
-      } catch {}
+      } catch (err) {
+        console.error('Failed to start video input:', err);
+        message.error('Could not start your camera. Check permissions and try again.');
+      }
     }
   }, []);
 
@@ -88,7 +107,11 @@ export function useSessions({ user, wsRef, currentContact }) {
     try {
       const res = await fetch(`${API}/devotions/contact/${encodeURIComponent(contactId)}`);
       if (res.ok) setSessions((await res.json()).sessions || []);
-    } catch {}
+    } catch (err) {
+      // Background refresh -- log only, matching useMessaging.loadContacts'
+      // established convention for passive/background loads.
+      console.error('Failed to load sessions:', err);
+    }
   }, [user, currentContact]);
 
   useEffect(() => { loadSessionsRef.current = loadSessions; }, [loadSessions]);
@@ -139,7 +162,10 @@ export function useSessions({ user, wsRef, currentContact }) {
           },
         }),
       });
-      if (!res.ok) return false;
+      if (!res.ok) {
+        message.error('Could not create that session. Please try again.');
+        return false;
+      }
       const { id } = await res.json();
       const others = (currentContact.toUsers || []).filter(uid => uid !== user.user_id);
       if (others.length && wsRef.current?.readyState === 1) {
@@ -153,7 +179,11 @@ export function useSessions({ user, wsRef, currentContact }) {
       }
       await loadSessions();
       return true;
-    } catch { return false; }
+    } catch (err) {
+      console.error('Failed to create session:', err);
+      message.error('Could not create that session. Check your connection and try again.');
+      return false;
+    }
   }, [user, currentContact, wsRef, loadSessions]);
 
   // ── Update ────────────────────────────────────────────────────────────────
@@ -183,10 +213,17 @@ export function useSessions({ user, wsRef, currentContact }) {
           },
         }),
       });
-      if (!res.ok) return false;
+      if (!res.ok) {
+        message.error('Could not update that session. Please try again.');
+        return false;
+      }
       await loadSessions();
       return true;
-    } catch { return false; }
+    } catch (err) {
+      console.error('Failed to update session:', err);
+      message.error('Could not update that session. Check your connection and try again.');
+      return false;
+    }
   }, [user, currentContact, loadSessions]);
 
   // ── Delete ────────────────────────────────────────────────────────────────
@@ -204,10 +241,17 @@ export function useSessions({ user, wsRef, currentContact }) {
           devotion: { id: sessionId, ...existing },
         }),
       });
-      if (!res.ok) return false;
+      if (!res.ok) {
+        message.error('Could not delete that session. Please try again.');
+        return false;
+      }
       await loadSessions();
       return true;
-    } catch { return false; }
+    } catch (err) {
+      console.error('Failed to delete session:', err);
+      message.error('Could not delete that session. Check your connection and try again.');
+      return false;
+    }
   }, [user, loadSessions]);
 
   // ── Join ──────────────────────────────────────────────────────────────────
@@ -215,21 +259,36 @@ export function useSessions({ user, wsRef, currentContact }) {
   const joinSession = useCallback(async (sessionId) => {
     if (!user || activeIdRef.current) return;
 
+    // Clear any stale error from a previous failed attempt so a retry
+    // starts clean (mirrors CallController.start() resetting joinError).
+    setJoinError(null);
+
     // 1. Add user to participants list on the backend
     try {
       await fetch(
         `${API}/devotions/join?user_id=${encodeURIComponent(user.user_id)}&session_id=${encodeURIComponent(sessionId)}`,
         { method: 'POST' }
       );
-    } catch {}
+    } catch (err) {
+      // Non-fatal to the call itself -- the join proceeds either way -- but
+      // still worth a trail if participant lists start looking wrong.
+      console.error('Failed to record session join on the backend:', err);
+    }
 
     // 2. Get or create the Chime meeting for this session
     let meetingData, attendeeData;
     try {
       const meetingRes = await fetch(`${API}/chime/${encodeURIComponent(sessionId)}`, { method: 'POST' });
-      if (!meetingRes.ok) return;
+      if (!meetingRes.ok) {
+        setJoinError({ sessionId, message: 'Could not start the call. Please try again.' });
+        return;
+      }
       meetingData = (await meetingRes.json()).Meeting;
-    } catch { return; }
+    } catch (err) {
+      console.error('Failed to create Chime meeting:', err);
+      setJoinError({ sessionId, message: 'Could not reach the server to start the call.' });
+      return;
+    }
 
     // 3. Create an attendee token for this user
     try {
@@ -237,9 +296,16 @@ export function useSessions({ user, wsRef, currentContact }) {
         `${API}/chime/${encodeURIComponent(sessionId)}/${encodeURIComponent(user.user_id)}/attend`,
         { method: 'POST' }
       );
-      if (!attendeeRes.ok) return;
+      if (!attendeeRes.ok) {
+        setJoinError({ sessionId, message: 'Could not join the call. Please try again.' });
+        return;
+      }
       attendeeData = (await attendeeRes.json()).Attendee;
-    } catch { return; }
+    } catch (err) {
+      console.error('Failed to create Chime attendee token:', err);
+      setJoinError({ sessionId, message: 'Could not reach the server to join the call.' });
+      return;
+    }
 
     // 4. Build the Chime meeting session
     const logger           = new ConsoleLogger('FellowScript', LogLevel.WARN);
@@ -252,7 +318,10 @@ export function useSessions({ user, wsRef, currentContact }) {
     try {
       const inputs = await session.audioVideo.listAudioInputDevices();
       if (inputs.length) await session.audioVideo.startAudioInput(inputs[0].deviceId);
-    } catch {}
+    } catch (err) {
+      // Non-fatal -- the call still starts without a preferred mic selected.
+      console.error('Failed to select a default microphone:', err);
+    }
 
     // 6. Bind a hidden <audio> element for speaker output
     if (!chimeAudioEl.current) {
@@ -328,8 +397,13 @@ export function useSessions({ user, wsRef, currentContact }) {
           }
         }
       }
-    } catch {}
+    } catch (err) {
+      // Background refresh -- log only, matching the loadSessions convention.
+      console.error('Failed to refresh session data after joining:', err);
+    }
   }, [user, wsRef]);
+
+  const clearJoinError = useCallback(() => setJoinError(null), []);
 
   // ── Leave ─────────────────────────────────────────────────────────────────
 
@@ -339,15 +413,17 @@ export function useSessions({ user, wsRef, currentContact }) {
 
     clearTimeout(talkStopTimer.current);
 
-    // Stop video if active
+    // Stop video if active. These are hardware-teardown calls on a session
+    // that's being discarded either way -- log for a trail, but there's
+    // nothing actionable left to surface to the user.
     if (videoEnabledRef.current && chimeSession.current) {
-      try { chimeSession.current.audioVideo.stopLocalVideoTile(); } catch {}
-      try { await chimeSession.current.audioVideo.stopVideoInput(); } catch {}
+      try { chimeSession.current.audioVideo.stopLocalVideoTile(); } catch (err) { console.error('Failed to stop local video tile on leave:', err); }
+      try { await chimeSession.current.audioVideo.stopVideoInput(); } catch (err) { console.error('Failed to stop video input on leave:', err); }
     }
 
     // Remove video tile observer and reset video state
     if (chimeObserverRef.current && chimeSession.current) {
-      try { chimeSession.current.audioVideo.removeObserver(chimeObserverRef.current); } catch {}
+      try { chimeSession.current.audioVideo.removeObserver(chimeObserverRef.current); } catch (err) { console.error('Failed to remove video observer on leave:', err); }
       chimeObserverRef.current = null;
     }
     setVideoEnabled(false);
@@ -355,7 +431,7 @@ export function useSessions({ user, wsRef, currentContact }) {
 
     // Stop the Chime session
     if (chimeSession.current) {
-      try { chimeSession.current.audioVideo.stop(); } catch {}
+      try { chimeSession.current.audioVideo.stop(); } catch (err) { console.error('Failed to stop Chime audio/video on leave:', err); }
       chimeSession.current = null;
     }
     if (chimeAudioEl.current) {
@@ -377,10 +453,17 @@ export function useSessions({ user, wsRef, currentContact }) {
         `${API}/devotions/leave?user_id=${encodeURIComponent(user.user_id)}&session_id=${encodeURIComponent(sessionId)}`,
         { method: 'POST' }
       );
-    } catch {}
+    } catch (err) {
+      // The call has already been torn down locally either way -- surface a
+      // soft warning rather than blocking the user from continuing, but log
+      // it since the backend's participant list may now be stale.
+      console.error('Failed to notify the server of session leave:', err);
+      message.warning("Left the call, but couldn't confirm it with the server.");
+    }
 
     setActiveSessionId(null);
     setTalkingUserId(null);
+    setJoinError(null);
     await loadSessions();
   }, [user, wsRef, loadSessions]);
 
@@ -417,7 +500,9 @@ export function useSessions({ user, wsRef, currentContact }) {
     return () => {
       clearTimeout(talkStopTimer.current);
       if (chimeSession.current) {
-        try { chimeSession.current.audioVideo.stop(); } catch {}
+        // Component is unmounting -- nothing left to surface to, but still
+        // worth a console trail if hardware teardown fails.
+        try { chimeSession.current.audioVideo.stop(); } catch (err) { console.error('Failed to stop Chime audio/video on unmount:', err); }
       }
       if (chimeAudioEl.current) {
         chimeAudioEl.current.srcObject = null;
@@ -432,6 +517,7 @@ export function useSessions({ user, wsRef, currentContact }) {
     openCreator, closeCreator,
     loadSessions, createSession, updateSession, deleteSession,
     joinSession, leaveSession,
+    joinError, clearJoinError,
     handleSignal,
     videoEnabled, videoTiles, toggleVideo, bindVideoTile,
   };

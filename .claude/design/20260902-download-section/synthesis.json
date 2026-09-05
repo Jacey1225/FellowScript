@@ -1,0 +1,8 @@
+{
+  "task_id": "20260902-download-section",
+  "step": 2,
+  "stage": "synthesis",
+  "result": "pass",
+  "media_type": "static",
+  "summary": "A dark INK section placed between Pricing and the Closing CTA, extending the homepage's existing vocabulary verbatim — amber eyebrow, two-tone headline, pricing-grid card pair — with macOS as a lit, hoverable primary card and Windows as a recessed, deliberately motionless 'Coming soon' card that renders no button at all rather than a fake disabled one. Derived faithfully from the live homepage as sole style authority, corroborated by two curated widgets-dashboard-ui pieces (paired dark cards with top-right brand badges; warm-dusk glassmorphic cards over amber glow)."
+}

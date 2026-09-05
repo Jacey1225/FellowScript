@@ -60,7 +60,17 @@ describe('useNotes.deleteNote — surfaces a visible error on fetch failure (dep
 });
 
 describe('useNotes filter/sort payload — verses default is [[], []] (logic-errors #2)', () => {
-  test('a note missing verses entirely normalizes to [[], []] when applyFilter builds its payload', async () => {
+  // Updated by task 20260904-compliance-performance-fixes (testing gate,
+  // optimization #4): applyFilter's sort path used to round-trip through
+  // POST /sort/ purely to re-derive a predicate over data already in memory
+  // client-side -- that round trip is now gone, replaced by
+  // localSortNotesByDate acting directly on the normalized in-memory notes.
+  // The behavior this test actually cares about (normalizeNote's `verses`
+  // default is [[], []] for every note applyFilter touches, not a bare `[]`)
+  // is unchanged, so this now asserts directly on the resulting
+  // `filteredNotes` shape instead of inspecting an outgoing /sort/ payload
+  // that no longer exists for this path.
+  test('a note missing verses entirely normalizes to [[], []] in applyFilter\'s local sort result', async () => {
     global.fetch.mockResolvedValueOnce({
       ok: true,
       json: async () => ({
@@ -72,21 +82,13 @@ describe('useNotes filter/sort payload — verses default is [[], []] (logic-err
     await act(async () => { await result.current.loadNotes(); });
     await waitFor(() => expect(result.current.allNotes['note-1']).toBeDefined());
 
-    // applyFilter with only a sort (no server-side filter round trip needed
-    // to inspect the outgoing payload) still normalizes every note through
-    // normalizeNote before sending it anywhere -- capture what /sort/ was
-    // called with to inspect the normalized verses shape.
-    global.fetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({ 'note-1': { title: 'No verses', text: 'body', verses: [[], []] } }),
-    });
+    // applyFilter (sort-only, no filter) is synchronous now -- no network
+    // call for this path at all -- so no fetch mock needs queuing here.
     await act(async () => {
-      await result.current.applyFilter({ sortVal: 'desc', filterType: null, filterVal: null, activeTab: 'personal' });
+      result.current.applyFilter({ sortVal: 'desc', filterType: null, filterVal: null, activeTab: 'personal' });
     });
 
-    const sortCall = global.fetch.mock.calls.find(([url]) => url.includes('/sort/'));
-    expect(sortCall).toBeDefined();
-    const body = JSON.parse(sortCall[1].body);
-    expect(body.notes['note-1'].verses).toEqual([[], []]);
+    await waitFor(() => expect(result.current.filteredNotes).not.toBeNull());
+    expect(result.current.filteredNotes['note-1'].verses).toEqual([[], []]);
   });
 });

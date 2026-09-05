@@ -172,7 +172,12 @@ def validate_attachment_config() -> None:
         )
 
 
-def generate_upload_policy(user_id: str, attachment_kind: str, content_type: str) -> dict:
+def generate_upload_policy(
+    user_id: str,
+    attachment_kind: str,
+    content_type: str,
+    key_prefix: str = ATTACHMENT_KEY_PREFIX,
+) -> dict:
     """Issue a presigned S3 POST policy for one attachment upload.
 
     Fails closed: an ``attachment_kind``/``content_type`` combination that
@@ -188,13 +193,20 @@ def generate_upload_policy(user_id: str, attachment_kind: str, content_type: str
             against the per-kind allowlist and cryptographically pinned into
             the returned policy's conditions (a client can't swap the
             Content-Type between requesting this URL and using it).
+        key_prefix: Object-key namespace this upload lives under. Defaults
+            to ``ATTACHMENT_KEY_PREFIX`` ("attachments") for message
+            attachments; a sibling caller with its own namespace (e.g.
+            ``backend/interactions/profile_photo.py``'s "profile-photos")
+            passes its own prefix so its objects can never be confused with
+            (or accidentally swept alongside) a message attachment despite
+            sharing one bucket.
 
     Returns:
         dict: ``{"url", "fields", "object_key", "expires_in"}`` -- ``url``
             and ``fields`` are passed straight through to the client's
             multipart POST to S3; ``object_key`` is what the client must
-            reference in the ``attachment_key`` of the message it sends
-            once the upload succeeds.
+            reference (as the ``attachment_key`` of the message it sends,
+            or the caller's own equivalent) once the upload succeeds.
 
     Raises:
         ValueError: If ``attachment_kind``/``content_type`` isn't a
@@ -210,7 +222,7 @@ def generate_upload_policy(user_id: str, attachment_kind: str, content_type: str
             f"{attachment_kind!r}/{content_type!r}"
         )
     ext = _MIME_EXTENSIONS.get(content_type, "")
-    object_key = f"{ATTACHMENT_KEY_PREFIX}/{user_id}/{uuid.uuid4()}{ext}"
+    object_key = f"{key_prefix}/{user_id}/{uuid.uuid4()}{ext}"
     max_bytes = limits["max_size_mb"] * 1024 * 1024
 
     response = _client().generate_presigned_post(
@@ -251,3 +263,23 @@ def generate_download_url(object_key: str | None) -> str | None:
     except (AttachmentConfigError, ClientError) as e:
         logger.error("Could not presign GET for attachment %s: %s", object_key, e)
         return None
+
+
+def delete_object(object_key: str | None) -> None:
+    """Best-effort delete of one S3 object (any key namespace/prefix).
+
+    Never raises -- a failed cleanup (missing config, transient S3 error) is
+    logged, not surfaced, so a caller replacing/removing a stored object
+    (e.g. ``routes/profile_photo.py`` replacing or clearing a profile photo,
+    or account deletion sweeping a departing user's photo) never fails the
+    user-facing action just because the *old* object couldn't be swept --
+    same fail-soft posture as ``generate_download_url`` above, for the same
+    reason. No-op for a blank key.
+    """
+    if not object_key:
+        return
+    try:
+        validate_attachment_config()
+        _client().delete_object(Bucket=S3_BUCKET_NAME, Key=object_key)
+    except (AttachmentConfigError, ClientError) as e:
+        logger.error("Could not delete S3 object %s: %s", object_key, e)

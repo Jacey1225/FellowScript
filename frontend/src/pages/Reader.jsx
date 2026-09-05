@@ -90,6 +90,7 @@ export default function Reader() {
     openCreator, closeCreator,
     loadSessions, createSession, updateSession, deleteSession,
     joinSession, leaveSession,
+    joinError, clearJoinError,
     handleSignal,
     videoEnabled, videoTiles, toggleVideo, bindVideoTile,
   } = useSessions({ user, wsRef, currentContact });
@@ -365,6 +366,7 @@ export default function Reader() {
     onRequestUploadUrl: requestUploadUrl, onUploadToS3: uploadToS3, onSearchGifs: searchGifs,
     sessions, activeSessionId, talkingUserId,
     onJoinSession: joinSession, onLeaveSession: handleLeaveSession,
+    joinError, onClearJoinError: clearJoinError,
     onOpenSessionCreator: () => openCreator(), onEditSession: openCreator, onDeleteSession: deleteSession,
     onNavigateVerse: handleNavigateVerse,
     videoEnabled, videoTiles, onToggleVideo: toggleVideo, bindVideoTile,
@@ -372,7 +374,7 @@ export default function Reader() {
        addFriend, removeFriend, reportUser, blockUser, createGroup, updateGroup, leaveGroup,
        contactsLoaded, handleLoadContacts, sendMessage, requestUploadUrl, uploadToS3, searchGifs,
        sessions, activeSessionId, talkingUserId,
-       joinSession, handleLeaveSession, openCreator, deleteSession, handleNavigateVerse,
+       joinSession, handleLeaveSession, joinError, clearJoinError, openCreator, deleteSession, handleNavigateVerse,
        videoEnabled, videoTiles, toggleVideo, bindVideoTile]);
 
   const agentChatPanelValue = useMemo(() => ({

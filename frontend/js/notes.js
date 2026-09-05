@@ -29,6 +29,17 @@ export let allNotes = {};
 
 const notesCache = {}; // keyed by group_id; '' = personal notes
 
+// H13 (compliance sweep) -- client-side dedup for populateGroupSelector's
+// N+1 fetch-per-group pattern, mirroring the friendCache-style memoization
+// used elsewhere (notes.js's _loadGroupHighlights below, messaging.js's own
+// friendCache). Keyed by group id, populated once and reused if
+// populateGroupSelector is ever invoked again for the same group. A real
+// batched endpoint (this task's own deferred H13 follow-up -- see
+// intake-spec.md's Open Questions) would let this, useNotes.js's
+// loadGroups, and useMessaging.js's loadContacts all share one fetch
+// instead of three independently-cached ones.
+const groupTitleCache = {};
+
 let editingId          = null;
 let activeTab          = 'verse';
 let filteredNotes      = null;
@@ -55,6 +66,56 @@ function _normalizeNote(n, username = '') {
   };
 }
 
+// Compliance sweep, optimization #4 -- _applyFiltersAndSort's notes are
+// already in memory client-side (allNotes/groupNotes/notesCache); round-
+// tripping them through POST /filter/ and POST /sort/ just to re-derive the
+// same predicate the backend already applies is pure overhead. These two
+// functions mirror api/backend/filters/filter_notes.py's Filters/Sorting
+// classes exactly (same predicates, same nested-dict shape in/out) so a
+// caller gets identical results without the network round trip.
+function _localFilterNotes(notes, toFilter) {
+  let predicate;
+  if (toFilter.book) {
+    const needle = toFilter.book.toLowerCase();
+    predicate = note => (note.verses || []).some(v => v && String(v[0] ?? '').toLowerCase().includes(needle));
+  } else if (toFilter.date) {
+    const target = toFilter.date.slice(0, 10);
+    predicate = note => (note.timestamp || '').slice(0, 10) === target;
+  } else if (toFilter.users) {
+    predicate = note => toFilter.users.includes(note.user);
+  } else if (toFilter.title) {
+    const needle = toFilter.title.toLowerCase();
+    predicate = note => (note.title || '').toLowerCase().includes(needle);
+  } else {
+    return notes;
+  }
+
+  const result = {};
+  for (const [uid, byId] of Object.entries(notes)) {
+    for (const [nid, note] of Object.entries(byId)) {
+      if (!predicate(note)) continue;
+      if (!result[uid]) result[uid] = {};
+      result[uid][nid] = note;
+    }
+  }
+  return result;
+}
+
+// `descending`: true = newest first, matching Sorting.sort_date's
+// `reverse=descending`. An unparseable timestamp sorts as the oldest
+// possible value, matching the backend's datetime.min fallback.
+function _localSortNotesByDate(flatNotes, descending) {
+  const withDates = Object.entries(flatNotes).map(([nid, note]) => {
+    const t = Date.parse(note.timestamp);
+    return [nid, Number.isNaN(t) ? -Infinity : t];
+  });
+  withDates.sort((a, b) => (descending ? b[1] - a[1] : a[1] - b[1]));
+
+  const sorted = {};
+  for (const [nid] of withDates) sorted[nid] = flatNotes[nid];
+  return sorted;
+}
+
 function _syncFilterInput() {
   const type     = document.querySelector('input[name="fs-filter"]:checked')?.value || '';
   const wrap     = document.getElementById('fs-input-wrap');
@@ -72,8 +133,8 @@ function _syncFilterInput() {
     if (!names.length) return;
     userList.innerHTML = names
       .map(n => `<label class="filter-radio-row">
-        <input type="radio" name="fs-user" value="${n}" />
-        <span>${n}</span>
+        <input type="radio" name="fs-user" value="${escHtml(n)}" />
+        <span>${escHtml(n)}</span>
       </label>`)
       .join('');
     userList.style.display = 'flex';
@@ -95,7 +156,7 @@ function _updateFilterBtn() {
   if (badge) badge.style.display = isActive ? '' : 'none';
 }
 
-async function _applyFiltersAndSort() {
+function _applyFiltersAndSort() {
   const sortVal    = document.querySelector('input[name="fs-sort"]:checked')?.value   || '';
   const filterType = document.querySelector('input[name="fs-filter"]:checked')?.value || '';
   const filterVal  = filterType === 'user'
@@ -152,28 +213,21 @@ async function _applyFiltersAndSort() {
     console.log(`[filter] tab=${activeTab} isGroupTab=${isGroupTab} groupId=${currentGroupId}`);
     console.log(`[filter] payload: ${Object.keys(payload).length} user(s), ${totalNotes} note(s)`);
 
+    // Filter/sort locally instead of round-tripping through POST /filter/ and
+    // POST /sort/ — see _localFilterNotes/_localSortNotesByDate above.
     let result = payload;
 
     if (hasFilter) {
-      console.log('[filter] sending to /filter/ →', toFilter);
-      const res = await fetch(`${API}/filter/`, {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ notes: result, to_filter: toFilter }),
-      });
-      if (res.ok) {
-        result = await res.json();
-        const n = Object.values(result).reduce((s, v) => s + Object.keys(v).length, 0);
-        console.log('[filter] /filter/ response:', n, 'note(s) across', Object.keys(result).length, 'user(s)');
-      } else {
-        console.warn('[filter] /filter/ failed', res.status);
-      }
+      console.log('[filter] applying locally →', toFilter);
+      result = _localFilterNotes(result, toFilter);
+      const n = Object.values(result).reduce((s, v) => s + Object.keys(v).length, 0);
+      console.log('[filter] local filter result:', n, 'note(s) across', Object.keys(result).length, 'user(s)');
     }
 
     if (hasSort) {
-      // Flatten all users' notes into one dict so a single sort call produces a
+      // Flatten all users' notes into one dict so a single sort produces a
       // globally ordered result instead of independent per-user sorted blocks.
-      console.log('[filter] sending to /sort/ →', toSort);
+      console.log('[filter] sorting locally →', toSort);
       const flatNotes  = {};
       const noteToUser = {};
       for (const [key, notes] of Object.entries(result)) {
@@ -182,25 +236,16 @@ async function _applyFiltersAndSort() {
           noteToUser[nid] = key;
         }
       }
-      const res = await fetch(`${API}/sort/`, {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ notes: flatNotes, to_sort: toSort }),
-      });
-      if (res.ok) {
-        const sortedFlat = await res.json();
-        // Rebuild nested structure in globally-sorted insertion order.
-        const sortedResult = {};
-        for (const [nid, data] of Object.entries(sortedFlat)) {
-          const key = noteToUser[nid];
-          if (!sortedResult[key]) sortedResult[key] = {};
-          sortedResult[key][nid] = data;
-        }
-        result = sortedResult;
-      } else {
-        console.warn('[filter] /sort/ failed', res.status);
+      const sortedFlat = _localSortNotesByDate(flatNotes, toSort.date);
+      // Rebuild nested structure in globally-sorted insertion order.
+      const sortedResult = {};
+      for (const [nid, data] of Object.entries(sortedFlat)) {
+        const key = noteToUser[nid];
+        if (!sortedResult[key]) sortedResult[key] = {};
+        sortedResult[key][nid] = data;
       }
-      console.log('[filter] /sort/ done');
+      result = sortedResult;
+      console.log('[filter] local sort done');
     }
 
     if (isGroupTab) {
@@ -319,21 +364,32 @@ export async function populateGroupSelector() {
   if (!user || groupSel.options.length > 1) return;
   try {
     const res = await fetch(`${API}/user/${user.user_id}`);
-    if (!res.ok) return;
+    if (!res.ok) { console.warn('[notes] populateGroupSelector: /user fetch failed', res.status); return; }
     const data = await res.json();
     await Promise.all((data.groups || []).map(async gid => {
+      if (groupTitleCache[gid]) {
+        const opt = document.createElement('option');
+        opt.value       = gid;
+        opt.textContent = groupTitleCache[gid];
+        groupSel.appendChild(opt);
+        return;
+      }
       try {
         const r = await fetch(`${API}/groups/${user.user_id}/${gid}`);
         if (r.ok) {
-          const d   = await r.json();
+          const d     = await r.json();
+          const title = d.group?.title || gid.slice(0, 8);
+          groupTitleCache[gid] = title;
           const opt = document.createElement('option');
           opt.value       = gid;
-          opt.textContent = d.group?.title || gid.slice(0, 8);
+          opt.textContent = title;
           groupSel.appendChild(opt);
+        } else {
+          console.warn('[notes] populateGroupSelector: group fetch failed', gid, r.status);
         }
-      } catch { /* skip */ }
+      } catch (err) { console.error('[notes] populateGroupSelector: group fetch error', gid, err); }
     }));
-  } catch { /* offline */ }
+  } catch (err) { console.error('[notes] populateGroupSelector error:', err); }
 }
 
 // ── Load ────────────────────────────────────────────────────────────────────
@@ -342,7 +398,7 @@ export async function loadNotes() {
   if (!user) return;
   try {
     const res = await fetch(`${API}/notes/${user.user_id}`);
-    if (!res.ok) return;
+    if (!res.ok) { console.warn('[notes] loadNotes failed', res.status); return; }
     const payload = await res.json();
     // Backend now returns one keyset-paginated page as
     // {notes, next_cursor_created_at, next_cursor_id, has_more} instead of a
@@ -353,9 +409,9 @@ export async function loadNotes() {
     // .notes is ever missing or malformed -- see its doc comment.
     allNotes = unwrapNotesEnvelope(payload);
     notesCache[''] = allNotes;
-    console.log('[notes] personal notes loaded:', Object.keys(allNotes).length, allNotes);
+    console.log('[notes] personal notes loaded:', Object.keys(allNotes).length);
     renderAllLists();
-  } catch { /* server may not be running */ }
+  } catch (err) { console.error('[notes] loadNotes error:', err); }
 }
 
 async function _loadGroupNotes(groupId) {
@@ -368,15 +424,17 @@ async function _loadGroupNotes(groupId) {
       setGroupNotes(data);
       notesCache[groupId] = data;
       const total = Object.values(data).reduce((s, u) => s + Object.keys(u).length, 0);
-      console.log(`[notes] group ${groupId} loaded: ${total} notes across`, Object.keys(data).length, 'users', data);
+      console.log(`[notes] group ${groupId} loaded: ${total} notes across`, Object.keys(data).length, 'users');
+    } else {
+      console.warn('[notes] _loadGroupNotes failed', groupId, res.status);
     }
-  } catch { /* offline */ }
+  } catch (err) { console.error('[notes] _loadGroupNotes error:', groupId, err); }
 }
 
 async function _loadGroupHighlights(groupId) {
   try {
     const res = await fetch(`${API}/groups/${user.user_id}/${groupId}/highlights`);
-    if (!res.ok) return;
+    if (!res.ok) { console.warn('[notes] _loadGroupHighlights failed', groupId, res.status); return; }
     const highlights = await res.json();
     const usernames  = {};
     await Promise.all(Object.keys(highlights).map(async uid => {
@@ -385,10 +443,11 @@ async function _loadGroupHighlights(groupId) {
       try {
         const r = await fetch(`${API}/user/${uid}`);
         if (r.ok) { const d = await r.json(); usernames[uid] = d.username || uid.slice(0, 4); }
-      } catch { usernames[uid] = uid.slice(0, 4); }
+        else { console.warn('[notes] _loadGroupHighlights: /user fetch failed', uid, r.status); usernames[uid] = uid.slice(0, 4); }
+      } catch (err) { console.error('[notes] _loadGroupHighlights: /user fetch error', uid, err); usernames[uid] = uid.slice(0, 4); }
     }));
     setGroupHighlightData(highlights, usernames);
-  } catch { /* offline */ }
+  } catch (err) { console.error('[notes] _loadGroupHighlights error:', groupId, err); }
 }
 
 // ── Render ──────────────────────────────────────────────────────────────────
@@ -522,7 +581,15 @@ async function _saveNote() {
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify(body),
     });
-    if (!res.ok) return;
+    if (!res.ok) {
+      // A failed save must not be treated as if the form had been submitted --
+      // leave the form open with the user's input intact and tell them, rather
+      // than silently discarding their note (mirrors deleteNote's fail-visible
+      // handling below).
+      console.warn('[notes] _saveNote failed', res.status);
+      alert('Could not save that note. Please try again.');
+      return;
+    }
     const saved = await res.json();
     allNotes[editingId || saved.id] = body;
     if (body.group_id) await _loadGroupNotes(body.group_id);
@@ -530,18 +597,43 @@ async function _saveNote() {
     noteForm.style.display = 'none';
     editingId = null;
     clearForm();
-  } catch { /* server error */ }
+  } catch (err) {
+    console.error('[notes] _saveNote error:', err);
+    alert('Could not save that note. Check your connection and try again.');
+  }
 }
 
 export async function deleteNote(id) {
   if (!user || !confirm('Delete this note?')) return;
   try {
-    await fetch(`${API}/notes/${user.user_id}?note_id=${encodeURIComponent(id)}`, { method: 'DELETE' });
-    const deletedGroupId = allNotes[id]?.group_id;
+    const res = await fetch(`${API}/notes/${user.user_id}?note_id=${encodeURIComponent(id)}`, { method: 'DELETE' });
+    if (!res.ok) {
+      // A failed delete (expired session, 403, 500...) must not be treated
+      // as a successful one -- the note stayed on the server, so it must
+      // stay in the local list too.
+      console.warn('[notes] deleteNote failed', id, res.status);
+      alert('Could not delete that note. Please try again.');
+      return;
+    }
+    // The backend's own GET /notes/{user_id} filters to group_id IS NULL, so
+    // a group note is never present in allNotes to begin with -- looking up
+    // its group_id there always misses, and the group's note list silently
+    // never refreshed after a delete. groupNotes (loaded for whichever
+    // group is currently selected) is the only place a group note's data
+    // actually lives client-side, so check there too, scoped to the
+    // currently selected group tab.
+    let deletedGroupId = allNotes[id]?.group_id || null;
+    if (!deletedGroupId && currentGroupId) {
+      const inCurrentGroup = Object.values(groupNotes).some(notes => notes[id]);
+      if (inCurrentGroup) deletedGroupId = currentGroupId;
+    }
     delete allNotes[id];
     if (deletedGroupId) await _loadGroupNotes(deletedGroupId);
     renderAllLists();
-  } catch { /* server error */ }
+  } catch (err) {
+    console.error('[notes] deleteNote error:', id, err);
+    alert('Could not delete that note. Check your connection and try again.');
+  }
 }
 window.deleteNote = deleteNote;
 
@@ -599,10 +691,17 @@ export function openNoteDetail(id) {
             group_id: currentGroupId, replies: [], verses: [[], []], is_reply: true,
           }),
         });
-        if (!res.ok) return;
+        if (!res.ok) {
+          console.warn('[notes] reply submit failed', id, res.status);
+          alert('Could not post that reply. Please try again.');
+          return;
+        }
         input.value = '';
         await _loadDetailReplies(id);
-      } catch { /* offline */ }
+      } catch (err) {
+        console.error('[notes] reply submit error:', id, err);
+        alert('Could not post that reply. Check your connection and try again.');
+      }
     });
     _loadDetailReplies(id);
   }
@@ -614,7 +713,14 @@ async function _loadDetailReplies(noteId) {
   if (!listEl || !user || !currentGroupId) return;
   try {
     const res = await fetch(`${API}/groups/${user.user_id}/${noteId}/${currentGroupId}/replies`);
-    if (!res.ok) { listEl.innerHTML = '<p class="note-empty" style="font-size:0.72rem">No replies yet.</p>'; return; }
+    if (!res.ok) {
+      // Don't collapse a failed load into "no replies" -- that's the same
+      // silently-substituted-default bug already fixed elsewhere in this
+      // codebase (compile-errors #5); tell the user the load failed instead.
+      console.warn('[notes] _loadDetailReplies failed', noteId, res.status);
+      listEl.innerHTML = '<p class="note-empty" style="font-size:0.72rem">Could not load replies. Please try again.</p>';
+      return;
+    }
     const replies = await res.json();
     if (!Array.isArray(replies) || replies.length === 0) {
       listEl.innerHTML = '<p class="note-empty" style="font-size:0.72rem">No replies yet.</p>';
@@ -625,7 +731,10 @@ async function _loadDetailReplies(noteId) {
         <span class="note-reply-author">${escHtml(r.user || '')}</span>
         <p class="note-reply-text">${escHtml(r.text || '')}</p>
       </div>`).join('');
-  } catch { listEl.innerHTML = '<p class="note-empty" style="font-size:0.72rem">No replies yet.</p>'; }
+  } catch (err) {
+    console.error('[notes] _loadDetailReplies error:', noteId, err);
+    listEl.innerHTML = '<p class="note-empty" style="font-size:0.72rem">Could not load replies. Please try again.</p>';
+  }
 }
 
 // ── Sidebar resize ──────────────────────────────────────────────────────────

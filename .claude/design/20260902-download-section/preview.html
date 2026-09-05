@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Download section preview — 20260902-download-section (v3)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@300;400;500;600;700&family=Hanken+Grotesk:wght@300;400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --ink: #17120F;
+    --amber: #E09A30;
+    --amber-light: #F3C48B;
+    --head-font: 'Schibsted Grotesk', sans-serif;
+    --body-font: 'Hanken Grotesk', system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--ink); }
+  body { font-family: var(--body-font); }
+
+  .hm-btn-primary:hover { background: var(--amber-light) !important; }
+
+  .hm-dl-mac {
+    transition: transform 220ms cubic-bezier(0.22,0.61,0.36,1),
+                border-color 220ms cubic-bezier(0.22,0.61,0.36,1),
+                box-shadow 220ms cubic-bezier(0.22,0.61,0.36,1);
+  }
+  .hm-dl-mac:hover {
+    transform: translateY(-4px);
+    border-color: rgba(255,244,230,0.30);
+    box-shadow: 0 48px 100px -50px rgba(232,163,85,0.35), 0 40px 90px -50px rgba(0,0,0,0.9);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .hm-float, .hm-orbit-spin { animation: none !important; }
+    .hm-dl-mac { transition: none !important; }
+    .hm-dl-mac:hover { transform: none !important; }
+  }
+
+  /* ── preview-harness-only chrome, not part of the spec ── */
+  .harness-label {
+    font-family: var(--body-font);
+    color: #F0C08A;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 10px 20px;
+    border-bottom: 1px dashed rgba(255,244,230,0.2);
+    background: var(--ink);
+  }
+</style>
+</head>
+<body>
+
+<div class="harness-label">Preview harness — isolated render. Section begins below.</div>
+
+<!-- ══════════════════════════════════════════════════════════════════ -->
+<!-- ══ On your desktop — spec §3–§7 v3, generation-agent coded preview ══ -->
+<!-- ══════════════════════════════════════════════════════════════════ -->
+<section style="
+  position: relative;
+  overflow: hidden;
+  padding: clamp(90px, 13vh, 180px) clamp(20px, 5vw, 64px);
+  background: #17120F;
+">
+
+  <!-- Atmosphere — single side-anchored orb -->
+  <div style="position: absolute; inset: 0; overflow: hidden; pointer-events: none;">
+    <div style="
+      position: absolute;
+      top: clamp(-140px, -9vh, -70px);
+      right: clamp(-60px, -6vw, -20px);
+      width: clamp(260px, 28vw, 420px);
+      height: clamp(260px, 28vw, 420px);
+      border-radius: 50%;
+      background: radial-gradient(circle at 45% 40%, rgba(240,179,106,0.24) 0%, rgba(164,74,45,0.16) 42%, rgba(23,18,15,0) 74%);
+      filter: blur(12px);
+    "></div>
+  </div>
+
+  <!-- Content wrapper — position:relative / zIndex:1 guard -->
+  <div style="position: relative; z-index: 1; max-width: 1240px; margin: 0 auto;">
+
+    <!-- Eyebrow -->
+    <div style="
+      font-family: var(--head-font); font-size: 11.5px; letter-spacing: 0.26em;
+      text-transform: uppercase; color: var(--amber);
+      padding-bottom: 22px; border-bottom: 1px solid rgba(255,244,230,0.14);
+      margin-bottom: 56px;
+    ">// ON YOUR DESKTOP</div>
+
+    <!-- Headline -->
+    <h2 style="
+      font-family: var(--head-font); font-weight: 400;
+      font-size: clamp(32px, 4.2vw, 62px); line-height: 1.03; letter-spacing: -0.03em;
+      color: #FFF9F0; margin: 0 0 24px;
+    ">Out of the browser, <span style="color: rgba(255,249,240,0.42);">into a window of its own.</span></h2>
+
+    <!-- Sub copy -->
+    <p style="
+      font-family: var(--body-font); font-size: 16.5px; line-height: 1.7;
+      color: rgba(255,243,228,0.66); max-width: 34em; margin: 0 0 clamp(48px, 7vh, 88px);
+    ">The desktop app opens straight into your reading — one calm window, no
+      tabs, no browser chrome, sitting right where you left it.</p>
+
+    <!-- Two-card grid -->
+    <div style="
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: clamp(20px, 2.4vw, 32px);
+      align-items: stretch;
+    ">
+
+      <!-- macOS card (primary path) — v3 surface fix: additive rgba(255,244,230,0.055) -->
+      <div class="hm-dl-card hm-dl-mac" style="
+        position: relative; display: flex; flex-direction: column; gap: 18px;
+        padding: 38px 34px 40px; border-radius: 20px;
+        background: rgba(255,244,230,0.055);
+        border: 1px solid rgba(255,244,230,0.18);
+        box-shadow: 0 40px 90px -50px rgba(0,0,0,0.9);
+      ">
+        <span style="
+          display: grid; place-items: center; width: 42px; height: 42px; border-radius: 12px;
+          background: rgba(232,163,85,0.16); border: 1px solid rgba(232,163,85,0.30); color: var(--amber);
+        ">
+          <svg width="20" height="26.67" viewBox="0 0 384 512" fill="currentColor" aria-hidden="true">
+            <path d="M318.7 268.7c-.2-36.7 16.4-64.4 50-84.8-18.8-26.9-47.2-41.7-84.7-44.6-35.5-2.8-74.3 20.7-88.5 20.7-15 0-49.4-19.7-76.4-19.7C63.3 141.2 4 184.8 4 273.5q0 39.3 14.4 81.2c12.8 36.7 59 126.7 107.2 125.2 25.2-.6 43-17.9 75.8-17.9 31.8 0 48.3 17.9 76.4 17.9 48.6-.8 90.4-82.5 102.6-119.3-65.2-30.7-61.7-90-61.7-91.9zm-56.6-164.2c27.3-32.4 24.8-61.9 24-72.5-24.1 1.4-52 16.4-67.9 34.9-17.5 19.8-27.8 44.3-25.6 71.9 26.1 2 49.9-11.4 69.5-34.3z"/>
+          </svg>
+        </span>
+
+        <span style="font-family: var(--head-font); font-size: 12px; letter-spacing: 0.2em; text-transform: uppercase; color: #F0C08A;">MACOS</span>
+
+        <h3 style="font-family: var(--head-font); font-size: 21px; font-weight: 500; letter-spacing: -0.02em; margin: 0; color: #FFF9F0;">Signed, notarized, ready</h3>
+
+        <p style="font-size: 15px; line-height: 1.6; color: rgba(255,243,228,0.7); margin: 0;">One download, no gatekeeper warnings — just open it.</p>
+
+        <div style="flex: 1;"></div>
+
+        <a href="#" download class="hm-btn-primary" style="
+          display: inline-flex; align-items: center; justify-content: center; gap: 9px;
+          padding: 16px 24px; border-radius: 999px;
+          background: var(--amber); color: #21160F;
+          font-family: var(--body-font); font-size: 14.5px; font-weight: 600; letter-spacing: 0.01em;
+          text-decoration: none;
+        ">Download for Mac <span aria-hidden="true">↓</span></a>
+
+        <!-- MIN_MACOS_VERSION is Blocking/unsourced per spec §8 — rendered as the
+             literal bracketed placeholder text, never a plausible number. -->
+        <div style="font-family: var(--body-font); font-size: 12.5px; letter-spacing: 0.04em; color: rgba(255,243,228,0.58); text-align: center;">
+          Apple silicon &amp; Intel · 3 MB · macOS ⟨MIN VERSION — TBC⟩
+        </div>
+      </div>
+
+      <!-- Windows card (recessed, present-but-not-live) — v3 surface fix: additive rgba(255,244,230,0.028) -->
+      <div class="hm-dl-card" style="
+        position: relative; display: flex; flex-direction: column; gap: 18px;
+        padding: 38px 34px 40px; border-radius: 20px;
+        background: rgba(255,244,230,0.028);
+        border: 1px solid rgba(255,244,230,0.13);
+        cursor: default;
+      ">
+        <span style="
+          position: absolute; top: 22px; right: 26px; padding: 6px 12px; border-radius: 999px;
+          background: rgba(232,163,85,0.14); border: 1px solid rgba(232,163,85,0.28);
+          color: rgba(255,243,228,0.8); font-size: 10.5px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase;
+        ">Coming soon</span>
+
+        <span style="
+          display: grid; place-items: center; width: 42px; height: 42px; border-radius: 12px;
+          background: rgba(232,163,85,0.16); border: 1px solid rgba(232,163,85,0.30); color: var(--amber);
+        ">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <rect x="2" y="2" width="9" height="9"/>
+            <rect x="13" y="2" width="9" height="9"/>
+            <rect x="2" y="13" width="9" height="9"/>
+            <rect x="13" y="13" width="9" height="9"/>
+          </svg>
+        </span>
+
+        <span style="font-family: var(--head-font); font-size: 12px; letter-spacing: 0.2em; text-transform: uppercase; color: #F0C08A;">WINDOWS</span>
+
+        <h3 style="font-family: var(--head-font); font-size: 21px; font-weight: 500; letter-spacing: -0.02em; margin: 0; color: #FFF9F0;">Still in the workshop</h3>
+
+        <p style="font-size: 15px; line-height: 1.6; color: rgba(255,243,228,0.7); margin: 0;">We started on macOS. The Windows build is on the way.</p>
+
+        <div style="flex: 1;"></div>
+
+        <!-- v3 action-slot fix: 15px/400/left-aligned, not the button's 600/centered -->
+        <div style="
+          display: flex; align-items: center; justify-content: flex-start;
+          padding: 16px 24px;
+          font-family: var(--body-font); font-size: 15px; font-weight: 400; letter-spacing: 0.01em;
+          color: rgba(255,243,228,0.66);
+        ">Windows 10 &amp; 11</div>
+
+        <div style="font-family: var(--body-font); font-size: 12.5px; letter-spacing: 0.04em; color: rgba(255,243,228,0.58); text-align: center;">
+          We'll post it here first — no signup needed.
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+</body>
+</html>

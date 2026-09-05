@@ -184,10 +184,14 @@ final class ReplyEditAuthorOnlyGateTests: XCTestCase {
     // toolbar-modifier pin).
 
     private func componentSource() throws -> String {
+        // The per-reply editor sheet (editingReply/loadReplies) moved out of
+        // NotesListView.swift into NoteDetailView.swift in the compliance-
+        // readability-cleanup task's split (readability #6, 20260904-
+        // frontend-arch-sweep) -- same type, same behavior.
         let componentFile = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()          // FellowScriptTests/
             .deletingLastPathComponent()          // FellowScript/ (repo-relative project root)
-            .appendingPathComponent("FellowScript/Notes/NotesListView.swift")
+            .appendingPathComponent("FellowScript/Notes/NoteDetailView.swift")
         return try String(contentsOf: componentFile, encoding: .utf8)
     }
 

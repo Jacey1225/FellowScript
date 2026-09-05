@@ -257,10 +257,14 @@ final class NoteReplySectionTests: XCTestCase {
     // when a scenario isn't reachable through the available test doubles.
 
     private func componentSource() throws -> String {
+        // NoteDetailView (and its replies section) moved out of
+        // NotesListView.swift into its own file in the compliance-
+        // readability-cleanup task's split (readability #6,
+        // 20260904-frontend-arch-sweep) -- same type, same behavior.
         let componentFile = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()          // FellowScriptTests/
             .deletingLastPathComponent()          // FellowScript/ (repo-relative project root)
-            .appendingPathComponent("FellowScript/Notes/NotesListView.swift")
+            .appendingPathComponent("FellowScript/Notes/NoteDetailView.swift")
         return try String(contentsOf: componentFile, encoding: .utf8)
     }
 

@@ -113,7 +113,15 @@ protocol DataServiceProtocol {
     func updateAgent(userId: String, agentId: String, enabled: Bool) async throws
     func renameAgent(userId: String, agentId: String, name: String) async throws
     func deleteAgent(userId: String, agentId: String) async throws
-    func addHeartbeat(userId: String, agentId: String, heartbeat: FSHeartbeat) async throws
+    // idempotencyKey (task 20260905-heartbeat-timezone-duplicate-bugs, step
+    // 2/4): a client-generated per-save-attempt token threaded through to
+    // the server's `idempotency_key` body field so a rapid double-tap or
+    // client retry that lands two requests still yields exactly one
+    // persisted row (server enforces a UNIQUE index on
+    // (user_id, agent_id, idempotency_key), see api/db.py). nil is
+    // accepted for callers that predate this token (the server mints its
+    // own in that case, with no dedup protection).
+    func addHeartbeat(userId: String, agentId: String, heartbeat: FSHeartbeat, idempotencyKey: String?) async throws
     func deleteHeartbeat(userId: String, agentId: String, heartbeatId: String) async throws
     func updateHeartbeat(userId: String, heartbeatId: String, heartbeat: FSHeartbeat) async throws
     // Always a forced/manual fire server-side (see NetworkService's
@@ -138,6 +146,15 @@ protocol DataServiceProtocol {
     func requestAttachmentUploadURL(userId: String, attachmentKind: String, contentType: String, sizeBytes: Int?) async throws -> FSUploadURLInfo
     func uploadAttachment(fileData: Data, contentType: String, uploadInfo: FSUploadURLInfo) async throws
     func searchGifs(query: String) async throws -> [FSGifResult]
+
+    // Profile photo (task 20260905-profile-photo): same presigned-S3-POST
+    // wire contract as the attachment upload above (uploadAttachment is
+    // reused verbatim for the raw-bytes step) -- only the URL-request/
+    // confirm/remove endpoints differ, since a profile photo is always the
+    // "image" kind and lives under its own S3 prefix + `users` column.
+    func requestProfilePhotoUploadURL(userId: String, contentType: String, sizeBytes: Int?) async throws -> FSUploadURLInfo
+    func confirmProfilePhoto(userId: String, objectKey: String) async throws -> String?
+    func removeProfilePhoto(userId: String) async throws
 
     // Friends
     func fetchFriendRequests(userId: String) async throws -> [(id: String, username: String)]
@@ -575,7 +592,7 @@ final class MockDataService: DataServiceProtocol {
     func renameAgent(userId: String, agentId: String, name: String) async throws {}
     func deleteAgent(userId: String, agentId: String) async throws {}
 
-    func addHeartbeat(userId: String, agentId: String, heartbeat: FSHeartbeat) async throws {}
+    func addHeartbeat(userId: String, agentId: String, heartbeat: FSHeartbeat, idempotencyKey: String?) async throws {}
     func deleteHeartbeat(userId: String, agentId: String, heartbeatId: String) async throws {}
     func updateHeartbeat(userId: String, heartbeatId: String, heartbeat: FSHeartbeat) async throws {}
 
@@ -610,6 +627,16 @@ final class MockDataService: DataServiceProtocol {
         guard !query.isEmpty else { return [] }
         return [FSGifResult(id: "mock-gif-1", url: "https://example.com/mock.gif", preview_url: "https://example.com/mock-preview.gif", width: 220, height: 180)]
     }
+
+    func requestProfilePhotoUploadURL(userId: String, contentType: String, sizeBytes: Int?) async throws -> FSUploadURLInfo {
+        FSUploadURLInfo(url: "https://mock-bucket.s3.amazonaws.com", fields: [:], object_key: "profile-photos/\(userId)/mock", expires_in: 300)
+    }
+
+    func confirmProfilePhoto(userId: String, objectKey: String) async throws -> String? {
+        "https://example.com/mock-profile-photo.jpg"
+    }
+
+    func removeProfilePhoto(userId: String) async throws {}
 
     // Friends
     func fetchFriendRequests(userId: String) async throws -> [(id: String, username: String)] { [] }

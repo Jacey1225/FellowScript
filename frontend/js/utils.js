@@ -1,8 +1,27 @@
+// Escaping coverage here is kept identical to the React app's escHtml
+// (frontend/src/utils.js) on purpose -- same name, same "safe for innerHTML"
+// contract, both surfaces. If you widen/narrow this escaping, make the
+// matching edit there too (readability #H15, 20260904-frontend-arch-sweep).
 export function escHtml(s) {
   return String(s || '')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+// Proper three-way comparator for message-timestamp sorting (logic-errors
+// #5, 20260904-frontend-arch-sweep) -- mirrors frontend/src/utils.js's
+// compareTimestamps. Returns 0 for equal values instead of the
+// `a > b ? 1 : -1` idiom this file used previously, which is not a valid
+// Array#sort comparator (never returns 0).
+export function compareTimestamps(a, b) {
+  const ta = (a && a.timestamp) || '';
+  const tb = (b && b.timestamp) || '';
+  if (ta > tb) return 1;
+  if (ta < tb) return -1;
+  return 0;
 }
 
 export function hexWithAlpha(hex, alpha) {

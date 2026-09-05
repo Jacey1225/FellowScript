@@ -9,7 +9,7 @@
 // Run with: cd frontend && npm test -- --run src/components/AppNav.test.jsx
 import React from 'react';
 import { describe, test, expect, vi, afterEach } from 'vitest';
-import { render, screen, cleanup } from '@testing-library/react';
+import { render, screen, cleanup, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import AppNav from './AppNav.jsx';
 
@@ -93,5 +93,69 @@ describe('AppNav — mobile hamburger Drawer unaffected', () => {
     renderAppNavAt('/reader');
 
     expect(document.querySelector('.hamburger-btn')).toBeTruthy();
+  });
+});
+
+// Task 20260905-profile-photo, testing step 10: fallback-to-initials
+// rendering. AppNav's `.nav-profile-avatar` is antd's Avatar, which falls
+// back to its `icon`/children automatically both when `src` is falsy (no
+// photo set) and when the image itself fails to load (e.g. an expired
+// presigned URL) -- no custom onError wiring in AppNav.jsx to bypass, so
+// this asserts the actual DOM antd produces in both states rather than
+// re-deriving the behavior from source.
+describe('AppNav — profile photo rendering with initials fallback', () => {
+  test('no profile_photo_url set: avatar shows the initials fallback, not a broken <img>', () => {
+    const { container } = renderAppNavAt('/reader', { user_id: 'u1', username: 'jaceysimpson' });
+
+    const avatar = container.querySelector('.nav-profile-avatar');
+    expect(avatar).toBeTruthy();
+    expect(avatar.querySelector('img')).toBeFalsy();
+    expect(avatar.textContent).toBe('J');
+  });
+
+  test('profile_photo_url set: avatar renders an <img> with that src, not the initials text', () => {
+    const { container } = renderAppNavAt('/reader', {
+      user_id: 'u1', username: 'jaceysimpson',
+      profile_photo_url: 'https://example-bucket.s3.amazonaws.com/profile-photos/u1/abc.jpg?Signature=xyz',
+    });
+
+    const avatar = container.querySelector('.nav-profile-avatar');
+    expect(avatar).toBeTruthy();
+    const img = avatar.querySelector('img');
+    expect(img).toBeTruthy();
+    expect(img.getAttribute('src')).toBe(
+      'https://example-bucket.s3.amazonaws.com/profile-photos/u1/abc.jpg?Signature=xyz'
+    );
+  });
+
+  test('signed out (no user): avatar shows the generic person icon, never a broken/blank image', () => {
+    const { container } = renderAppNavAt('/reader', null);
+
+    const avatar = container.querySelector('.nav-profile-avatar');
+    expect(avatar).toBeTruthy();
+    expect(avatar.querySelector('img')).toBeFalsy();
+    // antd renders the `icon` prop's <UserOutlined/> as an <span class="anticon...">
+    expect(avatar.querySelector('.anticon')).toBeTruthy();
+  });
+
+  test("a failed/expired image load falls back to the initials, doesn't stay a broken <img>", async () => {
+    const { container } = renderAppNavAt('/reader', {
+      user_id: 'u1', username: 'jaceysimpson',
+      profile_photo_url: 'https://example-bucket.s3.amazonaws.com/profile-photos/u1/expired.jpg',
+    });
+
+    const avatar = container.querySelector('.nav-profile-avatar');
+    const img = avatar.querySelector('img');
+    expect(img).toBeTruthy();
+
+    // Simulate the presigned URL having expired / the image failing to load —
+    // antd's Avatar listens for the native img error event and re-renders
+    // with its fallback content in response.
+    img.dispatchEvent(new Event('error'));
+
+    await waitFor(() => {
+      expect(avatar.querySelector('img')).toBeFalsy();
+      expect(avatar.textContent).toBe('J');
+    });
   });
 });

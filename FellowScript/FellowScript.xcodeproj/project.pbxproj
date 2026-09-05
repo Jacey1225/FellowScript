@@ -279,7 +279,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "# AmazonChimeSDK 0.27.3/0.27.4 ship a PrivacyInfo.xcprivacy whose\n# NSPrivacyCollectedDataTypePurposes entry is a free-text sentence\n# instead of one of Apple's fixed enum constants, which App Store\n# Connect rejects at submission time with ITMS-91056 (\"Invalid privacy\n# manifest\") -- confirmed unfixed as of the 0.27.4 release (upstream\n# bug, not something we can fix by upgrading). This patches the copy\n# embedded in the built product in place, before the app is signed,\n# swapping the free-text value for the closest matching valid purpose\n# (the collected data -- battery/charging/memory diagnostics -- is\n# genuinely app-functionality diagnostics, so this is an accurate fix,\n# not just a validator workaround).\nFRAMEWORK_PRIVACY=\"$CODESIGNING_FOLDER_PATH/Frameworks/AmazonChimeSDK.framework/PrivacyInfo.xcprivacy\"\nif [ -f \"$FRAMEWORK_PRIVACY\" ]; then\n  /usr/libexec/PlistBuddy -c \"Set :NSPrivacyCollectedDataTypes:0:NSPrivacyCollectedDataTypePurposes:0 NSPrivacyCollectedDataTypePurposeAppFunctionality\" \"$FRAMEWORK_PRIVACY\"\n  echo \"Patched AmazonChimeSDK PrivacyInfo.xcprivacy purpose value.\"\nelse\n  echo \"warning: AmazonChimeSDK.framework PrivacyInfo.xcprivacy not found at $FRAMEWORK_PRIVACY -- skipping patch (framework path may have changed).\"\nfi\n";
+			shellScript = "# AmazonChimeSDK 0.27.3/0.27.4 ship a PrivacyInfo.xcprivacy whose\n# NSPrivacyCollectedDataTypePurposes entry is a free-text sentence\n# instead of one of Apple's fixed enum constants, which App Store\n# Connect rejects at submission time with ITMS-91056 (\"Invalid privacy\n# manifest\") -- confirmed unfixed as of the 0.27.4 release (upstream\n# bug, not something we can fix by upgrading). This patches the copy\n# embedded in the built product in place, before the app is signed,\n# swapping the free-text value for the closest matching valid purpose\n# (the collected data -- battery/charging/memory diagnostics -- is\n# genuinely app-functionality diagnostics, so this is an accurate fix,\n# not just a validator workaround).\nFRAMEWORK_PRIVACY=\"$CODESIGNING_FOLDER_PATH/Frameworks/AmazonChimeSDK.framework/PrivacyInfo.xcprivacy\"\nif [ -f \"$FRAMEWORK_PRIVACY\" ]; then\n  /usr/libexec/PlistBuddy -c \"Set :NSPrivacyCollectedDataTypes:0:NSPrivacyCollectedDataTypePurposes:0 NSPrivacyCollectedDataTypePurposeAppFunctionality\" \"$FRAMEWORK_PRIVACY\"\n  echo \"Patched AmazonChimeSDK PrivacyInfo.xcprivacy purpose value.\"\nelse\n  echo \"error: AmazonChimeSDK.framework PrivacyInfo.xcprivacy not found at $FRAMEWORK_PRIVACY -- the framework's internal layout likely changed in a dependency bump. Failing the build instead of silently skipping the patch (ios-guidelines #2, 20260904-frontend-arch-sweep): an unpatched manifest passes this build but is rejected by App Store Connect at submission with ITMS-91056. Update FRAMEWORK_PRIVACY's path above to match the new layout, then re-verify the patch still applies.\"\n  exit 1\nfi\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -648,16 +648,16 @@
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/aws/amazon-chime-sdk-ios-spm.git";
 			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 0.27.0;
+				kind = upToNextMinorVersion;
+				minimumVersion = 0.27.3;
 			};
 		};
 		AA0000000000000000000003 /* XCRemoteSwiftPackageReference "ViewInspector" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/nalexn/ViewInspector.git";
 			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 0.10.0;
+				kind = upToNextMinorVersion;
+				minimumVersion = 0.10.3;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */

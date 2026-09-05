@@ -1,0 +1,8 @@
+{
+  "task_id": "20260830-fellowscript-full-sweep",
+  "step": 3,
+  "gate": "compile-error",
+  "result": "pass",
+  "finding_count": 8,
+  "summary": "Reviewed the full Swift iOS app target (43 files; triaged all 216 try? sites, 0 try!, 1 justified as!), the Rust desktop shell (clean), api/'s Python for type-checker suppressions (no mypy/pyright config in the repo at all), and frontend build/lint tooling. Headline finding: a Critical-severity swallowed error on account deletion (AccountView.swift:592) where try? discards a failed deleteUser call but the app signs the user out and behaves as if deletion succeeded regardless. Two High findings describe a systemic pattern -- create/update flows (toggleAgent, renameAgent, createAgent, updateEvent, updateSeats) were already remediated with proper do/catch + revert + user-facing error messages in a prior pass, but the equivalent delete/remove/leave/accept/block/report flows across AccountView.swift, ChatRootView.swift, and NotesListView.swift were missed and still use bare try? with no revert and, in several cases, no resync at all. Medium findings cover Models.swift's Codable inits conflating absent-field defaults with silently-swallowed type-mismatch errors on billing-relevant fields, and one real (non-test) Python # type: ignore masking an easily-fixed type-narrowing gap. Low findings cover the Xcode project never setting SWIFT_TREAT_WARNINGS_AS_ERRORS, 15 dead eslint-disable-line react-hooks/exhaustive-deps comments in a frontend with no ESLint installed or configured at all, and an already self-documented CI gap where two specific backend test files can't fail their job on assertion failure."
+}

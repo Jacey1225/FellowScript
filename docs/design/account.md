@@ -140,6 +140,39 @@ since Swift's synthesized `Decodable` conformance doesn't honor those defaults; 
 column (e.g. `notes_public` again, on a future schema/deploy race of the same shape) would have
 failed decoding of the *entire* `[FSHeartbeat]` array response, not just that row.
 
+**Overview stats reliability fix, extended to all 7 concurrent fetches (2026-09-05, task
+20260904-compliance-error-handling-consistency, H8).** The two fixes above only fed
+`statsFailed`/`statsMsg` from 3 of `load()`'s 7 concurrent fetches (agents, notes count,
+highlights) plus the per-agent events fetch — the other 4 (profile, usage, friend requests,
+contacts) still degraded silently via a bare `try?`, exactly the same silent-failure pattern
+those fixes addressed everywhere else in this function. All 7 now set `statsFailed` on a
+genuine thrown failure; the "Account Details" alert copy was broadened accordingly ("notes,
+highlights, agents, events, or profile/usage info"). `profileData`/`usage`/`groups` still keep
+their last-known value on a failed fetch (unchanged), while agents/notes/highlights/friend
+requests still reset to empty on failure (unchanged) — only the failure-visibility signal is
+new, not each field's existing keep-vs-reset behavior.
+
+**Attachment picker failures now surface an error (2026-09-05, dependency-errors #6).**
+`PhotoVideoPicker`/`DocumentPicker` (`Chat/MessageAttachments.swift`) previously called
+`onPicked(nil)` identically for a plain user cancellation and for a genuine failure (a file
+copy/decode error, an unsupported picked item), so `ChatThreadView.handlePicked` could only ever
+treat both as a no-op. Both pickers now also accept an `onFailure` closure, fired only on a real
+failure (never on cancellation) and wired to the composer's existing `attachmentErrorMsg` inline
+message.
+
+**`NetworkService.fetchBookmarks` decode failure now tagged (2026-09-05, readability #7).**
+`fetchBookmarks` was the one sibling of `fetchHighlights`/`fetchNotesCount`/`fetchAgents`/
+`fetchHeartbeats` not covered by the earlier `endpoint:`-tagging passes above; it now tags its
+`decode(...)` call the same way, so a bookmarks decode failure reports via
+`reportDecodeFailure`/CloudWatch instead of silently reading as "no bookmarks."
+
+**`StoreKitManager.currentRenewal()` no longer collapses a fetch failure into "no active
+renewal" (2026-09-05, compile-errors #5).** `sub.status`'s thrown failure was previously
+discarded via `try?`, identical to the genuine "no active subscription" `nil` return. The thrown
+case is now caught and logged (`print(...)`, matching `restore()`'s existing convention) before
+still returning `nil` — this method's return type has no room for a distinct "fetch failed"
+case, so the caller-visible behavior is unchanged, but a failure now leaves a diagnostic trail.
+
 **Notifications section removed (2026-08-26).** The Account page previously had its own
 "Notifications" card (create/edit/delete a recurring AI-authored reminder, `NotificationSetupSheet`,
 a "View All" push to `NotificationsListView`) built on the now-removed user-authored notification

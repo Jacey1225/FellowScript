@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { message } from 'antd';
 import { API, WS_BASE } from '../config.js';
+import { compareTimestamps } from '../utils.js';
 
 // WS reconnect backoff: 3s -> 30s cap, doubling each failed attempt.
 const WS_RECONNECT_MIN_MS = 3000;
@@ -18,9 +19,42 @@ export function useMessaging({ user }) {
   const [wsStatus,       setWsStatus]       = useState('connecting'); // 'connecting' | 'connected' | 'reconnecting' | 'offline'
   const wsRef              = useRef(null);
   const friendCache        = useRef({});
+  // H13 (compliance sweep) -- client-side dedup for loadContacts' N+1
+  // fetch-per-friend/per-group pattern. friendCache above already skips
+  // re-fetching a friend's *username* once known; friendEntryCache goes
+  // further and caches the whole per-friend list row (name + last-message
+  // preview), and groupEntryCache does the same for groups (metadata +
+  // preview). Both are keyed by id and only ever populated, never
+  // refreshed, until explicitly invalidated by removeFriend/blockUser
+  // (friend) or updateGroup/leaveGroup (group) below -- so a repeat
+  // loadContacts() call (e.g. ContactsPanel/MessagingSidebar calling
+  // onLoad() again right after addFriend/createGroup succeeds) reuses
+  // every already-known friend/group's row instead of re-fetching its
+  // username, group record, and message history all over again just to
+  // pick up the one new entry. A cached preview can go briefly stale
+  // between such reloads -- an accepted tradeoff for this frontend-only
+  // fix; a real batched endpoint (the sweep's own recommended full fix)
+  // is out of scope here, see intake-spec.md's Open Questions.
+  const friendEntryCache   = useRef({});
+  const groupEntryCache    = useRef({});
+  // Task 20260905-profile-photo: friendCache above is shared/keyed to a bare
+  // username string elsewhere (mirrors messaging.js's legacy equivalent), so
+  // a photo URL rides alongside it in its own cache rather than changing
+  // friendCache's shape. memberCache is the same idea for resolved group
+  // members ({ username, photoUrl } per user_id) -- GroupsManager.fetch_group
+  // only ever returns a bare username list (no ids, no photos), so each
+  // member is instead resolved from the group's own `toUsers` id list via
+  // the same GET /user/{id} endpoint friend resolution already uses.
+  const friendPhotoCache   = useRef({});
+  const memberCache        = useRef({});
   const sessionSignalCbRef = useRef(null);
   const reconnectAttemptsRef = useRef(0);
   const reconnectTimeoutRef  = useRef(null);
+  // Mirrors of currentContact so the WS onmessage handler below can read the
+  // latest value without calling setCurrentContact's own updater just to
+  // read it (see that handler's comment for why).
+  const currentContactRef = useRef(currentContact);
+  useEffect(() => { currentContactRef.current = currentContact; }, [currentContact]);
 
   // ── WebSocket ──────────────────────────────────────────────────────────────
 
@@ -43,26 +77,33 @@ export function useMessaging({ user }) {
           sessionSignalCbRef.current?.(data);
           return;
         }
-        setCurrentContact(cc => {
-          if (cc && data.from_user !== user.user_id &&
-              (data.group_id || '') === (cc.group_id || '')) {
-            setMessages(prev => [...prev, {
-              text: data.text || '',
-              mine: false,
-              timestamp: data.timestamp,
-              sender: data.from_user || '',
-              // Task 20260904-messaging-attachments: null/absent for an
-              // ordinary text-only message. attachment_url (image/video/file
-              // only) is a freshly presigned GET the server resolves at
-              // delivery time -- never a durable/storable URL. A "gif"
-              // instead carries its playable URL in attachment_meta.url.
-              attachmentKind: data.attachment_kind || null,
-              attachmentMeta: data.attachment_meta || null,
-              attachmentUrl:  data.attachment_url || null,
-            }]);
-          }
-          return cc;
-        });
+        // The setMessages side effect below used to live inside this
+        // setCurrentContact updater -- calling another component's setState
+        // from inside a different setter's updater function is impure, and
+        // React 18 StrictMode's intentional double-invocation of updater
+        // functions in development could fire that side effect twice,
+        // duplicating the incoming chat bubble. Read currentContact from a
+        // ref instead of via setCurrentContact, and never write
+        // currentContact here at all (this handler never needs to change
+        // it) -- setMessages runs exactly once per incoming message.
+        const cc = currentContactRef.current;
+        if (cc && data.from_user !== user.user_id &&
+            (data.group_id || '') === (cc.group_id || '')) {
+          setMessages(prev => [...prev, {
+            text: data.text || '',
+            mine: false,
+            timestamp: data.timestamp,
+            sender: data.from_user || '',
+            // Task 20260904-messaging-attachments: null/absent for an
+            // ordinary text-only message. attachment_url (image/video/file
+            // only) is a freshly presigned GET the server resolves at
+            // delivery time -- never a durable/storable URL. A "gif"
+            // instead carries its playable URL in attachment_meta.url.
+            attachmentKind: data.attachment_kind || null,
+            attachmentMeta: data.attachment_meta || null,
+            attachmentUrl:  data.attachment_url || null,
+          }]);
+        }
       } catch (err) {
         console.error('Failed to parse incoming WS message:', err);
       }
@@ -115,10 +156,19 @@ export function useMessaging({ user }) {
     // Friends
     const friendIds = freshUser.friends || [];
     const friendList = await Promise.all(friendIds.map(async fid => {
+      // Already-known friend row (name + preview) -- see friendEntryCache's
+      // doc comment above. Skips the /user/{fid} and /message/messages/{fid}
+      // fetches entirely for a friend loadContacts already resolved before.
+      if (friendEntryCache.current[fid]) return friendEntryCache.current[fid];
+
       if (!friendCache.current[fid]) {
         try {
           const r = await fetch(`${API}/user/${fid}`);
-          if (r.ok) { const d = await r.json(); friendCache.current[fid] = d.username; }
+          if (r.ok) {
+            const d = await r.json();
+            friendCache.current[fid] = d.username;
+            friendPhotoCache.current[fid] = d.profile_photo_url || null;
+          }
         } catch (err) {
           console.error(`Failed to load friend ${fid}:`, err);
           friendCache.current[fid] = fid.slice(0, 8);
@@ -132,14 +182,16 @@ export function useMessaging({ user }) {
           const md  = await mr.json();
           const all = [...(md.payload?.host_msgs || []), ...(md.payload?.other_msgs || [])];
           if (all.length) {
-            all.sort((a, b) => (a.timestamp || '') < (b.timestamp || '') ? -1 : 1);
+            all.sort(compareTimestamps);
             preview = all[all.length - 1].text || '';
           }
         }
       } catch (err) {
         console.error(`Failed to load message preview for friend ${fid}:`, err);
       }
-      return { id: fid, name, type: 'friend', toUsers: [fid], preview };
+      const entry = { id: fid, name, type: 'friend', toUsers: [fid], preview, photoUrl: friendPhotoCache.current[fid] || null };
+      friendEntryCache.current[fid] = entry;
+      return entry;
     }));
     setFriends(friendList);
 
@@ -147,19 +199,28 @@ export function useMessaging({ user }) {
     const groupIds = Array.isArray(freshUser.groups) ? freshUser.groups : [];
     const groupMap = {};
     const groupList = await Promise.all(groupIds.map(async gid => {
+      // Already-known group (metadata + preview) -- see groupEntryCache's
+      // doc comment above. Skips the /groups/{gid} re-fetch entirely for a
+      // group loadContacts already resolved before.
+      const cached = groupEntryCache.current[gid];
+      if (cached) { groupMap[gid] = cached.meta; return cached.entry; }
+
       try {
         const r = await fetch(`${API}/groups/${user.user_id}/${gid}`);
         if (r.ok) {
           const data = await r.json();
           const g = data.group || {};
-          groupMap[gid] = { title: g.title || gid, users: g.users || [] };
+          const meta = { title: g.title || gid, users: g.users || [] };
+          groupMap[gid] = meta;
           const allMsgs = [...(data.host_msgs || []), ...(data.other_msgs || [])];
           let preview = '';
           if (allMsgs.length) {
-            allMsgs.sort((a, b) => (a.timestamp || '') < (b.timestamp || '') ? -1 : 1);
+            allMsgs.sort(compareTimestamps);
             preview = allMsgs[allMsgs.length - 1].text || '';
           }
-          return { id: gid, name: g.title || gid, type: 'group', toUsers: g.users || [], preview };
+          const entry = { id: gid, name: g.title || gid, type: 'group', toUsers: g.users || [], preview };
+          groupEntryCache.current[gid] = { meta, entry };
+          return entry;
         }
       } catch (err) {
         console.error(`Failed to load group ${gid}:`, err);
@@ -183,12 +244,35 @@ export function useMessaging({ user }) {
       if (res.ok) {
         const data = await res.json();
         if (contact.type === 'group') {
-          setGroupMembers(data.members || []);
+          // fetch_group's own `data.members` is a bare list of usernames
+          // (no ids, no photos) -- resolve the richer { user_id, username,
+          // photoUrl } shape ChatThread.jsx/MessagingSidebar.jsx's Members
+          // panel already expects from `contact.toUsers` (the group's full
+          // member-id list, self included) instead, via the same GET
+          // /user/{id} endpoint friend resolution uses. Cached per id so a
+          // reopened group doesn't re-fetch members already resolved.
+          const memberIds = (contact.toUsers || []).filter(uid => uid !== user.user_id);
+          const resolvedMembers = await Promise.all(memberIds.map(async uid => {
+            if (memberCache.current[uid]) return { user_id: uid, ...memberCache.current[uid] };
+            try {
+              const r = await fetch(`${API}/user/${uid}`);
+              if (r.ok) {
+                const d = await r.json();
+                const resolved = { username: d.username || uid.slice(0, 8), photoUrl: d.profile_photo_url || null };
+                memberCache.current[uid] = resolved;
+                return { user_id: uid, ...resolved };
+              }
+            } catch (err) {
+              console.error(`Failed to resolve group member ${uid}:`, err);
+            }
+            return { user_id: uid, username: uid.slice(0, 8), photoUrl: null };
+          }));
+          setGroupMembers(resolvedMembers);
         }
         const all = [
           ...(data.host_msgs  || []).map(m => ({ ...m, mine: true })),
           ...(data.other_msgs || []).map(m => ({ ...m, mine: false })),
-        ].sort((a, b) => (a.timestamp > b.timestamp ? 1 : -1));
+        ].sort(compareTimestamps);
         setMessages(all.map(m => ({
           text: m.text, mine: m.mine, timestamp: m.timestamp,
           sender: m.mine ? '' : (m.from_user || ''),
@@ -324,6 +408,10 @@ export function useMessaging({ user }) {
       const res = await fetch(`${API}/friends/${user.user_id}/${encodeURIComponent(friendId)}`, { method: 'DELETE' });
       if (res.ok || res.status === 204) {
         setFriends(prev => prev.filter(f => f.id !== friendId));
+        // Invalidate this friend's cached row so a later re-add doesn't
+        // resurface a stale name/preview from before the removal.
+        delete friendEntryCache.current[friendId];
+        delete friendCache.current[friendId];
         return true;
       }
       message.error('Could not remove that friend. Please try again.');
@@ -362,10 +450,17 @@ export function useMessaging({ user }) {
         // friend row and, if we're mid-conversation with them, close the chat.
         setFriends(prev => prev.filter(f => f.id !== blockedId));
         setCurrentContact(cc => (cc && cc.id === blockedId ? null : cc));
+        // Same cache invalidation as removeFriend above.
+        delete friendEntryCache.current[blockedId];
+        delete friendCache.current[blockedId];
         return true;
       }
+      // Was the one action in this file with no user-facing failure
+      // feedback — bring it in line with reportUser/removeFriend above.
+      message.error('Could not block that user. Please try again.');
     } catch (err) {
       console.error('Failed to block user:', err);
+      message.error('Could not block that user. Check your connection and try again.');
     }
     return false;
   }, [user]);
@@ -403,6 +498,11 @@ export function useMessaging({ user }) {
       });
       if (res.ok || res.status === 204) {
         setGroups(prev => ({ ...prev, [groupId]: { title, users: allUsers } }));
+        // Invalidate the cached row so the next loadContacts() call (already
+        // triggered right after this by MessagingSidebar/ContactsPanel)
+        // re-fetches this group's now-changed title/members instead of
+        // reusing the pre-update cached entry.
+        delete groupEntryCache.current[groupId];
         return true;
       }
       message.error('Could not update that group. Please try again.');
@@ -418,6 +518,7 @@ export function useMessaging({ user }) {
     try {
       const res = await fetch(`${API}/groups/${user.user_id}/${groupId}`, { method: 'DELETE' });
       const ok = res.ok || res.status === 204;
+      if (ok) delete groupEntryCache.current[groupId];
       if (!ok) message.error('Could not leave that group. Please try again.');
       return ok;
     } catch (err) {

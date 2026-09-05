@@ -1,0 +1,8 @@
+{
+  "task_id": "20260830-fellowscript-full-sweep",
+  "step": 8,
+  "gate": "optimization",
+  "result": "pass",
+  "finding_count": 9,
+  "summary": "Reviewed api/ (DBManager base, interactions managers, monitoring, filters/moderation, routes), the iOS Swift app (Bible reader, notes list, networking/caching), and both frontend/ stacks, using codegraph_explore to trace call frequency/hot paths rather than a keyword sweep. Headline: GroupsManager (fetch_group, format_messages, fetch_notes, fetch_highlights) and ConnectionManager.send_msg in api/backend/interactions/ each have N+1 query patterns (per-loop-iteration calls to DBManager.lookup()/raw cur.execute() instead of one batched ANY()/IN() query) on live, frequently-hit user-facing paths (group open, message list, paginated notes scroll, chat send) -- 5 High findings, all fixable with the same batch-then-map-lookup shape FriendsManager/ActivityManager already use correctly elsewhere in the same package. 2 Medium findings: a hand-rolled recursive quicksort in filter_notes.py that should be Python's built-in sorted(), and per-note debug-style logger.info calls left inside a request-path filtering loop. 2 Low findings: uncached NSRegularExpression compilation on every Bible chapter navigation in BibleReaderView.swift, and a low-volume N+1 in a 5-minute background scheduler job. No critical/availability-risk findings."
+}

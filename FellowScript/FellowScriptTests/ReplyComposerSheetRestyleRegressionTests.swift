@@ -71,16 +71,31 @@ import SwiftUI
 
 final class ReplyComposerSheetRestyleRegressionTests: XCTestCase {
 
+    // ReplyComposerSheet moved out of NotesListView.swift into its own file
+    // in the compliance-readability-cleanup task's split (readability #6,
+    // 20260904-frontend-arch-sweep) -- same type, same behavior, and no
+    // longer `private` since an extension/sibling-file split requires at
+    // least internal visibility.
     private func componentSource() throws -> String {
         let componentFile = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()          // FellowScriptTests/
             .deletingLastPathComponent()          // FellowScript/ (repo-relative project root)
-            .appendingPathComponent("FellowScript/Notes/NotesListView.swift")
+            .appendingPathComponent("FellowScript/Notes/ReplyComposerSheet.swift")
+        return try String(contentsOf: componentFile, encoding: .utf8)
+    }
+
+    // postReplyDraft/replyCard (the out-of-scope guard section, C below) live
+    // on NoteDetailView, which moved to its own file in the same split.
+    private func noteDetailViewSource() throws -> String {
+        let componentFile = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("FellowScript/Notes/NoteDetailView.swift")
         return try String(contentsOf: componentFile, encoding: .utf8)
     }
 
     private func sheetBody(_ source: String) throws -> String {
-        guard let start = source.range(of: "private struct ReplyComposerSheet: View {") else {
+        guard let start = source.range(of: "struct ReplyComposerSheet: View {") else {
             XCTFail("ReplyComposerSheet not found")
             return ""
         }
@@ -251,7 +266,7 @@ final class ReplyComposerSheetRestyleRegressionTests: XCTestCase {
     // MARK: - C. Out-of-scope guard: reply list display and posting logic untouched
 
     func test_postReplyDraft_networkAndOptimisticAppendLogicUnchanged() throws {
-        let source = try componentSource()
+        let source = try noteDetailViewSource()
         XCTAssertTrue(source.contains("let id = try await service.postReply(draft, noteId: note.id)"),
                       "postReplyDraft's network call must be unchanged by a visual-only restyle")
         XCTAssertTrue(source.contains("replies.append(draft)"),
@@ -259,7 +274,7 @@ final class ReplyComposerSheetRestyleRegressionTests: XCTestCase {
     }
 
     func test_replyCard_stillUsesWidgetCard_untouchedByThisRestyle() throws {
-        let source = try componentSource()
+        let source = try noteDetailViewSource()
         XCTAssertTrue(source.contains("private func replyCard(_ reply: FSNote) -> some View {"),
                       "replyCard must still exist, unmodified by this composer-sheet-only restyle")
     }

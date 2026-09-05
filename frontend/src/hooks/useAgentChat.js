@@ -1,5 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
+import { message } from 'antd';
 import { API, WS_BASE } from '../config.js';
+import { compareTimestamps } from '../utils.js';
 
 export function useAgentChat({ user, onNoteSaved }) {
   const [agents,               setAgents]               = useState([]);
@@ -27,7 +29,11 @@ export function useAgentChat({ user, onNoteSaved }) {
         const list = Object.entries(data).map(([id, a]) => ({ id, ...a }));
         setAgents(list);
       }
-    } catch {}
+    } catch (err) {
+      // Background load -- log only, matching useMessaging.loadContacts'
+      // established convention for passive/background loads.
+      console.error('Failed to load agents:', err);
+    }
   }, [user]);
 
   const loadHeartbeats = useCallback(async (agentList) => {
@@ -38,11 +44,16 @@ export function useAgentChat({ user, onNoteSaved }) {
           fetch(`${API}/agent/${user.user_id}/${agent.id}/heartbeats`)
             .then(r => r.ok ? r.json() : [])
             .then(list => list.map(hb => ({ ...hb, agent_id: agent.id })))
-            .catch(() => [])
+            .catch(err => {
+              console.error(`Failed to load heartbeats for agent ${agent.id}:`, err);
+              return [];
+            })
         )
       );
       setHeartbeats(results.flat());
-    } catch {}
+    } catch (err) {
+      console.error('Failed to load heartbeats:', err);
+    }
   }, [user]);
 
   // Reload heartbeats whenever the agents list changes
@@ -58,8 +69,6 @@ export function useAgentChat({ user, onNoteSaved }) {
     const checkHeartbeats = async () => {
       const now      = new Date();
       const dayName  = now.toLocaleDateString('en-US', { weekday: 'long' }); // e.g. "Monday"
-      const curH     = now.getHours();
-      const curM     = now.getMinutes();
       const todayStr = now.toISOString().slice(0, 10); // "YYYY-MM-DD"
 
       for (const hb of heartbeatsRef.current) {
@@ -69,26 +78,56 @@ export function useAgentChat({ user, onNoteSaved }) {
         const scheduled = new Date(hb.timestamp);
         if (isNaN(scheduled.getTime())) continue;
 
-        const dayMatch  = (hb.days_per_week || []).includes(dayName);
-        const timeMatch = scheduled.getHours() === curH && scheduled.getMinutes() === curM;
+        const dayMatch = (hb.days_per_week || []).includes(dayName);
+        if (!dayMatch) continue;
 
-        if (!dayMatch || !timeMatch) continue;
+        // Match the heartbeat's scheduled hour/minute against *today's*
+        // date rather than requiring this exact tick to land on that exact
+        // minute (logic-errors #4): this 60s interval isn't guaranteed to
+        // run precisely on the minute (a throttled/backgrounded tab, or the
+        // app simply opening after the scheduled time already passed), so
+        // this fires as soon as we notice we're at or past today's
+        // scheduled time instead of silently losing the check-in for the
+        // rest of the day.
+        const scheduledToday = new Date(now);
+        scheduledToday.setHours(scheduled.getHours(), scheduled.getMinutes(), 0, 0);
+        if (now.getTime() < scheduledToday.getTime()) continue;
 
-        firedTodayRef.current.add(fireKey);
         try {
           const res = await fetch(`${API}/agent/${user.user_id}/${hb.agent_id}/${hb._id}/commit_heartbeat`, {
             method:  'POST',
             headers: { 'Content-Type': 'application/json' },
             body:    JSON.stringify({ prompt: hb.prompt }),
           });
-          if (!res.ok) continue;
+          if (!res.ok) throw new Error(`Heartbeat check-in failed with status ${res.status}`);
+
+          // Only mark today's check-in as "fired" once the POST is actually
+          // confirmed (H7) -- marking it beforehand meant a failed check-in
+          // silently never happened for the rest of the day (Architecture
+          // Q27: propagate failures upward rather than silently
+          // substituting a default).
+          firedTodayRef.current.add(fireKey);
+
           const data = await res.json();
           if (data.success === 'saved note') {
             onNoteSavedRef.current?.();
           } else if (data.__action === 'create_notification') {
             setPendingNotifications(prev => [...prev, data]);
           }
-        } catch {}
+        } catch (err) {
+          console.error(`Heartbeat check-in failed for agent ${hb.agent_id}:`, err);
+          // Keyed so a repeated failure on the next 60s tick refreshes this
+          // same toast instead of stacking new ones (matches useMessaging's
+          // 'fs-ws-status' keyed-toast pattern).
+          message.error({
+            content: 'A scheduled check-in failed to save. Retrying automatically.',
+            key: `fs-heartbeat-${hb._id}`,
+            duration: 4,
+          });
+          // Deliberately not added to firedTodayRef -- since timeMatch above
+          // no longer requires an exact minute, the next 60s tick retries
+          // automatically until it succeeds or the day rolls over.
+        }
       }
     };
 
@@ -111,7 +150,11 @@ export function useAgentChat({ user, onNoteSaved }) {
           timestamp: data.timestamp,
           sender:    'Agent',
         }]);
-      } catch {}
+      } catch (err) {
+        // Matches useMessaging's WS onmessage handler -- log a malformed
+        // frame rather than crashing the socket handler.
+        console.error('Failed to parse incoming agent WS message:', err);
+      }
     };
     agentWsRef.current.onclose = () => setAgentThinking(false);
   }, [user]);
@@ -134,10 +177,13 @@ export function useAgentChat({ user, onNoteSaved }) {
           mine:      m.title === 'user',
           timestamp: m.timestamp,
           sender:    m.title === 'user' ? '' : 'Agent',
-        })).sort((a, b) => (a.timestamp > b.timestamp ? 1 : -1));
+        })).sort(compareTimestamps);
         setAgentMessages(msgs);
       }
-    } catch {}
+    } catch (err) {
+      console.error('Failed to load agent chat history:', err);
+      message.error('Could not load that conversation. Check your connection and try again.');
+    }
     connectAgentWS(agent.id);
   }, [user, connectAgentWS]);
 
@@ -175,7 +221,11 @@ export function useAgentChat({ user, onNoteSaved }) {
         await loadAgents();
         return { id: data.id, user_id: user.user_id, role: role || '', chats: [], enabled: true };
       }
-    } catch {}
+      message.error('Could not create that agent. Please try again.');
+    } catch (err) {
+      console.error('Failed to create agent:', err);
+      message.error('Could not create that agent. Check your connection and try again.');
+    }
     return null;
   }, [user, loadAgents]);
 
@@ -188,7 +238,11 @@ export function useAgentChat({ user, onNoteSaved }) {
         body: JSON.stringify(updates),
       });
       if (res.ok) { await loadAgents(); return true; }
-    } catch {}
+      message.error('Could not update that agent. Please try again.');
+    } catch (err) {
+      console.error('Failed to update agent:', err);
+      message.error('Could not update that agent. Check your connection and try again.');
+    }
     return false;
   }, [user, loadAgents]);
 
@@ -200,7 +254,11 @@ export function useAgentChat({ user, onNoteSaved }) {
         setAgents(prev => prev.filter(a => a.id !== agentId));
         return true;
       }
-    } catch {}
+      message.error('Could not delete that agent. Please try again.');
+    } catch (err) {
+      console.error('Failed to delete agent:', err);
+      message.error('Could not delete that agent. Check your connection and try again.');
+    }
     return false;
   }, [user]);
 
@@ -216,7 +274,11 @@ export function useAgentChat({ user, onNoteSaved }) {
         await loadHeartbeats(agents);
         return true;
       }
-    } catch {}
+      message.error('Could not save that check-in schedule. Please try again.');
+    } catch (err) {
+      console.error('Failed to add heartbeat:', err);
+      message.error('Could not save that check-in schedule. Check your connection and try again.');
+    }
     return false;
   }, [user, agents, loadHeartbeats]);
 
@@ -228,8 +290,12 @@ export function useAgentChat({ user, onNoteSaved }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ session: sessionData, group_id: groupId }),
       });
+      if (!res.ok) message.error('Could not summarize that session. Please try again.');
       return res.ok;
-    } catch {}
+    } catch (err) {
+      console.error('Failed to summarize session:', err);
+      message.error('Could not summarize that session. Check your connection and try again.');
+    }
     return false;
   }, [user]);
 

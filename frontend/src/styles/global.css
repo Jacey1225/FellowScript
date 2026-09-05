@@ -847,6 +847,19 @@ body {
 
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* Task 20260905-profile-photo (Q18): a subtle crossfade communicating that a
+   just-uploaded photo has replaced the initials placeholder -- not applied
+   on every render, only right after a successful upload/removal (see
+   Account.jsx's `photoJustUpdated`). Respects prefers-reduced-motion (Q14). */
+@keyframes fsAvatarCrossfade {
+  from { opacity: 0.25; }
+  to   { opacity: 1; }
+}
+.fs-avatar-crossfade { animation: fsAvatarCrossfade 0.5s ease; }
+@media (prefers-reduced-motion: reduce) {
+  .fs-avatar-crossfade { animation: none; }
+}
+
 /* ── Note card override ── */
 .note-card.ant-card {
   border: none !important;
@@ -1051,34 +1064,26 @@ body {
   font-size: 0.8rem;
 }
 
-/* Attach action sheet (design gate §1) -- content of the antd Popover
-   anchored to the composer's paperclip button. */
+/* Attach picker (task 20260904-attach-picker-layout-polish, follow-up to
+   design gate §1) -- content of the antd Popover anchored above the
+   composer's plus button. Single horizontal row of self-contained gold
+   pill buttons (see attachPillStyle in ChatThread.jsx) rather than the
+   prior stacked-column plain-row list -- each option is its own pill now,
+   so the old shared hairline-divider/hover-row treatment is gone. */
 .attach-menu-popover .ant-popover-inner {
   background: var(--card-bg);
   border: 1px solid var(--card-border);
 }
 .attach-menu {
   display: flex;
-  flex-direction: column;
-  min-width: 180px;
+  flex-direction: row;
+  gap: 0.5rem;
+  max-width: min(90vw, 420px);
+  overflow-x: auto;
 }
 .attach-menu-row {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  padding: 0.6rem 0.4rem;
-  background: none;
-  border: none;
-  border-bottom: 1px solid rgba(255,255,255,0.08);
-  color: var(--parchment);
-  font-size: 0.82rem;
-  font-family: 'Inter', sans-serif;
-  text-align: left;
-  cursor: pointer;
+  flex-shrink: 0;
 }
-.attach-menu-row:last-child { border-bottom: none; }
-.attach-menu-row:hover { background: rgba(255,198,26,0.08); }
-.attach-menu-row .anticon { color: var(--gold); }
 
 /* GIF-search sheet (design gate §2) */
 .gif-sheet-modal .ant-modal-content {

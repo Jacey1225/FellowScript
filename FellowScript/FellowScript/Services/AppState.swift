@@ -152,7 +152,13 @@ final class AppState: ObservableObject {
                 DispatchQueue.main.async {
                     UIApplication.shared.registerForRemoteNotifications()
                 }
-            default:
+            case .denied:
+                break
+            @unknown default:
+                // UNAuthorizationStatus is a non-frozen system enum -- match
+                // StoreKitManager.swift's convention (purchase()/restore())
+                // so a future SDK adding a new case gets a compiler warning
+                // here instead of silently falling into `default:` forever.
                 break
             }
         }

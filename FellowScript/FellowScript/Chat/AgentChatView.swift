@@ -167,6 +167,7 @@ final class AgentChatViewModel: ObservableObject {
 struct AgentChatView: View {
     let agent: FSAgent
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @EnvironmentObject var appState: AppState
 
     @StateObject private var vm = AgentChatViewModel()
@@ -236,11 +237,11 @@ struct AgentChatView: View {
                     }
                     .onChange(of: vm.messages.count) { _ in
                         if let last = vm.messages.last {
-                            withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
+                            withMotionAwareAnimation(.default, reduceMotion: reduceMotion) { proxy.scrollTo(last.id, anchor: .bottom) }
                         }
                     }
                     .onChange(of: vm.isThinking) { t in
-                        if t { withAnimation { proxy.scrollTo("thinking", anchor: .bottom) } }
+                        if t { withMotionAwareAnimation(.default, reduceMotion: reduceMotion) { proxy.scrollTo("thinking", anchor: .bottom) } }
                     }
                 }
             }
@@ -351,7 +352,7 @@ struct AgentChatView: View {
                         .font(.system(size: 16, weight: .bold))
                         .foregroundColor(Theme.ink)
                         .rotationEffect(vm.isThinking ? .degrees(360) : .zero)
-                        .animation(vm.isThinking ? .linear(duration: 1).repeatForever(autoreverses: false) : .default, value: vm.isThinking)
+                        .motionAwareAnimation(vm.isThinking ? .linear(duration: 1).repeatForever(autoreverses: false) : .default, value: vm.isThinking, reduceMotion: reduceMotion)
                 }
                 .frame(width: 38, height: 38)
             }
@@ -452,6 +453,7 @@ struct AgentMessageBubble: View {
 
 // ── Typing indicator (three animated dots) ────────────────────────────────────
 struct TypingIndicator: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var phase = 0
 
     var body: some View {
@@ -460,15 +462,23 @@ struct TypingIndicator: View {
                 Circle()
                     .fill(Theme.gold.opacity(0.40))
                     .frame(width: 7, height: 7)
-                    .scaleEffect(phase == i ? 1.4 : 1.0)
-                    .animation(.easeInOut(duration: 0.4).repeatForever().delay(Double(i) * 0.13), value: phase)
+                    // Reduce Motion: skip the repeating pulse-wave outright
+                    // rather than shortening it (ios-guidelines #1,
+                    // 20260904-frontend-arch-sweep) -- three static dots
+                    // still convey "agent is typing" without the indefinite
+                    // repeatForever motion.
+                    .scaleEffect(!reduceMotion && phase == i ? 1.4 : 1.0)
+                    .animation(reduceMotion ? nil : .easeInOut(duration: 0.4).repeatForever().delay(Double(i) * 0.13), value: phase)
             }
         }
         .padding(.horizontal, Theme.spacingMD)
         .padding(.vertical, Theme.spacingSM)
         .background(Color.white.opacity(0.05))
         .clipShape(RoundedRectangle(cornerRadius: Theme.radiusLG))
-        .onAppear { phase = 0; withAnimation { phase = 2 } }
+        .onAppear {
+            guard !reduceMotion else { return }
+            phase = 0; withAnimation { phase = 2 }
+        }
         .accessibilityLabel("Agent is typing")
     }
 }

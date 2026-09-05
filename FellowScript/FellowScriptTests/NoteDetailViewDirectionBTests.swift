@@ -136,10 +136,13 @@ final class NoteDetailViewDirectionBTests: XCTestCase {
     // a stale pin to match current reality, don't let it rot).
 
     private func componentSource() throws -> String {
+        // NoteDetailView moved out of NotesListView.swift into its own file
+        // in the compliance-readability-cleanup task's split (readability
+        // #6, 20260904-frontend-arch-sweep) -- same type, same behavior.
         let componentFile = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()          // FellowScriptTests/
             .deletingLastPathComponent()          // FellowScript/ (repo-relative project root)
-            .appendingPathComponent("FellowScript/Notes/NotesListView.swift")
+            .appendingPathComponent("FellowScript/Notes/NoteDetailView.swift")
         return try String(contentsOf: componentFile, encoding: .utf8)
     }
 

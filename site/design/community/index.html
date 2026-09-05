@@ -599,6 +599,39 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#visual-design-ios" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Visual Design (iOS)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#attachments-2026-09-04" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Attachments (2026-09-04)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#study-sessions-calls-2026-09-04" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Study Sessions &amp; Calls (2026-09-04)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#real-time-behavior" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -979,6 +1012,53 @@
 - <strong>Leave group</strong> — removes the user from the group
 - <strong>Group selector</strong> — the compact dropdown in the Notes sidebar tab bar also switches the messaging sidebar to the selected group</p>
 <p>Group highlights (members' colored verse highlights) are visible as overlays in the scripture view when a group is selected.</p>
+<hr />
+<h2 id="visual-design-ios">Visual Design (iOS)</h2>
+<p><strong>Add-friend / add-group sheets restyled (2026-09-02).</strong> iOS's <code>AddFriendSheet</code> and <code>AddGroupSheet</code>
+(<code>Chat/ChatRootView.swift</code>) previously sat on a flat <code>Theme.bgPage</code> fill with native <code>Form</code>/<code>Section</code>
+chrome, unlike the rest of the app. Both now use the shared <code>Theme.warmBloomBackground()</code> modifier
+(the same two-<code>RadialGradient</code> wash used app-wide) and a custom <code>ScrollView</code> + <code>widgetCard()</code> layout
+in place of <code>Form</code>. <code>AddFriendSheet</code> gained a <code>.medium</code> presentation detent (previously full-height
+with a large empty area below its one field); <code>AddGroupSheet</code> gained <code>[.medium, .large]</code> so a longer
+member list isn't clipped. Appearance-only — <code>onSend</code>/<code>onCreate</code> wiring, member-row selection
+behavior, and existing accessibility labels are unchanged.</p>
+<hr />
+<h2 id="attachments-2026-09-04">Attachments (2026-09-04)</h2>
+<p>The composer (both iOS <code>ChatThreadView</code> and web <code>ChatThread</code>) has a plus-icon attach affordance
+next to the text field. Tapping it opens a single horizontal row of three gold pill buttons
+(icon + label, the same treatment used elsewhere in the app) directly above the text field —
+not a bottom sheet/modal — with three options:</p>
+<ul>
+<li><strong>Photo &amp; Video</strong> — the platform's native picker (iOS <code>PHPickerViewController</code>; web <code>&lt;input
+  type="file" accept="image/*,video/*"&gt;</code>). The picked file uploads directly to S3 using a
+  presigned URL the server issues (<code>POST /message/upload-url/{user_id}</code>) — the app's own backend
+  never receives the raw bytes. A staged preview chip shows upload progress (plain spinner) above
+  the composer; send stays disabled until the upload finishes (or immediately for a GIF, which
+  never uploads).</li>
+<li><strong>File</strong> — same direct-to-S3 flow, native document/file picker.</li>
+<li><strong>GIF</strong> — a dedicated search sheet (debounced query against <code>GET /message/gif-search</code>, a
+  server-side proxy to the configured provider) with a scrollable results grid. Selecting a GIF
+  stages it immediately — nothing to upload, only the provider's URL/ID is sent with the message.</li>
+</ul>
+<p>In the thread, each attachment kind renders inside the existing message bubble: images and GIFs
+preview inline edge-to-edge, videos show a tap-to-play affordance over a placeholder (never
+autoplay), and files show a name + download row. A picked-but-unsent attachment can be removed
+with no confirmation prompt (undo-after-the-fact); a failed upload shows a short retry affordance
+instead of an automatic retry loop. GIF autoplay/looping is suppressed under
+<code>prefers-reduced-motion</code>/<code>accessibilityReduceMotion</code> in favor of a static frame with its own
+tap-to-play control — the one place this feature changes default behavior for reduced motion,
+rather than just disabling a decorative transition.</p>
+<p>Exactly one attachment is supported per message (no multi-file selection); a caption (<code>text</code>) can
+still ride alongside it. See <code>docs/api/overview.md</code>'s Attachments section for the wire contract.</p>
+<hr />
+<h2 id="study-sessions-calls-2026-09-04">Study Sessions &amp; Calls (2026-09-04)</h2>
+<p>A chat thread can host a live voice/video study session (Amazon Chime SDK) via the session
+island shown above the message list (<code>SessionWidget</code>). Joining creates/fetches the Chime meeting
+and requests an attendee token before connecting. A failure at either of those two steps — e.g.
+the server can't reach Chime — used to fail with no visible signal at all. It now surfaces an
+inline error message with a <strong>Retry</strong> button directly on the affected session's card; retrying
+just re-runs the join flow, and the error clears automatically as soon as a join attempt (retry
+or fresh) starts.</p>
 <hr />
 <h2 id="real-time-behavior">Real-Time Behavior</h2>
 <p>The WebSocket connection (<code>/ws/{user_id}</code>) handles:</p>

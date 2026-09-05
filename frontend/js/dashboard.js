@@ -108,7 +108,7 @@ async function loadLatestGroupNote() {
   await Promise.all(groups.map(async groupId => {
     try {
       const resp = await fetch(`${API}/groups/${user.user_id}/${groupId}/notes`);
-      if (!resp.ok) return;
+      if (!resp.ok) { console.warn('[dashboard] loadLatestGroupNote: fetch failed', groupId, resp.status); return; }
       const data = await resp.json();
       // data shape: { username: { note_id: note_data } }
       for (const [username, noteMap] of Object.entries(data)) {
@@ -116,7 +116,7 @@ async function loadLatestGroupNote() {
           allNotes.push({ ...note, _username: username, _groupId: groupId, _noteId: noteId });
         }
       }
-    } catch { /* skip unreachable group */ }
+    } catch (err) { console.error('[dashboard] loadLatestGroupNote: fetch error', groupId, err); }
   }));
 
   if (allNotes.length === 0) {
@@ -134,13 +134,13 @@ async function loadLatestGroupNote() {
     refStr = (bS === bE && cS === cE && vS === vE)
       ? `${bS} ${cS}:${vS}`
       : `${bS} ${cS}:${vS} – ${bE} ${cE}:${vE}`;
-  } catch { /* verses may be absent */ }
+  } catch (err) { console.warn('[dashboard] loadLatestGroupNote: verse ref malformed', err); }
 
   // Format date
   let timeStr = '';
   try {
     timeStr = new Date(note.timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-  } catch {}
+  } catch (err) { console.warn('[dashboard] loadLatestGroupNote: timestamp malformed', err); }
 
   el.innerHTML = `
     <p class="gn-note-title">${escHtml(note.title || 'Untitled Note')}</p>

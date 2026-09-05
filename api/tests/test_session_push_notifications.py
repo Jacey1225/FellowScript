@@ -55,6 +55,28 @@ acceptance criteria:
       code sits next to) is unchanged -- re-run as part of the full suite,
       not duplicated here; see test_idor_agent_notification_devotion.py.
 
+Extended for task 20260905-scheduled-event-trigger-gap (the confirmed 39-day
+-late fire this suite's original test 5/7/8 coverage did not catch, since it
+only used `time_start` a few minutes in the past): backend steps 2/3 added
+`SESSION_REMINDER_STALE_AFTER_SECONDS`, a fail-closed staleness guard, plus
+explicit INFO-level success/skipped-as-stale log lines.
+
+  13. A candidate whose `time_start` is older than
+      `SESSION_REMINDER_STALE_AFTER_SECONDS` is claimed (so it's never
+      rescanned) but NOT pushed -- reproducing the exact shape of the
+      confirmed 39-day-late devotions row, just past the cutoff instead of
+      weeks past it.
+  14. A candidate just WITHIN the staleness cutoff still fires normally --
+      paired with 13 so the cutoff boundary itself is exercised in both
+      directions, not just "long ago" vs "a minute ago" (already covered by
+      test 5).
+  15. A fired reminder emits an INFO-level "Session-reminder fired: ..."
+      log line naming the session/user ids only -- no session title content
+      -- so "did this actually fire" is answerable from logs alone.
+  16. A stale-skipped reminder emits a distinct INFO-level "Session-reminder
+      skipped as stale: ..." log line -- fired vs skipped-as-stale are each
+      independently observable in logs, not just correct in DB state.
+
 Uses a capturing fake `send_push` (same technique as
 test_heartbeat_backend_scheduling.py / test_activity_notifications.py) so no
 real APNs call is made.
@@ -65,6 +87,7 @@ import _pathfix  # noqa: F401,E402
 
 import asyncio
 import importlib
+import logging
 import os
 import sys
 import threading
@@ -227,6 +250,20 @@ class _CapturingPush:
             raise RuntimeError("simulated APNs failure")
         self.calls.append((token, title, body, data))
         return True
+
+
+class _CapturingLogHandler(logging.Handler):
+    """Same technique as test_friend_activity_push_triggers.py /
+    test_client_error_report_endpoint.py -- a real logging.Handler attached
+    to the module logger, not a mock, so log-line assertions prove what a
+    real log consumer (e.g. CloudWatch) would actually see."""
+
+    def __init__(self):
+        super().__init__()
+        self.records: list[str] = []
+
+    def emit(self, record):
+        self.records.append(self.format(record))
 
 
 def install_push(fail_tokens: set[str] | None = None) -> _CapturingPush:
@@ -427,6 +464,118 @@ def test_reminder_job_leaves_not_yet_due_session_alone():
         cleanup(user_ids=[uid_creator], session_ids=[session_id])
 
 
+# ── 13/14: Staleness guard (task 20260905-scheduled-event-trigger-gap) ─────
+
+def test_reminder_job_skips_far_past_candidate_as_stale_but_still_claims_it():
+    print("\n=== 13. A candidate whose time_start is older than "
+          "SESSION_REMINDER_STALE_AFTER_SECONDS is claimed but NOT pushed -- reproduces the "
+          "confirmed 39-day-late devotions row's shape, fail-closed ===")
+    uid_creator = make_user("remstale_creator")
+    set_device_token(uid_creator, f"tok-{uid_creator}")
+    cutoff = scheduler_module.SESSION_REMINDER_STALE_AFTER_SECONDS
+    far_past = datetime.now(tzmod.utc) - timedelta(seconds=cutoff + 3600)  # 1h past the cutoff
+    session_id = make_session_direct(uid_creator, title="Ancient Session", time_start=far_past)
+
+    push = install_push()
+    try:
+        asyncio.run(run_reminder_job())
+        check("stale candidate IS claimed (reminder_sent_at set) so it's never rescanned",
+              get_reminder_sent_at(session_id) is not None, str(get_reminder_sent_at(session_id)))
+        check("no push was sent for a candidate past the staleness cutoff",
+              not any(c[0] == f"tok-{uid_creator}" for c in push.calls), str(push.calls))
+    finally:
+        restore_push()
+        cleanup(user_ids=[uid_creator], session_ids=[session_id])
+
+
+def test_reminder_job_fires_candidate_just_within_stale_cutoff():
+    print("\n=== 14. A candidate just WITHIN the staleness cutoff still fires normally -- "
+          "exercises the cutoff boundary in both directions, paired with 13 ===")
+    uid_creator = make_user("remfresh_creator")
+    set_device_token(uid_creator, f"tok-{uid_creator}")
+    cutoff = scheduler_module.SESSION_REMINDER_STALE_AFTER_SECONDS
+    just_within = datetime.now(tzmod.utc) - timedelta(seconds=cutoff - 60)  # 1 minute inside the cutoff
+    session_id = make_session_direct(uid_creator, title="Just-in-time Session", time_start=just_within)
+
+    push = install_push()
+    try:
+        asyncio.run(run_reminder_job())
+        check("reminder_sent_at is set for a candidate just within the cutoff",
+              get_reminder_sent_at(session_id) is not None, str(get_reminder_sent_at(session_id)))
+        check("a push WAS sent -- being close to stale is not the same as being stale",
+              any(c[0] == f"tok-{uid_creator}" for c in push.calls), str(push.calls))
+    finally:
+        restore_push()
+        cleanup(user_ids=[uid_creator], session_ids=[session_id])
+
+
+def test_reminder_job_logs_success_line_with_no_title_content():
+    print("\n=== 15. A fired reminder emits an INFO 'Session-reminder fired: ...' log line "
+          "naming only session/user ids, no session title content ===")
+    uid_creator = make_user("remlogfire_creator")
+    set_device_token(uid_creator, f"tok-{uid_creator}")
+    past = datetime.now(tzmod.utc) - timedelta(minutes=1)
+    secret_title = "SECRET_SESSION_TITLE_MARKER"
+    session_id = make_session_direct(uid_creator, title=secret_title, time_start=past)
+
+    push = install_push()
+    handler = _CapturingLogHandler()
+    scheduler_logger = logging.getLogger("backend.interactions.scheduler")
+    scheduler_logger.addHandler(handler)
+    prior_level = scheduler_logger.level
+    scheduler_logger.setLevel(logging.DEBUG)
+    try:
+        asyncio.run(run_reminder_job())
+        fired_lines = [r for r in handler.records if "Session-reminder fired" in r]
+        check("exactly one 'Session-reminder fired' log line was emitted",
+              len(fired_lines) == 1, str(handler.records))
+        check("the fired log line names the session id", session_id in fired_lines[0] if fired_lines else False,
+              str(fired_lines))
+        check("the fired log line names the user id", uid_creator in fired_lines[0] if fired_lines else False,
+              str(fired_lines))
+        check("no session title content leaked into any log line emitted by this job",
+              not any(secret_title in r for r in handler.records), str(handler.records))
+    finally:
+        scheduler_logger.removeHandler(handler)
+        scheduler_logger.setLevel(prior_level)
+        restore_push()
+        cleanup(user_ids=[uid_creator], session_ids=[session_id])
+
+
+def test_reminder_job_logs_distinct_stale_skip_line():
+    print("\n=== 16. A stale-skipped reminder emits a DISTINCT INFO 'Session-reminder skipped "
+          "as stale: ...' log line -- fired vs skipped-as-stale are independently observable ===")
+    uid_creator = make_user("remlogstale_creator")
+    set_device_token(uid_creator, f"tok-{uid_creator}")
+    cutoff = scheduler_module.SESSION_REMINDER_STALE_AFTER_SECONDS
+    far_past = datetime.now(tzmod.utc) - timedelta(seconds=cutoff + 3600)
+    secret_title = "SECRET_STALE_TITLE_MARKER"
+    session_id = make_session_direct(uid_creator, title=secret_title, time_start=far_past)
+
+    push = install_push()
+    handler = _CapturingLogHandler()
+    scheduler_logger = logging.getLogger("backend.interactions.scheduler")
+    scheduler_logger.addHandler(handler)
+    prior_level = scheduler_logger.level
+    scheduler_logger.setLevel(logging.DEBUG)
+    try:
+        asyncio.run(run_reminder_job())
+        skip_lines = [r for r in handler.records if "Session-reminder skipped as stale" in r]
+        check("exactly one 'Session-reminder skipped as stale' log line was emitted",
+              len(skip_lines) == 1, str(handler.records))
+        check("the skip log line names the session id", session_id in skip_lines[0] if skip_lines else False,
+              str(skip_lines))
+        check("no 'Session-reminder fired' line was ALSO emitted for the same stale candidate",
+              not any("Session-reminder fired" in r for r in handler.records), str(handler.records))
+        check("no session title content leaked into the stale-skip log line",
+              not any(secret_title in r for r in handler.records), str(handler.records))
+    finally:
+        scheduler_logger.removeHandler(handler)
+        scheduler_logger.setLevel(prior_level)
+        restore_push()
+        cleanup(user_ids=[uid_creator], session_ids=[session_id])
+
+
 # ── 7/8: THE regression -- no double-fire, sequential and concurrent ───────
 
 def test_reminder_job_does_not_double_fire_across_repeated_poll_cycles():
@@ -584,6 +733,10 @@ def main():
         # the smoke test share one real app lifespan (see note above test 1).
         test_reminder_job_fires_for_due_session_including_creator()
         test_reminder_job_leaves_not_yet_due_session_alone()
+        test_reminder_job_skips_far_past_candidate_as_stale_but_still_claims_it()
+        test_reminder_job_fires_candidate_just_within_stale_cutoff()
+        test_reminder_job_logs_success_line_with_no_title_content()
+        test_reminder_job_logs_distinct_stale_skip_line()
         test_reminder_job_does_not_double_fire_across_repeated_poll_cycles()
         test_reminder_job_does_not_double_fire_under_concurrent_polls()
         test_reminder_job_no_notifiable_members_still_claims_gracefully()

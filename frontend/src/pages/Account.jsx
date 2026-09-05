@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import {
   Layout, Card, Form, Input, Button, Typography,
@@ -10,6 +10,7 @@ import {
   LogoutOutlined, DeleteOutlined, RobotOutlined,
   PlusOutlined, ThunderboltOutlined, EditOutlined,
   CheckOutlined, CloseOutlined, CalendarOutlined, TeamOutlined,
+  CameraOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
@@ -49,6 +50,17 @@ const timezoneOptions = (() => {
     return [{ value: fallback, label: fallback }, { value: 'UTC', label: 'UTC' }];
   }
 })();
+
+// Task 20260905-profile-photo: mirrors ChatThread.jsx's ATTACHMENT_LIMITS.image
+// verbatim (same allowlist as api/backend/interactions/attachments.py's
+// PER_KIND_LIMITS["image"], which profile-photo uploads reuse wholesale) --
+// advisory client-side pre-flight only, real enforcement is the presigned
+// POST policy's content-length-range condition, S3-side.
+const PHOTO_LIMITS = {
+  maxBytes: 15 * 1024 * 1024,
+  accept: ['image/jpeg', 'image/png', 'image/webp', 'image/heic'],
+  oversizeCopy: 'Photos can be up to 15MB.',
+};
 
 const WEEKDAYS = [
   { label: 'Sun', value: 0 },
@@ -153,6 +165,12 @@ export default function Account() {
   const [requests,        setRequests]        = useState([]);
   const [requestsLoading, setRequestsLoading] = useState({});
 
+  // Profile photo (task 20260905-profile-photo)
+  const [photoUploading,   setPhotoUploading]   = useState(false);
+  const [photoError,       setPhotoError]       = useState(null);
+  const [photoJustUpdated, setPhotoJustUpdated] = useState(false); // brief crossfade flag (Q18), not a persistent state
+  const photoInputRef = useRef(null);
+
   const [deleteConfirm,  setDeleteConfirm]  = useState('');
   const [deleteLoading,  setDeleteLoading]  = useState(false);
   const [deleteMsg,      setDeleteMsg]      = useState(null);
@@ -249,9 +267,12 @@ export default function Account() {
       const resolved = await Promise.all(reqIds.map(async uid => {
         try {
           const r = await fetch(`${API}/user/${uid}`);
-          if (r.ok) { const d = await r.json(); return { uid, username: d.username || uid.slice(0, 8) }; }
+          if (r.ok) {
+            const d = await r.json();
+            return { uid, username: d.username || uid.slice(0, 8), photoUrl: d.profile_photo_url || null };
+          }
         } catch {}
-        return { uid, username: uid.slice(0, 8) };
+        return { uid, username: uid.slice(0, 8), photoUrl: null };
       }));
       setRequests(resolved);
     } catch {
@@ -300,7 +321,22 @@ export default function Account() {
     setBlockedLoading(true);
     try {
       const res = await fetch(`${API}/blocks/${user.user_id}`);
-      if (res.ok) setBlockedUsers(await res.json());
+      if (res.ok) {
+        const list = await res.json();
+        // BlockManager.list_blocked() (api/backend/interactions/blocks.py)
+        // predates this task and wasn't extended with profile_photo_url --
+        // resolved per-entry via the same already-photo-carrying GET /user
+        // endpoint the friend-requests block above uses, rather than
+        // leaving this one surface permanently initials-only.
+        const withPhotos = await Promise.all(list.map(async u => {
+          try {
+            const r = await fetch(`${API}/user/${u.user_id}`);
+            if (r.ok) { const d = await r.json(); return { ...u, profile_photo_url: d.profile_photo_url || null }; }
+          } catch {}
+          return { ...u, profile_photo_url: null };
+        }));
+        setBlockedUsers(withPhotos);
+      }
     } catch {} finally { setBlockedLoading(false); }
   }, [user]);
 
@@ -336,24 +372,45 @@ export default function Account() {
     } catch {} finally { setAgentSaving(false); }
   };
 
+  // Mirrors iOS NetworkService.updateAgent/renameAgent + AccountView's
+  // toggleAgent/renameAgent: apply the optimistic UI change, then only
+  // *keep* it once the write is confirmed to have succeeded server-side --
+  // a rejected write must not be silently indistinguishable from a
+  // successful one (Architecture Q27).
   const handleToggleAgent = async (agentId, enabled) => {
+    const previous = agents.find(a => a.id === agentId)?.enabled;
+    setAgents(prev => prev.map(a => a.id === agentId ? { ...a, enabled } : a));
     try {
-      await fetch(`${API}/agent/${user.user_id}/${agentId}`, {
+      const res = await fetch(`${API}/agent/${user.user_id}/${agentId}`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled }),
       });
-      setAgents(prev => prev.map(a => a.id === agentId ? { ...a, enabled } : a));
-    } catch {}
+      if (!res.ok) {
+        setAgents(prev => prev.map(a => a.id === agentId && previous !== undefined ? { ...a, enabled: previous } : a));
+        message.error('Could not update agent.');
+      }
+    } catch {
+      setAgents(prev => prev.map(a => a.id === agentId && previous !== undefined ? { ...a, enabled: previous } : a));
+      message.error('Could not update agent. Check your connection and try again.');
+    }
   };
 
   const handleRenameAgent = async (agentId, name) => {
-    const trimmed = name.trim();
+    const trimmed  = name.trim();
+    const previous = agents.find(a => a.id === agentId)?.name;
     setAgents(prev => prev.map(a => a.id === agentId ? { ...a, name: trimmed } : a));
     setRenamingId(null);
     try {
-      await fetch(`${API}/agent/${user.user_id}/${agentId}`, {
+      const res = await fetch(`${API}/agent/${user.user_id}/${agentId}`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: trimmed }),
       });
-    } catch {}
+      if (!res.ok) {
+        setAgents(prev => prev.map(a => a.id === agentId ? { ...a, name: previous ?? '' } : a));
+        message.error('Could not rename agent.');
+      }
+    } catch {
+      setAgents(prev => prev.map(a => a.id === agentId ? { ...a, name: previous ?? '' } : a));
+      message.error('Could not rename agent. Check your connection and try again.');
+    }
   };
 
   const handleDeleteAgent = async (agentId) => {
@@ -488,6 +545,84 @@ export default function Account() {
       setEditMsg({ type: 'error', text: 'Could not reach the server.' });
     } finally {
       setEditLoading(false);
+    }
+  };
+
+  // ── Profile photo (task 20260905-profile-photo) ────────────────────────────
+  // Same three-step wire contract as ChatThread.jsx's message attachments
+  // (request a presigned S3 POST policy over plain HTTP, upload the raw
+  // bytes directly to S3 with it, then confirm) -- this server never
+  // receives the photo bytes themselves.
+
+  const handlePhotoChange = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setPhotoError(null);
+    if (file.size > PHOTO_LIMITS.maxBytes) { setPhotoError(PHOTO_LIMITS.oversizeCopy); return; }
+    if (!PHOTO_LIMITS.accept.includes(file.type)) { setPhotoError("That file type isn't supported here."); return; }
+
+    setPhotoUploading(true);
+    try {
+      const urlRes = await fetch(`${API}/user/${user.user_id}/photo/upload-url`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content_type: file.type, size_bytes: file.size }),
+      });
+      if (!urlRes.ok) {
+        const d = await urlRes.json().catch(() => ({}));
+        setPhotoError(d.detail || "That file type isn't supported here.");
+        return;
+      }
+      const { url, fields, object_key } = await urlRes.json();
+
+      const form = new FormData();
+      Object.entries(fields || {}).forEach(([k, v]) => form.append(k, v));
+      form.append('file', file);
+      const uploadRes = await fetch(url, { method: 'POST', body: form });
+      if (!uploadRes.ok && uploadRes.status !== 204) {
+        setPhotoError('Upload failed. Please try again.');
+        return;
+      }
+
+      const confirmRes = await fetch(`${API}/user/${user.user_id}/photo/confirm`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ object_key }),
+      });
+      if (!confirmRes.ok) {
+        setPhotoError('Could not save your new photo. Please try again.');
+        return;
+      }
+      const { profile_photo_url } = await confirmRes.json();
+      setProfileData(prev => ({ ...prev, profile_photo_url }));
+      updateUser({ profile_photo_url });
+      // Brief flag driving a CSS crossfade (Q18) as the photo replaces the
+      // initials placeholder -- communicates the state change completing,
+      // not decoration; the underlying class respects prefers-reduced-motion
+      // (global.css's .fs-avatar-crossfade).
+      setPhotoJustUpdated(true);
+      setTimeout(() => setPhotoJustUpdated(false), 650);
+    } catch {
+      setPhotoError('Could not reach the server.');
+    } finally {
+      setPhotoUploading(false);
+    }
+  };
+
+  const handleRemovePhoto = async () => {
+    setPhotoError(null);
+    setPhotoUploading(true);
+    try {
+      const res = await fetch(`${API}/user/${user.user_id}/photo`, { method: 'DELETE' });
+      if (res.ok || res.status === 204) {
+        setProfileData(prev => ({ ...prev, profile_photo_url: null }));
+        updateUser({ profile_photo_url: null });
+      } else {
+        setPhotoError('Could not remove your photo. Please try again.');
+      }
+    } catch {
+      setPhotoError('Could not reach the server.');
+    } finally {
+      setPhotoUploading(false);
     }
   };
 
@@ -740,14 +875,63 @@ export default function Account() {
       <Content style={{ paddingTop: 'calc(var(--nav-h) + 2.5rem)', paddingBottom: '5rem', paddingLeft: '2rem', paddingRight: '2rem', maxWidth: 680, margin: '0 auto', width: '100%' }}>
 
         {/* Header */}
-        <div style={{ marginBottom: '2rem', animation: 'fadeUp 0.55s ease forwards', opacity: 0 }}>
-          <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.6rem', letterSpacing: '0.32em', textTransform: 'uppercase', color: 'rgba(200,134,26,0.55)', display: 'block', marginBottom: '0.2rem' }}>
-            Your Profile
-          </Text>
-          <Title level={2} style={{ margin: 0, fontFamily: "'Playfair Display', serif", color: 'var(--parchment)' }}>
-            {profileLoading ? 'Account' : <>{data.username || 'Account'}</>}
-          </Title>
+        <div style={{ marginBottom: '2rem', animation: 'fadeUp 0.55s ease forwards', opacity: 0, display: 'flex', alignItems: 'center', gap: '1.1rem' }}>
+          <div style={{ position: 'relative', width: 76, height: 76, flexShrink: 0 }}>
+            <Avatar
+              size={76}
+              src={data.profile_photo_url}
+              className={photoJustUpdated ? 'fs-avatar-crossfade' : undefined}
+              style={{
+                background: 'rgba(200,134,26,0.12)',
+                border: '1.5px solid var(--gold)',
+                color: 'var(--gold)',
+                fontFamily: "'Playfair Display', serif",
+                fontSize: '1.7rem',
+              }}
+            >
+              {(data.username || 'A')[0].toUpperCase()}
+            </Avatar>
+            <button
+              type="button"
+              onClick={() => photoInputRef.current?.click()}
+              disabled={photoUploading}
+              aria-label={data.profile_photo_url ? 'Change profile photo' : 'Add a profile photo'}
+              style={{
+                position: 'absolute', bottom: -2, right: -2, width: 28, height: 28, borderRadius: '50%',
+                border: '1.5px solid var(--gold)', background: 'rgba(12,7,2,0.92)', color: 'var(--gold)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                cursor: photoUploading ? 'default' : 'pointer', padding: 0,
+              }}
+            >
+              {photoUploading ? <Spin size="small" /> : <CameraOutlined style={{ fontSize: '0.8rem' }} />}
+            </button>
+            <input
+              ref={photoInputRef}
+              type="file"
+              accept={PHOTO_LIMITS.accept.join(',')}
+              style={{ display: 'none' }}
+              onChange={handlePhotoChange}
+            />
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.6rem', letterSpacing: '0.32em', textTransform: 'uppercase', color: 'rgba(200,134,26,0.55)', display: 'block', marginBottom: '0.2rem' }}>
+              Your Profile
+            </Text>
+            <Title level={2} style={{ margin: 0, fontFamily: "'Playfair Display', serif", color: 'var(--parchment)' }}>
+              {profileLoading ? 'Account' : <>{data.username || 'Account'}</>}
+            </Title>
+            {data.profile_photo_url && !photoUploading && (
+              <Button type="link" size="small" onClick={handleRemovePhoto}
+                style={{ padding: 0, height: 'auto', fontFamily: "'Lora', serif", fontSize: '0.72rem', color: 'rgba(244,228,193,0.4)' }}>
+                Remove photo
+              </Button>
+            )}
+          </div>
         </div>
+        {photoError && (
+          <Alert type="error" message={photoError} showIcon closable onClose={() => setPhotoError(null)}
+            style={{ marginBottom: '1.2rem', borderRadius: 8 }} />
+        )}
 
         {/* Stats */}
         <Card style={{ ...CARD_STYLE, animationDelay: '0.08s', animation: 'fadeUp 0.55s ease forwards', opacity: 0 }}>
@@ -848,9 +1032,9 @@ export default function Account() {
             ? <Spin size="small" />
             : blockedUsers.length === 0
               ? <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.8rem', color: 'rgba(244,228,193,0.28)' }}>You haven't blocked anyone.</Text>
-              : blockedUsers.map(({ user_id, username }) => (
+              : blockedUsers.map(({ user_id, username, profile_photo_url }) => (
                   <div key={user_id} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.6rem 0', borderBottom: '1px solid rgba(200,134,26,0.08)' }}>
-                    <Avatar style={{ background: 'rgba(200,134,26,0.15)', border: '1px solid rgba(200,134,26,0.3)', color: 'var(--gold)', fontFamily: "'Playfair Display', serif" }}>
+                    <Avatar src={profile_photo_url} style={{ background: 'rgba(200,134,26,0.15)', border: '1px solid rgba(200,134,26,0.3)', color: 'var(--gold)', fontFamily: "'Playfair Display', serif" }}>
                       {username[0].toUpperCase()}
                     </Avatar>
                     <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.84rem', color: 'var(--parchment)', flex: 1 }}>{username}</Text>
@@ -872,9 +1056,9 @@ export default function Account() {
             ? <Spin size="small" />
             : requests.length === 0
               ? <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.8rem', color: 'rgba(244,228,193,0.28)' }}>No pending friend requests.</Text>
-              : requests.map(({ uid, username }) => (
+              : requests.map(({ uid, username, photoUrl }) => (
                   <div key={uid} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.6rem 0', borderBottom: '1px solid rgba(200,134,26,0.08)' }}>
-                    <Avatar style={{ background: 'rgba(200,134,26,0.15)', border: '1px solid rgba(200,134,26,0.3)', color: 'var(--gold)', fontFamily: "'Playfair Display', serif" }}>
+                    <Avatar src={photoUrl} style={{ background: 'rgba(200,134,26,0.15)', border: '1px solid rgba(200,134,26,0.3)', color: 'var(--gold)', fontFamily: "'Playfair Display', serif" }}>
                       {username[0].toUpperCase()}
                     </Avatar>
                     <div style={{ flex: 1 }}>

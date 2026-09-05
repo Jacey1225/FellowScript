@@ -20,6 +20,7 @@ import Combine
 // ── Root chat view with three segments ────────────────────────────────────────
 struct ChatRootView: View {
     @EnvironmentObject var appState: AppState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @StateObject private var vm: ChatViewModel
 
     // Required (no default): a bare `ChatViewModel()` default expression is
@@ -254,7 +255,7 @@ struct ChatRootView: View {
 
     private func segmentButton(_ index: Int, _ label: String) -> some View {
         let isActive = selectedSegment == index
-        return Button(action: { withAnimation(.spring(response: 0.28, dampingFraction: 0.85)) { selectedSegment = index } }) {
+        return Button(action: { withMotionAwareAnimation(.spring(response: 0.28, dampingFraction: 0.85), reduceMotion: reduceMotion) { selectedSegment = index } }) {
             Text(label)
                 .font(.system(size: 14.5, weight: .heavy))
                 .foregroundColor(isActive ? Color(hex: "#24170A") : Theme.textSecondary)

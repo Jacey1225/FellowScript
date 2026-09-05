@@ -786,6 +786,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#messaging-attachments-task-20260904-messaging-attachments" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Messaging attachments (task 20260904-messaging-attachments)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#backendbackup" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -832,6 +843,23 @@
       
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="Background Scheduler">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#backendinteractionsbible_textpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        backend/interactions/bible_text.py
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -1398,6 +1426,28 @@
 <p><strong>Reporting</strong> — <code>backend/interactions/reports.py</code> (<code>ReportsManager</code>): <code>create_report(content_type, content_id, reported_user_id, reason, detail)</code> resolves the <em>current</em> author + text server-side (never trusts the client for who/what is reported), inserts a <code>content_reports</code> row with a frozen <code>content_snippet</code> (survives later edits/deletes), and emails <code>SUPPORT_EMAIL</code> via <code>backend/email/templates.py</code>'s <code>content_report_email()</code> (HTML-escapes the snippet before interpolation). <code>content_type</code> is one of <code>note</code> / <code>message</code> / <code>devotion_prompt</code> / <code>group_title</code> / <code>user</code>.</p>
 <p><strong>Blocking</strong> — <code>backend/interactions/blocks.py</code> (<code>BlockManager</code>): <code>block_user()</code> severs any existing friendship/pending request both directions and auto-creates a <code>content_reports</code> row (<code>reason='blocked'</code>) — one unified developer queue rather than a parallel notification system. <code>is_blocked()</code> checks both directions. Enforced at every read path a blocked relationship could otherwise leak through: <code>friends.py</code>'s <code>send_add_request</code>/<code>add_friend</code>/<code>read_friend</code>/<code>get_friend_activity</code> (friend-activity dashboard feed — re-checks <code>blocked_users</code> both directions rather than trusting <code>user_friends</code> alone, same defense-in-depth as <code>ActivityManager.friend_device_tokens</code>), <code>groups.py</code>'s <code>fetch_notes</code>/<code>fetch_replies</code>/<code>fetch_group</code> (member roster stays visible for transparency; only their content is hidden), <code>websockets.py</code>'s <code>send_msg</code> (drops DMs entirely between blocked parties; skips delivery-only for group messages so other members still see them), and <code>devotion.py</code>'s <code>fetch_by_contact</code>. Retroactively removing a blocked user from an already-joined live Chime call is a known, accepted gap.</p>
 <hr />
+<h2 id="messaging-attachments-task-20260904-messaging-attachments">Messaging attachments (task 20260904-messaging-attachments)</h2>
+<p>A message may now carry an image/video/file/gif attachment alongside or instead of <code>text</code> — nullable <code>attachment_kind</code> / <code>attachment_key</code> / <code>attachment_meta</code> columns on the existing <code>messages</code> table (no new table). Handled entirely within the existing three-layer flow rather than a new subsystem:</p>
+<table>
+<thead>
+<tr>
+<th>File</th>
+<th>Responsibility</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>backend/interactions/attachments.py</code></td>
+<td>Presigned S3 upload/download for <strong>image/video/file</strong> attachments only. <code>generate_upload_policy(user_id, attachment_kind, content_type)</code> issues a presigned S3 <strong>POST</strong> policy (not a bare PUT — only a POST policy's conditions can cryptographically bind content-length-range and an exact content-type) scoped to a server-derived object key (<code>attachments/{user_id}/{uuid4()}{ext}</code> — never a client-supplied filename/extension) and fails closed (<code>ValueError</code>) on any attachment_kind/content_type combination outside the per-kind allowlist (<code>PER_KIND_LIMITS</code>: image ≤15MB, video ≤250MB, file ≤50MB — a documented, deliberately curated MIME allowlist per kind, e.g. <code>application/zip</code> is excluded from "file" as a common malware vector). <code>generate_download_url(object_key)</code> issues a fresh, short-lived (1hr) presigned GET at read time — the object key itself is never handed to a client, only ever the DB-stored reference. Real size/content-type enforcement is the presigned POST policy (S3-enforced), not a server-side check a client could bypass by talking to S3 directly. Config (<code>S3_BUCKET_NAME</code>, <code>S3_REGION</code> env vars) is validated eagerly at startup via <code>validate_attachment_config()</code> (same <code>main.py</code> lifespan pattern as <code>push.py</code>'s <code>validate_apns_config</code>) — an unconfigured deployment refuses to start.</td>
+</tr>
+<tr>
+<td><code>backend/interactions/gif_search.py</code></td>
+<td>Server-side GIF search proxy (GIPHY or Tenor, provider-agnostic behind one interface, selected via the <code>GIF_PROVIDER</code> env var) — settles the "client-direct vs. proxied" design question in favor of proxied: a client-side API key can't be kept both scoped and secret. <code>search_gifs(query)</code> returns only <code>id</code>/<code>url</code>/<code>preview_url</code>/<code>width</code>/<code>height</code> — never the provider's raw response (avoids forwarding provider tracking params). GIF bytes never touch our storage or <code>attachments.py</code>'s limits at all — only the provider's own id/url is ever persisted, in <code>attachment_meta</code>. The API key (<code>GIF_PROVIDER_API_KEY</code>) loads via its own <code>os.getenv</code> call, is never logged, and never appears in an example config. <code>validate_gif_config()</code> is called eagerly at startup the same way as <code>attachments.py</code>'s validator.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Wiring:</strong> <code>POST /message/upload-url/{user_id}</code> (self-scoped via <code>require_match</code>, rate-limited 30/min) issues the presigned upload policy; <code>GET /message/gif-search?q=</code> (authenticated, rate-limited 30/min) proxies a GIF search. Both live in <code>routes/messaging.py</code> alongside the existing <code>ws_router</code>. <code>ConnectionManager.send_msg</code> (<code>backend/interactions/websockets.py</code>) fails closed on an attachment-carrying payload whose <code>attachment_kind</code> isn't recognized or whose kind-specific reference (object key for image/video/file, provider url for gif) is missing — dropping the message entirely rather than persisting an ambiguous reference — and passes any user-supplied "file" attachment filename through <code>check_clean</code> alongside <code>text</code>, since it's just as much a free-text side channel. <code>FriendsManager.read_friend</code> and <code>GroupsManager.format_messages</code> both resolve <code>attachment_key</code> to a fresh presigned GET on every read, and the live WebSocket delivery frame does the same, so a stored/leaked object key alone never grants durable access. There is no malware/content scan of uploaded bytes in v1 (accepted, explicitly-tracked gap — GIFs are exempt since the provider already moderates its own catalog).</p>
+<hr />
 <h2 id="backendbackup"><code>backend/backup/</code></h2>
 <p>A sibling package to <code>interactions/</code> for the nightly per-user data backup (see <a href="../data/">Data → Nightly Backup Database</a> for the schema/scope).</p>
 <table>
@@ -1426,7 +1476,7 @@
 <p><strong>Level 1 (FK → Level 0)</strong>
 - <code>notes</code> — <code>_id</code>, <code>user_id</code>, <code>title</code>, <code>text</code>, <code>public</code>, <code>group_id</code>, <code>timestamp</code>, <code>created_at</code>
 - <code>messages</code> — <code>_id</code>, <code>from_user</code>, <code>group_id</code>, <code>content</code>, <code>is_dm</code>, <code>timestamp</code>
-- <code>highlights</code> — <code>(user_id, key)</code> composite PK, <code>color</code>
+- <code>highlights</code> — <code>(user_id, key)</code> composite PK, <code>color</code>, <code>timestamp</code> (set on insert, refreshed on re-highlight)
 - <code>bookmarks</code> — <code>(user_id, key)</code> composite PK, <code>label</code>
 - <code>notifications</code> — <code>_id</code>, <code>user_id</code>, <code>type</code>, <code>message</code>, <code>read</code>
 - <code>agents</code> — <code>_id</code>, <code>user_id</code>, <code>config JSONB</code>
@@ -1440,7 +1490,7 @@
 <hr />
 <h2 id="background-scheduler">Background Scheduler</h2>
 <p><code>backend/interactions/scheduler.py</code> runs on startup (via <code>lifespan</code>), using APScheduler. Current jobs:</p>
-<p>The former <code>_fire_due_notifications</code> job (fired user-authored "agentic" notifications on their scheduled time-of-day) was removed in full (2026-08-26) along with that subsystem. A replacement set of fixed-notification jobs (activity-tracked reminders + friend-went-active) is pending as a follow-up step in the same task.</p>
+<p>The former <code>_fire_due_notifications</code> job (fired user-authored "agentic" notifications on their scheduled time-of-day) was removed in full (2026-08-26) along with that subsystem, replaced by the fixed-notification jobs below (activity-tracked reminders + friend-went-active), backed by <code>backend/interactions/activity.py</code>'s <code>ActivityManager</code> and <code>user_activity</code> table.</p>
 <table>
 <thead>
 <tr>
@@ -1470,9 +1520,31 @@
 <td>every <code>HEARTBEAT_POLL_INTERVAL_SECONDS</code> (60s)</td>
 <td>Scans <code>agent_heartbeats</code> for any event whose UTC <code>HH:mm</code> slot for today has passed and hasn't fired yet, then fires it via <code>AgentManager.commit_hb_response</code> — the same atomic, per-calendar-day <code>last_fired</code> claim that route-triggered fires have always used remains the sole dedup mechanism, so a concurrent poll cycle or a stray client call can't double-fire. On a real fire, sends a push via <code>send_push</code> identifying the event generically (agent name only, never prompt/note content) with <code>heartbeat_id</code>/<code>agent_id</code> riding in the payload's <code>data</code> for the client to resolve locally.</td>
 </tr>
+<tr>
+<td><code>_midday_no_activity_reminder</code></td>
+<td>every 15 min</td>
+<td>Gentle nudge once a user's local clock reads noon and they've had no tracked activity (note/highlight) yet that day; deduped once/local-day via <code>midday_reminder_sent_date</code></td>
+</tr>
+<tr>
+<td><code>_guilt_no_activity_reminder</code></td>
+<td>every 15 min</td>
+<td>More urgent nudge once a user has gone longer than 24h since their last tracked activity; deduped once per 24h window via <code>guilt_reminder_sent_at</code></td>
+</tr>
+<tr>
+<td><code>_friend_went_active_notify</code></td>
+<td>every 5 min</td>
+<td>Notifies a user's friends (block-respecting both directions) the first time that user transitions from inactive (&gt;24h) to active — not on every individual note/highlight/reply. The push body names the specific action via <code>last_activity_type</code>: "created a new note", "edited a note", "replied to {note owner}'s note" (<code>NOTE_REPLIED</code> — resolves the parent note's owner at send time), or a real-verse-content highlight line (<code>VERSE_HIGHLIGHTED</code> — resolves the user's most recent highlight and its verse text via the bundled <code>bible_text</code> module at send time; falls back to a reference-only or fully generic line if either lookup misses). Never logs note/highlight/verse content — that's only ever in the push body itself.</td>
+</tr>
+<tr>
+<td><code>_fire_due_session_reminders</code></td>
+<td>every <code>SESSION_REMINDER_POLL_INTERVAL_SECONDS</code> (60s, 2026-09-04)</td>
+<td>Scans <code>devotions</code> for any session whose <code>time_start</code> (absolute TIMESTAMPTZ) has passed and hasn't been reminded yet, atomically claims it (<code>UPDATE devotions SET reminder_sent_at = NOW() WHERE reminder_sent_at IS NULL</code>), then pushes every resolved member (<code>DevotionManager.resolve_members</code> — creator, participants, and the group/DM roster, the same membership concept <code>is_authorized</code> already encodes). One-shot dedup via <code>reminder_sent_at</code>, not a rolling time window — see <a href="../data/#devotions"><code>devotions.reminder_sent_at</code></a>.</td>
+</tr>
 </tbody>
 </table>
 <p>Heartbeat (AI agent event) firing is now scheduled <strong>server-side</strong> by <code>_fire_due_heartbeats</code> above — it fires on time whether or not any client has the app open. The former client-side trigger, iOS's <code>HeartbeatScheduler</code> (<code>scheduleAll</code>/<code>checkAndFire</code>, polled on <code>scenePhase</code> foreground), was removed in full (2026-09-01); <code>commit_heartbeat</code> itself is unchanged and still does the actual generation/persistence work, just no longer reachable from iOS.</p>
+<h3 id="backendinteractionsbible_textpy"><code>backend/interactions/bible_text.py</code></h3>
+<p>In-process, lazily-loaded lookup over a bundled static copy of <code>bible.json</code> (the same asset the iOS Bible reader ships, copied into <code>api/backend/interactions/bible_data/bible.json</code>) — no database table, no outbound network call, since the content never changes at runtime. Exposes <code>verse_text(book, chapter, verse) -&gt; str | None</code> (parses a chapter's flowing-text blob into per-verse strings on first access, cached after) and <code>parse_highlight_key(key) -&gt; (book, chapter, verse) | None</code> (splits a <code>highlights.key</code> value back into its parts). Both return <code>None</code> on any miss rather than raising; callers (the friend-went-active push job, <code>FriendsManager.get_friend_activity</code>) fall back to reference-only or fully generic text.</p>
 
 
 

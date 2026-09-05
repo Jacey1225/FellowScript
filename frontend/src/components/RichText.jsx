@@ -72,9 +72,18 @@ function cleanNode(node) {
 
     const tag = child.tagName;
     if (!ALLOWED_TAGS.has(tag)) {
-      // Unwrap: keep inner text, discard the element wrapper.
+      // Unwrap: keep inner text, discard the element wrapper. The promoted
+      // children can themselves be disallowed tags, or allowed tags carrying
+      // disallowed attributes (e.g. a <span onclick="…"> nested inside a
+      // disallowed <iframe>) — recursively clean the fragment *before*
+      // splicing it in, so every promoted node is visited exactly once
+      // regardless of how many ancestor wrappers got unwrapped around it.
+      // Without this, a single unwrap pass left one level of newly-promoted
+      // children unvisited and let attributes like onclick survive into
+      // dangerouslySetInnerHTML.
       const frag = document.createDocumentFragment();
       while (child.firstChild) frag.appendChild(child.firstChild);
+      cleanNode(frag);
       node.replaceChild(frag, child);
       continue;
     }

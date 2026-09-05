@@ -8,6 +8,7 @@ import AuthenticationServices
 
 struct AuthView: View {
     @EnvironmentObject var appState: AppState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var initialSignIn: Bool = true
     var onComplete: (() -> Void)? = nil
@@ -59,8 +60,8 @@ struct AuthView: View {
 
                         // Tab toggle — matches Tabs in SignIn.jsx
                         HStack(spacing: 0) {
-                            tabButton(title: "Sign In",       selected: isSignIn)  { withAnimation(.easeInOut(duration: 0.2)) { isSignIn = true;  clearForm() } }
-                            tabButton(title: "Create Account", selected: !isSignIn) { withAnimation(.easeInOut(duration: 0.2)) { isSignIn = false; clearForm() } }
+                            tabButton(title: "Sign In",       selected: isSignIn)  { withMotionAwareAnimation(.easeInOut(duration: 0.2), reduceMotion: reduceMotion) { isSignIn = true;  clearForm() } }
+                            tabButton(title: "Create Account", selected: !isSignIn) { withMotionAwareAnimation(.easeInOut(duration: 0.2), reduceMotion: reduceMotion) { isSignIn = false; clearForm() } }
                         }
                         .padding(.bottom, Theme.spacingMD)
 
@@ -212,6 +213,16 @@ struct AuthView: View {
                         // bridge) sidesteps the broken control while keeping every
                         // downstream piece (handleAppleCompletion, AppState,
                         // NetworkService, backend) unchanged.
+                        //
+                        // Re-evaluated for ios-guidelines #4 (20260904-frontend-arch-
+                        // sweep, "hand-built Apple sign-in button bypasses native HIG
+                        // conformance"): not reverted to SignInWithAppleButton --
+                        // that would resurrect the exact broken-tap regression this
+                        // task fixed. Current styling (white background, black text,
+                        // Apple logo + "Continue with Apple", 50pt height) matches a
+                        // currently-approved HIG variant per that sweep's own review;
+                        // re-diff against Apple's Sign in with Apple button HIG page
+                        // if this button is touched again.
                         Button(action: { Task { await performAppleSignIn() } }) {
                             HStack(spacing: Theme.spacingSM) {
                                 Image(systemName: "apple.logo")

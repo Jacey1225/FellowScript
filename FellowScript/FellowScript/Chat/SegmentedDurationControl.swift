@@ -38,6 +38,7 @@ enum SessionDuration: Int, CaseIterable, Identifiable {
 /// schedule.html's `.segmented`/`.seg`/`.seg.active`.
 struct SegmentedDurationControl: View {
     @Binding var selection: SessionDuration
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         HStack(spacing: 4) {
@@ -55,7 +56,7 @@ struct SegmentedDurationControl: View {
                     }
                     .contentShape(Rectangle())
                     .onTapGesture {
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                        withMotionAwareAnimation(.spring(response: 0.3, dampingFraction: 0.8), reduceMotion: reduceMotion) {
                             selection = duration
                         }
                     }

@@ -97,10 +97,12 @@ def load_users_data() -> dict:
         users: dict = {}
         db.cur.execute(
             "SELECT _id, username, email, hash_pass, apple_sub, google_sub, timezone, mfa_enabled, "
-            "terms_accepted_at, terms_version, suspended_at, needs_profile_completion FROM users"
+            "terms_accepted_at, terms_version, suspended_at, needs_profile_completion, "
+            "profile_photo_key FROM users"
         )
         for (_id, username, email, hash_pass, apple_sub, google_sub, timezone, mfa_enabled,
-             terms_accepted_at, terms_version, suspended_at, needs_profile_completion) in db.cur.fetchall():
+             terms_accepted_at, terms_version, suspended_at, needs_profile_completion,
+             profile_photo_key) in db.cur.fetchall():
             uid = str(_id)
             rec = {
                 "username": username, "email": email, "hash_pass": hash_pass or "",
@@ -111,6 +113,13 @@ def load_users_data() -> dict:
                 "terms_version": terms_version,
                 "suspended_at": str(suspended_at) if suspended_at else None,
                 "needs_profile_completion": bool(needs_profile_completion),
+                # Raw key -- callers building a client-facing response must
+                # resolve this to a fresh presigned GET (or None) themselves
+                # and must never hand the raw key back to a client (mirrors
+                # hash_pass's own exclusion pattern in those same callers).
+                # See main.py's get_user/update_user for the one place this
+                # is currently surfaced.
+                "profile_photo_key": profile_photo_key,
             }
             if apple_sub:
                 rec["apple_sub"] = apple_sub

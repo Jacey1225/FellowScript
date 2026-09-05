@@ -4,6 +4,7 @@ import functools
 import logging
 import time
 import uuid
+import psycopg2
 from collections import deque
 from datetime import datetime
 from typing import Optional
@@ -108,20 +109,92 @@ class AgentManager(DBManager):
 
     # ── Heartbeat CRUD ────────────────────────────────────────────────────────
 
-    def add_heartbeat(self, heartbeat: AgentHeartbeats) -> None:
+    def add_heartbeat(self, heartbeat: AgentHeartbeats, idempotency_key: Optional[str] = None) -> Optional[str]:
+        """Create a heartbeat row and return its id.
+
+        Bug 2 fix (task 20260905-heartbeat-timezone-duplicate-bugs):
+        ``idempotency_key`` should be a token the CLIENT generates once per
+        Save *attempt* (not regenerated on an internal retry of that same
+        attempt -- see EventSetupSheet.swift's iOS-side fix). Paired with
+        db.py's UNIQUE index on (user_id, agent_id, idempotency_key), a
+        double-submit of the same attempt (double-tap, client retry) can
+        never create two rows: the second INSERT collides with the first at
+        the Postgres constraint level -- not a check-then-insert race in
+        this method, which would not be safe against two near-simultaneous
+        requests (Q28) -- and this method returns the FIRST attempt's row id
+        rather than raising or silently creating a duplicate (Q26: an
+        explicit, visible outcome either way, not a silent fallback).
+
+        This constraint is scoped to the per-attempt token, not to
+        (prompt, timestamps, group_id) content, so it never blocks a user's
+        legitimate, intentional creation of two truly-identical scheduled
+        events -- unlike a naive content-based unique constraint would.
+
+        If no ``idempotency_key`` is supplied (e.g. a not-yet-updated
+        client during rollout), one is generated here so the INSERT/
+        constraint machinery always has a value to key off of -- but a
+        server-manufactured key can never coincide with a real double-
+        submit's shared client-generated key, so it provides no dedup
+        protection for that caller. Every current client is expected to
+        always send one once this task's iOS step ships, so a missing key
+        is logged as a warning rather than treated as the unremarkable
+        common case.
+
+        Returns:
+            The id of the row that now represents this (user, agent,
+            idempotency_key) triple -- either newly created, or the
+            pre-existing row from an earlier attempt with the same key.
+            None if the write failed for a reason other than the
+            idempotency-key collision (a real DB error); callers must
+            treat that as a genuine failure (see SaveFailedError), not a
+            silent no-op.
+        """
         hb_id = str(uuid.uuid4())
+        if not idempotency_key:
+            idempotency_key = str(uuid.uuid4())
+            logger.warning(
+                "add_heartbeat called with no idempotency_key (user=%s agent=%s) -- "
+                "generating one server-side; this request gets no double-submit "
+                "protection.",
+                heartbeat.user_id, heartbeat.agent_id,
+            )
         try:
             self.cur.execute(
-                "INSERT INTO agent_heartbeats (_id, agent_id, user_id, timestamps, prompt, group_id, notes_public) "
-                "VALUES (%s, %s, %s, %s::jsonb, %s, %s, %s)",
+                "INSERT INTO agent_heartbeats "
+                "(_id, agent_id, user_id, timestamps, prompt, group_id, notes_public, idempotency_key) "
+                "VALUES (%s, %s, %s, %s::jsonb, %s, %s, %s, %s)",
                 (hb_id, heartbeat.agent_id, heartbeat.user_id,
                  json.dumps(heartbeat.timestamps), heartbeat.prompt, heartbeat.group_id or None,
-                 heartbeat.notes_public)
+                 heartbeat.notes_public, idempotency_key)
             )
             self.conn.commit()
+            return hb_id
+        except psycopg2.errors.UniqueViolation:
+            # Another attempt with this exact (user_id, agent_id,
+            # idempotency_key) already landed -- a double-submit, not a new
+            # event. Fail toward "return the already-created row" rather
+            # than erroring the caller or silently minting a second row.
+            self.conn.rollback()
+            existing = self.lookup(self.hb_table, {
+                "user_id": heartbeat.user_id, "agent_id": heartbeat.agent_id,
+                "idempotency_key": idempotency_key,
+            })
+            if existing:
+                return list(existing.keys())[0]
+            # Constraint fired but the row it collided with isn't visible to
+            # this same-transaction lookup (should not happen in practice,
+            # since the constraint only fires when a matching row is
+            # committed) -- surfaced loudly rather than assumed benign.
+            logger.error(
+                "add_heartbeat: unique violation for user=%s agent=%s key=%s but no "
+                "existing row was found on lookup.",
+                heartbeat.user_id, heartbeat.agent_id, idempotency_key,
+            )
+            return None
         except Exception as e:
             logger.error("Error adding heartbeat: %s", e)
             self.conn.rollback()
+            return None
 
     def get_heartbeats(self, agent_id: str) -> list[dict]:
         result = self.lookup(self.hb_table, {"agent_id": agent_id, "user_id": self.user_id})

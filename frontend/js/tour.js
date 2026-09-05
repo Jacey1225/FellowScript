@@ -2,7 +2,7 @@
 // Triggered by new-user signup or the "Tour" button on the homepage.
 // Tour state is stored in localStorage so it survives cross-page navigation.
 
-import { driver } from 'https://cdn.jsdelivr.net/npm/driver.js@1.3.1/+esm';
+import { driver } from 'driver.js';
 
 const TOUR_KEY = 'fs_tour';
 

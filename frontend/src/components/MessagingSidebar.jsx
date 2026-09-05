@@ -20,7 +20,7 @@ function ContactItem({ contact, onOpen, onRemove, onEditGroup }) {
       onMouseEnter={e => { e.currentTarget.style.background = 'rgba(200,134,26,0.07)'; e.currentTarget.style.borderLeftColor = 'var(--gold)'; }}
       onMouseLeave={e => { e.currentTarget.style.background = ''; e.currentTarget.style.borderLeftColor = 'transparent'; }}
     >
-      <Avatar style={{ background: 'rgba(200,134,26,0.15)', border: '1px solid rgba(200,134,26,0.3)', color: 'var(--gold)', fontFamily: "'DM Serif Display', serif", flexShrink: 0 }}>
+      <Avatar src={contact.photoUrl} style={{ background: 'rgba(200,134,26,0.15)', border: '1px solid rgba(200,134,26,0.3)', color: 'var(--gold)', fontFamily: "'DM Serif Display', serif", flexShrink: 0 }}>
         {contact.name[0].toUpperCase()}
       </Avatar>
       <div style={{ flex: 1, minWidth: 0 }}>
@@ -82,7 +82,7 @@ function ChatView({ contact, messages, groupMembers, user, onBack, onSend }) {
         <div style={{ borderBottom: '1px solid rgba(200,134,26,0.15)', background: 'rgba(12,7,2,0.6)', padding: '0.85rem 1.1rem', maxHeight: 200, overflowY: 'auto' }}>
           <Text style={{ fontSize: '0.6rem', letterSpacing: '0.15em', textTransform: 'uppercase', color: 'rgba(200,134,26,0.45)', display: 'block', marginBottom: '0.55rem' }}>Members</Text>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.4rem' }}>
-            <Avatar size={26} style={{ background: 'rgba(200,134,26,0.12)', border: '1px solid rgba(200,134,26,0.25)', color: 'var(--gold)', fontSize: '0.65rem' }}>
+            <Avatar size={26} src={user.profile_photo_url} style={{ background: 'rgba(200,134,26,0.12)', border: '1px solid rgba(200,134,26,0.25)', color: 'var(--gold)', fontSize: '0.65rem' }}>
               {(user.username || 'Y')[0].toUpperCase()}
             </Avatar>
             <Text style={{ fontFamily: "'Inter', sans-serif", fontSize: '0.78rem', color: 'var(--gold)' }}>{user.username || 'You'} (you)</Text>
@@ -91,7 +91,7 @@ function ChatView({ contact, messages, groupMembers, user, onBack, onSend }) {
             const uname = m.username || m.user_id?.slice(0, 8) || '?';
             return (
               <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.4rem' }}>
-                <Avatar size={26} style={{ background: 'rgba(200,134,26,0.12)', border: '1px solid rgba(200,134,26,0.25)', color: 'var(--gold)', fontSize: '0.65rem' }}>
+                <Avatar size={26} src={m.photoUrl} style={{ background: 'rgba(200,134,26,0.12)', border: '1px solid rgba(200,134,26,0.25)', color: 'var(--gold)', fontSize: '0.65rem' }}>
                   {uname[0].toUpperCase()}
                 </Avatar>
                 <Text style={{ fontFamily: "'Inter', sans-serif", fontSize: '0.78rem', color: 'rgba(244,228,193,0.7)' }}>{uname}</Text>

@@ -19,6 +19,7 @@ import SwiftUI
 struct ChipToggle: View {
     let title: String
     @Binding var isOn: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         HStack(spacing: 8) {
@@ -55,7 +56,7 @@ struct ChipToggle: View {
         }
         .contentShape(RoundedRectangle(cornerRadius: Theme.radiusXL))
         .onTapGesture {
-            withAnimation(.easeInOut(duration: 0.18)) {
+            withMotionAwareAnimation(.easeInOut(duration: 0.18), reduceMotion: reduceMotion) {
                 isOn.toggle()
             }
         }

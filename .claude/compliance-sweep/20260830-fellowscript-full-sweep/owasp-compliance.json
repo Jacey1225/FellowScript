@@ -1,0 +1,8 @@
+{
+  "task_id": "20260830-fellowscript-full-sweep",
+  "step": 6,
+  "gate": "owasp-compliance",
+  "result": "pass",
+  "finding_count": 14,
+  "summary": "Reviewed the full in-scope surface (api/ backend trust boundaries -- auth/sessions/MFA, db.py's shared query layer, all 13 routers and their managers, Stripe/Apple webhook verification, the OpenRouter agentic chat/heartbeat system, the CloudWatch-MCP agentic tool client -- plus the frontend's HTML sanitizer/session config, desktop Tauri shell config, and the data/ fixtures) against OWASP Top 10:2025, ASVS 5.0, LLM Top 10, and Agentic AI Security. 2 Critical, 3 High, 6 Medium, 2 Low. Headline findings: real user PII and bcrypt password hashes committed to git in data/users.json (Critical, confirmed via git ls-files), an SSH private key committed to git history and never purged despite later removal from tracking (Critical, confirmed via git log --diff-filter=A/D), an unguarded group_id on note create/update letting any user post into groups they don't belong to (High/IDOR), a duplicate unguarded Chime call-join path in routes/messaging.py that bypasses the properly is_authorized-checked routes/devotion.py::join_call (High/IDOR, confirmed live and tested for error-handling but not authorization), and GET /user/{user_id} exposing any user's email/MFA-status/friend-graph to any authenticated caller (High/excessive data exposure). Backend fundamentals (session/token hashing, webhook signature verification, prompt-injection defenses in the debug agent, content-filter fail-closed design) were confirmed sound and are called out explicitly as not flagged."
+}

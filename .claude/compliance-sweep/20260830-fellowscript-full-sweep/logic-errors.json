@@ -1,0 +1,8 @@
+{
+  "task_id": "20260830-fellowscript-full-sweep",
+  "step": 5,
+  "gate": "logic-error",
+  "result": "pass",
+  "finding_count": 2,
+  "summary": "Reviewed api/db.py's DBManager base class and every manager built on it (auth/sessions, mfa, password_reset, friends, groups, activity, websockets, scheduler, subscriptions, apple_service, backup, content_filter, filter_notes), the full notes.py CRUD/pagination route, watchdog/monitoring cursor logic, and iOS BibleReaderView/NotesListView/HeartbeatScheduler view models plus a diff of the two parallel frontend note implementations. 1 Critical finding: DBManager.insertion/.update/.delete (api/db.py:910-964) silently swallow every SQL error and return the same value as success, so ~30+ call sites across session creation, note CRUD, and multi-step friend/subscription operations report success even when the write never happened -- traced to concrete scenarios (a login that issues a session cookie for a session row that was never inserted; a note create/edit/delete that returns 200/201 with no row written). 1 Low finding: a copy-paste divergence between frontend/js/notes.js and frontend/src/hooks/useNotes.js's note-normalization verses default ([[],[]] vs []), currently behaviorally inert but a latent risk. The rest of the reviewed surface -- extensive, well-documented, backed by a heavy regression-test suite -- held up well against off-by-one, inverted-conditional, unhandled-edge-case, and partial-failure-state-machine scrutiny."
+}

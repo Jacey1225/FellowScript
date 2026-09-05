@@ -468,6 +468,37 @@ extension View {
     }
 }
 
+// ── Reduce Motion (ios-guidelines #1, 20260904-frontend-arch-sweep) ──────
+// Shared, house-style way to make an implicit `.animation(value:)` respect
+// the system Reduce Motion setting, matching this project's existing
+// "implement the convention once in Theme.swift, apply everywhere" pattern
+// (see dismissesKeyboardOnScrollAndTap/TapOutsideDismissCatcher above).
+// Skips the motion effect outright when Reduce Motion is on (passing `nil`)
+// rather than merely shortening the curve, mirroring the one place this
+// project already modeled this correctly (MessageAttachments.swift's
+// `gifContent`, AttachmentContentView).
+extension View {
+    func motionAwareAnimation<V: Equatable>(_ animation: Animation?, value: V, reduceMotion: Bool) -> some View {
+        self.animation(reduceMotion ? nil : animation, value: value)
+    }
+}
+
+/// Reduce-Motion-aware counterpart to `withAnimation` for imperative call
+/// sites (button actions, etc.) -- runs `body` under `animation` normally,
+/// or with no animation at all when the caller's `accessibilityReduceMotion`
+/// environment value is true.
+@discardableResult
+func withMotionAwareAnimation<Result>(
+    _ animation: Animation?,
+    reduceMotion: Bool,
+    _ body: () throws -> Result
+) rethrows -> Result {
+    if reduceMotion {
+        return try body()
+    }
+    return try withAnimation(animation, body)
+}
+
 // ── Tap-outside-to-dismiss for custom ZStack-based overlays ──────────────
 // Native `.sheet`/`.popover` already dismiss on background tap by system
 // default and need no help here — this is only for this app's own custom-

@@ -84,7 +84,9 @@ final class SubmenuFollowupPolishRegressionTests: XCTestCase {
     }
 
     func test_newAgentSheet_hasPrincipalTitleItem() throws {
-        let source = try readSource("FellowScript/Account/AccountView.swift")
+        // NewAgentSheet moved to AccountSupportingViews.swift in the
+        // compliance-readability-cleanup task's AccountView.swift split.
+        let source = try readSource("FellowScript/Account/AccountSupportingViews.swift")
         let sheetBody = try body(of: "NewAgentSheet", in: source)
         XCTAssertTrue(sheetBody.contains("ToolbarItem(placement: .principal)"),
                       "NewAgentSheet must also get the centered-title fix now that its Create button width changed")
@@ -179,7 +181,7 @@ final class SubmenuFollowupPolishRegressionTests: XCTestCase {
     }
 
     func test_newAgentSheet_usesGhostChipCancel_notPlainButton() throws {
-        let source = try readSource("FellowScript/Account/AccountView.swift")
+        let source = try readSource("FellowScript/Account/AccountSupportingViews.swift")
         let sheetBody = try body(of: "NewAgentSheet", in: source)
         XCTAssertFalse(sheetBody.contains(#"Button("Cancel")"#),
                        "NewAgentSheet must no longer use a plain string-literal Button(\"Cancel\")")
@@ -224,7 +226,7 @@ final class SubmenuFollowupPolishRegressionTests: XCTestCase {
     }
 
     func test_newAgentSheet_create_usesPillButton() throws {
-        let source = try readSource("FellowScript/Account/AccountView.swift")
+        let source = try readSource("FellowScript/Account/AccountSupportingViews.swift")
         let sheetBody = try body(of: "NewAgentSheet", in: source)
         XCTAssertTrue(sheetBody.contains(#"PillButton(title: "Create") { onCreate(); dismiss() }"#))
         XCTAssertFalse(sheetBody.contains(#"Button("Create")"#))
@@ -256,7 +258,7 @@ final class SubmenuFollowupPolishRegressionTests: XCTestCase {
         XCTAssertTrue(dayBody.contains(#"Button("Next") { path.append(.details) }"#),
                       "dayPickerScreen's Next button was explicitly optional/out-of-scope and should be left as-is")
 
-        let accountSource = try readSource("FellowScript/Account/AccountView.swift")
+        let accountSource = try readSource("FellowScript/Account/AccountSupportingViews.swift")
         guard let tzRange = accountSource.range(of: "struct TimeZonePickerSheet: View {") else {
             XCTFail("TimeZonePickerSheet not found"); return
         }

@@ -50,6 +50,14 @@ struct FSUser: Codable, Identifiable {
     // Apple ID + app — a missed grant can never be recovered from Apple again).
     // The client should prompt the user to set both manually.
     var needs_profile_completion: Bool = false
+    // Task 20260905-profile-photo: a freshly-issued, short-lived presigned
+    // GET the backend resolves server-side from the user's (never-exposed)
+    // `profile_photo_key` column wherever a user is serialized (GET/PUT
+    // /user/{id}, friends list/requests/activity, note author lookup) --
+    // nil when the user has no photo set. Every avatar-rendering surface
+    // must fall back to the existing initials treatment when this is nil
+    // or fails to load, never a broken image.
+    var profile_photo_url: String? = nil
 
     var id: String { user_id }
     var initials: String { String(username.prefix(1)).uppercased() }
@@ -73,6 +81,7 @@ extension FSUser {
         terms_reaccept_required = decodeLenient(c, forKey: .terms_reaccept_required, default: false, type: "FSUser")
         mfa_enabled = decodeLenient(c, forKey: .mfa_enabled, default: false, type: "FSUser")
         needs_profile_completion = decodeLenient(c, forKey: .needs_profile_completion, default: false, type: "FSUser")
+        profile_photo_url = decodeLenient(c, forKey: .profile_photo_url, default: nil, type: "FSUser")
     }
 }
 
@@ -212,6 +221,16 @@ struct FSNote: Codable, Identifiable {
     // other FSNote call site that doesn't populate it are unaffected — NoteRow
     // treats an empty username as "no author to show," never a placeholder.
     var username:  String  = ""
+    // Task 20260905-profile-photo: the author's photo, resolved server-side
+    // to a fresh presigned GET wherever an author is looked up alongside
+    // `username` above -- `GET /notes/{user_id}/note/{note_id}` (the
+    // friend-activity note-preview open flow) and this client's own
+    // `fetchReplies` (which already resolves each reply author's `username`
+    // via a per-id `fetchUser` call and now grabs their photo at the same
+    // time, at no extra network cost). Same "author-less" honesty as
+    // `username`: nil here means either no photo set or the author was
+    // never resolved, never a placeholder.
+    var profile_photo_url: String? = nil
     var title:     String  = ""
     var text:      String  = ""
     var `public`:  Bool    = false
@@ -263,6 +282,7 @@ extension FSNote {
         id        = decodeLenient(c, forKey: .id,        default: UUID().uuidString, type: "FSNote")
         user      = decodeLenient(c, forKey: .user,      default: "",                type: "FSNote")
         username  = decodeLenient(c, forKey: .username,  default: "",                type: "FSNote")
+        profile_photo_url = decodeLenient(c, forKey: .profile_photo_url, default: nil, type: "FSNote")
         title     = decodeLenient(c, forKey: .title,     default: "",                type: "FSNote")
         text      = decodeLenient(c, forKey: .text,      default: "",                type: "FSNote")
         `public`  = decodeLenient(c, forKey: .public,    default: false,             type: "FSNote")
@@ -356,6 +376,14 @@ struct FSContact: Identifiable, Codable, Equatable {
     var toUsers: [String] = []      // member user IDs — used for message routing
     var memberNames: [String] = []  // member usernames (excludes self) — for display
     var lastMessageAt: String = ""  // ISO timestamp of the most recent message (for sorting)
+    // Task 20260905-profile-photo: only ever populated for a `.friend`
+    // contact (NetworkService.fetchContacts already resolves each friend's
+    // full profile via `GET /user/{id}`, which now carries this) -- a
+    // `.group` contact has no single identity to show a photo for (its
+    // member list is rendered per-member, not on the contact row itself),
+    // so this stays nil there. nil also just means "no photo set," never a
+    // fetch failure signal.
+    var photoUrl: String? = nil
 }
 
 // ── Friend activity feed (Dashboard's Friend Activity hero card) ───────────────
@@ -412,6 +440,12 @@ struct FSFriendActivityEntry: Codable, Identifiable, Equatable {
     var activity_type:     String?                  = nil
     let note_preview:      FSFriendNotePreview?
     var highlight_preview: FSFriendHighlightPreview? = nil
+    // Task 20260905-profile-photo: FriendsManager.get_friend_activity now
+    // resolves this the same way get_friends/read_friend do -- a fresh
+    // presigned GET, nil if this friend has no photo set. Optional with a
+    // default, same convention as activity_type above, so a build predating
+    // this field keeps decoding this feed unchanged.
+    var profile_photo_url: String?                  = nil
 
     var initial: String { String(username.prefix(1)).uppercased() }
 }
@@ -512,6 +546,18 @@ struct FSMessage: Identifiable, Codable {
     var attachmentKind: String?         = nil
     var attachmentURL:  String?         = nil
     var attachmentMeta: FSAttachmentMeta? = nil
+
+    // compile-errors #3 (20260904-frontend-arch-sweep): the wire value is a
+    // plain String so it round-trips through Codable/JSON unchanged, but
+    // every switch over "what kind of attachment is this" should go through
+    // this computed enum instead of the raw string -- an unrecognized value
+    // (a future server-side kind, or a typo) fails this failable init and
+    // becomes nil, deliberately falling into the same branch as "no
+    // attachment" at every call site, rather than silently matching nothing
+    // in a stringly-typed `default:`.
+    var attachmentKindEnum: FSAttachmentKind? {
+        attachmentKind.flatMap(FSAttachmentKind.init(rawValue:))
+    }
 
     var formattedTime: String {
         // Fidelity-pass audit: same single-format gap as FSSession.formattedStart

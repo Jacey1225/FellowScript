@@ -69,6 +69,23 @@ final class StagedAttachment: ObservableObject, Identifiable {
         self.uploadState = (kind == .gif) ? .idle : .uploading
     }
 
+    // task 20260905-stagedattachment-deinit-crash: this is NOT dead/defensive
+    // code -- do not remove without re-reading that task's intake spec first.
+    // On an iOS 18.5 simulator/device under Xcode 26.6 (deployment target
+    // 18.0, below this toolchain's native SDK floor), a MainActor-isolated
+    // class's *synthesized* deinit gets routed through
+    // `swift_task_deinitOnExecutorMainActorBackDeploy`, a Swift-runtime
+    // back-deployment compatibility shim that has a real memory-corruption
+    // bug for at least some compiled class shapes (empirically reproduced
+    // for this exact class, and independently for an unrelated third-party
+    // class -- see that task's intake spec for the full evidence trail).
+    // An explicit `nonisolated deinit` routes teardown around that shim
+    // entirely, sidestepping the bug regardless of its precise trigger
+    // condition. This has no behavioral effect on any OS version -- it only
+    // changes which executor tears the instance down on, and this class
+    // holds nothing that requires main-actor-isolated cleanup.
+    nonisolated deinit {}
+
     /// `attachment_meta` to send alongside this attachment, matching backend
     /// step 2's wire contract exactly (`{"filename": ...}` for file,
     /// `{"url","preview_url","width","height"}` for gif; image/video carry
@@ -90,42 +107,43 @@ final class StagedAttachment: ObservableObject, Identifiable {
     }
 }
 
-// ── Attach action sheet (design gate §1) ─────────────────────────────────────
-struct AttachActionSheet: View {
+// ── Attach picker row (task 20260904-attach-picker-layout-polish, follow-up
+// to design gate §1) ─────────────────────────────────────────────────────────
+// Renders inline (not as a `.sheet`) directly above the composer's text
+// field, in the same "transient element between thread and composer" slot
+// the staged-attachment chip already uses -- a `.sheet`/`.presentationDetents`
+// bottom modal can't be re-anchored mid-screen, so this replaces it with a
+// plain conditional row in ChatThreadView's composer VStack. Each option is
+// now its own gold `PillButton` (icon + title) laid out in a single
+// horizontal row instead of a stacked column of plain list rows.
+struct AttachPickerRow: View {
     var onPickPhotoVideo: () -> Void
     var onPickFile:       () -> Void
     var onPickGif:        () -> Void
 
     var body: some View {
-        VStack(spacing: 0) {
-            row(icon: "photo.on.rectangle", title: "Photo & Video", action: onPickPhotoVideo)
-            Divider().background(Theme.borderGoldFaint)
-            row(icon: "doc", title: "File", action: onPickFile)
-            Divider().background(Theme.borderGoldFaint)
-            row(icon: "face.smiling", title: "GIF", action: onPickGif)
-        }
-        .padding(.vertical, Theme.spacingSM)
-        .background(Theme.bgPage)
-        .presentationDetents([.height(3 * 56 + 16)])
-        .presentationDragIndicator(.visible)
-    }
-
-    private func row(icon: String, title: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
+        ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: Theme.spacingSM) {
-                Image(systemName: icon)
-                    .foregroundColor(Theme.gold)
-                    .frame(width: 24)
-                Text(title)
-                    .font(.inter(Theme.fontBody))
-                    .foregroundColor(Theme.parchment)
-                Spacer()
+                pill(title: "Photo & Video", systemIcon: "photo.on.rectangle", action: onPickPhotoVideo)
+                pill(title: "File", systemIcon: "doc", action: onPickFile)
+                pill(title: "GIF", systemIcon: "face.smiling", action: onPickGif)
             }
             .padding(.horizontal, Theme.spacingMD)
-            .frame(height: 56)
-            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .padding(.top, Theme.spacingXS)
+        .padding(.bottom, Theme.spacingSM)
+    }
+
+    // 44pt minimum tap target (Q14) over PillButton's own visually-shorter
+    // (~38pt) rendered height -- same enlarged-hit-area technique already
+    // used by the composer's attachButton, applied here since PillButton
+    // itself (shared with the chat header's "Schedule" pill and
+    // SessionCreatorSheet) isn't modified.
+    private func pill(title: String, systemIcon: String, action: @escaping () -> Void) -> some View {
+        PillButton(title: title, systemIcon: systemIcon, action: action)
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
+            .accessibilityLabel(title)
     }
 }
 
@@ -133,6 +151,13 @@ struct AttachActionSheet: View {
 
 struct PhotoVideoPicker: UIViewControllerRepresentable {
     var onPicked: (StagedAttachment?) -> Void
+    // dependency-errors #6: a picker operation that genuinely fails (copy/
+    // decode error, unsupported item) previously vanished into the same
+    // `onPicked(nil)` as a plain user cancellation, so the caller had no way
+    // to tell "you cancelled" from "that broke" and never surfaced anything.
+    // Cancellation (no item selected) still calls only `onPicked(nil)`
+    // silently; a genuine failure additionally calls `onFailure`.
+    var onFailure: () -> Void = {}
 
     func makeUIViewController(context: Context) -> PHPickerViewController {
         var config = PHPickerConfiguration(photoLibrary: .shared())
@@ -144,20 +169,29 @@ struct PhotoVideoPicker: UIViewControllerRepresentable {
     }
 
     func updateUIViewController(_ uiViewController: PHPickerViewController, context: Context) {}
-    func makeCoordinator() -> Coordinator { Coordinator(onPicked: onPicked) }
+    func makeCoordinator() -> Coordinator { Coordinator(onPicked: onPicked, onFailure: onFailure) }
 
     final class Coordinator: NSObject, PHPickerViewControllerDelegate {
         let onPicked: (StagedAttachment?) -> Void
-        init(onPicked: @escaping (StagedAttachment?) -> Void) { self.onPicked = onPicked }
+        let onFailure: () -> Void
+        init(onPicked: @escaping (StagedAttachment?) -> Void, onFailure: @escaping () -> Void = {}) {
+            self.onPicked = onPicked
+            self.onFailure = onFailure
+        }
 
         func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
             picker.dismiss(animated: true)
+            // No item selected -- the user backed out of the picker. Not a
+            // failure; stay silent, matching the existing cancel affordance.
             guard let result = results.first else { onPicked(nil); return }
             let provider = result.itemProvider
 
             if provider.hasItemConformingToTypeIdentifier(UTType.movie.identifier) {
                 provider.loadFileRepresentation(forTypeIdentifier: UTType.movie.identifier) { url, _ in
-                    guard let url else { DispatchQueue.main.async { self.onPicked(nil) }; return }
+                    guard let url else {
+                        DispatchQueue.main.async { self.onPicked(nil); self.onFailure() }
+                        return
+                    }
                     // `url` is only valid for the duration of this callback —
                     // copy to a stable temp location before touching it later
                     // (upload body, local inline-playback preview).
@@ -173,13 +207,13 @@ struct PhotoVideoPicker: UIViewControllerRepresentable {
                                                            fileData: data, videoURL: tempURL)
                         DispatchQueue.main.async { self.onPicked(attachment) }
                     } catch {
-                        DispatchQueue.main.async { self.onPicked(nil) }
+                        DispatchQueue.main.async { self.onPicked(nil); self.onFailure() }
                     }
                 }
             } else if provider.canLoadObject(ofClass: UIImage.self) {
                 provider.loadObject(ofClass: UIImage.self) { object, _ in
                     guard let image = object as? UIImage, let data = image.jpegData(compressionQuality: 0.9) else {
-                        DispatchQueue.main.async { self.onPicked(nil) }
+                        DispatchQueue.main.async { self.onPicked(nil); self.onFailure() }
                         return
                     }
                     let attachment = StagedAttachment(kind: .image, contentType: "image/jpeg", fileData: data,
@@ -188,7 +222,11 @@ struct PhotoVideoPicker: UIViewControllerRepresentable {
                     DispatchQueue.main.async { self.onPicked(attachment) }
                 }
             } else {
+                // Selected item is neither a movie nor an image we can load
+                // (an unsupported item type slipped past the PHPicker
+                // filter) -- a genuine failure, not a cancellation.
                 onPicked(nil)
+                onFailure()
             }
         }
 
@@ -200,6 +238,10 @@ struct PhotoVideoPicker: UIViewControllerRepresentable {
 
 struct DocumentPicker: UIViewControllerRepresentable {
     var onPicked: (StagedAttachment?) -> Void
+    // dependency-errors #6: see PhotoVideoPicker's onFailure above -- same
+    // cancel-vs-failure distinction, since documentPickerWasCancelled already
+    // gives us an explicit cancel signal separate from didPickDocumentsAt.
+    var onFailure: () -> Void = {}
 
     func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
         // Filtered to the allowlisted extensions as a client-side nicety only
@@ -218,17 +260,24 @@ struct DocumentPicker: UIViewControllerRepresentable {
     }
 
     func updateUIViewController(_ uiViewController: UIDocumentPickerViewController, context: Context) {}
-    func makeCoordinator() -> Coordinator { Coordinator(onPicked: onPicked) }
+    func makeCoordinator() -> Coordinator { Coordinator(onPicked: onPicked, onFailure: onFailure) }
 
     final class Coordinator: NSObject, UIDocumentPickerDelegate {
         let onPicked: (StagedAttachment?) -> Void
-        init(onPicked: @escaping (StagedAttachment?) -> Void) { self.onPicked = onPicked }
+        let onFailure: () -> Void
+        init(onPicked: @escaping (StagedAttachment?) -> Void, onFailure: @escaping () -> Void = {}) {
+            self.onPicked = onPicked
+            self.onFailure = onFailure
+        }
 
         func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
-            guard let url = urls.first else { onPicked(nil); return }
-            guard url.startAccessingSecurityScopedResource() else { onPicked(nil); return }
+            // This delegate method only fires with a genuine selection --
+            // cancellation goes through documentPickerWasCancelled below --
+            // so every early-return here is a real failure, not a cancel.
+            guard let url = urls.first else { onPicked(nil); onFailure(); return }
+            guard url.startAccessingSecurityScopedResource() else { onPicked(nil); onFailure(); return }
             defer { url.stopAccessingSecurityScopedResource() }
-            guard let data = try? Data(contentsOf: url) else { onPicked(nil); return }
+            guard let data = try? Data(contentsOf: url) else { onPicked(nil); onFailure(); return }
             let contentType = Self.mimeType(forExtension: url.pathExtension)
             let attachment = StagedAttachment(kind: .file, contentType: contentType, fileData: data,
                                                fileName: url.lastPathComponent)
@@ -551,12 +600,18 @@ struct AttachmentContentView: View {
     private let maxHeight: CGFloat = 280
 
     var body: some View {
-        switch message.attachmentKind {
-        case "image": imageContent
-        case "video": videoContent
-        case "gif":   gifContent
-        case "file":  fileContent
-        default:      EmptyView()
+        // compile-errors #3 (20260904-frontend-arch-sweep): switches on the
+        // actual FSAttachmentKind enum (exhaustive, no default:) instead of
+        // the raw wire string -- see FSMessage.attachmentKindEnum.
+        if let kind = message.attachmentKindEnum {
+            switch kind {
+            case .image: imageContent
+            case .video: videoContent
+            case .gif:   gifContent
+            case .file:  fileContent
+            }
+        } else {
+            EmptyView()
         }
     }
 

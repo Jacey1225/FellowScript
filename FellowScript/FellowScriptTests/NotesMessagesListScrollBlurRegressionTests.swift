@@ -50,11 +50,26 @@ final class NotesMessagesListScrollBlurRegressionTests: XCTestCase {
         return try String(contentsOf: file, encoding: .utf8)
     }
 
-    private func notesListViewSource() throws -> String {
+    // notesTab/highlightsTab/notesEmptyState moved out of NotesListView.swift
+    // into NotesListView+List.swift in the compliance-readability-cleanup
+    // task's split (readability #6, 20260904-frontend-arch-sweep) -- same
+    // behavior, but now declared as an `extension NotesListView` member, so
+    // the access modifier dropped from `private var` to plain `var`.
+    private func notesListViewListSectionSource() throws -> String {
         let file = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-            .appendingPathComponent("FellowScript/Notes/NotesListView.swift")
+            .appendingPathComponent("FellowScript/Notes/NotesListView+List.swift")
+        return try String(contentsOf: file, encoding: .utf8)
+    }
+
+    // NoteDetailView moved out of NotesListView.swift into its own file in
+    // the same split.
+    private func noteDetailViewSource() throws -> String {
+        let file = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("FellowScript/Notes/NoteDetailView.swift")
         return try String(contentsOf: file, encoding: .utf8)
     }
 
@@ -123,10 +138,10 @@ final class NotesMessagesListScrollBlurRegressionTests: XCTestCase {
     // MARK: - 2. Each of the 5 target Lists: feather + persistent outer padding, correctly ordered
 
     private func assertListHasBothHalvesOfFix(
-        _ source: String, varName: String, endMarkers: [String],
+        _ source: String, varName: String, endMarkers: [String], accessPrefix: String = "private ",
         file: StaticString = #filePath, line: UInt = #line
     ) {
-        let body = scoped(source, from: "private var \(varName): some View {", to: endMarkers)
+        let body = scoped(source, from: "\(accessPrefix)var \(varName): some View {", to: endMarkers)
 
         XCTAssertTrue(
             body.contains(".scrollTopEdgeFeather()"),
@@ -163,18 +178,20 @@ final class NotesMessagesListScrollBlurRegressionTests: XCTestCase {
     }
 
     func test_source_notesTab_hasFeatherAndPersistentOuterPadding_correctlyOrdered() throws {
-        let source = try notesListViewSource()
+        let source = try notesListViewListSectionSource()
         assertListHasBothHalvesOfFix(
             source, varName: "notesTab",
-            endMarkers: ["private var highlightsTab: some View {"]
+            endMarkers: ["var highlightsTab: some View {"],
+            accessPrefix: ""
         )
     }
 
     func test_source_highlightsTab_hasFeatherAndPersistentOuterPadding_correctlyOrdered() throws {
-        let source = try notesListViewSource()
+        let source = try notesListViewListSectionSource()
         assertListHasBothHalvesOfFix(
             source, varName: "highlightsTab",
-            endMarkers: ["private var notesEmptyState: some View {"]
+            endMarkers: ["var notesEmptyState: some View {"],
+            accessPrefix: ""
         )
     }
 
@@ -205,13 +222,14 @@ final class NotesMessagesListScrollBlurRegressionTests: XCTestCase {
     // MARK: - 3. Out-of-scope guard: NoteDetailView's own already-fixed ScrollView untouched
 
     func test_source_noteDetailView_stillUsesItsOwnMask_notTheSharedListModifier() throws {
-        // NoteDetailView (NotesListView.swift, same file) uses a bare
-        // ScrollView, not a List, and was explicitly out of bounds for this
-        // task (intake spec) -- it must keep its own pre-existing `.mask`
-        // rather than being switched to scrollTopEdgeFeather(), which is a
-        // List-shaped modifier (masks the List's own frame) never intended
-        // for a bare ScrollView call site.
-        let source = try notesListViewSource()
+        // NoteDetailView (its own file, NoteDetailView.swift, since the
+        // compliance-readability-cleanup split) uses a bare ScrollView, not a
+        // List, and was explicitly out of bounds for this task (intake spec)
+        // -- it must keep its own pre-existing `.mask` rather than being
+        // switched to scrollTopEdgeFeather(), which is a List-shaped modifier
+        // (masks the List's own frame) never intended for a bare ScrollView
+        // call site.
+        let source = try noteDetailViewSource()
         let body = scoped(source, from: "struct NoteDetailView: View {", to: [])
         XCTAssertFalse(
             body.contains(".scrollTopEdgeFeather()"),
