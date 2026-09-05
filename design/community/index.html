@@ -610,6 +610,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#attachments-2026-09-04" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Attachments (2026-09-04)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#real-time-behavior" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1000,6 +1011,32 @@ in place of <code>Form</code>. <code>AddFriendSheet</code> gained a <code>.mediu
 with a large empty area below its one field); <code>AddGroupSheet</code> gained <code>[.medium, .large]</code> so a longer
 member list isn't clipped. Appearance-only — <code>onSend</code>/<code>onCreate</code> wiring, member-row selection
 behavior, and existing accessibility labels are unchanged.</p>
+<hr />
+<h2 id="attachments-2026-09-04">Attachments (2026-09-04)</h2>
+<p>The composer (both iOS <code>ChatThreadView</code> and web <code>ChatThread</code>) gained an attach affordance next to
+the text field, opening a small action sheet with three options:</p>
+<ul>
+<li><strong>Photo &amp; Video</strong> — the platform's native picker (iOS <code>PHPickerViewController</code>; web <code>&lt;input
+  type="file" accept="image/*,video/*"&gt;</code>). The picked file uploads directly to S3 using a
+  presigned URL the server issues (<code>POST /message/upload-url/{user_id}</code>) — the app's own backend
+  never receives the raw bytes. A staged preview chip shows upload progress (plain spinner) above
+  the composer; send stays disabled until the upload finishes (or immediately for a GIF, which
+  never uploads).</li>
+<li><strong>File</strong> — same direct-to-S3 flow, native document/file picker.</li>
+<li><strong>GIF</strong> — a dedicated search sheet (debounced query against <code>GET /message/gif-search</code>, a
+  server-side proxy to the configured provider) with a scrollable results grid. Selecting a GIF
+  stages it immediately — nothing to upload, only the provider's URL/ID is sent with the message.</li>
+</ul>
+<p>In the thread, each attachment kind renders inside the existing message bubble: images and GIFs
+preview inline edge-to-edge, videos show a tap-to-play affordance over a placeholder (never
+autoplay), and files show a name + download row. A picked-but-unsent attachment can be removed
+with no confirmation prompt (undo-after-the-fact); a failed upload shows a short retry affordance
+instead of an automatic retry loop. GIF autoplay/looping is suppressed under
+<code>prefers-reduced-motion</code>/<code>accessibilityReduceMotion</code> in favor of a static frame with its own
+tap-to-play control — the one place this feature changes default behavior for reduced motion,
+rather than just disabling a decorative transition.</p>
+<p>Exactly one attachment is supported per message (no multi-file selection); a caption (<code>text</code>) can
+still ride alongside it. See <code>docs/api/overview.md</code>'s Attachments section for the wire contract.</p>
 <hr />
 <h2 id="real-time-behavior">Real-Time Behavior</h2>
 <p>The WebSocket connection (<code>/ws/{user_id}</code>) handles:</p>
