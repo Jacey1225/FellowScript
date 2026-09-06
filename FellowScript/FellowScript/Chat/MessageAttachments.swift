@@ -402,6 +402,7 @@ struct GifSearchSheet: View {
 
     @StateObject private var vm = GifSearchViewModel()
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private let columns = [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)]
 
@@ -553,22 +554,10 @@ struct GifSearchSheet: View {
     }
 
     private func gifCell(_ gif: FSGifResult) -> some View {
-        Button {
+        GifPickerCell(gif: gif, reduceMotion: reduceMotion) {
             onSelect(StagedAttachment(kind: .gif, width: gif.width, height: gif.height, gifResult: gif))
             dismiss()
-        } label: {
-            AsyncImage(url: URL(string: gif.preview_url)) { phase in
-                if let image = phase.image {
-                    image.resizable().aspectRatio(contentMode: .fill)
-                } else {
-                    Rectangle().fill(Theme.gold.opacity(0.10))
-                }
-            }
-            .frame(minHeight: 88)
-            .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel("GIF result")
     }
 
     private func centered<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
@@ -578,6 +567,75 @@ struct GifSearchSheet: View {
             Spacer()
         }
         .frame(maxWidth: .infinity)
+    }
+}
+
+// ── GIF picker grid cell (task 20260905-gif-picker-grid-polish) ─────────────
+// Standardizes every browse/search grid cell to a fixed 1:1 square crop
+// (design gate §1) regardless of the source GIF's native dimensions, and
+// swaps in the real animated decoder so previews actually loop while
+// browsing (design gate §4) rather than freezing on a single AsyncImage
+// frame -- which per design gate §3 is also the most likely explanation for
+// the previously-reported solid-black cell (a GIF whose first/only decoded
+// frame happens to be black), so getting real animation going resolves that
+// as a side effect. Kept as its own View (not a plain function returning a
+// View, like the old inline `gifCell`) because each cell needs its own
+// `@State` to drive an independent placeholder-to-loaded fade.
+private struct GifPickerCell: View {
+    let gif: FSGifResult
+    let reduceMotion: Bool
+    let onSelect: () -> Void
+
+    // Fade starts from the existing translucent-gold placeholder already
+    // painted underneath (Q17 -- no new loading treatment) and eases to the
+    // loaded image once a frame is actually decoded (Q9 -- eased, not an
+    // instant/linear cut-in). `motionAwareAnimation` collapses this to an
+    // instant, non-animated flip under Reduce Motion, matching this
+    // project's one shared convention for that rather than a one-off here.
+    @State private var isLoaded = false
+
+    var body: some View {
+        Button(action: onSelect) {
+            ZStack {
+                Rectangle().fill(Theme.gold.opacity(0.10))
+                imageLayer
+                    .opacity(isLoaded ? 1 : 0)
+                    .motionAwareAnimation(.easeOut(duration: 0.28), value: isLoaded, reduceMotion: reduceMotion)
+            }
+            // Forces every cell to a square from the grid's own flexible
+            // column width alone (design gate §1) -- no extra layout math
+            // needed on either platform's grid.
+            .aspectRatio(1, contentMode: .fit)
+            .clipped()
+            .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("GIF result")
+    }
+
+    @ViewBuilder
+    private var imageLayer: some View {
+        // Reduced motion: a static single frame with no play affordance --
+        // deliberately not AttachmentContentView.gifContent's tap-to-play
+        // pattern, since a picker cell's entire tap target already performs
+        // a real action (select this GIF), so a play badge would be a
+        // second, conflicting affordance the tap doesn't perform (design
+        // gate §4). AsyncImage only ever decodes one frame, which is exactly
+        // the static behavior wanted here -- no separate still asset needed.
+        if reduceMotion {
+            AsyncImage(url: URL(string: gif.preview_url)) { phase in
+                if let image = phase.image {
+                    image.resizable().aspectRatio(contentMode: .fill)
+                        .onAppear { isLoaded = true }
+                } else {
+                    Color.clear
+                }
+            }
+        } else if let url = URL(string: gif.preview_url) {
+            AnimatedGIFView(url: url, contentMode: .scaleAspectFill, onFirstFrame: { isLoaded = true })
+        } else {
+            Color.clear
+        }
     }
 }
 
@@ -688,39 +746,70 @@ enum AttachmentErrorCopy {
 // view.
 struct AnimatedGIFView: UIViewRepresentable {
     let url: URL
+    // Defaults preserve the original sent-message full-size playback
+    // behavior (AttachmentContentView.gifContent) unchanged; the GIF-picker
+    // grid cell (task 20260905-gif-picker-grid-polish) passes `.scaleAspectFill`
+    // to crop-fill its fixed square box, plus `onFirstFrame` to drive the
+    // cell's placeholder-to-loaded fade.
+    var contentMode: UIView.ContentMode = .scaleAspectFit
+    var onFirstFrame: (() -> Void)? = nil
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
 
     func makeUIView(context: Context) -> UIImageView {
         let imageView = UIImageView()
-        imageView.contentMode = .scaleAspectFit
+        imageView.contentMode = contentMode
         imageView.clipsToBounds = true
-        loadAndAnimate(into: imageView)
+        loadAndAnimate(into: imageView, coordinator: context.coordinator)
         return imageView
     }
 
     func updateUIView(_ uiView: UIImageView, context: Context) {}
 
-    private func loadAndAnimate(into imageView: UIImageView) {
-        URLSession.shared.dataTask(with: url) { data, _, _ in
+    // Cancels the in-flight decode/download when a cell scrolls out of a
+    // LazyVGrid and SwiftUI tears its UIViewRepresentable down (design gate
+    // §4 performance note) -- keeps a fast scroll through a large browse/
+    // search grid from piling up dozens of concurrent downloads rather than
+    // needing a bespoke visibility-tracking system on top of what LazyVGrid
+    // already does for cell lifecycle.
+    static func dismantleUIView(_ uiView: UIImageView, coordinator: Coordinator) {
+        coordinator.task?.cancel()
+    }
+
+    final class Coordinator {
+        var task: URLSessionDataTask?
+    }
+
+    private func loadAndAnimate(into imageView: UIImageView, coordinator: Coordinator) {
+        let task = URLSession.shared.dataTask(with: url) { data, _, _ in
             guard let data, let source = CGImageSourceCreateWithData(data as CFData, nil) else { return }
             let count = CGImageSourceGetCount(source)
-            guard count > 0 else { return }
-            var images: [UIImage] = []
-            var duration: Double = 0
-            for i in 0..<count {
+            guard count > 0, let firstCGImage = CGImageSourceCreateImageAtIndex(source, 0, nil) else { return }
+            // Show (and signal) the first decoded frame immediately rather
+            // than waiting on every frame in a many-frame GIF to decode
+            // first -- the grid cell's fade-in should fire as soon as
+            // *something* is on screen (design gate §2).
+            let firstImage = UIImage(cgImage: firstCGImage)
+            DispatchQueue.main.async {
+                imageView.image = firstImage
+                onFirstFrame?()
+            }
+            guard count > 1 else { return }
+            var images: [UIImage] = [firstImage]
+            var duration: Double = Self.frameDuration(source: source, index: 0)
+            for i in 1..<count {
                 guard let cgImage = CGImageSourceCreateImageAtIndex(source, i, nil) else { continue }
                 images.append(UIImage(cgImage: cgImage))
                 duration += Self.frameDuration(source: source, index: i)
             }
             DispatchQueue.main.async {
-                if images.count > 1 {
-                    imageView.animationImages = images
-                    imageView.animationDuration = duration > 0 ? duration : 1.0
-                    imageView.startAnimating()
-                } else {
-                    imageView.image = images.first
-                }
+                imageView.animationImages = images
+                imageView.animationDuration = duration > 0 ? duration : 1.0
+                imageView.startAnimating()
             }
-        }.resume()
+        }
+        coordinator.task = task
+        task.resume()
     }
 
     private static func frameDuration(source: CGImageSource, index: Int) -> Double {
@@ -740,28 +829,61 @@ struct AttachmentContentView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isPlayingVideo = false
     @State private var gifTapped = false
+    // Task 20260905-attachment-lightbox: one flag suffices per bubble since
+    // exactly one of imageContent/gifContent ever renders for a given
+    // message (design gate: "one AttachmentContentView-local viewer").
+    @State private var isLightboxPresented = false
 
     private let maxWidth:  CGFloat = 240
     private let maxHeight: CGFloat = 280
 
     var body: some View {
-        // compile-errors #3 (20260904-frontend-arch-sweep): switches on the
-        // actual FSAttachmentKind enum (exhaustive, no default:) instead of
-        // the raw wire string -- see FSMessage.attachmentKindEnum.
-        if let kind = message.attachmentKindEnum {
-            switch kind {
-            case .image: imageContent
-            case .video: videoContent
-            case .gif:   gifContent
-            case .file:  fileContent
+        Group {
+            // compile-errors #3 (20260904-frontend-arch-sweep): switches on the
+            // actual FSAttachmentKind enum (exhaustive, no default:) instead of
+            // the raw wire string -- see FSMessage.attachmentKindEnum.
+            if let kind = message.attachmentKindEnum {
+                switch kind {
+                case .image: imageContent
+                case .video: videoContent
+                case .gif:   gifContent
+                case .file:  fileContent
+                }
+            } else {
+                EmptyView()
             }
-        } else {
-            EmptyView()
+        }
+        // Task 20260905-attachment-lightbox (design gate §5): fullScreenCover
+        // is the correct primitive for a true full-screen presentation that
+        // covers the tab bar and all chrome, unlike a plain .overlay/ZStack
+        // which stays clipped to this view's own bounds.
+        .fullScreenCover(isPresented: $isLightboxPresented) {
+            AttachmentLightboxView(
+                kind: lightboxKind,
+                remoteImageURL: remoteURL,
+                senderLabel: senderLabel,
+                onDismiss: { isLightboxPresented = false }
+            )
         }
     }
 
     private var remoteURL: URL? { message.attachmentURL.flatMap(URL.init(string:)) }
     private var senderLabel: String { message.mine ? "You" : (message.sender.isEmpty ? "Them" : message.sender) }
+
+    // Shared by gifContent (inline playback) and the lightbox trigger below,
+    // so both resolve the same URL the same way.
+    private var gifPlayableURL: URL? {
+        (message.attachmentMeta?.url ?? message.attachmentURL).flatMap(URL.init(string:))
+    }
+
+    /// What the lightbox should render once presented -- resolved from
+    /// whichever content branch is actually on screen for this message.
+    private var lightboxKind: AttachmentLightboxView.Kind {
+        if message.attachmentKindEnum == .gif, let url = gifPlayableURL {
+            return .gif(url)
+        }
+        return .image(localPreview?.image)
+    }
 
     @ViewBuilder
     private var imageContent: some View {
@@ -785,6 +907,16 @@ struct AttachmentContentView: View {
         .frame(maxWidth: maxWidth, maxHeight: maxHeight)
         .clipShape(RoundedRectangle(cornerRadius: Theme.radiusLG))
         .accessibilityLabel("\(senderLabel): photo attachment")
+        .contentShape(Rectangle())
+        .onTapGesture {
+            // Only a displayable source (local preview or a remote URL,
+            // even one that ends up failing) opens the lightbox -- the
+            // "no source at all" unavailablePlaceholder branch has nothing
+            // to expand into.
+            if localPreview?.image != nil || remoteURL != nil {
+                isLightboxPresented = true
+            }
+        }
     }
 
     @ViewBuilder
@@ -812,13 +944,12 @@ struct AttachmentContentView: View {
 
     @ViewBuilder
     private var gifContent: some View {
-        let playableURLString = message.attachmentMeta?.url ?? message.attachmentURL
         Group {
-            if let playableURLString, let playableURL = URL(string: playableURLString) {
+            if let playableURL = gifPlayableURL {
                 // The one place reduced-motion changes default behavior, not
                 // just disables a decorative transition (design gate §4/§6).
                 if reduceMotion && !gifTapped {
-                    let previewURLString = message.attachmentMeta?.previewUrl ?? playableURLString
+                    let previewURLString = message.attachmentMeta?.previewUrl ?? playableURL.absoluteString
                     Button { gifTapped = true } label: {
                         ZStack {
                             AsyncImage(url: URL(string: previewURLString)) { phase in
@@ -832,7 +963,13 @@ struct AttachmentContentView: View {
                     }
                     .buttonStyle(.plain)
                 } else {
+                    // Task 20260905-attachment-lightbox (design gate §3):
+                    // the lightbox trigger only fires once the GIF is
+                    // already rendering here -- not on the reduced-motion
+                    // tap-to-play button above, which only starts playback.
                     AnimatedGIFView(url: playableURL)
+                        .contentShape(Rectangle())
+                        .onTapGesture { isLightboxPresented = true }
                 }
             } else {
                 unavailablePlaceholder(label: "Image unavailable")
@@ -878,5 +1015,157 @@ struct AttachmentContentView: View {
         }
         .frame(maxWidth: .infinity, minHeight: 120)
         .background(Theme.gold.opacity(0.06))
+    }
+}
+
+// ── Tap-to-expand attachment lightbox (task 20260905-attachment-lightbox) ───
+// One shared viewer for both AttachmentContentView call sites (imageContent,
+// gifContent), presented via .fullScreenCover -- design gate §5/§6/§7/§8.
+//
+// Deviation from design-notes.md §6 worth flagging explicitly: the spec asks
+// for a `matchedGeometryEffect` shared between the inline bubble media and
+// this view so the media visually morphs from its inline position/size into
+// the full-screen frame. `matchedGeometryEffect` only resolves within a
+// single view hierarchy evaluated in one geometry pass -- content presented
+// via `.fullScreenCover` (or `.sheet`) is a separate hosting hierarchy, so a
+// shared namespace across that boundary does not actually animate (a well
+// documented SwiftUI limitation; iOS 18's new `.navigationTransition(.zoom)`
+// covers the analogous NavigationStack-push case but has no counterpart for
+// sheet/fullScreenCover presentation). Implementing it literally as written
+// would silently no-op, not partially work. Standing in for it: a plain
+// scale+fade on the media only (backdrop is a static material, not part of
+// the animation), timed exactly per §6/§7 (300ms .easeOut open / 220ms
+// .easeInOut close, "exit faster than enter"; skipped outright, not
+// shortened, under Reduce Motion). This still satisfies Q18 ("communicates
+// state -- expanding into focus / collapsing back") and is the same
+// cost/benefit call the web implementation already made for its own
+// shared-element tracking (frontend.json step 3: "no full FLIP/shared-element
+// machinery... disproportionate lift"), just arrived at independently here
+// because fullScreenCover forces the same conclusion technically rather than
+// by choice. Every other decision (fullScreenCover + glassCard-style material
+// backdrop, dismiss mechanism, GIF restart-from-frame-0, no caption, 44×44
+// scrimmed close button) is implemented exactly as specified.
+private struct AttachmentLightboxView: View {
+    enum Kind {
+        case image(UIImage?)
+        case gif(URL)
+    }
+
+    let kind:            Kind
+    let remoteImageURL:  URL?
+    let senderLabel:     String
+    let onDismiss:       () -> Void
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var isExpanded = false
+
+    private var showsExpanded: Bool { isExpanded || reduceMotion }
+
+    var body: some View {
+        ZStack(alignment: .topTrailing) {
+            backdrop
+
+            media
+                .padding(Theme.spacingLG)
+                .scaleEffect(showsExpanded ? 1 : 0.85)
+                .opacity(showsExpanded ? 1 : 0)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            closeButton
+        }
+        .ignoresSafeArea()
+        .contentShape(Rectangle())
+        .onTapGesture { dismiss() }
+        .onAppear {
+            if reduceMotion {
+                isExpanded = true
+            } else {
+                withAnimation(.easeOut(duration: 0.3)) { isExpanded = true }
+            }
+        }
+    }
+
+    // Same "material + warm tint" doctrine as DashboardComponents.swift's
+    // glassCard, not a new blur recipe (design gate §5).
+    private var backdrop: some View {
+        ZStack {
+            Rectangle().fill(.ultraThinMaterial)
+            Rectangle().fill(Theme.ink.opacity(0.93))
+        }
+        .ignoresSafeArea()
+    }
+
+    @ViewBuilder
+    private var media: some View {
+        switch kind {
+        case .image(let localImage):
+            if let localImage {
+                Image(uiImage: localImage)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .accessibilityLabel("\(senderLabel): photo attachment, expanded")
+            } else if let url = remoteImageURL {
+                AsyncImage(url: url) { phase in
+                    if let image = phase.image {
+                        image.resizable().aspectRatio(contentMode: .fit)
+                    } else if phase.error != nil {
+                        unavailablePlaceholder
+                    } else {
+                        // Plain spinner placeholder for the expanded view's
+                        // own load state -- no bespoke loading treatment
+                        // invented for this (design gate §5, Q17).
+                        ProgressView().tint(Theme.gold)
+                    }
+                }
+                .accessibilityLabel("\(senderLabel): photo attachment, expanded")
+            } else {
+                unavailablePlaceholder
+            }
+        case .gif(let url):
+            // A fresh AnimatedGIFView instance -- restarts from frame 0
+            // rather than syncing to the inline renderer's phase (design
+            // gate §3).
+            AnimatedGIFView(url: url)
+                .accessibilityLabel("\(senderLabel): GIF attachment, expanded")
+        }
+    }
+
+    private var unavailablePlaceholder: some View {
+        VStack(spacing: 4) {
+            Image(systemName: "photo").foregroundColor(Theme.textSecondary)
+            Text("Image unavailable").font(.inter(Theme.fontXXS)).foregroundColor(Theme.textSecondary)
+        }
+    }
+
+    // Bright glyph over its own dark scrim so AA contrast (4.5:1) holds
+    // regardless of what's behind the blur -- not Theme.textSecondary, which
+    // is only tuned for contrast against this app's opaque bubble fills
+    // (design gate §8, Q14). 44×44 tap target matches
+    // StagedAttachmentChipView's existing close-button convention.
+    private var closeButton: some View {
+        Button(action: dismiss) {
+            ZStack {
+                Circle().fill(Color.black.opacity(0.3))
+                Image(systemName: "xmark")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(Theme.parchment)
+            }
+            .frame(width: 44, height: 44)
+            .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .padding(.top, Theme.spacingSM)
+        .padding(.trailing, Theme.spacingSM)
+        .accessibilityLabel("Close")
+    }
+
+    private func dismiss() {
+        guard !reduceMotion else {
+            onDismiss()
+            return
+        }
+        // Exit faster than enter (design gate §6): 220ms vs. 300ms on open.
+        withAnimation(.easeInOut(duration: 0.22)) { isExpanded = false }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) { onDismiss() }
     }
 }

@@ -1064,6 +1064,104 @@ body {
   font-size: 0.8rem;
 }
 
+.attachment-media-expandable {
+  cursor: pointer;
+}
+
+/* ── Tap-to-expand attachment lightbox (task 20260905-attachment-lightbox,
+   design gate §5/§6/§7) — createPortal'd to document.body from ChatThread.jsx,
+   NOT a normal descendant of .msg-bubble/.chat-overlay. ChatThread renders
+   inside .dockview-theme-abyss's .dv-groupview, whose own backdrop-filter is
+   confirmed (see .chat-overlay's comment above) to silently suppress a
+   descendant's independent backdrop-filter regardless of this rule's own
+   blur radius — the same compositing bug already fixed for .chat-overlay /
+   .notes-filter-panel the same way, so this can't be scoped under either of
+   those and still actually blur. Because it's a document.body sibling, none
+   of --border-glass/--shadow-glass (scoped to .dockview-theme-abyss /
+   .chat-overlay, per this file's own §982 comment) are available here either
+   -- literal values only, same reasoning as the rest of this attachments
+   block. z-index 300 is intentionally above every other value in this file
+   (highest previously 200) so the lightbox always wins regardless of which
+   dock panel is focused. */
+.attachment-lightbox-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  background: rgba(10,10,10,0.75);
+  backdrop-filter: blur(16px) saturate(140%);
+  cursor: pointer;
+  /* Reuses the same curve already used repeatedly in this file (e.g.
+     .chat-overlay, .verse-panel width transitions) rather than inventing a
+     new one (design gate §6). */
+  animation: attachmentLightboxFadeIn 0.28s cubic-bezier(0.4,0,0.2,1) forwards;
+}
+.attachment-lightbox-overlay.attachment-lightbox-closing {
+  /* Exit faster than enter (design gate §6) — reduces perceived dismiss latency. */
+  animation: attachmentLightboxFadeOut 0.2s cubic-bezier(0.4,0,0.2,1) forwards;
+}
+@keyframes attachmentLightboxFadeIn  { from { opacity: 0; } to { opacity: 1; } }
+@keyframes attachmentLightboxFadeOut { from { opacity: 1; } to { opacity: 0; } }
+
+.attachment-lightbox-media {
+  max-width: min(92vw, 900px);
+  max-height: 88vh;
+  object-fit: contain;
+  border-radius: var(--radius-md);
+  box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+  cursor: pointer;
+  /* Cheap approximation of "expanding from where you tapped" (design gate
+     §6) via the triggering click's viewport position, set inline as
+     --lightbox-origin-x/-y — not a true shared-element/FLIP measurement. */
+  transform-origin: var(--lightbox-origin-x, 50%) var(--lightbox-origin-y, 50%);
+  animation: attachmentLightboxMediaIn 0.28s cubic-bezier(0.4,0,0.2,1) forwards;
+}
+.attachment-lightbox-overlay.attachment-lightbox-closing .attachment-lightbox-media {
+  animation: attachmentLightboxMediaOut 0.2s cubic-bezier(0.4,0,0.2,1) forwards;
+}
+@keyframes attachmentLightboxMediaIn  { from { opacity: 0; transform: scale(0.85); } to { opacity: 1; transform: scale(1); } }
+@keyframes attachmentLightboxMediaOut { from { opacity: 1; transform: scale(1); } to { opacity: 0; transform: scale(0.85); } }
+
+/* Discoverability-only close affordance (design gate §1) — tap-anywhere
+   already dismisses, this exists so a first-time user isn't left guessing.
+   Contrast (Q14/design gate §8): a dedicated dark scrim behind a bright
+   glyph rather than reusing Theme-equivalent secondary-text opacity, so AA
+   contrast (4.5:1) holds regardless of what's behind the blur at that
+   moment. 44px minimum tap target, matching .staged-attachment-remove's
+   existing close-button convention. */
+.attachment-lightbox-close {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(0,0,0,0.35);
+  color: rgba(255,255,255,0.92);
+  font-size: 1.2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+/* Reduced motion (Q14/design gate §7) — skip the motion effect outright
+   rather than merely shortening the curve, matching this codebase's existing
+   .gif-sheet-cell img / .fs-avatar-crossfade precedent: the overlay and
+   media simply appear/disappear. */
+@media (prefers-reduced-motion: reduce) {
+  .attachment-lightbox-overlay,
+  .attachment-lightbox-overlay.attachment-lightbox-closing,
+  .attachment-lightbox-media,
+  .attachment-lightbox-overlay.attachment-lightbox-closing .attachment-lightbox-media {
+    animation: none;
+  }
+}
+
 /* Attach picker (task 20260904-attach-picker-layout-polish, follow-up to
    design gate §1) -- content of the antd Popover anchored above the
    composer's plus button. Single horizontal row of self-contained gold
@@ -1107,16 +1205,46 @@ body {
   max-height: 360px;
   overflow-y: auto;
 }
+/* Task 20260905-gif-picker-grid-polish (design gate §1): fixed 1:1 square
+   crop -- was `min-height: 88px` with no fixed ratio, so each cell's
+   rendered height followed its own <img>'s native aspect ratio, producing
+   the reported ragged/misaligned grid. `aspect-ratio` makes every cell a
+   square regardless of source GIF shape, letting the existing
+   `object-fit: cover` below do uniform cropping. This is a preview-display
+   change only -- staged.meta.url/width/height (the actually-sent GIF) are
+   untouched, see handleGifSelected. */
 .gif-sheet-cell {
   border: none;
   padding: 0;
   border-radius: var(--radius-md);
   overflow: hidden;
   cursor: pointer;
-  min-height: 88px;
+  aspect-ratio: 1 / 1;
   background: rgba(255,198,26,0.08);
 }
-.gif-sheet-cell img { width: 100%; height: 100%; object-fit: cover; display: block; }
+/* Eased fade-in once a cell's image has a decoded frame (design gate §2,
+   closes the reported black-cell gap): the cell's own translucent-gold
+   background above stays visible underneath until `.gif-sheet-cell-loaded`
+   is added on <img onLoad>, so there's never a blank/black frame while a
+   preview is still loading -- this is the same minimal-placeholder doctrine
+   already used elsewhere (Q17), no new placeholder treatment invented.
+   250-300ms ease-out per Q9 (a hard/linear cut-in reads as the "unedged"
+   motion the user dislikes, even for this one-shot transition). */
+.gif-sheet-cell img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  opacity: 0;
+  transition: opacity 280ms ease-out;
+}
+.gif-sheet-cell img.gif-sheet-cell-loaded { opacity: 1; }
+@media (prefers-reduced-motion: reduce) {
+  /* Mirrors the existing .fs-avatar-crossfade reduced-motion override
+     pattern: disable the transition so the loaded frame appears instantly
+     rather than skipping the opacity gate that hides the pre-load state. */
+  .gif-sheet-cell img { transition: none; }
+}
 
 /* "Load more" control (task 20260905-gif-picker-default-browse, design gate
    §2) — appended below the browse grid, inside the same `.gif-sheet-grid`

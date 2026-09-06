@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { Button, Avatar, Typography, Input, Popover, Modal, Spin } from 'antd';
 import {
   SendOutlined, ArrowLeftOutlined, TeamOutlined, PlusOutlined,
@@ -29,64 +30,149 @@ function prefersReducedMotion() {
     window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 }
 
+// ── Tap-to-expand attachment lightbox (task 20260905-attachment-lightbox,
+// design gate §5/§6/§7) — a single shared overlay serving both the image and
+// gif branches of AttachmentContent below, per the design note's "one
+// ChatThread.jsx-local viewer" component shape. Portaled to document.body:
+// ChatThread renders inside .dockview-theme-abyss's .dv-groupview, whose own
+// backdrop-filter is confirmed (per global.css's .chat-overlay comment) to
+// silently suppress a descendant's independent backdrop-filter — the same
+// bug already fixed for .chat-overlay / .notes-filter-panel the same way.
+// No pinch/pan here (design gate §2 — out of scope for this pass); GIFs
+// restart from frame 0 via their own fresh <img> mount (design gate §3)
+// rather than sharing playback phase with the inline instance.
+function AttachmentLightbox({ kind, url, originX, originY, onClose }) {
+  const [closing, setClosing] = useState(false);
+  const reducedMotion = prefersReducedMotion();
+
+  const requestClose = useCallback(() => {
+    if (reducedMotion) {
+      onClose();
+      return;
+    }
+    setClosing(true);
+  }, [reducedMotion, onClose]);
+
+  useEffect(() => {
+    if (!closing) return undefined;
+    // Matches the exit-motion duration below (~200ms, faster than the
+    // ~280ms entrance per design gate §6's "exit faster than enter").
+    const timer = window.setTimeout(onClose, 200);
+    return () => window.clearTimeout(timer);
+  }, [closing, onClose]);
+
+  const style = {
+    '--lightbox-origin-x': `${originX ?? 50}%`,
+    '--lightbox-origin-y': `${originY ?? 50}%`,
+  };
+
+  return createPortal(
+    <div
+      className={`attachment-lightbox-overlay${closing ? ' attachment-lightbox-closing' : ''}`}
+      style={style}
+      onClick={requestClose}
+      role="dialog"
+      aria-modal="true"
+      aria-label={kind === 'gif' ? 'Expanded GIF attachment' : 'Expanded image attachment'}
+    >
+      <button
+        type="button"
+        className="attachment-lightbox-close"
+        onClick={requestClose}
+        aria-label="Close"
+      >
+        <CloseCircleFilled />
+      </button>
+      {/* Fresh mount (design gate §3) — a distinct instance from whatever
+          inline <img> triggered this, so an animated GIF always starts at
+          frame 0 rather than inheriting the inline element's playback phase. */}
+      <img
+        key={url}
+        src={url}
+        alt={kind === 'gif' ? 'GIF attachment, expanded' : 'Photo attachment, expanded'}
+        className="attachment-lightbox-media"
+      />
+    </div>,
+    document.body
+  );
+}
+
 // ── Per-kind attachment rendering inside the existing message bubble (design gate §4) ──
 function AttachmentContent({ message }) {
   const [videoPlaying, setVideoPlaying] = useState(false);
   const [gifTapped, setGifTapped] = useState(false);
   const [failed, setFailed] = useState(false);
+  // Lightbox state lifted one level above the per-kind branches (design gate
+  // §"Component shape") so a single lightbox instance serves both the image
+  // and gif branches of this same message, rather than duplicating overlay
+  // logic per attachment kind.
+  const [lightboxAttachment, setLightboxAttachment] = useState(null);
   const kind = message.attachmentKind;
   const meta = message.attachmentMeta || {};
 
+  // Approximates "expand from where you tapped" (design gate §6) off the
+  // triggering click's viewport position, without full geometry tracking —
+  // a cheap transform-origin bias rather than a shared-element/FLIP measurement.
+  const openLightbox = useCallback((openKind, url, event) => {
+    setLightboxAttachment({
+      kind: openKind,
+      url,
+      originX: event ? (event.clientX / window.innerWidth) * 100 : 50,
+      originY: event ? (event.clientY / window.innerHeight) * 100 : 50,
+    });
+  }, []);
+  const closeLightbox = useCallback(() => setLightboxAttachment(null), []);
+
   if (!kind) return null;
 
-  if (kind === 'image') {
-    if (failed || !message.attachmentUrl) {
-      return <div className="attachment-unavailable">Image unavailable</div>;
-    }
-    return (
-      <img
-        src={message.attachmentUrl}
-        alt="photo attachment"
-        className="attachment-media"
-        onError={() => setFailed(true)}
-      />
-    );
-  }
+  let content = null;
 
-  if (kind === 'video') {
+  if (kind === 'image') {
+    content = (failed || !message.attachmentUrl)
+      ? <div className="attachment-unavailable">Image unavailable</div>
+      : (
+        <img
+          src={message.attachmentUrl}
+          alt="photo attachment"
+          className="attachment-media attachment-media-expandable"
+          onError={() => setFailed(true)}
+          onClick={(e) => openLightbox('image', message.attachmentUrl, e)}
+        />
+      );
+  } else if (kind === 'video') {
     if (failed || !message.attachmentUrl) {
-      return <div className="attachment-unavailable">Video unavailable</div>;
-    }
-    if (videoPlaying) {
-      return (
+      content = <div className="attachment-unavailable">Video unavailable</div>;
+    } else if (videoPlaying) {
+      content = (
         // eslint-disable-next-line jsx-a11y/media-has-caption
         <video src={message.attachmentUrl} className="attachment-media" controls autoPlay onError={() => setFailed(true)} />
       );
+    } else {
+      content = (
+        <button
+          type="button"
+          className="attachment-media attachment-video-placeholder"
+          onClick={() => setVideoPlaying(true)}
+          aria-label="video attachment, tap to play"
+        >
+          <PlayCircleOutlined style={{ fontSize: 40, color: 'var(--gold)' }} />
+        </button>
+      );
     }
-    return (
-      <button
-        type="button"
-        className="attachment-media attachment-video-placeholder"
-        onClick={() => setVideoPlaying(true)}
-        aria-label="video attachment, tap to play"
-      >
-        <PlayCircleOutlined style={{ fontSize: 40, color: 'var(--gold)' }} />
-      </button>
-    );
-  }
-
-  if (kind === 'gif') {
+  } else if (kind === 'gif') {
     const playableUrl = meta.url || message.attachmentUrl;
     if (failed || !playableUrl) {
-      return <div className="attachment-unavailable">Image unavailable</div>;
-    }
-    // The one place reduced-motion changes default behavior, not just
-    // disables a decorative transition (design gate §4/§6) — browsers
-    // auto-loop an animated <img> gif with no OS-level pause mechanism, so
-    // this is handled at the app level: a static preview frame + tap-to-play
-    // affordance instead of the looping original.
-    if (prefersReducedMotion() && !gifTapped) {
-      return (
+      content = <div className="attachment-unavailable">Image unavailable</div>;
+    } else if (prefersReducedMotion() && !gifTapped) {
+      // The one place reduced-motion changes default behavior, not just
+      // disables a decorative transition (design gate §4/§6) — browsers
+      // auto-loop an animated <img> gif with no OS-level pause mechanism, so
+      // this is handled at the app level: a static preview frame + tap-to-play
+      // affordance instead of the looping original. The lightbox trigger
+      // below only fires once the GIF is already rendering (post-tap here,
+      // or immediately when motion is allowed) — per the design gate, this
+      // first tap starts inline playback, it doesn't open the lightbox.
+      content = (
         <button
           type="button"
           className="attachment-media attachment-gif-static"
@@ -97,13 +183,20 @@ function AttachmentContent({ message }) {
           <PlayCircleOutlined className="attachment-gif-play-badge" />
         </button>
       );
+    } else {
+      content = (
+        <img
+          src={playableUrl}
+          alt="GIF attachment"
+          className="attachment-media attachment-media-expandable"
+          onError={() => setFailed(true)}
+          onClick={(e) => openLightbox('gif', playableUrl, e)}
+        />
+      );
     }
-    return <img src={playableUrl} alt="GIF attachment" className="attachment-media" onError={() => setFailed(true)} />;
-  }
-
-  if (kind === 'file') {
+  } else if (kind === 'file') {
     const filename = meta.filename || 'File';
-    return (
+    content = (
       <a
         href={message.attachmentUrl || undefined}
         target="_blank" rel="noreferrer"
@@ -117,7 +210,88 @@ function AttachmentContent({ message }) {
     );
   }
 
-  return null;
+  if (!content) return null;
+
+  return (
+    <>
+      {content}
+      {lightboxAttachment && (
+        <AttachmentLightbox
+          kind={lightboxAttachment.kind}
+          url={lightboxAttachment.url}
+          originX={lightboxAttachment.originX}
+          originY={lightboxAttachment.originY}
+          onClose={closeLightbox}
+        />
+      )}
+    </>
+  );
+}
+
+// ── GIF picker grid cell (task 20260905-gif-picker-grid-polish, design gate
+// §1/§2/§4) ───────────────────────────────────────────────────────────────
+// A plain <img src={gif.preview_url}> already animates natively in-browser
+// (the backend's preview_url is confirmed to be an animated rendition, not
+// a "_still" variant — see gif_search.py's `_shape_giphy`/`_shape_tenor`),
+// so no treatment change is needed for standard playback beyond the fixed
+// 1:1 crop box in global.css. This component only adds: (a) an eased
+// opacity fade-in once the preview has a decoded frame to show, closing the
+// black-cell gap reported against the previous static-<img> grid, and (b) a
+// reduced-motion path, since CSS has no way to freeze frame advancement on
+// a plain animated <img> (that's the browser's own GIF decoder, not a CSS
+// animation) — a one-time canvas snapshot on load is the only client-side
+// way to present a genuinely static frame. Best-effort: if the provider's
+// CDN response taints the canvas (no permissive CORS headers), snapshotting
+// throws and this falls back to the plain animated <img> rather than
+// blocking the picker on it — respecting reduced motion here is a nice-to-
+// have relative to the picker's core job, not a hard requirement (design
+// gate §4). Deliberately no play-badge/tap-to-play affordance in the
+// reduced-motion state (unlike AttachmentContent's sent-GIF pattern): a
+// picker cell's whole tap target already means "select this GIF", so a
+// second overlaid affordance the tap doesn't perform would be misleading.
+function GifSheetCell({ gif, onPick }) {
+  const [loaded, setLoaded] = useState(false);
+  const [frozenSrc, setFrozenSrc] = useState(null);
+  const imgRef = useRef(null);
+  // Read once per mount rather than re-checking on every render — the grid
+  // is short-lived (a modal sheet) and the setting doesn't change mid-browse.
+  const reducedMotionRef = useRef(prefersReducedMotion());
+
+  const handleLoad = useCallback(() => {
+    setLoaded(true);
+    if (!reducedMotionRef.current || frozenSrc) return;
+    const imgEl = imgRef.current;
+    if (!imgEl) return;
+    try {
+      const canvas = document.createElement('canvas');
+      canvas.width = imgEl.naturalWidth || 1;
+      canvas.height = imgEl.naturalHeight || 1;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(imgEl, 0, 0);
+      setFrozenSrc(canvas.toDataURL());
+    } catch (err) {
+      // Tainted canvas (no permissive CORS on the provider's CDN response) —
+      // best-effort only, keep showing the plain animated <img> (design
+      // gate §4).
+    }
+  }, [frozenSrc]);
+
+  return (
+    <button
+      type="button"
+      className="gif-sheet-cell"
+      onClick={() => onPick(gif)}
+      aria-label="GIF result"
+    >
+      <img
+        ref={imgRef}
+        src={frozenSrc || gif.preview_url}
+        alt=""
+        className={loaded ? 'gif-sheet-cell-loaded' : undefined}
+        onLoad={handleLoad}
+      />
+    </button>
+  );
 }
 
 // ── GIF-search sheet (design gate §2) ────────────────────────────────────────
@@ -214,15 +388,11 @@ function GifSearchModal({ open, onClose, onSearchGifs, onBrowseGifs, onSelect })
   };
 
   const renderCell = (gif) => (
-    <button
-      type="button"
+    <GifSheetCell
       key={gif.id}
-      className="gif-sheet-cell"
-      onClick={() => { onSelect(gif); onClose(); }}
-      aria-label="GIF result"
-    >
-      <img src={gif.preview_url} alt="" />
-    </button>
+      gif={gif}
+      onPick={(picked) => { onSelect(picked); onClose(); }}
+    />
   );
 
   return (

@@ -92,6 +92,24 @@ rather than just disabling a decorative transition.
 Exactly one attachment is supported per message (no multi-file selection); a caption (`text`) can
 still ride alongside it. See `docs/api/overview.md`'s Attachments section for the wire contract.
 
+### Tap-to-expand lightbox (2026-09-05, web + iOS)
+
+Tapping a sent image or GIF attachment in the thread opens it in a full-screen lightbox: a
+blurred/dimmed backdrop with the media enlarged and centered, dismissible by tapping the backdrop,
+tapping the media itself, or an always-visible close button (no confirmation needed — this isn't a
+destructive action). The media scales and fades into view (faster on the way out than in), and the
+transition is skipped outright under `prefers-reduced-motion` / iOS's Reduce Motion setting rather
+than merely shortened. A GIF opened this way restarts its animation from the first frame rather
+than syncing to whatever phase it was already playing inline. There's no pinch/pan zoom in this
+pass — the lightbox is a bigger fit-to-screen view, not an interactive zoom/pan viewer — and the
+caption/sender label stay in the underlying bubble rather than duplicating into the overlay. Video
+attachments are unaffected; they keep their existing tap-to-play behavior.
+
+On iOS the lightbox presents via `fullScreenCover` (covering the tab bar and all chrome) over a
+material + warm-tint backdrop matching the app's existing "glass" surfaces elsewhere. It applies at
+every current call site (`AttachmentContentView`'s image and GIF branches, used from the one
+message-bubble list in `MessageGroupRow`).
+
 ---
 
 ## Study Sessions & Calls (2026-09-04)
