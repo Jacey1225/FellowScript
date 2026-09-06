@@ -14,6 +14,7 @@ Run:  cd api && ../.venv/bin/python tests/test_free_limits.py
 """
 
 import _pathfix  # noqa: F401
+import _fake_timeline  # noqa: F401
 
 import uuid
 from fastapi import FastAPI

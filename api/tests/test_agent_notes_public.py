@@ -27,6 +27,7 @@ test_commit_heartbeat_notes_cap.py) so no real LLM call is made.
 Run: cd api && ../.venv/bin/python tests/test_agent_notes_public.py
 """
 import _pathfix  # noqa: F401
+import _fake_timeline  # noqa: F401
 
 import uuid
 

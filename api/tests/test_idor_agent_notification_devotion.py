@@ -50,6 +50,7 @@ import sys
 import uuid
 
 import _pathfix  # noqa: F401,E402
+import _fake_timeline  # noqa: F401,E402
 
 os.environ.setdefault("AWS_EC2_METADATA_DISABLED", "true")
 os.environ.setdefault("AWS_ACCESS_KEY_ID", "dummy")
