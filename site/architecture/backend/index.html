@@ -1215,7 +1215,7 @@
 <tr>
 <td><code>AgentManager</code></td>
 <td><code>agent.py</code></td>
-<td>AI agent config, heartbeat events</td>
+<td>AI agent config, heartbeat events, heartbeat timeline-instruction planning (2026-09-06)</td>
 </tr>
 <tr>
 <td><code>FilterManager</code></td>
@@ -1485,7 +1485,7 @@
 - <code>friend_list</code> — <code>user_id</code>, <code>friend_id</code></p>
 <p><strong>Level 2 (FK → Level 1)</strong>
 - <code>note_verses</code> — <code>note_id</code>, <code>position</code>, <code>book</code>, <code>chapter</code>, <code>verse</code>
-- <code>agent_heartbeats</code> — <code>_id</code>, <code>user_id</code>, <code>last_fired</code>
+- <code>agent_heartbeats</code> — <code>_id</code>, <code>user_id</code>, <code>last_fired</code>, <code>timeline_instruction</code>
 - <code>message_recipients</code> — <code>message_id</code>, <code>recipient_id</code></p>
 <hr />
 <h2 id="background-scheduler">Background Scheduler</h2>
@@ -1543,6 +1543,7 @@
 </tbody>
 </table>
 <p>Heartbeat (AI agent event) firing is now scheduled <strong>server-side</strong> by <code>_fire_due_heartbeats</code> above — it fires on time whether or not any client has the app open. The former client-side trigger, iOS's <code>HeartbeatScheduler</code> (<code>scheduleAll</code>/<code>checkAndFire</code>, polled on <code>scenePhase</code> foreground), was removed in full (2026-09-01); <code>commit_heartbeat</code> itself is unchanged and still does the actual generation/persistence work, just no longer reachable from iOS.</p>
+<p><strong>Heartbeat timeline instructions (2026-09-06).</strong> Each heartbeat's future note content is now planned upfront rather than deduped reactively — see <a href="../data/#agents-agent_heartbeats"><code>agent_heartbeats.timeline_instruction</code></a> for the storage shape. <code>AgentManager.add_heartbeat</code> calls a dedicated timeline-planning LLM prompt (<code>backend/interactions/timeline_prompt.txt</code>, distinct from the note-writing agent's own <code>agent_prompt.txt</code>) synchronously at creation time — a heartbeat row is never inserted without a timeline, and generation failure (<code>TimelineGenerationError</code>, mapped to a <code>502</code> by an app-wide handler in <code>main.py</code>) aborts the whole create. At fire time, <code>commit_hb_response</code>/<code>_commit_hb_response_forced</code> call <code>AgentManager.ensure_current_timeline</code> immediately after winning their respective fire claim (the unforced path's <code>last_fired</code> UPDATE, or the forced path's advisory lock) — this regenerates the plan only if it's missing or its window has elapsed, informed by the outgoing plan's <code>coverage_summary</code> so the new window doesn't repeat old content, and is safe against two racing fires since only the claim-winner ever reaches it. <code>update_heartbeat</code> nulls <code>timeline_instruction</code> whenever <code>timestamps</code> changes, so a schedule edit falls through to the same lazy regeneration path on the heartbeat's next fire. <code>_generate_and_save_note</code> reads that day's specific instruction off the current timeline instead of the old <code>agentic_context</code>-backed CHAPTERS/VERSES/THEME aggregate, which was removed in full along with <code>AgentManager.save_context</code>/<code>get_context</code> and <code>scripts/migrate_agentic_context_categories.py</code>.</p>
 <h3 id="backendinteractionsbible_textpy"><code>backend/interactions/bible_text.py</code></h3>
 <p>In-process, lazily-loaded lookup over a bundled static copy of <code>bible.json</code> (the same asset the iOS Bible reader ships, copied into <code>api/backend/interactions/bible_data/bible.json</code>) — no database table, no outbound network call, since the content never changes at runtime. Exposes <code>verse_text(book, chapter, verse) -&gt; str | None</code> (parses a chapter's flowing-text blob into per-verse strings on first access, cached after) and <code>parse_highlight_key(key) -&gt; (book, chapter, verse) | None</code> (splits a <code>highlights.key</code> value back into its parts). Both return <code>None</code> on any miss rather than raising; callers (the friend-went-active push job, <code>FriendsManager.get_friend_activity</code>) fall back to reference-only or fully generic text.</p>
 

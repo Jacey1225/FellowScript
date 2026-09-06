@@ -31,7 +31,7 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from db import DBManager, BACKUP_DB_NAME, _connect, create_tables
-from backend.errors import SaveFailedError
+from backend.errors import SaveFailedError, TimelineGenerationError
 from backend.rate_limiting import get_client_ip, limiter
 from backend.interactions.helpers import load_users_data, save_users_data, save_user_row
 from backend.interactions.attachments import generate_download_url, delete_object
@@ -173,6 +173,24 @@ async def _save_failed_handler(request: Request, exc: SaveFailedError) -> JSONRe
 
 
 app.add_exception_handler(SaveFailedError, _save_failed_handler)
+
+
+async def _timeline_generation_failed_handler(request: Request, exc: TimelineGenerationError) -> JSONResponse:
+    """App-wide handler for the timeline-planning agent's own bounded-retry
+    exhaustion (task 20260906-heartbeat-timeline-instructions). Registered
+    the same way as ``_save_failed_handler`` above -- the only caller that
+    lets this propagate this far uncaught is ``AgentManager.add_heartbeat``
+    (an initial-generation failure means no heartbeat row was created at
+    all); ``commit_hb_response``/``_commit_hb_response_forced`` catch this
+    themselves at fire time instead, to unwind their own claim/lock first.
+    502, not 503: this is an upstream (LLM) failure, not a local write
+    failure, mirroring ``summarize_session``'s existing 502 for the same
+    OpenRouter-call-failed case.
+    """
+    return JSONResponse(status_code=502, content={"detail": exc.message})
+
+
+app.add_exception_handler(TimelineGenerationError, _timeline_generation_failed_handler)
 
 app.add_middleware(
     CORSMiddleware,

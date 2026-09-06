@@ -65,7 +65,7 @@ All business logic lives here in `*Manager` classes that subclass `DBManager`. R
 | `GroupsManager` | `groups.py` | Create/join/leave groups, add members |
 | `FriendsManager` | `friends.py` | Friend requests, friend list, remove, friend-activity read surface (`get_friend_activity`) |
 | `DevotionManager` | `devotion.py` | Devotion plans, participants, progress |
-| `AgentManager` | `agent.py` | AI agent config, heartbeat events |
+| `AgentManager` | `agent.py` | AI agent config, heartbeat events, heartbeat timeline-instruction planning (2026-09-06) |
 | `FilterManager` | `filtering.py` | Note filtering by book, date, user, title |
 | `SortingManager` | `sorting.py` | Note sorting by timestamp |
 
@@ -210,7 +210,7 @@ Unlike other managers, `BackupManager` doesn't subclass `DBManager` directly —
 
 **Level 2 (FK → Level 1)**
 - `note_verses` — `note_id`, `position`, `book`, `chapter`, `verse`
-- `agent_heartbeats` — `_id`, `user_id`, `last_fired`
+- `agent_heartbeats` — `_id`, `user_id`, `last_fired`, `timeline_instruction`
 - `message_recipients` — `message_id`, `recipient_id`
 
 ---
@@ -233,6 +233,8 @@ The former `_fire_due_notifications` job (fired user-authored "agentic" notifica
 | `_fire_due_session_reminders` | every `SESSION_REMINDER_POLL_INTERVAL_SECONDS` (60s, 2026-09-04) | Scans `devotions` for any session whose `time_start` (absolute TIMESTAMPTZ) has passed and hasn't been reminded yet, atomically claims it (`UPDATE devotions SET reminder_sent_at = NOW() WHERE reminder_sent_at IS NULL`), then pushes every resolved member (`DevotionManager.resolve_members` — creator, participants, and the group/DM roster, the same membership concept `is_authorized` already encodes). One-shot dedup via `reminder_sent_at`, not a rolling time window — see [`devotions.reminder_sent_at`](data.md#devotions). |
 
 Heartbeat (AI agent event) firing is now scheduled **server-side** by `_fire_due_heartbeats` above — it fires on time whether or not any client has the app open. The former client-side trigger, iOS's `HeartbeatScheduler` (`scheduleAll`/`checkAndFire`, polled on `scenePhase` foreground), was removed in full (2026-09-01); `commit_heartbeat` itself is unchanged and still does the actual generation/persistence work, just no longer reachable from iOS.
+
+**Heartbeat timeline instructions (2026-09-06).** Each heartbeat's future note content is now planned upfront rather than deduped reactively — see [`agent_heartbeats.timeline_instruction`](data.md#agents-agent_heartbeats) for the storage shape. `AgentManager.add_heartbeat` calls a dedicated timeline-planning LLM prompt (`backend/interactions/timeline_prompt.txt`, distinct from the note-writing agent's own `agent_prompt.txt`) synchronously at creation time — a heartbeat row is never inserted without a timeline, and generation failure (`TimelineGenerationError`, mapped to a `502` by an app-wide handler in `main.py`) aborts the whole create. At fire time, `commit_hb_response`/`_commit_hb_response_forced` call `AgentManager.ensure_current_timeline` immediately after winning their respective fire claim (the unforced path's `last_fired` UPDATE, or the forced path's advisory lock) — this regenerates the plan only if it's missing or its window has elapsed, informed by the outgoing plan's `coverage_summary` so the new window doesn't repeat old content, and is safe against two racing fires since only the claim-winner ever reaches it. `update_heartbeat` nulls `timeline_instruction` whenever `timestamps` changes, so a schedule edit falls through to the same lazy regeneration path on the heartbeat's next fire. `_generate_and_save_note` reads that day's specific instruction off the current timeline instead of the old `agentic_context`-backed CHAPTERS/VERSES/THEME aggregate, which was removed in full along with `AgentManager.save_context`/`get_context` and `scripts/migrate_agentic_context_categories.py`.
 
 ### `backend/interactions/bible_text.py`
 

@@ -48,6 +48,7 @@ suite that runs after it.
 Run:  cd api && ../.venv/bin/python tests/test_heartbeats_notes_public_self_heal.py
 """
 import _pathfix  # noqa: F401
+import _fake_timeline  # noqa: F401
 
 import os
 import uuid

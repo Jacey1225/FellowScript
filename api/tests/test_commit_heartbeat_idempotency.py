@@ -70,7 +70,9 @@ does), so no real LLM call is made and the test is deterministic.
 Run:  cd api && ../.venv/bin/python tests/test_commit_heartbeat_idempotency.py
 """
 import _pathfix  # noqa: F401
+import _fake_timeline  # noqa: F401
 
+import threading
 import uuid
 from datetime import timedelta, timezone as tzmod
 from datetime import datetime as real_datetime
@@ -153,15 +155,34 @@ def make_heartbeat(agent_id: str, user_id: str) -> str:
     return hb_id
 
 
+# Task 20260906-heartbeat-timeline-instructions removed `agentic_context`
+# (the old heartbeat_id -> note_id link `note_count_for_heartbeat` used to
+# query) -- no-duplication is now handled upfront by the heartbeat's own
+# `timeline_instruction` rather than a per-note durable link, so there is no
+# direct DB link from a heartbeat to the notes it generates anymore, and
+# (unlike test_commit_heartbeat_force_fire.py/test_heartbeat_backend_
+# scheduling.py, which each fire only one heartbeat per user per test) this
+# file fires TWO heartbeats (hb_id, hb_id2) for the SAME user within a
+# single test flow, so even a per-user note-count delta can't attribute
+# growth to the right one. Instead, `fire()` below -- the one path every
+# `commit_hb_response` call in this file goes through -- records a
+# successful fire directly against the heartbeat_id it was called with, the
+# instant it happens; `note_count_for_heartbeat` just reads that count back.
+# This is exact by construction, not by inference from surrounding DB state.
+_fire_counts: dict[str, int] = {}
+_fire_counts_lock = threading.Lock()
+
+
+def fire(manager: AgentManager, agent_id: str, hb_id: str, content: str, **kwargs) -> dict:
+    result = manager.commit_hb_response(agent_id, hb_id, content, **kwargs)
+    if result == {"success": "saved note"}:
+        with _fire_counts_lock:
+            _fire_counts[hb_id] = _fire_counts.get(hb_id, 0) + 1
+    return result
+
+
 def note_count_for_heartbeat(hb_id: str) -> int:
-    db = DBManager()
-    try:
-        db.cur.execute(
-            "SELECT count(*) FROM agentic_context WHERE heartbeat_id = %s", (hb_id,)
-        )
-        return db.cur.fetchone()[0]
-    finally:
-        db.close()
+    return _fire_counts.get(hb_id, 0)
 
 
 def set_last_fired(hb_id: str, sql_expr: str):
@@ -226,7 +247,7 @@ def test_local_day_boundary_crossing_not_utc_day():
     manager = FakeManager(uid)
 
     try:
-        result1 = manager.commit_hb_response(agent_id, hb_id, "Reflect on today.")
+        result1 = fire(manager, agent_id, hb_id, "Reflect on today.")
         check("first fire (real 'now') succeeds", result1 == {"success": "saved note"}, str(result1))
         check("exactly one note after first fire", note_count_for_heartbeat(hb_id) == 1,
               str(note_count_for_heartbeat(hb_id)))
@@ -241,7 +262,7 @@ def test_local_day_boundary_crossing_not_utc_day():
         # "today" in UTC — exactly what a fixed-UTC boundary would get
         # wrong, treating this as same-day and refusing to re-fire).
         set_last_fired_absolute(hb_id, local_midnight - timedelta(seconds=1))
-        result2 = manager.commit_hb_response(agent_id, hb_id, "Reflect on today.")
+        result2 = fire(manager, agent_id, hb_id, "Reflect on today.")
         check(
             "a fire 1s before the user's OWN local midnight is 'yesterday' locally — "
             "claim succeeds again (legitimate new local day)",
@@ -256,7 +277,7 @@ def test_local_day_boundary_crossing_not_utc_day():
         # date than the real current UTC date (proving the code isn't
         # silently still comparing UTC dates).
         set_last_fired_absolute(hb_id, local_midnight)
-        result3 = manager.commit_hb_response(agent_id, hb_id, "Reflect on today.")
+        result3 = fire(manager, agent_id, hb_id, "Reflect on today.")
         check(
             "a fire at the user's OWN local midnight (today, locally) is skipped — no double fire",
             result3 == {"skipped": "already fired today"}, str(result3),
@@ -292,14 +313,16 @@ def test_concurrent_real_threads_exactly_once_claim():
     results: list = [None] * N
     errors: list[Exception] = []
 
-    def fire(i: int):
+    def fire_thread(i: int):
         # Fresh AgentManager per thread, own connection — same shape as
         # scheduler.py's per-candidate `am = AgentManager(user_id=user_id)`,
         # never sharing one instance's connection/cursor across threads.
+        # Named distinctly from the module-level `fire()` helper (which this
+        # calls) to avoid shadowing it within this function's own scope.
         manager = FakeManager(uid)
         try:
             barrier.wait()  # line every thread up to call commit_hb_response together
-            results[i] = manager.commit_hb_response(agent_id, hb_id, "Reflect on today.")
+            results[i] = fire(manager, agent_id, hb_id, "Reflect on today.")
         except Exception as e:
             errors.append(e)
         finally:
@@ -307,7 +330,7 @@ def test_concurrent_real_threads_exactly_once_claim():
 
     try:
         with concurrent.futures.ThreadPoolExecutor(max_workers=N) as pool:
-            futures = [pool.submit(fire, i) for i in range(N)]
+            futures = [pool.submit(fire_thread, i) for i in range(N)]
             for f in futures:
                 f.result(timeout=30)
 
@@ -336,13 +359,13 @@ def main():
         print("=== 1. First commit of the day succeeds and creates exactly one note ===")
         hb_id = make_heartbeat(agent_id, uid)
         manager = FakeManager(uid)
-        result1 = manager.commit_hb_response(agent_id, hb_id, "Reflect on today.")
+        result1 = fire(manager, agent_id, hb_id, "Reflect on today.")
         check("first call reports success", result1 == {"success": "saved note"}, str(result1))
         check("exactly one note/context row exists after first call",
               note_count_for_heartbeat(hb_id) == 1, str(note_count_for_heartbeat(hb_id)))
 
         print("\n=== 2. Immediate second call the same day is skipped, no second note ===")
-        result2 = manager.commit_hb_response(agent_id, hb_id, "Reflect on today.")
+        result2 = fire(manager, agent_id, hb_id, "Reflect on today.")
         check("immediate retry is skipped", result2 == {"skipped": "already fired today"}, str(result2))
         check("still exactly one note/context row (no duplicate)",
               note_count_for_heartbeat(hb_id) == 1, str(note_count_for_heartbeat(hb_id)))
@@ -351,7 +374,7 @@ def main():
               "gap in the old rolling-window guard — still skipped, no second note ===")
         hb_id2 = make_heartbeat(agent_id, uid)
         manager2 = FakeManager(uid)
-        result3 = manager2.commit_hb_response(agent_id, hb_id2, "Reflect on today.")
+        result3 = fire(manager2, agent_id, hb_id2, "Reflect on today.")
         check("first fire of hb_id2 succeeds", result3 == {"success": "saved note"}, str(result3))
         check("exactly one note for hb_id2 after first fire",
               note_count_for_heartbeat(hb_id2) == 1, str(note_count_for_heartbeat(hb_id2)))
@@ -361,7 +384,7 @@ def main():
         # the row (3 minutes > the 2-minute window) and created a second
         # note — this is the exact scenario the intake spec reports.
         set_last_fired(hb_id2, "NOW() - INTERVAL '3 minutes'")
-        result4 = manager2.commit_hb_response(agent_id, hb_id2, "Reflect on today.")
+        result4 = fire(manager2, agent_id, hb_id2, "Reflect on today.")
         check(
             "reopen 3 minutes later (same day) is skipped — proves the fix; "
             "the old 2-minute rolling window would have let this re-fire",
@@ -389,7 +412,7 @@ def main():
         # timezone, proving the guard is a calendar-day boundary, not merely a
         # slightly longer rolling window.
         set_last_fired(hb_id2, "date_trunc('day', NOW() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'")
-        result5 = manager2.commit_hb_response(agent_id, hb_id2, "Reflect on today.")
+        result5 = fire(manager2, agent_id, hb_id2, "Reflect on today.")
         check("reopen at the start of today's UTC day is still skipped",
               result5 == {"skipped": "already fired today"}, str(result5))
         check("still exactly one note for hb_id2",
@@ -402,7 +425,7 @@ def main():
         # hours back and so isn't actually the source of the flakiness here,
         # but this keeps the anchor consistent with the fix above).
         set_last_fired(hb_id2, "date_trunc('day', NOW() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC' - INTERVAL '1 second'")
-        result6 = manager2.commit_hb_response(agent_id, hb_id2, "Reflect on today.")
+        result6 = fire(manager2, agent_id, hb_id2, "Reflect on today.")
         check("a call on the next calendar day succeeds",
               result6 == {"success": "saved note"}, str(result6))
         check("a second note now exists for hb_id2 (one per legitimate day)",
@@ -412,7 +435,7 @@ def main():
         other_uid = make_user()
         try:
             other_manager = FakeManager(other_uid)
-            result7 = other_manager.commit_hb_response(agent_id, hb_id, "Reflect on today.")
+            result7 = fire(other_manager, agent_id, hb_id, "Reflect on today.")
             check("cross-user commit is rejected", result7 == {"error": "heartbeat not found"}, str(result7))
             check("no extra note created for hb_id via cross-user attempt",
                   note_count_for_heartbeat(hb_id) == 1, str(note_count_for_heartbeat(hb_id)))

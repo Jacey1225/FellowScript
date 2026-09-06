@@ -78,6 +78,15 @@ def make_heartbeat(agent_id: str, user_id: str) -> str:
     return hb_id
 
 
+def _total_notes_for_user(user_id: str) -> int:
+    db = DBManager()
+    try:
+        db.cur.execute("SELECT count(*) FROM notes WHERE user_id = %s", (user_id,))
+        return db.cur.fetchone()[0]
+    finally:
+        db.close()
+
+
 def cleanup(user_id: str):
     db = DBManager()
     try:
@@ -135,18 +144,21 @@ def main():
                 type(self).calls += 1
                 return '{"__action": "create_note", "title": broken}'  # has braces, fails json.loads
 
+        notes_before_hb2 = _total_notes_for_user(uid)
         result2 = AlwaysInvalidManager(uid)._generate_and_save_note(agent_id, hb2, "Reflect.")
         check("gives up with the original error shape after exhausting the cap",
               result2 == {"error": "invalid response"}, str(result2))
         check("called _call_api exactly _HB_JSON_PARSE_MAX_ATTEMPTS times -- never more, never fewer",
               AlwaysInvalidManager.calls == _HB_JSON_PARSE_MAX_ATTEMPTS, str(AlwaysInvalidManager.calls))
 
-        db = DBManager()
-        db.cur.execute(
-            "SELECT 1 FROM agentic_context WHERE heartbeat_id = %s", (hb2,)
-        )
-        check("no context/note was linked for the exhausted-retry heartbeat", db.cur.fetchone() is None)
-        db.close()
+        # Task 20260906-heartbeat-timeline-instructions removed
+        # `agentic_context` (the old heartbeat_id -> note_id link this used
+        # to query) -- no direct DB link from a heartbeat to its notes
+        # exists anymore, so "no note was linked" is now "the user's total
+        # note count didn't grow" (hb1's earlier success already put one
+        # note in the table, so this must be a delta, not a bare-zero check).
+        check("no note was created for the exhausted-retry heartbeat",
+              _total_notes_for_user(uid) == notes_before_hb2, str(_total_notes_for_user(uid)))
 
         print("\n=== 3. Never has JSON braces at all (malformed-braces branch) -> same bounded retry ===")
         hb3 = make_heartbeat(agent_id, uid)

@@ -231,16 +231,16 @@ def create_tables(cur):
         "timestamp TIMESTAMPTZ DEFAULT NOW())"
     )
     cur.execute("ALTER TABLE notes ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()")
-    # Backs the heartbeat-context restructure (CHAPTERS/VERSES/THEME):
     # AgentManager.note_via_hb persists the LLM's self-reported "theme"
-    # field here per note (see agent_prompt.txt's create_note schema).
-    # get_context() reads it back live, joined through agentic_context's
-    # heartbeat_id -> note_id link, rather than maintaining a separate
-    # written-to THEME cache that could drift from the notes it
-    # summarizes. Manually-created notes (routes/notes.py) simply leave
-    # this at its default -- theme is only meaningful for heartbeat-
-    # generated notes, which are the only ones fed back into a future
-    # heartbeat's context.
+    # field here per note (see agent_prompt.txt's create_note schema), kept
+    # as recorded metadata about the note. As of task
+    # 20260906-heartbeat-timeline-instructions, heartbeat no-duplication is
+    # driven upfront by `agent_heartbeats.timeline_instruction`'s per-day
+    # plan rather than a live-recomputed aggregate of past notes' themes --
+    # this column is no longer read back by anything (the old
+    # `agentic_context`-joined get_context() aggregate it fed was removed
+    # along with that table). Manually-created notes (routes/notes.py)
+    # simply leave this at its default.
     cur.execute("ALTER TABLE notes ADD COLUMN IF NOT EXISTS theme TEXT DEFAULT ''")
     # Speeds up the free-tier weekly note count (LimitsManager).
     cur.execute(
@@ -463,7 +463,31 @@ def create_tables(cur):
         # (or a call from a not-yet-updated client, which
         # AgentManager.add_heartbeat backfills with a server-generated key
         # that provides no dedup protection) isn't rejected by this ALTER.
-        "idempotency_key TEXT)"
+        "idempotency_key TEXT,"
+        # Task 20260906-heartbeat-timeline-instructions: replaces the old
+        # `agentic_context` table + AgentManager.save_context/get_context
+        # entirely. A single JSON-encoded string (not a separate table --
+        # see the user's 2026-09-06 amendment to that task's spec) holding
+        # this heartbeat's current up-to-31-day content plan:
+        # {"window_start": "<ISO date>", "days": {"<offset>": "<instruction>",
+        # ...}, "coverage_summary": "<rolling digest>"}. `days` is keyed by
+        # WINDOW-OFFSET (0..30, calendar days elapsed since window_start),
+        # one entry per offset this row's `timestamps` fires on -- not by
+        # day-of-month, since a 31-day window crossing a short month
+        # revisits day-of-month values a day-of-month key couldn't
+        # represent without collision. `coverage_summary` is what carries
+        # no-duplication context across window rollovers now that only the
+        # current window is kept (see AgentManager.ensure_current_timeline).
+        # NULL means "no current timeline" -- generate a fresh one on this
+        # heartbeat's next fire (AgentManager.ensure_current_timeline):
+        # either it predates this feature, its window has elapsed, or
+        # update_heartbeat nulled it out because `timestamps` changed since
+        # it was built. Set atomically with the row's own INSERT by
+        # add_heartbeat (a heartbeat is never created without one), and
+        # overwritten only by a single UPDATE once a regeneration succeeds
+        # -- a failed regeneration attempt leaves this column's existing
+        # value completely untouched.
+        "timeline_instruction TEXT)"
     )
     # Migrations for databases created before these columns existed.
     cur.execute(
@@ -477,6 +501,9 @@ def create_tables(cur):
     )
     cur.execute(
         "ALTER TABLE agent_heartbeats ADD COLUMN IF NOT EXISTS idempotency_key TEXT"
+    )
+    cur.execute(
+        "ALTER TABLE agent_heartbeats ADD COLUMN IF NOT EXISTS timeline_instruction TEXT"
     )
     # A UNIQUE index, not a plain column-level UNIQUE constraint: uniqueness
     # is scoped to the (user_id, agent_id, idempotency_key) triple, not to
@@ -580,8 +607,9 @@ def create_tables(cur):
         "guilt_reminder_sent_at TIMESTAMPTZ)"
     )
     # CREATE TABLE IF NOT EXISTS above doesn't retroactively add columns to
-    # an already-existing table (same precedent as agentic_context.note_id
-    # below), so this column needs its own idempotent ALTER. Which of
+    # an already-existing table (same precedent as agent_heartbeats.
+    # timeline_instruction above), so this column needs its own idempotent
+    # ALTER. Which of
     # note_created / note_edited / verse_highlighted (see
     # backend/interactions/activity.py's NOTE_CREATED/NOTE_EDITED/
     # VERSE_HIGHLIGHTED constants) produced the current last_activity_at,
@@ -591,32 +619,15 @@ def create_tables(cur):
     # that generic text rather than failing the job.
     cur.execute("ALTER TABLE user_activity ADD COLUMN IF NOT EXISTS last_activity_type TEXT")
 
-    cur.execute(
-        "CREATE TABLE IF NOT EXISTS agentic_context"
-        "(_id UUID PRIMARY KEY NOT NULL,"
-        "heartbeat_id UUID REFERENCES agent_heartbeats(_id) ON DELETE CASCADE,"
-        "user_id UUID REFERENCES users(_id) ON DELETE CASCADE,"
-        # Which note this context summary was distilled from. Nullable since
-        # rows written before this column existed have no note to point at.
-        # ON DELETE CASCADE: deleting the note (from any path — the notes
-        # route, account deletion, or the Guideline 1.2 moderation CLI) must
-        # also remove its trace from the agent's future "previous context"
-        # prompts, not just the note itself.
-        "note_id UUID REFERENCES notes(_id) ON DELETE CASCADE,"
-        # Legacy free-text summary column, kept (not dropped) so pre-restructure
-        # rows remain readable by anything that still inspects it directly (e.g.
-        # a one-off audit query) and so the migrate_agentic_context_categories.py
-        # backfill script has the old data to read from. AgentManager.save_context
-        # no longer writes to it as of the CHAPTERS/VERSES/THEME restructure --
-        # this table's job now is purely the durable heartbeat_id -> note_id link;
-        # get_context() recomputes the CHAPTERS/VERSES/THEME aggregate live from
-        # notes + note_verses + notes.theme via that link on every read, rather
-        # than maintaining a second written-to cache that could drift from the
-        # notes it summarizes.
-        "context TEXT[] DEFAULT '{}')"
-    )
-    cur.execute("ALTER TABLE agentic_context ADD COLUMN IF NOT EXISTS note_id UUID REFERENCES notes(_id) ON DELETE CASCADE")
-    cur.execute("CREATE INDEX IF NOT EXISTS idx_agentic_context_note ON agentic_context(note_id)")
+    # `agentic_context` (and its `note_id` FK link into `notes`) was removed
+    # outright, task 20260906-heartbeat-timeline-instructions: it only ever
+    # held a durable heartbeat_id -> note_id link plus a live-recomputed
+    # CHAPTERS/VERSES/THEME aggregate, never source-of-truth data, and is
+    # fully superseded by `agent_heartbeats.timeline_instruction` (see that
+    # column's own comment above) -- no export/backfill was needed before
+    # dropping it. A database that still has the table from before this
+    # change keeps it (this file only ever CREATEs, never DROPs), but
+    # nothing in the app reads or writes it anymore.
 
     cur.execute(
         "CREATE TABLE IF NOT EXISTS subscription_request"

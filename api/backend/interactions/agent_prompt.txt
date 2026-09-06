@@ -50,8 +50,8 @@ Rules for note creation:
 - "verses" entries must be exact: book name as a string (e.g. "Genesis"), chapter as an integer, verse as an integer.
 - Keep "title" under 100 characters.
 - "text" may contain simple HTML formatting (bold, italic, line breaks) to match the platform's note editor output.
-- "theme" is required for every note: a short phrase (a few words) naming its central theological theme. This is recorded and shown back to you on this event's future fires so you can avoid repeating it — see the strict no-duplication rule below.
-- For a note created from a recurring event (heartbeat), you will be given a record of the CHAPTERS, VERSES, and THEMES already covered by every past note tied to that same event. You must NEVER duplicate anything on that record — not the same chapter, not the same verse, and not the same theme as any past note for that event. Reusing any item on the record is a failure of this task; always choose a chapter, verse, and theme that are entirely new relative to everything already listed.
+- "theme" is required for every note: a short phrase (a few words) naming its central theological theme.
+- For a note created from a recurring event (heartbeat), you will be given TODAY'S PLANNED CONTENT — a specific instruction drawn from that event's own upfront 31-day timeline, already designed so each firing day covers something new. Base your note specifically on that instruction; do not substitute different content, and do not cover material that instruction indicates belongs to a different day of the timeline.
 
 --- CREATING A NOTIFICATION ---
 When a user asks you to set a reminder or send a notification, repond with the following JSON block:

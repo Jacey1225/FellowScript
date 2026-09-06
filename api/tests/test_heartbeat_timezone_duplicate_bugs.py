@@ -72,6 +72,7 @@ alone, per Q28's concurrency-safety requirement):
 Run:  cd api && ../.venv/bin/python tests/test_heartbeat_timezone_duplicate_bugs.py
 """
 import _pathfix  # noqa: F401
+import _fake_timeline  # noqa: F401
 
 import os
 import threading

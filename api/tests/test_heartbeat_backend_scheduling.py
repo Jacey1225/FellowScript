@@ -100,6 +100,7 @@ regardless of wall-clock time.
 Run:  cd api && ../.venv/bin/python tests/test_heartbeat_backend_scheduling.py
 """
 import _pathfix  # noqa: F401,E402
+import _fake_timeline  # noqa: F401,E402
 
 import asyncio
 import importlib
@@ -240,9 +241,18 @@ def get_last_fired(hb_id: str):
 
 
 def note_count_for_heartbeat(hb_id: str) -> int:
+    """Total notes belonging to this heartbeat's owning user -- see the
+    identical helper's docstring in test_commit_heartbeat_force_fire.py for
+    why this replaces the old `agentic_context`-linked query (task
+    20260906-heartbeat-timeline-instructions removed that table). Every test
+    in this file creates exactly one heartbeat per user, so this is an exact
+    proxy for "notes this heartbeat generated"."""
     db = DBManager()
     try:
-        db.cur.execute("SELECT count(*) FROM agentic_context WHERE heartbeat_id = %s", (hb_id,))
+        db.cur.execute(
+            "SELECT count(*) FROM notes WHERE user_id = "
+            "(SELECT user_id FROM agent_heartbeats WHERE _id = %s)", (hb_id,)
+        )
         return db.cur.fetchone()[0]
     finally:
         db.close()
@@ -427,6 +437,11 @@ def test_notes_cap_blocks_server_side_firing():
     agent_id = make_agent(uid, name="Cap Agent")
     hb_id = make_heartbeat(agent_id, uid, due_timestamps_for(now, "14:00"))
     insert_notes(uid, 10)  # exactly at the free-plan cap
+    # `note_count_for_heartbeat` joins on this heartbeat's owning user_id --
+    # the 10 cap-seeding notes above are already "this heartbeat's owning
+    # user's notes" by that measure, so capture them as an explicit baseline
+    # here and assert against growth from it, not a bare zero.
+    notes_before_job = note_count_for_heartbeat(hb_id)
     set_device_token(uid, f"tok-{uid}")
     push = _CapturingPush()
     push_module.send_push = push
@@ -436,7 +451,7 @@ def test_notes_cap_blocks_server_side_firing():
         check("last_fired stays NULL -- the cap gate runs before the claim",
               get_last_fired(hb_id) is None, str(get_last_fired(hb_id)))
         check("no note was created for an at-cap user",
-              note_count_for_heartbeat(hb_id) == 0, str(note_count_for_heartbeat(hb_id)))
+              note_count_for_heartbeat(hb_id) == notes_before_job, str(note_count_for_heartbeat(hb_id)))
         check("no push was sent for a gated (non-)fire",
               not any(c[0] == f"tok-{uid}" for c in push.calls), str(push.calls))
     finally:

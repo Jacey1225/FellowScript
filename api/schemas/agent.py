@@ -45,8 +45,3 @@ class AgentMessages(BaseModel):
     timestamp: datetime = Field(default=datetime.now())
     user_id: str
     content: str = Field(default="")
-
-class AgenticContext(BaseModel):
-    heartbeat_id: str = Field(default="")
-    user_id: str = Field(default="")
-    context: list[str] = Field(default_factory=list)

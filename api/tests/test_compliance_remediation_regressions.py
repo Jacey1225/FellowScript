@@ -58,6 +58,7 @@ caught by a regression, not just a generic smoke test:
 Run with: cd api && ../.venv/bin/python tests/test_compliance_remediation_regressions.py
 """
 import _pathfix  # noqa: F401,E402
+import _fake_timeline  # noqa: F401,E402
 
 import os
 import uuid

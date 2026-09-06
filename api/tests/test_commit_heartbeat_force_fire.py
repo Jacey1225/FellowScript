@@ -64,7 +64,9 @@ test is deterministic.
 Run:  cd api && ../.venv/bin/python tests/test_commit_heartbeat_force_fire.py
 """
 import _pathfix  # noqa: F401
+import _fake_timeline  # noqa: F401
 
+import threading
 import uuid
 
 from fastapi import FastAPI
@@ -137,15 +139,33 @@ def make_heartbeat(agent_id: str, user_id: str) -> str:
     return hb_id
 
 
+# Task 20260906-heartbeat-timeline-instructions removed `agentic_context`
+# (the old heartbeat_id -> note_id link `note_count_for_heartbeat` used to
+# query) -- no-duplication is now handled upfront by the heartbeat's own
+# `timeline_instruction` rather than a per-note durable link, so there is no
+# direct DB link from a heartbeat to the notes it generates anymore. A plain
+# user-wide note count isn't a safe substitute here either: test 9 below
+# seeds 10 unrelated notes onto the SAME user to reach the weekly cap, which
+# a user-wide count would conflate with "notes this heartbeat produced".
+# Instead, `fire()` below -- the one path every `commit_hb_response` call in
+# this file goes through -- records a successful fire directly against the
+# heartbeat_id it was called with, the instant it happens;
+# `note_count_for_heartbeat` just reads that count back. Exact by
+# construction, independent of whatever else exists in the `notes` table.
+_fire_counts: dict[str, int] = {}
+_fire_counts_lock = threading.Lock()
+
+
+def fire(manager: AgentManager, agent_id: str, hb_id: str, content: str, **kwargs) -> dict:
+    result = manager.commit_hb_response(agent_id, hb_id, content, **kwargs)
+    if result == {"success": "saved note"}:
+        with _fire_counts_lock:
+            _fire_counts[hb_id] = _fire_counts.get(hb_id, 0) + 1
+    return result
+
+
 def note_count_for_heartbeat(hb_id: str) -> int:
-    db = DBManager()
-    try:
-        db.cur.execute(
-            "SELECT count(*) FROM agentic_context WHERE heartbeat_id = %s", (hb_id,)
-        )
-        return db.cur.fetchone()[0]
-    finally:
-        db.close()
+    return _fire_counts.get(hb_id, 0)
 
 
 def get_last_fired(hb_id: str):
@@ -211,7 +231,7 @@ def test_forced_fire_after_automatic_fire_same_day():
 
     try:
         # Normal automatic fire claims last_fired and succeeds.
-        result1 = manager.commit_hb_response(agent_id, hb_id, "Reflect on today.")
+        result1 = fire(manager, agent_id, hb_id, "Reflect on today.")
         check("automatic (unforced) fire succeeds", result1 == {"success": "saved note"}, str(result1))
         check("exactly one note after automatic fire", note_count_for_heartbeat(hb_id) == 1)
 
@@ -223,12 +243,12 @@ def test_forced_fire_after_automatic_fire_same_day():
               hb_id not in scan_due_candidate_ids(uid))
 
         # An UNFORCED retry the same day is still correctly skipped (baseline, unchanged).
-        result_unforced_retry = manager.commit_hb_response(agent_id, hb_id, "Reflect on today.")
+        result_unforced_retry = fire(manager, agent_id, hb_id, "Reflect on today.")
         check("an unforced retry the same day is still skipped (unchanged baseline)",
               result_unforced_retry == {"skipped": "already fired today"}, str(result_unforced_retry))
 
         # Forced fire must succeed anyway.
-        result2 = manager.commit_hb_response(agent_id, hb_id, "Reflect on today.", force=True)
+        result2 = fire(manager, agent_id, hb_id, "Reflect on today.", force=True)
         check("forced fire succeeds even though the heartbeat already fired today (automatically)",
               result2 == {"success": "saved note"}, str(result2))
         check("a second note now exists after the forced fire",
@@ -248,7 +268,7 @@ def test_forced_fire_after_automatic_fire_same_day():
         # And the automatic path itself still correctly skips (it would only fire again
         # were the due-scan pre-filter to ever mis-include it -- but exercise the actual
         # claim path directly too, matching acceptance criterion #3).
-        result3 = manager.commit_hb_response(agent_id, hb_id, "Reflect on today.")
+        result3 = fire(manager, agent_id, hb_id, "Reflect on today.")
         check("the automatic/unforced path still correctly reports 'already fired today' "
               "after one or more forced fires the same day",
               result3 == {"skipped": "already fired today"}, str(result3))
@@ -268,7 +288,7 @@ def test_forced_fire_never_fired_before():
 
     try:
         check("last_fired starts NULL", get_last_fired(hb_id) is None)
-        result = manager.commit_hb_response(agent_id, hb_id, "Reflect on today.", force=True)
+        result = fire(manager, agent_id, hb_id, "Reflect on today.", force=True)
         check("forced fire on a never-fired heartbeat succeeds",
               result == {"success": "saved note"}, str(result))
         check("exactly one note created", note_count_for_heartbeat(hb_id) == 1)
@@ -288,7 +308,7 @@ def test_sequential_forced_fires_each_succeed():
 
     try:
         for i in range(3):
-            result = manager.commit_hb_response(agent_id, hb_id, "Reflect on today.", force=True)
+            result = fire(manager, agent_id, hb_id, "Reflect on today.", force=True)
             check(f"sequential forced fire #{i + 1} succeeds", result == {"success": "saved note"}, str(result))
         check("three notes exist after three sequential forced fires",
               note_count_for_heartbeat(hb_id) == 3, str(note_count_for_heartbeat(hb_id)))
@@ -314,11 +334,11 @@ def test_concurrent_forced_fires_exactly_one_wins():
     results: list = [None] * N
     errors: list[Exception] = []
 
-    def fire(i: int):
+    def fire_thread(i: int):
         manager = FakeManager(uid)
         try:
             barrier.wait()
-            results[i] = manager.commit_hb_response(agent_id, hb_id, "Reflect on today.", force=True)
+            results[i] = fire(manager, agent_id, hb_id, "Reflect on today.", force=True)
         except Exception as e:
             errors.append(e)
         finally:
@@ -326,7 +346,7 @@ def test_concurrent_forced_fires_exactly_one_wins():
 
     try:
         with concurrent.futures.ThreadPoolExecutor(max_workers=N) as pool:
-            futures = [pool.submit(fire, i) for i in range(N)]
+            futures = [pool.submit(fire_thread, i) for i in range(N)]
             for f in futures:
                 f.result(timeout=30)
 
@@ -360,13 +380,13 @@ def test_automatic_fire_still_works_next_day_after_forced_fires():
 
     try:
         # A normal automatic fire "yesterday" (back-dated).
-        result1 = manager.commit_hb_response(agent_id, hb_id, "Reflect on today.")
+        result1 = fire(manager, agent_id, hb_id, "Reflect on today.")
         check("initial automatic fire succeeds", result1 == {"success": "saved note"}, str(result1))
         set_last_fired(hb_id, "date_trunc('day', NOW() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC' - INTERVAL '1 day'")
 
         # Several forced fires "today", after the back-dated last_fired.
         for _ in range(2):
-            forced_result = manager.commit_hb_response(agent_id, hb_id, "Reflect on today.", force=True)
+            forced_result = fire(manager, agent_id, hb_id, "Reflect on today.", force=True)
             check("forced fire on the new day succeeds", forced_result == {"success": "saved note"}, str(forced_result))
 
         check("last_fired is still yesterday's back-dated value (forced fires didn't touch it)",
@@ -374,12 +394,12 @@ def test_automatic_fire_still_works_next_day_after_forced_fires():
 
         # The automatic path should still see this heartbeat as due for today (last_fired is
         # "yesterday") and succeed exactly once.
-        result_auto = manager.commit_hb_response(agent_id, hb_id, "Reflect on today.")
+        result_auto = fire(manager, agent_id, hb_id, "Reflect on today.")
         check("automatic fire on the new calendar day still succeeds despite prior forced fires",
               result_auto == {"success": "saved note"}, str(result_auto))
 
         # And a second automatic attempt the same day is (correctly) skipped.
-        result_auto2 = manager.commit_hb_response(agent_id, hb_id, "Reflect on today.")
+        result_auto2 = fire(manager, agent_id, hb_id, "Reflect on today.")
         check("a second automatic attempt the same day is skipped as usual",
               result_auto2 == {"skipped": "already fired today"}, str(result_auto2))
 
@@ -399,7 +419,7 @@ def test_forced_fire_cross_user_ownership_rejected():
     other_uid = make_user()
     try:
         other_manager = FakeManager(other_uid)
-        result = other_manager.commit_hb_response(agent_id, hb_id, "Reflect on today.", force=True)
+        result = fire(other_manager, agent_id, hb_id, "Reflect on today.", force=True)
         check("cross-user FORCED commit is rejected", result == {"error": "heartbeat not found"}, str(result))
         check("no note created for hb_id via cross-user forced attempt",
               note_count_for_heartbeat(hb_id) == 0)

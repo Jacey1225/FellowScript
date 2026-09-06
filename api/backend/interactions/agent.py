@@ -6,7 +6,8 @@ import time
 import uuid
 import psycopg2
 from collections import deque
-from datetime import datetime
+from datetime import datetime, date, timedelta
+from zoneinfo import ZoneInfo
 from typing import Optional
 from schemas.agent import Agent, AgentMessages, AgentHeartbeats
 from schemas.users import Note
@@ -14,7 +15,7 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 from db import DBManager
-from backend.errors import SaveFailedError
+from backend.errors import SaveFailedError, TimelineGenerationError
 from backend.interactions.groups import GroupsManager
 from fastapi import WebSocket
 from starlette.websockets import WebSocketDisconnect
@@ -32,6 +33,14 @@ HEADERS   = {
 }
 
 PROMPT = (Path(__file__).parent / "agent_prompt.txt").read_text(encoding="utf-8").strip()
+
+# System prompt for the dedicated timeline-planning agent (task
+# 20260906-heartbeat-timeline-instructions) -- a separate, purpose-built
+# prompt from PROMPT/agent_role above: this agent plans WHAT a heartbeat's
+# future notes should cover, it never writes a note itself. Externalized to
+# its own file for the same maintainability reason PROMPT is (easy to tune
+# without touching this module).
+TIMELINE_PROMPT = (Path(__file__).parent / "timeline_prompt.txt").read_text(encoding="utf-8").strip()
 
 # Per-connection cap on the agent chat WebSocket: every HTTP write on
 # agent_router is gated by check_limit's free-tier caps, but connect_agent's
@@ -52,6 +61,23 @@ _CHAT_RATE_LIMIT_WINDOW_SECONDS = 60.0
 # a separate "retries" + "backoff" pair until that's actually needed.
 _HB_JSON_PARSE_MAX_ATTEMPTS = 3
 
+# Bounded retry cap for the timeline-planning agent's own JSON-parse/shape-
+# validation failure path (AgentManager._generate_timeline_days), mirroring
+# _HB_JSON_PARSE_MAX_ATTEMPTS above -- same "confirmed intermittent
+# output-formatting noise" precedent, same total-attempt-count semantics.
+_TIMELINE_JSON_PARSE_MAX_ATTEMPTS = 3
+
+# Named per Configuration Philosophy Q1/Q13 (proactive configuration for a
+# foreseeable, currently-hardcoded literal) rather than a bare "31" -- this
+# is the maximum span (in days) a single `agent_heartbeats.timeline_instruction`
+# window covers, matching AgentHeartbeats.timestamps' fixed 31-slot
+# day-of-month array. Not split into a separate "days-of-month array size"
+# constant per Q14 (don't over-configure beyond what's concretely
+# foreseeable): the two happen to share a value today because a calendar
+# month is at most 31 days, but timestamps' array size is a day-of-month
+# indexing choice, not itself a window-length choice.
+TIMELINE_WINDOW_DAYS = 31
+
 
 class AgentManager(DBManager):
     def __init__(self, user_id: str):
@@ -61,7 +87,6 @@ class AgentManager(DBManager):
         self.hb_table      = "agent_heartbeats"
         self.msg_table     = "agent_messages"
         self.note_table    = "notes"
-        self.context_table = "agentic_context"
 
     # ── Agent CRUD ────────────────────────────────────────────────────────────
 
@@ -148,7 +173,23 @@ class AgentManager(DBManager):
             idempotency-key collision (a real DB error); callers must
             treat that as a genuine failure (see SaveFailedError), not a
             silent no-op.
+
+        Raises:
+            TimelineGenerationError: if the initial `timeline_instruction`
+                (task 20260906-heartbeat-timeline-instructions) can't be
+                generated after retries -- deliberately raised BEFORE the
+                INSERT below (and outside its own try/except) so no
+                heartbeat row is ever created without a timeline: a
+                heartbeat that exists but has no content plan is not a
+                degraded-but-usable state per the spec's propagate-errors
+                preference (Q27), it's a state that must never occur.
         """
+        window_start = self._local_date()
+        firing_offsets = self._firing_offsets(heartbeat.timestamps, window_start)
+        planned = self._generate_timeline_days(heartbeat.prompt, firing_offsets, prior_coverage_summary=None)
+        days = {offset: planned["days"].get(offset, "") for offset in firing_offsets}
+        timeline_raw = self._encode_timeline(window_start, days, planned.get("coverage_summary", ""))
+
         hb_id = str(uuid.uuid4())
         if not idempotency_key:
             idempotency_key = str(uuid.uuid4())
@@ -161,11 +202,12 @@ class AgentManager(DBManager):
         try:
             self.cur.execute(
                 "INSERT INTO agent_heartbeats "
-                "(_id, agent_id, user_id, timestamps, prompt, group_id, notes_public, idempotency_key) "
-                "VALUES (%s, %s, %s, %s::jsonb, %s, %s, %s, %s)",
+                "(_id, agent_id, user_id, timestamps, prompt, group_id, notes_public, idempotency_key, "
+                "timeline_instruction) "
+                "VALUES (%s, %s, %s, %s::jsonb, %s, %s, %s, %s, %s)",
                 (hb_id, heartbeat.agent_id, heartbeat.user_id,
                  json.dumps(heartbeat.timestamps), heartbeat.prompt, heartbeat.group_id or None,
-                 heartbeat.notes_public, idempotency_key)
+                 heartbeat.notes_public, idempotency_key, timeline_raw)
             )
             self.conn.commit()
             return hb_id
@@ -201,13 +243,39 @@ class AgentManager(DBManager):
         return [{"_id": k, **v} for k, v in result.items()]
 
     def update_heartbeat(self, heartbeat_id: str, heartbeat: AgentHeartbeats) -> None:
+        """Update a heartbeat row's editable fields.
+
+        If the incoming ``timestamps`` differs from what's currently
+        stored, ``timeline_instruction`` is set to NULL in the same
+        UPDATE: the current timeline was built against the OLD firing
+        schedule, so a schedule edit invalidates it. This is the entire
+        migration story for a schedule change -- no separate staleness
+        flag -- the next fire's ``ensure_current_timeline`` call sees NULL
+        and regenerates lazily, informed by whatever ``coverage_summary``
+        the just-invalidated timeline had already consumed on its own last
+        regeneration (see ensure_current_timeline's docstring); nothing is
+        lost by nulling the column here.
+        """
         try:
+            existing = self.lookup(self.hb_table, {"_id": heartbeat_id, "user_id": self.user_id})
+            clear_timeline = False
+            if existing:
+                existing_data = list(existing.values())[0]
+                if (existing_data.get("timestamps") or []) != (heartbeat.timestamps or []):
+                    clear_timeline = True
+
+            set_clause = "timestamps = %s::jsonb, prompt = %s, group_id = %s, notes_public = %s"
+            params: list = [
+                json.dumps(heartbeat.timestamps), heartbeat.prompt, heartbeat.group_id or None,
+                heartbeat.notes_public,
+            ]
+            if clear_timeline:
+                set_clause += ", timeline_instruction = NULL"
+            params += [heartbeat_id, self.user_id]
+
             self.cur.execute(
-                "UPDATE agent_heartbeats SET timestamps = %s::jsonb, prompt = %s, group_id = %s, "
-                "notes_public = %s "
-                "WHERE _id = %s AND user_id = %s",
-                (json.dumps(heartbeat.timestamps), heartbeat.prompt, heartbeat.group_id or None,
-                 heartbeat.notes_public, heartbeat_id, self.user_id)
+                f"UPDATE agent_heartbeats SET {set_clause} WHERE _id = %s AND user_id = %s",
+                params,
             )
             self.conn.commit()
         except Exception as e:
@@ -244,10 +312,13 @@ class AgentManager(DBManager):
             group_id=group_id or "",
             verses=data.get("verses", []),
             # The LLM's self-reported central theme for this note (per
-            # agent_prompt.txt's create_note schema) -- persisted so a future
-            # fire of this same heartbeat can see it via get_context()'s live
-            # CHAPTERS/VERSES/THEME read. Left blank if the model omits it
-            # rather than failing the note save over it.
+            # agent_prompt.txt's create_note schema) -- recorded metadata
+            # only as of task 20260906-heartbeat-timeline-instructions;
+            # heartbeat no-duplication is now driven upfront by this
+            # heartbeat's timeline_instruction (see ensure_current_timeline/
+            # _todays_instruction) rather than a live aggregate of past
+            # notes' themes. Left blank if the model omits it rather than
+            # failing the note save over it.
             theme=data.get("theme", ""),
         )
         # Historically the exact silent-fake-success case this workflow
@@ -282,88 +353,242 @@ class AgentManager(DBManager):
                     raise SaveFailedError()
         return note_id
 
-    def save_context(self, heartbeat_id: str, note_id: str) -> None:
-        """Record that `note_id` was produced by a fire of `heartbeat_id`.
+    # ── Timeline instructions ────────────────────────────────────────────────
+    # Task 20260906-heartbeat-timeline-instructions: replaces the old
+    # agentic_context/get_context/save_context reactive dedup mechanism with
+    # an upfront, per-window content plan stored directly on the heartbeat
+    # row (see agent_heartbeats.timeline_instruction's comment in db.py).
 
-        This is now purely a durable link, not a free-text summary cache:
-        the CHAPTERS/VERSES/THEME aggregate get_context() builds is
-        recomputed live from notes + note_verses + notes.theme on every
-        read (joined through this row's note_id), so there is no separate
-        written-to copy of that data to keep in sync or let drift. The
-        legacy `context` column is left at its default and unused going
-        forward (see its comment in db.py).
+    def _local_date(self) -> date:
+        """Today's calendar date in `self.user_id`'s own local timezone
+        (`users.timezone`), matching the per-user-local-day precedent
+        already used throughout this file (commit_hb_response's claim,
+        scheduler.py's due-scan). Falls back to UTC if the user row is
+        missing or its timezone is unset/invalid -- fail-open to a sane
+        default here (unlike the fire-time scheduler's fail-closed skip),
+        since a wrong-by-a-few-hours window boundary is a much smaller
+        problem than refusing to plan a timeline at all.
         """
+        result = self.lookup("users", {"_id": self.user_id})
+        tzname = list(result.values())[0].get("timezone") if result else None
         try:
-            self.cur.execute(
-                "INSERT INTO agentic_context (_id, heartbeat_id, user_id, note_id) "
-                "VALUES (%s, %s, %s, %s)",
-                (str(uuid.uuid4()), heartbeat_id, self.user_id, note_id)
-            )
-            self.conn.commit()
-        except Exception as e:
-            logger.error("Error saving context: %s", e)
-            self.conn.rollback()
+            return datetime.now(ZoneInfo(tzname or "UTC")).date()
+        except Exception:
+            return datetime.now(ZoneInfo("UTC")).date()
 
-    def get_context(self, heartbeat_id: str) -> dict[str, list[str]]:
-        """Assemble the CHAPTERS/VERSES/THEME aggregate for every past note
-        tied to this heartbeat (found via agentic_context's heartbeat_id ->
-        note_id link), computed live from notes + note_verses + notes.theme
-        rather than read from a stored aggregate that could drift from the
-        notes it summarizes.
+    def _firing_offsets(self, timestamps: list, window_start: date) -> list[int]:
+        """Which window-offsets (0..TIMELINE_WINDOW_DAYS-1, calendar days
+        elapsed since `window_start`) this heartbeat's `timestamps`
+        (day-of-month indexed, per AgentHeartbeats.timestamps) actually
+        fires on, for the 31-day window starting `window_start`.
 
-        Returns:
-            dict with three keys, each a list of display-ready strings,
-            in the order the underlying notes were created:
-              - "chapters": deduplicated "<Book> <chapter>" pairs already
-                covered by any past note for this heartbeat.
-              - "verses": exact "<Book> <chapter>:<verse>" references, one
-                per note_verses row (not deduplicated -- a verse cited by
-                two different past notes is still two citations worth
-                surfacing to the model).
-              - "theme": each past note's recorded theme, skipping notes
-                with none on record (legacy pre-migration notes, or a note
-                the model didn't tag). Deduplicated by note, not by theme
-                text, so repeated identical themes still each count once.
-            All three are empty lists (not a raised error) if the lookup
-            itself fails -- matching this file's existing get_context
-            failure posture (log + rollback + safe empty default) rather
-            than propagating a DB-connectivity error into the middle of
-            prompt construction.
+        Window-offset, not day-of-month, is the key: a 31-day window
+        crossing a short month revisits day-of-month values a day-of-month
+        key couldn't represent without collision (see the column comment
+        in db.py). `timestamps` remains the sole source of truth for which
+        day-of-month values fire -- this just walks the window day by day
+        and looks each one up.
         """
-        try:
-            self.cur.execute(
-                "SELECT n._id, n.theme, nv.book, nv.chapter, nv.verse "
-                "FROM agentic_context ac "
-                "JOIN notes n ON n._id = ac.note_id "
-                "LEFT JOIN note_verses nv ON nv.note_id = n._id "
-                "WHERE ac.heartbeat_id = %s AND ac.user_id = %s "
-                "ORDER BY n.timestamp, nv.position",
-                (heartbeat_id, self.user_id)
-            )
-            rows = self.cur.fetchall()
-        except Exception as e:
-            logger.error("Error getting context: %s", e)
-            self.conn.rollback()
-            return {"chapters": [], "verses": [], "theme": []}
+        if not timestamps:
+            return []
+        offsets: list[int] = []
+        for offset in range(TIMELINE_WINDOW_DAYS):
+            day = window_start + timedelta(days=offset)
+            day_idx = day.day - 1
+            if day_idx < len(timestamps) and timestamps[day_idx]:
+                offsets.append(offset)
+        return offsets
 
-        chapters: list[str] = []
-        verses: list[str] = []
-        theme: list[str] = []
-        seen_chapters: set[tuple] = set()
-        seen_notes_for_theme: set = set()
-        for note_id, note_theme, book, chapter, verse in rows:
-            if note_id not in seen_notes_for_theme:
-                seen_notes_for_theme.add(note_id)
-                if note_theme:
-                    theme.append(note_theme)
-            if book is not None and chapter is not None:
-                chapter_key = (book, chapter)
-                if chapter_key not in seen_chapters:
-                    seen_chapters.add(chapter_key)
-                    chapters.append(f"{book} {chapter}")
-                if verse is not None:
-                    verses.append(f"{book} {chapter}:{verse}")
-        return {"chapters": chapters, "verses": verses, "theme": theme}
+    def _encode_timeline(self, window_start: date, days: dict[int, str], coverage_summary: str) -> str:
+        return json.dumps({
+            "window_start": window_start.isoformat(),
+            "days": {str(k): v for k, v in days.items()},
+            "coverage_summary": coverage_summary or "",
+        })
+
+    def _decode_timeline(self, raw: Optional[str]) -> Optional[dict]:
+        """Decode a `timeline_instruction` column value into
+        {"window_start": date, "days": {int: str}, "coverage_summary": str},
+        or None if there's nothing there yet or it's unreadable (treated as
+        "no current timeline" -- ensure_current_timeline regenerates rather
+        than raising over a corrupt/legacy value)."""
+        if not raw:
+            return None
+        try:
+            data = json.loads(raw)
+            return {
+                "window_start": date.fromisoformat(data["window_start"]),
+                "days": {int(k): v for k, v in (data.get("days") or {}).items()},
+                "coverage_summary": data.get("coverage_summary", "") or "",
+            }
+        except Exception as e:
+            logger.error("Could not decode a heartbeat's timeline_instruction -- treating as absent: %s", e)
+            return None
+
+    def _build_planning_prompt(
+        self, heartbeat_prompt: str, firing_offsets: list[int], prior_coverage_summary: Optional[str],
+    ) -> str:
+        offsets_str = ", ".join(str(o) for o in firing_offsets) if firing_offsets else "(none)"
+        prior_block = (
+            f"Content already covered in prior windows for this recurring event "
+            f"(do not repeat): {prior_coverage_summary}\n\n"
+            if prior_coverage_summary else
+            "No prior windows exist yet for this recurring event -- this is its first timeline.\n\n"
+        )
+        return (
+            f"Recurring event request: \"{heartbeat_prompt}\"\n\n"
+            f"{prior_block}"
+            f"This window's firing days (day-offsets from the window's first day, 0-indexed): {offsets_str}\n\n"
+            "Produce the JSON timeline object as specified in your instructions, with exactly one entry "
+            "in \"days\" per firing day-offset listed above, and nothing else."
+        )
+
+    def _call_timeline_api(self, prompt: str) -> str:
+        body = {
+            "model":      MODELNAME,
+            "messages":   [{"role": "system", "content": TIMELINE_PROMPT}, {"role": "user", "content": prompt}],
+            "max_tokens": 4096,
+        }
+        resp = requests.post(BASEURL, headers=HEADERS, json=body, timeout=60)
+        resp.raise_for_status()
+        return resp.json()["choices"][0]["message"]["content"]
+
+    def _generate_timeline_days(
+        self, heartbeat_prompt: str, firing_offsets: list[int], prior_coverage_summary: Optional[str],
+    ) -> dict:
+        """Call the timeline-planning agent and return a validated
+        {"days": {offset: instruction}, "coverage_summary": str} dict
+        covering exactly `firing_offsets`.
+
+        Bounded-retry pattern mirrors _generate_and_save_note's
+        _HB_JSON_PARSE_MAX_ATTEMPTS loop, using
+        _TIMELINE_JSON_PARSE_MAX_ATTEMPTS instead: a response is rejected
+        (and retried, with an explicit correction note appended) if it
+        isn't valid JSON, or if its "days" doesn't cover every offset in
+        `firing_offsets`.
+
+        Raises:
+            TimelineGenerationError: the API call itself raised, or every
+                attempt was rejected. Per Security Posture Q13, only up to
+                200 chars of a REJECTED response is ever logged (matching
+                this file's existing _generate_and_save_note precedent for
+                the same failure mode) -- a successfully parsed plan's
+                content is never logged.
+        """
+        planning_prompt = self._build_planning_prompt(heartbeat_prompt, firing_offsets, prior_coverage_summary)
+        parsed: Optional[dict] = None
+        for attempt in range(1, _TIMELINE_JSON_PARSE_MAX_ATTEMPTS + 1):
+            attempt_prompt = planning_prompt
+            if attempt > 1:
+                attempt_prompt = (
+                    f"{planning_prompt}\n\nNOTE: Your previous attempt ({attempt - 1} of "
+                    f"{_TIMELINE_JSON_PARSE_MAX_ATTEMPTS - 1} allowed retries) was rejected because it "
+                    "was not a valid JSON object matching the required shape, or was missing required "
+                    "day offsets. Respond with ONLY a single valid JSON object and nothing else."
+                )
+            try:
+                response = self._call_timeline_api(attempt_prompt)
+            except Exception as e:
+                logger.error("Timeline-planning API error: %s", e)
+                raise TimelineGenerationError() from e
+
+            if "{" in response and "}" in response:
+                start = response.find("{")
+                end = response.rfind("}") + 1
+                json_str = response[start:end]
+                try:
+                    candidate = json.loads(json_str)
+                    days_raw = candidate.get("days")
+                    summary = candidate.get("coverage_summary", "") or ""
+                    days: dict[int, str] = {}
+                    if isinstance(days_raw, dict):
+                        for k, v in days_raw.items():
+                            try:
+                                days[int(k)] = str(v)
+                            except (TypeError, ValueError):
+                                continue
+                    if set(firing_offsets).issubset(days.keys()):
+                        parsed = {"days": days, "coverage_summary": summary}
+                        break
+                    logger.error(
+                        "Timeline-planning response missing required day offsets (attempt %d/%d).",
+                        attempt, _TIMELINE_JSON_PARSE_MAX_ATTEMPTS,
+                    )
+                except (json.JSONDecodeError, ValueError) as e:
+                    logger.error(
+                        "Timeline-planning JSON parse error (attempt %d/%d): %s | raw: %.200s",
+                        attempt, _TIMELINE_JSON_PARSE_MAX_ATTEMPTS, e, json_str,
+                    )
+            else:
+                logger.error(
+                    "Malformed timeline-planning response (attempt %d/%d) -- no JSON object found | raw: %.200s",
+                    attempt, _TIMELINE_JSON_PARSE_MAX_ATTEMPTS, response,
+                )
+
+        if parsed is None:
+            logger.error(
+                "Timeline generation giving up after %d attempts -- all rejected.",
+                _TIMELINE_JSON_PARSE_MAX_ATTEMPTS,
+            )
+            raise TimelineGenerationError()
+        return parsed
+
+    def ensure_current_timeline(
+        self, heartbeat_id: str, timestamps: list, prompt: str, timeline_instruction_raw: Optional[str],
+    ) -> dict:
+        """Return this heartbeat's current, up-to-date decoded timeline,
+        regenerating it first if none exists yet or its window has
+        elapsed.
+
+        MUST only be called by a caller that has already won this fire's
+        exclusive claim -- the unforced path's atomic `last_fired` UPDATE,
+        or the forced path's advisory lock (see commit_hb_response /
+        _commit_hb_response_forced below). A regeneration here is a single
+        read-then-UPDATE of this one column on the already-claimed row, so
+        two racing fires for the same heartbeat can never both regenerate:
+        only the fire that won the claim ever gets this far.
+
+        Regeneration is informed by the SAME row's own prior
+        timeline_instruction value (its `coverage_summary` plus the
+        just-completed window's `days`... in practice just the summary, per
+        the storage-location amendment's accepted trade-off of not
+        retaining full prior-window detail) so it avoids duplicating
+        content already covered across windows, not just within one.
+
+        Raises:
+            TimelineGenerationError: if regeneration is needed but fails
+                after retries. The existing (possibly window-elapsed)
+                `timeline_instruction` value is left completely untouched --
+                callers must fail the fire, not fall back to a placeholder.
+        """
+        today = self._local_date()
+        decoded = self._decode_timeline(timeline_instruction_raw)
+        needs_regen = decoded is None or (today - decoded["window_start"]).days >= TIMELINE_WINDOW_DAYS
+        if not needs_regen:
+            return decoded
+
+        window_start = today
+        firing_offsets = self._firing_offsets(timestamps, window_start)
+        prior_summary = decoded["coverage_summary"] if decoded else None
+        planned = self._generate_timeline_days(prompt, firing_offsets, prior_summary)
+        days = {offset: planned["days"].get(offset, "") for offset in firing_offsets}
+        coverage_summary = planned.get("coverage_summary", "")
+        new_raw = self._encode_timeline(window_start, days, coverage_summary)
+
+        self.cur.execute(
+            "UPDATE agent_heartbeats SET timeline_instruction = %s WHERE _id = %s AND user_id = %s",
+            (new_raw, heartbeat_id, self.user_id),
+        )
+        self.conn.commit()
+        return {"window_start": window_start, "days": days, "coverage_summary": coverage_summary}
+
+    def _todays_instruction(self, timeline: dict) -> Optional[str]:
+        """This heartbeat's planned content instruction for today, per its
+        current (already-ensured-current) decoded timeline, or None if
+        today doesn't fall on a firing offset within that timeline (e.g. a
+        forced/manual fire on an otherwise non-firing day)."""
+        offset = (self._local_date() - timeline["window_start"]).days
+        return timeline["days"].get(offset)
 
     def commit_hb_response(self, agent_id: str, heartbeat_id: str, heartbeat_content: str, force: bool = False):
         # Ownership guard: heartbeat_id/agent_id come straight off the URL, so
@@ -380,11 +605,19 @@ class AgentManager(DBManager):
         owned_data          = list(owned.values())[0]
         heartbeat_group_id  = owned_data.get("group_id") or None
         heartbeat_notes_public = bool(owned_data.get("notes_public") or False)
+        # Threaded into ensure_current_timeline by both the forced and
+        # unforced paths below -- read once here, same reasoning as
+        # group_id/notes_public just above.
+        heartbeat_timestamps = owned_data.get("timestamps") or []
+        heartbeat_prompt     = owned_data.get("prompt", "") or ""
+        timeline_instruction_raw = owned_data.get("timeline_instruction")
 
         if force:
             return self._commit_hb_response_forced(
                 agent_id, heartbeat_id, heartbeat_content, heartbeat_group_id,
                 heartbeat_notes_public=heartbeat_notes_public,
+                heartbeat_timestamps=heartbeat_timestamps, heartbeat_prompt=heartbeat_prompt,
+                timeline_instruction_raw=timeline_instruction_raw,
             )
 
         # Idempotency guard. Heartbeats can now fire from either the
@@ -451,14 +684,29 @@ class AgentManager(DBManager):
                 logger.error("Failed to unset heartbeat claim for %s: %s", heartbeat_id, rollback_err)
                 self.conn.rollback()
 
+        # ensure_current_timeline runs only now that the claim above has
+        # been won -- see its own docstring on why this composes safely
+        # with two racing fires for the same heartbeat.
+        try:
+            timeline = self.ensure_current_timeline(
+                heartbeat_id, heartbeat_timestamps, heartbeat_prompt, timeline_instruction_raw,
+            )
+        except TimelineGenerationError as e:
+            logger.error("Timeline generation failed for heartbeat %s: %s", heartbeat_id, e)
+            _unset_claim()
+            return {"error": e.message}
+
         return self._generate_and_save_note(
             agent_id, heartbeat_id, heartbeat_content, on_llm_error=_unset_claim,
             heartbeat_group_id=heartbeat_group_id, heartbeat_notes_public=heartbeat_notes_public,
+            day_instruction=self._todays_instruction(timeline),
         )
 
     def _commit_hb_response_forced(
         self, agent_id: str, heartbeat_id: str, heartbeat_content: str,
         heartbeat_group_id: Optional[str] = None, heartbeat_notes_public: bool = False,
+        heartbeat_timestamps: Optional[list] = None, heartbeat_prompt: str = "",
+        timeline_instruction_raw: Optional[str] = None,
     ):
         """Manual/forced heartbeat fire: deliberately bypasses the
         once-per-day `last_fired` claim/gate above so a manual trigger
@@ -507,9 +755,22 @@ class AgentManager(DBManager):
             heartbeat_id, self.user_id,
         )
         try:
+            # ensure_current_timeline runs only now that the advisory lock
+            # above has been acquired -- see its own docstring on why this
+            # composes safely with two racing forced fires for the same
+            # heartbeat.
+            try:
+                timeline = self.ensure_current_timeline(
+                    heartbeat_id, heartbeat_timestamps or [], heartbeat_prompt, timeline_instruction_raw,
+                )
+            except TimelineGenerationError as e:
+                logger.error("Timeline generation failed for heartbeat %s: %s", heartbeat_id, e)
+                return {"error": e.message}
+
             return self._generate_and_save_note(
                 agent_id, heartbeat_id, heartbeat_content, heartbeat_group_id=heartbeat_group_id,
                 heartbeat_notes_public=heartbeat_notes_public,
+                day_instruction=self._todays_instruction(timeline),
             )
         finally:
             try:
@@ -522,12 +783,13 @@ class AgentManager(DBManager):
     def _generate_and_save_note(
         self, agent_id: str, heartbeat_id: str, heartbeat_content: str, on_llm_error=None,
         heartbeat_group_id: Optional[str] = None, heartbeat_notes_public: bool = False,
+        day_instruction: Optional[str] = None,
     ):
         """Shared by both the unforced (claim-gated) and forced (advisory-
         lock-gated) paths above: build the note prompt, call the LLM, and
-        persist the resulting note + context. `on_llm_error`, if given, is
-        called before returning the connection-trouble error so a caller
-        that already claimed some piece of state (e.g. the unforced path's
+        persist the resulting note. `on_llm_error`, if given, is called
+        before returning the connection-trouble error so a caller that
+        already claimed some piece of state (e.g. the unforced path's
         `last_fired` UPDATE) can unwind it and allow a retry.
 
         `heartbeat_group_id`: the firing heartbeat's own group_id (already
@@ -546,6 +808,18 @@ class AgentManager(DBManager):
         without a group to grant edit access to, so it must not silently
         carry over if group membership lapsed between configuration and
         this fire.
+
+        `day_instruction`: today's specific content instruction from this
+        heartbeat's current timeline_instruction (see
+        ensure_current_timeline/_todays_instruction), computed by the
+        caller AFTER it's already ensured the timeline is current for this
+        fire. Replaces the old get_context()-derived CHAPTERS/VERSES/THEME
+        dedup block entirely -- the timeline's upfront per-day plan is now
+        what prevents repeated content, not a live aggregate of past notes.
+        None only for a fire that doesn't land on a firing offset within
+        the current timeline (e.g. a forced/manual fire on an otherwise
+        non-scheduled day) -- falls back to responding directly to the
+        heartbeat's own standing request with no day-specific steer.
         """
         effective_group_id = None
         if heartbeat_group_id:
@@ -564,33 +838,23 @@ class AgentManager(DBManager):
         effective_notes_public = bool(heartbeat_notes_public) if effective_group_id else False
         result     = self.lookup(self.agent_table, {"_id": agent_id})
         agent_role = list(result.values())[0].get("role", "") if result else ""
-        context    = self.get_context(heartbeat_id)
-        has_context = bool(context["chapters"] or context["verses"] or context["theme"])
-        if has_context:
-            chapters_str = ", ".join(context["chapters"]) or "None recorded yet."
-            verses_str   = ", ".join(context["verses"]) or "None recorded yet."
-            theme_str    = ", ".join(context["theme"]) or "None recorded yet."
-            context_str = (
-                f"CHAPTERS already covered: {chapters_str}\n"
-                f"VERSES already cited: {verses_str}\n"
-                f"THEMES already used: {theme_str}"
-            )
-            # Materially stronger than the old soft "try not to reuse"
-            # wording -- an explicit, unambiguous no-duplication rule per
-            # requirement 2 of the heartbeat-context-restructure spec.
+        if day_instruction:
+            context_str = f"TODAY'S PLANNED CONTENT (from this event's current timeline instruction): {day_instruction}"
+            # Materially stronger than a soft "try to follow this" wording --
+            # an explicit, unambiguous no-duplication rule, same posture the
+            # old CHAPTERS/VERSES/THEME dedup block used before this task
+            # replaced it with the upfront timeline plan above.
             dedup_instruction = (
-                "STRICT RULE: You must NEVER duplicate anything already on record above for "
-                "this recurring event. Do not reuse any chapter, verse, or theme listed above "
-                "in your new note -- reusing any of them is a failure of this task. Choose a "
-                "chapter, verse, and theme that are entirely new relative to every item listed "
-                "above.\n\n"
+                "STRICT RULE: Base your note specifically on today's planned content above -- do not "
+                "substitute different content, and do not cover material assigned to a different day of "
+                "this event's timeline.\n\n"
             )
         else:
-            context_str = "No previous context — this is the first response for this event."
+            context_str = "No day-specific timeline instruction found for today — respond directly to the request below."
             dedup_instruction = ""
         note_prompt = (
             f"{heartbeat_content}\n\n"
-            f"Record of this event's past notes:\n{context_str}\n\n"
+            f"{context_str}\n\n"
             f"{dedup_instruction}"
             "Respond with a create_note JSON block as specified in your instructions, "
             "including a \"theme\" field naming this note's central theme. "
@@ -659,16 +923,14 @@ class AgentManager(DBManager):
             return {"error": "invalid response"}
 
         if response_dict.get("__action", "") == "create_note":
-            new_note_id = self.note_via_hb(
+            # No separate context-link write needed anymore (the old
+            # agentic_context.save_context call) -- no-duplication is
+            # already handled upfront by this heartbeat's timeline
+            # instruction, not by a per-note durable link consumed on a
+            # later fire.
+            self.note_via_hb(
                 response_dict, group_id=effective_group_id, notes_public=effective_notes_public,
             )
-            # Linking context to note_id means deleting the note (from any
-            # path) cascades this context row away too — see the FK on
-            # agentic_context in db.py. get_context() recomputes the
-            # CHAPTERS/VERSES/THEME aggregate live from notes/note_verses/
-            # notes.theme via this link, so no free-text summary needs to
-            # be captured here anymore.
-            self.save_context(heartbeat_id, new_note_id)
             return {"success": "saved note"}
         else:
             return {"error": "cannot find action"}

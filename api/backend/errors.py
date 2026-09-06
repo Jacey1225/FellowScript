@@ -49,3 +49,32 @@ class SaveFailedError(Exception):
     def __init__(self, message: str = "Couldn't be saved. Please try again.") -> None:
         super().__init__(message)
         self.message = message
+
+
+class TimelineGenerationError(Exception):
+    """Raise when the heartbeat "timeline instruction" planning agent
+    (AgentManager._generate_timeline_days, task
+    20260906-heartbeat-timeline-instructions) fails after its bounded
+    retries -- either the planning LLM call itself raised, or every attempt
+    returned unparseable/incomplete JSON.
+
+    Mirrors ``SaveFailedError``'s propagate-upward posture (Security
+    Posture Q27: no silent fallback to a placeholder plan or the old
+    context-less behavior), but is raised for a distinct failure mode --
+    generation, not persistence -- so callers and this module's own
+    app-wide handler can report a clearly different message.
+
+    ``AgentManager.add_heartbeat`` lets this propagate uncaught: if the
+    *initial* timeline can't be generated, no heartbeat row is created at
+    all. ``AgentManager.ensure_current_timeline`` (window rollover / lazy
+    backfill) also raises this rather than swallowing the failure -- its
+    callers (``commit_hb_response`` / ``_commit_hb_response_forced``) catch
+    it themselves to unwind whatever fire-claim they hold and return an
+    explicit ``{"error": ...}`` result instead of inventing a placeholder
+    plan. Either way, the heartbeat row's existing ``timeline_instruction``
+    value (if any) is left completely untouched by a failed attempt.
+    """
+
+    def __init__(self, message: str = "Could not generate this event's content plan. Please try again.") -> None:
+        super().__init__(message)
+        self.message = message
