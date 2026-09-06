@@ -1478,8 +1478,8 @@ may still be populated.</p>
 </tr>
 <tr>
 <td>GET</td>
-<td><code>/message/gif-search?q=</code></td>
-<td>Authenticated. Proxies a GIF search to the configured provider (GIPHY/Tenor) so the provider API key never reaches the client. Returns <code>{"results": [{"id", "url", "preview_url", "width", "height"}]}</code>. <code>502</code> if the provider call fails, <code>503</code> if GIF search isn't configured yet.</td>
+<td><code>/message/gif-search?q=&amp;page_token=</code></td>
+<td>Authenticated. Proxies a GIF search to the configured provider (GIPHY/Tenor) so the provider API key never reaches the client. A non-empty <code>q</code> returns <code>{"results": [{"id", "url", "preview_url", "width", "height"}]}</code> (unpaginated), exactly as before. An empty/absent <code>q</code> instead requests a page of default/trending browse results (shown in the picker before any query is typed), returning <code>{"results": [...same shape...], "next_page_token": "opaque string or null", "has_more": bool}</code> — pass a previous response's <code>next_page_token</code> back as <code>page_token</code> to fetch the next page; <code>page_token</code> is ignored when <code>q</code> is non-empty. <code>next_page_token</code> normalizes GIPHY's integer offset and Tenor's opaque cursor behind one shape — callers never branch on provider. <code>502</code> if the provider call fails, <code>503</code> if GIF search isn't configured yet.</td>
 </tr>
 </tbody>
 </table>
