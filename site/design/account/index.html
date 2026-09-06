@@ -595,6 +595,17 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#back-navigation-web-2026-09-06" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Back Navigation (web, 2026-09-06)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#profile" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -973,6 +984,20 @@
 <p>The Account page (<code>/account</code>) lets users manage their profile, view their subscription, and delete their account. It is available on both the web and iOS clients.</p>
 <hr />
 <h2 id="sections">Sections</h2>
+<h3 id="back-navigation-web-2026-09-06">Back Navigation (web, 2026-09-06)</h3>
+<p>A visible "Back" control sits above the profile header on the web Account page, next to (not
+replacing) the persistent <code>AppNav</code> Home/Read/Account menu — the app's navigation-visibility
+convention favors an explicit on-page control over relying on the browser/webview's own implicit
+back gesture. Clicking it returns to whatever page was visited immediately before <code>/account</code>
+(<code>navigate(-1)</code>), guarded by react-router's own <code>window.history.state.idx</code>: a value greater than
+zero confirms this browser tab actually has a prior in-app entry to go back to, so a bare
+<code>navigate(-1)</code> never lands the user outside the app (an external referrer, a blank tab) when
+<code>/account</code> was the first route loaded — a direct link, a bookmark, or a freshly opened desktop
+window. In that no-prior-page case, the control falls back to <code>/reader</code>, the same page users land
+on immediately after signing in. Because the Tauri desktop app loads this same live web bundle in
+a <code>HashRouter</code>-based webview, this one fix covers both the web and desktop clients — there is no
+separate desktop-specific navigation surface. No equivalent control exists on iOS, which already
+uses native push/pop navigation.</p>
 <h3 id="profile">Profile</h3>
 <ul>
 <li>Displays <code>username</code> and <code>email</code></li>

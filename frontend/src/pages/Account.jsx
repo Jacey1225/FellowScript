@@ -10,7 +10,7 @@ import {
   LogoutOutlined, DeleteOutlined, RobotOutlined,
   PlusOutlined, ThunderboltOutlined, EditOutlined,
   CheckOutlined, CloseOutlined, CalendarOutlined, TeamOutlined,
-  CameraOutlined,
+  CameraOutlined, LeftOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
@@ -19,6 +19,7 @@ import AppBloom from '../components/AppBloom.jsx';
 import SubscriptionCard from '../components/SubscriptionCard.jsx';
 import DonationButton from '../components/DonationButton.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
+import { isDesktopApp } from '../lib/desktopScope.js';
 import { API } from '../config.js';
 
 dayjs.extend(utc);
@@ -715,6 +716,27 @@ export default function Account() {
 
   const handleSignOut = () => { signOut(); navigate('/signin'); };
 
+  // Page-level back navigation (task 20260906-account-back-navigation) --
+  // distinct from the event-wizard "Back" buttons in evModalFooter above,
+  // which step backward through the create/edit-event modal, not the page.
+  //
+  // `window.history.state.idx` is react-router's own in-app history cursor
+  // (both createBrowserHistory and createHashHistory funnel through the
+  // same getUrlBasedHistory, so this works identically for the web bundle
+  // and the Tauri desktop webview, which loads that same HashRouter bundle
+  // per desktop/PROGRESS.md). idx > 0 means this tab has a prior entry the
+  // router itself pushed, so navigate(-1) lands back in-app rather than
+  // off the app's history into an external referrer or a blank tab --
+  // which is what a bare `navigate(-1)` risks when /account was the first
+  // route loaded (direct link, bookmark, or a fresh desktop window).
+  // Falls back to /reader, the app's own post-sign-in landing page
+  // (SignIn.jsx), rather than guessing Home.
+  const handleBack = () => {
+    const canGoBack = typeof window !== 'undefined' && (window.history.state?.idx ?? 0) > 0;
+    if (canGoBack) navigate(-1);
+    else navigate('/reader');
+  };
+
   if (!user) return null;
   const data = profileData || user;
 
@@ -873,6 +895,27 @@ export default function Account() {
       <AppNav />
 
       <Content style={{ paddingTop: 'calc(var(--nav-h) + 2.5rem)', paddingBottom: '5rem', paddingLeft: '2rem', paddingRight: '2rem', maxWidth: 680, margin: '0 auto', width: '100%' }}>
+
+        {/* Back navigation (task 20260906-account-back-navigation) -- a
+            visible, clickable page-level control per the user's
+            navigation-state-visibility preference (Q11.3), supplementing
+            (not replacing) the persistent AppNav Home/Read/Account menu
+            rendered above. Returns to wherever the user was before
+            /account, falling back to /reader when there's no prior in-app
+            page -- see handleBack. */}
+        <button
+          type="button"
+          onClick={handleBack}
+          aria-label="Back"
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+            marginBottom: '1.25rem', padding: 0, border: 'none', background: 'none',
+            fontFamily: "'Lora', serif", fontSize: '0.78rem', color: 'rgba(200,134,26,0.7)',
+            cursor: 'pointer', animation: 'fadeUp 0.55s ease forwards', opacity: 0,
+          }}
+        >
+          <LeftOutlined style={{ fontSize: '0.65rem' }} /> Back
+        </button>
 
         {/* Header */}
         <div style={{ marginBottom: '2rem', animation: 'fadeUp 0.55s ease forwards', opacity: 0, display: 'flex', alignItems: 'center', gap: '1.1rem' }}>
@@ -1273,15 +1316,20 @@ export default function Account() {
           />
         </Modal>
 
-        {/* Legal links */}
-        <div style={{ display: 'flex', justifyContent: 'center', gap: '2rem', marginBottom: '1.5rem' }}>
-          <Link to="/privacy" style={{ fontFamily: "'Lora', serif", fontSize: '0.78rem', color: 'rgba(244,228,193,0.35)', textDecoration: 'none' }}>
-            Privacy Policy
-          </Link>
-          <Link to="/terms" style={{ fontFamily: "'Lora', serif", fontSize: '0.78rem', color: 'rgba(244,228,193,0.35)', textDecoration: 'none' }}>
-            Terms of Service
-          </Link>
-        </div>
+        {/* Legal links — /privacy and /terms aren't on the desktop
+            allowlist (task 20260906-desktop-scope-lockdown), so this
+            purely-navigational footer is hidden entirely in desktop mode
+            rather than left as a dead-end in-app link. */}
+        {!isDesktopApp() && (
+          <div style={{ display: 'flex', justifyContent: 'center', gap: '2rem', marginBottom: '1.5rem' }}>
+            <Link to="/privacy" style={{ fontFamily: "'Lora', serif", fontSize: '0.78rem', color: 'rgba(244,228,193,0.35)', textDecoration: 'none' }}>
+              Privacy Policy
+            </Link>
+            <Link to="/terms" style={{ fontFamily: "'Lora', serif", fontSize: '0.78rem', color: 'rgba(244,228,193,0.35)', textDecoration: 'none' }}>
+              Terms of Service
+            </Link>
+          </div>
+        )}
 
         {/* Sign out */}
         <Button block size="large" icon={<LogoutOutlined />} onClick={handleSignOut}

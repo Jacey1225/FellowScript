@@ -6,6 +6,22 @@ The Account page (`/account`) lets users manage their profile, view their subscr
 
 ## Sections
 
+### Back Navigation (web, 2026-09-06)
+
+A visible "Back" control sits above the profile header on the web Account page, next to (not
+replacing) the persistent `AppNav` Home/Read/Account menu — the app's navigation-visibility
+convention favors an explicit on-page control over relying on the browser/webview's own implicit
+back gesture. Clicking it returns to whatever page was visited immediately before `/account`
+(`navigate(-1)`), guarded by react-router's own `window.history.state.idx`: a value greater than
+zero confirms this browser tab actually has a prior in-app entry to go back to, so a bare
+`navigate(-1)` never lands the user outside the app (an external referrer, a blank tab) when
+`/account` was the first route loaded — a direct link, a bookmark, or a freshly opened desktop
+window. In that no-prior-page case, the control falls back to `/reader`, the same page users land
+on immediately after signing in. Because the Tauri desktop app loads this same live web bundle in
+a `HashRouter`-based webview, this one fix covers both the web and desktop clients — there is no
+separate desktop-specific navigation surface. No equivalent control exists on iOS, which already
+uses native push/pop navigation.
+
 ### Profile
 - Displays `username` and `email`
 - Edit form for updating either field, resetting password, or setting **Timezone** — a searchable list of IANA names (e.g. `America/Los_Angeles`) on both platforms: an antd `Select` on web, a `.searchable` `List` sheet (`TimeZonePickerSheet`) on iOS, sourced from `Intl.supportedValuesOf('timeZone')` / `TimeZone.knownTimeZoneIdentifiers` respectively
