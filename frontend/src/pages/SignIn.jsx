@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { Card, Form, Input, Button, Typography, Tabs, Alert, Checkbox, Modal } from 'antd';
 import { UserOutlined, LockOutlined, MailOutlined } from '@ant-design/icons';
 import { useAuth } from '../context/AuthContext.jsx';
+import { isDesktopApp } from '../lib/desktopScope.js';
 import { API } from '../config.js';
 
 const { Title, Text } = Typography;
@@ -17,6 +18,15 @@ function nonce() {
 export default function SignIn() {
   const { signIn } = useAuth();
   const navigate   = useNavigate();
+  // /privacy and /terms aren't on the desktop allowlist (task
+  // 20260906-desktop-scope-lockdown). Unlike AppNav/Account.jsx's purely
+  // navigational Privacy/Terms links, the ones below are woven into
+  // required consent disclosure text, so they're forced external
+  // (mirroring the target="_blank" Terms links already used elsewhere in
+  // this file) rather than hidden, keeping the disclosure intact while
+  // routing through the existing https-only on_new_window handoff instead
+  // of an in-app SPA navigation.
+  const desktopApp = isDesktopApp();
   const [siForm]   = Form.useForm();
   const [suForm]   = Form.useForm();
   const [siError,  setSiError]  = useState('');
@@ -287,9 +297,11 @@ export default function SignIn() {
       <div style={{ marginTop: '1.25rem', textAlign: 'center' }}>
         <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.75rem', color: 'rgba(244,228,193,0.35)' }}>
           By creating an account, you agree to our{' '}
-          <Link to="/terms"   style={{ color: 'rgba(200,134,26,0.65)', textDecoration: 'none' }}>Terms of Service</Link>
+          <Link to="/terms" target={desktopApp ? '_blank' : undefined} rel={desktopApp ? 'noopener noreferrer' : undefined}
+            style={{ color: 'rgba(200,134,26,0.65)', textDecoration: 'none' }}>Terms of Service</Link>
           {' '}and{' '}
-          <Link to="/privacy" style={{ color: 'rgba(200,134,26,0.65)', textDecoration: 'none' }}>Privacy Policy</Link>.
+          <Link to="/privacy" target={desktopApp ? '_blank' : undefined} rel={desktopApp ? 'noopener noreferrer' : undefined}
+            style={{ color: 'rgba(200,134,26,0.65)', textDecoration: 'none' }}>Privacy Policy</Link>.
         </Text>
       </div>
 

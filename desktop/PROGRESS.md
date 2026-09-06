@@ -80,6 +80,123 @@ and Windows, using Tauri. Requested in Discord (misc channel).
      `spctl --assess ... --verbose=2` as `accepted, source=Notarized
      Developer ID`.
 
+## UI parity fix (2026-09-06)
+
+Investigation (task `20260905-desktop-reader-ui-parity`) found the desktop
+window was never actually rendering the Reader page:
+
+- **Root cause**: `frontend/src/App.jsx` uses React Router's `HashRouter`,
+  so the live Reader route is only reachable at
+  `https://fellowscript.com/#/reader`. `tauri.conf.json`'s `app.windows[0].url`
+  and `build.devUrl` were set to the bare `https://fellowscript.com/reader`
+  (no `#/`). The server has no route-specific handling — `curl` confirmed
+  `/reader` and `/` return byte-identical `index.html` — so a fresh load with
+  an empty `location.hash` resolves `HashRouter` to `/` and renders `<Home />`,
+  not `<Reader />`. This single misconfiguration explains the "missing UI
+  components" report: the entire Reader dockview workspace (notes, messaging,
+  highlights, AI chat) was simply never mounting.
+  - **Fix**: both `app.windows[0].url` and `build.devUrl` now point at
+    `https://fellowscript.com/#/reader`.
+
+- **External links (`target="_blank"`) were unwired.** `RichText.jsx`,
+  `ChatThread.jsx`, `SignIn.jsx`/`VerifyMfa.jsx` all render `target="_blank"`
+  anchors, but nothing in the desktop app handed `window.open()`/new-window
+  requests off to the system browser — Tauri's default behavior for these is
+  to silently deny them inside a bare webview.
+  - **Fix**: added `tauri-plugin-opener` (`2.5.5`, resolved via `cargo add`)
+    to `Cargo.toml`. The "main" window is now declared with `"create": false`
+    in `tauri.conf.json` and instead built by hand in `src-tauri/src/lib.rs`'s
+    `setup()` via `WebviewWindowBuilder::from_config`, with an `on_new_window`
+    handler that calls `app_handle.opener().open_url(...)` and returns
+    `NewWindowResponse::Deny` (so no defunct native child window is ever
+    created — the request is fully redirected to the system default browser).
+    `capabilities/default.json` grants only `opener:allow-open-url` scoped to
+    `{"url": "https://*"}` — not the plugin's broader `opener:default`
+    permission set (which also covers `mailto:`/`tel:`/reveal-in-Finder),
+    consistent with this project's deny-by-default posture.
+
+- **Native macOS Edit menu — investigated, found already working.** The
+  intake spec's finding assumed Tauri's default menu lacked a proper Edit
+  submenu (Undo/Redo/Cut/Copy/Paste/Select All), which would break
+  Cmd+Z/Cmd+A in the note editor and message composer. Reading the actual
+  pinned `tauri` crate source (resolves to `2.11.5`) showed this is outdated:
+  as of this version, `Builder::build()` on macOS automatically installs
+  `Menu::default()` — which already includes a full Edit submenu with native
+  OS accelerators — whenever no menu has been set explicitly
+  (`enable_macos_default_menu` defaults to `true`). So Cmd+Z/Cmd+A already
+  worked with zero config. `lib.rs` now calls `.menu(Menu::default)`
+  explicitly anyway, so this isn't left as implicit framework behavior that a
+  future Tauri upgrade could silently change — it's documented, in source,
+  and testable.
+
+- **File export (`remediationMarkdown.js`) confirmed out of scope.** Verified
+  by grep: it's only imported from `AdminDetectionDetail.jsx` and
+  `DetectionDetailOverlay.jsx`, both under `/admin`, `/admin/detections/:id`
+  — routes `App.jsx` itself comments as "Hidden admin-only surface: not
+  linked from AppNav or any other page." Not reachable from the Reader page
+  this desktop wrapper scopes to. No `dialog`/`fs` plugin work needed.
+
+- **Notifications confirmed no-op.** Grepped all of `frontend/src` for
+  `new Notification`, `Notification.requestPermission`, `window.Notification`
+  — zero matches. The live reader doesn't use the browser Notification API
+  anywhere, so `tauri-plugin-notification` is not needed.
+
+- **Security gate fix: `on_new_window` enforced no scheme check of its own.**
+  The `capabilities/default.json` scope (`opener:allow-open-url` restricted to
+  `{"url": "https://*"}`) only applies to the IPC-invoked `open_url` command —
+  `OpenerExt::open_url`, the direct Rust API called from `lib.rs`'s
+  `on_new_window` handler, bypasses that scope check entirely (confirmed by
+  reading the pinned `tauri-plugin-opener` 2.5.5 source: `commands::open_url`
+  does the `Scope::is_url_allowed` check, `Opener::open_url` does not). Since
+  `url` there comes from webview new-window/`window.open()` requests, which
+  can be influenced by remote/user-generated content (note bodies, chat
+  messages), an unfiltered forward to the OS's default-app opener could hand
+  off an arbitrary scheme (e.g. `file://`, or another installed app's
+  registered deep-link handler) from a crafted link. Fixed by adding an
+  explicit `url.scheme() == "https"` check in the handler itself before
+  calling `open_url`, so the capability's declared intent is actually
+  enforced in code, not just on paper.
+
+Files touched: `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml` (+
+`Cargo.lock`), `src-tauri/capabilities/default.json`,
+`src-tauri/src/lib.rs`. Verified with `cargo check` and `cargo clippy`
+(both clean) — a real visual/screenshot launch check of the running app
+(dockview workspace rendering, link handoff, keyboard shortcuts) is the
+`testing` gate's job for this task, since this environment has no display.
+
+## Desktop scope lockdown — Tauri-side defense-in-depth (2026-09-06)
+
+Task `20260906-desktop-scope-lockdown`: the desktop app is scoped to just the
+reader and account pages (plus the auth-flow routes needed to sign in from a
+fresh install — sign-in, forgot-password, reset-password, verify-2fa). The
+primary enforcement is a frontend route guard
+(`frontend/src/components/DesktopRouteGuard.jsx`, driven by the single
+allowlist in `frontend/src/lib/desktopScope.js`), since HashRouter
+`Link`/`navigate()` calls are same-document history pushes that never produce
+a real webview navigation event — `on_new_window` (used for the external-link
+handoff above) can't see them at all.
+
+- **Added**: `src-tauri/src/lib.rs` now also registers `on_navigation` on the
+  same `WebviewWindowBuilder` chain as `on_new_window`, with its own
+  hand-kept mirror of the same allowlist (`DESKTOP_ALLOWED_ROUTES`). Unlike
+  `on_new_window`, this fires for real main-frame navigations in the
+  existing window — a full page load/reload or a `window.location`
+  assignment — which is exactly the case the frontend guard can't see.
+  Checks the request's origin (`https://fellowscript.com`) and, since
+  HashRouter keeps the route in the URL fragment rather than the path, the
+  fragment against the allowlist; anything else is denied and logged.
+  Coexists with `on_new_window` without altering it — they're independent
+  builder callbacks covering different navigation types (new-window/
+  `window.open()` vs. same-window).
+- Not touched: `on_new_window`'s external-link-to-system-browser handoff,
+  the native menu, `capabilities/default.json` (no new IPC-scoped permission
+  needed — `on_navigation` is a Rust-side builder hook, not an invoked
+  command).
+- Verified with `cargo check` and `cargo clippy` (both clean). A real
+  visual/interactive check that the allowlist holds in the running app is
+  the `testing` gate's job for this task, per this environment having no
+  display.
+
 ## Not started yet
 Windows packaging/signing (separate `signtool`-based process, completely
 unrelated to the macOS work above).

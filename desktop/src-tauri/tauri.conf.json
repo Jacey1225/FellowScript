@@ -5,17 +5,18 @@
   "identifier": "com.fellowscript.app",
   "build": {
     "frontendDist": "../dist",
-    "devUrl": "https://fellowscript.com/reader"
+    "devUrl": "https://fellowscript.com/#/reader"
   },
   "app": {
     "windows": [
       {
         "title": "FellowScript",
-        "url": "https://fellowscript.com/reader",
+        "url": "https://fellowscript.com/#/reader",
         "width": 1280,
         "height": 860,
         "resizable": true,
-        "fullscreen": false
+        "fullscreen": false,
+        "create": false
       }
     ],
     "security": {

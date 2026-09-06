@@ -19,13 +19,18 @@ The web frontend is a **React 18 + Vite** single-page application in `frontend/s
 
 Unauthenticated users land on Home (`/`); once signed in, the CTA routes directly to `/reader`.
 
+### Desktop shell route restriction
+
+The Tauri desktop app (`desktop/`) loads this exact same `HashRouter` bundle rather than a separate build. `DesktopRouteGuard.jsx` wraps `<Routes>` and, when `lib/desktopScope.js`'s `isDesktopApp()` detects the Tauri webview (`window.__TAURI_INTERNALS__`), redirects any in-app navigation outside a closed allowlist (`/reader`, `/account`, `/signin`, `/forgot-password`, `/reset-password`, `/verify-2fa`) to `/reader`. `AppNav.jsx`'s Home menu item/logo links and the hamburger drawer's Privacy/Terms links are hidden in this mode, and `SignIn.jsx`'s footer Privacy/Terms disclosure links are forced `target="_blank"` instead. A no-op in the ordinary web browser. A parallel Tauri-side `on_navigation` check in `desktop/src-tauri` mirrors the same allowlist as defense-in-depth for real webview navigations the React guard can't see.
+
 ---
 
 ## Key Components
 
 | Component | Description |
 |---|---|
-| `AppNav.jsx` | Persistent top navigation bar — logo (links to `/`); desktop top-right shows only a profile avatar (routes to `/account` signed in, `/signin` otherwise) and the light/dark theme toggle. The mobile hamburger `Drawer` separately exposes Home/Read/Account as text menu items. |
+| `AppNav.jsx` | Persistent top navigation bar — logo (links to `/`); desktop (viewport) top-right shows only a profile avatar (routes to `/account` signed in, `/signin` otherwise) and the light/dark theme toggle. The mobile hamburger `Drawer` separately exposes Home/Read/Account as text menu items. Inside the Tauri desktop *app* (distinct from viewport width — see "Desktop shell route restriction" above), the Home menu item and the drawer's Privacy/Terms links are hidden and both logo marks point at `/reader` instead of `/`. |
+| `DesktopRouteGuard.jsx` | Wraps `<Routes>` in `App.jsx`; redirects in-app navigation outside `lib/desktopScope.js`'s allowlist to `/reader` when running inside the Tauri desktop app. See "Desktop shell route restriction" above. |
 | `NotesSidebar.jsx` | Combined Notes+Highlights tabbed sidebar — **mobile only**; desktop uses the split `NotesPanel`/`HighlightsPanel` below |
 | `BibleCard.jsx` | Renders a single verse with inline highlight color, click-to-highlight, and verse selection |
 | `panels/BibleReaderPanel.jsx` | Desktop dockview panel: bundles `BibleNavigator` + font-size ticker + `BookmarkButton` + `BibleCard` + `HighlightPicker` in one component, so they always travel together wherever the panel is docked |

@@ -4,6 +4,7 @@ import { Layout, Menu, Drawer, Button, Tooltip, Avatar } from 'antd';
 import { MenuOutlined, ReadOutlined, HomeOutlined, UserOutlined, BulbOutlined, BulbFilled } from '@ant-design/icons';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useTheme } from '../hooks/useTheme.js';
+import { isDesktopApp } from '../lib/desktopScope.js';
 
 const { Header } = Layout;
 
@@ -21,6 +22,14 @@ export default function AppNav() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const { isDark, toggleTheme } = useTheme();
 
+  // Desktop-mode nav restriction (task 20260906-desktop-scope-lockdown):
+  // Home isn't in lib/desktopScope.js's allowlist, so its menu entry and
+  // the drawer's Privacy/Terms links are hidden below, and both logo marks
+  // point at the allowed fallback route instead of "/". A no-op (regular
+  // Home behavior) in the ordinary web frontend.
+  const desktopApp   = isDesktopApp();
+  const logoHref     = desktopApp ? '/reader' : '/';
+
   const accountLabel = user ? (user.username || 'Account') : 'Sign In';
   const accountHref  = user ? '/account' : '/signin';
 
@@ -37,20 +46,20 @@ export default function AppNav() {
                    : '';
 
   const items = [
-    { key: 'home',    label: 'Home',        icon: <HomeOutlined /> },
+    ...(desktopApp ? [] : [{ key: 'home', label: 'Home', icon: <HomeOutlined /> }]),
     { key: 'reader',  label: 'Read',        icon: <ReadOutlined /> },
     { key: 'account', label: accountLabel,  icon: <UserOutlined /> },
   ];
 
   const onMenuClick = ({ key }) => {
-    const paths = { home: '/', reader: '/reader', account: accountHref };
-    navigate(paths[key] || '/');
+    const paths = { home: logoHref, reader: '/reader', account: accountHref };
+    navigate(paths[key] || logoHref);
     setDrawerOpen(false);
   };
 
   return (
     <Header className={`fs-nav${isReaderRoute ? ' fs-nav--unified' : ''}`}>
-      <Link to="/" className="nav-logo">
+      <Link to={logoHref} className="nav-logo">
         <span className="fellow">Fellow</span>
         <span className="script">Script</span>
       </Link>
@@ -104,7 +113,7 @@ export default function AppNav() {
       </div>
 
       <Drawer
-        title={<Link to="/" className="nav-logo" onClick={() => setDrawerOpen(false)}>
+        title={<Link to={logoHref} className="nav-logo" onClick={() => setDrawerOpen(false)}>
           <span className="fellow">Fellow</span><span className="script">Script</span>
         </Link>}
         placement="right"
@@ -121,16 +130,21 @@ export default function AppNav() {
           onClick={onMenuClick}
           style={{ background: 'transparent', border: 'none' }}
         />
-        <div style={{ position: 'absolute', bottom: '1.5rem', left: '1.5rem', display: 'flex', gap: '1rem' }}>
-          <Link to="/privacy" onClick={() => setDrawerOpen(false)}
-            style={{ fontFamily: "'Inter', sans-serif", fontSize: '0.7rem', color: 'rgba(244,228,193,0.35)', textDecoration: 'none' }}>
-            Privacy
-          </Link>
-          <Link to="/terms" onClick={() => setDrawerOpen(false)}
-            style={{ fontFamily: "'Inter', sans-serif", fontSize: '0.7rem', color: 'rgba(244,228,193,0.35)', textDecoration: 'none' }}>
-            Terms
-          </Link>
-        </div>
+        {/* Privacy/Terms aren't on the desktop allowlist (task
+            20260906-desktop-scope-lockdown) -- hidden in desktop mode
+            rather than left as dead-end in-app links. */}
+        {!desktopApp && (
+          <div style={{ position: 'absolute', bottom: '1.5rem', left: '1.5rem', display: 'flex', gap: '1rem' }}>
+            <Link to="/privacy" onClick={() => setDrawerOpen(false)}
+              style={{ fontFamily: "'Inter', sans-serif", fontSize: '0.7rem', color: 'rgba(244,228,193,0.35)', textDecoration: 'none' }}>
+              Privacy
+            </Link>
+            <Link to="/terms" onClick={() => setDrawerOpen(false)}
+              style={{ fontFamily: "'Inter', sans-serif", fontSize: '0.7rem', color: 'rgba(244,228,193,0.35)', textDecoration: 'none' }}>
+              Terms
+            </Link>
+          </div>
+        )}
       </Drawer>
     </Header>
   );
