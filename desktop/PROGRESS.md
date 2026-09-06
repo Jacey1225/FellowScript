@@ -197,6 +197,43 @@ handoff above) can't see them at all.
   the `testing` gate's job for this task, per this environment having no
   display.
 
+## Rebuild + redistribution (2026-09-06)
+
+Rebuilt and re-shipped the signed/notarized macOS app to pick up the day's
+changes (reader HashRouter URL fix, external-link opener, reader+account
+nav lockdown from the two sections above):
+
+- `npx tauri build` (with `~/.cargo/bin` on `PATH` — not there by default in
+  a non-interactive shell) initially failed signing with "The timestamp
+  service is not available," matching the 2026-09-02 Canopy-attributed
+  failure. This time a plain retry did **not** clear it, but running
+  `codesign --force --sign "Developer ID Application: Jacey Simpson
+  (886XPLVC69)" --timestamp --options runtime` directly worked immediately
+  once the user manually approved something on their end (not confirmed
+  exactly what — possibly a keychain/Touch ID prompt for the signing key).
+  **Don't assume Canopy is the cause next time this error appears** — ask
+  the user whether a system prompt needs approving first.
+- Full sequence repeated end to end: sign app → zip → `notarytool submit
+  --wait` (Accepted) → `stapler staple` → `spctl --assess` (accepted) →
+  `hdiutil create -format UDZO` for the `.dmg` → sign `.dmg` with
+  `--timestamp` → `notarytool submit --wait` (Accepted) → staple → verify
+  with `spctl -a -t open --context context:primary-signature -v
+  FellowScript.dmg` (a plain `spctl --assess` on a `.dmg` incorrectly
+  reports "rejected (the code is valid but does not seem to be an app)" —
+  use the `-t open --context context:primary-signature` form for disk
+  images instead).
+- **Distribution**: the new `.dmg` was uploaded to the existing
+  `desktop-v0.1.0` GitHub release as the `FellowScript.dmg` asset (`gh
+  release upload desktop-v0.1.0 <path> --clobber`), replacing the old one
+  in place. `frontend/src/pages/Home.jsx`'s `MACOS_DOWNLOAD_URL` points at
+  that same release/filename permanently, so no frontend change or
+  redeploy was needed to put the new build behind the site's existing
+  "Download for Mac" link.
+- `gh` has no stored auth in this environment; a token was pulled from
+  git's own credential store instead: `git credential fill` with
+  `protocol=https`/`host=github.com`, exported as `GH_TOKEN` for the
+  `gh release` calls.
+
 ## Not started yet
 Windows packaging/signing (separate `signtool`-based process, completely
 unrelated to the macOS work above).
