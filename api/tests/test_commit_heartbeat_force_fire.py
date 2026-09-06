@@ -3,52 +3,64 @@
 agent.py) and the `force` flag on `routes/agent.py`'s `commit_heartbeat`
 route.
 
-Before this change, the manual "execute now" trigger button (shipped in
-20260901-heartbeat-manual-trigger-button) called `commit_hb_response` with no
-way to bypass its shared per-calendar-day `last_fired` claim -- the same
-claim `_fire_due_heartbeats` (scheduler.py) uses to guarantee at-most-once-
-per-day automatic firing. So tapping the manual trigger after ANY fire
-already happened that day (scheduled or an earlier manual tap) just returned
-`{"skipped": "already fired today"}` and produced no note.
+REVISED for task 20260906-heartbeat-forced-fire-coordination (testing step 2):
+20260901's original design had the forced path (`_commit_hb_response_forced`)
+never read or write `agent_heartbeats.last_fired` at all -- a forced fire and
+that same heartbeat's scheduled auto-fire could therefore BOTH succeed on the
+same calendar day. That was accepted behavior at the time (two independently-
+authored notes), but became a genuine duplicate-note bug once
+20260906-heartbeat-timeline-instructions gave both paths the SAME day's
+`timeline_instruction` slot to draw on via `_todays_instruction`.
+
+This task's architecture.json (`forced_path_persistence_supersession`)
+SUPERSEDES the original "forced path writes nothing to agent_heartbeats"
+decision: the forced path now also calls the shared `_claim_last_fired`
+helper (the exact same atomic conditional UPDATE the unforced path already
+used), but never gates proceeding on its result -- a forced fire is still
+never blocked by the daily gate. It only uses the claim's rowcount (1 = this
+attempt covered an uncovered day, 0 = the day was already covered by an
+earlier fire of either kind) to decide whether ITS OWN later failure may
+safely unset `last_fired` again (`forced_failure_unwind`) without erasing
+another fire's legitimate claim.
 
 This suite proves, against the REAL `AgentManager.commit_hb_response` and a
 REAL Postgres DB (never a mocked manager -- matching every other heartbeat
 test in this directory):
 
   1. A forced fire succeeds (creates a note) even though the heartbeat
-     already fired today via the normal/automatic path -- the core bug this
-     task fixes.
-  2. A forced fire never reads, writes, or resets `agent_heartbeats.last_fired`
-     -- confirmed by asserting the exact `last_fired` timestamp is byte-for-
-     byte unchanged (same Python value) after the forced call as it was
-     immediately before it, not merely "still non-null".
-  3. Because `last_fired` is untouched, `_fire_due_heartbeats`'s own due-scan
-     pre-filter continues to correctly EXCLUDE a heartbeat that already had
-     its normal scheduled fire today, regardless of how many forced fires
-     also happened afterward -- i.e. a forced fire never un-suppresses or
-     re-arms the automatic path for the same day. This is exercised against
-     the real `_scan_candidates`-shaped query the scheduler runs, not a
-     reimplementation of it.
+     already fired today via the normal/automatic path -- the core bug the
+     ORIGINAL 20260901 task fixed, still true today (symmetric_ordering: a
+     scheduled-first, forced-second ordering must still let the forced fire
+     through).
+  2. When a forced fire is the FIRST fire of the day (last_fired was NULL or
+     a prior local day), it now claims `last_fired` exactly like an unforced
+     fire would -- so a scheduled/unforced fire attempted afterward the same
+     day correctly skips. This is the primary production scenario this task
+     closes (forced-fires-first, then the scheduled auto-fire must not also
+     succeed).
+  3. When a forced fire runs AFTER the day is already covered (by either an
+     earlier scheduled fire or an earlier forced fire), its own claim attempt
+     gets rowcount 0 and is a complete no-op on `last_fired` -- it does not
+     erase or perturb whatever value is already there.
   4. Two concurrent forced-fire requests for the SAME heartbeat (real OS
-     threads via a `threading.Barrier`, matching commit_heartbeat's
-     `loop.run_in_executor` thread-pool shape and this project's existing
-     concurrency-test pattern in test_commit_heartbeat_idempotency.py) do
-     NOT both succeed -- exactly one produces a note, the other is cleanly
-     skipped with the new, distinctly-worded outcome, per the fail-closed
-     preference (Q14). This proves the new advisory-lock claim actually
-     serializes concurrent forced fires rather than only working when called
-     sequentially.
-  5. A forced fire on an heartbeat that has NEVER fired (last_fired IS NULL)
-     still succeeds and still leaves last_fired NULL -- confirms the forced
-     path doesn't accidentally depend on last_fired already being set.
-  6. Sequential forced fires (no actual concurrency) on the same heartbeat
-     each succeed and each produce their own note -- unlimited same-day
-     forced fires (bounded only by the weekly notes cap, per this task's
-     explicit out-of-bounds decision) is the intended behavior, not a bug.
-  7. An automatic (unforced) fire on a genuinely new calendar day still
-     succeeds normally after one or more forced fires happened "yesterday" --
-     forced fires don't leave any stale state that would block a later
-     legitimate automatic fire.
+     threads via a `threading.Barrier`) do NOT both succeed -- exactly one
+     produces a note via the pre-existing advisory lock, entirely independent
+     of the `last_fired` coordination added by this task.
+  5. Sequential forced fires (no actual concurrency) on the same heartbeat
+     each still succeed and each produce their own note -- unlimited same-day
+     forced fires (bounded only by the weekly notes cap) is still intended
+     behavior; only the FIRST one now also claims `last_fired` for the day.
+  6. A forced fire's own claim, followed by an LLM/save failure, unsets
+     `last_fired` again ONLY if that forced fire's own claim attempt is what
+     covered the day (rowcount 1) -- allowing a clean retry. If the day was
+     already covered before this forced fire's claim attempt ran (rowcount
+     0), the same failure must leave `last_fired` completely untouched, so it
+     can never erase an earlier fire's (possibly the scheduled path's own)
+     legitimate claim.
+  7. A DB error on the forced path's claim attempt itself fails closed:
+     `{"error": "claim failed"}`, no note generated, and the advisory lock is
+     still released afterward (a following, working forced call still
+     succeeds).
   8. Cross-user ownership check still applies to forced calls -- a forced
      call for someone else's heartbeat is rejected before the LLM call, same
      as the unforced path.
@@ -59,7 +71,9 @@ test in this directory):
 
 Uses a FakeManager subclass to stub `_call_api` (same technique as
 test_commit_heartbeat_idempotency.py), so no real LLM call is made and the
-test is deterministic.
+test is deterministic. Imports `_fake_timeline` to stub the SEPARATE
+timeline-planning LLM call (`_generate_timeline_days`) that
+`ensure_current_timeline` would otherwise make on every fire.
 
 Run:  cd api && ../.venv/bin/python tests/test_commit_heartbeat_force_fire.py
 """
@@ -101,6 +115,26 @@ class FakeManager(AgentManager):
             '{"__action": "create_note", "title": "Reflection", '
             '"text": "Generated content.", "verses": []}'
         )
+
+
+class FailingLLMManager(FakeManager):
+    """Simulates the LLM connection failing on the NOTE-generation call
+    (`_call_api`) -- distinct from a timeline-planning failure -- so
+    `_generate_and_save_note`'s `on_llm_error` unwind path is exercised
+    exactly as it would be in production (see `_generate_and_save_note`'s
+    own `except Exception` branch around `_call_api`)."""
+
+    def _call_api(self, agent_role, messages):
+        raise ConnectionError("simulated LLM connection failure")
+
+
+class ClaimErrorManager(FakeManager):
+    """Simulates the forced path's own `_claim_last_fired` call raising
+    (a real DB error), independent of note generation -- the
+    `claim_attempt_error_handling` decision's fail-closed branch."""
+
+    def _claim_last_fired(self, heartbeat_id):
+        raise RuntimeError("simulated claim DB error")
 
 
 def make_user() -> str:
@@ -220,17 +254,17 @@ def scan_due_candidate_ids(user_id: str) -> set:
         db.close()
 
 
-def test_forced_fire_after_automatic_fire_same_day():
-    print("\n=== 1/2/3. Forced fire succeeds after an automatic same-day fire, "
-          "never touches last_fired, and the scheduler's due-scan pre-filter "
-          "still correctly excludes the heartbeat afterward ===")
+def test_scheduled_first_then_forced_still_fires_without_erasing_claim():
+    print("\n=== 1/3. symmetric_ordering: scheduled fires first, then a forced "
+          "fire still succeeds (never blocked) -- and its no-op claim attempt "
+          "(rowcount 0) does NOT erase the scheduled fire's last_fired claim ===")
     uid = make_user()
     agent_id = make_agent(uid)
     hb_id = make_heartbeat(agent_id, uid)
     manager = FakeManager(uid)
 
     try:
-        # Normal automatic fire claims last_fired and succeeds.
+        # Normal automatic fire claims last_fired (rowcount 1) and succeeds.
         result1 = fire(manager, agent_id, hb_id, "Reflect on today.")
         check("automatic (unforced) fire succeeds", result1 == {"success": "saved note"}, str(result1))
         check("exactly one note after automatic fire", note_count_for_heartbeat(hb_id) == 1)
@@ -247,7 +281,8 @@ def test_forced_fire_after_automatic_fire_same_day():
         check("an unforced retry the same day is still skipped (unchanged baseline)",
               result_unforced_retry == {"skipped": "already fired today"}, str(result_unforced_retry))
 
-        # Forced fire must succeed anyway.
+        # Forced fire must succeed anyway -- symmetric_ordering: a manual override
+        # after the day already auto-fired is the whole point of the feature.
         result2 = fire(manager, agent_id, hb_id, "Reflect on today.", force=True)
         check("forced fire succeeds even though the heartbeat already fired today (automatically)",
               result2 == {"success": "saved note"}, str(result2))
@@ -255,7 +290,8 @@ def test_forced_fire_after_automatic_fire_same_day():
               note_count_for_heartbeat(hb_id) == 2, str(note_count_for_heartbeat(hb_id)))
 
         last_fired_after = get_last_fired(hb_id)
-        check("last_fired is BYTE-FOR-BYTE unchanged by the forced fire (forced path never writes it)",
+        check("last_fired is BYTE-FOR-BYTE unchanged by the forced fire (its own claim attempt "
+              "found the day already covered -- rowcount 0 -- and is a no-op)",
               last_fired_after == last_fired_before,
               f"before={last_fired_before!r} after={last_fired_after!r}")
 
@@ -265,9 +301,7 @@ def test_forced_fire_after_automatic_fire_same_day():
               "(forced fire never re-arms the automatic path for today)",
               hb_id not in scan_due_candidate_ids(uid))
 
-        # And the automatic path itself still correctly skips (it would only fire again
-        # were the due-scan pre-filter to ever mis-include it -- but exercise the actual
-        # claim path directly too, matching acceptance criterion #3).
+        # And the automatic path itself still correctly skips.
         result3 = fire(manager, agent_id, hb_id, "Reflect on today.")
         check("the automatic/unforced path still correctly reports 'already fired today' "
               "after one or more forced fires the same day",
@@ -278,9 +312,11 @@ def test_forced_fire_after_automatic_fire_same_day():
         cleanup(uid)
 
 
-def test_forced_fire_never_fired_before():
-    print("\n=== 5. Forced fire on a heartbeat that has never fired succeeds and "
-          "leaves last_fired NULL ===")
+def test_forced_first_then_scheduled_skips():
+    print("\n=== 2. PRIMARY production scenario this task closes: a forced fire "
+          "is the FIRST fire of the day (last_fired starts NULL) -- it now claims "
+          "last_fired via the shared helper, so a scheduled/unforced fire attempted "
+          "afterward the same day correctly SKIPS instead of also succeeding ===")
     uid = make_user()
     agent_id = make_agent(uid)
     hb_id = make_heartbeat(agent_id, uid)
@@ -288,19 +324,39 @@ def test_forced_fire_never_fired_before():
 
     try:
         check("last_fired starts NULL", get_last_fired(hb_id) is None)
+        check("due-scan pre-filter initially includes the never-fired heartbeat",
+              hb_id in scan_due_candidate_ids(uid))
+
         result = fire(manager, agent_id, hb_id, "Reflect on today.", force=True)
         check("forced fire on a never-fired heartbeat succeeds",
               result == {"success": "saved note"}, str(result))
         check("exactly one note created", note_count_for_heartbeat(hb_id) == 1)
-        check("last_fired is STILL NULL after the forced fire (forced path never sets it)",
-              get_last_fired(hb_id) is None, str(get_last_fired(hb_id)))
+
+        last_fired = get_last_fired(hb_id)
+        check("last_fired is now SET by the forced fire (forced_path_persistence_supersession: "
+              "the forced path claims an uncovered day exactly like the unforced path would)",
+              last_fired is not None, str(last_fired))
+
+        check("due-scan pre-filter now excludes the heartbeat -- the forced fire covered today",
+              hb_id not in scan_due_candidate_ids(uid))
+
+        # The scheduled/unforced auto-fire, attempted after the forced fire already
+        # covered the day, must observably skip -- not also produce a note.
+        result_scheduled = fire(manager, agent_id, hb_id, "Reflect on today.")
+        check("the scheduled/unforced auto-fire attempted after the forced fire SKIPS "
+              "instead of also succeeding (this task's core acceptance criterion)",
+              result_scheduled == {"skipped": "already fired today"}, str(result_scheduled))
+        check("still exactly one note total -- no duplicate produced",
+              note_count_for_heartbeat(hb_id) == 1, str(note_count_for_heartbeat(hb_id)))
     finally:
         cleanup(uid)
 
 
 def test_sequential_forced_fires_each_succeed():
-    print("\n=== 6. Sequential (non-concurrent) forced fires each succeed -- "
-          "unlimited same-day forced fires is intended, not a bug ===")
+    print("\n=== 5. Sequential (non-concurrent) forced fires each succeed -- "
+          "unlimited same-day forced fires is still intended, not a bug -- but "
+          "only the FIRST one claims last_fired for the day (rowcount 1); later "
+          "ones find it already covered (rowcount 0) and don't touch it further ===")
     uid = make_user()
     agent_id = make_agent(uid)
     hb_id = make_heartbeat(agent_id, uid)
@@ -312,16 +368,29 @@ def test_sequential_forced_fires_each_succeed():
             check(f"sequential forced fire #{i + 1} succeeds", result == {"success": "saved note"}, str(result))
         check("three notes exist after three sequential forced fires",
               note_count_for_heartbeat(hb_id) == 3, str(note_count_for_heartbeat(hb_id)))
-        check("last_fired remains NULL throughout (never set by any forced fire)",
-              get_last_fired(hb_id) is None)
+
+        first_claim_value = get_last_fired(hb_id)
+        check("last_fired was claimed by the FIRST forced fire (no longer NULL)",
+              first_claim_value is not None)
+
+        # Two more forced fires after the day is already covered must not perturb
+        # the already-claimed value any further.
+        for _ in range(2):
+            fire(manager, agent_id, hb_id, "Reflect on today.", force=True)
+        check("last_fired is unchanged by later same-day forced fires "
+              "(their own claim attempts are no-ops once the day is covered)",
+              get_last_fired(hb_id) == first_claim_value, str(get_last_fired(hb_id)))
+        check("five notes total after five sequential forced fires",
+              note_count_for_heartbeat(hb_id) == 5, str(note_count_for_heartbeat(hb_id)))
     finally:
         cleanup(uid)
 
 
 def test_concurrent_forced_fires_exactly_one_wins():
     print("\n=== 4. Concurrent forced fires for the SAME heartbeat: exactly one "
-          "succeeds, the other is skipped (fails closed), matching production's "
-          "run_in_executor real-OS-thread shape ===")
+          "succeeds via the pre-existing advisory lock, the other is skipped "
+          "(fails closed), matching production's run_in_executor real-OS-thread "
+          "shape. last_fired ends up claimed (non-NULL) by whichever one won ===")
     import threading
     import concurrent.futures
 
@@ -364,47 +433,107 @@ def test_concurrent_forced_fires_exactly_one_wins():
         check("exactly one note/context row exists network-wide despite "
               f"{N} genuinely concurrent forced-fire threads",
               note_count_for_heartbeat(hb_id) == 1, str(note_count_for_heartbeat(hb_id)))
-        check("last_fired is still NULL -- the concurrency claim never touched it",
-              get_last_fired(hb_id) is None)
+        check("last_fired is now claimed (non-NULL) -- the one winning forced fire's own "
+              "last_fired claim attempt is what covered today",
+              get_last_fired(hb_id) is not None)
     finally:
         cleanup(uid)
 
 
-def test_automatic_fire_still_works_next_day_after_forced_fires():
-    print("\n=== 7. Automatic fire on a genuinely new calendar day still succeeds "
-          "after one or more forced fires happened 'yesterday' ===")
+def test_forced_claim_failure_unwind_only_when_self_claimed():
+    print("\n=== 6. forced_failure_unwind: a forced fire's own claim followed by an "
+          "LLM/save failure unsets last_fired ONLY if its own claim attempt covered "
+          "the day (rowcount 1); if the day was already covered by an earlier fire "
+          "(rowcount 0), the same failure must leave last_fired completely untouched ===")
+
+    # --- Variant A: this forced fire's own claim covers an uncovered day (rowcount 1). ---
     uid = make_user()
     agent_id = make_agent(uid)
     hb_id = make_heartbeat(agent_id, uid)
-    manager = FakeManager(uid)
-
+    failing_manager = FailingLLMManager(uid)
     try:
-        # A normal automatic fire "yesterday" (back-dated).
-        result1 = fire(manager, agent_id, hb_id, "Reflect on today.")
-        check("initial automatic fire succeeds", result1 == {"success": "saved note"}, str(result1))
-        set_last_fired(hb_id, "date_trunc('day', NOW() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC' - INTERVAL '1 day'")
+        check("last_fired starts NULL", get_last_fired(hb_id) is None)
 
-        # Several forced fires "today", after the back-dated last_fired.
-        for _ in range(2):
-            forced_result = fire(manager, agent_id, hb_id, "Reflect on today.", force=True)
-            check("forced fire on the new day succeeds", forced_result == {"success": "saved note"}, str(forced_result))
+        result = fire(failing_manager, agent_id, hb_id, "Reflect on today.", force=True)
+        check("a forced fire whose note-generation LLM call fails returns an explicit error",
+              isinstance(result, dict) and "error" in result, str(result))
+        check("no note was created by the failed forced fire",
+              note_count_for_heartbeat(hb_id) == 0)
+        check("last_fired was unwound back to NULL (this attempt's own claim owned the day, "
+              "so it's safe to unset for a retry)",
+              get_last_fired(hb_id) is None, str(get_last_fired(hb_id)))
 
-        check("last_fired is still yesterday's back-dated value (forced fires didn't touch it)",
+        # A retry with a working manager should now succeed cleanly.
+        working_manager = FakeManager(uid)
+        retry_result = fire(working_manager, agent_id, hb_id, "Reflect on today.", force=True)
+        check("a retried forced fire (after the unwind) succeeds",
+              retry_result == {"success": "saved note"}, str(retry_result))
+        check("last_fired is now claimed by the successful retry",
               get_last_fired(hb_id) is not None)
+    finally:
+        cleanup(uid)
 
-        # The automatic path should still see this heartbeat as due for today (last_fired is
-        # "yesterday") and succeed exactly once.
-        result_auto = fire(manager, agent_id, hb_id, "Reflect on today.")
-        check("automatic fire on the new calendar day still succeeds despite prior forced fires",
-              result_auto == {"success": "saved note"}, str(result_auto))
+    # --- Variant B: the day is ALREADY covered before this forced fire's own claim
+    #     attempt runs (rowcount 0) -- its later failure must not erase that claim. ---
+    uid = make_user()
+    agent_id = make_agent(uid)
+    hb_id = make_heartbeat(agent_id, uid)
+    try:
+        # An earlier, successful UNFORCED fire covers the day first.
+        scheduled_manager = FakeManager(uid)
+        scheduled_result = fire(scheduled_manager, agent_id, hb_id, "Reflect on today.")
+        check("the earlier scheduled fire succeeds and claims last_fired",
+              scheduled_result == {"success": "saved note"}, str(scheduled_result))
+        claimed_value = get_last_fired(hb_id)
+        check("last_fired is set by the earlier scheduled fire", claimed_value is not None)
 
-        # And a second automatic attempt the same day is (correctly) skipped.
-        result_auto2 = fire(manager, agent_id, hb_id, "Reflect on today.")
-        check("a second automatic attempt the same day is skipped as usual",
-              result_auto2 == {"skipped": "already fired today"}, str(result_auto2))
+        # A forced fire's own claim attempt now gets rowcount 0 (day already covered),
+        # then its note generation fails.
+        failing_manager2 = FailingLLMManager(uid)
+        result2 = fire(failing_manager2, agent_id, hb_id, "Reflect on today.", force=True)
+        check("the forced fire (day already covered) whose LLM call fails still returns "
+              "an explicit error", isinstance(result2, dict) and "error" in result2, str(result2))
+        check("no note was created by the failed forced fire",
+              note_count_for_heartbeat(hb_id) == 1)  # only the earlier scheduled fire's note
 
-        check("four notes total (1 initial + 2 forced + 1 automatic-on-new-day)",
-              note_count_for_heartbeat(hb_id) == 4, str(note_count_for_heartbeat(hb_id)))
+        check("last_fired is COMPLETELY UNTOUCHED by the failed forced fire -- it must not "
+              "erase the earlier scheduled fire's legitimate claim (forced_failure_unwind's "
+              "whole reason for scoping the unwind to rowcount 1 only)",
+              get_last_fired(hb_id) == claimed_value, str(get_last_fired(hb_id)))
+
+        # A subsequent unforced attempt must still correctly skip -- proving the day is
+        # still recognized as covered, i.e. nothing was erased.
+        scheduled_retry = fire(scheduled_manager, agent_id, hb_id, "Reflect on today.")
+        check("a subsequent scheduled attempt still correctly skips (the claim was never erased)",
+              scheduled_retry == {"skipped": "already fired today"}, str(scheduled_retry))
+    finally:
+        cleanup(uid)
+
+
+def test_forced_claim_db_error_fails_closed():
+    print("\n=== 7. claim_attempt_error_handling: a DB error on the forced path's own "
+          "_claim_last_fired call itself fails closed -- {'error': 'claim failed'}, no "
+          "note generated, and the advisory lock is still released afterward ===")
+    uid = make_user()
+    agent_id = make_agent(uid)
+    hb_id = make_heartbeat(agent_id, uid)
+    error_manager = ClaimErrorManager(uid)
+    try:
+        result = fire(error_manager, agent_id, hb_id, "Reflect on today.", force=True)
+        check("a forced fire whose claim attempt itself raises fails closed with an explicit error",
+              result == {"error": "claim failed"}, str(result))
+        check("no note was created", note_count_for_heartbeat(hb_id) == 0)
+        check("last_fired is untouched (still NULL) -- the claim never actually ran",
+              get_last_fired(hb_id) is None, str(get_last_fired(hb_id)))
+
+        # The advisory lock must still be released in the `finally` block despite the
+        # claim error -- a following, working forced call for the SAME heartbeat must
+        # still succeed rather than being skipped as "already in progress".
+        working_manager = FakeManager(uid)
+        follow_up = fire(working_manager, agent_id, hb_id, "Reflect on today.", force=True)
+        check("a subsequent working forced call for the same heartbeat still succeeds "
+              "(the advisory lock was correctly released after the claim error)",
+              follow_up == {"success": "saved note"}, str(follow_up))
     finally:
         cleanup(uid)
 
@@ -494,11 +623,12 @@ def test_forced_fire_route_respects_weekly_notes_cap():
 
 
 def main():
-    test_forced_fire_after_automatic_fire_same_day()
-    test_forced_fire_never_fired_before()
+    test_scheduled_first_then_forced_still_fires_without_erasing_claim()
+    test_forced_first_then_scheduled_skips()
     test_sequential_forced_fires_each_succeed()
     test_concurrent_forced_fires_exactly_one_wins()
-    test_automatic_fire_still_works_next_day_after_forced_fires()
+    test_forced_claim_failure_unwind_only_when_self_claimed()
+    test_forced_claim_db_error_fails_closed()
     test_forced_fire_cross_user_ownership_rejected()
     test_forced_fire_route_respects_weekly_notes_cap()
 

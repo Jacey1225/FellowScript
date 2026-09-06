@@ -590,6 +590,78 @@ class AgentManager(DBManager):
         offset = (self._local_date() - timeline["window_start"]).days
         return timeline["days"].get(offset)
 
+    def _claim_last_fired(self, heartbeat_id: str) -> int:
+        """Atomically claim `heartbeat_id`'s calendar-day boundary via the
+        one conditional `last_fired` UPDATE -- the SAME query, extracted
+        here, that used to live only inline in the unforced path below.
+
+        Task 20260906-heartbeat-forced-fire-coordination's architecture.json
+        (`forced_path_persistence_supersession`) supersedes the earlier
+        20260901-heartbeat-manual-force-fire decision that the forced path
+        must never read/write `last_fired`: both the unforced path
+        (`commit_hb_response`) and the forced path
+        (`_commit_hb_response_forced`) now call this exact helper, so
+        `last_fired` still only ever changes through this one atomic,
+        conditional shape -- never a bare/unconditional write, and never a
+        second bespoke query -- even though it now has two callers.
+
+        The calendar-day boundary is computed in the owning user's own
+        local timezone (`users.timezone`), matching scheduler.py's due-scan
+        and every other per-user-timezone job in this file. Postgres row
+        locking guarantees exactly one concurrent caller (of either path)
+        ever wins the claim for a given day; every other caller (same
+        instant, or later the same local day) gets rowcount 0.
+
+        Returns:
+            1 if THIS call transitioned `last_fired` from unclaimed (NULL
+                or a prior local day) to today -- this call is the one that
+                "covered" today for this heartbeat.
+            0 if today was already covered by an earlier claim (by either
+                path) before this call ran.
+
+        Raises:
+            Whatever the underlying psycopg2/db call raises, uncaught --
+            callers must wrap this in their own try/except and roll back
+            (fail-closed per Security Posture Q9: a claim attempt that
+            itself can't be trusted to have run must never be treated as
+            "day uncovered, proceed").
+        """
+        self.cur.execute(
+            "UPDATE agent_heartbeats SET last_fired = NOW() "
+            "FROM users "
+            "WHERE agent_heartbeats._id = %s "
+            "AND users._id = %s "
+            "AND (agent_heartbeats.last_fired IS NULL "
+            "OR (agent_heartbeats.last_fired AT TIME ZONE COALESCE(users.timezone, 'UTC'))::date "
+            "< (NOW() AT TIME ZONE COALESCE(users.timezone, 'UTC'))::date) "
+            "RETURNING agent_heartbeats._id",
+            (heartbeat_id, self.user_id),
+        )
+        claimed = self.cur.fetchone()
+        self.conn.commit()
+        return 1 if claimed else 0
+
+    def _unset_last_fired(self, heartbeat_id: str) -> None:
+        """Unconditionally NULL out `last_fired` for `heartbeat_id`.
+
+        Only ever safe to call on behalf of an attempt that already knows
+        IT is the one holding the claim (i.e. its own `_claim_last_fired`
+        call returned 1) -- see `_commit_hb_response_forced`'s conditional
+        wrapping of this (`forced_failure_unwind`). Calling this
+        unconditionally on a claim you don't own would erase another
+        attempt's (possibly the other path's) legitimate claim and reopen
+        the exact same-day double-fire this task exists to close.
+        """
+        try:
+            self.cur.execute(
+                "UPDATE agent_heartbeats SET last_fired = NULL WHERE _id = %s",
+                (heartbeat_id,),
+            )
+            self.conn.commit()
+        except Exception as rollback_err:
+            logger.error("Failed to unset heartbeat claim for %s: %s", heartbeat_id, rollback_err)
+            self.conn.rollback()
+
     def commit_hb_response(self, agent_id: str, heartbeat_id: str, heartbeat_content: str, force: bool = False):
         # Ownership guard: heartbeat_id/agent_id come straight off the URL, so
         # confirm both belong to self.user_id before claiming the fire or
@@ -645,25 +717,19 @@ class AgentManager(DBManager):
         # per-user-timezone job's default. Postgres row locking still
         # guarantees exactly one concurrent caller wins the claim; any other
         # caller (same instant or same local day) gets no row and skips.
+        #
+        # As of task 20260906-heartbeat-forced-fire-coordination, this claim
+        # (`_claim_last_fired`) is shared with the forced path below -- see
+        # that method's docstring and `_commit_hb_response_forced` for why a
+        # second caller of the exact same atomic query doesn't reopen the
+        # race this comment describes.
         try:
-            self.cur.execute(
-                "UPDATE agent_heartbeats SET last_fired = NOW() "
-                "FROM users "
-                "WHERE agent_heartbeats._id = %s "
-                "AND users._id = %s "
-                "AND (agent_heartbeats.last_fired IS NULL "
-                "OR (agent_heartbeats.last_fired AT TIME ZONE COALESCE(users.timezone, 'UTC'))::date "
-                "< (NOW() AT TIME ZONE COALESCE(users.timezone, 'UTC'))::date) "
-                "RETURNING agent_heartbeats._id",
-                (heartbeat_id, self.user_id),
-            )
-            claimed = self.cur.fetchone()
-            self.conn.commit()
+            rowcount = self._claim_last_fired(heartbeat_id)
         except Exception as e:
             logger.error("Heartbeat claim failed for %s: %s", heartbeat_id, e)
             self.conn.rollback()
             return {"error": "claim failed"}
-        if not claimed:
+        if rowcount == 0:
             logger.info("Heartbeat %s already fired today — skipping duplicate.", heartbeat_id)
             return {"skipped": "already fired today"}
 
@@ -673,16 +739,12 @@ class AgentManager(DBManager):
             # permanently burn today's fire slot with no note produced and
             # no way to retry (commit_hb_response's own idempotency guard
             # would report "already fired today" on any later attempt).
-            # Unset the claim so a retry can go through.
-            try:
-                self.cur.execute(
-                    "UPDATE agent_heartbeats SET last_fired = NULL WHERE _id = %s",
-                    (heartbeat_id,),
-                )
-                self.conn.commit()
-            except Exception as rollback_err:
-                logger.error("Failed to unset heartbeat claim for %s: %s", heartbeat_id, rollback_err)
-                self.conn.rollback()
+            # Unset the claim so a retry can go through. Unconditional here
+            # (unlike the forced path's own unwind) because reaching this
+            # point in the unforced path means rowcount was necessarily 1 --
+            # a rowcount-0 claim already returned {"skipped": ...} above and
+            # never reaches this closure's definition.
+            self._unset_last_fired(heartbeat_id)
 
         # ensure_current_timeline runs only now that the claim above has
         # been won -- see its own docstring on why this composes safely
@@ -708,17 +770,34 @@ class AgentManager(DBManager):
         heartbeat_timestamps: Optional[list] = None, heartbeat_prompt: str = "",
         timeline_instruction_raw: Optional[str] = None,
     ):
-        """Manual/forced heartbeat fire: deliberately bypasses the
-        once-per-day `last_fired` claim/gate above so a manual trigger
-        always proceeds (modulo the weekly notes cap already checked by the
-        route before this is ever reached), but this path must never read,
-        write, or reset `last_fired` itself -- that column, and the
-        day-boundary invariant it enforces, belong solely to the unforced
-        path above. scheduler.py's `_fire_due_heartbeats` due-scan
-        pre-filter and its own claim both key off `last_fired` and are
-        completely unaffected by any number of forced fires happening the
-        same day (see architecture.json's forced_path_persistence decision
-        -- option (a): no new persisted state for the forced path itself).
+        """Manual/forced heartbeat fire: still deliberately never BLOCKED by
+        the once-per-day `last_fired` gate -- a manual trigger always
+        proceeds to `ensure_current_timeline`/`_generate_and_save_note`
+        regardless of the daily claim's outcome (modulo the weekly notes cap
+        already checked by the route before this is ever reached, and the
+        advisory lock below).
+
+        As of task 20260906-heartbeat-forced-fire-coordination
+        (`forced_path_persistence_supersession`), this SUPERSEDES
+        20260901-heartbeat-manual-force-fire's original decision that this
+        path must never read/write `last_fired` at all. That decision
+        predates timeline_instruction: once both paths started drawing on
+        the SAME day's timeline slot (`_todays_instruction`), a forced fire
+        and that day's scheduled auto-fire both succeeding became a genuine
+        duplicate-note bug, not two independently-fine notes. This path now
+        calls the exact same shared `_claim_last_fired` helper the unforced
+        path uses -- never a second bespoke query or a new column -- so
+        `last_fired` still has exactly one write shape, just two callers.
+        Critically, this path only READS the claim's rowcount to know
+        whether it (1) or an earlier fire of either kind (0) covered today;
+        it never gates proceeding on that result, preserving the "never
+        blocked" guarantee. A scheduled fire that runs later the same day
+        will see rowcount 0 from its own claim attempt and skip -- that's
+        the whole point of sharing this helper. scheduler.py's
+        `_fire_due_heartbeats` due-scan pre-filter and its own claim are
+        unaffected: they already treat `last_fired` as "has this heartbeat
+        fired today", which remains exactly as true now that a forced fire
+        can also set it.
 
         Two forced fires for the same heartbeat racing concurrently (a
         double-tap that slips past the client's in-flight guard, or two
@@ -755,6 +834,50 @@ class AgentManager(DBManager):
             heartbeat_id, self.user_id,
         )
         try:
+            # Claim last_fired via the SAME shared helper the unforced path
+            # uses (forced_path_persistence_supersession) -- but never gate
+            # on its result: proceed to ensure_current_timeline/note
+            # generation either way, preserving the "a forced fire is never
+            # blocked" guarantee. The rowcount is only read afterward to
+            # know whether THIS attempt is the one that covered today (1,
+            # in which case a later failure may safely unwind it) or the
+            # day was already covered by an earlier fire of either kind (0,
+            # in which case a later failure must leave last_fired alone --
+            # see forced_failure_unwind).
+            try:
+                claim_rowcount = self._claim_last_fired(heartbeat_id)
+            except Exception as e:
+                # Fail-closed per Q9/Q27: if the coordination signal itself
+                # can't be trusted to have been written, don't proceed --
+                # exactly mirroring the advisory-lock-acquisition failure
+                # branch a few lines above.
+                logger.error("Forced-fire last_fired claim failed for %s: %s", heartbeat_id, e)
+                self.conn.rollback()
+                return {"error": "claim failed"}
+
+            if claim_rowcount == 1:
+                logger.info(
+                    "Forced heartbeat fire for %s (user=%s) claimed an uncovered day.",
+                    heartbeat_id, self.user_id,
+                )
+            else:
+                logger.info(
+                    "Forced heartbeat fire for %s (user=%s) proceeding on top of an "
+                    "already-covered day (claimed by an earlier fire of either kind).",
+                    heartbeat_id, self.user_id,
+                )
+
+            def _unset_forced_claim() -> None:
+                # Only unwind last_fired if THIS attempt's own claim is what
+                # covered today (rowcount 1). If rowcount was 0, some
+                # earlier fire (scheduled or forced) already legitimately
+                # holds the claim -- unconditionally nulling it here would
+                # erase that fire's claim and could let the scheduled path
+                # fire a second time today after all (forced_failure_unwind).
+                if claim_rowcount != 1:
+                    return
+                self._unset_last_fired(heartbeat_id)
+
             # ensure_current_timeline runs only now that the advisory lock
             # above has been acquired -- see its own docstring on why this
             # composes safely with two racing forced fires for the same
@@ -765,11 +888,12 @@ class AgentManager(DBManager):
                 )
             except TimelineGenerationError as e:
                 logger.error("Timeline generation failed for heartbeat %s: %s", heartbeat_id, e)
+                _unset_forced_claim()
                 return {"error": e.message}
 
             return self._generate_and_save_note(
-                agent_id, heartbeat_id, heartbeat_content, heartbeat_group_id=heartbeat_group_id,
-                heartbeat_notes_public=heartbeat_notes_public,
+                agent_id, heartbeat_id, heartbeat_content, on_llm_error=_unset_forced_claim,
+                heartbeat_group_id=heartbeat_group_id, heartbeat_notes_public=heartbeat_notes_public,
                 day_instruction=self._todays_instruction(timeline),
             )
         finally:
