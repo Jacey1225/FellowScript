@@ -85,15 +85,24 @@ struct NoteRow: View {
                 Spacer()
                 if showsAuthorChip {
                     HStack(spacing: 6) {
-                        Circle()
-                            .fill(Theme.gold.opacity(0.14))
-                            .overlay(Circle().stroke(Theme.gold.opacity(0.32), lineWidth: 1))
-                            .frame(width: 20, height: 20)
-                            .overlay(
-                                Text(String(note.username.prefix(1)).uppercased())
-                                    .font(.system(size: 9.5, weight: .bold))
-                                    .foregroundColor(Theme.goldLight)
-                            )
+                        // Task 20260905-profile-photo-avatar-gaps: reuses
+                        // AvatarView (Dashboard/DashboardComponents.swift) --
+                        // same photo-with-initials-fallback treatment as
+                        // every other surface this feature shipped, rather
+                        // than inventing a third one. `note.profile_photo_url`
+                        // now decodes for free once the backend's
+                        // fetch_notes/search_notes queries resolve it
+                        // (GroupsManager, backend step 1) -- nil (still
+                        // initials-only) for a build/response predating that
+                        // change, exactly like before this fix.
+                        AvatarView(
+                            initial: String(note.username.prefix(1)).uppercased(),
+                            photoURL: note.profile_photo_url,
+                            diameter: 20,
+                            fillColor: Theme.gold.opacity(0.14),
+                            textColor: Theme.goldLight
+                        )
+                        .overlay(Circle().stroke(Theme.gold.opacity(0.32), lineWidth: 1))
                         Text(note.username)
                             .font(.system(size: 11.5, weight: .bold))
                             .foregroundColor(Theme.parchment.opacity(0.75))

@@ -44,8 +44,29 @@ final class AppState: ObservableObject {
 
     private func restoreSession() {
         guard !storedUserId.isEmpty else { return }
-        currentUser     = FSUser(user_id: storedUserId, username: storedUsername, email: storedEmail)
+        let uid = storedUserId
+        currentUser     = FSUser(user_id: uid, username: storedUsername, email: storedEmail)
         isAuthenticated = true
+        // Addendum to task 20260905-profile-photo-avatar-gaps: the bare
+        // FSUser rebuilt above from @AppStorage carries no
+        // `profile_photo_url` (or any other server-only field) -- until
+        // something refreshed it, every surface reading `currentUser` (this
+        // chat thread's own-sent-message bubble avatar via
+        // MessageDisplayGroup.grouped's `me:` param, HeroHeader, ...) would
+        // show initials-only for a photo that was actually uploaded in a
+        // *previous* session, not because no photo is set. Refresh it in
+        // the background here -- same cache-first-then-fresh-fetch shape
+        // already used by AccountViewModel.load()/DashboardViewModel.load()/
+        // NotesViewModel -- best-effort: a failed fetch just leaves the bare
+        // cached user in place, same as before this fix.
+        Task { [weak self] in
+            guard let self, let fresh = try? await self.service.fetchUser(userId: uid) else { return }
+            // Guards against a sign-out (or a different sign-in) racing
+            // ahead of this fetch -- only apply if the session is still this
+            // same user.
+            guard self.storedUserId == uid else { return }
+            self.updateUser(fresh)
+        }
     }
 
     func signIn(username: String, password: String) async throws {

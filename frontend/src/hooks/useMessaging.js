@@ -381,6 +381,23 @@ export function useMessaging({ user }) {
     return data.results || [];
   }, []);
 
+  // Task 20260905-gif-picker-default-browse: default/trending browse page,
+  // shown before any query is typed. Same authenticated proxy endpoint as
+  // searchGifs (omitting `q` switches the route to browse mode server-side),
+  // paginated via an opaque `next_page_token` the caller passes back
+  // unmodified — never parsed/branched-on client-side (design gate §7).
+  const browseGifs = useCallback(async (pageToken) => {
+    const qs = pageToken ? `?page_token=${encodeURIComponent(pageToken)}` : '';
+    const res = await fetch(`${API}/message/gif-search${qs}`);
+    if (!res.ok) throw new Error("Couldn't load GIFs right now — try again in a moment.");
+    const data = await res.json();
+    return {
+      results: data.results || [],
+      nextPageToken: data.next_page_token ?? null,
+      hasMore: !!data.has_more,
+    };
+  }, []);
+
   // ── Friend actions ────────────────────────────────────────────────────────
 
   const addFriend = useCallback(async (username) => {
@@ -535,6 +552,6 @@ export function useMessaging({ user }) {
     loadContacts, openChat, closeChat, sendMessage,
     addFriend, removeFriend, createGroup, updateGroup, leaveGroup,
     reportUser, blockUser,
-    requestUploadUrl, uploadToS3, searchGifs,
+    requestUploadUrl, uploadToS3, searchGifs, browseGifs,
   };
 }

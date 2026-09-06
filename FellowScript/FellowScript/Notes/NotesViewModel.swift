@@ -171,7 +171,21 @@ final class NotesViewModel: ObservableObject {
 
         // First page only (nil cursor) for Personal and every group -- the
         // backend caps each at NOTES_PAGE_SIZE (15) by the SQL query itself.
-        async let notesTask    = try? service.fetchNotes(userId: userId, cursorCreatedAt: nil, cursorId: nil)
+        //
+        // Personal notes' outcome is captured as a `Result` (task
+        // 20260905-notes-group-refresh-clobber-rootcause), not collapsed via
+        // `try?`, so a thrown fetch failure's real error reaches the merge
+        // logic below instead of being flattened to a bare `nil` that's
+        // indistinguishable from "nothing went wrong" -- needed both for the
+        // splice decision (unchanged: still skip-and-keep-stale on any
+        // failure) and for the new `refreshError` visibility signal.
+        // Highlights/groups aren't "segments" in the pageState/splice sense
+        // this task is scoped to, so those two stay on the existing `try?`
+        // pattern untouched.
+        async let notesResult: Result<NotesPage, Error> = {
+            do { return .success(try await service.fetchNotes(userId: userId, cursorCreatedAt: nil, cursorId: nil)) }
+            catch { return .failure(error) }
+        }()
         async let hlTask       = try? service.fetchHighlights(userId: userId)
         async let contactsTask = try? service.fetchContacts(userId: userId)
 
@@ -189,14 +203,36 @@ final class NotesViewModel: ObservableObject {
         // only ever splice a segment's fresh result into `notes`/`pageState`
         // on that segment's own proven (non-nil) success; a segment whose
         // fetch fails this round simply keeps whatever was already there.
+        //
+        // Root-cause correction (task 20260905-notes-group-refresh-clobber-rootcause):
+        // that 20260904 fix was correct as far as it went, but it only guarded
+        // against a fetch that actually *threw*. NetworkService.fetchNotes/
+        // fetchGroupNotes' own decode-failure branches never threw -- they
+        // fabricated a technically-successful, non-throwing EMPTY NotesPage on
+        // a hard decode failure, indistinguishable right here from "the
+        // segment is genuinely empty now". A group's manual JSONSerialization
+        // parsing has far more silent-failure branches than personal notes'
+        // single strongly-typed JSONDecoder path, which is exactly why
+        // *group* refreshes were the ones observed clobbering to empty in
+        // practice while personal mostly wasn't. Fixed at the source
+        // (NetworkService+Notes.swift now throws on those decode failures
+        // instead of returning a fabricated empty page) -- once a
+        // non-throwing result is honest by construction, this splice logic's
+        // existing "only trust a proven success" semantics are sufficient
+        // and remain unchanged below; what's new is that a real thrown error
+        // now also feeds the `refreshError` signal instead of vanishing.
         var freshNotes: [String: FSNote] = [:]
         var newPageState = pageState
         var personalSucceeded = false
-        if let page = await notesTask {
+        var segmentErrors: [String] = []
+        switch await notesResult {
+        case .success(let page):
             freshNotes.merge(page.notes) { _, new in new }
             newPageState[Self.personalKey] = NotesPageState(
                 cursorCreatedAt: page.nextCursorCreatedAt, cursorId: page.nextCursorId, hasMore: page.hasMore)
             personalSucceeded = true
+        case .failure(let error):
+            segmentErrors.append("Personal: \(error.localizedDescription)")
         }
         if let h = await hlTask { highlights = h }
 
@@ -207,19 +243,32 @@ final class NotesViewModel: ObservableObject {
         }
 
         // Fetch each group's first page in parallel and merge into freshNotes.
+        // Same Result-capture rationale as personal notes above.
         var succeededGroupIds: Set<String> = []
-        await withTaskGroup(of: (String, NotesPage?).self) { group in
+        await withTaskGroup(of: (String, String, Result<NotesPage, Error>).self) { group in
             for g in loadedGroups {
+                let gid = g.id
+                let title = g.title
                 group.addTask {
-                    (g.id, try? await service.fetchGroupNotes(userId: userId, groupId: g.id, cursorCreatedAt: nil, cursorId: nil))
+                    do {
+                        let page = try await service.fetchGroupNotes(userId: userId, groupId: gid, cursorCreatedAt: nil, cursorId: nil)
+                        return (gid, title, .success(page))
+                    } catch {
+                        return (gid, title, .failure(error))
+                    }
                 }
             }
-            for await (gid, page) in group {
-                guard let page else { continue }   // this group's fetch failed this round -- leave its existing notes/pageState alone
-                freshNotes.merge(page.notes) { _, new in new }
-                newPageState[gid] = NotesPageState(
-                    cursorCreatedAt: page.nextCursorCreatedAt, cursorId: page.nextCursorId, hasMore: page.hasMore)
-                succeededGroupIds.insert(gid)
+            for await (gid, title, result) in group {
+                switch result {
+                case .success(let page):
+                    freshNotes.merge(page.notes) { _, new in new }
+                    newPageState[gid] = NotesPageState(
+                        cursorCreatedAt: page.nextCursorCreatedAt, cursorId: page.nextCursorId, hasMore: page.hasMore)
+                    succeededGroupIds.insert(gid)
+                case .failure(let error):
+                    // this group's fetch failed this round -- leave its existing notes/pageState alone
+                    segmentErrors.append("\(title): \(error.localizedDescription)")
+                }
             }
         }
 
@@ -240,6 +289,14 @@ final class NotesViewModel: ObservableObject {
 
         notes     = mergedNotes
         pageState = newPageState
+
+        // Visible, non-blocking signal (Q26/Q27 preference profile) for any
+        // segment whose fetch threw this round -- see `refreshError`'s own
+        // doc comment above for why this is a distinct property from
+        // `saveError` rather than a reuse of it. Cleared back to nil on a
+        // round with no segment failures so a stale message doesn't linger
+        // past the refresh that fixed it.
+        refreshError = segmentErrors.isEmpty ? nil : segmentErrors.joined(separator: "; ")
 
         // ── Write fresh data back to the cache ────────────────────────────────────
         await DiskCache.shared.save(mergedNotes, forKey: "notes:\(userId)")
@@ -263,21 +320,33 @@ final class NotesViewModel: ObservableObject {
         isLoadingMore = true
         defer { isLoadingMore = false }
 
-        let page: NotesPage?
-        if let gid = currentGroupId {
-            page = try? await service.fetchGroupNotes(
-                userId: userId, groupId: gid,
-                cursorCreatedAt: state.cursorCreatedAt, cursorId: state.cursorId)
-        } else {
-            page = try? await service.fetchNotes(
-                userId: userId,
-                cursorCreatedAt: state.cursorCreatedAt, cursorId: state.cursorId)
+        // Audited per task 20260905-notes-group-refresh-clobber-rootcause for
+        // the same clobber gap `fetchAndCache` had: this path was never
+        // actually at risk of it -- it only ever *appends* into the existing
+        // `notes` dict via `merge`, and a failed fetch simply returns early
+        // (below) leaving `pageState`/`hasMore` untouched, so the next scroll
+        // just retries the same page. The one real gap here was the same
+        // Q26 one shared with `fetchAndCache`: a thrown decode/network
+        // failure was silently swallowed by `try?` with no visible signal at
+        // all. Switched to do/catch so that failure now feeds the same
+        // `refreshError` signal instead of vanishing.
+        do {
+            let page: NotesPage
+            if let gid = currentGroupId {
+                page = try await service.fetchGroupNotes(
+                    userId: userId, groupId: gid,
+                    cursorCreatedAt: state.cursorCreatedAt, cursorId: state.cursorId)
+            } else {
+                page = try await service.fetchNotes(
+                    userId: userId,
+                    cursorCreatedAt: state.cursorCreatedAt, cursorId: state.cursorId)
+            }
+            notes.merge(page.notes) { _, new in new }
+            pageState[key] = NotesPageState(
+                cursorCreatedAt: page.nextCursorCreatedAt, cursorId: page.nextCursorId, hasMore: page.hasMore)
+        } catch {
+            refreshError = error.localizedDescription
         }
-        guard let page else { return }
-
-        notes.merge(page.notes) { _, new in new }
-        pageState[key] = NotesPageState(
-            cursorCreatedAt: page.nextCursorCreatedAt, cursorId: page.nextCursorId, hasMore: page.hasMore)
     }
 
     // ── Keyword search (task 20260903-notes-keyword-search) ────────────────
@@ -388,6 +457,23 @@ final class NotesViewModel: ObservableObject {
     }
 
     @Published var saveError: String? = nil
+
+    /// Visible, non-blocking signal for a background segment-refresh failure
+    /// (task 20260905-notes-group-refresh-clobber-rootcause, per the
+    /// Q26/Q27 preference-profile stance: surface swallowed fetch errors
+    /// rather than leaving them fully silent). Deliberately a separate
+    /// property from `saveError` even though it follows the exact same
+    /// simple `Published String?` shape -- `saveError` already drives
+    /// NotesListView's blocking "Save Failed" alert tied to the save/editor
+    /// flow, and reusing it here would pop that same alert during an
+    /// unrelated background pull-to-refresh. Set by `fetchAndCache`/
+    /// `loadMoreIfNeeded` when a segment's fetch throws; cleared back to nil
+    /// once a subsequent round has no segment failures, so a stale message
+    /// doesn't linger past the refresh that fixed it. Whether/how this
+    /// renders in the UI (banner/toast vs. left unbound for now) is left to
+    /// whichever view-layer pass wires it up -- this task is scoped to
+    /// NetworkService+Notes.swift and NotesViewModel.swift.
+    @Published var refreshError: String? = nil
 
     func saveNote(_ note: FSNote, editingId: String?, userId: String) async -> Bool {
         print("[VM] saveNote called — editingId=\(editingId ?? "nil") text.count=\(note.text.count)")

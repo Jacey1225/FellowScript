@@ -121,28 +121,68 @@ function AttachmentContent({ message }) {
 }
 
 // ── GIF-search sheet (design gate §2) ────────────────────────────────────────
-function GifSearchModal({ open, onClose, onSearchGifs, onSelect }) {
+// Task 20260905-gif-picker-default-browse: default/trending "browse" results
+// are kept in a state slice fully separate from search `results` (design
+// gate §1) — that's what lets clearing the query revert to the browse grid
+// instantly from already-held state (§3) instead of refetching.
+function GifSearchModal({ open, onClose, onSearchGifs, onBrowseGifs, onSelect }) {
   const [query, setQuery]     = useState('');
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState(null);
   const debounceRef = useRef(null);
 
+  const [browseResults, setBrowseResults]     = useState([]);
+  const [browseNextToken, setBrowseNextToken] = useState(null);
+  const [browseHasMore, setBrowseHasMore]     = useState(false);
+  const [browseLoading, setBrowseLoading]     = useState(false);
+  const [browseError, setBrowseError]         = useState(false);
+  const [loadMoreLoading, setLoadMoreLoading] = useState(false);
+  const [loadMoreError, setLoadMoreError]     = useState(false);
+
+  const trimmedQuery = query.trim();
+  const showSearch = trimmedQuery.length > 0;
+
+  const fetchBrowse = useCallback(async () => {
+    setBrowseLoading(true);
+    setBrowseError(false);
+    try {
+      const { results: gifs, nextPageToken, hasMore } = await onBrowseGifs();
+      setBrowseResults(gifs);
+      setBrowseNextToken(nextPageToken);
+      setBrowseHasMore(hasMore);
+    } catch (err) {
+      console.error('GIF browse failed:', err);
+      setBrowseError(true);
+    } finally {
+      setBrowseLoading(false);
+    }
+  }, [onBrowseGifs]);
+
   useEffect(() => {
-    if (!open) { setQuery(''); setResults([]); setError(null); setLoading(false); }
+    if (!open) {
+      setQuery(''); setResults([]); setError(null); setLoading(false);
+      setBrowseResults([]); setBrowseNextToken(null); setBrowseHasMore(false);
+      setBrowseError(false); setBrowseLoading(false);
+      setLoadMoreLoading(false); setLoadMoreError(false);
+      return;
+    }
+    // Fire the default-browse fetch as soon as the sheet opens (design gate
+    // §1) — no query field interaction required.
+    fetchBrowse();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   useEffect(() => {
     clearTimeout(debounceRef.current);
     setError(null);
-    const trimmed = query.trim();
-    if (!trimmed) { setResults([]); setLoading(false); return; }
+    if (!showSearch) { setResults([]); setLoading(false); return; }
     // Debounce ~350ms (design gate §2) — the endpoint is rate-limited
     // server-side at 30/min, so this isn't merely a UX nicety.
     debounceRef.current = setTimeout(async () => {
       setLoading(true);
       try {
-        const gifs = await onSearchGifs(trimmed);
+        const gifs = await onSearchGifs(trimmedQuery);
         setResults(gifs);
       } catch (err) {
         console.error('GIF search failed:', err);
@@ -152,7 +192,38 @@ function GifSearchModal({ open, onClose, onSearchGifs, onSelect }) {
       }
     }, 350);
     return () => clearTimeout(debounceRef.current);
-  }, [query, onSearchGifs]);
+  }, [trimmedQuery, showSearch, onSearchGifs]);
+
+  const handleLoadMore = async () => {
+    if (loadMoreLoading) return;
+    setLoadMoreLoading(true);
+    setLoadMoreError(false);
+    try {
+      const { results: gifs, nextPageToken, hasMore } = await onBrowseGifs(browseNextToken);
+      // Appended, not replaced (design gate §2) — and the grid keeps its
+      // current scroll position, no scroll-jump back to the top.
+      setBrowseResults(prev => [...prev, ...gifs]);
+      setBrowseNextToken(nextPageToken);
+      setBrowseHasMore(hasMore);
+    } catch (err) {
+      console.error('GIF load-more failed:', err);
+      setLoadMoreError(true);
+    } finally {
+      setLoadMoreLoading(false);
+    }
+  };
+
+  const renderCell = (gif) => (
+    <button
+      type="button"
+      key={gif.id}
+      className="gif-sheet-cell"
+      onClick={() => { onSelect(gif); onClose(); }}
+      aria-label="GIF result"
+    >
+      <img src={gif.preview_url} alt="" />
+    </button>
+  );
 
   return (
     <Modal open={open} onCancel={onClose} footer={null} title="Search GIFs" destroyOnHidden className="gif-sheet-modal">
@@ -164,32 +235,68 @@ function GifSearchModal({ open, onClose, onSearchGifs, onSelect }) {
         autoFocus
         style={{ marginBottom: '0.75rem' }}
       />
-      {loading && (
+      {showSearch && loading && (
         <div className="gif-sheet-centered"><Spin /></div>
       )}
-      {!loading && error && (
+      {showSearch && !loading && error && (
         <div className="gif-sheet-centered"><Text style={{ color: 'rgba(242,242,242,0.55)', fontSize: '0.8rem', textAlign: 'center' }}>{error}</Text></div>
       )}
-      {!loading && !error && results.length === 0 && (
+      {showSearch && !loading && !error && results.length === 0 && (
         <div className="gif-sheet-centered">
-          <Text style={{ color: 'rgba(242,242,242,0.55)', fontSize: '0.8rem' }}>
-            {query.trim() ? 'No results' : 'Search for a GIF to send.'}
+          <Text style={{ color: 'rgba(242,242,242,0.55)', fontSize: '0.8rem' }}>No results</Text>
+        </div>
+      )}
+      {showSearch && !loading && !error && results.length > 0 && (
+        <div className="gif-sheet-grid">
+          {results.map(renderCell)}
+        </div>
+      )}
+
+      {/* Default/trending browse (task 20260905-gif-picker-default-browse) —
+          shown whenever no query is typed, including the instant a typed
+          query is cleared (from already-held state, no refetch — §3). */}
+      {!showSearch && browseLoading && (
+        <div className="gif-sheet-centered"><Spin /></div>
+      )}
+      {!showSearch && !browseLoading && browseError && (
+        <div
+          className="gif-sheet-centered"
+          role="button"
+          tabIndex={0}
+          onClick={fetchBrowse}
+          onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') fetchBrowse(); }}
+          style={{ cursor: 'pointer' }}
+        >
+          <Text style={{ color: 'rgba(242,242,242,0.55)', fontSize: '0.8rem', textAlign: 'center' }}>
+            Couldn't load GIFs right now — try again in a moment.
           </Text>
         </div>
       )}
-      {!loading && !error && results.length > 0 && (
+      {!showSearch && !browseLoading && !browseError && browseResults.length === 0 && (
+        <div className="gif-sheet-centered">
+          <Text style={{ color: 'rgba(242,242,242,0.55)', fontSize: '0.8rem' }}>No trending GIFs right now.</Text>
+        </div>
+      )}
+      {!showSearch && !browseLoading && !browseError && browseResults.length > 0 && (
         <div className="gif-sheet-grid">
-          {results.map(gif => (
-            <button
-              type="button"
-              key={gif.id}
-              className="gif-sheet-cell"
-              onClick={() => { onSelect(gif); onClose(); }}
-              aria-label="GIF result"
+          {browseResults.map(renderCell)}
+          {browseHasMore && (
+            <Button
+              type="text"
+              block
+              className="gif-sheet-loadmore"
+              loading={loadMoreLoading}
+              disabled={loadMoreLoading}
+              onClick={handleLoadMore}
+              aria-label="Load more GIFs"
             >
-              <img src={gif.preview_url} alt="" />
-            </button>
-          ))}
+              {/* AntD's `loading` prop prepends a spinner to whatever
+                  children are given — pass no label while loading so the
+                  spinner fully replaces the label (design gate §2) rather
+                  than showing both side by side. */}
+              {loadMoreLoading ? null : (loadMoreError ? "Couldn't load more — tap to retry" : 'Load more')}
+            </Button>
+          )}
         </div>
       )}
     </Modal>
@@ -238,7 +345,7 @@ function StagedAttachmentChip({ staged, onRemove, onRetry }) {
 
 export default function ChatThread({
   contact, messages, groupMembers, user, onBack, onSend,
-  onRequestUploadUrl, onUploadToS3, onSearchGifs,
+  onRequestUploadUrl, onUploadToS3, onSearchGifs, onBrowseGifs,
   sessions, activeSessionId, talkingUserId,
   onJoinSession, onLeaveSession, onOpenSessionCreator,
   joinError, onClearJoinError,
@@ -556,6 +663,7 @@ export default function ChatThread({
         open={showGifSheet}
         onClose={() => setShowGifSheet(false)}
         onSearchGifs={onSearchGifs}
+        onBrowseGifs={onBrowseGifs}
         onSelect={handleGifSelected}
       />
     </div>

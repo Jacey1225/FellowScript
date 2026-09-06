@@ -22,7 +22,17 @@ extension NetworkService {
     func fetchNotes(userId: String, cursorCreatedAt: String? = nil, cursorId: String? = nil) async throws -> NotesPage {
         let data = try await get("/notes/\(userId)" + cursorQuery(cursorCreatedAt, cursorId))
         guard let raw = decode(RawNotesPage.self, from: data, endpoint: "GET /notes/{user_id}") else {
-            return NotesPage(notes: [:], nextCursorCreatedAt: nil, nextCursorId: nil, hasMore: false)
+            // Bug fix (task 20260905-notes-group-refresh-clobber-rootcause): this
+            // used to fabricate a successful, non-throwing, EMPTY NotesPage on a
+            // decode failure -- indistinguishable, at every call site, from a
+            // genuinely-empty backend page. NotesViewModel.fetchAndCache/
+            // loadMoreIfNeeded's `try?`-based merge logic happily treated that
+            // fabricated "success" as proof this segment now legitimately has
+            // zero notes, and spliced it in over whatever was already cached.
+            // decode() already logged + beaconed the failure above; now the
+            // failure itself propagates so callers can correctly treat this as
+            // "this segment's fetch failed" and keep the stale-but-real data.
+            throw AppError.networkError("Could not load your notes right now.")
         }
         var dict = raw.notes
         for (key, var note) in dict { note.id = key; dict[key] = note }
@@ -45,7 +55,17 @@ extension NetworkService {
             print("[NetworkService] fetchGroupNotes decode failed for group \(context): unexpected response shape")
             reportDecodeFailure(endpoint: "GET /groups/{user_id}/{group_id}/notes",
                                  summary: "Unexpected response shape (missing/invalid top-level 'notes' object)")
-            return NotesPage(notes: [:], nextCursorCreatedAt: nil, nextCursorId: nil, hasMore: false)
+            // Bug fix (task 20260905-notes-group-refresh-clobber-rootcause): this
+            // is the group-specific instance of the same fabricated-empty-page gap
+            // fixed in fetchNotes above -- and the one actually responsible for the
+            // user's live "group notes wiped to empty on refresh" report, since this
+            // manual JSONSerialization parse has far more silent-failure branches
+            // than fetchNotes' single strongly-typed JSONDecoder path, so it's the
+            // one far more likely to actually hit a decode failure in practice. Throw
+            // instead of returning a fabricated empty NotesPage so a hard decode
+            // failure and a genuinely-empty group become distinguishable again at
+            // the ViewModel's merge/splice layer.
+            throw AppError.networkError("Could not load this group's notes right now.")
         }
 
         let groupNotesEndpoint = "GET /groups/{user_id}/{group_id}/notes"

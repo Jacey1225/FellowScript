@@ -81,7 +81,7 @@ export default function Reader() {
     loadContacts, openChat, closeChat, sendMessage,
     addFriend, removeFriend, createGroup, updateGroup, leaveGroup,
     reportUser, blockUser,
-    requestUploadUrl, uploadToS3, searchGifs,
+    requestUploadUrl, uploadToS3, searchGifs, browseGifs,
   } = useMessaging({ user });
 
   const {
@@ -363,7 +363,7 @@ export default function Reader() {
     onReportUser: reportUser, onBlockUser: blockUser,
     onCreateGroup: createGroup, onUpdateGroup: updateGroup, onLeaveGroup: leaveGroup,
     loaded: contactsLoaded, onLoad: handleLoadContacts, sendMessage,
-    onRequestUploadUrl: requestUploadUrl, onUploadToS3: uploadToS3, onSearchGifs: searchGifs,
+    onRequestUploadUrl: requestUploadUrl, onUploadToS3: uploadToS3, onSearchGifs: searchGifs, onBrowseGifs: browseGifs,
     sessions, activeSessionId, talkingUserId,
     onJoinSession: joinSession, onLeaveSession: handleLeaveSession,
     joinError, onClearJoinError: clearJoinError,
@@ -372,7 +372,7 @@ export default function Reader() {
     videoEnabled, videoTiles, onToggleVideo: toggleVideo, bindVideoTile,
   }), [user, friends, msgGroups, currentContact, messages, groupMembers, handleOpenChat, handleCloseChat,
        addFriend, removeFriend, reportUser, blockUser, createGroup, updateGroup, leaveGroup,
-       contactsLoaded, handleLoadContacts, sendMessage, requestUploadUrl, uploadToS3, searchGifs,
+       contactsLoaded, handleLoadContacts, sendMessage, requestUploadUrl, uploadToS3, searchGifs, browseGifs,
        sessions, activeSessionId, talkingUserId,
        joinSession, handleLeaveSession, joinError, clearJoinError, openCreator, deleteSession, handleNavigateVerse,
        videoEnabled, videoTiles, toggleVideo, bindVideoTile]);

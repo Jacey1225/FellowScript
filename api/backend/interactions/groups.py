@@ -163,7 +163,10 @@ class GroupsManager(DBManager):
             dict: ``{"notes": {username: {note_id: note data}},
                 "next_cursor_created_at": str | None, "next_cursor_id":
                 str | None, "has_more": bool}``. has_more is True iff
-                exactly ``limit`` rows were returned.
+                exactly ``limit`` rows were returned. Each note's data now
+                also carries ``profile_photo_url`` (the author's photo,
+                resolved via ``generate_download_url`` -- ``None`` when the
+                author has no photo set; task 20260905-profile-photo-avatar-gaps).
         """
         where = (
             "group_id = %s AND is_reply = false "
@@ -189,21 +192,31 @@ class GroupsManager(DBManager):
         row_data = [(str(row[0]), dict(zip(cols[1:], row[1:]))) for row in rows]
         distinct_uids = {str(data.get("user_id")) for _, data in row_data if data.get("user_id")}
         username_map: dict[str, str] = {}
+        # Task 20260905-profile-photo-avatar-gaps: mirrors friends.py's
+        # get_requests/get_friends precedent -- resolve each author's
+        # profile_photo_key to a fresh, short-lived presigned GET via
+        # generate_download_url (never the raw key itself), keyed alongside
+        # username so both can be stamped onto each note below.
+        photo_map: dict[str, str | None] = {}
         if distinct_uids:
             self.cur.execute(
-                "SELECT _id, username FROM users WHERE _id = ANY(%s::uuid[])",
+                "SELECT _id, username, profile_photo_key FROM users WHERE _id = ANY(%s::uuid[])",
                 (list(distinct_uids),),
             )
-            username_map = {str(r[0]): r[1] for r in self.cur.fetchall()}
+            for r in self.cur.fetchall():
+                uid_str = str(r[0])
+                username_map[uid_str] = r[1]
+                photo_map[uid_str] = generate_download_url(r[2])
         group_notes: dict = {}
         for nid, data in row_data:
             uid = data.get("user_id")
             if not uid:
                 continue
-            username = username_map.get(str(uid), "")
+            uid_str = str(uid)
+            username = username_map.get(uid_str, "")
             if username not in group_notes:
                 group_notes[username] = {}
-            group_notes[username][nid] = data
+            group_notes[username][nid] = {**data, "profile_photo_url": photo_map.get(uid_str)}
         has_more = len(rows) == limit
         last = rows[-1] if rows else None
         return {
@@ -228,7 +241,11 @@ class GroupsManager(DBManager):
                 title or text.
 
         Returns:
-            dict: ``{"notes": {username: {note_id: note data}}}``, newest first.
+            dict: ``{"notes": {username: {note_id: note data}}}``, newest
+                first. Each note's data now also carries
+                ``profile_photo_url`` (the author's photo, resolved via
+                ``generate_download_url`` -- ``None`` when the author has no
+                photo set; task 20260905-profile-photo-avatar-gaps).
         """
         pattern = f"%{q}%"
         self.cur.execute(
@@ -248,21 +265,29 @@ class GroupsManager(DBManager):
         row_data = [(str(row[0]), dict(zip(cols[1:], row[1:]))) for row in rows]
         distinct_uids = {str(data.get("user_id")) for _, data in row_data if data.get("user_id")}
         username_map: dict[str, str] = {}
+        # Task 20260905-profile-photo-avatar-gaps: same presigned-GET
+        # resolution as fetch_notes above, mirroring friends.py's
+        # get_requests/get_friends precedent.
+        photo_map: dict[str, str | None] = {}
         if distinct_uids:
             self.cur.execute(
-                "SELECT _id, username FROM users WHERE _id = ANY(%s::uuid[])",
+                "SELECT _id, username, profile_photo_key FROM users WHERE _id = ANY(%s::uuid[])",
                 (list(distinct_uids),),
             )
-            username_map = {str(r[0]): r[1] for r in self.cur.fetchall()}
+            for r in self.cur.fetchall():
+                uid_str = str(r[0])
+                username_map[uid_str] = r[1]
+                photo_map[uid_str] = generate_download_url(r[2])
         group_notes: dict = {}
         for nid, data in row_data:
             uid = data.get("user_id")
             if not uid:
                 continue
-            username = username_map.get(str(uid), "")
+            uid_str = str(uid)
+            username = username_map.get(uid_str, "")
             if username not in group_notes:
                 group_notes[username] = {}
-            group_notes[username][nid] = data
+            group_notes[username][nid] = {**data, "profile_photo_url": photo_map.get(uid_str)}
         return {"notes": group_notes}
 
     def fetch_replies(self, note_id: str) -> list[dict]:

@@ -40,6 +40,10 @@ struct RawChatResponse: Decodable {
 struct RawFriendRequest: Decodable {
     let user_id:  String
     let username: String
+    // Task 20260905-profile-photo-avatar-gaps: friends.py's get_requests()
+    // already returns this (mirrors get_friends()) -- defaulted nil so a
+    // response predating the field, or one with no photo set, decodes fine.
+    var profile_photo_url: String? = nil
 }
 
 struct RawGroup: Decodable {

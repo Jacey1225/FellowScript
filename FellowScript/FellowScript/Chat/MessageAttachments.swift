@@ -311,6 +311,23 @@ final class GifSearchViewModel: ObservableObject {
     @Published var errorMessage: String? = nil
     private var searchTask: Task<Void, Never>?
 
+    // Task 20260905-gif-picker-default-browse: default/trending browse
+    // state, kept fully separate from search `results` above (design gate
+    // §1) — that split is what lets clearing the query revert to the browse
+    // grid instantly from already-held state (§3) instead of refetching.
+    @Published var browseResults: [FSGifResult] = []
+    @Published var browseNextPageToken: String? = nil
+    @Published var browseHasMore = false
+    @Published var browseLoading = false
+    @Published var browseErrored = false
+    @Published var loadMoreLoading = false
+    @Published var loadMoreErrored = false
+
+    var trimmedQuery: String { query.trimmingCharacters(in: .whitespacesAndNewlines) }
+    /// The grid renders search `results` while a query is typed and the
+    /// browse grid otherwise (design gate §3) — search is never paginated.
+    var isSearching: Bool { !trimmedQuery.isEmpty }
+
     /// Debounces ~350ms before calling the search endpoint (design gate §2 —
     /// the endpoint is rate-limited server-side at 30/min, so this isn't
     /// merely a UX nicety).
@@ -341,6 +358,42 @@ final class GifSearchViewModel: ObservableObject {
             }
         }
     }
+
+    /// Initial default-browse fetch — called once from `GifSearchSheet`'s
+    /// `.task` on appear (design gate §1), and again as the initial-load-
+    /// error retry affordance (§4, "tap the message itself to retry").
+    func fetchBrowse(service: DataServiceProtocol) async {
+        browseLoading = true
+        browseErrored = false
+        do {
+            let page = try await service.browseGifs(pageToken: nil)
+            browseResults = page.results
+            browseNextPageToken = page.nextPageToken
+            browseHasMore = page.hasMore
+        } catch {
+            browseErrored = true
+        }
+        browseLoading = false
+    }
+
+    /// "Load more" tap (design gate §2) — appends to `browseResults` rather
+    /// than replacing it, so the grid keeps its current scroll position; on
+    /// failure, already-loaded results are left exactly as-is and a retry
+    /// reuses the same stored `browseNextPageToken`.
+    func loadMoreBrowse(service: DataServiceProtocol) async {
+        guard !loadMoreLoading else { return }
+        loadMoreLoading = true
+        loadMoreErrored = false
+        do {
+            let page = try await service.browseGifs(pageToken: browseNextPageToken)
+            browseResults.append(contentsOf: page.results)
+            browseNextPageToken = page.nextPageToken
+            browseHasMore = page.hasMore
+        } catch {
+            loadMoreErrored = true
+        }
+        loadMoreLoading = false
+    }
 }
 
 struct GifSearchSheet: View {
@@ -360,6 +413,13 @@ struct GifSearchSheet: View {
         .padding(Theme.spacingSM)
         .background(Theme.bgPage.ignoresSafeArea())
         .presentationDragIndicator(.visible)
+        .task {
+            // Fires the default-browse fetch as soon as the sheet appears
+            // (design gate §1), before any query field interaction. The
+            // @StateObject above is recreated fresh each time the sheet is
+            // presented, so this needs no extra reset logic.
+            await vm.fetchBrowse(service: service)
+        }
     }
 
     private var searchField: some View {
@@ -380,8 +440,20 @@ struct GifSearchSheet: View {
         .accessibilityLabel("Search GIFs")
     }
 
+    // Search overrides browse; clearing the query reverts to browse from
+    // already-held state (design gate §3) — `vm.isSearching` picks which
+    // grid renders, search is never paginated.
     @ViewBuilder
     private var content: some View {
+        if vm.isSearching {
+            searchContent
+        } else {
+            browseContent
+        }
+    }
+
+    @ViewBuilder
+    private var searchContent: some View {
         if vm.isLoading {
             centered { ProgressView().tint(Theme.gold) }
         } else if let error = vm.errorMessage {
@@ -394,36 +466,109 @@ struct GifSearchSheet: View {
             }
         } else if vm.results.isEmpty {
             centered {
-                Text(vm.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                     ? "Search for a GIF to send."
-                     : "No results")
+                Text("No results")
                     .font(.inter(Theme.fontSM))
                     .foregroundColor(Theme.textSecondary)
             }
         } else {
             ScrollView {
                 LazyVGrid(columns: columns, spacing: 8) {
-                    ForEach(vm.results) { gif in
-                        Button {
-                            onSelect(StagedAttachment(kind: .gif, width: gif.width, height: gif.height, gifResult: gif))
-                            dismiss()
-                        } label: {
-                            AsyncImage(url: URL(string: gif.preview_url)) { phase in
-                                if let image = phase.image {
-                                    image.resizable().aspectRatio(contentMode: .fill)
-                                } else {
-                                    Rectangle().fill(Theme.gold.opacity(0.10))
-                                }
-                            }
-                            .frame(minHeight: 88)
-                            .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("GIF result")
-                    }
+                    ForEach(vm.results) { gif in gifCell(gif) }
                 }
             }
         }
+    }
+
+    // Default/trending browse (task 20260905-gif-picker-default-browse) —
+    // the picker's default resting state, replacing the old "Search for a
+    // GIF to send." empty-state prompt (design gate §1).
+    @ViewBuilder
+    private var browseContent: some View {
+        if vm.browseLoading {
+            centered { ProgressView().tint(Theme.gold) }
+        } else if vm.browseErrored {
+            // No query to edit as a retry path here (unlike a failed
+            // search), so tapping the message itself re-fires the request
+            // (design gate §4) — same tap-to-retry pattern already
+            // established for attachment-upload failures.
+            centered {
+                Button {
+                    Task { await vm.fetchBrowse(service: service) }
+                } label: {
+                    Text("Couldn't load GIFs right now — try again in a moment.")
+                        .font(.inter(Theme.fontSM))
+                        .foregroundColor(Theme.textSecondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, Theme.spacingLG)
+                }
+                .buttonStyle(.plain)
+            }
+        } else if vm.browseResults.isEmpty {
+            centered {
+                Text("No trending GIFs right now.")
+                    .font(.inter(Theme.fontSM))
+                    .foregroundColor(Theme.textSecondary)
+            }
+        } else {
+            ScrollView {
+                LazyVGrid(columns: columns, spacing: 8) {
+                    ForEach(vm.browseResults) { gif in gifCell(gif) }
+                }
+                if vm.browseHasMore {
+                    loadMoreButton
+                }
+            }
+        }
+    }
+
+    // Non-infinite-scroll pagination control (design gate §2, Q22) — a
+    // single discrete button the user must tap; nothing auto-fires on
+    // scroll position. Styled like RoundIconButton's fill/border/shape
+    // recipe (translucent capsule, gold-dim border) rather than the bold
+    // gold-gradient primary pill, since this is a repeatable secondary
+    // utility action, not a primary CTA. Only rendered while `browseHasMore`
+    // is true — no "you've reached the end" message once it disappears.
+    private var loadMoreButton: some View {
+        Button {
+            Task { await vm.loadMoreBrowse(service: service) }
+        } label: {
+            Group {
+                if vm.loadMoreLoading {
+                    ProgressView().tint(Theme.gold)
+                } else {
+                    Text(vm.loadMoreErrored ? "Couldn't load more — tap to retry" : "Load more")
+                        .font(.inter(Theme.fontSM, weight: .semibold))
+                        .foregroundColor(Theme.gold)
+                }
+            }
+            .frame(minHeight: 44)
+            .frame(maxWidth: .infinity)
+        }
+        .background(Color.white.opacity(0.05))
+        .overlay(Capsule().stroke(Theme.borderGoldDim, lineWidth: 1))
+        .clipShape(Capsule())
+        .disabled(vm.loadMoreLoading)
+        .accessibilityLabel("Load more GIFs")
+        .padding(.top, 8)
+    }
+
+    private func gifCell(_ gif: FSGifResult) -> some View {
+        Button {
+            onSelect(StagedAttachment(kind: .gif, width: gif.width, height: gif.height, gifResult: gif))
+            dismiss()
+        } label: {
+            AsyncImage(url: URL(string: gif.preview_url)) { phase in
+                if let image = phase.image {
+                    image.resizable().aspectRatio(contentMode: .fill)
+                } else {
+                    Rectangle().fill(Theme.gold.opacity(0.10))
+                }
+            }
+            .frame(minHeight: 88)
+            .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("GIF result")
     }
 
     private func centered<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {

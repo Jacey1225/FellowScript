@@ -32,6 +32,43 @@
 // fetchContacts (unforced) forwards to MockDataService's real fixture, which
 // always returns exactly one group, "group-abc" ("Wednesday Night Study") --
 // the same fixed group id NotesPaginationRegressionTests already relies on.
+//
+// Test-double gap fix (task 20260905-notes-group-refresh-clobber-rootcause,
+// testing step): test 3 below (`..._stillConvergesToFreshGroupData`) used to
+// leave `service.fetchNotesPageQueue` un-repopulated across rounds 2 and 3 --
+// ThrowingTestDataService.fetchNotes only forwards to
+// MockDataService.shared.fetchNotes (a fixed, non-empty fixture set, keyed
+// by ids that are NOT "p1") once its queue runs dry, and per the file's own
+// header comment above, that fallback existing at all is intentional (so
+// every OTHER suite sharing this double is unaffected by a queue some other
+// test drained). This suite, though, explicitly wants Personal held at "p1"
+// unchanged across every round while only the group segment's fetch outcome
+// varies -- so leaving the queue empty let a *personal* segment
+// double-authoring gap (an unintended, undocumented reliance on that
+// fallback) flip `vm.notes["p1"]` to nil via a real, successful, non-"p1"
+// personal fetch, which is a wholly different mechanism from the group-
+// clobber bug this suite exists to catch. Every round now explicitly
+// re-queues a "p1" personal page so the suite's group-segment assertions
+// aren't riding on an implicit, unrelated fallback behavior.
+//
+// Root cause of the actual user-facing "group notes wiped to empty on
+// refresh" symptom (traced by this task, fixed in NetworkService+Notes.swift
+// and NotesViewModel.swift): NetworkService.fetchNotes/fetchGroupNotes used
+// to fabricate a successful, non-throwing, EMPTY NotesPage on a decode
+// failure instead of throwing -- indistinguishable, at the ViewModel's
+// merge/splice layer, from a genuinely-empty backend page. Group notes were
+// far more exposed than personal because fetchGroupNotes' manual per-
+// username/per-note JSONSerialization parsing has many more silent-failure
+// branches than fetchNotes' single strongly-typed JSONDecoder path. Fixed by
+// making those decode-failure branches throw a real, distinct error instead
+// of returning a fabricated empty page -- see
+// `test_refresh_groupFetchThrowsDecodeFailureError_previouslyNonEmptyGroupSegment_isNotWipedToEmpty`
+// below (ViewModel-level, using the exact error type/message the production
+// fix now throws) and NetworkServiceGetErrorHandlingTests.swift's
+// `test_fetchGroupNotes_throws_onMalformedResponseShape_insteadOfReturningEmptyPage`
+// / `test_fetchNotes_throws_onUndecodableBody_insteadOfReturningEmptyPage`
+// (network-level, proving the actual production code path throws rather
+// than fabricating success).
 
 import XCTest
 @testable import FellowScript
@@ -160,9 +197,25 @@ final class NotesGroupRefreshNullDataRegressionTests: XCTestCase {
         await vm.load(service: service, userId: userId)
         XCTAssertNotNil(vm.notes["g1"])
 
+        // Test-double gap fix (see file header): re-queue an explicit "p1"
+        // personal page for EVERY round below. Without this, round 1's
+        // single-page fetchNotesPageQueue entry is already consumed by
+        // `load()` above, so a later `refresh()` call falls through
+        // ThrowingTestDataService.fetchNotes' documented empty-queue
+        // fallback to MockDataService.shared.fetchNotes -- a real,
+        // successful personal fetch that legitimately replaces "p1" with
+        // the mock's own (different-keyed) fixture notes. That's correct
+        // per current splice semantics for a genuine personal-segment
+        // success, but it flips this suite's unrelated group-segment
+        // assertions on "p1" for the wrong reason -- a test-authoring gap,
+        // not the group-clobber bug this suite exists to catch.
         service.fetchGroupNotesErrorsByGroup["group-abc"] = AppError.networkError("simulated group-notes failure")
+        service.fetchNotesPageQueue = [NotesPage(
+            notes: ["p1": note("p1")], nextCursorCreatedAt: "c1", nextCursorId: "p1", hasMore: false
+        )]
         await vm.refresh(service: service, userId: userId)
         XCTAssertNotNil(vm.notes["g1"], "sanity check: the failed refresh left the old group note in place")
+        XCTAssertNotNil(vm.notes["p1"], "personal notes must be unaffected by the group segment's failed refresh")
 
         // A distinct, freshly-shaped group note proves the NEXT successful
         // refresh genuinely replaces the group's segment, rather than this
@@ -171,10 +224,97 @@ final class NotesGroupRefreshNullDataRegressionTests: XCTestCase {
         service.fetchGroupNotesPageQueue = [NotesPage(
             notes: ["g2": note("g2", groupId: "group-abc")], nextCursorCreatedAt: "gc2", nextCursorId: "g2", hasMore: false
         )]
+        service.fetchNotesPageQueue = [NotesPage(
+            notes: ["p1": note("p1")], nextCursorCreatedAt: "c1", nextCursorId: "p1", hasMore: false
+        )]
         await vm.refresh(service: service, userId: userId)
 
         XCTAssertNil(vm.notes["g1"], "this fix must not prevent convergence -- a subsequent successful group fetch must fully replace the old group note")
         XCTAssertNotNil(vm.notes["g2"], "the group's freshly-fetched note must now be present")
         XCTAssertNotNil(vm.notes["p1"], "personal notes must be unaffected by the group segment's convergence")
+    }
+
+    // MARK: 4 — the actual user-facing symptom: a group's own decode failure must not silently masquerade as "this group is now empty"
+
+    /// Root-cause regression (task 20260905-notes-group-refresh-clobber-rootcause):
+    /// before the production fix, NetworkService.fetchGroupNotes fabricated a
+    /// successful, non-throwing, EMPTY NotesPage whenever its manual
+    /// JSONSerialization parse hit a decode failure -- indistinguishable
+    /// right here, at the ViewModel's splice layer, from "the group
+    /// genuinely has zero notes now". Since `personalSucceeded`/
+    /// `succeededGroupIds` only care whether the call threw, not why it
+    /// didn't, that fabricated "success" clobbered a previously non-empty
+    /// group's notes down to nothing every time a real decode failure
+    /// happened -- exactly the live symptom the user reported, and exactly
+    /// what `20260905-pull-to-refresh-cache-clobber` incorrectly waved
+    /// through as "already fixed" for Notes/Groups.
+    ///
+    /// This test proves the fix using the SAME error type/message
+    /// NetworkService+Notes.swift's fetchGroupNotes now actually throws on a
+    /// decode failure (see that file's `AppError.networkError("Could not
+    /// load this group's notes right now.")` call site) -- a real,
+    /// distinguishable thrown error now reaches this splice logic instead of
+    /// a fabricated empty page, so the group's previously non-empty notes
+    /// are correctly left in place rather than wiped. The companion
+    /// NetworkServiceGetErrorHandlingTests.swift tests
+    /// (`test_fetchGroupNotes_throws_onMalformedResponseShape_...` /
+    /// `test_fetchNotes_throws_onUndecodableBody_...`) prove the network
+    /// layer itself now actually throws in that situation, rather than
+    /// fabricating the empty page this test assumes never reaches here.
+    func test_refresh_groupFetchThrowsDecodeFailureError_previouslyNonEmptyGroupSegment_isNotWipedToEmpty() async {
+        let vm = NotesViewModel()
+        let service = ThrowingTestDataService()
+        let userId = freshUserId()
+
+        // Round 1: the group starts with THREE notes -- multiple, not just
+        // one -- so this test can't pass by accident the way a single-note
+        // check might if some other unrelated code path happened to leave
+        // exactly one stray entry behind.
+        service.fetchNotesPageQueue = [NotesPage(
+            notes: ["p1": note("p1")], nextCursorCreatedAt: "c1", nextCursorId: "p1", hasMore: false
+        )]
+        service.fetchGroupNotesPageQueue = [NotesPage(
+            notes: [
+                "g1": note("g1", groupId: "group-abc"),
+                "g2": note("g2", groupId: "group-abc"),
+                "g3": note("g3", groupId: "group-abc"),
+            ],
+            nextCursorCreatedAt: "gc1", nextCursorId: "g3", hasMore: false
+        )]
+        await vm.load(service: service, userId: userId)
+
+        vm.currentGroupId = "group-abc"
+        XCTAssertEqual(vm.filteredNotes.count, 3, "sanity check: the group starts with all three notes visible")
+
+        // Round 2: simulate the exact production failure mode -- the
+        // group's own fetch throws the same AppError.networkError the real
+        // decode-failure fix now throws, in place of the old fabricated
+        // empty NotesPage. Personal's own fetch succeeds with unrelated new
+        // data, proving this isn't just "nothing happened this round."
+        service.fetchGroupNotesErrorsByGroup["group-abc"] =
+            AppError.networkError("Could not load this group's notes right now.")
+        service.fetchNotesPageQueue = [NotesPage(
+            notes: ["p2": note("p2")], nextCursorCreatedAt: "c2", nextCursorId: "p2", hasMore: false
+        )]
+        await vm.refresh(service: service, userId: userId)
+
+        XCTAssertEqual(vm.filteredNotes.count, 3,
+                        "the actual user-facing symptom: a group's own decode failure (now a real thrown error, " +
+                        "not a fabricated empty page) must NOT wipe that group's visible note list to empty")
+        XCTAssertNotNil(vm.notes["g1"]); XCTAssertNotNil(vm.notes["g2"]); XCTAssertNotNil(vm.notes["g3"])
+        XCTAssertNotNil(vm.notes["p2"], "Personal's own successful refresh must still converge despite the group's failure")
+        // NotesViewModel.fetchAndCache prefixes every segment's error with
+        // that segment's own name (`"\(title): \(error.localizedDescription)"`,
+        // mirroring the existing `"Personal: ..."` convention for the
+        // personal segment) so a user with multiple groups can tell WHICH
+        // one failed -- the mock group's fixed title is "Wednesday Night
+        // Study" (see this file's own header comment). Asserting the raw,
+        // unprefixed message here was a test-authoring bug (this assertion
+        // was added by this task, not part of the production fix under
+        // test): the message DOES surface (Q26/Q27) exactly as designed,
+        // just with the segment-identifying prefix this test's first
+        // version of the assertion didn't account for.
+        XCTAssertEqual(vm.refreshError, "Wednesday Night Study: Could not load this group's notes right now.",
+                        "the swallowed error must now surface visibly (Q26/Q27), prefixed with the failing segment's name, instead of vanishing with no trace")
     }
 }

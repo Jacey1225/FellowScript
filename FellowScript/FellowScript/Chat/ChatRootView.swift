@@ -618,11 +618,25 @@ final class ChatViewModel: ObservableObject {
 
         async let contactsTask = try? service.fetchContacts(userId: userId)
         async let agentsTask   = try? service.fetchAgents(userId: userId)
-        let (contacts, _) = (await contactsTask) ?? ([], [:])
-        // Sort each list so the conversation with the most recent message is first.
-        friends = contacts.filter { $0.type == .friend }.sorted { $0.lastMessageAt > $1.lastMessageAt }
-        groups  = contacts.filter { $0.type == .group  }.sorted { $0.lastMessageAt > $1.lastMessageAt }
-        agents  = (await agentsTask) ?? []
+
+        // Bug fix (cache-clobber sweep, task
+        // 20260905-pull-to-refresh-cache-clobber): `try?` collapsed a failed
+        // fetchContacts/fetchAgents to `([], [:])`/`[]`, which then got
+        // written unconditionally over the cache-loaded friends/groups/
+        // agents above -- a transient failure wiped all three lists to
+        // empty instead of just leaving stale-but-real data on screen.
+        // Mirrors DashboardViewModel.load()/NotesViewModel.fetchAndCache:
+        // only splice a fetch's result in on its own proven (non-nil)
+        // success; each of the two independent fetches keeps whatever was
+        // already there if it alone fails.
+        if let (contacts, _) = await contactsTask {
+            // Sort each list so the conversation with the most recent message is first.
+            friends = contacts.filter { $0.type == .friend }.sorted { $0.lastMessageAt > $1.lastMessageAt }
+            groups  = contacts.filter { $0.type == .group  }.sorted { $0.lastMessageAt > $1.lastMessageAt }
+        }
+        if let fetchedAgents = await agentsTask {
+            agents = fetchedAgents
+        }
 
         // ── Write fresh data back to the cache ───────────────────────────────────
         await DiskCache.shared.save(friends, forKey: "friends:\(userId)")
@@ -729,17 +743,26 @@ struct ContactRow: View {
 
     var body: some View {
         HStack(spacing: 13) {
-            Circle()
-                .fill(LinearGradient(colors: [Color(hex: "#EDAB3C").opacity(0.32), Color(hex: "#B8761D").opacity(0.2)],
-                                     startPoint: .topLeading, endPoint: .bottomTrailing))
-                .frame(width: 48, height: 48)
-                .overlay(Circle().stroke(Theme.gold.opacity(0.5), lineWidth: 1))
-                .overlay(
-                    Text(String(contact.name.prefix(1)).uppercased())
-                        .font(.system(size: 18, weight: .heavy))
-                        .foregroundColor(Theme.goldLight)
-                )
-                .accessibilityHidden(true)
+            // Task 20260905-profile-photo-avatar-gaps: `contact.photoUrl` is
+            // already populated for a friend contact (nil for a group,
+            // correctly falling back to initials there) -- it was simply
+            // unused by this row before this fix.
+            // fillColor: .clear -- AvatarView only takes a flat Color, so the
+            // original gradient backdrop lives in `.background` below instead
+            // and shows through underneath the initial/photo exactly as before.
+            AvatarView(
+                initial: String(contact.name.prefix(1)).uppercased(),
+                photoURL: contact.photoUrl,
+                diameter: 48,
+                fillColor: .clear,
+                textColor: Theme.goldLight
+            )
+            .background(
+                Circle().fill(LinearGradient(colors: [Color(hex: "#EDAB3C").opacity(0.32), Color(hex: "#B8761D").opacity(0.2)],
+                                             startPoint: .topLeading, endPoint: .bottomTrailing))
+            )
+            .overlay(Circle().stroke(Theme.gold.opacity(0.5), lineWidth: 1))
+            .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 3) {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {

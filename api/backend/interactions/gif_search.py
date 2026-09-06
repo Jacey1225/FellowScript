@@ -20,9 +20,15 @@ Configuration split (Configuration Philosophy Q2/Q9):
       matching ``backend/interactions/attachments.py``'s precedent, it's a
       plain module constant rather than an env var.
 
-Callers should call the async ``search_gifs`` behind the same per-user
-rate limit the route applies (backend/rate_limiting.py's ``limiter``), so
-one account can't burn the shared provider quota/cost for every user.
+Callers should call the async ``search_gifs``/``browse_gifs`` behind the
+same per-user rate limit the route applies (backend/rate_limiting.py's
+``limiter``), so one account can't burn the shared provider quota/cost for
+every user.
+
+``browse_gifs`` (default/trending browse, shown before any query is typed)
+reuses this module's shaping functions and normalizes each provider's own
+pagination model (Giphy: integer ``offset``; Tenor: opaque cursor) behind
+one opaque ``next_page_token`` + ``has_more`` envelope -- see its docstring.
 """
 
 import logging
@@ -125,6 +131,100 @@ def _shape_tenor(raw: list[dict]) -> list[dict]:
             "height": int(dims[1]) if len(dims) > 1 else 0,
         })
     return results
+
+
+def _parse_giphy_offset(page_token: str | None) -> int:
+    """Decode the opaque browse page token back into Giphy's integer offset.
+
+    ``page_token`` is caller-supplied (round-tripped from a previous
+    ``browse_gifs`` response), so treat anything malformed/negative as the
+    first page rather than raising -- a bad token should degrade to "start
+    over", not error the request.
+    """
+    if not page_token:
+        return 0
+    try:
+        offset = int(page_token)
+    except (TypeError, ValueError):
+        return 0
+    return offset if offset > 0 else 0
+
+
+async def browse_gifs(page_token: str | None = None) -> dict:
+    """Fetch a page of trending/featured GIFs for the picker's default-browse
+    view (shown before any query is typed).
+
+    Item shape is identical to ``search_gifs``'s (reuses ``_shape_giphy``/
+    ``_shape_tenor``), and pagination is normalized behind one
+    provider-agnostic envelope regardless of which provider is configured:
+    Giphy's integer ``offset`` and Tenor's opaque cursor (``pos``/``next``)
+    are both encoded as an opaque ``next_page_token`` string (or ``None``
+    when there's no further page), plus a ``has_more`` flag -- callers never
+    branch on provider.
+
+    Always fetches fresh from the provider -- no session cache or CDN layer
+    (out of scope at this scale; see intake spec).
+
+    Args:
+        page_token: Opaque token from a previous call's ``next_page_token``.
+            ``None``/blank requests the first page.
+
+    Returns:
+        ``{"results": [...], "next_page_token": str | None, "has_more": bool}``
+
+    Raises:
+        GifConfigError: If GIF search isn't configured.
+        GifSearchError: If the provider call fails (network error, non-2xx,
+            or an unrecognized response shape).
+    """
+    validate_gif_config()
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            if GIF_PROVIDER == "giphy":
+                offset = _parse_giphy_offset(page_token)
+                resp = await client.get(f"{_base_url()}/trending", params={
+                    "api_key": _GIF_PROVIDER_API_KEY,
+                    "limit": GIF_SEARCH_RESULT_LIMIT,
+                    "offset": offset,
+                })
+                resp.raise_for_status()
+                body = resp.json()
+                raw = body.get("data", []) or []
+                total_count = int((body.get("pagination") or {}).get("total_count") or 0)
+                next_offset = offset + len(raw)
+                has_more = bool(raw) and next_offset < total_count
+                return {
+                    "results": _shape_giphy(raw),
+                    "next_page_token": str(next_offset) if has_more else None,
+                    "has_more": has_more,
+                }
+
+            # validate_gif_config() already confirmed GIF_PROVIDER is one of
+            # the two recognized values, so this is the only remaining branch.
+            params = {
+                "key": _GIF_PROVIDER_API_KEY,
+                "limit": GIF_SEARCH_RESULT_LIMIT,
+                "media_filter": "gif",
+            }
+            if page_token:
+                params["pos"] = page_token
+            resp = await client.get(f"{_base_url()}/featured", params=params)
+            resp.raise_for_status()
+            body = resp.json()
+            raw = body.get("results", []) or []
+            next_token = body.get("next") or None
+            has_more = bool(next_token) and bool(raw)
+            return {
+                "results": _shape_tenor(raw),
+                "next_page_token": next_token if has_more else None,
+                "has_more": has_more,
+            }
+    except GifSearchError:
+        raise
+    except Exception as e:
+        logger.warning("GIF browse against %s failed: %s", GIF_PROVIDER, e)
+        raise GifSearchError(f"GIF provider request failed: {e}") from e
 
 
 async def search_gifs(query: str) -> list[dict]:

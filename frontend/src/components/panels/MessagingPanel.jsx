@@ -14,7 +14,7 @@ export default function MessagingPanel() {
     onOpen, onBack, onAddFriend, onRemoveFriend, onReportUser, onBlockUser,
     onCreateGroup, onUpdateGroup, onLeaveGroup,
     loaded, onLoad, sendMessage,
-    onRequestUploadUrl, onUploadToS3, onSearchGifs,
+    onRequestUploadUrl, onUploadToS3, onSearchGifs, onBrowseGifs,
     sessions, activeSessionId, talkingUserId,
     onJoinSession, onLeaveSession, joinError, onClearJoinError,
     onOpenSessionCreator, onEditSession, onDeleteSession,
@@ -75,6 +75,7 @@ export default function MessagingPanel() {
             onRequestUploadUrl={onRequestUploadUrl}
             onUploadToS3={onUploadToS3}
             onSearchGifs={onSearchGifs}
+            onBrowseGifs={onBrowseGifs}
             sessions={sessions || []}
             activeSessionId={activeSessionId}
             talkingUserId={talkingUserId}

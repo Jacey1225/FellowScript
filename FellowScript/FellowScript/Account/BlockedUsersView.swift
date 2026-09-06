@@ -11,6 +11,21 @@ struct BlockedUsersView: View {
     @State private var isLoading = true
     @State private var unblockingId: String? = nil
 
+    // Test-only hook, ViewInspector's "Approach #2" (Utils/Inspection.swift)
+    // -- added for the testing gate's regression coverage of task
+    // 20260905-pull-to-refresh-cache-clobber's fix below: proving a failed
+    // refresh leaves `blocked` untouched requires observing this view's
+    // @State after two real async load() calls (the initial `.task`, then a
+    // driven `.refreshable`), which a plain post-host `.inspect()` can't
+    // reliably do (mirrors NoteDetailView's identical `inspection` seam and
+    // its own doc comment for why). Inert in production: `.onReceive` below
+    // is a no-op unless a test registers a callback via
+    // `inspection.inspect(...)`. Gated to Debug, matching
+    // Inspection.swift/NoteDetailView's own `#if DEBUG` convention.
+    #if DEBUG
+    internal let inspection = Inspection<Self>()
+    #endif
+
     var body: some View {
         Group {
             if isLoading {
@@ -62,11 +77,25 @@ struct BlockedUsersView: View {
         .navigationTitle("Blocked Users")
         .navigationBarTitleDisplayMode(.inline)
         .task { await load() }
+        #if DEBUG
+        .onReceive(inspection.notice) { self.inspection.visit(self, $0) }
+        #endif
     }
 
     private func load(showSpinner: Bool = true) async {
         if showSpinner { isLoading = true }
-        blocked = (try? await service.fetchBlockedUsers(userId: userId)) ?? []
+        // Bug fix (cache-clobber sweep, task
+        // 20260905-pull-to-refresh-cache-clobber): a failed fetchBlockedUsers
+        // used to collapse via `try?` to `[]` and get written over the
+        // already-displayed list unconditionally, emptying it on any
+        // transient fetch failure. Only overwrite on a proven-successful
+        // (non-nil) fetch now -- a genuinely empty result (no blocked users)
+        // still writes through, since that comes from a real success, not a
+        // failure default. Mirrors DashboardViewModel.load()/
+        // NotesViewModel.fetchAndCache's identical pattern.
+        if let fetched = try? await service.fetchBlockedUsers(userId: userId) {
+            blocked = fetched
+        }
         if showSpinner { isLoading = false }
     }
 

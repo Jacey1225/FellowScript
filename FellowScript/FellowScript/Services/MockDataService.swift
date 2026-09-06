@@ -146,6 +146,10 @@ protocol DataServiceProtocol {
     func requestAttachmentUploadURL(userId: String, attachmentKind: String, contentType: String, sizeBytes: Int?) async throws -> FSUploadURLInfo
     func uploadAttachment(fileData: Data, contentType: String, uploadInfo: FSUploadURLInfo) async throws
     func searchGifs(query: String) async throws -> [FSGifResult]
+    // Task 20260905-gif-picker-default-browse: default/trending browse page
+    // shown before any query is typed, paginated via an opaque page token
+    // the caller passes back unmodified (design gate §7).
+    func browseGifs(pageToken: String?) async throws -> (results: [FSGifResult], nextPageToken: String?, hasMore: Bool)
 
     // Profile photo (task 20260905-profile-photo): same presigned-S3-POST
     // wire contract as the attachment upload above (uploadAttachment is
@@ -157,7 +161,12 @@ protocol DataServiceProtocol {
     func removeProfilePhoto(userId: String) async throws
 
     // Friends
-    func fetchFriendRequests(userId: String) async throws -> [(id: String, username: String)]
+    // Task 20260905-profile-photo-avatar-gaps: widened to carry
+    // `profile_photo_url` (the backend, friends.py's get_requests(), already
+    // resolves a fresh presigned GET here -- this client tuple simply
+    // discarded it before this fix) so AccountView+Profile.swift's
+    // friendRequestsSection can render the requester's real photo.
+    func fetchFriendRequests(userId: String) async throws -> [(id: String, username: String, profile_photo_url: String?)]
     func sendFriendRequest(userId: String, username: String) async throws
     func acceptFriendRequest(userId: String, username: String) async throws
     func removeFriend(userId: String, friendId: String) async throws
@@ -628,6 +637,13 @@ final class MockDataService: DataServiceProtocol {
         return [FSGifResult(id: "mock-gif-1", url: "https://example.com/mock.gif", preview_url: "https://example.com/mock-preview.gif", width: 220, height: 180)]
     }
 
+    func browseGifs(pageToken: String?) async throws -> (results: [FSGifResult], nextPageToken: String?, hasMore: Bool) {
+        let page = Int(pageToken ?? "0") ?? 0
+        let result = FSGifResult(id: "mock-browse-gif-\(page)", url: "https://example.com/mock.gif", preview_url: "https://example.com/mock-preview.gif", width: 220, height: 180)
+        let hasMore = page < 1
+        return ([result], hasMore ? String(page + 1) : nil, hasMore)
+    }
+
     func requestProfilePhotoUploadURL(userId: String, contentType: String, sizeBytes: Int?) async throws -> FSUploadURLInfo {
         FSUploadURLInfo(url: "https://mock-bucket.s3.amazonaws.com", fields: [:], object_key: "profile-photos/\(userId)/mock", expires_in: 300)
     }
@@ -639,7 +655,7 @@ final class MockDataService: DataServiceProtocol {
     func removeProfilePhoto(userId: String) async throws {}
 
     // Friends
-    func fetchFriendRequests(userId: String) async throws -> [(id: String, username: String)] { [] }
+    func fetchFriendRequests(userId: String) async throws -> [(id: String, username: String, profile_photo_url: String?)] { [] }
     func sendFriendRequest(userId: String, username: String) async throws {}
     func acceptFriendRequest(userId: String, username: String) async throws {}
     func removeFriend(userId: String, friendId: String) async throws {}

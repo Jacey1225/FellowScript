@@ -24,6 +24,16 @@ private struct RawGifSearchResponse: Decodable {
     let results: [FSGifResult]
 }
 
+// Task 20260905-gif-picker-default-browse: default/trending browse envelope
+// — `next_page_token` is opaque (Giphy's integer offset vs. Tenor's cursor,
+// normalized server-side per design gate §7's wire contract) and is only
+// ever round-tripped back to the server unmodified, never parsed here.
+private struct RawGifBrowseResponse: Decodable {
+    let results:         [FSGifResult]
+    let next_page_token: String?
+    let has_more:        Bool
+}
+
 // ── Profile photo (task 20260905-profile-photo) ──────────────────────────
 // Same presigned-S3-POST wire contract as the message attachments above --
 // `uploadAttachment` (defined above) is reused verbatim for the raw-bytes
@@ -103,6 +113,25 @@ extension NetworkService {
         let data = try await get("/message/gif-search?q=\(encoded)")
         guard let resp = decode(RawGifSearchResponse.self, from: data, endpoint: "/message/gif-search") else { return [] }
         return resp.results
+    }
+
+    // GET /message/gif-search[?page_token=] → {results, next_page_token, has_more}
+    // Default/trending browse (task 20260905-gif-picker-default-browse) —
+    // omitting `q` switches the same authenticated proxy endpoint to browse
+    // mode server-side. `pageToken` is opaque: pass back a previous call's
+    // `nextPageToken` unmodified to fetch the next page, or `nil` for the
+    // first page.
+    func browseGifs(pageToken: String?) async throws -> (results: [FSGifResult], nextPageToken: String?, hasMore: Bool) {
+        var path = "/message/gif-search"
+        if let pageToken, !pageToken.isEmpty {
+            let encoded = pageToken.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? pageToken
+            path += "?page_token=\(encoded)"
+        }
+        let data = try await get(path)
+        guard let resp = decode(RawGifBrowseResponse.self, from: data, endpoint: "/message/gif-search") else {
+            throw AppError.networkError("Couldn't load GIFs right now — try again in a moment.")
+        }
+        return (resp.results, resp.next_page_token, resp.has_more)
     }
 
     // POST /user/{userId}/photo/upload-url → {url, fields, object_key, expires_in}

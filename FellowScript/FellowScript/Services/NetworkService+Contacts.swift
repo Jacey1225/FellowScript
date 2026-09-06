@@ -83,11 +83,15 @@ extension NetworkService {
     // POST /friends/{userId}/add?friend_username={username}
     // DELETE /friends/{userId}/{friendId}
 
-    // GET /friends/{userId}/requests → [{user_id, username}]
-    func fetchFriendRequests(userId: String) async throws -> [(id: String, username: String)] {
+    // GET /friends/{userId}/requests → [{user_id, username, profile_photo_url}]
+    // Task 20260905-profile-photo-avatar-gaps: friends.py's get_requests()
+    // already resolves profile_photo_url per pending request (same
+    // generate_download_url precedent as get_friends()) -- this client-side
+    // tuple simply discarded it before this fix.
+    func fetchFriendRequests(userId: String) async throws -> [(id: String, username: String, profile_photo_url: String?)] {
         let data = try await get("/friends/\(userId)/requests")
         let raw = decode([RawFriendRequest].self, from: data) ?? []
-        return raw.map { (id: $0.user_id, username: $0.username) }
+        return raw.map { (id: $0.user_id, username: $0.username, profile_photo_url: $0.profile_photo_url) }
     }
 
     func sendFriendRequest(userId: String, username: String) async throws {

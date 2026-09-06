@@ -68,7 +68,21 @@ final class ThrowingTestDataService: DataServiceProtocol {
         if let acceptTermsError { throw acceptTermsError }
     }
 
+    // Overridable (task 20260905-profile-photo-avatar-gaps, testing step 3) so
+    // the restoreSession()-refresh regression test below can hand back a
+    // specific FSUser (e.g. one carrying profile_photo_url) instead of
+    // MockDataService's fixed mockUser, and observe how many times / with
+    // which userId restoreSession() actually called this.
+    var fetchUserResult: FSUser?
+    var fetchUserError: Error?
+    private(set) var fetchUserCallCount = 0
+    private(set) var lastFetchUserId: String?
+
     func fetchUser(userId: String) async throws -> FSUser {
+        fetchUserCallCount += 1
+        lastFetchUserId = userId
+        if let fetchUserError { throw fetchUserError }
+        if let fetchUserResult { return fetchUserResult }
         return try await MockDataService.shared.fetchUser(userId: userId)
     }
 
@@ -539,8 +553,67 @@ final class ThrowingTestDataService: DataServiceProtocol {
         return try await MockDataService.shared.searchGifs(query: query)
     }
 
-    func fetchFriendRequests(userId: String) async throws -> [(id: String, username: String)] {
+    // Controllable/observable (task 20260905-gif-picker-default-browse,
+    // testing step 4) -- GifPickerDefaultBrowseViewModelTests drives
+    // GifSearchViewModel.fetchBrowse/loadMoreBrowse against a queue of
+    // canned pages/errors (consumed in call order, falling back to
+    // MockDataService.shared's own controllable-but-fixed pagination once
+    // the queue is empty) so it can assert the ViewModel's own state
+    // transitions (loading/error/append-not-replace/hasMore) independent of
+    // any specific backend response.
+    enum BrowseGifsOutcome {
+        case success(results: [FSGifResult], nextPageToken: String?, hasMore: Bool)
+        case failure(Error)
+    }
+    var browseGifsQueue: [BrowseGifsOutcome] = []
+    private(set) var browseGifsPageTokens: [String?] = []
+
+    func browseGifs(pageToken: String?) async throws -> (results: [FSGifResult], nextPageToken: String?, hasMore: Bool) {
+        browseGifsPageTokens.append(pageToken)
+        if !browseGifsQueue.isEmpty {
+            switch browseGifsQueue.removeFirst() {
+            case .success(let results, let nextPageToken, let hasMore):
+                return (results, nextPageToken, hasMore)
+            case .failure(let error):
+                throw error
+            }
+        }
+        return try await MockDataService.shared.browseGifs(pageToken: pageToken)
+    }
+
+    // Controllable / observable (task 20260905-pull-to-refresh-cache-clobber,
+    // testing step) -- lets a test drive AccountViewModel.load()'s
+    // fetchFriendRequests call through a genuine throw independently of the
+    // other 6 concurrent fetches in the same load() call, and/or seed a
+    // specific non-default result, mirroring the existing per-fetch seams
+    // above (fetchAgentsResult/Error, fetchNotesCountResult/Error, etc.). An
+    // unset result falls back to MockDataService's own (empty) fixture.
+    var fetchFriendRequestsResult: [(id: String, username: String, profile_photo_url: String?)]?
+    var fetchFriendRequestsError: Error?
+    private(set) var fetchFriendRequestsCallCount = 0
+
+    func fetchFriendRequests(userId: String) async throws -> [(id: String, username: String, profile_photo_url: String?)] {
+        fetchFriendRequestsCallCount += 1
+        if let fetchFriendRequestsError { throw fetchFriendRequestsError }
+        if let fetchFriendRequestsResult { return fetchFriendRequestsResult }
         return try await MockDataService.shared.fetchFriendRequests(userId: userId)
+    }
+
+    // Stub conformance only (pre-existing gap from task 20260905-profile-photo,
+    // which added these three to DataServiceProtocol without updating this
+    // test double) -- no test in this file exercises the profile-photo
+    // upload/confirm/remove flow; delegates like every other pass-through
+    // stub above so this double keeps satisfying DataServiceProtocol.
+    func requestProfilePhotoUploadURL(userId: String, contentType: String, sizeBytes: Int?) async throws -> FSUploadURLInfo {
+        return try await MockDataService.shared.requestProfilePhotoUploadURL(userId: userId, contentType: contentType, sizeBytes: sizeBytes)
+    }
+
+    func confirmProfilePhoto(userId: String, objectKey: String) async throws -> String? {
+        return try await MockDataService.shared.confirmProfilePhoto(userId: userId, objectKey: objectKey)
+    }
+
+    func removeProfilePhoto(userId: String) async throws {
+        try await MockDataService.shared.removeProfilePhoto(userId: userId)
     }
 
     // Controllable/observable — used by DashboardViewModel.load() tests
@@ -606,7 +679,20 @@ final class ThrowingTestDataService: DataServiceProtocol {
         try await MockDataService.shared.unblockUser(userId: userId, blockedId: blockedId)
     }
 
+    // Controllable / observable (task 20260905-pull-to-refresh-cache-clobber,
+    // testing step) -- lets a test drive BlockedUsersView.load()'s
+    // fetchBlockedUsers call through a genuine throw, and/or seed a specific
+    // (including genuinely-empty) result, mirroring every other simple
+    // override seam on this double. An unset result falls back to
+    // MockDataService's own (empty) fixture.
+    var fetchBlockedUsersResult: [FSBlockedUser]?
+    var fetchBlockedUsersError: Error?
+    private(set) var fetchBlockedUsersCallCount = 0
+
     func fetchBlockedUsers(userId: String) async throws -> [FSBlockedUser] {
+        fetchBlockedUsersCallCount += 1
+        if let fetchBlockedUsersError { throw fetchBlockedUsersError }
+        if let fetchBlockedUsersResult { return fetchBlockedUsersResult }
         return try await MockDataService.shared.fetchBlockedUsers(userId: userId)
     }
 
@@ -684,7 +770,19 @@ final class ThrowingTestDataService: DataServiceProtocol {
         return try await MockDataService.shared.fetchUsage(userId: userId)
     }
 
+    // Controllable / observable (task 20260905-pull-to-refresh-cache-clobber,
+    // testing step) -- lets a test drive AccountViewModel.loadSubscription()'s
+    // fetchUserSubscription call through a genuine throw, distinct from
+    // MockDataService's own always-nil ("no active subscription") success
+    // default -- the exact distinction loadSubscription()'s fix needs to get
+    // right (a thrown failure must leave the previously-shown subscription
+    // untouched; a proven nil success must still overwrite it).
+    var fetchUserSubscriptionError: Error?
+    private(set) var fetchUserSubscriptionCallCount = 0
+
     func fetchUserSubscription(userId: String) async throws -> FSSubscription? {
+        fetchUserSubscriptionCallCount += 1
+        if let fetchUserSubscriptionError { throw fetchUserSubscriptionError }
         return try await MockDataService.shared.fetchUserSubscription(userId: userId)
     }
 
@@ -847,5 +945,121 @@ final class AppStateAuthAccountTests: XCTestCase {
         XCTAssertFalse(appState.termsReacceptRequired)
         XCTAssertEqual(service.acceptTermsCallCount, 1)
         XCTAssertEqual(service.lastAcceptTermsUserId, "user-123")
+    }
+}
+
+// MARK: - Addendum, task 20260905-profile-photo-avatar-gaps — restoreSession()
+// must refresh currentUser from the server so a photo uploaded in a PRIOR
+// session shows up on cold launch, not just initials.
+//
+// Root cause: restoreSession() rebuilds a bare FSUser straight from
+// @AppStorage (user_id/username/email only) with no profile_photo_url (or
+// any other server-only field), and nothing used to ever refresh it back
+// into currentUser afterward — so every currentUser-sourced avatar (e.g.
+// this chat thread's own-sent-message bubble via
+// MessageDisplayGroup.grouped's `me:` param) stayed initials-only for a
+// photo that genuinely existed server-side, until the next explicit
+// upload/save. Fixed by having restoreSession() kick off a best-effort
+// background fetchUser()+updateUser() refresh, guarded against a racing
+// sign-out.
+//
+// These tests drive the real restoreSession() (unlike makeSignedInAppState
+// above, which deliberately bypasses it) by seeding UserDefaults.standard
+// with the same "fs_user_id"/"fs_username"/"fs_email" keys AppState's own
+// @AppStorage properties read — carefully saved and restored around each
+// test so no state leaks into other tests or this machine's simulator.
+final class RestoreSessionPhotoBackfillTests: XCTestCase {
+    private var savedUserId: String?
+    private var savedUsername: String?
+    private var savedEmail: String?
+
+    override func setUp() {
+        super.setUp()
+        let d = UserDefaults.standard
+        savedUserId = d.string(forKey: "fs_user_id")
+        savedUsername = d.string(forKey: "fs_username")
+        savedEmail = d.string(forKey: "fs_email")
+    }
+
+    override func tearDown() {
+        let d = UserDefaults.standard
+        restoreOrRemove(d, "fs_user_id", savedUserId)
+        restoreOrRemove(d, "fs_username", savedUsername)
+        restoreOrRemove(d, "fs_email", savedEmail)
+        super.tearDown()
+    }
+
+    private func restoreOrRemove(_ d: UserDefaults, _ key: String, _ value: String?) {
+        if let value { d.set(value, forKey: key) } else { d.removeObject(forKey: key) }
+    }
+
+    private func seedPriorSession(userId: String = "user-restore-1", username: String = "restoreUser", email: String = "restore@example.com") {
+        let d = UserDefaults.standard
+        d.set(userId, forKey: "fs_user_id")
+        d.set(username, forKey: "fs_username")
+        d.set(email, forKey: "fs_email")
+    }
+
+    @MainActor
+    func test_restoreSession_backfillsProfilePhotoUrl_fromAFreshServerFetch() async throws {
+        seedPriorSession(userId: "user-restore-1")
+        let service = ThrowingTestDataService()
+        service.fetchUserResult = FSUser(
+            user_id: "user-restore-1", username: "restoreUser", email: "restore@example.com",
+            profile_photo_url: "https://example.com/photo.jpg"
+        )
+
+        let appState = AppState(service: service)
+
+        // Immediately after init, restoreSession()'s synchronous half has
+        // already rebuilt a bare (photo-less) user from @AppStorage.
+        XCTAssertEqual(appState.currentUser?.user_id, "user-restore-1")
+        XCTAssertNil(appState.currentUser?.profile_photo_url,
+                     "the synchronously-rebuilt bare user must not already carry a photo — proves the fix's refresh, not this fixture, supplies it")
+
+        // The background refresh Task needs a beat to complete.
+        try await Task.sleep(nanoseconds: 200_000_000)
+
+        XCTAssertEqual(service.fetchUserCallCount, 1)
+        XCTAssertEqual(service.lastFetchUserId, "user-restore-1")
+        XCTAssertEqual(appState.currentUser?.profile_photo_url, "https://example.com/photo.jpg",
+                       "restoreSession() must backfill profile_photo_url (and any other server-only field) from a fresh fetchUser() call, so a photo uploaded in a prior session shows up on cold launch")
+    }
+
+    @MainActor
+    func test_restoreSession_leavesBareCachedUserInPlace_whenTheBackgroundFetchFails() async throws {
+        seedPriorSession(userId: "user-restore-2")
+        let service = ThrowingTestDataService()
+        service.fetchUserError = AppError.networkError("offline")
+
+        let appState = AppState(service: service)
+        try await Task.sleep(nanoseconds: 200_000_000)
+
+        XCTAssertEqual(service.fetchUserCallCount, 1)
+        XCTAssertEqual(appState.currentUser?.user_id, "user-restore-2",
+                       "a failed best-effort refresh must leave the bare cached user in place — same as before this fix — not clear the session or crash")
+        XCTAssertTrue(appState.isAuthenticated)
+    }
+
+    @MainActor
+    func test_restoreSession_refreshDoesNotClobberANewerSignIn_whenSignOutRacesAhead() async throws {
+        seedPriorSession(userId: "user-restore-3")
+        let service = ThrowingTestDataService()
+        service.fetchUserResult = FSUser(
+            user_id: "user-restore-3", username: "restoreUser", email: "restore@example.com",
+            profile_photo_url: "https://example.com/photo.jpg"
+        )
+
+        let appState = AppState(service: service)
+        // Sign out before the background refresh Task has had a chance to
+        // run — the guard (storedUserId == uid at completion time) must
+        // stop the now-stale fetch result from resurrecting a cleared
+        // session's currentUser.
+        appState.signOut()
+        try await Task.sleep(nanoseconds: 200_000_000)
+
+        XCTAssertNil(appState.currentUser,
+                     "a racing sign-out must win — the stale background refresh must not repopulate currentUser after signOut() already cleared it")
+        XCTAssertFalse(appState.isAuthenticated)
     }
 }

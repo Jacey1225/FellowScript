@@ -36,12 +36,15 @@ differently from the web `NoteCard` above:
 
 - **Author chip** — for a note in a group segment whose author username was
   successfully captured, the top-right trailing slot shows a small gold
-  initials-circle + username label (reusing the app's existing avatar/chip
-  vocabulary), sourced from `FSNote.username` (stamped on by
-  `NetworkService.fetchGroupNotes` from the response's outer per-member
-  username key). The chip never renders on Personal-segment notes (always
-  the viewer, so it would be redundant), and never renders a placeholder for
-  a group note with a missing/uncaptured username — it's simply omitted.
+  avatar (the author's real profile photo when set, falling back to an
+  initials-circle otherwise — reusing `AvatarView`, the app's existing
+  avatar/chip vocabulary) + username label, sourced from `FSNote.username`/
+  `FSNote.profile_photo_url` (both stamped on by `NetworkService.fetchGroupNotes`/
+  `searchGroupNotes` — the backend's `fetch_notes`/`search_notes` resolve a
+  fresh presigned photo URL per author the same way `friends.py` does). The
+  chip never renders on Personal-segment notes (always the viewer, so it
+  would be redundant), and never renders a placeholder for a group note with
+  a missing/uncaptured username — it's simply omitted.
 - **Editable-by-group indicator** — a small `pencil.circle.fill` SF Symbol
   sits next to the note's timestamp, shown only for a group note with
   `public == true` (mirroring the web "Editable" badge), with a combined

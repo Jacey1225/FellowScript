@@ -76,15 +76,31 @@ final class HeaderAvatarBloomRemovalRegressionTests: XCTestCase {
     }
 
     func test_source_headerAvatarBlock_avatarFillStrokeSizingUnchanged() throws {
+        // Task 20260905-profile-photo-avatar-gaps replaced this block's
+        // previously-inline `ZStack { Circle().fill(...); Text(initial) }
+        // .frame(width: 38, height: 38)` with a call into the shared
+        // AvatarView component (same fill/diameter/initial passed through as
+        // arguments instead of being written out literally here) so the
+        // header can also render `contact.photoUrl` when present, falling
+        // back to the exact same initials treatment otherwise -- per this
+        // codebase's "reuse AvatarView rather than invent a third avatar
+        // treatment" convention (already used by GroupMembersPanel/NoteRow).
+        // The fill color, diameter, stroke, and initial-letter content are
+        // still all present, just as AvatarView's own arguments/overlay
+        // rather than inline Circle literals.
         let header = try headerSource()
-        XCTAssertTrue(header.contains("Circle().fill(Theme.gold.opacity(0.18))"),
-                      "the avatar circle's fill must be unchanged after removing only the bloom background")
+        XCTAssertTrue(header.contains("AvatarView("),
+                      "the header avatar must be rendered via the shared AvatarView component (photo-with-initials-fallback), not reverted to an inline ZStack")
+        XCTAssertTrue(header.contains("fillColor: Theme.gold.opacity(0.18)"),
+                      "the avatar's fill color must be unchanged after adopting AvatarView")
+        XCTAssertTrue(header.contains("diameter: 38"),
+                      "the avatar must keep its original 38x38 sizing -- adopting AvatarView must not have resized it")
         XCTAssertTrue(header.contains("Circle().stroke(Theme.borderGoldDim, lineWidth: 1)"),
-                      "the avatar circle's stroke must be unchanged after removing only the bloom background")
-        XCTAssertTrue(header.contains(".frame(width: 38, height: 38)"),
-                      "the avatar must keep its original 38x38 sizing -- the bloom removal must not have resized it")
-        XCTAssertTrue(header.contains("String(contact.name.prefix(1)).uppercased()"),
-                      "the avatar's initial-letter content must be unchanged")
+                      "the avatar circle's stroke overlay must be unchanged")
+        XCTAssertTrue(header.contains("initial: String(contact.name.prefix(1)).uppercased()"),
+                      "the avatar's initial-letter fallback content must be unchanged")
+        XCTAssertTrue(header.contains("photoURL: contact.photoUrl"),
+                      "the header avatar must now also render the contact's real photo when present (task 20260905-profile-photo-avatar-gaps), falling back to the initial above when absent")
     }
 
     func test_source_headerAvatarBlock_backButtonAndSchedulePillUnaffected() throws {

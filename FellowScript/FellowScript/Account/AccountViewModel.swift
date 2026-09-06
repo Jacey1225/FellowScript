@@ -28,7 +28,7 @@ final class AccountViewModel: ObservableObject {
     // existing NetworkService.fetchContacts(userId:) call in load() below
     // rather than a second fetch path.
     @Published var groups:          [String: FSGroup] = [:]
-    @Published var friendRequests:  [(id: String, username: String)] = []
+    @Published var friendRequests:  [(id: String, username: String, profile_photo_url: String?)] = []
     @Published var isLoading       = true
     @Published var editMsg:        (type: AlertType, text: String)? = nil
 
@@ -171,18 +171,27 @@ final class AccountViewModel: ObservableObject {
         let userResult: FSUser?
         do { userResult = try await fetchedUser } catch { userResult = nil; statsFailed = true }
 
-        let agentsResult: [FSAgent]
-        do { agentsResult = try await fetchedAgents } catch { agentsResult = []; statsFailed = true }
-        let noteCountResult: Int
-        do { noteCountResult = try await fetchedNoteCount } catch { noteCountResult = 0; statsFailed = true }
-        let highlightCountResult: Int
-        do { highlightCountResult = try await (fetchedHighlights).count } catch { highlightCountResult = 0; statsFailed = true }
+        // Bug fix (cache-clobber sweep, task
+        // 20260905-pull-to-refresh-cache-clobber): agents/noteCount/
+        // highlightCount/friendRequests used to default to `[]`/`0` on a
+        // caught throw and then get written unconditionally below, wiping
+        // already-displayed data on a transient failure exactly like the
+        // profileData/usage/groups bug this same method already fixed (H8).
+        // These four are now `nil` on failure instead of a defaulted empty
+        // value, so the write below can tell "genuinely empty" apart from
+        // "fetch failed" and only overwrite on the former.
+        let agentsResult: [FSAgent]?
+        do { agentsResult = try await fetchedAgents } catch { agentsResult = nil; statsFailed = true }
+        let noteCountResult: Int?
+        do { noteCountResult = try await fetchedNoteCount } catch { noteCountResult = nil; statsFailed = true }
+        let highlightCountResult: Int?
+        do { highlightCountResult = try await (fetchedHighlights).count } catch { highlightCountResult = nil; statsFailed = true }
 
         let usageResult: FSUsage?
         do { usageResult = try await fetchedUsage } catch { usageResult = nil; statsFailed = true }
 
-        let friendRequestsResult: [(id: String, username: String)]
-        do { friendRequestsResult = try await service.fetchFriendRequests(userId: user.user_id) } catch { friendRequestsResult = []; statsFailed = true }
+        let friendRequestsResult: [(id: String, username: String, profile_photo_url: String?)]?
+        do { friendRequestsResult = try await service.fetchFriendRequests(userId: user.user_id) } catch { friendRequestsResult = nil; statsFailed = true }
 
         let contactsResult: ([FSContact], [String: FSGroup])?
         do { contactsResult = try await fetchedContacts } catch { contactsResult = nil; statsFailed = true }
@@ -194,15 +203,33 @@ final class AccountViewModel: ObservableObject {
         // identically to "this agent really has no events configured". Track
         // failures into `statsFailed` (below) the same way those three
         // already do, rather than adding a bespoke second failure flag/message.
+        //
+        // Bug fix (20260905-pull-to-refresh-cache-clobber): if fetchAgents
+        // itself failed (agentsResult == nil), there's no agent list to walk
+        // at all -- previously that silently produced an empty allEvents,
+        // which then wiped the existing `events` below. Now that case is
+        // skipped entirely so `events` is left untouched by the write below.
+        // And within the walk, an individual agent's failed heartbeat fetch
+        // (`hbs == nil`) now falls back to that agent's own previously-known
+        // events instead of dropping them, mirroring
+        // NotesViewModel.fetchAndCache's per-group preserve-on-failure splice.
         var allEvents: [FSHeartbeat] = []
-        await withTaskGroup(of: [FSHeartbeat]?.self) { group in
-            for agent in agentsResult {
-                group.addTask {
-                    try? await service.fetchHeartbeats(userId: user.user_id, agentId: agent.id)
+        let eventsUsable = agentsResult != nil
+        if let agentsResult {
+            await withTaskGroup(of: (String, [FSHeartbeat]?).self) { group in
+                for agent in agentsResult {
+                    group.addTask {
+                        (agent.id, try? await service.fetchHeartbeats(userId: user.user_id, agentId: agent.id))
+                    }
                 }
-            }
-            for await hbs in group {
-                if let hbs { allEvents.append(contentsOf: hbs) } else { statsFailed = true }
+                for await (agentId, hbs) in group {
+                    if let hbs {
+                        allEvents.append(contentsOf: hbs)
+                    } else {
+                        statsFailed = true
+                        allEvents.append(contentsOf: events.filter { $0.agent_id == agentId })
+                    }
+                }
             }
         }
 
@@ -214,13 +241,13 @@ final class AccountViewModel: ObservableObject {
         guard generation == loadGeneration else { return }
 
         if let userResult { profileData = userResult }
-        agents         = agentsResult
-        noteCount      = noteCountResult
-        highlightCount = highlightCountResult
+        if let agentsResult { agents = agentsResult }
+        if let noteCountResult { noteCount = noteCountResult }
+        if let highlightCountResult { highlightCount = highlightCountResult }
         usage          = usageResult ?? usage
-        friendRequests = friendRequestsResult
+        if let friendRequestsResult { friendRequests = friendRequestsResult }
         if let (_, groupMap) = contactsResult { groups = groupMap }
-        events = allEvents
+        if eventsUsable { events = allEvents }
 
         // A genuine fetch/decode failure on any of the 7 concurrent fetches
         // above (or the per-agent events fetch) no longer looks visually
@@ -466,7 +493,24 @@ final class AccountViewModel: ObservableObject {
     func loadSubscription(userId: String) async {
         subLoading = true
         defer { subLoading = false }
-        var plan = (try? await service.fetchUserSubscription(userId: userId)) ?? nil
+
+        // Bug fix (cache-clobber sweep, task
+        // 20260905-pull-to-refresh-cache-clobber): `try?` used to collapse a
+        // genuine fetch failure to the same `nil` as a proven "no active
+        // subscription" success, so a transient failure unconditionally
+        // wrote `subscription = nil` below and nulled out an already-
+        // displayed active plan. Track whether the fetch itself threw
+        // separately, and bail out early on failure -- leaving
+        // subscription/autoRenewOff/planEndDate and everything derived from
+        // them untouched -- rather than reconciling downstream state from an
+        // untrustworthy result.
+        var plan: FSSubscription?
+        do {
+            plan = try await service.fetchUserSubscription(userId: userId)
+        } catch {
+            subMsg = "Could not refresh your subscription status. Pull down to refresh and try again."
+            return
+        }
 
         // A free-tier plan is NOT an active paid subscription — treat it as
         // "no plan" so the Subscription section shows the upgrade UI instead of

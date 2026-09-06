@@ -380,11 +380,17 @@ extension AccountView {
                 ForEach(Array(vm.friendRequests.enumerated()), id: \.offset) { idx, req in
                     if idx > 0 { Divider().background(Theme.borderGoldFaint) }
                     HStack {
-                        ZStack {
-                            Circle().fill(Theme.gold.opacity(0.15)).frame(width: 36, height: 36)
-                            Text(String(req.username.prefix(1)).uppercased())
-                                .font(.playfair(Theme.fontSM)).foregroundColor(Theme.gold)
-                        }
+                        // Task 20260905-profile-photo-avatar-gaps: friends.py's
+                        // get_requests() already resolves profile_photo_url per
+                        // pending request -- fetchFriendRequests' tuple simply
+                        // discarded it before this fix.
+                        AvatarView(
+                            initial: String(req.username.prefix(1)).uppercased(),
+                            photoURL: req.profile_photo_url,
+                            diameter: 36,
+                            fillColor: Theme.gold.opacity(0.15),
+                            textColor: Theme.gold
+                        )
                         VStack(alignment: .leading) {
                             Text(req.username).font(.inter(Theme.fontBody)).foregroundColor(Theme.parchment)
                             Text("Wants to be your friend").font(.inter(Theme.fontXS)).foregroundColor(Theme.textMuted)

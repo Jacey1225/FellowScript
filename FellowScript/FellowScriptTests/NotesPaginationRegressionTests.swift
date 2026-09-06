@@ -145,6 +145,40 @@ final class NotesPaginationRegressionTests: XCTestCase {
         vm.currentGroupId = nil
         XCTAssertTrue(vm.hasMoreForCurrentSegment, "Personal segment's has_more must be untouched by paging the group segment")
     }
+
+    // MARK: 6 — loadMoreIfNeeded (task 20260905-notes-group-refresh-clobber-rootcause,
+    // step 2's audit): this path was never at risk of the fetchAndCache
+    // clobber bug -- it only ever APPENDS via `merge`, and a failed fetch
+    // returns early leaving `notes`/`pageState` untouched -- but its thrown
+    // failure was previously swallowed by a bare `try?` with no visible
+    // signal at all. Proves the do/catch fix surfaces that failure via
+    // `refreshError` (the same Q26/Q27 visibility signal fetchAndCache's
+    // segment failures use) while confirming the already-loaded page really
+    // is left alone.
+
+    func test_loadMoreIfNeeded_fetchThrows_setsRefreshErrorAndLeavesExistingNotesInPlace() async {
+        let vm = NotesViewModel()
+        let service = ThrowingTestDataService()
+
+        service.fetchNotesPageQueue = [NotesPage(
+            notes: ["n1": note("n1")],
+            nextCursorCreatedAt: "2026-08-17 00:00:01", nextCursorId: "n1", hasMore: true
+        )]
+        await vm.load(service: service, userId: "user-1")
+        XCTAssertNil(vm.refreshError, "sanity check: a clean initial load must not set refreshError")
+
+        service.fetchNotesError = AppError.networkError("simulated pagination failure")
+        await vm.loadMoreIfNeeded(userId: "user-1")
+
+        XCTAssertEqual(vm.notes.count, 1, "a thrown loadMoreIfNeeded fetch must not clobber the already-loaded page")
+        XCTAssertNotNil(vm.notes["n1"], "the already-loaded note must still be present after the failed fetch")
+        XCTAssertEqual(vm.refreshError, "simulated pagination failure",
+                        "the thrown error must now surface via refreshError instead of vanishing silently behind `try?`")
+        XCTAssertTrue(vm.hasMoreForCurrentSegment,
+                       "pageState (hasMore: true from the initial load) must be left untouched by the failed fetch, " +
+                       "so the next scroll simply retries the same page")
+        XCTAssertFalse(vm.isLoadingMore, "loadMoreIfNeeded must still complete (not hang) when the fetch throws")
+    }
 }
 
 // MARK: - AccountViewModel.noteCount via the dedicated count endpoint

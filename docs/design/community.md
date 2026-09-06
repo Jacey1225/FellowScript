@@ -74,6 +74,11 @@ not a bottom sheet/modal — with three options:
 - **GIF** — a dedicated search sheet (debounced query against `GET /message/gif-search`, a
   server-side proxy to the configured provider) with a scrollable results grid. Selecting a GIF
   stages it immediately — nothing to upload, only the provider's URL/ID is sent with the message.
+  Opening the sheet immediately shows a default/trending browse grid (before any query is typed)
+  instead of a blank "search for a GIF" prompt; a "Load more" button below the grid pages through
+  further browse results one tap at a time (no infinite/auto-triggered scroll). Typing a query
+  swaps the grid to (unpaginated) search results; clearing the query instantly reverts to the
+  browse grid from already-held client state, with no refetch.
 
 In the thread, each attachment kind renders inside the existing message bubble: images and GIFs
 preview inline edge-to-edge, videos show a tap-to-play affordance over a placeholder (never

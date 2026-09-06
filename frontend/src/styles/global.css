@@ -1118,6 +1118,27 @@ body {
 }
 .gif-sheet-cell img { width: 100%; height: 100%; object-fit: cover; display: block; }
 
+/* "Load more" control (task 20260905-gif-picker-default-browse, design gate
+   §2) — appended below the browse grid, inside the same `.gif-sheet-grid`
+   scroll container; `grid-column: 1 / -1` spans the grid's 2 columns so it
+   reads as one full-width row rather than sitting in a single cell.
+   --border-glass isn't in scope inside this modal (only scoped under
+   .dockview-theme-abyss in reader-dock.css), so this falls back to a
+   gold-dim-tier literal at the same 0.18 alpha as iOS's Theme.borderGoldDim,
+   matching this control's quieter-than-attachPillStyle secondary-action
+   treatment rather than the bold gold-gradient primary pill. */
+.gif-sheet-loadmore {
+  grid-column: 1 / -1;
+  min-height: 44px;
+  margin-top: 8px;
+  background: rgba(255,255,255,0.05) !important;
+  border: 1px solid rgba(255,198,26,0.18) !important;
+  border-radius: var(--radius-md);
+  color: var(--gold) !important;
+  font-weight: 500;
+}
+.gif-sheet-loadmore:disabled { opacity: 0.7; }
+
 /* Staged (pre-send) attachment preview chip (design gate §3) */
 .staged-attachment-chip {
   display: flex;

@@ -230,9 +230,16 @@ final class NotesLoadFailureHardeningTests: XCTestCase {
     /// same flat old-style shape (e.g. by a hypothetical future contract
     /// regression, or to directly document what the incident's payload
     /// shape does against today's decode() hardening), no longer silently
-    /// vanishes: it returns an empty page it can safely fall back to AND the
-    /// developer/reporter now gets a beacon instead of nothing.
-    func test_fetchNotes_oldPreEnvelopeFlatShape_decodeFails_returnsEmptyPage_andFiresBeacon() async throws {
+    /// vanishes -- and, per task 20260905-notes-group-refresh-clobber-rootcause,
+    /// no longer fabricates a technically-successful EMPTY page either (that
+    /// fabricated-empty-page behavior was itself the root cause of the
+    /// live "group notes wiped to empty on refresh" bug this task fixed,
+    /// since it was indistinguishable from a genuinely-empty backend page at
+    /// NotesViewModel's merge/splice layer). It now throws a real,
+    /// distinguishable error -- while decode()'s own beacon-before-throw
+    /// still fires so the developer/reporter still gets the same CloudWatch
+    /// visibility this test file was originally written to prove.
+    func test_fetchNotes_oldPreEnvelopeFlatShape_decodeFails_throwsAndFiresBeacon() async throws {
         StubURLProtocol.stubStatusCode = 200
         // The OLD pre-8710a27a shape: a flat {note_id: note} dict with no
         // "notes"/"has_more" wrapper at all -- exactly what decode(RawNotesPage.self, ...)
@@ -247,12 +254,15 @@ final class NotesLoadFailureHardeningTests: XCTestCase {
         }
         """#.data(using: .utf8)!
 
-        let page = try await NetworkService.shared.fetchNotes(userId: "user-1")
-
-        XCTAssertTrue(page.notes.isEmpty, "an undecodable envelope must fall back to an empty page, not crash")
-        XCTAssertFalse(page.hasMore, "an undecodable envelope must not claim there's more to load")
-        XCTAssertNil(page.nextCursorCreatedAt)
-        XCTAssertNil(page.nextCursorId)
+        do {
+            _ = try await NetworkService.shared.fetchNotes(userId: "user-1")
+            XCTFail("an undecodable envelope must now throw (task 20260905-notes-group-refresh-clobber-rootcause), not silently fall back to a fabricated empty page")
+        } catch {
+            // expected -- a real, distinguishable thrown error, so callers
+            // (NotesViewModel.fetchAndCache/loadMoreIfNeeded) can correctly
+            // treat this as "this segment's fetch failed" rather than "this
+            // segment is now genuinely empty".
+        }
 
         try await waitForFireAndForgetBeacon()
         let beacons = beaconRequests()
@@ -285,14 +295,26 @@ final class NotesLoadFailureHardeningTests: XCTestCase {
 
     // MARK: 4 — THE REGRESSION: fetchGroupNotes against a malformed shape
 
-    func test_fetchGroupNotes_malformedShape_missingNotesKey_returnsEmptyPage_andFiresBeacon() async throws {
+    /// Per task 20260905-notes-group-refresh-clobber-rootcause: this used to
+    /// assert a fabricated, non-throwing empty NotesPage -- exactly the gap
+    /// that made a group's hard decode failure indistinguishable from a
+    /// genuinely-empty group at NotesViewModel's merge/splice layer, and the
+    /// production cause of the live "group notes wiped to empty on refresh"
+    /// report (group notes are far more exposed than personal because this
+    /// manual JSONSerialization parse has many more silent-failure branches
+    /// than fetchNotes' single JSONDecoder path). Now asserts the fix: a
+    /// real thrown error, with decode()/reportDecodeFailure's beacon still
+    /// firing beforehand exactly as before.
+    func test_fetchGroupNotes_malformedShape_missingNotesKey_throwsAndFiresBeacon() async throws {
         StubURLProtocol.stubStatusCode = 200
         StubURLProtocol.stubBody = #"{"unexpected": "shape", "no_notes_key": true}"#.data(using: .utf8)!
 
-        let page = try await NetworkService.shared.fetchGroupNotes(userId: "user-1", groupId: "group-abc")
-
-        XCTAssertTrue(page.notes.isEmpty)
-        XCTAssertFalse(page.hasMore)
+        do {
+            _ = try await NetworkService.shared.fetchGroupNotes(userId: "user-1", groupId: "group-abc")
+            XCTFail("a malformed group-notes response must now throw, not silently return a fabricated empty page that looks like a genuinely-empty group")
+        } catch {
+            // expected
+        }
 
         try await waitForFireAndForgetBeacon()
         let beacons = beaconRequests()

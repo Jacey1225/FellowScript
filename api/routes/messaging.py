@@ -3,7 +3,7 @@ from backend.interactions.websockets import ConnectionManager
 from backend.interactions.friends import FriendsManager
 from backend.interactions.devotion import DevotionManager
 from backend.interactions.attachments import generate_upload_policy, AttachmentConfigError
-from backend.interactions.gif_search import search_gifs, GifConfigError, GifSearchError
+from backend.interactions.gif_search import search_gifs, browse_gifs, GifConfigError, GifSearchError
 from backend.auth.dependencies import get_current_user, require_match, authenticate_ws
 from backend.rate_limiting import limiter
 from schemas.message import UploadUrlRequest
@@ -200,10 +200,22 @@ async def request_upload_url(
 
 @ws_router.get("/gif-search")
 @limiter.limit("30/minute")
-async def gif_search(request: Request, q: str, _: str = Depends(get_current_user)) -> dict:
-    """Authenticated GIF search, proxied server-side so the provider API key
-    never reaches the client (Security Posture Q2/Q6). Returns only the
-    fields the composer needs, not the provider's raw response.
+async def gif_search(
+    request: Request,
+    q: str = "",
+    page_token: str | None = None,
+    _: str = Depends(get_current_user),
+) -> dict:
+    """Authenticated GIF search/browse, proxied server-side so the provider
+    API key never reaches the client (Security Posture Q2/Q6). Returns only
+    the fields the composer needs, not the provider's raw response.
+
+    An empty/absent ``q`` requests the default-browse (trending/featured)
+    page shown before any query is typed, instead of a search -- same auth
+    + rate limit, no new trust boundary. ``page_token`` is only meaningful
+    for the browse mode: pass back a previous browse response's
+    ``next_page_token`` to fetch the next page; omit it for the first page.
+    A non-empty ``q`` behaves exactly as before and ignores ``page_token``.
 
     Rate-limited per client IP (mirrors this file's other endpoints) so one
     account can't burn the shared provider quota/cost for everyone.
@@ -214,14 +226,21 @@ async def gif_search(request: Request, q: str, _: str = Depends(get_current_user
         HTTPException 502: If the configured provider's API call itself fails.
     """
     try:
-        results = await search_gifs(q)
+        if q.strip():
+            results = await search_gifs(q)
+            return {"results": results}
+        browsed = await browse_gifs(page_token)
+        return {
+            "results": browsed["results"],
+            "next_page_token": browsed["next_page_token"],
+            "has_more": browsed["has_more"],
+        }
     except GifConfigError as e:
         logger.error("GIF search requested but not configured: %s", e)
         raise HTTPException(status_code=503, detail="GIF search is not available right now.")
     except GifSearchError as e:
         logger.warning("GIF search failed: %s", e)
         raise HTTPException(status_code=502, detail="Couldn't reach the GIF search provider — please try again.")
-    return {"results": results}
 
 
 @ws_router.post("/friend-request")

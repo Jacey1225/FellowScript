@@ -440,6 +440,7 @@ struct ChatThreadView: View {
                     GroupMembersPanel(
                         memberNames: memberNames,
                         user:        user,
+                        photoByUsername: vm.photoByUsername,
                         onAddTapped: { showAddMembers = true }
                     )
                     .transition(.move(edge: .top).combined(with: .opacity))
@@ -641,14 +642,19 @@ struct ChatThreadView: View {
                 }
             }) {
                 HStack(spacing: 12) {
-                    ZStack {
-                        Circle().fill(Theme.gold.opacity(0.18))
-                        Circle().stroke(Theme.borderGoldDim, lineWidth: 1)
-                        Text(String(contact.name.prefix(1)).uppercased())
-                            .font(.system(size: 14, weight: .bold))
-                            .foregroundColor(Theme.gold)
-                    }
-                    .frame(width: 38, height: 38)
+                    // Task 20260905-profile-photo-avatar-gaps: `contact.photoUrl`
+                    // is already populated for a friend DM (NetworkService+
+                    // Contacts.swift's fetchContacts) and correctly nil for a
+                    // group (no single identity to show here) -- it was simply
+                    // unused by this header before this fix.
+                    AvatarView(
+                        initial: String(contact.name.prefix(1)).uppercased(),
+                        photoURL: contact.photoUrl,
+                        diameter: 38,
+                        fillColor: Theme.gold.opacity(0.18),
+                        textColor: Theme.gold
+                    )
+                    .overlay(Circle().stroke(Theme.borderGoldDim, lineWidth: 1))
 
                     HStack(spacing: 5) {
                         Text(contact.name)
@@ -903,6 +909,14 @@ struct ChatThreadView: View {
 struct GroupMembersPanel: View {
     let memberNames: [String]       // usernames, excluding the current user
     let user:        FSUser?
+    // Task 20260905-profile-photo-avatar-gaps: username → photo URL for
+    // every *other* member, reusing the exact lookup ChatThreadViewModel
+    // already builds for MessageGroupRow's bubble avatars
+    // (`vm.photoByUsername`, populated by `resolveGroupMemberPhotos()`) --
+    // no new fetch. Defaulted so this stays source-compatible with any
+    // existing call site/preview/test that predates this field, falling
+    // back to the initials-only treatment exactly as before.
+    var photoByUsername: [String: String] = [:]
     var onAddTapped: (() -> Void)?  // present when the viewer may add members
 
     var body: some View {
@@ -913,9 +927,9 @@ struct GroupMembersPanel: View {
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: Theme.spacingSM) {
-                    avatarChip(name: user?.username ?? "You", isMe: true)
+                    avatarChip(name: user?.username ?? "You", isMe: true, photoURL: user?.profile_photo_url)
                     ForEach(Array(memberNames.prefix(20).enumerated()), id: \.offset) { _, name in
-                        avatarChip(name: name.isEmpty ? "Member" : name, isMe: false)
+                        avatarChip(name: name.isEmpty ? "Member" : name, isMe: false, photoURL: photoByUsername[name])
                     }
                     if let onAddTapped {
                         addChip(action: onAddTapped)
@@ -930,16 +944,15 @@ struct GroupMembersPanel: View {
     }
 
     @ViewBuilder
-    private func avatarChip(name: String, isMe: Bool) -> some View {
+    private func avatarChip(name: String, isMe: Bool, photoURL: String? = nil) -> some View {
         HStack(spacing: 4) {
-            ZStack {
-                Circle()
-                    .fill(Theme.gold.opacity(0.12))
-                    .frame(width: 26, height: 26)
-                Text(String(name.prefix(1)).uppercased())
-                    .font(.inter(Theme.fontXXS, weight: .bold))
-                    .foregroundColor(Theme.gold)
-            }
+            AvatarView(
+                initial: String(name.prefix(1)).uppercased(),
+                photoURL: photoURL,
+                diameter: 26,
+                fillColor: Theme.gold.opacity(0.12),
+                textColor: Theme.gold
+            )
             Text(isMe ? "\(name) (you)" : name)
                 .font(.inter(Theme.fontXS))
                 .foregroundColor(isMe ? Theme.gold : Theme.parchment.opacity(0.70))
