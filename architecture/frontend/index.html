@@ -734,6 +734,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Pages">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#desktop-shell-route-restriction" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Desktop shell route restriction
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1036,6 +1053,8 @@
 </tbody>
 </table>
 <p>Unauthenticated users land on Home (<code>/</code>); once signed in, the CTA routes directly to <code>/reader</code>.</p>
+<h3 id="desktop-shell-route-restriction">Desktop shell route restriction</h3>
+<p>The Tauri desktop app (<code>desktop/</code>) loads this exact same <code>HashRouter</code> bundle rather than a separate build. <code>DesktopRouteGuard.jsx</code> wraps <code>&lt;Routes&gt;</code> and, when <code>lib/desktopScope.js</code>'s <code>isDesktopApp()</code> detects the Tauri webview (<code>window.__TAURI_INTERNALS__</code>), redirects any in-app navigation outside a closed allowlist (<code>/reader</code>, <code>/account</code>, <code>/signin</code>, <code>/forgot-password</code>, <code>/reset-password</code>, <code>/verify-2fa</code>) to <code>/reader</code>. <code>AppNav.jsx</code>'s Home menu item/logo links and the hamburger drawer's Privacy/Terms links are hidden in this mode, and <code>SignIn.jsx</code>'s footer Privacy/Terms disclosure links are forced <code>target="_blank"</code> instead. A no-op in the ordinary web browser. A parallel Tauri-side <code>on_navigation</code> check in <code>desktop/src-tauri</code> mirrors the same allowlist as defense-in-depth for real webview navigations the React guard can't see.</p>
 <hr />
 <h2 id="key-components">Key Components</h2>
 <table>
@@ -1048,7 +1067,11 @@
 <tbody>
 <tr>
 <td><code>AppNav.jsx</code></td>
-<td>Persistent top navigation bar — logo (links to <code>/</code>); desktop top-right shows only a profile avatar (routes to <code>/account</code> signed in, <code>/signin</code> otherwise) and the light/dark theme toggle. The mobile hamburger <code>Drawer</code> separately exposes Home/Read/Account as text menu items.</td>
+<td>Persistent top navigation bar — logo (links to <code>/</code>); desktop (viewport) top-right shows only a profile avatar (routes to <code>/account</code> signed in, <code>/signin</code> otherwise) and the light/dark theme toggle. The mobile hamburger <code>Drawer</code> separately exposes Home/Read/Account as text menu items. Inside the Tauri desktop <em>app</em> (distinct from viewport width — see "Desktop shell route restriction" above), the Home menu item and the drawer's Privacy/Terms links are hidden and both logo marks point at <code>/reader</code> instead of <code>/</code>.</td>
+</tr>
+<tr>
+<td><code>DesktopRouteGuard.jsx</code></td>
+<td>Wraps <code>&lt;Routes&gt;</code> in <code>App.jsx</code>; redirects in-app navigation outside <code>lib/desktopScope.js</code>'s allowlist to <code>/reader</code> when running inside the Tauri desktop app. See "Desktop shell route restriction" above.</td>
 </tr>
 <tr>
 <td><code>NotesSidebar.jsx</code></td>
