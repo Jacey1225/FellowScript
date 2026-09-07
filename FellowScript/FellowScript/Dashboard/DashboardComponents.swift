@@ -452,7 +452,11 @@ struct FriendActivityHeroCard: View {
     // (which only tints the photo by 6%, since the tile fill is a
     // translucent wash -- it does not occlude anything). Offsets match the
     // status badge's own centering below (avatarCenter + (14.1, 14.1)) and
-    // the nudge control's own corner center (avatarCenter + (17, -17)).
+    // the nudge control's own corner center (avatarCenter + (23, -23) --
+    // task 20260906-nudge-icon-resize grew this from (17, -17)/23pt to
+    // (23, -23)/33pt alongside the control's own 18pt -> 28pt resize; see
+    // design-notes.md §4 for the derivation, incl. the ~3.5%-of-avatar-disc
+    // sanity check against the "no more than roughly a third" guardrail).
     private func avatarWithCutouts(_ entry: FSFriendActivityEntry) -> some View {
         AvatarView(initial: entry.initial, photoURL: entry.profile_photo_url, diameter: 40)
             .mask(
@@ -461,8 +465,8 @@ struct FriendActivityHeroCard: View {
                     Circle().frame(width: 16, height: 16)
                         .offset(x: 14.1, y: 14.1)
                         .blendMode(.destinationOut)
-                    Circle().frame(width: 23, height: 23)
-                        .offset(x: 17, y: -17)
+                    Circle().frame(width: 33, height: 33)
+                        .offset(x: 23, y: -23)
                         .blendMode(.destinationOut)
                 }
                 .compositingGroup()
@@ -501,18 +505,25 @@ struct FriendActivityHeroCard: View {
         let state = nudgeStates[entry.id] ?? .idle
         return Button(action: { onNudge(entry) }) {
             nudgeGlyph(for: state)
-                .frame(width: 18, height: 18)
+                .frame(width: 28, height: 28)
         }
         .buttonStyle(NudgeControlButtonStyle(reduceMotion: reduceMotion))
         .disabled(!nudgeIsInteractive(state))
-        // Critique residual R2: apply the corner padding to the 18pt visual
-        // frame and expand the hit area outward via `.contentShape`, rather
-        // than padding the (larger) hit-area view itself -- otherwise the
-        // padding insets the hit frame instead of the visual circle,
-        // shifting the visual circle off its stated (51, 17) tile-local
-        // center and invalidating the cutout/collision geometry above.
-        .contentShape(Circle().inset(by: -7))
-        .padding(8)
+        // Task 20260906-nudge-icon-resize (design-notes.md §3): 44pt hit
+        // circle (Circle().inset(by: -8) on the 28pt frame), pulled 3pt
+        // inward on x only so it doesn't bleed past the LazyHStack's 10pt
+        // inter-tile gap into the next tile's tap area. This offset is
+        // independent of the visual circle's own corner-overhang position
+        // below -- only the much-larger hit shape needed the pull-back; the
+        // visual circle alone already has 7pt of margin against that gap.
+        .contentShape(Circle().inset(by: -8).offset(x: -3, y: 0))
+        // Negative padding is deliberate, not a typo: it produces the
+        // corner-overhang look (notification-badge-on-app-icon-corner
+        // convention) that replaces the old fully-inset 8pt padding, per
+        // design-notes.md §2. Visual circle center lands at tile-local
+        // (57, 11), 3pt outside the tile's own top/right edges -- confirmed
+        // clear of the card's own padding and the inter-tile gap.
+        .padding(-3)
         .accessibilityLabel(nudgeAccessibilityLabel(for: entry, state: state))
     }
 
@@ -525,7 +536,7 @@ struct FriendActivityHeroCard: View {
                 ProgressView().tint(Theme.goldLight)
             } else {
                 Image(systemName: nudgeIcon(for: state))
-                    .font(.system(size: 11))
+                    .font(.system(size: 15))
                     .foregroundColor(nudgeIconColor(for: state))
             }
         }
@@ -562,10 +573,19 @@ struct FriendActivityHeroCard: View {
         }
     }
 
+    // Task 20260906-nudge-icon-resize: switched .idle/.failed from
+    // "paperplane.fill" ("send a message" -- already used, unchanged, by
+    // CheckInRow's own send affordance below) to
+    // "bell.and.waves.left.and.right.fill", a standard SF Symbol already
+    // conventionally read as "notification" in iOS, distinct in silhouette
+    // and meaning from the paperplane. Scoped to .idle/.failed only, per the
+    // task's own scope -- .sending keeps ProgressView (this case value is
+    // structurally unreachable for .sending, since nudgeGlyph branches on it
+    // first), .sent/.rateLimited keep "checkmark". See design-notes.md §5.
     private func nudgeIcon(for state: NudgeUIState) -> String {
         switch state {
         case .sent, .rateLimited: return "checkmark"
-        case .idle, .sending, .failed: return "paperplane.fill"
+        case .idle, .sending, .failed: return "bell.and.waves.left.and.right.fill"
         }
     }
 
