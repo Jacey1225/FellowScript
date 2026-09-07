@@ -354,6 +354,26 @@ struct FriendActivityHeroCard: View {
                     friendTile(entry)
                 }
             }
+            // Fix for task 20260906-nudge-clip-fix: ScrollView clips its
+            // content to its own measured bounds on both axes, and those
+            // bounds are derived from friendTile's fixed 68x68 frame /
+            // LazyHStack's content width -- neither of which account for
+            // nudgeControl's `.padding(-3)` (20260906-nudge-icon-resize),
+            // which deliberately paints the 28pt badge 3pt outside the
+            // tile's top/trailing edges. That overhang was being clipped
+            // by the ScrollView, not a z-index problem (the badge already
+            // draws in front, per its ZStack sibling ordering above).
+            // Growing the LazyHStack's own measured bounds by exactly the
+            // overhang on exactly these two edges lets the badge render
+            // fully uncut while leaving horizontal viewport/scroll-boundary
+            // clipping (which hides off-screen tiles) completely untouched
+            // -- see design-notes.md §1-2 for the full trace. This is a
+            // rigid 3pt translation of the row's content, not a
+            // repositioning, so none of 20260906-nudge-icon-resize's
+            // collision math (10pt gap, 44pt hit target, 20pt card
+            // padding, avatar cutout) changes.
+            .padding(.top, 3)
+            .padding(.trailing, 3)
         }
     }
 
