@@ -108,6 +108,17 @@ jobs:
       S3_REGION: us-east-1
       GIF_PROVIDER: giphy
       GIF_PROVIDER_API_KEY: ci-test-gif-key
+      # validate_nudge_config() (task 20260906-friend-nudges) fails fast at
+      # app boot the same way validate_apns_config()/validate_attachment_
+      # config() do above -- same rationale, same fix: throwaway CI values
+      # so TestClient(main_module.app)/main.py's lifespan can boot. "false"
+      # matches the feature's real off-by-default deploy posture (this is
+      # not a live rollout toggle for CI, just a value the boot-time
+      # validator requires to be explicitly set); 24 is an arbitrary valid
+      # positive integer, never actually exercised as a live rate-limit
+      # window in the test suite itself.
+      NUDGE_FEATURE_ENABLED: "false"
+      NUDGE_RATE_LIMIT_HOURS: "24"
 
     steps:
       - name: Checkout
