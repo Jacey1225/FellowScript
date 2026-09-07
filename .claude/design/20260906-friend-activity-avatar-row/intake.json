@@ -1,0 +1,7 @@
+{
+  "task_id": "20260906-friend-activity-avatar-row",
+  "step": 1,
+  "stage": "intake",
+  "result": "pass",
+  "summary": "Captured a restyle of FellowScript's existing FriendActivityHeroCard avatar row (DashboardComponents.swift) from its current tightly-overlapping circular facepile into Discord's mobile 'active friends' pattern shown in the user's attached reference screenshot: a horizontally-laid-out row of rounded-square cards, each with an inset circular photo and a small corner status/activity badge. Media type hint: static. Key gaps flagged forward: badge semantics mapping to FellowScript's real activity-type data, whether the row becomes interactive, scroll-vs-fixed-count behavior, and exact sizing/color tokens."
+}

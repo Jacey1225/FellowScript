@@ -1,0 +1,8 @@
+{
+  "task_id": "20260906-friend-activity-avatar-row",
+  "step": 2,
+  "stage": "synthesis",
+  "result": "pass",
+  "media_type": "static",
+  "summary": "Takes Discord's structural skeleton (discrete 68pt squircle tiles, inset 40pt circular avatar, 16pt badge overlapping the photo's bottom-right, horizontal scroll with edge peek) and re-tones it entirely into FellowScript's locked warm-dark system, using a flat Theme.cardBg tile rather than nesting a second glass layer inside the already-glass hero card. Corroborated by five curated-library matches across widgets-dashboard-ui and mobile-app-screens, which also motivate the one deliberate addition to Discord's pattern: an 11pt name caption beneath each tile. Resolves all four open intake gaps explicitly (activity-derived two-state badge, per-friend tappability via the existing onOpenFriend path, true horizontal scroll replacing the +N overflow, in-place replacement of avatarStackRow with the headline friend ringed first)."
+}

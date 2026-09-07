@@ -1,0 +1,9 @@
+{
+  "task_id": "20260906-friend-activity-avatar-row",
+  "step": 4,
+  "stage": "generation",
+  "result": "pass",
+  "openart_used": false,
+  "skipped_reason": "static spec-only deliverable, no new asset needed",
+  "summary": "design-spec.md (revision 3) is a SwiftUI implementation spec for an in-place edit to FriendActivityHeroCard.avatarStackRow in the already-running FellowScript/FellowScript/FellowScript/Dashboard/DashboardComponents.swift. Both spec.json (generation_needed: false) and the spec's own 'Generation-needed?' section confirm no rendered mockup is useful or required -- the document is precise enough to hand directly to frontend-agent or a human against the real file. Revision 3 only tightened the nudge-trigger control's layering, contrast, and state contract (Issues 11-20); it did not introduce any new visual-asset need. No generation performed."
+}
