@@ -58,6 +58,7 @@ pattern (e.g. `seatCountEditRow`).
 
 Account deletion requires the user to type their username as confirmation, then press **Delete Account**.
 
+- **iOS**: tapping the button with an empty confirmation field shows an alert ("Type your username to confirm you want to delete your account.") instead of proceeding — the button stays tappable when the field is empty specifically so this error can surface, but stays disabled (as before) for any non-empty, non-matching input.
 - **Web**: `DELETE /user/{user_id}` is called; on success the user is signed out and redirected to `/signin`.
 - **iOS**: `NetworkService.deleteUser(userId:)` is awaited first; `signOut()` is called after on `MainActor` (no race condition).
 

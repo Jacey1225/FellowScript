@@ -111,7 +111,19 @@ extension AccountView {
             }
 
             Button(action: {
-                if deleteConfirm == (appState.currentUser?.username ?? "") {
+                // Explicit empty-field branch (Architecture Q26/Q27): an empty
+                // confirmation field is genuinely ambiguous -- silently doing
+                // nothing left users with no idea why the button "didn't
+                // work" -- so it now surfaces a friendly nudge via the same
+                // deleteAccountError alert plumbing used elsewhere on this
+                // screen, rather than relying on disabled-button silence.
+                // The non-empty-but-mismatched case stays exactly as before:
+                // still blocked below by `.disabled`, so this branch is
+                // unreachable for it and intentionally has no explicit case
+                // here.
+                if deleteConfirm.isEmpty {
+                    deleteAccountError = "Type your username to confirm you want to delete your account."
+                } else if deleteConfirm == (appState.currentUser?.username ?? "") {
                     showDeleteAlert = true
                 }
             }) {
@@ -123,7 +135,11 @@ extension AccountView {
                 .padding(.horizontal, 16).padding(.vertical, 8)
                 .overlay(Capsule().stroke(Theme.error.opacity(0.4), lineWidth: 1))
             }
-            .disabled(deleteConfirm != (appState.currentUser?.username ?? ""))
+            // Only disabled for the non-empty-but-mismatched case (unchanged
+            // from before); left enabled when the field is empty so the tap
+            // above can reach its empty-field branch instead of silently
+            // no-oping.
+            .disabled(!deleteConfirm.isEmpty && deleteConfirm != (appState.currentUser?.username ?? ""))
             .accessibilityLabel("Delete account button")
         }
         .padding(.horizontal, 18).padding(.vertical, 16)

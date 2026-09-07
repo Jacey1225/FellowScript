@@ -1042,6 +1042,7 @@ pattern (e.g. <code>seatCountEditRow</code>).</p>
 <h3 id="danger-zone">Danger Zone</h3>
 <p>Account deletion requires the user to type their username as confirmation, then press <strong>Delete Account</strong>.</p>
 <ul>
+<li><strong>iOS</strong>: tapping the button with an empty confirmation field shows an alert ("Type your username to confirm you want to delete your account.") instead of proceeding — the button stays tappable when the field is empty specifically so this error can surface, but stays disabled (as before) for any non-empty, non-matching input.</li>
 <li><strong>Web</strong>: <code>DELETE /user/{user_id}</code> is called; on success the user is signed out and redirected to <code>/signin</code>.</li>
 <li><strong>iOS</strong>: <code>NetworkService.deleteUser(userId:)</code> is awaited first; <code>signOut()</code> is called after on <code>MainActor</code> (no race condition).</li>
 </ul>

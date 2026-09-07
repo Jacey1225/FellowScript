@@ -41,15 +41,6 @@ final class DashboardViewModel: ObservableObject {
     // friend.
     @Published var checkInNudgeState: NudgeUIState = .idle
 
-    // Forward-compatible plumbing only (task 20260906-friend-nudges): keyed
-    // by friend_id, for the avatar-tile nudge control specced in the sibling
-    // /design task 20260906-friend-activity-avatar-row. That control's own
-    // tile restyle hasn't landed in FriendActivityHeroCard yet, so nothing
-    // reads this dict today -- it exists so the eventual tile-restyle
-    // follow-up only needs to call `onNudge`/read this state, not add any
-    // new network wiring of its own.
-    @Published var friendNudgeStates: [String: NudgeUIState] = [:]
-
     func load(service: DataServiceProtocol, userId: String) async {
         self.service = service
         isLoading = true
@@ -107,7 +98,6 @@ final class DashboardViewModel: ObservableObject {
         // A fresh candidate (even the same friend re-picked) starts tappable
         // again -- see checkInNudgeState's own doc comment above.
         checkInNudgeState = .idle
-        friendNudgeStates = [:]
 
         // ── Write fresh data back to the shared cache ────────────────────────────
         await DiskCache.shared.save(notes, forKey: "notes:\(userId)")
@@ -137,24 +127,6 @@ final class DashboardViewModel: ObservableObject {
             checkInNudgeState = .failed
             try? await Task.sleep(nanoseconds: 300_000_000)
             checkInNudgeState = .idle
-        }
-    }
-
-    // Forward-compatible plumbing only -- see friendNudgeStates' doc comment.
-    // Not called anywhere in this build yet (no real avatar-tile control
-    // exists to call it), but implemented now against the exact same
-    // sendNudge contract as sendCheckInNudge above so the eventual tile
-    // restyle's onNudge wiring is a pure call-site change, not new logic.
-    func sendNudge(to friendId: String, userId: String) async {
-        guard friendNudgeStates[friendId] != .sending else { return }
-        friendNudgeStates[friendId] = .sending
-        switch await service.sendNudge(userId: userId, friendId: friendId) {
-        case .sent:        friendNudgeStates[friendId] = .sent
-        case .rateLimited: friendNudgeStates[friendId] = .rateLimited
-        case .failed:
-            friendNudgeStates[friendId] = .failed
-            try? await Task.sleep(nanoseconds: 300_000_000)
-            friendNudgeStates[friendId] = .idle
         }
     }
 
@@ -283,19 +255,6 @@ struct DashboardView: View {
                         onOpenNote: { preview in
                             openFriendNote(preview)
                         },
-                        // Task 20260906-friend-nudges: forward-compatible
-                        // wiring only -- see FriendActivityHeroCard's own
-                        // onNudge doc comment. Wired here so the sibling
-                        // /design task's eventual tile-restyle follow-up
-                        // only needs to attach a control that calls
-                        // `onNudge(entry)`; the network call and per-friend
-                        // state are already live.
-                        onNudge: { entry in
-                            if let uid = appState.currentUser?.user_id {
-                                Task { await vm.sendNudge(to: entry.friend_id, userId: uid) }
-                            }
-                        },
-                        nudgeStates: vm.friendNudgeStates,
                         isLoadingNotePreview: isLoadingFriendNote
                     )
 

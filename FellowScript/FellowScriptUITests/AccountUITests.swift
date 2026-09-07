@@ -316,10 +316,36 @@ final class AccountUITests: XCTestCase {
         scrollUntilExists(confirmField, app: app)
 
         let deleteButton = app.buttons["Delete account button"]
-        scrollUntilExists(deleteButton, app: app)
 
-        // Gate must start disabled: no text entered yet (deleteConfirm == "").
-        XCTAssertFalse(deleteButton.isEnabled, "Delete My Account must start disabled with an empty confirmation field")
+        // Gate now stays enabled on an empty field (task
+        // 20260907-delete-account-empty-username-validation) so the tap
+        // handler itself can surface an explicit "type your username" error
+        // instead of the button silently doing nothing. Tapping must show
+        // that error, not the destructive confirmation alert, and must not
+        // proceed to deletion.
+        //
+        // This is the very first tap in the test, right after landing on the
+        // Account tab -- unlike the match-case tap further below, there's no
+        // prior typing/settling to have nudged the ScrollView into a stable
+        // position first. `scrollUntilExists` alone isn't enough here: since
+        // AccountView's ScrollView isn't lazy, `deleteButton.exists` is
+        // already true at the top of the screen, so that helper returns
+        // immediately without actually scrolling Danger Zone into a truly
+        // hittable position -- and `tapUntil` itself never scrolls, only
+        // retries the tap. That combination is exactly the ~50% flake
+        // reported by testing: whether Danger Zone happens to already be
+        // (marginally) hittable at rest is a toss-up. `scrollUntilHittable`
+        // (same settle-then-check pattern already used for confirmField
+        // just above) actively swipes and settles until `deleteButton` is
+        // genuinely hittable before `tapUntil` ever attempts the tap.
+        scrollUntilHittable(deleteButton, app: app)
+        XCTAssertTrue(deleteButton.isEnabled, "Delete My Account must stay tappable with an empty confirmation field so the empty-field error can be shown")
+        let emptyFieldAlert = app.alerts["Couldn't Delete Account"]
+        tapUntil(deleteButton, successElement: emptyFieldAlert, app: app)
+        XCTAssertTrue(emptyFieldAlert.staticTexts["Type your username to confirm you want to delete your account."].exists)
+        XCTAssertFalse(app.alerts["Delete Account"].exists, "An empty confirmation field must never raise the destructive delete confirmation")
+        emptyFieldAlert.buttons["OK"].tap()
+        XCTAssertFalse(app.alerts["Couldn't Delete Account"].exists)
 
         // Re-settle on confirmField: scrolling down to confirm deleteButton's
         // existence above may have nudged confirmField just out of the
@@ -343,9 +369,10 @@ final class AccountUITests: XCTestCase {
         // same as a real user would before reaching for a control beneath
         // the keyboard.
         dismissKeyboardIfPresent(app)
-        // Scroll it into view first (without tapping yet — tapUntil below
-        // owns the actual tap-and-retry).
-        scrollUntilExists(deleteButton, app: app)
+        // Scroll it into view (and wait for genuinely hittable, not just
+        // present -- same reasoning as the empty-field tap above) first,
+        // without tapping yet; tapUntil below owns the actual tap-and-retry.
+        scrollUntilHittable(deleteButton, app: app)
 
         // Tapping now must raise the destructive confirmation alert rather than
         // deleting immediately — proves showDeleteAlert is still gated behind
