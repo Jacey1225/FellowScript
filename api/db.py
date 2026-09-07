@@ -191,6 +191,24 @@ def create_tables(cur):
         "CREATE INDEX IF NOT EXISTS idx_blocked_users_blocked ON blocked_users(blocked_id)"
     )
 
+    # Task 20260906-friend-nudges: per (sender, recipient) rate-limit marker
+    # for the "nudge" push action -- same single-row-per-pair dedup-marker
+    # shape as user_activity's friend_notified_at/midday_reminder_sent_date/
+    # guilt_reminder_sent_at (only the most recent send matters for the
+    # window check), rather than an append-only log. Sender+recipient
+    # scoped, so it's its own table rather than a column on user_friends
+    # (undirected-ish, PK'd both ways) or user_activity (single-user
+    # scoped). Claimed atomically BEFORE the push is sent, and released
+    # (deleted) if the send then fails -- see
+    # FriendsManager.claim_nudge_slot/release_nudge_claim.
+    cur.execute(
+        "CREATE TABLE IF NOT EXISTS friend_nudges"
+        "(sender_id UUID REFERENCES users(_id) ON DELETE CASCADE,"
+        "recipient_id UUID REFERENCES users(_id) ON DELETE CASCADE,"
+        "last_nudged_at TIMESTAMPTZ NOT NULL,"
+        "PRIMARY KEY (sender_id, recipient_id))"
+    )
+
     cur.execute(
         "CREATE TABLE IF NOT EXISTS highlights"
         "(user_id UUID REFERENCES users(_id) ON DELETE CASCADE,"

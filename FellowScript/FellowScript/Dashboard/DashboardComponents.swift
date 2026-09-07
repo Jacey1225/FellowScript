@@ -208,6 +208,23 @@ private enum FriendActivityType {
     static let highlighted = "verse_highlighted"
 }
 
+// Task 20260906-friend-activity-avatar-row (critique residual R4): a small,
+// reusable conditional so an `.accessibilityAction` can be omitted entirely
+// -- not merely turned into a no-op -- when its underlying control isn't
+// currently interactive. A closure-guarded action would still appear on
+// VoiceOver's rotor and silently do nothing; this keeps the rotor itself in
+// sync with what the visible control can actually do.
+private extension View {
+    @ViewBuilder
+    func accessibilityActionIfEnabled(_ enabled: Bool, named name: Text, _ action: @escaping () -> Void) -> some View {
+        if enabled {
+            accessibilityAction(named: name, action)
+        } else {
+            self
+        }
+    }
+}
+
 // ── Friend Activity hero card ("Editorial Hero" mockup) ────────────────────────
 // Ports `.hero-card` from friend-activity-dashboard-revised.html: an avatar
 // stack of active friends, the most-recently-active friend's headline +
@@ -235,6 +252,29 @@ struct FriendActivityHeroCard: View {
     // supplies onOpenFriend (all of DashboardEmptyStateTests.swift and
     // DashboardFriendRandomizationTests.swift) keeps compiling unchanged.
     var onOpenNote: (FSFriendNotePreview) -> Void = { _ in }
+    // Task 20260906-friend-nudges (plumbing) / 20260906-friend-activity-
+    // avatar-row (call site): the "nudge a friend from this row" tap target
+    // is the top-right-corner control on each avatar tile below
+    // (`nudgeControl(for:)`), per design-spec.md Component #2 in the
+    // sibling /design task 20260906-friend-activity-avatar-row. Kept
+    // default-no-op (parallel to onOpenFriend/onOpenNote) so every
+    // pre-existing call site/preview/test that doesn't supply it keeps
+    // compiling unchanged. Driven by the same DashboardViewModel.sendNudge
+    // / NudgeResult contract CheckInRow already uses below -- no new
+    // network plumbing of its own.
+    var onNudge: (FSFriendActivityEntry) -> Void = { _ in }
+    // Task 20260906-friend-activity-avatar-row: per-friend nudge-control
+    // state for the tile row below, keyed by friend id -- a missing key
+    // renders `.idle` (design-spec.md §2's stated default, not a silently
+    // inferred one). This is a dictionary, not a scalar, because this row
+    // -- unlike CheckInRow's single candidate -- renders many friends at
+    // once, each independently nudgeable and independently rate-limited.
+    // Reuses the existing shared `NudgeUIState` enum (already driving
+    // CheckInRow below) rather than a parallel type. Populating this map
+    // (a real send, or a rate-limit already known from an earlier session)
+    // is the sibling /build task 20260906-friend-nudges' job, not this
+    // one's -- this row only renders from whatever the map says.
+    var nudgeStates: [String: NudgeUIState] = [:]
     // True while DashboardView has an in-flight fetch for the tapped
     // preview's full note -- shows a small inline spinner next to the
     // preview text and disables re-tapping mid-fetch, per the UI/UX
@@ -243,6 +283,14 @@ struct FriendActivityHeroCard: View {
     // plausible failure mode, so *some* feedback is warranted, just not
     // more than this).
     var isLoadingNotePreview: Bool = false
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    // Caption font scales with Dynamic Type through the standard range
+    // instead of being fixed/shrunk via minimumScaleFactor -- overflow is
+    // absorbed by the caption's own fixed-width truncation instead
+    // (friendTile below), per design-spec.md Components §1.
+    @ScaledMetric(relativeTo: .caption2) private var captionSize: CGFloat = 11
 
     // nil `last_active_at` here means *no* friend has any tracked activity,
     // which is a distinct empty state from "no friends".
@@ -275,7 +323,7 @@ struct FriendActivityHeroCard: View {
                     Text("No recent activity from your friends yet.")
                         .font(.system(size: 14.5))
                         .foregroundColor(Theme.textSecondary)
-                        .padding(.top, 14)
+                        .padding(.top, 16)
                 }
             }
         }
@@ -293,24 +341,249 @@ struct FriendActivityHeroCard: View {
         }
     }
 
+    // ── Friend tile row (task 20260906-friend-activity-avatar-row) ─────────
+    // Replaces the old right-aligned overlapping facepile with a
+    // horizontally-scrolling row of Discord-inspired squircle tiles, per
+    // design-spec.md Layout/Components §1-3. `showsIndicators: false` and
+    // `LazyHStack` (not `HStack`) so tiles build on demand rather than
+    // all-at-once, matching the row container spec below.
     private var avatarStackRow: some View {
-        HStack {
-            Spacer()
-            HStack(spacing: -9) {
-                ForEach(Array(feed.friends_active.prefix(4))) { f in
-                    AvatarView(initial: f.initial, photoURL: f.profile_photo_url, diameter: 28)
-                        .overlay(Circle().stroke(Theme.bgPage, lineWidth: 2))
-                }
-                if feed.friends_active.count > 4 {
-                    Circle().fill(Color(hex: "#24170A"))
-                        .frame(width: 28, height: 28)
-                        .overlay(Circle().stroke(Theme.bgPage, lineWidth: 2))
-                        .overlay(Text("+\(feed.friends_active.count - 4)")
-                            .font(.system(size: 10.5, weight: .bold)).foregroundColor(Theme.goldLight))
+        ScrollView(.horizontal, showsIndicators: false) {
+            LazyHStack(spacing: 10) {
+                ForEach(rowFriends) { entry in
+                    friendTile(entry)
                 }
             }
         }
-        .accessibilityHidden(true)
+    }
+
+    // Rendered friend set: `feed.friends_active`, never reordered
+    // (design-spec.md §3, Issue 7/20). Take the first 50 (LazyHStack removes
+    // the perf justification for a lower cap), then, if `resolvedPrimary`
+    // isn't already present in that slice, insert it at the *head* rather
+    // than appending it -- appending would place the presence guarantee
+    // past the visible/peek window for anyone with more than 50 friends,
+    // exactly the case the guarantee exists for. In the ordinary case
+    // (<=50 friends) this union step is a no-op.
+    private var rowFriends: [FSFriendActivityEntry] {
+        var friends = Array(feed.friends_active.prefix(50))
+        if let resolvedPrimary, !friends.contains(where: { $0.id == resolvedPrimary.id }) {
+            friends.insert(resolvedPrimary, at: 0)
+        }
+        return friends
+    }
+
+    // One friend tile: squircle container (fill + hairline + selected-ring
+    // in place + avatar + status badge) as the chat tap target, plus a
+    // sibling nudge-trigger control in the top-right corner, plus a name
+    // caption below. Row height is not a fixed constant -- the VStack sizes
+    // itself from its children, since the caption's @ScaledMetric font
+    // makes its own height vary slightly with Dynamic Type.
+    private func friendTile(_ entry: FSFriendActivityEntry) -> some View {
+        let state = nudgeStates[entry.id] ?? .idle
+        return VStack(spacing: 6) {
+            // Sibling of the chat Button, declared after it so it draws --
+            // and hit-tests -- in front (design-spec.md §1, Issue 11). Must
+            // never be nested inside the chat Button's own label: SwiftUI
+            // collapses a Button's label subtree into one accessibility
+            // element, so a nested Button would not be exposed to VoiceOver
+            // as an independent element.
+            ZStack(alignment: .topTrailing) {
+                Button(action: { onOpenFriend(entry) }) {
+                    tileContent(entry)
+                }
+                .buttonStyle(FriendTileButtonStyle(reduceMotion: reduceMotion))
+                .accessibilityLabel("\(headline(entry)). Opens chat.")
+                // Belt-and-braces second path to the same action (Issue 11)
+                // -- gated on the state actually being interactive (R4),
+                // matching CheckInRow's own isDisabled distinction, so
+                // VoiceOver's rotor never offers an action the visible
+                // control itself can't currently perform.
+                .accessibilityActionIfEnabled(nudgeIsInteractive(state), named: Text("Nudge")) {
+                    onNudge(entry)
+                }
+
+                nudgeControl(for: entry)
+            }
+            .frame(width: 68, height: 68)
+
+            // At accessibility Dynamic Type sizes the caption is dropped
+            // from layout entirely rather than wrapping or forcing the
+            // tile to grow -- the friend's full name remains available via
+            // the tile's own accessibilityLabel regardless.
+            if dynamicTypeSize < .accessibility1 {
+                Text(entry.username)
+                    .font(.system(size: captionSize, weight: .semibold))
+                    .foregroundColor(Theme.parchment.opacity(0.85))
+                    .frame(width: 68)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+        }
+    }
+
+    // The tile's chat-button content: squircle fill/hairline, the
+    // in-place selected ring, the avatar (cut out for the badge/nudge
+    // corners), and the status badge itself. Does NOT include the nudge
+    // control -- that's a ZStack sibling, per friendTile above.
+    private func tileContent(_ entry: FSFriendActivityEntry) -> some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .fill(Theme.goldLight.opacity(0.06))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .stroke(Color.white.opacity(0.14), lineWidth: 1)
+                )
+            if resolvedPrimary?.id == entry.id {
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .stroke(Theme.gold.opacity(0.55), lineWidth: 1.5)
+                    .padding(1.5)
+            }
+            avatarWithCutouts(entry)
+            statusBadge(for: entry)
+        }
+        .frame(width: 68, height: 68)
+    }
+
+    // Critique residual R1 (mandatory fix for this task): a true cutout,
+    // masking the badge/nudge circles out of the avatar itself via
+    // `.blendMode(.destinationOut)` inside a `.compositingGroup()`, rather
+    // than a same-tile-fill overprint circle drawn on top of the photo
+    // (which only tints the photo by 6%, since the tile fill is a
+    // translucent wash -- it does not occlude anything). Offsets match the
+    // status badge's own centering below (avatarCenter + (14.1, 14.1)) and
+    // the nudge control's own corner center (avatarCenter + (17, -17)).
+    private func avatarWithCutouts(_ entry: FSFriendActivityEntry) -> some View {
+        AvatarView(initial: entry.initial, photoURL: entry.profile_photo_url, diameter: 40)
+            .mask(
+                ZStack {
+                    Circle()
+                    Circle().frame(width: 16, height: 16)
+                        .offset(x: 14.1, y: 14.1)
+                        .blendMode(.destinationOut)
+                    Circle().frame(width: 23, height: 23)
+                        .offset(x: 17, y: -17)
+                        .blendMode(.destinationOut)
+                }
+                .compositingGroup()
+            )
+    }
+
+    // Two-state only (Issue 4) -- filled gold dot / hollow ring, no
+    // per-type glyphs. Activity type is carried by the accessibility
+    // label and the 28pt headline below, not a mark that shrinks under
+    // this badge's 11pt size.
+    private func statusBadge(for entry: FSFriendActivityEntry) -> some View {
+        Group {
+            if hasRecentActivity(entry) {
+                Circle().fill(Theme.gold)
+            } else {
+                Circle().stroke(Theme.parchment.opacity(0.70), lineWidth: 2)
+            }
+        }
+        .frame(width: 11, height: 11)
+        .offset(x: 14.1, y: 14.1)
+    }
+
+    // "Recent activity" threshold: last_active_at within the last 24
+    // hours, computed client-side against the existing parseActivityDate
+    // helper. No backend field; `last_active_at == nil` always renders
+    // hollow.
+    private func hasRecentActivity(_ entry: FSFriendActivityEntry) -> Bool {
+        guard let d = parseActivityDate(entry.last_active_at) else { return false }
+        return Date().timeIntervalSince(d) <= 24 * 60 * 60
+    }
+
+    // ── Nudge-trigger control (design-spec.md Components §2) ───────────────
+    // Contract: renders from the existing `onNudge` callback and the new
+    // `nudgeStates` map only -- no new callback, no parallel state type.
+    private func nudgeControl(for entry: FSFriendActivityEntry) -> some View {
+        let state = nudgeStates[entry.id] ?? .idle
+        return Button(action: { onNudge(entry) }) {
+            nudgeGlyph(for: state)
+                .frame(width: 18, height: 18)
+        }
+        .buttonStyle(NudgeControlButtonStyle(reduceMotion: reduceMotion))
+        .disabled(!nudgeIsInteractive(state))
+        // Critique residual R2: apply the corner padding to the 18pt visual
+        // frame and expand the hit area outward via `.contentShape`, rather
+        // than padding the (larger) hit-area view itself -- otherwise the
+        // padding insets the hit frame instead of the visual circle,
+        // shifting the visual circle off its stated (51, 17) tile-local
+        // center and invalidating the cutout/collision geometry above.
+        .contentShape(Circle().inset(by: -7))
+        .padding(8)
+        .accessibilityLabel(nudgeAccessibilityLabel(for: entry, state: state))
+    }
+
+    @ViewBuilder
+    private func nudgeGlyph(for state: NudgeUIState) -> some View {
+        ZStack {
+            Circle().fill(nudgeFill(for: state))
+            Circle().stroke(nudgeStroke(for: state), lineWidth: 1)
+            if state == .sending {
+                ProgressView().tint(Theme.goldLight)
+            } else {
+                Image(systemName: nudgeIcon(for: state))
+                    .font(.system(size: 11))
+                    .foregroundColor(nudgeIconColor(for: state))
+            }
+        }
+        // A quick tint pulse on a failed send -- mirrors CheckInRow's own
+        // error-pulse overlay exactly (same construction, same duration),
+        // so the two nudge surfaces stay in lockstep.
+        .overlay(
+            Circle().fill(Theme.error.opacity(state == .failed ? 0.4 : 0))
+        )
+        .animation(.easeOut(duration: 0.3), value: state)
+    }
+
+    // State -> visual mapping, mirroring CheckInRow's own badgeText/
+    // iconName/isDisabled/accessibilityText computed properties so the two
+    // surfaces stay in lockstep instead of drifting apart.
+    private func nudgeFill(for state: NudgeUIState) -> Color {
+        switch state {
+        case .sent, .rateLimited: return .clear
+        case .idle, .sending, .failed: return Theme.gold.opacity(0.16)
+        }
+    }
+
+    private func nudgeStroke(for state: NudgeUIState) -> Color {
+        switch state {
+        case .sent, .rateLimited: return Theme.parchment.opacity(0.35)
+        case .idle, .sending, .failed: return Theme.gold.opacity(0.35)
+        }
+    }
+
+    private func nudgeIconColor(for state: NudgeUIState) -> Color {
+        switch state {
+        case .sent, .rateLimited: return Theme.parchment.opacity(0.55)
+        case .idle, .sending, .failed: return Theme.goldLight
+        }
+    }
+
+    private func nudgeIcon(for state: NudgeUIState) -> String {
+        switch state {
+        case .sent, .rateLimited: return "checkmark"
+        case .idle, .sending, .failed: return "paperplane.fill"
+        }
+    }
+
+    // `.rateLimited` renders identically to `.sent` (disabled, checkmark,
+    // no red pulse); `.failed` is, like `.idle`, tappable -- retrying is
+    // correct advice there, unlike a rejection that already landed.
+    private func nudgeIsInteractive(_ state: NudgeUIState) -> Bool {
+        switch state {
+        case .idle, .failed:                        return true
+        case .sending, .sent, .rateLimited:          return false
+        }
+    }
+
+    private func nudgeAccessibilityLabel(for entry: FSFriendActivityEntry, state: NudgeUIState) -> String {
+        switch state {
+        case .sent, .rateLimited: return "Nudge sent to \(entry.username)"
+        case .idle, .sending, .failed: return "Nudge \(entry.username) to study"
+        }
     }
 
     private func activityRow(_ entry: FSFriendActivityEntry) -> some View {
@@ -336,10 +609,10 @@ struct FriendActivityHeroCard: View {
                     .foregroundColor(Theme.gold.opacity(0.75))
                     .padding(.top, 8)
             }
-            .padding(.top, 14)
+            .padding(.top, 16)
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("\(entry.username): \(headline(entry)). Tap to open chat.")
+        .accessibilityLabel("\(headline(entry)). Opens chat.")
     }
 
     // Distinct tap target from activityRow's headline Button above (task
@@ -450,15 +723,100 @@ struct FriendActivityHeroCard: View {
     }
 }
 
+// Tile press feedback (design-spec.md States): scale to 0.96 on tap-down,
+// ease back on release faster than it entered (0.18s in / 0.12s out, no
+// spring/overshoot). Reduce Motion drops the scale transform entirely; the
+// tap's resulting navigation still fires instantly.
+private struct FriendTileButtonStyle: ButtonStyle {
+    var reduceMotion: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(!reduceMotion && configuration.isPressed ? 0.96 : 1.0)
+            .animation(.easeOut(duration: configuration.isPressed ? 0.18 : 0.12), value: configuration.isPressed)
+    }
+}
+
+// Nudge control's own pressed state (design-spec.md Components §2): a more
+// pronounced 0.90 scale than the tile's own 0.96, since this is a smaller,
+// more precision-dependent target. Reduced motion drops the scale transform
+// and keeps only the fill-brighten as the state cue -- mirrors this file's
+// existing ContinueIslandButtonStyle reduced-motion fallback (the
+// opacity/brightness step survives, the transform doesn't). Only fires for
+// `.idle`/`.failed`, since the button is `.disabled` (and therefore never
+// pressed) in every other state.
+private struct NudgeControlButtonStyle: ButtonStyle {
+    var reduceMotion: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(!reduceMotion && configuration.isPressed ? 0.90 : 1.0)
+            .overlay(
+                Circle().fill(Theme.gold.opacity(configuration.isPressed ? 0.28 : 0))
+            )
+            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+    }
+}
+
+// Task 20260906-friend-nudges: shared across CheckInRow's send action today,
+// and (once its tile restyle lands) the avatar-tile nudge control from the
+// sibling /design task 20260906-friend-activity-avatar-row -- both drive
+// their own visuals off this one small state machine rather than each
+// re-deriving "what does a rate-limited nudge look like" independently.
+enum NudgeUIState: Equatable {
+    case idle
+    case sending
+    case sent
+    case rateLimited
+    case failed
+}
+
 // ── Check-in nudge row (flush, no container — matches `.checkin-row`) ──────────
 struct CheckInRow: View {
     let checkIn: FSCheckInCandidate
+    // Task 20260906-friend-nudges: owned by DashboardViewModel (mirrors
+    // isLoadingNotePreview on FriendActivityHeroCard above -- external state,
+    // not local @State, so a parent reload/re-pick can reset it) and driven
+    // by the shared sendNudge/NudgeResult contract. `onTap` itself no longer
+    // opens chat -- see the call site's comment for why.
+    var nudgeState: NudgeUIState = .idle
     let onTap:   () -> Void
 
     private var badgeText: String {
-        guard let days = checkIn.days_since_contact else { return "Never messaged" }
-        if days <= 0 { return "Talked today" }
-        return days == 1 ? "It's been 1 day" : "It's been \(days) days"
+        switch nudgeState {
+        case .rateLimited: return "Already nudged recently"
+        case .sent:         return "Nudge sent"
+        default:
+            guard let days = checkIn.days_since_contact else { return "Never messaged" }
+            if days <= 0 { return "Talked today" }
+            return days == 1 ? "It's been 1 day" : "It's been \(days) days"
+        }
+    }
+
+    // Disabled once a send has actually landed somewhere (sent, or
+    // rate-limited from this or an earlier attempt) -- re-tapping either
+    // would just bounce off the same rate limit a moment later. Not
+    // disabled while merely `.failed`, since that's the one outcome meant to
+    // invite an immediate retry.
+    private var isDisabled: Bool {
+        switch nudgeState {
+        case .sending, .sent, .rateLimited: return true
+        case .idle, .failed:                return false
+        }
+    }
+
+    private var iconName: String {
+        switch nudgeState {
+        case .sent, .rateLimited: return "checkmark"
+        default:                  return "paperplane.fill"
+        }
+    }
+
+    private var accessibilityText: String {
+        switch nudgeState {
+        case .sent, .rateLimited: return "Nudge sent to \(checkIn.username)"
+        default:                  return "Check in with \(checkIn.username)"
+        }
     }
 
     var body: some View {
@@ -482,13 +840,30 @@ struct CheckInRow: View {
                     .frame(width: 56, height: 56)
                     .overlay(
                         Circle().fill(Color(hex: "#24170A")).frame(width: 50, height: 50)
-                            .overlay(Image(systemName: "paperplane.fill")
-                                .font(.system(size: 17))
-                                .foregroundColor(Theme.goldLight))
+                            .overlay(
+                                Group {
+                                    if nudgeState == .sending {
+                                        ProgressView().tint(Theme.goldLight)
+                                    } else {
+                                        Image(systemName: iconName)
+                                            .font(.system(size: 17))
+                                            .foregroundColor(Theme.goldLight)
+                                    }
+                                }
+                            )
                     )
+                    // A quick, transient tint pulse on a failed send -- same
+                    // "that didn't land, try again" language as the sibling
+                    // /design task's tile-control error state -- rather than
+                    // a toast/alert for a low-stakes social action.
+                    .overlay(
+                        Circle().fill(Theme.error.opacity(nudgeState == .failed ? 0.4 : 0))
+                    )
+                    .animation(.easeOut(duration: 0.3), value: nudgeState)
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Check in with \(checkIn.username)")
+            .disabled(isDisabled)
+            .accessibilityLabel(accessibilityText)
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 2)

@@ -132,6 +132,16 @@ async def lifespan(_: FastAPI):
     validate_attachment_config()
     validate_gif_config()
 
+    # Eager nudge-feature config validation (task 20260906-friend-nudges) --
+    # same rationale as validate_apns_config/validate_attachment_config just
+    # above: NUDGE_FEATURE_ENABLED and NUDGE_RATE_LIMIT_HOURS are new
+    # required config (Configuration Philosophy Q4 -- no implicit default),
+    # so a deploy that hasn't set them explicitly must fail loudly at boot
+    # rather than the nudge endpoint silently running with a guessed
+    # rate-limit window. Deliberately not caught here.
+    from backend.interactions.friends import validate_nudge_config
+    validate_nudge_config()
+
     from backend.interactions.scheduler import start_scheduler
     start_scheduler()
     # WS connection-liveness heartbeat (task

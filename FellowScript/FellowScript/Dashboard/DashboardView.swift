@@ -32,6 +32,24 @@ final class DashboardViewModel: ObservableObject {
     @Published var heroFriendPick: FSFriendActivityEntry?
     @Published var checkInPick:    FSCheckInCandidate?
 
+    // Task 20260906-friend-nudges: UI state for CheckInRow's send action,
+    // driven entirely by the shared `DataServiceProtocol.sendNudge` response
+    // contract (see NudgeResult) rather than each surface re-deriving its
+    // own success/rate-limited/failed mapping. Reset to `.idle` every time
+    // `load()` rolls a new `checkInPick` below, so a stale sent/rate-limited
+    // look from a previous candidate never carries over onto a different
+    // friend.
+    @Published var checkInNudgeState: NudgeUIState = .idle
+
+    // Forward-compatible plumbing only (task 20260906-friend-nudges): keyed
+    // by friend_id, for the avatar-tile nudge control specced in the sibling
+    // /design task 20260906-friend-activity-avatar-row. That control's own
+    // tile restyle hasn't landed in FriendActivityHeroCard yet, so nothing
+    // reads this dict today -- it exists so the eventual tile-restyle
+    // follow-up only needs to call `onNudge`/read this state, not add any
+    // new network wiring of its own.
+    @Published var friendNudgeStates: [String: NudgeUIState] = [:]
+
     func load(service: DataServiceProtocol, userId: String) async {
         self.service = service
         isLoading = true
@@ -86,6 +104,10 @@ final class DashboardViewModel: ObservableObject {
         // existing (accepted) cache-then-fresh data transition itself.
         heroFriendPick = friendActivity.friends_active.randomElement()
         checkInPick    = friendActivity.check_in_candidates.randomElement()
+        // A fresh candidate (even the same friend re-picked) starts tappable
+        // again -- see checkInNudgeState's own doc comment above.
+        checkInNudgeState = .idle
+        friendNudgeStates = [:]
 
         // ── Write fresh data back to the shared cache ────────────────────────────
         await DiskCache.shared.save(notes, forKey: "notes:\(userId)")
@@ -95,6 +117,45 @@ final class DashboardViewModel: ObservableObject {
     var recentNote: (String, FSNote)? {
         notes.max(by: { $0.value.timestamp < $1.value.timestamp })
              .map { ($0.key, $0.value) }
+    }
+
+    // Task 20260906-friend-nudges: CheckInRow's send action. Guards against a
+    // double-tap mid-flight the same way openFriendNote's isLoadingFriendNote
+    // guard does -- `.sending` is itself the re-entrancy lock, no separate
+    // Bool needed.
+    func sendCheckInNudge(userId: String) async {
+        guard let checkIn = checkInPick, checkInNudgeState != .sending else { return }
+        checkInNudgeState = .sending
+        switch await service.sendNudge(userId: userId, friendId: checkIn.friend_id) {
+        case .sent:        checkInNudgeState = .sent
+        case .rateLimited: checkInNudgeState = .rateLimited
+        case .failed:
+            // Brief, transient pulse (mirrors the sibling /design task's
+            // tile-control error state) then back to tappable -- a low-
+            // stakes social action getting a quick "that didn't land, try
+            // again" rather than a persistent error surface.
+            checkInNudgeState = .failed
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            checkInNudgeState = .idle
+        }
+    }
+
+    // Forward-compatible plumbing only -- see friendNudgeStates' doc comment.
+    // Not called anywhere in this build yet (no real avatar-tile control
+    // exists to call it), but implemented now against the exact same
+    // sendNudge contract as sendCheckInNudge above so the eventual tile
+    // restyle's onNudge wiring is a pure call-site change, not new logic.
+    func sendNudge(to friendId: String, userId: String) async {
+        guard friendNudgeStates[friendId] != .sending else { return }
+        friendNudgeStates[friendId] = .sending
+        switch await service.sendNudge(userId: userId, friendId: friendId) {
+        case .sent:        friendNudgeStates[friendId] = .sent
+        case .rateLimited: friendNudgeStates[friendId] = .rateLimited
+        case .failed:
+            friendNudgeStates[friendId] = .failed
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            friendNudgeStates[friendId] = .idle
+        }
     }
 
     /// Saves a note (new or edited) through the injected service, updates the
@@ -222,12 +283,36 @@ struct DashboardView: View {
                         onOpenNote: { preview in
                             openFriendNote(preview)
                         },
+                        // Task 20260906-friend-nudges: forward-compatible
+                        // wiring only -- see FriendActivityHeroCard's own
+                        // onNudge doc comment. Wired here so the sibling
+                        // /design task's eventual tile-restyle follow-up
+                        // only needs to attach a control that calls
+                        // `onNudge(entry)`; the network call and per-friend
+                        // state are already live.
+                        onNudge: { entry in
+                            if let uid = appState.currentUser?.user_id {
+                                Task { await vm.sendNudge(to: entry.friend_id, userId: uid) }
+                            }
+                        },
+                        nudgeStates: vm.friendNudgeStates,
                         isLoadingNotePreview: isLoadingFriendNote
                     )
 
                     if let checkIn = vm.checkInPick {
-                        CheckInRow(checkIn: checkIn) {
-                            openFriendChat(id: checkIn.friend_id, username: checkIn.username)
+                        // Task 20260906-friend-nudges: this row's send action
+                        // now nudges the friend (fixed push copy, via the
+                        // shared sendCheckInNudge/sendNudge contract) instead
+                        // of opening their chat thread -- chat for this
+                        // friend is still one tap away via the friend
+                        // activity card / contacts list above, so nothing is
+                        // actually lost, and "check in" already meant
+                        // "prompt a quiet friend," which a nudge now does for
+                        // real instead of just opening a blank-feeling chat.
+                        CheckInRow(checkIn: checkIn, nudgeState: vm.checkInNudgeState) {
+                            if let uid = appState.currentUser?.user_id {
+                                Task { await vm.sendCheckInNudge(userId: uid) }
+                            }
                         }
                     }
 

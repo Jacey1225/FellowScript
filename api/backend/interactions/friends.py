@@ -1,3 +1,5 @@
+import logging
+import os
 from datetime import datetime, timezone as tzmod
 from schemas.users import User
 from db import DBManager
@@ -5,6 +7,96 @@ from backend.errors import SaveFailedError
 from backend.interactions.attachments import generate_download_url
 from backend.interactions.blocks import BlockManager
 from backend.interactions.bible_text import parse_highlight_key, verse_text
+
+logger = logging.getLogger(__name__)
+
+# ── Nudge feature config (task 20260906-friend-nudges) ──────────────────────
+#
+# Both env vars are treated as new *required* config, not optional knobs with
+# a silently-guessed fallback (Configuration Philosophy Q4/Q1/Q8): the raw
+# strings are only read here, at import time; validate_nudge_config() must be
+# called eagerly at process startup (main.py's lifespan, alongside
+# push.py's validate_apns_config()) to parse and populate the typed globals
+# below -- a deploy that hasn't set them explicitly fails loudly at boot
+# instead of the endpoint silently running with a guessed rate-limit window
+# or an implicitly-on/off feature flag. NUDGE_FEATURE_ENABLED is expected to
+# be deployed as "false" initially (off-by-default proactive-flagging
+# stance) and flipped to "true" for rollout -- that's a deploy-time value
+# choice, not a code-level fallback.
+_NUDGE_FEATURE_ENABLED_RAW = os.getenv("NUDGE_FEATURE_ENABLED")
+_NUDGE_RATE_LIMIT_HOURS_RAW = os.getenv("NUDGE_RATE_LIMIT_HOURS")
+
+# Populated by validate_nudge_config(); read via is_nudge_enabled() rather
+# than importing this name by value elsewhere, since `from module import
+# NAME` binds the value at import time and would never observe the update
+# validate_nudge_config() makes after that import runs.
+NUDGE_FEATURE_ENABLED = False
+NUDGE_RATE_LIMIT_HOURS = 0
+
+
+class NudgeConfigError(RuntimeError):
+    """NUDGE_FEATURE_ENABLED/NUDGE_RATE_LIMIT_HOURS are unset or invalid.
+
+    Deliberately never swallowed -- mirrors push.py's APNsConfigError
+    precedent exactly (see that class's docstring): a misconfigured nudge
+    rollout must fail loudly at boot rather than the endpoint silently
+    running with a guessed or nonsensical rate-limit window.
+    """
+
+
+def validate_nudge_config() -> None:
+    """Eagerly validate and parse NUDGE_FEATURE_ENABLED/NUDGE_RATE_LIMIT_HOURS.
+
+    Call once, at process startup (main.py's lifespan), before serving
+    traffic -- same placement/reasoning as push.py's validate_apns_config()
+    and attachments.py's validate_attachment_config().
+
+    Raises:
+        NudgeConfigError: If either var is unset, or NUDGE_FEATURE_ENABLED
+            isn't exactly "true"/"false" (case-insensitive), or
+            NUDGE_RATE_LIMIT_HOURS isn't a positive integer.
+    """
+    global NUDGE_FEATURE_ENABLED, NUDGE_RATE_LIMIT_HOURS
+
+    if _NUDGE_FEATURE_ENABLED_RAW is None:
+        raise NudgeConfigError(
+            "NUDGE_FEATURE_ENABLED is not set. There is no implicit "
+            "default -- set it explicitly to \"false\" (off) or \"true\" "
+            "before this process can start."
+        )
+    normalized = _NUDGE_FEATURE_ENABLED_RAW.strip().lower()
+    if normalized not in ("true", "false"):
+        raise NudgeConfigError(
+            f"NUDGE_FEATURE_ENABLED ({_NUDGE_FEATURE_ENABLED_RAW!r}) must be "
+            "exactly \"true\" or \"false\"."
+        )
+    NUDGE_FEATURE_ENABLED = normalized == "true"
+
+    if _NUDGE_RATE_LIMIT_HOURS_RAW is None or not _NUDGE_RATE_LIMIT_HOURS_RAW.strip():
+        raise NudgeConfigError(
+            "NUDGE_RATE_LIMIT_HOURS is not set. There is no implicit "
+            "default for the nudge rate-limit window -- set it explicitly "
+            "(e.g. 24)."
+        )
+    try:
+        hours = int(_NUDGE_RATE_LIMIT_HOURS_RAW)
+    except ValueError:
+        raise NudgeConfigError(
+            f"NUDGE_RATE_LIMIT_HOURS ({_NUDGE_RATE_LIMIT_HOURS_RAW!r}) is "
+            "not a valid integer."
+        )
+    if hours <= 0:
+        raise NudgeConfigError(
+            f"NUDGE_RATE_LIMIT_HOURS ({hours}) must be a positive number of hours."
+        )
+    NUDGE_RATE_LIMIT_HOURS = hours
+
+
+def is_nudge_enabled() -> bool:
+    """Current NUDGE_FEATURE_ENABLED value -- always looked up fresh (see the
+    module-global comment above) so callers see validate_nudge_config()'s
+    result regardless of import order."""
+    return NUDGE_FEATURE_ENABLED
 
 
 class FriendsManager(DBManager):
@@ -386,3 +478,164 @@ class FriendsManager(DBManager):
             })
 
         return {"friends_active": friends_active, "check_in_candidates": check_in_candidates}
+
+    def check_nudge_allowed(self, friend_id: str) -> dict:
+        """Authorize a "nudge" push against ``friend_id`` and resolve their
+        device token -- the read-only friendship/block/reachability half
+        of ``POST /friends/{user_id}/{friend_id}/nudge``. The rate-limit
+        window is deliberately NOT checked here anymore (see
+        ``claim_nudge_slot`` below) -- call ``claim_nudge_slot`` next, and
+        only proceed to send if it returns ``True``.
+
+        Deny-by-default / fail-closed (Security Posture Q5/Q7/Q14): every
+        branch below is a check that must actively pass, not a check that
+        must actively fail, to allow the nudge -- an unresolved case (not
+        found, blocked, no token, no query rows) always denies.
+
+        Friendship + block state is re-checked here directly against
+        ``user_friends``/``blocked_users`` (the same defense-in-depth
+        ``NOT EXISTS`` predicate as ``ActivityManager.friend_device_tokens``
+        and ``get_friend_activity`` above) rather than trusted from
+        whatever candidate list the client is calling from -- this
+        subsystem has prior IDOR history.
+
+        "Not a friend" and "blocked" are deliberately merged into one
+        ``not_friends`` reason (never distinguished) -- same
+        enumeration-avoidance reasoning as ``read_friend``'s merged 404 for
+        "not found" vs. "blocked": a caller probing arbitrary ``friend_id``
+        values must not be able to learn which case applies, or that the
+        id even resolves to a real user.
+
+        Args:
+            friend_id: UUID of the intended nudge recipient.
+
+        Returns:
+            dict: ``{"token": str}`` on success. On denial:
+                ``{"error": str, "reason": "not_friends" | "unreachable"}``
+                -- ``"not_friends"`` covers not-a-friend and blocked
+                (either direction); ``"unreachable"`` means the friendship
+                is valid but the recipient has no registered device token.
+                Rate-limit denial ("rate_limited") is now signalled by
+                ``claim_nudge_slot`` returning ``False``, not by this
+                method.
+        """
+        self.cur.execute(
+            "SELECT dt.token FROM user_friends uf "
+            "JOIN device_tokens dt ON dt.user_id = uf.friend_id "
+            "WHERE uf.user_id = %s AND uf.friend_id = %s "
+            "AND NOT EXISTS ("
+            "  SELECT 1 FROM blocked_users b "
+            "  WHERE (b.blocker_id = uf.friend_id AND b.blocked_id = uf.user_id) "
+            "     OR (b.blocker_id = uf.user_id AND b.blocked_id = uf.friend_id)"
+            ")",
+            (self.user_id, friend_id),
+        )
+        row = self.cur.fetchone()
+        if row is None:
+            # Distinguish "not a valid, unblocked friendship" from "valid
+            # friendship but no device token" -- same block-respecting
+            # predicate, minus the device_tokens join.
+            self.cur.execute(
+                "SELECT 1 FROM user_friends uf "
+                "WHERE uf.user_id = %s AND uf.friend_id = %s "
+                "AND NOT EXISTS ("
+                "  SELECT 1 FROM blocked_users b "
+                "  WHERE (b.blocker_id = uf.friend_id AND b.blocked_id = uf.user_id) "
+                "     OR (b.blocker_id = uf.user_id AND b.blocked_id = uf.friend_id)"
+                ")",
+                (self.user_id, friend_id),
+            )
+            if self.cur.fetchone() is None:
+                return {"error": "Cannot nudge this user", "reason": "not_friends"}
+            return {"error": "This friend can't be reached right now", "reason": "unreachable"}
+        token = row[0]
+
+        return {"token": token}
+
+    def claim_nudge_slot(self, friend_id: str) -> bool:
+        """Atomically check-and-claim the (sender, recipient) rate-limit
+        window in a single round trip -- security bounce on task
+        20260906-friend-nudges: the original shape (a separate
+        ``SELECT ... friend_nudges`` read here, followed by a later
+        ``mark_nudge_sent`` upsert only after the push sent) was two
+        unsynchronized DB round trips, so concurrent requests for the
+        same pair could each read the window as open before either one
+        recorded a claim, bypassing the "exactly 1 per
+        (sender, recipient) per NUDGE_RATE_LIMIT_HOURS" limit entirely.
+
+        Must be called -- and must return ``True`` -- BEFORE the push is
+        sent, never after: the single ``INSERT ... ON CONFLICT ... WHERE
+        ... RETURNING`` below takes Postgres's own row lock on the
+        conflicting ``(sender_id, recipient_id)`` row while evaluating
+        the window guard, so two concurrent callers for the same pair
+        serialize on that lock instead of both observing "window open" --
+        the second one to actually run the check (after the first
+        commits) re-evaluates the guard against the now-fresh
+        ``last_nudged_at`` and correctly loses the claim. Call
+        ``release_nudge_claim`` afterward if the send itself then fails,
+        so a failed send doesn't consume the sender's window for nothing
+        -- same "don't burn the window on a failure" guarantee the prior
+        ``mark_nudge_sent`` documented, now implemented as an explicit
+        claim/release pair instead of a call ordered after the send
+        (mirrors ``AgentManager._claim_last_fired`` /
+        ``_unset_last_fired``'s claim-then-external-call-then-conditional
+        -unwind shape for the same "atomic claim, external call, unwind
+        the claim only on failure" pattern).
+
+        Returns:
+            bool: ``True`` if this call claimed the slot (no prior claim
+                for this pair, or the prior claim's ``last_nudged_at`` is
+                already older than ``NUDGE_RATE_LIMIT_HOURS``) -- the
+                caller may proceed to send. ``False`` if an existing
+                claim is still within the window -- the caller must deny
+                with reason ``"rate_limited"`` and must NOT send.
+        """
+        self.cur.execute(
+            "INSERT INTO friend_nudges (sender_id, recipient_id, last_nudged_at) "
+            "VALUES (%s, %s, NOW()) "
+            "ON CONFLICT (sender_id, recipient_id) DO UPDATE "
+            "SET last_nudged_at = NOW() "
+            "WHERE friend_nudges.last_nudged_at < NOW() - (%s * INTERVAL '1 hour') "
+            "RETURNING sender_id",
+            (self.user_id, friend_id, NUDGE_RATE_LIMIT_HOURS),
+        )
+        claimed = self.cur.fetchone() is not None
+        self.conn.commit()
+        return claimed
+
+    def release_nudge_claim(self, friend_id: str) -> None:
+        """Undo a winning ``claim_nudge_slot`` call after the push send
+        itself failed (raised, or returned a non-delivery result), so the
+        sender's rate-limit window isn't consumed for a nudge that never
+        actually reached the recipient.
+
+        Only ever safe to call on behalf of a request that already knows
+        IT won the claim (``claim_nudge_slot`` returned ``True``) --
+        unconditional here for the same reason
+        ``AgentManager._unset_last_fired`` is: a caller reaching this
+        point necessarily won its own claim first, so there is no other
+        legitimate claim on this exact ``(sender_id, recipient_id)`` pair
+        to accidentally erase. Deletes the row outright rather than
+        restoring some prior timestamp -- a claimed row's prior value, by
+        construction, was already outside the rate-limit window (or
+        didn't exist), so "gone entirely" is equivalent to "not recently
+        nudged" for the next attempt.
+
+        Best-effort/non-fatal on failure -- the push already failed by
+        the time this is called, so a further error here must not mask
+        that original failure. Mirrors ``_unset_last_fired``'s own
+        try/except-and-log shape; a real DB error is still visible via
+        this log line.
+        """
+        try:
+            self.cur.execute(
+                "DELETE FROM friend_nudges WHERE sender_id = %s AND recipient_id = %s",
+                (self.user_id, friend_id),
+            )
+            self.conn.commit()
+        except Exception as e:
+            logger.error(
+                "Failed to release nudge claim sender=%s recipient=%s: %s",
+                self.user_id, friend_id, e,
+            )
+            self.conn.rollback()

@@ -158,4 +158,36 @@ extension NetworkService {
         let data = try await get("/blocks/\(userId)")
         return decode([FSBlockedUser].self, from: data) ?? []
     }
+
+    // ── Nudge (task 20260906-friend-nudges) ─────────────────────────────────────
+    // POST /friends/{userId}/{friendId}/nudge -> 204 on success.
+    //
+    // Shared by every nudge-trigger surface (CheckInRow's send action today;
+    // the avatar-tile nudge control from the sibling /design task
+    // 20260906-friend-activity-avatar-row once its tile restyle lands) --
+    // see NudgeResult's doc comment for why this is non-throwing. The
+    // backend's rejection reasons collapse as follows:
+    //   204                          -> .sent
+    //   429 (per-pair rate limit,
+    //        or the per-IP backstop) -> .rateLimited
+    //   403 (not friend/blocked),
+    //   404 (feature disabled, or
+    //        recipient unreachable),
+    //   502 (APNs delivery failure),
+    //   or any other thrown error    -> .failed
+    // A misconfigured-APNs 500 also lands in .failed here -- server-side it's
+    // deliberately left uncaught/loud (see community.py's nudge_friend
+    // docstring) so it still shows up in crash/error reporting, but the
+    // *user* only ever needs "that didn't work, try again," same as any
+    // other delivery failure.
+    func sendNudge(userId: String, friendId: String) async -> NudgeResult {
+        do {
+            _ = try await request("/friends/\(userId)/\(encodeURIComponent(friendId))/nudge", method: "POST")
+            return .sent
+        } catch AppError.rateLimited {
+            return .rateLimited
+        } catch {
+            return .failed
+        }
+    }
 }

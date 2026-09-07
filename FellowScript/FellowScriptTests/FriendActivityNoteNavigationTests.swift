@@ -106,7 +106,7 @@ final class FriendActivityNotePreviewTapTests: XCTestCase {
         )
 
         let headlineButton = try sut.inspect().find(ViewType.Button.self, where: { button in
-            (try? button.accessibilityLabel().string())?.contains("Tap to open chat.") == true
+            (try? button.accessibilityLabel().string())?.contains("Opens chat.") == true
         })
         try headlineButton.tap()
 
@@ -118,6 +118,17 @@ final class FriendActivityNotePreviewTapTests: XCTestCase {
 
     // MARK: 2 — distinct, non-colliding accessibility labels
 
+    // NOTE (task 20260906-friend-activity-avatar-row): the render tree now
+    // also includes the horizontally-scrolling avatar-tile row, and that
+    // task's own intake spec explicitly directs the new tile's chat button
+    // to reuse the *identical* label as activityRow's headline button
+    // ("\(headline(entry)). Opens chat.") -- both trigger the exact same
+    // onOpenFriend action, just from two different tap targets, so sharing
+    // wording there is deliberate, not a collision. This test's real
+    // purpose -- proving notePreviewRow's label is distinguishable from any
+    // chat-opening button's label, so VoiceOver users can tell "open chat"
+    // and "open note" apart -- no longer holds if checked via a blanket
+    // set-uniqueness assertion across every button in the tree.
     func test_activityRowAndNotePreviewRow_haveDistinctAccessibilityLabels() throws {
         let preview = FSFriendNotePreview(note_id: "note-abc", title: "T", text: "body", timestamp: isoNow())
         let feed = feedWithPreview(preview: preview)
@@ -125,13 +136,15 @@ final class FriendActivityNotePreviewTapTests: XCTestCase {
 
         let buttons = try sut.inspect().findAll(ViewType.Button.self)
         let labels = buttons.compactMap { try? $0.accessibilityLabel().string() }
+        let chatLabels = labels.filter { $0.contains("Opens chat.") }
+        let noteLabels = labels.filter { $0.contains("Tap to open note.") }
 
-        XCTAssertTrue(labels.contains(where: { $0.contains("Tap to open chat.") }),
+        XCTAssertFalse(chatLabels.isEmpty,
                       "activityRow's existing label must still be present")
-        XCTAssertTrue(labels.contains(where: { $0.contains("Tap to open note.") }),
-                      "notePreviewRow must carry its own sibling label")
-        XCTAssertEqual(Set(labels).count, labels.count,
-                       "the two tap targets must not share an identical accessibility label")
+        XCTAssertEqual(noteLabels.count, 1,
+                       "notePreviewRow must carry its own sibling label, present exactly once")
+        XCTAssertFalse(chatLabels.contains(noteLabels[0]),
+                       "notePreviewRow's label must not collide with any chat-opening button's label")
     }
 
     // MARK: 3 — loading state disables the note tap target and shows a spinner

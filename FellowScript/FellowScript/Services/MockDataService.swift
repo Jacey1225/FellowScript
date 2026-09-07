@@ -22,6 +22,19 @@ struct NotesPage {
     var hasMore:             Bool
 }
 
+// ── Nudge (task 20260906-friend-nudges) ────────────────────────────────────────
+
+/// The three UI-relevant outcomes of a `sendNudge` call, already collapsed
+/// from the backend's more granular rejection reasons (not-friend/blocked,
+/// feature disabled, no device token, delivery failure -- all of those are
+/// `.failed`) so every nudge-trigger surface switches over the exact same
+/// three cases rather than re-deriving them from an `AppError`.
+enum NudgeResult: Equatable {
+    case sent
+    case rateLimited
+    case failed
+}
+
 // ── Protocol ─────────────────────────────────────────────────────────────────
 
 protocol DataServiceProtocol {
@@ -174,6 +187,18 @@ protocol DataServiceProtocol {
     // read of each friend's most recent public note + a "check in" nudge
     // candidate. See FSFriendActivityFeed for the response shape.
     func fetchFriendActivity(userId: String) async throws -> FSFriendActivityFeed
+    // Task 20260906-friend-nudges: sends a fixed, non-user-authored "come
+    // back and study" push to a friend (POST
+    // /friends/{userId}/{friendId}/nudge). Shared by every nudge-trigger
+    // surface -- today, CheckInRow's send action; eventually, the avatar-tile
+    // nudge control specced in the sibling /design task
+    // 20260906-friend-activity-avatar-row once its tile restyle lands -- so
+    // success/rate-limited/failed classification lives in exactly one place.
+    // Deliberately non-throwing: the backend's specific rejection reasons
+    // (not-friend/blocked, disabled, rate-limited, delivery failure) already
+    // collapse to one of NudgeResult's three UI-relevant outcomes inside the
+    // NetworkService implementation, so callers never sniff AppError cases.
+    func sendNudge(userId: String, friendId: String) async -> NudgeResult
 
     // Reports / Blocks (Guideline 1.2)
     func reportUser(reportedUserId: String, reason: String, detail: String) async throws
@@ -660,6 +685,12 @@ final class MockDataService: DataServiceProtocol {
     func acceptFriendRequest(userId: String, username: String) async throws {}
     func removeFriend(userId: String, friendId: String) async throws {}
     func fetchFriendActivity(userId: String) async throws -> FSFriendActivityFeed { Self.mockFriendActivity }
+    // Task 20260906-friend-nudges: no live rate limit/backend to model here,
+    // so the mock always reports success -- previews/UI tests that need the
+    // other outcomes construct their own DataServiceProtocol stub instead of
+    // extending this shared one (matches how other write methods above stay
+    // no-ops rather than growing failure-injection knobs).
+    func sendNudge(userId: String, friendId: String) async -> NudgeResult { .sent }
 
     // Reports / Blocks (Guideline 1.2)
     func reportUser(reportedUserId: String, reason: String, detail: String) async throws {}
@@ -747,6 +778,12 @@ enum AppError: LocalizedError {
     case networkError(String)
     case limitReached(resource: String, used: Int, limit: Int)
     case notFound
+    // Task 20260906-friend-nudges: a distinguishable case for a 429 from
+    // POST /friends/{userId}/{friendId}/nudge (or any future rate-limited
+    // write), so callers that need to show a specific "already nudged
+    // recently"-style state don't have to sniff .networkError's message
+    // string to tell a rate limit apart from any other rejection.
+    case rateLimited(String)
     // Not really an error — signIn() throws this to signal the login should
     // pause for an emailed 2FA code instead of completing. AuthView catches
     // this case specifically and navigates to the verify screen.
@@ -767,6 +804,7 @@ enum AppError: LocalizedError {
             return "You've reached your free plan limit for \(name) (max \(limit)). "
                  + "Upgrade to a Group plan for unlimited access."
         case .notFound:            return "Resource not found."
+        case .rateLimited(let m): return m
         }
     }
 }

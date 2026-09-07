@@ -696,6 +696,32 @@ final class ThrowingTestDataService: DataServiceProtocol {
         return try await MockDataService.shared.fetchBlockedUsers(userId: userId)
     }
 
+    // Controllable / observable (task 20260906-friend-nudges, testing gate
+    // re-entry pass) -- lets DashboardCheckInNudgeTests drive
+    // DashboardViewModel.sendCheckInNudge through each of NudgeResult's three
+    // outcomes and observe exactly which (userId, friendId) pair was sent,
+    // mirroring every other simple override seam on this double
+    // (fetchFriendActivityResult, fetchBlockedUsersResult, ...). An unset
+    // result falls back to MockDataService's fixed `.sent` stub, so every
+    // OTHER suite using this double (which doesn't care about nudge outcomes)
+    // is unaffected.
+    var sendNudgeResult: NudgeResult?
+    var sendNudgeDelayNanoseconds: UInt64?
+    private(set) var sendNudgeCallCount = 0
+    private(set) var lastSendNudgeUserId: String?
+    private(set) var lastSendNudgeFriendId: String?
+
+    func sendNudge(userId: String, friendId: String) async -> NudgeResult {
+        sendNudgeCallCount += 1
+        lastSendNudgeUserId = userId
+        lastSendNudgeFriendId = friendId
+        if let sendNudgeDelayNanoseconds {
+            try? await Task.sleep(nanoseconds: sendNudgeDelayNanoseconds)
+        }
+        if let sendNudgeResult { return sendNudgeResult }
+        return await MockDataService.shared.sendNudge(userId: userId, friendId: friendId)
+    }
+
     func createGroup(userId: String, groupId: String, title: String, users: [String]) async throws {
         try await MockDataService.shared.createGroup(userId: userId, groupId: groupId, title: title, users: users)
     }

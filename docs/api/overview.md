@@ -121,6 +121,15 @@ may still be populated.
 | DELETE | `/friends/{user_id}/{friend_id}` | Remove a friend |
 | GET | `/friends/{user_id}` | Friend list |
 | GET | `/friends/{user_id}/activity` | Friend-activity read surface for the dashboard's Friend Activity hero card: each friend's most recent group note preview, most recent highlight preview (with real verse text), last-active timestamp + activity type (block-respecting both directions), plus a bounded "check in" nudge candidate pool (up to 5 friends gone longest without a direct message). |
+| POST | `/friends/{user_id}/{friend_id}/nudge` | Send a fixed, non-user-authored "come back and study" push notification to a friend. Gated behind `NUDGE_FEATURE_ENABLED` (404 while disabled, as if the route doesn't exist) and rate-limited per sender→recipient pair (`NUDGE_RATE_LIMIT_HOURS`, one nudge per pair per window), plus a coarse `30/minute` per-IP backstop. |
+
+### `POST /friends/{user_id}/{friend_id}/nudge`
+
+Task `20260906-friend-nudges`. Confirms friendship and checks block state (both directions) before sending — friend-only, deny-by-default. Delivers via the existing APNs `send_push` pipeline with fixed, templated copy (`"{sender_username} wants you to hop back into FellowScript"`); there is no user-composable message content, consistent with this project's earlier removal of open-ended user-authored notifications (see the Notifications section below).
+
+**Response:** `204` on success (no body).
+
+**Errors:** `403` if `friend_id` isn't a friend of `user_id`, or either direction has blocked the other. `404` if the feature is disabled, or the recipient has no registered device token. `429` if this sender already nudged this recipient within the configured rate-limit window, or the per-IP backstop was tripped. `502` if APNs reported the push as undeliverable. A missing/misconfigured APNs credential surfaces as a `500` (deliberately not swallowed).
 
 ### `GET /friends/{user_id}/activity`
 

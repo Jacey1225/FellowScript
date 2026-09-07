@@ -154,6 +154,14 @@ final class NetworkService: DataServiceProtocol {
                 limit: gate["limit"] as? Int ?? 0
             )
         }
+        // Task 20260906-friend-nudges: a 429 gets its own AppError case
+        // (rather than falling into the generic .networkError branch below)
+        // so a caller like sendNudge can distinguish "rate limited" from any
+        // other rejection without parsing the detail string.
+        if http.statusCode == 429 {
+            let detail = body?["detail"] as? String
+            throw AppError.rateLimited(detail ?? "Too many requests")
+        }
         let detail = body?["detail"] as? String
         throw AppError.networkError(detail ?? "Server error \(http.statusCode)")
     }

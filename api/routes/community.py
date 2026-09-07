@@ -1,8 +1,10 @@
-from fastapi import APIRouter, HTTPException, Depends, Query
+from fastapi import APIRouter, HTTPException, Depends, Query, Request
 from backend.interactions.groups import GroupsManager
-from backend.interactions.friends import  FriendsManager
+from backend.interactions.friends import  FriendsManager, is_nudge_enabled
+from backend.interactions.push import send_push
 from backend.auth.dependencies import require_match
 from backend.moderation.content_filter import check_clean, ContentRejected, rejection_message
+from backend.rate_limiting import limiter
 from schemas.message import Group
 from routes.notes import NOTES_PAGE_SIZE
 
@@ -329,3 +331,114 @@ async def remove_friend(user_id: str, friend_id: str, _: str = Depends(require_m
     """
     manager = FriendsManager(user_id)
     manager.remove_friend(friend_id)
+
+
+# Fixed, non-user-authored push copy (task 20260906-friend-nudges) --
+# deliberately not user-composable, per this project's precedent of having
+# fully removed the prior open-ended user-authored notification subsystem
+# (see routes/notifications.py's docstring). A nudge is a single templated
+# action against a specific friend, never free text.
+_NUDGE_TITLE = "FellowScript"
+
+
+def _nudge_body(sender_username: str) -> str:
+    return f"{sender_username} wants you to hop back into FellowScript"
+
+
+@friend_router.post("/{user_id}/{friend_id}/nudge", status_code=204)
+@limiter.limit("30/minute")
+async def nudge_friend(
+    request: Request, user_id: str, friend_id: str, _: str = Depends(require_match("user_id")),
+) -> None:
+    """Send a fixed-copy "nudge" push notification to a friend, prompting
+    them to come back and use FellowScript.
+
+    Gated behind ``NUDGE_FEATURE_ENABLED`` (see
+    ``backend.interactions.friends.validate_nudge_config``) -- while
+    disabled, this 404s exactly as if the route didn't exist, rather than
+    exposing a "feature not available" surface during rollout.
+
+    A coarse per-IP ``30/minute`` backstop (``backend.rate_limiting.limiter``,
+    the same shared instance/shape already applied to comparable
+    another-user-affecting endpoints in ``messaging.py``/``profile_photo.py``)
+    sits in front of the real per-(sender, recipient) rate limit below --
+    it exists to blunt brute-force/enumeration traffic hitting this route at
+    all, not to replace the per-recipient limit, which stays the actual
+    anti-spam/harassment control.
+
+    Friendship/block authorization is resolved by
+    ``FriendsManager.check_nudge_allowed`` (friend-only, block-respecting
+    both directions, deny-by-default on any unresolved case). The
+    per-recipient rate-limit window is then claimed atomically via
+    ``FriendsManager.claim_nudge_slot`` -- BEFORE the push is sent, closing
+    the race a prior version of this endpoint had (check and mark-sent were
+    two separate, unsynchronized DB round trips, letting concurrent
+    requests all pass the check before either recorded a claim). This
+    handler then calls ``push.send_push`` directly with fixed,
+    non-user-authored copy -- no wrapper -- and releases the claim
+    (``FriendsManager.release_nudge_claim``) if the send itself fails, so a
+    failed send doesn't consume the sender's window for nothing.
+
+    Args:
+        request: Injected by FastAPI/slowapi for the ``@limiter.limit`` IP
+            check above.
+        user_id: UUID of the sender (must match the session).
+        friend_id: UUID of the intended nudge recipient.
+
+    Raises:
+        HTTPException 404: The nudge feature is disabled, or the recipient
+            has no registered device token to nudge.
+        HTTPException 403: ``friend_id`` is not a friend of ``user_id``, or
+            either direction has blocked the other (the two cases are
+            deliberately not distinguished -- see
+            ``FriendsManager.check_nudge_allowed``).
+        HTTPException 429: A nudge was already sent to this recipient within
+            the configured rate-limit window (``FriendsManager.claim_nudge_slot``
+            returned ``False``), or the per-IP backstop above was tripped.
+        HTTPException 502: APNs reported the push as undeliverable after
+            trying both environments -- an upstream failure, not a local
+            one (mirrors this project's other upstream-failure 502s).
+
+    Note:
+        A missing/unreadable APNs credential raises ``push.APNsConfigError``.
+        The already-won rate-limit claim is released first (so the failed
+        attempt doesn't burn the sender's window), then the error is
+        deliberately re-raised uncaught -- see that class's docstring for
+        why it must propagate loudly (surfaces as this route's default 500)
+        rather than being swallowed.
+    """
+    if not is_nudge_enabled():
+        raise HTTPException(status_code=404, detail="Not found")
+
+    manager = FriendsManager(user_id)
+    try:
+        check = manager.check_nudge_allowed(friend_id)
+        if "error" in check:
+            status_by_reason = {
+                "not_friends": 403,
+                "unreachable": 404,
+            }
+            raise HTTPException(
+                status_code=status_by_reason.get(check["reason"], 403),
+                detail=check["error"],
+            )
+        if not manager.claim_nudge_slot(friend_id):
+            raise HTTPException(
+                status_code=429,
+                detail="You already nudged this friend recently",
+            )
+        try:
+            sent = await send_push(
+                check["token"], _NUDGE_TITLE, _nudge_body(manager.user.username),
+            )
+        except Exception:
+            manager.release_nudge_claim(friend_id)
+            raise
+        if not sent:
+            manager.release_nudge_claim(friend_id)
+            raise HTTPException(
+                status_code=502,
+                detail="Couldn't deliver the nudge. Please try again.",
+            )
+    finally:
+        manager.close()
