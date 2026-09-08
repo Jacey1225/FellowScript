@@ -468,6 +468,10 @@ struct ChatThreadView: View {
     @State private var showGifSheet          = false
     @State private var stagedAttachment: StagedAttachment? = nil
     @State private var attachmentErrorMsg: String? = nil
+    // Mutated (never read) from the composer's onReceive(staged.objectWillChange)
+    // below purely to force a real body re-evaluation -- see that call site for
+    // why an empty-bodied onReceive closure does NOT do this on its own.
+    @State private var attachmentUploadRefreshTick: Int = 0
 
     // Memoized (High H12): these two used to be plain computed properties,
     // so SwiftUI re-ran the grouping + day-divider pass in full on every
@@ -480,24 +484,27 @@ struct ChatThreadView: View {
     @State private var messageGroups: [MessageDisplayGroup] = []
     @State private var threadRows:    [ChatThreadRow]       = []
 
-    // Task 20260908-chat-scroll-to-bottom-on-open: captured from
-    // ScrollViewReader's `onAppear` below (fires as soon as the message list
-    // is in the hierarchy) so `.task` -- which lives outside the
-    // ScrollViewReader closure and therefore has no other way to reach
-    // `proxy` -- can drive an explicit initial scrollTo once loading
-    // finishes.
-    @State private var scrollProxy: ScrollViewProxy? = nil
-
-    // Regression fix (confirmed via simulator repro after the first pass of
-    // this task shipped without one): `.task` and a descendant's `.onAppear`
-    // have no guaranteed ordering in SwiftUI. A disk-cache-only `vm.load()`
-    // -- the exact "reopening a thread with nothing new" case this task
-    // targets -- can resolve fast enough that `.task` reaches its scrollTo
-    // call before ScrollViewReader's `.onAppear` has captured `scrollProxy`,
-    // silently no-oping via `?.`. `readyForInitialScroll` plus
-    // `performInitialScrollIfReady()` below is a readiness handshake: both
-    // `.onAppear` and `.task` call it, and whichever of the two runs second
-    // is the one that actually performs the scroll.
+    // Task 20260908-chat-scroll-to-bottom-on-open, second pass: the first
+    // pass drove the initial scrollTo imperatively from inside `.task`,
+    // right after an `await vm.load(...)` continuation resumed. That does
+    // NOT reliably participate in the same SwiftUI update transaction as a
+    // synchronous callback like `.onChange`/`.onAppear` -- unlike the
+    // already-working `.onChange(of: vm.messages.count)` scroll below,
+    // `proxy.scrollTo(id:)` called from a post-await Task continuation can
+    // fire before the List has actually re-rendered with the row for that
+    // id (SwiftUI hasn't drained the pending state-change transaction yet),
+    // silently no-oping. Root-caused live on a real device/real message
+    // history after the first pass shipped and still failed to reach the
+    // bottom on reopen -- the mock/UI-test fixture's short message list
+    // apparently already rendered fast enough to mask this.
+    //
+    // Fix: don't call scrollTo imperatively at all. `.task` only flips this
+    // plain @State flag once loading finishes; the actual scroll happens in
+    // `.onChange(of: readyForInitialScroll)` below, alongside the existing
+    // `.onChange(of: vm.messages.count)` handler, inside the
+    // ScrollViewReader's own closure where `proxy` is directly in scope --
+    // that puts it on the exact same synchronous, SwiftUI-transaction-aware
+    // path as the new-message case that was already working correctly.
     @State private var readyForInitialScroll = false
 
     // Recomputes both caches from the current vm.messages/user -- called
@@ -510,11 +517,6 @@ struct ChatThreadView: View {
         // (design gate §13) — real Calendar.isDate(inSameDayAs:) detection,
         // not a cosmetic restyle of the existing plain sender-group hairline.
         threadRows = messageGroups.withDayDividers()
-    }
-
-    private func performInitialScrollIfReady() {
-        guard readyForInitialScroll, let proxy = scrollProxy, let lastGroup = messageGroups.last else { return }
-        proxy.scrollTo(lastGroup.id, anchor: .bottom)
     }
 
     var body: some View {
@@ -622,7 +624,15 @@ struct ChatThreadView: View {
                             withMotionAwareAnimation(.default, reduceMotion: reduceMotion) { proxy.scrollTo(lastGroup.id, anchor: .bottom) }
                         }
                     }
-                    .onAppear { scrollProxy = proxy; performInitialScrollIfReady() }
+                    // Initial-open scroll (see `readyForInitialScroll`'s
+                    // declaration above for why this lives here, on the same
+                    // synchronous onChange path as the case above, rather
+                    // than being called imperatively from `.task`). Snapped,
+                    // not animated -- see `.task` below for why.
+                    .onChange(of: readyForInitialScroll) { ready in
+                        guard ready, let lastGroup = messageGroups.last else { return }
+                        proxy.scrollTo(lastGroup.id, anchor: .bottom)
+                    }
                 }
             }
             // Shared keyboard-dismiss convention (task
@@ -674,25 +684,23 @@ struct ChatThreadView: View {
             // to land on the exact same count (e.g. re-opening a thread with
             // no new messages since last time).
             recomputeMessageGroups()
-            // Task 20260908-chat-scroll-to-bottom-on-open: explicit,
-            // unconditional initial scroll to the last row -- the reactive
+            // Task 20260908-chat-scroll-to-bottom-on-open: unconditional
+            // initial scroll to the last row -- the reactive
             // `.onChange(of: vm.messages.count)` handler above only fires on
             // an actual count change, so it silently never ran for the
             // common "reopening a thread with nothing new since last time"
             // case, leaving the list wherever SwiftUI's ScrollView happened
             // to lay it out (a stale/prior position, not necessarily the
-            // bottom). Snapped, not animated (no `withMotionAwareAnimation`)
-            // -- this is establishing the thread's starting position before
-            // the screen has settled, not a live "something changed while
-            // you're already looking at it" moment the way a new inbound
-            // message is, so animating it would visibly slide from an
-            // undefined prior position rather than read as intentional
-            // motion. Routed through the readiness handshake (see
-            // `readyForInitialScroll` above) rather than a direct
-            // `scrollProxy?.scrollTo(...)` call, since `scrollProxy` isn't
-            // reliably set by this point yet.
+            // bottom). Snapped, not animated -- this is establishing the
+            // thread's starting position before the screen has settled, not
+            // a live "something changed while you're already looking at it"
+            // moment the way a new inbound message is, so animating it would
+            // visibly slide from an undefined prior position rather than
+            // read as intentional motion. This just flips a plain @State
+            // flag -- see its declaration above for why the actual
+            // `scrollTo` call lives in `.onChange(of: readyForInitialScroll)`
+            // rather than being called imperatively right here.
             readyForInitialScroll = true
-            performInitialScrollIfReady()
             // Load the viewer's friends so the add-members picker can offer those
             // who aren't already in the group.
             if contact.type == .group {
@@ -820,9 +828,8 @@ struct ChatThreadView: View {
                     onRetry: { startUpload(staged) }
                 )
                 // Bug fix (task 20260908-chat-userid-exposure-standalone-media,
-                // Bug 2 — confirmed live via ChatStandaloneAttachmentUITests):
-                // `stagedAttachment` is a plain `@State` reference to a class
-                // (`StagedAttachment: ObservableObject`). @State only
+                // Bug 2): `stagedAttachment` is a plain `@State` reference to
+                // a class (`StagedAttachment: ObservableObject`). @State only
                 // re-renders ChatThreadView when the *reference itself* is
                 // reassigned (picking/removing an attachment) — it does NOT
                 // subscribe to that object's own `@Published var uploadState`.
@@ -833,14 +840,19 @@ struct ChatThreadView: View {
                 // Send button (computed elsewhere in this same body) to
                 // re-evaluate, so Send stayed stuck disabled for a staged
                 // photo/video until an unrelated @State change (typing text)
-                // happened to force a re-render. This empty-bodied
-                // `onReceive` on `staged.objectWillChange` is the standard
-                // fix: it subscribes ChatThreadView's own body to that
-                // object's change notifications, so `canSend` re-evaluates
-                // (and the Send button re-renders) the instant
-                // `uploadState` flips to `.uploaded`/`.failed`, with zero
-                // text typed.
-                .onReceive(staged.objectWillChange) { _ in }
+                // happened to force a re-render.
+                //
+                // IMPORTANT: an `.onReceive` with an EMPTY action closure
+                // (the first attempt here) does NOT force that re-render --
+                // subscribing to the publisher alone doesn't invalidate
+                // anything; only an actual `@State` mutation inside the
+                // closure does. This real fix bumps a dedicated, otherwise
+                // unread `@State` counter every time `uploadState` changes,
+                // which forces ChatThreadView's body (and therefore `canSend`
+                // and the Send button) to recompute.
+                .onReceive(staged.objectWillChange) { _ in
+                    attachmentUploadRefreshTick += 1
+                }
             }
             if let attachmentErrorMsg {
                 Text(attachmentErrorMsg)

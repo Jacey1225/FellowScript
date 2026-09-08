@@ -172,23 +172,18 @@ struct AgentChatView: View {
 
     @StateObject private var vm = AgentChatViewModel()
     @State private var inputText = ""
-    // Task 20260908-chat-scroll-to-bottom-on-open: same root cause/fix as
-    // ChatThreadView.swift -- captured from ScrollViewReader's `onAppear`
-    // below so `.task` (outside the ScrollViewReader closure) can drive an
-    // explicit initial scrollTo once `vm.load()` resolves.
-    @State private var scrollProxy: ScrollViewProxy? = nil
-    // Regression fix -- see ChatThreadView.swift's matching comment:
-    // `.task` and a descendant's `.onAppear` have no guaranteed ordering, so
-    // a fast disk-cache `vm.load()` could reach the scroll call before
-    // `scrollProxy` was captured. Readiness handshake: both `.onAppear` and
-    // `.task` call `performInitialScrollIfReady()`, whichever runs second
-    // performs the scroll.
+    // Task 20260908-chat-scroll-to-bottom-on-open, second pass -- same
+    // root cause/fix as ChatThreadView.swift: calling `proxy.scrollTo`
+    // imperatively from inside `.task` right after an `await` continuation
+    // resumes doesn't reliably participate in the same SwiftUI update
+    // transaction as a synchronous callback, and can silently no-op even
+    // though `scrollProxy`/`readyForInitialScroll` are both set. `.task`
+    // below only flips this plain @State flag; the actual scroll happens in
+    // `.onChange(of: readyForInitialScroll)`, alongside the existing
+    // `.onChange(of: vm.messages.count)`/`.onChange(of: vm.isThinking)`
+    // handlers, inside the ScrollViewReader's own closure where `proxy` is
+    // directly in scope.
     @State private var readyForInitialScroll = false
-
-    private func performInitialScrollIfReady() {
-        guard readyForInitialScroll, let proxy = scrollProxy, let last = vm.messages.last else { return }
-        proxy.scrollTo(last.id, anchor: .bottom)
-    }
 
     private var userInitial: String {
         let name = appState.currentUser?.username ?? ""
@@ -260,7 +255,13 @@ struct AgentChatView: View {
                     .onChange(of: vm.isThinking) { t in
                         if t { withMotionAwareAnimation(.default, reduceMotion: reduceMotion) { proxy.scrollTo("thinking", anchor: .bottom) } }
                     }
-                    .onAppear { scrollProxy = proxy; performInitialScrollIfReady() }
+                    // Initial-open scroll -- see `readyForInitialScroll`'s
+                    // declaration above. Snapped, not animated, same
+                    // reasoning as ChatThreadView.swift's matching handler.
+                    .onChange(of: readyForInitialScroll) { ready in
+                        guard ready, let last = vm.messages.last else { return }
+                        proxy.scrollTo(last.id, anchor: .bottom)
+                    }
                 }
             }
             // Shared keyboard-dismiss convention (task
@@ -291,18 +292,13 @@ struct AgentChatView: View {
         .task {
             let uid = appState.currentUser?.user_id ?? ""
             await vm.load(service: appState.service, agentId: agent.id, userId: uid)
-            // Task 20260908-chat-scroll-to-bottom-on-open: explicit,
-            // unconditional initial scroll -- same root cause as
-            // ChatThreadView.swift (`.onChange(of: vm.messages.count)`
-            // above never fires when the disk/fresh-fetch counts happen to
-            // match on reopen). Snapped, not animated -- see
-            // ChatThreadView.swift's matching comment for why an initial
-            // position shouldn't animate the way a live new-message arrival
-            // does. Routed through the readiness handshake (see
-            // `readyForInitialScroll` above) since `scrollProxy` isn't
-            // reliably set by this point yet.
+            // Task 20260908-chat-scroll-to-bottom-on-open: unconditional
+            // initial scroll -- same root cause as ChatThreadView.swift
+            // (`.onChange(of: vm.messages.count)` above never fires when
+            // the disk/fresh-fetch counts happen to match on reopen). Just
+            // flips the flag; see its declaration above for why the actual
+            // `scrollTo` isn't called imperatively right here.
             readyForInitialScroll = true
-            performInitialScrollIfReady()
         }
         .onDisappear { vm.disconnect() }
         .alert("Message Not Sent", isPresented: Binding(
