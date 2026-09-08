@@ -172,6 +172,11 @@ struct AgentChatView: View {
 
     @StateObject private var vm = AgentChatViewModel()
     @State private var inputText = ""
+    // Task 20260908-chat-scroll-to-bottom-on-open: same root cause/fix as
+    // ChatThreadView.swift -- captured from ScrollViewReader's `onAppear`
+    // below so `.task` (outside the ScrollViewReader closure) can drive an
+    // explicit initial scrollTo once `vm.load()` resolves.
+    @State private var scrollProxy: ScrollViewProxy? = nil
 
     private var userInitial: String {
         let name = appState.currentUser?.username ?? ""
@@ -243,6 +248,7 @@ struct AgentChatView: View {
                     .onChange(of: vm.isThinking) { t in
                         if t { withMotionAwareAnimation(.default, reduceMotion: reduceMotion) { proxy.scrollTo("thinking", anchor: .bottom) } }
                     }
+                    .onAppear { scrollProxy = proxy }
                 }
             }
             // Shared keyboard-dismiss convention (task
@@ -273,6 +279,17 @@ struct AgentChatView: View {
         .task {
             let uid = appState.currentUser?.user_id ?? ""
             await vm.load(service: appState.service, agentId: agent.id, userId: uid)
+            // Task 20260908-chat-scroll-to-bottom-on-open: explicit,
+            // unconditional initial scroll -- same root cause as
+            // ChatThreadView.swift (`.onChange(of: vm.messages.count)`
+            // above never fires when the disk/fresh-fetch counts happen to
+            // match on reopen). Snapped, not animated -- see
+            // ChatThreadView.swift's matching comment for why an initial
+            // position shouldn't animate the way a live new-message arrival
+            // does.
+            if let last = vm.messages.last {
+                scrollProxy?.scrollTo(last.id, anchor: .bottom)
+            }
         }
         .onDisappear { vm.disconnect() }
         .alert("Message Not Sent", isPresented: Binding(

@@ -128,6 +128,20 @@ final class ChatGroupSelfEchoDedupRegressionTests: XCTestCase {
 
         let senderId = "sender-user-1"
         let otherMemberId = "other-member-2"
+        let otherMemberName = "Other Member Two"
+        // Task 20260908-chat-userid-exposure: ChatThreadViewModel.load() now
+        // resolves every group member's raw id to a real username via
+        // resolveGroupMemberPhotos' per-member GET /user/{id} fetch (stashed
+        // in groupUsernameById), so a live inbound frame's `sender` is no
+        // longer the raw from_user id this test previously (incorrectly, per
+        // that bug) asserted -- see the `otherMessage?.sender` assertion
+        // below. Distinct usernames per id prove the map is genuinely keyed
+        // by id, not collapsed onto one shared fixture value the way
+        // MockDataService.shared.fetchUser's fixed mockUser would.
+        service.fetchUserResultsById = [
+            otherMemberId: FSUser(user_id: otherMemberId, username: otherMemberName, email: "other2@example.com"),
+            "other-member-3": FSUser(user_id: "other-member-3", username: "Other Member Three", email: "other3@example.com"),
+        ]
         let contact = FSContact(
             id: "group-1", name: "Study Group", type: .group,
             toUsers: [senderId, otherMemberId, "other-member-3"]
@@ -195,7 +209,15 @@ final class ChatGroupSelfEchoDedupRegressionTests: XCTestCase {
         XCTAssertNotNil(otherMessage,
                          "an inbound frame from a genuinely different group member must still be appended")
         XCTAssertEqual(otherMessage?.mine, false)
-        XCTAssertEqual(otherMessage?.sender, otherMemberId)
+        // Task 20260908-chat-userid-exposure regression guard: before that
+        // fix, receiveLoop() stamped the raw from_user id straight onto
+        // `sender` (this assertion used to check `otherMessage?.sender ==
+        // otherMemberId`, i.e. the exact bug). It must now be the resolved
+        // display name, sourced from load()'s groupUsernameById map without
+        // any extra fetch on the live-frame path itself.
+        XCTAssertEqual(otherMessage?.sender, otherMemberName,
+                        "receiveLoop() must resolve the raw from_user id to the real username via " +
+                        "resolvedSenderName(forRawId:), not render the raw group-member id as the sender label")
 
         // Total tally: exactly one bubble for the sender's own message, one
         // for the other member's -- no duplicates anywhere.

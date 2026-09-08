@@ -77,11 +77,30 @@ final class ThrowingTestDataService: DataServiceProtocol {
     var fetchUserError: Error?
     private(set) var fetchUserCallCount = 0
     private(set) var lastFetchUserId: String?
+    // Controllable / observable (task 20260908-chat-userid-exposure, testing
+    // step 3) -- keyed by userId, so a single test can give DIFFERENT group
+    // members different resolved usernames. Needed because the single
+    // `fetchUserResult` above (and MockDataService.shared.fetchUser's own
+    // fixture) both return the exact same FSUser regardless of which id was
+    // passed in, which would make ChatThreadViewModel.resolveGroupMemberPhotos'
+    // per-member id->username map collapse every member onto one identical
+    // username -- silently masking the very sender-resolution bug this task's
+    // regression coverage needs to prove is fixed. Checked before the single
+    // fetchUserResult (which still wins for every OTHER existing test in this
+    // file that only cares about one fixed id, e.g. restoreSession()).
+    var fetchUserResultsById: [String: FSUser] = [:]
+    // Per-id failure seam (same task) -- lets a test make exactly one group
+    // member's lookup fail while the others succeed, to prove a partial
+    // resolution failure falls back to that one member's raw id rather than
+    // failing the whole group resolution.
+    var fetchUserErrorsById: [String: Error] = [:]
 
     func fetchUser(userId: String) async throws -> FSUser {
         fetchUserCallCount += 1
         lastFetchUserId = userId
+        if let idError = fetchUserErrorsById[userId] { throw idError }
         if let fetchUserError { throw fetchUserError }
+        if let idResult = fetchUserResultsById[userId] { return idResult }
         if let fetchUserResult { return fetchUserResult }
         return try await MockDataService.shared.fetchUser(userId: userId)
     }
@@ -556,13 +575,23 @@ final class ThrowingTestDataService: DataServiceProtocol {
     // the cache-first value alone, undisturbed by MockDataService's
     // userId-agnostic fixture overwriting it a moment later.
     var fetchFriendMessagesError: Error?
+    // Controllable (task 20260908-chat-userid-exposure, testing step 3) --
+    // lets a test hand ChatThreadViewModel.load() an exact fixture (e.g. an
+    // incoming FSMessage whose `sender` is a specific raw from_user id) to
+    // prove resolvedMessage(_:senderName:) stamps the right resolved name
+    // onto it, instead of depending on MockDataService's fixed, userId-
+    // agnostic mockMessages fixture.
+    var fetchFriendMessagesResult: [FSMessage]?
+    var fetchGroupMessagesResult: [FSMessage]?
 
     func fetchFriendMessages(userId: String, friendId: String) async throws -> [FSMessage] {
         if let fetchFriendMessagesError { throw fetchFriendMessagesError }
+        if let fetchFriendMessagesResult { return fetchFriendMessagesResult }
         return try await MockDataService.shared.fetchFriendMessages(userId: userId, friendId: friendId)
     }
 
     func fetchGroupMessages(userId: String, groupId: String) async throws -> [FSMessage] {
+        if let fetchGroupMessagesResult { return fetchGroupMessagesResult }
         return try await MockDataService.shared.fetchGroupMessages(userId: userId, groupId: groupId)
     }
 

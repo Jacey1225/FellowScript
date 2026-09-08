@@ -64,6 +64,14 @@ final class ChatThreadViewModel: ObservableObject {
     private var wsTask: URLSessionWebSocketTask?
     private var wsBase:   String = ""
     private var wsUserId: String = ""
+    // Task 20260908-chat-userid-exposure: the thread's own contact, plus (for
+    // a group) a resolved memberId → username map — both stashed here (not
+    // just used locally inside load()) so receiveLoop()'s live-frame path can
+    // resolve a raw `from_user` id to a display name the same way the
+    // history-fetch path in load() does below, instead of stamping the raw
+    // id straight onto FSMessage.sender the way it used to.
+    private var currentContact:    FSContact? = nil
+    private var groupUsernameById: [String: String] = [:]
     private var reconnectAttempt = 0
     private var reconnectTask: Task<Void, Never>?
     // Set by disconnect() (view going away) so a `.failure` from that
@@ -83,6 +91,7 @@ final class ChatThreadViewModel: ObservableObject {
 
     func load(service: DataServiceProtocol, contact: FSContact, userId: String) async {
         let sessionKey = Self.roomKey(contact: contact, userId: userId)
+        currentContact = contact
 
         // ── Cache-first: show the last-seen thread instantly ─────────────────────
         // Keyed by sessionKey (sorted [userId, contact.id] for a friend DM, or
@@ -98,12 +107,23 @@ final class ChatThreadViewModel: ObservableObject {
         }
 
         if contact.type == .group {
-            messages = (try? await service.fetchGroupMessages(userId: userId, groupId: contact.id)) ?? messages
-            await resolveGroupMemberPhotos(contact: contact, service: service, viewerId: userId)
+            // Runs concurrently with the message fetch (no dependency between
+            // them) -- resolveGroupMemberPhotos now also returns a
+            // memberId → username map (task 20260908-chat-userid-exposure) so
+            // every fetched message's raw `from_user` sender id can be
+            // stamped with the real username below, instead of rendering the
+            // raw id the way MessageDisplayGroup/MessageAttachments used to.
+            async let fetchedMessages = service.fetchGroupMessages(userId: userId, groupId: contact.id)
+            let usernameById = await resolveGroupMemberPhotos(contact: contact, service: service, viewerId: userId)
+            groupUsernameById = usernameById
+            let fetched = (try? await fetchedMessages) ?? messages
+            messages = fetched.map { resolvedMessage($0, senderName: usernameById[$0.sender]) }
         } else {
-            messages = (try? await service.fetchFriendMessages(userId: userId, friendId: contact.id)) ?? messages
+            let fetched = (try? await service.fetchFriendMessages(userId: userId, friendId: contact.id)) ?? messages
             // A DM's only other participant is `contact` itself, already
-            // resolved with its photo by fetchContacts -- no extra fetch.
+            // resolved (name + photo) by fetchContacts -- no extra fetch
+            // needed to turn a raw from_user id into a display name here.
+            messages = fetched.map { resolvedMessage($0, senderName: $0.sender == contact.id ? contact.name : nil) }
             if let photoUrl = contact.photoUrl { photoByUsername[contact.name] = photoUrl }
         }
         sessions = (try? await service.fetchSessionsForContact(contactId: sessionKey)) ?? sessions
@@ -125,21 +145,67 @@ final class ChatThreadViewModel: ObservableObject {
     /// (frontend.json) rather than requiring a backend change to stamp a
     /// photo onto every message. Best-effort: a member who fails to
     /// resolve just keeps that sender on the initials fallback.
-    private func resolveGroupMemberPhotos(contact: FSContact, service: DataServiceProtocol, viewerId: String) async {
+    ///
+    /// Task 20260908-chat-userid-exposure: also returns a memberId →
+    /// username map -- the fetch below already reads back `u.username` per
+    /// member but used to discard it once the photo was captured, leaving
+    /// every group message's `sender` as the raw `from_user` id. `load()`
+    /// and `receiveLoop()` use this map to stamp the real username onto
+    /// `FSMessage.sender` instead.
+    @discardableResult
+    private func resolveGroupMemberPhotos(contact: FSContact, service: DataServiceProtocol, viewerId: String) async -> [String: String] {
         let memberIds = contact.toUsers.filter { $0 != viewerId }
-        guard !memberIds.isEmpty else { return }
-        await withTaskGroup(of: (String, String?)?.self) { group in
+        guard !memberIds.isEmpty else { return [:] }
+        var usernameById: [String: String] = [:]
+        await withTaskGroup(of: (String, String, String?)?.self) { group in
             for mid in memberIds {
                 group.addTask {
                     guard let u = try? await service.fetchUser(userId: mid), !u.username.isEmpty else { return nil }
-                    return (u.username, u.profile_photo_url)
+                    return (mid, u.username, u.profile_photo_url)
                 }
             }
             for await result in group {
-                guard let (username, url) = result else { continue }
+                guard let (mid, username, url) = result else { continue }
                 photoByUsername[username] = url
+                usernameById[mid] = username
             }
         }
+        return usernameById
+    }
+
+    /// Stamps a resolved display name onto a fetched/live message's `sender`
+    /// (task 20260908-chat-userid-exposure) -- resolved at message-
+    /// construction time, before the message ever reaches
+    /// MessageDisplayGroup.grouped/MessageAttachments.senderLabel, so those
+    /// rendering surfaces keep treating `sender` as a plain display-name
+    /// string exactly as their existing doc comments already assert.
+    /// `mine` messages already carry an empty `sender` (rendered as "You" by
+    /// MessageDisplayGroup.grouped) and are left untouched. A `nil`/empty
+    /// `senderName` (failed group-member lookup, or a DM from_user that
+    /// doesn't match `contact.id`) leaves the message exactly as fetched --
+    /// same raw-id fallback this path already had, not a new regression --
+    /// rather than crashing or blanking the label.
+    private func resolvedMessage(_ message: FSMessage, senderName: String?) -> FSMessage {
+        guard !message.mine, let senderName, !senderName.isEmpty else { return message }
+        return FSMessage(
+            id: message.id, text: message.text, mine: message.mine, sender: senderName,
+            timestamp: message.timestamp, attachmentKind: message.attachmentKind,
+            attachmentURL: message.attachmentURL, attachmentMeta: message.attachmentMeta
+        )
+    }
+
+    /// receiveLoop()'s live-frame counterpart to resolvedMessage(_:senderName:)
+    /// above -- resolves a raw `from_user` id using the same DM/group rules
+    /// load() applies, off the state load() already stashed (currentContact,
+    /// groupUsernameById) rather than re-fetching anything. Returns the raw
+    /// id unresolved if load() hasn't run yet (currentContact nil) or the
+    /// lookup has no entry for it -- the pre-fix fallback, not a regression.
+    private func resolvedSenderName(forRawId rawId: String) -> String {
+        guard let contact = currentContact else { return rawId }
+        if contact.type == .group {
+            return groupUsernameById[rawId] ?? rawId
+        }
+        return rawId == contact.id ? contact.name : rawId
     }
 
     /// `attachment` is a fully-uploaded (or gif, never-uploaded)
@@ -307,11 +373,19 @@ final class ChatThreadViewModel: ObservableObject {
                            let metaData = try? JSONSerialization.data(withJSONObject: metaDict) {
                             attachmentMeta = try? JSONDecoder().decode(FSAttachmentMeta.self, from: metaData)
                         }
+                        // Task 20260908-chat-userid-exposure: resolves the raw
+                        // from_user id to a display name the same way load()'s
+                        // history-fetch path does, using state (currentContact/
+                        // groupUsernameById) load() already populated -- see
+                        // resolvedSenderName(forRawId:) below. Falls back to
+                        // the raw id (this path's pre-fix behavior, not a new
+                        // regression) if that state isn't ready yet or the
+                        // lookup doesn't have this sender.
                         let incoming = FSMessage(
                             id:        (json["id"] as? String) ?? UUID().uuidString,
                             text:      msgText,
                             mine:      false,
-                            sender:    fromUser,
+                            sender:    self.resolvedSenderName(forRawId: fromUser),
                             timestamp: (json["timestamp"] as? String) ?? "",
                             attachmentKind: json["attachment_kind"] as? String,
                             attachmentURL:  json["attachment_url"] as? String,
@@ -405,6 +479,14 @@ struct ChatThreadView: View {
     // actually change" signal.
     @State private var messageGroups: [MessageDisplayGroup] = []
     @State private var threadRows:    [ChatThreadRow]       = []
+
+    // Task 20260908-chat-scroll-to-bottom-on-open: captured from
+    // ScrollViewReader's `onAppear` below (fires as soon as the message list
+    // is in the hierarchy, well before `.task`'s network-bound `vm.load()`
+    // resolves) so `.task` -- which lives outside the ScrollViewReader
+    // closure and therefore has no other way to reach `proxy` -- can drive
+    // an explicit initial scrollTo once loading finishes.
+    @State private var scrollProxy: ScrollViewProxy? = nil
 
     // Recomputes both caches from the current vm.messages/user -- called
     // once up front (via `.task`, so the very first render after load()
@@ -523,6 +605,7 @@ struct ChatThreadView: View {
                             withMotionAwareAnimation(.default, reduceMotion: reduceMotion) { proxy.scrollTo(lastGroup.id, anchor: .bottom) }
                         }
                     }
+                    .onAppear { scrollProxy = proxy }
                 }
             }
             // Shared keyboard-dismiss convention (task
@@ -574,6 +657,23 @@ struct ChatThreadView: View {
             // to land on the exact same count (e.g. re-opening a thread with
             // no new messages since last time).
             recomputeMessageGroups()
+            // Task 20260908-chat-scroll-to-bottom-on-open: explicit,
+            // unconditional initial scroll to the last row -- the reactive
+            // `.onChange(of: vm.messages.count)` handler above only fires on
+            // an actual count change, so it silently never ran for the
+            // common "reopening a thread with nothing new since last time"
+            // case, leaving the list wherever SwiftUI's ScrollView happened
+            // to lay it out (a stale/prior position, not necessarily the
+            // bottom). Snapped, not animated (no `withMotionAwareAnimation`)
+            // -- this is establishing the thread's starting position before
+            // the screen has settled, not a live "something changed while
+            // you're already looking at it" moment the way a new inbound
+            // message is, so animating it would visibly slide from an
+            // undefined prior position rather than read as intentional
+            // motion.
+            if let lastGroup = messageGroups.last {
+                scrollProxy?.scrollTo(lastGroup.id, anchor: .bottom)
+            }
             // Load the viewer's friends so the add-members picker can offer those
             // who aren't already in the group.
             if contact.type == .group {
