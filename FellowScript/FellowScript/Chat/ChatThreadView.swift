@@ -819,6 +819,28 @@ struct ChatThreadView: View {
                     onRemove: { stagedAttachment = nil; attachmentErrorMsg = nil },
                     onRetry: { startUpload(staged) }
                 )
+                // Bug fix (task 20260908-chat-userid-exposure-standalone-media,
+                // Bug 2 — confirmed live via ChatStandaloneAttachmentUITests):
+                // `stagedAttachment` is a plain `@State` reference to a class
+                // (`StagedAttachment: ObservableObject`). @State only
+                // re-renders ChatThreadView when the *reference itself* is
+                // reassigned (picking/removing an attachment) — it does NOT
+                // subscribe to that object's own `@Published var uploadState`.
+                // Only `StagedAttachmentChipView` above actually observes
+                // `uploadState` (via `@ObservedObject`), so its own
+                // spinner/retry UI updates correctly when `startUpload`'s
+                // async upload finishes — but nothing forced `canSend`/the
+                // Send button (computed elsewhere in this same body) to
+                // re-evaluate, so Send stayed stuck disabled for a staged
+                // photo/video until an unrelated @State change (typing text)
+                // happened to force a re-render. This empty-bodied
+                // `onReceive` on `staged.objectWillChange` is the standard
+                // fix: it subscribes ChatThreadView's own body to that
+                // object's change notifications, so `canSend` re-evaluates
+                // (and the Send button re-renders) the instant
+                // `uploadState` flips to `.uploaded`/`.failed`, with zero
+                // text typed.
+                .onReceive(staged.objectWillChange) { _ in }
             }
             if let attachmentErrorMsg {
                 Text(attachmentErrorMsg)
