@@ -81,6 +81,28 @@ struct ContentView: View {
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
+        // Task 20260907-session-summary-wireup: a session-summary failure
+        // fires after the call screen/minimized bar are already gone (the
+        // call itself already ended), so it surfaces here instead — a warm,
+        // self-dismissing top banner, mirroring AccountView's eventFireMsg
+        // toast rather than a blocking alert (UI/UX Q17.3).
+        .overlay(alignment: .top) {
+            if let notice = call.summarizeNotice {
+                HStack(spacing: 10) {
+                    Image(systemName: "sparkles")
+                    Text(notice).font(.inter(Theme.fontSM)).fixedSize(horizontal: false, vertical: true)
+                }
+                .foregroundColor(Theme.gold)
+                .padding(.horizontal, 14).padding(.vertical, 10)
+                .background(Theme.gold.opacity(0.14))
+                .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous).stroke(Theme.borderGold, lineWidth: 1))
+                .padding(.horizontal, 16)
+                .padding(.top, 8)
+                .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+        .motionAwareAnimation(.spring(response: 0.30, dampingFraction: 0.85), value: call.summarizeNotice, reduceMotion: reduceMotion)
         .motionAwareAnimation(.spring(response: 0.30, dampingFraction: 0.85), value: call.inCall, reduceMotion: reduceMotion)
         .motionAwareAnimation(.spring(response: 0.30, dampingFraction: 0.85), value: call.isExpanded, reduceMotion: reduceMotion)
         // Expanded full-screen call

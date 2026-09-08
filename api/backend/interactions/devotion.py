@@ -105,14 +105,15 @@ class DevotionManager(DBManager):
     def save_devotion(self, devotion: DevotionPlan) -> str:
         self.cur.execute(
             "INSERT INTO devotions (_id, title, time_start, time_end, recurring, "
-            "group_id, creator_id, participants, verses, prompts, chime_meeting_id, chime_meeting) "
-            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING",
+            "group_id, creator_id, participants, verses, prompts, chime_meeting_id, chime_meeting, summarize) "
+            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING",
             (devotion.id, devotion.title,
              devotion.time_start or None, devotion.time_end or None,
              devotion.recurring,
              devotion.group_id or None, devotion.creator_id or None,
              devotion.participants, devotion.verses, devotion.prompts,
-             devotion.chime_meeting_id, json.dumps(devotion.chime_meeting))
+             devotion.chime_meeting_id, json.dumps(devotion.chime_meeting),
+             devotion.summarize)
         )
         self.conn.commit()
         return devotion.id
@@ -211,4 +212,5 @@ class DevotionManager(DBManager):
             prompts=data.get("prompts") or [],
             chime_meeting_id=data.get("chime_meeting_id", ""),
             chime_meeting=chime or {},
+            summarize=bool(data.get("summarize", False)),
         )

@@ -24,6 +24,15 @@ final class CallController: ObservableObject {
     @Published var session:     FSSession? = nil   // non-nil ⇒ currently in a call
     @Published var isExpanded   = false            // full-screen vs minimized bar
     @Published var joinError:   String? = nil
+    // Task 20260907-session-summary-wireup: a warm, self-dismissing notice for
+    // a post-call summarize failure. Deliberately separate from joinError
+    // (which gates the still-open call screen while joining) -- by the time a
+    // summarize failure can occur the call has already ended and the call
+    // screen/minimized bar are both gone, so nothing renders joinError.
+    // Styled and self-cleared the same way as AccountViewModel.eventFireMsg's
+    // toast, per UI/UX Q17.3 (recoverable/background errors get a warm,
+    // on-brand tone, not a raw technical message).
+    @Published var summarizeNotice: String? = nil
 
     #if canImport(AmazonChimeSDK)
     let manager = ChimeCallManager()
@@ -31,9 +40,18 @@ final class CallController: ObservableObject {
 
     var inCall: Bool { session != nil }
 
+    // Stashed at start() so end() -- invoked from 4 call sites across
+    // ChimeCallView.swift, none of which have an AppState/EnvironmentObject
+    // reference -- can still fire the summarize request without threading
+    // service/userId through every call site.
+    private var service: DataServiceProtocol?
+    private var userId:  String = ""
+
     func start(session: FSSession, service: DataServiceProtocol, userId: String) {
         if self.session?.id == session.id { isExpanded = true; return }  // already joined
         self.session    = session
+        self.service    = service
+        self.userId     = userId
         self.joinError  = nil
         self.isExpanded = true
         #if canImport(AmazonChimeSDK)
@@ -54,10 +72,66 @@ final class CallController: ObservableObject {
     func expand()   { isExpanded = true }
 
     func end() {
+        // Snapshot what a summarize call needs before teardown below clears it.
+        let endingSession = session
+        let endingService = service
+        let endingUserId  = userId
+
         #if canImport(AmazonChimeSDK)
         manager.leave()
         #endif
         session = nil; isExpanded = false; joinError = nil
+        service = nil; userId = ""
+
+        maybeSummarize(session: endingSession, service: endingService, userId: endingUserId)
+    }
+
+    // Fire-and-forget: kicked off only after the synchronous teardown above
+    // has already completed, so a slow or failing summarize call can never
+    // block/delay leaving the call. Only the session's *creator* triggers a
+    // summary -- a group call has no per-session uniqueness constraint on the
+    // notes table, so letting every participant's own call.end() summarize
+    // independently would mint one duplicate "Session Summary — {title}"
+    // note per participant still on the call when it ends.
+    private func maybeSummarize(session: FSSession?, service: DataServiceProtocol?, userId: String) {
+        guard let session, session.summarize, let service, !userId.isEmpty,
+              !session.creator_id.isEmpty, session.creator_id == userId else { return }
+        Task { @MainActor in
+            do {
+                let agentId = try await Self.resolveAgentId(userId: userId, service: service)
+                try await service.summarizeSession(userId: userId, agentId: agentId,
+                                                    session: session, groupId: session.group_id)
+            } catch {
+                self.showSummarizeNotice(
+                    "We couldn't put together your session summary this time — check back in your notes in a bit."
+                )
+            }
+        }
+    }
+
+    // A study session carries no agent reference of its own -- FSSession
+    // never modeled one (open question, task 20260907-session-summary-
+    // wireup). Silently reuses the user's first agent rather than surfacing a
+    // picker: an agent's `role` only tints the LLM prompt server-side (see
+    // api/routes/agent.py's summarize route), so there's nothing session-
+    // summary-specific to choose between. Auto-creates one on the fly for a
+    // user who has never made an agent before this feature existed.
+    private static func resolveAgentId(userId: String, service: DataServiceProtocol) async throws -> String {
+        let agents = try await service.fetchAgents(userId: userId)
+        if let agent = agents.first(where: { $0.enabled }) ?? agents.first { return agent.id }
+        let created = try await service.createAgent(userId: userId, role: "")
+        return created.id
+    }
+
+    // Mirrors AccountViewModel.showEventFireMsg's self-dismissing toast: only
+    // clears if it's still the same message by the time the delay elapses, so
+    // a fast second notice isn't clobbered by the first one's timer.
+    private func showSummarizeNotice(_ text: String) {
+        summarizeNotice = text
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 4_000_000_000)
+            if summarizeNotice == text { summarizeNotice = nil }
+        }
     }
 }
 

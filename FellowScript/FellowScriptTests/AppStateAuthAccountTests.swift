@@ -398,7 +398,21 @@ final class ThrowingTestDataService: DataServiceProtocol {
         return try await MockDataService.shared.fetchHeartbeats(userId: userId, agentId: agentId)
     }
 
+    // Controllable / observable (task 20260907-session-summary-wireup,
+    // testing step) -- lets CallControllerSummarizeRegressionTests drive
+    // CallController.resolveAgentId's zero-agents auto-create branch through
+    // a specific returned FSAgent or a genuine throw, and confirm it was
+    // actually invoked (vs. e.g. a stale cached agent id).
+    var createAgentResult: FSAgent?
+    var createAgentError: Error?
+    private(set) var createAgentCallCount = 0
+    private(set) var lastCreateAgentRole: String?
+
     func createAgent(userId: String, role: String) async throws -> FSAgent {
+        createAgentCallCount += 1
+        lastCreateAgentRole = role
+        if let createAgentError { throw createAgentError }
+        if let createAgentResult { return createAgentResult }
         return try await MockDataService.shared.createAgent(userId: userId, role: role)
     }
 
@@ -493,7 +507,22 @@ final class ThrowingTestDataService: DataServiceProtocol {
         return commitHeartbeatResultForId[heartbeatId] ?? commitHeartbeatResult
     }
 
+    // Controllable / observable (task 20260907-session-summary-wireup,
+    // testing step) -- lets CallControllerSummarizeRegressionTests prove
+    // CallController.end()'s fire-and-forget maybeSummarize call actually
+    // reaches the service with the right userId/agentId/session/groupId
+    // exactly once for a summarize:true session ended by its creator, and
+    // that a genuine throw here surfaces via summarizeNotice instead of
+    // blocking/crashing call teardown.
+    struct SummarizeSessionArgs { let userId: String; let agentId: String; let session: FSSession; let groupId: String }
+    var summarizeSessionError: Error?
+    private(set) var summarizeSessionCallCount = 0
+    private(set) var lastSummarizeSessionArgs: SummarizeSessionArgs?
+
     func summarizeSession(userId: String, agentId: String, session: FSSession, groupId: String) async throws {
+        summarizeSessionCallCount += 1
+        lastSummarizeSessionArgs = SummarizeSessionArgs(userId: userId, agentId: agentId, session: session, groupId: groupId)
+        if let summarizeSessionError { throw summarizeSessionError }
         try await MockDataService.shared.summarizeSession(userId: userId, agentId: agentId, session: session, groupId: groupId)
     }
 

@@ -256,6 +256,20 @@ Activity widget already uses.
 | GET | `/agent/{user_id}` | Get agent configuration |
 | PUT | `/agent/{user_id}` | Update agent config (frequency, tone, etc.) |
 | POST | `/agent/{user_id}/heartbeat` | Trigger an AI check-in event (enforces free-tier cap) |
+| POST | `/agent/{user_id}/{agent_id}/summarize` | Summarize a study session (body: `{session, group_id}`) and save the result as a note titled `Session Summary — {title}`. Enforces the same free-tier `notes` cap as note creation |
+
+Task 20260907-session-summary-wireup wired this endpoint up end-to-end: a
+session created with its "Summarize" toggle on (`devotions.summarize`, see
+[`devotions`](../architecture/data.md#devotions)) has its client call this
+route the moment its Chime call ends (`CallController.end()` in
+`ChimeCallView.swift`), using only the ending session's own creator — not
+every participant still on the call — to avoid minting one duplicate summary
+note per participant. The client silently resolves an `agent_id` (reusing the
+user's first existing `FSAgent`, auto-creating one if they have none) rather
+than surfacing an agent picker, since an agent's `role` only tints the LLM
+prompt server-side. A failed summarize call never blocks or delays leaving
+the call — it surfaces afterward as a warm, self-dismissing banner
+(`CallController.summarizeNotice`) instead.
 
 ---
 

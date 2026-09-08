@@ -322,6 +322,11 @@ def create_tables(cur):
     # guarantees at most one concurrent claim wins regardless of how many
     # poll cycles or concurrent pollers see the row as a candidate.
     cur.execute("ALTER TABLE devotions ADD COLUMN IF NOT EXISTS reminder_sent_at TIMESTAMPTZ")
+    # Client-set opt-in: whether a call-end for this session should trigger
+    # POST /agent/{user_id}/{agent_id}/summarize (task
+    # 20260907-session-summary-wireup). Defaults closed per this project's
+    # deny-by-default posture for new opt-in surfaces.
+    cur.execute("ALTER TABLE devotions ADD COLUMN IF NOT EXISTS summarize BOOLEAN DEFAULT FALSE")
 
     cur.execute(
         "CREATE TABLE IF NOT EXISTS agents"

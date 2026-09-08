@@ -14,6 +14,7 @@ class DevotionPlan(BaseModel):
     prompts: list[str] = Field(default_factory=list)
     chime_meeting_id: str = ""
     chime_meeting: dict = Field(default_factory=dict)
+    summarize: bool = False
 
 
 class DevotionRequest(BaseModel):
