@@ -30,6 +30,43 @@ class GroupsManager(DBManager):
         )
         return {str(r[0]) for r in self.cur.fetchall()}
 
+    def _fetch_verses_map(self, note_ids: list[str]) -> dict[str, list[list]]:
+        """Batch-resolve attached verses for a set of note ids in one query,
+        keyed by note_id -> ``[[book, chapter, verse], ...]`` ordered by
+        ``position`` -- the same per-note shape routes/notes.py's personal-
+        notes equivalents (GET /{user_id}, /{user_id}/search) already
+        produce, just batched via a single ``WHERE note_id = ANY(...)``
+        rather than one query per note. A single query fits this file's
+        existing pattern of batching the per-page author lookup (username/
+        profile_photo_key above) rather than looping per row, and this list
+        is already page-capped the same way. Without this, fetch_notes/
+        search_notes never touched note_verses at all, so a group note's
+        "verses" key was always absent from the response -- the iOS client
+        then defaulted the missing key to [] and NoteRow correctly hid the
+        (empty) verse-chip row, even though the note genuinely had attached
+        verses (see .claude/pipeline/20260908-group-notes-verses).
+
+        Args:
+            note_ids: note _id strings to resolve verses for.
+
+        Returns:
+            dict[str, list[list]]: note_id -> ordered verse triples. A note
+                with no attached verses (or not present in note_ids) simply
+                has no key -- callers should ``.get(nid, [])``.
+        """
+        if not note_ids:
+            return {}
+        self.cur.execute(
+            "SELECT note_id, position, book, chapter::text, verse::text "
+            "FROM note_verses WHERE note_id = ANY(%s::uuid[]) "
+            "ORDER BY note_id, position",
+            (note_ids,),
+        )
+        verses_map: dict[str, list[list]] = {}
+        for row in self.cur.fetchall():
+            verses_map.setdefault(str(row[0]), []).append([row[2], row[3], row[4]])
+        return verses_map
+
     def is_member(self) -> bool:
         """True if ``self.user_id`` belongs to ``self.group_id``'s member list."""
         group = self.lookup("groups", {"_id": self.group_id})
@@ -166,7 +203,11 @@ class GroupsManager(DBManager):
                 exactly ``limit`` rows were returned. Each note's data now
                 also carries ``profile_photo_url`` (the author's photo,
                 resolved via ``generate_download_url`` -- ``None`` when the
-                author has no photo set; task 20260905-profile-photo-avatar-gaps).
+                author has no photo set; task 20260905-profile-photo-avatar-gaps)
+                and ``verses`` (``[[book, chapter, verse], ...]`` ordered by
+                ``position``, ``[]`` when the note has none -- same shape as
+                routes/notes.py's personal-notes equivalents; task
+                20260908-group-notes-verses).
         """
         where = (
             "group_id = %s AND is_reply = false "
@@ -207,6 +248,7 @@ class GroupsManager(DBManager):
                 uid_str = str(r[0])
                 username_map[uid_str] = r[1]
                 photo_map[uid_str] = generate_download_url(r[2])
+        verses_map = self._fetch_verses_map([nid for nid, _ in row_data])
         group_notes: dict = {}
         for nid, data in row_data:
             uid = data.get("user_id")
@@ -216,7 +258,11 @@ class GroupsManager(DBManager):
             username = username_map.get(uid_str, "")
             if username not in group_notes:
                 group_notes[username] = {}
-            group_notes[username][nid] = {**data, "profile_photo_url": photo_map.get(uid_str)}
+            group_notes[username][nid] = {
+                **data,
+                "profile_photo_url": photo_map.get(uid_str),
+                "verses": verses_map.get(nid, []),
+            }
         has_more = len(rows) == limit
         last = rows[-1] if rows else None
         return {
@@ -245,7 +291,10 @@ class GroupsManager(DBManager):
                 first. Each note's data now also carries
                 ``profile_photo_url`` (the author's photo, resolved via
                 ``generate_download_url`` -- ``None`` when the author has no
-                photo set; task 20260905-profile-photo-avatar-gaps).
+                photo set; task 20260905-profile-photo-avatar-gaps) and
+                ``verses`` (``[[book, chapter, verse], ...]`` ordered by
+                ``position``, ``[]`` when the note has none; task
+                20260908-group-notes-verses).
         """
         pattern = f"%{q}%"
         self.cur.execute(
@@ -278,6 +327,7 @@ class GroupsManager(DBManager):
                 uid_str = str(r[0])
                 username_map[uid_str] = r[1]
                 photo_map[uid_str] = generate_download_url(r[2])
+        verses_map = self._fetch_verses_map([nid for nid, _ in row_data])
         group_notes: dict = {}
         for nid, data in row_data:
             uid = data.get("user_id")
@@ -287,7 +337,11 @@ class GroupsManager(DBManager):
             username = username_map.get(uid_str, "")
             if username not in group_notes:
                 group_notes[username] = {}
-            group_notes[username][nid] = {**data, "profile_photo_url": photo_map.get(uid_str)}
+            group_notes[username][nid] = {
+                **data,
+                "profile_photo_url": photo_map.get(uid_str),
+                "verses": verses_map.get(nid, []),
+            }
         return {"notes": group_notes}
 
     def fetch_replies(self, note_id: str) -> list[dict]:
