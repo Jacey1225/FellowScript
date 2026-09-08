@@ -14,9 +14,14 @@
         "url": "https://fellowscript.com/#/reader",
         "width": 1280,
         "height": 860,
+        "minWidth": 1025,
+        "minHeight": 720,
         "resizable": true,
         "fullscreen": false,
-        "create": false
+        "create": false,
+        "backgroundColor": "#0A0A0A",
+        "theme": "Dark",
+        "titleBarStyle": "Transparent"
       }
     ],
     "security": {

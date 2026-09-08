@@ -23,6 +23,8 @@ Unauthenticated users land on Home (`/`); once signed in, the CTA routes directl
 
 The Tauri desktop app (`desktop/`) loads this exact same `HashRouter` bundle rather than a separate build. `DesktopRouteGuard.jsx` wraps `<Routes>` and, when `lib/desktopScope.js`'s `isDesktopApp()` detects the Tauri webview (`window.__TAURI_INTERNALS__`), redirects any in-app navigation outside a closed allowlist (`/reader`, `/account`, `/signin`, `/forgot-password`, `/reset-password`, `/verify-2fa`) to `/reader`. `AppNav.jsx`'s Home menu item/logo links and the hamburger drawer's Privacy/Terms links are hidden in this mode, and `SignIn.jsx`'s footer Privacy/Terms disclosure links are forced `target="_blank"` instead. A no-op in the ordinary web browser. A parallel Tauri-side `on_navigation` check in `desktop/src-tauri` mirrors the same allowlist as defense-in-depth for real webview navigations the React guard can't see.
 
+The desktop app's native macOS menu bar also has a "Reload" item under View (`CmdOrCtrl+R`) that force-reloads the window's current page via `WebviewWindow::reload()` — a Rust-side call independent of the page's own JS, so it still works if the page is stuck/unresponsive. It re-navigates to whatever URL is already loaded, so it passes through the same `on_navigation` allowlist check above rather than opening a new navigation path, and it isn't exposed to the loaded page's JS via IPC.
+
 ---
 
 ## Key Components

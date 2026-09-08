@@ -197,6 +197,66 @@ handoff above) can't see them at all.
   the `testing` gate's job for this task, per this environment having no
   display.
 
+## Native reload menu item (2026-09-08)
+
+Task `20260908-desktop-reload-button`: the desktop window had no way to
+recover if the live webview failed to load or got stuck, independent of
+whether the page's own JS was still responsive.
+
+- **Threat-modeled first** (security gate, since this touches the same
+  `on_navigation`/`is_allowed_navigation` code hardened for
+  `20260906-desktop-scope-lockdown`): confirmed by reading the pinned
+  `tauri` 2.11.5 / `wry` 0.55.1 source that `WebviewWindow::reload()`
+  invokes WKWebView's *native* reload on macOS, which still fires through
+  the same webview-instance-wide navigation delegate `.on_navigation()` is
+  wired into — so the existing allowlist check is automatically
+  re-consulted with zero new code path, and reload always targets the
+  already-loaded (and therefore already-allowed) URL by construction. This
+  is why a native `reload()` call was required instead of
+  `eval("window.location.reload()")`, which depends on the page's own JS
+  event loop running — exactly what can't be assumed when the page is
+  stuck.
+- **Added**: a "Reload" item (with the idiomatic `CmdOrCtrl+R` accelerator)
+  appended to the existing macOS "View" submenu that `Menu::default()`
+  already builds — `src-tauri/src/lib.rs`'s new `build_menu()` wraps
+  `Menu::default()`, finds the "View" submenu by text, and appends the item
+  rather than replacing the menu wholesale. Wired via `.on_menu_event` only
+  (menu click or its accelerator), dispatched from Rust against the
+  `"main"` window handle via `WebviewWindow::reload()`. One manual trigger
+  covers both failure modes named in the original request (a genuinely
+  failed load and a stuck/unresponsive page) — no separate fallback/error
+  page or `did_fail_load` handling was added, since it's out of scope per
+  the intake spec and the manual retry already covers both cases without
+  new surface area.
+- **Deliberately not exposed as IPC**: no `#[tauri::command]` was added and
+  `capabilities/default.json` is untouched — the loaded page is live,
+  remote, third-party-influenced content (note bodies, messages), and a
+  frontend-invokable "force reload" would be an unnecessary attack surface
+  for a control the page itself has no legitimate reason to trigger
+  (deny-by-default posture). No in-window toolbar button was added either —
+  the loaded content is the live site's own HTML, so this repo owns no
+  window chrome to host one; the native menu bar is the most
+  persistently-discoverable option actually buildable here.
+- **Regression coverage**: two new tests alongside the existing
+  `desktop_scope_lockdown_tests` module document and pin the specific
+  safety claim above — that a reload-equivalent re-navigation to an already
+  allowed URL still passes `is_allowed_navigation`, and one to a
+  hypothetically disallowed URL is still denied — since reload reuses that
+  same choke point rather than introducing a bypassable path of its own.
+- Verified with `cargo check` and `cargo clippy` (both clean). Real
+  interactive/visual confirmation that the menu item and Cmd+R actually
+  reload a stuck window is the `testing` gate's job for this task, per this
+  environment having no display — same caveat as the prior desktop tasks
+  above.
+- Windows/Linux: out of scope (macOS is the only built target per "Not
+  started yet" below). `reload()` is cross-platform in the `tauri`/`wry`
+  API, but whether WebView2/WebKitGTK's navigation delegate equivalently
+  re-fires on a native reload has not been verified and shouldn't be
+  assumed if Windows packaging is ever picked up.
+
+Files touched: `src-tauri/src/lib.rs` only — no `Cargo.toml`,
+`tauri.conf.json`, or `capabilities/default.json` changes were needed.
+
 ## Rebuild + redistribution (2026-09-06)
 
 Rebuilt and re-shipped the signed/notarized macOS app to pick up the day's
@@ -233,6 +293,72 @@ nav lockdown from the two sections above):
   git's own credential store instead: `git credential fill` with
   `protocol=https`/`host=github.com`, exported as `GH_TOKEN` for the
   `gh release` calls.
+
+## Native window chrome polish (2026-09-08)
+
+Task `20260908-desktop-native-window-chrome`: the window previously used Tauri's
+bare defaults — no background color, no macOS title-bar styling, no minimum
+size — so it looked like an unstyled wrapped website rather than a native app.
+Fixed entirely in `src-tauri/tauri.conf.json` (no `lib.rs` changes needed):
+
+- **Dark title bar**: added `"titleBarStyle": "Transparent"` plus
+  `"theme": "Dark"`. `Transparent` (not `Overlay`) was chosen deliberately —
+  `Overlay` draws the title bar over the window's content and requires a
+  custom drag region plus the page itself leaving room for the traffic-light
+  buttons, which the live site (loaded as-is, with no awareness it's running
+  in a chrome-less title bar) has no way to account for. `Transparent` keeps
+  the title bar as a normal, separate strip above the content — no traffic
+  lights overlapping page UI — but paints it with the window's own
+  `backgroundColor` instead of the OS's default light gray. `"theme": "Dark"`
+  is paired with it because `titleBarStyle` alone doesn't change the window's
+  effective macOS appearance: without forcing `Dark`, the title text and
+  traffic-light rendering would still follow the OS's (usually light) theme
+  and could read poorly against the dark background. Confirmed this is
+  read correctly through the actual programmatic construction path
+  (`WebviewWindowBuilder::from_config` in `lib.rs`'s `.setup()` — the window
+  isn't auto-created from config's declarative-only path since `"create":
+  false` is set) by reading the pinned `tauri`/`tauri-runtime-wry` 2.11.x
+  source directly: `WindowBuilderWrapper::with_config` applies
+  `title_bar_style`, `theme`, `background_color`, and `min_width`/`min_height`
+  from the full `WindowConfig` regardless of how the builder was obtained, so
+  the manual `from_config(...)` construction in `lib.rs` gets all of these
+  the same as the declarative path would.
+- **Launch flash**: added `"backgroundColor": "#0A0A0A"` (matches
+  `frontend/src/styles/global.css`'s `--bg-page` exactly). Per the Tauri v2
+  config schema, this field explicitly sets *both* the window's and the
+  webview's background color, so the surface behind the live page is already
+  the site's own near-black before the network fetch of
+  `https://fellowscript.com/#/reader` completes and paints — not just the
+  native window frame. Went with config-only (no `visible: false` +
+  show-on-ready code path in `lib.rs`): the flash is caused by an unset
+  background defaulting to white, and `backgroundColor` covering both the
+  window and webview layers directly addresses that root cause without added
+  code, event wiring, or new test surface, in keeping with this project's
+  loading-state preference for minimal/unfussy fixes over added machinery.
+  This environment has no display to visually confirm the flash is fully
+  gone — the `testing` gate should call this out as needing a real
+  interactive check on the packaged app, and if a flash is still visible in
+  practice the follow-up is the `visible: false` + show-on-ready pattern
+  inside the existing `.setup()` closure.
+- **Minimum window size**: added `"minWidth": 1025` (exactly matching
+  `frontend/src/hooks/useIsDesktopViewport.js`'s `min-width: 1025px` desktop
+  cutoff — the site's mobile/tablet layout, a distinct purpose-built
+  experience, is never meant to render inside this wrapper) and
+  `"minHeight": 720`. No equivalent height breakpoint exists in the site's own
+  responsive CSS to mirror exactly, so 720 was chosen as a floor comfortably
+  below the default `860` while still leaving the reader's dockview workspace
+  (notes, messaging, highlights, AI chat panels) usable rather than squished.
+- Not touched: `on_navigation`/`on_new_window`/`is_allowed_navigation` in
+  `lib.rs` (the navigation-security allowlist from
+  `20260906-desktop-scope-lockdown`), `frontend/` (the desktop app loads that
+  live content and doesn't own its styling), any Windows/Linux chrome
+  equivalents (`titleBarStyle`/`hiddenTitle` are macOS-only fields; macOS
+  remains the only currently-built target).
+- Verified with `cargo check` and `cargo clippy` (both clean, no `lib.rs`
+  changes so the existing `desktop_scope_lockdown_tests` suite is unaffected
+  and still passes as-is). A real visual/interactive launch check (dark title
+  bar rendering, no flash, resize-floor behavior) is the `testing` gate's job
+  per this environment having no display.
 
 ## Not started yet
 Windows packaging/signing (separate `signtool`-based process, completely
