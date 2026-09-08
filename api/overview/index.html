@@ -1616,8 +1616,25 @@ Activity widget already uses.</p>
 <td><code>/agent/{user_id}/heartbeat</code></td>
 <td>Trigger an AI check-in event (enforces free-tier cap)</td>
 </tr>
+<tr>
+<td>POST</td>
+<td><code>/agent/{user_id}/{agent_id}/summarize</code></td>
+<td>Summarize a study session (body: <code>{session, group_id}</code>) and save the result as a note titled <code>Session Summary — {title}</code>. Enforces the same free-tier <code>notes</code> cap as note creation</td>
+</tr>
 </tbody>
 </table>
+<p>Task 20260907-session-summary-wireup wired this endpoint up end-to-end: a
+session created with its "Summarize" toggle on (<code>devotions.summarize</code>, see
+<a href="../../architecture/data/#devotions"><code>devotions</code></a>) has its client call this
+route the moment its Chime call ends (<code>CallController.end()</code> in
+<code>ChimeCallView.swift</code>), using only the ending session's own creator — not
+every participant still on the call — to avoid minting one duplicate summary
+note per participant. The client silently resolves an <code>agent_id</code> (reusing the
+user's first existing <code>FSAgent</code>, auto-creating one if they have none) rather
+than surfacing an agent picker, since an agent's <code>role</code> only tints the LLM
+prompt server-side. A failed summarize call never blocks or delays leaving
+the call — it surfaces afterward as a warm, self-dismissing banner
+(<code>CallController.summarizeNotice</code>) instead.</p>
 <hr />
 <h2 id="usage-limits">Usage / Limits</h2>
 <p>Free-tier limits are enforced on the server before every create operation. When a cap is reached the route returns:</p>
