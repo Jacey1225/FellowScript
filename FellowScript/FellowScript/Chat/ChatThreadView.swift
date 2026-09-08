@@ -482,11 +482,23 @@ struct ChatThreadView: View {
 
     // Task 20260908-chat-scroll-to-bottom-on-open: captured from
     // ScrollViewReader's `onAppear` below (fires as soon as the message list
-    // is in the hierarchy, well before `.task`'s network-bound `vm.load()`
-    // resolves) so `.task` -- which lives outside the ScrollViewReader
-    // closure and therefore has no other way to reach `proxy` -- can drive
-    // an explicit initial scrollTo once loading finishes.
+    // is in the hierarchy) so `.task` -- which lives outside the
+    // ScrollViewReader closure and therefore has no other way to reach
+    // `proxy` -- can drive an explicit initial scrollTo once loading
+    // finishes.
     @State private var scrollProxy: ScrollViewProxy? = nil
+
+    // Regression fix (confirmed via simulator repro after the first pass of
+    // this task shipped without one): `.task` and a descendant's `.onAppear`
+    // have no guaranteed ordering in SwiftUI. A disk-cache-only `vm.load()`
+    // -- the exact "reopening a thread with nothing new" case this task
+    // targets -- can resolve fast enough that `.task` reaches its scrollTo
+    // call before ScrollViewReader's `.onAppear` has captured `scrollProxy`,
+    // silently no-oping via `?.`. `readyForInitialScroll` plus
+    // `performInitialScrollIfReady()` below is a readiness handshake: both
+    // `.onAppear` and `.task` call it, and whichever of the two runs second
+    // is the one that actually performs the scroll.
+    @State private var readyForInitialScroll = false
 
     // Recomputes both caches from the current vm.messages/user -- called
     // once up front (via `.task`, so the very first render after load()
@@ -498,6 +510,11 @@ struct ChatThreadView: View {
         // (design gate §13) — real Calendar.isDate(inSameDayAs:) detection,
         // not a cosmetic restyle of the existing plain sender-group hairline.
         threadRows = messageGroups.withDayDividers()
+    }
+
+    private func performInitialScrollIfReady() {
+        guard readyForInitialScroll, let proxy = scrollProxy, let lastGroup = messageGroups.last else { return }
+        proxy.scrollTo(lastGroup.id, anchor: .bottom)
     }
 
     var body: some View {
@@ -605,7 +622,7 @@ struct ChatThreadView: View {
                             withMotionAwareAnimation(.default, reduceMotion: reduceMotion) { proxy.scrollTo(lastGroup.id, anchor: .bottom) }
                         }
                     }
-                    .onAppear { scrollProxy = proxy }
+                    .onAppear { scrollProxy = proxy; performInitialScrollIfReady() }
                 }
             }
             // Shared keyboard-dismiss convention (task
@@ -670,10 +687,12 @@ struct ChatThreadView: View {
             // you're already looking at it" moment the way a new inbound
             // message is, so animating it would visibly slide from an
             // undefined prior position rather than read as intentional
-            // motion.
-            if let lastGroup = messageGroups.last {
-                scrollProxy?.scrollTo(lastGroup.id, anchor: .bottom)
-            }
+            // motion. Routed through the readiness handshake (see
+            // `readyForInitialScroll` above) rather than a direct
+            // `scrollProxy?.scrollTo(...)` call, since `scrollProxy` isn't
+            // reliably set by this point yet.
+            readyForInitialScroll = true
+            performInitialScrollIfReady()
             // Load the viewer's friends so the add-members picker can offer those
             // who aren't already in the group.
             if contact.type == .group {

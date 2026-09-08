@@ -177,6 +177,18 @@ struct AgentChatView: View {
     // below so `.task` (outside the ScrollViewReader closure) can drive an
     // explicit initial scrollTo once `vm.load()` resolves.
     @State private var scrollProxy: ScrollViewProxy? = nil
+    // Regression fix -- see ChatThreadView.swift's matching comment:
+    // `.task` and a descendant's `.onAppear` have no guaranteed ordering, so
+    // a fast disk-cache `vm.load()` could reach the scroll call before
+    // `scrollProxy` was captured. Readiness handshake: both `.onAppear` and
+    // `.task` call `performInitialScrollIfReady()`, whichever runs second
+    // performs the scroll.
+    @State private var readyForInitialScroll = false
+
+    private func performInitialScrollIfReady() {
+        guard readyForInitialScroll, let proxy = scrollProxy, let last = vm.messages.last else { return }
+        proxy.scrollTo(last.id, anchor: .bottom)
+    }
 
     private var userInitial: String {
         let name = appState.currentUser?.username ?? ""
@@ -248,7 +260,7 @@ struct AgentChatView: View {
                     .onChange(of: vm.isThinking) { t in
                         if t { withMotionAwareAnimation(.default, reduceMotion: reduceMotion) { proxy.scrollTo("thinking", anchor: .bottom) } }
                     }
-                    .onAppear { scrollProxy = proxy }
+                    .onAppear { scrollProxy = proxy; performInitialScrollIfReady() }
                 }
             }
             // Shared keyboard-dismiss convention (task
@@ -286,10 +298,11 @@ struct AgentChatView: View {
             // match on reopen). Snapped, not animated -- see
             // ChatThreadView.swift's matching comment for why an initial
             // position shouldn't animate the way a live new-message arrival
-            // does.
-            if let last = vm.messages.last {
-                scrollProxy?.scrollTo(last.id, anchor: .bottom)
-            }
+            // does. Routed through the readiness handshake (see
+            // `readyForInitialScroll` above) since `scrollProxy` isn't
+            // reliably set by this point yet.
+            readyForInitialScroll = true
+            performInitialScrollIfReady()
         }
         .onDisappear { vm.disconnect() }
         .alert("Message Not Sent", isPresented: Binding(

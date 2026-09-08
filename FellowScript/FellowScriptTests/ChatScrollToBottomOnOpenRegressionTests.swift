@@ -138,30 +138,27 @@ final class ChatScrollToBottomOnOpenRegressionTests: XCTestCase {
 
         XCTAssertTrue(source.contains("@State private var scrollProxy: ScrollViewProxy? = nil"),
                       "scrollProxy must be captured as @State so `.task` (outside ScrollViewReader) can reach it")
-        XCTAssertTrue(source.contains(".onAppear { scrollProxy = proxy }"),
-                      "scrollProxy must be captured via ScrollViewReader's onAppear, which fires before .task's network-bound load resolves")
 
-        let scrollCall = "scrollProxy?.scrollTo(lastGroup.id, anchor: .bottom)"
-        XCTAssertTrue(source.contains(scrollCall),
-                      "the .task block must explicitly scroll to the last row once loading/grouping finishes")
-        XCTAssertFalse(source.contains("withMotionAwareAnimation(.default, reduceMotion: reduceMotion) { scrollProxy?.scrollTo(lastGroup.id"),
-                       "the initial on-open scroll must snap instantly, not animate from an undefined prior position")
-
-        // Ordering: the initial scrollTo must happen after vm.load() resolves
-        // within .task, not before -- otherwise messageGroups/threadRows
-        // would still be empty/stale when it fires.
-        guard let loadRange = source.range(of: "await vm.load(service: appState.service, contact: contact, userId: uid)"),
-              let scrollRange = source.range(of: scrollCall, range: loadRange.upperBound..<source.endIndex)
-        else {
-            XCTFail("expected both vm.load(...) and the initial scrollTo(...) inside .task, with load first")
-            return
-        }
-        XCTAssertLessThan(loadRange.lowerBound, scrollRange.lowerBound,
-                          "initial scrollTo must run after vm.load() resolves, not before")
+        // Regression (caught via real simulator repro after the first pass
+        // shipped without one): `.task` and a descendant's `.onAppear` have
+        // no guaranteed ordering, so a direct `scrollProxy?.scrollTo(...)`
+        // call from `.task` could silently no-op if onAppear hadn't fired
+        // yet -- exactly the fast disk-cache-load case this fix targets.
+        // Both callbacks must instead go through a readiness handshake.
+        XCTAssertTrue(source.contains("@State private var readyForInitialScroll = false"),
+                      "a readiness flag must exist so .task and .onAppear can hand off regardless of firing order")
+        XCTAssertTrue(source.contains("func performInitialScrollIfReady()"),
+                      "a shared handshake function must gate the initial scroll on both scrollProxy and readyForInitialScroll being set")
+        XCTAssertTrue(source.contains(".onAppear { scrollProxy = proxy; performInitialScrollIfReady() }"),
+                      "onAppear must both capture scrollProxy and attempt the handshake, in case .task already set readyForInitialScroll first")
+        XCTAssertTrue(source.contains("readyForInitialScroll = true\n            performInitialScrollIfReady()"),
+                      "the .task block must set readyForInitialScroll and attempt the handshake, in case onAppear already captured scrollProxy first")
+        XCTAssertFalse(source.contains("scrollProxy?.scrollTo(lastGroup.id, anchor: .bottom)"),
+                       "the initial scroll must go through the handshake, not a direct unguarded scrollProxy call vulnerable to ordering races")
 
         // Guarded against an empty list -- must not force-unwrap.
-        XCTAssertTrue(source.contains("if let lastGroup = messageGroups.last {\n                scrollProxy?.scrollTo(lastGroup.id, anchor: .bottom)\n            }"),
-                      "initial scrollTo must be guarded by `if let ... .last`, not force-unwrapped -- a brand-new thread with zero messages must not crash")
+        XCTAssertTrue(source.contains("guard readyForInitialScroll, let proxy = scrollProxy, let lastGroup = messageGroups.last else { return }"),
+                      "the handshake must bail out cleanly (not force-unwrap) until every precondition -- readiness, proxy, and a non-empty list -- is met")
 
         // The reactive path must remain present and unregressed: still
         // gated behind an actual count change, and still animated.
@@ -176,26 +173,23 @@ final class ChatScrollToBottomOnOpenRegressionTests: XCTestCase {
 
         XCTAssertTrue(source.contains("@State private var scrollProxy: ScrollViewProxy? = nil"),
                       "AgentChatView must carry the same scrollProxy capture as ChatThreadView -- identical structural fix")
-        XCTAssertTrue(source.contains(".onAppear { scrollProxy = proxy }"),
-                      "scrollProxy must be captured via ScrollViewReader's onAppear")
 
-        let scrollCall = "scrollProxy?.scrollTo(last.id, anchor: .bottom)"
-        XCTAssertTrue(source.contains(scrollCall),
-                      "the .task block must explicitly scroll to the last message once vm.load() finishes")
-        XCTAssertFalse(source.contains("withMotionAwareAnimation(.default, reduceMotion: reduceMotion) { scrollProxy?.scrollTo(last.id"),
-                       "the initial on-open scroll must snap instantly, not animate")
+        // Same readiness-handshake regression fix as ChatThreadView.swift --
+        // see that test's comment for the race condition being guarded
+        // against.
+        XCTAssertTrue(source.contains("@State private var readyForInitialScroll = false"),
+                      "a readiness flag must exist so .task and .onAppear can hand off regardless of firing order")
+        XCTAssertTrue(source.contains("func performInitialScrollIfReady()"),
+                      "a shared handshake function must gate the initial scroll on both scrollProxy and readyForInitialScroll being set")
+        XCTAssertTrue(source.contains(".onAppear { scrollProxy = proxy; performInitialScrollIfReady() }"),
+                      "onAppear must both capture scrollProxy and attempt the handshake, in case .task already set readyForInitialScroll first")
+        XCTAssertTrue(source.contains("readyForInitialScroll = true\n            performInitialScrollIfReady()"),
+                      "the .task block must set readyForInitialScroll and attempt the handshake, in case onAppear already captured scrollProxy first")
+        XCTAssertFalse(source.contains("scrollProxy?.scrollTo(last.id, anchor: .bottom)"),
+                       "the initial scroll must go through the handshake, not a direct unguarded scrollProxy call vulnerable to ordering races")
 
-        guard let loadRange = source.range(of: "await vm.load(service: appState.service, agentId: agent.id, userId: uid)"),
-              let scrollRange = source.range(of: scrollCall, range: loadRange.upperBound..<source.endIndex)
-        else {
-            XCTFail("expected both vm.load(...) and the initial scrollTo(...) inside .task, with load first")
-            return
-        }
-        XCTAssertLessThan(loadRange.lowerBound, scrollRange.lowerBound,
-                          "initial scrollTo must run after vm.load() resolves, not before")
-
-        XCTAssertTrue(source.contains("if let last = vm.messages.last {\n                scrollProxy?.scrollTo(last.id, anchor: .bottom)\n            }"),
-                      "initial scrollTo must be guarded by `if let ... .last`, not force-unwrapped -- a brand-new agent thread with zero messages must not crash")
+        XCTAssertTrue(source.contains("guard readyForInitialScroll, let proxy = scrollProxy, let last = vm.messages.last else { return }"),
+                      "the handshake must bail out cleanly (not force-unwrap) until every precondition -- readiness, proxy, and a non-empty list -- is met")
 
         // Reactive paths (new message, and the isThinking indicator) remain
         // unregressed.
