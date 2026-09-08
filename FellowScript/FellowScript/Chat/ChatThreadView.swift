@@ -468,10 +468,24 @@ struct ChatThreadView: View {
     @State private var showGifSheet          = false
     @State private var stagedAttachment: StagedAttachment? = nil
     @State private var attachmentErrorMsg: String? = nil
-    // Mutated (never read) from the composer's onReceive(staged.objectWillChange)
-    // below purely to force a real body re-evaluation -- see that call site for
-    // why an empty-bodied onReceive closure does NOT do this on its own.
-    @State private var attachmentUploadRefreshTick: Int = 0
+    // Third pass on task 20260908-chat-userid-exposure-standalone-media,
+    // Bug 2. Both prior attempts routed the Send-button re-render through
+    // `StagedAttachment`'s own `@Published var uploadState` -- first via an
+    // empty `.onReceive` closure (a genuine no-op: subscribing does nothing
+    // by itself), then via an `.onReceive` closure that bumped a dummy
+    // @State counter. The second one is textbook-correct SwiftUI and DID
+    // pass locally, but a real device still showed Send staying disabled
+    // indefinitely (confirmed: not just slow -- literally never enables on
+    // its own, only after an unrelated interaction). Rather than keep
+    // trusting an indirect Combine-subscription chain I can't fully verify
+    // live right now, this mirrors the upload result directly into a plain
+    // @State on ChatThreadView itself, set explicitly at every one of
+    // `startUpload`'s state transitions (uploading/uploaded/failed) instead
+    // of read off `stagedAttachment.uploadState` through an intermediary.
+    // `canSend` now reads this instead -- the single most direct, least
+    // assumption-laden way to get an async result into this view's own
+    // re-render cycle.
+    @State private var stagedUploadState: StagedAttachmentUploadState? = nil
 
     // Memoized (High H12): these two used to be plain computed properties,
     // so SwiftUI re-ran the grouping + day-divider pass in full on every
@@ -824,35 +838,13 @@ struct ChatThreadView: View {
             if let staged = stagedAttachment {
                 StagedAttachmentChipView(
                     attachment: staged,
-                    onRemove: { stagedAttachment = nil; attachmentErrorMsg = nil },
+                    onRemove: {
+                        stagedAttachment = nil
+                        stagedUploadState = nil
+                        attachmentErrorMsg = nil
+                    },
                     onRetry: { startUpload(staged) }
                 )
-                // Bug fix (task 20260908-chat-userid-exposure-standalone-media,
-                // Bug 2): `stagedAttachment` is a plain `@State` reference to
-                // a class (`StagedAttachment: ObservableObject`). @State only
-                // re-renders ChatThreadView when the *reference itself* is
-                // reassigned (picking/removing an attachment) — it does NOT
-                // subscribe to that object's own `@Published var uploadState`.
-                // Only `StagedAttachmentChipView` above actually observes
-                // `uploadState` (via `@ObservedObject`), so its own
-                // spinner/retry UI updates correctly when `startUpload`'s
-                // async upload finishes — but nothing forced `canSend`/the
-                // Send button (computed elsewhere in this same body) to
-                // re-evaluate, so Send stayed stuck disabled for a staged
-                // photo/video until an unrelated @State change (typing text)
-                // happened to force a re-render.
-                //
-                // IMPORTANT: an `.onReceive` with an EMPTY action closure
-                // (the first attempt here) does NOT force that re-render --
-                // subscribing to the publisher alone doesn't invalidate
-                // anything; only an actual `@State` mutation inside the
-                // closure does. This real fix bumps a dedicated, otherwise
-                // unread `@State` counter every time `uploadState` changes,
-                // which forces ChatThreadView's body (and therefore `canSend`
-                // and the Send button) to recompute.
-                .onReceive(staged.objectWillChange) { _ in
-                    attachmentUploadRefreshTick += 1
-                }
             }
             if let attachmentErrorMsg {
                 Text(attachmentErrorMsg)
@@ -922,6 +914,7 @@ struct ChatThreadView: View {
             GifSearchSheet(service: appState.service) { attachment in
                 attachmentErrorMsg = nil
                 stagedAttachment = attachment
+                stagedUploadState = attachment.uploadState
             }
         }
     }
@@ -954,10 +947,13 @@ struct ChatThreadView: View {
     // immediately for a staged GIF (nothing of ours to upload).
     private var canSend: Bool {
         let hasText = !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        guard let staged = stagedAttachment else { return hasText }
-        switch staged.uploadState {
-        case .uploading, .failed: return false
-        case .idle, .uploaded:    return true
+        guard stagedAttachment != nil else { return hasText }
+        // Reads `stagedUploadState` (a plain @State mirror kept in sync by
+        // startUpload below), not `stagedAttachment?.uploadState` directly
+        // -- see `stagedUploadState`'s declaration for why.
+        switch stagedUploadState {
+        case .uploading, .failed, .none: return false
+        case .idle, .uploaded:           return true
         }
     }
 
@@ -969,6 +965,7 @@ struct ChatThreadView: View {
         }
         attachmentErrorMsg = nil
         stagedAttachment = attachment
+        stagedUploadState = attachment.uploadState
         if attachment.kind != .gif {
             startUpload(attachment)
         }
@@ -995,8 +992,10 @@ struct ChatThreadView: View {
 
     private func startUpload(_ attachment: StagedAttachment) {
         attachment.uploadState = .uploading
+        stagedUploadState = .uploading
         guard let data = attachment.fileData else {
             attachment.uploadState = .failed
+            stagedUploadState = .failed
             return
         }
         let uid = appState.currentUser?.user_id ?? ""
@@ -1009,11 +1008,22 @@ struct ChatThreadView: View {
                 try await appState.service.uploadAttachment(
                     fileData: data, contentType: attachment.contentType, uploadInfo: info
                 )
-                await MainActor.run { attachment.uploadState = .uploaded(objectKey: info.object_key) }
+                await MainActor.run {
+                    let resolved = StagedAttachmentUploadState.uploaded(objectKey: info.object_key)
+                    attachment.uploadState = resolved
+                    // Guard against a stale completion landing after the
+                    // user removed/replaced this attachment mid-upload --
+                    // only mirror into the view's own @State if this is
+                    // still the currently staged attachment.
+                    if stagedAttachment === attachment { stagedUploadState = resolved }
+                }
             } catch {
                 // Manual tap-to-retry only, no automatic retry loop (design
                 // gate §3 / intake's explicit "not required for v1").
-                await MainActor.run { attachment.uploadState = .failed }
+                await MainActor.run {
+                    attachment.uploadState = .failed
+                    if stagedAttachment === attachment { stagedUploadState = .failed }
+                }
             }
         }
     }
@@ -1025,6 +1035,7 @@ struct ChatThreadView: View {
         vm.sendMessage(text: trimmed, attachment: stagedAttachment, contact: contact, userId: uid)
         text = ""
         stagedAttachment = nil
+        stagedUploadState = nil
         attachmentErrorMsg = nil
     }
 
