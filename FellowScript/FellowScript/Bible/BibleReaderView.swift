@@ -35,8 +35,25 @@ final class BibleViewModel: ObservableObject {
     // compile-time constants, but were previously recompiled on every
     // parseVerses() call (every chapter navigation), which is meaningfully
     // more expensive than matching for a short chapter string.
+    //
+    // subsequentVerseRegex's lookahead character class (task
+    // 20260908-bible-verse-boundary-parsing): a fresh full-corpus scan of
+    // bible.json against the prior `[A-Za-z]`-only class found 1,842 verse
+    // numbers across 553 chapters (51/66 books) that were never split off
+    // from the preceding verse's text because the verse's own text opens
+    // with punctuation rather than a letter -- overwhelmingly a curly
+    // opening double quote (“, quoted speech), plus smaller counts of a
+    // curly opening single quote (‘, quote nested inside quoted speech) and
+    // an opening parenthesis (. The same scan also turned up 2 real
+    // instances of a verse opening with a double square bracket (Mark
+    // 16:9["Now...", John 7:53["They went...) -- both are the Bible's two
+    // well-known disputed/bracketed "longer ending" passages, not noise, so
+    // `[` is included too. Kept in sync with
+    // `api/backend/interactions/bible_text.py`'s `_VERSE_SPLIT_RE` (which
+    // already carries an equivalent class) and with the two web-frontend
+    // copies below.
     private static let firstVerseRegex = try! NSRegularExpression(pattern: #"^\s*\d+:(\d+)\s*"#)
-    private static let subsequentVerseRegex = try! NSRegularExpression(pattern: #"(?<!\d)(\d+)(?=[A-Za-z])"#)
+    private static let subsequentVerseRegex = try! NSRegularExpression(pattern: #"(?<!\d)(\d+)(?=[A-Za-z“‘(\[])"#)
 
     init() {
         // Restore last position
@@ -265,7 +282,7 @@ final class BibleViewModel: ObservableObject {
     }
 
     // Chapter string format from bible.json: "1:1 verse text2next verse HEAD:: Section3more..."
-    // First verse: "chN:vN text", subsequent: "N[A-Za-z]", section headers: "HEAD:: ..."
+    // First verse: "chN:vN text", subsequent: "N[A-Za-z“‘(\[]", section headers: "HEAD:: ..."
     private func parseVerses(_ chStr: String) -> [(num: Int, text: String)] {
         // Strip footnote markers [N] and section headers HEAD::...
         var text = chStr

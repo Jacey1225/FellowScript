@@ -25,8 +25,9 @@ Data shape: `bible.json` is `{book_name: [chapter_0_blob, chapter_1_blob,
 no chapter 0). Each chapter blob is a flowing-text blob of the shape
 `"{chapter}:1 {verse 1 text}2{verse 2 text}3{verse 3 text}..."` -- the first
 verse is prefixed `chapter:1`, every later verse is a bare verse number
-immediately followed (no space) by its text's capitalized first letter or an
-opening curly quote. Section subheadings are embedded inline as
+immediately followed (no space) by its text's capitalized first letter, an
+opening curly double quote, an opening curly single quote, or an opening
+parenthesis. Section subheadings are embedded inline as
 `HEAD::<subheading text>` and are not verse content.
 
 This is a best-effort parse of an already-imperfect generated asset, not a
@@ -58,13 +59,22 @@ _BIBLE_JSON_PATH = os.path.join(os.path.dirname(__file__), "bible_data", "bible.
 # Inline section subheadings ("HEAD::<text>") embedded in the flowing chapter
 # text -- strip them (and their text, up to the next verse marker or the end
 # of the blob) before splitting into verses; they are never verse content.
-_HEAD_RE = re.compile(r"HEAD::.*?(?=\d+[A-Z“]|\Z)", re.S)
+_HEAD_RE = re.compile(r"HEAD::.*?(?=\d+[A-Z“‘(]|\Z)", re.S)
 # A chapter blob always opens "{chapter}:1 {verse 1 text}...".
 _CHAPTER_START_RE = re.compile(r"^(\d+):1\s*(.*)", re.S)
-# Every verse after the first is a bare number immediately followed by a
-# capital letter or an opening curly quote (footnote markers like "[12]" are
-# always followed by "]", never directly by a letter, so they never match).
-_VERSE_SPLIT_RE = re.compile(r"(\d+)(?=[A-Z“])")
+# Every verse after the first is a bare number (not itself preceded by
+# another digit -- the (?<!\d) guard keeps a multi-digit verse number from
+# matching on its own trailing digits) immediately followed by a capital
+# letter, an opening curly double quote, an opening curly single quote (a
+# quote nested inside quoted speech), or an opening parenthesis (footnote
+# markers like "[12]" are always followed by "]", never directly by one of
+# these, so they never match). Kept in sync with the equivalent client-side
+# verse-boundary regexes (iOS BibleReaderView.swift, frontend/src/utils.js,
+# frontend/js/bible.js) as of task 20260908-bible-verse-boundary-parsing --
+# this module's own character class previously lacked the curly single quote
+# and opening-parenthesis cases, and the (?<!\d) guard, that the client
+# copies already had.
+_VERSE_SPLIT_RE = re.compile(r"(?<!\d)(\d+)(?=[A-Z“‘(])")
 
 _raw_books: dict[str, list[str]] | None = None
 _chapter_cache: dict[tuple[str, int], dict[int, str]] = {}

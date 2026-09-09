@@ -159,13 +159,26 @@ function _populateVerses(chStr) {
 // same regex-based chapter-string tokenizer, independently maintained because
 // this legacy tree has no shared build step with the React app. Keep the two
 // in sync by hand (readability #H14, 20260904-frontend-arch-sweep).
+//
+// Verse-boundary character class (task 20260908-bible-verse-boundary-parsing):
+// a fresh full-corpus scan of bible.json against the prior [A-Za-z]-only
+// class found 1,842 verse numbers (553 chapters, 51/66 books) silently
+// absorbed into the preceding verse because the verse's own text opens with
+// punctuation, not a letter -- overwhelmingly a curly opening double quote
+// (“, quoted speech), plus smaller counts of a curly opening single
+// quote (‘, quote nested inside quoted speech) and an opening
+// parenthesis (. Also 2 real instances of a verse opening with a double
+// square bracket (Mark 16:9, John 7:53 -- the Bible's two well-known
+// disputed/bracketed "longer ending" passages), so [ is included too. Kept
+// in sync with api/backend/interactions/bible_text.py's _VERSE_SPLIT_RE and
+// with frontend/src/utils.js's copies above.
 function _extractVerseNums(chStr) {
   const text = chStr.replace(/\[\d+\]/g, '');
   const nums = new Set();
   const first = text.match(/^(\d+):(\d+)/);
   if (first) nums.add(parseInt(first[2]));
   const remaining = text.replace(/^\d+:\d+\s*/, '');
-  const re = /(?<!\d)(\d+)(?=[A-Za-z])/g;
+  const re = /(?<!\d)(\d+)(?=[A-Za-z“‘(\[])/g;
   let m;
   while ((m = re.exec(remaining)) !== null) {
     const n = parseInt(m[1]);
@@ -195,8 +208,8 @@ function _buildHTML(chStr) {
     if (!part.trim()) return;
     if (idx > 0) {
       const vIdx = Math.min(
-        part.search(/\d+:\d/)           === -1 ? Infinity : part.search(/\d+:\d/),
-        part.search(/(?<!\d)\d+(?=[A-Za-z])/) === -1 ? Infinity : part.search(/(?<!\d)\d+(?=[A-Za-z])/)
+        part.search(/\d+:\d/)                          === -1 ? Infinity : part.search(/\d+:\d/),
+        part.search(/(?<!\d)\d+(?=[A-Za-z“‘(\[])/) === -1 ? Infinity : part.search(/(?<!\d)\d+(?=[A-Za-z“‘(\[])/)
       );
       if (isFinite(vIdx) && vIdx > 0) {
         html += `<span class="section-head">${part.slice(0, vIdx).trim()}</span>`;
@@ -215,7 +228,7 @@ function _buildHTML(chStr) {
 function _versesToHTML(text) {
   if (!text.trim()) return '';
   text = text.replace(/^\s*\d+:(\d+)\s*/, '[[V$1]]');
-  text = text.replace(/(?<!\d)(\d+)(?=[A-Za-z])/g, '[[V$1]]');
+  text = text.replace(/(?<!\d)(\d+)(?=[A-Za-z“‘(\[])/g, '[[V$1]]');
   const tokens = text.split(/\[\[V(\d+)\]\]/);
   let html = '';
   if (tokens[0].trim()) html += tokens[0];
