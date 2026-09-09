@@ -30,7 +30,10 @@ async def create_group(user_id: str, group: Group, _: str = Depends(require_matc
     except ContentRejected as e:
         raise HTTPException(status_code=422, detail=rejection_message(e))
     manager = GroupsManager(user_id)
-    manager.create_group(group.users, group)
+    try:
+        manager.create_group(group.users, group)
+    finally:
+        manager.close()
     return {"group_id": group.group_id}
 
 
@@ -50,12 +53,15 @@ async def fetch_group(user_id: str, group_id: str, _: str = Depends(require_matc
         HTTPException 403: If the caller is not a member of the group.
     """
     manager = GroupsManager(user_id, group_id)
-    if not manager.is_member():
-        raise HTTPException(status_code=403, detail="Not a member of this group")
-    result = manager.fetch_group()
-    if "error" in result:
-        raise HTTPException(status_code=404, detail=result["error"])
-    return result
+    try:
+        if not manager.is_member():
+            raise HTTPException(status_code=403, detail="Not a member of this group")
+        result = manager.fetch_group()
+        if "error" in result:
+            raise HTTPException(status_code=404, detail=result["error"])
+        return result
+    finally:
+        manager.close()
 
 
 @group_router.get("/{user_id}/{group_id}/notes")
@@ -91,9 +97,12 @@ async def fetch_group_notes(
         HTTPException 403: If the caller is not a member of the group.
     """
     manager = GroupsManager(user_id, group_id)
-    if not manager.is_member():
-        raise HTTPException(status_code=403, detail="Not a member of this group")
-    return manager.fetch_notes(limit=NOTES_PAGE_SIZE, cursor_created_at=cursor_created_at, cursor_id=cursor_id)
+    try:
+        if not manager.is_member():
+            raise HTTPException(status_code=403, detail="Not a member of this group")
+        return manager.fetch_notes(limit=NOTES_PAGE_SIZE, cursor_created_at=cursor_created_at, cursor_id=cursor_id)
+    finally:
+        manager.close()
 
 
 @group_router.get("/{user_id}/{group_id}/notes/search")
@@ -122,9 +131,12 @@ async def search_group_notes(
         HTTPException 403: If the caller is not a member of the group.
     """
     manager = GroupsManager(user_id, group_id)
-    if not manager.is_member():
-        raise HTTPException(status_code=403, detail="Not a member of this group")
-    return manager.search_notes(q)
+    try:
+        if not manager.is_member():
+            raise HTTPException(status_code=403, detail="Not a member of this group")
+        return manager.search_notes(q)
+    finally:
+        manager.close()
 
 
 @group_router.get("/{user_id}/{note_id}/{group_id}/replies")
@@ -144,9 +156,12 @@ async def fetch_group_replies(user_id: str, note_id: str, group_id: str, _: str 
         HTTPException 403: If the caller is not a member of the group.
     """
     manager = GroupsManager(user_id, group_id)
-    if not manager.is_member():
-        raise HTTPException(status_code=403, detail="Not a member of this group")
-    return manager.fetch_replies(note_id)
+    try:
+        if not manager.is_member():
+            raise HTTPException(status_code=403, detail="Not a member of this group")
+        return manager.fetch_replies(note_id)
+    finally:
+        manager.close()
 
 
 @group_router.get("/{user_id}/{group_id}/highlights")
@@ -164,9 +179,12 @@ async def fetch_group_highlights(user_id: str, group_id: str, _: str = Depends(r
         HTTPException 403: If the caller is not a member of the group.
     """
     manager = GroupsManager(user_id, group_id)
-    if not manager.is_member():
-        raise HTTPException(status_code=403, detail="Not a member of this group")
-    return manager.fetch_highlights()
+    try:
+        if not manager.is_member():
+            raise HTTPException(status_code=403, detail="Not a member of this group")
+        return manager.fetch_highlights()
+    finally:
+        manager.close()
 
 
 @group_router.put("/{user_id}/{group_id}")
@@ -182,13 +200,16 @@ async def update_group(user_id: str, group_id: str, group: Group, _: str = Depen
         HTTPException 403: If the caller is not a member of the group.
     """
     manager = GroupsManager(user_id, group_id)
-    if not manager.is_member():
-        raise HTTPException(status_code=403, detail="Not a member of this group")
     try:
-        check_clean(title=group.title)
-    except ContentRejected as e:
-        raise HTTPException(status_code=422, detail=rejection_message(e))
-    manager.update_group(group)
+        if not manager.is_member():
+            raise HTTPException(status_code=403, detail="Not a member of this group")
+        try:
+            check_clean(title=group.title)
+        except ContentRejected as e:
+            raise HTTPException(status_code=422, detail=rejection_message(e))
+        manager.update_group(group)
+    finally:
+        manager.close()
 
 
 @group_router.delete("/{user_id}/{group_id}", status_code=204)
@@ -203,9 +224,12 @@ async def remove_group(user_id: str, group_id: str, _: str = Depends(require_mat
         HTTPException 403: If the caller is not a member of the group.
     """
     manager = GroupsManager(user_id, group_id)
-    if not manager.is_member():
-        raise HTTPException(status_code=403, detail="Not a member of this group")
-    manager.remove_group()
+    try:
+        if not manager.is_member():
+            raise HTTPException(status_code=403, detail="Not a member of this group")
+        manager.remove_group()
+    finally:
+        manager.close()
 
 
 # ── Friends ────────────────────────────────────────────────────────────────────
@@ -221,7 +245,10 @@ async def get_friends(user_id: str, _: str = Depends(require_match("user_id"))) 
         list[dict]: List of friend user records (excludes hash_pass).
     """
     manager = FriendsManager(user_id)
-    return manager.get_friends()
+    try:
+        return manager.get_friends()
+    finally:
+        manager.close()
 
 
 @friend_router.get("/{user_id}/requests")
@@ -280,10 +307,13 @@ async def read_friend(user_id: str, friend_id: str, _: str = Depends(require_mat
         HTTPException 404: If the friend record is not found.
     """
     manager = FriendsManager(user_id)
-    result = manager.read_friend(friend_id)
-    if "error" in result:
-        raise HTTPException(status_code=404, detail=result["error"])
-    return result
+    try:
+        result = manager.read_friend(friend_id)
+        if "error" in result:
+            raise HTTPException(status_code=404, detail=result["error"])
+        return result
+    finally:
+        manager.close()
 
 
 @friend_router.post("/{user_id}/request")
@@ -299,9 +329,12 @@ async def send_friend_request(user_id: str, friend_username: str, _: str = Depen
             if the user attempts to add themselves.
     """
     manager = FriendsManager(user_id)
-    result = manager.send_add_request(friend_username)
-    if result and "error" in result:
-        raise HTTPException(status_code=404, detail=result["error"])
+    try:
+        result = manager.send_add_request(friend_username)
+        if result and "error" in result:
+            raise HTTPException(status_code=404, detail=result["error"])
+    finally:
+        manager.close()
 
 
 @friend_router.post("/{user_id}/add", status_code=204)
@@ -316,9 +349,12 @@ async def add_friend(user_id: str, friend_username: str, _: str = Depends(requir
         HTTPException 404: If the target user is not found.
     """
     manager = FriendsManager(user_id)
-    result = manager.add_friend(friend_username)
-    if result and "error" in result:
-        raise HTTPException(status_code=404, detail=result["error"])
+    try:
+        result = manager.add_friend(friend_username)
+        if result and "error" in result:
+            raise HTTPException(status_code=404, detail=result["error"])
+    finally:
+        manager.close()
 
 
 @friend_router.delete("/{user_id}/{friend_id}", status_code=204)
@@ -330,7 +366,10 @@ async def remove_friend(user_id: str, friend_id: str, _: str = Depends(require_m
         friend_id: UUID of the friend to remove.
     """
     manager = FriendsManager(user_id)
-    manager.remove_friend(friend_id)
+    try:
+        manager.remove_friend(friend_id)
+    finally:
+        manager.close()
 
 
 # Fixed, non-user-authored push copy (task 20260906-friend-nudges) --
