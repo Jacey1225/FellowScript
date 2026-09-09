@@ -1,5 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
+import Seo from '../components/Seo.jsx';
 
 const S = {
   page: { minHeight: '100vh', background: 'var(--bg-page)', fontFamily: "'Lora', serif" },
@@ -52,6 +53,11 @@ const S = {
 export default function Terms() {
   return (
     <div style={S.page}>
+      <Seo
+        title="Terms of Service — FellowScript"
+        description="The terms and conditions for using FellowScript's Bible reading and study platform."
+        path="/terms"
+      />
       <nav style={S.nav}>
         <Link to="/" style={S.navLogo}>
           <span style={S.fellow}>Fellow</span><span style={S.script}>Script</span>

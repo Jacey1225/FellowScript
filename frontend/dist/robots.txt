@@ -1,0 +1,48 @@
+# robots.txt for fellowscript.com (task 20260909-website-seo)
+#
+# Domain note (Configuration Q2/Q7): this file lives under frontend/public/,
+# which Vite copies byte-for-byte into dist/ with no templating -- static
+# assets here can't consume the VITE_SITE_URL build-time env var the way
+# React-rendered <head> tags do (see src/config.js's SITE_URL and
+# src/components/Seo.jsx). Since this project only ever ships to one
+# production domain, the literal below is this file's single authoring
+# source for that value, not a copy hand-duplicated from somewhere else --
+# VITE_SITE_URL remains the one source of truth for every canonical/OG/
+# JSON-LD tag rendered by the app itself.
+#
+# Deny-by-default (Security Posture Q2): everything is disallowed except the
+# genuinely public marketing routes explicitly allowed below. This is
+# deliberate -- it means every non-public route, known or otherwise, is
+# covered by the catch-all "Disallow: /" without this file needing to name
+# any of them individually. robots.txt is a public file that anyone can
+# fetch; naming a route here (public or not) is itself a disclosure, so
+# don't add path-specific comments to this file for that reason -- see the
+# fuller rationale (including the specific hidden route this protects) in
+# the Decision comment near HashRouter in frontend/src/App.jsx instead,
+# which isn't publicly served. The named Disallow lines below are for
+# already-linked, non-secret routes, spelled out for clarity per the
+# acceptance criteria's "explicitly disallowing authenticated routes" --
+# they're otherwise redundant with the catch-all.
+#
+# HashRouter limitation (see the Decision comment near HashRouter in
+# frontend/src/App.jsx): this is a client-side SPA router, so the server
+# only ever sees the path "/" -- every other route actually lives after the
+# "#" fragment, which crawlers never send to the server and robots.txt
+# cannot match against. The rules below are best-effort / forward-compatible
+# (in case this project ever moves off HashRouter) rather than an active
+# technical block today. Real protection for authenticated routes is
+# server-side auth; real protection for any unlinked route is that it's
+# unreachable from any nav/menu in the app.
+User-agent: *
+Disallow: /reader
+Disallow: /account
+Disallow: /signin
+Disallow: /forgot-password
+Disallow: /reset-password
+Disallow: /verify-2fa
+Disallow: /
+Allow: /$
+Allow: /privacy
+Allow: /terms
+
+Sitemap: https://fellowscript.com/sitemap.xml

@@ -6,6 +6,7 @@ import { DockviewReact } from 'dockview-react';
 import AppNav           from '../components/AppNav.jsx';
 import AppBloom         from '../components/AppBloom.jsx';
 import SessionCreator  from '../components/SessionCreator.jsx';
+import Seo               from '../components/Seo.jsx';
 
 import BibleReaderPanelComponent from '../components/panels/BibleReaderPanel.jsx';
 import NotesPanelComponent       from '../components/panels/NotesPanel.jsx';
@@ -387,6 +388,12 @@ export default function Reader() {
 
   return (
     <BibleReaderPanelContext.Provider value={bibleReaderPanelValue}>
+    <Seo
+      title="Reader — FellowScript"
+      description="Read and highlight Scripture in FellowScript's distraction-free Bible reader."
+      path="/reader"
+      noindex
+    />
     <NotesPanelContext.Provider value={notesPanelValue}>
     <HighlightsPanelContext.Provider value={highlightsPanelValue}>
     <MessagingPanelContext.Provider value={messagingPanelValue}>

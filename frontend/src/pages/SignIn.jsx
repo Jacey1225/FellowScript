@@ -5,6 +5,7 @@ import { UserOutlined, LockOutlined, MailOutlined } from '@ant-design/icons';
 import { useAuth } from '../context/AuthContext.jsx';
 import { isDesktopApp } from '../lib/desktopScope.js';
 import { API } from '../config.js';
+import Seo from '../components/Seo.jsx';
 
 const { Title, Text } = Typography;
 
@@ -222,6 +223,12 @@ export default function SignIn() {
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '2rem' }}>
+      <Seo
+        title="Sign In — FellowScript"
+        description="Sign in or create a FellowScript account to start your daily Bible reading rhythm."
+        path="/signin"
+        noindex
+      />
       <Card style={{ width: '100%', maxWidth: 420, background: 'rgba(10,6,2,0.88)', border: '1px solid rgba(200,134,26,0.2)', backdropFilter: 'blur(12px)' }}>
         <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
           <Title level={3} style={{ margin: 0, fontFamily: "'Playfair Display', serif" }}>

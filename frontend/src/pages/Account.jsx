@@ -18,6 +18,7 @@ import AppNav from '../components/AppNav.jsx';
 import AppBloom from '../components/AppBloom.jsx';
 import SubscriptionCard from '../components/SubscriptionCard.jsx';
 import DonationButton from '../components/DonationButton.jsx';
+import Seo from '../components/Seo.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import { isDesktopApp } from '../lib/desktopScope.js';
 import { API } from '../config.js';
@@ -891,6 +892,12 @@ export default function Account() {
 
   return (
     <Layout style={{ minHeight: '100vh', background: 'transparent' }}>
+      <Seo
+        title="Account — FellowScript"
+        description="Manage your FellowScript account, subscription, and preferences."
+        path="/account"
+        noindex
+      />
       <AppBloom variant="account" />
       <AppNav />
 

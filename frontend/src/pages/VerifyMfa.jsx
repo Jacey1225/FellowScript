@@ -3,6 +3,7 @@ import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { Card, Form, Input, Button, Typography, Alert, Modal } from 'antd';
 import { useAuth } from '../context/AuthContext.jsx';
 import { API } from '../config.js';
+import Seo from '../components/Seo.jsx';
 
 const { Title, Text } = Typography;
 
@@ -32,6 +33,7 @@ export default function VerifyMfa() {
   if (!userId) {
     return (
       <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem' }}>
+        <Seo title="Verify Sign-In — FellowScript" path="/verify-2fa" noindex />
         <Card style={{ width: '100%', maxWidth: 420, background: 'rgba(10,6,2,0.88)', border: '1px solid rgba(200,134,26,0.2)' }}>
           <Text style={{ fontFamily: "'Lora', serif", color: 'rgba(244,228,193,0.6)' }}>
             No sign-in in progress. <Link to="/signin" style={{ color: 'var(--gold)' }}>Return to sign in</Link>.
@@ -63,6 +65,12 @@ export default function VerifyMfa() {
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '2rem' }}>
+      <Seo
+        title="Verify Sign-In — FellowScript"
+        description="Confirm your identity to finish signing in to FellowScript."
+        path="/verify-2fa"
+        noindex
+      />
       <Card style={{ width: '100%', maxWidth: 420, background: 'rgba(10,6,2,0.88)', border: '1px solid rgba(200,134,26,0.2)', backdropFilter: 'blur(12px)' }}>
         <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
           <Title level={3} style={{ margin: 0, fontFamily: "'Playfair Display', serif" }}>

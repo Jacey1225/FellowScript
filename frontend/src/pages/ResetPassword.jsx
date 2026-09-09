@@ -3,6 +3,7 @@ import { useLocation, Link } from 'react-router-dom';
 import { Card, Form, Input, Button, Typography, Alert } from 'antd';
 import { LockOutlined } from '@ant-design/icons';
 import { API } from '../config.js';
+import Seo from '../components/Seo.jsx';
 
 const { Title, Text } = Typography;
 
@@ -17,6 +18,7 @@ export default function ResetPassword() {
   if (!token) {
     return (
       <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem' }}>
+        <Seo title="Reset Password — FellowScript" path="/reset-password" noindex />
         <Card style={{ width: '100%', maxWidth: 420, background: 'rgba(10,6,2,0.88)', border: '1px solid rgba(200,134,26,0.2)' }}>
           <Text style={{ fontFamily: "'Lora', serif", color: 'rgba(244,228,193,0.6)' }}>
             This reset link is missing its token. <Link to="/forgot-password" style={{ color: 'var(--gold)' }}>Request a new one</Link>.
@@ -46,6 +48,12 @@ export default function ResetPassword() {
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '2rem' }}>
+      <Seo
+        title="Reset Password — FellowScript"
+        description="Choose a new password for your FellowScript account."
+        path="/reset-password"
+        noindex
+      />
       <Card style={{ width: '100%', maxWidth: 420, background: 'rgba(10,6,2,0.88)', border: '1px solid rgba(200,134,26,0.2)', backdropFilter: 'blur(12px)' }}>
         <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
           <Title level={3} style={{ margin: 0, fontFamily: "'Playfair Display', serif" }}>

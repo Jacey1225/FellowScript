@@ -1,5 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
+import Seo from '../components/Seo.jsx';
 
 const S = {
   page: { minHeight: '100vh', background: 'var(--bg-page)', fontFamily: "'Lora', serif" },
@@ -52,6 +53,11 @@ const S = {
 export default function Privacy() {
   return (
     <div style={S.page}>
+      <Seo
+        title="Privacy Policy — FellowScript"
+        description="How FellowScript collects, uses, and protects your data."
+        path="/privacy"
+      />
       <nav style={S.nav}>
         <Link to="/" style={S.navLogo}>
           <span style={S.fellow}>Fellow</span><span style={S.script}>Script</span>

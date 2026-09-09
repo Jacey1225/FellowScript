@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  sitemap.xml for fellowscript.com (task 20260909-website-seo)
+
+  Domain note (Configuration Q2/Q7): this file lives under frontend/public/,
+  which Vite copies byte-for-byte into dist/ with no templating -- it can't
+  consume the VITE_SITE_URL build-time env var the way React-rendered
+  <head> tags do (see src/config.js's SITE_URL and src/components/Seo.jsx).
+  The literal domain below is this file's single authoring source, not a
+  value hand-duplicated from elsewhere.
+
+  HashRouter limitation (see the Decision comment near HashRouter in
+  frontend/src/App.jsx): only "/" is a genuinely distinct, server-resolvable
+  URL today. The /#/privacy and /#/terms entries below are listed as the
+  best-effort, forward-compatible declaration many hash-routed SPAs ship --
+  not because those fragment URLs are independently crawlable/indexable
+  right now. They'll become properly resolvable with no sitemap change if
+  this project ever migrates off HashRouter. Only genuinely public,
+  unauthenticated routes are listed here (Security Posture Q2).
+-->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://fellowscript.com/</loc>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+  </url>
+  <url>
+    <loc>https://fellowscript.com/#/privacy</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.3</priority>
+  </url>
+  <url>
+    <loc>https://fellowscript.com/#/terms</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.3</priority>
+  </url>
+</urlset>

@@ -2,6 +2,31 @@ import React, { useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useParallaxBlobs } from '../hooks/useParallaxBlobs.js';
+import Seo from '../components/Seo.jsx';
+import { SITE_URL } from '../config.js';
+
+// Structured data (task 20260909-website-seo) -- Organization + WebSite,
+// the minimal JSON-LD pair recommended for a small brand's marketing home
+// page. logo points at the existing data/logo.png brand asset (served from
+// the same /data/ location frontend/src/hooks/useBible.js already fetches
+// from at runtime -- outside this repo's deploy.sh, per that hook's
+// existing convention) rather than a newly-produced OG image; no design
+// gate involvement needed for this task.
+const HOME_JSON_LD = [
+  {
+    '@context': 'https://schema.org',
+    '@type': 'Organization',
+    name: 'FellowScript',
+    url: SITE_URL,
+    logo: `${SITE_URL}/data/logo.png`,
+  },
+  {
+    '@context': 'https://schema.org',
+    '@type': 'WebSite',
+    name: 'FellowScript',
+    url: SITE_URL,
+  },
+];
 
 // ── Palette (this page only — a distinct marketing-site look from the app's
 // own gold/parchment theme used in Reader/Account/etc.) ──────────────────────
@@ -19,17 +44,22 @@ const BODY_FONT = "'Hanken Grotesk', system-ui, sans-serif";
 
 // ── Small building blocks ─────────────────────────────────────────────────────
 
+// aria-hidden (task 20260909-website-seo semantic review): every use of Ico
+// on this page sits right next to a visible <h3> feature title conveying
+// the same information, so the icon itself is purely decorative.
 function Ico({ children, size = 20 }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       {children}
     </svg>
   );
 }
 
+// aria-hidden (task 20260909-website-seo semantic review): decorative bullet
+// mark -- every Check is immediately followed by the actual perk text.
 function Check() {
   return (
-    <span style={{ display: 'grid', placeItems: 'center', width: 20, height: 20, borderRadius: '50%', background: 'rgba(232,163,85,0.2)', color: AMBER, flexShrink: 0, marginTop: 2 }}>
+    <span style={{ display: 'grid', placeItems: 'center', width: 20, height: 20, borderRadius: '50%', background: 'rgba(232,163,85,0.2)', color: AMBER, flexShrink: 0, marginTop: 2 }} aria-hidden="true">
       <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
         <path d="M4 12.5l5.5 5.5L20 7" />
       </svg>
@@ -179,6 +209,13 @@ export default function Home() {
 
   return (
     <div style={{ fontFamily: BODY_FONT, color: CREAM, background: INK, overflowX: 'hidden' }}>
+      <Seo
+        title="FellowScript — Walk with God, Together"
+        description="A daily Bible reading companion with verse highlights, personal notes, gentle AI check-ins, and real-time group study — walk with God, together."
+        path="/"
+        image="/data/logo.png"
+        jsonLd={HOME_JSON_LD}
+      />
       <style>{`
         @keyframes hm-orbit { to { transform: rotate(360deg); } }
         @keyframes hm-float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-14px); } }
@@ -240,7 +277,7 @@ export default function Home() {
               A friendly AI companion, a daily rhythm, and people who show up with you — every single day.
             </p>
             <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 14 }}>
-              <PillButton to={cta} primary>Begin your journey <span>→</span></PillButton>
+              <PillButton to={cta} primary>Begin your journey <span aria-hidden="true">→</span></PillButton>
               <PillButton to="/reader">Read scripture</PillButton>
             </div>
           </div>
@@ -335,7 +372,7 @@ export default function Home() {
                   </div>
                 ))}
               </div>
-              <PillButton to={cta} primary>Start a group <span>→</span></PillButton>
+              <PillButton to={cta} primary>Start a group <span aria-hidden="true">→</span></PillButton>
             </div>
 
             <div style={{ border: '1px solid rgba(255,244,230,0.16)', borderRadius: 22, background: '#1F1815', overflow: 'hidden', boxShadow: '0 40px 90px -50px rgba(0,0,0,0.9)' }}>
@@ -536,7 +573,7 @@ export default function Home() {
           </blockquote>
           <div style={{ fontFamily: HEAD_FONT, fontSize: 12, letterSpacing: '0.24em', textTransform: 'uppercase', color: '#F0C08A' }}>Proverbs 27:17</div>
           <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 14 }}>
-            <PillButton to={cta} primary>Join free <span>→</span></PillButton>
+            <PillButton to={cta} primary>Join free <span aria-hidden="true">→</span></PillButton>
             <PillButton to="/reader">Read the Bible</PillButton>
           </div>
         </div>
