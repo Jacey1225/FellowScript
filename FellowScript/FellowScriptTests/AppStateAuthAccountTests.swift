@@ -649,9 +649,20 @@ final class ThrowingTestDataService: DataServiceProtocol {
     var fetchFriendRequestsResult: [(id: String, username: String, profile_photo_url: String?)]?
     var fetchFriendRequestsError: Error?
     private(set) var fetchFriendRequestsCallCount = 0
+    // Controllable (task 20260909-notes-account-refresh-data-loss, testing
+    // step) -- proves AccountViewModel.load()'s fetchFriendRequests fix
+    // (promoted to a real `async let` alongside its 6 siblings) actually
+    // runs CONCURRENTLY with them rather than only starting once they've all
+    // resolved. Forces a real suspension point (Task.sleep), same technique
+    // as the sibling fetchAgentsDelayNanoseconds/fetchNotesCountDelayNanoseconds
+    // seams above.
+    var fetchFriendRequestsDelayNanoseconds: UInt64?
 
     func fetchFriendRequests(userId: String) async throws -> [(id: String, username: String, profile_photo_url: String?)] {
         fetchFriendRequestsCallCount += 1
+        if let fetchFriendRequestsDelayNanoseconds {
+            try await Task.sleep(nanoseconds: fetchFriendRequestsDelayNanoseconds)
+        }
         if let fetchFriendRequestsError { throw fetchFriendRequestsError }
         if let fetchFriendRequestsResult { return fetchFriendRequestsResult }
         return try await MockDataService.shared.fetchFriendRequests(userId: userId)

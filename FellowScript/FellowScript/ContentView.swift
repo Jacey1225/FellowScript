@@ -128,6 +128,20 @@ struct ContentView: View {
         .onChange(of: appState.pendingChatContact) { _, target in
             if target != nil { selectedTab = .chat }
         }
+        // Update-nudge popup (task 20260909-ios-version-gate-popup): only
+        // ever surfaced once the readiness race has already resolved
+        // (`startup.isReady`), so it can never overlap/compete with
+        // LoadingScreenView — `updateAvailable` itself may already be set
+        // earlier (VersionGateService.checkForUpdate() runs independently
+        // of the readiness race, see StartupCoordinator.start()), but
+        // presentation waits for mainTabView. Dismissible, not a blocking
+        // gate — see UpdateNudgeView.
+        .sheet(item: Binding(
+            get: { startup.isReady ? startup.updateAvailable : nil },
+            set: { newValue in if newValue == nil { startup.dismissUpdateNudge() } }
+        )) { update in
+            UpdateNudgeView(update: update, onDismiss: startup.dismissUpdateNudge)
+        }
         // Startup-readiness gate: begin the race the moment we're
         // authenticated (cold launch already-signed-in via
         // AppState.restoreSession, or a fresh sign-in from AuthView), and

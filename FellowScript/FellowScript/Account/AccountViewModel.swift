@@ -104,6 +104,33 @@ final class AccountViewModel: ObservableObject {
         return usage?.subscribed ?? false
     }
 
+    // Root-cause fix (task 20260909-notes-account-refresh-data-loss): backend
+    // step 2's live investigation (600+ real concurrent requests against a
+    // real seeded account, mirroring this exact 7-fetch + per-agent-
+    // heartbeats shape) found zero genuine failures on any of the 7 fetches
+    // or the heartbeats walk -- the backend response contract is fine.
+    // load()'s own catch blocks below, however, never distinguished a
+    // genuinely-rejected/broken fetch from one that was merely cooperatively
+    // *cancelled* -- e.g. Swift/SwiftUI cancelling the `.refreshable`
+    // closure's underlying Task (a normal, expected part of that lifecycle,
+    // not a real backend/network failure) mid-flight. Because
+    // `refreshAccountData()` chains this call with `loadSubscription()`
+    // right after it -- and because `load()` used to walk `fetchFriendRequests`
+    // sequentially instead of concurrently with the other 6 (fixed below
+    // too) -- a real pull-to-refresh round trip here runs measurably longer
+    // than any other screen's refresh, making it far more likely a normal
+    // interaction (the pull settling, the user tapping/scrolling again)
+    // lands mid-flight and cancels it. Every one of this call's concurrent
+    // fetches would then throw around the same moment, and -- with no
+    // cancellation/genuine-failure distinction -- ALL of them fed
+    // `statsFailed`, reliably painting a routine cancellation as "we
+    // couldn't load your data" on seemingly every refresh. Fixed by checking
+    // for this specific, cooperative-cancellation shape and not treating it
+    // as a real failure at all.
+    private func isCancellation(_ error: Error) -> Bool {
+        error is CancellationError || (error as? URLError)?.code == .cancelled
+    }
+
     func load(service: DataServiceProtocol, user: FSUser) async {
         self.service = service
         isLoading = true
@@ -155,6 +182,16 @@ final class AccountViewModel: ObservableObject {
         // Reused for the event-setup group picker (see `groups` above) --
         // no dedicated group-listing fetch is added for this.
         async let fetchedContacts      = service.fetchContacts(userId: user.user_id)
+        // Bug fix (task 20260909-notes-account-refresh-data-loss): this was
+        // the one fetch of the "7 concurrent fetches" the doc comment below
+        // describes that wasn't actually declared `async let` -- it used to
+        // be issued (and awaited) only after all 5 of the fetches above had
+        // already resolved, making it purely serial rather than concurrent
+        // with them. Harmless for correctness but a real, avoidable chunk of
+        // extra wall-clock time on every load()/refresh -- exactly the kind
+        // of thing that makes a longer-than-necessary refresh more likely to
+        // get cooperatively cancelled mid-flight (see isCancellation above).
+        async let fetchedFriendRequests = service.fetchFriendRequests(userId: user.user_id)
 
         // Resolve everything into LOCAL results first -- not @Published --
         // so a superseded call's failures never touch shared state before
@@ -167,9 +204,19 @@ final class AccountViewModel: ObservableObject {
         // exactly like the agents/notes/highlights bug this screen already
         // fixed. All 7 now feed the same `statsFailed` flag.)
         var statsFailed = false
+        // Root-cause fix (task 20260909-notes-account-refresh-data-loss): set
+        // instead of folded into `statsFailed` -- a cooperatively-cancelled
+        // fetch (see isCancellation above) is NOT evidence of a genuine
+        // backend/network failure, so it must never trip `statsMsg`. It's
+        // also not evidence the account data is fine, so the safest,
+        // fail-closed-consistent move (Q14) is to just skip showing anything
+        // for this round rather than asserting either way -- mirroring how a
+        // superseded generation already commits nothing.
+        var wasCancelled = false
 
         let userResult: FSUser?
-        do { userResult = try await fetchedUser } catch { userResult = nil; statsFailed = true }
+        do { userResult = try await fetchedUser }
+        catch { userResult = nil; if isCancellation(error) { wasCancelled = true } else { statsFailed = true } }
 
         // Bug fix (cache-clobber sweep, task
         // 20260905-pull-to-refresh-cache-clobber): agents/noteCount/
@@ -181,20 +228,28 @@ final class AccountViewModel: ObservableObject {
         // value, so the write below can tell "genuinely empty" apart from
         // "fetch failed" and only overwrite on the former.
         let agentsResult: [FSAgent]?
-        do { agentsResult = try await fetchedAgents } catch { agentsResult = nil; statsFailed = true }
+        do { agentsResult = try await fetchedAgents }
+        catch { agentsResult = nil; if isCancellation(error) { wasCancelled = true } else { statsFailed = true } }
         let noteCountResult: Int?
-        do { noteCountResult = try await fetchedNoteCount } catch { noteCountResult = nil; statsFailed = true }
+        do { noteCountResult = try await fetchedNoteCount }
+        catch { noteCountResult = nil; if isCancellation(error) { wasCancelled = true } else { statsFailed = true } }
         let highlightCountResult: Int?
-        do { highlightCountResult = try await (fetchedHighlights).count } catch { highlightCountResult = nil; statsFailed = true }
+        do { highlightCountResult = try await (fetchedHighlights).count }
+        catch { highlightCountResult = nil; if isCancellation(error) { wasCancelled = true } else { statsFailed = true } }
 
         let usageResult: FSUsage?
-        do { usageResult = try await fetchedUsage } catch { usageResult = nil; statsFailed = true }
+        do { usageResult = try await fetchedUsage }
+        catch { usageResult = nil; if isCancellation(error) { wasCancelled = true } else { statsFailed = true } }
 
+        // Now genuinely concurrent with the other 6 (see the async-let fix
+        // above) rather than only starting once all 5 fetches above resolved.
         let friendRequestsResult: [(id: String, username: String, profile_photo_url: String?)]?
-        do { friendRequestsResult = try await service.fetchFriendRequests(userId: user.user_id) } catch { friendRequestsResult = nil; statsFailed = true }
+        do { friendRequestsResult = try await fetchedFriendRequests }
+        catch { friendRequestsResult = nil; if isCancellation(error) { wasCancelled = true } else { statsFailed = true } }
 
         let contactsResult: ([FSContact], [String: FSGroup])?
-        do { contactsResult = try await fetchedContacts } catch { contactsResult = nil; statsFailed = true }
+        do { contactsResult = try await fetchedContacts }
+        catch { contactsResult = nil; if isCancellation(error) { wasCancelled = true } else { statsFailed = true } }
 
         // task 20260903-account-events-not-loading: previously `(try? ...)
         // ?? []` swallowed a genuine per-agent fetch/decode failure (e.g.
@@ -216,17 +271,26 @@ final class AccountViewModel: ObservableObject {
         var allEvents: [FSHeartbeat] = []
         let eventsUsable = agentsResult != nil
         if let agentsResult {
-            await withTaskGroup(of: (String, [FSHeartbeat]?).self) { group in
+            await withTaskGroup(of: (String, Result<[FSHeartbeat], Error>).self) { group in
                 for agent in agentsResult {
                     group.addTask {
-                        (agent.id, try? await service.fetchHeartbeats(userId: user.user_id, agentId: agent.id))
+                        do { return (agent.id, .success(try await service.fetchHeartbeats(userId: user.user_id, agentId: agent.id))) }
+                        catch { return (agent.id, .failure(error)) }
                     }
                 }
-                for await (agentId, hbs) in group {
-                    if let hbs {
+                for await (agentId, result) in group {
+                    switch result {
+                    case .success(let hbs):
                         allEvents.append(contentsOf: hbs)
-                    } else {
-                        statsFailed = true
+                    case .failure(let error):
+                        // Same cancellation-vs-genuine-failure distinction as
+                        // the 7 fetches above (task
+                        // 20260909-notes-account-refresh-data-loss) -- this
+                        // walk previously collapsed every failure via `try?`
+                        // with no way to tell a cooperatively-cancelled fetch
+                        // apart from a real one, feeding `statsFailed`
+                        // unconditionally either way.
+                        if isCancellation(error) { wasCancelled = true } else { statsFailed = true }
                         allEvents.append(contentsOf: events.filter { $0.agent_id == agentId })
                     }
                 }
@@ -260,7 +324,17 @@ final class AccountViewModel: ObservableObject {
         // further to cover profile/usage/friend-requests/contacts, the
         // remaining 4 of 7 that previously bypassed this mechanism via a
         // bare `try?`.)
-        if statsFailed {
+        // `wasCancelled` wins over `statsFailed` if both somehow got set this
+        // round (task 20260909-notes-account-refresh-data-loss): a
+        // cooperatively-cancelled fetch is inherently ambiguous (it never
+        // reached a real success OR a real rejection), so this round can't
+        // honestly assert either "your data is fine" or "we couldn't load
+        // it" -- showing the failure banner for what's actually just a
+        // routine cancellation (e.g. `.refreshable`'s Task ending because the
+        // user moved on) was the reliably-reproducing symptom itself. Saying
+        // nothing and leaving whatever was already on screen is the
+        // fail-closed-consistent (Q14), honest choice here.
+        if statsFailed && !wasCancelled {
             statsMsg = "We couldn't load some of your account data (notes, highlights, agents, events, or profile/usage info) just now. Pull down to refresh and try again."
         }
 

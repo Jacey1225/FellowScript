@@ -227,10 +227,32 @@ final class NotesViewModel: ObservableObject {
         var segmentErrors: [String] = []
         switch await notesResult {
         case .success(let page):
-            freshNotes.merge(page.notes) { _, new in new }
-            newPageState[Self.personalKey] = NotesPageState(
-                cursorCreatedAt: page.nextCursorCreatedAt, cursorId: page.nextCursorId, hasMore: page.hasMore)
-            personalSucceeded = true
+            // Root-cause hardening (task 20260909-notes-account-refresh-data-loss,
+            // per Q26/Q27 preference profile): backend step 1's live investigation
+            // (heavy real load against the real "Godly Goobers" data, real
+            // sessions, real concurrency) found no server-side path that returns
+            // a genuinely-empty-but-200 page for a group that actually has
+            // notes -- but this splice logic previously trusted ANY non-throwing
+            // result as proof positive the segment is now really empty, with no
+            // distinction at all between "proven empty" and "merely didn't
+            // throw". That's exactly the implicit-control-flow gap Q26 calls
+            // out: "didn't throw" was the *only* trust signal. Made explicit
+            // here: an empty page for a segment that previously had real notes
+            // is treated as inconclusive, not authoritative -- the existing
+            // notes/pageState for that segment are left untouched (never
+            // silently substituted with an empty default per Q27) and the
+            // situation is surfaced via `refreshError` instead of vanishing.
+            // A segment that was already empty (or empty-with-a-fresh-empty-
+            // result) is unaffected -- there's nothing to protect there.
+            let personalHadNotes = notes.contains { $0.value.group_id.isEmpty }
+            if page.notes.isEmpty && personalHadNotes {
+                segmentErrors.append("Personal: refresh returned no notes for a previously-populated segment -- kept existing notes")
+            } else {
+                freshNotes.merge(page.notes) { _, new in new }
+                newPageState[Self.personalKey] = NotesPageState(
+                    cursorCreatedAt: page.nextCursorCreatedAt, cursorId: page.nextCursorId, hasMore: page.hasMore)
+                personalSucceeded = true
+            }
         case .failure(let error):
             segmentErrors.append("Personal: \(error.localizedDescription)")
         }
@@ -261,10 +283,24 @@ final class NotesViewModel: ObservableObject {
             for await (gid, title, result) in group {
                 switch result {
                 case .success(let page):
-                    freshNotes.merge(page.notes) { _, new in new }
-                    newPageState[gid] = NotesPageState(
-                        cursorCreatedAt: page.nextCursorCreatedAt, cursorId: page.nextCursorId, hasMore: page.hasMore)
-                    succeededGroupIds.insert(gid)
+                    // Same explicit empty-vs-proven-success distinction as
+                    // personal notes above -- this is the group-specific half
+                    // of the fix, and the half this task's spec identified as
+                    // the actually-observed live symptom ("Godly Goobers"
+                    // going empty on refresh). A non-throwing empty page for
+                    // a group that already has notes on screen is not, by
+                    // itself, sufficient proof the group is really empty --
+                    // keep the group's existing notes/pageState and surface
+                    // the anomaly instead of silently trusting or discarding it.
+                    let groupHadNotes = notes.contains { $0.value.group_id == gid }
+                    if page.notes.isEmpty && groupHadNotes {
+                        segmentErrors.append("\(title): refresh returned no notes for a previously-populated group -- kept existing notes")
+                    } else {
+                        freshNotes.merge(page.notes) { _, new in new }
+                        newPageState[gid] = NotesPageState(
+                            cursorCreatedAt: page.nextCursorCreatedAt, cursorId: page.nextCursorId, hasMore: page.hasMore)
+                        succeededGroupIds.insert(gid)
+                    }
                 case .failure(let error):
                     // this group's fetch failed this round -- leave its existing notes/pageState alone
                     segmentErrors.append("\(title): \(error.localizedDescription)")

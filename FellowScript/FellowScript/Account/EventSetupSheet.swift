@@ -260,19 +260,31 @@ struct EventSetupSheet: View {
                 .font(.playfair(Theme.fontDisplayMD))
                 .foregroundColor(Theme.parchment)
 
-            LazyVGrid(columns: Array(repeating: .init(.flexible()), count: 7), spacing: 8) {
+            // Sizing/style brought in line with BibleReaderView's
+            // chapterGridStep(for:) (task 20260909-day-picker-button-sizing):
+            // fixed 44pt minHeight (not just a square aspect ratio) so every
+            // chip clears Apple's 44pt touch-target guidance, fontHeading
+            // instead of fontXS, and the themed radiusSM corner radius
+            // instead of a hardcoded value. Column count stays at 7 (not the
+            // chapter grid's 5) since 31 values read naturally as a
+            // calendar-style grid and the chapter grid's column count isn't
+            // itself part of what was asked to match. The always-visible
+            // faint-gold unselected background is kept (vs. the chapter
+            // grid's transparent-unless-current treatment) because up to 31
+            // of these chips can be selected at once, unlike the chapter
+            // grid's single current-chapter highlight.
+            LazyVGrid(columns: Array(repeating: .init(.flexible()), count: 7), spacing: 10) {
                 ForEach(1...31, id: \.self) { day in
                     let sel = selectedMonthDays.contains(day)
                     Button(action: {
                         if sel { selectedMonthDays.remove(day) } else { selectedMonthDays.insert(day) }
                     }) {
                         Text("\(day)")
-                            .font(.inter(Theme.fontXS))
+                            .font(.inter(Theme.fontHeading))
                             .foregroundColor(sel ? Theme.ink : Theme.parchment.opacity(0.7))
-                            .frame(maxWidth: .infinity)
-                            .aspectRatio(1, contentMode: .fit)
+                            .frame(maxWidth: .infinity, minHeight: 44)
                             .background(sel ? Theme.gold : Theme.gold.opacity(0.10))
-                            .clipShape(RoundedRectangle(cornerRadius: 6))
+                            .clipShape(RoundedRectangle(cornerRadius: Theme.radiusSM))
                     }
                     .accessibilityLabel("Day \(day)")
                     .accessibilityAddTraits(sel ? .isSelected : [])

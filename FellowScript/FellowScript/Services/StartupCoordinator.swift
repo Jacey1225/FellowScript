@@ -28,6 +28,16 @@ final class StartupCoordinator: ObservableObject {
     /// is first.
     @Published private(set) var isReady = false
 
+    /// Set once VersionGateService.checkForUpdate() confirms a newer version
+    /// is live, so ContentView can present the update-nudge sheet. Populated
+    /// by an independent Task inside start() — deliberately NOT part of the
+    /// `async let` race above, so a slow/stalled/failing App Store lookup
+    /// can never delay `isReady` or extend LoadingScreenView's own timeout
+    /// (task 20260909-ios-version-gate-popup: this is an availability
+    /// nudge, not a startup-critical data source, so it fails open and
+    /// stays off the readiness critical path entirely).
+    @Published private(set) var updateAvailable: AppUpdateInfo?
+
     // Shared instances — the same objects NotesListView / BibleReaderView /
     // ChatRootView mount with (see ContentView.mainTabView), so their own
     // `.task` blocks observe already-loaded (or in-flight) data instead of
@@ -60,7 +70,18 @@ final class StartupCoordinator: ObservableObject {
     /// Begins the readiness race for the current session. Safe to call more
     /// than once — only the first call after init (or after reset()) does
     /// anything, so re-invoking from e.g. a second onChange firing is a no-op.
-    func start(service: DataServiceProtocol, userId: String) {
+    ///
+    /// `versionCheck` mirrors this method's existing `service:` injection
+    /// seam — defaults to the real VersionGateService.checkForUpdate() (what
+    /// every real call site gets, unchanged) but lets tests substitute a
+    /// stub instead of making a real network call to itunes.apple.com, the
+    /// same reason `service` is `DataServiceProtocol` rather than a hardcoded
+    /// `NetworkService.shared`.
+    func start(
+        service: DataServiceProtocol,
+        userId: String,
+        versionCheck: @escaping () async -> AppUpdateInfo? = { await VersionGateService.checkForUpdate() }
+    ) {
         guard !started else { return }
         started = true
 
@@ -86,6 +107,28 @@ final class StartupCoordinator: ObservableObject {
             try? await Task.sleep(nanoseconds: Self.timeoutNanoseconds)
             if !isReady { isReady = true }
         }
+
+        // Version-gate check — see updateAvailable's doc comment above for
+        // why this is its own Task rather than folded into the readiness
+        // race. Not awaited, not gated on isReady, and its failure is
+        // invisible to the user by design (VersionGateService.checkForUpdate
+        // fails open).
+        Task {
+            if let update = await versionCheck() {
+                updateAvailable = update
+            }
+        }
+    }
+
+    /// Dismisses the update nudge for this session (user tapped "Update
+    /// Now" or "Not Now", or swiped the sheet away). Frequency/snooze
+    /// persistence across launches was left unspecified by the intake spec
+    /// ("left to architecture/design") — this keeps the simplest behavior
+    /// consistent with that: the nudge may reappear on a future launch
+    /// while the installed version is still behind, with no cross-launch
+    /// state to manage.
+    func dismissUpdateNudge() {
+        updateAvailable = nil
     }
 
     /// Called when the app goes back to signed-out (see ContentView's
@@ -95,6 +138,7 @@ final class StartupCoordinator: ObservableObject {
     func reset() {
         started = false
         isReady = false
+        updateAvailable = nil
         notesVM = NotesViewModel()
         bibleVM = BibleViewModel()
         chatVM  = ChatViewModel()
