@@ -48,13 +48,29 @@ import _pathfix  # noqa: F401
 
 import json
 import uuid
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from db import DBManager
 from backend.errors import TimelineGenerationError
 from backend.interactions.agent import AgentManager, TIMELINE_WINDOW_DAYS
 
 PASSED, FAILED = [], []
+
+
+def today_utc() -> date:
+    """This suite's stand-in for "today" wherever it needs to match what
+    `AgentManager._local_date()` will compute for a test user. Every user
+    this file creates via `make_user()` never sets `users.timezone`, so it
+    sits at the schema's `NOT NULL DEFAULT 'UTC'`, and `_local_date()`
+    resolves to `datetime.now(ZoneInfo(tzname or "UTC")).date()` -- i.e.
+    plain UTC "today" -- for all of them. Bare `date.today()` reads the
+    *test process's* OS-local timezone instead, which disagrees with UTC
+    "today" for a stretch of hours every single day in any timezone west
+    of UTC, causing exactly this kind of mismatch. Always use this helper,
+    never bare `date.today()`, anywhere this file compares against
+    app-computed "today" values."""
+    return datetime.now(ZoneInfo("UTC")).date()
 
 
 def check(label: str, cond: bool, detail: str = ""):
@@ -299,7 +315,7 @@ def main():
         db = StubPlanningManager(uid)
         try:
             timestamps = [None] * 31
-            timestamps[date.today().day - 1] = "09:00"  # fires today only, within this 31-day window
+            timestamps[today_utc().day - 1] = "09:00"  # fires today only, within this 31-day window
             hb_id = db.add_heartbeat(AgentHeartbeats(
                 agent_id=agent_id, user_id=uid, timestamps=timestamps, prompt="Reflect daily.",
             ))
@@ -311,7 +327,7 @@ def main():
               bool(raw), str(raw))
         decoded = AgentManager(uid)._decode_timeline(raw)
         check("decoded timeline's window_start is today (the heartbeat's creation date)",
-              decoded is not None and decoded["window_start"] == date.today(), str(decoded))
+              decoded is not None and decoded["window_start"] == today_utc(), str(decoded))
         check("decoded timeline covers today's firing offset (offset 0) with the "
               "planning agent's own content for it",
               decoded is not None and decoded["days"].get(0) == "Day 0 instruction", str(decoded))
@@ -323,7 +339,7 @@ def main():
     uid = make_user()
     agent_id = make_agent(uid)
     try:
-        window_start = date.today()
+        window_start = today_utc()
         days = {0: "existing instruction"}
 
         class NoCallPlanningManager(AgentManager):
@@ -370,7 +386,7 @@ def main():
             manager.close()
         check("a NULL timeline triggers exactly one regeneration call",
               BackfillPlanningManager.calls == 1, str(BackfillPlanningManager.calls))
-        check("the backfilled window starts today", result["window_start"] == date.today(), str(result))
+        check("the backfilled window starts today", result["window_start"] == today_utc(), str(result))
         check("the backfilled offset 0 carries the planning agent's own content",
               result["days"].get(0) == "backfilled day 0", str(result))
         check("the column itself was updated (not just the in-memory return value)",
@@ -383,7 +399,7 @@ def main():
     uid = make_user()
     agent_id = make_agent(uid)
     try:
-        stale_window_start = date.today() - timedelta(days=TIMELINE_WINDOW_DAYS)  # exactly elapsed
+        stale_window_start = today_utc() - timedelta(days=TIMELINE_WINDOW_DAYS)  # exactly elapsed
         stale_raw = AgentManager(uid)._encode_timeline(
             stale_window_start, {0: "old Ephesians 1:1-5"}, "Ephesians 1:1-5 covered",
         )
@@ -402,14 +418,14 @@ def main():
         finally:
             manager.close()
         check("an elapsed window regenerates with a NEW window_start (today)",
-              result["window_start"] == date.today(), str(result))
+              result["window_start"] == today_utc(), str(result))
         check("the new window's content is the regenerated content, not the old window's",
               result["days"].get(0) == "Ephesians 1:6-10", str(result))
         check("the prior window's coverage_summary was passed into the planning prompt "
               "so regeneration avoids duplicating already-covered content",
               captured_prompts and "Ephesians 1:1-5 covered" in captured_prompts[0], str(captured_prompts))
         check("the persisted column now reflects the new window",
-              AgentManager(uid)._decode_timeline(get_timeline_instruction(hb_id))["window_start"] == date.today())
+              AgentManager(uid)._decode_timeline(get_timeline_instruction(hb_id))["window_start"] == today_utc())
     finally:
         cleanup(uid)
 
@@ -418,7 +434,7 @@ def main():
     uid = make_user()
     agent_id = make_agent(uid)
     try:
-        fresh_raw = AgentManager(uid)._encode_timeline(date.today(), {0: "old plan"}, "old summary")
+        fresh_raw = AgentManager(uid)._encode_timeline(today_utc(), {0: "old plan"}, "old summary")
         hb_id = make_heartbeat_raw(agent_id, uid, daily_timestamps(), timeline_instruction=fresh_raw)
 
         from schemas.agent import AgentHeartbeats
@@ -431,7 +447,7 @@ def main():
               get_timeline_instruction(hb_id) is None, str(get_timeline_instruction(hb_id)))
 
         # Unrelated field change (same timestamps) must NOT null it out.
-        fresh_raw2 = AgentManager(uid)._encode_timeline(date.today(), {0: "still current"}, "still current summary")
+        fresh_raw2 = AgentManager(uid)._encode_timeline(today_utc(), {0: "still current"}, "still current summary")
         hb_id2 = make_heartbeat_raw(agent_id, uid, daily_timestamps(), timeline_instruction=fresh_raw2)
         AgentManager(uid).update_heartbeat(hb_id2, AgentHeartbeats(
             agent_id=agent_id, user_id=uid, timestamps=daily_timestamps(), prompt="Reflect daily, updated wording.",
@@ -531,7 +547,7 @@ def main():
     uid = make_user()
     agent_id = make_agent(uid)
     try:
-        stale_window_start = date.today() - timedelta(days=TIMELINE_WINDOW_DAYS)
+        stale_window_start = today_utc() - timedelta(days=TIMELINE_WINDOW_DAYS)
         stale_raw = AgentManager(uid)._encode_timeline(
             stale_window_start, {0: "old instruction"}, "old summary",
         )
