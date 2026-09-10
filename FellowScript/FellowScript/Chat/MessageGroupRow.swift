@@ -188,6 +188,12 @@ struct MessageGroupRow: View {
     // (nonexistent) caller of MessageGroupRow is unaffected; there is none
     // today besides ChatThreadView.
     var localAttachmentPreviews: [String: LocalAttachmentPreview] = [:]
+    // Task 20260910-chat-message-disappear-reentry: ids (FSMessage.id) whose
+    // send the backend explicitly rejected/failed to save — see
+    // ChatThreadViewModel.failedMessageIds. Defaulted empty/nil so this stays
+    // source-compatible with any pre-existing call site.
+    var failedMessageIds: Set<String> = []
+    var onRetry: ((String) -> Void)? = nil
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
@@ -212,7 +218,27 @@ struct MessageGroupRow: View {
                 }
 
                 ForEach(group.messages) { message in
-                    bubble(for: message)
+                    VStack(alignment: group.isOutgoing ? .trailing : .leading, spacing: 4) {
+                        bubble(for: message)
+                        // Task 20260910-chat-message-disappear-reentry: reuses
+                        // StagedAttachmentChipView's exact failed-upload
+                        // pattern (MessageAttachments.swift) verbatim, per
+                        // design-notes.md's resolution of UI/UX Q17's open
+                        // inline-retry-vs-explanation question — the bubble
+                        // itself stays completely unchanged, only this line
+                        // appears beneath it. No raw error detail is shown
+                        // here (Q17 pet peeve); ChatThreadViewModel logs
+                        // reason/detail to console for debugging only.
+                        if failedMessageIds.contains(message.id) {
+                            Button(action: { onRetry?(message.id) }) {
+                                Text("Couldn't send — tap to retry")
+                                    .font(.inter(Theme.fontXXS))
+                                    .foregroundColor(Theme.error)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Failed to send message, tap to retry")
+                        }
+                    }
                 }
             }
 

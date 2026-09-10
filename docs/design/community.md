@@ -124,6 +124,29 @@ or fresh) starts.
 
 ---
 
+## Failed Send Recovery (2026-09-10, task `20260910-chat-message-disappear-reentry`)
+
+A sent message (friend DM or group) that the backend explicitly rejects or fails to save (a
+content-filter rejection, a failed database write, or the silent block-drop between two users who
+have blocked each other) used to look identical to a successful one: it showed up immediately via
+the optimistic local echo, then simply vanished the next time the thread was reopened, once the
+server's history reload replaced the message list wholesale and the never-actually-saved message
+wasn't in it. The client had no way to distinguish this from a real send — the backend's own
+`{"type": "error", ...}` frame carrying the rejection reason was silently dropped, because the
+receive loop only ever acted on a frame that had a `text` key.
+
+The receive loop (`ChatThreadView.swift`) now explicitly branches on the frame's `type` field
+instead of relying on `text`'s presence as an implicit signal. An error frame is matched to the
+oldest still-unconfirmed optimistic send (there is no ack, so a send that's never flagged as
+failed is treated as having succeeded) and flags that message. The affected bubble gets an inline
+**"Couldn't send — tap to retry"** line beneath it, reusing the exact styling and interaction the
+composer's failed-attachment-upload chip already established, rather than a toast, alert, or
+raw error dump. Tapping it removes the failed bubble and resends the same text/attachment, with no
+confirmation step. A successful send is unaffected either way — it survives thread re-entry (warm
+or cold reload) exactly as before.
+
+---
+
 ## Real-Time Behavior
 
 The WebSocket connection (`/ws/{user_id}`) handles:

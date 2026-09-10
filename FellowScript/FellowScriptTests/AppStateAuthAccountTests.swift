@@ -215,6 +215,19 @@ final class ThrowingTestDataService: DataServiceProtocol {
     var fetchAgentsError: Error?
     var fetchAgentsDelayNanoseconds: UInt64?
     private(set) var fetchAgentsCallCount = 0
+    // Task 20260910-account-events-refresh-regression, testing step: routes
+    // this call through the REAL NetworkService.fetchAgents (which itself
+    // talks to URLSession, interceptable via StubURLProtocol) instead of the
+    // fetchAgentsResult/Error seams above, which only ever exercise
+    // AccountViewModel.load()'s own reaction to an already-thrown error --
+    // never the actual decode() call site the frontend gate's fix touched
+    // (NetworkService+Agents.swift). Needed to prove the fix end to end:
+    // AccountViewModel.load(), backed by the real fetchAgents, no longer
+    // wipes agents/events (in memory or on disk) when the real decode call
+    // genuinely fails. Every other one of load()'s 6 concurrent fetches
+    // still goes through this double's own MockDataService-backed paths, so
+    // only fetchAgents' HTTP call reaches StubURLProtocol.
+    var fetchAgentsCallsRealNetworkService = false
 
     // Controllable / observable (task 20260903-account-events-not-loading,
     // testing step) -- lets AccountEventsDecodeFailureRegressionTests drive
@@ -396,6 +409,9 @@ final class ThrowingTestDataService: DataServiceProtocol {
         fetchAgentsCallCount += 1
         if let fetchAgentsDelayNanoseconds {
             try await Task.sleep(nanoseconds: fetchAgentsDelayNanoseconds)
+        }
+        if fetchAgentsCallsRealNetworkService {
+            return try await NetworkService.shared.fetchAgents(userId: userId)
         }
         if let fetchAgentsError { throw fetchAgentsError }
         if let fetchAgentsResult { return fetchAgentsResult }

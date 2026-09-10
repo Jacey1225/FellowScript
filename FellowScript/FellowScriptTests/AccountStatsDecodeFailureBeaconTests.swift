@@ -190,15 +190,30 @@ final class AccountStatsDecodeFailureBeaconTests: XCTestCase {
 
     // MARK: fetchAgents
 
-    func test_fetchAgents_malformedShape_decodeFails_returnsEmptyArray_andFiresBeacon() async throws {
+    /// Test-correction (task 20260910-account-events-refresh-regression,
+    /// Q27 "propagate upward, never silently substitute defaults"): this
+    /// test previously asserted `fetchAgents` fell back to an empty array on
+    /// a decode failure -- that WAS the exact fabricate-success-on-failure
+    /// anti-pattern this task's root-cause fix removed (it was the one
+    /// sibling fetch in this file that hadn't been hardened to throw, unlike
+    /// fetchHeartbeats -- see AccountEventsDecodeFailureRegressionTests'
+    /// identical prior correction for that function). `fetchAgents` now
+    /// throws on a genuine decode failure instead of returning a fabricated
+    /// empty result, so the correct assertion is that the call throws, not
+    /// that it silently succeeds empty. The beacon-fires-once behavior this
+    /// test also covers is unchanged by that fix and is still asserted below.
+    func test_fetchAgents_malformedShape_decodeFails_throwsAndFiresBeacon() async throws {
         StubURLProtocol.stubStatusCode = 200
         // Real shape is {uuid: {user_id, role, name, ...}}; a top-level
         // array has no keyed container for [String: FSAgent] to decode.
         StubURLProtocol.stubBody = "[1, 2, 3]".data(using: .utf8)!
 
-        let agents = try await NetworkService.shared.fetchAgents(userId: "user-1")
-
-        XCTAssertTrue(agents.isEmpty, "an undecodable agents response must still fall back to an empty array")
+        do {
+            _ = try await NetworkService.shared.fetchAgents(userId: "user-1")
+            XCTFail("THE FIX (task 20260910-account-events-refresh-regression): an undecodable agents response must now throw, not silently fall back to a fabricated empty array -- a caller (AccountViewModel.load()) can no longer tell 'decode failed' apart from 'this account genuinely has zero agents', which previously wiped both agents AND events on a decode failure")
+        } catch {
+            // expected
+        }
 
         await waitForBeacon()
         let beacons = beaconRequests()
@@ -234,7 +249,11 @@ final class AccountStatsDecodeFailureBeaconTests: XCTestCase {
         StubURLProtocol.stubStatusCode = 200
         StubURLProtocol.stubBody = #"["SECRET_AGENT_NAME_MARKER"]"#.data(using: .utf8)!
 
-        _ = try await NetworkService.shared.fetchAgents(userId: "user-1")
+        // fetchAgents now throws on this decode failure (see the
+        // 20260910-account-events-refresh-regression test-correction above)
+        // -- this test only cares about the beacon's contents, so the throw
+        // itself is expected and discarded, not asserted on again here.
+        _ = try? await NetworkService.shared.fetchAgents(userId: "user-1")
 
         await waitForBeacon()
         guard let beacon = beaconRequests().first else {

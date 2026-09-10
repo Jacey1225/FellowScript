@@ -15,13 +15,44 @@ extension NetworkService {
     // GET /agent/{userId}/{agentId}/heartbeats
 
     func fetchAgents(userId: String) async throws -> [FSAgent] {
+        let endpoint = "GET /agent/{user_id}"
         let data = try await get("/agent/\(userId)")
         // task 20260903-account-stats-not-loading: tagged like the two above.
         // FSAgent's own Decodable init is lenient per-field (see Models.swift),
         // so a failure here can only come from the top-level payload not being
-        // a `{uuid: {...}}` object at all -- rare, but still worth a signal
-        // rather than silently reading as "zero agents".
-        guard let dict = decode([String: FSAgent].self, from: data, endpoint: "GET /agent/{user_id}") else { return [] }
+        // a `{uuid: {...}}` object at all -- rare, but still possible (e.g. an
+        // error body slipping past the HTTP-status check, or a truncated
+        // response), and still worth a signal rather than silently reading as
+        // "zero agents".
+        //
+        // Root-cause fix (task 20260910-account-events-refresh-regression):
+        // this was the one sibling fetch in this file that still fabricated a
+        // "successful" `[]` on a decode failure instead of throwing --
+        // unlike fetchHeartbeats below, which task
+        // 20260910-refresh-clobber-live-rootcause already hardened to throw
+        // for exactly this reason. Traced through
+        // AccountViewModel.load(): an empty-but-non-nil `agentsResult` makes
+        // `eventsUsable` evaluate true even though nothing was actually
+        // fetched, so `events` (and `agents`) get wiped in-memory AND that
+        // wipe gets persisted to disk on the very next unconditional cache
+        // write -- this is not a cancellation, so the "cancelled round
+        // persists nothing" guard doesn't apply, and the whole-round
+        // eventsUsable/cache-write logic in AccountViewModel.load() has no
+        // other way to tell "genuinely zero agents" apart from "decode
+        // failed" once this call itself already collapsed that distinction
+        // into a bare `[]`. Now throws instead, exactly mirroring
+        // fetchHeartbeats' own fix, so `AccountViewModel.load()`'s existing
+        // generic per-fetch catch (`agentsResult = nil`, `statsFailed =
+        // true`, `agents`/`events` left untouched rather than wiped) is what
+        // actually runs on a decode failure here -- no changes needed there,
+        // it already handles any thrown fetchAgents error the same way it
+        // handles the other 6 concurrent fetches (Q26-27: propagate, never
+        // silently substitute a default).
+        guard let dict = decode([String: FSAgent].self, from: data, endpoint: endpoint) else {
+            RefreshDiagnostics.fetchOutcome(endpoint: endpoint, outcome: "decode-failure-thrown")
+            throw AppError.networkError("Could not read your agents.")
+        }
+        RefreshDiagnostics.fetchOutcome(endpoint: endpoint, outcome: "success", count: dict.count)
         return dict.map { key, val in
             FSAgent(id: key, user_id: val.user_id, name: val.name,
                     role: val.role, enabled: val.enabled, chats: val.chats)

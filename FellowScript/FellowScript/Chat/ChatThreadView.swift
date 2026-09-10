@@ -60,6 +60,35 @@ final class ChatThreadViewModel: ObservableObject {
     // timeout, or the server evicting a stale connection) gave no visible
     // signal at all — see backend step 8 finding #2.
     @Published var isConnected: Bool = true
+    // Task 20260910-chat-message-disappear-reentry: ids (FSMessage.id) of an
+    // optimistic echo (see sendMessage below) whose send the backend
+    // explicitly rejected/failed to save (a {"type":"error",...} frame —
+    // see receiveLoop()'s handleSendError). MessageGroupRow reads this to
+    // render an inline "tap to retry" line on the affected bubble instead of
+    // letting it silently vanish on the next thread reload, per
+    // design-notes.md's decision to reuse StagedAttachmentChipView's exact
+    // failed-upload pattern.
+    @Published var failedMessageIds: Set<String> = []
+
+    // Task 20260910-chat-message-disappear-reentry: FIFO queue of
+    // client-generated messageIds still awaiting confirmation, oldest first.
+    // Neither the ordinary delivered frame nor the error frame carries a
+    // client-supplied correlation id (design-notes.md "Correlating an error
+    // frame to *which* pending message failed"), so an inbound error frame
+    // is matched to the oldest still-unconfirmed send -- a documented
+    // approximation, not exact correlation. There is no explicit success ack
+    // today, so an id that's never popped as failed is implicitly treated as
+    // sent; this isn't actively pruned beyond that (in-memory only, reset by
+    // the next load()).
+    private var pendingSendIds: [String] = []
+    // Retains the StagedAttachment used for a given optimistic message's
+    // send, keyed by FSMessage.id, purely so retryFailedMessage(_:contact:userId:)
+    // below can resend with the exact same attachment -- FSMessage alone
+    // never carries enough to reconstruct one (no S3 object key on the wire
+    // to the client). Mirrors localAttachmentPreviews' keying/reset
+    // discipline (never actively pruned; load() replacing `messages`
+    // wholesale is the natural reset point).
+    private var pendingAttachmentByMessageId: [String: StagedAttachment] = [:]
 
     private var wsTask: URLSessionWebSocketTask?
     private var wsBase:   String = ""
@@ -264,6 +293,48 @@ final class ChatThreadViewModel: ObservableObject {
         if let localPreview {
             localAttachmentPreviews[messageId] = localPreview
         }
+        // Task 20260910-chat-message-disappear-reentry: track this optimistic
+        // echo as awaiting confirmation so a subsequent {"type":"error",...}
+        // frame (handleSendError below) can flag it instead of it silently
+        // persisting on-screen until the next reload replaces `messages`
+        // wholesale and it simply isn't there.
+        pendingSendIds.append(messageId)
+        if let attachment {
+            pendingAttachmentByMessageId[messageId] = attachment
+        }
+    }
+
+    /// Tapping a failed bubble's "tap to retry" line (design-notes.md "Retry
+    /// action"): resends with the exact same text/attachment the failed
+    /// message had, then removes the old failed entry -- from `messages`,
+    /// `failedMessageIds`, `localAttachmentPreviews`, and
+    /// `pendingAttachmentByMessageId` -- so retrying doesn't leave a
+    /// duplicate bubble alongside the new attempt. No confirmation dialog,
+    /// matching StagedAttachmentChipView's onRemove "undo-after-the-fact, not
+    /// confirm-before-action" convention. A retry that also fails goes
+    /// through the exact same pending/fail flow via sendMessage above --
+    /// no special-cased dead end.
+    func retryFailedMessage(_ messageId: String, contact: FSContact, userId: String) {
+        guard let failed = messages.first(where: { $0.id == messageId }) else { return }
+        let attachment = pendingAttachmentByMessageId[messageId]
+        messages.removeAll { $0.id == messageId }
+        failedMessageIds.remove(messageId)
+        localAttachmentPreviews.removeValue(forKey: messageId)
+        pendingAttachmentByMessageId.removeValue(forKey: messageId)
+        sendMessage(text: failed.text, attachment: attachment, contact: contact, userId: userId)
+    }
+
+    /// Correlates an inbound `{"type":"error",...}` frame to the oldest
+    /// still-unconfirmed optimistic send (design-notes.md's documented FIFO
+    /// approximation -- neither frame shape carries a client-generated
+    /// correlation id). Logs `reason`/`detail` to console only, same
+    /// no-raw-error-in-UI posture as the self-echo-drop `print(...)` in
+    /// receiveLoop() below (Q17 pet peeve: no technical/raw error dumps).
+    private func handleSendError(reason: String?, detail: String?) {
+        print("[ChatThreadViewModel] send failed reason=\(reason ?? "unknown") detail=\(detail ?? "none")")
+        guard !pendingSendIds.isEmpty else { return }
+        let failedId = pendingSendIds.removeFirst()
+        failedMessageIds.insert(failedId)
     }
 
     func disconnect() {
@@ -336,62 +407,83 @@ final class ChatThreadViewModel: ObservableObject {
                 self.reconnectAttempt = 0
                 if case .string(let text) = msg,
                    let data = text.data(using: .utf8),
-                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                   let msgText = json["text"] as? String {
-                    let fromUser = (json["from_user"] as? String) ?? ""
-                    // Self-echo guard (group-chat duplication fix, task
-                    // 20260902-group-chat-message-duplication): a group send
-                    // is fanned out to every member in `to_users`, which the
-                    // client populates as the full member list *including
-                    // the sender* (sendMessage() above / contact.toUsers).
-                    // Backend step 1 stops re-delivering that live frame
-                    // back to from_user_id at the source, but this check
-                    // stays as defense-in-depth on the client, matching this
-                    // method's existing standard of not leaning on a single
-                    // fragile assumption (see the reconnect/backoff comments
-                    // above). Without it, the sender's own message would
-                    // render twice: once from the optimistic local echo in
-                    // sendMessage() (labeled "You"), and again here as an
-                    // ordinary inbound message — with a raw user-id sender
-                    // label, since this path has no "is this me" lookup.
-                    // This is an explicit, visible skip (logged, not a bare
-                    // silent drop) of a known, expected case — distinct from
-                    // the unparseable-frame case below, which is a genuine
-                    // "couldn't understand this frame" gap.
-                    if !fromUser.isEmpty, fromUser == self.wsUserId {
-                        print("[ChatThreadViewModel] dropping self-echoed inbound frame from_user=\(fromUser) — already shown via optimistic local append")
-                    } else {
-                        // Task 20260904-messaging-attachments: attachment_kind/
-                        // attachment_meta/attachment_url ride along on the same
-                        // frame — null/absent for an ordinary text-only message.
-                        // attachment_meta is decoded via the same FSAttachmentMeta
-                        // shape NetworkService.swift's history-load path uses, so
-                        // a live-delivered attachment renders identically to one
-                        // loaded from history.
-                        var attachmentMeta: FSAttachmentMeta? = nil
-                        if let metaDict = json["attachment_meta"] as? [String: Any], !metaDict.isEmpty,
-                           let metaData = try? JSONSerialization.data(withJSONObject: metaDict) {
-                            attachmentMeta = try? JSONDecoder().decode(FSAttachmentMeta.self, from: metaData)
+                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                    // Task 20260910-chat-message-disappear-reentry: explicit
+                    // branch on `type` (Q26 — explicit checks, not implicit
+                    // control flow) instead of the old bare `let msgText =
+                    // json["text"] as? String` guard, which silently skipped
+                    // this entire body — with no log, no UI feedback, no
+                    // rollback of the optimistic message already showing —
+                    // for any frame lacking a `text` key, including the
+                    // backend's own explicit `{"type":"error",...}` failure
+                    // frames (design-notes.md; api/backend/interactions/
+                    // websockets.py ConnectionManager.send_msg). An ordinary
+                    // chat delivery frame carries no `type` key at all.
+                    if let type = json["type"] as? String {
+                        switch type {
+                        case "error":
+                            self.handleSendError(reason: json["reason"] as? String, detail: json["detail"] as? String)
+                        case "ping":
+                            break // heartbeat — no UI action, same no-op as before, now explicit
+                        default:
+                            break // unrecognized type — explicit no-op, not a silent guard-fail
                         }
-                        // Task 20260908-chat-userid-exposure: resolves the raw
-                        // from_user id to a display name the same way load()'s
-                        // history-fetch path does, using state (currentContact/
-                        // groupUsernameById) load() already populated -- see
-                        // resolvedSenderName(forRawId:) below. Falls back to
-                        // the raw id (this path's pre-fix behavior, not a new
-                        // regression) if that state isn't ready yet or the
-                        // lookup doesn't have this sender.
-                        let incoming = FSMessage(
-                            id:        (json["id"] as? String) ?? UUID().uuidString,
-                            text:      msgText,
-                            mine:      false,
-                            sender:    self.resolvedSenderName(forRawId: fromUser),
-                            timestamp: (json["timestamp"] as? String) ?? "",
-                            attachmentKind: json["attachment_kind"] as? String,
-                            attachmentURL:  json["attachment_url"] as? String,
-                            attachmentMeta: attachmentMeta
-                        )
-                        Task { @MainActor in self.messages.append(incoming) }
+                    } else if let msgText = json["text"] as? String {
+                        let fromUser = (json["from_user"] as? String) ?? ""
+                        // Self-echo guard (group-chat duplication fix, task
+                        // 20260902-group-chat-message-duplication): a group send
+                        // is fanned out to every member in `to_users`, which the
+                        // client populates as the full member list *including
+                        // the sender* (sendMessage() above / contact.toUsers).
+                        // Backend step 1 stops re-delivering that live frame
+                        // back to from_user_id at the source, but this check
+                        // stays as defense-in-depth on the client, matching this
+                        // method's existing standard of not leaning on a single
+                        // fragile assumption (see the reconnect/backoff comments
+                        // above). Without it, the sender's own message would
+                        // render twice: once from the optimistic local echo in
+                        // sendMessage() (labeled "You"), and again here as an
+                        // ordinary inbound message — with a raw user-id sender
+                        // label, since this path has no "is this me" lookup.
+                        // This is an explicit, visible skip (logged, not a bare
+                        // silent drop) of a known, expected case — distinct from
+                        // the unparseable-frame case below, which is a genuine
+                        // "couldn't understand this frame" gap.
+                        if !fromUser.isEmpty, fromUser == self.wsUserId {
+                            print("[ChatThreadViewModel] dropping self-echoed inbound frame from_user=\(fromUser) — already shown via optimistic local append")
+                        } else {
+                            // Task 20260904-messaging-attachments: attachment_kind/
+                            // attachment_meta/attachment_url ride along on the same
+                            // frame — null/absent for an ordinary text-only message.
+                            // attachment_meta is decoded via the same FSAttachmentMeta
+                            // shape NetworkService.swift's history-load path uses, so
+                            // a live-delivered attachment renders identically to one
+                            // loaded from history.
+                            var attachmentMeta: FSAttachmentMeta? = nil
+                            if let metaDict = json["attachment_meta"] as? [String: Any], !metaDict.isEmpty,
+                               let metaData = try? JSONSerialization.data(withJSONObject: metaDict) {
+                                attachmentMeta = try? JSONDecoder().decode(FSAttachmentMeta.self, from: metaData)
+                            }
+                            // Task 20260908-chat-userid-exposure: resolves the raw
+                            // from_user id to a display name the same way load()'s
+                            // history-fetch path does, using state (currentContact/
+                            // groupUsernameById) load() already populated -- see
+                            // resolvedSenderName(forRawId:) below. Falls back to
+                            // the raw id (this path's pre-fix behavior, not a new
+                            // regression) if that state isn't ready yet or the
+                            // lookup doesn't have this sender.
+                            let incoming = FSMessage(
+                                id:        (json["id"] as? String) ?? UUID().uuidString,
+                                text:      msgText,
+                                mine:      false,
+                                sender:    self.resolvedSenderName(forRawId: fromUser),
+                                timestamp: (json["timestamp"] as? String) ?? "",
+                                attachmentKind: json["attachment_kind"] as? String,
+                                attachmentURL:  json["attachment_url"] as? String,
+                                attachmentMeta: attachmentMeta
+                            )
+                            Task { @MainActor in self.messages.append(incoming) }
+                        }
                     }
                 }
                 // Keep listening regardless of whether this particular frame
@@ -604,7 +696,15 @@ struct ChatThreadView: View {
                             ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
                                 switch row {
                                 case .group(let group):
-                                    MessageGroupRow(group: group, localAttachmentPreviews: vm.localAttachmentPreviews)
+                                    MessageGroupRow(
+                                        group: group,
+                                        localAttachmentPreviews: vm.localAttachmentPreviews,
+                                        failedMessageIds: vm.failedMessageIds,
+                                        onRetry: { messageId in
+                                            let uid = appState.currentUser?.user_id ?? ""
+                                            vm.retryFailedMessage(messageId, contact: contact, userId: uid)
+                                        }
+                                    )
                                         .id(row.id)
                                 case .dayDivider(_, let label):
                                     DayDividerRow(label: label)
