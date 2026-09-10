@@ -92,6 +92,14 @@ final class AccountViewModel: ObservableObject {
 
     var isSubHost: Bool { subscription?.isHost(profileData?.user_id ?? "") ?? false }
 
+    // In-flight de-duplication guard for `loadSubscription`/
+    // `fetchUserSubscription` (task 20260910-refresh-clobber-live-rootcause) --
+    // mirrors `firingHeartbeatIds`' double-tap guard below, collapsing
+    // AccountView's independent `.task` + `.refreshable` (+ this class's own
+    // mutation-resync callers) into a single in-flight request instead of a
+    // concurrent burst. See `loadSubscription`'s own doc comment.
+    private var subscriptionLoadInFlight = false
+
     /// Authoritative "has an unlimited (paid) plan" for the UI. Matches the
     /// server's enforcement criterion exactly (a plan in `trialing`/`active`
     /// status grants unlimited; `past_due`/other do not, and the server still
@@ -158,16 +166,30 @@ final class AccountViewModel: ObservableObject {
         let generation = loadGeneration
 
         // ── Cache-first: show last-known account data instantly ──────────────────
-        if let cached: FSUser = await DiskCache.shared.load(FSUser.self, forKey: "user:\(uid)") {
+        // Diagnostics (task 20260910-refresh-clobber-live-rootcause): logs
+        // every DiskCache read's key + entry count. "events:<uid>" is the
+        // scope-item-3 key of interest -- a live capture showing this read
+        // already miss/empty at the START of a refresh (before any network
+        // call resolves) would point at a prior round's write, not this
+        // round's fetch, as the source of an empty Events section.
+        let userCacheResult: FSUser? = await DiskCache.shared.load(FSUser.self, forKey: "user:\(uid)")
+        RefreshDiagnostics.cacheRead(key: "user:\(uid)", count: userCacheResult == nil ? nil : 1)
+        if let cached = userCacheResult {
             profileData = cached
         }
-        if let cached: [FSAgent] = await DiskCache.shared.load([FSAgent].self, forKey: "agents:\(uid)") {
+        let agentsCacheResult: [FSAgent]? = await DiskCache.shared.load([FSAgent].self, forKey: "agents:\(uid)")
+        RefreshDiagnostics.cacheRead(key: "agents:\(uid)", count: agentsCacheResult?.count)
+        if let cached = agentsCacheResult {
             agents = cached
         }
-        if let cached: [FSHeartbeat] = await DiskCache.shared.load([FSHeartbeat].self, forKey: "events:\(uid)") {
+        let eventsCacheResult: [FSHeartbeat]? = await DiskCache.shared.load([FSHeartbeat].self, forKey: "events:\(uid)")
+        RefreshDiagnostics.cacheRead(key: "events:\(uid)", count: eventsCacheResult?.count)
+        if let cached = eventsCacheResult {
             events = cached
         }
-        if let cached: [Int] = await DiskCache.shared.load([Int].self, forKey: "counts:\(uid)"), cached.count == 2 {
+        let countsCacheResult: [Int]? = await DiskCache.shared.load([Int].self, forKey: "counts:\(uid)")
+        RefreshDiagnostics.cacheRead(key: "counts:\(uid)", count: countsCacheResult?.count)
+        if let cached = countsCacheResult, cached.count == 2 {
             noteCount = cached[0]; highlightCount = cached[1]
         }
 
@@ -214,9 +236,24 @@ final class AccountViewModel: ObservableObject {
         // superseded generation already commits nothing.
         var wasCancelled = false
 
+        // Diagnostics (task 20260910-refresh-clobber-live-rootcause): each of
+        // the 7 concurrent fetches below logs its outcome, including
+        // Task.isCancelled sampled at the catch site — the key signal for
+        // spec open question 2 (what actually cancels/fails the Account
+        // refresh round, distinct from `wasCancelled`'s own isCancellation
+        // check just above, which classifies CancellationError/URLError
+        // .cancelled specifically; Task.isCancelled is the broader ambient
+        // check, logged alongside it for cross-reference).
         let userResult: FSUser?
-        do { userResult = try await fetchedUser }
-        catch { userResult = nil; if isCancellation(error) { wasCancelled = true } else { statsFailed = true } }
+        do {
+            userResult = try await fetchedUser
+            RefreshDiagnostics.fetchOutcome(endpoint: "GET /user/{user_id}", outcome: "success", count: 1)
+        }
+        catch {
+            userResult = nil; if isCancellation(error) { wasCancelled = true } else { statsFailed = true }
+            RefreshDiagnostics.fetchOutcome(endpoint: "GET /user/{user_id}", outcome: "failure",
+                                             errorClass: RefreshDiagnostics.errorClass(error), taskCancelled: Task.isCancelled)
+        }
 
         // Bug fix (cache-clobber sweep, task
         // 20260905-pull-to-refresh-cache-clobber): agents/noteCount/
@@ -228,28 +265,70 @@ final class AccountViewModel: ObservableObject {
         // value, so the write below can tell "genuinely empty" apart from
         // "fetch failed" and only overwrite on the former.
         let agentsResult: [FSAgent]?
-        do { agentsResult = try await fetchedAgents }
-        catch { agentsResult = nil; if isCancellation(error) { wasCancelled = true } else { statsFailed = true } }
+        do {
+            agentsResult = try await fetchedAgents
+            RefreshDiagnostics.fetchOutcome(endpoint: "GET /agent/{user_id}", outcome: "success", count: agentsResult?.count)
+        }
+        catch {
+            agentsResult = nil; if isCancellation(error) { wasCancelled = true } else { statsFailed = true }
+            RefreshDiagnostics.fetchOutcome(endpoint: "GET /agent/{user_id}", outcome: "failure",
+                                             errorClass: RefreshDiagnostics.errorClass(error), taskCancelled: Task.isCancelled)
+        }
         let noteCountResult: Int?
-        do { noteCountResult = try await fetchedNoteCount }
-        catch { noteCountResult = nil; if isCancellation(error) { wasCancelled = true } else { statsFailed = true } }
+        do {
+            noteCountResult = try await fetchedNoteCount
+            RefreshDiagnostics.fetchOutcome(endpoint: "GET /notes/{user_id}/count", outcome: "success", count: noteCountResult)
+        }
+        catch {
+            noteCountResult = nil; if isCancellation(error) { wasCancelled = true } else { statsFailed = true }
+            RefreshDiagnostics.fetchOutcome(endpoint: "GET /notes/{user_id}/count", outcome: "failure",
+                                             errorClass: RefreshDiagnostics.errorClass(error), taskCancelled: Task.isCancelled)
+        }
         let highlightCountResult: Int?
-        do { highlightCountResult = try await (fetchedHighlights).count }
-        catch { highlightCountResult = nil; if isCancellation(error) { wasCancelled = true } else { statsFailed = true } }
+        do {
+            highlightCountResult = try await (fetchedHighlights).count
+            RefreshDiagnostics.fetchOutcome(endpoint: "GET /notes/highlight/{user_id}", outcome: "success", count: highlightCountResult)
+        }
+        catch {
+            highlightCountResult = nil; if isCancellation(error) { wasCancelled = true } else { statsFailed = true }
+            RefreshDiagnostics.fetchOutcome(endpoint: "GET /notes/highlight/{user_id}", outcome: "failure",
+                                             errorClass: RefreshDiagnostics.errorClass(error), taskCancelled: Task.isCancelled)
+        }
 
         let usageResult: FSUsage?
-        do { usageResult = try await fetchedUsage }
-        catch { usageResult = nil; if isCancellation(error) { wasCancelled = true } else { statsFailed = true } }
+        do {
+            usageResult = try await fetchedUsage
+            RefreshDiagnostics.fetchOutcome(endpoint: "GET /subscriptions/user/{user_id}/usage", outcome: "success", count: usageResult == nil ? nil : 1)
+        }
+        catch {
+            usageResult = nil; if isCancellation(error) { wasCancelled = true } else { statsFailed = true }
+            RefreshDiagnostics.fetchOutcome(endpoint: "GET /subscriptions/user/{user_id}/usage", outcome: "failure",
+                                             errorClass: RefreshDiagnostics.errorClass(error), taskCancelled: Task.isCancelled)
+        }
 
         // Now genuinely concurrent with the other 6 (see the async-let fix
         // above) rather than only starting once all 5 fetches above resolved.
         let friendRequestsResult: [(id: String, username: String, profile_photo_url: String?)]?
-        do { friendRequestsResult = try await fetchedFriendRequests }
-        catch { friendRequestsResult = nil; if isCancellation(error) { wasCancelled = true } else { statsFailed = true } }
+        do {
+            friendRequestsResult = try await fetchedFriendRequests
+            RefreshDiagnostics.fetchOutcome(endpoint: "GET /friends/{user_id}/requests", outcome: "success", count: friendRequestsResult?.count)
+        }
+        catch {
+            friendRequestsResult = nil; if isCancellation(error) { wasCancelled = true } else { statsFailed = true }
+            RefreshDiagnostics.fetchOutcome(endpoint: "GET /friends/{user_id}/requests", outcome: "failure",
+                                             errorClass: RefreshDiagnostics.errorClass(error), taskCancelled: Task.isCancelled)
+        }
 
         let contactsResult: ([FSContact], [String: FSGroup])?
-        do { contactsResult = try await fetchedContacts }
-        catch { contactsResult = nil; if isCancellation(error) { wasCancelled = true } else { statsFailed = true } }
+        do {
+            contactsResult = try await fetchedContacts
+            RefreshDiagnostics.fetchOutcome(endpoint: "GET /user/{user_id} (contacts)", outcome: "success", count: contactsResult?.0.count)
+        }
+        catch {
+            contactsResult = nil; if isCancellation(error) { wasCancelled = true } else { statsFailed = true }
+            RefreshDiagnostics.fetchOutcome(endpoint: "GET /user/{user_id} (contacts)", outcome: "failure",
+                                             errorClass: RefreshDiagnostics.errorClass(error), taskCancelled: Task.isCancelled)
+        }
 
         // task 20260903-account-events-not-loading: previously `(try? ...)
         // ?? []` swallowed a genuine per-agent fetch/decode failure (e.g.
@@ -281,6 +360,7 @@ final class AccountViewModel: ObservableObject {
                 for await (agentId, result) in group {
                     switch result {
                     case .success(let hbs):
+                        RefreshDiagnostics.fetchOutcome(endpoint: "GET /agent/{user_id}/{agent_id}/heartbeats", outcome: "success", count: hbs.count)
                         allEvents.append(contentsOf: hbs)
                     case .failure(let error):
                         // Same cancellation-vs-genuine-failure distinction as
@@ -291,7 +371,53 @@ final class AccountViewModel: ObservableObject {
                         // apart from a real one, feeding `statsFailed`
                         // unconditionally either way.
                         if isCancellation(error) { wasCancelled = true } else { statsFailed = true }
-                        allEvents.append(contentsOf: events.filter { $0.agent_id == agentId })
+                        RefreshDiagnostics.fetchOutcome(endpoint: "GET /agent/{user_id}/{agent_id}/heartbeats", outcome: "failure",
+                                                         errorClass: RefreshDiagnostics.errorClass(error), taskCancelled: Task.isCancelled)
+                        // Root-cause fix (task 20260910-refresh-clobber-live-
+                        // rootcause, spec scope item 3, "close the empty-in-
+                        // memory fallback hole"), REVISED after a genuine
+                        // regression the testing gate caught in this exact
+                        // fix: a round-level `eventsUsable = false` set here
+                        // gated the single, whole-round `events = allEvents`
+                        // assignment below -- so one agent's no-baseline
+                        // failure also discarded a COMPLETELY DIFFERENT
+                        // agent's genuinely successful, freshly-fetched
+                        // events in the very same round (broke
+                        // AccountEventsDecodeFailureRegressionTests.swift's
+                        // test_load_partialHeartbeatsFailure_
+                        // stillShowsSucceedingAgentsRealEvents, a still-valid
+                        // prior-task test). Root cause of THIS fix's original
+                        // hole: this contribution is already tracked
+                        // per-agent, not round-wide. A non-empty existing
+                        // baseline for `agentId` is preserved (unchanged,
+                        // legitimate partial-success case, appended into
+                        // `allEvents`); a no-baseline failure for `agentId`
+                        // contributes nothing for that agent -- which is
+                        // already the honest, non-fabricated state, since
+                        // there was never a known-good baseline to lose in
+                        // the first place (a fresh `@StateObject` starts
+                        // `events == []`, so omitting this agent's
+                        // contribution reproduces exactly that same already-
+                        // honest emptiness rather than asserting new false
+                        // proof of zero -- Q27: never silently substitute a
+                        // default for missing/malformed data, which this
+                        // isn't, since nothing here asserts the agent has no
+                        // events, it just doesn't claim to know). No
+                        // round-level flag is needed to close the original
+                        // mechanism-6 hole: it was about a single/first-load
+                        // no-baseline failure persisting `[]` "as if proven",
+                        // and that scenario is unaffected by removing the
+                        // round-level flag, because `allEvents` already ends
+                        // up empty there with or without it. A genuinely
+                        // mixed round (one agent succeeds fresh, another has
+                        // no baseline and fails) now correctly lets the
+                        // succeeding agent's real data land in `events` below
+                        // instead of being discarded alongside the failing
+                        // agent's (non-)contribution.
+                        let existing = events.filter { $0.agent_id == agentId }
+                        if !existing.isEmpty {
+                            allEvents.append(contentsOf: existing)
+                        }
                     }
                 }
             }
@@ -339,10 +465,52 @@ final class AccountViewModel: ObservableObject {
         }
 
         // ── Write fresh account data back to the cache ────────────────────────────
-        if let fresh = profileData { await DiskCache.shared.save(fresh, forKey: "user:\(uid)") }
-        await DiskCache.shared.save(agents,        forKey: "agents:\(uid)")
-        await DiskCache.shared.save(events,        forKey: "events:\(uid)")
-        await DiskCache.shared.save([noteCount, highlightCount], forKey: "counts:\(uid)")
+        // Diagnostics: logs each write's key + entry count -- "events:<uid>"
+        // is the scope-item-3 write to watch: `eventsUsable` gates whether
+        // `events` was actually reassigned above (line ~385), but this write
+        // is unconditional either way, so a live capture showing
+        // eventsUsable=false (i.e. agentsResult was nil) alongside a
+        // non-empty count here would mean the write is persisting a stale
+        // in-memory `events` that's fine; eventsUsable=true with count=0
+        // would point at the fetchHeartbeats `?? []` fabrication path scope
+        // item 3 calls out.
+        //
+        // Root-cause fix (task 20260910-refresh-clobber-live-rootcause, spec
+        // item (c), Q14 fail-closed): a round where any of the 7 concurrent
+        // fetches or the per-agent heartbeats walk was cooperatively
+        // cancelled (`wasCancelled`, set above) proves nothing -- neither a
+        // real success nor a real failure -- so it must not persist to disk
+        // any more than NotesViewModel.fetchAndCache's identical cancelled-
+        // round guard does. The live capture found this specific round was
+        // usually harmless (it re-wrote the same values it read), but "a
+        // cancelled round persists nothing" is the spec's stated invariant
+        // independent of whether any one instance happens to be harmless --
+        // this closes the same class of write that could, on an unlucky
+        // interleaving, persist the mid-flight/superseded values above
+        // rather than the last fully-proven-good state.
+        // agents:<uid> multi-writer audit (cache_ownership_rule, architecture
+        // decision): ChatRootView.swift's ChatViewModel.fetchAndCache also
+        // writes "agents:<uid>", but confirmed identical in scope/shape to
+        // this write -- both source the full per-user agent list from the
+        // exact same `service.fetchAgents(userId:)` call, with no filtering
+        // difference (unlike DashboardView's now-fixed personal-only notes
+        // write). Either writer landing last still writes the same
+        // authoritative shape, so this key is left shared rather than split.
+        if !wasCancelled {
+            if let fresh = profileData { await DiskCache.shared.save(fresh, forKey: "user:\(uid)") }
+            RefreshDiagnostics.cacheWrite(key: "user:\(uid)", count: 1)
+            await DiskCache.shared.save(agents,        forKey: "agents:\(uid)")
+            RefreshDiagnostics.cacheWrite(key: "agents:\(uid)", count: agents.count)
+            await DiskCache.shared.save(events,        forKey: "events:\(uid)")
+            RefreshDiagnostics.cacheWrite(key: "events:\(uid)", count: events.count)
+            await DiskCache.shared.save([noteCount, highlightCount], forKey: "counts:\(uid)")
+            RefreshDiagnostics.cacheWrite(key: "counts:\(uid)", count: 2)
+        } else {
+            RefreshDiagnostics.cacheWriteSkipped(key: "user:\(uid)", reason: "round-cancelled")
+            RefreshDiagnostics.cacheWriteSkipped(key: "agents:\(uid)", reason: "round-cancelled")
+            RefreshDiagnostics.cacheWriteSkipped(key: "events:\(uid)", reason: "round-cancelled")
+            RefreshDiagnostics.cacheWriteSkipped(key: "counts:\(uid)", reason: "round-cancelled")
+        }
     }
 
     /// Re-fetch the free-tier usage snapshot (after a create/delete changes counts).
@@ -565,6 +733,26 @@ final class AccountViewModel: ObservableObject {
     // ── Subscription ───────────────────────────────────────────────────────────
 
     func loadSubscription(userId: String) async {
+        // In-flight de-duplication guard (task
+        // 20260910-refresh-clobber-live-rootcause, frontend step 2's live
+        // capture -- a SECOND, previously-unknown root cause beyond relocated
+        // cancellation): AccountView's `.task` and `.refreshable` each call
+        // this independently with no coordination between them, and a
+        // `.task` re-fire from tab churn landing near a `.refreshable` pull
+        // (or one of this class's own mutation-resync callers below) fired a
+        // burst of concurrent `GET /subscriptions/user/{user_id}` requests.
+        // Confirmed live: nginx/docker correlation showed only 1 of 8
+        // device-observed requests for this exact endpoint ever reached
+        // origin in one capture window -- Cloudflare's edge blocked the rest
+        // with genuine 403s. Mirrors `fireHeartbeatNow`'s existing
+        // `firingHeartbeatIds` double-tap guard: a concurrent call while one
+        // is already in flight is a no-op rather than firing its own
+        // duplicate request -- the in-flight call already updates every
+        // `@Published` property this one would have.
+        guard !subscriptionLoadInFlight else { return }
+        subscriptionLoadInFlight = true
+        defer { subscriptionLoadInFlight = false }
+
         subLoading = true
         defer { subLoading = false }
 
@@ -578,11 +766,28 @@ final class AccountViewModel: ObservableObject {
         // subscription/autoRenewOff/planEndDate and everything derived from
         // them untouched -- rather than reconciling downstream state from an
         // untrustworthy result.
+        // Root-cause fix (task 20260910-refresh-clobber-live-rootcause, spec
+        // scope item 2 / open question 2): the live capture discriminated two
+        // distinct failure classes hitting this same catch -- a genuine
+        // SwiftUI task cancellation (`.refreshable`'s task ending, `.task`
+        // re-fire from a tab switch) and a real transport/HTTP failure (the
+        // Cloudflare-edge 403s the in-flight guard above now prevents most
+        // of). Only the latter is evidence of a real problem worth telling
+        // the user about -- a cancellation proves nothing either way, exactly
+        // like `load()`'s own `isCancellation` handling above, so `subMsg`
+        // must never be set for one (never having been surfaced before is
+        // fine; surfacing it as a false "could not refresh" is what produced
+        // the user's reported wording change).
         var plan: FSSubscription?
         do {
             plan = try await service.fetchUserSubscription(userId: userId)
+            RefreshDiagnostics.fetchOutcome(endpoint: "GET /subscriptions/user/{user_id}", outcome: "success", count: plan == nil ? 0 : 1)
         } catch {
-            subMsg = "Could not refresh your subscription status. Pull down to refresh and try again."
+            RefreshDiagnostics.fetchOutcome(endpoint: "GET /subscriptions/user/{user_id}", outcome: "failure",
+                                             errorClass: RefreshDiagnostics.errorClass(error), taskCancelled: Task.isCancelled)
+            if !isCancellation(error) {
+                subMsg = "Could not refresh your subscription status. Pull down to refresh and try again."
+            }
             return
         }
 

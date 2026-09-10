@@ -639,6 +639,16 @@ final class ChatViewModel: ObservableObject {
         }
 
         // ── Write fresh data back to the cache ───────────────────────────────────
+        // agents:<uid> multi-writer audit (task 20260910-refresh-clobber-
+        // live-rootcause, cache_ownership_rule): AccountViewModel.load() also
+        // writes this exact key. Confirmed identical in scope/shape to that
+        // write -- both source the full per-user agent list from the same
+        // `service.fetchAgents(userId:)` call with no filtering difference
+        // (unlike DashboardView's now-fixed personal-only notes write, which
+        // read from a DIFFERENT, narrower endpoint than NotesViewModel's own
+        // "notes:<uid>" writer). Either writer landing last still writes the
+        // same authoritative shape, so this key is left shared rather than
+        // split -- see AccountViewModel.swift's matching comment.
         await DiskCache.shared.save(friends, forKey: "friends:\(userId)")
         await DiskCache.shared.save(groups,  forKey: "groupContacts:\(userId)")
         await DiskCache.shared.save(agents,  forKey: "agents:\(userId)")

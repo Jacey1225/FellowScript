@@ -874,9 +874,21 @@ final class ThrowingTestDataService: DataServiceProtocol {
     // untouched; a proven nil success must still overwrite it).
     var fetchUserSubscriptionError: Error?
     private(set) var fetchUserSubscriptionCallCount = 0
+    // Controllable (task 20260910-refresh-clobber-live-rootcause, testing
+    // step) -- mirrors fetchAgentsDelayNanoseconds/fetchHeartbeatsDelayNanoseconds
+    // above: lets a test hold this call in flight long enough for a SECOND,
+    // genuinely-concurrent loadSubscription() call to land while the first is
+    // still running, proving AccountViewModel.loadSubscription()'s in-flight
+    // de-duplication guard (subscriptionLoadInFlight) collapses the two into
+    // one real network call via actual wall-clock overlap, not just by
+    // inspecting the guard flag directly.
+    var fetchUserSubscriptionDelayNanoseconds: UInt64?
 
     func fetchUserSubscription(userId: String) async throws -> FSSubscription? {
         fetchUserSubscriptionCallCount += 1
+        if let fetchUserSubscriptionDelayNanoseconds {
+            try await Task.sleep(nanoseconds: fetchUserSubscriptionDelayNanoseconds)
+        }
         if let fetchUserSubscriptionError { throw fetchUserSubscriptionError }
         return try await MockDataService.shared.fetchUserSubscription(userId: userId)
     }

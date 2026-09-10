@@ -79,7 +79,15 @@ final class NetworkService: DataServiceProtocol {
     /// (checked on the raw response, before throwIfError's own error
     /// mapping) -- never a 4xx, which a retry can't fix and would just
     /// repeat a real rejection.
-    func get(_ path: String) async throws -> Data {
+    /// The timeout + bounded-retry request execution shared `get()` below
+    /// applies, minus the status validation -- pulled out (task
+    /// 20260910-refresh-clobber-live-rootcause, spec mechanism 5) so a caller
+    /// with its own documented status-code contract (e.g.
+    /// fetchUserSubscription's "404 → nil, no plan" — NOT every 4xx) can get
+    /// the same timeout/retry hardening `get()` gives every other read
+    /// without `get()`'s blanket throwIfError mapping every non-2xx status to
+    /// a generic thrown error before the caller ever sees which status it was.
+    func getRawResponse(_ path: String) async throws -> (Data, URLResponse) {
         var attempt = 0
         while true {
             attempt += 1
@@ -90,17 +98,22 @@ final class NetworkService: DataServiceProtocol {
                 if attempt == 1, let http = response as? HTTPURLResponse, (500...599).contains(http.statusCode) {
                     continue
                 }
-                // Validate status like request()/checkedRequestRaw() do — previously this
-                // never called throwIfError, so every fetch* built on it silently turned
-                // an HTTP error (e.g. a 401 from an expired session) into a blank default
-                // value or empty collection instead of surfacing a thrown error. Fixed at
-                // this single shared helper since it underlies nearly every domain's reads.
-                try throwIfError(response, data)
-                return data
+                return (data, response)
             } catch let error where attempt == 1 && error is URLError {
                 continue
             }
         }
+    }
+
+    func get(_ path: String) async throws -> Data {
+        let (data, response) = try await getRawResponse(path)
+        // Validate status like request()/checkedRequestRaw() do — previously this
+        // never called throwIfError, so every fetch* built on it silently turned
+        // an HTTP error (e.g. a 401 from an expired session) into a blank default
+        // value or empty collection instead of surfacing a thrown error. Fixed at
+        // this single shared helper since it underlies nearly every domain's reads.
+        try throwIfError(response, data)
+        return data
     }
 
     func request(_ path: String, method: String, body: Encodable? = nil) async throws -> Data {
@@ -143,7 +156,16 @@ final class NetworkService: DataServiceProtocol {
     /// Maps an error response to a typed AppError. A 403 whose `detail` is the
     /// LimitsManager gate dict becomes `.limitReached`; anything else with a
     /// string detail becomes `.networkError`.
-    private func throwIfError(_ response: URLResponse, _ data: Data) throws {
+    ///
+    /// Dropped from `private` to plain internal access (task
+    /// 20260910-refresh-clobber-live-rootcause) -- like the other shared
+    /// helpers in this file (see this file's own header comment), Swift's
+    /// `private` only extends to same-file extensions, and
+    /// fetchUserSubscription (NetworkService+Subscriptions.swift) now needs
+    /// to call this directly after inspecting the raw response itself for
+    /// its documented 404-to-nil contract, rather than going through `get()`'s
+    /// blanket call. Still invisible outside this app target.
+    func throwIfError(_ response: URLResponse, _ data: Data) throws {
         guard let http = response as? HTTPURLResponse, http.statusCode >= 400 else { return }
         let body = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
         if http.statusCode == 403, let gate = body?["detail"] as? [String: Any],

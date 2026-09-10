@@ -158,14 +158,45 @@ final class NotesViewModel: ObservableObject {
         defer { if showLoadingSpinner { isLoading = false } }
 
         // ── Cache-first: show last-known data instantly, then revalidate ──────────
-        if let cached: [String: FSNote] = await DiskCache.shared.load([String: FSNote].self, forKey: "notes:\(userId)") {
+        // Diagnostics (task 20260910-refresh-clobber-live-rootcause, spec
+        // scope item "live capture first"): logs this DiskCache read's key +
+        // entry count regardless of hit/miss, so a live capture can show
+        // exactly what was in "notes:<uid>" at the start of a refresh —
+        // including a cross-screen write DashboardView.load() used to make
+        // (fixed separately: Dashboard now owns its own "dashboardNotes:<uid>"
+        // key) — before any network request has resolved.
+        //
+        // Root-cause fix (mechanism 3, confirmed live): applying this read
+        // over live in-memory state on EVERY call -- including an explicit
+        // pull-to-refresh (`showLoadingSpinner: false`) or a `.task` re-fire
+        // once already loaded -- meant any stale/poisoned disk write since
+        // the last time this screen actually loaded got reapplied on top of
+        // whatever the user was already looking at, before any network
+        // request even started. The live capture showed this exact line
+        // collapsing an on-screen 31-note merged state down to a poisoned
+        // 15-note personal-only cache read, instantly, mid pull-to-refresh.
+        // `showLoadingSpinner` is true only for the one-time initial `load()`
+        // (guarded by `hasLoadedOnce` above) -- `refresh()` always passes
+        // `false` -- so cache-first now only ever seeds a still-empty screen
+        // on its first load, never re-clobbers a screen that already has
+        // live data on it. The read itself, and its diagnostic, still always
+        // happens (so a live capture keeps full visibility into what's on
+        // disk at the start of every round) -- only whether it's APPLIED to
+        // in-memory state changed.
+        let notesCacheResult: [String: FSNote]? = await DiskCache.shared.load([String: FSNote].self, forKey: "notes:\(userId)")
+        RefreshDiagnostics.cacheRead(key: "notes:\(userId)", count: notesCacheResult?.count)
+        if showLoadingSpinner, let cached = notesCacheResult {
             notes = cached
-            if showLoadingSpinner { isLoading = false }
+            isLoading = false
         }
-        if let cached: [String: String] = await DiskCache.shared.load([String: String].self, forKey: "highlights:\(userId)") {
+        let highlightsCacheResult: [String: String]? = await DiskCache.shared.load([String: String].self, forKey: "highlights:\(userId)")
+        RefreshDiagnostics.cacheRead(key: "highlights:\(userId)", count: highlightsCacheResult?.count)
+        if showLoadingSpinner, let cached = highlightsCacheResult {
             highlights = cached
         }
-        if let cached: [FSGroup] = await DiskCache.shared.load([FSGroup].self, forKey: "groups:\(userId)") {
+        let groupsCacheResult: [FSGroup]? = await DiskCache.shared.load([FSGroup].self, forKey: "groups:\(userId)")
+        RefreshDiagnostics.cacheRead(key: "groups:\(userId)", count: groupsCacheResult?.count)
+        if showLoadingSpinner, let cached = groupsCacheResult {
             groups = cached
         }
 
@@ -225,8 +256,20 @@ final class NotesViewModel: ObservableObject {
         var newPageState = pageState
         var personalSucceeded = false
         var segmentErrors: [String] = []
+        // A segment's fetch that was cooperatively cancelled
+        // (CancellationError / URLError.cancelled) rather than genuinely
+        // rejected or failed -- tracked separately from `segmentErrors` (task
+        // 20260910-refresh-clobber-live-rootcause, spec item (c)): it's not
+        // proof of a real failure (so it shouldn't feed the user-facing
+        // `refreshError` signal any more than AccountViewModel's identical
+        // `wasCancelled` feeds `statsMsg`), and per Q14 fail-closed it means
+        // this round proved nothing and must not overwrite disk with
+        // whatever "kept existing" state it's left holding -- see the
+        // cache-write guard at the end of this function.
+        var roundWasCancelled = false
         switch await notesResult {
         case .success(let page):
+            RefreshDiagnostics.fetchOutcome(endpoint: "GET /notes/{user_id}", outcome: "success", count: page.notes.count)
             // Root-cause hardening (task 20260909-notes-account-refresh-data-loss,
             // per Q26/Q27 preference profile): backend step 1's live investigation
             // (heavy real load against the real "Godly Goobers" data, real
@@ -247,14 +290,25 @@ final class NotesViewModel: ObservableObject {
             let personalHadNotes = notes.contains { $0.value.group_id.isEmpty }
             if page.notes.isEmpty && personalHadNotes {
                 segmentErrors.append("Personal: refresh returned no notes for a previously-populated segment -- kept existing notes")
+                RefreshDiagnostics.segmentOutcome(name: "Personal", outcome: "inconclusive-empty-kept-existing", count: page.notes.count)
             } else {
                 freshNotes.merge(page.notes) { _, new in new }
                 newPageState[Self.personalKey] = NotesPageState(
                     cursorCreatedAt: page.nextCursorCreatedAt, cursorId: page.nextCursorId, hasMore: page.hasMore)
                 personalSucceeded = true
+                RefreshDiagnostics.segmentOutcome(name: "Personal", outcome: "spliced", count: page.notes.count)
             }
         case .failure(let error):
-            segmentErrors.append("Personal: \(error.localizedDescription)")
+            RefreshDiagnostics.fetchOutcome(endpoint: "GET /notes/{user_id}", outcome: "failure",
+                                             errorClass: RefreshDiagnostics.errorClass(error),
+                                             taskCancelled: Task.isCancelled)
+            if RefreshDiagnostics.isCancellation(error) {
+                roundWasCancelled = true
+                RefreshDiagnostics.segmentOutcome(name: "Personal", outcome: "cancelled-kept-existing")
+            } else {
+                segmentErrors.append("Personal: \(error.localizedDescription)")
+                RefreshDiagnostics.segmentOutcome(name: "Personal", outcome: "fetch-failed-kept-existing")
+            }
         }
         if let h = await hlTask { highlights = h }
 
@@ -292,18 +346,30 @@ final class NotesViewModel: ObservableObject {
                     // itself, sufficient proof the group is really empty --
                     // keep the group's existing notes/pageState and surface
                     // the anomaly instead of silently trusting or discarding it.
+                    RefreshDiagnostics.fetchOutcome(endpoint: "GET /groups/{user_id}/{group_id}/notes", outcome: "success", count: page.notes.count)
                     let groupHadNotes = notes.contains { $0.value.group_id == gid }
                     if page.notes.isEmpty && groupHadNotes {
                         segmentErrors.append("\(title): refresh returned no notes for a previously-populated group -- kept existing notes")
+                        RefreshDiagnostics.segmentOutcome(name: title, outcome: "inconclusive-empty-kept-existing", count: page.notes.count)
                     } else {
                         freshNotes.merge(page.notes) { _, new in new }
                         newPageState[gid] = NotesPageState(
                             cursorCreatedAt: page.nextCursorCreatedAt, cursorId: page.nextCursorId, hasMore: page.hasMore)
                         succeededGroupIds.insert(gid)
+                        RefreshDiagnostics.segmentOutcome(name: title, outcome: "spliced", count: page.notes.count)
                     }
                 case .failure(let error):
                     // this group's fetch failed this round -- leave its existing notes/pageState alone
-                    segmentErrors.append("\(title): \(error.localizedDescription)")
+                    RefreshDiagnostics.fetchOutcome(endpoint: "GET /groups/{user_id}/{group_id}/notes", outcome: "failure",
+                                                     errorClass: RefreshDiagnostics.errorClass(error),
+                                                     taskCancelled: Task.isCancelled)
+                    if RefreshDiagnostics.isCancellation(error) {
+                        roundWasCancelled = true
+                        RefreshDiagnostics.segmentOutcome(name: title, outcome: "cancelled-kept-existing")
+                    } else {
+                        segmentErrors.append("\(title): \(error.localizedDescription)")
+                        RefreshDiagnostics.segmentOutcome(name: title, outcome: "fetch-failed-kept-existing")
+                    }
                 }
             }
         }
@@ -335,9 +401,32 @@ final class NotesViewModel: ObservableObject {
         refreshError = segmentErrors.isEmpty ? nil : segmentErrors.joined(separator: "; ")
 
         // ── Write fresh data back to the cache ────────────────────────────────────
-        await DiskCache.shared.save(mergedNotes, forKey: "notes:\(userId)")
-        await DiskCache.shared.save(highlights,  forKey: "highlights:\(userId)")
-        await DiskCache.shared.save(groups,      forKey: "groups:\(userId)")
+        // Root-cause fix (mechanism 4, spec item (c), Q14 fail-closed): a
+        // round where any segment was cooperatively cancelled -- or where
+        // `Task.isCancelled` is true by the time every await above has
+        // resolved, covering the highlights/contacts/groups fetches too,
+        // which don't have their own Result-captured segment tracking --
+        // proves nothing about the true current state. It's neither a proven
+        // fresh success (nothing new to persist) nor a proven failure;
+        // writing its "kept existing" merged result back to disk unconditionally
+        // (the previous behavior) is exactly what let the poisoned
+        // cache-first read from earlier in THIS SAME call -- itself already
+        // fixed above -- get re-persisted and outlive the round, confirmed
+        // live at 08:05:56 in this task's capture. Mirrors
+        // AccountViewModel.load()'s identical `wasCancelled`-gated write below.
+        let roundIsCancelled = roundWasCancelled || Task.isCancelled
+        if !roundIsCancelled {
+            await DiskCache.shared.save(mergedNotes, forKey: "notes:\(userId)")
+            RefreshDiagnostics.cacheWrite(key: "notes:\(userId)", count: mergedNotes.count)
+            await DiskCache.shared.save(highlights,  forKey: "highlights:\(userId)")
+            RefreshDiagnostics.cacheWrite(key: "highlights:\(userId)", count: highlights.count)
+            await DiskCache.shared.save(groups,      forKey: "groups:\(userId)")
+            RefreshDiagnostics.cacheWrite(key: "groups:\(userId)", count: groups.count)
+        } else {
+            RefreshDiagnostics.cacheWriteSkipped(key: "notes:\(userId)", reason: "round-cancelled")
+            RefreshDiagnostics.cacheWriteSkipped(key: "highlights:\(userId)", reason: "round-cancelled")
+            RefreshDiagnostics.cacheWriteSkipped(key: "groups:\(userId)", reason: "round-cancelled")
+        }
     }
 
     /// Fetches and appends the next backend-capped page of 15 for whichever

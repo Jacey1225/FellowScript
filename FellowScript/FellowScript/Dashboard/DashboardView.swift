@@ -47,11 +47,31 @@ final class DashboardViewModel: ObservableObject {
         defer { isLoading = false }
 
         // ── Cache-first: warm the cards from last-known data ─────────────────────
-        if let cached: [String: FSNote] = await DiskCache.shared.load([String: FSNote].self, forKey: "notes:\(userId)") {
+        // Root-cause fix (task 20260910-refresh-clobber-live-rootcause,
+        // cache_ownership_rule: single-owner-per-key): the live capture
+        // confirmed this view was the origin of the "notes:<uid>" cache-key
+        // collision -- it wrote a personal-only page (GET /notes/{user_id},
+        // group_id IS NULL server-side) into the exact same key
+        // NotesViewModel.fetchAndCache owns and writes the full
+        // personal+every-group merged set into, on every app launch,
+        // unconditionally discarding every group note from that key before
+        // the user ever navigated anywhere (confirmed live: count=31 → 15
+        // within the same startup preload). Dashboard doesn't need group
+        // notes at all (`recentNote` only ever needs its own personal page),
+        // so per the single-owner rule it now owns its own namespaced key
+        // instead of reading OR writing NotesViewModel's -- this is a
+        // narrower, Dashboard-only cache with the same personal-only payload
+        // shape it always fetched, just no longer sharing a key (and
+        // therefore payload semantics) with a completely different screen.
+        let notesCacheResult: [String: FSNote]? = await DiskCache.shared.load([String: FSNote].self, forKey: "dashboardNotes:\(userId)")
+        RefreshDiagnostics.cacheRead(key: "dashboardNotes:\(userId)", count: notesCacheResult?.count)
+        if let cached = notesCacheResult {
             notes = cached
             isLoading = false
         }
-        if let cached: FSFriendActivityFeed = await DiskCache.shared.load(FSFriendActivityFeed.self, forKey: "friendActivity:\(userId)") {
+        let friendActivityCacheResult: FSFriendActivityFeed? = await DiskCache.shared.load(FSFriendActivityFeed.self, forKey: "friendActivity:\(userId)")
+        RefreshDiagnostics.cacheRead(key: "friendActivity:\(userId)", count: friendActivityCacheResult == nil ? nil : 1)
+        if let cached = friendActivityCacheResult {
             friendActivity = cached
         }
 
@@ -60,8 +80,42 @@ final class DashboardViewModel: ObservableObject {
         // reads fine off the first backend-capped page (15, newest first) --
         // this view doesn't need to page through the full collection like
         // NotesListView does.
-        async let notesTask          = try? service.fetchNotes(userId: userId, cursorCreatedAt: nil, cursorId: nil)
-        async let friendActivityTask = try? service.fetchFriendActivity(userId: userId)
+        //
+        // Diagnostics: wrapped in an explicit do/catch (instead of bare
+        // `try?`) purely to log each fetch's outcome — the resulting optional
+        // value and the "only overwrite on non-nil success" splice logic
+        // right below are unchanged from before this task.
+        async let notesTask: NotesPage? = {
+            do {
+                let page = try await service.fetchNotes(userId: userId, cursorCreatedAt: nil, cursorId: nil)
+                RefreshDiagnostics.fetchOutcome(endpoint: "GET /notes/{user_id}", outcome: "success", count: page.notes.count)
+                return page
+            } catch {
+                RefreshDiagnostics.fetchOutcome(endpoint: "GET /notes/{user_id}", outcome: "failure",
+                                                 errorClass: RefreshDiagnostics.errorClass(error),
+                                                 taskCancelled: Task.isCancelled)
+                return nil
+            }
+        }()
+        async let friendActivityTask: FSFriendActivityFeed? = {
+            do {
+                let feed = try await service.fetchFriendActivity(userId: userId)
+                RefreshDiagnostics.fetchOutcome(endpoint: "GET /friends/{user_id}/activity", outcome: "success",
+                                                 count: feed.friends_active.count + feed.check_in_candidates.count)
+                return feed
+            } catch {
+                // Backend step 1 found repeated NSURLErrorCancelled (-999) on
+                // this exact endpoint, called only from here, in two ~1/sec
+                // bursts bracketing both recorded refresh events -- this is
+                // the diagnostic meant to catch that same churn live and
+                // confirm/deny it's this Task specifically being cancelled
+                // and re-fired rather than a genuine transport failure.
+                RefreshDiagnostics.fetchOutcome(endpoint: "GET /friends/{user_id}/activity", outcome: "failure",
+                                                 errorClass: RefreshDiagnostics.errorClass(error),
+                                                 taskCancelled: Task.isCancelled)
+                return nil
+            }
+        }()
 
         // Bug fix (task 20260901-dashboard-stale-reload-ui): a failed/thrown
         // fetch used to unconditionally overwrite `notes`/`friendActivity`
@@ -99,9 +153,16 @@ final class DashboardViewModel: ObservableObject {
         // again -- see checkInNudgeState's own doc comment above.
         checkInNudgeState = .idle
 
-        // ── Write fresh data back to the shared cache ────────────────────────────
-        await DiskCache.shared.save(notes, forKey: "notes:\(userId)")
+        // ── Write fresh data back to this view's OWN cache key ───────────────────
+        // Single-owner rule: Dashboard is now the sole reader/writer of
+        // "dashboardNotes:<uid>" -- it never touches NotesViewModel's
+        // "notes:<uid>" key again, so this write can no longer shrink that
+        // key's group-note coverage the way the confirmed live capture showed
+        // it doing every app launch.
+        await DiskCache.shared.save(notes, forKey: "dashboardNotes:\(userId)")
+        RefreshDiagnostics.cacheWrite(key: "dashboardNotes:\(userId)", count: notes.count)
         await DiskCache.shared.save(friendActivity, forKey: "friendActivity:\(userId)")
+        RefreshDiagnostics.cacheWrite(key: "friendActivity:\(userId)", count: friendActivity.friends_active.count + friendActivity.check_in_candidates.count)
     }
 
     var recentNote: (String, FSNote)? {

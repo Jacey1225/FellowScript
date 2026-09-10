@@ -75,6 +75,35 @@ struct NotesListView: View {
                         .padding(.top, 14)
                 }
 
+                // Visible, warm, non-blocking signal for a background
+                // segment-refresh failure (task
+                // 20260910-refresh-clobber-live-rootcause, spec item (d):
+                // `refreshError` has existed since 20260905 but was never
+                // wired to any UI -- exactly why the user had zero on-screen
+                // signal across three prior "fixed" attempts at this bug).
+                // Deliberately a plain inline row, not an `.alert` (unlike
+                // `saveError` below) -- a background refresh hiccup shouldn't
+                // block interaction with an already-populated screen (UI/UX
+                // pref Q17: warm tone, minimal, never technical/redundant) --
+                // and a fixed, friendly copy rather than the raw per-segment
+                // diagnostic text `refreshError` carries internally, which
+                // stays useful for logs/tests but reads as too technical for
+                // this screen. Pull-to-refresh (already present) is the
+                // retry path; no new control is added.
+                if vm.refreshError != nil {
+                    Text("Some notes couldn\u{2019}t be refreshed just now — showing what\u{2019}s already loaded. Pull down to try again.")
+                        .font(.inter(Theme.fontSM))
+                        .foregroundColor(Theme.error)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, Theme.spacingSM)
+                        .padding(.vertical, Theme.spacingXS + 2)
+                        .background(Theme.error.opacity(0.10))
+                        .clipShape(RoundedRectangle(cornerRadius: Theme.radiusSM))
+                        .padding(.horizontal, 20)
+                        .padding(.top, 10)
+                        .accessibilityLabel("Some notes couldn't be refreshed just now. Showing what's already loaded. Pull down to try again.")
+                }
+
                 if vm.isLoading {
                     Spacer()
                     ProgressView().tint(Theme.gold)

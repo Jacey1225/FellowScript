@@ -183,6 +183,32 @@ message.
 `decode(...)` call the same way, so a bookmarks decode failure reports via
 `reportDecodeFailure`/CloudWatch instead of silently reading as "no bookmarks."
 
+**Subscription banner + refresh cache-ownership root-cause fix (2026-09-10, task
+`20260910-refresh-clobber-live-rootcause`).** A live device capture against production found a
+second, previously-unknown cause of the subscription-status error banner beyond routine
+`.refreshable`/`.task` cancellation: `AccountView`'s `.task` and `.refreshable` each called
+`loadSubscription`/`fetchUserSubscription` independently with no coordination, and a `.task`
+re-fire landing near a pull produced a burst of concurrent requests that Cloudflare's edge
+blocked with genuine 403s before most of them ever reached origin (confirmed live: only 1 of 8
+device-observed requests for that endpoint reached the server in one capture window).
+`loadSubscription` now has an in-flight de-duplication guard mirroring the Events section's
+existing `fireHeartbeatNow` double-tap guard, collapsing concurrent calls into one in-flight
+request. Separately, `fetchUserSubscription` previously bypassed the shared `get()` request
+helper entirely and treated *any* error status (not just the documented 404 "no subscription")
+as a silent no-plan result — a genuine 403/429/5xx vanished with no signal at all. It's now
+routed through the same timeout + bounded-retry + status-validation path every other read uses,
+with only 404 mapped to "no plan"; every other failure now actually reaches
+`loadSubscription`'s error handling, which itself now distinguishes a genuine failure (sets the
+banner) from cooperative cancellation (never sets it) — matching `load()`'s own existing
+cancellation-vs-failure split. `fetchHeartbeats` now throws on a decode failure instead of
+fabricating an empty array (closing the last instance of the anti-pattern the 2026-09-03 Events
+fix above addressed elsewhere), and the per-agent preserve-on-failure fallback in `load()` no
+longer contributes a fabricated empty result when there's no prior in-memory data to fall back
+on. A refresh round that was cooperatively cancelled now persists nothing to the account's
+`DiskCache` entries at all (previously it re-wrote the same values it read, which happened to be
+harmless but wasn't guaranteed to be). The equivalent Notes-screen cache-ownership and
+cancelled-round fixes are documented in `docs/design/notes.md`.
+
 **`StoreKitManager.currentRenewal()` no longer collapses a fetch failure into "no active
 renewal" (2026-09-05, compile-errors #5).** `sub.status`'s thrown failure was previously
 discarded via `try?`, identical to the genuine "no active subscription" `nil` return. The thrown

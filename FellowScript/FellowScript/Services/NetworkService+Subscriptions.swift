@@ -13,13 +13,54 @@ extension NetworkService {
         // The backend returns 404 {"detail": "No active subscription"} when the
         // user is on no plan. FSSubscription's lenient decoder would otherwise
         // happily decode that error body into a default (bogus "individual")
-        // plan, so explicitly treat any error status — and any subscription that
-        // came back without a real id — as "no subscription".
-        let (data, response) = try await URLSession.shared.data(
-            from: url("/subscriptions/user/\(encodeURIComponent(userId))")
-        )
-        if let http = response as? HTTPURLResponse, http.statusCode >= 400 { return nil }
-        guard let sub = decode(FSSubscription.self, from: data), !sub.id.isEmpty else { return nil }
+        // plan, so explicitly treat that one documented status -- and any
+        // subscription that came back without a real id -- as "no subscription".
+        //
+        // Root-cause fix (task 20260910-refresh-clobber-live-rootcause, spec
+        // mechanism 5): this used to bypass `get()` entirely (raw
+        // `URLSession.shared.data(from:)`, no requestTimeout override, no
+        // retry, no throwIfError) AND treated every status >= 400 -- not just
+        // the documented 404 -- as a silent "no subscription", including a
+        // genuine 403/429/5xx. That's exactly the Q27 violation this task's
+        // preference profile calls out (silently substituting a default for
+        // an unproven result) and it's also what let the live-capture-
+        // confirmed Cloudflare-edge 403 burst (frontend step 2's live
+        // capture: an in-flight-guard-missing request storm from
+        // AccountView's `.task`+`.refreshable`) pass through completely
+        // unsurfaced. Now routed through `getRawResponse` (same
+        // timeout + bounded-retry-on-5xx/transport-error hardening every
+        // other read gets via `get()`), with ONLY the documented 404 mapped
+        // to `nil`; every other non-2xx status goes through the same
+        // `throwIfError` mapping (AppError.limitReached/.rateLimited/
+        // .networkError) as everywhere else, so a genuine failure now
+        // actually reaches `AccountViewModel.loadSubscription`'s catch block
+        // instead of masquerading as "no active plan".
+        let endpoint = "GET /subscriptions/user/{user_id}"
+        let response: URLResponse
+        let data: Data
+        do {
+            (data, response) = try await getRawResponse("/subscriptions/user/\(encodeURIComponent(userId))")
+        } catch {
+            RefreshDiagnostics.fetchOutcome(endpoint: endpoint, outcome: "failure",
+                                             errorClass: RefreshDiagnostics.errorClass(error), taskCancelled: Task.isCancelled)
+            throw error
+        }
+        if let http = response as? HTTPURLResponse, http.statusCode == 404 {
+            RefreshDiagnostics.fetchOutcome(endpoint: endpoint, outcome: "http-error-status-404-no-subscription")
+            return nil
+        }
+        do {
+            try throwIfError(response, data)
+        } catch {
+            RefreshDiagnostics.fetchOutcome(endpoint: endpoint, outcome: "failure",
+                                             errorClass: RefreshDiagnostics.errorClass(error), taskCancelled: Task.isCancelled)
+            throw error
+        }
+        guard let sub = decode(FSSubscription.self, from: data), !sub.id.isEmpty else {
+            RefreshDiagnostics.fetchOutcome(endpoint: endpoint, outcome: "decode-nil-or-empty-id")
+            return nil
+        }
+        RefreshDiagnostics.fetchOutcome(endpoint: endpoint, outcome: "success", count: 1)
         return sub
     }
 

@@ -138,21 +138,35 @@ final class AccountEventsDecodeFailureRegressionTests: XCTestCase {
 
     // MARK: 2 — fetchHeartbeats endpoint-tagged decode telemetry
 
-    func test_fetchHeartbeats_genuinelyMalformedShape_decodeFails_returnsEmptyArray_andFiresBeacon() async throws {
+    /// Test-correction (task 20260910-refresh-clobber-live-rootcause, spec
+    /// scope item 3, Q27 "propagate upward, never silently substitute
+    /// defaults"): this test previously asserted `fetchHeartbeats` fell back
+    /// to an empty array on a decode failure (`?? []`) -- that WAS the exact
+    /// fabricate-success-on-failure anti-pattern this task's root-cause fix
+    /// removed. `fetchHeartbeats` now throws on a genuine decode failure
+    /// instead of returning a fabricated empty result, so the correct
+    /// assertion is that the call throws (matching every other NetworkService
+    /// read's decode-failure contract), not that it silently succeeds empty.
+    /// The beacon-fires-once behavior this test also covers is unchanged by
+    /// that fix and is still asserted below.
+    func test_fetchHeartbeats_genuinelyMalformedShape_decodeFails_throwsAndFiresBeacon() async throws {
         StubURLProtocol.stubStatusCode = 200
         // Real shape is a top-level array; a top-level object has no
         // unkeyed container for [FSHeartbeat] to decode into at all -- a
         // genuine structural failure, not a per-field-defaultable one.
         StubURLProtocol.stubBody = #"{"unexpected": "shape"}"#.data(using: .utf8)!
 
-        let heartbeats = try await NetworkService.shared.fetchHeartbeats(userId: "user-1", agentId: "agent-1")
-
-        XCTAssertTrue(heartbeats.isEmpty, "an undecodable heartbeats response must still fall back to an empty array")
+        do {
+            _ = try await NetworkService.shared.fetchHeartbeats(userId: "user-1", agentId: "agent-1")
+            XCTFail("THE FIX (task 20260910-refresh-clobber-live-rootcause): an undecodable heartbeats response must now throw, not silently fall back to a fabricated empty array -- a caller (AccountViewModel.load()) can no longer tell 'decode failed' apart from 'this agent genuinely has zero events'")
+        } catch {
+            // expected
+        }
 
         await waitForBeacon()
         let beacons = beaconRequests()
         XCTAssertEqual(beacons.count, 1,
-                        "THE FIX: a fetchHeartbeats decode failure must no longer be silently swallowed -- it must fire exactly one beacon (this was the one sibling fetch 20260903-account-stats-not-loading's own fix missed)")
+                        "a fetchHeartbeats decode failure must still fire exactly one beacon (this was the one sibling fetch 20260903-account-stats-not-loading's own fix missed)")
         XCTAssertEqual(beacons.first?.bodyJSON?["endpoint"] as? String,
                         "GET /agent/{user_id}/{agent_id}/heartbeats")
     }
@@ -202,7 +216,13 @@ final class AccountEventsDecodeFailureRegressionTests: XCTestCase {
 
     /// Data minimization (security preference profile): the beacon must
     /// never leak raw prompt content even when reporting a genuine failure
-    /// on this endpoint.
+    /// on this endpoint. Test-correction (task
+    /// 20260910-refresh-clobber-live-rootcause): the bare `try await` here
+    /// used to assume the call always returns normally on a decode failure;
+    /// now that it throws (see the sibling test above), the call is wrapped
+    /// so the expected throw doesn't fail this test for the wrong reason --
+    /// the beacon-content assertions below are what this test actually exists
+    /// to prove.
     func test_fetchHeartbeats_decodeFailureBeacon_neverLeaksRawPromptContent() async throws {
         StubURLProtocol.stubStatusCode = 200
         // A top-level array of bare strings -- each element needs a keyed
@@ -210,7 +230,7 @@ final class AccountEventsDecodeFailureRegressionTests: XCTestCase {
         // structural failure (not a per-field-defaultable one).
         StubURLProtocol.stubBody = #"["SECRET_PROMPT_CONTENT_MARKER"]"#.data(using: .utf8)!
 
-        _ = try await NetworkService.shared.fetchHeartbeats(userId: "user-1", agentId: "agent-1")
+        _ = try? await NetworkService.shared.fetchHeartbeats(userId: "user-1", agentId: "agent-1")
 
         await waitForBeacon()
         guard let beacon = beaconRequests().first else {

@@ -39,6 +39,7 @@ extension NetworkService {
     }
 
     func fetchHeartbeats(userId: String, agentId: String) async throws -> [FSHeartbeat] {
+        let endpoint = "GET /agent/{user_id}/{agent_id}/heartbeats"
         let data = try await get("/agent/\(userId)/\(agentId)/heartbeats")
         // task 20260903-account-events-not-loading: tagged like the sibling
         // fetches (fetchNotesCount/fetchHighlights/fetchAgents) fixed earlier
@@ -47,7 +48,25 @@ extension NetworkService {
         // this exact task) previously vanished indistinguishably from "this
         // agent really has zero events", with no reportDecodeFailure/CloudWatch
         // signal at all.
-        return decode([FSHeartbeat].self, from: data, endpoint: "GET /agent/{user_id}/{agent_id}/heartbeats") ?? []
+        //
+        // Root-cause fix (task 20260910-refresh-clobber-live-rootcause, spec
+        // scope item 3, Q27 "propagate upward, never silently substitute
+        // defaults"): `?? []` here was the exact fabricate-success-on-
+        // decode-failure anti-pattern the spec calls out -- "decode(...)
+        // returned nil, `[]` is fabricated" was indistinguishable from
+        // "decode(...) returned a genuinely empty array" both to this
+        // function's caller and to whatever it persisted to disk. Now throws
+        // instead, so AccountViewModel.load()'s existing per-agent
+        // Result-capture/preserve-on-failure splice (already written for a
+        // thrown per-agent failure) is what actually runs on a decode
+        // failure, rather than this call silently reporting a clean empty
+        // success.
+        guard let decoded = decode([FSHeartbeat].self, from: data, endpoint: endpoint) else {
+            RefreshDiagnostics.fetchOutcome(endpoint: endpoint, outcome: "decode-failure-thrown")
+            throw AppError.networkError("Could not read this agent's events.")
+        }
+        RefreshDiagnostics.fetchOutcome(endpoint: endpoint, outcome: "success", count: decoded.count)
+        return decoded
     }
 
     // ── Agents (write) ────────────────────────────────────────────────────────

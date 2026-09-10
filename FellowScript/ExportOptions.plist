@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>method</key>
+	<string>app-store-connect</string>
+	<key>teamID</key>
+	<string>886XPLVC69</string>
+	<key>signingStyle</key>
+	<string>automatic</string>
+	<key>uploadSymbols</key>
+	<true/>
+	<key>destination</key>
+	<string>upload</string>
+	<key>authenticationKeyPath</key>
+	<string>/Users/jaceysimpson/.appstoreconnect/private_keys/AuthKey_JZCLMWLW83.p8</string>
+	<key>authenticationKeyID</key>
+	<string>JZCLMWLW83</string>
+	<key>authenticationKeyIssuerID</key>
+	<string>2981b6eb-13b8-4b61-a12b-eead65fe9439</string>
+</dict>
+</plist>

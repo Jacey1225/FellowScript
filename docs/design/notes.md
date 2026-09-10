@@ -93,6 +93,39 @@ search.
   decorative motion) resets the query and returns to the normal unfiltered,
   paginated list with no lingering search state.
 
+### Pull-to-Refresh Reliability (iOS, task `20260910-refresh-clobber-live-rootcause`)
+
+Root-cause fix for a group-notes pull-to-refresh data-loss bug, confirmed via
+a live device capture against production after three prior "fixed" attempts
+each reproduced again in the shipped build.
+
+- **Cache ownership** — `DiskCache` keys are single-owner: exactly one screen
+  writes each key, every other consumer only reads it. The Dashboard's home
+  screen previously wrote a personal-notes-only page into the same
+  `notes:<uid>` key `NotesViewModel` owns (writing the full personal + every
+  group merged set), clobbering every group note out of that key on each app
+  launch. The Dashboard now owns its own `dashboardNotes:<uid>` key instead.
+- **Cache-first is initial-load-only** — `NotesViewModel`'s "show last-known
+  data instantly" disk-cache read now only applies to in-memory state on the
+  screen's very first load, never on a pull-to-refresh or a `.task` re-fire.
+  Re-applying a disk read over already-displayed live data on every refresh
+  was what let a stale/poisoned cache instantly empty a group's notes the
+  moment a refresh started, before any network request even returned.
+- **A cancelled refresh round persists nothing** — if any segment of a
+  refresh is cooperatively cancelled (e.g. the screen refreshing while the
+  user navigates away), nothing from that round is written back to disk. A
+  cancelled round proves nothing about the true current state, so it can no
+  longer re-poison the cache with a stale in-flight snapshot.
+- **Inline refresh notice** — if a background segment refresh fails (not
+  cancelled — a genuine fetch/decode failure), a small warm, non-blocking
+  banner ("Some notes couldn't be refreshed just now — showing what's
+  already loaded. Pull down to try again.") appears above the list. It's a
+  plain inline row, not a blocking alert, and clears automatically once a
+  refresh succeeds; pull-to-refresh remains the retry action.
+
+The same cache-ownership and cancelled-round-persists-nothing principles were
+also applied to the Account screen's data refresh (see `docs/design/account.md`).
+
 ---
 
 ## Highlights Tab
