@@ -77,6 +77,21 @@ struct FellowScriptApp: App {
             ? MockDataService.shared
             : NetworkService.shared
     )
+    // Task 20260909-push-permission-late-enable: re-checks push authorization
+    // every time the app returns to the foreground, not just at the five
+    // auth-flow entry points (signIn/signUp/signInWithGoogle/signInWithApple/
+    // completeMfaLogin) that already call requestPushNotifications(). Without
+    // this, a user who declined at signup and later flips the permission on
+    // in iOS Settings never re-triggers registerForRemoteNotifications() --
+    // nothing else ever re-checks UNUserNotificationCenter's authorization
+    // status after that first decision. Mirrors ChatThreadView.swift's
+    // existing scenePhase-driven foreground/background idiom (see its own
+    // doc comment on `scenePhase`) rather than adding a second, competing
+    // lifecycle-detection mechanism (e.g. a raw
+    // UIApplication.willEnterForegroundNotification observer) -- this app
+    // already treats scenePhase as its one source of truth for
+    // foreground/background transitions.
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
         WindowGroup {
@@ -93,6 +108,24 @@ struct FellowScriptApp: App {
                         appState.openSession(groupId: groupId)
                     }
                 }
+        }
+        // Only reacts to .active, not .inactive -- same rationale as
+        // ChatThreadView's own scenePhase gate: .inactive also fires for
+        // transient states (Control Center, an incoming call/permission
+        // overlay, the app-switcher gesture) that never actually left the
+        // app, and re-checking on that transient dip would only add
+        // redundant work, not new correctness. requestPushNotifications()'s
+        // own switch already only ever prompts while genuinely
+        // .notDetermined and no-ops on .denied, so repeated .active
+        // transitions (locking/unlocking the device, switching apps and
+        // back) don't spam a re-prompt -- and registerForRemoteNotifications()
+        // is documented by Apple as safe/cheap to call repeatedly, so the
+        // .authorized/.provisional/.ephemeral branch re-firing on every
+        // foreground isn't observably wasteful either.
+        .onChange(of: scenePhase) { phase in
+            if phase == .active {
+                appState.requestPushNotifications()
+            }
         }
     }
 }
