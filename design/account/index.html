@@ -1154,6 +1154,31 @@ message.</p>
 <code>fetchHeartbeats</code> not covered by the earlier <code>endpoint:</code>-tagging passes above; it now tags its
 <code>decode(...)</code> call the same way, so a bookmarks decode failure reports via
 <code>reportDecodeFailure</code>/CloudWatch instead of silently reading as "no bookmarks."</p>
+<p><strong>Subscription banner + refresh cache-ownership root-cause fix (2026-09-10, task
+<code>20260910-refresh-clobber-live-rootcause</code>).</strong> A live device capture against production found a
+second, previously-unknown cause of the subscription-status error banner beyond routine
+<code>.refreshable</code>/<code>.task</code> cancellation: <code>AccountView</code>'s <code>.task</code> and <code>.refreshable</code> each called
+<code>loadSubscription</code>/<code>fetchUserSubscription</code> independently with no coordination, and a <code>.task</code>
+re-fire landing near a pull produced a burst of concurrent requests that Cloudflare's edge
+blocked with genuine 403s before most of them ever reached origin (confirmed live: only 1 of 8
+device-observed requests for that endpoint reached the server in one capture window).
+<code>loadSubscription</code> now has an in-flight de-duplication guard mirroring the Events section's
+existing <code>fireHeartbeatNow</code> double-tap guard, collapsing concurrent calls into one in-flight
+request. Separately, <code>fetchUserSubscription</code> previously bypassed the shared <code>get()</code> request
+helper entirely and treated <em>any</em> error status (not just the documented 404 "no subscription")
+as a silent no-plan result — a genuine 403/429/5xx vanished with no signal at all. It's now
+routed through the same timeout + bounded-retry + status-validation path every other read uses,
+with only 404 mapped to "no plan"; every other failure now actually reaches
+<code>loadSubscription</code>'s error handling, which itself now distinguishes a genuine failure (sets the
+banner) from cooperative cancellation (never sets it) — matching <code>load()</code>'s own existing
+cancellation-vs-failure split. <code>fetchHeartbeats</code> now throws on a decode failure instead of
+fabricating an empty array (closing the last instance of the anti-pattern the 2026-09-03 Events
+fix above addressed elsewhere), and the per-agent preserve-on-failure fallback in <code>load()</code> no
+longer contributes a fabricated empty result when there's no prior in-memory data to fall back
+on. A refresh round that was cooperatively cancelled now persists nothing to the account's
+<code>DiskCache</code> entries at all (previously it re-wrote the same values it read, which happened to be
+harmless but wasn't guaranteed to be). The equivalent Notes-screen cache-ownership and
+cancelled-round fixes are documented in <code>docs/design/notes.md</code>.</p>
 <p><strong><code>StoreKitManager.currentRenewal()</code> no longer collapses a fetch failure into "no active
 renewal" (2026-09-05, compile-errors #5).</strong> <code>sub.status</code>'s thrown failure was previously
 discarded via <code>try?</code>, identical to the genuine "no active subscription" <code>nil</code> return. The thrown

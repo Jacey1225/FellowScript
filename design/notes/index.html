@@ -560,6 +560,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#pull-to-refresh-reliability-ios-task-20260910-refresh-clobber-live-rootcause" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pull-to-Refresh Reliability (iOS, task 20260910-refresh-clobber-live-rootcause)
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1216,6 +1227,37 @@ search.</p>
   decorative motion) resets the query and returns to the normal unfiltered,
   paginated list with no lingering search state.</li>
 </ul>
+<h3 id="pull-to-refresh-reliability-ios-task-20260910-refresh-clobber-live-rootcause">Pull-to-Refresh Reliability (iOS, task <code>20260910-refresh-clobber-live-rootcause</code>)</h3>
+<p>Root-cause fix for a group-notes pull-to-refresh data-loss bug, confirmed via
+a live device capture against production after three prior "fixed" attempts
+each reproduced again in the shipped build.</p>
+<ul>
+<li><strong>Cache ownership</strong> — <code>DiskCache</code> keys are single-owner: exactly one screen
+  writes each key, every other consumer only reads it. The Dashboard's home
+  screen previously wrote a personal-notes-only page into the same
+  <code>notes:&lt;uid&gt;</code> key <code>NotesViewModel</code> owns (writing the full personal + every
+  group merged set), clobbering every group note out of that key on each app
+  launch. The Dashboard now owns its own <code>dashboardNotes:&lt;uid&gt;</code> key instead.</li>
+<li><strong>Cache-first is initial-load-only</strong> — <code>NotesViewModel</code>'s "show last-known
+  data instantly" disk-cache read now only applies to in-memory state on the
+  screen's very first load, never on a pull-to-refresh or a <code>.task</code> re-fire.
+  Re-applying a disk read over already-displayed live data on every refresh
+  was what let a stale/poisoned cache instantly empty a group's notes the
+  moment a refresh started, before any network request even returned.</li>
+<li><strong>A cancelled refresh round persists nothing</strong> — if any segment of a
+  refresh is cooperatively cancelled (e.g. the screen refreshing while the
+  user navigates away), nothing from that round is written back to disk. A
+  cancelled round proves nothing about the true current state, so it can no
+  longer re-poison the cache with a stale in-flight snapshot.</li>
+<li><strong>Inline refresh notice</strong> — if a background segment refresh fails (not
+  cancelled — a genuine fetch/decode failure), a small warm, non-blocking
+  banner ("Some notes couldn't be refreshed just now — showing what's
+  already loaded. Pull down to try again.") appears above the list. It's a
+  plain inline row, not a blocking alert, and clears automatically once a
+  refresh succeeds; pull-to-refresh remains the retry action.</li>
+</ul>
+<p>The same cache-ownership and cancelled-round-persists-nothing principles were
+also applied to the Account screen's data refresh (see <code>docs/design/account.md</code>).</p>
 <hr />
 <h2 id="highlights-tab">Highlights Tab</h2>
 <p>Lists all verse highlights for the user (or group, if a group is selected) as clickable rows, sorted by book → chapter → verse. Clicking a row navigates the reader to that verse.</p>
