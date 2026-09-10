@@ -1,8 +1,10 @@
 import asyncio
 import json
 import logging
+import threading
 import time
 
+import psycopg2
 from fastapi import WebSocket
 from schemas.message import Message, ATTACHMENT_KINDS
 from db import DBManager
@@ -66,6 +68,76 @@ class ConnectionManager(DBManager):
         self.active_connections: dict[str, WebSocket] = {}
         self.last_seen: dict[str, float] = {}
         self._heartbeat_task: "asyncio.Task | None" = None
+        # Guards _execute/_reconnect below (task 20260910-ws-stale-cursor-crash).
+        # This app runs a single uvicorn worker with no thread pool for these
+        # synchronous DB calls (see main.py's uvicorn invocation), so two
+        # coroutines can't literally execute a query at the same instant --
+        # but nothing in this class enforces that as an invariant, and a lock
+        # around "check/repair the shared cursor, then use it" costs nothing
+        # here. Kept explicit rather than relying on today's deployment shape
+        # (Implementation Philosophy Q28: design with concurrency in mind).
+        self._db_lock = threading.Lock()
+
+    def _reconnect(self) -> None:
+        """Tear down this singleton's (stale/closed) connection and open a
+        fresh one with the exact same parameters DBManager.__init__ used.
+
+        Only ConnectionManager needs this: every other DBManager subclass in
+        this codebase is instantiated fresh per request and just gets thrown
+        away, so it never lives long enough to go stale. This one is a
+        module-level singleton (`manager = ConnectionManager()`,
+        routes/messaging.py) that has to survive for the life of the server
+        process -- see this class's docstring/`__init__` comment.
+        """
+        try:
+            self.cur.close()
+        except Exception:
+            pass
+        try:
+            self.conn.close()
+        except Exception:
+            pass
+        super().__init__(self.db_name)
+        self.conn.autocommit = True
+        logger.warning("ConnectionManager reconnected to Postgres after a stale/closed connection.")
+
+    def _execute(self, query: str, params: tuple = ()) -> None:
+        """Run a query on the shared cursor, transparently reconnecting once
+        if the long-lived connection has gone stale/closed underneath it.
+
+        Root cause (task 20260910-ws-stale-cursor-crash, evidence-backed, not
+        a blind patch): production logs showed `psycopg2.InterfaceError:
+        cursor already closed` recurring from this class's unguarded
+        `self.cur.execute` calls. DB-side causes were checked and ruled out
+        -- `SHOW idle_session_timeout` is 0 (disabled) on the production
+        server, and Postgres's own `pg_postmaster_start_time()` predates the
+        crash window by weeks (no DB restart). But `pg_stat_activity` showed
+        this singleton's connection was already gone from Postgres's own
+        view by the time the error surfaced -- a genuinely dead TCP session,
+        not just client-side confusion. With no DB-side connection pooler/
+        proxy in front of Postgres (host networking straight to `localhost`,
+        per docker-compose.yml) and no keepalives previously configured on
+        this connection, the most evidence-consistent explanation is an
+        idle, keepalive-less TCP connection silently dropped at the OS/
+        network level sometime over this singleton's many-hours-long
+        lifetime, with neither side finding out until the next query. DBManager's
+        `sql.connect(...)` now sets TCP keepalives (db.py) to make that far
+        less likely going forward; this retry is the safety net for whenever
+        it (or any other stale-connection cause) still happens -- a single
+        reconnect-and-retry actually repairs the connection rather than just
+        catching and logging the symptom, and a second failure (a genuinely
+        unreachable database) still propagates instead of being masked.
+        """
+        with self._db_lock:
+            try:
+                self.cur.execute(query, params)
+            except (psycopg2.InterfaceError, psycopg2.OperationalError) as e:
+                logger.warning(
+                    "ConnectionManager cursor stale/closed (%s: %s) -- reconnecting and retrying once.",
+                    type(e).__name__, e,
+                )
+                self._reconnect()
+                self.cur.execute(query, params)
 
     def save_message(self, msg: Message) -> None:
         """Persist the message and its recipient links.
@@ -79,17 +151,30 @@ class ConnectionManager(DBManager):
                 which is exactly the fake-success outcome this workflow
                 exists to remove. ``send_msg`` (the only caller) catches
                 this and tells the sender over their own socket, since
-                there's no HTTP response to raise into here.
+                there's no HTTP response to raise into here. Also raised
+                (task 20260910-ws-stale-cursor-crash) if the INSERT itself
+                still fails after ``_execute``'s one reconnect-and-retry --
+                that means the database is genuinely unreachable, not just
+                this singleton's cursor being stale, so it's surfaced the
+                same way rather than crashing the WebSocket connection.
         """
-        self.cur.execute(
-            "INSERT INTO messages "
-            "(from_user, group_id, text, timestamp, attachment_kind, attachment_key, attachment_meta) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING _id",
-            (
-                msg.from_user, msg.group_id or None, msg.text, str(msg.timestamp),
-                msg.attachment_kind, msg.attachment_key, json.dumps(msg.attachment_meta or {}),
+        try:
+            self._execute(
+                "INSERT INTO messages "
+                "(from_user, group_id, text, timestamp, attachment_kind, attachment_key, attachment_meta) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING _id",
+                (
+                    msg.from_user, msg.group_id or None, msg.text, str(msg.timestamp),
+                    msg.attachment_kind, msg.attachment_key, json.dumps(msg.attachment_meta or {}),
+                )
             )
-        )
+        except (psycopg2.InterfaceError, psycopg2.OperationalError) as e:
+            try:
+                self.conn.rollback()
+            except Exception:
+                pass
+            logger.error("save_message INSERT failed after reconnect retry: %s", e)
+            raise SaveFailedError() from e
         row = self.cur.fetchone()
         if row:
             message_id = str(row[0])
@@ -245,11 +330,34 @@ class ConnectionManager(DBManager):
         # bidirectional blocked-relationship set (either direction), reused
         # below for both the DM drop and the per-recipient group delivery
         # skip — avoids opening a BlockManager connection per recipient.
-        self.cur.execute(
-            "SELECT blocked_id FROM blocked_users WHERE blocker_id = %s "
-            "UNION SELECT blocker_id FROM blocked_users WHERE blocked_id = %s",
-            (from_user_id, from_user_id),
-        )
+        #
+        # This was the exact query production logs caught crashing with
+        # `psycopg2.InterfaceError: cursor already closed` (task
+        # 20260910-ws-stale-cursor-crash) -- it had no try/except at all, so
+        # the exception propagated straight into websocket_endpoint's loop
+        # and killed the sender's connection before any error frame could
+        # ever be sent, which is why build 42's client-side error-frame
+        # handling never had a chance to fire. `_execute` now transparently
+        # reconnects and retries once; if it still fails, fail CLOSED
+        # (Security Posture Q14) rather than silently falling through as if
+        # no block existed -- tell the sender explicitly instead, the same
+        # way ContentRejected/SaveFailedError already do just above/below.
+        try:
+            self._execute(
+                "SELECT blocked_id FROM blocked_users WHERE blocker_id = %s "
+                "UNION SELECT blocker_id FROM blocked_users WHERE blocked_id = %s",
+                (from_user_id, from_user_id),
+            )
+        except (psycopg2.InterfaceError, psycopg2.OperationalError) as e:
+            logger.error("Blocked-relationship check failed after reconnect retry: %s", e)
+            sender_ws = self.active_connections.get(from_user_id)
+            if sender_ws:
+                await sender_ws.send_json({
+                    "type": "error",
+                    "reason": "send_failed",
+                    "detail": "Couldn't send your message. Please try again.",
+                })
+            return
         blocked_relationships = {str(r[0]) for r in self.cur.fetchall()}
 
         if not group_id and any(uid in blocked_relationships for uid in to_users):
@@ -287,10 +395,15 @@ class ConnectionManager(DBManager):
             "attachment_url": generate_download_url(attachment_key) if attachment_key else None,
         }
 
-        # Resolve sender username once for the notification title
+        # Resolve sender username once for the notification title. Already
+        # had a generic catch-and-fall-back before this task -- that stays,
+        # it just wasn't addressing *why* the cursor was stale. Routed
+        # through `_execute` now so the common stale-cursor case is actually
+        # repaired (reconnect + retry) rather than only ever degrading to
+        # the "FellowScript" fallback every time it recurred.
         sender_name = "FellowScript"
         try:
-            self.cur.execute("SELECT username FROM users WHERE _id = %s", (from_user_id,))
+            self._execute("SELECT username FROM users WHERE _id = %s", (from_user_id,))
             row = self.cur.fetchone()
             if row:
                 sender_name = row[0]
@@ -300,10 +413,12 @@ class ConnectionManager(DBManager):
         # Batch-fetch device tokens for the whole recipient set once, rather
         # than one query per offline recipient inside the loop below — the
         # per-recipient delivery/eviction logic itself still has to stay
-        # per-recipient, only the token lookup is batched.
+        # per-recipient, only the token lookup is batched. Same treatment as
+        # the sender-username lookup above -- routed through `_execute` so a
+        # stale cursor gets repaired instead of just degrading every time.
         device_tokens: dict[str, str] = {}
         try:
-            self.cur.execute(
+            self._execute(
                 "SELECT user_id, token FROM device_tokens WHERE user_id = ANY(%s::uuid[])",
                 (list(to_users),),
             )

@@ -917,7 +917,28 @@ class DBManager:
             dbname=dbname,
             user="fellowscript",
             password=_DB_PASSWORD,
-            port=5432
+            port=5432,
+            # TCP keepalives (task 20260910-ws-stale-cursor-crash): production
+            # investigation found ConnectionManager's long-lived singleton
+            # connection silently dead from Postgres's own point of view
+            # (absent from pg_stat_activity) with no DB-side cause -- Postgres
+            # hadn't restarted, and idle_session_timeout is 0 (disabled) on
+            # this server -- pointing at the connection's idle TCP session
+            # itself getting silently dropped at the OS/network level over
+            # many hours with neither side ever exchanging a packet to notice.
+            # A short-lived per-request connection (every other DBManager
+            # subclass) never lives long enough for this to matter, so these
+            # are harmless there; for ConnectionManager's singleton they keep
+            # the socket demonstrably alive (or let a real drop surface fast)
+            # well before it would otherwise go silently stale. This is
+            # belt-and-suspenders alongside ConnectionManager's own
+            # reconnect-on-stale-cursor retry below, not a replacement for it
+            # -- keepalives reduce how often that retry path should ever need
+            # to fire, they don't guarantee it never does.
+            keepalives=1,
+            keepalives_idle=30,
+            keepalives_interval=10,
+            keepalives_count=3,
         )
         logger.info("Connected.")
         self.cur = self.conn.cursor()
