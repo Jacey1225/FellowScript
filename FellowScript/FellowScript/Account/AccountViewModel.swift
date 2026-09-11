@@ -64,6 +64,40 @@ final class AccountViewModel: ObservableObject {
     // results if it's still the most recent one when it finishes. See
     // load()'s own comment for why this is needed.
     private var loadGeneration = 0
+    // Root-cause fix (task 20260910-account-events-refresh-regression,
+    // independent second-opinion pass, build 43 still empty live): the
+    // generation of the most recent round that actually COMMITTED real,
+    // non-cancelled results. The old guard compared against `loadGeneration`
+    // (the most recently *started* round), so a newer round that started
+    // and was then cooperatively cancelled within milliseconds -- a
+    // `.refreshable` pull landing while the initial `.task` round was still
+    // in flight is the reproducible live shape: nginx shows such rounds
+    // with a 499 client-abort and 2 of 7 requests never sent -- committed
+    // nothing, wrote nothing, flipped `isLoading` false, and STILL made the
+    // in-flight older round throw away its fully-successful heartbeats
+    // result at the commit guard. Net effect on a fresh view model: agents
+    // shown (from the cache-first read), events permanently empty, no
+    // alert (cancellation never sets statsMsg), no cache write -- exactly
+    // the user's screenshot on every launch. A cancelled round now never
+    // claims this counter, so an older round with real data still commits
+    // unless a NEWER round has genuinely committed first (which is the one
+    // ordering the original guard was written to prevent, and still is --
+    // see AccountStatsLoadRaceRegressionTests).
+    private var committedGeneration = 0
+    // Number of load() rounds currently in flight. `isLoading` must stay
+    // true while ANY round is still running, not just the most recently
+    // started one -- otherwise a fast-cancelled newer round's `defer`
+    // flipped it false while the real round was still ~1s from committing,
+    // and the Events section fell through to the confirmed-empty copy.
+    private var liveLoadCount = 0
+    // True once a load() round has completed the per-agent heartbeats walk
+    // with no failure or cancellation on any agent (or the account has no
+    // agents at all). Until then `events == []` only means "not proven
+    // either way", and AccountView+Events.swift must not render it as
+    // "No events yet" -- that copy asserts something no round has actually
+    // established. Never reset: a later cancelled/failed round doesn't
+    // un-prove an earlier successful one.
+    @Published var eventsLoaded = false
 
     // Manual "execute now" heartbeat trigger (task
     // 20260901-heartbeat-manual-trigger-button). Heartbeat ids currently
@@ -141,8 +175,12 @@ final class AccountViewModel: ObservableObject {
 
     func load(service: DataServiceProtocol, user: FSUser) async {
         self.service = service
+        liveLoadCount += 1
         isLoading = true
-        defer { isLoading = false }
+        defer {
+            liveLoadCount -= 1
+            if liveLoadCount == 0 { isLoading = false }
+        }
         profileData = user
         let uid = user.user_id
 
@@ -164,6 +202,14 @@ final class AccountViewModel: ObservableObject {
         // discards its own now-stale result instead of writing it anywhere.
         loadGeneration += 1
         let generation = loadGeneration
+        // `taskCancelled` at entry is the fingerprint of the phantom round
+        // described at `committedGeneration`: a round that begins inside an
+        // already-cancelled Task issues zero network requests (URLSession
+        // throws URLError.cancelled before sending -- verified against a
+        // local server), so it is invisible in every server-side log and
+        // only ever shows up here.
+        RefreshDiagnostics.loadRound(event: "start", generation: generation,
+                                     committedGeneration: committedGeneration, taskCancelled: Task.isCancelled)
 
         // ── Cache-first: show last-known account data instantly ──────────────────
         // Diagnostics (task 20260910-refresh-clobber-live-rootcause): logs
@@ -348,6 +394,10 @@ final class AccountViewModel: ObservableObject {
         // events instead of dropping them, mirroring
         // NotesViewModel.fetchAndCache's per-group preserve-on-failure splice.
         var allEvents: [FSHeartbeat] = []
+        // Any per-agent heartbeats failure or cancellation this round --
+        // gates `eventsLoaded` below: a walk that didn't cleanly finish for
+        // every agent hasn't proven the account's events one way or the other.
+        var heartbeatsWalkFailed = false
         let eventsUsable = agentsResult != nil
         if let agentsResult {
             await withTaskGroup(of: (String, Result<[FSHeartbeat], Error>).self) { group in
@@ -371,6 +421,7 @@ final class AccountViewModel: ObservableObject {
                         // apart from a real one, feeding `statsFailed`
                         // unconditionally either way.
                         if isCancellation(error) { wasCancelled = true } else { statsFailed = true }
+                        heartbeatsWalkFailed = true
                         RefreshDiagnostics.fetchOutcome(endpoint: "GET /agent/{user_id}/{agent_id}/heartbeats", outcome: "failure",
                                                          errorClass: RefreshDiagnostics.errorClass(error), taskCancelled: Task.isCancelled)
                         // Root-cause fix (task 20260910-refresh-clobber-live-
@@ -428,7 +479,47 @@ final class AccountViewModel: ObservableObject {
         // overwrite whatever the newer call already committed (or is about
         // to). This is what actually fixes the persistent-zero bug: the
         // slower of two overlapping calls no longer wins just by finishing last.
-        guard generation == loadGeneration else { return }
+        //
+        // Revised (second-opinion pass, see `committedGeneration`): compare
+        // against the newest round that actually COMMITTED, not the newest
+        // round that merely STARTED. A newer round that was cancelled before
+        // it could prove anything must not be able to veto this one -- that
+        // veto is what left a fresh view model with real server-side events
+        // showing "No events yet" on every launch. The stale-clobber ordering
+        // the original guard targeted (newer round commits first, slower
+        // older round finishes later) is still rejected here, because the
+        // newer round advanced `committedGeneration` past this one.
+        guard generation > committedGeneration else {
+            RefreshDiagnostics.loadRound(event: "discarded", generation: generation,
+                                         committedGeneration: committedGeneration, taskCancelled: Task.isCancelled)
+            return
+        }
+        // A cancelled round proves nothing (see `wasCancelled` above), so it
+        // never claims the committed generation -- an older, still-running
+        // round with real data must remain free to commit after it.
+        //
+        // Root-cause fix (task 20260910-account-events-refresh-regression,
+        // security-gate bounce after this task's own committedGeneration
+        // guard shipped): a round with a GENUINE, non-cancellation failure on
+        // any of its 7 fetches or the heartbeats walk (`statsFailed`) used to
+        // still claim `committedGeneration` here, because this check only
+        // excluded cancellation. That let a newer round which merely FAILED
+        // (e.g. hit fetchAgents/fetchHeartbeats' decode-failure-throws path,
+        // the exact gap the spec called out) discard an older, in-flight
+        // round that was about to succeed with real events -- reproducing
+        // the identical "events permanently empty" symptom this whole fix
+        // exists to close, just via a genuine failure instead of a
+        // cancellation. `statsFailed` is folded in here for the identical
+        // reason `wasCancelled` already is: a round that never reached a
+        // clean, fully-proven completion of its own hasn't earned the right
+        // to veto an older round's genuine commit. This mirrors the
+        // treatment already established for a partially-cancelled round
+        // elsewhere in this method (its own successful per-field results
+        // still apply to @Published state below, but it neither claims
+        // `committedGeneration` nor persists to DiskCache) -- a partially- or
+        // wholly-failed round gets the same non-authoritative treatment, not
+        // a new rule.
+        if !wasCancelled && !statsFailed { committedGeneration = generation }
 
         if let userResult { profileData = userResult }
         if let agentsResult { agents = agentsResult }
@@ -438,6 +529,14 @@ final class AccountViewModel: ObservableObject {
         if let friendRequestsResult { friendRequests = friendRequestsResult }
         if let (_, groupMap) = contactsResult { groups = groupMap }
         if eventsUsable { events = allEvents }
+        // Only a walk that cleanly finished for every agent (or an account
+        // with no agents) has actually established what the events are --
+        // this is what lets AccountView+Events.swift tell "confirmed empty"
+        // apart from "never successfully loaded".
+        if eventsUsable && !heartbeatsWalkFailed { eventsLoaded = true }
+        RefreshDiagnostics.loadRound(event: wasCancelled ? "commit-partial-cancelled" : "commit",
+                                     generation: generation, committedGeneration: committedGeneration,
+                                     taskCancelled: Task.isCancelled, eventsCount: events.count, eventsLoaded: eventsLoaded)
 
         // A genuine fetch/decode failure on any of the 7 concurrent fetches
         // above (or the per-agent events fetch) no longer looks visually

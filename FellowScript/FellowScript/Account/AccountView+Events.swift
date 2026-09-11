@@ -73,6 +73,21 @@ extension AccountView {
                         .font(.inter(Theme.fontSM))
                         .foregroundColor(Theme.textMuted)
                 }
+            } else if vm.events.isEmpty && !vm.eventsLoaded {
+                // Second-opinion pass (same task, build 43 still empty live):
+                // no round has yet finished the per-agent heartbeats walk
+                // cleanly for this view model -- e.g. the only round that
+                // ran was cooperatively cancelled (a pull-to-refresh torn
+                // down mid-flight) or genuinely failed with no cached
+                // baseline. That is not proof the account has no events, so
+                // don't assert it; say what's actually known and point at
+                // the existing retry path. Distinct from the loading row
+                // above (a round is still running) and from the confirmed-
+                // empty copy below (a clean round established emptiness).
+                Divider().background(Theme.borderGoldFaint)
+                Text("Your events haven't loaded yet. Pull down to refresh.")
+                    .font(.inter(Theme.fontSM))
+                    .foregroundColor(Theme.textMuted)
             } else if vm.events.isEmpty {
                 Divider().background(Theme.borderGoldFaint)
                 Text("No events yet. Tap + to schedule one.")

@@ -86,6 +86,24 @@ enum RefreshDiagnostics {
         print("[RefreshDiagnostics] \(line)")
     }
 
+    /// One AccountViewModel.load() round's lifecycle (task
+    /// 20260910-account-events-refresh-regression, second-opinion pass):
+    /// `event` is "start", "commit", "commit-partial-cancelled" or
+    /// "discarded". `generation` is the round's own id,
+    /// `committedGeneration` the newest round that had committed real data
+    /// when this line was emitted. `taskCancelled` at "start" is the
+    /// signature of a round that will issue zero network requests (an
+    /// already-cancelled Task's URLSession calls throw before sending), so
+    /// it is the only place such a round is ever observable. No user ids,
+    /// no payload contents.
+    static func loadRound(event: String, generation: Int, committedGeneration: Int,
+                          taskCancelled: Bool, eventsCount: Int? = nil, eventsLoaded: Bool? = nil) {
+        var line = "[load-round] event=\(event) gen=\(generation) committedGen=\(committedGeneration) taskCancelled=\(taskCancelled)"
+        if let eventsCount { line += " events=\(eventsCount)" }
+        if let eventsLoaded { line += " eventsLoaded=\(eventsLoaded)" }
+        emit("\(line) ts=\(ts())")
+    }
+
     /// A DiskCache read at the start of a load/refresh. `count` is the
     /// decoded collection's entry count, or nil if the key was a cache miss
     /// (no `.load` result) — never the entries themselves.
