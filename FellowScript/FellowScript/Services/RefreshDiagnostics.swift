@@ -146,6 +146,22 @@ enum RefreshDiagnostics {
         emit("[fetch] \(msg)")
     }
 
+    /// One `AccountViewModel.load()` round's per-agent heartbeats
+    /// `withTaskGroup` accounting (task 20260910-account-events-refresh-
+    /// regression, step 6 re-entry diagnostic pass): `tasksAdded` is how many
+    /// `group.addTask` calls this round made (one per agent), `resultsConsumed`
+    /// is how many times the `for await (agentId, result) in group` loop
+    /// actually iterated, and `allEventsCount` is what `allEvents` held right
+    /// after that loop exited (before the `eventsUsable` assignment into
+    /// `events`). Structured concurrency's contract is that every added child
+    /// task's result is eventually delivered to the consumer -- so
+    /// `resultsConsumed < tasksAdded` here is direct, positive proof that
+    /// didn't hold for this round, rather than something inferred from the
+    /// mere absence of a downstream log line.
+    static func taskGroupOutcome(tasksAdded: Int, resultsConsumed: Int, allEventsCount: Int) {
+        emit("[heartbeats-taskgroup] tasksAdded=\(tasksAdded) resultsConsumed=\(resultsConsumed) allEventsCount=\(allEventsCount) ts=\(ts())")
+    }
+
     /// A single Notes segment's (Personal, or one group) splice decision for
     /// this refresh round — mirrors the segmentErrors bookkeeping already in
     /// NotesViewModel.fetchAndCache, just also emitted live. `name` is

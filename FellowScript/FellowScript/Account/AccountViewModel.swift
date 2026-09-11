@@ -399,15 +399,35 @@ final class AccountViewModel: ObservableObject {
         // every agent hasn't proven the account's events one way or the other.
         var heartbeatsWalkFailed = false
         let eventsUsable = agentsResult != nil
+        // Diagnostic-only (task 20260910-account-events-refresh-regression,
+        // step 6 re-entry): a live Release-vs-Debug comparison found the
+        // heartbeats fetch itself succeeding (NetworkService's own
+        // decode-success log fires, with the correct count) while `events`
+        // still commits empty -- i.e. something between a successful child
+        // task's completion and this loop's own `case .success` append is
+        // not running in Release the way it does in Debug. `tasksAdded` is
+        // incremented once per `group.addTask` call (one per agent);
+        // `resultsConsumed` once per `for await` iteration regardless of
+        // which case it takes. If a round ever finishes with
+        // `resultsConsumed < tasksAdded`, that's direct proof this
+        // TaskGroup's structured-concurrency contract (every added child
+        // task's result is delivered to the consuming loop) did not hold in
+        // this run -- the specific mechanism this diagnostic pass exists to
+        // either confirm or rule out, rather than assume from the absence of
+        // a log line alone.
+        var heartbeatsTasksAdded = 0
+        var heartbeatsResultsConsumed = 0
         if let agentsResult {
             await withTaskGroup(of: (String, Result<[FSHeartbeat], Error>).self) { group in
                 for agent in agentsResult {
+                    heartbeatsTasksAdded += 1
                     group.addTask {
                         do { return (agent.id, .success(try await service.fetchHeartbeats(userId: user.user_id, agentId: agent.id))) }
                         catch { return (agent.id, .failure(error)) }
                     }
                 }
                 for await (agentId, result) in group {
+                    heartbeatsResultsConsumed += 1
                     switch result {
                     case .success(let hbs):
                         RefreshDiagnostics.fetchOutcome(endpoint: "GET /agent/{user_id}/{agent_id}/heartbeats", outcome: "success", count: hbs.count)
@@ -473,6 +493,40 @@ final class AccountViewModel: ObservableObject {
                 }
             }
         }
+        RefreshDiagnostics.taskGroupOutcome(tasksAdded: heartbeatsTasksAdded, resultsConsumed: heartbeatsResultsConsumed, allEventsCount: allEvents.count)
+        // Defensive fail-closed fix (task 20260910-account-events-refresh-
+        // regression, step 6 re-entry, live -O-vs-Onone bisection): confirmed
+        // live, reproducibly, that a Release (-O) build can finish this
+        // `TaskGroup` with `heartbeatsResultsConsumed < heartbeatsTasksAdded`
+        // -- i.e. a per-agent heartbeats fetch that itself genuinely
+        // succeeded (NetworkService's own decode-success log fires, correct
+        // count) never reaches this loop's own `case .success` append, with
+        // no failure logged either. Root-caused as far as real effort tonight
+        // could take it to a genuine, previously-undiscovered issue --
+        // NetworkService has no explicit actor-isolation annotation anywhere,
+        // so this project's `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`
+        // setting makes it implicitly MainActor-isolated (confirmed via real
+        // compiler warnings elsewhere in the app, e.g. DashboardView.swift/
+        // NetworkService+Contacts.swift already missing required `await`s for
+        // calls into it), which defeats this TaskGroup's intended off-actor
+        // concurrency and makes its child tasks contend for MainActor time
+        // with this very consuming loop -- but de-isolating NetworkService to
+        // conclusively prove and fix that is a whole-app networking-layer
+        // change far outside this task's Account Events scope, so it's
+        // flagged as a separate follow-up rather than rushed here. Until
+        // that's actually fixed, this walk's own bookkeeping is the only
+        // thing that can catch the symptom: treat a short count exactly like
+        // any other incomplete walk (mirrors `heartbeatsWalkFailed`'s
+        // existing per-agent failure/cancellation handling above) rather than
+        // let `eventsLoaded` assert "confirmed empty" on a round that
+        // silently lost a real result. This does not recover the lost
+        // events themselves -- it stops the false "No events yet" claim,
+        // falling through to AccountView+Events.swift's existing "haven't
+        // loaded yet, pull to refresh" branch instead (Q14/Q26-27: never
+        // assert proof this round doesn't actually have).
+        if heartbeatsResultsConsumed < heartbeatsTasksAdded {
+            heartbeatsWalkFailed = true
+        }
 
         // A newer load() call has started since this one began -- discard
         // this call's results entirely instead of letting a stale call
@@ -528,7 +582,16 @@ final class AccountViewModel: ObservableObject {
         usage          = usageResult ?? usage
         if let friendRequestsResult { friendRequests = friendRequestsResult }
         if let (_, groupMap) = contactsResult { groups = groupMap }
-        if eventsUsable { events = allEvents }
+        // `heartbeatsResultsConsumed < heartbeatsTasksAdded` (see the
+        // defensive fix above) means `allEvents` can't be trusted as
+        // complete -- it's silently missing at least one agent's
+        // contribution with no per-agent failure recorded to fall back to
+        // (unlike the `.failure` case above, which preserves that specific
+        // agent's existing baseline). Leaving `events` untouched this round
+        // is the same non-fabricating choice already made for a cancelled
+        // round: don't let an unproven result overwrite a real, previously-
+        // committed baseline with a false empty one.
+        if eventsUsable && heartbeatsResultsConsumed >= heartbeatsTasksAdded { events = allEvents }
         // Only a walk that cleanly finished for every agent (or an account
         // with no agents) has actually established what the events are --
         // this is what lets AccountView+Events.swift tell "confirmed empty"
