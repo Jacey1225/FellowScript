@@ -34,7 +34,46 @@ extension AccountView {
                 .clipShape(RoundedRectangle(cornerRadius: Theme.radiusSM))
             }
 
-            if vm.events.isEmpty {
+            // Loading-vs-genuinely-empty distinction (task
+            // 20260910-account-events-refresh-regression, re-entry after the
+            // build-42 fetchAgents fix -- real and worth keeping, but not
+            // the actual root cause of the reported symptom). Direct
+            // evidence gathered this pass: production logs show real,
+            // recent client requests to GET /agent/{user_id} and GET
+            // /agent/{user_id}/{agent_id}/heartbeats succeeding with clean,
+            // decodable data -- the fetch path itself is not broken. But
+            // AccountViewModel.load() is a single all-or-nothing round: it
+            // commits NOTHING (not `agents`, not `events`) to @Published
+            // state until every one of its 7 concurrent fetches AND the
+            // full per-agent heartbeats TaskGroup has resolved (the
+            // `generation` guard gates one single commit point at the very
+            // end -- see AccountViewModel.swift's `load()`). AccountView's
+            // own `.task`/`.refreshable` deliberately don't gate this
+            // screen's body on `vm.isLoading` (so a refresh never blanks
+            // already-shown content -- see refreshAccountData()'s doc
+            // comment), which is the right call for already-populated
+            // data, but it left this specific empty-state branch unable to
+            // tell "still fetching, nothing committed yet" apart from
+            // "fetch finished, this account genuinely has zero events" --
+            // both render this exact same "No events yet" text. A user who
+            // checks (or force-quits) before that round finishes -- e.g.
+            // testing rapidly, re-triggering a refresh before the previous
+            // one lands -- sees the confirmed-empty copy every single time,
+            // even though the round is actually still in flight and (per
+            // the production logs) does eventually succeed. Distinguishing
+            // the two states here doesn't change when data actually
+            // commits (that's AccountViewModel.load()'s own concern, not
+            // this view's), it only stops the view from asserting "you
+            // have no events" while that's not actually known yet.
+            if vm.events.isEmpty && vm.isLoading {
+                Divider().background(Theme.borderGoldFaint)
+                HStack(spacing: Theme.spacingSM) {
+                    ProgressView().tint(Theme.gold)
+                    Text("Loading your events…")
+                        .font(.inter(Theme.fontSM))
+                        .foregroundColor(Theme.textMuted)
+                }
+            } else if vm.events.isEmpty {
                 Divider().background(Theme.borderGoldFaint)
                 Text("No events yet. Tap + to schedule one.")
                     .font(.inter(Theme.fontSM))
