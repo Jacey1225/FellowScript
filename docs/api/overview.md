@@ -271,6 +271,20 @@ prompt server-side. A failed summarize call never blocks or delays leaving
 the call — it surfaces afterward as a warm, self-dismissing banner
 (`CallController.summarizeNotice`) instead.
 
+Bug fix (task 20260911-session-summary-group-id-crash): the `group_id` in
+the request body is whatever `ChatThreadViewModel.roomKey(...)` computed
+for the session's thread client-side, which is a real `groups._id` only for
+a group session — for a friend-DM session it's the synthetic
+`"<uidA>|<uidB>"` composite room key (see
+[`devotions`](../architecture/data.md#devotions) / `AppState.openSession`'s
+same `"|"` check), never a group row. The route now recognizes that
+composite shape and saves the summary as a private note (`group_id: null`)
+in that case instead of passing it through to the `uuid`-typed
+`notes.group_id` column, which previously 500'd. Any other `group_id` is
+checked against real group membership (`_require_group_membership`, same
+IDOR guard `add_heartbeat`/`update_heartbeat` use) and rejected with `403`
+if the caller doesn't belong to it.
+
 ---
 
 ## Usage / Limits

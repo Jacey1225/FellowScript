@@ -297,7 +297,35 @@ async def summarize_session(user_id: str, agent_id: str, body: dict, _: str = De
         raise HTTPException(status_code=403, detail=gate)
 
     session  = body.get("session", {})
-    group_id = body.get("group_id", "")
+    group_id = body.get("group_id") or None
+
+    # Bug fix (task 20260911-session-summary-group-id-crash): `group_id`
+    # here is whatever ChatThreadViewModel.roomKey(...) computed client-side
+    # for the session's thread, which is NOT always a real `groups._id` --
+    # for a friend DM it's the synthetic "<uidA>|<uidB>" composite room key
+    # (same pattern AppState.openSession(groupId:) already checks for via
+    # `.contains("|")`), not a group UUID. Blindly writing that string into
+    # `notes.group_id` (a FK-constrained uuid column) throws
+    # psycopg2.errors.InvalidTextRepresentation and 500s the whole request --
+    # this was the reported crash.
+    #
+    # Fail-closed per Security Posture Q14, but deliberately (Q26/Q27) rather
+    # than by letting a malformed value fall through to the DB layer:
+    #   - A friend-DM composite key is a legitimate, *expected* value here
+    #     (this is literally the reported use case), not a malformed one --
+    #     it deliberately resolves to group_id=None so the summary still
+    #     saves, just as a private note. Silently dropping the summary
+    #     entirely would violate the DM case being a real intended use of
+    #     this feature.
+    #   - Anything else is checked against real group membership the same
+    #     defense-in-depth way create_heartbeat/update_heartbeat already do
+    #     in this file (`_require_group_membership`) -- a group_id the
+    #     caller isn't a member of is rejected (403), not guessed/passed
+    #     through, consistent with this route family's existing IDOR guard.
+    if group_id and "|" in group_id:
+        group_id = None
+    elif group_id:
+        _require_group_membership(user_id, group_id)
 
     title   = session.get("title", "Untitled Session")
     prompts = session.get("prompts", [])
