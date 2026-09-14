@@ -247,6 +247,19 @@ struct FSNote: Codable, Identifiable {
         return String(stripped.prefix(120))
     }
 
+    // Task 20260914-dictation-tts: same HTML-stripping as `preview` above,
+    // but untruncated — NoteDetailView's dictation button reads the whole
+    // note body, not a 120-character preview. Kept as its own property
+    // (rather than having callers re-derive `preview`'s logic, or `preview`
+    // itself drop its `.prefix(120)`) since the two have different callers
+    // with different needs (a list-row snippet vs. the full spoken text) and
+    // no shared truncation behavior to keep in sync.
+    var textForSpeech: String {
+        text
+            .replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     var formattedTimestamp: String {
         guard !timestamp.isEmpty else { return "" }
         // Try ISO8601 with fractional seconds first (FastAPI serializes datetime as ISO 8601)

@@ -165,9 +165,18 @@ final class NoteDetailViewDirectionBTests: XCTestCase {
             toolbarBlock.contains(#"ToolbarItem(placement: .navigationBarLeading)"#),
             "the Close pill must still be placed via a leading ToolbarItem"
         )
+        // Re-pinned by task 20260914-dictation-tts: the Edit pill's own
+        // trailing placement moved from a solo `ToolbarItem` into a
+        // `ToolbarItemGroup` shared with the new dictation button (design
+        // step 1's spec: dictation sits to Edit's left, both inside one
+        // group so `.suppressAutomaticGlassChrome()` below still applies to
+        // both at once) -- current reality, not a regression of this
+        // screen's Edit-pill wiring itself (test_tappingEditPill_setsShowEditorTrue
+        // above still exercises the exact same editAction()/showEditor path
+        // unchanged).
         XCTAssertTrue(
-            toolbarBlock.contains(#"ToolbarItem(placement: .navigationBarTrailing)"#),
-            "the Edit pill must still be placed via a trailing ToolbarItem"
+            toolbarBlock.contains(#"ToolbarItemGroup(placement: .navigationBarTrailing)"#),
+            "the Edit pill must still be placed via a trailing toolbar container (now a ToolbarItemGroup shared with the dictation button, per task 20260914-dictation-tts)"
         )
 
         // Strip `//` line comments first -- this block's own doc comment

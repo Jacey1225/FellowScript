@@ -45,6 +45,18 @@ struct NoteDetailView: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    // Task 20260914-dictation-tts: shared app-level TTS service (mirrors
+    // AccountView's `@ObservedObject var store = StoreKitManager.shared`
+    // singleton-consumption pattern). One shared instance across this screen
+    // and BibleReaderView is what makes starting playback on one screen stop
+    // the other's in-flight speech (architecture step 2). `note.id` (not a
+    // fixed constant like BibleReaderView's) so two different notes opened
+    // in sequence are correctly treated as different dictation sources —
+    // though in practice only one NoteDetailView is ever visible at a time.
+    @ObservedObject private var speechController = SpeechController.shared
+    private var dictationSource: String { "note-\(note.id)" }
+    private var isSpeakingNote: Bool { speechController.isSpeaking(for: dictationSource) }
     // Not `private` (unlike NoteEditorView's analogous @State vars) so
     // FellowScriptTests can assert on it directly after simulating an Edit
     // tap via ViewInspector — see NoteDetailViewDirectionBTests.swift. No
@@ -68,6 +80,17 @@ struct NoteDetailView: View {
     // runtime behavior difference from the previous inline closures.
     internal func closeAction() { dismiss() }
     internal func editAction()  { showEditor = true }
+
+    // Task 20260914-dictation-tts: reads the whole note body (HTML-stripped,
+    // via FSNote.textForSpeech — mirrors FSNote.preview's stripping but
+    // untruncated), not the parent note only when replies exist — replies
+    // are explicitly out of scope per the intake spec ("one screen's own
+    // content only"). Not gated by `canEdit`: per the intake spec's resolved
+    // open question, reading aloud is available to any viewer regardless of
+    // edit permission.
+    internal func toggleDictation() {
+        speechController.toggle(note.textForSpeech, source: dictationSource)
+    }
 
     // Gates the toolbar Edit pill (task 20260829-notes-edit-author-gate,
     // extended by 20260903-notes-public-repurpose step 5): this view
@@ -365,15 +388,30 @@ struct NoteDetailView: View {
                     .buttonStyle(.plain)
                 }
                 .suppressAutomaticGlassChrome()
-                if canEdit {
-                    ToolbarItem(placement: .navigationBarTrailing) {
+                // Dictation / read-aloud (task 20260914-dictation-tts),
+                // grouped with Edit into one ToolbarItemGroup (rather than
+                // two separate ToolbarItems, matching the leading group's
+                // own reasoning above about `.suppressAutomaticGlassChrome()`
+                // needing to apply to the group as a whole) so both sit in
+                // the same trailing cluster. Always visible regardless of
+                // `canEdit` — per the intake spec's resolved open question,
+                // reading aloud isn't an ownership-sensitive action the way
+                // editing is — and placed to Edit's *left* so Edit stays the
+                // rightmost/primary CTA per this screen's existing
+                // gradient-outermost pill hierarchy.
+                ToolbarItemGroup(placement: .navigationBarTrailing) {
+                    Button(action: toggleDictation) {
+                        dictationIconPill
+                    }
+                    .buttonStyle(.plain)
+                    if canEdit {
                         Button(action: editAction) {
                             gradientPill("Edit", compact: true)
                         }
                         .buttonStyle(.plain)
                     }
-                    .suppressAutomaticGlassChrome()
                 }
+                .suppressAutomaticGlassChrome()
             }
             // R1 (critique polish, task 20260828-note-reply-continuation-ios),
             // corrected by task 20260829-note-detail-toolbar-visual-fix,
@@ -492,6 +530,15 @@ struct NoteDetailView: View {
         }
         .preferredColorScheme(.dark)
         .onAppear { didAppear?(self) }
+        // Task 20260914-dictation-tts: stops playback when this sheet is
+        // dismissed (Close, swipe-to-dismiss, or programmatic dismiss()) —
+        // this view is always presented via `.sheet`, so onDisappear fires
+        // reliably on every dismissal, unlike BibleReaderView's persistent
+        // tab (see that screen's own onDisappear comment for why its case
+        // needed separate reasoning).
+        .onDisappear {
+            speechController.stop()
+        }
         // Group notes only -- see isGroupNote. `.task(id:)` re-fires if the
         // sheet is ever re-hosted for a different note (item-presented
         // sheets already tear down/rebuild per note, but id: is a cheap,
@@ -714,5 +761,24 @@ struct NoteDetailView: View {
             // real width to size against and truncates the label.
             .background(Capsule().fill(Theme.parchment.opacity(0.04)))
             .overlay(Capsule().stroke(strokeColor, lineWidth: 1))
+    }
+
+    // Task 20260914-dictation-tts (design step 1 spec): compact icon-only
+    // variant of ghostPill above — same capsule stroke/fill treatment and
+    // 32pt compact height, single centered icon instead of a text label.
+    // Deliberately not gradientPill's solid-gold CTA treatment: dictation is
+    // a secondary, non-destructive, always-available action (closer to
+    // Close than to the primary Edit CTA), and using Edit's own gradient
+    // here would read as a second primary action competing with it.
+    private var dictationIconPill: some View {
+        Image(systemName: isSpeakingNote ? "speaker.wave.2.fill" : "speaker.wave.2")
+            .symbolEffect(.variableColor.iterative, isActive: isSpeakingNote && !reduceMotion)
+            .contentTransition(reduceMotion ? .identity : .symbolEffect(.replace))
+            .font(.inter(Theme.fontSM))
+            .foregroundColor(isSpeakingNote ? Theme.gold : Theme.textSecondary)
+            .frame(width: 32, height: 32)
+            .background(Capsule().fill(Theme.parchment.opacity(0.04)))
+            .overlay(Capsule().stroke(Theme.parchment.opacity(0.14), lineWidth: 1))
+            .accessibilityLabel(isSpeakingNote ? "Stop reading" : "Read note aloud")
     }
 }

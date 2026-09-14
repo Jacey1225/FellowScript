@@ -53,6 +53,23 @@ On narrow screens (≤1024px) this entire dockable system is replaced by a fixed
 - Active highlights overlay the verse text with the stored color at ~25% opacity
 - Clicking a highlighted verse opens the highlight picker to remove or recolor
 
+### Dictation / Read Aloud (iOS, task `20260914-dictation-tts`)
+
+`BibleReaderView`'s trailing toolbar (`FellowScript/FellowScript/Bible/BibleReaderView.swift`)
+carries a `speaker.wave.2` icon button, appended after the font-size and
+bookmark buttons, that reads the current chapter's verses aloud using
+on-device `AVSpeechSynthesizer` (Enhanced/Premium-quality voice where
+installed, falling back gracefully to the next-best installed voice —
+never a cloud TTS provider, so no per-character cost and no network call).
+Tapping it again mid-speech stops playback (toggle, not a separate stop
+control); the icon fills gold and gently pulses (`variableColor` symbol
+animation, suppressed under Reduce Motion) while speaking. Playback also
+stops automatically on switching chapter or book, navigating away from the
+Bible tab, or the app backgrounding. The shared `SpeechController` service
+(`FellowScript/FellowScript/Services/SpeechController.swift`) is a single
+app-wide singleton, so starting dictation here also stops any in-flight
+reading on the Notes screen (see `docs/design/notes.md`) and vice versa.
+
 ### Left Dock Rail
 - `ReaderDockRail` component: fixed vertical icon rail, one icon per dockable panel type (Bible, Notes, Highlights, Messaging, Agent Chat)
 - Tracks the live dockview layout (`onDidAddPanel`/`onDidRemovePanel`/`onDidActivePanelChange`) so it always reflects which panels are currently open and which one is active

@@ -125,6 +125,17 @@ struct FellowScriptApp: App {
         .onChange(of: scenePhase) { phase in
             if phase == .active {
                 appState.requestPushNotifications()
+            } else if phase == .background {
+                // Task 20260914-dictation-tts: per the intake spec's resolved
+                // open question, backgrounding stops dictation rather than
+                // continuing to read (no Now Playing/remote-command-center
+                // infrastructure is in scope). Lives here rather than in a
+                // raw UIApplication.didEnterBackgroundNotification observer
+                // inside SpeechController itself, matching this file's own
+                // established stance (see AppDelegate section above) that
+                // scenePhase is this app's one source of truth for
+                // foreground/background transitions.
+                SpeechController.shared.stop()
             }
         }
     }

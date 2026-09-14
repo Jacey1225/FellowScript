@@ -345,6 +345,15 @@ struct BibleReaderView: View {
     // profile Q14.3) — read by the tap-outside-to-dismiss animation below.
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    // Task 20260914-dictation-tts: shared app-level TTS service (mirrors
+    // AccountView's `@ObservedObject var store = StoreKitManager.shared`
+    // singleton-consumption pattern). One shared instance across this screen
+    // and NoteDetailView is what makes starting playback on one screen stop
+    // the other's in-flight speech (architecture step 2).
+    @ObservedObject private var speechController = SpeechController.shared
+    private static let dictationSource = "bible-chapter"
+    private var isSpeakingChapter: Bool { speechController.isSpeaking(for: Self.dictationSource) }
+
     @AppStorage("bibleReaderFontSizeIndex") private var fontSizeIndex: Int = 1
     @State private var showNavSheet      = false
     @State private var showBookmarks     = false
@@ -418,9 +427,25 @@ struct BibleReaderView: View {
                         }
                         .onChange(of: vm.curChapter) { _, _ in
                             proxy.scrollTo("chapterTop", anchor: .top)
+                            // Task 20260914-dictation-tts: a chapter switch
+                            // mid-speech must not keep reading the old
+                            // chapter's text under the new chapter's UI (spec
+                            // acceptance criteria) — stop rather than
+                            // auto-restart for the new chapter, matching
+                            // design step 1's "no separate interrupted visual
+                            // state, same transition back to idle as a
+                            // manual toggle-stop" note.
+                            speechController.stop()
                         }
                         .onChange(of: vm.curBook) { _, _ in
                             proxy.scrollTo("chapterTop", anchor: .top)
+                            // Covers switching book while staying on the same
+                            // chapter number (e.g. chapter 1 → chapter 1 of a
+                            // different book) — vm.curChapter's own onChange
+                            // above wouldn't fire in that case since the
+                            // value itself didn't change, but the underlying
+                            // verse text did.
+                            speechController.stop()
                         }
                         .onChange(of: pendingScrollVerse) { _, verse in
                             guard let v = verse else { return }
@@ -570,6 +595,25 @@ struct BibleReaderView: View {
                             .foregroundColor(vm.isBookmarked() ? Theme.gold : Theme.parchment)
                     }
                     .accessibilityLabel("Bookmark options")
+
+                    // Dictation / read-aloud (task 20260914-dictation-tts).
+                    // Appended last, after the bookmark Menu, per design step
+                    // 1's spec — reading order becomes font-size → bookmark →
+                    // dictate, least disruptive to the existing layout.
+                    // Plain Image(systemName:) idiom matching the two buttons
+                    // above (no pill/background — this screen's toolbar has
+                    // no pill idiom of its own); toggle-color pattern mirrors
+                    // the bookmark button (parchment idle / gold speaking)
+                    // rather than the font-size button's static gold, since
+                    // dictation, like bookmark, is a two-state toggle, not a
+                    // cycling control.
+                    Button(action: toggleDictation) {
+                        Image(systemName: isSpeakingChapter ? "speaker.wave.2.fill" : "speaker.wave.2")
+                            .symbolEffect(.variableColor.iterative, isActive: isSpeakingChapter && !reduceMotion)
+                            .contentTransition(reduceMotion ? .identity : .symbolEffect(.replace))
+                            .foregroundColor(isSpeakingChapter ? Theme.gold : Theme.parchment)
+                    }
+                    .accessibilityLabel(isSpeakingChapter ? "Stop reading" : "Read chapter aloud")
                 }
                 .suppressAutomaticGlassChrome()
             }
@@ -595,6 +639,15 @@ struct BibleReaderView: View {
             // happens once this screen (the Bible tab) has actually appeared.
             await vm.loadBibleContent()
         }
+        // Task 20260914-dictation-tts: stops playback when this screen
+        // itself leaves the view hierarchy — fires on every tab switch away
+        // from the Bible tab (this screen's own `.task`-once/hasLoadedOnce
+        // guard above already relies on onAppear/onDisappear firing on each
+        // tab switch, not just first mount, so this is the same mechanism
+        // ChatThreadView.swift's onDisappear cleanup uses).
+        .onDisappear {
+            speechController.stop()
+        }
         .onChange(of: appState.pendingBibleNav) { _, target in
             guard let t = target else { return }
             vm.setBook(t.book)
@@ -610,6 +663,18 @@ struct BibleReaderView: View {
         } message: {
             Text(vm.saveError ?? "")
         }
+    }
+
+    // Task 20260914-dictation-tts: speaks the current book/chapter's verse
+    // text only — vm.verses is already scoped to the currently-displayed
+    // chapter (see BibleViewModel.setChapter), never the whole book.
+    // Verses are concatenated in order with a space so consecutive verses
+    // don't run together without a pause; per-verse numbers/highlighting
+    // are visual-only and intentionally not spoken (out of scope — no
+    // verse-by-verse tracked playback per the intake spec).
+    private func toggleDictation() {
+        let text = vm.verses.map(\.text).joined(separator: " ")
+        speechController.toggle(text, source: Self.dictationSource)
     }
 
     @ViewBuilder

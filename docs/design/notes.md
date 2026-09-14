@@ -246,6 +246,20 @@ unchanged.
 - **Divider** — a 1pt `Theme.goldGradient` rule in place of the old plain
   `Divider()`, same position/role.
 
+#### Dictation / Read Aloud (task `20260914-dictation-tts`)
+
+`NoteDetailView`'s trailing toolbar carries a compact icon-only pill (a
+`speaker.wave.2` glyph, `ghostPill`'s outline treatment applied to an icon
+instead of a text label) placed immediately left of the `Edit` pill, reading
+the full note body aloud (HTML-stripped, untruncated — unlike the list
+card's `preview`) via the same on-device `SpeechController` service the
+Bible Reader uses (`docs/design/bible-reader.md`). Always shown regardless
+of `canEdit` — reading aloud isn't an ownership-sensitive action the way
+editing is. Toggle-to-stop, same icon-fill/pulse speaking state as the
+Bible Reader's button; playback stops automatically when the sheet is
+dismissed, the app backgrounds, or dictation starts on the Bible screen
+instead (one shared synthesizer app-wide).
+
 #### Reply composer (`ReplyComposerSheet`)
 
 The reply input presented from `NoteDetailView` ("Add a Reply") carries the
