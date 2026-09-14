@@ -499,6 +499,28 @@ func withMotionAwareAnimation<Result>(
     return try withAnimation(animation, body)
 }
 
+// ── Unread badge transition (task 20260913-chat-unread-badges) ───────────
+// Shared appear/disappear curve for both the Chat tab's unread numeral and
+// each chat row's unread dot: scale+fade in on a fuller spring, scale+fade
+// out on a snappier one ("exit faster than enter" -- the disappearance
+// should feel responsive to the user's own action, opening the thread, not
+// linger). This is a `.transition`, not an `.animation(value:)`, so it can't
+// route through motionAwareAnimation/withMotionAwareAnimation above the way
+// this project's other motion does -- same reduce-motion intent (an instant
+// swap, no eased curve, under Reduce Motion), applied the way AnyTransition
+// requires instead.
+extension AnyTransition {
+    static func unreadBadge(reduceMotion: Bool) -> AnyTransition {
+        guard !reduceMotion else { return .identity }
+        return .asymmetric(
+            insertion: .scale(scale: 0).combined(with: .opacity)
+                .animation(.spring(response: 0.32, dampingFraction: 0.8)),
+            removal: .scale(scale: 0).combined(with: .opacity)
+                .animation(.spring(response: 0.22, dampingFraction: 0.8))
+        )
+    }
+}
+
 // ── Tap-outside-to-dismiss for custom ZStack-based overlays ──────────────
 // Native `.sheet`/`.popover` already dismiss on background tap by system
 // default and need no help here — this is only for this app's own custom-

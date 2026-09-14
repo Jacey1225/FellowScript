@@ -35,6 +35,70 @@ final class AppState: ObservableObject {
     @AppStorage("fs_username")       private var storedUsername:  String = ""
     @AppStorage("fs_email")          private var storedEmail:     String = ""
 
+    // ── Unread conversation tracking (task 20260913-chat-unread-badges) ──────
+    // Client-local last-read marker per conversation, keyed by FSContact.id (a
+    // group id or a friend's own user id -- both are stable, globally-unique
+    // ids in this schema, so one dictionary covers friends and groups without
+    // a special case, per the intake spec's "one generic mechanism" decision).
+    // Persisted via UserDefaults, same as storedUserId/storedUsername above --
+    // client-local only, per the intake spec's explicit scope: this does not
+    // survive a reinstall or sync across a user's other devices.
+    @AppStorage("fs_last_read_timestamps") private var storedLastReadData: Data = Data()
+
+    // Aggregate count of friend/group conversations with unread messages --
+    // the Chat tab badge's source of truth. Always recomputed wholesale by
+    // recomputeUnreadConversationCount(contacts:) below, never incremented/
+    // decremented by hand, so it can't drift from what hasUnread(_:) would
+    // say for each individual contact. Agents are excluded structurally:
+    // FSAgent never flows through hasUnread/markRead/this at all.
+    @Published var unreadConversationCount: Int = 0
+
+    // Pure change-notification counter, bumped by markRead(_:) -- lets a view
+    // that owns the full contacts list (ChatRootView) know a read-marker
+    // changed and it should recompute unreadConversationCount, even though
+    // markRead(_:) alone can't touch that aggregate itself (it only knows
+    // about the one contact being marked read, not the full friend+group set).
+    @Published private(set) var lastReadVersion: Int = 0
+
+    private var lastReadTimestamps: [String: String] {
+        get { (try? JSONDecoder().decode([String: String].self, from: storedLastReadData)) ?? [:] }
+        set { storedLastReadData = (try? JSONEncoder().encode(newValue)) ?? Data() }
+    }
+
+    /// True when `contact` has a message newer than the last time its thread
+    /// was opened. A conversation never opened before (no stored marker yet)
+    /// counts as unread as soon as it has any message -- matches the intake
+    /// spec's recommended answer to "what counts as seen?": only opening the
+    /// thread clears it, not merely the contact list loading/refreshing.
+    func hasUnread(_ contact: FSContact) -> Bool {
+        guard let latest = parseFlexibleISO8601(contact.lastMessageAt) else { return false }
+        guard let lastReadRaw = lastReadTimestamps[contact.id],
+              let lastRead = parseFlexibleISO8601(lastReadRaw) else { return true }
+        return latest > lastRead
+    }
+
+    /// Records `contact`'s thread as read as of its own latest known message
+    /// -- not the device's current time -- so this stays correct even if a
+    /// live WebSocket delivery and this call race, and never needs its own
+    /// ISO8601 formatting. Called once, from ChatThreadView's `.task`, the
+    /// moment that specific thread is actually opened (never merely from the
+    /// chat list being visible or the tab being selected).
+    func markRead(_ contact: FSContact) {
+        guard !contact.lastMessageAt.isEmpty else { return }
+        var timestamps = lastReadTimestamps
+        timestamps[contact.id] = contact.lastMessageAt
+        lastReadTimestamps = timestamps
+        lastReadVersion += 1
+    }
+
+    /// Recomputes `unreadConversationCount` from the caller's current
+    /// combined friend + group contacts -- ChatRootView is the one place
+    /// that owns both arrays together, so it's the one that calls this,
+    /// whenever those arrays change or `lastReadVersion` advances.
+    func recomputeUnreadConversationCount(contacts: [FSContact]) {
+        unreadConversationCount = contacts.filter { hasUnread($0) }.count
+    }
+
     let service: DataServiceProtocol
 
     init(service: DataServiceProtocol = MockDataService.shared) {
@@ -129,6 +193,14 @@ final class AppState: ObservableObject {
         storedEmail     = ""
         currentUser     = nil
         isAuthenticated = false
+        // Task 20260913-chat-unread-badges: wipe this device's last-read
+        // markers too, same reasoning as the cache clear below -- otherwise
+        // a second account signing in on this device would inherit the
+        // previous user's read/unread state for conversation ids that
+        // happen to collide (e.g. the same group id, or a mutual friend).
+        storedLastReadData     = Data()
+        unreadConversationCount = 0
+        lastReadVersion += 1
         // Wipe cached data so the next account never sees the previous user's notes,
         // groups, highlights, messages, or account info.
         Task { await DiskCache.shared.clear() }

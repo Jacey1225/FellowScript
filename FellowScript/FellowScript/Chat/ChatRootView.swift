@@ -92,7 +92,16 @@ struct ChatRootView: View {
         .dismissesKeyboardOnScrollAndTap()
         .task {
             await vm.load(service: appState.service, userId: appState.currentUser?.user_id ?? "")
+            recomputeUnread()
         }
+        // Task 20260913-chat-unread-badges: whenever the friend/group list
+        // itself changes (initial load, pull-to-refresh, a new group just
+        // created, ...) or a thread elsewhere got marked read
+        // (appState.lastReadVersion), recompute the tab-bar aggregate from
+        // the current real data -- never incremented/decremented by hand.
+        .onChange(of: vm.friends) { _ in recomputeUnread() }
+        .onChange(of: vm.groups) { _ in recomputeUnread() }
+        .onChange(of: appState.lastReadVersion) { _ in recomputeUnread() }
         .onChange(of: appState.pendingChatContact) { _, target in
             // Opened from the dashboard community widget, or from a tap on a
             // session-created/session-reminder push (AppState.openSession) —
@@ -317,7 +326,14 @@ struct ChatRootView: View {
                             }
                             .tint(.orange)
                         }
-                        .accessibilityLabel("Chat with \(contact.name)")
+                        // Task 20260913-chat-unread-badges: folded into this
+                        // row's existing label rather than a separate
+                        // accessible element for the dot glyph itself.
+                        .accessibilityLabel(
+                            appState.hasUnread(contact)
+                                ? "Chat with \(contact.name), unread messages"
+                                : "Chat with \(contact.name)"
+                        )
                 }
                 .listStyle(.plain)
                 // Pull-to-refresh (task 20260831-interaction-polish-conventions)
@@ -443,7 +459,13 @@ struct ChatRootView: View {
                                 Label("Leave", systemImage: "rectangle.portrait.and.arrow.right")
                             }
                         }
-                        .accessibilityLabel("Open group: \(contact.name)")
+                        // Task 20260913-chat-unread-badges: same fold-into-
+                        // existing-label treatment as friendsList above.
+                        .accessibilityLabel(
+                            appState.hasUnread(contact)
+                                ? "Open group: \(contact.name), unread messages"
+                                : "Open group: \(contact.name)"
+                        )
                 }
                 .listStyle(.plain)
                 // See friendsList's identical treatment above (task
@@ -516,6 +538,14 @@ struct ChatRootView: View {
         case 1: showAddGroup  = true
         default: showNewAgent = true
         }
+    }
+
+    // Task 20260913-chat-unread-badges: the one place that recomputes the
+    // Chat tab's aggregate unread count, since this is the one view that
+    // owns both vm.friends and vm.groups together (AppState itself doesn't
+    // hold the contacts list, by design -- see AppState.swift).
+    private func recomputeUnread() {
+        appState.recomputeUnreadConversationCount(contacts: vm.friends + vm.groups)
     }
 
     @ViewBuilder
@@ -743,13 +773,17 @@ struct ChatSearchField: View {
 }
 
 // ── Contact row (mirrors ChatThreadRow in ChatRedesign.swift) ─────────────────
-// Online-status dot and unread-count badge are intentionally omitted: FSContact
-// carries no isOnline/unreadCount field and no presence/unread-tracking system
-// exists yet in this codebase (see intake spec Open Questions) — rendering them
-// would fabricate data rather than restyle real data. The relative timestamp
-// derives purely from the existing lastMessageAt field via chatRelativeTime(_:).
+// Task 20260913-chat-unread-badges: the unread dot below replaces this
+// comment's prior "intentionally omitted, no unread-tracking system exists
+// yet" note -- that deferral is resolved now via AppState.hasUnread(_:), a
+// real per-conversation last-read marker compared against FSContact's own
+// existing lastMessageAt, not fabricated data. Online-status stays omitted
+// (a separate, still-deferred feature -- see file header). The relative
+// timestamp still derives purely from lastMessageAt via chatRelativeTime(_:).
 struct ContactRow: View {
     let contact: FSContact
+    @EnvironmentObject var appState: AppState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         HStack(spacing: 13) {
@@ -772,6 +806,24 @@ struct ContactRow: View {
                                              startPoint: .topLeading, endPoint: .bottomTrailing))
             )
             .overlay(Circle().stroke(Theme.gold.opacity(0.5), lineWidth: 1))
+            // Task 20260913-chat-unread-badges: design-notes.md's row
+            // treatment -- a plain dot (no number; FSContact carries no
+            // per-conversation message count to show honestly), anchored to
+            // the avatar's own top-left corner since that's the stable
+            // visual anchor shared by both the friends and groups rows (this
+            // same ContactRow reused for both, per contact.type). Only
+            // inserted when unread -- not merely hidden/opacity 0 -- so a
+            // read row shows no badge at all.
+            .overlay(alignment: .topLeading) {
+                if appState.hasUnread(contact) {
+                    Circle()
+                        .fill(Theme.error)
+                        .frame(width: 12, height: 12)
+                        .overlay(Circle().stroke(Theme.bgPage, lineWidth: 2))
+                        .offset(x: -2, y: -2)
+                        .transition(.unreadBadge(reduceMotion: reduceMotion))
+                }
+            }
             .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 3) {

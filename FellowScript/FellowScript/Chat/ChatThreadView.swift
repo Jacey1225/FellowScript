@@ -790,6 +790,14 @@ struct ChatThreadView: View {
             let uid = appState.currentUser?.user_id ?? ""
             memberNames = contact.memberNames
             memberIds   = contact.toUsers
+            // Task 20260913-chat-unread-badges: clearing unread state is
+            // this thread actually opening, per the intake spec's recommended
+            // "what counts as seen?" answer -- not merely the chat list being
+            // visible or the tab being selected. Marked before `vm.load`
+            // below so it isn't held up by (or racing) the message fetch --
+            // opening this screen is itself the "seen" signal, regardless of
+            // how the fetch that follows turns out.
+            appState.markRead(contact)
             await vm.load(service: appState.service, contact: contact, userId: uid)
             // Populates the messageGroups/threadRows cache for the first
             // render after load() -- `.onChange(of: vm.messages.count)`
