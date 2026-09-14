@@ -8,6 +8,7 @@ from schemas.subscription import (
     price_for,
     TRIAL_MONTHS,
     EXPIRY_GRACE_DAYS,
+    ADMIN_COMP_PROVIDER,
 )
 
 
@@ -391,6 +392,65 @@ class SubscriptionsManager(DBManager):
         # Same reasoning as create_subscription: a free plan the user isn't
         # actually pointed at would leave usage limits computed as if they
         # had no plan at all, despite signup reporting success.
+        if not self.update("users", {"subscription_id": sub_id}, {"_id": user_id}):
+            raise SaveFailedError()
+        return sub_id
+
+    # ── Admin comp grant ──────────────────────────────────────────────────────
+
+    def grant_admin_comp(self, user_id: str) -> str:
+        """Grant an admin a free, active, individual-tier membership.
+
+        The same unlimited/paid-tier product access a paying individual
+        subscriber gets (``LimitsManager.is_subscribed`` only requires
+        ``status IN ('trialing','active') AND plan_type != 'free'``), but
+        with no Stripe/Apple billing involved: ``plan_type='individual'`` +
+        ``provider=ADMIN_COMP_PROVIDER`` ('admin_comp') is a value pair no
+        Stripe/Apple write path (``upsert_from_stripe``/``upsert_from_apple``,
+        both hardcoded to ``plan_type='group'``) ever produces, so this row
+        can never collide with or later get overwritten/billed as real
+        payment state. ``current_period_end`` is left NULL — the same
+        pattern ``create_free_plan`` uses — so the plan reads active forever
+        and is never swept by ``_is_lapsed``/``reconcile_expired_subscriptions``,
+        both of which gate strictly on ``current_period_end IS NOT NULL``
+        (i.e. it is not subject to ``EXPIRY_GRACE_DAYS``).
+
+        Idempotent: if this admin already has an admin_comp grant, returns
+        its existing id rather than inserting a duplicate row — guards
+        against an admin session being used to create excess/duplicate
+        grants (threat-modeled in security step 1 of this workflow).
+
+        Args:
+            user_id: the *calling* admin's own user_id, resolved via
+                ``require_admin`` in the route layer. Callers must never
+                pass a client-supplied target user_id here — this grants
+                membership to exactly the authenticated caller, never an
+                arbitrary other account.
+
+        Returns:
+            str: the subscription id (existing or newly created).
+        """
+        self.cur.execute(
+            "SELECT _id FROM subscriptions WHERE user_id = %s AND plan_type = 'individual' "
+            "AND provider = %s LIMIT 1",
+            (user_id, ADMIN_COMP_PROVIDER),
+        )
+        row = self.cur.fetchone()
+        if row:
+            return str(row[0])
+
+        sub_id = str(uuid.uuid4())
+        self.cur.execute(
+            "INSERT INTO subscriptions "
+            "(_id, user_id, plan_type, provider, status, price_cents, max_members) "
+            "VALUES (%s, %s, 'individual', %s, 'active', 0, 1)",
+            (sub_id, user_id, ADMIN_COMP_PROVIDER),
+        )
+        self.conn.commit()
+        # Same reasoning as create_free_plan/create_subscription: this INSERT
+        # just committed, so leaving the admin unpointed at it on a write
+        # failure here would report a successful grant that doesn't actually
+        # bypass FREE_LIMITS for them.
         if not self.update("users", {"subscription_id": sub_id}, {"_id": user_id}):
             raise SaveFailedError()
         return sub_id

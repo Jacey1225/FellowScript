@@ -210,6 +210,7 @@ Per-kind upload limits (server-enforced via the presigned POST policy's `content
 | POST | `/subscriptions/apple/sync` | Record/refresh a plan from a StoreKit 2 signed transaction (iOS). One of 8 fixed-price products maps to a member count server-side |
 | POST | `/subscriptions/apple/notifications` | Apple App Store Server Notification handler |
 | PUT | `/subscriptions/{subscription_id}` | Update a plan (host only). Body may include `member_count` to change plan size — re-prices from the same table |
+| POST | `/subscriptions/admin/grant-individual` | **Admin-only** (`require_admin`; `401`/`403` semantics as below). No body — the target is always the calling admin, never a client-supplied user. Grants the caller a free, active, individual-tier membership (`plan_type='individual'`, `provider='admin_comp'`, $0, no Stripe/Apple billing) with the same unlimited access a paying individual subscriber gets. Idempotent — calling it again returns the same existing grant rather than creating a duplicate. Never expires (not subject to the `EXPIRY_GRACE_DAYS` lapse sweep). Every grant is recorded in the `admin_audit` log. Returns the resulting subscription, same shape as `GET /{subscription_id}`. |
 
 ---
 

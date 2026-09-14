@@ -9,6 +9,7 @@ import utc from 'dayjs/plugin/utc';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import AppNav from '../components/AppNav.jsx';
 import DetectionDetailOverlay from '../components/DetectionDetailOverlay.jsx';
+import AdminMembershipGrant from '../components/AdminMembershipGrant.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useIsDesktopViewport } from '../hooks/useIsDesktopViewport.js';
 import { useFocusTrap } from '../hooks/useFocusTrap.js';
@@ -296,6 +297,15 @@ export default function AdminDetections() {
           <Title level={2} style={{ margin: 0, fontFamily: "'Playfair Display', serif", color: 'var(--parchment)' }}>
             Error Detections
           </Title>
+        </div>
+
+        {/* Admin free-membership comp grant (task 20260914-admin-free-membership):
+            lives on this same gated /admin surface alongside the detection
+            console below, but is fully self-contained (own state, own
+            request) and does not touch any of this page's own
+            filter/fetch/pagination behavior. */}
+        <div style={{ animation: 'fadeUp 0.55s ease forwards', opacity: 0 }}>
+          <AdminMembershipGrant />
         </div>
 
         {/* Filter bar (desktop: inline Select + RangePicker, unchanged) /

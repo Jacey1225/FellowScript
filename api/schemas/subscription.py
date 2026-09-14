@@ -27,6 +27,15 @@ TRIAL_MONTHS = 1
 # app launch and DID_RENEW), so a healthy subscription is never dropped prematurely.
 EXPIRY_GRACE_DAYS = 3
 
+# Distinct provider value for the admin free-individual-membership comp grant
+# (see backend/subscription/subscriptions.py::grant_admin_comp and
+# routes/subscription.py's admin grant endpoint). No Stripe/Apple write path
+# ('stripe' / 'apple') ever produces this value, so a comp row can never
+# collide with or be mistaken for real billing state; paired with
+# plan_type='individual' it is unambiguous in the DB/audit log as
+# admin-comped rather than paid.
+ADMIN_COMP_PROVIDER = "admin_comp"
+
 # Usage caps for users WITHOUT an active plan (the free tier). Subscribed users
 # (individual or group, trialing or active) bypass these entirely — unlimited.
 # Enforced server-side in the create routes via LimitsManager, so the caps hold
@@ -48,8 +57,8 @@ class Subscription(BaseModel):
     """A subscription plan owned by a host user."""
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     user_id: str = Field(description="UUID of the host who owns/pays for the plan")
-    plan_type: str = Field(default="group", description="'free' or 'group'")
-    provider: str = Field(default="stripe", description="'stripe' or 'apple'")
+    plan_type: str = Field(default="group", description="'free', 'group', or 'individual' (admin comp)")
+    provider: str = Field(default="stripe", description="'stripe', 'apple', or 'admin_comp'")
     stripe_customer_id: str = Field(default="")
     default_payment_method_id: str = Field(default="", description="opaque processor token (pm_...)")
     card_brand: str = Field(default="", description="display only, e.g. 'visa'")

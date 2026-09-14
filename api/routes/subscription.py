@@ -7,11 +7,24 @@ from backend.subscription.subscriptions import SubscriptionsManager
 from backend.subscription.limits import LimitsManager
 from backend.subscription import stripe_service
 from backend.subscription import apple_service
-from backend.auth.dependencies import get_current_user, require_match
+from backend.auth.dependencies import get_current_user, require_match, require_admin
 from schemas.subscription import SubscriptionCreate, SubscriptionUpdate
 
 subscription_router = APIRouter(prefix="/subscriptions")
 logger = logging.getLogger(__name__)
+# Dedicated admin-audit logger, matching routes/monitoring.py's `_audit`
+# pattern exactly, so every admin action across the app lands in one
+# greppable/filterable log stream independent of general app logs.
+audit_logger = logging.getLogger("admin_audit")
+
+
+def _audit(action: str, admin_id: str, subscription_id: str | None = None) -> None:
+    """One structured admin-audit-trail line per admin action on this
+    surface. `admin_id` always comes from `require_admin`'s DB-verified
+    return value, never a client-supplied field."""
+    audit_logger.info(
+        "admin_action action=%s admin_id=%s subscription_id=%s", action, admin_id, subscription_id
+    )
 
 
 class CheckoutRequest(BaseModel):
@@ -253,6 +266,39 @@ async def apple_notifications(request: Request) -> dict:
     finally:
         db.close()
     return {"received": True}
+
+
+# ── Admin: free individual membership comp grant ────────────────────────────────
+# Literal route, declared (like every route in this section) before the
+# "/{subscription_id}" wildcard so it matches first.
+
+@subscription_router.post("/admin/grant-individual", status_code=201)
+async def grant_admin_individual_membership(admin_id: str = Depends(require_admin)) -> dict:
+    """Grant the calling admin a free, active, individual-tier membership.
+
+    Admin-only self-service comp grant — no Stripe/Apple billing involved.
+    The target is always the DB-verified admin resolved by ``require_admin``;
+    there is no request body, so there is no client-supplied field that
+    could redirect the grant to a different account (guards the IDOR-shaped
+    escalation named in security step 1 of this workflow). See
+    ``SubscriptionsManager.grant_admin_comp`` for the idempotency and
+    billing-collision-safety details (distinct ``plan_type``/``provider``
+    values, ``current_period_end`` left NULL so it's never swept by the
+    ``EXPIRY_GRACE_DAYS`` lapse logic).
+
+    Returns:
+        dict: the resulting subscription (same shape as ``GET /{subscription_id}``).
+    """
+    db = SubscriptionsManager()
+    try:
+        sub_id = db.grant_admin_comp(admin_id)
+        _audit("grant_individual_membership", admin_id, sub_id)
+        result = db.get_subscription(sub_id)
+        if result is None:
+            raise HTTPException(status_code=500, detail="Grant succeeded but could not be read back")
+        return result
+    finally:
+        db.close()
 
 
 # NOTE: static-prefix routes ("/user/...") are declared before the "/{subscription_id}"
