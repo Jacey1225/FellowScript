@@ -671,6 +671,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#session-editing-2026-09-14-task-20260914-session-edit-button-ios" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Session Editing (2026-09-14, task 20260914-session-edit-button, iOS)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#real-time-behavior" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1161,6 +1172,24 @@ survive a reinstall or sync across a user's other devices. Badge appear/disappea
 spring transition (a quicker exit than entrance), skipped entirely under Reduce Motion; the tab
 badge additionally pulses briefly when its count changes in place (e.g. 2 → 3) rather than
 flashing a plain text swap.</p>
+<hr />
+<h2 id="session-editing-2026-09-14-task-20260914-session-edit-button-ios">Session Editing (2026-09-14, task <code>20260914-session-edit-button</code>, iOS)</h2>
+<p><code>SessionDetailSheet</code> now shows an <strong>Edit Session</strong> button next to the existing Delete Session
+button, gated by the same author-only <code>isHost</code> check (<code>session.creator_id ==
+appState.currentUser?.user_id</code>) — visible only to the session's creator, not merely disabled for
+anyone else. Tapping it opens <code>SessionCreatorSheet</code> in a new edit mode (the same component the
+"+ new session" flow uses, rather than a forked near-duplicate view), pre-filled with the
+session's current title, start date/time, duration (inferred from the existing <code>time_start</code>/
+<code>time_end</code> gap, snapped to the nearest 15/30/45/60m option), verses, discussion prompts, and
+recurring toggle. Verses are only editable here — the create flow still has no verses UI at all,
+unchanged.</p>
+<p>Saving calls the already-implemented <code>NetworkService.updateSession(userId:sessionId:devotion:)</code>
+(a full-session <code>PUT /devotions/</code>, previously wired to no UI path) with the original session's
+<code>id</code>/<code>creator_id</code>/<code>group_id</code>/<code>participants</code> preserved and only the edited fields changed. Unlike
+the create flow's fire-and-forget save, edit mode awaits the request: a failure keeps the sheet
+open and shows a "Couldn't Save Changes" alert instead of silently discarding the edit or closing
+as if it had succeeded; success dismisses the sheet and refreshes the caller's session list via a
+new <code>onUpdate</code> callback, mirroring the existing <code>onDelete</code> refresh path.</p>
 <hr />
 <h2 id="real-time-behavior">Real-Time Behavior</h2>
 <p>The WebSocket connection (<code>/ws/{user_id}</code>) handles:</p>
