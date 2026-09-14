@@ -1545,6 +1545,11 @@ may still be populated.</p>
 <td><code>/subscriptions/{subscription_id}</code></td>
 <td>Update a plan (host only). Body may include <code>member_count</code> to change plan size — re-prices from the same table</td>
 </tr>
+<tr>
+<td>POST</td>
+<td><code>/subscriptions/admin/grant-individual</code></td>
+<td><strong>Admin-only</strong> (<code>require_admin</code>; <code>401</code>/<code>403</code> semantics as below). No body — the target is always the calling admin, never a client-supplied user. Grants the caller a free, active, individual-tier membership (<code>plan_type='individual'</code>, <code>provider='admin_comp'</code>, $0, no Stripe/Apple billing) with the same unlimited access a paying individual subscriber gets. Idempotent — calling it again returns the same existing grant rather than creating a duplicate. Never expires (not subject to the <code>EXPIRY_GRACE_DAYS</code> lapse sweep). Every grant is recorded in the <code>admin_audit</code> log. Returns the resulting subscription, same shape as <code>GET /{subscription_id}</code>.</td>
+</tr>
 </tbody>
 </table>
 <hr />
