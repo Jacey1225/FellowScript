@@ -649,6 +649,28 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#failed-send-recovery-2026-09-10-task-20260910-chat-message-disappear-reentry" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Failed Send Recovery (2026-09-10, task 20260910-chat-message-disappear-reentry)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#unread-conversation-badges-2026-09-13-task-20260913-chat-unread-badges-ios" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Unread Conversation Badges (2026-09-13, task 20260913-chat-unread-badges, iOS)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#real-time-behavior" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1096,6 +1118,49 @@ the server can't reach Chime — used to fail with no visible signal at all. It 
 inline error message with a <strong>Retry</strong> button directly on the affected session's card; retrying
 just re-runs the join flow, and the error clears automatically as soon as a join attempt (retry
 or fresh) starts.</p>
+<hr />
+<h2 id="failed-send-recovery-2026-09-10-task-20260910-chat-message-disappear-reentry">Failed Send Recovery (2026-09-10, task <code>20260910-chat-message-disappear-reentry</code>)</h2>
+<p>A sent message (friend DM or group) that the backend explicitly rejects or fails to save (a
+content-filter rejection, a failed database write, or the silent block-drop between two users who
+have blocked each other) used to look identical to a successful one: it showed up immediately via
+the optimistic local echo, then simply vanished the next time the thread was reopened, once the
+server's history reload replaced the message list wholesale and the never-actually-saved message
+wasn't in it. The client had no way to distinguish this from a real send — the backend's own
+<code>{"type": "error", ...}</code> frame carrying the rejection reason was silently dropped, because the
+receive loop only ever acted on a frame that had a <code>text</code> key.</p>
+<p>The receive loop (<code>ChatThreadView.swift</code>) now explicitly branches on the frame's <code>type</code> field
+instead of relying on <code>text</code>'s presence as an implicit signal. An error frame is matched to the
+oldest still-unconfirmed optimistic send (there is no ack, so a send that's never flagged as
+failed is treated as having succeeded) and flags that message. The affected bubble gets an inline
+<strong>"Couldn't send — tap to retry"</strong> line beneath it, reusing the exact styling and interaction the
+composer's failed-attachment-upload chip already established, rather than a toast, alert, or
+raw error dump. Tapping it removes the failed bubble and resends the same text/attachment, with no
+confirmation step. A successful send is unaffected either way — it survives thread re-entry (warm
+or cold reload) exactly as before.</p>
+<hr />
+<h2 id="unread-conversation-badges-2026-09-13-task-20260913-chat-unread-badges-ios">Unread Conversation Badges (2026-09-13, task <code>20260913-chat-unread-badges</code>, iOS)</h2>
+<p>Friend and group chats now show a red unread indicator, client-local and derived — no per-message
+count is fabricated for a row that only ever knows a <code>lastMessageAt</code> timestamp. Two locations, both
+top-left per the original request:</p>
+<ul>
+<li><strong>Chat tab icon</strong> (<code>FloatingTabBar.swift</code>) — a numeral badge showing the count of unread
+  <em>conversations</em> (capped <code>9+</code>), shown whenever any friend or group has unread messages, in both
+  the tab's selected and unselected icon states.</li>
+<li><strong>Chat list rows</strong> (<code>ChatRootView.swift</code>'s <code>ContactRow</code>, shared by both friends and groups) — a
+  plain dot, no number, since <code>FSContact</code> carries no per-conversation message count to show
+  honestly.</li>
+</ul>
+<p>A conversation counts as unread when its <code>FSContact.lastMessageAt</code> is newer than a per-conversation
+last-read marker (<code>AppState.hasUnread(_:)</code>), stored client-local in <code>UserDefaults</code> keyed by
+<code>FSContact.id</code> — one mechanism for both friends and groups, no special-casing. The marker is set
+(<code>AppState.markRead(_:)</code>) only when <code>ChatThreadView</code> actually opens that specific thread, never
+merely from the chat list being visible or the tab being selected; it clears immediately and the
+tab-bar count recomputes accordingly. Agent chats (<code>AgentChatView</code>) never carry either badge — that
+type never flows through this mechanism at all. This is a device-local read state: it does not
+survive a reinstall or sync across a user's other devices. Badge appear/disappear uses an eased
+spring transition (a quicker exit than entrance), skipped entirely under Reduce Motion; the tab
+badge additionally pulses briefly when its count changes in place (e.g. 2 → 3) rather than
+flashing a plain text swap.</p>
 <hr />
 <h2 id="real-time-behavior">Real-Time Behavior</h2>
 <p>The WebSocket connection (<code>/ws/{user_id}</code>) handles:</p>
