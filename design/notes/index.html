@@ -717,6 +717,17 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#dictation-read-aloud-task-20260914-dictation-tts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Dictation / Read Aloud (task 20260914-dictation-tts)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#reply-composer-replycomposersheet" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1358,6 +1369,18 @@ unchanged.</p>
 <li><strong>Divider</strong> — a 1pt <code>Theme.goldGradient</code> rule in place of the old plain
   <code>Divider()</code>, same position/role.</li>
 </ul>
+<h4 id="dictation-read-aloud-task-20260914-dictation-tts">Dictation / Read Aloud (task <code>20260914-dictation-tts</code>)</h4>
+<p><code>NoteDetailView</code>'s trailing toolbar carries a compact icon-only pill (a
+<code>speaker.wave.2</code> glyph, <code>ghostPill</code>'s outline treatment applied to an icon
+instead of a text label) placed immediately left of the <code>Edit</code> pill, reading
+the full note body aloud (HTML-stripped, untruncated — unlike the list
+card's <code>preview</code>) via the same on-device <code>SpeechController</code> service the
+Bible Reader uses (<code>docs/design/bible-reader.md</code>). Always shown regardless
+of <code>canEdit</code> — reading aloud isn't an ownership-sensitive action the way
+editing is. Toggle-to-stop, same icon-fill/pulse speaking state as the
+Bible Reader's button; playback stops automatically when the sheet is
+dismissed, the app backgrounds, or dictation starts on the Bible screen
+instead (one shared synthesizer app-wide).</p>
 <h4 id="reply-composer-replycomposersheet">Reply composer (<code>ReplyComposerSheet</code>)</h4>
 <p>The reply input presented from <code>NoteDetailView</code> ("Add a Reply") carries the
 same rich-text formatting capability as <code>NoteEditorView</code>: a Bold / Italic /
