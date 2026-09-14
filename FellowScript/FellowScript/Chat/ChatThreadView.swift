@@ -677,13 +677,10 @@ struct ChatThreadView: View {
 
                 // ── Session banner (upcoming session card) ─────────────────
                 if let nextSession = vm.sessions.first {
-                    SessionBanner(session: nextSession, onDelete: {
-                        let uid = appState.currentUser?.user_id ?? ""
-                        let key = ChatThreadViewModel.roomKey(contact: contact, userId: uid)
-                        Task {
-                            vm.sessions = (try? await appState.service.fetchSessionsForContact(contactId: key)) ?? []
-                        }
-                    })
+                    // onDelete/onUpdate share the same refresh -- both just
+                    // need the caller's session list re-fetched after the
+                    // mutation succeeds (see refreshSessions() below).
+                    SessionBanner(session: nextSession, onDelete: refreshSessions, onUpdate: refreshSessions)
                     .padding(.horizontal, Theme.spacingSM)
                     .padding(.top, Theme.spacingXS)
                 }
@@ -1175,6 +1172,19 @@ struct ChatThreadView: View {
             }
         }
     }
+
+    // Shared by SessionBanner's onDelete and onUpdate (task
+    // 20260914-session-edit-button) -- both mutations just need the
+    // session list re-fetched from the server afterward, so this replaces
+    // what used to be a copy of this same fetch inlined at the onDelete
+    // call site alone.
+    private func refreshSessions() {
+        let uid = appState.currentUser?.user_id ?? ""
+        let key = ChatThreadViewModel.roomKey(contact: contact, userId: uid)
+        Task {
+            vm.sessions = (try? await appState.service.fetchSessionsForContact(contactId: key)) ?? []
+        }
+    }
 }
 
 // ── Group members panel (mirrors ChatView showMembers block) ──────────────────
@@ -1333,6 +1343,10 @@ struct AddGroupMembersSheet: View {
 struct SessionBanner: View {
     let session: FSSession
     var onDelete: (() -> Void)? = nil
+    // Task 20260914-session-edit-button: fired after a successful edit save,
+    // mirroring onDelete above so the caller can refresh its session list the
+    // same way for either mutation.
+    var onUpdate: (() -> Void)? = nil
     @EnvironmentObject var appState: AppState
     @State private var showDetail = false
 
@@ -1433,7 +1447,7 @@ struct SessionBanner: View {
         .overlay(RoundedRectangle(cornerRadius: Theme.radiusXL).stroke(Theme.borderGoldDim, lineWidth: 1))
         .topEdgeHighlight(RoundedRectangle(cornerRadius: Theme.radiusXL))
         .sheet(isPresented: $showDetail) {
-            SessionDetailSheet(session: session, onDelete: onDelete)
+            SessionDetailSheet(session: session, onDelete: onDelete, onUpdate: onUpdate)
                 .environmentObject(appState)
         }
     }
@@ -1443,13 +1457,20 @@ struct SessionBanner: View {
 struct SessionDetailSheet: View {
     let session: FSSession
     var onDelete: (() -> Void)? = nil
+    // Task 20260914-session-edit-button: fired after a successful edit save
+    // so the caller can refresh its session list, mirroring onDelete.
+    var onUpdate: (() -> Void)? = nil
     @EnvironmentObject var appState: AppState
     @Environment(\.dismiss) private var dismiss
     @State private var showDeleteConfirm = false
     @State private var isDeleting = false
+    @State private var showEditSheet = false
 
-    // Only the user who created the session may delete it.
-    private var isHost: Bool {
+    // Only the user who created the session may edit or delete it. `internal`
+    // (not `private`), matching NoteDetailView.canEdit's testability-seam
+    // convention, so a gate test can assert on it directly via @testable
+    // import rather than driving a full render.
+    internal var isHost: Bool {
         !session.creator_id.isEmpty && session.creator_id == appState.currentUser?.user_id
     }
 
@@ -1525,29 +1546,52 @@ struct SessionDetailSheet: View {
                                 .foregroundColor(Theme.textGoldMuted)
                         }
 
-                        // Host-only: delete the session they created.
+                        // Host-only: edit or delete the session they created.
+                        // Stacked (not paired side-by-side) so Delete keeps
+                        // its full-width destructive weight rather than
+                        // sharing a row with a same-size non-destructive
+                        // action, consistent with this sheet's existing
+                        // full-width single-action button style above.
                         if isHost {
-                            Button(role: .destructive) { showDeleteConfirm = true } label: {
-                                HStack(spacing: 8) {
-                                    if isDeleting {
-                                        ProgressView().tint(Theme.error)
-                                    } else {
-                                        Image(systemName: "trash")
-                                        Text("Delete Session")
+                            VStack(spacing: Theme.spacingSM) {
+                                Button { showEditSheet = true } label: {
+                                    HStack(spacing: 8) {
+                                        Image(systemName: "pencil")
+                                        Text("Edit Session")
                                             .font(.inter(Theme.fontBody, weight: .semibold))
                                     }
+                                    .foregroundColor(Theme.gold)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 12)
+                                    .background(Theme.gold.opacity(0.10))
+                                    .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
+                                    .overlay(RoundedRectangle(cornerRadius: Theme.radius)
+                                        .stroke(Theme.borderGold, lineWidth: 1))
                                 }
-                                .foregroundColor(Theme.error)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 12)
-                                .background(Theme.error.opacity(0.10))
-                                .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
-                                .overlay(RoundedRectangle(cornerRadius: Theme.radius)
-                                    .stroke(Theme.error.opacity(0.35), lineWidth: 1))
+                                .accessibilityLabel("Edit session \(session.title)")
+
+                                Button(role: .destructive) { showDeleteConfirm = true } label: {
+                                    HStack(spacing: 8) {
+                                        if isDeleting {
+                                            ProgressView().tint(Theme.error)
+                                        } else {
+                                            Image(systemName: "trash")
+                                            Text("Delete Session")
+                                                .font(.inter(Theme.fontBody, weight: .semibold))
+                                        }
+                                    }
+                                    .foregroundColor(Theme.error)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 12)
+                                    .background(Theme.error.opacity(0.10))
+                                    .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
+                                    .overlay(RoundedRectangle(cornerRadius: Theme.radius)
+                                        .stroke(Theme.error.opacity(0.35), lineWidth: 1))
+                                }
+                                .disabled(isDeleting)
+                                .accessibilityLabel("Delete session \(session.title)")
                             }
-                            .disabled(isDeleting)
                             .padding(.top, Theme.spacingSM)
-                            .accessibilityLabel("Delete session \(session.title)")
                         }
                     }
                     .padding(Theme.spacingLG)
@@ -1564,6 +1608,19 @@ struct SessionDetailSheet: View {
                 Button("Delete", role: .destructive) { deleteSession() }
             } message: {
                 Text("This permanently deletes \"\(session.title)\" for everyone. This can't be undone.")
+            }
+            .sheet(isPresented: $showEditSheet) {
+                SessionCreatorSheet(
+                    groupId: session.group_id,
+                    existingSession: session,
+                    onSaveAsync: { updated in
+                        let uid = appState.currentUser?.user_id ?? ""
+                        try await appState.service.updateSession(
+                            userId: uid, sessionId: session.id, devotion: updated
+                        )
+                        await MainActor.run { onUpdate?() }
+                    }
+                )
             }
         }
         .preferredColorScheme(.dark)
@@ -1592,18 +1649,74 @@ struct SessionDetailSheet: View {
 // time_end is computed from time_start + duration.rawValue minutes when
 // building the FSSession to hand to onSave (unchanged create path: the
 // caller in ChatThreadView still drives NetworkService.createSession).
+//
+// Task 20260914-session-edit-button: also doubles as the edit flow (single
+// component, two modes -- per the intake spec's own open question) rather
+// than forking a near-duplicate view, since the field set is otherwise
+// identical. Passing `existingSession` switches the sheet into edit mode:
+// fields are pre-filled from it, a Verses section appears (create mode has
+// no verses UI at all, unchanged), and Save drives the caller-supplied
+// `onSaveAsync` (real network call + explicit failure surfacing) instead of
+// the fire-and-forget `onSave` the create path has always used. The create
+// path itself -- onSave, its FSSession field set/order, dismiss-on-tap -- is
+// untouched below.
 struct SessionCreatorSheet: View {
     let groupId: String
-    let onSave:  (FSSession) -> Void
+    let existingSession: FSSession?
+    let onSave: (FSSession) -> Void
+    // Edit-mode save path: a real, throwing, awaitable network call. When
+    // present, Save awaits it and only dismisses on success, surfacing a
+    // failure via `saveError` instead of the create path's silent
+    // fire-and-forget. nil for the create path (unchanged behavior).
+    let onSaveAsync: ((FSSession) async throws -> Void)?
     @Environment(\.dismiss) private var dismiss
 
-    @State private var title:       String = ""
-    @State private var startDate:   Date   = Date().addingTimeInterval(3600)
-    @State private var duration:    SessionDuration = .thirty
-    @State private var prompts:     [String] = []
+    @State private var title:       String
+    @State private var startDate:   Date
+    @State private var duration:    SessionDuration
+    @State private var verses:      [String]
+    @State private var verseInput:  String = ""
+    @State private var prompts:     [String]
     @State private var promptInput: String = ""
-    @State private var recurring:   Bool = false
-    @State private var summarize:   Bool = false
+    @State private var recurring:   Bool
+    @State private var summarize:   Bool
+    @State private var isSaving:    Bool = false
+    @State private var saveError:   String?
+
+    private var isEditing: Bool { existingSession != nil }
+
+    init(groupId: String,
+         existingSession: FSSession? = nil,
+         onSave: @escaping (FSSession) -> Void = { _ in },
+         onSaveAsync: ((FSSession) async throws -> Void)? = nil) {
+        self.groupId = groupId
+        self.existingSession = existingSession
+        self.onSave = onSave
+        self.onSaveAsync = onSaveAsync
+
+        _title      = State(initialValue: existingSession?.title ?? "")
+        _startDate  = State(initialValue: existingSession.flatMap { parseFlexibleISO8601($0.time_start) }
+                             ?? Date().addingTimeInterval(3600))
+        _duration   = State(initialValue: SessionCreatorSheet.inferredDuration(from: existingSession))
+        _verses     = State(initialValue: existingSession?.verses ?? [])
+        _prompts    = State(initialValue: existingSession?.prompts ?? [])
+        _recurring  = State(initialValue: existingSession?.recurring ?? false)
+        _summarize  = State(initialValue: existingSession?.summarize ?? false)
+    }
+
+    // `duration` is UI-only (see file header) and FSSession never stores it,
+    // so editing has to reconstruct it from the existing time_start/time_end
+    // gap, snapping to the nearest of the 4 segmented-control options rather
+    // than failing to prefill it at all.
+    private static func inferredDuration(from session: FSSession?) -> SessionDuration {
+        guard let session,
+              let start = parseFlexibleISO8601(session.time_start),
+              let end = parseFlexibleISO8601(session.time_end) else {
+            return .thirty
+        }
+        let minutes = Int(end.timeIntervalSince(start) / 60)
+        return SessionDuration.allCases.min(by: { abs($0.rawValue - minutes) < abs($1.rawValue - minutes) }) ?? .thirty
+    }
 
     var body: some View {
         ZStack {
@@ -1618,6 +1731,14 @@ struct SessionCreatorSheet: View {
                         sessionTitleSection
                         startTimeSection
                         durationSection
+                        // Verses editing only exists in edit mode -- the
+                        // create path has never had a verses UI (session.verses
+                        // is always created empty) and this doesn't add one
+                        // there, per the intake spec's "don't alter create
+                        // behavior" scope.
+                        if isEditing {
+                            versesSection
+                        }
                         discussionPromptsSection
                         sessionOptionsSection
                     }
@@ -1631,6 +1752,14 @@ struct SessionCreatorSheet: View {
         .presentationDragIndicator(.hidden)
         .presentationCornerRadius(Theme.radiusXXL)
         .preferredColorScheme(.dark)
+        .alert("Couldn't Save Changes", isPresented: Binding(
+            get: { saveError != nil },
+            set: { if !$0 { saveError = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(saveError ?? "")
+        }
     }
 
     // MARK: - Header
@@ -1651,9 +1780,19 @@ struct SessionCreatorSheet: View {
 
             Spacer()
 
-            Text("Schedule")
-                .font(.inter(Theme.fontDisplayMD, weight: .bold))
-                .foregroundColor(Theme.parchment)
+            // isEditing branches to a distinct title rather than reusing
+            // "Schedule" for an edit -- the literal `Text("Schedule")` below
+            // stays reachable (and is still what renders) for the create
+            // path, unchanged.
+            if isEditing {
+                Text("Edit Session")
+                    .font(.inter(Theme.fontDisplayMD, weight: .bold))
+                    .foregroundColor(Theme.parchment)
+            } else {
+                Text("Schedule")
+                    .font(.inter(Theme.fontDisplayMD, weight: .bold))
+                    .foregroundColor(Theme.parchment)
+            }
 
             Spacer()
 
@@ -1712,6 +1851,60 @@ struct SessionCreatorSheet: View {
         VStack(alignment: .leading, spacing: 10) {
             SectionEyebrow(title: "Duration")
             SegmentedDurationControl(selection: $duration)
+        }
+    }
+
+    // Edit-mode only (see body's `if isEditing` gate above) -- mirrors
+    // discussionPromptsSection's own add/remove list pattern exactly so this
+    // doesn't invent a second list-editing style in the same sheet.
+    private var versesSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            SectionEyebrow(title: "Verses")
+
+            ForEach(Array(verses.enumerated()), id: \.offset) { i, v in
+                HStack {
+                    Text(v)
+                        .font(.inter(Theme.fontSM))
+                        .foregroundColor(Theme.parchment)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Button(action: { verses.remove(at: i) }) {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundColor(Theme.textMuted)
+                    }
+                    .accessibilityLabel("Remove verse: \(v)")
+                }
+                .padding(.horizontal, 18)
+                .padding(.vertical, 12)
+                .background(Color.white.opacity(0.045))
+                .overlay(RoundedRectangle(cornerRadius: Theme.radiusXL).stroke(Theme.borderGoldDim, lineWidth: 1))
+                .clipShape(RoundedRectangle(cornerRadius: Theme.radiusXL))
+                .topEdgeHighlight(RoundedRectangle(cornerRadius: Theme.radiusXL))
+            }
+
+            HStack {
+                TextField("", text: $verseInput,
+                          prompt: Text("Add a verse reference…").foregroundColor(Theme.textSecondary))
+                    .font(.inter(Theme.fontBody))
+                    .foregroundColor(Theme.parchment)
+                    .accessibilityLabel("Verse reference input")
+
+                Button(action: addVerse) {
+                    Image(systemName: "plus")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(Theme.ink)
+                        .frame(width: 32, height: 32)
+                        .background(verseInput.isEmpty ? AnyShapeStyle(Theme.gold.opacity(0.35)) : AnyShapeStyle(Theme.goldGradient))
+                        .clipShape(Circle())
+                }
+                .disabled(verseInput.isEmpty)
+                .accessibilityLabel("Add verse")
+            }
+            .padding(.horizontal, 18)
+            .padding(.vertical, 12)
+            .background(Color.white.opacity(0.045))
+            .overlay(RoundedRectangle(cornerRadius: Theme.radiusXL).stroke(Theme.borderGoldDim, lineWidth: 1))
+            .clipShape(RoundedRectangle(cornerRadius: Theme.radiusXL))
+            .topEdgeHighlight(RoundedRectangle(cornerRadius: Theme.radiusXL))
         }
     }
 
@@ -1783,25 +1976,68 @@ struct SessionCreatorSheet: View {
         promptInput = ""
     }
 
+    private func addVerse() {
+        let trimmed = verseInput.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return }
+        verses.append(trimmed)
+        verseInput = ""
+    }
+
+    // Button(action: scheduleSession) itself is unchanged (still the header
+    // CTA's wiring, create and edit alike -- see
+    // ChatScheduleUICleanupIOSRegressionTests' source pin on that literal).
+    // What it does now branches on mode:
+    //  - create (existingSession == nil, onSaveAsync == nil): exactly the
+    //    original behavior below -- build a fresh FSSession, fire-and-forget
+    //    onSave, dismiss immediately.
+    //  - edit (onSaveAsync != nil): start from the *existing* session so id/
+    //    creator_id/group_id/participants survive the round trip (the PUT
+    //    body is the full FSSession -- see NetworkService+Messaging.swift's
+    //    updateSession), await the real network call, and only dismiss on
+    //    success -- a failure populates saveError instead of closing, per
+    //    this task's explicit-error-propagation requirement.
     private func scheduleSession() {
+        guard !isSaving else { return }   // ignore a double-tap while an edit save is in flight
+
         let df = ISO8601DateFormatter()
-        let session = FSSession(
-            id:         UUID().uuidString,
-            title:      title,
-            time_start: df.string(from: startDate),
-            // FSSession has no duration field — time_end is derived
-            // client-side from the segmented control's selection, matching
-            // the prior Picker-based flow's behavior. See
-            // SessionDuration.timeEndISOString(from:) for the (now
-            // independently unit-tested) formula.
-            time_end:   duration.timeEndISOString(from: startDate),
-            verses:     [],
-            prompts:    prompts,
-            recurring:  recurring,
-            summarize:  summarize,
-            group_id:   groupId
-        )
-        onSave(session)
-        dismiss()
+        var session = existingSession ?? FSSession()
+        session.title      = title
+        session.time_start = df.string(from: startDate)
+        // FSSession has no duration field — time_end is derived
+        // client-side from the segmented control's selection, matching
+        // the prior Picker-based flow's behavior. See
+        // SessionDuration.timeEndISOString(from:) for the (now
+        // independently unit-tested) formula.
+        session.time_end   = duration.timeEndISOString(from: startDate)
+        session.verses     = verses
+        session.prompts    = prompts
+        session.recurring  = recurring
+        session.summarize  = summarize
+        if !isEditing {
+            session.id       = UUID().uuidString
+            session.group_id = groupId
+        }
+
+        guard let onSaveAsync else {
+            onSave(session)
+            dismiss()
+            return
+        }
+
+        isSaving = true
+        Task {
+            do {
+                try await onSaveAsync(session)
+                await MainActor.run {
+                    isSaving = false
+                    dismiss()
+                }
+            } catch {
+                await MainActor.run {
+                    isSaving = false
+                    saveError = "Couldn't save your changes. Please try again."
+                }
+            }
+        }
     }
 }

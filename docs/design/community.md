@@ -147,6 +147,55 @@ or cold reload) exactly as before.
 
 ---
 
+## Unread Conversation Badges (2026-09-13, task `20260913-chat-unread-badges`, iOS)
+
+Friend and group chats now show a red unread indicator, client-local and derived — no per-message
+count is fabricated for a row that only ever knows a `lastMessageAt` timestamp. Two locations, both
+top-left per the original request:
+
+- **Chat tab icon** (`FloatingTabBar.swift`) — a numeral badge showing the count of unread
+  *conversations* (capped `9+`), shown whenever any friend or group has unread messages, in both
+  the tab's selected and unselected icon states.
+- **Chat list rows** (`ChatRootView.swift`'s `ContactRow`, shared by both friends and groups) — a
+  plain dot, no number, since `FSContact` carries no per-conversation message count to show
+  honestly.
+
+A conversation counts as unread when its `FSContact.lastMessageAt` is newer than a per-conversation
+last-read marker (`AppState.hasUnread(_:)`), stored client-local in `UserDefaults` keyed by
+`FSContact.id` — one mechanism for both friends and groups, no special-casing. The marker is set
+(`AppState.markRead(_:)`) only when `ChatThreadView` actually opens that specific thread, never
+merely from the chat list being visible or the tab being selected; it clears immediately and the
+tab-bar count recomputes accordingly. Agent chats (`AgentChatView`) never carry either badge — that
+type never flows through this mechanism at all. This is a device-local read state: it does not
+survive a reinstall or sync across a user's other devices. Badge appear/disappear uses an eased
+spring transition (a quicker exit than entrance), skipped entirely under Reduce Motion; the tab
+badge additionally pulses briefly when its count changes in place (e.g. 2 → 3) rather than
+flashing a plain text swap.
+
+---
+
+## Session Editing (2026-09-14, task `20260914-session-edit-button`, iOS)
+
+`SessionDetailSheet` now shows an **Edit Session** button next to the existing Delete Session
+button, gated by the same author-only `isHost` check (`session.creator_id ==
+appState.currentUser?.user_id`) — visible only to the session's creator, not merely disabled for
+anyone else. Tapping it opens `SessionCreatorSheet` in a new edit mode (the same component the
+"+ new session" flow uses, rather than a forked near-duplicate view), pre-filled with the
+session's current title, start date/time, duration (inferred from the existing `time_start`/
+`time_end` gap, snapped to the nearest 15/30/45/60m option), verses, discussion prompts, and
+recurring toggle. Verses are only editable here — the create flow still has no verses UI at all,
+unchanged.
+
+Saving calls the already-implemented `NetworkService.updateSession(userId:sessionId:devotion:)`
+(a full-session `PUT /devotions/`, previously wired to no UI path) with the original session's
+`id`/`creator_id`/`group_id`/`participants` preserved and only the edited fields changed. Unlike
+the create flow's fire-and-forget save, edit mode awaits the request: a failure keeps the sheet
+open and shows a "Couldn't Save Changes" alert instead of silently discarding the edit or closing
+as if it had succeeded; success dismisses the sheet and refreshes the caller's session list via a
+new `onUpdate` callback, mirroring the existing `onDelete` refresh path.
+
+---
+
 ## Real-Time Behavior
 
 The WebSocket connection (`/ws/{user_id}`) handles:
