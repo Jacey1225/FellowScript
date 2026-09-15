@@ -756,11 +756,22 @@ private struct ContinueIslandButtonStyle: ButtonStyle {
 // Adapts the existing "continue reading" affordance to the redesign's
 // note-resume concept: the user's own most recent note (`vm.recentNote`), not
 // a friend's. `note == nil` (no notes written yet) renders a defined empty
-// state that opens a fresh note instead of silently vanishing — and, per
-// design-spec.md §2.4 and this task's own design step 1 (design-notes.md),
-// that empty state keeps its original pill exactly as-is: the circular
-// Continue-button treatment only ever applies to the populated
-// (`note != nil`) branch.
+// state that opens a fresh note instead of silently vanishing.
+//
+// Task 20260914-note-resume-empty-state-fix: the empty state used to keep its
+// pre-redesign pill/capsule "Start a note" treatment untouched (per
+// design-spec.md §2.4 and design step 1's original design-notes.md), on the
+// theory floated in 20260828-continue-button-circle-icon-options/
+// design-spec.md's "Empty-state reconciliation" note that a dark-fill/
+// light-glyph empty-state button vs. the populated state's light-fill/
+// dark-glyph button was "a defensible intentional distinction... state the
+// tradeoff, don't resolve it." That pill read as visibly stale next to the
+// rest of the redesigned screen, and this task resolves the deferred fork:
+// per this project's "hold to brand strictly" preference, the empty state now
+// shares the exact same `resumeCircleButton` construction as the populated
+// state (same fill/rim/shadow/sizing) — full unification, not a second
+// button language — with only the accessibility label and the card's own
+// text content differing between the two branches.
 struct NoteResumeCard: View {
     let note:   FSNote?
     let onOpen: () -> Void
@@ -944,8 +955,13 @@ struct NoteResumeCard: View {
         )
     }
 
-    // The circular "Continue" button itself (design-spec.md's Option 2).
-    private var continueCircleButton: some View {
+    // The shared circular button construction (design-spec.md's Option 2) —
+    // one definition reused by both the populated "Continue" and empty
+    // "Start a note" affordances (task 20260914-note-resume-empty-state-fix),
+    // so the two states' CTA can never drift apart from each other again.
+    // Only the accessibility label varies between call sites; every pixel of
+    // the button itself — fill, rim, shadow stack, sizing — is identical.
+    private func resumeCircleButton(accessibilityLabel: String) -> some View {
         Button(action: onOpen) {
             Circle()
                 .fill(
@@ -983,49 +999,73 @@ struct NoteResumeCard: View {
         // visually-reduced silhouette, matching the pill's own
         // `.contentShape` convention for the same reason).
         .contentShape(Circle())
-        .accessibilityLabel("Continue reading \(noteTitle)")
+        .accessibilityLabel(accessibilityLabel)
+    }
+
+    private var continueCircleButton: some View {
+        resumeCircleButton(accessibilityLabel: "Continue reading \(noteTitle)")
     }
 
     // MARK: - Empty state (`note == nil`)
     //
-    // Unchanged, pixel-for-pixel, per design step 1's decision
-    // (design-notes.md) and this task's own explicit scope (design-spec.md's
-    // "Empty-state reconciliation" note): the populated state's new
-    // light-fill/dark-glyph circular button is a stated intentional
-    // distinction from this branch's dark-fill/light-glyph look, not an
-    // inconsistency to fix. This branch is exactly the original
-    // implementation, preserved so `NoteResumeCardTests`'s existing
-    // empty-state assertions keep passing.
+    // Task 20260914-note-resume-empty-state-fix: restyled off the pre-redesign
+    // pill/capsule and onto this same card/circular-button design system —
+    // same `glassCard` surface treatment, same overhang/reserve mechanic, same
+    // `resumeCircleButton` construction as the populated branch (see that
+    // function's own comment), same `Theme.parchment` typography scale as
+    // `cardBody`'s title/preview. Only the copy and the (distinct) button
+    // accessibility label differ from the populated branch — deliberately not
+    // "Continue reading ...", so `NoteResumeCardContinueIslandTests`'s
+    // `findContinueButton` helper (which matches on that prefix) never
+    // confuses this branch's button for the populated one.
+    //
+    // Copy is kept to the minimal two-line hierarchy `cardBody` itself uses
+    // (a bold headline + one secondary line) rather than the pill's old
+    // three-line "status + headline + caption" stack — the extra caption line
+    // ("capture a reflection") said essentially the same thing a second time,
+    // which this project's empty-state guidance calls out as exactly the kind
+    // of redundant empty-state treatment to avoid.
     private var emptyStateCard: some View {
+        VStack(spacing: 0) {
+            emptyCardBody
+                .overlay(alignment: .bottomTrailing) {
+                    // Same overhang placement as the populated branch's
+                    // `continueCircleButton.offset(y: belowCardReserve)`.
+                    resumeCircleButton(accessibilityLabel: "Start a new note")
+                        .offset(y: belowCardReserve)
+                }
+            // Reserve the overhang as real layout space, exactly like the
+            // populated branch's identical `Color.clear` reservation below
+            // `cardBody`.
+            Color.clear.frame(height: belowCardReserve)
+        }
+        .padding(.horizontal, 20)
+    }
+
+    private var emptyCardBody: some View {
         Button(action: onOpen) {
             VStack(alignment: .leading, spacing: 8) {
+                Text("Start a note")
+                    .font(.system(size: 19, weight: .bold))
+                    .foregroundColor(Theme.parchment)
+                    .lineLimit(2)
                 Text("You haven't written a note yet.")
-                    .font(.system(size: 14.5))
-                    .foregroundColor(Theme.textSecondary)
-                HStack {
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text("Start a note").font(.system(size: 14.5, weight: .heavy))
-                        Text("capture a reflection").font(.system(size: 11.5, weight: .medium))
-                    }
-                    .foregroundColor(Color(hex: "#24170A"))
-                    Spacer()
-                    Circle().fill(Color(hex: "#24170A")).frame(width: 38, height: 38)
-                        .overlay(Image(systemName: "arrow.right").font(.system(size: 14, weight: .bold)).foregroundColor(Theme.goldLight))
-                }
-                .padding(.horizontal, 14)
-                .frame(height: 44)
-                .background(LinearGradient(colors: [Theme.goldLight, Theme.goldDim],
-                                           startPoint: .leading, endPoint: .trailing))
-                .clipShape(Capsule())
-                .padding(.top, 14)
+                    .font(.system(size: 13))
+                    .foregroundColor(Theme.parchment.opacity(0.70))
+                    .lineLimit(3)
+                    .padding(.top, 2)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .buttonStyle(.plain)
-        .padding(16)
-        .glassCard(cornerRadius: 20, tint: Color(hex: "#2A1B0B").opacity(0.14), blurBoost: 4)
-        .padding(.horizontal, 20)
         .accessibilityLabel("Start a new note")
+        .padding(.top, 16)
+        .padding(.horizontal, 16)
+        .padding(.bottom, derivedBottomPadding)
+        // Card join: same plain, un-notched `glassCard(cornerRadius:)`
+        // overload as the populated branch's `cardBody` — never the retired
+        // `glassCard(shape:)` notch-cutting overloads.
+        .glassCard(cornerRadius: cardCornerRadius, tint: Color(hex: "#2A1B0B").opacity(0.14), blurBoost: 4)
     }
 }
 

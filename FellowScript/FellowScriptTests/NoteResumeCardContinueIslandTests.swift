@@ -144,17 +144,21 @@ final class NoteResumeCardContinueIslandTests: XCTestCase {
         )
     }
 
-    // ── The circle button must never render in the empty (note == nil)
-    // state (design-spec.md's own explicit note that the empty state's
-    // original pill is untouched by this task) ─────────────────────────────
+    // ── The empty state's own button must never be findable by the
+    // populated state's "Continue reading <title>" accessibility-label prefix
+    // (task 20260914-note-resume-empty-state-fix restyled the empty state
+    // onto the same `resumeCircleButton` construction as the populated
+    // branch -- same fill/rim/shadow/sizing -- but the two remain distinct,
+    // separately-labeled controls: "Start a new note" vs. "Continue reading
+    // <title>", not a shared instance) ──────────────────────────────────────
 
     func test_emptyState_neverRendersContinueCircleButton() throws {
         let sut = NoteResumeCard(note: nil) {}
         XCTAssertThrowsError(
             try findContinueButton(in: sut),
-            "the note == nil empty state must keep its own original dark-circle/gold-arrow 'Start a note' button -- the populated-state circular Continue button must not render there"
+            "the note == nil empty state's own button carries the distinct 'Start a new note' accessibility label -- it must never also match the populated state's 'Continue reading <title>' prefix"
         ) { _ in }
-        // The empty state's own original control is untouched.
+        // The empty state's own control still renders.
         XCTAssertNoThrow(try sut.inspect().find(text: "Start a note"))
     }
 

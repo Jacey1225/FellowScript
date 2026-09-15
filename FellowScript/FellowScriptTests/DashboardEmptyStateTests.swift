@@ -162,12 +162,20 @@ final class NoteResumeCardTests: XCTestCase {
 
     // MARK: Empty state 3 — no recent note to resume
 
-    func test_nilNote_rendersHaventWrittenEmptyState_andStartANotePillCopy() throws {
+    // Task 20260914-note-resume-empty-state-fix: restyled off the
+    // pre-redesign pill onto the current card/circular-button design system
+    // (design.json). Copy is now the same minimal two-line hierarchy
+    // `cardBody`'s populated state uses (bold headline + one secondary line)
+    // instead of the old pill's three-line "status + headline + caption"
+    // stack -- the retired "capture a reflection" caption said the same
+    // thing as the other two lines a second time, which this project's
+    // empty-state guidance calls out as a redundant treatment to avoid, so
+    // it is not asserted here anymore.
+    func test_nilNote_rendersHaventWrittenEmptyState_andStartANoteCopy() throws {
         let sut = NoteResumeCard(note: nil) {}
 
-        XCTAssertNoThrow(try sut.inspect().find(text: "You haven't written a note yet."))
         XCTAssertNoThrow(try sut.inspect().find(text: "Start a note"))
-        XCTAssertNoThrow(try sut.inspect().find(text: "capture a reflection"))
+        XCTAssertNoThrow(try sut.inspect().find(text: "You haven't written a note yet."))
         XCTAssertThrowsError(try sut.inspect().find(text: "Open note"),
                               "the empty state must not show the populated 'Open note' pill copy") { _ in }
         // "Pick up where you left off" was a leaked internal section-label
