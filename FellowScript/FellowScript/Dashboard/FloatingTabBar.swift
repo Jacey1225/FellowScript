@@ -11,6 +11,17 @@ import SwiftUI
 struct FloatingTabBar: View {
     @Binding var selection: ContentView.Tab
     var inCallBarVisible: Bool = false   // shift up when MinimizedCallBar is showing
+
+    // Task 20260916-call-bar-nav-overlap: the previous flat `60` bump sat well
+    // inside MinimizedCallBar's own 56–106pt bottom range (bottomInset...
+    // bottomInset+height), so the two overlapped and the call bar (rendered on
+    // top, in ContentView's outer overlay) blocked tab-bar taps. Derived from
+    // MinimizedCallBar's own constants plus a real visual gap (Theme.spacingMD)
+    // so this bar's bottom padding always clears the call bar's actual top
+    // edge, and the two can't independently drift apart again.
+    static let inCallBottomPadding: CGFloat =
+        MinimizedCallBar.bottomInset + MinimizedCallBar.height + Theme.spacingMD
+
     @EnvironmentObject var appState: AppState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -133,6 +144,6 @@ struct FloatingTabBar: View {
                 .shadow(color: .black.opacity(0.8), radius: 18, x: 0, y: 8)
         )
         .padding(.horizontal, 14)
-        .padding(.bottom, inCallBarVisible ? 60 : 26)
+        .padding(.bottom, inCallBarVisible ? Self.inCallBottomPadding : 26)
     }
 }

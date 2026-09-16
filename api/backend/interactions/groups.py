@@ -118,10 +118,16 @@ class GroupsManager(DBManager):
         """
         # Membership lives in the groups.users column; GET /user derives each
         # user's group list from it, so no separate per-user sync is needed.
+        # creator_id is stamped from self.user_id (the authenticated caller
+        # the route resolved via require_match, i.e. GroupsManager's own
+        # constructor arg) -- never from the client-supplied `group` payload,
+        # so a caller can't spoof ownership of a group they didn't actually
+        # create.
         if not self.insertion("groups", {
-            "_id":   group.group_id,
-            "title": group.title,
-            "users": group.users,
+            "_id":         group.group_id,
+            "title":       group.title,
+            "users":       group.users,
+            "creator_id":  self.user_id,
         }):
             raise SaveFailedError()
 
@@ -390,19 +396,81 @@ class GroupsManager(DBManager):
                 result.setdefault(str(user_id), {})[key] = color
         return result
 
-    def remove_group(self) -> None:
-        """Delete the group. Membership is derived from the groups.users column,
-        so deleting the row removes it from every member's view automatically.
+    def can_delete(self) -> bool:
+        """True iff self.user_id is authorized to delete self.group_id
+        outright (the explicit, owner-gated "delete group" action -- NOT
+        the ordinary leave path, which never calls this).
 
-        Cascades in Postgres to linked notes, messages, and devotions.
+        Deny-by-default (Security Posture Q2/Q14): a group with a recorded
+        creator_id may be deleted only by that creator -- everyone else,
+        member or not, is denied. A group whose creator_id is NULL (it
+        either predates this column, or its creator's account was later
+        deleted -- see the ON DELETE SET NULL on groups.creator_id) falls
+        back to the approved permissive rule: any *current* member may
+        delete it. That fallback is intentionally re-checked against
+        current membership every call rather than cached, and never
+        widens to non-members. A group that can't be found at all is
+        denied rather than defaulting open (fail closed).
+        """
+        if not self.group_id:
+            return False
+        group = self.lookup("groups", {"_id": self.group_id})
+        if not group:
+            return False
+        _, data = list(group.items())[0]
+        creator_id = data.get("creator_id")
+        if creator_id is not None:
+            return str(creator_id) == self.user_id
+        return self.user_id in (data.get("users") or [])
+
+    def delete_group(self) -> None:
+        """Delete the group outright. Membership is derived from the
+        groups.users column, so deleting the row removes it from every
+        member's view automatically.
+
+        This is the explicit, owner-gated destructive action -- callers
+        must have already confirmed ``can_delete()`` before invoking this;
+        it performs no authorization check of its own. Cascades in
+        Postgres to linked notes/messages (ON DELETE SET NULL) and
+        devotions (ON DELETE SET NULL on notes/messages' group_id FK;
+        devotions.group_id is a plain unlinked TEXT column, out of scope
+        for this task -- see intake spec).
         """
         if not self.group_id:
             return
-        # remove_group is only ever called after the caller already loaded
+        # delete_group is only ever called after the caller already loaded
         # this group (routes/community.py), so a False return here is a
         # real write failure, not an expected no-op.
         if not self.delete("groups", {"_id": self.group_id}):
             raise SaveFailedError()
+
+    def leave_group(self) -> None:
+        """Remove only self.user_id from the group's member list -- the
+        ordinary "Leave Group" action, distinct from delete_group() above.
+        This never calls can_delete() and is not gated by creator_id at
+        all: any member may always remove themselves.
+
+        If removing self.user_id leaves the group with no members left,
+        the now-empty group row is deleted as a system-triggered cleanup
+        (the approved auto-delete-on-empty behavior) -- this reuses the
+        same underlying DELETE as delete_group() but is a distinct call
+        path that does not go through, and cannot be used to bypass,
+        can_delete()'s creator_id gate: it only ever fires once the
+        member list is already empty, never for a non-empty group.
+        """
+        if not self.group_id:
+            return
+        existing = self.lookup("groups", {"_id": self.group_id})
+        if not existing:
+            return
+        _, data = list(existing.items())[0]
+        remaining = [u for u in (data.get("users") or []) if u != self.user_id]
+        if remaining:
+            if not self.update("groups", {"users": remaining}, {"_id": self.group_id}):
+                raise SaveFailedError()
+        else:
+            if not self.delete("groups", {"_id": self.group_id}):
+                raise SaveFailedError()
 
     def update_group(self, group: Group) -> None:
         """Replace a group's title and member list.

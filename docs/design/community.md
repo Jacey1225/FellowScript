@@ -35,9 +35,10 @@ All friend actions go through `GET/POST /friends/{user_id}/…` REST endpoints; 
 ## Groups
 
 Users can create or join study groups:
-- **Create group** — sets the user as owner; group gets a UUID and title
+- **Create group** — sets the user as owner (`groups.creator_id`, stamped from the authenticated caller, never client-supplied); group gets a UUID and title
 - **Join group** — adds the user to `groups.members`
-- **Leave group** — removes the user from the group
+- **Leave group** — removes only the leaving user from the group's member list; the group, its title, and everyone else's access, notes, messages, devotions, and sessions are unaffected. If the last remaining member leaves, the now-empty group is auto-deleted. A distinct, owner-only **Delete group** action (below) is what actually removes a group outright — leaving never does that for anyone but yourself.
+- **Delete group** — permanently deletes the group for every member, including its notes, messages, devotions, and sessions. Only the group's recorded creator may do this; for a group with no recorded creator (predates the `creator_id` column, or the creator's account was deleted), any current member may. Denied (403) to anyone else.
 - **Group selector** — the compact dropdown in the Notes sidebar tab bar also switches the messaging sidebar to the selected group
 
 Group highlights (members' colored verse highlights) are visible as overlays in the scripture view when a group is selected.
@@ -54,6 +55,15 @@ in place of `Form`. `AddFriendSheet` gained a `.medium` presentation detent (pre
 with a large empty area below its one field); `AddGroupSheet` gained `[.medium, .large]` so a longer
 member list isn't clipped. Appearance-only — `onSend`/`onCreate` wiring, member-row selection
 behavior, and existing accessibility labels are unchanged.
+
+**Leave vs. Delete Group made visibly distinct (2026-09-16).** The groups list's swipe actions
+(`ChatRootView.groupsList`) previously offered a single trailing "Leave" button that, before the
+matching backend fix, actually deleted the whole group for every member. "Leave" now stays a
+trailing swipe button with no extra confirmation (it only ever affects the caller). A separate
+leading swipe button, "Delete Group," appears only for a caller authorized to delete the group
+outright (mirrors the backend's owner check client-side, purely to decide what to show — the
+backend re-enforces it independently) and opens a destructive confirmation dialog, the same pattern
+already used for blocking a user, before calling the owner-gated delete endpoint.
 
 ---
 
@@ -144,6 +154,20 @@ hang-up control bar and call header are unchanged.
 New file: `Chat/ChimeCallView+RemoteField.swift` (`RemoteCameraField` — tile placement/animation
 logic, split out of `ChimeCallView.swift` per this codebase's existing `+`-suffixed extension-file
 convention).
+
+---
+
+## Session Call Background Persistence (2026-09-16, task `20260916-call-background-persistence`, iOS)
+
+A user who backgrounds the app (home screen, another app) during an active session call is no
+longer removed from the call. The Chime audio session and microphone keep running while
+backgrounded, so the user keeps hearing other participants and can keep speaking without reopening
+the app. Local and remote video pause while backgrounded — iOS doesn't allow camera capture in the
+background — and local video resumes automatically on return to the foreground if the call is still
+connected. If the call genuinely drops while backgrounded (network loss, the meeting ending), the
+call screen shows "not connected" rather than a stale "Connected" state when the app is reopened.
+This is audio-only background support (no CallKit lock-screen/incoming-call UI); ending the call
+still requires reopening the app.
 
 ---
 

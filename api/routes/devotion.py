@@ -161,6 +161,37 @@ async def delete_devotion(req: DevotionRequest, current_user: str = Depends(get_
         db.close()
 
 
+def _create_and_save_meeting(db: DevotionManager, session_id: str) -> dict:
+    """Create a fresh Chime meeting for ``session_id`` and persist it --
+    shared by the initial lazy-create branch below and the stale-meeting
+    recreate path in ``join_call``, so both save through the same call."""
+    resp = chime.create_meeting(
+        ClientRequestToken=str(uuid.uuid4()),
+        MediaRegion="us-east-1",
+        ExternalMeetingId=session_id,
+    )
+    meeting_data = resp["Meeting"]
+    db.save_chime_meeting(session_id, meeting_data["MeetingId"], meeting_data)
+    return meeting_data
+
+
+def _is_meeting_not_found(e: ClientError) -> bool:
+    """True only for Chime's specific "meeting no longer exists" error.
+
+    Confirmed against botocore's own chime-sdk-meetings service model:
+    ``CreateAttendee`` raises ``NotFoundException`` ("One or more of the
+    resources in the request does not exist in the system") when the
+    ``MeetingId`` has been torn down (e.g. AWS's own idle-meeting expiry).
+    This must stay a narrow match on that one error code -- never a blanket
+    ``except ClientError`` retry -- so a genuinely different failure (e.g.
+    the AccessDeniedException IAM misconfiguration 20260827 fixed) keeps
+    falling through to the existing generic-error path unchanged (task
+    20260916-chime-stale-meeting-retry; Q14 fail-closed / "don't
+    blanket-catch-and-retry").
+    """
+    return e.response.get("Error", {}).get("Code") == "NotFoundException"
+
+
 @devo_router.post("/join-call")
 async def join_call(session_id: str, user_id: str, _: str = Depends(require_match("user_id"))) -> dict:
     db = DevotionManager()
@@ -179,14 +210,8 @@ async def join_call(session_id: str, user_id: str, _: str = Depends(require_matc
 
         if not chime_meeting_id:
             try:
-                resp = chime.create_meeting(
-                    ClientRequestToken=str(uuid.uuid4()),
-                    MediaRegion="us-east-1",
-                    ExternalMeetingId=session_id,
-                )
-                meeting_data     = resp["Meeting"]
+                meeting_data     = _create_and_save_meeting(db, session_id)
                 chime_meeting_id = meeting_data["MeetingId"]
-                db.save_chime_meeting(session_id, chime_meeting_id, meeting_data)
             except ClientError as e:
                 logger.error("Chime create_meeting failed for session %s: %s", session_id, e)
                 raise HTTPException(status_code=500, detail=_CHIME_ERROR_DETAIL)
@@ -197,11 +222,39 @@ async def join_call(session_id: str, user_id: str, _: str = Depends(require_matc
                 ExternalUserId=user_id,
             )
         except ClientError as e:
-            logger.error(
-                "Chime create_attendee failed for session %s, meeting %s, user %s: %s",
-                session_id, chime_meeting_id, user_id, e,
+            if not _is_meeting_not_found(e):
+                logger.error(
+                    "Chime create_attendee failed for session %s, meeting %s, user %s: %s",
+                    session_id, chime_meeting_id, user_id, e,
+                )
+                raise HTTPException(status_code=500, detail=_CHIME_ERROR_DETAIL)
+
+            # Cached chime_meeting_id refers to a meeting AWS already tore
+            # down (idle-meeting expiry) -- transparently recreate it and
+            # retry create_attendee once, rather than surfacing a terminal
+            # failure for what is really a stale-cache case.
+            logger.warning(
+                "Chime meeting %s for session %s no longer exists (torn down); "
+                "recreating and retrying create_attendee once",
+                chime_meeting_id, session_id,
             )
-            raise HTTPException(status_code=500, detail=_CHIME_ERROR_DETAIL)
+            try:
+                meeting_data     = _create_and_save_meeting(db, session_id)
+                chime_meeting_id = meeting_data["MeetingId"]
+                attendee_resp = chime.create_attendee(
+                    MeetingId=chime_meeting_id,
+                    ExternalUserId=user_id,
+                )
+            except ClientError as retry_e:
+                # Recreate itself failed, or the retried create_attendee
+                # failed for any reason (including a second "not found") --
+                # fall back to the generic error rather than looping again.
+                logger.error(
+                    "Chime create_attendee retry after meeting recreation failed "
+                    "for session %s, user %s: %s",
+                    session_id, user_id, retry_e,
+                )
+                raise HTTPException(status_code=500, detail=_CHIME_ERROR_DETAIL)
 
         return {"Meeting": meeting_data, "Attendee": attendee_resp["Attendee"]}
     finally:

@@ -34,9 +34,31 @@
 	<string>FellowScript uses your camera for video calls during study sessions.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>FellowScript uses your microphone for audio calls during study sessions.</string>
+	<!--
+	  Task 20260916-call-background-persistence: `audio` added deliberately, not
+	  defaulted to. Without any audio-capable UIBackgroundModes entry, iOS
+	  suspends the process (and with it Chime's audio session/mic) the moment
+	  the app backgrounds during an active session call -- confirmed as the
+	  actual root cause here, not any explicit "leave call on background" code
+	  (none exists). `voip` + CallKit + PushKit was the other option
+	  architecture considered (the mechanism Apple's own docs point real
+	  VoIP-calling apps toward) but was rejected for this iteration: this
+	  request only asks the in-progress call to keep running while
+	  backgrounded, not for a new lock-screen/native incoming-call experience,
+	  and CallKit's own review bar is real added surface plain `audio` doesn't
+	  need. Declared honestly per the acceptance criteria: this app genuinely
+	  keeps a two-way audio call's mic/speaker path alive while backgrounded,
+	  which is exactly the behavior `audio` covers, so this reads as legitimate
+	  background-audio use in review rather than background-mode misuse. Video
+	  is NOT covered by (and does not need) a background mode -- iOS forbids
+	  camera capture while backgrounded regardless, and only audio is required
+	  to persist per the request's own wording ("hear other participants and
+	  speak").
+	-->
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>remote-notification</string>
+		<string>audio</string>
 	</array>
 	<!--
 	  Ember Glass typography (task 20260827-ember-glass-chat-rewrite): bundles

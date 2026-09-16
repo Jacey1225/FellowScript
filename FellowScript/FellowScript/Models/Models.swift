@@ -397,6 +397,17 @@ struct FSContact: Identifiable, Codable, Equatable {
     // so this stays nil there. nil also just means "no photo set," never a
     // fetch failure signal.
     var photoUrl: String? = nil
+    // Task 20260916-group-leave-deletes-group: only ever populated for a
+    // `.group` contact, mirrored from that group's `groups.creator_id`
+    // column (nil for a `.friend` contact, and also nil for a pre-existing
+    // group that predates this column). Used purely to decide whether to
+    // surface ChatRootView's owner-gated "Delete Group" swipe action --
+    // mirrors GroupsManager.can_delete()'s own rule client-side (creatorId
+    // == nil, or == the current user) so the affordance only ever appears
+    // where the backend would actually allow the action; the backend's own
+    // check on DELETE /groups/{userId}/{groupId} remains the real
+    // enforcement boundary regardless of what this client-side mirror shows.
+    var creatorId: String? = nil
 }
 
 // ── Friend activity feed (Dashboard's Friend Activity hero card) ───────────────
@@ -786,4 +797,7 @@ struct FSGroup: Codable, Identifiable {
     var id:    String = UUID().uuidString
     var title: String = ""
     var users: [String] = []
+    // Task 20260916-group-leave-deletes-group: mirrors ``groups.creator_id``
+    // -- see FSContact.creatorId's doc comment for the full rationale.
+    var creatorId: String? = nil
 }

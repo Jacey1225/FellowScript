@@ -138,6 +138,20 @@ final class CallController: ObservableObject {
 // MARK: - Minimized call bar (shown while in a call but not expanded) ───────────
 
 struct MinimizedCallBar: View {
+    // Task 20260916-call-bar-nav-overlap: single source of truth for this
+    // bar's own footprint, so FloatingTabBar (Dashboard/FloatingTabBar.swift)
+    // can derive its in-call bottom clearance from these instead of an
+    // independent guess that silently drifts out of sync with this view's
+    // actual layout (which is exactly how the two ended up overlapping).
+    // Height = the 34pt circle (the tallest element in the HStack below)
+    // plus the 8pt vertical padding applied on both edges.
+    static let height: CGFloat = 34 + 8 * 2
+    // Distance from the safe-area bottom edge to this bar's own bottom edge —
+    // set by ContentView's `.overlay(alignment: .bottom)` padding. Kept here
+    // as the source of truth for that same value instead of a second
+    // independent literal in ContentView.
+    static let bottomInset: CGFloat = 56
+
     @ObservedObject private var call = CallController.shared
 
     var body: some View {
@@ -290,6 +304,40 @@ final class ChimeCallManager: NSObject, ObservableObject {
     func bindTile(tileId: Int, view: VideoRenderView) {
         meetingSession?.audioVideo.bindVideoView(videoView: view, tileId: tileId)
     }
+
+    // MARK: - Backgrounding (task 20260916-call-background-persistence)
+    //
+    // Audio deliberately keeps running while backgrounded (that's the whole
+    // point of this task -- see Info.plist's new `audio` UIBackgroundModes
+    // entry) so neither of these touches the audio session or tears down
+    // `meetingSession`. Only video, which iOS forbids capturing while
+    // backgrounded regardless of any background mode, is handled here.
+
+    private var wasCameraOnBeforeBackground = false
+
+    /// Called when the app backgrounds during an active call. Explicitly
+    /// stopping local video is a clean, deliberate stop rather than leaving
+    /// AVCaptureSession running for iOS to yank out from under Chime via its
+    /// own capture-session interruption, which would leave `isCameraOn` true
+    /// with no capture actually happening.
+    func handleAppBackgrounded() {
+        guard isCameraOn else { return }
+        wasCameraOnBeforeBackground = true
+        meetingSession?.audioVideo.stopLocalVideo()
+        isCameraOn = false
+    }
+
+    /// Called on return to the foreground. Only resumes video if the call is
+    /// still actually connected -- silently resuming into a call that
+    /// dropped while backgrounded would paper over exactly the ambiguous
+    /// connectivity state this task's fail-closed requirement (Security
+    /// Posture Q14) says must surface instead, not hide.
+    func handleAppForegrounded() {
+        defer { wasCameraOnBeforeBackground = false }
+        guard wasCameraOnBeforeBackground, isConnected, let av = meetingSession?.audioVideo else { return }
+        do { try av.startLocalVideo(); isCameraOn = true }
+        catch { print("Camera resume error: \(error.localizedDescription)") }
+    }
 }
 
 // MARK: - AudioVideoObserver
@@ -308,15 +356,26 @@ extension ChimeCallManager: AudioVideoObserver {
             }
         }
     }
-    func audioSessionDidDrop() {}
+    // Task 20260916-call-background-persistence, Security Posture Q14
+    // (fail-closed under ambiguity): these two used to be no-ops, which left
+    // `isConnected` -- and therefore the "Connected" UI in callHeader/
+    // waitingPlaceholder -- stuck showing stale success through an actual
+    // audio drop or a reconnect attempt Chime itself gave up on. Both now
+    // flip `isConnected` false immediately; `audioSessionDidStart(reconnecting:
+    // true)` above already flips it back true if Chime does recover.
+    func audioSessionDidDrop() {
+        DispatchQueue.main.async { self.isConnected = false }
+    }
     func audioSessionDidStopWithStatus(sessionStatus: MeetingSessionStatus) {
         DispatchQueue.main.async { self.isConnected = false }
     }
     func videoSessionDidStartConnecting() {}
     func videoSessionDidStartWithStatus(sessionStatus: MeetingSessionStatus) {}
     func videoSessionDidStopWithStatus(sessionStatus: MeetingSessionStatus) {}
+    func audioSessionDidCancelReconnect() {
+        DispatchQueue.main.async { self.isConnected = false }
+    }
     // Added in newer AmazonChimeSDK — no-op implementations satisfy the protocol.
-    func audioSessionDidCancelReconnect() {}
     func connectionDidRecover() {}
     func connectionDidBecomePoor() {}
     func cameraSendAvailabilityDidChange(available: Bool) {}

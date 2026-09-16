@@ -63,7 +63,7 @@ extension NetworkService {
             let g = resp.group ?? RawGroup()
             let title = g.title ?? gid
             let users = g.users ?? []
-            groupMap[gid] = FSGroup(id: gid, title: title, users: users)
+            groupMap[gid] = FSGroup(id: gid, title: title, users: users, creatorId: g.creator_id)
             let allMsgs  = (resp.host_msgs ?? []) + (resp.other_msgs ?? [])
             let lastMsg  = allMsgs.sorted { $0.timestamp < $1.timestamp }.last
             let preview  = lastMsg?.text ?? ""
@@ -72,7 +72,8 @@ extension NetworkService {
             groupContacts.append(FSContact(id: gid, name: title, type: .group,
                                            preview: preview, toUsers: users,
                                            memberNames: memberNames,
-                                           lastMessageAt: lastMsg?.timestamp ?? ""))
+                                           lastMessageAt: lastMsg?.timestamp ?? "",
+                                           creatorId: g.creator_id))
         }
 
         return (friends + groupContacts, groupMap)

@@ -824,6 +824,16 @@ final class ThrowingTestDataService: DataServiceProtocol {
         try await MockDataService.shared.leaveGroup(userId: userId, groupId: groupId)
     }
 
+    // Task 20260916-group-leave-deletes-group
+    var deleteGroupError: Error?
+    private(set) var deleteGroupCallCount = 0
+
+    func deleteGroup(userId: String, groupId: String) async throws {
+        deleteGroupCallCount += 1
+        if let deleteGroupError { throw deleteGroupError }
+        try await MockDataService.shared.deleteGroup(userId: userId, groupId: groupId)
+    }
+
     func fetchSessionsForContact(contactId: String) async throws -> [FSSession] {
         return try await MockDataService.shared.fetchSessionsForContact(contactId: contactId)
     }

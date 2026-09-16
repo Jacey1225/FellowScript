@@ -164,6 +164,24 @@ def create_tables(cur):
         "title VARCHAR(255) NOT NULL,"
         "users TEXT[])"
     )
+    # Task 20260916-group-leave-deletes-group: ownership concept the table
+    # never had (only _id/title/users existed before). ADD COLUMN IF NOT
+    # EXISTS per this file's own additive-migration pattern (see agents.name/
+    # enabled, subscriptions.* above) rather than a new migration framework.
+    # NULL for every pre-existing group -- create_group() below is the only
+    # writer and only runs for newly-created groups going forward, so there
+    # is no backfill signal to populate this from for groups that already
+    # exist. GroupsManager.can_delete() treats creator_id IS NULL as the
+    # approved permissive fallback (any current member may delete), never as
+    # "no one can delete" or "everyone, unconditionally" -- see that
+    # method's docstring. ON DELETE SET NULL (not CASCADE): the creator
+    # leaving/being removed as a user must not take the whole group down
+    # with them -- it should fall back to the same NULL-creator permissive
+    # rule as a pre-existing group, not disappear.
+    cur.execute(
+        "ALTER TABLE groups ADD COLUMN IF NOT EXISTS creator_id UUID "
+        "REFERENCES users(_id) ON DELETE SET NULL"
+    )
 
     # ── Level 1: depend on users / groups ──────────────────────────────────────
     cur.execute(

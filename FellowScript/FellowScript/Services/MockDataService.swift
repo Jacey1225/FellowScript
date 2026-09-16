@@ -209,7 +209,12 @@ protocol DataServiceProtocol {
     // Groups
     func createGroup(userId: String, groupId: String, title: String, users: [String]) async throws
     func updateGroup(userId: String, groupId: String, title: String, users: [String]) async throws
+    // Leaving removes only the caller from the group's roster (task
+    // 20260916-group-leave-deletes-group) -- POST /groups/{userId}/{groupId}/leave,
+    // distinct from deleteGroup below, which is the deliberate, owner-gated
+    // full-group deletion (DELETE /groups/{userId}/{groupId}).
     func leaveGroup(userId: String, groupId: String) async throws
+    func deleteGroup(userId: String, groupId: String) async throws
 
     // Sessions / Devotions
     func fetchSessionsForContact(contactId: String) async throws -> [FSSession]
@@ -407,10 +412,15 @@ final class MockDataService: DataServiceProtocol {
     static let mockContacts: [FSContact] = [
         FSContact(id: "friend-001", name: "Sarah",  type: .friend, preview: "See you at Bible study!"),
         FSContact(id: "friend-002", name: "Marcus", type: .friend, preview: "Romans 8 is incredible"),
+        // creatorId: mockUser.user_id — mirrors create_group() always stamping
+        // the real creator (task 20260916-group-leave-deletes-group), and lets
+        // the mock/UI-testing target exercise the owner-authorized "Delete
+        // Group" affordance (ChatRootView.groupsList) without a live backend.
         FSContact(id: "group-abc",  name: "Wednesday Night Study", type: .group,
                   preview: "Session tomorrow at 7pm",
                   toUsers: [mockUser.user_id, "friend-001", "friend-002"],
-                  memberNames: ["Sarah", "Marcus"]),
+                  memberNames: ["Sarah", "Marcus"],
+                  creatorId: mockUser.user_id),
     ]
 
     // Mirrors the mockup's placeholder copy ("Sarah wrote a note today" /
@@ -639,7 +649,8 @@ final class MockDataService: DataServiceProtocol {
     // Contacts + messages
     func fetchContacts(userId: String) async throws -> ([FSContact], [String: FSGroup]) {
         let group = FSGroup(id: "group-abc", title: "Wednesday Night Study",
-                           users: [userId, "friend-001", "friend-002"])
+                           users: [userId, "friend-001", "friend-002"],
+                           creatorId: userId)
         return (Self.mockContacts, ["group-abc": group])
     }
 
@@ -702,6 +713,7 @@ final class MockDataService: DataServiceProtocol {
     func createGroup(userId: String, groupId: String, title: String, users: [String]) async throws {}
     func updateGroup(userId: String, groupId: String, title: String, users: [String]) async throws {}
     func leaveGroup(userId: String, groupId: String) async throws {}
+    func deleteGroup(userId: String, groupId: String) async throws {}
 
     // Sessions
     func fetchSessionsForContact(contactId: String) async throws -> [FSSession] { [Self.mockSession] }

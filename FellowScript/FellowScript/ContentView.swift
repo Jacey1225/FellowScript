@@ -73,11 +73,15 @@ struct ContentView: View {
         }
         // Minimized call bar — floats above the tab bar while a call is running
         // but not expanded, so the user can browse the app during the call.
+        // Task 20260916-call-bar-nav-overlap: bottom inset now reads from
+        // MinimizedCallBar.bottomInset (a single source of truth also used by
+        // FloatingTabBar's in-call clearance math below) instead of an
+        // independent literal, so the two can't drift apart again.
         .overlay(alignment: .bottom) {
             if call.inCall && !call.isExpanded {
                 MinimizedCallBar()
                     .padding(.horizontal, 10)
-                    .padding(.bottom, 56)
+                    .padding(.bottom, MinimizedCallBar.bottomInset)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }

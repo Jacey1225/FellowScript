@@ -1,5 +1,7 @@
 """Tests for the Chime CreateMeeting/CreateAttendee ClientError leak fix
-(20260827-chime-create-meeting-iam-fix, backend step 1).
+(20260827-chime-create-meeting-iam-fix, backend step 1), plus the stale
+Chime meeting-id transparent recreate-and-retry fix
+(20260916-chime-stale-meeting-retry, backend step 1).
 
 Prior to the fix, a `ClientError` raised by `chime.create_meeting`/
 `chime.create_attendee` (e.g. the production `AccessDeniedException` this
@@ -33,6 +35,26 @@ and routes.devotion each construct at import time, then asserts:
 Also covers the happy path (fake Chime client succeeds) for each call site as
 a regression check that the try/except wrapping didn't break the normal flow.
 
+Additionally covers 20260916-chime-stale-meeting-retry's transparent
+recreate-and-retry fix: a `create_attendee` call against a cached
+`chime_meeting_id` that AWS has torn down now raises `NotFoundException`
+(confirmed against botocore's chime-sdk-meetings service model) rather than
+`AccessDeniedException`. For both call sites (devotion.py's `join_call` and
+messaging.py's `_create_attendee`/`join_meeting`):
+  1. A single `NotFoundException` on `create_attendee` is transparently
+     recovered: the meeting is recreated (`create_meeting` called again),
+     the new `chime_meeting_id`/`chime_meeting` are persisted to the
+     `devotions` row, `create_attendee` is retried exactly once against the
+     new meeting, and the caller gets a normal 200 -- no error surfaces.
+  2. A `NotFoundException` that persists through the retry falls back to the
+     existing generic `_CHIME_ERROR_DETAIL` 500 response -- server-logged,
+     never leaked -- with `create_attendee` called exactly twice (no
+     further looping).
+  3. The pre-existing `AccessDeniedException` tests above continue to prove
+     a genuinely different `ClientError` is never retried or recreated --
+     this file's narrow `_is_meeting_not_found` match on error code
+     `NotFoundException` is what keeps those two failure modes distinct.
+
 Run with: cd api && ../.venv/bin/python tests/test_chime_error_handling.py
 """
 import _pathfix  # noqa: F401
@@ -45,6 +67,16 @@ os.environ.setdefault("AWS_EC2_METADATA_DISABLED", "true")
 os.environ.setdefault("AWS_ACCESS_KEY_ID", "dummy")
 os.environ.setdefault("AWS_SECRET_ACCESS_KEY", "dummy")
 os.environ.setdefault("AWS_DEFAULT_REGION", "us-east-1")
+# main.py's lifespan validates attachment/GIF config unconditionally at
+# startup (validate_attachment_config / GIF provider check) regardless of
+# whether this test suite ever touches those features -- same placeholder
+# pattern as tests/test_gif_default_browse.py and
+# tests/test_devotion_summarize_roundtrip.py so this file boots the real
+# app in any environment.
+os.environ.setdefault("S3_BUCKET_NAME", "fellowscript-test-bucket-placeholder")
+os.environ.setdefault("S3_REGION", "us-east-1")
+os.environ.setdefault("GIF_PROVIDER", "giphy")
+os.environ.setdefault("GIF_PROVIDER_API_KEY", "test-placeholder-key-not-a-real-secret")
 
 from botocore.exceptions import ClientError  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
@@ -118,17 +150,47 @@ def make_access_denied_error(operation_name: str) -> ClientError:
     )
 
 
+def make_meeting_not_found_error(operation_name: str) -> ClientError:
+    """Reproduces the AWS error Chime SDK's chime-sdk-meetings service model
+    documents for CreateAttendee against a torn-down/nonexistent MeetingId --
+    the specific condition 20260916-chime-stale-meeting-retry recovers from.
+    """
+    message = (
+        f"An error occurred (NotFoundException) when calling the {operation_name} "
+        "operation: One or more of the resources in the request does not exist "
+        "in the system."
+    )
+    return ClientError(
+        {"Error": {"Code": "NotFoundException", "Message": message}},
+        operation_name,
+    )
+
+
 class FakeChimeClient:
     """Stand-in for the boto3 chime-sdk-meetings client. Each method either
     raises the configured ClientError or returns a minimal valid response
     shape, so both the error path and the (unbroken) happy path are covered
-    with the same fake."""
+    with the same fake.
+
+    ``create_attendee_error_sequence`` lets a test script exactly which
+    outcome each successive ``create_attendee`` call gets (``None`` ==
+    succeed, an error == raise it) -- needed to simulate "first call hits
+    the stale meeting, the retry against the recreated meeting succeeds" or
+    "both the original call and the retry fail" without the two calls being
+    distinguishable any other way. Falls back to the older single
+    ``create_attendee_error`` behavior once the sequence is exhausted, so
+    the pre-existing AccessDeniedException tests are unaffected.
+    """
 
     def __init__(self):
         self.create_meeting_error: ClientError | None = None
         self.create_attendee_error: ClientError | None = None
+        self.create_attendee_error_sequence: list[ClientError | None] = []
+        self.create_meeting_call_count = 0
+        self.create_attendee_call_count = 0
 
     def create_meeting(self, **kwargs):
+        self.create_meeting_call_count += 1
         if self.create_meeting_error:
             raise self.create_meeting_error
         return {"Meeting": {
@@ -139,7 +201,13 @@ class FakeChimeClient:
         }}
 
     def create_attendee(self, **kwargs):
-        if self.create_attendee_error:
+        idx = self.create_attendee_call_count
+        self.create_attendee_call_count += 1
+        if idx < len(self.create_attendee_error_sequence):
+            queued = self.create_attendee_error_sequence[idx]
+            if queued:
+                raise queued
+        elif self.create_attendee_error:
             raise self.create_attendee_error
         return {"Attendee": {
             "AttendeeId": str(uuid.uuid4()),
@@ -370,6 +438,186 @@ def test_devotion_join_call_happy_path(client, token, uid):
         devotion_module.chime = original
 
 
+def test_devotion_join_call_meeting_not_found_recreates_and_retries(client, token, uid):
+    print("\n== POST /devotions/join-call: stale chime_meeting_id (NotFoundException) transparently recreates+retries ==")
+    session_id = create_devotion_session(client, token, uid, participants=[uid])
+
+    fake = FakeChimeClient()
+    original = devotion_module.chime
+    devotion_module.chime = fake
+    try:
+        # First join creates the meeting normally.
+        r = client.post("/devotions/join-call",
+                         params={"session_id": session_id, "user_id": uid},
+                         headers=cookie_header(token))
+        assert r.status_code == 200, f"setup join_call failed: {r.status_code} {r.text}"
+        stale_meeting_id = r.json()["Meeting"]["MeetingId"]
+
+        # The setup call above already exercised one create_meeting AND one
+        # create_attendee call (join_call's lazy-create branch calls both in
+        # a single request) -- reset counters so the assertions below only
+        # measure the scenario's own calls, and so the error-sequence index
+        # lines up with the *next* create_attendee call rather than one
+        # already consumed by setup.
+        fake.create_meeting_call_count = 0
+        fake.create_attendee_call_count = 0
+
+        # Simulate AWS having torn the cached meeting down: the next
+        # create_attendee raises NotFoundException once; the retry (against
+        # a freshly recreated meeting) must succeed.
+        fake.create_attendee_error_sequence = [make_meeting_not_found_error("CreateAttendee")]
+        r = client.post("/devotions/join-call",
+                         params={"session_id": session_id, "user_id": uid},
+                         headers=cookie_header(token))
+        check("stale-meeting join_call -> 200 (transparent recovery, no error surfaced)",
+              r.status_code == 200, str(r.status_code) + " " + r.text)
+        body = r.json()
+        new_meeting_id = body.get("Meeting", {}).get("MeetingId")
+        check("recreated meeting has a fresh MeetingId, distinct from the torn-down one",
+              bool(new_meeting_id) and new_meeting_id != stale_meeting_id, str(body))
+        check("attendee returned with a real AttendeeId against the new meeting",
+              bool(body.get("Attendee", {}).get("AttendeeId")), str(body))
+        check("create_meeting called exactly once for the recreate (counters reset after setup's own lazy-create)",
+              fake.create_meeting_call_count == 1, str(fake.create_meeting_call_count))
+        check("create_attendee called exactly twice (fails once, retry succeeds -- no extra loop)",
+              fake.create_attendee_call_count == 2, str(fake.create_attendee_call_count))
+
+        db = DBManager()
+        try:
+            db.cur.execute("SELECT chime_meeting_id FROM devotions WHERE _id = %s", (session_id,))
+            row = db.cur.fetchone()
+            check("fresh chime_meeting_id persisted to the devotions row via save_chime_meeting",
+                  row is not None and row[0] == new_meeting_id, str(row))
+        finally:
+            db.close()
+    finally:
+        devotion_module.chime = original
+
+
+def test_devotion_join_call_meeting_not_found_retry_also_fails(client, token, uid):
+    print("\n== POST /devotions/join-call: NotFoundException persists through the retry -> generic 500, no loop ==")
+    session_id = create_devotion_session(client, token, uid, participants=[uid])
+
+    fake = FakeChimeClient()
+    original = devotion_module.chime
+    devotion_module.chime = fake
+    try:
+        r = client.post("/devotions/join-call",
+                         params={"session_id": session_id, "user_id": uid},
+                         headers=cookie_header(token))
+        assert r.status_code == 200, f"setup join_call failed: {r.status_code} {r.text}"
+
+        # See the sibling recreate-success test above for why this reset is
+        # needed: setup's own join_call already consumed one create_attendee
+        # slot.
+        fake.create_attendee_call_count = 0
+        fake.create_attendee_error_sequence = [
+            make_meeting_not_found_error("CreateAttendee"),
+            make_meeting_not_found_error("CreateAttendee"),
+        ]
+        app_logger = logging.getLogger("routes.devotion")
+        handler = _CapturingHandler()
+        app_logger.addHandler(handler)
+        prior_level = app_logger.level
+        app_logger.setLevel(logging.DEBUG)
+        try:
+            r = client.post("/devotions/join-call",
+                             params={"session_id": session_id, "user_id": uid},
+                             headers=cookie_header(token))
+            check("repeated NotFoundException falls back to the generic 500 (not looping forever)",
+                  r.status_code == 500, str(r.status_code) + " " + r.text)
+            check("response detail is exactly the generic client-safe message",
+                  r.json().get("detail") == "Could not start the call. Please try again.",
+                  str(r.json()))
+            assert_no_leak("devotion join_call repeated not-found error", r.text)
+            check("create_attendee called exactly twice (initial + one retry, never a third attempt)",
+                  fake.create_attendee_call_count == 2, str(fake.create_attendee_call_count))
+
+            joined = "\n".join(handler.records)
+            check("retry failure logged server-side (session_id and user present)",
+                  session_id in joined and uid in joined, joined[:500])
+        finally:
+            app_logger.removeHandler(handler)
+            app_logger.setLevel(prior_level)
+    finally:
+        devotion_module.chime = original
+
+
+def test_messaging_join_meeting_not_found_recreates_and_retries(client, token, uid):
+    print("\n== POST /chime/{session_id}/{user_id}/attend: stale chime_meeting_id (NotFoundException) transparently recreates+retries ==")
+    session_id = create_devotion_session(client, token, uid)
+
+    fake = FakeChimeClient()
+    original = messaging_module.chime
+    messaging_module.chime = fake
+    try:
+        r = client.post(f"/chime/{session_id}", headers=cookie_header(token))
+        assert r.status_code == 200, f"setup create_meeting failed: {r.status_code} {r.text}"
+        stale_meeting_id = r.json()["Meeting"]["MeetingId"]
+
+        fake.create_attendee_error_sequence = [make_meeting_not_found_error("CreateAttendee")]
+        r = client.post(f"/chime/{session_id}/{uid}/attend", headers=cookie_header(token))
+        check("stale-meeting attend -> 200 (transparent recovery, no error surfaced)",
+              r.status_code == 200, str(r.status_code) + " " + r.text)
+        body = r.json()
+        check("attendee returned with a real AttendeeId against the new meeting",
+              bool(body.get("Attendee", {}).get("AttendeeId")), str(body))
+        new_meeting = body.get("Meeting")
+        check("response surfaces the fresh recreated Meeting (additive field for a caller "
+              "holding a stale Meeting from an earlier start_meeting call)",
+              bool(new_meeting) and new_meeting.get("MeetingId") != stale_meeting_id, str(body))
+        check("create_attendee called exactly twice (fails once, retry succeeds -- no extra loop)",
+              fake.create_attendee_call_count == 2, str(fake.create_attendee_call_count))
+
+        db = DBManager()
+        try:
+            db.cur.execute("SELECT chime_meeting_id FROM devotions WHERE _id = %s", (session_id,))
+            row = db.cur.fetchone()
+            check("fresh chime_meeting_id persisted to the devotions row via save_chime_meeting",
+                  row is not None and row[0] == new_meeting["MeetingId"], str(row))
+        finally:
+            db.close()
+    finally:
+        messaging_module.chime = original
+
+
+def test_messaging_join_meeting_not_found_retry_also_fails(client, token, uid):
+    print("\n== POST /chime/{session_id}/{user_id}/attend: NotFoundException persists through the retry -> generic 500, no loop ==")
+    session_id = create_devotion_session(client, token, uid)
+
+    fake = FakeChimeClient()
+    original = messaging_module.chime
+    messaging_module.chime = fake
+    try:
+        r = client.post(f"/chime/{session_id}", headers=cookie_header(token))
+        assert r.status_code == 200, f"setup create_meeting failed: {r.status_code} {r.text}"
+
+        fake.create_attendee_error_sequence = [
+            make_meeting_not_found_error("CreateAttendee"),
+            make_meeting_not_found_error("CreateAttendee"),
+        ]
+        app_logger = logging.getLogger("routes.messaging")
+        handler = _CapturingHandler()
+        app_logger.addHandler(handler)
+        prior_level = app_logger.level
+        app_logger.setLevel(logging.DEBUG)
+        try:
+            r = client.post(f"/chime/{session_id}/{uid}/attend", headers=cookie_header(token))
+            check("repeated NotFoundException falls back to the generic 500 (not looping forever)",
+                  r.status_code == 500, str(r.status_code) + " " + r.text)
+            check("response detail is exactly the generic client-safe message",
+                  r.json().get("detail") == "Could not start the call. Please try again.",
+                  str(r.json()))
+            assert_no_leak("messaging attend repeated not-found error", r.text)
+            check("create_attendee called exactly twice (initial + one retry, never a third attempt)",
+                  fake.create_attendee_call_count == 2, str(fake.create_attendee_call_count))
+        finally:
+            app_logger.removeHandler(handler)
+            app_logger.setLevel(prior_level)
+    finally:
+        messaging_module.chime = original
+
+
 def main():
     uid = None
     with TestClient(main_module.app) as client:
@@ -382,6 +630,11 @@ def main():
             test_devotion_join_call_create_meeting_error(client, token, uid)
             test_devotion_join_call_create_attendee_error(client, token, uid)
             test_devotion_join_call_happy_path(client, token, uid)
+
+            test_devotion_join_call_meeting_not_found_recreates_and_retries(client, token, uid)
+            test_devotion_join_call_meeting_not_found_retry_also_fails(client, token, uid)
+            test_messaging_join_meeting_not_found_recreates_and_retries(client, token, uid)
+            test_messaging_join_meeting_not_found_retry_also_fails(client, token, uid)
         finally:
             if uid:
                 cleanup(uid)

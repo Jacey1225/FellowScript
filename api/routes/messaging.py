@@ -29,6 +29,38 @@ _SIGNAL_TYPES = frozenset({
 chime = boto3.client("chime-sdk-meetings", region_name="us-east-1")
 
 
+def _create_and_save_meeting(db: DevotionManager, session_id: str) -> dict:
+    """Create a fresh Chime meeting for ``session_id`` and persist it --
+    shared by the initial lazy-create path (``_get_or_create_meeting``) and
+    the stale-meeting recreate path (``_create_attendee``) so both save
+    through the same call."""
+    resp = chime.create_meeting(
+        ClientRequestToken=str(uuid.uuid4()),
+        MediaRegion="us-east-1",
+        ExternalMeetingId=session_id,
+    )
+    meeting_data = resp["Meeting"]
+    db.save_chime_meeting(session_id, meeting_data["MeetingId"], meeting_data)
+    return meeting_data
+
+
+def _is_meeting_not_found(e: ClientError) -> bool:
+    """True only for Chime's specific "meeting no longer exists" error.
+
+    Confirmed against botocore's own chime-sdk-meetings service model:
+    ``CreateAttendee`` raises ``NotFoundException`` ("One or more of the
+    resources in the request does not exist in the system") when the
+    ``MeetingId`` has been torn down (e.g. AWS's own idle-meeting expiry).
+    This must stay a narrow match on that one error code -- never a blanket
+    ``except ClientError`` retry -- so a genuinely different failure (e.g.
+    the AccessDeniedException IAM misconfiguration 20260827 fixed) keeps
+    falling through to the existing generic-error path unchanged (task
+    20260916-chime-stale-meeting-retry; Q14 fail-closed / "don't
+    blanket-catch-and-retry").
+    """
+    return e.response.get("Error", {}).get("Code") == "NotFoundException"
+
+
 def _get_or_create_meeting(session_id: str, user_id: str) -> dict:
     """Return the existing Chime meeting for a session, creating it if needed.
 
@@ -36,6 +68,15 @@ def _get_or_create_meeting(session_id: str, user_id: str) -> dict:
     participant, or a member of the group/DM it belongs to) -- mirrors the
     check ``devotion.py::join_call`` already applies to the same underlying
     feature; this parallel chime_router implementation was missing it.
+
+    The ``chime_meeting_id and meeting_data`` cached-trust branch below
+    stays lazy on purpose (task 20260916-chime-stale-meeting-retry): it
+    makes no AWS call, so it can't itself surface a "meeting not found"
+    error to recover from -- it just returns whatever was last cached, dead
+    or not. Validating liveness here would mean a ``get_meeting`` call on
+    every ``start_meeting``, for no benefit, since the actual self-healing
+    point is ``create_attendee`` in ``_create_attendee`` below, which is
+    where a torn-down meeting would fail anyway.
     """
     db = DevotionManager()
     try:
@@ -54,30 +95,53 @@ def _get_or_create_meeting(session_id: str, user_id: str) -> dict:
             return meeting_data
 
         try:
-            resp = chime.create_meeting(
-                ClientRequestToken=str(uuid.uuid4()),
-                MediaRegion="us-east-1",
-                ExternalMeetingId=session_id,
-            )
+            return _create_and_save_meeting(db, session_id)
         except ClientError as e:
             logger.error("Chime create_meeting failed for session %s: %s", session_id, e)
             raise HTTPException(status_code=500, detail=_CHIME_ERROR_DETAIL)
-
-        meeting_data     = resp["Meeting"]
-        chime_meeting_id = meeting_data["MeetingId"]
-        db.save_chime_meeting(session_id, chime_meeting_id, meeting_data)
-        return meeting_data
     finally:
         db.close()
 
 
-def _create_attendee(chime_meeting_id: str, user_id: str) -> dict:
+def _create_attendee(db: DevotionManager, session_id: str, chime_meeting_id: str, user_id: str) -> tuple[dict, dict | None]:
+    """Create an attendee for ``chime_meeting_id``, transparently recreating
+    the meeting and retrying once if it's a torn-down meeting.
+
+    Returns ``(attendee, new_meeting)`` -- ``new_meeting`` is ``None`` on the
+    ordinary path and the freshly created ``Meeting`` dict when a recreate
+    happened, so the caller can surface it to a client that may otherwise be
+    holding a now-stale ``Meeting`` from an earlier ``start_meeting`` call.
+    """
     try:
         resp = chime.create_attendee(MeetingId=chime_meeting_id, ExternalUserId=user_id)
+        return resp["Attendee"], None
     except ClientError as e:
-        logger.error("Chime create_attendee failed for meeting %s, user %s: %s", chime_meeting_id, user_id, e)
-        raise HTTPException(status_code=500, detail=_CHIME_ERROR_DETAIL)
-    return resp["Attendee"]
+        if not _is_meeting_not_found(e):
+            logger.error("Chime create_attendee failed for meeting %s, user %s: %s", chime_meeting_id, user_id, e)
+            raise HTTPException(status_code=500, detail=_CHIME_ERROR_DETAIL)
+
+        # Cached chime_meeting_id refers to a meeting AWS already tore down
+        # (idle-meeting expiry) -- transparently recreate it and retry once,
+        # rather than surfacing a terminal failure for a stale-cache case.
+        logger.warning(
+            "Chime meeting %s for session %s no longer exists (torn down); "
+            "recreating and retrying create_attendee once",
+            chime_meeting_id, session_id,
+        )
+        try:
+            new_meeting = _create_and_save_meeting(db, session_id)
+            resp = chime.create_attendee(MeetingId=new_meeting["MeetingId"], ExternalUserId=user_id)
+            return resp["Attendee"], new_meeting
+        except ClientError as retry_e:
+            # Recreate itself failed, or the retried create_attendee failed
+            # for any reason (including a second "not found") -- fall back
+            # to the generic error rather than looping again.
+            logger.error(
+                "Chime create_attendee retry after meeting recreation failed "
+                "for session %s, user %s: %s",
+                session_id, user_id, retry_e,
+            )
+            raise HTTPException(status_code=500, detail=_CHIME_ERROR_DETAIL)
 
 
 @ws_router.websocket("/ws/{user_id}")
@@ -148,7 +212,15 @@ async def join_meeting(session_id: str, user_id: str, _: str = Depends(require_m
         chime_meeting_id = session.get("chime_meeting_id", "")
         if not chime_meeting_id:
             raise HTTPException(status_code=400, detail="No active meeting for this session")
-        return {"Attendee": _create_attendee(chime_meeting_id, user_id)}
+        attendee, new_meeting = _create_attendee(db, session_id, chime_meeting_id, user_id)
+        result: dict = {"Attendee": attendee}
+        if new_meeting is not None:
+            # The cached meeting had been torn down and was transparently
+            # recreated -- surface the fresh Meeting so a caller relying on
+            # this two-step flow can reinitialize against it instead of the
+            # stale one it may hold from an earlier start_meeting call.
+            result["Meeting"] = new_meeting
+        return result
     finally:
         db.close()
 

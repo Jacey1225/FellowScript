@@ -125,6 +125,13 @@ struct FellowScriptApp: App {
         .onChange(of: scenePhase) { phase in
             if phase == .active {
                 appState.requestPushNotifications()
+                // Task 20260916-call-background-persistence: resume local
+                // video (if it was on and the call is still actually
+                // connected) now that the app is foreground again. No-ops
+                // when there's no active call.
+                #if canImport(AmazonChimeSDK)
+                CallController.shared.manager.handleAppForegrounded()
+                #endif
             } else if phase == .background {
                 // Task 20260914-dictation-tts: per the intake spec's resolved
                 // open question, backgrounding stops dictation rather than
@@ -136,6 +143,20 @@ struct FellowScriptApp: App {
                 // scenePhase is this app's one source of truth for
                 // foreground/background transitions.
                 SpeechController.shared.stop()
+
+                // Task 20260916-call-background-persistence: deliberately does
+                // NOT touch CallController.shared.session or
+                // ChimeCallManager's audio session/meetingSession here. The
+                // entire point of this task is that an active Chime call
+                // (audio + mic) keeps running while backgrounded -- see
+                // Info.plist's new `audio` UIBackgroundModes entry -- so this
+                // branch must leave the call itself completely alone. Only
+                // local video, which iOS forbids capturing while backgrounded
+                // regardless, is explicitly paused here (and resumed in the
+                // `.active` branch above).
+                #if canImport(AmazonChimeSDK)
+                CallController.shared.manager.handleAppBackgrounded()
+                #endif
             }
         }
     }

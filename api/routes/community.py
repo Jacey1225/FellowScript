@@ -212,13 +212,20 @@ async def update_group(user_id: str, group_id: str, group: Group, _: str = Depen
         manager.close()
 
 
-@group_router.delete("/{user_id}/{group_id}", status_code=204)
-async def remove_group(user_id: str, group_id: str, _: str = Depends(require_match("user_id"))) -> None:
-    """Delete a group and remove it from all members' records.
+@group_router.post("/{user_id}/{group_id}/leave", status_code=204)
+async def leave_group(user_id: str, group_id: str, _: str = Depends(require_match("user_id"))) -> None:
+    """Leave a group: remove only the caller from ``groups.users``.
+
+    Distinct from ``DELETE /{user_id}/{group_id}`` below -- this never
+    deletes the group for anyone else. If the caller is the last remaining
+    member, the now-empty group is auto-deleted as a system-triggered
+    cleanup (see ``GroupsManager.leave_group``'s docstring) -- that cleanup
+    path is unrelated to, and cannot be used to bypass, the owner-gated
+    delete action below.
 
     Args:
-        user_id: UUID of the user initiating the deletion.
-        group_id: ID of the group to remove.
+        user_id: UUID of the user leaving the group.
+        group_id: ID of the group to leave.
 
     Raises:
         HTTPException 403: If the caller is not a member of the group.
@@ -227,7 +234,37 @@ async def remove_group(user_id: str, group_id: str, _: str = Depends(require_mat
     try:
         if not manager.is_member():
             raise HTTPException(status_code=403, detail="Not a member of this group")
-        manager.remove_group()
+        manager.leave_group()
+    finally:
+        manager.close()
+
+
+@group_router.delete("/{user_id}/{group_id}", status_code=204)
+async def remove_group(user_id: str, group_id: str, _: str = Depends(require_match("user_id"))) -> None:
+    """Delete a group outright and remove it from all members' records.
+
+    A deliberate, explicitly-authorized action distinct from leaving
+    (``POST /{user_id}/{group_id}/leave`` above) -- gated to the group's
+    recorded creator (or, for a group with no recorded creator, any
+    current member -- the approved permissive fallback; see
+    ``GroupsManager.can_delete``), never to membership alone.
+
+    Args:
+        user_id: UUID of the user initiating the deletion.
+        group_id: ID of the group to remove.
+
+    Raises:
+        HTTPException 403: If the caller is not authorized to delete this
+            group (not its creator, and -- for a creator_id-NULL group --
+            not a current member either; also returned if the group does
+            not exist, matching this route's prior not-found-as-403
+            behavior).
+    """
+    manager = GroupsManager(user_id, group_id)
+    try:
+        if not manager.can_delete():
+            raise HTTPException(status_code=403, detail="Not authorized to delete this group")
+        manager.delete_group()
     finally:
         manager.close()
 

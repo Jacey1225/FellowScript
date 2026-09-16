@@ -49,6 +49,11 @@ struct RawFriendRequest: Decodable {
 struct RawGroup: Decodable {
     var title: String? = nil
     var users: [String]? = nil
+    // Task 20260916-group-leave-deletes-group: GroupsManager.fetch_group()
+    // returns the raw ``groups`` row under "group", which now carries
+    // ``creator_id`` (nil for a pre-existing group that predates the
+    // column). See FSContact.creatorId's doc comment for how this is used.
+    var creator_id: String? = nil
 }
 
 struct RawGroupResponse: Decodable {

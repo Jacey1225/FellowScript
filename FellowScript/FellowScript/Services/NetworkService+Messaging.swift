@@ -32,7 +32,8 @@ extension NetworkService {
 
     // ── Groups ────────────────────────────────────────────────────────────────
     // POST   /groups/{userId}         body: {group_id, title, users}
-    // DELETE /groups/{userId}/{groupId}
+    // POST   /groups/{userId}/{groupId}/leave   -- leave (single-member removal)
+    // DELETE /groups/{userId}/{groupId}         -- delete (owner-gated, whole group)
 
     // Uses checkedRequestRaw (not requestRaw) so a rejected create/update — most
     // notably group_router's content-filter check_clean(title=...) 422 — throws
@@ -49,7 +50,23 @@ extension NetworkService {
                                          jsonObject: ["group_id": groupId, "title": title, "users": users])
     }
 
+    // Task 20260916-group-leave-deletes-group: leaving now hits the dedicated
+    // single-member-removal endpoint (removes only userId from the group's
+    // roster server-side, auto-deleting the row only if that empties it --
+    // see GroupsManager.leave_group) instead of the old full-group DELETE,
+    // which previously destroyed the group for every member the instant any
+    // one of them tapped "Leave." deleteGroup below is the separate,
+    // explicitly-authorized action for actually removing the whole group.
     func leaveGroup(userId: String, groupId: String) async throws {
+        _ = try await request("/groups/\(userId)/\(groupId)/leave", method: "POST")
+    }
+
+    // Owner-gated (or, for a creator_id-NULL group, any current member --
+    // see GroupsManager.can_delete): deletes the group outright for every
+    // member. The server enforces this regardless of what ChatRootView's
+    // client-side affordance-gating shows -- a 403 here surfaces as a thrown
+    // AppError like any other rejected write.
+    func deleteGroup(userId: String, groupId: String) async throws {
         _ = try await request("/groups/\(userId)/\(groupId)", method: "DELETE")
     }
 

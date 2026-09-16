@@ -49,6 +49,12 @@ struct ChatRootView: View {
     // `try?` no-op (compile-errors #2).
     @State private var reportError: String? = nil
     @State private var blockError:  String? = nil
+    // Task 20260916-group-leave-deletes-group: "Delete Group" is a distinct,
+    // owner-gated, whole-group-destroying action -- unlike "Leave" (a direct
+    // swipe button with no extra friction, since it only ever affects the
+    // caller themselves), this gets the same confirmationDialog pattern as
+    // Block above, since it's destructive for every other member too.
+    @State private var deleteGroupConfirmTarget: FSContact? = nil
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -459,6 +465,27 @@ struct ChatRootView: View {
                                 Label("Leave", systemImage: "rectangle.portrait.and.arrow.right")
                             }
                         }
+                        // "Delete Group" (task 20260916-group-leave-deletes-
+                        // group): a visibly distinct action from "Leave"
+                        // above -- separate edge, separate confirmation, and
+                        // gated so it only appears where the caller would
+                        // actually be authorized (mirrors
+                        // GroupsManager.can_delete()'s own rule: a recorded
+                        // creator must match the current user, or there's no
+                        // recorded creator at all, in which case any current
+                        // member -- which the viewer always is here -- is
+                        // permitted). The backend re-checks this
+                        // independently on DELETE /groups/{userId}/{groupId}
+                        // regardless of what this client-side gate shows.
+                        .swipeActions(edge: .leading) {
+                            if isGroupDeletable(contact) {
+                                Button(role: .destructive) {
+                                    deleteGroupConfirmTarget = contact
+                                } label: {
+                                    Label("Delete Group", systemImage: "trash.fill")
+                                }
+                            }
+                        }
                         // Task 20260913-chat-unread-badges: same fold-into-
                         // existing-label treatment as friendsList above.
                         .accessibilityLabel(
@@ -483,6 +510,39 @@ struct ChatRootView: View {
                 .padding(.top, Theme.spacingLG)
             }
         }
+        .confirmationDialog(
+            "Delete \(deleteGroupConfirmTarget?.name ?? "this group")?",
+            isPresented: Binding(get: { deleteGroupConfirmTarget != nil }, set: { if !$0 { deleteGroupConfirmTarget = nil } }),
+            titleVisibility: .visible
+        ) {
+            Button("Delete Group", role: .destructive) {
+                guard let contact = deleteGroupConfirmTarget else { return }
+                vm.deleteGroup(id: contact.id, userId: appState.currentUser?.user_id ?? "")
+                if activeContact?.id == contact.id { activeContact = nil }
+                deleteGroupConfirmTarget = nil
+            }
+            Button("Cancel", role: .cancel) { deleteGroupConfirmTarget = nil }
+        } message: {
+            Text("This permanently deletes the group for everyone in it, including its notes, messages, devotions, and sessions. This can't be undone.")
+        }
+        .alert("Couldn't Delete Group", isPresented: Binding(
+            get: { vm.deleteGroupActionError != nil },
+            set: { if !$0 { vm.deleteGroupActionError = nil } }
+        )) {
+            Button("OK", role: .cancel) { vm.deleteGroupActionError = nil }
+        } message: {
+            Text(vm.deleteGroupActionError ?? "")
+        }
+    }
+
+    // True iff the current user is authorized to delete `contact` outright
+    // (client-side mirror of GroupsManager.can_delete() -- see
+    // FSContact.creatorId's doc comment). Only meaningful for a `.group`
+    // contact; always false for a `.friend`.
+    private func isGroupDeletable(_ contact: FSContact) -> Bool {
+        guard contact.type == .group else { return false }
+        guard let creatorId = contact.creatorId else { return true }
+        return creatorId == (appState.currentUser?.user_id ?? "")
     }
 
     // ── AI agents list ─────────────────────────────────────────────────────────
@@ -606,6 +666,10 @@ final class ChatViewModel: ObservableObject {
     // revert and no signal to the user (compile-errors #2).
     @Published var friendActionError: String? = nil
     @Published var groupActionError:  String? = nil
+    // Distinct from groupActionError (leave) so a failed owner-gated delete
+    // surfaces its own message rather than one worded for "leaving" (task
+    // 20260916-group-leave-deletes-group).
+    @Published var deleteGroupActionError: String? = nil
 
     // Guards against a duplicate fetch when this instance is shared between
     // StartupCoordinator (which calls load() once up front to gate the
@@ -715,6 +779,25 @@ final class ChatViewModel: ObservableObject {
             } catch {
                 groups = previous
                 groupActionError = (error as? LocalizedError)?.errorDescription ?? "Could not leave group."
+            }
+        }
+    }
+
+    // Task 20260916-group-leave-deletes-group: the deliberate, owner-gated
+    // whole-group deletion, distinct from leaveGroup above. Same optimistic-
+    // remove-then-revert-on-failure shape as leaveGroup/removeFriend -- a
+    // server-side 403 (caller not authorized, e.g. the client-side
+    // affordance gate in ChatRootView was stale) reverts the removal and
+    // surfaces deleteGroupActionError rather than silently no-opping.
+    func deleteGroup(id: String, userId: String) {
+        let previous = groups
+        groups.removeAll { $0.id == id }
+        Task {
+            do {
+                try await service.deleteGroup(userId: userId, groupId: id)
+            } catch {
+                groups = previous
+                deleteGroupActionError = (error as? LocalizedError)?.errorDescription ?? "Could not delete group."
             }
         }
     }
