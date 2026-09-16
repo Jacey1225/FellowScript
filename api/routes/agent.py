@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, WebSocket, Depends
-from backend.interactions.agent import AgentManager
+from backend.interactions.agent import AgentManager, detect_leaked_action_json
 from backend.interactions.groups import GroupsManager
-from backend.errors import SaveFailedError
+from backend.errors import SaveFailedError, NoSummarizableContentError
 from backend.subscription.limits import check_limit
 from backend.auth.dependencies import require_match, authenticate_ws
 from schemas.agent import AgentHeartbeats
@@ -291,12 +291,38 @@ async def delete_heartbeat(user_id: str, agent_id: str, heartbeat_id: str, _: st
 async def summarize_session(user_id: str, agent_id: str, body: dict, _: str = Depends(require_match("user_id"))) -> dict:
     # The summary is persisted as a note, so it counts against the same weekly
     # notes cap as create_note/post_reply — otherwise a free user at their cap
-    # could keep minting notes through this endpoint.
+    # could keep minting notes through this endpoint. Kept ahead of the
+    # no-content check below (existing behavior, see
+    # test_free_limits.py::"summarize blocked when notes cap reached (403)",
+    # which submits an empty-content session against an already-exhausted
+    # cap and expects 403) -- a capped user is rejected the same way
+    # regardless of what their session contains, without the model ever
+    # being invoked either way.
     gate = check_limit(user_id, "notes")
     if not gate["allowed"]:
         raise HTTPException(status_code=403, detail=gate)
 
     session  = body.get("session", {})
+    prompts  = session.get("prompts", [])
+    verses   = session.get("verses", [])
+
+    # Bug fix (task 20260915-session-summary-note-fixes): a scheduled call
+    # session (FSSession, wired from ChimeCallView.swift/ChatThreadView.swift)
+    # can legitimately reach this endpoint with `summarize: true` but only a
+    # title -- empty `prompts` AND empty `verses` -- when nothing was
+    # actually discussed. Previously this endpoint called the LLM anyway
+    # with nothing real to summarize and persisted whatever confused
+    # non-answer came back (e.g. "I don't have information about this
+    # session") as if it were a genuine summary. Security Posture Q2/Q7 +
+    # Error Handling Q26/Q27: fail closed and explicit at this boundary --
+    # before spending an LLM call on a request that can't produce a real
+    # summary -- rather than silently substituting the model's own
+    # fabricated non-answer. Having just one of prompts/verses is still real
+    # content worth summarizing (e.g. a session with only scripture
+    # references logged, no discussion prompts).
+    if not prompts and not verses:
+        raise NoSummarizableContentError()
+
     group_id = body.get("group_id") or None
 
     # Bug fix (task 20260911-session-summary-group-id-crash): `group_id`
@@ -327,9 +353,7 @@ async def summarize_session(user_id: str, agent_id: str, body: dict, _: str = De
     elif group_id:
         _require_group_membership(user_id, group_id)
 
-    title   = session.get("title", "Untitled Session")
-    prompts = session.get("prompts", [])
-    verses  = session.get("verses", [])
+    title = session.get("title", "Untitled Session")
 
     prompt_lines = [f'Summarize the following Bible study session: "{title}".', ""]
     if verses:
@@ -341,6 +365,20 @@ async def summarize_session(user_id: str, agent_id: str, body: dict, _: str = De
         "",
         "Write a concise summary covering key scriptural insights, main takeaways, "
         "and actionable next steps for the group. Format it as a readable study note.",
+        "",
+        # Bug fix (task 20260915-session-summary-note-fixes): agent_prompt.txt's
+        # shared system prompt instructs the model to respond with a
+        # create_note JSON action block whenever it interprets the request as
+        # "create/save a note" -- and the "Format it as a readable study
+        # note" line just above is enough to trigger that interpretation on
+        # its own. This call handles saving the note itself, so an action
+        # block in the response would previously get saved into notes.text
+        # verbatim instead of being executed. detect_leaked_action_json below
+        # is the defensive backstop; this is the first line of defense.
+        "Respond with plain prose only -- do NOT include a create_note or "
+        "create_notification JSON action block. This response will be saved "
+        "directly as the note's text exactly as written, not executed as an "
+        "action.",
     ]
 
     db = AgentManager(user_id)
@@ -352,6 +390,29 @@ async def summarize_session(user_id: str, agent_id: str, body: dict, _: str = De
         except Exception as e:
             logger.error("OpenRouter session-summary error for agent %s: %s", agent_id, e)
             raise HTTPException(status_code=502, detail="Could not generate session summary.")
+
+        # Bug fix (task 20260915-session-summary-note-fixes): defensive
+        # backstop for the prompt instruction above -- never trust `summary`
+        # as clean prose unconditionally. If the model leaked a create_note/
+        # create_notification action block anyway, salvage its own intended
+        # "text" field (the model did the real work, it just wrapped the
+        # response in the wrong shape for this call) rather than saving the
+        # raw JSON verbatim. If there's nothing salvageable (e.g. a
+        # create_notification block, or a create_note block with no text),
+        # propagate the failure upward per Error Handling Q27 rather than
+        # saving the raw JSON or inventing placeholder prose -- same posture
+        # as the connection-error branch just above.
+        leaked_action = detect_leaked_action_json(summary)
+        if leaked_action is not None:
+            salvaged = str(leaked_action.get("text") or "").strip()
+            if salvaged:
+                summary = salvaged
+            else:
+                logger.error(
+                    "summarize_session got an unsalvageable leaked action block for agent %s: %.200s",
+                    agent_id, summary,
+                )
+                raise HTTPException(status_code=502, detail="Could not generate session summary.")
 
         # `public` here means group-edit permission (task
         # 20260903-notes-public-repurpose), not visibility -- visibility of

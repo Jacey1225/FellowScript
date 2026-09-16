@@ -78,3 +78,26 @@ class TimelineGenerationError(Exception):
     def __init__(self, message: str = "Could not generate this event's content plan. Please try again.") -> None:
         super().__init__(message)
         self.message = message
+
+
+class NoSummarizableContentError(Exception):
+    """Raise from ``summarize_session`` (routes/agent.py, task
+    20260915-session-summary-note-fixes) when the submitted session has no
+    real content to summarize -- empty ``prompts`` AND empty ``verses`` (a
+    title-only session, e.g. a scheduled call that ended with nothing
+    actually discussed).
+
+    Previously this case wasn't checked at all: the endpoint called the LLM
+    anyway with nothing real to summarize and persisted whatever confused
+    non-answer came back (e.g. "I don't have information about this
+    session") as a genuine note. Mirrors ``SaveFailedError``/
+    ``TimelineGenerationError``'s propagate-upward posture (Error Handling
+    Q26/Q27: explicit checks and clear error returns, no silent fallback to
+    the model's own fabricated non-answer) and Security Posture Q2/Q7 (fail
+    closed at the input-validation boundary, before spending an LLM call or
+    a notes-cap slot on a request that can't produce a real summary).
+    """
+
+    def __init__(self, message: str = "This session doesn't have any content to summarize.") -> None:
+        super().__init__(message)
+        self.message = message

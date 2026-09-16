@@ -294,7 +294,7 @@ def main():
     try:
         client.cookies.set("session", token5)
         r = client.post(f"/agent/{uid5}/{agent_id5}/summarize", json={
-            "session": {"title": "Study 1", "prompts": [], "verses": []},
+            "session": {"title": "Study 1", "prompts": ["What did this passage mean to you?"], "verses": []},
             # notes_public omitted
         })
         check("summarize_session with notes_public omitted -> 201", r.status_code == 201, f"{r.status_code} {r.text}")
@@ -303,7 +303,7 @@ def main():
               latest_note_public(uid5) is False, latest_note_public(uid5))
 
         r2 = client.post(f"/agent/{uid5}/{agent_id5}/summarize", json={
-            "session": {"title": "Study 2", "prompts": [], "verses": []},
+            "session": {"title": "Study 2", "prompts": ["What did this passage mean to you?"], "verses": []},
             "notes_public": True,
         })
         check("summarize_session with notes_public=True -> 201", r2.status_code == 201, f"{r2.status_code} {r2.text}")

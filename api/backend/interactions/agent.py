@@ -78,6 +78,50 @@ _TIMELINE_JSON_PARSE_MAX_ATTEMPTS = 3
 # indexing choice, not itself a window-length choice.
 TIMELINE_WINDOW_DAYS = 31
 
+# The set of "__action" values agent_prompt.txt's shared system prompt
+# documents (create_note / create_notification) -- used by
+# detect_leaked_action_json below to recognize a genuine leaked action block
+# and avoid misfiring on a stray brace pair in otherwise-normal prose (e.g. a
+# scripture citation or code-like text) that happens to parse as unrelated
+# JSON.
+_KNOWN_ACTIONS = {"create_note", "create_notification"}
+
+
+def detect_leaked_action_json(response: str) -> Optional[dict]:
+    """Detect an embedded create_note/create_notification JSON action block
+    in a raw LLM response that was supposed to be plain prose -- e.g.
+    ``summarize_session`` (routes/agent.py), which shares agent_prompt.txt's
+    system prompt with every other ``_call_api`` caller. That shared prompt
+    instructs the model to respond with a ``create_note`` JSON block whenever
+    it interprets the request as "create/save a note," and
+    summarize_session's own prompt literally says "Format it as a readable
+    study note" -- enough to trigger that interpretation and leak the raw
+    action JSON into what should have been the summary text (task
+    20260915-session-summary-note-fixes).
+
+    Same "{"/"}" + ``json.loads`` detection ``_generate_and_save_note``
+    already uses below for its own (intentional) action-block responses --
+    reused here rather than duplicated ad hoc.
+
+    Returns the parsed dict only when it both parses as valid JSON AND
+    carries a recognized ``__action`` key; returns ``None`` for ordinary
+    prose (no brace pair, unparseable brace contents, or a parsed dict/value
+    with no recognized ``__action``) so a caller can safely treat ``None`` as
+    "this response is clean, use it as-is."
+    """
+    if "{" not in response or "}" not in response:
+        return None
+    start = response.find("{")
+    end   = response.rfind("}") + 1
+    json_str = response[start:end]
+    try:
+        parsed = json.loads(json_str)
+    except (json.JSONDecodeError, ValueError):
+        return None
+    if isinstance(parsed, dict) and parsed.get("__action") in _KNOWN_ACTIONS:
+        return parsed
+    return None
+
 
 class AgentManager(DBManager):
     def __init__(self, user_id: str):

@@ -31,7 +31,7 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from db import DBManager, BACKUP_DB_NAME, _connect, create_tables
-from backend.errors import SaveFailedError, TimelineGenerationError
+from backend.errors import SaveFailedError, TimelineGenerationError, NoSummarizableContentError
 from backend.rate_limiting import get_client_ip, limiter
 from backend.interactions.helpers import load_users_data, save_users_data, save_user_row
 from backend.interactions.attachments import generate_download_url, delete_object
@@ -201,6 +201,20 @@ async def _timeline_generation_failed_handler(request: Request, exc: TimelineGen
 
 
 app.add_exception_handler(TimelineGenerationError, _timeline_generation_failed_handler)
+
+
+async def _no_summarizable_content_handler(request: Request, exc: NoSummarizableContentError) -> JSONResponse:
+    """App-wide handler for ``summarize_session``'s no-real-content guard
+    (task 20260915-session-summary-note-fixes), registered the same way as
+    ``_save_failed_handler``/``_timeline_generation_failed_handler`` above.
+    422, not 502/503: this is neither an upstream LLM failure nor a local
+    write failure -- the request itself has nothing summarizable in it, so
+    the endpoint never reaches the LLM call or a note write at all.
+    """
+    return JSONResponse(status_code=422, content={"detail": exc.message})
+
+
+app.add_exception_handler(NoSummarizableContentError, _no_summarizable_content_handler)
 
 app.add_middleware(
     CORSMiddleware,

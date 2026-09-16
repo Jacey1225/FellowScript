@@ -286,6 +286,21 @@ checked against real group membership (`_require_group_membership`, same
 IDOR guard `add_heartbeat`/`update_heartbeat` use) and rejected with `403`
 if the caller doesn't belong to it.
 
+Bug fix (task 20260915-session-summary-note-fixes): two ways a summary note
+could end up wrong have been closed off. First, a title-only session (empty
+`prompts` AND empty `verses` — e.g. a scheduled call that ended with nothing
+actually discussed) now returns `422` and saves no note, instead of calling
+the LLM anyway and persisting whatever confused non-answer came back (e.g.
+"I don't have information about this session") as if it were a real
+summary; having just one of `prompts`/`verses` still counts as summarizable
+content. Second, the shared agent system prompt can lead the model to
+respond with a `create_note` JSON action block instead of plain prose (the
+"Format it as a readable study note" instruction is enough to trigger this);
+the route now detects a leaked action block and either salvages its own
+`text` field as the summary or, if there's nothing salvageable, fails with
+`502` and saves no note — the raw JSON action block itself is never written
+into `notes.text`.
+
 ---
 
 ## Usage / Limits
