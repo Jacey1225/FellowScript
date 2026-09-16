@@ -1079,9 +1079,10 @@
 <hr />
 <h2 id="groups">Groups</h2>
 <p>Users can create or join study groups:
-- <strong>Create group</strong> — sets the user as owner; group gets a UUID and title
+- <strong>Create group</strong> — sets the user as owner (<code>groups.creator_id</code>, stamped from the authenticated caller, never client-supplied); group gets a UUID and title
 - <strong>Join group</strong> — adds the user to <code>groups.members</code>
-- <strong>Leave group</strong> — removes the user from the group
+- <strong>Leave group</strong> — removes only the leaving user from the group's member list; the group, its title, and everyone else's access, notes, messages, devotions, and sessions are unaffected. If the last remaining member leaves, the now-empty group is auto-deleted. A distinct, owner-only <strong>Delete group</strong> action (below) is what actually removes a group outright — leaving never does that for anyone but yourself.
+- <strong>Delete group</strong> — permanently deletes the group for every member, including its notes, messages, devotions, and sessions. Only the group's recorded creator may do this; for a group with no recorded creator (predates the <code>creator_id</code> column, or the creator's account was deleted), any current member may. Denied (403) to anyone else.
 - <strong>Group selector</strong> — the compact dropdown in the Notes sidebar tab bar also switches the messaging sidebar to the selected group</p>
 <p>Group highlights (members' colored verse highlights) are visible as overlays in the scripture view when a group is selected.</p>
 <hr />
@@ -1094,6 +1095,14 @@ in place of <code>Form</code>. <code>AddFriendSheet</code> gained a <code>.mediu
 with a large empty area below its one field); <code>AddGroupSheet</code> gained <code>[.medium, .large]</code> so a longer
 member list isn't clipped. Appearance-only — <code>onSend</code>/<code>onCreate</code> wiring, member-row selection
 behavior, and existing accessibility labels are unchanged.</p>
+<p><strong>Leave vs. Delete Group made visibly distinct (2026-09-16).</strong> The groups list's swipe actions
+(<code>ChatRootView.groupsList</code>) previously offered a single trailing "Leave" button that, before the
+matching backend fix, actually deleted the whole group for every member. "Leave" now stays a
+trailing swipe button with no extra confirmation (it only ever affects the caller). A separate
+leading swipe button, "Delete Group," appears only for a caller authorized to delete the group
+outright (mirrors the backend's owner check client-side, purely to decide what to show — the
+backend re-enforces it independently) and opens a destructive confirmation dialog, the same pattern
+already used for blocking a user, before calling the owner-gated delete endpoint.</p>
 <hr />
 <h2 id="attachments-2026-09-04">Attachments (2026-09-04)</h2>
 <p>The composer (both iOS <code>ChatThreadView</code> and web <code>ChatThread</code>) has a plus-icon attach affordance
