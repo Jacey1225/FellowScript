@@ -45,11 +45,11 @@ describe('Home — SEO head tags (task 20260909-website-seo)', () => {
     expect(head('meta[name="robots"]').getAttribute('content')).toBe('index, follow');
   });
 
-  test('Open Graph/Twitter carry the real brand asset (data/logo.png), not a placeholder image', async () => {
+  test('Open Graph/Twitter carry the real brand asset (og-image.png, a frontend-owned copy of data/logo.png), not a placeholder image', async () => {
     renderHome();
 
     await waitFor(() => expect(head('meta[property="og:image"]')).not.toBeNull());
-    expect(head('meta[property="og:image"]').getAttribute('content')).toBe('http://localhost:5173/data/logo.png');
+    expect(head('meta[property="og:image"]').getAttribute('content')).toBe('http://localhost:5173/og-image.png');
     expect(head('meta[name="twitter:card"]').getAttribute('content')).toBe('summary_large_image');
     expect(head('meta[property="og:site_name"]').getAttribute('content')).toBe('FellowScript');
   });
@@ -67,7 +67,7 @@ describe('Home — SEO head tags (task 20260909-website-seo)', () => {
     expect(org).toBeTruthy();
     expect(org.name).toBe('FellowScript');
     expect(org.url).toBe('http://localhost:5173');
-    expect(org.logo).toBe('http://localhost:5173/data/logo.png');
+    expect(org.logo).toBe('http://localhost:5173/og-image.png');
 
     const site = blocks.find((b) => b['@type'] === 'WebSite');
     expect(site).toBeTruthy();

@@ -31,13 +31,28 @@ export const HOME_SEO_TITLE = 'FellowScript — Walk with God, Together';
 export const HOME_SEO_DESCRIPTION =
   'A daily Bible reading companion with verse highlights, personal notes, gentle AI check-ins, and real-time group study — walk with God, together.';
 
-export const HOME_SEO_IMAGE = '/data/logo.png';
+// task 20260916-fix-seo-score-production-deploy: this used to be
+// '/data/logo.png', which 404s in production -- nginx's `location /data/`
+// unconditionally aliases to the *backend's* app-data directory
+// (/home/ubuntu/fellowscript/data/, which only holds bible.json), ahead of
+// the frontend's own `location /` catch-all, so nothing shipped to the
+// frontend's static deploy (/var/www/html/) at a /data/* path can ever be
+// served -- confirmed live via curl against production (404, real nginx
+// error page, not the SPA fallback) even after placing the file at the
+// right path on disk. Fixed by shipping the same brand image from
+// frontend/public/og-image.png instead (a literal copy of the repo-root
+// data/logo.png brand asset), a path Vite copies verbatim into dist/ at
+// build time and that deploy.sh now scp's up alongside index.html/
+// robots.txt/sitemap.xml -- entirely within the frontend's own static
+// deploy, no nginx /data/ alias involved.
+export const HOME_SEO_IMAGE = '/og-image.png';
 
 // Structured data (originally task 20260909-website-seo) -- Organization +
 // WebSite, the minimal JSON-LD pair recommended for a small brand's
-// marketing home page. logo points at the existing data/logo.png brand
-// asset rather than a newly-produced OG image; no design gate involvement
-// needed for this task either.
+// marketing home page. logo points at the frontend-owned og-image.png
+// brand asset (see HOME_SEO_IMAGE comment above) rather than a
+// newly-produced OG image; no design gate involvement needed for this task
+// either.
 export function homeJsonLd(siteUrl) {
   return [
     {

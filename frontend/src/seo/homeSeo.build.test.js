@@ -97,13 +97,13 @@ describe('production build — Home <head> tags are in the served bytes, not jus
     expect(html).toContain('<meta property="og:type" content="website" data-rh="true">');
     expect(html).toContain(`<meta property="og:title" content="${HOME_SEO_TITLE}" data-rh="true">`);
     expect(html).toContain(`<meta property="og:url" content="${SITE_URL}/" data-rh="true">`);
-    expect(html).toContain(`<meta property="og:image" content="${SITE_URL}/data/logo.png" data-rh="true">`);
+    expect(html).toContain(`<meta property="og:image" content="${SITE_URL}/og-image.png" data-rh="true">`);
   });
 
   test('Twitter Card tags are present', () => {
     expect(html).toContain('<meta name="twitter:card" content="summary_large_image" data-rh="true">');
     expect(html).toContain(`<meta name="twitter:title" content="${HOME_SEO_TITLE}" data-rh="true">`);
-    expect(html).toContain(`<meta name="twitter:image" content="${SITE_URL}/data/logo.png" data-rh="true">`);
+    expect(html).toContain(`<meta name="twitter:image" content="${SITE_URL}/og-image.png" data-rh="true">`);
   });
 
   test('Organization + WebSite JSON-LD blocks are present and match homeSeo.js exactly', () => {
