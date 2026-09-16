@@ -19,6 +19,37 @@ class DevotionManager(DBManager):
         the devotions table) — either a real ``groups._id`` or a DM room key
         ``"uidA|uidB"`` (sorted, see frontend's roomKey()) — so branch on
         whether it contains the DM separator rather than assuming either.
+
+        Task 20260916-group-session-join-failure (backend step 1): the
+        creator and every existing participant short-circuit above and never
+        reach the ``groups`` lookup below at all -- only a non-creator,
+        non-participant *group* member's join/view/leave exercises it. Live
+        reproduction (real Postgres, real signup + group + devotion rows)
+        confirmed the lookup itself is correct for a well-formed
+        ``group_id`` (a genuine ``groups._id``, present or added to the
+        group after creation) in every case tried. It also confirmed a
+        concrete failure mode matching the reported symptom exactly: a
+        ``group_id`` that is not valid ``uuid`` syntax (e.g. a corrupted/
+        stale value -- this column has no DB- or app-level format
+        constraint; it's free-form client-supplied text all the way from
+        iOS's ``createSession``/``SessionCreatorSheet``) makes Postgres raise
+        ``invalid input syntax for type uuid`` on ``_id = %s`` below. That
+        was previously caught by the bare ``except Exception`` and logged at
+        ``warning`` level as if it were an ordinary "not a member" result --
+        completely indistinguishable from a real denial from every caller's
+        point of view (the join route just sees ``is_authorized`` return
+        ``False`` and 403s), and easy to miss/ignore in logs at that level.
+        Since the creator never touches this branch, that pattern denies
+        every OTHER member while leaving the creator's own join unaffected --
+        exactly this bug's reported shape.
+
+        Q14 (fail-closed) still applies: any failure to positively confirm
+        membership here still returns ``False`` -- this change does not
+        relax who gets denied. What it changes (Q26/Q27) is that a failure
+        to *resolve* membership (a real error) is no longer silently folded
+        into the same log line as a legitimate "not a member" outcome, so
+        the next occurrence is loud and diagnosable instead of requiring the
+        kind of live multi-account reproduction this task needed.
         """
         if not session:
             return False
@@ -37,8 +68,18 @@ class DevotionManager(DBManager):
                 (group_id, user_id),
             )
             return self.cur.fetchone() is not None
-        except Exception as e:
-            logger.warning("Devotion group-membership check failed for group_id=%s: %s", group_id, e)
+        except Exception:
+            # logger.exception (not .warning) -- this branch means membership
+            # could NOT be resolved (a real error, e.g. a malformed group_id
+            # failing Postgres's uuid cast), not that it was resolved and
+            # came back negative. Still denies (fail-closed, Q14), but now at
+            # a severity/detail level that surfaces in monitoring instead of
+            # blending into routine "not authorized" traffic.
+            logger.exception(
+                "Devotion group-membership check errored for group_id=%r, user_id=%r -- "
+                "denying (fail-closed), but this is NOT a confirmed non-membership result.",
+                group_id, user_id,
+            )
             self.conn.rollback()
             return False
 
