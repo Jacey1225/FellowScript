@@ -660,6 +660,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#session-call-background-persistence-2026-09-16-task-20260916-call-background-persistence-ios" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Session Call Background Persistence (2026-09-16, task 20260916-call-background-persistence, iOS)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#failed-send-recovery-2026-09-10-task-20260910-chat-message-disappear-reentry" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1159,6 +1170,17 @@ hang-up control bar and call header are unchanged.</p>
 <p>New file: <code>Chat/ChimeCallView+RemoteField.swift</code> (<code>RemoteCameraField</code> — tile placement/animation
 logic, split out of <code>ChimeCallView.swift</code> per this codebase's existing <code>+</code>-suffixed extension-file
 convention).</p>
+<hr />
+<h2 id="session-call-background-persistence-2026-09-16-task-20260916-call-background-persistence-ios">Session Call Background Persistence (2026-09-16, task <code>20260916-call-background-persistence</code>, iOS)</h2>
+<p>A user who backgrounds the app (home screen, another app) during an active session call is no
+longer removed from the call. The Chime audio session and microphone keep running while
+backgrounded, so the user keeps hearing other participants and can keep speaking without reopening
+the app. Local and remote video pause while backgrounded — iOS doesn't allow camera capture in the
+background — and local video resumes automatically on return to the foreground if the call is still
+connected. If the call genuinely drops while backgrounded (network loss, the meeting ending), the
+call screen shows "not connected" rather than a stale "Connected" state when the app is reopened.
+This is audio-only background support (no CallKit lock-screen/incoming-call UI); ending the call
+still requires reopening the app.</p>
 <hr />
 <h2 id="failed-send-recovery-2026-09-10-task-20260910-chat-message-disappear-reentry">Failed Send Recovery (2026-09-10, task <code>20260910-chat-message-disappear-reentry</code>)</h2>
 <p>A sent message (friend DM or group) that the backend explicitly rejects or fails to save (a
