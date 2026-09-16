@@ -1653,6 +1653,20 @@ in that case instead of passing it through to the <code>uuid</code>-typed
 checked against real group membership (<code>_require_group_membership</code>, same
 IDOR guard <code>add_heartbeat</code>/<code>update_heartbeat</code> use) and rejected with <code>403</code>
 if the caller doesn't belong to it.</p>
+<p>Bug fix (task 20260915-session-summary-note-fixes): two ways a summary note
+could end up wrong have been closed off. First, a title-only session (empty
+<code>prompts</code> AND empty <code>verses</code> — e.g. a scheduled call that ended with nothing
+actually discussed) now returns <code>422</code> and saves no note, instead of calling
+the LLM anyway and persisting whatever confused non-answer came back (e.g.
+"I don't have information about this session") as if it were a real
+summary; having just one of <code>prompts</code>/<code>verses</code> still counts as summarizable
+content. Second, the shared agent system prompt can lead the model to
+respond with a <code>create_note</code> JSON action block instead of plain prose (the
+"Format it as a readable study note" instruction is enough to trigger this);
+the route now detects a leaked action block and either salvages its own
+<code>text</code> field as the summary or, if there's nothing salvageable, fails with
+<code>502</code> and saves no note — the raw JSON action block itself is never written
+into <code>notes.text</code>.</p>
 <hr />
 <h2 id="usage-limits">Usage / Limits</h2>
 <p>Free-tier limits are enforced on the server before every create operation. When a cap is reached the route returns:</p>
