@@ -1035,6 +1035,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Notifications">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#post-devotionsring-task-20260916-call-ring-members" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        POST /devotions/ring (task 20260916-call-ring-members)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1595,6 +1612,35 @@ chat thread directly (<code>AppState.openSession(groupId:)</code>), splitting a 
 key (<code>"uidA|uidB"</code>) to the other participant or treating any other value as
 a real group id — the same cross-tab navigation the Dashboard's Friend
 Activity widget already uses.</p>
+<h3 id="post-devotionsring-task-20260916-call-ring-members"><code>POST /devotions/ring</code> (task <code>20260916-call-ring-members</code>)</h3>
+<p>Lets a participant already on a live session's call prompt one or more of
+that session's own group members to join. Body: <code>{ devotion_id, user_id,
+target_ids: [...] }</code> — <code>user_id</code> must match the session cookie's caller.
+Gated behind <code>RING_FEATURE_ENABLED</code> (404 while disabled, as if the route
+doesn't exist, same posture as the friend-nudge feature flag above).</p>
+<p>The caller must be an authorized participant of the session
+(<code>DevotionManager.is_authorized</code>); each target is independently checked
+against that same session's resolved roster (<code>DevotionManager.resolve_members</code>)
+and can't be the caller. Unlike the friend nudge above, ringing is not
+all-or-nothing: every requested <code>target_id</code> is evaluated and reported on its
+own, so one multi-select ring attempt can partially succeed. Response:
+<code>{ "results": { target_id: { "sent": bool, "reason": str | null } } }</code>,
+where <code>reason</code> is one of <code>invalid_target</code>, <code>not_a_member</code>, <code>unreachable</code>,
+<code>rate_limited</code>, or <code>send_failed</code> whenever <code>sent</code> is <code>false</code>.</p>
+<p>Each <code>(sender, recipient, session)</code> triple has its own cooldown
+(<code>RING_COOLDOWN_MINUTES</code>, claimed atomically before the send and released if
+the send fails) — deliberately scoped per session rather than a standing
+sender→recipient window like the friend nudge, since the same two users
+legitimately have many separate future sessions. A coarse <code>30/minute</code>
+per-IP backstop applies on top, same shared <code>limiter</code> instance as the
+friend-nudge route. Delivers via the existing APNs <code>send_push</code> pipeline with
+fixed, non-user-authored copy (<code>"{caller_username} wants you to join
+"{session_title}" now"</code>, or a generic fallback if the session has no
+title) and a <code>data</code> payload of <code>{"action": "ring", "devotion_id",
+"group_id"}</code> — the <code>action</code> discriminator lets the client tell a ring push
+apart from the plain "New Session"/"Session Starting" pushes above and
+route its tap-through straight into the live join flow instead of just the
+session detail screen.</p>
 <hr />
 <h2 id="agent-ai-check-ins">Agent (AI Check-ins)</h2>
 <table>
