@@ -392,7 +392,7 @@ struct ChimeCallView: View {
 
     var body: some View {
         ZStack {
-            Color.black.ignoresSafeArea()
+            chimeBackground
             if let error = call.joinError ?? manager.startError {
                 VStack(spacing: 20) {
                     Image(systemName: "exclamationmark.triangle")
@@ -415,7 +415,7 @@ struct ChimeCallView: View {
             ZStack(alignment: .bottom) {
                 Group {
                     if !manager.remoteTileIds.isEmpty {
-                        remoteGrid(containerHeight: geo.size.height)
+                        RemoteCameraField(manager: manager, containerSize: geo.size)
                     } else if !manager.remoteAttendeeIds.isEmpty {
                         audioParticipantsView
                     } else {
@@ -425,8 +425,14 @@ struct ChimeCallView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
 
                 if manager.isCameraOn, let localId = manager.localTileId {
+                    // Self-PiP stays its own fixed, non-randomized element (design-notes.md
+                    // §2) -- only its fill changes, from flat black to the same glass tokens
+                    // as the new backdrop, so it doesn't read as a leftover flat-black chip
+                    // floating over the translucent field. Size/position/border/shadow unchanged.
                     ChimeVideoTileView(tileId: localId, manager: manager)
-                        .frame(width: 96, height: 128).background(Color.black)
+                        .frame(width: 96, height: 128)
+                        .background(Theme.bgPage.opacity(0.34))
+                        .background(.ultraThinMaterial)
                         .clipShape(RoundedRectangle(cornerRadius: 8))
                         .overlay(RoundedRectangle(cornerRadius: 8).stroke(Theme.gold.opacity(0.40), lineWidth: 1))
                         .shadow(color: .black.opacity(0.60), radius: 8)
@@ -437,6 +443,34 @@ struct ChimeCallView: View {
                 controlBar
             }
         }
+    }
+
+    // Call-screen background (design-notes.md §1): a genuine `.ultraThinMaterial`
+    // blur, extending the same native-blur family already used by
+    // `DashboardComponents.glassCard` and `Theme.panelGlassTint` -- Ember Glass's
+    // "drop native blur" decision (task 20260827-ember-glass-chat-rewrite) was
+    // explicitly scoped to Chat surfaces ("Chat had zero native blur to begin
+    // with"), not codebase-wide, so this isn't an exception to that precedent.
+    // Built entirely from existing tokens/literals: `Theme.bgPage` as the warm
+    // dark base, plus the exact gold-glow radial-gradient recipe already used by
+    // `warmBloomBackground()` in Theme.swift (re-centered for a full-bleed call
+    // screen rather than that helper's sheet-tuned geometry), so the "glow"
+    // reads as on-brand gold bloom rather than the reference images' literal
+    // rainbow palette.
+    private var chimeBackground: some View {
+        ZStack {
+            Theme.bgPage
+            RadialGradient(colors: [Theme.gold.opacity(0.16), .clear],
+                           center: UnitPoint(x: 0.18, y: 0.20), startRadius: 10, endRadius: 420)
+            // "#B8761D" is the same literal warmBloomBackground() already uses for its
+            // second gradient stop -- no Theme constant names it, so it's repeated here
+            // rather than introducing a new color.
+            RadialGradient(colors: [Color(hex: "#B8761D").opacity(0.10), .clear],
+                           center: UnitPoint(x: 0.85, y: 0.75), startRadius: 10, endRadius: 380)
+        }
+        .overlay(.ultraThinMaterial)
+        .overlay(Theme.bgPage.opacity(0.34))
+        .ignoresSafeArea()
     }
 
     private var waitingPlaceholder: some View {
@@ -463,25 +497,6 @@ struct ChimeCallView: View {
                 .foregroundColor(.white.opacity(0.42)).font(.inter(Theme.fontXS))
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    private func remoteGrid(containerHeight: CGFloat) -> some View {
-        let count   = manager.remoteTileIds.count
-        let columns = count > 1
-            ? [GridItem(.flexible(), spacing: 4), GridItem(.flexible(), spacing: 4)]
-            : [GridItem(.flexible())]
-        let tileH: CGFloat = count > 2 ? (containerHeight - 180) / 2 : (containerHeight - 180)
-        return ScrollView {
-            LazyVGrid(columns: columns, spacing: 4) {
-                ForEach(manager.remoteTileIds, id: \.self) { id in
-                    ChimeVideoTileView(tileId: id, manager: manager)
-                        .frame(height: tileH).background(Color.white.opacity(0.04))
-                        .clipShape(RoundedRectangle(cornerRadius: 6))
-                }
-            }
-            .padding(.horizontal, 8).padding(.top, 76)
-        }
-        .scrollDisabled(count <= 2)
     }
 
     private var callHeader: some View {

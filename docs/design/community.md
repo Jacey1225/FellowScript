@@ -124,6 +124,29 @@ or fresh) starts.
 
 ---
 
+## Video Call UI Redesign (2026-09-15, task `20260915-video-call-ui-redesign`, iOS)
+
+The active-call screen (`Chat/ChimeCallView.swift`) no longer shows remote participants in a
+scrollable grid. Its background is now a translucent, warm-toned blur (`.ultraThinMaterial` over
+the app's existing dark/gold gradient wash, built from `Theme.bgPage`/`Theme.gold`) — a deliberate,
+documented extension of the app's native-blur surfaces (`DashboardComponents.glassCard`, the Bible
+nav dropdown's glass panel), not a break from Chat's own flat-elevation styling, which was always
+scoped to Chat surfaces specifically. Each active remote camera renders as a medium circular tile at
+a randomized position, sized down as more participants join (152pt for ≤2 down to 84pt for 7+, with
+a hard 64pt floor), placed so no two tiles ever overlap and all stay within roughly the central 70%
+of the screen, clear of the header and control bar. Tiles animate in/out with an eased fade+scale
+(faster on exit) and reposition smoothly when a participant joins/leaves or the device rotates; all
+of that motion is skipped in favor of a plain cross-fade under Reduce Motion. The local user's own
+self-camera stays exactly where it always was — a small fixed thumbnail, not part of the randomized
+field — only re-skinned with the same glass treatment instead of a flat black fill. The mute/camera/
+hang-up control bar and call header are unchanged.
+
+New file: `Chat/ChimeCallView+RemoteField.swift` (`RemoteCameraField` — tile placement/animation
+logic, split out of `ChimeCallView.swift` per this codebase's existing `+`-suffixed extension-file
+convention).
+
+---
+
 ## Failed Send Recovery (2026-09-10, task `20260910-chat-message-disappear-reentry`)
 
 A sent message (friend DM or group) that the backend explicitly rejects or fails to save (a
