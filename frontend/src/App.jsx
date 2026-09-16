@@ -39,6 +39,12 @@ export default function App() {
     // entries are best-effort/forward-compatible, not proof those routes
     // are independently indexable today. Revisit this decision if the site
     // ever needs more than one crawlable marketing page.
+    //
+    // Decision update (task 20260914-restore-homepage-seo-meta-tags): the
+    // "client-side <head> only" half of the HashRouter decision above
+    // wasn't actually visible to non-JS consumers on Home; fixed via
+    // build-time tag injection into index.html (see vite.config.js's
+    // injectHomeSeoPlugin), not by reopening HashRouter/SSR, which stands.
     <HashRouter>
       {/* Restricts the Tauri desktop shell to lib/desktopScope.js's
           DESKTOP_ALLOWED_ROUTES (task 20260906-desktop-scope-lockdown); a

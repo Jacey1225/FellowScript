@@ -4,29 +4,19 @@ import { useAuth } from '../context/AuthContext.jsx';
 import { useParallaxBlobs } from '../hooks/useParallaxBlobs.js';
 import Seo from '../components/Seo.jsx';
 import { SITE_URL } from '../config.js';
+import {
+  HOME_SEO_PATH,
+  HOME_SEO_TITLE,
+  HOME_SEO_DESCRIPTION,
+  HOME_SEO_IMAGE,
+  homeJsonLd,
+} from '../seo/homeSeo.js';
 
-// Structured data (task 20260909-website-seo) -- Organization + WebSite,
-// the minimal JSON-LD pair recommended for a small brand's marketing home
-// page. logo points at the existing data/logo.png brand asset (served from
-// the same /data/ location frontend/src/hooks/useBible.js already fetches
-// from at runtime -- outside this repo's deploy.sh, per that hook's
-// existing convention) rather than a newly-produced OG image; no design
-// gate involvement needed for this task.
-const HOME_JSON_LD = [
-  {
-    '@context': 'https://schema.org',
-    '@type': 'Organization',
-    name: 'FellowScript',
-    url: SITE_URL,
-    logo: `${SITE_URL}/data/logo.png`,
-  },
-  {
-    '@context': 'https://schema.org',
-    '@type': 'WebSite',
-    name: 'FellowScript',
-    url: SITE_URL,
-  },
-];
+// Task 20260914-restore-homepage-seo-meta-tags: title/description/image/
+// JSON-LD now live in src/seo/homeSeo.js so vite.config.js's build-time
+// <head> injection (see its Decision comment) uses exactly the same content
+// as this client-side render, instead of a second copy that could drift.
+const HOME_JSON_LD = homeJsonLd(SITE_URL);
 
 // ── Palette (this page only — a distinct marketing-site look from the app's
 // own gold/parchment theme used in Reader/Account/etc.) ──────────────────────
@@ -210,10 +200,10 @@ export default function Home() {
   return (
     <div style={{ fontFamily: BODY_FONT, color: CREAM, background: INK, overflowX: 'hidden' }}>
       <Seo
-        title="FellowScript — Walk with God, Together"
-        description="A daily Bible reading companion with verse highlights, personal notes, gentle AI check-ins, and real-time group study — walk with God, together."
-        path="/"
-        image="/data/logo.png"
+        title={HOME_SEO_TITLE}
+        description={HOME_SEO_DESCRIPTION}
+        path={HOME_SEO_PATH}
+        image={HOME_SEO_IMAGE}
         jsonLd={HOME_JSON_LD}
       />
       <style>{`
