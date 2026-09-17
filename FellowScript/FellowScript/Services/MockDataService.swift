@@ -229,6 +229,12 @@ protocol DataServiceProtocol {
     // 20260826-ios-notification-ui-removal, matching the backend removal in
     // 20260826-activity-based-notifications)
     func registerDeviceToken(userId: String, token: String) async throws
+    // Task 20260916-callkit-voip-ring: distinct from registerDeviceToken
+    // above -- a PushKit VoIP token is a different token type/table
+    // (voip_device_tokens) from the plain APNs remote-notification token,
+    // registered separately so ring delivery can tell "no VoIP token" apart
+    // from "no plain push token" (see DevotionManager.voip_device_tokens_bulk).
+    func registerVoipDeviceToken(userId: String, token: String) async throws
 
     // Chime calls
     func joinCall(userId: String, sessionId: String) async throws -> ChimeJoinResponse
@@ -739,6 +745,7 @@ final class MockDataService: DataServiceProtocol {
 
     // Notifications
     func registerDeviceToken(userId: String, token: String) async throws {}
+    func registerVoipDeviceToken(userId: String, token: String) async throws {}
 
     func joinCall(userId: String, sessionId: String) async throws -> ChimeJoinResponse {
         throw AppError.networkError("Calls are not available in preview mode.")

@@ -912,6 +912,26 @@ final class ThrowingTestDataService: DataServiceProtocol {
         try await MockDataService.shared.registerDeviceToken(userId: userId, token: token)
     }
 
+    // DataServiceProtocol gained registerVoipDeviceToken (task
+    // 20260916-callkit-voip-ring). Testing step (step 4) upgraded this from a
+    // plain compile-fix forward into the same controllable seam
+    // registerDeviceToken above already has -- VoipCallManagerAppStateTests
+    // uses this to prove AppState.registerVoipDeviceToken(_:) actually calls
+    // through with the right (userId, token) and that a rejected/failed
+    // registration doesn't crash/hang the fire-and-forget Task, exactly
+    // mirroring AppStateRegisterDeviceTokenErrorHandlingTests' coverage of
+    // the plain-APNs sibling.
+    var registerVoipDeviceTokenError: Error?
+    private(set) var registerVoipDeviceTokenCallCount = 0
+    private(set) var lastRegisterVoipDeviceTokenArgs: (userId: String, token: String)?
+
+    func registerVoipDeviceToken(userId: String, token: String) async throws {
+        registerVoipDeviceTokenCallCount += 1
+        lastRegisterVoipDeviceTokenArgs = (userId, token)
+        if let registerVoipDeviceTokenError { throw registerVoipDeviceTokenError }
+        try await MockDataService.shared.registerVoipDeviceToken(userId: userId, token: token)
+    }
+
     func joinCall(userId: String, sessionId: String) async throws -> ChimeJoinResponse {
         return try await MockDataService.shared.joinCall(userId: userId, sessionId: sessionId)
     }

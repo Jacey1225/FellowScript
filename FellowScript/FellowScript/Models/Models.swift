@@ -210,6 +210,18 @@ struct FSSubRequest: Codable, Identifiable {
     var id: String { subscription_id }
 }
 
+// Shared strip-then-trim step behind `FSNote.preview`, `FSNote.textForSpeech`,
+// and `FSFriendNotePreview.previewText` below — notes are stored/transmitted
+// as raw rich-text HTML app-wide (the backend never pre-strips, by
+// convention), so every place that shows note body text client-side needs
+// this same tag-removal before display. Callers apply their own truncation
+// (or none) on top; this only strips tags and trims whitespace.
+func stripHTMLTags(_ text: String) -> String {
+    text
+        .replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+}
+
 // ── Note ──────────────────────────────────────────────────────────────────────
 struct FSNote: Codable, Identifiable {
     var id:        String  = UUID().uuidString
@@ -241,10 +253,7 @@ struct FSNote: Codable, Identifiable {
     var replies:   [FSNote] = []
 
     var preview: String {
-        let stripped = text
-            .replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        return String(stripped.prefix(120))
+        String(stripHTMLTags(text).prefix(120))
     }
 
     // Task 20260914-dictation-tts: same HTML-stripping as `preview` above,
@@ -255,9 +264,7 @@ struct FSNote: Codable, Identifiable {
     // with different needs (a list-row snippet vs. the full spoken text) and
     // no shared truncation behavior to keep in sync.
     var textForSpeech: String {
-        text
-            .replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+        stripHTMLTags(text)
     }
 
     var formattedTimestamp: String {
@@ -426,6 +433,21 @@ struct FSFriendNotePreview: Codable, Equatable {
     let title:     String
     let text:      String
     let timestamp: String
+
+    // Bug fix 20260916-friend-activity-note-preview-html: `text` above is
+    // raw, unstripped HTML (the backend sends notes' stored rich-text markup
+    // as-is, same as `FSNote.text`), but unlike `FSNote` this struct had no
+    // equivalent of `FSNote.preview`'s tag-stripping before this property was
+    // added — `FriendActivityHeroCard.notePreviewRow` was rendering `text`
+    // verbatim, leaking literal `<p>`/`<i>` tags into the widget. Shares
+    // `stripHTMLTags` with `FSNote.preview`/`textForSpeech` rather than
+    // re-pasting the regex a third time. Deliberately untruncated (unlike
+    // `FSNote.preview`'s 120-char cap) — `notePreviewRow`'s own
+    // `.lineLimit(4)` already bounds the visible height, and there's no
+    // other caller here needing a shorter snippet.
+    var previewText: String {
+        stripHTMLTags(text)
+    }
 }
 
 // `verse_text` is nil on a backend bible-text lookup miss (bad/unrecognized

@@ -26,6 +26,18 @@ _ENV_MISMATCH_REASONS = {"BadDeviceToken", "BadEnvironmentKeyInToken"}
 
 _jwt_cache: tuple[str, float] | None = None
 
+# ── VoIP push config (task 20260916-callkit-voip-ring) ──────────────────────
+#
+# Apple mandates the VoIP topic be exactly "<bundle-id>.voip" -- it isn't a
+# free-form value the way BUNDLE_ID itself is. It's still read as explicit,
+# required config (not derived from BUNDLE_ID + ".voip" in code) per this
+# project's Configuration Philosophy (Q1/Q4/Q8: explicit config, fail fast at
+# boot if unset) -- and validate_voip_config() below cross-checks it actually
+# matches BUNDLE_ID's expected derivation, so a copy/paste drift between the
+# two env vars is caught at boot rather than surfacing as every VoIP push
+# silently getting dropped by Apple for using the wrong topic.
+VOIP_APNS_TOPIC = os.getenv("VOIP_APNS_TOPIC", "")
+
 
 class APNsConfigError(RuntimeError):
     """APNs is unconfigured, or its ``.p8`` credential file can't be read.
@@ -97,6 +109,47 @@ def validate_apns_config() -> None:
         ) from e
 
 
+def validate_voip_config() -> None:
+    """Eagerly validate ``VOIP_APNS_TOPIC`` is set and well-formed.
+
+    Call once, at process startup (``main.py``'s ``lifespan``), same
+    placement as ``validate_apns_config()`` -- required regardless of
+    whether ``RING_VOIP_ENABLED``/``RING_FEATURE_ENABLED`` currently gate
+    the feature on, per this project's established "no implicit default,
+    fail fast at boot" posture (mirrors ``validate_ring_config()``'s own
+    reasoning for why a *disabled* feature's config still can't be left
+    unset).
+
+    Deliberately does NOT validate a separate VoIP credential/certificate
+    path: ``send_voip_push()`` reuses the same token-based JWT
+    (``_apns_jwt()``) that ``validate_apns_config()`` already validates --
+    Apple's token-based provider authentication is not push-type-scoped, so
+    there is no second ``.p8``/cert file for this project to configure or
+    validate here. Whether the Apple Developer account nonetheless needs a
+    *capability* enabled (distinct from a signing credential) for VoIP is
+    this task's App Store Connect / App Review disclosure, owned by the
+    security step -- not something to speculatively configure here.
+
+    Raises:
+        APNsConfigError: If ``VOIP_APNS_TOPIC`` is unset, or set to
+            anything other than ``f"{BUNDLE_ID}.voip"`` (Apple's mandated
+            exact format for a VoIP push topic).
+    """
+    if not VOIP_APNS_TOPIC:
+        raise APNsConfigError(
+            "VOIP_APNS_TOPIC is not configured. There is no implicit "
+            "default -- set it explicitly (Apple requires exactly "
+            f"\"{BUNDLE_ID or '<bundle-id>'}.voip\") before this process "
+            "can start."
+        )
+    expected = f"{BUNDLE_ID}.voip"
+    if VOIP_APNS_TOPIC != expected:
+        raise APNsConfigError(
+            f"VOIP_APNS_TOPIC ({VOIP_APNS_TOPIC!r}) does not match the "
+            f"format Apple requires for a VoIP push topic ({expected!r})."
+        )
+
+
 def _host_order() -> list[str]:
     primary = os.getenv("APNS_ENV", "production").lower()
     if primary not in APNS_HOSTS:
@@ -121,6 +174,39 @@ def _apns_jwt() -> str:
     )
     _jwt_cache = (token, now + 3000)  # refresh before Apple's 60-min expiry
     return token
+
+
+async def _post_to_apns(device_token: str, headers: dict, payload: dict) -> bool:
+    """Shared host-fallback POST loop behind both ``send_push`` and
+    ``send_voip_push`` (task 20260916-callkit-voip-ring extracted this out
+    of what used to be ``send_push``'s own tail -- behavior is unchanged for
+    ``send_push``, just no longer duplicated for the new VoIP push path).
+    Tries ``APNS_ENV``'s primary environment first, falling back to the
+    other only on an environment-mismatch reason (``_ENV_MISMATCH_REASONS``)
+    -- a VoIP-type push is subject to the exact same sandbox/production
+    token split as an alert push, Apple doesn't distinguish push type for
+    that purpose.
+    """
+    for env in _host_order():
+        url = f"{APNS_HOSTS[env]}/3/device/{device_token}"
+        try:
+            async with httpx.AsyncClient(http2=True) as client:
+                resp = await client.post(url, json=payload, headers=headers, timeout=10)
+        except Exception as e:
+            logger.error("APNs send failed (%s): %s", env, e)
+            continue
+        if resp.status_code == 200:
+            return True
+        reason = ""
+        try:
+            reason = resp.json().get("reason", "")
+        except Exception:
+            pass
+        logger.warning("APNs %d (%s): %s", resp.status_code, env, reason)
+        # Only worth retrying the other environment on an env-mismatch error.
+        if reason not in _ENV_MISMATCH_REASONS:
+            break
+    return False
 
 
 async def send_push(
@@ -155,23 +241,60 @@ async def send_push(
     if data:
         payload.update(data)
 
-    for env in _host_order():
-        url = f"{APNS_HOSTS[env]}/3/device/{device_token}"
-        try:
-            async with httpx.AsyncClient(http2=True) as client:
-                resp = await client.post(url, json=payload, headers=headers, timeout=10)
-        except Exception as e:
-            logger.error("APNs send failed (%s): %s", env, e)
-            continue
-        if resp.status_code == 200:
-            return True
-        reason = ""
-        try:
-            reason = resp.json().get("reason", "")
-        except Exception:
-            pass
-        logger.warning("APNs %d (%s): %s", resp.status_code, env, reason)
-        # Only worth retrying the other environment on an env-mismatch error.
-        if reason not in _ENV_MISMATCH_REASONS:
-            break
-    return False
+    return await _post_to_apns(device_token, headers, payload)
+
+
+async def send_voip_push(device_token: str, data: dict) -> bool:
+    """Send a PushKit VoIP push -- wakes the app (even from a killed state)
+    to report an incoming ring to CallKit (task 20260916-callkit-voip-ring).
+    ``data`` is merged directly into the payload (no ``title``/``body``: a
+    VoIP push carries no ``aps.alert`` at all, see below).
+
+    Differs from ``send_push`` in the three ways Apple's VoIP push contract
+    requires:
+      - ``apns-push-type: voip`` (not ``alert``) and ``apns-topic`` is the
+        dedicated ``VOIP_APNS_TOPIC`` (``<bundle-id>.voip``), never the
+        plain ``BUNDLE_ID`` -- Apple silently drops a VoIP push sent to the
+        wrong topic.
+      - ``apns-priority: 10`` (immediate) -- Apple requires every VoIP push
+        use immediate priority; there is no "normal priority" option for
+        this push type.
+      - No ``aps.alert``/``aps.sound`` -- a VoIP push is never shown by the
+        system as a notification. Receiving one is this app's contract to
+        *immediately* report an incoming call to CallKit (an Apple App
+        Review requirement with real enforcement behind it, not just a
+        style preference) -- the ring UI itself comes from ``CXProvider``
+        on the client, never from an ``aps.alert``.
+
+    Reuses the same token-based JWT (``_apns_jwt()``) ``send_push`` uses
+    rather than a second, VoIP-specific credential -- see
+    ``validate_voip_config()``'s docstring for why that's correct rather
+    than an oversight.
+
+    Raises:
+        APNsConfigError: If APNs is unconfigured, its credential file can't
+            be read, or ``VOIP_APNS_TOPIC`` itself is unconfigured/malformed
+            -- propagates rather than being swallowed, matching
+            ``send_push``'s fail-fast posture (Security Posture Q14).
+    """
+    if not VOIP_APNS_TOPIC:
+        # _apns_jwt()/validate_apns_config() already guard the shared JWT
+        # credential; this guards the VoIP-specific topic the same way in
+        # case validate_voip_config() was somehow never called at boot (e.g.
+        # a test harness constructing this module directly) -- fails the
+        # same loud way rather than sending a push Apple would just drop.
+        raise APNsConfigError(
+            "VOIP_APNS_TOPIC is not configured -- see validate_voip_config()."
+        )
+    token = _apns_jwt()
+
+    headers = {
+        "authorization": f"bearer {token}",
+        "apns-push-type": "voip",
+        "apns-topic": VOIP_APNS_TOPIC,
+        "apns-priority": "10",
+    }
+    payload = {"aps": {}}
+    payload.update(data)
+
+    return await _post_to_apns(device_token, headers, payload)

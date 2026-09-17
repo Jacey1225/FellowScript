@@ -10,6 +10,13 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
     func application(_ application: UIApplication,
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
         UNUserNotificationCenter.current().delegate = self
+        // Task 20260916-callkit-voip-ring: constructs VoipCallManager (and
+        // with it, registers PKPushRegistry's desiredPushTypes) as early as
+        // possible -- see that class's own doc comment for why this is
+        // eager rather than deferred behind sign-in/the lazy push-
+        // permission flow. Touching `.shared` is enough; nothing else here
+        // depends on its return value.
+        _ = VoipCallManager.shared
         return true
     }
 
@@ -50,19 +57,38 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
     // push above and route the tap straight into *joining the live call*
     // rather than just opening the session's chat thread. Checked first
     // (more specific) so a ring push doesn't also fall through to the
-    // `.sessionPushTapped` branch. Any other push shape (e.g. heartbeat's
-    // `heartbeat_id`/`agent_id`, or the plain friend-activity/no-activity
-    // pushes with no `data` at all) still has no matching case here and is
-    // left exactly as inert on tap as it already was.
+    // `.sessionPushTapped` branch.
+    //
+    // Task 20260916-chat-push-deep-link adds the third case: a plain chat
+    // message push (group or DM) carries `group_id` + `action: "message"`
+    // (ConnectionManager.send_msg's offline-recipient branch in
+    // api/backend/interactions/websockets.py). For a DM, the backend
+    // synthesizes the same sorted `"uidA|uidB"` room-key string
+    // `AppState.openSession(groupId:)` already knows how to split back into
+    // the other participant — see that method's own doc comment — so this
+    // case reuses `.sessionPushTapped`/`openSession(groupId:)` completely
+    // unmodified rather than adding a second navigation path for a payload
+    // shape it already understands. Checked ahead of the devotion_id-based
+    // branch below (per architecture's explicit `action` discriminator
+    // decision — Q26/Q27: don't rely on the mere absence of `devotion_id` to
+    // imply "this is a chat message") so it can't collide with that branch
+    // even though both end up posting the same notification. Any other push
+    // shape (e.g. heartbeat's `heartbeat_id`/`agent_id`, or the plain
+    // friend-activity/no-activity pushes with no `data` at all) still has no
+    // matching case here and is left exactly as inert on tap as it already
+    // was.
     func userNotificationCenter(_ center: UNUserNotificationCenter,
                                 didReceive response: UNNotificationResponse,
                                 withCompletionHandler completionHandler: @escaping () -> Void) {
         let data = response.notification.request.content.userInfo
         let groupId    = data["group_id"]    as? String
         let devotionId = data["devotion_id"] as? String
-        if data["action"] as? String == "ring", let devotionId, let groupId, !groupId.isEmpty {
+        let action     = data["action"]      as? String
+        if action == "ring", let devotionId, let groupId, !groupId.isEmpty {
             NotificationCenter.default.post(name: .ringPushTapped,
                                             object: RingPushTarget(devotionId: devotionId, groupId: groupId))
+        } else if action == "message", let groupId, !groupId.isEmpty {
+            NotificationCenter.default.post(name: .sessionPushTapped, object: groupId)
         } else if data["devotion_id"] != nil, let groupId, !groupId.isEmpty {
             NotificationCenter.default.post(name: .sessionPushTapped, object: groupId)
         }
@@ -82,6 +108,13 @@ extension Notification.Name {
     static let apnsTokenReceived = Notification.Name("apnsTokenReceived")
     static let sessionPushTapped = Notification.Name("sessionPushTapped")
     static let ringPushTapped    = Notification.Name("ringPushTapped")
+    // Task 20260916-callkit-voip-ring: posted by VoipCallManager
+    // (PKPushRegistryDelegate) whenever PushKit issues/refreshes this
+    // device's VoIP token -- mirrors .apnsTokenReceived's role for the
+    // plain remote-notification token, but registered against the
+    // distinct backend endpoint/table AppState.registerVoipDeviceToken(_:)
+    // calls (parallel to, not replacing, registerDeviceToken(_:)).
+    static let voipTokenReceived = Notification.Name("voipTokenReceived")
 }
 
 // ── App ───────────────────────────────────────────────────────────────────────
@@ -122,6 +155,18 @@ struct FellowScriptApp: App {
                 .onReceive(NotificationCenter.default.publisher(for: .apnsTokenReceived)) { note in
                     if let token = note.object as? String {
                         appState.registerDeviceToken(token)
+                    }
+                }
+                // Task 20260916-callkit-voip-ring: a VoIP token
+                // arriving/refreshing while the app is already signed in
+                // and running -- the launch-time case (token already
+                // cached before this `.onReceive` subscription existed) is
+                // separately covered by AppState pulling
+                // VoipCallManager.shared.latestVoipToken directly on
+                // sign-in/restoreSession (see AppState.swift).
+                .onReceive(NotificationCenter.default.publisher(for: .voipTokenReceived)) { note in
+                    if let token = note.object as? String {
+                        appState.registerVoipDeviceToken(token)
                     }
                 }
                 .onReceive(NotificationCenter.default.publisher(for: .sessionPushTapped)) { note in

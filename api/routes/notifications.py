@@ -41,3 +41,31 @@ async def register_device_token(user_id: str, body: dict, _: str = Depends(requi
         raise HTTPException(status_code=500, detail="Failed to save token")
     finally:
         db.close()
+
+
+# Task 20260916-callkit-voip-ring: a VoIP push token is a distinct token
+# type in Apple's system, registered client-side via PKPushRegistry (not
+# UIApplication.registerForRemoteNotifications()) -- this parallels
+# register_device_token above rather than replacing or merging into it, per
+# the same reasoning as voip_device_tokens's own table comment in db.py.
+@notification_router.post("/{user_id}/voip-device-token", status_code=204)
+async def register_voip_device_token(user_id: str, body: dict, _: str = Depends(require_match("user_id"))) -> None:
+    """Store or update a user's PushKit VoIP device token."""
+    token = body.get("token", "").strip()
+    if not token:
+        raise HTTPException(status_code=400, detail="token required")
+    db = DBManager()
+    try:
+        db.cur.execute(
+            "INSERT INTO voip_device_tokens (user_id, token, updated_at) "
+            "VALUES (%s, %s, NOW()) "
+            "ON CONFLICT (user_id) DO UPDATE SET token = EXCLUDED.token, updated_at = NOW()",
+            (user_id, token),
+        )
+        db.conn.commit()
+    except Exception as e:
+        logger.error("Error saving VoIP device token: %s", e)
+        db.conn.rollback()
+        raise HTTPException(status_code=500, detail="Failed to save token")
+    finally:
+        db.close()

@@ -17,6 +17,24 @@
 	     .ipa and confirm this key actually reads "production" there. -->
 	<key>aps-environment</key>
 	<string>development</string>
+	<!--
+	  Task 20260916-callkit-voip-ring: no NEW entitlements-file key is added
+	  here for VoIP push/CallKit. Checked deliberately, not assumed: Apple's
+	  VoIP-push entitlement surface is a Background Modes capability
+	  (Xcode Signing & Capabilities -> Background Modes -> "Voice over IP",
+	  which maps to the `voip` UIBackgroundModes entry in Info.plist, not an
+	  entitlements dict key) plus the existing `aps-environment` above (a
+	  VoIP-type push is authenticated the same token-based-JWT way as any
+	  other APNs push -- see push.py's validate_voip_config() docstring for
+	  why no second/dedicated credential is needed). CallKit itself
+	  (CXProvider/CXCallController) requires no entitlement at all. What
+	  DOES need action outside this repo -- enabling the VoIP Services /
+	  Background Modes capability for this app's App ID in the Apple
+	  Developer Portal if not already on, and the App Review justification
+	  for using PushKit's VoIP background mode for this use case -- is this
+	  task's security gate's own explicit disclosure deliverable, not
+	  resolved or assumed here.
+	-->
 	<key>com.apple.developer.applesignin</key>
 	<array>
 		<string>Default</string>

@@ -480,7 +480,48 @@ class ConnectionManager(DBManager):
                             # Attachment-only message (empty text) — fall back
                             # to a per-kind label so the push isn't blank.
                             body = _ATTACHMENT_PUSH_LABELS.get(attachment_kind, "")
-                        await send_push(token, sender_name, body)
+
+                        # Task 20260916-chat-push-deep-link: attach enough
+                        # identifying data for the client's notification-tap
+                        # handler to resolve the specific conversation, per
+                        # architecture's payload_shape/discriminator decision
+                        # -- mirrors the existing `action: "ring"` /
+                        # `devotion_id`+`group_id` convention already used by
+                        # the ring and session-created/reminder pushes above
+                        # in this same call graph (devotion.py, scheduler.py).
+                        # Only identifiers ride along here, never message
+                        # text/content (push.py's send_push docstring).
+                        if group_id:
+                            # Group message: group_id is already this
+                            # conversation's identity.
+                            push_data = {"group_id": group_id, "action": "message"}
+                        elif from_user_id:
+                            # DM: synthesize the same sorted "uidA|uidB"
+                            # room-key string the client's own
+                            # ChatThreadViewModel.roomKey/useSessions.js
+                            # already produce, so AppState.openSession(groupId:)
+                            # can resolve it unmodified -- no new payload
+                            # field or client-side navigation path needed.
+                            room_key = "|".join(sorted([uid, from_user_id]))
+                            push_data = {"group_id": room_key, "action": "message"}
+                        else:
+                            # Unresolvable shape: no group_id and no sender
+                            # id. Shouldn't happen (from_user_id is required
+                            # to reach this point), but per this project's
+                            # explicit-error-handling posture (Q26/Q27), fail
+                            # visibly with a log rather than silently sending
+                            # a payload the client can't resolve to any
+                            # conversation. Identifiers only in the log --
+                            # never message text (Security Posture Q13).
+                            logger.error(
+                                "send_msg push to %s: no group_id or from_user_id -- "
+                                "skipping unresolvable notification data payload.",
+                                uid,
+                            )
+                            push_data = None
+
+                        if push_data is not None:
+                            await send_push(token, sender_name, body, data=push_data)
                 except Exception as e:
                     logger.error("Push to %s failed: %s", uid, e)
 

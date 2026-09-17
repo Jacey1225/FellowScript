@@ -42,6 +42,21 @@ final class CallController: ObservableObject {
     // end() below, same lifetime as the call itself.
     @Published var sentRingTargets: Set<String> = []
 
+    // Task 20260916-callkit-voip-ring: a warm, self-dismissing notice for
+    // the case where CallKit ITSELF fails to report an incoming ring (e.g.
+    // VoipCallManager's reportNewIncomingCall completion handler receiving
+    // an error) -- kept separate from summarizeNotice/joinError above for
+    // the same reason those two are separate from each other: this can fire
+    // with no call screen/session in play at all, including from a killed-
+    // state launch, and it's about a ring the user never even saw the
+    // system UI for, not a post-call or in-progress-join failure. Per the
+    // project's custom-UI convention (UI/UX Q12.1/Q12.3): CallKit's own
+    // ring UI is system-provided and intentionally not reimplemented here,
+    // but this *fallback* -- shown only when that system UI itself
+    // couldn't be presented -- is custom-built, same warm-toast recipe as
+    // summarizeNotice/AccountViewModel.eventFireMsg.
+    @Published var ringDeliveryNotice: String? = nil
+
     #if canImport(AmazonChimeSDK)
     let manager = ChimeCallManager()
     #endif
@@ -143,6 +158,18 @@ final class CallController: ObservableObject {
         Task { @MainActor in
             try? await Task.sleep(nanoseconds: 4_000_000_000)
             if summarizeNotice == text { summarizeNotice = nil }
+        }
+    }
+
+    // Task 20260916-callkit-voip-ring: not `private` -- called from
+    // VoipCallManager (Services/VoipCallManager.swift), a plain NSObject
+    // singleton outside this @MainActor class, via `Task { @MainActor in
+    // ... }`. Same self-dismissing-toast shape as showSummarizeNotice above.
+    func showRingDeliveryNotice(_ text: String) {
+        ringDeliveryNotice = text
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 4_000_000_000)
+            if ringDeliveryNotice == text { ringDeliveryNotice = nil }
         }
     }
 }

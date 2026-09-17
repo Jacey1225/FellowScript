@@ -642,6 +642,24 @@ def create_tables(cur):
         "updated_at TIMESTAMP DEFAULT NOW())"
     )
 
+    # A VoIP push token is a distinct token type in Apple's system from the
+    # plain APNs remote-notification token `device_tokens` holds above --
+    # registered via PKPushRegistry on the client, not
+    # UIApplication.registerForRemoteNotifications(), and required for
+    # ring_members to deliver a VoIP push + CallKit ring rather than a
+    # plain alert push (task 20260916-callkit-voip-ring). Kept as its own
+    # table, parallel to (not merged into) device_tokens: a user can have
+    # either, neither, or both independently, and ring_members's
+    # DevotionManager.voip_device_tokens_bulk must be able to tell "no VoIP
+    # token registered" apart from "no APNs token registered" to report the
+    # correct fail-loud reason (Security Posture Q14).
+    cur.execute(
+        "CREATE TABLE IF NOT EXISTS voip_device_tokens"
+        "(user_id UUID PRIMARY KEY REFERENCES users(_id) ON DELETE CASCADE,"
+        "token TEXT NOT NULL,"
+        "updated_at TIMESTAMP DEFAULT NOW())"
+    )
+
     # Backs the activity-tracked/fixed-notification system that replaced the
     # agentic/custom notification subsystem (see
     # .claude/pipeline/20260826-activity-based-notifications, step 2). One

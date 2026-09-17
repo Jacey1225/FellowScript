@@ -242,6 +242,13 @@ final class RingMembersSheetUIStateTests: XCTestCase {
             ("not_a_member", "Unavailable"),
             ("no_active_call", "Unavailable"),
             ("invalid_target", "Unavailable"),
+            // Task 20260916-callkit-voip-ring: distinct from "unreachable" --
+            // this target has no registered VoIP token specifically (may still
+            // have a plain APNs token), only reachable when RING_VOIP_ENABLED
+            // is on server-side. Own dedicated caption, not folded into the
+            // generic "Unavailable" bucket, since it's actionable (re-open the
+            // app / grant permissions) the same way "Not reachable" is.
+            ("no_voip_token", "Can't ring this device"),
         ] {
             let service = makeService()
             service.ringMembersResult = ["friend-001": RingResult(sent: false, reason: reason)]

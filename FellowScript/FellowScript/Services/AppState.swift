@@ -111,6 +111,12 @@ final class AppState: ObservableObject {
         let uid = storedUserId
         currentUser     = FSUser(user_id: uid, username: storedUsername, email: storedEmail)
         isAuthenticated = true
+        // Task 20260916-callkit-voip-ring: a killed-state cold launch that
+        // lands straight into an already-authenticated session (exactly the
+        // scenario VoIP push wake-up needs to work for) should register
+        // whatever VoIP token PushKit already minted at launch, not wait for
+        // a fresh sign-in that may never happen this session.
+        registerCachedVoipTokenIfNeeded()
         // Addendum to task 20260905-profile-photo-avatar-gaps: the bare
         // FSUser rebuilt above from @AppStorage carries no
         // `profile_photo_url` (or any other server-only field) -- until
@@ -227,6 +233,9 @@ final class AppState: ObservableObject {
         isAuthenticated = true
         termsReacceptRequired = user.terms_reaccept_required
         needsProfileCompletion = user.needs_profile_completion
+        // Task 20260916-callkit-voip-ring: same catch-up as
+        // restoreSession() above, for the fresh-sign-in path.
+        registerCachedVoipTokenIfNeeded()
     }
 
     func requestPushNotifications() {
@@ -322,6 +331,41 @@ final class AppState: ObservableObject {
             } catch {
                 print("Device token registration failed: \(error.localizedDescription)")
             }
+        }
+    }
+
+    /// Task 20260916-callkit-voip-ring: registers this device's PushKit VoIP
+    /// token, distinct from (and never a substitute for) registerDeviceToken
+    /// above -- a VoIP token is a different token type in Apple's system,
+    /// stored server-side in its own `voip_device_tokens` table (backend
+    /// step 1) so the ring send path can tell "no VoIP token registered"
+    /// (`"no_voip_token"`) apart from "no plain APNs token"
+    /// (`"unreachable"`). Same fail-loud-but-non-blocking posture as
+    /// registerDeviceToken: nothing polls registration status, so a log line
+    /// is the only signal on failure, but it's never silently swallowed.
+    func registerVoipDeviceToken(_ token: String) {
+        guard let uid = currentUser?.user_id else { return }
+        Task {
+            do {
+                try await service.registerVoipDeviceToken(userId: uid, token: token)
+            } catch {
+                print("VoIP device token registration failed: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    /// Catches up on a PushKit VoIP token PushKit already minted before
+    /// sign-in (or before this launch's `.onReceive(.voipTokenReceived)`
+    /// subscription even existed) -- PushKit issues this eagerly at launch
+    /// (VoipCallManager.swift), unlike the plain APNs token, which is only
+    /// requested later via requestPushNotifications(). Called from both
+    /// restoreSession() (cold launch, already signed in) and persist(_:)
+    /// (a fresh sign-in) so a killed-state launch that lands straight into
+    /// an already-authenticated session still ends up with a registered
+    /// VoIP token, not just one requested going forward.
+    private func registerCachedVoipTokenIfNeeded() {
+        if let cachedToken = VoipCallManager.shared.latestVoipToken {
+            registerVoipDeviceToken(cachedToken)
         }
     }
 }

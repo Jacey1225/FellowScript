@@ -290,8 +290,8 @@ async def test_send_msg_username_lookup_recovers_not_just_falls_back():
 
     pushed = []
 
-    async def fake_send_push(token, title, body):
-        pushed.append((token, title, body))
+    async def fake_send_push(token, title, body, data=None):
+        pushed.append((token, title, body, data))
         return True
 
     orig_send_push = ws_module.send_push

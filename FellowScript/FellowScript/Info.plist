@@ -55,10 +55,32 @@
 	  to persist per the request's own wording ("hear other participants and
 	  speak").
 	-->
+	<!--
+	  Task 20260916-callkit-voip-ring: `voip` added additively alongside
+	  `audio` above, not in place of it -- confirmed non-conflicting, not
+	  re-litigating that prior decision. Different trigger, different
+	  lifetime: `audio` keeps an ALREADY-JOINED Chime call's own audio
+	  session alive while backgrounded; `voip` only wakes the process (even
+	  from a fully killed state, which `audio` alone cannot do) to report an
+	  INCOMING ring to CallKit via PushKit -- see VoipCallManager.swift. The
+	  two never contend for the same audio session at the same time: by the
+	  time a `voip` push's CXProvider-reported call is answered and
+	  CallController.start(...) hands off to ChimeCallManager.join(...),
+	  CallKit's own brief ring-announcement audio session has already been
+	  torn down (see VoipCallManager's CXProviderDelegate
+	  didActivate/didDeactivate comment) and Chime owns the session fresh,
+	  same as any other join. This is a genuine native incoming-call
+	  announcement for this app's real Chime-based real-time calling -- the
+	  App Store Connect / App Review capability and justification write-up
+	  this requires is this task's security gate's own explicit deliverable
+	  (spec's "App Store Connect / App Review disclosure" scope item), not
+	  assumed safe here.
+	-->
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>remote-notification</string>
 		<string>audio</string>
+		<string>voip</string>
 	</array>
 	<!--
 	  Ember Glass typography (task 20260827-ember-glass-chat-rewrite): bundles

@@ -132,8 +132,8 @@ async def test_group_send_does_not_echo_back_to_sender():
 
     pushed = []
 
-    async def fake_send_push(token, title, body):
-        pushed.append((token, title, body))
+    async def fake_send_push(token, title, body, data=None):
+        pushed.append((token, title, body, data))
         return True
 
     orig_send_push = ws_module.send_push
@@ -249,8 +249,8 @@ async def test_offline_other_member_still_gets_push():
 
     pushed = []
 
-    async def fake_send_push(token, title, body):
-        pushed.append((token, title, body))
+    async def fake_send_push(token, title, body, data=None):
+        pushed.append((token, title, body, data))
         return True
 
     orig_send_push = ws_module.send_push

@@ -118,8 +118,18 @@ async def lifespan(_: FastAPI):
     # the live host's AuthKey_*.p8 recurred in logs for 48+ hours with no
     # other signal). Deliberately not caught here — an invalid deployment
     # should refuse to start.
-    from backend.interactions.push import validate_apns_config
+    from backend.interactions.push import validate_apns_config, validate_voip_config
     validate_apns_config()
+
+    # Eager VoIP-topic config validation (task 20260916-callkit-voip-ring)
+    # -- same rationale as validate_apns_config just above: VOIP_APNS_TOPIC
+    # is new required config (Configuration Philosophy Q4 -- no implicit
+    # default), required regardless of whether RING_VOIP_ENABLED currently
+    # gates the feature on, so a deploy that hasn't set it explicitly (or
+    # set it to the wrong format) fails loudly at boot rather than every
+    # VoIP-type ring push silently getting dropped by Apple. Deliberately
+    # not caught here.
+    validate_voip_config()
 
     # Eager attachment/GIF-search config validation (task
     # 20260904-messaging-attachments) -- same rationale as validate_apns_config

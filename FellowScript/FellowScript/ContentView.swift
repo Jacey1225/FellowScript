@@ -91,22 +91,19 @@ struct ContentView: View {
         // self-dismissing top banner, mirroring AccountView's eventFireMsg
         // toast rather than a blocking alert (UI/UX Q17.3).
         .overlay(alignment: .top) {
+            // Task 20260916-callkit-voip-ring: summarizeNotice takes
+            // precedence if somehow both are set (shouldn't overlap in
+            // practice -- one's post-call, the other's about a ring that
+            // never got its CallKit UI shown at all) rather than stacking
+            // two banners.
             if let notice = call.summarizeNotice {
-                HStack(spacing: 10) {
-                    Image(systemName: "sparkles")
-                    Text(notice).font(.inter(Theme.fontSM)).fixedSize(horizontal: false, vertical: true)
-                }
-                .foregroundColor(Theme.gold)
-                .padding(.horizontal, 14).padding(.vertical, 10)
-                .background(Theme.gold.opacity(0.14))
-                .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous).stroke(Theme.borderGold, lineWidth: 1))
-                .padding(.horizontal, 16)
-                .padding(.top, 8)
-                .transition(.move(edge: .top).combined(with: .opacity))
+                noticeBanner(notice, icon: "sparkles", tint: Theme.gold, border: Theme.borderGold)
+            } else if let notice = call.ringDeliveryNotice {
+                noticeBanner(notice, icon: "exclamationmark.triangle", tint: Theme.error, border: Theme.error.opacity(0.32))
             }
         }
         .motionAwareAnimation(.spring(response: 0.30, dampingFraction: 0.85), value: call.summarizeNotice, reduceMotion: reduceMotion)
+        .motionAwareAnimation(.spring(response: 0.30, dampingFraction: 0.85), value: call.ringDeliveryNotice, reduceMotion: reduceMotion)
         .motionAwareAnimation(.spring(response: 0.30, dampingFraction: 0.85), value: call.inCall, reduceMotion: reduceMotion)
         .motionAwareAnimation(.spring(response: 0.30, dampingFraction: 0.85), value: call.isExpanded, reduceMotion: reduceMotion)
         // Expanded full-screen call
@@ -216,5 +213,25 @@ struct ContentView: View {
             FloatingTabBar(selection: $selectedTab,
                            inCallBarVisible: call.inCall && !call.isExpanded)
         }
+    }
+
+    // Extracted from the pre-existing summarizeNotice banner (task
+    // 20260916-callkit-voip-ring) so ringDeliveryNotice can reuse the exact
+    // same warm-toast recipe with a different icon/tint, instead of a
+    // second, copy-pasted banner literal.
+    @ViewBuilder
+    private func noticeBanner(_ text: String, icon: String, tint: Color, border: Color) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: icon)
+            Text(text).font(.inter(Theme.fontSM)).fixedSize(horizontal: false, vertical: true)
+        }
+        .foregroundColor(tint)
+        .padding(.horizontal, 14).padding(.vertical, 10)
+        .background(tint.opacity(0.14))
+        .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous).stroke(border, lineWidth: 1))
+        .padding(.horizontal, 16)
+        .padding(.top, 8)
+        .transition(.move(edge: .top).combined(with: .opacity))
     }
 }

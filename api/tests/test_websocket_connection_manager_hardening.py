@@ -128,8 +128,8 @@ async def test_send_msg_eviction_and_fallback():
 
     pushed = []
 
-    async def fake_send_push(token, title, body):
-        pushed.append((token, title, body))
+    async def fake_send_push(token, title, body, data=None):
+        pushed.append((token, title, body, data))
         return True
 
     orig_send_push = ws_module.send_push

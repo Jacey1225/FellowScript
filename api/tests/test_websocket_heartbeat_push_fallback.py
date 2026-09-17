@@ -137,8 +137,8 @@ def cleanup(*user_ids, group_ids: list[str] | None = None):
 def _install_fake_push():
     pushed = []
 
-    async def fake_send_push(token, title, body):
-        pushed.append((token, title, body))
+    async def fake_send_push(token, title, body, data=None):
+        pushed.append((token, title, body, data))
         return True
 
     orig = ws_module.send_push

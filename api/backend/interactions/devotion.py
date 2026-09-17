@@ -24,12 +24,34 @@ logger = logging.getLogger(__name__)
 _RING_FEATURE_ENABLED_RAW = os.getenv("RING_FEATURE_ENABLED")
 _RING_COOLDOWN_MINUTES_RAW = os.getenv("RING_COOLDOWN_MINUTES")
 
+# ── VoIP/CallKit delivery config (task 20260916-callkit-voip-ring) ──────────
+#
+# A second, independent flag from RING_FEATURE_ENABLED above -- that one
+# gates whether the ring feature exists at all; this one gates *which*
+# delivery mechanism ring_members uses once it's on. Off-by-default per this
+# project's proactive-flagging convention (same posture RING_FEATURE_ENABLED
+# itself started from), and deliberately kept operable independently of
+# RING_FEATURE_ENABLED: this is materially riskier App Review surface
+# (PushKit's VoIP background mode) than the plain-alert-push ring feature it
+# extends (see Configuration Philosophy Q1/Q8/Q4 in this task's spec), so
+# ops needs a way to turn VoIP+CallKit delivery back off at runtime --
+# reverting ring_members to the exact plain-APNs-push behavior it already
+# had -- without needing a full redeploy or disabling ring entirely, in case
+# an App Review or field issue turns up in the new mechanism specifically.
+# This also resolves this task's own open question on whether the old plain
+# push should be kept as a fallback: yes, operator-controlled via this flag,
+# not a silent per-recipient fallback.
+_RING_VOIP_ENABLED_RAW = os.getenv("RING_VOIP_ENABLED")
+_RING_TIMEOUT_SECONDS_RAW = os.getenv("RING_TIMEOUT_SECONDS")
+
 # Populated by validate_ring_config(); read via is_ring_enabled() rather than
 # importing this name by value elsewhere, since `from module import NAME`
 # binds the value at import time and would never observe the update
 # validate_ring_config() makes after that import runs.
 RING_FEATURE_ENABLED = False
 RING_COOLDOWN_MINUTES = 0
+RING_VOIP_ENABLED = False
+RING_TIMEOUT_SECONDS = 0
 
 
 class RingConfigError(RuntimeError):
@@ -44,18 +66,26 @@ class RingConfigError(RuntimeError):
 
 
 def validate_ring_config() -> None:
-    """Eagerly validate and parse RING_FEATURE_ENABLED/RING_COOLDOWN_MINUTES.
+    """Eagerly validate and parse RING_FEATURE_ENABLED/RING_COOLDOWN_MINUTES,
+    and (task 20260916-callkit-voip-ring) RING_VOIP_ENABLED/
+    RING_TIMEOUT_SECONDS -- all four are the same "ring feature config"
+    family, validated together from the one existing call site rather than
+    adding a second lifespan call for what's conceptually one group.
 
     Call once, at process startup (main.py's lifespan), before serving
     traffic -- same placement/reasoning as push.py's validate_apns_config()
-    and friends.py's validate_nudge_config().
+    and friends.py's validate_nudge_config(). Required regardless of
+    RING_FEATURE_ENABLED/RING_VOIP_ENABLED's own value -- a currently-off
+    feature's config still can't be left unset (Configuration Philosophy
+    Q4).
 
     Raises:
-        RingConfigError: If either var is unset, or RING_FEATURE_ENABLED
-            isn't exactly "true"/"false" (case-insensitive), or
-            RING_COOLDOWN_MINUTES isn't a positive integer.
+        RingConfigError: If any of the four vars is unset or invalid --
+            RING_FEATURE_ENABLED/RING_VOIP_ENABLED must be exactly
+            "true"/"false" (case-insensitive); RING_COOLDOWN_MINUTES/
+            RING_TIMEOUT_SECONDS must each be a positive integer.
     """
-    global RING_FEATURE_ENABLED, RING_COOLDOWN_MINUTES
+    global RING_FEATURE_ENABLED, RING_COOLDOWN_MINUTES, RING_VOIP_ENABLED, RING_TIMEOUT_SECONDS
 
     if _RING_FEATURE_ENABLED_RAW is None:
         raise RingConfigError(
@@ -90,12 +120,61 @@ def validate_ring_config() -> None:
         )
     RING_COOLDOWN_MINUTES = minutes
 
+    if _RING_VOIP_ENABLED_RAW is None:
+        raise RingConfigError(
+            "RING_VOIP_ENABLED is not set. There is no implicit default -- "
+            "set it explicitly to \"false\" (off, plain-APNs ring push) or "
+            "\"true\" (VoIP push + CallKit) before this process can start."
+        )
+    voip_normalized = _RING_VOIP_ENABLED_RAW.strip().lower()
+    if voip_normalized not in ("true", "false"):
+        raise RingConfigError(
+            f"RING_VOIP_ENABLED ({_RING_VOIP_ENABLED_RAW!r}) must be "
+            "exactly \"true\" or \"false\"."
+        )
+    RING_VOIP_ENABLED = voip_normalized == "true"
+
+    if _RING_TIMEOUT_SECONDS_RAW is None or not _RING_TIMEOUT_SECONDS_RAW.strip():
+        raise RingConfigError(
+            "RING_TIMEOUT_SECONDS is not set. There is no implicit default "
+            "for how long a CallKit-presented ring stays up before timing "
+            "out -- set it explicitly (e.g. 30)."
+        )
+    try:
+        timeout_seconds = int(_RING_TIMEOUT_SECONDS_RAW)
+    except ValueError:
+        raise RingConfigError(
+            f"RING_TIMEOUT_SECONDS ({_RING_TIMEOUT_SECONDS_RAW!r}) is not "
+            "a valid integer."
+        )
+    if timeout_seconds <= 0:
+        raise RingConfigError(
+            f"RING_TIMEOUT_SECONDS ({timeout_seconds}) must be a positive "
+            "number of seconds."
+        )
+    RING_TIMEOUT_SECONDS = timeout_seconds
+
 
 def is_ring_enabled() -> bool:
     """Current RING_FEATURE_ENABLED value -- always looked up fresh (see the
     module-global comment above) so callers see validate_ring_config()'s
     result regardless of import order."""
     return RING_FEATURE_ENABLED
+
+
+def is_ring_voip_enabled() -> bool:
+    """Current RING_VOIP_ENABLED value -- same fresh-lookup reasoning as
+    is_ring_enabled() above. When True, ring_members sends via
+    send_voip_push()+CallKit instead of the plain APNs alert push."""
+    return RING_VOIP_ENABLED
+
+
+def ring_timeout_seconds() -> int:
+    """Current RING_TIMEOUT_SECONDS value -- same fresh-lookup reasoning as
+    is_ring_enabled()/is_ring_voip_enabled() above (a `from module import
+    RING_TIMEOUT_SECONDS` at another call site would bind the pre-
+    validate_ring_config() value of 0 forever)."""
+    return RING_TIMEOUT_SECONDS
 
 
 class DevotionManager(DBManager):
@@ -337,6 +416,34 @@ class DevotionManager(DBManager):
             self.conn.rollback()
             return {}
 
+    def voip_device_tokens_bulk(self, user_ids: list[str]) -> dict[str, str]:
+        """{user_id: token} for every user in ``user_ids`` with a registered
+        VoIP push token (task 20260916-callkit-voip-ring) -- same shape and
+        batching rationale as ``device_tokens_bulk`` above, but reading the
+        distinct ``voip_device_tokens`` table (a VoIP token is a different
+        token type in Apple's system from the APNs remote-notification
+        token ``device_tokens`` holds; a user's client registers both
+        independently, see ``routes/notifications.py``'s
+        ``register_voip_device_token``). Never falls back to
+        ``device_tokens`` -- a user who hasn't granted/registered a VoIP
+        token has no entry here even if they have a plain APNs token, which
+        is exactly what lets ``ring_members`` fail loud with a distinct
+        ``"no_voip_token"`` reason instead of silently reusing the wrong
+        token type.
+        """
+        if not user_ids:
+            return {}
+        try:
+            self.cur.execute(
+                "SELECT user_id, token FROM voip_device_tokens WHERE user_id = ANY(%s::uuid[])",
+                (list(user_ids),),
+            )
+            return {str(r[0]): r[1] for r in self.cur.fetchall()}
+        except Exception as e:
+            logger.error("Devotion batch VoIP device-token lookup failed: %s", e)
+            self.conn.rollback()
+            return {}
+
     def get_username(self, user_id: str) -> str:
         """Best-effort display name for a push body (e.g. "{username}
         scheduled a new session"); empty string if the user can't be
@@ -376,6 +483,23 @@ class DevotionManager(DBManager):
         sent, never after. Call ``release_ring_claim`` afterward if the send
         itself then fails, so a failed send doesn't consume the cooldown for
         nothing.
+
+        Task 20260916-callkit-voip-ring open question resolved: whether a
+        CallKit-presented ring that's declined or times out should still
+        count against the cooldown the same way a delivered-but-ignored
+        plain push did. Answer: unchanged, and deliberately so -- this
+        method is (and remains) called once, at successful-send time, same
+        as before this task. Decline/timeout/answer are all client-local
+        CallKit outcomes that happen strictly after a push already claimed
+        its slot and was delivered; this task adds no backend endpoint for
+        CallKit's callbacks to report an outcome back (that would be new API
+        surface out of this step's scope), so the backend has no more
+        visibility into "declined" vs. "timed out" vs. "left ringing
+        unanswered" than it ever had into a plain push being ignored. A
+        delivered ring consumes the sender's cooldown regardless of what the
+        recipient's device does with it afterward -- exactly today's
+        semantics, just now also covering CallKit's three outcomes instead
+        of plain-push's one.
 
         Returns:
             bool: ``True`` if this call claimed the slot (no prior ring for

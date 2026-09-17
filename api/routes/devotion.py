@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends, Request
 from schemas.devotion import DevotionRequest, DevotionPlan, RingRequest
-from backend.interactions.devotion import DevotionManager, is_ring_enabled
+from backend.interactions.devotion import DevotionManager, is_ring_enabled, is_ring_voip_enabled, ring_timeout_seconds
 from backend.auth.dependencies import get_current_user, require_match
 from backend.moderation.content_filter import check_clean, ContentRejected, rejection_message
 from backend.rate_limiting import limiter
@@ -218,6 +218,24 @@ async def ring_members(
             session, i.e. the caller), and ``target_ids`` (one or more
             candidate recipients; duplicates are deduped, order-preserving).
 
+    Delivery mechanism (task 20260916-callkit-voip-ring): gated on
+    ``is_ring_voip_enabled()`` (``RING_VOIP_ENABLED``, independent of
+    ``RING_FEATURE_ENABLED`` above). When enabled, each eligible target's
+    *VoIP* device token (``DevotionManager.voip_device_tokens_bulk`` --
+    distinct from the plain APNs token ``device_tokens_bulk`` reads) is used
+    to send a VoIP push (``push.send_voip_push``) that wakes the recipient's
+    app and reports the ring to CallKit, instead of the plain APNs alert
+    push. A target with no registered VoIP token fails loud with its own
+    ``"no_voip_token"`` reason (Security Posture Q14 / this task's
+    acceptance criteria) rather than silently falling back to their plain
+    APNs token, since answering a CallKit ring and tapping a plain
+    notification are different client flows the token type must match. When
+    disabled, behavior is byte-for-byte what it was before this task
+    (plain APNs alert push via the existing ``device_tokens_bulk``/
+    ``send_push``) -- see ``RING_VOIP_ENABLED``'s own config comment in
+    ``backend/interactions/devotion.py`` for why this is a real operator
+    fallback, not a stub flag.
+
     Returns:
         dict: ``{"results": {target_id: {"sent": bool, "reason": str | None}}}``
             -- one entry per unique requested ``target_id``. ``reason`` is
@@ -227,10 +245,13 @@ async def ring_members(
             before any per-target check runs), ``"invalid_target"`` (the
             target is the caller themselves), ``"not_a_member"`` (not in
             this session's own group's real roster), ``"unreachable"``
-            (valid member, no registered device token), ``"rate_limited"``
-            (cooldown not yet elapsed for this (caller, target) pair,
-            regardless of session), or ``"send_failed"`` (APNs send raised
-            or reported non-delivery).
+            (valid member, no registered plain-APNs device token --
+            only possible when ``RING_VOIP_ENABLED`` is off),
+            ``"no_voip_token"`` (valid member, no registered VoIP device
+            token -- only possible when ``RING_VOIP_ENABLED`` is on),
+            ``"rate_limited"`` (cooldown not yet elapsed for this (caller,
+            target) pair, regardless of session), or ``"send_failed"``
+            (APNs send raised or reported non-delivery).
 
     Raises:
         HTTPException 404: The ring feature is disabled, or the session
@@ -282,25 +303,40 @@ async def ring_members(
         if not eligible:
             return {"results": results}
 
-        tokens = db.device_tokens_bulk(eligible)
+        voip = is_ring_voip_enabled()
+        tokens = db.voip_device_tokens_bulk(eligible) if voip else db.device_tokens_bulk(eligible)
         caller_name = db.get_username(current_user) or "Someone"
         body = _ring_body(caller_name, session.get("title") or "")
 
-        from backend.interactions.push import send_push
+        from backend.interactions.push import send_push, send_voip_push
 
         for target_id in eligible:
             token = tokens.get(target_id)
             if not token:
-                results[target_id] = {"sent": False, "reason": "unreachable"}
+                results[target_id] = {"sent": False, "reason": "no_voip_token" if voip else "unreachable"}
                 continue
             if not db.claim_ring_slot(current_user, target_id):
                 results[target_id] = {"sent": False, "reason": "rate_limited"}
                 continue
             try:
-                sent = await send_push(
-                    token, _RING_TITLE, body,
-                    data={"action": "ring", "devotion_id": req.devotion_id, "group_id": group_id},
-                )
+                if voip:
+                    sent = await send_voip_push(
+                        token,
+                        data={
+                            "action": "ring",
+                            "devotion_id": req.devotion_id,
+                            "group_id": group_id,
+                            "caller_id": current_user,
+                            "caller_username": caller_name,
+                            "session_title": session.get("title") or "",
+                            "ring_timeout_seconds": ring_timeout_seconds(),
+                        },
+                    )
+                else:
+                    sent = await send_push(
+                        token, _RING_TITLE, body,
+                        data={"action": "ring", "devotion_id": req.devotion_id, "group_id": group_id},
+                    )
             except Exception as e:
                 logger.error("Ring push failed (%s -> %s, session %s): %s", current_user, target_id, req.devotion_id, e)
                 db.release_ring_claim(current_user, target_id)

@@ -59,8 +59,18 @@ final class ChimeCallBackgroundPersistenceRegressionTests: XCTestCase {
                       "pre-existing push background mode must not be dropped")
         XCTAssertTrue(body.contains("<string>audio</string>"),
                       "new audio background mode must be declared so Chime's audio session survives backgrounding")
-        XCTAssertFalse(body.contains("<string>voip</string>"),
-                      "architecture deliberately rejected voip/CallKit/PushKit for this iteration -- must not be silently added")
+        // NOTE (task 20260916-callkit-voip-ring): this task's own spec
+        // explicitly revisits (not re-litigates) the voip/CallKit/PushKit
+        // rejection this test used to assert -- that prior decision was
+        // scoped to the narrower "keep an already-joined call's audio alive"
+        // problem this task (20260916-call-background-persistence) solved
+        // with plain `audio`; 20260916-callkit-voip-ring's own charter is the
+        // broader "announce an incoming ring via a real CallKit UI" problem,
+        // additive alongside (not replacing) `audio` -- see that task's own
+        // VoipCallManagerLifecycleTests.swift for the dedicated coverage.
+        // The old blanket "must never be added" assertion is intentionally
+        // gone; this file's job is still just to confirm `audio` itself
+        // wasn't silently dropped along the way.
     }
 
     // MARK: - 2. FellowScriptApp's scenePhase handler: dictation/TTS still

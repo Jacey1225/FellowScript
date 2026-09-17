@@ -483,7 +483,7 @@ struct FriendActivityHeroCard: View {
     private func notePreviewRow(_ preview: FSFriendNotePreview, friendUsername: String) -> some View {
         Button(action: { onOpenNote(preview) }) {
             HStack(alignment: .top, spacing: 8) {
-                Text(preview.text)
+                Text(preview.previewText)
                     .font(.system(size: 17))
                     .foregroundColor(Theme.parchment.opacity(0.85))
                     .lineLimit(4)

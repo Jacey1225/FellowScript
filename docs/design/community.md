@@ -166,8 +166,10 @@ the app. Local and remote video pause while backgrounded — iOS doesn't allow c
 background — and local video resumes automatically on return to the foreground if the call is still
 connected. If the call genuinely drops while backgrounded (network loss, the meeting ending), the
 call screen shows "not connected" rather than a stale "Connected" state when the app is reopened.
-This is audio-only background support (no CallKit lock-screen/incoming-call UI); ending the call
-still requires reopening the app.
+This is audio-only background support for a call already joined — no CallKit lock-screen/
+incoming-call UI applies here; ending the call still requires reopening the app. (A genuine
+CallKit incoming-call UI was added separately, for the *ring* path only — see "Native Incoming-Call
+Ring (CallKit/PushKit)" below.)
 
 ---
 
@@ -191,7 +193,26 @@ just opening the session's chat thread the way the older session-reminder push d
 
 ---
 
-## Failed Send Recovery (2026-09-10, task `20260910-chat-message-disappear-reentry`)
+## Native Incoming-Call Ring (CallKit/PushKit) (2026-09-17, task `20260916-callkit-voip-ring`, iOS)
+
+Ring delivery now goes through PushKit's VoIP push + CallKit rather than a plain push notification,
+gated behind the backend's `RING_VOIP_ENABLED` flag (off by default — the ring feature keeps working
+exactly as described above, via the plain push, until that flag is turned on). When enabled, a ring
+wakes the recipient's device — even if the app was fully killed — and presents the system's own
+full-screen "incoming call" UI, the same kind of screen as a real phone call, rather than a
+notification banner. The ring rings for a bounded, server-configured timeout and resolves cleanly on
+answer (joins the live call, exactly the same join path a tapped plain-ring-push already used),
+decline, or timeout.
+
+Registering for VoIP push happens automatically at app launch, with no separate permission prompt —
+unlike ordinary push notifications, PushKit doesn't require the user to grant anything. A recipient
+who hasn't registered a VoIP token (e.g. an unsupported device state) fails that ring delivery
+visibly in the sender's Ring Members sheet ("Can't ring this device") rather than silently.
+
+This is additive to, not a replacement of, the existing `audio` background mode that keeps an
+already-joined call's audio running (see "Session Call Background Persistence" above) — the two cover
+different moments (an incoming ring's announcement vs. an already-connected call's audio) and don't
+conflict.
 
 A sent message (friend DM or group) that the backend explicitly rejects or fails to save (a
 content-filter rejection, a failed database write, or the silent block-drop between two users who

@@ -231,6 +231,14 @@ struct RingMembersSheet: View {
                 rowStates[id] = .rateLimited
             case "unreachable":
                 rowStates[id] = .error("Not reachable")
+            // Task 20260916-callkit-voip-ring: distinct from "unreachable"
+            // (no plain push token) -- this member has no registered VoIP
+            // token, only reachable when RING_VOIP_ENABLED is on (see
+            // routes/devotion.py::ring_members). Fail-loud per Security
+            // Posture Q14: a real, distinguishable caption, not folded into
+            // the generic "Unavailable" default below.
+            case "no_voip_token":
+                rowStates[id] = .error("Can't ring this device")
             case "send_failed":
                 rowStates[id] = .error("Couldn't send")
             default: // "invalid_target" / "not_a_member" / nil

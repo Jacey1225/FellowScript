@@ -152,4 +152,14 @@ extension NetworkService {
         _ = try await checkedRequestRaw("/notification/\(userId)/device-token", method: "POST",
                                  jsonObject: ["token": token])
     }
+
+    // Task 20260916-callkit-voip-ring: distinct endpoint/table from
+    // registerDeviceToken above (backend step 1's POST
+    // /notification/{userId}/voip-device-token -> voip_device_tokens) -- a
+    // PushKit VoIP token is a different token type in Apple's system, never
+    // interchangeable with the plain APNs remote-notification token.
+    func registerVoipDeviceToken(userId: String, token: String) async throws {
+        _ = try await checkedRequestRaw("/notification/\(userId)/voip-device-token", method: "POST",
+                                 jsonObject: ["token": token])
+    }
 }
