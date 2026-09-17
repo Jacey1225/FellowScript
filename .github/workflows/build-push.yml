@@ -130,6 +130,19 @@ jobs:
       # in the test suite itself.
       RING_FEATURE_ENABLED: "false"
       RING_COOLDOWN_MINUTES: "10"
+      # validate_voip_config()/validate_ring_config()'s VoIP fields (task
+      # 20260916-callkit-voip-ring) fail fast at app boot the same way the
+      # vars above do -- same rationale, same fix: throwaway CI values so
+      # TestClient(main_module.app)/main.py's lifespan can boot.
+      # VOIP_APNS_TOPIC must match "{APPLE_BUNDLE_ID}.voip" exactly (Apple's
+      # mandated format, checked byte-for-byte by validate_voip_config());
+      # RING_VOIP_ENABLED "false" matches the feature's off-by-default
+      # deploy posture, same as RING_FEATURE_ENABLED above; RING_TIMEOUT_
+      # SECONDS is an arbitrary valid positive integer, never actually
+      # exercised as a live ring-timeout window in the test suite itself.
+      VOIP_APNS_TOPIC: "com.fellowscript.app.voip"
+      RING_VOIP_ENABLED: "false"
+      RING_TIMEOUT_SECONDS: "30"
 
     steps:
       - name: Checkout
