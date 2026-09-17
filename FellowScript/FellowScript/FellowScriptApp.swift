@@ -41,26 +41,47 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
     // scheduler.py) put `devotion_id`/`group_id` in the payload's `data`
     // (merged alongside, not inside, `aps` — see push.py's `send_push`
     // docstring), specifically so a tap can resolve back to that session's
-    // chat thread. Any other push shape (e.g. heartbeat's
+    // chat thread.
+    //
+    // Task 20260916-call-ring-members adds the second case: a ring push
+    // carries the same `devotion_id`/`group_id` pair PLUS an
+    // `action: "ring"` discriminator (routes/devotion.py::ring_members) so
+    // this handler can tell it apart from the plain session-created/reminder
+    // push above and route the tap straight into *joining the live call*
+    // rather than just opening the session's chat thread. Checked first
+    // (more specific) so a ring push doesn't also fall through to the
+    // `.sessionPushTapped` branch. Any other push shape (e.g. heartbeat's
     // `heartbeat_id`/`agent_id`, or the plain friend-activity/no-activity
-    // pushes with no `data` at all) has no matching case here and is left
-    // exactly as inert on tap as it already was — this deliberately does not
-    // generalize into a new dispatch mechanism for every push type, only the
-    // two this task adds.
+    // pushes with no `data` at all) still has no matching case here and is
+    // left exactly as inert on tap as it already was.
     func userNotificationCenter(_ center: UNUserNotificationCenter,
                                 didReceive response: UNNotificationResponse,
                                 withCompletionHandler completionHandler: @escaping () -> Void) {
         let data = response.notification.request.content.userInfo
-        if data["devotion_id"] != nil, let groupId = data["group_id"] as? String, !groupId.isEmpty {
+        let groupId    = data["group_id"]    as? String
+        let devotionId = data["devotion_id"] as? String
+        if data["action"] as? String == "ring", let devotionId, let groupId, !groupId.isEmpty {
+            NotificationCenter.default.post(name: .ringPushTapped,
+                                            object: RingPushTarget(devotionId: devotionId, groupId: groupId))
+        } else if data["devotion_id"] != nil, let groupId, !groupId.isEmpty {
             NotificationCenter.default.post(name: .sessionPushTapped, object: groupId)
         }
         completionHandler()
     }
 }
 
+// Payload carried by `.ringPushTapped` — both fields are required to resolve
+// straight to the live session (see AppState.joinRingedCall(_:)), unlike the
+// plain session-created push which only ever needs `group_id`.
+struct RingPushTarget {
+    let devotionId: String
+    let groupId:    String
+}
+
 extension Notification.Name {
     static let apnsTokenReceived = Notification.Name("apnsTokenReceived")
     static let sessionPushTapped = Notification.Name("sessionPushTapped")
+    static let ringPushTapped    = Notification.Name("ringPushTapped")
 }
 
 // ── App ───────────────────────────────────────────────────────────────────────
@@ -106,6 +127,14 @@ struct FellowScriptApp: App {
                 .onReceive(NotificationCenter.default.publisher(for: .sessionPushTapped)) { note in
                     if let groupId = note.object as? String {
                         appState.openSession(groupId: groupId)
+                    }
+                }
+                // Task 20260916-call-ring-members: a ring push's tap-through
+                // jumps straight into joining the live call rather than just
+                // opening the session's chat thread.
+                .onReceive(NotificationCenter.default.publisher(for: .ringPushTapped)) { note in
+                    if let target = note.object as? RingPushTarget {
+                        appState.joinRingedCall(devotionId: target.devotionId, groupId: target.groupId)
                     }
                 }
         }

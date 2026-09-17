@@ -555,6 +555,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#dictation-read-aloud-ios-task-20260914-dictation-tts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Dictation / Read Aloud (iOS, task 20260914-dictation-tts)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#left-dock-rail" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1037,6 +1048,21 @@
 <li>Active highlights overlay the verse text with the stored color at ~25% opacity</li>
 <li>Clicking a highlighted verse opens the highlight picker to remove or recolor</li>
 </ul>
+<h3 id="dictation-read-aloud-ios-task-20260914-dictation-tts">Dictation / Read Aloud (iOS, task <code>20260914-dictation-tts</code>)</h3>
+<p><code>BibleReaderView</code>'s trailing toolbar (<code>FellowScript/FellowScript/Bible/BibleReaderView.swift</code>)
+carries a <code>speaker.wave.2</code> icon button, appended after the font-size and
+bookmark buttons, that reads the current chapter's verses aloud using
+on-device <code>AVSpeechSynthesizer</code> (Enhanced/Premium-quality voice where
+installed, falling back gracefully to the next-best installed voice —
+never a cloud TTS provider, so no per-character cost and no network call).
+Tapping it again mid-speech stops playback (toggle, not a separate stop
+control); the icon fills gold and gently pulses (<code>variableColor</code> symbol
+animation, suppressed under Reduce Motion) while speaking. Playback also
+stops automatically on switching chapter or book, navigating away from the
+Bible tab, or the app backgrounding. The shared <code>SpeechController</code> service
+(<code>FellowScript/FellowScript/Services/SpeechController.swift</code>) is a single
+app-wide singleton, so starting dictation here also stops any in-flight
+reading on the Notes screen (see <code>docs/design/notes.md</code>) and vice versa.</p>
 <h3 id="left-dock-rail">Left Dock Rail</h3>
 <ul>
 <li><code>ReaderDockRail</code> component: fixed vertical icon rail, one icon per dockable panel type (Bible, Notes, Highlights, Messaging, Agent Chat)</li>

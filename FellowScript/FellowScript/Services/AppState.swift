@@ -281,6 +281,35 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// Called when the user taps a ring push (task 20260916-call-ring-members
+    /// -- FellowScriptApp.AppDelegate's `didReceive response:` posts
+    /// `.ringPushTapped` with the push's `devotion_id`/`group_id`, discriminated
+    /// from the plain session-created push above via the push's own
+    /// `action: "ring"` field). Unlike `openSession(groupId:)`, which only
+    /// ever navigates to the session's chat thread, this jumps straight into
+    /// *joining the live call* -- the whole point of a ring -- by resolving
+    /// the full `FSSession` (CallController.start(session:) needs the object,
+    /// not just its id) via the same `fetchSessionsForContact` the chat
+    /// thread's own session list already uses, then handing it to
+    /// `CallController.shared.start(session:service:userId:)` exactly as
+    /// ChatThreadView's/SessionDetailSheet's own "Join" buttons do.
+    ///
+    /// Falls back to the plain `openSession(groupId:)` navigation if the
+    /// session can no longer be resolved (e.g. it ended before the tap
+    /// landed) -- landing on the chat thread is a strictly better outcome
+    /// than doing nothing on tap.
+    func joinRingedCall(devotionId: String, groupId: String) {
+        guard let uid = currentUser?.user_id, !devotionId.isEmpty, !groupId.isEmpty else { return }
+        Task { @MainActor in
+            let sessions = (try? await service.fetchSessionsForContact(contactId: groupId)) ?? []
+            if let session = sessions.first(where: { $0.id == devotionId }) {
+                CallController.shared.start(session: session, service: service, userId: uid)
+            } else {
+                openSession(groupId: groupId)
+            }
+        }
+    }
+
     func registerDeviceToken(_ token: String) {
         guard let uid = currentUser?.user_id else { return }
         // No UI surface for this background sync (nothing polls "is my token

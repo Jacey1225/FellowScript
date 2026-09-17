@@ -346,6 +346,33 @@ def create_tables(cur):
     # deny-by-default posture for new opt-in surfaces.
     cur.execute("ALTER TABLE devotions ADD COLUMN IF NOT EXISTS summarize BOOLEAN DEFAULT FALSE")
 
+    # Task 20260916-call-ring-members: per (sender, recipient) cooldown
+    # marker for the in-call "ring" push action -- same single-row-per-key
+    # dedup-marker shape as friend_nudges (only the most recent ring per
+    # key matters for the cooldown check).
+    #
+    # Revised (post-security-bounce rework) from the original
+    # `session_rings` table's per-(sender, recipient, session) key to this
+    # cross-session (sender, recipient)-only key -- table renamed
+    # accordingly rather than layered under a second table, since the
+    # session-scoped key is no longer part of the design: security's
+    # re-review found session creation was unthrottled and (at the time)
+    # unverified against real group membership, so a fresh session_id
+    # could reset the old key's cooldown for free, defeating
+    # RING_COOLDOWN_MINUTES. A bare (sender, recipient) key can't be reset
+    # by any session_id, closing that gap -- a legitimate re-ring after the
+    # window elapses still works the same whether it's the same session or
+    # a new one. Claimed atomically BEFORE the push is sent, and released
+    # (deleted) if the send then fails -- see DevotionManager.
+    # claim_ring_slot/release_ring_claim.
+    cur.execute(
+        "CREATE TABLE IF NOT EXISTS ring_cooldowns"
+        "(sender_id UUID REFERENCES users(_id) ON DELETE CASCADE,"
+        "recipient_id UUID REFERENCES users(_id) ON DELETE CASCADE,"
+        "last_rung_at TIMESTAMPTZ NOT NULL,"
+        "PRIMARY KEY (sender_id, recipient_id))"
+    )
+
     cur.execute(
         "CREATE TABLE IF NOT EXISTS agents"
         "(_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"

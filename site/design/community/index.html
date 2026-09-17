@@ -649,6 +649,72 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#video-call-ui-redesign-2026-09-15-task-20260915-video-call-ui-redesign-ios" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Video Call UI Redesign (2026-09-15, task 20260915-video-call-ui-redesign, iOS)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#session-call-background-persistence-2026-09-16-task-20260916-call-background-persistence-ios" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Session Call Background Persistence (2026-09-16, task 20260916-call-background-persistence, iOS)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ring-group-members-2026-09-16-task-20260916-call-ring-members-ios" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ring Group Members (2026-09-16, task 20260916-call-ring-members, iOS)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#failed-send-recovery-2026-09-10-task-20260910-chat-message-disappear-reentry" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Failed Send Recovery (2026-09-10, task 20260910-chat-message-disappear-reentry)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#unread-conversation-badges-2026-09-13-task-20260913-chat-unread-badges-ios" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Unread Conversation Badges (2026-09-13, task 20260913-chat-unread-badges, iOS)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#session-editing-2026-09-14-task-20260914-session-edit-button-ios" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Session Editing (2026-09-14, task 20260914-session-edit-button, iOS)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#real-time-behavior" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1024,9 +1090,10 @@
 <hr />
 <h2 id="groups">Groups</h2>
 <p>Users can create or join study groups:
-- <strong>Create group</strong> — sets the user as owner; group gets a UUID and title
+- <strong>Create group</strong> — sets the user as owner (<code>groups.creator_id</code>, stamped from the authenticated caller, never client-supplied); group gets a UUID and title
 - <strong>Join group</strong> — adds the user to <code>groups.members</code>
-- <strong>Leave group</strong> — removes the user from the group
+- <strong>Leave group</strong> — removes only the leaving user from the group's member list; the group, its title, and everyone else's access, notes, messages, devotions, and sessions are unaffected. If the last remaining member leaves, the now-empty group is auto-deleted. A distinct, owner-only <strong>Delete group</strong> action (below) is what actually removes a group outright — leaving never does that for anyone but yourself.
+- <strong>Delete group</strong> — permanently deletes the group for every member, including its notes, messages, devotions, and sessions. Only the group's recorded creator may do this; for a group with no recorded creator (predates the <code>creator_id</code> column, or the creator's account was deleted), any current member may. Denied (403) to anyone else.
 - <strong>Group selector</strong> — the compact dropdown in the Notes sidebar tab bar also switches the messaging sidebar to the selected group</p>
 <p>Group highlights (members' colored verse highlights) are visible as overlays in the scripture view when a group is selected.</p>
 <hr />
@@ -1039,6 +1106,14 @@ in place of <code>Form</code>. <code>AddFriendSheet</code> gained a <code>.mediu
 with a large empty area below its one field); <code>AddGroupSheet</code> gained <code>[.medium, .large]</code> so a longer
 member list isn't clipped. Appearance-only — <code>onSend</code>/<code>onCreate</code> wiring, member-row selection
 behavior, and existing accessibility labels are unchanged.</p>
+<p><strong>Leave vs. Delete Group made visibly distinct (2026-09-16).</strong> The groups list's swipe actions
+(<code>ChatRootView.groupsList</code>) previously offered a single trailing "Leave" button that, before the
+matching backend fix, actually deleted the whole group for every member. "Leave" now stays a
+trailing swipe button with no extra confirmation (it only ever affects the caller). A separate
+leading swipe button, "Delete Group," appears only for a caller authorized to delete the group
+outright (mirrors the backend's owner check client-side, purely to decide what to show — the
+backend re-enforces it independently) and opens a destructive confirmation dialog, the same pattern
+already used for blocking a user, before calling the owner-gated delete endpoint.</p>
 <hr />
 <h2 id="attachments-2026-09-04">Attachments (2026-09-04)</h2>
 <p>The composer (both iOS <code>ChatThreadView</code> and web <code>ChatThread</code>) has a plus-icon attach affordance
@@ -1096,6 +1171,113 @@ the server can't reach Chime — used to fail with no visible signal at all. It 
 inline error message with a <strong>Retry</strong> button directly on the affected session's card; retrying
 just re-runs the join flow, and the error clears automatically as soon as a join attempt (retry
 or fresh) starts.</p>
+<hr />
+<h2 id="video-call-ui-redesign-2026-09-15-task-20260915-video-call-ui-redesign-ios">Video Call UI Redesign (2026-09-15, task <code>20260915-video-call-ui-redesign</code>, iOS)</h2>
+<p>The active-call screen (<code>Chat/ChimeCallView.swift</code>) no longer shows remote participants in a
+scrollable grid. Its background is now a translucent, warm-toned blur (<code>.ultraThinMaterial</code> over
+the app's existing dark/gold gradient wash, built from <code>Theme.bgPage</code>/<code>Theme.gold</code>) — a deliberate,
+documented extension of the app's native-blur surfaces (<code>DashboardComponents.glassCard</code>, the Bible
+nav dropdown's glass panel), not a break from Chat's own flat-elevation styling, which was always
+scoped to Chat surfaces specifically. Each active remote camera renders as a medium circular tile at
+a randomized position, sized down as more participants join (152pt for ≤2 down to 84pt for 7+, with
+a hard 64pt floor), placed so no two tiles ever overlap and all stay within roughly the central 70%
+of the screen, clear of the header and control bar. Tiles animate in/out with an eased fade+scale
+(faster on exit) and reposition smoothly when a participant joins/leaves or the device rotates; all
+of that motion is skipped in favor of a plain cross-fade under Reduce Motion. The local user's own
+self-camera stays exactly where it always was — a small fixed thumbnail, not part of the randomized
+field — only re-skinned with the same glass treatment instead of a flat black fill. The mute/camera/
+hang-up control bar and call header are unchanged.</p>
+<p>New file: <code>Chat/ChimeCallView+RemoteField.swift</code> (<code>RemoteCameraField</code> — tile placement/animation
+logic, split out of <code>ChimeCallView.swift</code> per this codebase's existing <code>+</code>-suffixed extension-file
+convention).</p>
+<hr />
+<h2 id="session-call-background-persistence-2026-09-16-task-20260916-call-background-persistence-ios">Session Call Background Persistence (2026-09-16, task <code>20260916-call-background-persistence</code>, iOS)</h2>
+<p>A user who backgrounds the app (home screen, another app) during an active session call is no
+longer removed from the call. The Chime audio session and microphone keep running while
+backgrounded, so the user keeps hearing other participants and can keep speaking without reopening
+the app. Local and remote video pause while backgrounded — iOS doesn't allow camera capture in the
+background — and local video resumes automatically on return to the foreground if the call is still
+connected. If the call genuinely drops while backgrounded (network loss, the meeting ending), the
+call screen shows "not connected" rather than a stale "Connected" state when the app is reopened.
+This is audio-only background support (no CallKit lock-screen/incoming-call UI); ending the call
+still requires reopening the app.</p>
+<hr />
+<h2 id="ring-group-members-2026-09-16-task-20260916-call-ring-members-ios">Ring Group Members (2026-09-16, task <code>20260916-call-ring-members</code>, iOS)</h2>
+<p>A new "Ring" button sits leftmost in the active-call control bar (before Mute/Camera/End). Tapping
+it opens a member-picker sheet listing the session's own group roster (minus the caller), split into
+"Not Yet Joined" (selectable, shown first) and a visually de-emphasized "Already in Call" section
+(still selectable, but never pre-checked — ringing someone already in the call isn't the normal
+path). Selecting one or more members and tapping "Ring" sends each of them a push notification
+prompting them to join the live call now; each selected row shows its own independent
+sending/sent/rate-limited/error outcome rather than one all-or-nothing result, since a multi-select
+ring can partially succeed. A rate-limited or failed row can be retried by tapping it again; a
+successfully-rung member stays marked "Sent" for the rest of the call, even if the sheet is closed
+and reopened, so the same person can't be accidentally re-rung inside their cooldown window. The Ring
+button itself is disabled only when there's clearly no one else to ring (e.g. a stale one-person DM);
+a real empty roster is instead handled by the sheet's own "No other members to ring." message.</p>
+<p>On the recipient's side, tapping a ring push jumps straight into joining the live call, rather than
+just opening the session's chat thread the way the older session-reminder push does.</p>
+<hr />
+<h2 id="failed-send-recovery-2026-09-10-task-20260910-chat-message-disappear-reentry">Failed Send Recovery (2026-09-10, task <code>20260910-chat-message-disappear-reentry</code>)</h2>
+<p>A sent message (friend DM or group) that the backend explicitly rejects or fails to save (a
+content-filter rejection, a failed database write, or the silent block-drop between two users who
+have blocked each other) used to look identical to a successful one: it showed up immediately via
+the optimistic local echo, then simply vanished the next time the thread was reopened, once the
+server's history reload replaced the message list wholesale and the never-actually-saved message
+wasn't in it. The client had no way to distinguish this from a real send — the backend's own
+<code>{"type": "error", ...}</code> frame carrying the rejection reason was silently dropped, because the
+receive loop only ever acted on a frame that had a <code>text</code> key.</p>
+<p>The receive loop (<code>ChatThreadView.swift</code>) now explicitly branches on the frame's <code>type</code> field
+instead of relying on <code>text</code>'s presence as an implicit signal. An error frame is matched to the
+oldest still-unconfirmed optimistic send (there is no ack, so a send that's never flagged as
+failed is treated as having succeeded) and flags that message. The affected bubble gets an inline
+<strong>"Couldn't send — tap to retry"</strong> line beneath it, reusing the exact styling and interaction the
+composer's failed-attachment-upload chip already established, rather than a toast, alert, or
+raw error dump. Tapping it removes the failed bubble and resends the same text/attachment, with no
+confirmation step. A successful send is unaffected either way — it survives thread re-entry (warm
+or cold reload) exactly as before.</p>
+<hr />
+<h2 id="unread-conversation-badges-2026-09-13-task-20260913-chat-unread-badges-ios">Unread Conversation Badges (2026-09-13, task <code>20260913-chat-unread-badges</code>, iOS)</h2>
+<p>Friend and group chats now show a red unread indicator, client-local and derived — no per-message
+count is fabricated for a row that only ever knows a <code>lastMessageAt</code> timestamp. Two locations, both
+top-left per the original request:</p>
+<ul>
+<li><strong>Chat tab icon</strong> (<code>FloatingTabBar.swift</code>) — a numeral badge showing the count of unread
+  <em>conversations</em> (capped <code>9+</code>), shown whenever any friend or group has unread messages, in both
+  the tab's selected and unselected icon states.</li>
+<li><strong>Chat list rows</strong> (<code>ChatRootView.swift</code>'s <code>ContactRow</code>, shared by both friends and groups) — a
+  plain dot, no number, since <code>FSContact</code> carries no per-conversation message count to show
+  honestly.</li>
+</ul>
+<p>A conversation counts as unread when its <code>FSContact.lastMessageAt</code> is newer than a per-conversation
+last-read marker (<code>AppState.hasUnread(_:)</code>), stored client-local in <code>UserDefaults</code> keyed by
+<code>FSContact.id</code> — one mechanism for both friends and groups, no special-casing. The marker is set
+(<code>AppState.markRead(_:)</code>) only when <code>ChatThreadView</code> actually opens that specific thread, never
+merely from the chat list being visible or the tab being selected; it clears immediately and the
+tab-bar count recomputes accordingly. Agent chats (<code>AgentChatView</code>) never carry either badge — that
+type never flows through this mechanism at all. This is a device-local read state: it does not
+survive a reinstall or sync across a user's other devices. Badge appear/disappear uses an eased
+spring transition (a quicker exit than entrance), skipped entirely under Reduce Motion; the tab
+badge additionally pulses briefly when its count changes in place (e.g. 2 → 3) rather than
+flashing a plain text swap.</p>
+<hr />
+<h2 id="session-editing-2026-09-14-task-20260914-session-edit-button-ios">Session Editing (2026-09-14, task <code>20260914-session-edit-button</code>, iOS)</h2>
+<p><code>SessionDetailSheet</code> now shows an <strong>Edit Session</strong> button next to the existing Delete Session
+button, gated by the same author-only <code>isHost</code> check (<code>session.creator_id ==
+appState.currentUser?.user_id</code>) — visible only to the session's creator, not merely disabled for
+anyone else. Tapping it opens <code>SessionCreatorSheet</code> in a new edit mode (the same component the
+"+ new session" flow uses, rather than a forked near-duplicate view), pre-filled with the
+session's current title, start date/time, duration (inferred from the existing <code>time_start</code>/
+<code>time_end</code> gap, snapped to the nearest 15/30/45/60m option), verses, discussion prompts, and
+recurring toggle. Verses are only editable here — the create flow still has no verses UI at all,
+unchanged.</p>
+<p>Saving calls the already-implemented <code>NetworkService.updateSession(userId:sessionId:devotion:)</code>
+(a full-session <code>PUT /devotions/</code>, previously wired to no UI path) with the original session's
+<code>id</code>/<code>creator_id</code>/<code>group_id</code>/<code>participants</code> preserved and only the edited fields changed. Unlike
+the create flow's fire-and-forget save, edit mode awaits the request: a failure keeps the sheet
+open and shows a "Couldn't Save Changes" alert instead of silently discarding the edit or closing
+as if it had succeeded; success dismisses the sheet and refreshes the caller's session list via a
+new <code>onUpdate</code> callback, mirroring the existing <code>onDelete</code> refresh path.</p>
 <hr />
 <h2 id="real-time-behavior">Real-Time Behavior</h2>
 <p>The WebSocket connection (<code>/ws/{user_id}</code>) handles:</p>

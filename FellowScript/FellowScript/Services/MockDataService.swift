@@ -233,6 +233,16 @@ protocol DataServiceProtocol {
     // Chime calls
     func joinCall(userId: String, sessionId: String) async throws -> ChimeJoinResponse
 
+    // Ring group members from an active call (task 20260916-call-ring-members)
+    // -- POST /devotions/ring. Each requested target is authorized/rate-limited
+    // independently server-side and reported back the same way, so this stays
+    // throwing (a transport/decode failure or a 403/404 from the endpoint
+    // itself being disabled/misauthorized) rather than collapsing into a
+    // single UI-relevant enum the way sendNudge's single-target NudgeResult
+    // does -- RingMembersSheet needs the full per-target map to drive N
+    // independent row states from one response.
+    func ringMembers(userId: String, sessionId: String, targetIds: [String]) async throws -> [String: RingResult]
+
     // Subscriptions
     func fetchUsage(userId: String) async throws -> FSUsage?
     func fetchUserSubscription(userId: String) async throws -> FSSubscription?
@@ -732,6 +742,10 @@ final class MockDataService: DataServiceProtocol {
 
     func joinCall(userId: String, sessionId: String) async throws -> ChimeJoinResponse {
         throw AppError.networkError("Calls are not available in preview mode.")
+    }
+
+    func ringMembers(userId: String, sessionId: String, targetIds: [String]) async throws -> [String: RingResult] {
+        Dictionary(uniqueKeysWithValues: targetIds.map { ($0, RingResult(sent: true, reason: nil)) })
     }
 
     // Subscriptions

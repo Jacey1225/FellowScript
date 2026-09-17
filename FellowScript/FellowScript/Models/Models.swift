@@ -677,6 +677,22 @@ extension FSSession {
     }
 }
 
+// ── Ring group members from an active call (task 20260916-call-ring-members) ──
+// Mirrors POST /devotions/ring's response contract exactly (see
+// api/routes/devotion.py::ring_members): one independent {sent, reason} result
+// per requested target_id, keyed by that id. `reason` is nil when `sent` is
+// true; otherwise one of "invalid_target"/"not_a_member"/"unreachable"/
+// "rate_limited"/"send_failed" -- RingMembersSheet maps these to plain-language
+// row captions rather than ever surfacing the raw string.
+struct RingResult: Codable {
+    let sent:   Bool
+    let reason: String?
+}
+
+struct RingResponse: Codable {
+    let results: [String: RingResult]
+}
+
 // ── AI Agents ─────────────────────────────────────────────────────────────────
 struct FSAgent: Codable, Identifiable {
     var id:      String = UUID().uuidString

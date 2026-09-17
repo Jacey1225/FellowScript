@@ -33,6 +33,14 @@ final class CallController: ObservableObject {
     // toast, per UI/UX Q17.3 (recoverable/background errors get a warm,
     // on-brand tone, not a raw technical message).
     @Published var summarizeNotice: String? = nil
+    // Task 20260916-call-ring-members: which targets have already been
+    // successfully rung during THIS call. Read by RingMembersSheet so a
+    // `sent` row stays `sent` across the sheet being dismissed and
+    // reopened (design-notes.md §5) -- re-showing a rung member as plain
+    // `default` would invite an accidental re-ring inside the same
+    // cooldown window. Scoped to the call, not persisted -- cleared in
+    // end() below, same lifetime as the call itself.
+    @Published var sentRingTargets: Set<String> = []
 
     #if canImport(AmazonChimeSDK)
     let manager = ChimeCallManager()
@@ -43,9 +51,12 @@ final class CallController: ObservableObject {
     // Stashed at start() so end() -- invoked from 4 call sites across
     // ChimeCallView.swift, none of which have an AppState/EnvironmentObject
     // reference -- can still fire the summarize request without threading
-    // service/userId through every call site.
-    private var service: DataServiceProtocol?
-    private var userId:  String = ""
+    // service/userId through every call site. Read-only outside this class
+    // (task 20260916-call-ring-members: RingMembersSheet, presented from
+    // ChimeCallView, needs both to call service.ringMembers(...) without a
+    // third call site threading its own copies through).
+    private(set) var service: DataServiceProtocol?
+    private(set) var userId:  String = ""
 
     func start(session: FSSession, service: DataServiceProtocol, userId: String) {
         if self.session?.id == session.id { isExpanded = true; return }  // already joined
@@ -82,6 +93,7 @@ final class CallController: ObservableObject {
         #endif
         session = nil; isExpanded = false; joinError = nil
         service = nil; userId = ""
+        sentRingTargets = []
 
         maybeSummarize(session: endingSession, service: endingService, userId: endingUserId)
     }
@@ -448,6 +460,10 @@ struct ChimeVideoTileView: UIViewRepresentable {
 struct ChimeCallView: View {
     @ObservedObject private var call    = CallController.shared
     @ObservedObject private var manager = CallController.shared.manager
+    // Task 20260916-call-ring-members: presents RingMembersSheet (see
+    // RingMembersSheet.swift), the member picker + multi-select ring action
+    // this design spec's §2 describes.
+    @State private var showRingSheet = false
 
     var body: some View {
         ZStack {
@@ -465,6 +481,11 @@ struct ChimeCallView: View {
                 }
             } else {
                 callActiveBody
+            }
+        }
+        .sheet(isPresented: $showRingSheet) {
+            if let session = call.session, let service = call.service {
+                RingMembersSheet(session: session, service: service, userId: call.userId)
             }
         }
     }
@@ -584,8 +605,28 @@ struct ChimeCallView: View {
         .background(LinearGradient(colors: [.black.opacity(0.80), .clear], startPoint: .top, endPoint: .bottom))
     }
 
+    // Task 20260916-call-ring-members, design-notes.md §1: the only
+    // client-side precondition gating the Ring button itself -- a DM
+    // session's own two-id "|" key always has exactly one other member
+    // (is_authorized/resolve_members never permit fewer), so this only ever
+    // disables the genuinely member-less edge case (e.g. a stale/malformed
+    // DM key). A real group with zero *other* current members is rarer and
+    // left to RingMembersSheet's own "No other members to ring." empty
+    // state (§2) rather than requiring a roster prefetch just to gate one
+    // button -- design-notes.md explicitly anticipates that fallback path.
+    private var canRing: Bool {
+        guard let session = call.session, !session.group_id.isEmpty else { return false }
+        if session.group_id.contains("|") {
+            return Set(session.group_id.split(separator: "|")).count > 1
+        }
+        return true
+    }
+
     private var controlBar: some View {
         HStack(spacing: 28) {
+            callButton(icon: "bell.fill", label: "Ring", active: true) { showRingSheet = true }
+                .disabled(!canRing)
+                .opacity(canRing ? 1 : 0.35)
             callButton(icon: manager.isMuted ? "mic.slash.fill" : "mic.fill",
                        label: manager.isMuted ? "Unmute" : "Mute",
                        active: !manager.isMuted) { manager.toggleMute() }

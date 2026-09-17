@@ -21,3 +21,14 @@ class DevotionRequest(BaseModel):
     devotion_id: str
     user_id: str
     devotion: DevotionPlan
+
+
+class RingRequest(BaseModel):
+    """POST /devotions/ring -- ring one or more of a live session's own
+    group members to prompt them to join (task 20260916-call-ring-members).
+    ``target_ids`` is deliberately a list (not a single id) so one in-call
+    multi-select action is one request, with each target then evaluated and
+    reported independently (see routes/devotion.py::ring_members)."""
+    devotion_id: str
+    user_id: str
+    target_ids: list[str] = Field(default_factory=list)

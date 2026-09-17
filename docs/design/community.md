@@ -171,6 +171,26 @@ still requires reopening the app.
 
 ---
 
+## Ring Group Members (2026-09-16, task `20260916-call-ring-members`, iOS)
+
+A new "Ring" button sits leftmost in the active-call control bar (before Mute/Camera/End). Tapping
+it opens a member-picker sheet listing the session's own group roster (minus the caller), split into
+"Not Yet Joined" (selectable, shown first) and a visually de-emphasized "Already in Call" section
+(still selectable, but never pre-checked — ringing someone already in the call isn't the normal
+path). Selecting one or more members and tapping "Ring" sends each of them a push notification
+prompting them to join the live call now; each selected row shows its own independent
+sending/sent/rate-limited/error outcome rather than one all-or-nothing result, since a multi-select
+ring can partially succeed. A rate-limited or failed row can be retried by tapping it again; a
+successfully-rung member stays marked "Sent" for the rest of the call, even if the sheet is closed
+and reopened, so the same person can't be accidentally re-rung inside their cooldown window. The Ring
+button itself is disabled only when there's clearly no one else to ring (e.g. a stale one-person DM);
+a real empty roster is instead handled by the sheet's own "No other members to ring." message.
+
+On the recipient's side, tapping a ring push jumps straight into joining the live call, rather than
+just opening the session's chat thread the way the older session-reminder push does.
+
+---
+
 ## Failed Send Recovery (2026-09-10, task `20260910-chat-message-disappear-reentry`)
 
 A sent message (friend DM or group) that the backend explicitly rejects or fails to save (a

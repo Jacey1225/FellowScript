@@ -160,6 +160,43 @@ final class ThrowingTestDataService: DataServiceProtocol {
         try await MockDataService.shared.deleteUser(userId: userId)
     }
 
+    // Overridable (task 20260916-call-ring-members) -- added when
+    // DataServiceProtocol gained ringMembers so this shared conformer keeps
+    // compiling. Mirrors deleteUser's error/call-count seam above: forwards
+    // to MockDataService.shared.ringMembers by default so every other test
+    // using this double is unaffected, with an overridable error for a
+    // future test that needs to drive a thrown-ringMembers path.
+    //
+    // Extended (testing gate, same task, re-entry pass after the frontend
+    // compile-fix) with a settable `ringMembersResult` -- mirroring
+    // sendNudgeResult's exact shape below -- so RingMembersSheetUIStateTests
+    // can drive apply(results:to:) through every distinct per-target
+    // RingResult reason (sent, rate_limited, unreachable, send_failed,
+    // not_a_member, no_active_call, invalid_target) and confirm each maps to
+    // the correct rendered row state, plus call-observability
+    // (lastRingMembers*) so a test can confirm exactly which session/targets
+    // a real "Ring" tap actually submitted.
+    var ringMembersError: Error?
+    var ringMembersResult: [String: RingResult]?
+    var ringMembersDelayNanoseconds: UInt64?
+    private(set) var ringMembersCallCount = 0
+    private(set) var lastRingMembersUserId: String?
+    private(set) var lastRingMembersSessionId: String?
+    private(set) var lastRingMembersTargetIds: [String]?
+
+    func ringMembers(userId: String, sessionId: String, targetIds: [String]) async throws -> [String: RingResult] {
+        ringMembersCallCount += 1
+        lastRingMembersUserId = userId
+        lastRingMembersSessionId = sessionId
+        lastRingMembersTargetIds = targetIds
+        if let ringMembersDelayNanoseconds {
+            try? await Task.sleep(nanoseconds: ringMembersDelayNanoseconds)
+        }
+        if let ringMembersError { throw ringMembersError }
+        if let ringMembersResult { return ringMembersResult }
+        return try await MockDataService.shared.ringMembers(userId: userId, sessionId: sessionId, targetIds: targetIds)
+    }
+
     // task 20260817-notes-pagination-backend: DataServiceProtocol's notes
     // read methods now take an explicit cursor and return a NotesPage
     // (notes + next cursor + has_more) instead of a bare [String: FSNote],

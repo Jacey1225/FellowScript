@@ -142,4 +142,25 @@ extension NetworkService {
         }
         return response
     }
+
+    // ── Ring group members (task 20260916-call-ring-members) ────────────────────
+    // POST /devotions/ring   body: {devotion_id, user_id, target_ids}
+    //   → {"results": {target_id: {"sent": bool, "reason": str|null}}}
+    // Uses checkedRequestRaw (not requestRaw) so a 403 (caller not authorized
+    // for the session) or a 404 (feature disabled, or the session no longer
+    // exists) throws instead of silently producing an empty/misleading result
+    // map -- RingMembersSheet's catch path marks every selected row as a
+    // send failure in that case, same posture as any other rejected write.
+    func ringMembers(userId: String, sessionId: String, targetIds: [String]) async throws -> [String: RingResult] {
+        let body: [String: Any] = [
+            "devotion_id": sessionId,
+            "user_id": userId,
+            "target_ids": targetIds,
+        ]
+        let data = try await checkedRequestRaw("/devotions/ring", method: "POST", jsonObject: body)
+        guard let response = decode(RingResponse.self, from: data, endpoint: "/devotions/ring") else {
+            throw AppError.networkError("Couldn't reach members — try again.")
+        }
+        return response.results
+    }
 }

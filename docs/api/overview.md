@@ -248,6 +248,58 @@ key (`"uidA|uidB"`) to the other participant or treating any other value as
 a real group id — the same cross-tab navigation the Dashboard's Friend
 Activity widget already uses.
 
+### `POST /devotions/ring` (task `20260916-call-ring-members`)
+
+Lets a participant already on a live session's call prompt one or more of
+that session's own group members to join. Body: `{ devotion_id, user_id,
+target_ids: [...] }` — `user_id` must match the session cookie's caller.
+Gated behind `RING_FEATURE_ENABLED` (404 while disabled, as if the route
+doesn't exist, same posture as the friend-nudge feature flag above).
+
+Reworked after a security review of the first implementation (see below):
+the caller must pass BOTH `DevotionManager.is_authorized` AND
+independently appear in `DevotionManager.real_group_roster(group_id)` — a
+roster resolved only from the real `groups` table row (or the DM-pair
+split for a `"uidA|uidB"`-style `group_id`), never from
+`session.creator_id`/`session.participants`, since those two fields are
+client-supplied at session creation and aren't validated against real
+group membership. Each target must independently be in that same
+`real_group_roster(group_id)` set (minus the caller) — `resolve_members`
+is no longer used for ring, since it folds those same unverified fields
+in. A blank `group_id` resolves to an empty roster, so a session with no
+real group behind it denies everyone rather than falling back to
+`participants`/`creator_id`.
+
+The whole request is also denied up front — before any target is
+evaluated — if the session has no live call attached yet (empty
+`chime_meeting_id`, i.e. no one has actually joined/created the Chime
+meeting for it via `join-call`): every requested `target_id` comes back
+with reason `no_active_call` in that case. Unlike the friend nudge above,
+ringing is otherwise not all-or-nothing: every requested `target_id` is
+evaluated and reported on its own, so one multi-select ring attempt can
+partially succeed. Response:
+`{ "results": { target_id: { "sent": bool, "reason": str | null } } }`,
+where `reason` is one of `no_active_call`, `invalid_target`,
+`not_a_member`, `unreachable`, `rate_limited`, or `send_failed` whenever
+`sent` is `false`.
+
+Each `(sender, recipient)` pair has its own cooldown
+(`RING_COOLDOWN_MINUTES`, claimed atomically before the send and released
+if the send fails), independent of `session_id` — a fresh session can no
+longer reset it. (The original design scoped this per-session instead;
+that let a sender mint a new session and re-ring the same target with no
+effective limit, so it was replaced with this cross-session key.) A
+coarse `30/minute` per-IP backstop applies on top, same shared `limiter`
+instance as the friend-nudge route. Delivers via the existing APNs
+`send_push` pipeline with fixed, non-user-authored copy
+(`"{caller_username} wants you to join "{session_title}" now"`, or a
+generic fallback if the session has no title) and a `data` payload of
+`{"action": "ring", "devotion_id", "group_id"}` — the `action`
+discriminator lets the client tell a ring push apart from the plain "New
+Session"/"Session Starting" pushes above and route its tap-through
+straight into the live join flow instead of just the session detail
+screen.
+
 ---
 
 ## Agent (AI Check-ins)

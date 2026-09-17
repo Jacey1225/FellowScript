@@ -1,10 +1,101 @@
 import json
 import logging
+import os
 from db import DBManager
 from backend.errors import SaveFailedError
 from schemas.devotion import DevotionPlan
 
 logger = logging.getLogger(__name__)
+
+# ── Ring feature config (task 20260916-call-ring-members) ───────────────────
+#
+# Mirrors friends.py's NUDGE_FEATURE_ENABLED/NUDGE_RATE_LIMIT_HOURS precedent
+# exactly (Configuration Philosophy Q1/Q4/Q8): both vars are new *required*
+# config, not optional knobs with a silently-guessed fallback. The raw
+# strings are only read here, at import time; validate_ring_config() must be
+# called eagerly at process startup (main.py's lifespan, alongside
+# push.py's validate_apns_config() and friends.py's validate_nudge_config())
+# to parse and populate the typed globals below -- a deploy that hasn't set
+# them explicitly fails loudly at boot instead of the ring endpoint silently
+# running with a guessed cooldown window or an implicitly-on/off feature
+# flag. RING_FEATURE_ENABLED is expected to be deployed as "false" initially
+# (off-by-default proactive-flagging stance) and flipped to "true" for
+# rollout -- that's a deploy-time value choice, not a code-level fallback.
+_RING_FEATURE_ENABLED_RAW = os.getenv("RING_FEATURE_ENABLED")
+_RING_COOLDOWN_MINUTES_RAW = os.getenv("RING_COOLDOWN_MINUTES")
+
+# Populated by validate_ring_config(); read via is_ring_enabled() rather than
+# importing this name by value elsewhere, since `from module import NAME`
+# binds the value at import time and would never observe the update
+# validate_ring_config() makes after that import runs.
+RING_FEATURE_ENABLED = False
+RING_COOLDOWN_MINUTES = 0
+
+
+class RingConfigError(RuntimeError):
+    """RING_FEATURE_ENABLED/RING_COOLDOWN_MINUTES are unset or invalid.
+
+    Deliberately never swallowed -- mirrors push.py's APNsConfigError and
+    friends.py's NudgeConfigError precedent exactly (see those classes'
+    docstrings): a misconfigured ring rollout must fail loudly at boot
+    rather than the endpoint silently running with a guessed or nonsensical
+    cooldown window.
+    """
+
+
+def validate_ring_config() -> None:
+    """Eagerly validate and parse RING_FEATURE_ENABLED/RING_COOLDOWN_MINUTES.
+
+    Call once, at process startup (main.py's lifespan), before serving
+    traffic -- same placement/reasoning as push.py's validate_apns_config()
+    and friends.py's validate_nudge_config().
+
+    Raises:
+        RingConfigError: If either var is unset, or RING_FEATURE_ENABLED
+            isn't exactly "true"/"false" (case-insensitive), or
+            RING_COOLDOWN_MINUTES isn't a positive integer.
+    """
+    global RING_FEATURE_ENABLED, RING_COOLDOWN_MINUTES
+
+    if _RING_FEATURE_ENABLED_RAW is None:
+        raise RingConfigError(
+            "RING_FEATURE_ENABLED is not set. There is no implicit "
+            "default -- set it explicitly to \"false\" (off) or \"true\" "
+            "before this process can start."
+        )
+    normalized = _RING_FEATURE_ENABLED_RAW.strip().lower()
+    if normalized not in ("true", "false"):
+        raise RingConfigError(
+            f"RING_FEATURE_ENABLED ({_RING_FEATURE_ENABLED_RAW!r}) must be "
+            "exactly \"true\" or \"false\"."
+        )
+    RING_FEATURE_ENABLED = normalized == "true"
+
+    if _RING_COOLDOWN_MINUTES_RAW is None or not _RING_COOLDOWN_MINUTES_RAW.strip():
+        raise RingConfigError(
+            "RING_COOLDOWN_MINUTES is not set. There is no implicit "
+            "default for the ring cooldown window -- set it explicitly "
+            "(e.g. 5)."
+        )
+    try:
+        minutes = int(_RING_COOLDOWN_MINUTES_RAW)
+    except ValueError:
+        raise RingConfigError(
+            f"RING_COOLDOWN_MINUTES ({_RING_COOLDOWN_MINUTES_RAW!r}) is "
+            "not a valid integer."
+        )
+    if minutes <= 0:
+        raise RingConfigError(
+            f"RING_COOLDOWN_MINUTES ({minutes}) must be a positive number of minutes."
+        )
+    RING_COOLDOWN_MINUTES = minutes
+
+
+def is_ring_enabled() -> bool:
+    """Current RING_FEATURE_ENABLED value -- always looked up fresh (see the
+    module-global comment above) so callers see validate_ring_config()'s
+    result regardless of import order."""
+    return RING_FEATURE_ENABLED
 
 
 class DevotionManager(DBManager):
@@ -114,6 +205,119 @@ class DevotionManager(DBManager):
             self.conn.rollback()
         return list(members)
 
+    def real_group_roster(self, group_id: str) -> set[str]:
+        """The verifiable membership of ``group_id`` -- resolved ONLY from
+        the real ``groups`` table row (or a friendship/block-verified
+        DM-pair split), never from ``session.creator_id``/
+        ``session.participants``.
+
+        Task 20260916-call-ring-members (post-security-bounce rework):
+        both of those session fields are fully client-supplied and
+        unvalidated at devotion-session creation time -- ``DevotionPlan``
+        has no server-side check tying either to real group membership
+        (see architecture.json's ``revision_note``/``separately_scoped_
+        issue`` for this task). ``is_authorized``/``resolve_members`` fold
+        those fields in, which is fine for their existing callers
+        (join/view/leave/create/join_call -- fixing *that* root cause is a
+        separately-scoped issue) but reusing either for ring's own
+        authorization would let a caller mint a session with a forged
+        ``group_id``/``participants`` and ring real members of a group
+        they were never actually part of. Ring uses this method instead,
+        for both the caller check and target eligibility, and no longer
+        consults ``resolve_members`` at all.
+
+        Task 20260916-call-ring-members (2nd security-bounce rework): the
+        DM-pair branch (``group_id`` containing ``"|"``) used to trust the
+        literal id-split as-is -- since ``group_id`` is free-form,
+        client-supplied text with no server-side format validation at
+        session-creation time (same root cause noted above), a caller could
+        self-mint ``group_id="<attacker>|<victim>"`` and have both the
+        caller-membership and target-eligibility checks pass purely from
+        string-splitting, with zero real relationship behind it. The split
+        pair is now only trusted as a roster once it's independently
+        verified to be a real, current, non-blocked mutual friendship --
+        the same defense-in-depth ``user_friends``/``blocked_users``
+        ``NOT EXISTS`` check shape as
+        ``FriendsManager.check_nudge_allowed``/``get_friend_activity``,
+        adapted to require a ``user_friends`` row in *both* directions
+        (rather than trusting the one-directional row ``add_friend``'s
+        symmetric insert implies) since this method has no
+        ``FriendsManager`` instance's own invariants to lean on. A pair
+        that isn't a verified mutual-friend, non-blocked pair yields an
+        empty set for the whole DM session -- same fail-closed shape as
+        the real-group branch's blank/errored ``group_id`` case, and the
+        denial never distinguishes "not friends" from "blocked" (merged,
+        enumeration-avoidance posture, matching ``check_nudge_allowed``).
+
+        Fails closed (Q14) to an empty set for a blank ``group_id`` --
+        there's no independently-verifiable roster behind an empty value,
+        so nothing is authorized against it rather than falling back to
+        session fields -- for a DM-pair that isn't a verified, non-blocked
+        mutual friendship, and for any error resolving either roster.
+
+        Args:
+            group_id: Either a real ``groups._id`` or a DM room key
+                ``"uidA|uidB"`` (sorted, see frontend's ``roomKey()``).
+
+        Returns:
+            set[str]: The real member ids, or an empty set if ``group_id``
+                is blank, the DM pair isn't a verified non-blocked mutual
+                friendship, or the lookup fails.
+        """
+        if not group_id:
+            return set()
+        if "|" in group_id:
+            parts = group_id.split("|")
+            if len(parts) != 2 or not parts[0] or not parts[1] or parts[0] == parts[1]:
+                # Malformed/degenerate split (not the well-formed 2-distinct
+                # -id shape frontend's roomKey() produces) -- no roster to
+                # verify a relationship for. Fail closed rather than guess.
+                return set()
+            uid_a, uid_b = parts
+            try:
+                self.cur.execute(
+                    "SELECT 1 FROM user_friends uf_fwd "
+                    "JOIN user_friends uf_rev "
+                    "  ON uf_rev.user_id = uf_fwd.friend_id "
+                    "  AND uf_rev.friend_id = uf_fwd.user_id "
+                    "WHERE uf_fwd.user_id = %s AND uf_fwd.friend_id = %s "
+                    "AND NOT EXISTS ("
+                    "  SELECT 1 FROM blocked_users b "
+                    "  WHERE (b.blocker_id = %s AND b.blocked_id = %s) "
+                    "     OR (b.blocker_id = %s AND b.blocked_id = %s)"
+                    ")",
+                    (uid_a, uid_b, uid_a, uid_b, uid_b, uid_a),
+                )
+                if self.cur.fetchone() is None:
+                    # Merged denial (Q_enumeration-avoidance): could be "not
+                    # friends" (in either or both directions) or "blocked"
+                    # (either direction) -- never distinguished, same as
+                    # FriendsManager.check_nudge_allowed's "not_friends".
+                    return set()
+                return {uid_a, uid_b}
+            except Exception:
+                logger.exception(
+                    "Devotion real_group_roster DM-pair friendship/block "
+                    "verification errored for group_id=%r -- denying "
+                    "(fail-closed), but this is NOT a confirmed "
+                    "not-friends/blocked result.",
+                    group_id,
+                )
+                self.conn.rollback()
+                return set()
+        try:
+            self.cur.execute("SELECT users FROM groups WHERE _id = %s", (group_id,))
+            row = self.cur.fetchone()
+            return {str(u) for u in row[0]} if row and row[0] else set()
+        except Exception:
+            logger.exception(
+                "Devotion real_group_roster lookup errored for group_id=%r -- "
+                "denying (fail-closed), but this is NOT a confirmed empty-roster result.",
+                group_id,
+            )
+            self.conn.rollback()
+            return set()
+
     def device_tokens_bulk(self, user_ids: list[str]) -> dict[str, str]:
         """{user_id: token} for every user in ``user_ids`` with a registered
         device token -- one batched query instead of one per recipient,
@@ -143,7 +347,105 @@ class DevotionManager(DBManager):
         _, data = list(result.items())[0]
         return data.get("username", "") or ""
 
+    def claim_ring_slot(self, sender_id: str, recipient_id: str) -> bool:
+        """Atomically check-and-claim the cross-session (sender, recipient)
+        ring cooldown in a single round trip -- same concurrency-safe
+        ``INSERT ... ON CONFLICT ... WHERE ... RETURNING`` shape as
+        ``FriendsManager.claim_nudge_slot`` (task 20260906-friend-nudges),
+        which closes the "two unsynchronized round trips" race that shape
+        exists to prevent: Postgres's own row lock on the conflicting
+        ``(sender_id, recipient_id)`` row serializes concurrent callers for
+        the same key instead of letting both observe "cooldown elapsed" at
+        once.
+
+        Revised (task 20260916-call-ring-members, post-security-bounce
+        rework) from the original per-(sender, recipient, session) key to
+        this cross-session (sender, recipient)-only key: security's
+        re-review found that a fresh ``session_id`` reset the old key's
+        cooldown for free, and nothing about session creation was
+        throttled or (at the time) verified against real group membership
+        -- together those let a sender mint a new session and re-ring the
+        same target with no effective limit. Dropping ``session_id`` from
+        the key entirely closes that: no session_id can ever reset this
+        cooldown again. A legitimate re-ring after
+        ``RING_COOLDOWN_MINUTES`` elapses still works identically whether
+        it's the same session or a new one, so nothing about the
+        already-shipped-in-spirit cooldown UX changes.
+
+        Must be called -- and must return ``True`` -- BEFORE the push is
+        sent, never after. Call ``release_ring_claim`` afterward if the send
+        itself then fails, so a failed send doesn't consume the cooldown for
+        nothing.
+
+        Returns:
+            bool: ``True`` if this call claimed the slot (no prior ring for
+                this (sender, recipient) pair, or the prior claim's
+                ``last_rung_at`` is already older than
+                ``RING_COOLDOWN_MINUTES``) -- the caller may proceed to
+                send. ``False`` if an existing claim is still within the
+                window -- the caller must deny with reason
+                ``"rate_limited"`` and must NOT send.
+        """
+        self.cur.execute(
+            "INSERT INTO ring_cooldowns (sender_id, recipient_id, last_rung_at) "
+            "VALUES (%s, %s, NOW()) "
+            "ON CONFLICT (sender_id, recipient_id) DO UPDATE "
+            "SET last_rung_at = NOW() "
+            "WHERE ring_cooldowns.last_rung_at < NOW() - (%s * INTERVAL '1 minute') "
+            "RETURNING sender_id",
+            (sender_id, recipient_id, RING_COOLDOWN_MINUTES),
+        )
+        claimed = self.cur.fetchone() is not None
+        self.conn.commit()
+        return claimed
+
+    def release_ring_claim(self, sender_id: str, recipient_id: str) -> None:
+        """Undo a winning ``claim_ring_slot`` call after the push send
+        itself failed, so the sender's cooldown isn't consumed for a ring
+        that never actually reached the recipient -- mirrors
+        ``FriendsManager.release_nudge_claim`` exactly, including its
+        "only ever safe to call on behalf of a claim this same request
+        already won" precondition (see that method's docstring).
+
+        Best-effort/non-fatal on failure -- the push already failed by the
+        time this is called, so a failure here is logged, not raised, and
+        must never mask the original send failure the caller is already
+        handling.
+        """
+        try:
+            self.cur.execute(
+                "DELETE FROM ring_cooldowns WHERE sender_id = %s AND recipient_id = %s",
+                (sender_id, recipient_id),
+            )
+            self.conn.commit()
+        except Exception as e:
+            logger.warning(
+                "Ring claim release failed (%s -> %s): %s",
+                sender_id, recipient_id, e,
+            )
+            self.conn.rollback()
+
     def save_devotion(self, devotion: DevotionPlan) -> str:
+        # Security fix (task 20260916-call-ring-members, 3rd security
+        # re-review): `chime_meeting_id`/`chime_meeting` must never be
+        # taken from client-supplied `DevotionPlan` input on create --
+        # ring's whole `live_call_gating` decision (routes/devotion.py::
+        # ring_members's "no_active_call" check) depends on
+        # `chime_meeting_id` only ever reflecting a genuine AWS Chime
+        # `CreateMeeting` response (written exclusively via
+        # `save_chime_meeting`, after `join_call`/`_get_or_create_meeting`
+        # succeeds). `DevotionPlan.chime_meeting_id` has a client-settable
+        # default of `""` with no server-side override here previously --
+        # a caller could POST /devotions/ with a self-chosen non-empty
+        # `chime_meeting_id` string and immediately pass the ring route's
+        # live-call gate for a session with no real call behind it at all,
+        # letting them send a "join the call now" push to a real group
+        # member/verified friend for a call that never existed. Neither
+        # field is ever legitimately populated by a client at creation
+        # time (confirmed: no iOS model sends either), so both are hard
+        # coded to their empty defaults here regardless of what the
+        # request body contains -- only `save_chime_meeting` may ever set
+        # a real value, later.
         self.cur.execute(
             "INSERT INTO devotions (_id, title, time_start, time_end, recurring, "
             "group_id, creator_id, participants, verses, prompts, chime_meeting_id, chime_meeting, summarize) "
@@ -153,7 +455,7 @@ class DevotionManager(DBManager):
              devotion.recurring,
              devotion.group_id or None, devotion.creator_id or None,
              devotion.participants, devotion.verses, devotion.prompts,
-             devotion.chime_meeting_id, json.dumps(devotion.chime_meeting),
+             "", json.dumps({}),
              devotion.summarize)
         )
         self.conn.commit()

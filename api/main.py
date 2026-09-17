@@ -142,6 +142,16 @@ async def lifespan(_: FastAPI):
     from backend.interactions.friends import validate_nudge_config
     validate_nudge_config()
 
+    # Eager ring-feature config validation (task 20260916-call-ring-members)
+    # -- same rationale as validate_apns_config/validate_nudge_config just
+    # above: RING_FEATURE_ENABLED and RING_COOLDOWN_MINUTES are new required
+    # config (Configuration Philosophy Q4 -- no implicit default), so a
+    # deploy that hasn't set them explicitly must fail loudly at boot rather
+    # than the ring endpoint silently running with a guessed cooldown
+    # window. Deliberately not caught here.
+    from backend.interactions.devotion import validate_ring_config
+    validate_ring_config()
+
     from backend.interactions.scheduler import start_scheduler
     start_scheduler()
     # WS connection-liveness heartbeat (task
