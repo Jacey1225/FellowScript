@@ -321,6 +321,70 @@ def test_generate_download_url_degrades_gracefully():
           str(url))
 
 
+# ── Regression: task 20260917-desktop-gif-image-render-bug (send-side) ──────
+#
+# The real bug: `_client()` built the boto3 S3 client with only
+# `region_name` and no `Config`. For a bucket outside us-east-1 (S3's legacy
+# "US Standard" default region), botocore's presign code path resolved to
+# the legacy GLOBAL host (`<bucket>.s3.amazonaws.com`) instead of the
+# regional virtual-hosted host (`<bucket>.s3.<region>.amazonaws.com`), even
+# though `client.meta.endpoint_url` correctly reported the regional
+# endpoint. AWS 307-redirects the global host to the real regional one, and
+# a browser `fetch()` in CORS mode (useMessaging.js's attachment-upload
+# call, identical on web and desktop) refuses to follow that redirect
+# without CORS headers already on the redirect target -- producing the
+# reported "Cross-origin redirection ... denied by Cross-Origin Resource
+# Sharing policy" failure. The fix pins `Config(s3={"addressing_style":
+# "virtual"}, signature_version="s3v4")` on the client so the regional host
+# is used directly and the redirect (and CORS-on-redirect failure) never
+# happens. This test uses a region deliberately NOT us-east-1 (matching the
+# real production bucket's us-west-1) -- us-east-1 is degenerate for this
+# bug because the legacy global host and the regional host coincide there,
+# so a us-east-1-only test would pass even without the fix.
+def test_s3_client_uses_regional_virtual_addressing():
+    print("\n=== Regression 20260917: S3 client is configured so presigned URLs resolve to "
+          "the regional virtual-hosted host, never the legacy global host that 307-redirects "
+          "and gets blocked by CORS-on-redirect ===")
+    saved_region = os.environ.get("S3_REGION")
+    try:
+        os.environ["S3_REGION"] = "us-west-1"
+        importlib.reload(attachments)
+
+        client = attachments._client()
+        check("S3 client config pins addressing_style to 'virtual' (forces the regional "
+              "virtual-hosted host up front, never the legacy global host)",
+              client.meta.config.s3 is not None
+              and client.meta.config.s3.get("addressing_style") == "virtual",
+              str(client.meta.config.s3))
+        check("S3 client config pins signature_version to 's3v4' (AWS-recommended modern "
+              "signer, verified alongside the addressing fix rather than assumed compatible)",
+              client.meta.config.signature_version == "s3v4",
+              str(client.meta.config.signature_version))
+
+        url = attachments.generate_download_url("attachments/some-user/regional-host-check.jpg")
+        check("a presigned GET URL for a non-us-east-1 bucket resolves to the regional "
+              "virtual-hosted host (<bucket>.s3.us-west-1.amazonaws.com), not the legacy "
+              "global host that would 307-redirect and trip CORS-on-redirect",
+              isinstance(url, str) and ".s3.us-west-1.amazonaws.com" in url,
+              str(url))
+        check("...and specifically does NOT use the bare legacy global host "
+              "('<bucket>.s3.amazonaws.com', with no region segment)",
+              isinstance(url, str) and f"{attachments.S3_BUCKET_NAME}.s3.amazonaws.com" not in url,
+              str(url))
+
+        policy = attachments.generate_upload_policy("regression-test-user", "image", "image/jpeg")
+        check("generate_upload_policy's presigned POST url also resolves to the regional host, "
+              "not the legacy global one (same addressing-style fix, same code path family)",
+              isinstance(policy["url"], str) and ".s3.us-west-1.amazonaws.com" in policy["url"],
+              str(policy["url"]))
+    finally:
+        if saved_region is not None:
+            os.environ["S3_REGION"] = saved_region
+        else:
+            os.environ.pop("S3_REGION", None)
+        importlib.reload(attachments)
+
+
 # ── 3. GIF-search endpoint ───────────────────────────────────────────────────
 
 def test_gif_search_route_auth_and_error_mapping(client):
@@ -765,6 +829,7 @@ def main():
         test_upload_url_mime_size_enforcement(client)
         test_generate_upload_policy_limits_match_per_kind_config()
         test_generate_download_url_degrades_gracefully()
+        test_s3_client_uses_regional_virtual_addressing()
         test_gif_search_route_auth_and_error_mapping(client)
         test_gif_search_shaping_never_leaks_raw_provider_fields()
         test_send_msg_attachment_round_trip_dm()
