@@ -52,6 +52,7 @@ import os
 import uuid
 
 import boto3
+from botocore.config import Config
 from botocore.exceptions import ClientError
 
 logger = logging.getLogger(__name__)
@@ -122,11 +123,40 @@ _MIME_EXTENSIONS: dict[str, str] = {
 
 _s3_client = None
 
-
+# Bug 20260917-desktop-gif-image-render-bug: passing only `region_name` to
+# `boto3.client("s3", ...)` is NOT enough to make botocore actually address
+# the bucket at its region-specific endpoint when presigning. Confirmed live
+# against this project's production container (same S3_BUCKET_NAME/S3_REGION
+# it runs with): with no `Config` at all, `generate_presigned_url`/
+# `generate_presigned_post` both resolved to the legacy global host
+# (`<bucket>.s3.amazonaws.com`, SigV2-style `AWSAccessKeyId`/`Signature`
+# query params) even though `client.meta.endpoint_url` correctly reported
+# the regional endpoint -- botocore's S3 addressing-style auto-detection and
+# its presign code path are evaluated separately, and for this SDK version
+# the auto-detected default did not pick the regional virtual-hosted form on
+# its own. Since this bucket does not live in us-east-1 (S3's default
+# "US Standard" region), every URL generated that way pointed at a host that
+# AWS answers with a 307 redirect to the real regional endpoint
+# (`<bucket>.s3-<region>.amazonaws.com`) -- and a browser `fetch()` in CORS
+# mode refuses to follow that redirect unless the redirect target's response
+# already carries an `Access-Control-Allow-Origin` covering the calling
+# origin, which produced exactly the "Cross-origin redirection ... denied by
+# Cross-Origin Resource Sharing policy" / "TypeError: Load failed" errors
+# reported from the desktop app's attachment-upload `fetch()` call.
+# `addressing_style: "virtual"` forces the regional virtual-hosted host
+# (`<bucket>.s3.<region>.amazonaws.com`) up front, so the redirect (and the
+# CORS-on-redirect failure mode) never happens in the first place; pinning
+# `signature_version` to SigV4 is the AWS-recommended modern signer (some
+# regions enabled after March 2019 reject SigV2 outright) and was verified
+# alongside the addressing fix rather than assumed compatible.
 def _client():
     global _s3_client
     if _s3_client is None:
-        _s3_client = boto3.client("s3", region_name=S3_REGION or None)
+        _s3_client = boto3.client(
+            "s3",
+            region_name=S3_REGION or None,
+            config=Config(s3={"addressing_style": "virtual"}, signature_version="s3v4"),
+        )
     return _s3_client
 
 
