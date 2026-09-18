@@ -373,3 +373,38 @@ password — confirmed done before any further work resumed. No credential
 values are stored anywhere in this repo or in this file. (This is also why
 notarization now goes through the App Store Connect API key instead of an
 Apple-ID app-specific-password profile — see Status above.)
+
+## Rebuild + redistribution (2026-09-18)
+
+Rebuilt and re-shipped to pick up everything committed to `desktop/` since
+the 2026-09-06 rebuild but never actually released: the native Reload menu
+item and window-chrome polish (dark title bar, launch-flash fix, min window
+size — `cb3353c2`, task `20260908-desktop-native-window-chrome`). The
+GitHub release asset had been stale against `desktop/`'s own source for
+that entire gap.
+
+- `npx tauri build` hit the same "timestamp service is not available"
+  codesign failure as prior rebuilds, on both the first attempt and a plain
+  retry (matching the 2026-09-06 pattern, not the 2026-09-02 "retry just
+  works" one). Resolved the same way: a direct `codesign --force --sign
+  "Developer ID Application: Jacey Simpson (886XPLVC69)" --timestamp
+  --options runtime` on the already-built `.app` succeeded immediately —
+  still unclear whether this genuinely needs the extra manual invocation or
+  whether it just happens to land after whatever timestamp-service/keychain
+  hiccup clears; don't treat either "plain retry" or "one direct codesign
+  call" as the guaranteed fix next time, try both in sequence.
+- Full sequence otherwise completed exactly as documented above: sign app →
+  zip → `notarytool submit --wait` (Accepted) → staple → `spctl --assess`
+  (accepted) → `hdiutil create -format UDZO` → sign `.dmg` with
+  `--timestamp` (clean on the first attempt this time, no retry needed) →
+  `notarytool submit --wait` (Accepted) → staple → `spctl -a -t open
+  --context context:primary-signature` (accepted).
+- Uploaded to the existing `desktop-v0.1.0` release as `FellowScript.dmg`
+  (`gh release upload desktop-v0.1.0 <path> --clobber`), replacing the
+  2026-09-06 asset in place. New size ~3.05MB (was ~3.05MB before too — no
+  change needed to `Home.jsx`'s "3 MB" label). No frontend code change or
+  redeploy needed; `MACOS_DOWNLOAD_URL` already points at this same
+  permanent release/filename.
+- `gh` still has no stored auth in this environment — token pulled from
+  git's own credential store the same way as 2026-09-06 (`git credential
+  fill`, `protocol=https`/`host=github.com`, exported as `GH_TOKEN`).
