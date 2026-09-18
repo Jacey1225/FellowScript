@@ -107,6 +107,56 @@ fn is_allowed_navigation(url: &Url) -> bool {
 //     delegate equivalently re-fires on native reload has not been verified
 //     here and should not be assumed if Windows packaging is ever picked up.
 
+// --- Investigation note (task 20260917-desktop-gif-image-render-bug,
+// backend gate, send-side re-investigation after a frontend bounce): the
+// user's report that no native file-open dialog EVER appears when tapping
+// the attach button on desktop is NOT caused by anything in this crate or
+// in `capabilities/default.json`. Ruled out by reading the pinned `wry`
+// 0.55.1 source directly (not by assumption):
+//
+// - `frontend/`'s attach flow (`ChatThread.jsx` lines ~813-814) uses a
+//   plain, hidden `<input type="file">` triggered via `ref.current.click()`
+//   from a real click handler -- a standard DOM/WebKit API, not a Tauri
+//   command. It is never routed through Tauri's IPC bridge at all, so
+//   `capabilities/default.json`'s permission set (`core:default`,
+//   `opener:allow-open-url`) has no bearing on it whatsoever -- there is no
+//   `@tauri-apps/plugin-dialog` or `@tauri-apps/plugin-fs` dependency
+//   anywhere in `frontend/` or `desktop/package.json` either, so this isn't
+//   a missing-capability-for-a-dialog-plugin situation.
+// - The frontend gate's hypothesis was that wry/Tauri might not implement
+//   `WKUIDelegate`'s `runOpenPanelWithParameters` -- the macOS callback
+//   WebKit invokes to show the native `NSOpenPanel` when a page's
+//   `<input type="file">` is activated. That hypothesis is refuted: wry's
+//   `WryWebViewUIDelegate` (`wkwebview/class/wry_web_view_ui_delegate.rs`)
+//   implements `webView:runOpenPanelWithParameters:initiatedByFrame:
+//   completionHandler:` unconditionally for `target_os = "macos"`, with no
+//   Cargo feature gate (not behind `devtools`/`protocol`/`transparent` or
+//   any other opt-in feature -- confirmed against wry's own `Cargo.toml`
+//   `[features]` table). `wkwebview/mod.rs`'s webview-construction path
+//   calls `webview.setUIDelegate(Some(proto_ui_delegate))` unconditionally
+//   for every WKWebView it creates (not gated by any `WebViewAttributes`
+//   flag this app would need to opt into) -- so this app's single window
+//   already has the delegate wired with zero code of its own required.
+// - No sandboxing/entitlement gap either: this app has no `.entitlements`
+//   file anywhere in the repo, no App Sandbox, and no `LSUIElement`/custom
+//   `Info.plist` restriction -- `bundle.macOS.hardenedRuntime: true` in
+//   `tauri.conf.json` is a codesigning/notarization requirement only (see
+//   the receive-side investigation comment above) and does not itself gate
+//   `NSOpenPanel`, which grants file access via the system Powerbox
+//   regardless of sandboxing.
+//
+// Conclusion: nothing here needs loosening (no capability change, so no
+// threat-modeling gate is warranted for this finding), and there is no
+// Rust/wry/capabilities-side fix to make. If the dialog genuinely never
+// appears in the packaged app, the cause is on the frontend/DOM side --
+// e.g. whether the antd `Popover` attach menu itself is opening/rendering
+// at all under WKWebView (a plausible sibling to the CSS-collapse root
+// cause already confirmed elsewhere in this same task), or whether the
+// synthetic `.click()` on the hidden `<input type="file">` is actually
+// being reached in the running app. Do not re-investigate this
+// Rust/wry/capabilities surface for this bug without new evidence
+// contradicting the above.
+
 // Builds the standard App/File/Edit/View/Window/Help menu (Tauri's own
 // macOS default, kept explicit rather than relied on implicitly -- see
 // `run()` below for why) and appends a "Reload" item with the idiomatic
@@ -211,6 +261,51 @@ pub fn run() {
         // from, and does not replace, the frontend's DesktopRouteGuard --
         // see that component and lib/desktopScope.js for the primary
         // enforcement layer and the reasoning split between the two.
+        // Investigation note (task 20260917-desktop-gif-image-render-bug,
+        // backend gate step 1): confirmed this handler -- and therefore
+        // `is_allowed_navigation` -- has no interaction with the subresource
+        // (non-navigation) `<img>`/GIF requests that were reported collapsing
+        // to a thin line in the packaged desktop app. Tauri's `on_navigation`
+        // wires directly to WKWebView's `WKNavigationDelegate
+        // .webView:decidePolicyForNavigationAction:decisionHandler:` (see the
+        // pinned wry 0.55.1 source: `wkwebview/class/wry_navigation_delegate.rs`
+        // registers `navigation_policy` for exactly that one selector, and
+        // `wkwebview/navigation.rs`'s `navigation_policy` is the only thing
+        // that calls into this closure). Per WebKit's own documented contract,
+        // that delegate method fires only for frame-level navigation actions
+        // (a main-frame or subframe load, redirect, `window.location`
+        // assignment, form submission) -- never for the resource sub-requests
+        // a loaded frame issues afterward, such as an `<img src>` fetch, CSS,
+        // font, or `fetch()`/XHR call. Those go straight through WKWebView's
+        // networking stack and never reach this delegate at all, so a
+        // same-origin `<img>` pointed at the S3-hosted attachment host or the
+        // GIF provider's CDN is not evaluated against `DESKTOP_ALLOWED_ROUTES`
+        // and cannot be silently narrowed by it.
+        //
+        // The other two candidates named in that task's scope are ruled out
+        // the same way: `tauri.conf.json`'s `security.csp` is explicitly
+        // `null` (no CSP injected at all, and Tauri's CSP-injection mechanism
+        // only applies to the bundled `frontendDist` asset protocol in the
+        // first place -- this window loads a fully remote URL, so it's doubly
+        // inapplicable); and `capabilities/default.json`'s permissions
+        // (`core:default`, `opener:allow-open-url`) gate which
+        // `#[tauri::command]`/plugin calls the frontend's `invoke()` may make
+        // over Tauri's IPC bridge -- they are never consulted for an ordinary
+        // webview network fetch like an `<img>` load, which has no IPC
+        // involvement whatsoever. `hardenedRuntime: true` in `tauri.conf.json`
+        // is a codesigning/notarization requirement, not App Sandbox (no
+        // `.entitlements` file restricting network domains exists in this
+        // repo), so it imposes no additional network restriction either. The
+        // native "Reload" menu item (task 20260908-desktop-reload-button)
+        // only re-invokes this same main-frame navigation delegate via
+        // `WebviewWindow::reload()` and has no separate subresource-loading
+        // code path to interact with.
+        //
+        // Conclusion: this webview/CSP/capability/navigation-allowlist
+        // surface is ruled out as the cause of the thin-line render bug. The
+        // actual cause is expected to be in `frontend/`'s CSS/layout (see
+        // that task's frontend gate step) -- do not re-investigate this
+        // surface for that bug without new evidence contradicting the above.
         .on_navigation(|url| {
           let allowed = is_allowed_navigation(url);
           if !allowed {

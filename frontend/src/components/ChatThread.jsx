@@ -810,8 +810,28 @@ export default function ChatThread({
             style={{ color: 'rgba(255,198,26,0.75)', flexShrink: 0, width: 44, height: 44 }}
           />
         </Popover>
-        <input ref={photoVideoInputRef} type="file" accept="image/*,video/*" style={{ display: 'none' }} onChange={handlePhotoVideoChange} />
-        <input ref={fileInputRef} type="file" accept={ATTACHMENT_LIMITS.file.accept} style={{ display: 'none' }} onChange={handleFileChange} />
+        {/* Task 20260917-desktop-gif-image-render-bug (send-side): these two
+            inputs used to be `style={{ display: 'none' }}`. That's a known
+            WebKit gotcha -- a `display: none` <input type="file"> doesn't
+            reliably invoke the native open-panel when `.click()`'d
+            programmatically, because a `display: none` element is removed
+            from the render tree entirely, and some WKWebView versions skip
+            wiring the click through to WKUIDelegate's
+            runOpenPanelWithParameters for an element that was never laid
+            out/painted -- even though the same code fires the panel fine in
+            Chrome/Firefox (web), which don't share that restriction. The
+            desktop app embeds exactly this WKWebView (see
+            src-tauri/src/lib.rs), so this is the most likely explanation for
+            "attach menu opens, but clicking Photo & Video / File does
+            nothing" being desktop-only despite byte-identical frontend code.
+            Fix: keep the input out of layout flow and invisible via
+            `.hidden-file-input` (position: absolute, 1x1px, opacity: 0,
+            overflow hidden -- see global.css) instead of `display: none`, so
+            the element is still laid out/painted (just imperceptibly) and
+            `.click()` reaches the native panel consistently. No visual or
+            behavioral change on web/iOS. */}
+        <input ref={photoVideoInputRef} type="file" accept="image/*,video/*" className="hidden-file-input" onChange={handlePhotoVideoChange} />
+        <input ref={fileInputRef} type="file" accept={ATTACHMENT_LIMITS.file.accept} className="hidden-file-input" onChange={handleFileChange} />
 
         <Input
           value={text}

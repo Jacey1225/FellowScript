@@ -989,10 +989,38 @@ body {
 
 /* A media (image/video/gif) attachment bubble drops the container's own
    text padding for edge-to-edge content (design gate §4) -- .msg-bubble's
-   own padding is overridden back to zero here, same clipping radius. */
+   own padding is overridden back to zero here, same clipping radius.
+
+   width: 220px (task 20260917-desktop-gif-image-render-bug) -- .msg-bubble
+   is a column-flex item with no cross-axis stretch (align-self: flex-end on
+   .sent, and .received has no stretch override either), so with no width of
+   its own it sizes to shrink-to-fit/max-content on its children. .attachment-
+   media's <img> is width: 100%, which is a percentage size relative to this
+   parent -- a percentage-width replaced element inside a shrink-to-fit
+   ancestor is a circular sizing dependency (the ancestor's auto width would
+   normally fall back to the img's *intrinsic* size to break the cycle, per
+   the CSS2.1 replaced-element/intrinsic-sizing algorithm), and WebKit's flex
+   layout has a long-standing bug class here where that fallback resolves to
+   a near-zero cross size instead of the intrinsic one -- rendering as a
+   thin horizontal sliver. Chromium/Gecko (and non-flex layouts) handle the
+   fallback correctly, which is why this only reproduced in the desktop app's
+   WKWebView and not web/iOS despite byte-identical frontend code -- it isn't
+   a webview capability/CSP issue (backend step 1 ruled that out for
+   subresource loads) and it isn't the <img> failing to load either (a real
+   load failure already renders the existing "Image/Video unavailable"
+   fallback via onError, not a blank sliver, so onError was never firing).
+   Giving the bubble an explicit width equal to .attachment-media's own
+   max-width breaks the circular dependency by giving the percentage-width
+   child a definite basis to resolve against, independent of any shrink-to-
+   fit computation -- matching the fixed 220x260 object-fit: cover box this
+   component was already visually designed around (see .attachment-video-
+   placeholder's existing explicit 220x160 below, which was never affected
+   by this bug for the same reason: it already has explicit dimensions of
+   its own rather than depending on a percentage-width descendant). */
 .msg-bubble.msg-bubble-media {
   padding: 0;
   overflow: hidden;
+  width: 220px;
 }
 
 .attachment-media {
@@ -1017,6 +1045,15 @@ body {
 }
 
 .attachment-gif-static {
+  /* display: block + width: 100% (task 20260917-desktop-gif-image-render-bug)
+     -- this <button> wraps an .attachment-media <img> (width: 100%) and, like
+     .msg-bubble.msg-bubble-media above, had no width of its own, so it was
+     shrink-to-fit by default (native <button> UA default is inline-block)
+     -- the exact same percentage-width-inside-shrink-to-fit-ancestor collapse
+     one layer deeper. Now that the bubble itself has a definite 220px width,
+     this just needs to fill it so the img's 100% has a definite basis too. */
+  display: block;
+  width: 100%;
   position: relative;
   border: none;
   padding: 0;
@@ -1181,6 +1218,29 @@ body {
 }
 .attach-menu-row {
   flex-shrink: 0;
+}
+
+/* Task 20260917-desktop-gif-image-render-bug (send-side) -- the two hidden
+   <input type="file"> elements ChatThread.jsx clicks programmatically to
+   open the native photo/video/file picker. Deliberately NOT `display: none`
+   (see the comment at the JSX call site): that removes the element from
+   layout/paint entirely, which some WKWebView versions treat as never
+   having been "presented" for the purposes of wiring a `.click()` through
+   to the native open-panel delegate. This keeps the element laid out and
+   painted -- so it's a legitimate click target as far as the webview is
+   concerned -- while being visually and interactively a no-op for the user
+   (1x1px, fully transparent, clipped, off the keyboard-tab order isn't
+   needed since it's never focused directly -- only ever `.click()`'d from
+   the attach-menu buttons). */
+.hidden-file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
 }
 
 /* GIF-search sheet (design gate §2) */
