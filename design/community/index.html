@@ -682,10 +682,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#failed-send-recovery-2026-09-10-task-20260910-chat-message-disappear-reentry" class="md-nav__link">
+  <a href="#native-incoming-call-ring-callkitpushkit-2026-09-17-task-20260916-callkit-voip-ring-ios" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Failed Send Recovery (2026-09-10, task 20260910-chat-message-disappear-reentry)
+        Native Incoming-Call Ring (CallKit/PushKit) (2026-09-17, task 20260916-callkit-voip-ring, iOS)
       
     </span>
   </a>
@@ -1199,8 +1199,10 @@ the app. Local and remote video pause while backgrounded — iOS doesn't allow c
 background — and local video resumes automatically on return to the foreground if the call is still
 connected. If the call genuinely drops while backgrounded (network loss, the meeting ending), the
 call screen shows "not connected" rather than a stale "Connected" state when the app is reopened.
-This is audio-only background support (no CallKit lock-screen/incoming-call UI); ending the call
-still requires reopening the app.</p>
+This is audio-only background support for a call already joined — no CallKit lock-screen/
+incoming-call UI applies here; ending the call still requires reopening the app. (A genuine
+CallKit incoming-call UI was added separately, for the <em>ring</em> path only — see "Native Incoming-Call
+Ring (CallKit/PushKit)" below.)</p>
 <hr />
 <h2 id="ring-group-members-2026-09-16-task-20260916-call-ring-members-ios">Ring Group Members (2026-09-16, task <code>20260916-call-ring-members</code>, iOS)</h2>
 <p>A new "Ring" button sits leftmost in the active-call control bar (before Mute/Camera/End). Tapping
@@ -1218,7 +1220,23 @@ a real empty roster is instead handled by the sheet's own "No other members to r
 <p>On the recipient's side, tapping a ring push jumps straight into joining the live call, rather than
 just opening the session's chat thread the way the older session-reminder push does.</p>
 <hr />
-<h2 id="failed-send-recovery-2026-09-10-task-20260910-chat-message-disappear-reentry">Failed Send Recovery (2026-09-10, task <code>20260910-chat-message-disappear-reentry</code>)</h2>
+<h2 id="native-incoming-call-ring-callkitpushkit-2026-09-17-task-20260916-callkit-voip-ring-ios">Native Incoming-Call Ring (CallKit/PushKit) (2026-09-17, task <code>20260916-callkit-voip-ring</code>, iOS)</h2>
+<p>Ring delivery now goes through PushKit's VoIP push + CallKit rather than a plain push notification,
+gated behind the backend's <code>RING_VOIP_ENABLED</code> flag (off by default — the ring feature keeps working
+exactly as described above, via the plain push, until that flag is turned on). When enabled, a ring
+wakes the recipient's device — even if the app was fully killed — and presents the system's own
+full-screen "incoming call" UI, the same kind of screen as a real phone call, rather than a
+notification banner. The ring rings for a bounded, server-configured timeout and resolves cleanly on
+answer (joins the live call, exactly the same join path a tapped plain-ring-push already used),
+decline, or timeout.</p>
+<p>Registering for VoIP push happens automatically at app launch, with no separate permission prompt —
+unlike ordinary push notifications, PushKit doesn't require the user to grant anything. A recipient
+who hasn't registered a VoIP token (e.g. an unsupported device state) fails that ring delivery
+visibly in the sender's Ring Members sheet ("Can't ring this device") rather than silently.</p>
+<p>This is additive to, not a replacement of, the existing <code>audio</code> background mode that keeps an
+already-joined call's audio running (see "Session Call Background Persistence" above) — the two cover
+different moments (an incoming ring's announcement vs. an already-connected call's audio) and don't
+conflict.</p>
 <p>A sent message (friend DM or group) that the backend explicitly rejects or fails to save (a
 content-filter rejection, a failed database write, or the silent block-drop between two users who
 have blocked each other) used to look identical to a successful one: it showed up immediately via

@@ -1098,6 +1098,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#activity-monitoring" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Activity Monitoring
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1800,6 +1811,39 @@ into <code>notes.text</code>.</p>
 </tbody>
 </table>
 <p>Nothing under <code>/monitoring</code> executes, queues, or takes any action against the server — this surface (including the debugging agent) is strictly read-only/reporting. The debugging agent (<code>backend/monitoring/debug_agent.py</code>) reads a detection's <code>message</code> + <code>context</code>, redacts anything shaped like a secret/credential/API key/connection-string password before it reaches the OpenRouter prompt, and produces a root-cause + remediation-narrative write-up — a recommendation for a human operator, never a record of an action taken. It reuses <code>AgentManager</code>'s existing OpenRouter credential/wiring (<code>backend/interactions/agent.py</code>) rather than a second isolated key. It runs automatically once per newly-persisted detection (from the watchdog's poll cycle) and routes <code>error_detections.status</code> to <code>"diagnosed"</code> on success; the <code>POST</code> route above lets the admin page trigger a rerun.</p>
+<h2 id="activity-monitoring">Activity Monitoring</h2>
+<p>A second, separate admin panel (task <code>20260918-admin-activity-monitoring</code>) from the CloudWatch console above — average per-user activity and website-visit trends, rendered server-side as matplotlib PNGs. One endpoint is intentionally public; the rest are <strong>admin-only</strong> (<code>require_admin</code>, same <code>401</code>/<code>403</code> semantics as Monitoring above).</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Route</th>
+<th>Auth</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>POST</td>
+<td><code>/activity-monitoring/visits</code></td>
+<td>None (anonymous)</td>
+<td>Visit-logging beacon called by the web frontend on page navigation. Body: <code>{ device_id, path }</code> — <code>device_id</code> is a client-generated, <code>localStorage</code>-persisted UUIDv4 (never a cookie, never IP/User-Agent derived); <code>path</code> is length-capped (200 chars) and must not contain a query string. Rate-limited to 30/minute per IP. Always <code>204</code>, no body — never reflects stored/aggregate data back to the caller.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/activity-monitoring/plots/visits</code></td>
+<td>Admin</td>
+<td>Raw-visits-vs-unique-device-visitors PNG (<code>image/png</code>) for the trailing 30 days. "Unique" is <code>COUNT(DISTINCT device_id)</code> per day, so repeat visits from the same device don't inflate it. <code>Cache-Control: no-store</code>.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/activity-monitoring/plots/{metric}</code></td>
+<td>Admin</td>
+<td>Average-per-user PNG for one of <code>notes</code> / <code>highlights</code> / <code>logins</code> / <code>messages</code>, trailing 30 days. <code>logins</code> is derived from <code>sessions.created_at</code> (no dedicated login-event table exists). <code>404</code> for an unrecognized metric. <code>Cache-Control: no-store</code>.</td>
+</tr>
+</tbody>
+</table>
+<p>Every admin GET above logs one <code>admin_action</code> audit line (<code>action=view_activity_monitoring</code>) via the same <code>admin_audit</code> logger <code>/monitoring</code> uses. The average-per-user denominator is the current total user count (not a historically accurate per-day cohort) — a deliberate snapshot-dashboard simplification, not a billing-grade calculation. See <a href="../../architecture/data/#visits">Data → <code>visits</code></a> for the schema.</p>
 
 
 

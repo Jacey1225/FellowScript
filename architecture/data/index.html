@@ -930,6 +930,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#visits" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        visits
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1659,6 +1670,40 @@ be updated to describe it once it lands.</p>
 <p>Populated by the watchdog job (<code>backend/monitoring/watchdog.py</code>, see <a href="../backend/#background-scheduler">Backend → Background Scheduler</a>). <code>log_group_cursors</code> is a per-log-group watermark so consecutive polls never re-process or skip events. <code>error_detections.context</code> holds the assembled surrounding-log-lines + log-analyzer output for a hit; <code>status</code> starts at <code>'new'</code> and moves to <code>'diagnosed'</code> once the debugging agent (<code>backend/monitoring/debug_agent.py</code>) has produced a report for it.</p>
 <p><code>error_detection_reports</code> holds the debugging agent's diagnostic write-up (root cause + remediation narrative) for a detection — one row per detection (<code>detection_id</code> is <code>UNIQUE</code>; a rerun upserts in place rather than accumulating history). Populated automatically right after a detection persists (one OpenRouter call per detected error, not per poll cycle) and on-demand via <code>POST /monitoring/detections/{id}/report</code> (see <a href="../../api/overview/#monitoring-error-detections">API → Monitoring</a>). Cascades away with its parent <code>error_detections</code> row.</p>
 <p>Indexed on <code>(detected_at DESC)</code> and <code>(log_group_name, detected_at DESC)</code> for the list feed's default ordering and log-group filter.</p>
+<hr />
+<h3 id="visits"><code>visits</code></h3>
+<table>
+<thead>
+<tr>
+<th>Column</th>
+<th>Type</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>_id</code></td>
+<td>UUID PK DEFAULT gen_random_uuid()</td>
+<td></td>
+</tr>
+<tr>
+<td><code>device_id</code></td>
+<td>UUID, NOT NULL</td>
+<td>Client-generated, <code>localStorage</code>-persisted UUIDv4 (never a cookie) -- opaque to the server, never joined against <code>users</code>/<code>sessions</code></td>
+</tr>
+<tr>
+<td><code>path</code></td>
+<td>VARCHAR(200)</td>
+<td>The route reported visited, e.g. <code>/notes</code>; length-capped and query-string-stripped at the schema layer before insert</td>
+</tr>
+<tr>
+<td><code>created_at</code></td>
+<td>TIMESTAMPTZ DEFAULT NOW()</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<p>Backs the admin Activity Monitoring panel's website-visits chart (task 20260918-admin-activity-monitoring). Level 0 (no FK to <code>users</code>) — a visit is anonymous by design: <code>POST /activity-monitoring/visits</code> is the one write surface in this feature reachable without any session, rate-limited to 30/minute per IP. Raw IP and User-Agent are never persisted here; <code>device_id</code> is the only client-supplied identifier this table ever stores, so "unique visitors" (<code>COUNT(DISTINCT device_id)</code> per day) can be derived separately from raw pageview volume without repeat visits from the same device inflating the unique count. Read only via <code>GET /activity-monitoring/plots/visits</code> (<code>require_admin</code>-gated, <code>Cache-Control: no-store</code>, rendered server-side as a matplotlib PNG — never returned as raw JSON rows). Indexed on <code>(created_at)</code> and <code>(device_id, created_at)</code> for the trailing-window range scan and the distinct-device aggregation respectively. No retention/pruning job exists yet for this unboundedly-growing table — deferred as a follow-up per the originating task's open questions.</p>
 <hr />
 <h2 id="account-deletion">Account Deletion</h2>
 <p><code>DELETE /user/{user_id}</code> manually handles tables whose FK to <code>users</code> lacks <code>ON DELETE CASCADE</code>:</p>
