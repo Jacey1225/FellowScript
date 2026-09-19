@@ -54,6 +54,11 @@ mcp==1.24.0
 # above. 0.1.8 is the latest release as of this pinning (confirmed via
 # `pip index versions`); bump deliberately, not automatically.
 awslabs.cloudwatch-mcp-server==0.1.8
+# backend/interactions/activity_plots.py -- server-side rendering of the
+# admin Activity Monitoring panel's charts (task
+# 20260918-admin-activity-monitoring). Uses the non-interactive "Agg"
+# backend only (no display on this server); pulls in numpy transitively.
+matplotlib==3.11.2
 # zoneinfo falls back to this package, per key, whenever a name isn't found
 # under the system's /usr/share/zoneinfo (confirmed on the EC2 deploy target:
 # its tzdata package ships only canonical zone names, not IANA's ~150

@@ -10,6 +10,7 @@ import relativeTime from 'dayjs/plugin/relativeTime';
 import AppNav from '../components/AppNav.jsx';
 import DetectionDetailOverlay from '../components/DetectionDetailOverlay.jsx';
 import AdminMembershipGrant from '../components/AdminMembershipGrant.jsx';
+import AdminActivityMonitoring from '../components/AdminActivityMonitoring.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useIsDesktopViewport } from '../hooks/useIsDesktopViewport.js';
 import { useFocusTrap } from '../hooks/useFocusTrap.js';
@@ -306,6 +307,16 @@ export default function AdminDetections() {
             filter/fetch/pagination behavior. */}
         <div style={{ animation: 'fadeUp 0.55s ease forwards', opacity: 0 }}>
           <AdminMembershipGrant />
+        </div>
+
+        {/* Activity Monitoring panel (task 20260918-admin-activity-monitoring):
+            lives on this same gated /admin surface alongside the detection
+            console below, but is fully self-contained (own state, own
+            requests) and does not touch any of this page's own
+            filter/fetch/pagination behavior -- same precedent as
+            AdminMembershipGrant above. */}
+        <div style={{ animation: 'fadeUp 0.55s ease forwards', opacity: 0, animationDelay: '0.04s' }}>
+          <AdminActivityMonitoring />
         </div>
 
         {/* Filter bar (desktop: inline Select + RangePicker, unchanged) /

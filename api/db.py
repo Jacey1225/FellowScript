@@ -893,6 +893,38 @@ def create_tables(cur):
         "generated_at TIMESTAMPTZ DEFAULT NOW())"
     )
 
+    # Admin Activity Monitoring panel (task 20260918-admin-activity-monitoring,
+    # step 1 threat-model + step 2). Level 0: no FK to `users` -- a visit is
+    # anonymous by design (the reporting endpoint is the one write surface in
+    # this feature reachable without any session), so `device_id` is an
+    # opaque client-generated UUIDv4 (localStorage-persisted, never a
+    # cookie), never joined against `users`/`sessions` by any query in this
+    # feature. Raw IP and User-Agent are deliberately never persisted here
+    # (security step 1) -- the tracked surface is exactly this one
+    # client-supplied identifier, not an ad hoc fingerprint. `path` is
+    # length-capped and query-string-stripped at the schema layer
+    # (schemas/activity_monitoring.py::VisitCreate) before it ever reaches
+    # this INSERT.
+    cur.execute(
+        "CREATE TABLE IF NOT EXISTS visits"
+        "(_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
+        "device_id UUID NOT NULL,"
+        "path VARCHAR(200) NOT NULL DEFAULT '',"
+        "created_at TIMESTAMPTZ DEFAULT NOW())"
+    )
+    # Backs both the admin plots' trailing-window range scan (created_at)
+    # and the raw-vs-unique-device aggregation (device_id, created_at
+    # together lets "distinct device_id per day" be computed off one index
+    # rather than a full table scan as this table grows unboundedly --
+    # see the intake spec's open "retention policy" question, deferred as a
+    # follow-up).
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_visits_created_at ON visits(created_at)"
+    )
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_visits_device_created ON visits(device_id, created_at)"
+    )
+
     logger.info("All tables created.")
 
 

@@ -215,6 +215,19 @@ Indexed on `(detected_at DESC)` and `(log_group_name, detected_at DESC)` for the
 
 ---
 
+### `visits`
+
+| Column | Type | Notes |
+|---|---|---|
+| `_id` | UUID PK DEFAULT gen_random_uuid() | |
+| `device_id` | UUID, NOT NULL | Client-generated, `localStorage`-persisted UUIDv4 (never a cookie) -- opaque to the server, never joined against `users`/`sessions` |
+| `path` | VARCHAR(200) | The route reported visited, e.g. `/notes`; length-capped and query-string-stripped at the schema layer before insert |
+| `created_at` | TIMESTAMPTZ DEFAULT NOW() | |
+
+Backs the admin Activity Monitoring panel's website-visits chart (task 20260918-admin-activity-monitoring). Level 0 (no FK to `users`) — a visit is anonymous by design: `POST /activity-monitoring/visits` is the one write surface in this feature reachable without any session, rate-limited to 30/minute per IP. Raw IP and User-Agent are never persisted here; `device_id` is the only client-supplied identifier this table ever stores, so "unique visitors" (`COUNT(DISTINCT device_id)` per day) can be derived separately from raw pageview volume without repeat visits from the same device inflating the unique count. Read only via `GET /activity-monitoring/plots/visits` (`require_admin`-gated, `Cache-Control: no-store`, rendered server-side as a matplotlib PNG — never returned as raw JSON rows). Indexed on `(created_at)` and `(device_id, created_at)` for the trailing-window range scan and the distinct-device aggregation respectively. No retention/pruning job exists yet for this unboundedly-growing table — deferred as a follow-up per the originating task's open questions.
+
+---
+
 ## Account Deletion
 
 `DELETE /user/{user_id}` manually handles tables whose FK to `users` lacks `ON DELETE CASCADE`:

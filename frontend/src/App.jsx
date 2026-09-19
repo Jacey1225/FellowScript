@@ -12,6 +12,7 @@ import Terms from './pages/Terms.jsx';
 import AdminGate from './components/AdminGate.jsx';
 import MobileBlockGate from './components/MobileBlockGate.jsx';
 import DesktopRouteGuard from './components/DesktopRouteGuard.jsx';
+import VisitTracker from './components/VisitTracker.jsx';
 import AdminDetections from './pages/AdminDetections.jsx';
 import AdminDetectionDetail from './pages/AdminDetectionDetail.jsx';
 
@@ -35,17 +36,30 @@ export default function App() {
     // HashRouter, the server only ever resolves the path "/" --
     // /#/privacy, /#/terms, /#/reader etc. all live after the "#" fragment,
     // which crawlers never send to the server. robots.txt Disallow rules
-    // can't match against them, and sitemap.xml's /#/privacy, /#/terms
-    // entries are best-effort/forward-compatible, not proof those routes
-    // are independently indexable today. Revisit this decision if the site
-    // ever needs more than one crawlable marketing page.
+    // can't match against them. Revisit this decision if the site ever
+    // needs more than one crawlable marketing page.
     //
     // Decision update (task 20260914-restore-homepage-seo-meta-tags): the
     // "client-side <head> only" half of the HashRouter decision above
     // wasn't actually visible to non-JS consumers on Home; fixed via
     // build-time tag injection into index.html (see vite.config.js's
     // injectHomeSeoPlugin), not by reopening HashRouter/SSR, which stands.
+    //
+    // Decision update (task 20260918-fix-google-indexing-audit): sitemap.xml
+    // no longer lists /#/privacy or /#/terms -- they were never independently
+    // crawlable fragment URLs under HashRouter (see this file's own note
+    // above) and had no real static-route equivalent to repoint at instead,
+    // so they were dead sitemap entries rather than a genuine indexing aid.
+    // Removing them doesn't reopen the HashRouter decision itself, which
+    // still stands for the reasons above.
     <HashRouter>
+      {/* Task 20260918-admin-activity-monitoring: fires the visit-tracking
+          beacon on every route change. Mounted here (inside the router, but
+          outside DesktopRouteGuard/Routes) so it sees every navigation via
+          useLocation() exactly once, regardless of which route ends up
+          rendering below -- it no-ops entirely inside the Tauri desktop
+          shell (see VisitTracker.jsx). Renders nothing. */}
+      <VisitTracker />
       {/* Restricts the Tauri desktop shell to lib/desktopScope.js's
           DESKTOP_ALLOWED_ROUTES (task 20260906-desktop-scope-lockdown); a
           no-op in the ordinary web frontend. See DesktopRouteGuard.jsx. */}

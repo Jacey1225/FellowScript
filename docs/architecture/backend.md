@@ -113,6 +113,19 @@ Detection is application-level (regex scan of pulled log messages against named 
 
 ---
 
+## Activity Monitoring (task 20260918-admin-activity-monitoring)
+
+A second, separate admin panel from `backend/monitoring/` above — average per-user activity + website-visit trends, not CloudWatch errors. Lives in `interactions/` (not its own sibling package) since it's one manager plus one rendering helper, not a multi-file workflow.
+
+| File | Responsibility |
+|---|---|
+| `interactions/activity_monitoring.py` | `ActivityMonitoringManager(DBManager)` — context-free (Style B). `record_visit` is the anonymous write path behind `POST /activity-monitoring/visits`. `daily_average_per_user`/`daily_visits` back the admin plot endpoints, querying `notes`/`highlights`/`sessions`/`messages`/`visits` over a trailing 30-day window (`DEFAULT_WINDOW_DAYS`), denominated by the current total user count. |
+| `interactions/activity_plots.py` | Matplotlib rendering only (no DB access) — `render_line_chart`/`render_visits_chart` turn a manager's `(day, value)` series into a PNG byte string, styled with the app's dark/gold/parchment palette (hand-copied from `frontend/src/styles/global.css`'s tokens) rather than matplotlib's defaults. `matplotlib.use("Agg")` is set at this module's import time (headless server, no display). |
+
+Routes live in `routes/activity_monitoring.py`, gated `require_admin` except the one public `POST /visits` beacon — see [API → Activity Monitoring](../api/overview.md#activity-monitoring) and [Data → `visits`](data.md#visits).
+
+---
+
 ## `backend/subscription/`
 
 A sibling package to `interactions/` dedicated to billing and usage enforcement.

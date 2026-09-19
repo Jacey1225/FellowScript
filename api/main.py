@@ -14,6 +14,7 @@ from routes.donation import donation_router
 from routes.reports import report_router
 from routes.blocks import block_router
 from routes.monitoring import monitoring_router
+from routes.activity_monitoring import activity_monitoring_router
 from routes.profile_photo import profile_photo_router
 from schemas.users import SignUp, Login, UpdateUser, User, CURRENT_TERMS_VERSION
 from datetime import datetime, timezone
@@ -270,6 +271,7 @@ app.include_router(donation_router)
 app.include_router(report_router)
 app.include_router(block_router)
 app.include_router(monitoring_router)
+app.include_router(activity_monitoring_router)
 app.include_router(profile_photo_router)
 
 main_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
