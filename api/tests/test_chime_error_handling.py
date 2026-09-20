@@ -62,6 +62,7 @@ import _pathfix  # noqa: F401
 import logging
 import os
 import uuid
+from datetime import datetime, timedelta, timezone
 
 os.environ.setdefault("AWS_EC2_METADATA_DISABLED", "true")
 os.environ.setdefault("AWS_ACCESS_KEY_ID", "dummy")
@@ -226,12 +227,21 @@ class _CapturingHandler(logging.Handler):
 
 
 def create_devotion_session(client, token, uid, participants=None):
+    # is_join_window_open (task 20260920-session-join-window-gating) fails
+    # closed on a missing time_start, so this fixture needs a real,
+    # currently-in-window time_start/time_end -- every call site in this
+    # file joins/join-calls as the actual creator, so a closed window would
+    # 403 before ever reaching the ClientError/retry logic under test here.
+    now = datetime.now(timezone.utc)
+    time_start = (now - timedelta(minutes=1)).isoformat()
+    time_end = (now + timedelta(hours=1)).isoformat()
     devo_id = str(uuid.uuid4())
     payload = {
         "devotion_id": devo_id, "user_id": uid,
         "devotion": {
             "id": devo_id, "title": "Session test", "creator_id": uid,
             "participants": participants or [], "prompts": ["p1"], "verses": [],
+            "time_start": time_start, "time_end": time_end,
         },
     }
     r = client.post("/devotions/", json=payload, headers=cookie_header(token))
