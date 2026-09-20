@@ -715,6 +715,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#session-join-window-gating-2026-09-20-task-20260920-session-join-window-gating-ios-backend" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Session Join-Window Gating (2026-09-20, task 20260920-session-join-window-gating, iOS + backend)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#real-time-behavior" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1296,6 +1307,37 @@ the create flow's fire-and-forget save, edit mode awaits the request: a failure 
 open and shows a "Couldn't Save Changes" alert instead of silently discarding the edit or closing
 as if it had succeeded; success dismisses the sheet and refreshes the caller's session list via a
 new <code>onUpdate</code> callback, mirroring the existing <code>onDelete</code> refresh path.</p>
+<hr />
+<h2 id="session-join-window-gating-2026-09-20-task-20260920-session-join-window-gating-ios-backend">Session Join-Window Gating (2026-09-20, task <code>20260920-session-join-window-gating</code>, iOS + backend)</h2>
+<p>The two Join affordances — <code>SessionBanner</code>'s compact <strong>Join</strong> button and <code>SessionDetailSheet</code>'s
+<strong>Join Audio &amp; Video Call</strong> CTA — are now greyed out and untappable outside a session's opening
+window, and enable automatically once it begins (no reload needed): each wraps its button in a
+<code>TimelineView(.periodic(from: .now, by: 1))</code> so <code>FSSession.isJoinWindowOpen(now:)</code> re-evaluates on
+a 1-second cadence while the view is on screen.</p>
+<p><code>isJoinWindowOpen</code> treats the open window as <code>[time_start - 10 minutes, time_end]</code>, evaluated
+against <strong>device local time</strong>:</p>
+<ul>
+<li>A missing or unparseable <code>time_start</code> fails closed — the button stays disabled rather than ever
+  defaulting to "open."</li>
+<li>A missing or unparseable <code>time_end</code> is treated as open-ended once a valid <code>time_start</code> has
+  passed — no duration is guessed.</li>
+<li>The 10-minute early-join grace period is a hardcoded UI convenience value, not read from the
+  server.</li>
+</ul>
+<p>This client-side check is a UX convenience only, not the real access-control boundary. The actual
+enforcement is server-side: <code>join_devotion</code> and <code>join_call</code> (<code>api/routes/devotion.py</code>) now call
+<code>DevotionManager.is_join_window_open(session)</code>, evaluated against <strong>server/DB time</strong>
+(<code>NOW()</code> in Postgres, mirroring <code>scheduler.py</code>'s existing precedent) and gated by the same
+<code>SESSION_JOIN_GRACE_MINUTES</code> env var (validated eagerly at startup, default deploy value <code>10</code>).
+A user with a manually skewed device clock, or one calling the endpoints directly, still gets
+rejected with <code>403 "This session isn't open yet."</code> — surfaced through the existing
+<code>CallController.joinError</code> path exactly like any other join failure. If a call is already live
+(<code>chime_meeting_id</code> set), the server lets any authorized member join regardless of the time
+window — the same mechanism that lets a rung member answer an in-progress call past <code>time_end</code>;
+the two client buttons have no visibility into <code>chime_meeting_id</code> and so stay time-gated only,
+meaning they can under-claim availability in that one case but never over-claim it.</p>
+<p>The ring-invite path (<code>AppState.joinRingedCall</code> → <code>CallController.shared.start</code>) is untouched —
+it has no button of its own to gate, and is covered by the same already-live-call bypass above.</p>
 <hr />
 <h2 id="real-time-behavior">Real-Time Behavior</h2>
 <p>The WebSocket connection (<code>/ws/{user_id}</code>) handles:</p>
