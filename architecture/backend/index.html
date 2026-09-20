@@ -753,10 +753,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#activity-monitoring-task-20260918-admin-activity-monitoring" class="md-nav__link">
+  <a href="#activity-monitoring-task-20260918-admin-activity-monitoring-extended-by-20260919-activity-monitoring-interactive-charts" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Activity Monitoring (task 20260918-admin-activity-monitoring)
+        Activity Monitoring (task 20260918-admin-activity-monitoring, extended by 20260919-activity-monitoring-interactive-charts)
       
     </span>
   </a>
@@ -1358,7 +1358,7 @@
 </table>
 <p>Detection is application-level (regex scan of pulled log messages against named signal patterns — traceback, critical, error level, nginx severity tags, HTTP 5xx, errno) rather than CloudWatch alarms/metric filters, which aren't configured in this AWS account. Nothing in this package executes or takes any action against the server — the watchdog only reads via the MCP client and writes to this app's own <code>error_detections</code>/<code>log_group_cursors</code> tables, and the debugging agent only reads those tables plus calls OpenRouter for a text diagnosis it persists to <code>error_detection_reports</code>.</p>
 <hr />
-<h2 id="activity-monitoring-task-20260918-admin-activity-monitoring">Activity Monitoring (task 20260918-admin-activity-monitoring)</h2>
+<h2 id="activity-monitoring-task-20260918-admin-activity-monitoring-extended-by-20260919-activity-monitoring-interactive-charts">Activity Monitoring (task 20260918-admin-activity-monitoring, extended by 20260919-activity-monitoring-interactive-charts)</h2>
 <p>A second, separate admin panel from <code>backend/monitoring/</code> above — average per-user activity + website-visit trends, not CloudWatch errors. Lives in <code>interactions/</code> (not its own sibling package) since it's one manager plus one rendering helper, not a multi-file workflow.</p>
 <table>
 <thead>
@@ -1370,15 +1370,15 @@
 <tbody>
 <tr>
 <td><code>interactions/activity_monitoring.py</code></td>
-<td><code>ActivityMonitoringManager(DBManager)</code> — context-free (Style B). <code>record_visit</code> is the anonymous write path behind <code>POST /activity-monitoring/visits</code>. <code>daily_average_per_user</code>/<code>daily_visits</code> back the admin plot endpoints, querying <code>notes</code>/<code>highlights</code>/<code>sessions</code>/<code>messages</code>/<code>visits</code> over a trailing 30-day window (<code>DEFAULT_WINDOW_DAYS</code>), denominated by the current total user count.</td>
+<td><code>ActivityMonitoringManager(DBManager)</code> — context-free (Style B). <code>record_visit</code> is the anonymous write path behind <code>POST /activity-monitoring/visits</code>. <code>daily_average_per_user</code>/<code>daily_visits</code> back both the PNG (<code>/plots/*</code>) and JSON (<code>/data/*</code>) admin endpoints, querying <code>notes</code>/<code>highlights</code>/<code>sessions</code>/<code>messages</code>/<code>visits</code> over a trailing 30-day window (<code>DEFAULT_WINDOW_DAYS</code>), denominated by the current total user count.</td>
 </tr>
 <tr>
 <td><code>interactions/activity_plots.py</code></td>
-<td>Matplotlib rendering only (no DB access) — <code>render_line_chart</code>/<code>render_visits_chart</code> turn a manager's <code>(day, value)</code> series into a PNG byte string, styled with the app's dark/gold/parchment palette (hand-copied from <code>frontend/src/styles/global.css</code>'s tokens) rather than matplotlib's defaults. <code>matplotlib.use("Agg")</code> is set at this module's import time (headless server, no display).</td>
+<td>Matplotlib rendering only (no DB access) — <code>render_line_chart</code>/<code>render_visits_chart</code> turn a manager's <code>(day, value)</code> series into a PNG byte string, styled with the app's dark/gold/parchment palette (hand-copied from <code>frontend/src/styles/global.css</code>'s tokens) rather than matplotlib's defaults. <code>matplotlib.use("Agg")</code> is set at this module's import time (headless server, no display). Only backs <code>/plots/*</code> — <code>/data/*</code> returns the manager's series directly as JSON, no rendering step.</td>
 </tr>
 </tbody>
 </table>
-<p>Routes live in <code>routes/activity_monitoring.py</code>, gated <code>require_admin</code> except the one public <code>POST /visits</code> beacon — see <a href="../../api/overview/#activity-monitoring">API → Activity Monitoring</a> and <a href="../data/#visits">Data → <code>visits</code></a>.</p>
+<p>Routes live in <code>routes/activity_monitoring.py</code>, gated <code>require_admin</code> except the one public <code>POST /visits</code> beacon. Task <code>20260919</code> added <code>GET /activity-monitoring/data/visits</code> and <code>GET /activity-monitoring/data/{metric}</code> alongside the existing <code>/plots/*</code> PNG routes — JSON payloads (<code>schemas/activity_monitoring.py</code>'s <code>MetricSeriesResponse</code>/<code>VisitsSeriesResponse</code>) carrying the same aggregate series the PNGs plot, for a forthcoming client-side interactive chart. This reopens the prior task's image-only delivery decision; see that task's <code>security.json</code> step 1 threat model and <code>clarification-response.md</code> for the explicit user approval, and note the <code>/plots/*</code> PNG routes are left in place (not yet retired — that call is deferred to the frontend/design steps building the interactive chart). See <a href="../../api/overview/#activity-monitoring">API → Activity Monitoring</a> and <a href="../data/#visits">Data → <code>visits</code></a>.</p>
 <hr />
 <h2 id="backendsubscription"><code>backend/subscription/</code></h2>
 <p>A sibling package to <code>interactions/</code> dedicated to billing and usage enforcement.</p>
