@@ -1221,7 +1221,7 @@
 <tr>
 <td><code>DevotionManager</code></td>
 <td><code>devotion.py</code></td>
-<td>Devotion plans, participants, progress</td>
+<td>Devotion plans, participants, progress; <code>is_join_window_open</code> gates <code>join</code>/<code>join-call</code> on <code>time_start</code>/<code>time_end</code> (± <code>SESSION_JOIN_GRACE_MINUTES</code>), server clock only — see <a href="../../api/overview/#session-join-window-gating-task-20260920-session-join-window-gating">Session join-window gating</a></td>
 </tr>
 <tr>
 <td><code>AgentManager</code></td>
