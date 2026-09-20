@@ -124,6 +124,15 @@ async def join_devotion(user_id: str, session_id: str, _: str = Depends(require_
             raise HTTPException(status_code=404, detail="Session not found")
         if not db.is_authorized(session, user_id):
             raise HTTPException(status_code=403, detail="Not authorized")
+        # Task 20260920-session-join-window-gating (backend step 2): the
+        # server's own time-window enforcement, closing the direct-API
+        # bypass a client-side-only grey-out would otherwise leave open --
+        # see the join-window-contract.md decision for §1's rationale. Runs
+        # after is_authorized (membership is still the first gate) and
+        # before add_participant (the mutating side effect this whole check
+        # exists to guard).
+        if not db.is_join_window_open(session):
+            raise HTTPException(status_code=403, detail="This session isn't open yet.")
         db.add_participant(session_id, user_id)
         return {"ok": True}
     finally:
@@ -411,6 +420,16 @@ async def join_call(session_id: str, user_id: str, _: str = Depends(require_matc
             raise HTTPException(status_code=404, detail="Session not found")
         if not db.is_authorized(session, user_id):
             raise HTTPException(status_code=403, detail="Not authorized")
+        # Task 20260920-session-join-window-gating (backend step 2): same
+        # server-side enforcement as join_devotion above, and doubly
+        # important here since join_call lazily creates a billed AWS Chime
+        # meeting on first call (join-window-contract.md §1) -- this must
+        # run before that side effect, not after. A session already mid-call
+        # (chime_meeting_id already set) passes unconditionally via
+        # is_join_window_open's own live-call bypass, so an in-progress call
+        # is never interrupted by this check.
+        if not db.is_join_window_open(session):
+            raise HTTPException(status_code=403, detail="This session isn't open yet.")
 
         chime_meeting_id = session.get("chime_meeting_id", "")
         meeting_data     = session.get("chime_meeting") or {}

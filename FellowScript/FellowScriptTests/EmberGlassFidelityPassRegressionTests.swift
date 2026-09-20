@@ -181,21 +181,26 @@ final class SenderGroupDividerRemovalRegressionTests: XCTestCase {
         )
     }
 
-    func test_source_chatThreadView_hasExactlyOneRemainingHairline_headerOnly() throws {
+    func test_source_chatThreadView_hasExactlyTwoRemainingHairlines_headerAndSessionsMenuCard() throws {
         // ChatThreadView.swift originally used this exact hairline one-liner
         // in two unrelated places: the header's bottom edge and the
         // composer's top edge. Task 20260828-chat-schedule-ui-cleanup-ios
         // deliberately removed the composer's copy (its own acceptance
-        // criterion 7), so only the header's remains — see that task's
-        // ComposerDividerRemovalRegressionTests for the dedicated coverage
-        // of that removal. This assertion is updated from 2 to 1 to reflect
-        // that intended state; a 3rd occurrence reappearing would still mean
-        // the (unrelated) removed sender-group divider has regressed back in.
+        // criterion 7), dropping the count to 1 (header only) — see that
+        // task's ComposerDividerRemovalRegressionTests for the dedicated
+        // coverage of that removal. Task 20260920-chat-sessions-submenu then
+        // added a second, unrelated use of the same one-liner as the divider
+        // between the submenu card's "Schedule new session" action and its
+        // session list, bringing the count back to 2 — this assertion is
+        // updated from 1 to 2 to reflect that intended addition; a 3rd
+        // occurrence reappearing would still mean the (unrelated) removed
+        // sender-group divider, or the composer's own removed copy, has
+        // regressed back in.
         let source = try readSource("FellowScript/Chat/ChatThreadView.swift")
         let occurrences = source.components(separatedBy: "Rectangle().fill(Theme.borderGoldFaint).frame(height: 1)").count - 1
         XCTAssertEqual(
-            occurrences, 1,
-            "expected exactly 1 remaining occurrence of the plain hairline one-liner in ChatThreadView.swift (header's bottom edge only, since the composer's own copy was intentionally removed by task 20260828-chat-schedule-ui-cleanup-ios)"
+            occurrences, 2,
+            "expected exactly 2 remaining occurrences of the plain hairline one-liner in ChatThreadView.swift (header's bottom edge, and the sessions submenu card's schedule/list divider)"
         )
     }
 

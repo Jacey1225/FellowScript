@@ -284,6 +284,42 @@ new `onUpdate` callback, mirroring the existing `onDelete` refresh path.
 
 ---
 
+## Session Join-Window Gating (2026-09-20, task `20260920-session-join-window-gating`, iOS + backend)
+
+The two Join affordances — `SessionBanner`'s compact **Join** button and `SessionDetailSheet`'s
+**Join Audio & Video Call** CTA — are now greyed out and untappable outside a session's opening
+window, and enable automatically once it begins (no reload needed): each wraps its button in a
+`TimelineView(.periodic(from: .now, by: 1))` so `FSSession.isJoinWindowOpen(now:)` re-evaluates on
+a 1-second cadence while the view is on screen.
+
+`isJoinWindowOpen` treats the open window as `[time_start - 10 minutes, time_end]`, evaluated
+against **device local time**:
+
+- A missing or unparseable `time_start` fails closed — the button stays disabled rather than ever
+  defaulting to "open."
+- A missing or unparseable `time_end` is treated as open-ended once a valid `time_start` has
+  passed — no duration is guessed.
+- The 10-minute early-join grace period is a hardcoded UI convenience value, not read from the
+  server.
+
+This client-side check is a UX convenience only, not the real access-control boundary. The actual
+enforcement is server-side: `join_devotion` and `join_call` (`api/routes/devotion.py`) now call
+`DevotionManager.is_join_window_open(session)`, evaluated against **server/DB time**
+(`NOW()` in Postgres, mirroring `scheduler.py`'s existing precedent) and gated by the same
+`SESSION_JOIN_GRACE_MINUTES` env var (validated eagerly at startup, default deploy value `10`).
+A user with a manually skewed device clock, or one calling the endpoints directly, still gets
+rejected with `403 "This session isn't open yet."` — surfaced through the existing
+`CallController.joinError` path exactly like any other join failure. If a call is already live
+(`chime_meeting_id` set), the server lets any authorized member join regardless of the time
+window — the same mechanism that lets a rung member answer an in-progress call past `time_end`;
+the two client buttons have no visibility into `chime_meeting_id` and so stay time-gated only,
+meaning they can under-claim availability in that one case but never over-claim it.
+
+The ring-invite path (`AppState.joinRingedCall` → `CallController.shared.start`) is untouched —
+it has no button of its own to gate, and is covered by the same already-live-call bypass above.
+
+---
+
 ## Real-Time Behavior
 
 The WebSocket connection (`/ws/{user_id}`) handles:

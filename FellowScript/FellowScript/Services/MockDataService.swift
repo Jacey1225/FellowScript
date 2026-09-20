@@ -493,9 +493,32 @@ final class MockDataService: DataServiceProtocol {
         FSAgentMessage(id: "am3", text: "The Logos in John 1 draws on both Jewish Wisdom tradition and Greek philosophical thought. John brilliantly redeems this concept by declaring that this eternal Word became flesh (v.14).", mine: false, timestamp: "2026-06-27T08:02:00"),
     ]
 
+    // Task 20260920-session-join-window-gating (testing step 4 fixup):
+    // time_start/time_end used to be a hardcoded past literal
+    // ("2026-07-02T19:00:00"/"...20:30:00"). That was harmless before this
+    // task, but this same task's new FSSession.isJoinWindowOpen gating
+    // evaluates any date before "today" as permanently closed -- so the
+    // fixed-past fixture silently disabled every Join affordance backed by
+    // it (SessionBanner, SessionDetailSheet, and the UI tests that reach
+    // them, e.g. CallBarNavOverlapUITests) regardless of which UI path
+    // reaches Join, independent of the sibling chat-sessions-submenu work.
+    // Compute the window relative to `Date()` instead so the fixture is
+    // always in-window (already open, generous end bound) whenever a test
+    // actually runs, using the same bare/no-timezone ISO shape
+    // ("yyyy-MM-dd'T'HH:mm:ss") the original literal used --
+    // parseFlexibleISO8601's no-timezone fallback branch already covers it.
+    private static func bareISOString(_ date: Date) -> String {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd'T'HH:mm:ss"
+        f.timeZone = .current
+        f.locale = Locale(identifier: "en_US_POSIX")
+        return f.string(from: date)
+    }
+
     static let mockSession = FSSession(
         id: "sess-001", title: "Wednesday Night Study",
-        time_start: "2026-07-02T19:00:00", time_end: "2026-07-02T20:30:00",
+        time_start: bareISOString(Date().addingTimeInterval(-5 * 60)),
+        time_end: bareISOString(Date().addingTimeInterval(60 * 60)),
         verses: ["John-1-1", "John-1-14"],
         prompts: ["What does it mean that the Word became flesh?"],
         recurring: true, summarize: true, group_id: "group-abc",

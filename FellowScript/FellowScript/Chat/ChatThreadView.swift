@@ -542,6 +542,18 @@ struct ChatThreadView: View {
     @State private var showSession: Bool   = false
     @State private var showAddMembers: Bool = false
 
+    // ── Sessions submenu (task 20260920-chat-sessions-submenu) ────────────────
+    // Replaces the old always-visible inline SessionBanner + header
+    // "Schedule" pill pairing with one entry point: the renamed "Sessions"
+    // pill opens this floating, translucent/blurred submenu listing every
+    // session for the chat, with the create-session action folded inside it.
+    @State private var showSessionsMenu: Bool = false
+    // Item-based (rather than reusing `showSession`'s Bool + `.first`
+    // convention the old SessionBanner relied on) because any row in the
+    // submenu's list -- not just "the next upcoming one" -- can now open a
+    // detail sheet, so the sheet needs to know *which* session was tapped.
+    @State private var selectedSession: FSSession? = nil
+
     // Live member state (seeded from `contact`) so newly added members appear
     // immediately without needing a full reload.
     @State private var memberNames: [String] = []
@@ -675,16 +687,6 @@ struct ChatThreadView: View {
                     .accessibilityLabel("Reconnecting to chat")
                 }
 
-                // ── Session banner (upcoming session card) ─────────────────
-                if let nextSession = vm.sessions.first {
-                    // onDelete/onUpdate share the same refresh -- both just
-                    // need the caller's session list re-fetched after the
-                    // mutation succeeds (see refreshSessions() below).
-                    SessionBanner(session: nextSession, onDelete: refreshSessions, onUpdate: refreshSessions)
-                    .padding(.horizontal, Theme.spacingSM)
-                    .padding(.top, Theme.spacingXS)
-                }
-
                 // ── Message list (Slack-style grouped bubbles + day dividers) ──
                 ScrollViewReader { proxy in
                     ScrollView {
@@ -781,6 +783,16 @@ struct ChatThreadView: View {
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 composer
             }
+
+            // ── Sessions submenu overlay ────────────────────────────────
+            // A floating ZStack layer (unlike GroupMembersPanel above,
+            // which renders inline in the VStack flow) so it needs its own
+            // tap-outside-dismiss rather than relying on
+            // `.dismissesKeyboardOnScrollAndTap()`.
+            if showSessionsMenu {
+                sessionsMenuOverlay
+                    .zIndex(1)
+            }
         }
         .preferredColorScheme(.dark)
         .task {
@@ -845,6 +857,15 @@ struct ChatThreadView: View {
             ) { selected in
                 addMembers(selected)
             }
+        }
+        .sheet(item: $selectedSession) { session in
+            // Mirrors the old SessionBanner's own `.sheet(isPresented:)` ->
+            // SessionDetailSheet wiring exactly (same onDelete/onUpdate
+            // refresh), just item-driven so any row in the submenu's list
+            // can be the one that opens it, not only "the next upcoming"
+            // session.
+            SessionDetailSheet(session: session, onDelete: refreshSessions, onUpdate: refreshSessions)
+                .environmentObject(appState)
         }
         .sheet(isPresented: $showSession) {
             SessionCreatorSheet(groupId: contact.id, onSave: { session in
@@ -920,10 +941,10 @@ struct ChatThreadView: View {
 
             Spacer(minLength: 8)
 
-            PillButton(title: "Schedule", systemIcon: "calendar") {
-                showSession = true
+            PillButton(title: "Sessions", systemIcon: "calendar") {
+                openSessionsMenu()
             }
-            .accessibilityLabel("Schedule new study session")
+            .accessibilityLabel("View and schedule study sessions")
         }
         .padding(.horizontal, Theme.spacingMD)
         .padding(.top, Theme.spacingSM)
@@ -931,6 +952,198 @@ struct ChatThreadView: View {
         .overlay(alignment: .bottom) {
             Rectangle().fill(Theme.borderGoldFaint).frame(height: 1)
         }
+    }
+
+    // ── Sessions submenu (task 20260920-chat-sessions-submenu) ────────────────
+    // Replaces the old inline SessionBanner card: tapping the header's
+    // "Sessions" pill opens this floating panel over a translucent, blurred
+    // scrim rather than a modal `.sheet` -- keeping the chat thread visible
+    // (dimmed) behind it reads as a lightweight submenu, matching the
+    // request, rather than a full context switch away from the thread.
+
+    private func openSessionsMenu() {
+        withMotionAwareAnimation(.spring(response: 0.35, dampingFraction: 0.82), reduceMotion: reduceMotion) {
+            showSessionsMenu = true
+        }
+    }
+
+    private func closeSessionsMenu() {
+        withMotionAwareAnimation(.easeOut(duration: 0.18), reduceMotion: reduceMotion) {
+            showSessionsMenu = false
+        }
+    }
+
+    // `fetch_by_contact` (api/backend/interactions/devotion.py) returns
+    // devotions straight from a dict lookup with no `ORDER BY` on
+    // time_start -- so `vm.sessions`' own array order was never actually
+    // guaranteed to be "next upcoming first," it just happened to work for
+    // the old `.first`-only banner. That assumption doesn't survive showing
+    // every session in one list, so this sorts client-side instead: upcoming
+    // sessions soonest-first, past sessions most-recent-first, so what's
+    // coming up next stays at the top regardless of backend ordering.
+    private var upcomingSessions: [FSSession] {
+        let now = Date()
+        return vm.sessions
+            .filter { (parseFlexibleISO8601($0.time_start) ?? .distantPast) >= now }
+            .sorted { (parseFlexibleISO8601($0.time_start) ?? .distantPast) < (parseFlexibleISO8601($1.time_start) ?? .distantPast) }
+    }
+
+    private var pastSessions: [FSSession] {
+        let now = Date()
+        return vm.sessions
+            .filter { (parseFlexibleISO8601($0.time_start) ?? .distantPast) < now }
+            .sorted { (parseFlexibleISO8601($0.time_start) ?? .distantPast) > (parseFlexibleISO8601($1.time_start) ?? .distantPast) }
+    }
+
+    private var sessionsMenuOverlay: some View {
+        ZStack {
+            // Translucent, blurred backdrop -- lets the thread read through
+            // dimly rather than hard-cutting to an opaque surface. Tapping
+            // it dismisses, same convention as this file's other floating
+            // affordances.
+            Rectangle()
+                .fill(.ultraThinMaterial)
+                .ignoresSafeArea()
+                .contentShape(Rectangle())
+                .onTapGesture { closeSessionsMenu() }
+                .accessibilityLabel("Close sessions menu")
+                .accessibilityAddTraits(.isButton)
+
+            VStack {
+                sessionsMenuCard
+                    .padding(.horizontal, Theme.spacingMD)
+                Spacer()
+            }
+            .padding(.top, 76) // clears the header row so the card reads as anchored under the "Sessions" pill
+            .frame(maxWidth: .infinity, alignment: .trailing)
+        }
+        .transition(
+            reduceMotion
+                ? .opacity
+                : .asymmetric(
+                    insertion: .scale(scale: 0.9, anchor: .topTrailing).combined(with: .opacity),
+                    removal: .opacity
+                )
+        )
+    }
+
+    private var sessionsMenuCard: some View {
+        VStack(alignment: .leading, spacing: Theme.spacingSM) {
+            HStack {
+                Text("Sessions")
+                    .font(.inter(Theme.fontSM, weight: .bold))
+                    .foregroundColor(Theme.parchment)
+                Spacer()
+                Button {
+                    closeSessionsMenu()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(Theme.textGoldMuted)
+                        .frame(width: 24, height: 24)
+                        .background(Color.white.opacity(0.05))
+                        .clipShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Close")
+            }
+
+            Button {
+                closeSessionsMenu()
+                showSession = true
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.system(size: 14, weight: .semibold))
+                    Text("Schedule new session")
+                        .font(.inter(Theme.fontSM, weight: .bold))
+                }
+                .foregroundColor(Theme.ink)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 10)
+                .background(Theme.goldGradient)
+                .clipShape(Capsule())
+                .topEdgeHighlight(Capsule())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Schedule a new session")
+
+            Rectangle().fill(Theme.borderGoldFaint).frame(height: 1)
+
+            if vm.sessions.isEmpty {
+                // Empty state kept minimal/on-brand per preference profile
+                // rather than an invented illustrated treatment -- still
+                // surfaces the schedule action above.
+                Text("No sessions scheduled yet.")
+                    .font(.inter(Theme.fontXS))
+                    .foregroundColor(Theme.textSecondary)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.vertical, Theme.spacingSM)
+            } else {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 2) {
+                        if !upcomingSessions.isEmpty {
+                            if !pastSessions.isEmpty {
+                                SectionEyebrow(title: "Upcoming")
+                                    .padding(.top, Theme.spacingXS)
+                            }
+                            ForEach(upcomingSessions) { session in
+                                sessionRow(session)
+                            }
+                        }
+                        if !pastSessions.isEmpty {
+                            if !upcomingSessions.isEmpty {
+                                SectionEyebrow(title: "Past")
+                                    .padding(.top, Theme.spacingXS)
+                            }
+                            ForEach(pastSessions) { session in
+                                sessionRow(session)
+                            }
+                        }
+                    }
+                }
+                .frame(maxHeight: 260)
+            }
+        }
+        .padding(Theme.spacingMD)
+        .frame(width: 300)
+        .background(.regularMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: Theme.radiusXL))
+        .overlay(RoundedRectangle(cornerRadius: Theme.radiusXL).stroke(Theme.borderGoldDim, lineWidth: 1))
+        .topEdgeHighlight(RoundedRectangle(cornerRadius: Theme.radiusXL))
+        .accessibilityElement(children: .contain)
+    }
+
+    @ViewBuilder
+    private func sessionRow(_ session: FSSession) -> some View {
+        Button {
+            selectedSession = session
+            closeSessionsMenu()
+        } label: {
+            HStack(spacing: Theme.spacingSM) {
+                Image(systemName: "calendar.badge.clock")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(Theme.gold)
+                    .frame(width: 20)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(session.title)
+                        .font(.inter(Theme.fontXS, weight: .semibold))
+                        .foregroundColor(Theme.parchment)
+                        .lineLimit(1)
+                    Text(session.formattedStart)
+                        .font(.inter(Theme.fontXXS))
+                        .foregroundColor(Theme.textSecondary)
+                }
+                Spacer(minLength: 4)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(Theme.textGoldMuted.opacity(0.6))
+            }
+            .padding(.vertical, 8)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("View session details: \(session.title), \(session.formattedStart)")
     }
 
     // ── Composer (mirrors chat.html's flush full-width `.input-bar`) ──────────
@@ -1405,26 +1618,45 @@ struct SessionBanner: View {
                 // green (established call-affordance convention elsewhere in
                 // the app) — only the shape/typography is restyled, per the
                 // migration's "styling only, not the call screen" scope.
-                Button {
-                    CallController.shared.start(session: session,
-                                                service: appState.service,
-                                                userId: appState.currentUser?.user_id ?? "")
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "video.fill")
-                            .font(.system(size: 11))
-                        Text("Join")
-                            .font(.system(size: 12, weight: .bold))
-                            .fixedSize()
+                //
+                // Task 20260920-session-join-window-gating: greyed out/
+                // untappable outside the session's opening window
+                // (join-window-contract.md §6). `TimelineView` re-evaluates
+                // `session.isJoinWindowOpen` on a 1s cadence so the state
+                // flips live while this card stays on screen, rather than
+                // only once at `body` evaluation time.
+                TimelineView(.periodic(from: .now, by: 1)) { context in
+                    let canJoin = session.isJoinWindowOpen(now: context.date)
+                    Button {
+                        CallController.shared.start(session: session,
+                                                    service: appState.service,
+                                                    userId: appState.currentUser?.user_id ?? "")
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "video.fill")
+                                .font(.system(size: 11))
+                            Text("Join")
+                                .font(.system(size: 12, weight: .bold))
+                                .fixedSize()
+                        }
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 7)
+                        // Same reduced-opacity-on-same-hue disabled treatment
+                        // already used elsewhere in this file (e.g. the
+                        // composer's send button) rather than inventing a new
+                        // disabled-state convention.
+                        .background(Theme.success.opacity(canJoin ? 0.82 : 0.35))
+                        .clipShape(Capsule())
                     }
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 7)
-                    .background(Theme.success.opacity(0.82))
-                    .clipShape(Capsule())
+                    .disabled(!canJoin)
+                    // Per UI/UX Q10/Q17: the greyed state alone is sufficient
+                    // feedback -- no confirmation dialog, no extra copy.
+                    .accessibilityLabel(canJoin
+                        ? "Join call for \(session.title)"
+                        : "Join call for \(session.title), not open yet")
                 }
-                .accessibilityLabel("Join call for \(session.title)")
 
                 Button {
                     showDetail = true
@@ -1482,25 +1714,37 @@ struct SessionDetailSheet: View {
                     VStack(alignment: .leading, spacing: Theme.spacingLG) {
                         // Join call CTA — start the persistent call, then close
                         // this sheet so the call takes over full-screen.
-                        Button {
-                            CallController.shared.start(session: session,
-                                                        service: appState.service,
-                                                        userId: appState.currentUser?.user_id ?? "")
-                            dismiss()
-                        } label: {
-                            HStack(spacing: 10) {
-                                Image(systemName: "video.fill")
-                                    .font(.system(size: 16))
-                                Text("Join Audio & Video Call")
-                                    .font(.inter(Theme.fontBody, weight: .semibold))
+                        //
+                        // Task 20260920-session-join-window-gating: greyed
+                        // out/untappable outside the session's opening window
+                        // (join-window-contract.md §6), live-updating via
+                        // `TimelineView` on the same 1s cadence as
+                        // SessionBanner's own Join button above.
+                        TimelineView(.periodic(from: .now, by: 1)) { context in
+                            let canJoin = session.isJoinWindowOpen(now: context.date)
+                            Button {
+                                CallController.shared.start(session: session,
+                                                            service: appState.service,
+                                                            userId: appState.currentUser?.user_id ?? "")
+                                dismiss()
+                            } label: {
+                                HStack(spacing: 10) {
+                                    Image(systemName: "video.fill")
+                                        .font(.system(size: 16))
+                                    Text("Join Audio & Video Call")
+                                        .font(.inter(Theme.fontBody, weight: .semibold))
+                                }
+                                .foregroundColor(.white)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 14)
+                                .background(Theme.success.opacity(canJoin ? 0.82 : 0.35))
+                                .clipShape(RoundedRectangle(cornerRadius: Theme.radiusXL))
                             }
-                            .foregroundColor(.white)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 14)
-                            .background(Theme.success.opacity(0.82))
-                            .clipShape(RoundedRectangle(cornerRadius: Theme.radiusXL))
+                            .disabled(!canJoin)
+                            .accessibilityLabel(canJoin
+                                ? "Join audio and video call for \(session.title)"
+                                : "Join audio and video call for \(session.title), not open yet")
                         }
-                        .accessibilityLabel("Join audio and video call for \(session.title)")
 
                         VStack(alignment: .leading, spacing: Theme.spacingXS) {
                             SectionEyebrow(title: "Study Session")

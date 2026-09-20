@@ -8,7 +8,10 @@
 //
 //   1. The oversized RadialGradient "ambient bloom" behind ChatThreadView's
 //      header avatar is gone; the 38x38 avatar's fill/stroke/initial-letter
-//      and its neighboring back button / "Schedule" pill are unchanged.
+//      and its neighboring back button are unchanged (the header's pill
+//      itself was later renamed "Schedule" -> "Sessions" by task
+//      20260920-chat-sessions-submenu -- this suite's assertion tracks that
+//      current title rather than the one that shipped with this task).
 //   2. SessionCreatorSheet.sheetHeader: title reads "Schedule" (not
 //      "Schedule a Session"); Cancel is a circular xmark icon button
 //      (dismiss() preserved, accessible); the submit action is a circular
@@ -103,12 +106,17 @@ final class HeaderAvatarBloomRemovalRegressionTests: XCTestCase {
                       "the header avatar must now also render the contact's real photo when present (task 20260905-profile-photo-avatar-gaps), falling back to the initial above when absent")
     }
 
-    func test_source_headerAvatarBlock_backButtonAndSchedulePillUnaffected() throws {
+    func test_source_headerAvatarBlock_backButtonAndSessionsPillUnaffected() throws {
+        // Task 20260920-chat-sessions-submenu renamed this pill "Schedule" ->
+        // "Sessions" (now opening the sessions submenu instead of the
+        // create-session sheet directly) -- updated here to the new intended
+        // label so this stays a real regression guard rather than pinning a
+        // title the feature intentionally moved past.
         let header = try headerSource()
         XCTAssertTrue(header.contains(#"RoundIconButton(systemIcon: "chevron.left")"#),
                       "removing the avatar bloom must not have disturbed the back button")
-        XCTAssertTrue(header.contains(#"PillButton(title: "Schedule", systemIcon: "calendar")"#),
-                      "removing the avatar bloom must not have disturbed the header's own \"Schedule\" pill")
+        XCTAssertTrue(header.contains(#"PillButton(title: "Sessions", systemIcon: "calendar")"#),
+                      "removing the avatar bloom must not have disturbed the header's own \"Sessions\" pill")
     }
 }
 
@@ -411,20 +419,28 @@ final class ComposerDividerRemovalRegressionTests: XCTestCase {
         )
     }
 
-    func test_source_chatThreadView_hasExactlyOneRemainingPlainHairline_headerOnly() throws {
+    func test_source_chatThreadView_hasExactlyTwoRemainingPlainHairlines_headerAndSessionsMenuCard() throws {
         // Supersedes EmberGlassFidelityPassRegressionTests'
         // SenderGroupDividerRemovalRegressionTests expectation of exactly 2
         // occurrences (header + composer) -- that test predates this task,
         // which intentionally removes the composer's copy, per acceptance
-        // criterion 7. That existing test's own count assertion is updated
-        // alongside this one so the full suite reflects the new, intended
-        // state rather than flagging an expected, spec-required change as a
-        // regression.
+        // criterion 7, dropping the count to 1. That existing test's own
+        // count assertion was updated alongside this one at the time so the
+        // full suite reflected that intended state.
+        //
+        // Task 20260920-chat-sessions-submenu later added a second, unrelated
+        // use of this same one-liner (the divider between the sessions
+        // submenu card's "Schedule new session" action and its session list),
+        // bringing the count back to 2 -- both count assertions (this one and
+        // EmberGlassFidelityPassRegressionTests' sibling) are updated together
+        // again here so a real regression (the composer's divider reappearing,
+        // or the sender-group divider reappearing) is still distinguishable
+        // from this expected, intentional addition.
         let source = try chatThreadViewSource()
         let occurrences = source.components(separatedBy: "Rectangle().fill(Theme.borderGoldFaint).frame(height: 1)").count - 1
         XCTAssertEqual(
-            occurrences, 1,
-            "expected exactly 1 remaining occurrence of the plain hairline one-liner in ChatThreadView.swift (header's bottom edge only) now that the composer's top divider has been removed"
+            occurrences, 2,
+            "expected exactly 2 remaining occurrences of the plain hairline one-liner in ChatThreadView.swift (header's bottom edge, and the sessions submenu card's schedule/list divider) now that the composer's own top divider has been removed"
         )
     }
 

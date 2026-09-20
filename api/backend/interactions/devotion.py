@@ -53,6 +53,23 @@ RING_COOLDOWN_MINUTES = 0
 RING_VOIP_ENABLED = False
 RING_TIMEOUT_SECONDS = 0
 
+# ── Session join-window config (task 20260920-session-join-window-gating) ──
+#
+# Same Configuration Philosophy precedent as the ring config above (Q1/Q4/
+# Q8): a new tunable is required, explicitly validated env var, never a
+# silently-guessed magic constant. Per
+# .claude/pipeline/20260920-session-join-window-gating/join-window-contract.md
+# §3: how many minutes before a session's `time_start` a join is allowed
+# early. Unlike RING_COOLDOWN_MINUTES, `0` IS a legitimate value here
+# (meaning "no early join, strictly time_start"), so validation requires
+# `>= 0`, not `> 0`.
+_SESSION_JOIN_GRACE_MINUTES_RAW = os.getenv("SESSION_JOIN_GRACE_MINUTES")
+
+# Populated by validate_join_window_config(); read via join_grace_minutes()
+# rather than importing this name by value elsewhere -- same fresh-lookup
+# reasoning as RING_FEATURE_ENABLED/is_ring_enabled() above.
+SESSION_JOIN_GRACE_MINUTES = 0
+
 
 class RingConfigError(RuntimeError):
     """RING_FEATURE_ENABLED/RING_COOLDOWN_MINUTES are unset or invalid.
@@ -155,6 +172,58 @@ def validate_ring_config() -> None:
     RING_TIMEOUT_SECONDS = timeout_seconds
 
 
+class JoinWindowConfigError(RuntimeError):
+    """SESSION_JOIN_GRACE_MINUTES is unset or invalid.
+
+    Deliberately never swallowed -- mirrors RingConfigError/APNsConfigError/
+    NudgeConfigError precedent exactly: a misconfigured join-window rollout
+    must fail loudly at boot rather than every join request silently
+    running against a guessed or nonsensical grace period.
+    """
+
+
+def validate_join_window_config() -> None:
+    """Eagerly validate and parse SESSION_JOIN_GRACE_MINUTES.
+
+    Call once, at process startup (main.py's lifespan), before serving
+    traffic -- same placement/reasoning as validate_ring_config() and its
+    siblings.
+
+    Raises:
+        JoinWindowConfigError: If SESSION_JOIN_GRACE_MINUTES is unset or
+            isn't a non-negative integer. Unlike RING_COOLDOWN_MINUTES, `0`
+            is a legitimate, meaningful value here ("no early join").
+    """
+    global SESSION_JOIN_GRACE_MINUTES
+
+    if _SESSION_JOIN_GRACE_MINUTES_RAW is None or not _SESSION_JOIN_GRACE_MINUTES_RAW.strip():
+        raise JoinWindowConfigError(
+            "SESSION_JOIN_GRACE_MINUTES is not set. There is no implicit "
+            "default for the early-join grace period -- set it explicitly "
+            "(e.g. 10 for a 10-minute early-join allowance, or 0 for none)."
+        )
+    try:
+        minutes = int(_SESSION_JOIN_GRACE_MINUTES_RAW)
+    except ValueError:
+        raise JoinWindowConfigError(
+            f"SESSION_JOIN_GRACE_MINUTES ({_SESSION_JOIN_GRACE_MINUTES_RAW!r}) "
+            "is not a valid integer."
+        )
+    if minutes < 0:
+        raise JoinWindowConfigError(
+            f"SESSION_JOIN_GRACE_MINUTES ({minutes}) must be a non-negative "
+            "number of minutes."
+        )
+    SESSION_JOIN_GRACE_MINUTES = minutes
+
+
+def join_grace_minutes() -> int:
+    """Current SESSION_JOIN_GRACE_MINUTES value -- always looked up fresh
+    (see the module-global comment above) so callers see
+    validate_join_window_config()'s result regardless of import order."""
+    return SESSION_JOIN_GRACE_MINUTES
+
+
 def is_ring_enabled() -> bool:
     """Current RING_FEATURE_ENABLED value -- always looked up fresh (see the
     module-global comment above) so callers see validate_ring_config()'s
@@ -252,6 +321,106 @@ class DevotionManager(DBManager):
             )
             self.conn.rollback()
             return False
+
+    def is_join_window_open(self, session: dict) -> bool:
+        """True if ``session`` is currently inside its join-eligible time
+        window, per the binding contract at
+        ``.claude/pipeline/20260920-session-join-window-gating/
+        join-window-contract.md`` §2. Called from ``routes/devotion.py``'s
+        ``join_devotion``/``join_call`` *after* ``is_authorized`` passes and
+        *before* any mutating side effect -- this is a distinct, later gate,
+        not a replacement for the membership check.
+
+        Evaluated in this order:
+
+        1. **Already-live-call bypass.** If ``session["chime_meeting_id"]``
+           is a non-empty, server-set value, the window is open
+           unconditionally -- this is also the mechanism that lets an
+           already-live call's ring-invite path bypass the window (see the
+           contract's §5): ``chime_meeting_id`` can only ever be set by
+           ``save_chime_meeting`` after a real join already legitimately
+           opened the window once.
+        2. **Missing time_start → fail closed.** No basis to gate a session
+           "open" without a real start moment -- an unresolvable start
+           never defaults to "always open" (that would be a fail-open
+           availability regression on exactly the field this feature
+           gates on).
+        3. **Grace period.** The window's lower bound is
+           ``time_start - SESSION_JOIN_GRACE_MINUTES``. Denied if the
+           server's own clock (``NOW()`` in Postgres, never a Python-side
+           "now") is still before that.
+        4. **Missing/malformed time_end → unbounded upper end.** Once a
+           resolved ``time_start`` has legitimately opened the window, an
+           absent or unparseable ``time_end`` means "stays open" -- no
+           implicit duration is synthesized. This is the deliberate
+           mirror-image of point 2: an unresolvable *end* only matters once
+           the window is already open, so declining to guess when to
+           revoke access is the lower-risk direction (unlike an
+           unresolvable *start*, where defaulting open would be a
+           security regression).
+        5. Otherwise, open iff the server's current time is at or before
+           ``time_end``.
+
+        Clock source is exclusively the database's own ``NOW()`` (mirroring
+        ``scheduler.py``'s existing ``time_start <= NOW()`` precedent)
+        rather than a Python-side ``datetime.now()`` comparison -- this is
+        what actually closes the device-clock-manipulation bypass named in
+        the intake spec's open questions, since it's evaluated independently
+        of anything the calling client claims about the current time.
+
+        Any DB error while evaluating either bound is treated as
+        unresolvable for that bound (fail-closed for ``time_start``,
+        open-ended for ``time_end`` -- consistent with points 2 and 4
+        above), never allowed to raise out to the caller.
+        """
+        if session.get("chime_meeting_id"):
+            return True
+
+        time_start = session.get("time_start")
+        if not time_start:
+            return False
+
+        try:
+            self.cur.execute(
+                "SELECT NOW() >= (%s)::timestamptz - (%s * INTERVAL '1 minute')",
+                (time_start, join_grace_minutes()),
+            )
+            row = self.cur.fetchone()
+            self.conn.commit()
+            if not row or not row[0]:
+                return False
+        except Exception:
+            logger.exception(
+                "Join-window time_start evaluation errored for session %r "
+                "(time_start=%r) -- denying (fail-closed), but this is NOT "
+                "a confirmed not-yet-open result.",
+                session.get("id"), time_start,
+            )
+            self.conn.rollback()
+            return False
+
+        time_end = session.get("time_end")
+        if not time_end:
+            return True
+
+        try:
+            self.cur.execute("SELECT NOW() <= (%s)::timestamptz", (time_end,))
+            row = self.cur.fetchone()
+            self.conn.commit()
+            return bool(row and row[0])
+        except Exception:
+            # An unresolvable time_end is point 4 above, not point 2 --
+            # a resolved time_start already legitimately opened the window,
+            # so a malformed end declines to guess when to revoke it rather
+            # than failing closed.
+            logger.exception(
+                "Join-window time_end evaluation errored for session %r "
+                "(time_end=%r) -- treating as open-ended per the "
+                "unresolvable-end rule, not failing closed.",
+                session.get("id"), time_end,
+            )
+            self.conn.rollback()
+            return True
 
     def resolve_members(self, session: dict) -> list[str]:
         """Every user_id this session's own membership rules (``is_authorized``

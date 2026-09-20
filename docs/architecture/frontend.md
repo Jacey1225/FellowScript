@@ -4,6 +4,16 @@ The web frontend is a **React 18 + Vite** single-page application in `frontend/s
 
 ---
 
+## Crawlability: build-time static prerendering of Home (task `20260920-fix-spa-crawlability`)
+
+Before this task, a non-JS HTTP fetch of `https://fellowscript.com/` (Googlebot's raw crawl, link unfurlers, etc.) received only an empty `<div id="root"></div>` — real content only ever appeared after the client bundle executed. This was confirmed as the cause of three consecutive days of zero `site:fellowscript.com` results.
+
+`frontend/package.json`'s `build` script now runs `vite build && node scripts/prerender.mjs`. After the ordinary Vite build produces `dist/index.html`, `scripts/prerender.mjs` bundles `src/entry-server.jsx` (via Vite's own programmatic `build()` API) and calls its `renderHome()`, which uses `react-dom/server`'s `renderToStaticMarkup` to render `pages/Home.jsx`'s real markup (wrapped in `react-router-dom`'s `StaticRouter` so its `<Link>`s resolve, and `AuthContext`'s `AuthProvider` in its default signed-out state). That HTML string is spliced into `dist/index.html`'s `<div id="root">`, so the shipped file's body now carries real crawlable content for "/" instead of an empty shell.
+
+This is deliberately **not** full SSR and **not** a hydration target — `main.jsx` still mounts the live app via `createRoot(...).render()` exactly as before, which replaces the prerendered snapshot with the interactive app once the client bundle loads. It is also **not** a `HashRouter` → `BrowserRouter` migration: every other route (`/reader`, `/account`, `/privacy`, `/terms`, `/admin*`, etc.) is untouched and still resolves only under the `#/` hash fragment. Only the Home route (`/`, the one path the static host was already resolving server-side) is prerendered; `/privacy` and `/terms` were deliberately not promoted to real, non-fragment routes in this pass (see the "Decision update (task 20260920-fix-spa-crawlability)" comment above `<HashRouter>` in `App.jsx` for why). No `deploy.sh` changes were needed — it already ships `dist/index.html` verbatim.
+
+---
+
 ## Pages
 
 | Route | File | Description |

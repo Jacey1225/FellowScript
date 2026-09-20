@@ -676,6 +676,51 @@ struct FSSession: Codable, Identifiable {
         }
         return time_start
     }
+
+    // Task 20260920-session-join-window-gating (frontend step 3): client-side
+    // join-window gating, evaluated against DEVICE LOCAL time. This mirrors
+    // `DevotionManager.is_join_window_open`'s contract (see
+    // join-window-contract.md §2/§6) point-for-point, but it is a cosmetic
+    // UX signal only, never the actual access-control boundary -- that's
+    // enforced server-side in `join_devotion`/`join_call` against
+    // server/DB time. A skewed device clock can only make this return
+    // `true` a little early; tapping Join then still gets rejected by the
+    // server with "This session isn't open yet.", surfaced through
+    // `CallController.joinError` exactly like any other join failure.
+    //
+    // Deliberately has no visibility into `chime_meeting_id` (not a field on
+    // `FSSession` today), so it can't replicate the server's
+    // already-live-call/ring bypass (contract §5) -- the known, accepted
+    // asymmetry documented in the contract: this can only ever *under-claim*
+    // availability (greyed out while the server would actually accept the
+    // join), never over-claim it. `CallController.start`/`AppState
+    // .joinRingedCall` are untouched by this feature, per the contract.
+    func isJoinWindowOpen(now: Date = Date()) -> Bool {
+        // Missing/malformed time_start -> fail closed (never open) -- matches
+        // the server's decision exactly. An unresolvable start never
+        // established that this session should be gated open at all;
+        // defaulting to "open" here would be a fail-open regression on
+        // exactly the field this whole feature gates on.
+        guard let start = parseFlexibleISO8601(time_start) else { return false }
+
+        let earliestJoin = start.addingTimeInterval(-Self.joinGraceMinutes * 60)
+        guard now >= earliestJoin else { return false }
+
+        // Empty/malformed time_end -> open-ended once a resolved start has
+        // already legitimately opened the window -- no synthesized duration
+        // (mirror of the server's §2.4 asymmetry: an unresolvable end never
+        // revokes access that was already properly earned).
+        guard let end = parseFlexibleISO8601(time_end) else { return true }
+
+        return now <= end
+    }
+
+    /// Same early-join allowance the backend requires via its
+    /// `SESSION_JOIN_GRACE_MINUTES` config -- hardcoded here rather than
+    /// round-tripped from the server because this copy is a UI convenience
+    /// value only, not a security boundary (join-window-contract.md §6).
+    /// Keep in sync with the backend's recommended deploy value (10).
+    static let joinGraceMinutes: TimeInterval = 10
 }
 
 // Resilient decoding: the server omits some fields (e.g. `summarize`) and returns

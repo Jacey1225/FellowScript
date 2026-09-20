@@ -248,6 +248,34 @@ key (`"uidA|uidB"`) to the other participant or treating any other value as
 a real group id — the same cross-tab navigation the Dashboard's Friend
 Activity widget already uses.
 
+### Session join-window gating (task `20260920-session-join-window-gating`)
+
+`POST /devotions/join` and `POST /devotions/join-call` now enforce a
+time window on top of their existing membership check
+(`DevotionManager.is_authorized`): once a caller is authorized, both routes
+also call `DevotionManager.is_join_window_open(session)` and 403
+(`"This session isn't open yet."`) if the session isn't currently open —
+`join-call` checks this before ever creating (or recreating) the billed AWS
+Chime meeting, so an out-of-window call never spins one up.
+
+A session is open once the server's own clock (`NOW()` in Postgres, never a
+client- or app-server-supplied time) reaches `time_start` minus a
+configurable early-join grace period (`SESSION_JOIN_GRACE_MINUTES`, new
+required config validated eagerly at startup — see
+[Configuration](../architecture/backend.md)), and stays open through
+`time_end`; a session with no resolvable `time_start` never opens (fails
+closed), while a session with no resolvable `time_end` stays open
+indefinitely once started. A session with a live Chime meeting already
+attached (`chime_meeting_id` set) is always considered open regardless of
+the time window — this is also what lets an already-live call's "ring a
+member" invite (`POST /devotions/ring`, below) bypass the window, since a
+real Chime meeting can only exist once someone already joined in-window.
+The iOS client independently greys out its own Join controls using the same
+window (device local time, cosmetic only) so the button reads as disabled
+before a request would even be attempted — the server-side check above is
+what actually closes a direct-API/clock-manipulation bypass of that UI
+state.
+
 ### `POST /devotions/ring` (task `20260916-call-ring-members`)
 
 Lets a participant already on a live session's call prompt one or more of

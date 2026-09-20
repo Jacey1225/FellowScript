@@ -64,7 +64,7 @@ All business logic lives here in `*Manager` classes that subclass `DBManager`. R
 |---|---|---|
 | `GroupsManager` | `groups.py` | Create/join/leave groups, add members |
 | `FriendsManager` | `friends.py` | Friend requests, friend list, remove, friend-activity read surface (`get_friend_activity`) |
-| `DevotionManager` | `devotion.py` | Devotion plans, participants, progress |
+| `DevotionManager` | `devotion.py` | Devotion plans, participants, progress; `is_join_window_open` gates `join`/`join-call` on `time_start`/`time_end` (± `SESSION_JOIN_GRACE_MINUTES`), server clock only — see [Session join-window gating](../api/overview.md#session-join-window-gating-task-20260920-session-join-window-gating) |
 | `AgentManager` | `agent.py` | AI agent config, heartbeat events, heartbeat timeline-instruction planning (2026-09-06) |
 | `FilterManager` | `filtering.py` | Note filtering by book, date, user, title |
 | `SortingManager` | `sorting.py` | Note sorting by timestamp |

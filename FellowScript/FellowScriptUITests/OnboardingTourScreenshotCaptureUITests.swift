@@ -390,19 +390,28 @@ final class OnboardingTourScreenshotCaptureUITests: XCTestCase {
 
         // 8. Group session — tour-group-session. Open the "Wednesday Night
         // Study" group thread; MockDataService.fetchSessionsForContact
-        // always returns mockSession, so SessionBanner's Join/Details row renders.
-        // ContactRow is a plain View with `.onTapGesture` + `.accessibilityLabel`
-        // (no Button/isButton trait), so it surfaces to XCUITest as the
-        // List's row `.cell`, not `.buttons[...]` — same pattern as the
-        // working AgentRow tap in test_captureAgentChat. There's exactly one
-        // row in the Groups list, so `app.cells.firstMatch` is unambiguous.
+        // always returns mockSession. Task 20260920-chat-sessions-submenu
+        // replaced the old always-visible inline SessionBanner (with its
+        // directly-reachable Join/Details row) with a header "Sessions" pill
+        // that opens a submenu listing every session -- captures the submenu
+        // itself, open and populated with the group's session, as the most
+        // representative single screenshot of this feature now that there is
+        // no more inline banner to show. ContactRow is a plain View with
+        // `.onTapGesture` + `.accessibilityLabel` (no Button/isButton trait),
+        // so it surfaces to XCUITest as the List's row `.cell`, not
+        // `.buttons[...]` — same pattern as the working AgentRow tap in
+        // test_captureAgentChat. There's exactly one row in the Groups list,
+        // so `app.cells.firstMatch` is unambiguous.
         let groupRow = app.cells.firstMatch
         XCTAssertTrue(groupRow.waitForExistence(timeout: 8), "expected the Wednesday Night Study group row.\n\(app.debugDescription)")
         waitHittableThenTap(groupRow, app: app)
-        let joinButton = app.buttons.matching(
-            NSPredicate(format: "label CONTAINS[c] %@", "Join call")
+        let sessionsButton = app.buttons["View and schedule study sessions"]
+        XCTAssertTrue(sessionsButton.waitForExistence(timeout: 8), "expected the group thread's Sessions pill.\n\(app.debugDescription)")
+        waitHittableThenTap(sessionsButton, app: app)
+        let sessionRow = app.buttons.matching(
+            NSPredicate(format: "label CONTAINS[c] %@", "View session details: Wednesday Night Study")
         ).firstMatch
-        XCTAssertTrue(joinButton.waitForExistence(timeout: 8), "expected the group thread's SessionBanner Join button.\n\(app.debugDescription)")
+        XCTAssertTrue(sessionRow.waitForExistence(timeout: 8), "expected the Sessions submenu to list the group's session.\n\(app.debugDescription)")
         captureRaw(app, name: "tour-group-session")
     }
 

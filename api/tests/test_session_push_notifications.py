@@ -98,6 +98,10 @@ os.environ.setdefault("AWS_EC2_METADATA_DISABLED", "true")
 os.environ.setdefault("AWS_ACCESS_KEY_ID", "dummy")
 os.environ.setdefault("AWS_SECRET_ACCESS_KEY", "dummy")
 os.environ.setdefault("AWS_DEFAULT_REGION", "us-east-1")
+os.environ.setdefault("S3_BUCKET_NAME", "fellowscript-test-bucket-placeholder")
+os.environ.setdefault("S3_REGION", "us-east-1")
+os.environ.setdefault("GIF_PROVIDER", "giphy")
+os.environ.setdefault("GIF_PROVIDER_API_KEY", "test-placeholder-key-not-a-real-secret")
 
 from fastapi.testclient import TestClient  # noqa: E402
 from db import DBManager  # noqa: E402

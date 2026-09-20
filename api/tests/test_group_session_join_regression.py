@@ -42,6 +42,7 @@ import _pathfix  # noqa: F401
 import logging
 import os
 import uuid
+from datetime import datetime, timedelta, timezone
 
 os.environ.setdefault("AWS_EC2_METADATA_DISABLED", "true")
 os.environ.setdefault("AWS_ACCESS_KEY_ID", "dummy")
@@ -152,13 +153,28 @@ def create_group_session(client, token, creator_uid, group_id):
     """A session created inside a group -- creator is NOT added as an
     explicit participant, matching the real flow: joining is meant to be
     granted purely via group membership (is_authorized's group_id branch),
-    not because the joiner happens to already be listed as a participant."""
+    not because the joiner happens to already be listed as a participant.
+
+    Task 20260920-session-join-window-gating (testing step 4, fixing the
+    fixture gap testing itself flagged in its prior bounce): gives the
+    session a real, currently-in-window time_start/time_end so
+    is_join_window_open's new fail-closed-on-missing-time_start rule
+    doesn't deny these otherwise-legitimate group-membership joins. Window
+    is centered on "now" with generous slack on both sides (well within
+    SESSION_JOIN_GRACE_MINUTES on the early side, and not expiring mid-test
+    on the late side) rather than any exact boundary value -- this fixture
+    is regression coverage for group-membership authorization, not for the
+    join-window boundary itself (see the dedicated boundary tests below)."""
     devo_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc)
+    time_start = (now - timedelta(minutes=1)).isoformat()
+    time_end = (now + timedelta(hours=1)).isoformat()
     payload = {
         "devotion_id": devo_id, "user_id": creator_uid,
         "devotion": {
             "id": devo_id, "title": "Group session", "creator_id": creator_uid,
             "participants": [], "group_id": group_id, "prompts": ["p1"], "verses": [],
+            "time_start": time_start, "time_end": time_end,
         },
     }
     r = client.post("/devotions/", json=payload, headers=cookie_header(token))

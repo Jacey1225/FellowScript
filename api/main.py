@@ -163,6 +163,17 @@ async def lifespan(_: FastAPI):
     from backend.interactions.devotion import validate_ring_config
     validate_ring_config()
 
+    # Eager join-window config validation (task
+    # 20260920-session-join-window-gating) -- same rationale as
+    # validate_apns_config/validate_ring_config just above:
+    # SESSION_JOIN_GRACE_MINUTES is new required config (Configuration
+    # Philosophy Q4 -- no implicit default), so a deploy that hasn't set it
+    # explicitly must fail loudly at boot rather than every join request
+    # silently running against a guessed early-join grace period.
+    # Deliberately not caught here.
+    from backend.interactions.devotion import validate_join_window_config
+    validate_join_window_config()
+
     from backend.interactions.scheduler import start_scheduler
     start_scheduler()
     # WS connection-liveness heartbeat (task

@@ -18,9 +18,13 @@
 // Drives the real running app via MockDataService's "UI-TESTING" launch
 // argument (same mechanism as NoteDetailScreenshotUITests etc.). Reaches the
 // minimized-call state through genuine user actions only -- sign in, open the
-// "Wednesday Night Study" group chat, tap its session banner's real "Join"
-// button (starts CallController.shared via the real, non-test code path),
-// then tap "Minimize" on the resulting full-screen call view (MockDataService
+// "Wednesday Night Study" group chat, tap its header's "Sessions" pill to
+// open the sessions submenu (task 20260920-chat-sessions-submenu replaced
+// the old always-visible inline SessionBanner with this pill+submenu
+// pattern), tap the listed session's row to open its detail sheet, then tap
+// that sheet's real "Join Audio & Video Call" button (starts
+// CallController.shared via the real, non-test code path), then tap
+// "Minimize" on the resulting full-screen call view (MockDataService
 // .joinCall always throws in UI-TESTING mode, which lands on ChimeCallView's
 // error branch -- Minimize/End Call text buttons -- rather than needing a
 // live Chime connection or microphone permission).
@@ -166,8 +170,42 @@ final class CallBarNavOverlapUITests: XCTestCase {
         XCTAssertTrue(groupRow.waitForExistence(timeout: 8), "expected the Wednesday Night Study group row.\n\(app.debugDescription)")
         groupRow.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
 
-        let joinButton = app.buttons["Join call for Wednesday Night Study"]
-        XCTAssertTrue(joinButton.waitForExistence(timeout: 8), "expected SessionBanner's Join button.\n\(app.debugDescription)")
+        // Task 20260920-chat-sessions-submenu: the old inline SessionBanner
+        // (and its directly-reachable "Join call for ..." button) is gone --
+        // reaching the Join action now goes through the header's "Sessions"
+        // pill, then a row in the submenu's session list, then the detail
+        // sheet's own Join button.
+        let sessionsButton = app.buttons["View and schedule study sessions"]
+        XCTAssertTrue(sessionsButton.waitForExistence(timeout: 8), "expected the header's Sessions pill.\n\(app.debugDescription)")
+        tapWhenHittable(sessionsButton, app: app)
+
+        let sessionRow = app.buttons.matching(
+            NSPredicate(format: "label CONTAINS[c] %@", "View session details: Wednesday Night Study")
+        ).firstMatch
+        XCTAssertTrue(sessionRow.waitForExistence(timeout: 8), "expected the Sessions submenu's session row.\n\(app.debugDescription)")
+        tapWhenHittable(sessionRow, app: app)
+
+        // NOTE (found live while updating this test for task
+        // 20260920-chat-sessions-submenu, not something that task itself
+        // caused): a separate, concurrently-landed task,
+        // 20260920-session-join-window-gating, added FSSession.isJoinWindowOpen
+        // gating to this exact button -- it disables Join and appends ", not
+        // open yet" to the accessibility label outside the session's start/
+        // end window. MockDataService.mockSession is hardcoded to
+        // 2026-07-02, which is already in the past relative to any date this
+        // suite runs on going forward, so that gating now makes this
+        // fixture's Join button permanently disabled, independent of which
+        // path (old inline banner or this new submenu) reaches it. Matched
+        // with CONTAINS so this test isn't broken by exact-string drift
+        // between the open/closed label variants, but the underlying
+        // disabled-button issue is a MockDataService fixture staleness bug,
+        // not a sessions-submenu regression -- see this task's testing.json
+        // summary for the recommended follow-up (give mockSession a
+        // relative/dynamic time_start instead of a fixed past date).
+        let joinButton = app.buttons.matching(
+            NSPredicate(format: "label CONTAINS[c] %@", "Join audio and video call for Wednesday Night Study")
+        ).firstMatch
+        XCTAssertTrue(joinButton.waitForExistence(timeout: 8), "expected SessionDetailSheet's Join button.\n\(app.debugDescription)")
         tapWhenHittable(joinButton, app: app)
 
         // MockDataService.joinCall always throws in UI-TESTING mode, landing
