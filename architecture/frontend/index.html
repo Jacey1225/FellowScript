@@ -726,6 +726,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#crawlability-build-time-static-prerendering-of-home-task-20260920-fix-spa-crawlability" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Crawlability: build-time static prerendering of Home (task 20260920-fix-spa-crawlability)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#pages" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -999,6 +1010,11 @@
 
 <h1 id="frontend">Frontend</h1>
 <p>The web frontend is a <strong>React 18 + Vite</strong> single-page application in <code>frontend/src/</code>. Routing uses <code>react-router-dom</code> with <code>HashRouter</code> (<code>/#/</code> prefix). UI components come from <strong>Ant Design</strong>. The built output in <code>frontend/dist/</code> is deployed to EC2 <code>/var/www/html/</code> via rsync.</p>
+<hr />
+<h2 id="crawlability-build-time-static-prerendering-of-home-task-20260920-fix-spa-crawlability">Crawlability: build-time static prerendering of Home (task <code>20260920-fix-spa-crawlability</code>)</h2>
+<p>Before this task, a non-JS HTTP fetch of <code>https://fellowscript.com/</code> (Googlebot's raw crawl, link unfurlers, etc.) received only an empty <code>&lt;div id="root"&gt;&lt;/div&gt;</code> — real content only ever appeared after the client bundle executed. This was confirmed as the cause of three consecutive days of zero <code>site:fellowscript.com</code> results.</p>
+<p><code>frontend/package.json</code>'s <code>build</code> script now runs <code>vite build &amp;&amp; node scripts/prerender.mjs</code>. After the ordinary Vite build produces <code>dist/index.html</code>, <code>scripts/prerender.mjs</code> bundles <code>src/entry-server.jsx</code> (via Vite's own programmatic <code>build()</code> API) and calls its <code>renderHome()</code>, which uses <code>react-dom/server</code>'s <code>renderToStaticMarkup</code> to render <code>pages/Home.jsx</code>'s real markup (wrapped in <code>react-router-dom</code>'s <code>StaticRouter</code> so its <code>&lt;Link&gt;</code>s resolve, and <code>AuthContext</code>'s <code>AuthProvider</code> in its default signed-out state). That HTML string is spliced into <code>dist/index.html</code>'s <code>&lt;div id="root"&gt;</code>, so the shipped file's body now carries real crawlable content for "/" instead of an empty shell.</p>
+<p>This is deliberately <strong>not</strong> full SSR and <strong>not</strong> a hydration target — <code>main.jsx</code> still mounts the live app via <code>createRoot(...).render()</code> exactly as before, which replaces the prerendered snapshot with the interactive app once the client bundle loads. It is also <strong>not</strong> a <code>HashRouter</code> → <code>BrowserRouter</code> migration: every other route (<code>/reader</code>, <code>/account</code>, <code>/privacy</code>, <code>/terms</code>, <code>/admin*</code>, etc.) is untouched and still resolves only under the <code>#/</code> hash fragment. Only the Home route (<code>/</code>, the one path the static host was already resolving server-side) is prerendered; <code>/privacy</code> and <code>/terms</code> were deliberately not promoted to real, non-fragment routes in this pass (see the "Decision update (task 20260920-fix-spa-crawlability)" comment above <code>&lt;HashRouter&gt;</code> in <code>App.jsx</code> for why). No <code>deploy.sh</code> changes were needed — it already ships <code>dist/index.html</code> verbatim.</p>
 <hr />
 <h2 id="pages">Pages</h2>
 <table>
