@@ -1,18 +1,32 @@
 """Schemas for the admin Activity Monitoring panel (task
-20260918-admin-activity-monitoring).
+20260918-admin-activity-monitoring, extended by task
+20260919-activity-monitoring-interactive-charts).
 
-Two surfaces share this file:
+Three surfaces share this file:
 
 1. ``VisitCreate`` -- the inbound payload for the public, anonymous
    visit-logging beacon (``POST /activity-monitoring/visits``). This is the
    one write path in the feature reachable without ``require_admin``/
    ``get_current_user`` at all -- it must work for a logged-out visitor
    browsing the public site.
-2. The admin-only aggregation endpoints (``GET /activity-monitoring/plots/*``)
-   return rendered PNG image bytes directly (``Response(media_type="image/
-   png")``), not a JSON schema -- see routes/activity_monitoring.py for why
-   (security step 1's decision on plot delivery: embedded images, not a JSON
-   payload carrying aggregate PII-adjacent numbers).
+2. The admin-only PNG endpoints (``GET /activity-monitoring/plots/*``) still
+   return rendered image bytes directly (``Response(media_type="image/
+   png")``), not a JSON schema -- unchanged from the prior task.
+3. ``MetricSeriesResponse``/``VisitsSeriesResponse`` -- the JSON payloads for
+   the new admin-only ``GET /activity-monitoring/data/*`` endpoints (task
+   20260919, step 2). The prior task deliberately kept this feature
+   image-only for Cache-Control/PII-adjacent-data reasons (see git history
+   on this file / activity_plots.py's docstring); this task's security step
+   1 threat-modeled reopening that boundary, and clarification-response.md
+   records the user's explicit approval (Security Posture Q16 hard stop) to
+   do so. These response models carry *exactly* the same (day, value)
+   resolution the PNGs already visually encode -- same fixed
+   ``DEFAULT_WINDOW_DAYS`` window, same daily granularity, same
+   already-aggregated/per-user-averaged values -- never raw per-row data,
+   device IDs, or any join back to ``users``/``sessions`` beyond what the
+   existing aggregate queries already compute (security step 1, requirement
+   2: the new surface's information disclosure must stay equivalent to
+   today's chart despite the transport-format change).
 
 Device-identifier scheme (security step 1, resolving the intake spec's open
 question): a client-generated, client-persisted (localStorage, not a cookie)
@@ -23,6 +37,7 @@ anything else with 422) without attempting to decode any meaning from it or
 ever joining it against `users`/`sessions`.
 """
 import re
+from datetime import date
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -81,3 +96,49 @@ class VisitCreate(BaseModel):
             # precedent -- see schemas/watchdog.py's ClientErrorReport).
             raise ValueError("path must not contain a query string or control characters")
         return v
+
+
+class MetricPoint(BaseModel):
+    """One (day, avg-per-user) data point -- the same resolution
+    `activity_plots.render_line_chart`'s PNG already plots, exposed as
+    structured data for `GET /activity-monitoring/data/{metric}`.
+    """
+
+    day: date
+    value: float
+
+
+class MetricSeriesResponse(BaseModel):
+    """JSON payload for `GET /activity-monitoring/data/{metric}` (task
+    20260919, step 2) -- one of the four average-per-user metrics (notes,
+    highlights, logins, messages) for the fixed trailing
+    `DEFAULT_WINDOW_DAYS`-day window, same series a client-side chart needs
+    to render its own hover/tooltip interactivity instead of a static PNG.
+    """
+
+    metric: str
+    title: str
+    ylabel: str
+    series: list[MetricPoint] = Field(default_factory=list)
+
+
+class VisitPoint(BaseModel):
+    """One day's (raw_visits, unique_devices) pair -- the same two series
+    `activity_plots.render_visits_chart`'s PNG already plots, kept together
+    per day (rather than as two parallel arrays) since they always share the
+    same day axis.
+    """
+
+    day: date
+    raw: int
+    unique: int
+
+
+class VisitsSeriesResponse(BaseModel):
+    """JSON payload for `GET /activity-monitoring/data/visits` (task
+    20260919, step 2) -- raw-visits-vs-unique-device-visitors for the fixed
+    trailing `DEFAULT_WINDOW_DAYS`-day window.
+    """
+
+    title: str
+    series: list[VisitPoint] = Field(default_factory=list)

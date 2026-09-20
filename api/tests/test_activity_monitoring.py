@@ -1,7 +1,9 @@
 """
-Integration test for the new Activity Monitoring feature (task
-20260918-admin-activity-monitoring): `routes/activity_monitoring.py`'s two
-very different trust boundaries, plus the manager's aggregation logic.
+Integration test for the Activity Monitoring feature (task
+20260918-admin-activity-monitoring, extended by task
+20260919-activity-monitoring-interactive-charts): `routes/
+activity_monitoring.py`'s trust boundaries, plus the manager's aggregation
+logic.
 
 Uses the fully-booted `main.app` (not a bare per-router FastAPI() test app),
 same rationale as test_monitoring_admin_auth_audit_ratelimit.py -- the rate
@@ -17,6 +19,15 @@ Covers:
     require_admin boundary (401 unauthenticated, 403 non-admin, 200 +
     image/png + Cache-Control: no-store for admin), 404 for an unknown
     metric, and an admin_audit line actually emitted on real access.
+  - GET /activity-monitoring/data/{metric} and .../data/visits (task
+    20260919, step 2 -- the new JSON endpoints backing the interactive
+    charts): same require_admin boundary (401/403/200), same 404-on-unknown-
+    metric behavior gated behind auth, same admin_audit line, same
+    Cache-Control: no-store, correct JSON shape (day/value and
+    day/raw/unique keys), and -- the key information-disclosure-equivalence
+    property security step 1 required -- the JSON series carries the exact
+    same (day, value) data as the PNG endpoint it parallels, not a richer
+    payload (no device_id, no per-user rows).
   - The actual bug this task exists to prevent: repeat visits from the same
     device_id must NOT inflate the unique-visitor count the way they do the
     raw-visit count -- exercises ActivityMonitoringManager.daily_visits
@@ -36,6 +47,14 @@ os.environ.setdefault("AWS_EC2_METADATA_DISABLED", "true")
 os.environ.setdefault("AWS_ACCESS_KEY_ID", "dummy")
 os.environ.setdefault("AWS_SECRET_ACCESS_KEY", "dummy")
 os.environ.setdefault("AWS_DEFAULT_REGION", "us-east-1")
+# Real S3/GIF config may not be present in every dev environment; a
+# placeholder is sufficient since this file never exercises either
+# subsystem -- it only needs main.app's lifespan config validation to pass
+# so the real HTTP routes can boot (test_group_leave_delete.py precedent).
+os.environ.setdefault("S3_BUCKET_NAME", "fellowscript-test-bucket-placeholder")
+os.environ.setdefault("S3_REGION", "us-east-1")
+os.environ.setdefault("GIF_PROVIDER", "giphy")
+os.environ.setdefault("GIF_PROVIDER_API_KEY", "test-placeholder-key-not-a-real-secret")
 
 from fastapi.testclient import TestClient  # noqa: E402
 
@@ -215,6 +234,116 @@ def test_audit_logging(client, admin_token):
         audit_logger.setLevel(prior_level)
 
 
+def test_data_endpoints_auth_boundary(client, admin_token, non_admin_token):
+    print("\n── require_admin accept/reject on all JSON /data/* endpoints "
+          "(task 20260919 step 2 -- the new interactive-chart data endpoints) ──")
+    endpoints = [
+        "/activity-monitoring/data/visits",
+        "/activity-monitoring/data/notes",
+        "/activity-monitoring/data/highlights",
+        "/activity-monitoring/data/logins",
+        "/activity-monitoring/data/messages",
+    ]
+    for path in endpoints:
+        client.cookies.clear()
+        r = client.get(path)
+        check(f"GET {path} unauthenticated -> 401", r.status_code, 401)
+
+        client.cookies.set("session", non_admin_token)
+        r = client.get(path)
+        check(f"GET {path} authenticated non-admin -> 403", r.status_code, 403)
+
+        client.cookies.set("session", admin_token)
+        r = client.get(path)
+        check(f"GET {path} authenticated admin -> 200", r.status_code, 200)
+        check(f"GET {path} admin response is application/json",
+              r.headers.get("content-type", "").startswith("application/json"), True)
+        check(f"GET {path} admin response is Cache-Control: no-store "
+              "(same hardening as the PNG endpoint it parallels, not weaker)",
+              r.headers.get("cache-control"), "no-store")
+        client.cookies.clear()
+
+    # Unknown metric -> 404, gated behind admin -- same ordering as the PNG
+    # endpoint (auth checked before existence, never leaking which metric
+    # names are valid to an unauthenticated/non-admin caller).
+    client.cookies.clear()
+    r = client.get("/activity-monitoring/data/not-a-real-metric")
+    check("GET /data/not-a-real-metric unauthenticated -> 401 (auth checked first)",
+          r.status_code, 401)
+
+    client.cookies.set("session", admin_token)
+    r = client.get("/activity-monitoring/data/not-a-real-metric")
+    check("GET /data/not-a-real-metric as admin -> 404", r.status_code, 404)
+    client.cookies.clear()
+
+
+def test_data_endpoints_shape_and_parity(client, admin_token):
+    print("\n── /data/* JSON shape + information-disclosure equivalence "
+          "with the PNG endpoints it parallels ──")
+    client.cookies.set("session", admin_token)
+
+    r = client.get("/activity-monitoring/data/notes")
+    body = r.json()
+    check("metric response has 'metric' field", body.get("metric"), "notes")
+    check("metric response has non-empty title", bool(body.get("title")), True)
+    check("metric response has ylabel", bool(body.get("ylabel")), True)
+    check("metric series is a non-empty list", len(body.get("series", [])) > 0, True)
+    first_point = body["series"][0]
+    check("each metric point has exactly {day, value} keys",
+          set(first_point.keys()), {"day", "value"})
+    check("metric point value is numeric (float/int), not a raw row/object",
+          isinstance(first_point["value"], (int, float)), True)
+
+    # Same fixed window as the PNG endpoint (DEFAULT_WINDOW_DAYS=30 + today).
+    manager = ActivityMonitoringManager()
+    try:
+        expected_len = len(manager.daily_average_per_user("notes", window_days=30))
+    finally:
+        manager.close()
+    check("metric series length matches the fixed DEFAULT_WINDOW_DAYS window "
+          "(no client-controlled range)", len(body["series"]), expected_len)
+
+    r = client.get("/activity-monitoring/data/visits")
+    body = r.json()
+    check("visits response has non-empty title", bool(body.get("title")), True)
+    check("visits series is a non-empty list", len(body.get("series", [])) > 0, True)
+    first_point = body["series"][0]
+    check("each visits point has exactly {day, raw, unique} keys -- no device_id, "
+          "no per-user breakdown (security step 1 requirement 2)",
+          set(first_point.keys()), {"day", "raw", "unique"})
+    check("visits point raw/unique are integers, not raw device rows",
+          isinstance(first_point["raw"], int) and isinstance(first_point["unique"], int), True)
+
+    client.cookies.clear()
+
+
+def test_data_endpoint_audit_logging(client, admin_token):
+    print("\n── admin_audit logger emits a line on real /data/* access "
+          "(same mechanism as the PNG endpoints, not a second one) ──")
+    audit_logger = logging.getLogger("admin_audit")
+    handler = _CapturingHandler()
+    handler.setFormatter(logging.Formatter("%(message)s"))
+    audit_logger.addHandler(handler)
+    prior_level = audit_logger.level
+    audit_logger.setLevel(logging.INFO)
+    try:
+        client.cookies.set("session", admin_token)
+        client.get("/activity-monitoring/data/notes")
+        client.get("/activity-monitoring/data/visits")
+        client.cookies.clear()
+
+        joined = "\n".join(handler.records)
+        check("notes /data/ view audit line was emitted",
+              "action=view_activity_monitoring" in joined and "metric=notes" in joined, True)
+        check("visits /data/ view audit line was emitted",
+              "action=view_activity_monitoring" in joined and "metric=visits" in joined, True)
+        check("audit line does not leak the raw device_id of any visitor",
+              any("device_id" in rec for rec in handler.records), False)
+    finally:
+        audit_logger.removeHandler(handler)
+        audit_logger.setLevel(prior_level)
+
+
 def test_unique_vs_raw_visit_counting():
     print("\n── daily_visits: repeat visits from one device do not inflate unique count ──")
     manager = ActivityMonitoringManager()
@@ -295,6 +424,9 @@ if __name__ == "__main__":
             test_visit_write_boundary_and_validation(client, created_device_ids)
             test_plots_auth_boundary(client, admin_token, non_admin_token)
             test_audit_logging(client, admin_token)
+            test_data_endpoints_auth_boundary(client, admin_token, non_admin_token)
+            test_data_endpoints_shape_and_parity(client, admin_token)
+            test_data_endpoint_audit_logging(client, admin_token)
             # Rate-limit test last -- it deliberately burns the rest of this
             # IP's 30/minute visits budget. Exactly 1 valid (204) visit POST
             # was already made above (test_visit_write_boundary_and_

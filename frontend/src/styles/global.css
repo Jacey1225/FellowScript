@@ -1199,6 +1199,85 @@ body {
   }
 }
 
+/* ── Activity Monitoring click-to-expand chart overlay (task
+   20260919-activity-monitoring-interactive-charts, design-notes.md §4/§6) --
+   desktop-only centered variant of the click-to-expand pattern; small
+   viewports reuse the existing `.mobile-overlay`/`.mobile-overlay.open`
+   fullscreen slide-up treatment above instead (Q13's purpose-built
+   small-viewport requirement), not this class family. Backdrop-blur/fade+
+   scale timings/easing copied verbatim from `.attachment-lightbox-overlay`
+   above (design-notes.md's explicit "reuse these exact values" direction),
+   since this is expanding a visual/media-like item rather than a text
+   detail pane like DetectionDetailOverlay. Unlike the attachment lightbox
+   (any click closes it), this overlay's content is interactive/hoverable
+   (chart tooltips) -- the component only calls close on a real backdrop
+   click (`e.target === e.currentTarget`), never a click anywhere inside
+   `.chart-expand-panel`. */
+.chart-expand-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  background: rgba(10,10,10,0.75);
+  backdrop-filter: blur(16px) saturate(140%);
+  animation: attachmentLightboxFadeIn 0.28s cubic-bezier(0.4,0,0.2,1) forwards;
+}
+.chart-expand-overlay.chart-expand-closing {
+  animation: attachmentLightboxFadeOut 0.2s cubic-bezier(0.4,0,0.2,1) forwards;
+}
+
+.chart-expand-panel {
+  position: relative;
+  width: min(92vw, 1100px);
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+  background: rgba(6,4,1,0.95);
+  border: 1px solid rgba(200,134,26,0.25);
+  border-radius: var(--radius-md, 12px);
+  box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+  padding: 1.5rem;
+  transform-origin: center;
+  animation: attachmentLightboxMediaIn 0.28s cubic-bezier(0.4,0,0.2,1) forwards;
+}
+.chart-expand-overlay.chart-expand-closing .chart-expand-panel {
+  animation: attachmentLightboxMediaOut 0.2s cubic-bezier(0.4,0,0.2,1) forwards;
+}
+
+/* Discoverability-only close affordance, same 44px tap-target/gold-on-dark-
+   scrim treatment as `.attachment-lightbox-close`/DetectionDetailOverlay's
+   own close button -- backdrop-click-to-close already dismisses this too. */
+.chart-expand-close {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(0,0,0,0.35);
+  color: rgba(255,255,255,0.92);
+  font-size: 1.2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+/* Reduced motion (Q14, design-notes.md §6): the overlay/panel simply appear/
+   disappear, matching the `.attachment-lightbox-overlay` precedent above. */
+@media (prefers-reduced-motion: reduce) {
+  .chart-expand-overlay,
+  .chart-expand-overlay.chart-expand-closing,
+  .chart-expand-panel,
+  .chart-expand-overlay.chart-expand-closing .chart-expand-panel {
+    animation: none;
+  }
+}
+
 /* Attach picker (task 20260904-attach-picker-layout-polish, follow-up to
    design gate §1) -- content of the antd Popover anchored above the
    composer's plus button. Single horizontal row of self-contained gold

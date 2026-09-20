@@ -1,4 +1,5 @@
-"""Admin Activity Monitoring panel (task 20260918-admin-activity-monitoring).
+"""Admin Activity Monitoring panel (task 20260918-admin-activity-monitoring,
+extended by task 20260919-activity-monitoring-interactive-charts).
 
 A new, separate panel/feature from the existing CloudWatch error-detection
 console (`routes/monitoring.py`) -- out of scope to touch that file or its
@@ -7,7 +8,7 @@ own `visits` table, its own manager (`backend.interactions.
 activity_monitoring.ActivityMonitoringManager`), and its own router, wired
 into `main.py` independently.
 
-Two very different trust boundaries share this one file:
+Three trust boundaries share this one file:
 
 - `POST /activity-monitoring/visits` -- the *one* public, anonymous write
   surface in this feature (no `require_admin`/`get_current_user` at all --
@@ -17,17 +18,30 @@ Two very different trust boundaries share this one file:
 - `GET /activity-monitoring/plots/*` -- admin-only (`require_admin`: 401
   unauthenticated, 403 non-admin), read-only, `Cache-Control: no-store`
   aggregation endpoints that render a matplotlib PNG per call and return the
-  raw image bytes directly (`Content-Type: image/png`) -- security step 1's
-  resolution of the intake spec's "plot delivery mechanism" open question:
-  images the admin page embeds via `<img src=...>`, not a JSON payload
-  carrying the aggregate per-user activity numbers themselves (PII-adjacent,
-  per that step's Cache-Control reasoning).
+  raw image bytes directly (`Content-Type: image/png`). This was the prior
+  task's deliberate image-only delivery decision (opaque pixels, not a JSON
+  payload carrying the aggregate per-user activity numbers themselves,
+  PII-adjacent). Kept as-is here -- retiring them is a frontend/design-time
+  call per architecture step 2's own note, not this step's to make
+  unilaterally, and nothing else in this task depends on removing them.
+- `GET /activity-monitoring/data/*` -- admin-only, same `require_admin` +
+  `Cache-Control: no-store` + audit-log posture as the PNG endpoints above,
+  new for task 20260919 step 2: JSON versions of the exact same aggregate
+  series the PNGs already plot, for the client-side interactive charts step
+  4 builds. This reopens the prior task's image-only boundary decision --
+  done here only because task 20260919's security step 1 threat-modeled it
+  and `clarification-response.md` records the user's explicit approval
+  (Security Posture Q16 hard stop on security-boundary changes). The JSON
+  payload is scoped to carry *no more* information than the PNG it
+  parallels -- see `schemas.activity_monitoring`'s response models and
+  `ActivityMonitoringManager`'s existing aggregate queries, which both
+  delivery mechanisms call into unchanged.
 
-Audit logging: every plot view logs one `admin_action` line via `_audit`
-below, extending the exact `admin_audit` logger `routes/monitoring.py`
-already established (security step 1: reuse the existing mechanism, don't
-invent a new one) -- `admin_id` always comes from `require_admin`'s
-DB-verified return value, never a client-supplied field.
+Audit logging: every plot/data view logs one `admin_action` line via
+`_audit` below, extending the exact `admin_audit` logger
+`routes/monitoring.py` already established (security step 1: reuse the
+existing mechanism, don't invent a new one) -- `admin_id` always comes from
+`require_admin`'s DB-verified return value, never a client-supplied field.
 """
 import logging
 
@@ -40,7 +54,13 @@ from backend.interactions.activity_monitoring import (
 )
 from backend.interactions.activity_plots import render_line_chart, render_visits_chart
 from backend.rate_limiting import limiter
-from schemas.activity_monitoring import VisitCreate
+from schemas.activity_monitoring import (
+    MetricPoint,
+    MetricSeriesResponse,
+    VisitCreate,
+    VisitPoint,
+    VisitsSeriesResponse,
+)
 
 logger = logging.getLogger(__name__)
 # Same logger name (not a new one) as routes/monitoring.py's own
@@ -159,3 +179,64 @@ async def get_metric_plot(
         manager.close()
     png = render_line_chart(series, title=_METRIC_LABELS[metric], ylabel="Avg per user")
     return Response(content=png, media_type="image/png", headers={"Cache-Control": "no-store"})
+
+
+@activity_monitoring_router.get("/data/visits")
+async def get_visits_data(
+    response: Response, admin_id: str = Depends(require_admin)
+) -> VisitsSeriesResponse:
+    """JSON version of `get_visits_plot`'s data, for the client-side
+    interactive chart (task 20260919, step 2) -- same aggregate query, same
+    fixed `DEFAULT_WINDOW_DAYS` window, same `require_admin`/audit-log/
+    `Cache-Control: no-store` posture as the PNG endpoint it parallels.
+
+    Registered before `GET /data/{metric}` (literal segment before the
+    wildcard capture) for the same route-ordering reason as
+    `/plots/visits` vs. `/plots/{metric}` above.
+    """
+    _audit("view_activity_monitoring", admin_id, "visits")
+    response.headers["Cache-Control"] = "no-store"
+    manager = ActivityMonitoringManager()
+    try:
+        raw, unique = manager.daily_visits(DEFAULT_WINDOW_DAYS)
+    finally:
+        manager.close()
+    points = [
+        VisitPoint(day=raw_day, raw=raw_count, unique=unique_count)
+        for (raw_day, raw_count), (_, unique_count) in zip(raw, unique)
+    ]
+    return VisitsSeriesResponse(
+        title="Website visits (raw vs. unique devices)", series=points
+    )
+
+
+@activity_monitoring_router.get("/data/{metric}")
+async def get_metric_data(
+    metric: str, response: Response, admin_id: str = Depends(require_admin)
+) -> MetricSeriesResponse:
+    """JSON version of `get_metric_plot`'s data, for the client-side
+    interactive chart (task 20260919, step 2) -- same aggregate query, same
+    fixed `DEFAULT_WINDOW_DAYS` window, same `require_admin`/audit-log/
+    `Cache-Control: no-store` posture, and the same `metric`-name validation
+    against the fixed `PER_USER_METRICS` mapping (never request-controlled
+    SQL) as the PNG endpoint it parallels.
+
+    Raises:
+        HTTPException 404: If `metric` isn't a recognized metric name.
+    """
+    if metric not in ActivityMonitoringManager.PER_USER_METRICS:
+        raise HTTPException(status_code=404, detail="Unknown activity-monitoring metric")
+    _audit("view_activity_monitoring", admin_id, metric)
+    response.headers["Cache-Control"] = "no-store"
+    manager = ActivityMonitoringManager()
+    try:
+        series = manager.daily_average_per_user(metric, DEFAULT_WINDOW_DAYS)
+    finally:
+        manager.close()
+    points = [MetricPoint(day=day, value=value) for day, value in series]
+    return MetricSeriesResponse(
+        metric=metric,
+        title=_METRIC_LABELS[metric],
+        ylabel="Avg per user",
+        series=points,
+    )
