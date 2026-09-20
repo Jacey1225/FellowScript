@@ -143,6 +143,12 @@ jobs:
       VOIP_APNS_TOPIC: "com.fellowscript.app.voip"
       RING_VOIP_ENABLED: "false"
       RING_TIMEOUT_SECONDS: "30"
+      # validate_join_window_config() (task 20260920-session-join-window-gating)
+      # fails fast at app boot the same way the validators above do -- same
+      # rationale, same fix: a throwaway CI value so
+      # TestClient(main_module.app)/main.py's lifespan can boot. "10" matches
+      # the value deployed in local dev/production's own .env.
+      SESSION_JOIN_GRACE_MINUTES: "10"
 
     steps:
       - name: Checkout
