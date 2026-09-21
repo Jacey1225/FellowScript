@@ -1289,6 +1289,14 @@ survive a reinstall or sync across a user's other devices. Badge appear/disappea
 spring transition (a quicker exit than entrance), skipped entirely under Reduce Motion; the tab
 badge additionally pulses briefly when its count changes in place (e.g. 2 → 3) rather than
 flashing a plain text swap.</p>
+<p><strong>Fix (2026-09-20, task <code>20260920-chat-self-sent-unread-badge</code>):</strong> the timestamp-vs-marker check
+above had no notion of who sent the latest message, so sending a message and then leaving that
+thread advanced <code>lastMessageAt</code> past the stale marker and badged the user's own conversation as
+unread. <code>FSContact</code> now also carries <code>lastMessageSenderId</code> (threaded from the backend's <code>from_user</code>
+on the last message, in both the friend-DM and group branches of <code>fetchContacts</code>), and
+<code>AppState.hasUnread(_:)</code> treats a conversation whose latest message was sent by the current user as
+never-unread, regardless of the marker comparison. A contact with no resolvable sender (nil) falls
+back to the original timestamp-only check rather than guessing either way.</p>
 <hr />
 <h2 id="session-editing-2026-09-14-task-20260914-session-edit-button-ios">Session Editing (2026-09-14, task <code>20260914-session-edit-button</code>, iOS)</h2>
 <p><code>SessionDetailSheet</code> now shows an <strong>Edit Session</strong> button next to the existing Delete Session
