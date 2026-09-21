@@ -415,6 +415,17 @@ struct FSContact: Identifiable, Codable, Equatable {
     // check on DELETE /groups/{userId}/{groupId} remains the real
     // enforcement boundary regardless of what this client-side mirror shows.
     var creatorId: String? = nil
+    // Task 20260920-chat-self-sent-unread-badge: the user id that sent
+    // `lastMessageAt`, threaded from the backend's raw last-message payload
+    // (`RawMsg.from_user` -- NetworkService+Contacts.fetchContacts already
+    // fetches this per contact, it just wasn't threaded onto FSContact
+    // before this fix). nil means "sender unknown" (a response that
+    // predates this field, a decode that couldn't resolve a last message,
+    // or a cached/persisted contact from before this fix) -- AppState.
+    // hasUnread(_:) treats nil as "fall back to timestamp-only behavior,"
+    // never as "confidently mine" or "confidently not mine" (Q27: propagate
+    // missing data, don't fabricate a guess).
+    var lastMessageSenderId: String? = nil
 }
 
 // ── Friend activity feed (Dashboard's Friend Activity hero card) ───────────────

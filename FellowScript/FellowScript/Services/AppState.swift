@@ -72,6 +72,27 @@ final class AppState: ObservableObject {
     /// thread clears it, not merely the contact list loading/refreshing.
     func hasUnread(_ contact: FSContact) -> Bool {
         guard let latest = parseFlexibleISO8601(contact.lastMessageAt) else { return false }
+        // Task 20260920-chat-self-sent-unread-badge: a conversation whose
+        // newest known message was sent by the current user must never read
+        // as unread, regardless of the timestamp-vs-marker comparison below
+        // -- sending a message advances `lastMessageAt` (both via the
+        // optimistic local echo and the next fetchContacts() refresh) without
+        // ever re-triggering markRead(_:), which only fires when the thread
+        // is actually opened. Without this, leaving a thread right after
+        // sending in it would spuriously badge it as unread. Only suppresses
+        // when the sender is confidently known to be the current user (Q27:
+        // propagate missing data, don't fabricate a guess) -- a contact
+        // whose sender is unknown (nil, e.g. a cached contact predating this
+        // field, or a fetch that couldn't resolve a last message) falls
+        // through to the existing timestamp-only behavior below rather than
+        // assuming either "mine" or "not mine". This also naturally covers a
+        // conversation that has only ever had messages from the current user
+        // -- it never becomes eligible to badge until someone else actually
+        // sends into it.
+        if let senderId = contact.lastMessageSenderId, let currentUserId = currentUser?.user_id,
+           senderId == currentUserId {
+            return false
+        }
         guard let lastReadRaw = lastReadTimestamps[contact.id],
               let lastRead = parseFlexibleISO8601(lastReadRaw) else { return true }
         return latest > lastRead

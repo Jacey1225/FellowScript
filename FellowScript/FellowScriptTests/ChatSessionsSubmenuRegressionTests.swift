@@ -164,10 +164,17 @@ final class ChatSessionsSubmenuRegressionTests: XCTestCase {
 
     // MARK: - 3. Submenu presentation: translucent/blurred, schedule action, empty state, sections
 
-    func test_source_sessionsMenuOverlay_hasTranslucentBlurredScrimWithTapToDismiss() throws {
+    func test_source_sessionsMenuOverlay_hasClearScrimWithTapToDismiss() throws {
+        // Task 20260920-sessions-menu-background-blur: the backdrop no longer
+        // blurs the whole chat thread -- it's an invisible tap-catcher now,
+        // scoped so only sessionsMenuCard's own .regularMaterial reads as
+        // translucent/blurred. Tap-outside-to-dismiss and accessibility must
+        // still work exactly as before.
         let submenu = try sessionsSubmenuSource()
-        XCTAssertTrue(submenu.contains(".fill(.ultraThinMaterial)"),
-                      "the submenu's backdrop must be translucent/blurred (.ultraThinMaterial), not opaque")
+        XCTAssertTrue(submenu.contains("Color.clear"),
+                      "the submenu's backdrop must be Color.clear so the chat thread behind it stays fully visible/unblurred")
+        XCTAssertFalse(submenu.contains(".fill(.ultraThinMaterial)"),
+                       "the full-screen .ultraThinMaterial backdrop must be gone -- blur now lives only on the card itself")
         XCTAssertTrue(submenu.contains("closeSessionsMenu()"),
                       "the backdrop (and the card's own close button) must be wired to dismiss the menu")
         XCTAssertTrue(submenu.contains(#".accessibilityLabel("Close sessions menu")"#),

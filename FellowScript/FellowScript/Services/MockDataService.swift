@@ -426,8 +426,19 @@ final class MockDataService: DataServiceProtocol {
     ]
 
     static let mockContacts: [FSContact] = [
-        FSContact(id: "friend-001", name: "Sarah",  type: .friend, preview: "See you at Bible study!"),
-        FSContact(id: "friend-002", name: "Marcus", type: .friend, preview: "Romans 8 is incredible"),
+        // lastMessageSenderId (task 20260920-chat-self-sent-unread-badge):
+        // both fixtures' preview text reads as the *other* person's message
+        // (Sarah's/Marcus's), so their sender ids are the friends' own ids,
+        // not mockUser -- keeps these previews representative of the real
+        // fetchContacts shape now that it threads a sender id. lastMessageAt
+        // stays "" here as before (these are the "no message yet" preview
+        // fixtures, not exercising hasUnread's timestamp path), so this has
+        // no behavioral effect on its own -- it's purely so a preview/test
+        // relying on this fixture's shape isn't silently missing the field.
+        FSContact(id: "friend-001", name: "Sarah",  type: .friend, preview: "See you at Bible study!",
+                  lastMessageSenderId: "friend-001"),
+        FSContact(id: "friend-002", name: "Marcus", type: .friend, preview: "Romans 8 is incredible",
+                  lastMessageSenderId: "friend-002"),
         // creatorId: mockUser.user_id — mirrors create_group() always stamping
         // the real creator (task 20260916-group-leave-deletes-group), and lets
         // the mock/UI-testing target exercise the owner-authorized "Delete
@@ -436,7 +447,8 @@ final class MockDataService: DataServiceProtocol {
                   preview: "Session tomorrow at 7pm",
                   toUsers: [mockUser.user_id, "friend-001", "friend-002"],
                   memberNames: ["Sarah", "Marcus"],
-                  creatorId: mockUser.user_id),
+                  creatorId: mockUser.user_id,
+                  lastMessageSenderId: "friend-001"),
     ]
 
     // Mirrors the mockup's placeholder copy ("Sarah wrote a note today" /

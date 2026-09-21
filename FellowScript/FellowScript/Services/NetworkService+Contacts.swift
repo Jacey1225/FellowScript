@@ -27,14 +27,20 @@ extension NetworkService {
                         return FSContact(id: fid, name: String(fid.prefix(8)), type: .friend)
                     }
                     // Fetch last DM for preview + timestamp
-                    var preview = ""
-                    var lastAt  = ""
+                    var preview  = ""
+                    var lastAt   = ""
+                    // Task 20260920-chat-self-sent-unread-badge: nil unless a
+                    // last message actually decoded -- see FSContact.
+                    // lastMessageSenderId's doc comment for why this stays
+                    // nil rather than guessing on a missing/failed fetch.
+                    var lastFrom: String? = nil
                     if let md = try? await self.get("/message/messages/\(userId)/?guest_user=\(fid)"),
                        let resp = self.decode(RawMsgPayload.self, from: md) {
                         let all  = resp.payload?.allMsgs ?? []
                         let last = all.sorted { $0.timestamp < $1.timestamp }.last
-                        preview = last?.text ?? ""
-                        lastAt  = last?.timestamp ?? ""
+                        preview  = last?.text ?? ""
+                        lastAt   = last?.timestamp ?? ""
+                        lastFrom = last?.from_user
                     }
                     // Task 20260905-profile-photo: `u` is the friend's own
                     // full profile (already fetched above for `username`),
@@ -44,7 +50,7 @@ extension NetworkService {
                     // DM header+avatar.
                     return FSContact(id: fid, name: u.username, type: .friend,
                                      preview: preview, toUsers: [fid], lastMessageAt: lastAt,
-                                     photoUrl: u.profile_photo_url)
+                                     photoUrl: u.profile_photo_url, lastMessageSenderId: lastFrom)
                 }
             }
             var result: [FSContact] = []
@@ -73,7 +79,12 @@ extension NetworkService {
                                            preview: preview, toUsers: users,
                                            memberNames: memberNames,
                                            lastMessageAt: lastMsg?.timestamp ?? "",
-                                           creatorId: g.creator_id))
+                                           creatorId: g.creator_id,
+                                           // Task 20260920-chat-self-sent-unread-badge:
+                                           // see FSContact.lastMessageSenderId's doc
+                                           // comment -- nil when there's no last
+                                           // message at all, never guessed.
+                                           lastMessageSenderId: lastMsg?.from_user))
         }
 
         return (friends + groupContacts, groupMap)

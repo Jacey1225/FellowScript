@@ -997,12 +997,17 @@ struct ChatThreadView: View {
 
     private var sessionsMenuOverlay: some View {
         ZStack {
-            // Translucent, blurred backdrop -- lets the thread read through
-            // dimly rather than hard-cutting to an opaque surface. Tapping
-            // it dismisses, same convention as this file's other floating
-            // affordances.
-            Rectangle()
-                .fill(.ultraThinMaterial)
+            // Task 20260920-sessions-menu-background-blur: this used to be a
+            // full-screen `.ultraThinMaterial` fill, which blurred/dimmed the
+            // entire chat thread behind the card instead of just sitting
+            // behind it. Swapped for an invisible tap-catcher -- the thread
+            // stays fully visible, and `sessionsMenuCard` below already
+            // supplies its own `.regularMaterial` translucency, so the
+            // glassmorphism treatment still reads on the card itself.
+            // `.contentShape(Rectangle())` keeps the whole screen tappable
+            // for dismiss even though `Color.clear` has no fill to hit-test
+            // against on its own.
+            Color.clear
                 .ignoresSafeArea()
                 .contentShape(Rectangle())
                 .onTapGesture { closeSessionsMenu() }

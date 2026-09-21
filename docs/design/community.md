@@ -260,6 +260,15 @@ spring transition (a quicker exit than entrance), skipped entirely under Reduce 
 badge additionally pulses briefly when its count changes in place (e.g. 2 → 3) rather than
 flashing a plain text swap.
 
+**Fix (2026-09-20, task `20260920-chat-self-sent-unread-badge`):** the timestamp-vs-marker check
+above had no notion of who sent the latest message, so sending a message and then leaving that
+thread advanced `lastMessageAt` past the stale marker and badged the user's own conversation as
+unread. `FSContact` now also carries `lastMessageSenderId` (threaded from the backend's `from_user`
+on the last message, in both the friend-DM and group branches of `fetchContacts`), and
+`AppState.hasUnread(_:)` treats a conversation whose latest message was sent by the current user as
+never-unread, regardless of the marker comparison. A contact with no resolvable sender (nil) falls
+back to the original timestamp-only check rather than guessing either way.
+
 ---
 
 ## Session Editing (2026-09-14, task `20260914-session-edit-button`, iOS)
