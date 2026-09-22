@@ -749,10 +749,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#read-nav-device-redirect-task-20260921-read-nav-native-app-redirect" class="md-nav__link">
+  <a href="#reader-nav-leak-fix-the-download-page-task-20260922-reader-nav-download-page" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Read nav device redirect (task 20260921-read-nav-native-app-redirect)
+        Reader-nav leak fix: the /download page (task 20260922-reader-nav-download-page)
       
     </span>
   </a>
@@ -1040,12 +1040,17 @@
 <tr>
 <td><code>/</code></td>
 <td><code>pages/Home.jsx</code></td>
-<td>Public landing page — hero, features, pricing, CTA. Its "Read" nav links (header pill + footer) device-branch instead of routing to <code>/reader</code> — see "Read nav device redirect" below.</td>
+<td>Public landing page — hero, features, pricing, CTA. Every "Read"-labeled nav control and CTA (header pill, footer, "Read scripture", "Read the Bible") routes to <code>/download</code>, not <code>/reader</code> — see "Reader-nav leak fix: the <code>/download</code> page" below.</td>
 </tr>
 <tr>
 <td><code>/reader</code></td>
 <td><code>pages/Reader.jsx</code></td>
 <td>Bible reader — desktop: dockable VSCode-style panel workspace; mobile: bottom-tab-bar overlays</td>
+</tr>
+<tr>
+<td><code>/download</code></td>
+<td><code>pages/Download.jsx</code></td>
+<td>Public "get the app" page — see "Reader-nav leak fix: the <code>/download</code> page" below.</td>
 </tr>
 <tr>
 <td><code>/account</code></td>
@@ -1080,9 +1085,18 @@
 </tbody>
 </table>
 <p>Unauthenticated users land on Home (<code>/</code>); once signed in, the CTA routes directly to <code>/reader</code>.</p>
-<h3 id="read-nav-device-redirect-task-20260921-read-nav-native-app-redirect">Read nav device redirect (task <code>20260921-read-nav-native-app-redirect</code>)</h3>
-<p><code>Home.jsx</code>'s two "Read" nav links (the header pill and the footer nav column) no longer route to <code>/reader</code>. Both now branch on <code>lib/deviceGate.js</code>'s <code>isMobileUserAgent()</code> (the same UA check <code>MobileBlockGate.jsx</code> uses — deliberately not the viewport-based <code>useIsDesktopViewport.js</code>, to avoid a second, disagreeing device-detection mechanism): on a mobile UA, "Read" is a real external <code>&lt;a&gt;</code> to the iOS App Store listing (<code>target="_blank"</code>, <code>rel="noopener noreferrer"</code>); on desktop, it's a same-page <code>&lt;a href="#desktop-download"&gt;</code> anchor to the "On your desktop" section (which now carries <code>id="desktop-download"</code>), rather than an immediate <code>.dmg</code> download — a Windows visitor with no live build yet still lands somewhere useful either way. Neither branch uses <code>&lt;Link&gt;</code> since neither destination is an internal route. <code>AppNav.jsx</code>'s own hamburger "Read" item and the "Read scripture"/"Read the Bible" CTA buttons are unchanged.</p>
-<p>The previously reported mobile "read" error was traced to <code>MobileBlockGate.jsx</code>'s existing (non-crashing) block screen, which mobile visitors landed on after following the old <code>/reader</code> nav link — not a JS exception. <code>MobileBlockGate</code> itself is unchanged and still guards <code>/reader</code> for any other path that reaches it (direct URL entry, sign-in redirect, etc.); this redirect only changes what the Home nav's "Read" links point to.</p>
+<h3 id="reader-nav-leak-fix-the-download-page-task-20260922-reader-nav-download-page">Reader-nav leak fix: the <code>/download</code> page (task <code>20260922-reader-nav-download-page</code>)</h3>
+<p>Superseding task <code>20260921-read-nav-native-app-redirect</code> below: rather than each nav site device-branching for itself, there is now a single dedicated destination, <code>pages/Download.jsx</code> at route <code>/download</code>, and every nav-style control that used to leak straight into <code>/reader</code> now points at it as a plain internal link.</p>
+<p><code>Download.jsx</code> owns the device branching itself, via the same <code>lib/deviceGate.js</code> <code>isMobileUserAgent()</code> UA check <code>MobileBlockGate.jsx</code> uses (deliberately not the viewport-based <code>useIsDesktopViewport.js</code>, to avoid a second, disagreeing device-detection mechanism):
+- <strong>Mobile UA:</strong> a single tailored hero ("Get the FellowScript app") with one primary CTA — a real external <code>&lt;a&gt;</code> to the iOS App Store listing (<code>target="_blank"</code>, <code>rel="noopener noreferrer"</code>).
+- <strong>Desktop UA:</strong> the "On your desktop" macOS/Windows download cards, relocated wholesale from <code>Home.jsx</code> (which no longer has this section at all) — the live macOS <code>.dmg</code> link and the Windows "Coming soon" card, unchanged in markup/styling.</p>
+<p>It has its own lightweight sticky header (logo + "Back to Home"), following <code>Privacy.jsx</code>/<code>Terms.jsx</code>'s pattern rather than reusing <code>AppNav</code> or Home's full hero header, and is not on <code>sitemap.xml</code> for the same reason <code>/privacy</code>/<code>/terms</code> aren't — under <code>HashRouter</code>, only <code>/</code> is ever independently crawlable.</p>
+<p>Every previously-leaking occurrence now routes here:
+- <code>Home.jsx</code>'s header-pill and footer "Read" nav links (previously device-branched to an App Store link or a same-page <code>#desktop-download</code> anchor) are now plain <code>&lt;Link to="/download"&gt;</code>.
+- <code>Home.jsx</code>'s "Read scripture" (hero) and "Read the Bible" (closing) CTA buttons (previously unconditional <code>/reader</code> links) now point at <code>/download</code> too.
+- <code>AppNav.jsx</code>'s hamburger "Read" menu item now branches on <code>lib/desktopScope.js</code>'s <code>isDesktopApp()</code>: <code>/reader</code> inside the Tauri desktop shell (legitimate in-app navigation), <code>/download</code> in the ordinary web frontend, regardless of sign-in state.</p>
+<p>Left unchanged, by design: the auth-gated <code>cta</code> buttons on Home (<code>user ? '/reader' : '/signin'</code> — "Open app"/"Get started"/"Begin your journey"/"Start a group"/"Join free"), and the post-auth redirects to <code>/reader</code> in <code>SignIn.jsx</code>/<code>VerifyMfa.jsx</code>/<code>Account.jsx</code>. <code>/download</code> is deliberately <strong>not</strong> added to <code>lib/desktopScope.js</code>'s <code>DESKTOP_ALLOWED_ROUTES</code> — nothing in the Tauri shell links to it, and an errant deep link there falls through <code>DesktopRouteGuard</code> to the existing <code>/reader</code> fallback, which is the intended behavior for a web-marketing-site-only page.</p>
+<p>The previously reported mobile "read" error was traced to <code>MobileBlockGate.jsx</code>'s existing (non-crashing) block screen, which mobile visitors landed on after following the old <code>/reader</code> nav link — not a JS exception. <code>MobileBlockGate</code> itself is unchanged and still guards <code>/reader</code> for any other path that reaches it (direct URL entry, sign-in redirect, etc.).</p>
 <h3 id="desktop-shell-route-restriction">Desktop shell route restriction</h3>
 <p>The Tauri desktop app (<code>desktop/</code>) loads this exact same <code>HashRouter</code> bundle rather than a separate build. <code>DesktopRouteGuard.jsx</code> wraps <code>&lt;Routes&gt;</code> and, when <code>lib/desktopScope.js</code>'s <code>isDesktopApp()</code> detects the Tauri webview (<code>window.__TAURI_INTERNALS__</code>), redirects any in-app navigation outside a closed allowlist (<code>/reader</code>, <code>/account</code>, <code>/signin</code>, <code>/forgot-password</code>, <code>/reset-password</code>, <code>/verify-2fa</code>) to <code>/reader</code>. <code>AppNav.jsx</code>'s Home menu item/logo links and the hamburger drawer's Privacy/Terms links are hidden in this mode, and <code>SignIn.jsx</code>'s footer Privacy/Terms disclosure links are forced <code>target="_blank"</code> instead. A no-op in the ordinary web browser. A parallel Tauri-side <code>on_navigation</code> check in <code>desktop/src-tauri</code> mirrors the same allowlist as defense-in-depth for real webview navigations the React guard can't see.</p>
 <p>The desktop app's native macOS menu bar also has a "Reload" item under View (<code>CmdOrCtrl+R</code>) that force-reloads the window's current page via <code>WebviewWindow::reload()</code> — a Rust-side call independent of the page's own JS, so it still works if the page is stuck/unresponsive. It re-navigates to whatever URL is already loaded, so it passes through the same <code>on_navigation</code> allowlist check above rather than opening a new navigation path, and it isn't exposed to the loaded page's JS via IPC.</p>
