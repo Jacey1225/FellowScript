@@ -33,6 +33,31 @@
 # technical block today. Real protection for authenticated routes is
 # server-side auth; real protection for any unlinked route is that it's
 # unreachable from any nav/menu in the app.
+#
+# Audit result (task 20260918-fix-google-indexing-audit, option A3): this
+# task exists because site:fellowscript.com and a branded tagline search
+# both returned zero results, cause unconfirmed. Re-checked live against
+# production as part of this task (curl against https://fellowscript.com/,
+# /privacy, /terms -- the deployed, Cloudflare-fronted site, not just repo
+# source):
+#   - No X-Robots-Tag response header on any checked route (Cloudflare or
+#     otherwise).
+#   - "/" serves <meta name="robots" content="index, follow"> in the raw
+#     served bytes (task 20260914-restore-homepage-seo-meta-tags' build-time
+#     injection), and this file's own Disallow:/ + Allow:/$ pair correctly
+#     resolves to "/" being crawlable (Allow wins on Google's longest-match
+#     precedence).
+#   - No genuinely public route is unintentionally caught by the
+#     Disallow: / catch-all; the named Disallow lines below remain
+#     redundant-but-explicit documentation of the authenticated routes, not
+#     the cause.
+# Conclusion: no repo-controlled crawl-block found. This file's
+# deny-by-default structure was left unchanged. The zero-results symptom is
+# NOT explained by anything in this repo's static SEO files -- it most
+# likely sits at the Cloudflare account layer (e.g. bot-fight-mode/WAF) or
+# is a Google Search Console verification/coverage question, neither of
+# which is visible from repo inspection or a plain curl. Both remain a
+# human follow-up (options A1/A5), not a code fix.
 User-agent: *
 Disallow: /reader
 Disallow: /account
