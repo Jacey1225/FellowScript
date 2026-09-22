@@ -1,9 +1,10 @@
-import React, { useRef } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useParallaxBlobs } from '../hooks/useParallaxBlobs.js';
 import Seo from '../components/Seo.jsx';
 import { SITE_URL } from '../config.js';
+import { isMobileUserAgent } from '../lib/deviceGate.js';
 import {
   HOME_SEO_PATH,
   HOME_SEO_TITLE,
@@ -103,6 +104,86 @@ function Blobs({ innerRef, overlay }) {
   );
 }
 
+// Task 20260921-homepage-family-section-redesign: lightweight, one-shot
+// "enter viewport" reveal for the "Not just once a week" section below.
+// Toggles a data attribute directly on the observed element (not React
+// state, to avoid a re-render on scroll — same DOM-first approach as
+// useParallaxBlobs.js above) the first time it crosses the threshold, then
+// stops observing. Skipped entirely under prefers-reduced-motion, matching
+// this file's existing motion-gating convention; the CSS below also forces
+// every element this drives back to its resting (fully visible, static)
+// state under that same media query as a belt-and-suspenders backstop, so a
+// reduced-motion visitor never depends on this effect having run at all.
+function useRevealOnScroll(ref) {
+  useEffect(() => {
+    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const el = ref.current;
+    if (!el || !('IntersectionObserver' in window)) return;
+    const io = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          entry.target.setAttribute('data-fs-in-view', 'true');
+          io.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.2, rootMargin: '0px 0px -8% 0px' });
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+}
+
+// Purely decorative hand-drawn marker strokes (task
+// 20260921-homepage-family-section-redesign) — mined from the "French
+// Notez" hand-lettering reference for technique only, not the reference's
+// own script font or its cream/orange palette (design-notes.md §Conflicts
+// #1-2): drawn in AMBER as loose, slightly imperfect SVG paths rather than
+// a decorative font import, so the one "off-system" gesture stays inside
+// this page's existing color system. Each one is aria-hidden — it always
+// sits directly against real, already-readable text (a headline word, a
+// quote), never carries meaning on its own. `pathLength="1"` lets the CSS
+// draw-on animation below use simple 0–1 dasharray/dashoffset math
+// regardless of each path's actual geometry.
+function HandDrawnCircle({ style }) {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 176 64" style={{ position: 'absolute', pointerEvents: 'none', ...style }}>
+      <path
+        className="hm-draw-path"
+        pathLength="1"
+        d="M20 42 C8 26 24 8 58 5 C98 2 142 8 158 24 C170 36 162 52 126 58 C90 64 42 60 22 48 C15 44 16 41 21 42"
+        fill="none" stroke={AMBER} strokeWidth="4.5" strokeLinecap="round" strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function HandDrawnUnderline({ style }) {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 220 20" style={{ position: 'absolute', pointerEvents: 'none', ...style }}>
+      <path
+        className="hm-draw-path"
+        pathLength="1"
+        d="M3 12 C42 3 72 19 112 8 C152 -3 182 17 217 6"
+        fill="none" stroke={AMBER} strokeWidth="4" strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function HandDrawnQuoteMark({ size = 46 }) {
+  return (
+    <svg aria-hidden="true" width={size} height={size * 0.78} viewBox="0 0 60 46">
+      <path className="hm-draw-path" pathLength="1" d="M15 6 C4 11 1 23 7 33 C11 39 20 41 25 35" fill="none" stroke={AMBER} strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" />
+      <path className="hm-draw-path" pathLength="1" d="M43 6 C32 11 29 23 35 33 C39 39 48 41 53 35" fill="none" stroke={AMBER} strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+// Task 20260921-read-nav-native-app-redirect: the homepage's "Read" nav
+// links (header pill + footer) branch by device instead of navigating to
+// the in-browser /reader — a mobile visitor goes to the native iOS app
+// listing, a desktop visitor to the section below.
+const APP_STORE_URL = 'https://apps.apple.com/us/app/fellowscript-study-connect/id6791701454';
+
 // ── Desktop download (On your desktop section) ────────────────────────────────
 // Live GitHub Release asset (desktop-v0.1.0) — resolved per the user's
 // Discord answer (task 20260902-download-section-implementation follow-up).
@@ -112,13 +193,14 @@ function Blobs({ innerRef, overlay }) {
 // value rather than staying hardcoded here, but not required for now.
 const MACOS_DOWNLOAD_URL = 'https://github.com/Jacey1225/FellowScript/releases/download/desktop-v0.1.0/FellowScript.dmg';
 
-// ── Content (kept in sync with the real backend — dynamic 1-8 member group pricing) ──
+// id target for the "On your desktop" section below, so the "Read" nav
+// links (header pill + footer) can scroll-anchor a desktop visitor there
+// instead of both platform cards, rather than forcing an immediate .dmg
+// download — a Windows desktop visitor (no live download yet, see the
+// "Coming soon" card) still lands somewhere useful either way.
+const DESKTOP_DOWNLOAD_ANCHOR = '#desktop-download';
 
-const steps = [
-  { n: '01', title: 'Open the Word',          desc: 'Read at your pace, highlight what speaks to you.' },
-  { n: '02', title: 'Set a gentle rhythm',    desc: 'Daily check-ins that meet you where you are.' },
-  { n: '03', title: 'Share with your people', desc: 'Notes, highlights, live study with your circle.' },
-];
+// ── Content (kept in sync with the real backend — dynamic 1-8 member group pricing) ──
 
 const features = [
   {
@@ -193,9 +275,27 @@ export default function Home() {
   const { user } = useAuth();
   const cta = user ? '/reader' : '/signin';
 
+  // Task 20260921-read-nav-native-app-redirect: evaluated once per render,
+  // same UA-check approach as MobileBlockGate.jsx (a UX gate, not a security
+  // boundary — see deviceGate.js's own comment on that) rather than a third
+  // device-detection mechanism. Both "Read" nav links below (header pill,
+  // footer) branch on it: mobile opens the native iOS App Store listing as
+  // a real external link instead of navigating into /reader (where mobile
+  // visitors previously landed on MobileBlockGate.jsx's block screen —
+  // see that component; this redirect makes reaching it via this nav
+  // moot); desktop scroll-anchors to the "On your desktop" section instead.
+  const readNavProps = isMobileUserAgent()
+    ? { href: APP_STORE_URL, target: '_blank', rel: 'noopener noreferrer' }
+    : { href: DESKTOP_DOWNLOAD_ANCHOR };
+
   const heroBgRef = useRef(null);
   const communityBgRef = useRef(null);
   useParallaxBlobs([heroBgRef, communityBgRef]);
+
+  // Task 20260921-homepage-family-section-redesign: scroll-entrance reveal
+  // for the "Not just once a week" section — see useRevealOnScroll above.
+  const familyRef = useRef(null);
+  useRevealOnScroll(familyRef);
 
   return (
     <div style={{ fontFamily: BODY_FONT, color: CREAM, background: INK, overflowX: 'hidden' }}>
@@ -213,7 +313,39 @@ export default function Home() {
           .hm-float, .hm-orbit-spin { animation: none !important; }
           .hm-dl-mac { transition: none !important; }
           .hm-dl-mac:hover { transform: none !important; }
+          /* Task 20260921-homepage-family-section-redesign: belt-and-suspenders
+             backstop for the "Not just once a week" section's scroll reveal —
+             useRevealOnScroll already skips observing under this same media
+             query, so [data-fs-in-view] never gets set; this rule guarantees
+             every element it would have revealed still renders fully visible
+             and static even if that JS gate is ever bypassed or races. */
+          .hm-family-reveal { opacity: 1 !important; transform: none !important; transition: none !important; }
         }
+
+        /* Task 20260921-homepage-family-section-redesign — "Not just once a
+           week" section: lightweight viewport-entrance fade (opacity + small
+           y-offset), staggered per element via inline transitionDelay, eased
+           with the same settle curve used for hm-btn/hm-dl-mac above. */
+        .hm-family-reveal {
+          opacity: 0;
+          transform: translateY(26px);
+          transition: opacity 640ms cubic-bezier(0.16,1,0.3,1), transform 640ms cubic-bezier(0.16,1,0.3,1);
+        }
+        [data-fs-in-view="true"] .hm-family-reveal { opacity: 1; transform: translateY(0); }
+
+        /* Hand-drawn marker "draw-on" — stroke-dashoffset scrubbed from 1 to 0
+           via CSS transition once the section is in view; wrapped in its own
+           not(prefers-reduced-motion) query (on top of the JS-level skip in
+           useRevealOnScroll) so a reduced-motion visitor's default state
+           (dashoffset: 0, fully drawn, no transition at all) is never
+           overridden into a hidden starting state in the first place. */
+        .hm-draw-path { stroke-dasharray: 1; stroke-dashoffset: 0; }
+        @media not (prefers-reduced-motion: reduce) {
+          .hm-draw-path { stroke-dashoffset: 1; transition: stroke-dashoffset 850ms cubic-bezier(0.65,0,0.35,1) 480ms; }
+          [data-fs-in-view="true"] .hm-draw-path { stroke-dashoffset: 0; }
+        }
+
+        .hm-family-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: clamp(40px, 6vw, 90px); align-items: start; }
 
         .hm-nav-link { color: rgba(255,248,238,0.82); }
         .hm-nav-link:hover { color: #FFF8EE; }
@@ -244,7 +376,9 @@ export default function Home() {
           <nav style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: 5, borderRadius: 999, background: 'rgba(23,18,15,0.28)', border: '1px solid rgba(255,244,230,0.16)', backdropFilter: 'blur(10px)' }}>
               <Link to="/" style={{ display: 'block', padding: '8px 16px', borderRadius: 999, fontSize: 12.5, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#FFF8EE', background: 'rgba(255,244,230,0.14)', textDecoration: 'none' }}>Home</Link>
-              <Link to="/reader" className="hm-nav-link" style={{ display: 'block', padding: '8px 16px', borderRadius: 999, fontSize: 12.5, letterSpacing: '0.08em', textTransform: 'uppercase', textDecoration: 'none' }}>Read</Link>
+              {/* Device-branched, not an internal route — plain <a>, not
+                  <Link> (see readNavProps above). */}
+              <a {...readNavProps} className="hm-nav-link" style={{ display: 'block', padding: '8px 16px', borderRadius: 999, fontSize: 12.5, letterSpacing: '0.08em', textTransform: 'uppercase', textDecoration: 'none' }}>Read</a>
               {user && (
                 <Link to="/account" className="hm-nav-link" style={{ display: 'block', padding: '8px 16px', borderRadius: 999, fontSize: 12.5, letterSpacing: '0.08em', textTransform: 'uppercase', textDecoration: 'none' }}>Account</Link>
               )}
@@ -301,21 +435,74 @@ export default function Home() {
         </div>
       </section>
 
-      {/* ══ How it feels ══ */}
-      <section style={{ padding: 'clamp(90px, 13vh, 180px) clamp(20px, 5vw, 64px)', background: INK }}>
+      {/* ══ Not just once a week (task 20260921-homepage-family-section-redesign) ══
+          Replaces the old generic "A little bit of grace, every single day."
+          steps grid with the founder's actual framing: family under Christ
+          shows up daily, not just on Sunday, and FellowScript exists to make
+          room for that. Purpose-built layout (not a text swap) — see
+          design-notes.md for the full synthesis of the three visual
+          references and the conflicts/resolutions between them. */}
+      <section ref={familyRef} style={{ padding: 'clamp(90px, 13vh, 180px) clamp(20px, 5vw, 64px)', background: INK }}>
         <div style={{ maxWidth: 1240, margin: '0 auto' }}>
-          <div style={{ fontFamily: HEAD_FONT, fontSize: 11.5, letterSpacing: '0.26em', textTransform: 'uppercase', color: AMBER, paddingBottom: 22, borderBottom: '1px solid rgba(255,244,230,0.14)', marginBottom: 56 }}>// HOW IT FEELS DAY TO DAY</div>
-          <h2 style={{ fontFamily: HEAD_FONT, fontSize: 'clamp(34px, 5vw, 74px)', lineHeight: 1.02, fontWeight: 400, letterSpacing: '-0.03em', margin: '0 0 clamp(56px, 8vh, 110px)', maxWidth: '20em', color: '#FFF9F0' }}>
-            A little bit of <span style={{ color: 'rgba(255,249,240,0.42)' }}>grace,</span> every single day.
-          </h2>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 'clamp(20px, 3vw, 44px)' }}>
-            {steps.map(({ n, title, desc }) => (
-              <div key={n} style={{ display: 'flex', flexDirection: 'column', gap: 18, paddingTop: 28, borderTop: '1px solid rgba(255,244,230,0.16)' }}>
-                <span style={{ display: 'grid', placeItems: 'center', width: 38, height: 38, borderRadius: 11, background: 'rgba(232,163,85,0.16)', border: '1px solid rgba(232,163,85,0.35)', color: AMBER, fontFamily: HEAD_FONT, fontSize: 14, fontWeight: 600 }}>{n}</span>
-                <h3 style={{ fontFamily: HEAD_FONT, fontSize: 23, fontWeight: 500, letterSpacing: '-0.02em', margin: 0, color: '#FFF9F0' }}>{title}</h3>
-                <p style={{ fontSize: 15.5, lineHeight: 1.65, color: 'rgba(255,243,228,0.62)', margin: 0, maxWidth: '26em' }}>{desc}</p>
+          <div className="hm-family-reveal" style={{ fontFamily: HEAD_FONT, fontSize: 11.5, letterSpacing: '0.26em', textTransform: 'uppercase', color: AMBER, paddingBottom: 22, borderBottom: '1px solid rgba(255,244,230,0.14)', marginBottom: 56 }}>// NOT JUST ONCE A WEEK</div>
+
+          <div className="hm-family-grid">
+            {/* Left: headline + body + daily badge */}
+            <div>
+              {/* Offset color-block collage panels (webp #1's layered technique,
+                  mined for composition only — flat, sharp-cornered, no shadow,
+                  AMBER standing in for the reference's red/yellow accent per
+                  design-notes.md §Conflicts #1) sit behind the headline. */}
+              <div className="hm-family-reveal" style={{ position: 'relative' }}>
+                <span aria-hidden="true" style={{ position: 'absolute', left: -22, top: -16, width: '54%', height: '64%', background: 'rgba(232,163,85,0.13)', border: '1px solid rgba(232,163,85,0.3)', zIndex: 0 }} />
+                <span aria-hidden="true" style={{ position: 'absolute', right: '4%', bottom: -20, width: '34%', height: '42%', border: '1px solid rgba(255,244,230,0.22)', zIndex: 0 }} />
+                <h2 style={{ position: 'relative', zIndex: 1, fontFamily: HEAD_FONT, fontSize: 'clamp(40px, 6.5vw, 100px)', lineHeight: 0.98, fontWeight: 400, letterSpacing: '-0.035em', margin: '0 0 30px', maxWidth: '14em', color: '#FFF9F0', textWrap: 'balance' }}>
+                  Everyone gathered under Christ is called to live as{' '}
+                  <span style={{ position: 'relative', display: 'inline-block' }}>
+                    family
+                    <HandDrawnCircle style={{ left: '-10%', top: '-28%', width: '120%', height: '190%' }} />
+                  </span>.
+                </h2>
               </div>
-            ))}
+
+              <p className="hm-family-reveal" style={{ position: 'relative', zIndex: 1, transitionDelay: '90ms', fontSize: 16.5, lineHeight: 1.7, color: 'rgba(255,243,228,0.7)', margin: '0 0 28px', maxWidth: '32em' }}>
+                Brothers and sisters don't show up for each other once a week — they show up every day in between. That daily rhythm, not the Sunday appointment, is the actual point. FellowScript exists to make room for it.
+              </p>
+
+              {/* Simpler stand-in for the video reference's marquee/numbered-
+                  section device (the earlier Mon–Sun ticker was cut per the
+                  user's explicit direction) — the "daily, not weekly" claim
+                  is carried here as plain, static, always-visible text, same
+                  badge shape as the hero's "Now with daily AI check-ins"
+                  pill above, for consistency rather than a competing device. */}
+              <div className="hm-family-reveal" style={{ transitionDelay: '160ms', display: 'inline-flex', alignItems: 'center', gap: 9, padding: '7px 15px 7px 12px', borderRadius: 999, background: 'rgba(232,163,85,0.12)', border: '1px solid rgba(232,163,85,0.32)' }}>
+                <span aria-hidden="true" style={{ width: 7, height: 7, borderRadius: '50%', background: AMBER }} />
+                <span style={{ fontSize: 12, letterSpacing: '0.04em', color: '#FFF3E2' }}>Every day — not just Sunday</span>
+              </div>
+            </div>
+
+            {/* Right: founder's-note card — reuses the hero verse card's glass
+                treatment so it reads as consistent with the rest of the page
+                rather than novel (design-notes.md §Elevation/texture). The
+                hand-drawn quote mark + underline are the one deliberately
+                "off-system" gesture in this kit, per the user's explicit
+                direction to lean into it as a genuine, felt part of the
+                section rather than a minimal/cuttable touch. Anonymous —
+                no name or initial attribution, per the user's explicit
+                approval. */}
+            <div className="hm-family-reveal" style={{ transitionDelay: '220ms', padding: '34px 32px 36px', borderRadius: 20, background: 'rgba(28,21,17,0.66)', border: '1px solid rgba(255,244,230,0.18)', backdropFilter: 'blur(18px)', boxShadow: '0 30px 70px -30px rgba(20,10,5,0.8)' }}>
+              <div style={{ fontFamily: HEAD_FONT, fontSize: 11, letterSpacing: '0.22em', textTransform: 'uppercase', color: '#F0C08A', marginBottom: 16 }}>// WHY WE BUILT THIS</div>
+              <div style={{ marginBottom: 6 }}>
+                <HandDrawnQuoteMark size={42} />
+              </div>
+              <blockquote style={{ margin: '0 0 4px', fontFamily: HEAD_FONT, fontSize: 21, lineHeight: 1.42, fontWeight: 400, letterSpacing: '-0.015em', color: '#FFF9F0' }}>
+                "I didn't build this to replace church. I built it because family doesn't clock out — I wanted somewhere for us to keep{' '}
+                <span style={{ position: 'relative', display: 'inline-block' }}>
+                  showing up for each other
+                  <HandDrawnUnderline style={{ left: '-2%', bottom: '-14%', width: '104%', height: '30%' }} />
+                </span>, every day of the week."
+              </blockquote>
+            </div>
           </div>
         </div>
       </section>
@@ -442,7 +629,9 @@ export default function Home() {
       </section>
 
       {/* ══ On your desktop ══ */}
-      <section style={{ position: 'relative', overflow: 'hidden', padding: 'clamp(90px, 13vh, 180px) clamp(20px, 5vw, 64px)', background: INK }}>
+      {/* id target for the "Read" nav links' desktop branch — see
+          DESKTOP_DOWNLOAD_ANCHOR / readNavProps above. */}
+      <section id="desktop-download" style={{ position: 'relative', overflow: 'hidden', padding: 'clamp(90px, 13vh, 180px) clamp(20px, 5vw, 64px)', background: INK }}>
         <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', pointerEvents: 'none' }}>
           <div style={{
             position: 'absolute',
@@ -580,7 +769,8 @@ export default function Home() {
             <div style={{ fontFamily: HEAD_FONT, fontSize: 11.5, letterSpacing: '0.26em', textTransform: 'uppercase', color: '#B4712C' }}>// NAVIGATION</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 11 }}>
               <Link to="/" className="hm-footer-link" style={{ fontSize: 15.5, textDecoration: 'none' }}>Home</Link>
-              <Link to="/reader" className="hm-footer-link" style={{ fontSize: 15.5, textDecoration: 'none' }}>Read</Link>
+              {/* Device-branched, not an internal route — see readNavProps above. */}
+              <a {...readNavProps} className="hm-footer-link" style={{ fontSize: 15.5, textDecoration: 'none' }}>Read</a>
               {user && <Link to="/account" className="hm-footer-link" style={{ fontSize: 15.5, textDecoration: 'none' }}>Account</Link>}
             </div>
           </div>

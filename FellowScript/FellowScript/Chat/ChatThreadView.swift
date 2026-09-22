@@ -371,6 +371,24 @@ final class ChatThreadViewModel: ObservableObject {
     // — if the view never finished its initial load (wsBase still empty) or
     // disconnect() was called for view teardown instead, there's nothing to
     // resume here.
+    //
+    // Task 20260921-recurring-session-next-occurrence (frontend step 3):
+    // deliberately does NOT re-fetch `sessions` here. The scheduler's
+    // recurring-advance job (scheduler.py's _advance_recurring_sessions)
+    // was built as passive-refetch-only, matching
+    // 20260921-session-auto-delete-window's identical precedent — no push/
+    // websocket notification of an advanced time_start/time_end. That
+    // means foregrounding the app while a thread's sessions sheet is
+    // *already open* will not by itself pick up a recurring session that
+    // advanced while backgrounded; the reliable refresh path is re-opening
+    // the thread (ChatRootView presents ChatThreadView via
+    // `.sheet(item: $activeContact)`, so dismissing and reselecting the
+    // contact creates a fresh ChatThreadViewModel and re-runs `load()`,
+    // which re-fetches sessions). Noted here as a known/accepted gap per
+    // architecture's own scope decision rather than silently added new
+    // polling — adding a sessions re-fetch on every foreground would be
+    // new client-side polling infrastructure, which is out of this task's
+    // scope.
     func handleAppForegrounded() {
         guard isDisconnecting, !wsBase.isEmpty else { return }
         isDisconnecting = false
@@ -981,6 +999,16 @@ struct ChatThreadView: View {
     // every session in one list, so this sorts client-side instead: upcoming
     // sessions soonest-first, past sessions most-recent-first, so what's
     // coming up next stays at the top regardless of backend ordering.
+    //
+    // Task 20260921-recurring-session-next-occurrence (frontend step 3):
+    // confirmed these are plain computed properties re-evaluated from
+    // `vm.sessions` on every render, not values memoized once at fetch
+    // time -- so once scheduler.py's `_advance_recurring_sessions` job
+    // rolls a recurring session's `time_start`/`time_end` forward a week
+    // and the client re-fetches (see `handleAppForegrounded()` above for
+    // which paths that covers today), the advanced row falls out of
+    // `pastSessions` and into `upcomingSessions` automatically, with no
+    // additional client-side recurrence math needed here.
     private var upcomingSessions: [FSSession] {
         let now = Date()
         return vm.sessions

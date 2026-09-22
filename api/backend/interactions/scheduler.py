@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime, timezone as tzmod
+from datetime import datetime, timedelta, timezone as tzmod
 from zoneinfo import ZoneInfo
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from db import DBManager
@@ -73,6 +73,21 @@ SESSION_AUTO_DELETE_GRACE_SECONDS = 3600
 # above rather than the coarser 15-minute/hourly jobs further down this
 # file.
 SESSION_AUTO_DELETE_POLL_INTERVAL_SECONDS = 60
+
+# Task 20260921-recurring-session-next-occurrence: a `recurring = TRUE`
+# session becomes a candidate for advancing to its next weekly occurrence
+# once its `time_end` is this many seconds in the past -- same "groups
+# running long can still finish" rationale as SESSION_AUTO_DELETE_GRACE_
+# SECONDS, and deliberately the same magnitude, but kept as its own named
+# constant per this file's own precedent of separately-named same-magnitude
+# constants for different actions (advance vs. delete) on the same column.
+SESSION_RECURRING_ADVANCE_GRACE_SECONDS = 3600
+
+# Real-time user-facing moment (the same class of problem as
+# SESSION_REMINDER_POLL_INTERVAL_SECONDS/SESSION_AUTO_DELETE_POLL_INTERVAL_
+# SECONDS above), so this polls at the same tight cadence rather than the
+# coarser 15-minute/hourly jobs further down this file.
+SESSION_RECURRING_ADVANCE_POLL_INTERVAL_SECONDS = 60
 
 
 async def _run_nightly_backups() -> None:
@@ -879,6 +894,288 @@ async def _auto_delete_expired_sessions() -> None:
         db.close()
 
 
+def _advance_time_by_one_local_week(
+    session_id: str, time_start, time_end, tzname: str
+) -> tuple[datetime, datetime] | None:
+    """Roll ``time_start``/``time_end`` (both UTC-aware ``TIMESTAMPTZ``
+    instants) forward by exactly one calendar week, computed in ``tzname``'s
+    local wall-clock time -- not a raw ``timedelta(days=7)`` added directly
+    to the UTC instant, which would be off by exactly the DST offset delta
+    across a spring-forward/fall-back transition in that zone. The original
+    duration (``time_end - time_start``) is preserved by construction:
+    ``new_time_end`` is derived by adding that same duration to
+    ``new_time_start`` rather than independently recomputing it, so duration
+    can never drift.
+
+    Returns ``None`` -- a fail-closed skip, never a guessed value (Security
+    Posture Q2/Q14, Architecture Q27) -- if ``tzname`` doesn't resolve to a
+    real IANA zone or the conversion otherwise raises. Logs via
+    ``logger.exception`` on that path (matching ``is_join_window_open``'s
+    own pattern) so the failure is surfaced, never silently defaulted.
+    """
+    try:
+        zone = ZoneInfo(tzname or "UTC")
+        duration = time_end - time_start
+        local_start = time_start.astimezone(zone)
+        # zoneinfo-aware arithmetic on the local wall-clock components:
+        # advancing the naive (year, month, day, hour, minute, second,
+        # microsecond) tuple by 7 days and re-attaching the same IANA zone
+        # lets Python/zoneinfo resolve the correct UTC offset for the new
+        # date (which may differ from the original date's offset across a
+        # DST transition), rather than shifting the already-resolved UTC
+        # instant by a fixed 7*86400 seconds.
+        naive_next = local_start.replace(tzinfo=None) + timedelta(days=7)
+        new_local_start = naive_next.replace(tzinfo=zone)
+        new_time_start = new_local_start.astimezone(tzmod.utc)
+        new_time_end = new_time_start + duration
+        return new_time_start, new_time_end
+    except Exception:
+        logger.exception(
+            "Session-recurring-advance failed to resolve next weekly "
+            "occurrence: session=%s timezone=%r -- failing closed",
+            session_id, tzname,
+        )
+        return None
+
+
+def _recurring_advance_resolve_candidate(db, session_id: str):
+    """Look up the current ``time_start``/``time_end`` and the creator's
+    ``users.timezone`` for one candidate, at the moment it's about to be
+    advanced -- a fresh read immediately before computing the next
+    occurrence, distinct from (and always at least as recent as) the batch
+    scan that found it a candidate.
+    """
+    db.cur.execute(
+        "SELECT d.time_start, d.time_end, u.timezone "
+        "FROM devotions d LEFT JOIN users u ON u._id = d.creator_id "
+        "WHERE d._id = %s AND d.recurring = TRUE",
+        (session_id,),
+    )
+    row = db.cur.fetchone()
+    if not row:
+        return None
+    return row[0], row[1], row[2]
+
+
+def _advance_recurring_session_if_still_candidate(
+    db, session_id: str, expected_time_end, expected_chime_meeting_id: str,
+    new_time_start: datetime, new_time_end: datetime
+) -> bool:
+    """Atomically advance ``session_id`` to its next weekly occurrence AND
+    reset its per-occurrence state in one statement, re-verifying both
+    ``time_end`` AND ``chime_meeting_id`` still match what was just read
+    (``expected_time_end``/``expected_chime_meeting_id``) -- the same
+    TOCTOU close ``_delete_session_if_still_candidate`` performs for the
+    sibling auto-delete job, on the same table. Re-checking
+    ``chime_meeting_id`` here (not just ``time_end``) is what actually makes
+    the presence gate in ``_advance_recurring_sessions`` binding: without
+    it, a call that gets (re)started in the window between that presence
+    check and this UPDATE would still have its ``chime_meeting_id``/
+    ``chime_meeting`` cleared and its session advanced out from under an
+    actively-occupied call -- the exact outcome the presence gate exists to
+    prevent, and the same reasoning ``_delete_session_if_still_candidate``
+    already applies to its own DELETE. A ``rowcount == 0`` means another
+    poll cycle already advanced this row, or a call was (re)started, since
+    it was last read -- a log-and-skip for the caller, not an error.
+
+    ``reminder_sent_at`` resets to ``NULL`` so the advanced occurrence's own
+    start-time reminder push re-arms (it's otherwise a one-shot claim column
+    that would never fire again for this row). ``chime_meeting_id``/
+    ``chime_meeting`` reset to their own column DEFAULT values from
+    ``db.py`` (``''``/``'{}'``), not NULL, so the new occurrence never
+    inherits a finished call's meeting state.
+    """
+    db.cur.execute(
+        "UPDATE devotions SET time_start = %s, time_end = %s, "
+        "reminder_sent_at = NULL, chime_meeting_id = '', chime_meeting = '{}' "
+        "WHERE _id = %s AND recurring = TRUE AND time_end = %s AND chime_meeting_id = %s",
+        (new_time_start, new_time_end, session_id, expected_time_end, expected_chime_meeting_id),
+    )
+    advanced = db.cur.rowcount > 0
+    db.conn.commit()
+    return advanced
+
+
+async def _advance_recurring_sessions() -> None:
+    """Roll a ``recurring = TRUE`` session's ``time_start``/``time_end``
+    forward by exactly one week, in place on the same ``devotions`` row,
+    once its current occurrence has ended -- task
+    20260921-recurring-session-next-occurrence. This is the natural
+    counterpart to ``_auto_delete_expired_sessions``: that job explicitly
+    excludes ``recurring = TRUE`` rows (they're never a delete candidate),
+    and this job explicitly excludes ``recurring = FALSE`` rows (they're
+    never an advance candidate) -- the two candidate queries are mutually
+    exclusive by construction on the same ``recurring`` column, so the two
+    jobs can never race destructively on the same row.
+
+    Advance-in-place, not a new representation: there is no per-occurrence
+    history table today, and none of this codebase's existing consumers
+    (notes/transcripts/``summarize``) key off a past occurrence, so this
+    overwrites the existing row's ``time_start``/``time_end`` rather than
+    adding new infrastructure disproportionate to this task's scope.
+
+    Runs every ``SESSION_RECURRING_ADVANCE_POLL_INTERVAL_SECONDS``.
+    Candidate selection mirrors ``_auto_delete_expired_sessions``' own
+    shape on this same table, but the opposite ``recurring`` value:
+    ``recurring = TRUE AND time_end IS NOT NULL AND time_end <= NOW() -
+    SESSION_RECURRING_ADVANCE_GRACE_SECONDS`` -- a NULL/unresolvable
+    ``time_end`` is never a candidate (explicit fail-closed decision,
+    Security Posture Q2/Q14, identical to the sibling delete job's own
+    decision on the same column), not a silent duration-guess.
+
+    Presence gate: reuses ``_session_auto_delete_confirmed_call_empty``
+    exactly as-is when ``chime_meeting_id`` is set -- advancing
+    ``time_start``/``time_end`` and clearing ``chime_meeting_id``/
+    ``chime_meeting`` out from under an actively-occupied call would break
+    that live call's session reference the same way deleting it would, so
+    this job needs the identical AWS-confirmed-empty gate the sibling
+    delete job established. Any ambiguous/errored/still-occupied outcome
+    fails closed: skip advancing this cycle, re-check next poll.
+
+    Weekly computation resolves the session's ``creator_id -> users.
+    timezone`` (IANA name via ``zoneinfo``) -- the same per-user-local-
+    timezone pattern already established by ``_fire_due_heartbeats``/
+    ``_midday_no_activity_reminder``/``BackupManager.users_due_now`` for
+    this exact class of problem -- and adds 7 calendar days to the local
+    wall-clock date/time (see ``_advance_time_by_one_local_week``), not a
+    raw ``timedelta(days=7)`` added directly to the UTC instant. A missing/
+    invalid creator timezone, or any exception during that conversion, is
+    an explicit fail-closed skip (``logger.exception``, matching
+    ``is_join_window_open``'s own pattern -- Architecture Q27: surface the
+    failure, never guess a default next-occurrence time) -- leave the row
+    for the next poll cycle.
+
+    The actual advance is performed by
+    ``_advance_recurring_session_if_still_candidate``, which re-verifies
+    ``time_end`` AND ``chime_meeting_id`` still match what was just read,
+    atomically in the same statement as the ``UPDATE`` -- closing the same
+    TOCTOU race ``_delete_session_if_still_candidate`` closes for the
+    sibling job. The ``chime_meeting_id`` re-check is what makes the
+    presence gate above actually binding: without it, a call (re)started
+    in the window between that gate and this UPDATE would still get
+    advanced-and-cleared out from under an active call. Its ``rowcount ==
+    0`` case (another cycle already advanced it, or a call was (re)started
+    since the check) is a log-and-skip, not an error.
+
+    No live push/websocket notification of the advanced time is sent to an
+    open client -- identical decision to
+    ``20260921-session-auto-delete-window``'s equivalent open question for
+    deletion: the existing session-fetch routes already return the
+    freshly-advanced row on the client's next fetch.
+
+    Per-session errors are caught, logged, and skipped so one session's
+    failure can't abort the rest of the cycle -- matching every other job
+    in this file. Every advance (session id, old/new ``time_start``) and
+    every skip-with-cause is logged at INFO/WARNING (Security Posture Q11).
+    """
+    import asyncio
+    import functools
+    import boto3
+    from backend.interactions.devotion import DevotionManager
+
+    loop = asyncio.get_running_loop()
+    db = DevotionManager()
+    chime = boto3.client("chime-sdk-meetings", region_name="us-east-1")
+
+    def _scan_candidates():
+        db.cur.execute(
+            "SELECT _id, chime_meeting_id FROM devotions "
+            "WHERE recurring = TRUE "
+            "AND time_end IS NOT NULL "
+            "AND time_end <= NOW() - (%s * INTERVAL '1 second')",
+            (SESSION_RECURRING_ADVANCE_GRACE_SECONDS,),
+        )
+        return [(str(r[0]), r[1] or "") for r in db.cur.fetchall()]
+
+    try:
+        try:
+            candidates = await loop.run_in_executor(None, _scan_candidates)
+        except Exception as e:
+            logger.error("Session-recurring-advance due-scan query failed: %s", e)
+            return
+
+        for session_id, chime_meeting_id in candidates:
+            try:
+                if chime_meeting_id:
+                    confirmed_empty = await loop.run_in_executor(
+                        None,
+                        functools.partial(
+                            _session_auto_delete_confirmed_call_empty, chime, chime_meeting_id
+                        ),
+                    )
+                    if not confirmed_empty:
+                        logger.info(
+                            "Session-recurring-advance deferred: session=%s call not "
+                            "confirmed empty (meeting=%s) -- re-checking next cycle",
+                            session_id, chime_meeting_id,
+                        )
+                        continue
+
+                resolved = await loop.run_in_executor(
+                    None, functools.partial(_recurring_advance_resolve_candidate, db, session_id)
+                )
+                if not resolved:
+                    # Row is gone, or no longer recurring -- nothing to advance.
+                    continue
+                time_start, time_end, tzname = resolved
+                if time_start is None or time_end is None:
+                    logger.warning(
+                        "Session-recurring-advance skipped: session=%s has an "
+                        "unresolvable time_start/time_end -- failing closed",
+                        session_id,
+                    )
+                    continue
+                # A NULL tzname here means the join to `users` on
+                # `creator_id` itself came back empty (no matching/live
+                # creator row) -- unlike `users.timezone`'s own NOT NULL
+                # DEFAULT 'UTC' constraint (which guarantees a *resolved*
+                # user always has a value), this is a genuinely missing
+                # creator timezone, so it's an explicit fail-closed skip
+                # rather than silently defaulting to UTC.
+                if not tzname:
+                    logger.warning(
+                        "Session-recurring-advance skipped: session=%s has no "
+                        "resolvable creator timezone -- failing closed",
+                        session_id,
+                    )
+                    continue
+
+                # Pure in-memory computation (no I/O) -- unlike the DB/AWS
+                # calls elsewhere in this loop, no run_in_executor offload
+                # is needed here.
+                next_occurrence = _advance_time_by_one_local_week(
+                    session_id, time_start, time_end, tzname
+                )
+                if next_occurrence is None:
+                    continue  # already logged via logger.exception above
+                new_time_start, new_time_end = next_occurrence
+
+                advanced = await loop.run_in_executor(
+                    None,
+                    functools.partial(
+                        _advance_recurring_session_if_still_candidate,
+                        db, session_id, time_end, chime_meeting_id, new_time_start, new_time_end,
+                    ),
+                )
+                if not advanced:
+                    logger.info(
+                        "Session-recurring-advance skipped: session=%s state changed "
+                        "since check (already advanced elsewhere) -- re-checking next cycle",
+                        session_id,
+                    )
+                    continue
+                logger.info(
+                    "Session recurring-advanced: session=%s old_time_start=%s new_time_start=%s",
+                    session_id, time_start, new_time_start,
+                )
+            except Exception as e:
+                logger.error("Session-recurring-advance cycle error for %s: %s", session_id, e)
+    except Exception as e:
+        logger.error("Session-recurring-advance scheduler job error: %s", e)
+    finally:
+        db.close()
+
+
 def start_scheduler() -> None:
     # The former `notify_check` cron job (agentic/custom notification firing)
     # was removed in full along with that subsystem — see
@@ -912,6 +1209,18 @@ def start_scheduler() -> None:
     # delete -- see _auto_delete_expired_sessions' own docstring.
     scheduler.add_job(_auto_delete_expired_sessions, "interval", seconds=SESSION_AUTO_DELETE_POLL_INTERVAL_SECONDS,
                       id="session_auto_delete", replace_existing=True)
+    # Recurring ("Repeat weekly") session next-occurrence advance (task
+    # 20260921-recurring-session-next-occurrence): the natural counterpart
+    # to session_auto_delete above -- that job only ever touches
+    # `recurring = FALSE` rows, this one only ever touches `recurring =
+    # TRUE` rows, so the two candidate queries are mutually exclusive by
+    # construction on the same `recurring` column and can never race
+    # destructively on the same row. Same 1-hour grace period past
+    # time_end (SESSION_RECURRING_ADVANCE_GRACE_SECONDS) and the same
+    # fail-closed Chime-presence gate before advancing -- see
+    # _advance_recurring_sessions' own docstring.
+    scheduler.add_job(_advance_recurring_sessions, "interval", seconds=SESSION_RECURRING_ADVANCE_POLL_INTERVAL_SECONDS,
+                      id="session_recurring_advance", replace_existing=True)
     # Midday/guilt reminders: a 15-minute poll is coarse enough to be cheap
     # but fine enough that the local-noon / >24h windows are never missed by
     # more than 15 minutes — each job's own dedup marker (not job frequency)

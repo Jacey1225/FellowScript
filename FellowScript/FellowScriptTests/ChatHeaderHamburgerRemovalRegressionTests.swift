@@ -10,18 +10,22 @@
 //      is gone from `header` entirely -- no lingering reference to that
 //      systemImage, and `header` now constructs exactly one Circle (the
 //      existing "+" add button), not two.
-//   2. No dangling remnant of the removed element's own accessibility
-//      modifier (`.accessibilityHidden(true)`) remains anywhere in `header`
-//      -- that modifier existed only to mark the hamburger non-interactive,
-//      so it must not survive the element it was attached to.
-//   3. The remaining layout reads as intentional: the "Chat" title is
-//      leading-aligned directly (no longer preceded by the removed circle's
-//      implicit leading balance), followed by a single trailing Spacer and
-//      the untouched "+" add button -- mirroring HeroHeader's leading-title
-//      convention in DashboardComponents.swift, per the intake spec.
-//   4. The add button itself (action, gradient fill, accessibility label
+//   2. The add button itself (action, gradient fill, accessibility label
 //      that switches on `selectedSegment`) is completely unaffected by the
 //      removal -- explicitly out of scope for this task.
+//
+// Task 20260921-center-chat-title later replaced this header's leading-title
+// layout with a three-region centered one (invisible leading placeholder
+// Circle + two Spacers flanking the title + accessibilityHidden on that
+// placeholder). That superseded three of this suite's original assertions,
+// which pinned facts true only of the leading-aligned layout this task
+// shipped (exactly one Circle/the add button; exactly one Spacer; the title
+// leading before any Spacer; no accessibilityHidden modifier in `header`) --
+// those are updated below to their current-layout equivalents, or retired
+// where a later suite (ChatTitleCenteringRegressionTests) now owns the
+// specific assertion. This file keeps the assertions that are still true
+// regardless of which layout the header uses (no hamburger icon reference,
+// title styling, add button wiring).
 //
 // `header` is a private computed property of ChatRootView, which (per this
 // project's established convention -- see
@@ -67,56 +71,37 @@ final class ChatHeaderHamburgerRemovalRegressionTests: XCTestCase {
         )
     }
 
-    func test_source_header_constructsExactlyOneCircle_theAddButton() throws {
-        // Before this task, `header` built two Circles: the decorative
-        // hamburger and the "+" add button. Only the add button's should
-        // remain.
+    func test_source_header_constructsExactlyTwoCircles_placeholderAndAddButton() throws {
+        // Before task 20260921-remove-dead-chat-hamburger, `header` built two
+        // Circles: the decorative hamburger and the "+" add button. That task
+        // dropped it back to one (just the add button). Task
+        // 20260921-center-chat-title then added a second Circle back -- an
+        // invisible leading placeholder used to balance the add button's own
+        // width for true visual centering, not a reintroduction of the
+        // hamburger. This asserts the count is exactly the current-layout
+        // two (placeholder + add button), so a real regression (the
+        // hamburger's decorative Circle coming back as a *third* Circle)
+        // still fails here rather than being masked by the placeholder's
+        // presence. See ChatTitleCenteringRegressionTests for the
+        // placeholder's own dedicated coverage.
         let header = try headerSource()
         let circleCount = header.components(separatedBy: "Circle()").count - 1
         XCTAssertEqual(
-            circleCount, 1,
-            "expected exactly one Circle() left in `header` (the \"+\" add button) now that the hamburger's own Circle has been removed"
+            circleCount, 2,
+            "expected exactly two Circle()s in `header` (the invisible centering placeholder and the \"+\" add button) -- a third would mean the removed hamburger's own Circle has come back"
         )
     }
 
-    // MARK: - 2. No dangling accessibility remnant of the removed element
-
-    func test_source_header_hasNoAccessibilityHiddenModifier() throws {
-        // The hamburger's own `.accessibilityHidden(true)` (what kept it a
-        // non-interactive dead tap target rather than a focusable one) must
-        // not survive now that the element itself is gone.
-        let header = try headerSource()
-        XCTAssertFalse(
-            header.contains("accessibilityHidden"),
-            "no accessibilityHidden modifier should remain in `header` -- it belonged only to the now-removed hamburger element"
-        )
-    }
-
-    // MARK: - 3. Remaining layout: leading title, single trailing Spacer, untouched add button
-
-    func test_source_header_titleIsLeadingText_beforeAnySpacer() throws {
-        let header = try headerSource()
-        guard let titleRange = header.range(of: "Text(\"Chat\")"),
-              let firstSpacerRange = header.range(of: "Spacer()") else {
-            XCTFail("expected to find the \"Chat\" title and a Spacer in `header`'s source")
-            return
-        }
-        XCTAssertTrue(
-            titleRange.lowerBound < firstSpacerRange.lowerBound,
-            "the \"Chat\" title must lead the HStack, ahead of the trailing Spacer, now that the hamburger's implicit leading balance is gone"
-        )
-    }
-
-    func test_source_header_hasExactlyOneSpacer() throws {
-        // A single trailing Spacer pushes the add button to the far edge --
-        // not two Spacers flanking a (now-removed) centered element.
-        let header = try headerSource()
-        let spacerCount = header.components(separatedBy: "Spacer()").count - 1
-        XCTAssertEqual(
-            spacerCount, 1,
-            "expected exactly one Spacer() in `header`, separating the leading title from the trailing add button"
-        )
-    }
+    // MARK: - 2. Remaining layout: add button untouched by the hamburger removal
+    //
+    // The leading-alignment-specific assertions previously here (exactly one
+    // Spacer; title leading before any Spacer; no accessibilityHidden
+    // modifier in `header`) pinned facts only true of this task's own
+    // leading-aligned layout. Task 20260921-center-chat-title intentionally
+    // replaced that layout with a centered one that has two Spacers and an
+    // accessibilityHidden placeholder -- those facts are now covered by
+    // ChatTitleCenteringRegressionTests instead, which owns the current
+    // layout's shape rather than this hamburger-removal-scoped suite.
 
     func test_source_header_titleStylingUnchanged() throws {
         let header = try headerSource()

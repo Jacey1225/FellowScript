@@ -18,7 +18,7 @@ This is deliberately **not** full SSR and **not** a hydration target — `main.j
 
 | Route | File | Description |
 |---|---|---|
-| `/` | `pages/Home.jsx` | Public landing page — hero, features, pricing, CTA |
+| `/` | `pages/Home.jsx` | Public landing page — hero, features, pricing, CTA. Its "Read" nav links (header pill + footer) device-branch instead of routing to `/reader` — see "Read nav device redirect" below. |
 | `/reader` | `pages/Reader.jsx` | Bible reader — desktop: dockable VSCode-style panel workspace; mobile: bottom-tab-bar overlays |
 | `/account` | `pages/Account.jsx` | Profile, subscription card, danger zone |
 | `/signin` | `pages/SignIn.jsx` | Password, Google, and Apple sign-in/sign-up |
@@ -28,6 +28,12 @@ This is deliberately **not** full SSR and **not** a hydration target — `main.j
 | `/admin/detections/:id` | `pages/AdminDetectionDetail.jsx` | **Hidden, admin-only.** One detection's raw error + collapsible CloudWatch context, plus the debugging agent's persisted diagnostic report (root cause + remediation narrative), with a Generate/Rerun action that surfaces 429 rate-limit feedback (client-side cooldown) distinctly from a 502 OpenRouter failure. Same `AdminGate` + `require_admin` gating as `/admin`. Unchanged at any width — reachable via direct navigation/refresh, but no longer how mobile reaches detail from the `/admin` list (see `DetectionDetailOverlay` below). A "Download Remediation Instructions" button next to the Generate/Rerun action assembles a single Markdown handoff file (error record, raw context, diagnostic report if one exists) entirely client-side via `lib/remediationMarkdown.js` and triggers a browser download; a fire-and-forget `POST .../report/download-audit` call logs the export server-side without blocking or gating the download itself. Stays enabled with no report yet generated, producing an error-only file. |
 
 Unauthenticated users land on Home (`/`); once signed in, the CTA routes directly to `/reader`.
+
+### Read nav device redirect (task `20260921-read-nav-native-app-redirect`)
+
+`Home.jsx`'s two "Read" nav links (the header pill and the footer nav column) no longer route to `/reader`. Both now branch on `lib/deviceGate.js`'s `isMobileUserAgent()` (the same UA check `MobileBlockGate.jsx` uses — deliberately not the viewport-based `useIsDesktopViewport.js`, to avoid a second, disagreeing device-detection mechanism): on a mobile UA, "Read" is a real external `<a>` to the iOS App Store listing (`target="_blank"`, `rel="noopener noreferrer"`); on desktop, it's a same-page `<a href="#desktop-download">` anchor to the "On your desktop" section (which now carries `id="desktop-download"`), rather than an immediate `.dmg` download — a Windows visitor with no live build yet still lands somewhere useful either way. Neither branch uses `<Link>` since neither destination is an internal route. `AppNav.jsx`'s own hamburger "Read" item and the "Read scripture"/"Read the Bible" CTA buttons are unchanged.
+
+The previously reported mobile "read" error was traced to `MobileBlockGate.jsx`'s existing (non-crashing) block screen, which mobile visitors landed on after following the old `/reader` nav link — not a JS exception. `MobileBlockGate` itself is unchanged and still guards `/reader` for any other path that reaches it (direct URL entry, sign-in redirect, etc.); this redirect only changes what the Home nav's "Read" links point to.
 
 ### Desktop shell route restriction
 

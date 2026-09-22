@@ -226,13 +226,28 @@ struct ChatRootView: View {
     // no real destination in this app (unlike Notes, which repurposes its
     // hamburger for its existing filter/sort menu) — kept non-interactive
     // rather than a dead tap target. It still read as a dead/non-functional
-    // button, so it's removed outright rather than kept as inert decoration.
-    // Title is now leading-aligned against a single trailing Spacer, mirroring
-    // HeroHeader's leading-title layout in DashboardComponents.swift, so the
-    // "+" button keeps its own breathing room without a removed element's
-    // implicit leading balance leaving dead space or an off-center title.
+    // button, so it was removed outright rather than kept as inert decoration.
+    // Task 20260921-center-chat-title: the title is now visually centered in
+    // the row, not merely leading-aligned. A naive single-Spacer swap (Text
+    // then Spacer then button) only centers the title between the two screen
+    // edges — the fixed-width 44x44 "+" button on the trailing edge, with
+    // nothing balancing it on the leading edge, would still pull the title's
+    // optical center to the left. Instead this mirrors the fixed-width
+    // trailing button with an identically-sized invisible leading placeholder,
+    // then centers the title between two Spacers flanking it symmetrically —
+    // the same "equal-width flanking elements + symmetric Spacers" centering
+    // technique already used by SessionCreatorSheet.sheetHeader in
+    // ChatThreadView.swift. This intentionally departs from HeroHeader's
+    // leading-title convention in DashboardComponents.swift — see the intake
+    // spec's Scope section for why the two headers are no longer required to
+    // stay in sync.
     private var header: some View {
         HStack {
+            Circle()
+                .fill(Color.clear)
+                .frame(width: 44, height: 44)
+                .accessibilityHidden(true)
+            Spacer()
             Text("Chat")
                 .font(.system(size: 27, weight: .heavy))
                 .foregroundColor(Theme.parchment)
