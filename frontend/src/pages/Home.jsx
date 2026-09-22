@@ -4,7 +4,6 @@ import { useAuth } from '../context/AuthContext.jsx';
 import { useParallaxBlobs } from '../hooks/useParallaxBlobs.js';
 import Seo from '../components/Seo.jsx';
 import { SITE_URL } from '../config.js';
-import { isMobileUserAgent } from '../lib/deviceGate.js';
 import {
   HOME_SEO_PATH,
   HOME_SEO_TITLE,
@@ -55,27 +54,6 @@ function Check() {
         <path d="M4 12.5l5.5 5.5L20 7" />
       </svg>
     </span>
-  );
-}
-
-// Filled brand glyphs for the desktop-download platform badges (design-spec.md
-// §7) — deliberately filled, not redrawn as 1.6px-stroke `Ico` outlines;
-// outlined brand marks read as counterfeit. Both paths are the official
-// simple-icons (MIT-licensed) brand marks — matches Apple/Microsoft's own
-// marks exactly, not a hand-authored approximation.
-function AppleMark({ size = 20 }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-      <path d="M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zM15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.454 2.338-1.273 3.714 1.338.104 2.715-.688 3.559-1.701" />
-    </svg>
-  );
-}
-
-function WinMark({ size = 18 }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-      <path d="M0,0H11.377V11.372H0ZM12.623,0H24V11.372H12.623ZM0,12.623H11.377V24H0Zm12.623,0H24V24H12.623" />
-    </svg>
   );
 }
 
@@ -178,28 +156,6 @@ function HandDrawnQuoteMark({ size = 46 }) {
   );
 }
 
-// Task 20260921-read-nav-native-app-redirect: the homepage's "Read" nav
-// links (header pill + footer) branch by device instead of navigating to
-// the in-browser /reader — a mobile visitor goes to the native iOS app
-// listing, a desktop visitor to the section below.
-const APP_STORE_URL = 'https://apps.apple.com/us/app/fellowscript-study-connect/id6791701454';
-
-// ── Desktop download (On your desktop section) ────────────────────────────────
-// Live GitHub Release asset (desktop-v0.1.0) — resolved per the user's
-// Discord answer (task 20260902-download-section-implementation follow-up).
-// Per that same answer, no OS-floor claim is displayed at all (see the
-// macOS card's metadata line below) — this is a user-facing marketing
-// value, a reasonable future candidate to promote to a small config/env
-// value rather than staying hardcoded here, but not required for now.
-const MACOS_DOWNLOAD_URL = 'https://github.com/Jacey1225/FellowScript/releases/download/desktop-v0.1.0/FellowScript.dmg';
-
-// id target for the "On your desktop" section below, so the "Read" nav
-// links (header pill + footer) can scroll-anchor a desktop visitor there
-// instead of both platform cards, rather than forcing an immediate .dmg
-// download — a Windows desktop visitor (no live download yet, see the
-// "Coming soon" card) still lands somewhere useful either way.
-const DESKTOP_DOWNLOAD_ANCHOR = '#desktop-download';
-
 // ── Content (kept in sync with the real backend — dynamic 1-8 member group pricing) ──
 
 const features = [
@@ -275,19 +231,6 @@ export default function Home() {
   const { user } = useAuth();
   const cta = user ? '/reader' : '/signin';
 
-  // Task 20260921-read-nav-native-app-redirect: evaluated once per render,
-  // same UA-check approach as MobileBlockGate.jsx (a UX gate, not a security
-  // boundary — see deviceGate.js's own comment on that) rather than a third
-  // device-detection mechanism. Both "Read" nav links below (header pill,
-  // footer) branch on it: mobile opens the native iOS App Store listing as
-  // a real external link instead of navigating into /reader (where mobile
-  // visitors previously landed on MobileBlockGate.jsx's block screen —
-  // see that component; this redirect makes reaching it via this nav
-  // moot); desktop scroll-anchors to the "On your desktop" section instead.
-  const readNavProps = isMobileUserAgent()
-    ? { href: APP_STORE_URL, target: '_blank', rel: 'noopener noreferrer' }
-    : { href: DESKTOP_DOWNLOAD_ANCHOR };
-
   const heroBgRef = useRef(null);
   const communityBgRef = useRef(null);
   useParallaxBlobs([heroBgRef, communityBgRef]);
@@ -311,8 +254,6 @@ export default function Home() {
         @keyframes hm-float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-14px); } }
         @media (prefers-reduced-motion: reduce) {
           .hm-float, .hm-orbit-spin { animation: none !important; }
-          .hm-dl-mac { transition: none !important; }
-          .hm-dl-mac:hover { transform: none !important; }
           /* Task 20260921-homepage-family-section-redesign: belt-and-suspenders
              backstop for the "Not just once a week" section's scroll reveal —
              useRevealOnScroll already skips observing under this same media
@@ -325,7 +266,7 @@ export default function Home() {
         /* Task 20260921-homepage-family-section-redesign — "Not just once a
            week" section: lightweight viewport-entrance fade (opacity + small
            y-offset), staggered per element via inline transitionDelay, eased
-           with the same settle curve used for hm-btn/hm-dl-mac above. */
+           with the same settle curve used for hm-btn above. */
         .hm-family-reveal {
           opacity: 0;
           transform: translateY(26px);
@@ -354,9 +295,6 @@ export default function Home() {
         .hm-footer-link { color: ${LIGHT_INK}; }
         .hm-footer-link:hover { color: #B4712C; }
 
-        .hm-dl-mac { transition: transform 220ms cubic-bezier(0.22,0.61,0.36,1), border-color 220ms cubic-bezier(0.22,0.61,0.36,1), box-shadow 220ms cubic-bezier(0.22,0.61,0.36,1); }
-        .hm-dl-mac:hover { transform: translateY(-4px); border-color: rgba(255,244,230,0.30); box-shadow: 0 48px 100px -50px rgba(232,163,85,0.35), 0 40px 90px -50px rgba(0,0,0,0.9); }
-
         .hm-hero-grid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr); gap: clamp(24px, 5vw, 72px); align-items: center; }
         .hm-hero-cards { display: flex; flex-direction: column; align-items: flex-end; gap: 22px; }
         @media (max-width: 860px) {
@@ -376,9 +314,11 @@ export default function Home() {
           <nav style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: 5, borderRadius: 999, background: 'rgba(23,18,15,0.28)', border: '1px solid rgba(255,244,230,0.16)', backdropFilter: 'blur(10px)' }}>
               <Link to="/" style={{ display: 'block', padding: '8px 16px', borderRadius: 999, fontSize: 12.5, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#FFF8EE', background: 'rgba(255,244,230,0.14)', textDecoration: 'none' }}>Home</Link>
-              {/* Device-branched, not an internal route — plain <a>, not
-                  <Link> (see readNavProps above). */}
-              <a {...readNavProps} className="hm-nav-link" style={{ display: 'block', padding: '8px 16px', borderRadius: 999, fontSize: 12.5, letterSpacing: '0.08em', textTransform: 'uppercase', textDecoration: 'none' }}>Read</a>
+              {/* Task 20260922-reader-nav-download-page: routes to the new
+                  /download page, which now owns the device branching itself
+                  — matches the adjacent Home/Account links' <Link> usage
+                  instead of being the odd one out as a plain <a>. */}
+              <Link to="/download" className="hm-nav-link" style={{ display: 'block', padding: '8px 16px', borderRadius: 999, fontSize: 12.5, letterSpacing: '0.08em', textTransform: 'uppercase', textDecoration: 'none' }}>Read</Link>
               {user && (
                 <Link to="/account" className="hm-nav-link" style={{ display: 'block', padding: '8px 16px', borderRadius: 999, fontSize: 12.5, letterSpacing: '0.08em', textTransform: 'uppercase', textDecoration: 'none' }}>Account</Link>
               )}
@@ -402,7 +342,11 @@ export default function Home() {
             </p>
             <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 14 }}>
               <PillButton to={cta} primary>Begin your journey <span aria-hidden="true">→</span></PillButton>
-              <PillButton to="/reader">Read scripture</PillButton>
+              {/* Task 20260922-reader-nav-download-page: was an unconditional
+                  /reader link with no device branching — a leaking-nav
+                  occurrence under this task's "every occurrence" framing,
+                  not a legitimate carve-out (design-notes.md §4). */}
+              <PillButton to="/download">Read scripture</PillButton>
             </div>
           </div>
 
@@ -628,119 +572,6 @@ export default function Home() {
         </div>
       </section>
 
-      {/* ══ On your desktop ══ */}
-      {/* id target for the "Read" nav links' desktop branch — see
-          DESKTOP_DOWNLOAD_ANCHOR / readNavProps above. */}
-      <section id="desktop-download" style={{ position: 'relative', overflow: 'hidden', padding: 'clamp(90px, 13vh, 180px) clamp(20px, 5vw, 64px)', background: INK }}>
-        <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', pointerEvents: 'none' }}>
-          <div style={{
-            position: 'absolute',
-            top: 'clamp(-140px, -9vh, -70px)',
-            right: 'clamp(-60px, -6vw, -20px)',
-            width: 'clamp(260px, 28vw, 420px)',
-            height: 'clamp(260px, 28vw, 420px)',
-            borderRadius: '50%',
-            background: 'radial-gradient(circle at 45% 40%, rgba(240,179,106,0.24) 0%, rgba(164,74,45,0.16) 42%, rgba(23,18,15,0) 74%)',
-            filter: 'blur(12px)',
-          }} />
-        </div>
-        <div style={{ position: 'relative', zIndex: 1, maxWidth: 1240, margin: '0 auto' }}>
-          <div style={{ fontFamily: HEAD_FONT, fontSize: 11.5, letterSpacing: '0.26em', textTransform: 'uppercase', color: AMBER, paddingBottom: 22, borderBottom: '1px solid rgba(255,244,230,0.14)', marginBottom: 56 }}>// ON YOUR DESKTOP</div>
-          <h2 style={{ fontFamily: HEAD_FONT, fontWeight: 400, fontSize: 'clamp(32px, 4.2vw, 62px)', lineHeight: 1.03, letterSpacing: '-0.03em', color: '#FFF9F0', margin: '0 0 24px' }}>
-            Out of the browser, <span style={{ color: 'rgba(255,249,240,0.42)' }}>into a window of its own.</span>
-          </h2>
-          <p style={{ fontFamily: BODY_FONT, fontSize: 16.5, lineHeight: 1.7, color: 'rgba(255,243,228,0.66)', maxWidth: '34em', margin: '0 0 clamp(48px, 7vh, 88px)' }}>
-            The desktop app opens straight into your reading — one calm window, no tabs, no browser chrome, sitting right where you left it.
-          </p>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 'clamp(20px, 2.4vw, 32px)', alignItems: 'stretch' }}>
-            {/* macOS card — primary, live */}
-            <div style={{
-              position: 'relative', display: 'flex', flexDirection: 'column', gap: 18,
-              padding: '38px 34px 40px', borderRadius: 20,
-              background: 'rgba(255,244,230,0.055)',
-              border: '1px solid rgba(255,244,230,0.18)',
-              boxShadow: '0 40px 90px -50px rgba(0,0,0,0.9)',
-            }} className="hm-dl-card hm-dl-mac">
-              <span style={{
-                display: 'grid', placeItems: 'center', width: 42, height: 42, borderRadius: 12,
-                background: 'rgba(232,163,85,0.16)', border: '1px solid rgba(232,163,85,0.30)', color: AMBER,
-              }}>
-                <AppleMark size={20} />
-              </span>
-              <span style={{ fontFamily: HEAD_FONT, fontSize: 12, letterSpacing: '0.2em', textTransform: 'uppercase', color: '#F0C08A' }}>MACOS</span>
-              <h3 style={{ fontFamily: HEAD_FONT, fontSize: 21, fontWeight: 500, letterSpacing: '-0.02em', margin: 0, color: '#FFF9F0' }}>Signed, notarized, ready</h3>
-              <p style={{ fontSize: 15, lineHeight: 1.6, color: 'rgba(255,243,228,0.7)', margin: 0 }}>One download, no gatekeeper warnings — just open it.</p>
-              <div style={{ flex: 1 }} />
-              {/* Live GitHub Release asset — plain <a>, not <Link>: this points
-                  at a hosted file, not an internal route. */}
-              <a
-                href={MACOS_DOWNLOAD_URL}
-                download
-                className="hm-btn-primary"
-                style={{
-                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 9,
-                  padding: '16px 24px', borderRadius: 999,
-                  background: AMBER, color: '#21160F',
-                  fontFamily: BODY_FONT, fontSize: 14.5, fontWeight: 600, letterSpacing: '0.01em',
-                  textDecoration: 'none',
-                }}
-              >
-                Download for Mac <span aria-hidden="true">↓</span>
-              </a>
-              {/* No OS-floor claim per the user's answer (critique.md §4 item 4's
-                  own suggested fallback) — two verified facts only: file size
-                  from the built .dmg, architecture support from the Tauri
-                  build target. */}
-              <div style={{ fontFamily: BODY_FONT, fontSize: 12.5, letterSpacing: '0.04em', color: 'rgba(255,243,228,0.58)', textAlign: 'center' }}>
-                Apple silicon &amp; Intel · 3 MB
-              </div>
-            </div>
-
-            {/* Windows card — recessed, present-but-not-live. No <button>/<a>/
-                tabIndex/role="button"/hover/cursor-pointer anywhere in this card. */}
-            <div style={{
-              position: 'relative', display: 'flex', flexDirection: 'column', gap: 18,
-              padding: '38px 34px 40px', borderRadius: 20,
-              background: 'rgba(255,244,230,0.028)',
-              border: '1px solid rgba(255,244,230,0.13)',
-              cursor: 'default',
-            }} className="hm-dl-card">
-              <span style={{
-                position: 'absolute', top: 22, right: 26, padding: '6px 12px', borderRadius: 999,
-                background: 'rgba(232,163,85,0.14)', border: '1px solid rgba(232,163,85,0.28)',
-                color: 'rgba(255,243,228,0.8)', fontSize: 10.5, fontWeight: 600, letterSpacing: '0.14em', textTransform: 'uppercase',
-              }}>
-                Coming soon
-              </span>
-              <span style={{
-                display: 'grid', placeItems: 'center', width: 42, height: 42, borderRadius: 12,
-                background: 'rgba(232,163,85,0.16)', border: '1px solid rgba(232,163,85,0.30)', color: AMBER,
-              }}>
-                <WinMark size={18} />
-              </span>
-              <span style={{ fontFamily: HEAD_FONT, fontSize: 12, letterSpacing: '0.2em', textTransform: 'uppercase', color: '#F0C08A' }}>WINDOWS</span>
-              <h3 style={{ fontFamily: HEAD_FONT, fontSize: 21, fontWeight: 500, letterSpacing: '-0.02em', margin: 0, color: '#FFF9F0' }}>Still in the workshop</h3>
-              <p style={{ fontSize: 15, lineHeight: 1.6, color: 'rgba(255,243,228,0.7)', margin: 0 }}>We started on macOS. The Windows build is on the way.</p>
-              <div style={{ flex: 1 }} />
-              {/* padding: '16px 0' (not '16px 24px') and textAlign: 'left' below
-                  (not 'center') — critique.md §5 fixes for the 24px orphan
-                  indent / mismatched centering axis. */}
-              <div style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'flex-start',
-                padding: '16px 0',
-                fontFamily: BODY_FONT, fontSize: 15, fontWeight: 400, letterSpacing: '0.01em',
-                color: 'rgba(255,243,228,0.66)',
-              }}>
-                Windows 10 &amp; 11
-              </div>
-              <div style={{ fontFamily: BODY_FONT, fontSize: 12.5, letterSpacing: '0.04em', color: 'rgba(255,243,228,0.58)', textAlign: 'left' }}>
-                We'll post it here first — no signup needed.
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
       {/* ══ Closing CTA ══ */}
       <section style={{ position: 'relative', overflow: 'hidden', padding: 'clamp(90px, 15vh, 190px) clamp(20px, 5vw, 64px)', background: INK }}>
         <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
@@ -753,7 +584,10 @@ export default function Home() {
           <div style={{ fontFamily: HEAD_FONT, fontSize: 12, letterSpacing: '0.24em', textTransform: 'uppercase', color: '#F0C08A' }}>Proverbs 27:17</div>
           <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 14 }}>
             <PillButton to={cta} primary>Join free <span aria-hidden="true">→</span></PillButton>
-            <PillButton to="/reader">Read the Bible</PillButton>
+            {/* Task 20260922-reader-nav-download-page: same rationale as the
+                hero's "Read scripture" button above — was an unconditional
+                /reader link with no device branching (design-notes.md §4). */}
+            <PillButton to="/download">Read the Bible</PillButton>
           </div>
         </div>
       </section>
@@ -769,8 +603,7 @@ export default function Home() {
             <div style={{ fontFamily: HEAD_FONT, fontSize: 11.5, letterSpacing: '0.26em', textTransform: 'uppercase', color: '#B4712C' }}>// NAVIGATION</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 11 }}>
               <Link to="/" className="hm-footer-link" style={{ fontSize: 15.5, textDecoration: 'none' }}>Home</Link>
-              {/* Device-branched, not an internal route — see readNavProps above. */}
-              <a {...readNavProps} className="hm-footer-link" style={{ fontSize: 15.5, textDecoration: 'none' }}>Read</a>
+              <Link to="/download" className="hm-footer-link" style={{ fontSize: 15.5, textDecoration: 'none' }}>Read</Link>
               {user && <Link to="/account" className="hm-footer-link" style={{ fontSize: 15.5, textDecoration: 'none' }}>Account</Link>}
             </div>
           </div>

@@ -51,8 +51,14 @@ export default function AppNav() {
     { key: 'account', label: accountLabel,  icon: <UserOutlined /> },
   ];
 
+  // Task 20260922-reader-nav-download-page: the hamburger "Read" item leaked
+  // straight into /reader on the ordinary web frontend with no device
+  // branching at all (AppNav is reachable from Account/Admin too, not just
+  // Home, so those pages have no "Open app" shortcut of their own). Inside
+  // the desktop shell, /reader stays — that's legitimate in-app navigation
+  // within the native app the visitor already has (design-notes.md §5).
   const onMenuClick = ({ key }) => {
-    const paths = { home: logoHref, reader: '/reader', account: accountHref };
+    const paths = { home: logoHref, reader: desktopApp ? '/reader' : '/download', account: accountHref };
     navigate(paths[key] || logoHref);
     setDrawerOpen(false);
   };

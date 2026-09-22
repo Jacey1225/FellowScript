@@ -121,7 +121,7 @@ may still be populated.
 | DELETE | `/friends/{user_id}/{friend_id}` | Remove a friend |
 | GET | `/friends/{user_id}` | Friend list |
 | GET | `/friends/{user_id}/activity` | Friend-activity read surface for the dashboard's Friend Activity hero card: each friend's most recent group note preview, most recent highlight preview (with real verse text), last-active timestamp + activity type (block-respecting both directions), plus a bounded "check in" nudge candidate pool (up to 5 friends gone longest without a direct message). |
-| POST | `/friends/{user_id}/{friend_id}/nudge` | Send a fixed, non-user-authored "come back and study" push notification to a friend. Gated behind `NUDGE_FEATURE_ENABLED` (404 while disabled, as if the route doesn't exist) and rate-limited per sender→recipient pair (`NUDGE_RATE_LIMIT_HOURS`, one nudge per pair per window), plus a coarse `30/minute` per-IP backstop. |
+| POST | `/friends/{user_id}/{friend_id}/nudge` | Send a fixed, non-user-authored "come back and study" push notification to a friend. Gated behind `NUDGE_FEATURE_ENABLED` (404 while disabled, as if the route doesn't exist) and rate-limited per sender→recipient pair (`NUDGE_RATE_LIMIT_HOURS`, one nudge per pair per window), plus a coarse `30/minute` per-IP backstop. Triggered client-side from the Dashboard's Friend Activity hero card (one randomly-surfaced check-in candidate) and, as of task `20260922-chat-friend-nudge-button`, from a nudge control on every friend row in the Chat page's friends list (any friend, not just a surfaced candidate) — both surfaces call this same endpoint with an arbitrary `friend_id`. |
 
 ### `POST /friends/{user_id}/{friend_id}/nudge`
 

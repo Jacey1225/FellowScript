@@ -608,6 +608,24 @@ enum NudgeUIState: Equatable {
     case sent
     case rateLimited
     case failed
+
+    // Task 20260922-chat-friend-nudge-button: extracted so Dashboard's
+    // CheckInRow and Chat's per-friend nudge control (ChatRootView.swift)
+    // both derive their post-send display state from the exact same
+    // NudgeResult mapping instead of each view model re-switching over
+    // NudgeResult independently -- the intake spec's Architecture/
+    // Implementation preference (Q3) defaults to abstracting logic that's
+    // shared between the two rather than duplicating it. Only covers the
+    // outcome states -- `.idle`/`.sending` stay driven directly by each call
+    // site's own pre-send/mid-flight assignments, since those never come
+    // from a NudgeResult.
+    static func from(_ result: NudgeResult) -> NudgeUIState {
+        switch result {
+        case .sent:        return .sent
+        case .rateLimited: return .rateLimited
+        case .failed:      return .failed
+        }
+    }
 }
 
 // ── Check-in nudge row (flush, no container — matches `.checkin-row`) ──────────

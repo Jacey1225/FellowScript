@@ -9,6 +9,7 @@ import ResetPassword from './pages/ResetPassword.jsx';
 import VerifyMfa from './pages/VerifyMfa.jsx';
 import Privacy from './pages/Privacy.jsx';
 import Terms from './pages/Terms.jsx';
+import Download from './pages/Download.jsx';
 import AdminGate from './components/AdminGate.jsx';
 import MobileBlockGate from './components/MobileBlockGate.jsx';
 import DesktopRouteGuard from './components/DesktopRouteGuard.jsx';
@@ -52,6 +53,43 @@ export default function App() {
     // so they were dead sitemap entries rather than a genuine indexing aid.
     // Removing them doesn't reopen the HashRouter decision itself, which
     // still stands for the reasons above.
+    //
+    // Decision update (task 20260920-fix-spa-crawlability): the three-day
+    // zero-`site:` outcome confirmed the risk this file's original Decision
+    // comment above accepted -- Googlebot's raw HTML fetch of "/" really did
+    // carry no crawlable body content, only the SEO <head> tags task
+    // 20260914-restore-homepage-seo-meta-tags added. Fixed via build-time
+    // static prerendering of the Home route only (see
+    // frontend/src/entry-server.jsx + frontend/scripts/prerender.mjs, wired
+    // into `npm run build` in package.json): react-dom/server's
+    // renderToStaticMarkup renders Home's real markup into dist/index.html's
+    // `<div id="root">` after the ordinary Vite build, so a non-JS fetch of
+    // "/" now gets real body content, not an empty shell. The live app still
+    // mounts via `createRoot(...).render()` in main.jsx exactly as before,
+    // which replaces that snapshot with the interactive app on load -- this
+    // is a one-time static snapshot for crawlers/non-JS clients, not a
+    // hydration target.
+    //
+    // This does NOT reopen full SSR or a HashRouter->BrowserRouter
+    // migration, both still rejected for the reasons in the original
+    // Decision comment above (no in-repo server-rewrite config; the current
+    // deploy model ships static files only). Build-time prerendering
+    // sidesteps that constraint entirely -- it produces a real physical HTML
+    // file, which the existing static file server resolves with no rewrite
+    // rule and no new running process.
+    //
+    // Privacy/Terms are deliberately NOT promoted to real (non-fragment)
+    // routes in this pass. Doing so while every other route stays on
+    // HashRouter would mean the client bundle mounts under HashRouter (which
+    // reads the URL fragment, defaulting to "/") while a prerendered
+    // /privacy or /terms path-based URL would exist server-side with no
+    // fragment -- the app would silently render Home instead of the
+    // requested page once JS took over, a real client-side regression for
+    // the sake of two low-traffic static pages. HashRouter therefore stays
+    // for every route, including these two, exactly as the original
+    // Decision above already had it; robots.txt/sitemap.xml are unchanged by
+    // this task since no route actually became newly crawlable besides "/",
+    // which was already the one path the server ever resolved.
     <HashRouter>
       {/* Task 20260918-admin-activity-monitoring: fires the visit-tracking
           beacon on every route change. Mounted here (inside the router, but
@@ -67,6 +105,12 @@ export default function App() {
         <Routes>
           <Route path="/"       element={<Home />} />
           <Route path="/reader" element={<MobileBlockGate><Reader /></MobileBlockGate>} />
+          {/* Task 20260922-reader-nav-download-page: the single "go get the
+              app" destination every leaking nav occurrence into /reader now
+              routes to instead. Deliberately not on DESKTOP_ALLOWED_ROUTES
+              (desktopScope.js) — a web-marketing-site concern, not something
+              the Tauri shell should ever navigate into (design-notes.md §6). */}
+          <Route path="/download"  element={<Download />} />
           <Route path="/account"   element={<Account />} />
           <Route path="/signin"    element={<SignIn />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />

@@ -1039,6 +1039,17 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#session-join-window-gating-task-20260920-session-join-window-gating" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Session join-window gating (task 20260920-session-join-window-gating)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#post-devotionsring-task-20260916-call-ring-members" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1438,7 +1449,7 @@ may still be populated.</p>
 <tr>
 <td>POST</td>
 <td><code>/friends/{user_id}/{friend_id}/nudge</code></td>
-<td>Send a fixed, non-user-authored "come back and study" push notification to a friend. Gated behind <code>NUDGE_FEATURE_ENABLED</code> (404 while disabled, as if the route doesn't exist) and rate-limited per sender→recipient pair (<code>NUDGE_RATE_LIMIT_HOURS</code>, one nudge per pair per window), plus a coarse <code>30/minute</code> per-IP backstop.</td>
+<td>Send a fixed, non-user-authored "come back and study" push notification to a friend. Gated behind <code>NUDGE_FEATURE_ENABLED</code> (404 while disabled, as if the route doesn't exist) and rate-limited per sender→recipient pair (<code>NUDGE_RATE_LIMIT_HOURS</code>, one nudge per pair per window), plus a coarse <code>30/minute</code> per-IP backstop. Triggered client-side from the Dashboard's Friend Activity hero card (one randomly-surfaced check-in candidate) and, as of task <code>20260922-chat-friend-nudge-button</code>, from a nudge control on every friend row in the Chat page's friends list (any friend, not just a surfaced candidate) — both surfaces call this same endpoint with an arbitrary <code>friend_id</code>.</td>
 </tr>
 </tbody>
 </table>
@@ -1623,6 +1634,31 @@ chat thread directly (<code>AppState.openSession(groupId:)</code>), splitting a 
 key (<code>"uidA|uidB"</code>) to the other participant or treating any other value as
 a real group id — the same cross-tab navigation the Dashboard's Friend
 Activity widget already uses.</p>
+<h3 id="session-join-window-gating-task-20260920-session-join-window-gating">Session join-window gating (task <code>20260920-session-join-window-gating</code>)</h3>
+<p><code>POST /devotions/join</code> and <code>POST /devotions/join-call</code> now enforce a
+time window on top of their existing membership check
+(<code>DevotionManager.is_authorized</code>): once a caller is authorized, both routes
+also call <code>DevotionManager.is_join_window_open(session)</code> and 403
+(<code>"This session isn't open yet."</code>) if the session isn't currently open —
+<code>join-call</code> checks this before ever creating (or recreating) the billed AWS
+Chime meeting, so an out-of-window call never spins one up.</p>
+<p>A session is open once the server's own clock (<code>NOW()</code> in Postgres, never a
+client- or app-server-supplied time) reaches <code>time_start</code> minus a
+configurable early-join grace period (<code>SESSION_JOIN_GRACE_MINUTES</code>, new
+required config validated eagerly at startup — see
+<a href="../../architecture/backend/">Configuration</a>), and stays open through
+<code>time_end</code>; a session with no resolvable <code>time_start</code> never opens (fails
+closed), while a session with no resolvable <code>time_end</code> stays open
+indefinitely once started. A session with a live Chime meeting already
+attached (<code>chime_meeting_id</code> set) is always considered open regardless of
+the time window — this is also what lets an already-live call's "ring a
+member" invite (<code>POST /devotions/ring</code>, below) bypass the window, since a
+real Chime meeting can only exist once someone already joined in-window.
+The iOS client independently greys out its own Join controls using the same
+window (device local time, cosmetic only) so the button reads as disabled
+before a request would even be attempted — the server-side check above is
+what actually closes a direct-API/clock-manipulation bypass of that UI
+state.</p>
 <h3 id="post-devotionsring-task-20260916-call-ring-members"><code>POST /devotions/ring</code> (task <code>20260916-call-ring-members</code>)</h3>
 <p>Lets a participant already on a live session's call prompt one or more of
 that session's own group members to join. Body: <code>{ devotion_id, user_id,

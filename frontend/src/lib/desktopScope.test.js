@@ -41,8 +41,12 @@ describe('DESKTOP_ALLOWED_ROUTES — the closed, deny-by-default allowlist', () 
     );
   });
 
-  test('excludes Home, Privacy, Terms, and the hidden admin surface by name', () => {
-    for (const disallowed of ['/', '/privacy', '/terms', '/admin', '/admin/detections/:id']) {
+  test('excludes Home, Privacy, Terms, Download, and the hidden admin surface by name', () => {
+    // '/download' (task 20260922-reader-nav-download-page) is a deliberate
+    // exclusion, not an oversight — see design-notes.md §6 and
+    // DesktopRouteGuard.test.jsx for the corresponding redirect-behavior
+    // proof.
+    for (const disallowed of ['/', '/privacy', '/terms', '/download', '/admin', '/admin/detections/:id']) {
       expect(DESKTOP_ALLOWED_ROUTES).not.toContain(disallowed);
     }
   });

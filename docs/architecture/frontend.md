@@ -18,8 +18,9 @@ This is deliberately **not** full SSR and **not** a hydration target — `main.j
 
 | Route | File | Description |
 |---|---|---|
-| `/` | `pages/Home.jsx` | Public landing page — hero, features, pricing, CTA. Its "Read" nav links (header pill + footer) device-branch instead of routing to `/reader` — see "Read nav device redirect" below. |
+| `/` | `pages/Home.jsx` | Public landing page — hero, features, pricing, CTA. Every "Read"-labeled nav control and CTA (header pill, footer, "Read scripture", "Read the Bible") routes to `/download`, not `/reader` — see "Reader-nav leak fix: the `/download` page" below. |
 | `/reader` | `pages/Reader.jsx` | Bible reader — desktop: dockable VSCode-style panel workspace; mobile: bottom-tab-bar overlays |
+| `/download` | `pages/Download.jsx` | Public "get the app" page — see "Reader-nav leak fix: the `/download` page" below. |
 | `/account` | `pages/Account.jsx` | Profile, subscription card, danger zone |
 | `/signin` | `pages/SignIn.jsx` | Password, Google, and Apple sign-in/sign-up |
 | `/privacy` | `pages/Privacy.jsx` | Privacy policy |
@@ -29,11 +30,24 @@ This is deliberately **not** full SSR and **not** a hydration target — `main.j
 
 Unauthenticated users land on Home (`/`); once signed in, the CTA routes directly to `/reader`.
 
-### Read nav device redirect (task `20260921-read-nav-native-app-redirect`)
+### Reader-nav leak fix: the `/download` page (task `20260922-reader-nav-download-page`)
 
-`Home.jsx`'s two "Read" nav links (the header pill and the footer nav column) no longer route to `/reader`. Both now branch on `lib/deviceGate.js`'s `isMobileUserAgent()` (the same UA check `MobileBlockGate.jsx` uses — deliberately not the viewport-based `useIsDesktopViewport.js`, to avoid a second, disagreeing device-detection mechanism): on a mobile UA, "Read" is a real external `<a>` to the iOS App Store listing (`target="_blank"`, `rel="noopener noreferrer"`); on desktop, it's a same-page `<a href="#desktop-download">` anchor to the "On your desktop" section (which now carries `id="desktop-download"`), rather than an immediate `.dmg` download — a Windows visitor with no live build yet still lands somewhere useful either way. Neither branch uses `<Link>` since neither destination is an internal route. `AppNav.jsx`'s own hamburger "Read" item and the "Read scripture"/"Read the Bible" CTA buttons are unchanged.
+Superseding task `20260921-read-nav-native-app-redirect` below: rather than each nav site device-branching for itself, there is now a single dedicated destination, `pages/Download.jsx` at route `/download`, and every nav-style control that used to leak straight into `/reader` now points at it as a plain internal link.
 
-The previously reported mobile "read" error was traced to `MobileBlockGate.jsx`'s existing (non-crashing) block screen, which mobile visitors landed on after following the old `/reader` nav link — not a JS exception. `MobileBlockGate` itself is unchanged and still guards `/reader` for any other path that reaches it (direct URL entry, sign-in redirect, etc.); this redirect only changes what the Home nav's "Read" links point to.
+`Download.jsx` owns the device branching itself, via the same `lib/deviceGate.js` `isMobileUserAgent()` UA check `MobileBlockGate.jsx` uses (deliberately not the viewport-based `useIsDesktopViewport.js`, to avoid a second, disagreeing device-detection mechanism):
+- **Mobile UA:** a single tailored hero ("Get the FellowScript app") with one primary CTA — a real external `<a>` to the iOS App Store listing (`target="_blank"`, `rel="noopener noreferrer"`).
+- **Desktop UA:** the "On your desktop" macOS/Windows download cards, relocated wholesale from `Home.jsx` (which no longer has this section at all) — the live macOS `.dmg` link and the Windows "Coming soon" card, unchanged in markup/styling.
+
+It has its own lightweight sticky header (logo + "Back to Home"), following `Privacy.jsx`/`Terms.jsx`'s pattern rather than reusing `AppNav` or Home's full hero header, and is not on `sitemap.xml` for the same reason `/privacy`/`/terms` aren't — under `HashRouter`, only `/` is ever independently crawlable.
+
+Every previously-leaking occurrence now routes here:
+- `Home.jsx`'s header-pill and footer "Read" nav links (previously device-branched to an App Store link or a same-page `#desktop-download` anchor) are now plain `<Link to="/download">`.
+- `Home.jsx`'s "Read scripture" (hero) and "Read the Bible" (closing) CTA buttons (previously unconditional `/reader` links) now point at `/download` too.
+- `AppNav.jsx`'s hamburger "Read" menu item now branches on `lib/desktopScope.js`'s `isDesktopApp()`: `/reader` inside the Tauri desktop shell (legitimate in-app navigation), `/download` in the ordinary web frontend, regardless of sign-in state.
+
+Left unchanged, by design: the auth-gated `cta` buttons on Home (`user ? '/reader' : '/signin'` — "Open app"/"Get started"/"Begin your journey"/"Start a group"/"Join free"), and the post-auth redirects to `/reader` in `SignIn.jsx`/`VerifyMfa.jsx`/`Account.jsx`. `/download` is deliberately **not** added to `lib/desktopScope.js`'s `DESKTOP_ALLOWED_ROUTES` — nothing in the Tauri shell links to it, and an errant deep link there falls through `DesktopRouteGuard` to the existing `/reader` fallback, which is the intended behavior for a web-marketing-site-only page.
+
+The previously reported mobile "read" error was traced to `MobileBlockGate.jsx`'s existing (non-crashing) block screen, which mobile visitors landed on after following the old `/reader` nav link — not a JS exception. `MobileBlockGate` itself is unchanged and still guards `/reader` for any other path that reaches it (direct URL entry, sign-in redirect, etc.).
 
 ### Desktop shell route restriction
 

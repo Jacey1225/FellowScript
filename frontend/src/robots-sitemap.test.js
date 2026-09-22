@@ -47,15 +47,27 @@ describe('robots.txt', () => {
 });
 
 describe('sitemap.xml', () => {
-  test('lists only the genuinely public marketing routes, on the real production domain', () => {
+  test('lists only the genuinely public, independently crawlable routes, on the real production domain', () => {
     const locs = Array.from(sitemap.matchAll(/<loc>(.*?)<\/loc>/g)).map((m) => m[1]);
 
     expect(locs).toContain('https://fellowscript.com/');
-    expect(locs.some((l) => l.endsWith('/privacy'))).toBe(true);
-    expect(locs.some((l) => l.endsWith('/terms'))).toBe(true);
     for (const loc of locs) {
       expect(loc.startsWith('https://fellowscript.com')).toBe(true);
     }
+  });
+
+  // Task 20260918-fix-google-indexing-audit (Issue B / option B1): under
+  // HashRouter, everything after "#" is a client-side fragment the server
+  // never sees, so /#/privacy and /#/terms were never independently
+  // crawlable -- they were dead sitemap entries with no real static-route
+  // equivalent to repoint at, so they were removed rather than kept as a
+  // best-effort declaration.
+  test('no longer lists dead /#/privacy or /#/terms fragment URLs (never crawlable under HashRouter)', () => {
+    const locs = Array.from(sitemap.matchAll(/<loc>(.*?)<\/loc>/g)).map((m) => m[1]);
+
+    expect(locs.some((l) => l.includes('/#/'))).toBe(false);
+    expect(locs.some((l) => l.endsWith('/privacy'))).toBe(false);
+    expect(locs.some((l) => l.endsWith('/terms'))).toBe(false);
   });
 
   test('never names /admin', () => {
@@ -67,7 +79,21 @@ describe('sitemap.xml', () => {
     const urlOpens = (sitemap.match(/<url>/g) || []).length;
     const urlCloses = (sitemap.match(/<\/url>/g) || []).length;
     expect(urlOpens).toBe(urlCloses);
-    expect(urlOpens).toBeGreaterThanOrEqual(3);
+    expect(urlOpens).toBeGreaterThanOrEqual(1);
+  });
+
+  // Testing gate (task 20260918-fix-google-indexing-audit): the tag-balance
+  // check above doesn't catch a genuinely malformed XML comment. XML forbids
+  // "--" anywhere inside a comment body (only "-->" may end it) -- an
+  // em-dash-style "--" separator in the header comment's prose (as opposed
+  // to a real em dash "—") breaks the file for any strict XML parser,
+  // including Google's sitemap fetcher, even though this file's own
+  // structural regex checks above all still pass. Use the same DOMParser a
+  // browser/crawler would use, not another regex, so this actually catches
+  // the failure mode a hand-rolled string check would miss.
+  test('the header comment contains no bare "--" (invalid inside an XML comment) and the file parses without a parsererror', () => {
+    const doc = new DOMParser().parseFromString(sitemap, 'application/xml');
+    expect(doc.querySelector('parsererror')).toBeNull();
   });
 });
 

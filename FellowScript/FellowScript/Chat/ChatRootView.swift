@@ -323,7 +323,19 @@ struct ChatRootView: View {
                 noMatchesState
             } else {
                 List(filteredFriends) { contact in
-                    ContactRow(contact: contact)
+                    // Task 20260922-chat-friend-nudge-button: nudgeState/
+                    // onNudge are keyed off this specific contact.id, so each
+                    // row reflects only its own friend's state -- see
+                    // ChatViewModel.nudgeStates' doc comment.
+                    ContactRow(
+                        contact: contact,
+                        nudgeState: vm.nudgeState(for: contact.id),
+                        onNudge: {
+                            Task {
+                                await vm.sendNudge(userId: appState.currentUser?.user_id ?? "", friendId: contact.id)
+                            }
+                        }
+                    )
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
                         .listRowInsets(EdgeInsets(top: 5, leading: 20, bottom: 5, trailing: 20))
@@ -684,6 +696,48 @@ final class ChatViewModel: ObservableObject {
     // 20260916-group-leave-deletes-group).
     @Published var deleteGroupActionError: String? = nil
 
+    // Task 20260922-chat-friend-nudge-button: per-friend nudge UI state,
+    // keyed by contact.id (a friend contact's id doubles as its friend_id --
+    // see FSContact.id's usage in removeFriend below) rather than one shared
+    // value like DashboardViewModel.checkInNudgeState -- this list can show
+    // many friends at once, so nudging one must never move another row's
+    // displayed state. Same NudgeUIState/NudgeResult contract as
+    // DashboardViewModel.sendCheckInNudge, via the shared NudgeUIState.from(_:)
+    // mapping (DashboardComponents.swift). Never reset on load/refresh -- an
+    // in-flight or already-resolved nudge for a friend still on screen has no
+    // reason to forget its state just because the list re-fetched.
+    @Published private var nudgeStates: [String: NudgeUIState] = [:]
+
+    /// The display state for a given friend's nudge control -- `.idle` for
+    /// any friend never nudged this session.
+    func nudgeState(for friendId: String) -> NudgeUIState {
+        nudgeStates[friendId] ?? .idle
+    }
+
+    // Mirrors DashboardViewModel.sendCheckInNudge's idle -> sending ->
+    // {sent, rateLimited, failed -> idle} lifecycle exactly, scoped to one
+    // friend's own dictionary entry instead of a single shared property.
+    // `.sending` on that entry is itself the re-entrancy guard, same as
+    // Dashboard's.
+    func sendNudge(userId: String, friendId: String) async {
+        guard nudgeState(for: friendId) != .sending else { return }
+        nudgeStates[friendId] = .sending
+        let result = await service.sendNudge(userId: userId, friendId: friendId)
+        nudgeStates[friendId] = NudgeUIState.from(result)
+        if result == .failed {
+            // Brief, transient pulse then back to tappable -- see
+            // DashboardViewModel.sendCheckInNudge's identical comment.
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            // Only revert if this friend's entry is still the same failed
+            // pulse just set -- the `.sending` guard above already prevents
+            // an overlapping second send for the same friend, but this keeps
+            // the revert scoped to its own entry regardless.
+            if nudgeStates[friendId] == .failed {
+                nudgeStates[friendId] = .idle
+            }
+        }
+    }
+
     // Guards against a duplicate fetch when this instance is shared between
     // StartupCoordinator (which calls load() once up front to gate the
     // startup loading screen) and this screen's own `.task` (which also
@@ -878,6 +932,13 @@ struct ChatSearchField: View {
 // timestamp still derives purely from lastMessageAt via chatRelativeTime(_:).
 struct ContactRow: View {
     let contact: FSContact
+    // Task 20260922-chat-friend-nudge-button: both default to a no-op state
+    // so this same struct keeps rendering unchanged for groupsList's call
+    // site below. Even when a caller does pass a real onNudge, the button
+    // only ever renders for a `.friend` contact (see body) -- groups/agents
+    // never get one, per the intake spec's scope.
+    var nudgeState: NudgeUIState = .idle
+    var onNudge: (() -> Void)? = nil
     @EnvironmentObject var appState: AppState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -949,10 +1010,94 @@ struct ContactRow: View {
                         .lineLimit(1)
                 }
             }
+
+            // Task 20260922-chat-friend-nudge-button: friend-only, and only
+            // when the caller actually wired a handler -- groupsList's call
+            // site never passes one, so a `.group` row never shows this even
+            // though it's the same ContactRow struct.
+            if contact.type == .friend, let onNudge {
+                ChatNudgeButton(friendName: contact.name, nudgeState: nudgeState, onTap: onNudge)
+            }
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 13)
         .glassCard(cornerRadius: 20)
+    }
+}
+
+// ── Chat friend nudge control ────────────────────────────────────────────────
+// Task 20260922-chat-friend-nudge-button: a chat-list-scaled sibling of
+// Dashboard's CheckInRow nudge button (DashboardComponents.swift) -- same
+// bell/checkmark/spinner/failed-pulse visual language, driven by the same
+// NudgeUIState, and the same `.buttonStyle(.plain)`-inside-an-HStack trick
+// that keeps this tap from also triggering ContactRow's ancestor
+// `.onTapGesture` (opens the chat thread) in ChatRootView.friendsList. Sized
+// down (36pt vs. CheckInRow's 56pt) to fit this denser list row rather than
+// reusing CheckInRow's exact view code -- per the intake spec's Preference
+// profile (Q12), a similar-but-not-identical control is an acceptable,
+// even preferred, starting point until a second identical reuse case
+// actually appears; the two share only the underlying NudgeUIState/
+// NudgeResult contract (NudgeUIState.from(_:)), not this view.
+struct ChatNudgeButton: View {
+    let friendName:  String
+    let nudgeState:  NudgeUIState
+    let onTap:       () -> Void
+
+    private var iconName: String {
+        switch nudgeState {
+        case .sent, .rateLimited: return "checkmark"
+        default:                  return "bell.fill"
+        }
+    }
+
+    // Same disabled rule as CheckInRow: locked once a send has actually
+    // landed somewhere (sending/sent/rateLimited); `.failed` stays tappable
+    // since that's the one outcome meant to invite an immediate retry.
+    private var isDisabled: Bool {
+        switch nudgeState {
+        case .sending, .sent, .rateLimited: return true
+        case .idle, .failed:                return false
+        }
+    }
+
+    private var accessibilityText: String {
+        switch nudgeState {
+        case .sent, .rateLimited: return "Nudge sent to \(friendName)"
+        default:                  return "Nudge \(friendName)"
+        }
+    }
+
+    var body: some View {
+        Button(action: onTap) {
+            Circle()
+                .fill(LinearGradient(colors: [Theme.goldLight, Theme.goldDim],
+                                     startPoint: .leading, endPoint: .trailing))
+                .frame(width: 36, height: 36)
+                .overlay(
+                    Circle().fill(Color(hex: "#24170A")).frame(width: 31, height: 31)
+                        .overlay(
+                            Group {
+                                if nudgeState == .sending {
+                                    ProgressView().tint(Theme.goldLight).scaleEffect(0.65)
+                                } else {
+                                    Image(systemName: iconName)
+                                        .font(.system(size: 12, weight: .semibold))
+                                        .foregroundColor(Theme.goldLight)
+                                }
+                            }
+                        )
+                )
+                // Same transient failed-send tint pulse as CheckInRow -- a
+                // low-stakes social action gets a quick "that didn't land,
+                // try again" rather than a toast/alert.
+                .overlay(
+                    Circle().fill(Theme.error.opacity(nudgeState == .failed ? 0.4 : 0))
+                )
+                .animation(.easeOut(duration: 0.3), value: nudgeState)
+        }
+        .buttonStyle(.plain)
+        .disabled(isDisabled)
+        .accessibilityLabel(accessibilityText)
     }
 }
 

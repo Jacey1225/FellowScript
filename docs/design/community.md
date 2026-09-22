@@ -329,6 +329,28 @@ it has no button of its own to gate, and is covered by the same already-live-cal
 
 ---
 
+## Chat Friend Nudge Button (2026-09-22, task `20260922-chat-friend-nudge-button`, iOS)
+
+Every friend row (not group, not agent) in the Chat page's friends list now has its own nudge
+control on the right side (`ChatRootView.swift`'s `ContactRow` gained an optional `ChatNudgeButton`,
+rendered only for `.friend` contacts) — the same "come back and study" push notification the
+Dashboard's Friend Activity hero card already sends, just reachable for any friend directly from
+Chat instead of only whichever single friend Dashboard happens to randomly surface as a check-in
+candidate. No new endpoint: it calls the existing `POST /friends/{user_id}/{friend_id}/nudge` via
+`DataServiceProtocol.sendNudge(userId:friendId:)`.
+
+`ChatNudgeButton` is a smaller (36pt vs. Dashboard's 56pt), list-row-scaled sibling of
+`CheckInRow`'s nudge button — same bell/checkmark/spinner/failed-tint-pulse visual language, and the
+same `.buttonStyle(.plain)`-inside-an-`HStack` trick that keeps a tap on it from also triggering the
+row's own `.onTapGesture` (which opens the chat thread). Because this list can show many friends at
+once, `ChatViewModel` tracks nudge state per friend (keyed by `contact.id`, a dictionary) rather than
+the single shared value `DashboardViewModel.checkInNudgeState` uses — nudging one friend never moves
+another row's displayed state. Both view models derive their post-send display state through the
+same shared `NudgeUIState.from(_:)` mapping (`DashboardComponents.swift`) rather than each
+re-switching over the `sent`/`rateLimited`/`failed` outcome independently.
+
+---
+
 ## Real-Time Behavior
 
 The WebSocket connection (`/ws/{user_id}`) handles:

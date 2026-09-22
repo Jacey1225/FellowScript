@@ -177,15 +177,17 @@ final class DashboardViewModel: ObservableObject {
     func sendCheckInNudge(userId: String) async {
         guard let checkIn = checkInPick, checkInNudgeState != .sending else { return }
         checkInNudgeState = .sending
-        switch await service.sendNudge(userId: userId, friendId: checkIn.friend_id) {
-        case .sent:        checkInNudgeState = .sent
-        case .rateLimited: checkInNudgeState = .rateLimited
-        case .failed:
+        // Task 20260922-chat-friend-nudge-button: the actual NudgeResult ->
+        // NudgeUIState mapping now lives in NudgeUIState.from(_:)
+        // (DashboardComponents.swift), shared with ChatViewModel.sendNudge's
+        // identical lifecycle below.
+        let result = await service.sendNudge(userId: userId, friendId: checkIn.friend_id)
+        checkInNudgeState = NudgeUIState.from(result)
+        if result == .failed {
             // Brief, transient pulse (mirrors the sibling /design task's
             // tile-control error state) then back to tappable -- a low-
             // stakes social action getting a quick "that didn't land, try
             // again" rather than a persistent error surface.
-            checkInNudgeState = .failed
             try? await Task.sleep(nanoseconds: 300_000_000)
             checkInNudgeState = .idle
         }

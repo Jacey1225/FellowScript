@@ -14,9 +14,17 @@ import DesktopRouteGuard from './DesktopRouteGuard.jsx';
 import { DESKTOP_ALLOWED_ROUTES, DESKTOP_FALLBACK_ROUTE } from '../lib/desktopScope.js';
 
 // Mirrors every path App.jsx registers (Home, Reader, Account, the 4
-// auth-flow routes, Privacy, Terms, and the two hidden admin routes), each
-// rendering a testid'd marker rather than the real page component, so these
-// tests assert on routing/redirect behavior only.
+// auth-flow routes, Privacy, Terms, Download, and the two hidden admin
+// routes), each rendering a testid'd marker rather than the real page
+// component, so these tests assert on routing/redirect behavior only.
+//
+// '/download' (task 20260922-reader-nav-download-page) is deliberately left
+// off DESKTOP_ALLOWED_ROUTES (design-notes.md §6) — it's a web-marketing-site
+// concern, not something the desktop app shell should route into — so it's
+// included here specifically to prove that omission behaves as intended
+// (redirects to the fallback, same as any other disallowed route) rather
+// than becoming an unreachable dead link some future desktop-shell link
+// could hit.
 const ALL_APP_ROUTES = [
   '/',
   '/reader',
@@ -27,6 +35,7 @@ const ALL_APP_ROUTES = [
   '/verify-2fa',
   '/privacy',
   '/terms',
+  '/download',
   '/admin',
   '/admin/detections/123',
 ];
