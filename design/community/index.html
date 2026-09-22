@@ -726,6 +726,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#chat-friend-nudge-button-2026-09-22-task-20260922-chat-friend-nudge-button-ios" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Chat Friend Nudge Button (2026-09-22, task 20260922-chat-friend-nudge-button, iOS)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#real-time-behavior" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1346,6 +1357,24 @@ the two client buttons have no visibility into <code>chime_meeting_id</code> and
 meaning they can under-claim availability in that one case but never over-claim it.</p>
 <p>The ring-invite path (<code>AppState.joinRingedCall</code> → <code>CallController.shared.start</code>) is untouched —
 it has no button of its own to gate, and is covered by the same already-live-call bypass above.</p>
+<hr />
+<h2 id="chat-friend-nudge-button-2026-09-22-task-20260922-chat-friend-nudge-button-ios">Chat Friend Nudge Button (2026-09-22, task <code>20260922-chat-friend-nudge-button</code>, iOS)</h2>
+<p>Every friend row (not group, not agent) in the Chat page's friends list now has its own nudge
+control on the right side (<code>ChatRootView.swift</code>'s <code>ContactRow</code> gained an optional <code>ChatNudgeButton</code>,
+rendered only for <code>.friend</code> contacts) — the same "come back and study" push notification the
+Dashboard's Friend Activity hero card already sends, just reachable for any friend directly from
+Chat instead of only whichever single friend Dashboard happens to randomly surface as a check-in
+candidate. No new endpoint: it calls the existing <code>POST /friends/{user_id}/{friend_id}/nudge</code> via
+<code>DataServiceProtocol.sendNudge(userId:friendId:)</code>.</p>
+<p><code>ChatNudgeButton</code> is a smaller (36pt vs. Dashboard's 56pt), list-row-scaled sibling of
+<code>CheckInRow</code>'s nudge button — same bell/checkmark/spinner/failed-tint-pulse visual language, and the
+same <code>.buttonStyle(.plain)</code>-inside-an-<code>HStack</code> trick that keeps a tap on it from also triggering the
+row's own <code>.onTapGesture</code> (which opens the chat thread). Because this list can show many friends at
+once, <code>ChatViewModel</code> tracks nudge state per friend (keyed by <code>contact.id</code>, a dictionary) rather than
+the single shared value <code>DashboardViewModel.checkInNudgeState</code> uses — nudging one friend never moves
+another row's displayed state. Both view models derive their post-send display state through the
+same shared <code>NudgeUIState.from(_:)</code> mapping (<code>DashboardComponents.swift</code>) rather than each
+re-switching over the <code>sent</code>/<code>rateLimited</code>/<code>failed</code> outcome independently.</p>
 <hr />
 <h2 id="real-time-behavior">Real-Time Behavior</h2>
 <p>The WebSocket connection (<code>/ws/{user_id}</code>) handles:</p>

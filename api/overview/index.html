@@ -1449,7 +1449,7 @@ may still be populated.</p>
 <tr>
 <td>POST</td>
 <td><code>/friends/{user_id}/{friend_id}/nudge</code></td>
-<td>Send a fixed, non-user-authored "come back and study" push notification to a friend. Gated behind <code>NUDGE_FEATURE_ENABLED</code> (404 while disabled, as if the route doesn't exist) and rate-limited per sender→recipient pair (<code>NUDGE_RATE_LIMIT_HOURS</code>, one nudge per pair per window), plus a coarse <code>30/minute</code> per-IP backstop.</td>
+<td>Send a fixed, non-user-authored "come back and study" push notification to a friend. Gated behind <code>NUDGE_FEATURE_ENABLED</code> (404 while disabled, as if the route doesn't exist) and rate-limited per sender→recipient pair (<code>NUDGE_RATE_LIMIT_HOURS</code>, one nudge per pair per window), plus a coarse <code>30/minute</code> per-IP backstop. Triggered client-side from the Dashboard's Friend Activity hero card (one randomly-surfaced check-in candidate) and, as of task <code>20260922-chat-friend-nudge-button</code>, from a nudge control on every friend row in the Chat page's friends list (any friend, not just a surfaced candidate) — both surfaces call this same endpoint with an arbitrary <code>friend_id</code>.</td>
 </tr>
 </tbody>
 </table>
