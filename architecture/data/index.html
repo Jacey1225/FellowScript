@@ -1565,17 +1565,27 @@ be updated to describe it once it lands.</p>
 <tr>
 <td><code>time_start</code> / <code>time_end</code></td>
 <td>TIMESTAMPTZ</td>
-<td>Absolute scheduled window, set via the session-creator UI</td>
+<td>Absolute scheduled window, set via the session-creator UI. For a <code>recurring = TRUE</code> session, these are advanced in place by exactly one calendar week (computed in the creator's local timezone, DST-aware) once the current occurrence's <code>time_end</code> has passed — see <code>_advance_recurring_sessions</code> (2026-09-21) in <a href="../backend/#background-scheduler">Background Scheduler</a>. A <code>recurring = FALSE</code> session's window is never touched by that job.</td>
+</tr>
+<tr>
+<td><code>recurring</code></td>
+<td>BOOLEAN DEFAULT FALSE</td>
+<td>The session-creator UI's "Repeat weekly" chip. Drives <code>_advance_recurring_sessions</code>' weekly roll-forward (2026-09-21) and is what makes that job's candidate set and <code>_auto_delete_expired_sessions</code>' candidate set mutually exclusive on this same table.</td>
 </tr>
 <tr>
 <td><code>reminder_sent_at</code></td>
 <td>TIMESTAMPTZ, nullable (2026-09-04)</td>
-<td>Atomic one-shot claim marker for the <code>time_start</code> reminder push — <code>_fire_due_session_reminders</code> (see <a href="../backend/#background-scheduler">Background Scheduler</a>) claims a session via <code>UPDATE ... WHERE reminder_sent_at IS NULL</code>, so a session is reminded exactly once regardless of poll cadence or concurrent pollers. Not a per-day/rolling window like the heartbeat/midday markers — a session's reminder is a one-shot event, since <code>recurring</code> doesn't currently drive any actual recurrence-computation</td>
+<td>Atomic one-shot claim marker for the <code>time_start</code> reminder push — <code>_fire_due_session_reminders</code> (see <a href="../backend/#background-scheduler">Background Scheduler</a>) claims a session via <code>UPDATE ... WHERE reminder_sent_at IS NULL</code>, so a session is reminded exactly once regardless of poll cadence or concurrent pollers. Not a per-day/rolling window like the heartbeat/midday markers — a session's reminder is a one-shot event. For a <code>recurring = TRUE</code> session, <code>_advance_recurring_sessions</code> resets this to <code>NULL</code> on every weekly advance (2026-09-21), so each new occurrence re-arms its own one-shot reminder rather than staying permanently claimed.</td>
 </tr>
 <tr>
 <td><code>summarize</code></td>
 <td>BOOLEAN DEFAULT FALSE (2026-09-07)</td>
-<td>Set from the session-creation sheet's "Summarize" toggle; deny-by-default per Security Posture Q2. When true, the iOS client calls <a href="../../api/overview/#agent-ai-check-ins"><code>POST /agent/{user_id}/{agent_id}/summarize</code></a> as soon as the session's Chime call ends, saving an LLM-generated note for the user — see that endpoint's entry for the full client-side wiring (agent resolution, creator-only trigger, non-blocking failure handling)</td>
+<td>Set from the session-creation sheet's "Summarize" toggle; deny-by-default per Security Posture Q2. When true, the iOS client calls <a href="../../api/overview/#agent-ai-check-ins"><code>POST /agent/{user_id}/{agent_id}/summarize</code></a> as soon as the session's Chime call ends, saving an LLM-generated note for the user — see that endpoint's entry for the full client-side wiring (agent resolution, creator-only trigger, non-blocking failure handling). Unlike <code>reminder_sent_at</code>/<code>chime_meeting_id</code>, this is a persistent user preference, not per-occurrence state — <code>_advance_recurring_sessions</code> leaves it untouched on a weekly advance.</td>
+</tr>
+<tr>
+<td><code>chime_meeting_id</code> / <code>chime_meeting</code></td>
+<td>VARCHAR DEFAULT <code>''</code> / JSONB DEFAULT <code>'{}'</code></td>
+<td>The session's live Chime call state. <code>_advance_recurring_sessions</code> resets both to their column defaults on every weekly advance (2026-09-21), so a new occurrence never inherits a finished call's meeting state; the advance itself is gated on the same fail-closed AWS-confirmed-empty presence check <code>_auto_delete_expired_sessions</code> uses, so a session is never advanced (and its meeting state cleared) out from under an actively-occupied call.</td>
 </tr>
 </tbody>
 </table>
