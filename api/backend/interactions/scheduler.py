@@ -56,6 +56,24 @@ SESSION_REMINDER_POLL_INTERVAL_SECONDS = 60
 # HEARTBEAT_POLL_INTERVAL_SECONDS precedent rather than an inline literal.
 SESSION_REMINDER_STALE_AFTER_SECONDS = 3600
 
+# Task 20260921-session-auto-delete-window: a non-recurring session that's
+# never auto-cleaned up otherwise (see _auto_delete_expired_sessions below)
+# becomes a candidate once its time_end is this many seconds in the past --
+# "groups running long can still finish" per the intake spec, so this is
+# deliberately the same order of magnitude as SESSION_REMINDER_STALE_AFTER_
+# SECONDS's 1-hour cutoff but a conceptually distinct constant (one gates a
+# push send, this one gates a destructive delete). Named per this file's own
+# WATCHDOG_POLL_INTERVAL_SECONDS/HEARTBEAT_POLL_INTERVAL_SECONDS precedent
+# rather than an inline literal.
+SESSION_AUTO_DELETE_GRACE_SECONDS = 3600
+
+# Real-time user-facing cleanup (a session should disappear reasonably soon
+# after it's safe to delete), so this polls at the same tight cadence as
+# HEARTBEAT_POLL_INTERVAL_SECONDS/SESSION_REMINDER_POLL_INTERVAL_SECONDS
+# above rather than the coarser 15-minute/hourly jobs further down this
+# file.
+SESSION_AUTO_DELETE_POLL_INTERVAL_SECONDS = 60
+
 
 async def _run_nightly_backups() -> None:
     """Mirror each due user's recent data into the separate backup database.
@@ -623,6 +641,244 @@ async def _fire_due_session_reminders() -> None:
         db.close()
 
 
+def _session_auto_delete_confirmed_call_empty(chime, chime_meeting_id: str) -> bool:
+    """True only when AWS Chime confirms ``chime_meeting_id`` no longer
+    exists -- i.e. Chime's own idle-meeting expiry has already reaped it,
+    which only happens once every attendee has left. This is the exact
+    AWS-side signal task 20260916-chime-stale-meeting-retry established
+    (``routes/devotion.py``'s ``_is_meeting_not_found``), reused here rather
+    than reinvented per this task's architecture decision -- this codebase
+    has no attendee-roster/join-leave tracking of its own, and building one
+    would be new infrastructure disproportionate to this task's scope.
+
+    The check is duplicated (not imported) from ``routes/devotion.py``
+    because this module lives in ``backend/interactions/``, and
+    ``routes/`` sits *above* that layer in this codebase's one-directional
+    ``routes -> backend/interactions -> Postgres`` flow (see
+    ``backend-architecture`` skill) -- importing from ``routes/`` here would
+    invert that direction. ``routes/messaging.py`` already carries this
+    same narrow duplicate independently, so this is a third copy of an
+    already-duplicated check, not a new pattern.
+
+    Any outcome other than a confirmed ``NotFoundException`` -- the meeting
+    still exists (still possibly occupied), the Chime call itself errors, or
+    it times out -- is NOT confirmed empty: this fails closed to "might
+    still be in call" (Security Posture Q2/Q14), mirroring
+    ``DevotionManager.is_join_window_open``'s own fail-closed precedent
+    exactly. A user actively joining or already connected at the exact poll
+    moment is never deleted out from under them, since the only way this
+    returns True is Chime itself having already torn the meeting down --
+    which Chime only does once it's genuinely idle.
+    """
+    from botocore.exceptions import ClientError
+
+    try:
+        chime.get_meeting(MeetingId=chime_meeting_id)
+        return False  # meeting still exists -- not confirmed empty
+    except ClientError as e:
+        if e.response.get("Error", {}).get("Code") == "NotFoundException":
+            return True
+        logger.warning(
+            "Session auto-delete presence check errored (non-NotFound) for "
+            "meeting %s: %s -- failing closed (treating as possibly occupied)",
+            chime_meeting_id, e,
+        )
+        return False
+    except Exception as e:
+        logger.warning(
+            "Session auto-delete presence check failed for meeting %s: %s "
+            "-- failing closed (treating as possibly occupied)",
+            chime_meeting_id, e,
+        )
+        return False
+
+
+def _delete_session_if_still_candidate(db, session_id: str, chime_meeting_id: str) -> bool:
+    """Delete ``session_id`` ONLY if it still matches every condition that
+    made it a candidate at scan/check time -- closes the TOCTOU race
+    between ``_scan_candidates``/``_session_auto_delete_confirmed_call_
+    empty`` (a snapshot read, moments earlier) and this delete.
+
+    Without this re-check, a concurrent ``join-call``/``chime/.../attend``
+    request racing the same poll cycle can transparently recreate a
+    torn-down meeting (``_is_meeting_not_found``'s own stale-meeting-retry
+    path in ``routes/devotion.py``/``routes/messaging.py``) -- exactly the
+    "meeting already reaped" state this job's own presence check treats as
+    confirmed-empty -- giving the row a brand-new, live ``chime_meeting_id``
+    between this job's check and its delete. An unconditional
+    ``DELETE ... WHERE _id = %s`` would still remove that row even though
+    someone is now actively on a freshly recreated call for it, which is
+    exactly the "deleted out from under them" outcome Security Posture
+    Q2/Q3/Q14 and Architecture Q28 rule out. Re-verifying every candidate
+    condition (recurring/time_end/grace/``chime_meeting_id``) in the same
+    statement as the DELETE closes that gap the same way
+    ``claim_ring_slot``'s atomic check-and-claim ``WHERE`` clause already
+    does elsewhere in this codebase -- Postgres's own row lock makes the
+    check-and-delete indivisible instead of two separate round trips a
+    concurrent write can land between.
+
+    Returns True only if a row was actually deleted. False means the row's
+    state changed since it was checked (most importantly: a new call was
+    started/recreated in the interim) or the row is already gone -- either
+    way NOT an error, just a sign the row is no longer a valid candidate;
+    the caller must not log this as a successful deletion.
+    """
+    db.cur.execute(
+        "DELETE FROM devotions WHERE _id = %s "
+        "AND recurring = FALSE "
+        "AND time_end IS NOT NULL "
+        "AND time_end <= NOW() - (%s * INTERVAL '1 second') "
+        "AND chime_meeting_id = %s",
+        (session_id, SESSION_AUTO_DELETE_GRACE_SECONDS, chime_meeting_id),
+    )
+    deleted = db.cur.rowcount > 0
+    db.conn.commit()
+    return deleted
+
+
+async def _auto_delete_expired_sessions() -> None:
+    """Delete a non-recurring session once its ``time_end`` is more than
+    ``SESSION_AUTO_DELETE_GRACE_SECONDS`` in the past AND its call is
+    confirmed not currently occupied -- task
+    20260921-session-auto-delete-window.
+
+    Runs every ``SESSION_AUTO_DELETE_POLL_INTERVAL_SECONDS``. Candidate
+    selection (mirrors ``_fire_due_session_reminders``' own
+    ``time_start <= NOW()`` DB-side clock source, never a Python-side
+    ``datetime.now()``):
+
+    - ``recurring = FALSE`` -- a recurring session is never a candidate,
+      regardless of its ``time_end``; this job has no opinion on recurring
+      lifecycle at all (out of this task's scope).
+    - ``time_end IS NOT NULL`` -- a session with no resolvable ``time_end``
+      is never a candidate. This is an explicit decision (Architecture
+      Q26/Q27), not a silent fallback: unlike
+      ``is_join_window_open``'s point-4 "missing time_end -> open-ended for
+      joining" (a *lower*-risk direction for that gate), guessing a
+      duration from ``time_start`` here would risk auto-deleting a session
+      whose real end was never actually determined -- the higher-risk
+      direction for a destructive delete. Skipped every cycle rather than
+      guessed at; the session simply persists until it either gets a real
+      ``time_end`` or is removed some other way.
+    - ``time_end <= NOW() - SESSION_AUTO_DELETE_GRACE_SECONDS`` -- the
+      1-hour grace period from the intake spec ("groups running long can
+      still finish"), evaluated by Postgres's own ``NOW()``, not the
+      calling process's clock.
+
+    A candidate that never started a call at all (``chime_meeting_id`` is
+    empty) is confirmed not-occupied without any AWS call -- there is no
+    call to still be in. A candidate whose call *was* started only proceeds
+    to deletion once ``_session_auto_delete_confirmed_call_empty`` confirms
+    Chime has already reaped that meeting (fail-closed on any ambiguous/
+    errored/timed-out check -- see that function's docstring); otherwise
+    deletion is skipped this cycle and the session remains a candidate on
+    the next poll, exactly like ``_fire_due_session_reminders``' own
+    re-scan-until-claimed shape (there is no separate "claim" step here
+    since a successful delete is itself the terminal, idempotent-enough
+    action -- once deleted, the row can never reappear as a candidate).
+
+    The actual delete is performed by ``_delete_session_if_still_candidate``,
+    which re-verifies every candidate condition -- including
+    ``chime_meeting_id`` still matching what was just checked -- atomically
+    in the same statement as the DELETE. This closes the race window
+    between this presence check and the delete itself: a concurrent
+    ``join-call``/``chime/.../attend`` request that recreates a torn-down
+    meeting in that window changes the row's ``chime_meeting_id``, so the
+    conditional delete simply matches zero rows and the session survives to
+    be re-evaluated (now genuinely occupied) on the next poll, rather than
+    being removed out from under the user who just (re)joined -- see that
+    function's own docstring.
+
+    Per-session errors (a presence-check failure that isn't itself already
+    handled fail-closed inside the check, or a delete-query error) are
+    caught, logged, and skipped so one session's failure can't abort the
+    rest of the cycle -- matching every other job in this file. Every
+    deletion (and every skip because the row changed underneath the check)
+    is logged with its cause (Security Posture Q11), matching
+    ``_reconcile_trials``/``_run_nightly_backups``' existing logging
+    conventions.
+    """
+    import asyncio
+    import functools
+    import boto3
+    from backend.interactions.devotion import DevotionManager
+
+    loop = asyncio.get_running_loop()
+    db = DevotionManager()
+    # A fresh client per cycle, matching this job's own fresh-manager-per-cycle
+    # shape (every other job here constructs its manager inside the function,
+    # not as a shared module-level singleton); boto3.client() itself makes no
+    # network call, so this costs nothing per poll.
+    chime = boto3.client("chime-sdk-meetings", region_name="us-east-1")
+
+    def _scan_candidates():
+        db.cur.execute(
+            "SELECT _id, chime_meeting_id FROM devotions "
+            "WHERE recurring = FALSE "
+            "AND time_end IS NOT NULL "
+            "AND time_end <= NOW() - (%s * INTERVAL '1 second')",
+            (SESSION_AUTO_DELETE_GRACE_SECONDS,),
+        )
+        return [(str(r[0]), r[1] or "") for r in db.cur.fetchall()]
+
+    try:
+        try:
+            candidates = await loop.run_in_executor(None, _scan_candidates)
+        except Exception as e:
+            logger.error("Session-auto-delete due-scan query failed: %s", e)
+            return
+
+        for session_id, chime_meeting_id in candidates:
+            try:
+                if chime_meeting_id:
+                    confirmed_empty = await loop.run_in_executor(
+                        None,
+                        functools.partial(
+                            _session_auto_delete_confirmed_call_empty, chime, chime_meeting_id
+                        ),
+                    )
+                    if not confirmed_empty:
+                        logger.info(
+                            "Session-auto-delete deferred: session=%s call not "
+                            "confirmed empty (meeting=%s) -- re-checking next cycle",
+                            session_id, chime_meeting_id,
+                        )
+                        continue
+
+                deleted = await loop.run_in_executor(
+                    None,
+                    functools.partial(
+                        _delete_session_if_still_candidate, db, session_id, chime_meeting_id
+                    ),
+                )
+                if not deleted:
+                    # Row no longer matches what was just checked -- most
+                    # likely a concurrent join recreated the meeting (new
+                    # chime_meeting_id) in the gap between the presence
+                    # check and this delete. Not an error: the session
+                    # simply survives to be re-evaluated next cycle, now
+                    # genuinely reflecting whatever changed.
+                    logger.info(
+                        "Session-auto-delete skipped: session=%s state changed "
+                        "since check (e.g. call rejoined/recreated) -- "
+                        "re-checking next cycle",
+                        session_id,
+                    )
+                    continue
+                logger.info(
+                    "Session auto-deleted: session=%s reason=grace_period_elapsed"
+                    "%s",
+                    session_id,
+                    "_call_confirmed_empty" if chime_meeting_id else "_no_call_ever_started",
+                )
+            except Exception as e:
+                logger.error("Session-auto-delete cycle error for %s: %s", session_id, e)
+    except Exception as e:
+        logger.error("Session-auto-delete scheduler job error: %s", e)
+    finally:
+        db.close()
+
+
 def start_scheduler() -> None:
     # The former `notify_check` cron job (agentic/custom notification firing)
     # was removed in full along with that subsystem — see
@@ -650,6 +906,12 @@ def start_scheduler() -> None:
     # session to exactly one reminder ever, regardless of poll rate.
     scheduler.add_job(_fire_due_session_reminders, "interval", seconds=SESSION_REMINDER_POLL_INTERVAL_SECONDS,
                       id="session_reminder_fire", replace_existing=True)
+    # Non-recurring session auto-delete (task 20260921-session-auto-delete-
+    # window): 1-hour grace period past time_end (SESSION_AUTO_DELETE_GRACE_
+    # SECONDS), then a fail-closed Chime-presence gate before the actual
+    # delete -- see _auto_delete_expired_sessions' own docstring.
+    scheduler.add_job(_auto_delete_expired_sessions, "interval", seconds=SESSION_AUTO_DELETE_POLL_INTERVAL_SECONDS,
+                      id="session_auto_delete", replace_existing=True)
     # Midday/guilt reminders: a 15-minute poll is coarse enough to be cheap
     # but fine enough that the local-noon / >24h windows are never missed by
     # more than 15 minutes — each job's own dedup marker (not job frequency)

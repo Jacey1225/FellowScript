@@ -220,21 +220,19 @@ struct ChatRootView: View {
         }
     }
 
-    // ── Header: decorative icon · title · new (+) ──────────────────────────────
-    // The reference's hamburger has no real destination in this app (unlike
-    // Notes, which repurposes its hamburger for its existing filter/sort menu),
-    // so it's kept as a non-interactive decorative element rather than a dead
-    // tap target — same convention as HeroHeader's avatar circle in
-    // DashboardComponents.swift ("decorative — not a control, so no dead button").
+    // ── Header: title · new (+) ─────────────────────────────────────────────
+    // Task 20260921-remove-dead-chat-hamburger: this used to lead with a
+    // decorative `line.3.horizontal` circle — the reference's hamburger has
+    // no real destination in this app (unlike Notes, which repurposes its
+    // hamburger for its existing filter/sort menu) — kept non-interactive
+    // rather than a dead tap target. It still read as a dead/non-functional
+    // button, so it's removed outright rather than kept as inert decoration.
+    // Title is now leading-aligned against a single trailing Spacer, mirroring
+    // HeroHeader's leading-title layout in DashboardComponents.swift, so the
+    // "+" button keeps its own breathing room without a removed element's
+    // implicit leading balance leaving dead space or an off-center title.
     private var header: some View {
         HStack {
-            Circle()
-                .strokeBorder(Theme.parchment.opacity(0.18), lineWidth: 1)
-                .background(Circle().fill(Theme.parchment.opacity(0.08)))
-                .frame(width: 44, height: 44)
-                .overlay(Image(systemName: "line.3.horizontal").foregroundColor(Theme.goldLight))
-                .accessibilityHidden(true)
-            Spacer()
             Text("Chat")
                 .font(.system(size: 27, weight: .heavy))
                 .foregroundColor(Theme.parchment)

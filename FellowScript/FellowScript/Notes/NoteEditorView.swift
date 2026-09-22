@@ -132,7 +132,7 @@ struct NoteEditorView: View {
                                     .accessibilityLabel("Verse reference: \(v.label). Tap to remove.")
                                 }
                                 if !isReadOnly {
-                                    Button(action: { showVersePicker = true }) {
+                                    Button(action: { openVersePicker() }) {
                                         Text("+ Verse")
                                             .font(.inter(Theme.fontXS))
                                             .foregroundColor(Theme.gold.opacity(0.70))
@@ -299,6 +299,14 @@ struct NoteEditorView: View {
                             y: measuredScreenSize.height - saveFABRadius - saveFABMargin
                         )
                 }
+
+                // ── Verse picker submenu overlay (task 20260921-verse-picker-submenu-style)
+                // Floating ZStack layer, same convention as ChatThreadView.swift's
+                // `if showSessionsMenu { sessionsMenuOverlay.zIndex(1) }`.
+                if showVersePicker {
+                    versePickerOverlay
+                        .zIndex(1)
+                }
             }
         }
         .preferredColorScheme(.dark)
@@ -312,14 +320,6 @@ struct NoteEditorView: View {
         // scroll-to-dismiss feel.
         .dismissesKeyboardOnScrollAndTap()
         .onAppear { populate() }
-        .sheet(isPresented: $showVersePicker) {
-            VersePicker { book, ch, vs in
-                let ref = VerseRef(book: book, chapter: ch, verse: vs)
-                if !verseList.contains(where: { $0.book == book && $0.chapter == ch && $0.verse == vs }) {
-                    verseList.append(ref)
-                }
-            }
-        }
         .alert("Couldn't Save Note", isPresented: Binding(
             get: { saveErrorMessage != nil },
             set: { if !$0 { saveErrorMessage = nil } }
@@ -328,6 +328,37 @@ struct NoteEditorView: View {
         } message: {
             Text(saveErrorMessage ?? "")
         }
+    }
+
+    // ── Verse picker submenu (task 20260921-verse-picker-submenu-style) ───────
+    // Mirrors ChatThreadView.swift's openSessionsMenu/closeSessionsMenu exactly
+    // -- same spring-in/ease-out curve, same withMotionAwareAnimation wrapping
+    // so reduced-motion users get an immediate, unanimated state flip (and
+    // VersePicker's own `.transition` degrades to a plain opacity swap).
+    private func openVersePicker() {
+        withMotionAwareAnimation(.spring(response: 0.35, dampingFraction: 0.82), reduceMotion: reduceMotion) {
+            showVersePicker = true
+        }
+    }
+
+    private func closeVersePicker() {
+        withMotionAwareAnimation(.easeOut(duration: 0.18), reduceMotion: reduceMotion) {
+            showVersePicker = false
+        }
+    }
+
+    private var versePickerOverlay: some View {
+        VersePicker(
+            onSelect: { book, chapter, verse in
+                let ref = VerseRef(book: book, chapter: chapter, verse: verse)
+                if !verseList.contains(where: { $0.book == book && $0.chapter == chapter && $0.verse == verse }) {
+                    verseList.append(ref)
+                }
+                closeVersePicker()
+            },
+            onCancel: { closeVersePicker() },
+            reduceMotion: reduceMotion
+        )
     }
 
     // ── Header controls (Option C — ghost-chip Cancel, icon-badge Public,
@@ -569,47 +600,125 @@ struct FormatButton: View {
     }
 }
 
-// ── Simple verse picker (inline book/chapter/verse selection) ─────────────────
+// ── Verse picker submenu (inline book/chapter/verse selection) ────────────────
+// Ember Glass restyle (task 20260921-verse-picker-submenu-style): matches
+// ChatThreadView.swift's sessionsMenuOverlay/sessionsMenuCard treatment --
+// a Color.clear tap-to-dismiss scrim (mirrors the CURRENT shipped
+// sessionsMenuOverlay backdrop from task 20260920-sessions-menu-background-blur,
+// not the full-bleed .ultraThinMaterial fill that pattern started with) behind
+// a floating .regularMaterial card with topEdgeHighlight, gold accents, and a
+// capsule "Add" action -- in place of the old NavigationStack + Form + opaque
+// system Picker rows presented via `.sheet`.
+//
+// Presentation moved from `.sheet(isPresented:)` to an inline conditional
+// overlay in NoteEditorView's own ZStack (see `showVersePicker`/
+// `openVersePicker()`/`closeVersePicker()`/`versePickerOverlay` below) because
+// only that structure lets open/close use the same `withMotionAwareAnimation`
+// + reduced-motion-aware `.transition` pattern sessionsMenuOverlay uses -- a
+// `.sheet`'s own present/dismiss animation is UIKit-driven and can't be
+// customized to match. `@Environment(\.dismiss)` no longer applies (this is
+// no longer a genuine presentation), so cancel/close/add all go through the
+// `onCancel`/`onSelect` closures instead.
+//
+// The three system Picker wheels are kept as-is (fastest, lowest-risk per the
+// intake spec's own open question) -- they render fine on the translucent
+// card and aren't visually incompatible with the glass treatment.
 struct VersePicker: View {
     let onSelect: (String, Int, Int) -> Void
-    @Environment(\.dismiss) private var dismiss
+    let onCancel: () -> Void
+    let reduceMotion: Bool
 
     @State private var selectedBook    = "John"
     @State private var selectedChapter = 1
     @State private var selectedVerse   = 1
 
     var body: some View {
-        NavigationStack {
-            Form {
-                Picker("Book", selection: $selectedBook) {
-                    ForEach(BibleData.bookNames, id: \.self) { Text($0).tag($0) }
+        ZStack {
+            Color.clear
+                .ignoresSafeArea()
+                .contentShape(Rectangle())
+                .onTapGesture { onCancel() }
+                .accessibilityLabel("Close verse picker")
+                .accessibilityAddTraits(.isButton)
+
+            VStack {
+                Spacer()
+                card
+                    .padding(.horizontal, Theme.spacingMD)
+                Spacer()
+            }
+        }
+        .transition(
+            reduceMotion
+                ? .opacity
+                : .asymmetric(
+                    insertion: .scale(scale: 0.9, anchor: .center).combined(with: .opacity),
+                    removal: .opacity
+                )
+        )
+    }
+
+    private var card: some View {
+        VStack(alignment: .leading, spacing: Theme.spacingSM) {
+            HStack {
+                Text("Attach Verse")
+                    .font(.inter(Theme.fontSM, weight: .bold))
+                    .foregroundColor(Theme.parchment)
+                Spacer()
+                Button(action: onCancel) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(Theme.textGoldMuted)
+                        .frame(width: 24, height: 24)
+                        .background(Color.white.opacity(0.05))
+                        .clipShape(Circle())
                 }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Cancel")
+            }
+
+            Rectangle().fill(Theme.borderGoldFaint).frame(height: 1)
+
+            Picker("Book", selection: $selectedBook) {
+                ForEach(BibleData.bookNames, id: \.self) { Text($0).tag($0) }
+            }
+            .pickerStyle(.wheel)
+
+            HStack(spacing: Theme.spacingSM) {
                 Picker("Chapter", selection: $selectedChapter) {
                     ForEach(1...max(1, BibleData.sampleChapterCounts[selectedBook] ?? 1), id: \.self) {
                         Text("\($0)").tag($0)
                     }
                 }
+                .pickerStyle(.wheel)
+
                 Picker("Verse", selection: $selectedVerse) {
                     ForEach(1...50, id: \.self) { Text("\($0)").tag($0) }
                 }
+                .pickerStyle(.wheel)
             }
-            .scrollContentBackground(.hidden)
-            .background(Theme.bgPage)
-            .navigationTitle("Attach Verse")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cancel") { dismiss() }.foregroundColor(Theme.textGoldMuted)
-                }
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Add") {
-                        onSelect(selectedBook, selectedChapter, selectedVerse)
-                        dismiss()
-                    }.foregroundColor(Theme.gold)
-                }
+
+            Button {
+                onSelect(selectedBook, selectedChapter, selectedVerse)
+            } label: {
+                Text("Add")
+                    .font(.inter(Theme.fontSM, weight: .bold))
+                    .foregroundColor(Theme.ink)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                    .background(Theme.goldGradient)
+                    .clipShape(Capsule())
+                    .topEdgeHighlight(Capsule())
             }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Add verse")
         }
-        .presentationDetents([.medium])
-        .preferredColorScheme(.dark)
+        .padding(Theme.spacingMD)
+        .frame(maxWidth: 340)
+        .background(.regularMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: Theme.radiusXL))
+        .overlay(RoundedRectangle(cornerRadius: Theme.radiusXL).stroke(Theme.borderGoldDim, lineWidth: 1))
+        .topEdgeHighlight(RoundedRectangle(cornerRadius: Theme.radiusXL))
+        .accessibilityElement(children: .contain)
     }
 }
