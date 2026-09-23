@@ -690,6 +690,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Native Incoming-Call Ring (CallKit/PushKit) (2026-09-17, task 20260916-callkit-voip-ring, iOS)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#webdesktop-no-more-phantom-empty-bubbles-2026-09-23-task-20260923-chat-phantom-empty-bubbles-webdesktop" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Web/Desktop: No More Phantom Empty Bubbles (2026-09-23, task 20260923-chat-phantom-empty-bubbles, web/desktop)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1276,6 +1293,20 @@ composer's failed-attachment-upload chip already established, rather than a toas
 raw error dump. Tapping it removes the failed bubble and resends the same text/attachment, with no
 confirmation step. A successful send is unaffected either way — it survives thread re-entry (warm
 or cold reload) exactly as before.</p>
+<h3 id="webdesktop-no-more-phantom-empty-bubbles-2026-09-23-task-20260923-chat-phantom-empty-bubbles-webdesktop">Web/Desktop: No More Phantom Empty Bubbles (2026-09-23, task <code>20260923-chat-phantom-empty-bubbles</code>, web/desktop)</h3>
+<p>The web frontend's WebSocket handler (<code>useMessaging.js</code>, shared by the browser app and the Tauri
+desktop shell) had the same underlying gap as the pre-fix iOS receive loop described above: any
+frame whose <code>type</code> wasn't a recognized call-session type was treated as an ordinary inbound chat
+message, with no validation. A <code>{"type": "ping"}</code> heartbeat (sent every 25s) or a <code>{"type":
+"error", ...}</code> rejected-send frame would render in an open DM as a small, blank message bubble.</p>
+<p>The handler now explicitly branches on <code>type</code>: a <code>ping</code> frame is a no-op, and an <code>error</code> frame is
+never appended to the thread. Unlike iOS, web/desktop does <strong>not</strong> get a persistent "tap to retry"
+bubble for a failed send — that inline-retry affordance is still an open design question (see the
+UI/UX preference notes on error states staying minimal by default). Instead, a failed send shows a
+brief, self-dismissing toast naming the failure, plus a console log for diagnosis, so the failure
+is surfaced without inventing new persistent bubble state. <code>ChatThread.jsx</code> also gained a defensive
+render guard that skips any message entry with no text, no attachment, and no timestamp, as a
+backstop against any other future source of a content-less entry.</p>
 <hr />
 <h2 id="unread-conversation-badges-2026-09-13-task-20260913-chat-unread-badges-ios">Unread Conversation Badges (2026-09-13, task <code>20260913-chat-unread-badges</code>, iOS)</h2>
 <p>Friend and group chats now show a red unread indicator, client-local and derived — no per-message
