@@ -45,7 +45,15 @@ out:
   12. Every deferral (call still live) is logged with its cause.
   13. Every race-prevented skip (state changed since check) is logged with
       its cause, distinct from an ordinary deferral.
-  14. Pre-deployment smoke test: the real app (main.app) boots with
+  14. Root-cause regression (task 20260923-session-opening-window-auto-
+      delete): a candidate whose `chime_meeting_id` column is a genuine SQL
+      NULL (not `''`) -- e.g. a pre-existing/migrated row -- is deleted like
+      any other never-started session, not perpetually re-scanned and
+      "skipped: state changed" every cycle forever. Before this fix,
+      `_delete_session_if_still_candidate`'s atomic re-check compared the
+      real column value against the `_scan_candidates`-normalized `""` with
+      a plain `=`, and SQL's `NULL = ''` is never TRUE.
+  15. Pre-deployment smoke test: the real app (main.app) boots with
       `session_auto_delete` registered on the scheduler.
 
 The fake Chime client used throughout defaults to "meeting still exists" for
@@ -521,10 +529,55 @@ def test_concurrent_rejoin_race_prevents_deletion():
         cleanup(uid, session_ids=[sid])
 
 
-# ── 14. Pre-deployment smoke test ───────────────────────────────────────────
+# ── 14. Root-cause regression: NULL chime_meeting_id, not '' ────────────────
+
+def test_null_chime_meeting_id_is_deleted_not_perpetually_skipped():
+    print(
+        "\n=== 14. Non-recurring session with a genuine SQL NULL chime_meeting_id "
+        "(not ''), past grace -> deleted, not skipped forever ==="
+    )
+    now = datetime.now(tzmod.utc)
+    uid = make_user("adnullchime")
+    sid = make_session_direct(
+        uid, time_end=now - timedelta(seconds=GRACE + 300), chime_meeting_id=None,
+    )
+    # Confirm the fixture actually landed a real SQL NULL, not '' -- this
+    # test is worthless if it silently degrades to the already-covered
+    # empty-string case.
+    db = DBManager()
+    try:
+        db.cur.execute("SELECT chime_meeting_id FROM devotions WHERE _id = %s", (sid,))
+        stored = db.cur.fetchone()[0]
+    finally:
+        db.close()
+    handler, slog, prior = capture_scheduler_logs()
+    try:
+        check("fixture stored a real SQL NULL chime_meeting_id, not ''",
+              stored is None, f"stored={stored!r}")
+        asyncio.run(run_job())
+        check("session with NULL chime_meeting_id, past grace, is deleted",
+              not session_exists(sid), f"sid={sid}")
+        deleted_lines = [r for r in handler.records if "Session auto-deleted" in r and sid in r]
+        skipped_lines = [r for r in handler.records if "Session-auto-delete skipped" in r and sid in r]
+        check("a 'Session auto-deleted' log line was emitted for this session",
+              len(deleted_lines) == 1, str(handler.records))
+        check("no 'skipped: state changed' log line was emitted for this session",
+              len(skipped_lines) == 0, str(handler.records))
+        # Second cycle: prove this isn't a one-off race win -- rerunning
+        # against the (now-deleted) row must not resurrect the perpetual-
+        # skip symptom either.
+        asyncio.run(run_job())
+        check("session stays deleted on a second poll cycle",
+              not session_exists(sid), f"sid={sid}")
+    finally:
+        release_scheduler_logs(handler, slog, prior)
+        cleanup(uid, session_ids=[sid])
+
+
+# ── 15. Pre-deployment smoke test ───────────────────────────────────────────
 
 def test_real_app_boots_with_session_auto_delete_job_registered():
-    print("\n=== 14. Real app (main.app) boots with session_auto_delete registered on the scheduler ===")
+    print("\n=== 15. Real app (main.app) boots with session_auto_delete registered on the scheduler ===")
     check("main.app is importable and non-null", main_module.app is not None)
     with TestClient(main_module.app):
         job_ids = {job.id for job in scheduler_module.scheduler.get_jobs()}
@@ -544,6 +597,7 @@ def main():
         test_ambiguous_chime_error_fails_closed_deferred()
         test_chime_timeout_generic_exception_fails_closed_deferred()
         test_concurrent_rejoin_race_prevents_deletion()
+        test_null_chime_meeting_id_is_deleted_not_perpetually_skipped()
         test_real_app_boots_with_session_auto_delete_job_registered()
     finally:
         restore_boto3_client()

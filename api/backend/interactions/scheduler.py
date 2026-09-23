@@ -737,13 +737,35 @@ def _delete_session_if_still_candidate(db, session_id: str, chime_meeting_id: st
     started/recreated in the interim) or the row is already gone -- either
     way NOT an error, just a sign the row is no longer a valid candidate;
     the caller must not log this as a successful deletion.
+
+    Root cause fixed here (task 20260923-session-opening-window-auto-delete):
+    ``chime_meeting_id`` is a nullable column (``db.py``'s ``VARCHAR(255)
+    DEFAULT ''`` has no ``NOT NULL``), and ``_scan_candidates`` above
+    normalizes a SQL ``NULL`` read back to the caller as ``""`` (``r[1] or
+    ""``) -- the same "no real call" sentinel this codebase uses everywhere
+    else it reads this column (``routes/devotion.py``, ``routes/
+    messaging.py``, ``backend/interactions/helpers.py``, ``DevotionManager.
+    _to_plan``). This re-check query previously compared the *actual* column
+    value against that normalized ``""`` with a plain ``=``, but SQL's
+    three-valued logic makes ``NULL = ''`` evaluate to NULL (not TRUE) --
+    never matching. Any row whose real ``chime_meeting_id`` was a genuine
+    SQL NULL (rather than an empty string) was therefore scanned as a
+    candidate every single cycle, always failed this atomic re-check, and
+    was logged as "skipped: state changed" forever -- indistinguishable in
+    the logs from a real concurrent-join race, but never actually deleted.
+    ``COALESCE(chime_meeting_id, '')`` restores the same NULL-as-"" identity
+    this job already applies on the read side, so a NULL row now matches
+    (and deletes) exactly like an empty-string row does, while a row a
+    concurrent join genuinely repopulated with a real meeting id still fails
+    to match either way -- the TOCTOU race protection this re-check exists
+    for is unchanged.
     """
     db.cur.execute(
         "DELETE FROM devotions WHERE _id = %s "
         "AND recurring = FALSE "
         "AND time_end IS NOT NULL "
         "AND time_end <= NOW() - (%s * INTERVAL '1 second') "
-        "AND chime_meeting_id = %s",
+        "AND COALESCE(chime_meeting_id, '') = %s",
         (session_id, SESSION_AUTO_DELETE_GRACE_SECONDS, chime_meeting_id),
     )
     deleted = db.cur.rowcount > 0
