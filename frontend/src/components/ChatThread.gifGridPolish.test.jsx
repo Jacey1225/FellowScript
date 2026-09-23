@@ -87,18 +87,41 @@ function mockMatchMedia(reducedMotion) {
 const GIF_A = { id: 'a1', url: 'https://example.com/a1.gif', preview_url: 'https://example.com/a1-small.gif', width: 200, height: 150 };
 const GIF_B = { id: 'b1', url: 'https://example.com/b1-tall.gif', preview_url: 'https://example.com/b1-small.gif', width: 90, height: 400 };
 
-describe('ChatThread — GIF picker grid-cell fixed-ratio CSS (task 20260905-gif-picker-grid-polish)', () => {
-  test('.gif-sheet-cell is a fixed 1:1 aspect-ratio crop box, not a native-aspect-ratio min-height box', () => {
+describe('ChatThread — GIF picker grid-cell fixed-ratio CSS (task 20260905-gif-picker-grid-polish, updated by 20260923-desktop-gif-picker-overlap)', () => {
+  test('.gif-sheet-cell is a fixed 1:1 crop box built via the padding-top intrinsic-ratio technique, not a native-aspect-ratio min-height box', () => {
     // jsdom does not run layout, so this asserts against the shipped stylesheet
-    // directly rather than a computed style -- proving the fix (aspect-ratio,
-    // not the old unbounded min-height) is actually the rule that ships,
-    // regardless of any source GIF's own wide/tall/square shape.
+    // directly rather than a computed style -- proving the fix is actually the
+    // rule that ships, regardless of any source GIF's own wide/tall/square shape.
+    //
+    // Task 20260923-desktop-gif-picker-overlap replaced the original
+    // `aspect-ratio: 1/1` property (still correct on web/iOS) with the
+    // classic padding-top intrinsic-ratio hack, after root-cause investigation
+    // found the packaged desktop app's WKWebView still rendered the pre-fix
+    // ragged/overlapping symptom even though the exact `aspect-ratio`-based
+    // CSS was confirmed byte-identical and freshly loaded in production, in
+    // frontend/dist, AND in the desktop shell's own on-disk WebKit cache --
+    // pointing at a genuine engine-level resolution gap for `aspect-ratio` on
+    // a grid item whose only child is a percentage-height replaced element,
+    // rather than a stale build. The padding-top box derives its size from
+    // the cell's own resolved grid-track width instead, which sidesteps that
+    // gap entirely and is unaffected on any engine.
     const css = fs.readFileSync(path.join(__dirname, '../styles/global.css'), 'utf8');
     const cellRuleMatch = css.match(/\.gif-sheet-cell\s*\{[^}]*\}/);
     expect(cellRuleMatch, '.gif-sheet-cell rule must exist in global.css').not.toBeNull();
     const cellRule = cellRuleMatch[0];
-    expect(cellRule).toMatch(/aspect-ratio:\s*1\s*\/\s*1/);
+    expect(cellRule).toMatch(/position:\s*relative/);
     expect(cellRule).not.toMatch(/min-height/);
+
+    const beforeRuleMatch = css.match(/\.gif-sheet-cell::before\s*\{[^}]*\}/);
+    expect(beforeRuleMatch, '.gif-sheet-cell::before spacer rule must exist in global.css').not.toBeNull();
+    expect(beforeRuleMatch[0]).toMatch(/padding-top:\s*100%/);
+
+    // The <img> fills the padding-top box via absolute positioning rather than
+    // the old plain width/height:100% (which depended on `aspect-ratio` having
+    // already resolved a definite height on the parent).
+    const imgRuleMatch = css.match(/\.gif-sheet-cell img\s*\{[^}]*\}/);
+    expect(imgRuleMatch, '.gif-sheet-cell img rule must exist in global.css').not.toBeNull();
+    expect(imgRuleMatch[0]).toMatch(/position:\s*absolute/);
 
     // The 8px grid gap (Q4/Q16.3 -- no denser packing as a side effect of the crop fix).
     const gridRuleMatch = css.match(/\.gif-sheet-grid\s*\{[^}]*\}/);

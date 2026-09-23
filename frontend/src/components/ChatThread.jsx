@@ -753,6 +753,16 @@ export default function ChatThread({
           </div>
         )}
         {messages.map((m, i) => {
+          // Task 20260923-chat-phantom-empty-bubbles: belt-and-suspenders
+          // render guard. useMessaging.js's WS onmessage handler now
+          // explicitly discriminates ping/error control frames before they
+          // ever reach `messages`, but this skips rendering any entry that
+          // still has no text, no attachment, and no timestamp -- so any
+          // other future source of a content-less entry fails safe as no
+          // bubble at all, rather than a small empty/borderless-content one.
+          if (!(m.text && String(m.text).trim()) && !m.attachmentKind && !m.timestamp) {
+            return null;
+          }
           const isMedia = ['image', 'video', 'gif'].includes(m.attachmentKind);
           const ariaLabel = m.attachmentKind === 'image' ? `${m.sender || 'You'}: photo attachment`
             : m.attachmentKind === 'video' ? `${m.sender || 'You'}: video attachment, tap to play`

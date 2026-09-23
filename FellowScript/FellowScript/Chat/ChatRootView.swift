@@ -1067,33 +1067,37 @@ struct ChatNudgeButton: View {
         }
     }
 
+    // Task 20260923-chat-nudge-button-circle-removal: the two-layer gold-
+    // gradient/dark-fill Circle backdrop is gone -- only the bare glyph
+    // renders now. The failed-state signal that used to be a red Circle
+    // overlay (Theme.error.opacity pulse) is re-expressed as a tint directly
+    // on the glyph itself, still driven by the same `.easeOut(duration: 0.3)`
+    // transition so the "that didn't land, try again" flash reads exactly as
+    // eased/non-linear as before (Preference profile Q9) and stays a color-
+    // only change, not a heavier new affordance (Q10.1). Icon bumped
+    // 12pt -> 14pt since it's now the control's sole visible element rather
+    // than content sitting inside a 31pt plate (Q12.3) -- contrast against
+    // this row's actual glassCard/bgPage backdrop was re-verified (~9:1,
+    // comfortably above the WCAG AA 3:1 non-text floor) so Theme.goldLight
+    // carries forward unchanged for idle/sent/sending.
     var body: some View {
         Button(action: onTap) {
-            Circle()
-                .fill(LinearGradient(colors: [Theme.goldLight, Theme.goldDim],
-                                     startPoint: .leading, endPoint: .trailing))
-                .frame(width: 36, height: 36)
-                .overlay(
-                    Circle().fill(Color(hex: "#24170A")).frame(width: 31, height: 31)
-                        .overlay(
-                            Group {
-                                if nudgeState == .sending {
-                                    ProgressView().tint(Theme.goldLight).scaleEffect(0.65)
-                                } else {
-                                    Image(systemName: iconName)
-                                        .font(.system(size: 12, weight: .semibold))
-                                        .foregroundColor(Theme.goldLight)
-                                }
-                            }
-                        )
-                )
-                // Same transient failed-send tint pulse as CheckInRow -- a
-                // low-stakes social action gets a quick "that didn't land,
-                // try again" rather than a toast/alert.
-                .overlay(
-                    Circle().fill(Theme.error.opacity(nudgeState == .failed ? 0.4 : 0))
-                )
-                .animation(.easeOut(duration: 0.3), value: nudgeState)
+            Group {
+                if nudgeState == .sending {
+                    ProgressView().tint(Theme.goldLight).scaleEffect(0.65)
+                } else {
+                    Image(systemName: iconName)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(nudgeState == .failed ? Theme.error : Theme.goldLight)
+                }
+            }
+            // Circle removal must not silently shrink the tappable region
+            // down to the glyph's own tiny intrinsic size -- this invisible
+            // frame + contentShape keeps the same 36x36pt hit area the old
+            // outer Circle used to define, just without drawing it.
+            .frame(width: 36, height: 36)
+            .contentShape(Rectangle())
+            .animation(.easeOut(duration: 0.3), value: nudgeState)
         }
         .buttonStyle(.plain)
         .disabled(isDisabled)

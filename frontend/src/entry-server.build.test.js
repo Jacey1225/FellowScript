@@ -125,7 +125,12 @@ describe('production build — Home body content is real, not an empty shell (ta
     // "don't" comes through as the numeric entity &#x27;, not a literal '.
     expect(finalHtml).toMatch(/You don&#x27;t have to walk with God/);
     expect(finalHtml).toContain('Beautiful Bible Reader');
-    expect(finalHtml).toContain('Get started');
+    // Task 20260923-remove-open-app-button: the top-right header CTA (which
+    // read "Get started" signed out, "Open app" signed in) was removed
+    // outright, so "Get started" no longer appears anywhere in the
+    // prerendered snapshot -- the hero's real CTA copy is "Begin your
+    // journey" instead.
+    expect(finalHtml).toContain('Begin your journey');
   });
 
   test('includes real, crawlable body text beyond the hero -- the footer tagline and a link to /download', () => {

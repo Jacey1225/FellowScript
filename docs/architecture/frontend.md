@@ -45,9 +45,13 @@ Every previously-leaking occurrence now routes here:
 - `Home.jsx`'s "Read scripture" (hero) and "Read the Bible" (closing) CTA buttons (previously unconditional `/reader` links) now point at `/download` too.
 - `AppNav.jsx`'s hamburger "Read" menu item now branches on `lib/desktopScope.js`'s `isDesktopApp()`: `/reader` inside the Tauri desktop shell (legitimate in-app navigation), `/download` in the ordinary web frontend, regardless of sign-in state.
 
-Left unchanged, by design: the auth-gated `cta` buttons on Home (`user ? '/reader' : '/signin'` — "Open app"/"Get started"/"Begin your journey"/"Start a group"/"Join free"), and the post-auth redirects to `/reader` in `SignIn.jsx`/`VerifyMfa.jsx`/`Account.jsx`. `/download` is deliberately **not** added to `lib/desktopScope.js`'s `DESKTOP_ALLOWED_ROUTES` — nothing in the Tauri shell links to it, and an errant deep link there falls through `DesktopRouteGuard` to the existing `/reader` fallback, which is the intended behavior for a web-marketing-site-only page.
+Left unchanged, by design: the remaining auth-gated `cta` buttons on Home (`user ? '/reader' : '/signin'` — "Begin your journey"/"Start a group"/"Join free"), and the post-auth redirects to `/reader` in `SignIn.jsx`/`VerifyMfa.jsx`/`Account.jsx`. `/download` is deliberately **not** added to `lib/desktopScope.js`'s `DESKTOP_ALLOWED_ROUTES` — nothing in the Tauri shell links to it, and an errant deep link there falls through `DesktopRouteGuard` to the existing `/reader` fallback, which is the intended behavior for a web-marketing-site-only page.
 
 The previously reported mobile "read" error was traced to `MobileBlockGate.jsx`'s existing (non-crashing) block screen, which mobile visitors landed on after following the old `/reader` nav link — not a JS exception. `MobileBlockGate` itself is unchanged and still guards `/reader` for any other path that reaches it (direct URL entry, sign-in redirect, etc.).
+
+### Home header CTA removal (task `20260923-remove-open-app-button`)
+
+The top-right header `<nav>` on Home no longer renders the `cta`-routed pill button that used to read "Open app" (signed in, → `/reader`) or "Get started" (signed out, → `/signin`) — the button was removed entirely, both label states, not just gated further. The header now ends with the Home/Read/Account pill group; the `cta` variable itself is untouched, since it's still consumed by the three remaining CTAs listed above. `/reader` and `/signin` remain reachable from Home via those other CTAs and, when signed in, the Account pill link.
 
 ### Desktop shell route restriction
 

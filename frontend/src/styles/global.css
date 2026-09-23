@@ -1347,19 +1347,44 @@ body {
 /* Task 20260905-gif-picker-grid-polish (design gate §1): fixed 1:1 square
    crop -- was `min-height: 88px` with no fixed ratio, so each cell's
    rendered height followed its own <img>'s native aspect ratio, producing
-   the reported ragged/misaligned grid. `aspect-ratio` makes every cell a
-   square regardless of source GIF shape, letting the existing
-   `object-fit: cover` below do uniform cropping. This is a preview-display
-   change only -- staged.meta.url/width/height (the actually-sent GIF) are
-   untouched, see handleGifSelected. */
+   the reported ragged/misaligned grid. This is a preview-display change
+   only -- staged.meta.url/width/height (the actually-sent GIF) are
+   untouched, see handleGifSelected.
+   Task 20260923-desktop-gif-picker-overlap: the square box below is now
+   built with the classic padding-top intrinsic-ratio technique instead of
+   the `aspect-ratio` property that 20260905 originally shipped. Root-cause
+   investigation for this task ruled out a stale deploy at every layer --
+   the fixed `aspect-ratio: 1/1` + `gap: 8px` CSS was confirmed byte-identical
+   in frontend/dist, in the live production response, AND in the desktop
+   shell's own on-disk WebKit NetworkCache for this exact URL -- yet the
+   reported screenshot from the packaged desktop app still showed cells
+   overlapping with no gap and following each GIF's native (non-square)
+   aspect ratio, i.e. the exact pre-20260905 symptom. That combination
+   (CSS confirmed correct and freshly loaded, output still wrong) points at
+   a genuine WKWebView-specific resolution gap for `aspect-ratio` on a CSS
+   Grid item whose only child is a percentage-height replaced element
+   (img { height: 100% }) -- a known category of engine edge case, in the
+   same webview shell that already showed one confirmed desktop-specific
+   rendering divergence in 20260917-desktop-gif-image-render-bug. The
+   padding-top hack derives the square box from the cell's own resolved
+   width (a dimension already definite from the `repeat(2, 1fr)` grid
+   track) rather than from the `aspect-ratio` property, so it can't hit
+   this resolution gap on any engine. Visually identical square crop, same
+   8px grid gap -- no design change, see the Preference profile note in
+   this task's intake spec on keeping the existing 8px scale as-is. */
 .gif-sheet-cell {
+  position: relative;
   border: none;
   padding: 0;
   border-radius: var(--radius-md);
   overflow: hidden;
   cursor: pointer;
-  aspect-ratio: 1 / 1;
   background: rgba(255,198,26,0.08);
+}
+.gif-sheet-cell::before {
+  content: '';
+  display: block;
+  padding-top: 100%; /* establishes the 1:1 square box; see comment above */
 }
 /* Eased fade-in once a cell's image has a decoded frame (design gate §2,
    closes the reported black-cell gap): the cell's own translucent-gold
@@ -1368,8 +1393,14 @@ body {
    preview is still loading -- this is the same minimal-placeholder doctrine
    already used elsewhere (Q17), no new placeholder treatment invented.
    250-300ms ease-out per Q9 (a hard/linear cut-in reads as the "unedged"
-   motion the user dislikes, even for this one-shot transition). */
+   motion the user dislikes, even for this one-shot transition).
+   `position: absolute; inset: 0` (20260923-desktop-gif-picker-overlap)
+   replaces the old plain `width/height: 100%` now that the square box
+   itself comes from the ::before padding-top spacer above, not from
+   `aspect-ratio` on this element's own box. */
 .gif-sheet-cell img {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;

@@ -77,6 +77,52 @@ export function useMessaging({ user }) {
           sessionSignalCbRef.current?.(data);
           return;
         }
+        // Task 20260923-chat-phantom-empty-bubbles: explicitly discriminate
+        // a control frame's `type` instead of the old catch-all fallthrough
+        // -- any frame whose `type` wasn't a session type used to be treated
+        // as an ordinary chat message with zero shape validation, so a
+        // backend `{"type":"ping"}` heartbeat (ConnectionManager.
+        // HEARTBEAT_INTERVAL, every 25s) or `{"type":"error",...}` frame
+        // (send_msg's content-rejection/save-failure paths) got appended as
+        // a contentless bubble whenever the open thread was a DM (both
+        // group_id fall back to '' and trivially match). Mirrors the fix
+        // already shipped for iOS under task
+        // 20260910-chat-message-disappear-reentry (ChatThreadView.swift's
+        // receiveLoop() explicit switch on json["type"]).
+        if (data.type === 'ping') {
+          return; // heartbeat -- no-op, never a chat message
+        }
+        if (data.type === 'error') {
+          // A rejected/failed send (content-filter rejection, blocked
+          // relationship, or a save failure -- websockets.py's send_msg).
+          // Never append this as a chat bubble. Per Q17 (empty/loading/
+          // error states stay minimal/unfussy, and the sub-question of an
+          // inline retry affordance is explicitly left open/undecided --
+          // see intake-spec.md's Open Questions), this stops at a
+          // lightweight, self-dismissing toast rather than any persistent
+          // bubble/retry UI -- reusing `message.error`, which this hook
+          // already calls for the same class of failure elsewhere (e.g.
+          // openChat, removeFriend) -- plus a console log for diagnosis, so
+          // the failure isn't silently swallowed.
+          console.error('WS error frame:', data.reason || 'unknown', data.detail || '');
+          message.error({
+            content: data.detail || "Couldn't send that message. Please try again.",
+            key: 'fs-ws-send-error',
+            duration: 4,
+          });
+          return;
+        }
+        // Anything else falls through to the ordinary-chat-message path
+        // below, but only if it actually carries chat-message shape
+        // (`from_user`/`text`/`timestamp`) -- a real inbound delivery frame
+        // carries no `type` key at all, so this also fails safe against any
+        // future unrecognized control frame instead of rendering it as a
+        // blank bubble.
+        if (typeof data.from_user !== 'string' || !data.from_user ||
+            typeof data.text !== 'string' ||
+            data.timestamp === undefined || data.timestamp === null) {
+          return;
+        }
         // The setMessages side effect below used to live inside this
         // setCurrentContact updater -- calling another component's setState
         // from inside a different setter's updater function is impure, and

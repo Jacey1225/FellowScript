@@ -323,7 +323,6 @@ export default function Home() {
                 <Link to="/account" className="hm-nav-link" style={{ display: 'block', padding: '8px 16px', borderRadius: 999, fontSize: 12.5, letterSpacing: '0.08em', textTransform: 'uppercase', textDecoration: 'none' }}>Account</Link>
               )}
             </div>
-            <PillButton to={cta} primary>{user ? 'Open app' : 'Get started'}</PillButton>
           </nav>
         </header>
 

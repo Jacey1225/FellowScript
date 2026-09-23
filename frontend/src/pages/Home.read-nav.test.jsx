@@ -113,22 +113,42 @@ describe('Home — "Read scripture"/"Read the Bible" CTAs also route to /downloa
 });
 
 describe('Home — auth-gated CTAs unaffected by this task (design-notes.md §4)', () => {
-  test('signed out: "Get started"/"Begin your journey"/"Start a group"/"Join free" all still route to /signin, not /download', () => {
+  test('signed out: "Begin your journey"/"Start a group"/"Join free" all still route to /signin, not /download', () => {
     renderHome();
 
-    for (const name of [/Get started/i, /Begin your journey/i, /Start a group/i, /Join free/i]) {
+    for (const name of [/Begin your journey/i, /Start a group/i, /Join free/i]) {
       const cta = screen.getByRole('link', { name });
       expect(cta.getAttribute('href')).toBe('/signin');
     }
   });
 });
 
-describe('Home — signed-in auth-gated CTA still reaches /reader directly (accepted, documented exception)', () => {
-  test('signed in: "Open app" routes straight to /reader, unaffected by this task', () => {
+// Task 20260923-remove-open-app-button: the top-right header CTA (which read
+// "Open app" signed in, "Get started" signed out) was removed outright, both
+// label states — the header now ends at the Home/Read/Account pill group.
+// The other four CTAs on the page that share the `cta` variable are
+// untouched (covered above and in Home's other test files); /reader and
+// /signin both remain reachable via those other CTAs and the Account link.
+describe('Home — top-right header "Open app"/"Get started" button removed (task 20260923-remove-open-app-button)', () => {
+  test('signed in: no "Open app" link renders anywhere on the page', () => {
     mockUseAuth.mockReturnValue({ user: { user_id: 'u1', username: 'jaceysimpson' } });
     renderHome();
 
-    const cta = screen.getByRole('link', { name: /Open app/i });
-    expect(cta.getAttribute('href')).toBe('/reader');
+    expect(screen.queryByRole('link', { name: /Open app/i })).toBeNull();
+  });
+
+  test('signed out: no "Get started" link renders anywhere on the page', () => {
+    renderHome();
+
+    expect(screen.queryByRole('link', { name: /Get started/i })).toBeNull();
+  });
+
+  test('signed in: header still renders Home/Read/Account pill links unchanged', () => {
+    mockUseAuth.mockReturnValue({ user: { user_id: 'u1', username: 'jaceysimpson' } });
+    renderHome();
+
+    expect(screen.getAllByRole('link', { name: 'Home' }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole('link', { name: 'Read' }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole('link', { name: 'Account' }).length).toBeGreaterThan(0);
   });
 });

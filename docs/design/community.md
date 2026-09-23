@@ -233,6 +233,23 @@ raw error dump. Tapping it removes the failed bubble and resends the same text/a
 confirmation step. A successful send is unaffected either way — it survives thread re-entry (warm
 or cold reload) exactly as before.
 
+### Web/Desktop: No More Phantom Empty Bubbles (2026-09-23, task `20260923-chat-phantom-empty-bubbles`, web/desktop)
+
+The web frontend's WebSocket handler (`useMessaging.js`, shared by the browser app and the Tauri
+desktop shell) had the same underlying gap as the pre-fix iOS receive loop described above: any
+frame whose `type` wasn't a recognized call-session type was treated as an ordinary inbound chat
+message, with no validation. A `{"type": "ping"}` heartbeat (sent every 25s) or a `{"type":
+"error", ...}` rejected-send frame would render in an open DM as a small, blank message bubble.
+
+The handler now explicitly branches on `type`: a `ping` frame is a no-op, and an `error` frame is
+never appended to the thread. Unlike iOS, web/desktop does **not** get a persistent "tap to retry"
+bubble for a failed send — that inline-retry affordance is still an open design question (see the
+UI/UX preference notes on error states staying minimal by default). Instead, a failed send shows a
+brief, self-dismissing toast naming the failure, plus a console log for diagnosis, so the failure
+is surfaced without inventing new persistent bubble state. `ChatThread.jsx` also gained a defensive
+render guard that skips any message entry with no text, no attachment, and no timestamp, as a
+backstop against any other future source of a content-less entry.
+
 ---
 
 ## Unread Conversation Badges (2026-09-13, task `20260913-chat-unread-badges`, iOS)
