@@ -760,6 +760,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#home-header-cta-removal-task-20260923-remove-open-app-button" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Home header CTA removal (task 20260923-remove-open-app-button)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#desktop-shell-route-restriction" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1095,8 +1106,10 @@
 - <code>Home.jsx</code>'s header-pill and footer "Read" nav links (previously device-branched to an App Store link or a same-page <code>#desktop-download</code> anchor) are now plain <code>&lt;Link to="/download"&gt;</code>.
 - <code>Home.jsx</code>'s "Read scripture" (hero) and "Read the Bible" (closing) CTA buttons (previously unconditional <code>/reader</code> links) now point at <code>/download</code> too.
 - <code>AppNav.jsx</code>'s hamburger "Read" menu item now branches on <code>lib/desktopScope.js</code>'s <code>isDesktopApp()</code>: <code>/reader</code> inside the Tauri desktop shell (legitimate in-app navigation), <code>/download</code> in the ordinary web frontend, regardless of sign-in state.</p>
-<p>Left unchanged, by design: the auth-gated <code>cta</code> buttons on Home (<code>user ? '/reader' : '/signin'</code> — "Open app"/"Get started"/"Begin your journey"/"Start a group"/"Join free"), and the post-auth redirects to <code>/reader</code> in <code>SignIn.jsx</code>/<code>VerifyMfa.jsx</code>/<code>Account.jsx</code>. <code>/download</code> is deliberately <strong>not</strong> added to <code>lib/desktopScope.js</code>'s <code>DESKTOP_ALLOWED_ROUTES</code> — nothing in the Tauri shell links to it, and an errant deep link there falls through <code>DesktopRouteGuard</code> to the existing <code>/reader</code> fallback, which is the intended behavior for a web-marketing-site-only page.</p>
+<p>Left unchanged, by design: the remaining auth-gated <code>cta</code> buttons on Home (<code>user ? '/reader' : '/signin'</code> — "Begin your journey"/"Start a group"/"Join free"), and the post-auth redirects to <code>/reader</code> in <code>SignIn.jsx</code>/<code>VerifyMfa.jsx</code>/<code>Account.jsx</code>. <code>/download</code> is deliberately <strong>not</strong> added to <code>lib/desktopScope.js</code>'s <code>DESKTOP_ALLOWED_ROUTES</code> — nothing in the Tauri shell links to it, and an errant deep link there falls through <code>DesktopRouteGuard</code> to the existing <code>/reader</code> fallback, which is the intended behavior for a web-marketing-site-only page.</p>
 <p>The previously reported mobile "read" error was traced to <code>MobileBlockGate.jsx</code>'s existing (non-crashing) block screen, which mobile visitors landed on after following the old <code>/reader</code> nav link — not a JS exception. <code>MobileBlockGate</code> itself is unchanged and still guards <code>/reader</code> for any other path that reaches it (direct URL entry, sign-in redirect, etc.).</p>
+<h3 id="home-header-cta-removal-task-20260923-remove-open-app-button">Home header CTA removal (task <code>20260923-remove-open-app-button</code>)</h3>
+<p>The top-right header <code>&lt;nav&gt;</code> on Home no longer renders the <code>cta</code>-routed pill button that used to read "Open app" (signed in, → <code>/reader</code>) or "Get started" (signed out, → <code>/signin</code>) — the button was removed entirely, both label states, not just gated further. The header now ends with the Home/Read/Account pill group; the <code>cta</code> variable itself is untouched, since it's still consumed by the three remaining CTAs listed above. <code>/reader</code> and <code>/signin</code> remain reachable from Home via those other CTAs and, when signed in, the Account pill link.</p>
 <h3 id="desktop-shell-route-restriction">Desktop shell route restriction</h3>
 <p>The Tauri desktop app (<code>desktop/</code>) loads this exact same <code>HashRouter</code> bundle rather than a separate build. <code>DesktopRouteGuard.jsx</code> wraps <code>&lt;Routes&gt;</code> and, when <code>lib/desktopScope.js</code>'s <code>isDesktopApp()</code> detects the Tauri webview (<code>window.__TAURI_INTERNALS__</code>), redirects any in-app navigation outside a closed allowlist (<code>/reader</code>, <code>/account</code>, <code>/signin</code>, <code>/forgot-password</code>, <code>/reset-password</code>, <code>/verify-2fa</code>) to <code>/reader</code>. <code>AppNav.jsx</code>'s Home menu item/logo links and the hamburger drawer's Privacy/Terms links are hidden in this mode, and <code>SignIn.jsx</code>'s footer Privacy/Terms disclosure links are forced <code>target="_blank"</code> instead. A no-op in the ordinary web browser. A parallel Tauri-side <code>on_navigation</code> check in <code>desktop/src-tauri</code> mirrors the same allowlist as defense-in-depth for real webview navigations the React guard can't see.</p>
 <p>The desktop app's native macOS menu bar also has a "Reload" item under View (<code>CmdOrCtrl+R</code>) that force-reloads the window's current page via <code>WebviewWindow::reload()</code> — a Rust-side call independent of the page's own JS, so it still works if the page is stuck/unresponsive. It re-navigates to whatever URL is already loaded, so it passes through the same <code>on_navigation</code> allowlist check above rather than opening a new navigation path, and it isn't exposed to the loaded page's JS via IPC.</p>
