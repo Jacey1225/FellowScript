@@ -124,16 +124,48 @@ final class CallController: ObservableObject {
         guard let session, session.summarize, let service, !userId.isEmpty,
               !session.creator_id.isEmpty, session.creator_id == userId else { return }
         Task { @MainActor in
+            // Task 20260923-session-summary-call-failure: `stage` records
+            // which of the two awaits below was in flight when/if the catch
+            // fires, so a local resolveAgentId failure (fetchAgents/
+            // createAgent under real account/network conditions, candidate
+            // #2 from that task's investigation) is distinguishable from the
+            // summarize endpoint itself rejecting or failing -- previously
+            // both collapsed into the same silent, undiagnosable toast.
+            var stage = "resolve-agent"
             do {
                 let agentId = try await Self.resolveAgentId(userId: userId, service: service)
+                stage = "summarize-request"
                 try await service.summarizeSession(userId: userId, agentId: agentId,
                                                     session: session, groupId: session.group_id)
             } catch {
+                RefreshDiagnostics.summarizeOutcome(stage: stage, errorClass: Self.summarizeErrorClass(error))
                 self.showSummarizeNotice(
                     "We couldn't put together your session summary this time — check back in your notes in a bit."
                 )
             }
         }
+    }
+
+    // Refines RefreshDiagnostics.errorClass(_:) for this one call site only,
+    // for the two summarize-specific failure modes that otherwise both
+    // collapse into the same generic "AppError.networkError" label: a 403
+    // rejection from `_require_group_membership` (real, non-DM group_id the
+    // caller isn't a verified member of) and a 502 from the LLM call.
+    // Matches on summarize_session's own two fixed, non-PII detail strings
+    // (api/routes/agent.py) only -- never on message text from any other
+    // endpoint, and never on anything that could carry user-supplied
+    // content, so this stays within RefreshDiagnostics' own "never log
+    // server-provided detail text" posture (Security Posture Q13) while
+    // still being specific enough to end the guesswork this feature area
+    // has needed twice now. The 403 notes-cap case is already distinguished
+    // upstream via AppError.limitReached, no extra matching needed there.
+    private static func summarizeErrorClass(_ error: Error) -> String {
+        if case AppError.networkError(let detail) = error {
+            if detail == "Not a member of this group" { return "not-group-member-403" }
+            if detail == "Could not generate session summary." { return "llm-generation-502" }
+        }
+        if case AppError.limitReached = error { return "notes-cap-403" }
+        return RefreshDiagnostics.errorClass(error)
     }
 
     // A study session carries no agent reference of its own -- FSSession

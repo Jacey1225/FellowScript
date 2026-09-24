@@ -457,16 +457,7 @@ struct BibleReaderView: View {
                         }
                     }
                     .opacity(contentOpacity)
-                    .gesture(
-                        DragGesture(minimumDistance: 30, coordinateSpace: .local)
-                            .onEnded { value in
-                                guard !showNavSheet else { return }
-                                let dx = value.translation.width
-                                let dy = value.translation.height
-                                guard abs(dx) > abs(dy), abs(dx) > 50 else { return }
-                                changeChapter(forward: dx < 0)
-                            }
-                    )
+                    .background(chapterTapZones)
                 }
 
                 // Drop-down nav overlay — slides in from top. Closing was
@@ -729,6 +720,76 @@ struct BibleReaderView: View {
             if forward { vm.nextChapter() } else { vm.prevChapter() }
             withAnimation(.easeInOut(duration: 0.18)) { contentOpacity = 1 }
         }
+    }
+
+    // Task 20260923-bible-tap-chapter-nav: replaces the previous
+    // DragGesture(minimumDistance: 30, ...) swipe with left/right tap
+    // zones, reusing changeChapter(forward:) unchanged (same
+    // .easeInOut cross-fade, same nextChapter()/prevChapter() boundary
+    // logic). Laid down as a `.background` of the verse ScrollView
+    // rather than an `.overlay` on top of it: SwiftUI hit-tests the
+    // front-most gesture-bearing view at a given point first, so
+    // VerseRow's own `.onTapGesture` (line ~419) — which sits in front
+    // of this background as regular ScrollView content — continues to
+    // win wherever a verse row actually occupies that point. That is
+    // what keeps verse selection working "inside" either zone's
+    // horizontal band (spec acceptance criteria): a tap only reaches
+    // this background layer where there's no verse row underneath it
+    // (the chapter-heading block, inter-row padding, below the last
+    // verse).
+    //
+    // Zone width: 30% of screen width per edge, leaving a 40% neutral
+    // middle band that intentionally carries no gesture at all — this
+    // is where verse text is most likely to sit, so a near-miss verse
+    // tap doesn't fall through and misfire a chapter change. Confirmed
+    // live in Simulator (iPhone 16 / iPhone SE widths) that 30% per
+    // side is a comfortable page-turn target without needing to aim at
+    // the literal screen edge, and that the reading column's own
+    // margins (Theme.spacingLG) keep the neutral band clear of verse
+    // text at the smallest supported width too.
+    //
+    // Uses `Color.black.opacity(0.0001)` rather than `Color.clear` for
+    // the two gestured zones — Color.clear is not hit-testable in
+    // SwiftUI (same workaround Theme.swift's TapOutsideDismissCatcher
+    // already documents/uses). The neutral middle band stays
+    // `Color.clear` on purpose so it never captures a tap.
+    //
+    // Explicitly disabled while `showNavSheet` is open: TapOutsideDismissCatcher
+    // already renders above this ZStack layer (zIndex 9) and would
+    // intercept those taps first regardless, but this mirrors the old
+    // DragGesture's own `guard !showNavSheet else { return }` so the
+    // no-chapter-change-under-the-open-dropdown behavior stays explicit
+    // rather than incidental.
+    //
+    // Q14.1/Q14.2 (accessibility): these zones aren't a VoiceOver user's
+    // primary path to navigate chapters — BibleNavDropdown (the
+    // book/chapter picker) already satisfies that — but each zone still
+    // carries its own label/hint/button trait rather than being a
+    // silent gesture-only region.
+    private var chapterTapZones: some View {
+        GeometryReader { geo in
+            HStack(spacing: 0) {
+                Color.black.opacity(0.0001)
+                    .frame(width: geo.size.width * 0.3)
+                    .contentShape(Rectangle())
+                    .onTapGesture { changeChapter(forward: false) }
+                    .accessibilityLabel("Previous chapter")
+                    .accessibilityHint("Goes back to the previous chapter")
+                    .accessibilityAddTraits(.isButton)
+
+                Color.clear
+                    .frame(maxWidth: .infinity)
+
+                Color.black.opacity(0.0001)
+                    .frame(width: geo.size.width * 0.3)
+                    .contentShape(Rectangle())
+                    .onTapGesture { changeChapter(forward: true) }
+                    .accessibilityLabel("Next chapter")
+                    .accessibilityHint("Advances to the next chapter")
+                    .accessibilityAddTraits(.isButton)
+            }
+        }
+        .allowsHitTesting(!showNavSheet)
     }
 
     private func colorName(_ hex: String) -> String {

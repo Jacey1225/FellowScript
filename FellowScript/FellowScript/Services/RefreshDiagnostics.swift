@@ -200,4 +200,25 @@ enum RefreshDiagnostics {
     static func isCancellation(_ error: Error) -> Bool {
         error is CancellationError || (error as? URLError)?.code == .cancelled
     }
+
+    /// A `CallController.maybeSummarize` outcome (task 20260923-session-
+    /// summary-call-failure): this is the second time a post-call summarize
+    /// failure has needed code-review archaeology instead of a log line
+    /// pointing straight at the cause, because the single catch-all around
+    /// resolveAgentId + summarizeSession collapsed every failure mode into
+    /// one generic toast with no distinguishing signal anywhere. `stage` is
+    /// "resolve-agent" (CallController.resolveAgentId's own fetchAgents/
+    /// createAgent calls, a local pre-flight step) or "summarize-request"
+    /// (the actual `POST /agent/{user_id}/{agent_id}/summarize` call), so a
+    /// local resolution failure is distinguishable from the summarize
+    /// endpoint itself failing. `errorClass` is
+    /// `CallController.summarizeErrorClass`'s own coarse, non-PII label
+    /// ("notes-cap-403", "not-group-member-403", "llm-generation-502", or
+    /// this file's own `errorClass(_:)` for everything else) — see that
+    /// function for exactly what it does and does not match on. The
+    /// warm-toned `summarizeNotice` toast text shown to the user is
+    /// unchanged by this (UI/UX Q17.3) — this is diagnostics-only.
+    static func summarizeOutcome(stage: String, errorClass: String) {
+        emit("[summarize] stage=\(stage) errorClass=\(errorClass) ts=\(ts())")
+    }
 }

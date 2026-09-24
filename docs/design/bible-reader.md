@@ -41,6 +41,25 @@ On narrow screens (≤1024px) this entire dockable system is replaced by a fixed
 - `BookmarkButton`: star icon to bookmark the current chapter; bookmarks list opens the same way
 - Both travel with the Bible Reading panel wherever it's docked — they're part of that panel's own toolbar, not a separate page-level bar
 
+### Chapter Navigation (iOS, task `20260923-bible-tap-chapter-nav`)
+
+`BibleReaderView` (`FellowScript/FellowScript/Bible/BibleReaderView.swift`) navigates
+chapters by tap, not swipe: tapping the right ~30% of the reading area
+advances to the next chapter, tapping the left ~30% goes back, both via the
+existing `changeChapter(forward:)` helper (same `.easeInOut` cross-fade,
+same book roll-over at chapter/book boundaries as before). The middle ~40%
+of the screen is a neutral band reserved for verse-selection taps. The tap
+zones sit behind the verse list in z-order, so a tap on an actual verse row
+— even one whose text falls inside either zone's horizontal band — still
+selects that verse rather than changing chapter; only taps that land where
+there's no verse row underneath (the chapter heading, inter-row padding,
+below the last verse) reach the zones. Each zone carries its own
+accessibility label/hint ("Previous chapter" / "Next chapter"); the
+book/chapter dropdown (`BibleNavDropdown`, tap the toolbar pill) remains the
+primary VoiceOver-accessible way to jump to any chapter. The tap zones are
+disabled while that dropdown is open. This replaced a prior horizontal
+`DragGesture` swipe as the sole way to change chapters on this screen.
+
 ### Highlight Palette
 - `HighlightPicker`: six swatches (warm gold, red, green, teal, purple, cream)
 - Tap/click a verse to apply the active color; click again to remove

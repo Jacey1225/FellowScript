@@ -35,8 +35,10 @@
 //      `.scrollDismissesKeyboard(.interactively)` was reconciled away (no
 //      longer present as its own bespoke call), and BibleReaderView's
 //      TapOutsideDismissCatcher is layered strictly behind BibleNavDropdown
-//      in z-order and doesn't disturb the screen's pre-existing
-//      chapter-change drag gesture or Reduce Motion handling.
+//      in z-order and doesn't disturb the screen's Reduce Motion handling.
+//      (BibleReaderView's own chapter-change mechanism was later swapped
+//      from a swipe DragGesture to left/right tap zones by task
+//      20260923-bible-tap-chapter-nav — see that section's own tests below.)
 
 import XCTest
 import SwiftUI
@@ -249,17 +251,48 @@ final class BibleReaderViewTapOutsideDismissRegressionTests: XCTestCase {
                       "tapping outside the nav dropdown must close it by setting showNavSheet false")
     }
 
-    func test_existingChapterChangeDragGesture_isUnchanged() throws {
-        // Regression guard: this task added a new gesture (tap-outside) to
-        // the screen but must not have disturbed the pre-existing
-        // horizontal-swipe chapter-change DragGesture.
+    func test_chapterChangeDragGesture_wasRemoved() throws {
+        // Task 20260923-bible-tap-chapter-nav replaced swipe-based chapter
+        // navigation with tap zones — the old DragGesture must be gone, not
+        // left dormant alongside the new mechanism.
         let source = try readSource()
-        XCTAssertTrue(source.contains("DragGesture(minimumDistance: 30, coordinateSpace: .local)"),
-                      "the existing chapter-change drag gesture's threshold must be unchanged")
-        XCTAssertTrue(source.contains("guard !showNavSheet else { return }"),
-                      "the drag gesture must still be suppressed while the nav panel is open, unaffected by the new tap-outside mechanism")
-        XCTAssertTrue(source.contains("abs(dx) > abs(dy), abs(dx) > 50"),
-                      "the existing horizontal-vs-vertical / 50pt drag threshold must be unchanged")
+        XCTAssertFalse(source.contains("DragGesture(minimumDistance: 30, coordinateSpace: .local)"),
+                        "the old swipe-to-change-chapter DragGesture must be removed, not left alongside the new tap zones")
+    }
+
+    func test_chapterTapZones_wireLeftAndRightToChangeChapter() throws {
+        // Regression guard for task 20260923-bible-tap-chapter-nav: proves
+        // the reading area is wired to the new left/right tap-zone
+        // mechanism, reusing changeChapter(forward:) unchanged, rather than
+        // the removed DragGesture above.
+        let source = try readSource()
+        XCTAssertTrue(source.contains(".background(chapterTapZones)"),
+                      "the verse ScrollView must be backed by the new chapterTapZones tap-zone layer")
+        guard let zonesRange = source.range(of: "private var chapterTapZones") else {
+            XCTFail("chapterTapZones computed view not found")
+            return
+        }
+        let body = String(source[zonesRange.lowerBound...])
+        XCTAssertTrue(body.contains("changeChapter(forward: false)"),
+                      "the left zone must call changeChapter(forward: false) to go to the previous chapter")
+        XCTAssertTrue(body.contains("changeChapter(forward: true)"),
+                      "the right zone must call changeChapter(forward: true) to advance to the next chapter")
+        XCTAssertTrue(body.contains(".allowsHitTesting(!showNavSheet)"),
+                      "the tap zones must still be suppressed while the nav dropdown is open, mirroring the old drag gesture's own showNavSheet guard")
+    }
+
+    func test_chapterTapZones_carryAccessibilityLabels() throws {
+        // Preference profile Q14.1/Q14.2: the tap zones must not be silent,
+        // gesture-only regions — each carries its own label/hint even though
+        // BibleNavDropdown remains the primary accessible navigation path.
+        let source = try readSource()
+        guard let zonesRange = source.range(of: "private var chapterTapZones") else {
+            XCTFail("chapterTapZones computed view not found")
+            return
+        }
+        let body = String(source[zonesRange.lowerBound...])
+        XCTAssertTrue(body.contains("\"Previous chapter\""), "the left zone must carry a VoiceOver label")
+        XCTAssertTrue(body.contains("\"Next chapter\""), "the right zone must carry a VoiceOver label")
     }
 
     func test_navPanelAnimation_respectsReduceMotion() throws {
