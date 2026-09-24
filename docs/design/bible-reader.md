@@ -41,14 +41,14 @@ On narrow screens (≤1024px) this entire dockable system is replaced by a fixed
 - `BookmarkButton`: star icon to bookmark the current chapter; bookmarks list opens the same way
 - Both travel with the Bible Reading panel wherever it's docked — they're part of that panel's own toolbar, not a separate page-level bar
 
-### Chapter Navigation (iOS, tasks `20260923-bible-tap-chapter-nav` / `20260923-bible-tap-nav-not-working`)
+### Chapter Navigation (iOS, tasks `20260923-bible-tap-chapter-nav` / `20260923-bible-tap-nav-not-working` / `20260924-bible-verse-tap-select-removal`)
 
 `BibleReaderView` (`FellowScript/FellowScript/Bible/BibleReaderView.swift`) navigates
 chapters by tap, not swipe: tapping the right ~30% of the reading area
 advances to the next chapter, tapping the left ~30% goes back, both via the
 existing `changeChapter(forward:)` helper (same `.easeInOut` cross-fade,
 same book roll-over at chapter/book boundaries as before). The middle ~40%
-of the screen is a neutral band reserved for verse-selection taps.
+of the screen is a neutral band with no chapter-change behavior.
 
 The tap detection (`chapterTapGesture`) is attached directly to the verse
 `ScrollView` itself via `.gesture(...)`, computing left/right/neutral zone
@@ -65,18 +65,30 @@ render-and-tap UI test (`BibleChapterTapNavigationUITests`) that drives the
 Simulator and asserts the chapter actually changes, closing that
 verification gap.
 
-Verse selection still wins over a chapter-change tap anywhere a verse row is
-actually rendered — including inside either zone's horizontal band — via
-SwiftUI's default gesture-disambiguation rule: a descendant view's own
-gesture (`VerseRow`'s `.onTapGesture`) takes priority over an ancestor's
-`.gesture(...)` at the same touch point, so only taps that don't land on a
-verse row's own rendered content reach the chapter-change gesture. Each zone
-still carries its own accessibility label/hint ("Previous chapter" / "Next
-chapter") via non-hit-testable marker views (`chapterTapZoneAccessibilityMarkers`)
+A plain single tap now reaches `chapterTapGesture` everywhere in the reading
+area, including on a verse row's own rendered text: `VerseRow` no longer
+carries an `.onTapGesture`. It originally did (tap toggled verse selection),
+and — since SwiftUI gives a descendant view's own gesture priority over an
+ancestor's `.gesture(...)` at the same touch point — that tap-to-select
+gesture was winning over `chapterTapGesture` anywhere a verse row rendered,
+which meant taps inside either zone's horizontal band never changed chapter
+wherever text happened to be on screen. `20260924-bible-verse-tap-select-removal`
+removed it for exactly that reason, so a tap anywhere in either zone now
+reliably changes chapter regardless of whether a verse row is under the
+touch. Verse selection is no longer reachable by tap at all: the gold
+`isSelected` tint on `VerseRow` is now driven solely by the existing
+search-jump-to-verse path (`pendingScrollVerse`), not by manual interaction.
+Long-press is unaffected — it still opens `VerseRow`'s `.contextMenu`
+(Highlight/Copy/Add to Note/Share) exactly as before, since SwiftUI surfaces
+that via its own long-press recognizer, independent of this tap gesture.
+
+Each zone still carries its own accessibility label/hint ("Previous chapter" /
+"Next chapter") via non-hit-testable marker views (`chapterTapZoneAccessibilityMarkers`)
 that expose themselves to VoiceOver without ever competing for real touches;
 the book/chapter dropdown (`BibleNavDropdown`, tap the toolbar pill) remains
-the primary VoiceOver-accessible way to jump to any chapter. The tap gesture
-is disabled while that dropdown is open. This replaced a prior horizontal
+the primary VoiceOver-accessible way to jump to any chapter, and long-press
+remains the sole way to reach a verse's own actions. The tap gesture is
+disabled while the dropdown is open. This replaced a prior horizontal
 `DragGesture` swipe as the sole way to change chapters on this screen.
 
 ### Highlight Palette

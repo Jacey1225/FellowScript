@@ -408,15 +408,24 @@ struct BibleReaderView: View {
                     // membership from the tap's own x-coordinate (needs the
                     // available width, hence the wrapping GeometryReader).
                     // SwiftUI's default gesture-disambiguation rule gives a
-                    // descendant view's own gesture (VerseRow's
-                    // `.onTapGesture`, line ~419) priority over an ancestor's
-                    // `.gesture(...)` at the same touch point, so verse
-                    // selection/long-press still wins anywhere a verse row is
-                    // actually rendered — confirmed live in Simulator that
-                    // this coexists correctly (verse taps inside either
-                    // zone's horizontal band still select the verse; taps in
-                    // true empty space within a zone now actually change
-                    // chapter, which never happened before).
+                    // descendant view's own gesture priority over an
+                    // ancestor's `.gesture(...)` at the same touch point, so
+                    // at the time of this fix VerseRow's own `.onTapGesture`
+                    // (tap-to-select) won over this gesture anywhere a verse
+                    // row was rendered — taps only actually changed chapter
+                    // in true empty space within a zone.
+                    //
+                    // Task 20260924-bible-verse-tap-select-removal: that
+                    // `.onTapGesture` has since been removed from VerseRow's
+                    // call site below (it was reported to conflict with
+                    // tap-to-navigate, which is exactly the priority
+                    // ordering documented above), so taps inside either
+                    // zone's horizontal band — including where a verse row
+                    // renders — now reach this gesture and change chapter,
+                    // confirmed live in Simulator. Long-press still reaches
+                    // VerseRow's `.contextMenu` unaffected, since SwiftUI
+                    // triggers that via its own UIKit-backed long-press
+                    // recognizer, not this tap gesture.
                     GeometryReader { geo in
                         ScrollViewReader { proxy in
                             ScrollView(.vertical, showsIndicators: false) {
@@ -446,7 +455,27 @@ struct BibleReaderView: View {
                                             isSelected:    selectedVerse == v.num
                                         )
                                         .id(v.num)
-                                        .onTapGesture { selectedVerse = (selectedVerse == v.num) ? nil : v.num }
+                                        // Task 20260924-bible-verse-tap-select-removal: a plain tap on
+                                        // a verse row no longer toggles `selectedVerse` — that
+                                        // `.onTapGesture` was winning SwiftUI's descendant-vs-ancestor
+                                        // gesture-disambiguation over the ScrollView's own
+                                        // `.gesture(chapterTapGesture(...))` (see the comment on that
+                                        // call site above), which meant taps inside either chapter-tap
+                                        // zone's horizontal band never reached the chapter-change
+                                        // gesture wherever a verse row happened to render. Removing it
+                                        // lets those taps fall through to chapterTapGesture as intended.
+                                        // `.contextMenu` below is unchanged and remains the sole way to
+                                        // reach verse actions — SwiftUI already surfaces it on
+                                        // long-press, so long-press behavior for Highlight/Copy/Add to
+                                        // Note/Share is untouched. `isSelected`'s gold-tint background
+                                        // is deliberately left driven only by the existing
+                                        // pendingScrollVerse search-jump path below (not by long-press):
+                                        // the preference profile (Q10.1) says not to add new interaction
+                                        // affordances beyond what's needed, and layering a second gesture
+                                        // (e.g. a simultaneous LongPressGesture) alongside `.contextMenu`
+                                        // here would risk exactly the kind of gesture-priority conflict
+                                        // this task is removing, for a purely cosmetic highlight during
+                                        // the menu's own already-clear presentation.
                                         .contextMenu {
                                             verseContextMenu(verse: v.num, text: v.text)
                                         }

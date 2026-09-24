@@ -36,16 +36,20 @@
 // else in the zone (verse row padding, inter-row gaps, below the last verse)
 // goes through.
 //
-// A real render-and-tap test asserting verse selection specifically survives
-// *inside* a tap zone's horizontal band (the other half of the original
-// acceptance criteria) is not included here: SwiftUI's default
-// child-gesture-wins-first disambiguation is what the fix relies on for that
-// (see BibleReaderView.swift's own comments), and VerseRow exposes no
-// accessibility trait/value for its selected/highlighted state that a UI
-// test could assert against without pixel-sampling a screenshot -- this was
-// instead confirmed manually in Simulator (tapping verse text within either
-// zone's horizontal band still toggles that verse's selection highlight, and
-// does not advance/rewind the chapter).
+// Update -- task 20260924-bible-verse-tap-select-removal: the paragraph above
+// described why a real render-and-tap test *inside* a verse row wasn't
+// included -- at the time, SwiftUI's child-gesture-wins-first
+// disambiguation meant a tap there was claimed by VerseRow's own
+// `.onTapGesture` (tap-to-select) before this gesture ever saw it, and that
+// selection had no accessibility trait a UI test could assert on without
+// pixel-sampling. That `.onTapGesture` has since been removed entirely
+// (it was reported to conflict with tap-to-navigate, i.e. exactly this
+// priority ordering), so a tap landing inside a verse row's own rendered
+// bounds now reaches this gesture like any other point in the zone, and
+// `test_tappingVerseRowInsideZone_realTap_nowAdvancesChapter` below closes
+// that verification gap for real -- this is the specific runtime conflict
+// this task's fix resolves, so it gets its own render-and-tap coverage
+// rather than relying on manual Simulator observation alone.
 import XCTest
 
 final class BibleChapterTapNavigationUITests: XCTestCase {
@@ -257,6 +261,80 @@ final class BibleChapterTapNavigationUITests: XCTestCase {
 
         tapHeadingZone(app, dx: 0.15)
         XCTAssertTrue(app.staticTexts["Chapter 5"].waitForExistence(timeout: 5))
+    }
+
+    // MARK: - Task 20260924-bible-verse-tap-select-removal: a real tap ON a verse row's own rendered text now changes chapter
+
+    /// Locates a verse row via its `.accessibilityLabel("Verse \(v.num): ...")`
+    /// (set on VerseRow's call site in BibleReaderView.swift) rather than a
+    /// hardcoded coordinate, so this test is robust to font-size/layout
+    /// differences across devices while still guaranteeing the tap lands
+    /// within that row's own rendered frame.
+    ///
+    /// Live Simulator inspection (this task's own verification) showed
+    /// XCUITest surfaces *two* `staticTexts` carrying the same
+    /// accessibility label for a given verse -- the verse-number Text's own
+    /// narrow frame, and the full-row-width accessibility element VerseRow's
+    /// `.accessibilityLabel` produces -- so this picks the widest match
+    /// rather than assuming a fixed match order.
+    private func verseRow(_ app: XCUIApplication, verse: Int) -> XCUIElement {
+        let matches = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Verse \(verse):"))
+        var widest: XCUIElement?
+        var widestWidth: CGFloat = 0
+        for i in 0..<matches.count {
+            let el = matches.element(boundBy: i)
+            if el.frame.width > widestWidth {
+                widestWidth = el.frame.width
+                widest = el
+            }
+        }
+        return widest ?? matches.firstMatch
+    }
+
+    func test_tappingVerseRowInsideZone_realTap_nowAdvancesChapter() {
+        // Regression coverage for this task's fix: prior to it, this exact
+        // tap (inside the right-hand chapter-tap-zone's horizontal band, but
+        // landing on a verse row's own rendered text) was claimed by
+        // VerseRow's `.onTapGesture` for verse selection instead of reaching
+        // chapterTapGesture -- confirmed via this task's own live Simulator
+        // testing that this was the specific conflict reported. With that
+        // `.onTapGesture` removed, the same tap must now reach
+        // chapterTapGesture like any other point in the zone.
+        let app = signInAndReachBible()
+        establishGenesisFive(app)
+
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Verse 1:")).firstMatch
+                        .waitForExistence(timeout: 5),
+                      "expected verse 1's row to be on screen in Genesis 5")
+        let row = verseRow(app, verse: 1)
+
+        // dx: 0.85 lands within the right-hand tap zone (> width * 0.7, see
+        // chapterTapGesture); using the row's own frame (not raw window
+        // coordinates) guarantees this specific tap lands on the row's
+        // rendered content, not empty space beside it.
+        row.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.5)).tap()
+
+        XCTAssertTrue(app.staticTexts["Chapter 6"].waitForExistence(timeout: 5),
+                      "a real tap landing on a verse row's own rendered text, inside the right tap zone, must now " +
+                      "advance the chapter -- this is the exact tap-to-select-vs-tap-to-navigate conflict task " +
+                      "20260924-bible-verse-tap-select-removal fixes")
+    }
+
+    func test_tappingVerseRowInsideZone_realTap_nowGoesBackAChapter() {
+        let app = signInAndReachBible()
+        establishGenesisFive(app)
+
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Verse 1:")).firstMatch
+                        .waitForExistence(timeout: 5),
+                      "expected verse 1's row to be on screen in Genesis 5")
+        let row = verseRow(app, verse: 1)
+
+        // dx: 0.15 lands within the left-hand tap zone (< width * 0.3).
+        row.coordinate(withNormalizedOffset: CGVector(dx: 0.15, dy: 0.5)).tap()
+
+        XCTAssertTrue(app.staticTexts["Chapter 4"].waitForExistence(timeout: 5),
+                      "a real tap landing on a verse row's own rendered text, inside the left tap zone, must now " +
+                      "go back a chapter")
     }
 
     // MARK: - Nav dropdown priority: tap-outside-to-dismiss must not also change chapter
