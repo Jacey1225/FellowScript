@@ -260,39 +260,70 @@ final class BibleReaderViewTapOutsideDismissRegressionTests: XCTestCase {
                         "the old swipe-to-change-chapter DragGesture must be removed, not left alongside the new tap zones")
     }
 
-    func test_chapterTapZones_wireLeftAndRightToChangeChapter() throws {
-        // Regression guard for task 20260923-bible-tap-chapter-nav: proves
-        // the reading area is wired to the new left/right tap-zone
-        // mechanism, reusing changeChapter(forward:) unchanged, rather than
-        // the removed DragGesture above.
+    func test_chapterTapGesture_isAttachedDirectlyToTheScrollView_notBackgroundOrOverlay() throws {
+        // Regression guard for task 20260923-bible-tap-nav-not-working: the
+        // original `.background(chapterTapZones)` wiring never actually
+        // received touches at runtime (a ScrollView's backing UIScrollView
+        // claims every touch in its own frame via UIKit's front-to-back
+        // hit-testing, so a sibling laid down *behind* it via `.background()`
+        // never sees them). The fix attaches tap detection directly to the
+        // ScrollView itself via `.gesture(...)`, which must not be
+        // reintroduced as a `.background`/`.overlay`.
         let source = try readSource()
-        XCTAssertTrue(source.contains(".background(chapterTapZones)"),
-                      "the verse ScrollView must be backed by the new chapterTapZones tap-zone layer")
-        guard let zonesRange = source.range(of: "private var chapterTapZones") else {
-            XCTFail("chapterTapZones computed view not found")
+        // Only counts an actual modifier CALL (a source line that, once
+        // trimmed, starts with the modifier itself) -- this file's own
+        // explanatory comment mentioning the old wiring by name (documenting
+        // *why* it was replaced) must not itself trip this check, mirroring
+        // RepresentativeScreenKeyboardDismissSourceTests'
+        // test_noteEditorView_noLongerHasItsOwnBespokeScrollDismissesKeyboardCall
+        // above.
+        let hasOldBackgroundCallSite = source
+            .components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .contains { $0.hasPrefix(".background(chapterTapZones)") }
+        XCTAssertFalse(hasOldBackgroundCallSite,
+                       "the old .background(chapterTapZones) wiring (confirmed non-functional at runtime) must not come back")
+        XCTAssertTrue(source.contains(".gesture(chapterTapGesture(width: geo.size.width))"),
+                      "chapter-change tap detection must be attached directly to the ScrollView via .gesture(...), not .background()/.overlay()")
+    }
+
+    func test_chapterTapGesture_wiresLeftAndRightToChangeChapter() throws {
+        // Regression guard for task 20260923-bible-tap-chapter-nav /
+        // 20260923-bible-tap-nav-not-working: proves the reading area is
+        // wired to the (fixed) tap-gesture mechanism, reusing
+        // changeChapter(forward:) unchanged, rather than the removed
+        // DragGesture above or the removed non-functional background zones.
+        let source = try readSource()
+        guard let gestureRange = source.range(of: "private func chapterTapGesture") else {
+            XCTFail("chapterTapGesture method not found")
             return
         }
-        let body = String(source[zonesRange.lowerBound...])
+        let body = String(source[gestureRange.lowerBound...])
         XCTAssertTrue(body.contains("changeChapter(forward: false)"),
                       "the left zone must call changeChapter(forward: false) to go to the previous chapter")
         XCTAssertTrue(body.contains("changeChapter(forward: true)"),
                       "the right zone must call changeChapter(forward: true) to advance to the next chapter")
-        XCTAssertTrue(body.contains(".allowsHitTesting(!showNavSheet)"),
-                      "the tap zones must still be suppressed while the nav dropdown is open, mirroring the old drag gesture's own showNavSheet guard")
+        XCTAssertTrue(body.contains("guard !showNavSheet"),
+                      "the tap gesture must still be suppressed while the nav dropdown is open, mirroring the old drag gesture's own showNavSheet guard")
     }
 
-    func test_chapterTapZones_carryAccessibilityLabels() throws {
+    func test_chapterTapZoneAccessibilityMarkers_carryLabelsAndDoNotBlockRealTouches() throws {
         // Preference profile Q14.1/Q14.2: the tap zones must not be silent,
         // gesture-only regions — each carries its own label/hint even though
         // BibleNavDropdown remains the primary accessible navigation path.
+        // Also guards against reintroducing the original bug class: these
+        // markers must stay non-hit-testable so they can never again shadow
+        // either the chapter-change gesture or VerseRow's own tap/long-press.
         let source = try readSource()
-        guard let zonesRange = source.range(of: "private var chapterTapZones") else {
-            XCTFail("chapterTapZones computed view not found")
+        guard let zonesRange = source.range(of: "private func chapterTapZoneAccessibilityMarkers") else {
+            XCTFail("chapterTapZoneAccessibilityMarkers method not found")
             return
         }
         let body = String(source[zonesRange.lowerBound...])
         XCTAssertTrue(body.contains("\"Previous chapter\""), "the left zone must carry a VoiceOver label")
         XCTAssertTrue(body.contains("\"Next chapter\""), "the right zone must carry a VoiceOver label")
+        XCTAssertTrue(body.contains(".allowsHitTesting(false)"),
+                      "the accessibility markers must never claim real touches, only expose themselves to VoiceOver")
     }
 
     func test_navPanelAnimation_respectsReduceMotion() throws {

@@ -388,76 +388,108 @@ struct BibleReaderView: View {
                     ProgressView()
                         .tint(Theme.gold)
                 } else {
-                    ScrollViewReader { proxy in
-                        ScrollView(.vertical, showsIndicators: false) {
-                            LazyVStack(alignment: .leading, spacing: 0) {
-                                // Book label + chapter heading (mirrors card-book-label / card-title)
-                                VStack(alignment: .leading, spacing: Theme.spacingXS) {
-                                    Text(vm.curBook.uppercased())
-                                        .font(.inter(Theme.fontXXS))
-                                        .tracking(5)
-                                        .foregroundColor(Theme.goldDim)
-                                    Text("Chapter \(vm.curChapter)")
-                                        .font(.playfair(Theme.fontDisplayXL))
-                                        .foregroundColor(Theme.bibleText)
-                                }
-                                .id("chapterTop")
-                                .padding(.horizontal, Theme.spacingLG)
-                                .padding(.top, Theme.spacingMD)
-                                .padding(.bottom, Theme.spacingLG)
-
-                                // Verse list
-                                ForEach(vm.verses, id: \.num) { v in
-                                    VerseRow(
-                                        num:           v.num,
-                                        text:          v.text,
-                                        fontSize:      fontSize,
-                                        highlightHex:  vm.isHighlighted(verse: v.num),
-                                        isSelected:    selectedVerse == v.num
-                                    )
-                                    .id(v.num)
-                                    .onTapGesture { selectedVerse = (selectedVerse == v.num) ? nil : v.num }
-                                    .contextMenu {
-                                        verseContextMenu(verse: v.num, text: v.text)
+                    // Task 20260923-bible-tap-nav-not-working: the previous
+                    // `.background(chapterTapZones)` wiring (task
+                    // 20260923-bible-tap-chapter-nav) never actually worked at
+                    // runtime — confirmed live in Simulator that tapping
+                    // either edge zone did nothing. Root cause: ScrollView is
+                    // backed by a real, interactive UIScrollView that spans
+                    // its own full frame; UIKit's front-to-back hit-testing
+                    // hands ANY touch within that frame to the UIScrollView
+                    // itself before a sibling view attached *behind* it via
+                    // `.background()` ever gets a look — not just where
+                    // verse content happens to be visually absent, but
+                    // everywhere in the zone, which is why the feature was
+                    // totally non-functional rather than just an edge case.
+                    //
+                    // Fix: attach tap detection directly to the ScrollView
+                    // itself via `.gesture(...)` (not `.background()`/
+                    // `.overlay()`), computing left/right/neutral zone
+                    // membership from the tap's own x-coordinate (needs the
+                    // available width, hence the wrapping GeometryReader).
+                    // SwiftUI's default gesture-disambiguation rule gives a
+                    // descendant view's own gesture (VerseRow's
+                    // `.onTapGesture`, line ~419) priority over an ancestor's
+                    // `.gesture(...)` at the same touch point, so verse
+                    // selection/long-press still wins anywhere a verse row is
+                    // actually rendered — confirmed live in Simulator that
+                    // this coexists correctly (verse taps inside either
+                    // zone's horizontal band still select the verse; taps in
+                    // true empty space within a zone now actually change
+                    // chapter, which never happened before).
+                    GeometryReader { geo in
+                        ScrollViewReader { proxy in
+                            ScrollView(.vertical, showsIndicators: false) {
+                                LazyVStack(alignment: .leading, spacing: 0) {
+                                    // Book label + chapter heading (mirrors card-book-label / card-title)
+                                    VStack(alignment: .leading, spacing: Theme.spacingXS) {
+                                        Text(vm.curBook.uppercased())
+                                            .font(.inter(Theme.fontXXS))
+                                            .tracking(5)
+                                            .foregroundColor(Theme.goldDim)
+                                        Text("Chapter \(vm.curChapter)")
+                                            .font(.playfair(Theme.fontDisplayXL))
+                                            .foregroundColor(Theme.bibleText)
                                     }
-                                    .accessibilityLabel("Verse \(v.num): \(v.text)")
+                                    .id("chapterTop")
+                                    .padding(.horizontal, Theme.spacingLG)
+                                    .padding(.top, Theme.spacingMD)
+                                    .padding(.bottom, Theme.spacingLG)
+
+                                    // Verse list
+                                    ForEach(vm.verses, id: \.num) { v in
+                                        VerseRow(
+                                            num:           v.num,
+                                            text:          v.text,
+                                            fontSize:      fontSize,
+                                            highlightHex:  vm.isHighlighted(verse: v.num),
+                                            isSelected:    selectedVerse == v.num
+                                        )
+                                        .id(v.num)
+                                        .onTapGesture { selectedVerse = (selectedVerse == v.num) ? nil : v.num }
+                                        .contextMenu {
+                                            verseContextMenu(verse: v.num, text: v.text)
+                                        }
+                                        .accessibilityLabel("Verse \(v.num): \(v.text)")
+                                    }
+                                }
+                                .padding(.bottom, 60)
+                            }
+                            .onChange(of: vm.curChapter) { _, _ in
+                                proxy.scrollTo("chapterTop", anchor: .top)
+                                // Task 20260914-dictation-tts: a chapter switch
+                                // mid-speech must not keep reading the old
+                                // chapter's text under the new chapter's UI (spec
+                                // acceptance criteria) — stop rather than
+                                // auto-restart for the new chapter, matching
+                                // design step 1's "no separate interrupted visual
+                                // state, same transition back to idle as a
+                                // manual toggle-stop" note.
+                                speechController.stop()
+                            }
+                            .onChange(of: vm.curBook) { _, _ in
+                                proxy.scrollTo("chapterTop", anchor: .top)
+                                // Covers switching book while staying on the same
+                                // chapter number (e.g. chapter 1 → chapter 1 of a
+                                // different book) — vm.curChapter's own onChange
+                                // above wouldn't fire in that case since the
+                                // value itself didn't change, but the underlying
+                                // verse text did.
+                                speechController.stop()
+                            }
+                            .onChange(of: pendingScrollVerse) { _, verse in
+                                guard let v = verse else { return }
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                                    withAnimation { proxy.scrollTo(v, anchor: .center) }
+                                    selectedVerse      = v
+                                    pendingScrollVerse = nil
                                 }
                             }
-                            .padding(.bottom, 60)
+                            .gesture(chapterTapGesture(width: geo.size.width))
                         }
-                        .onChange(of: vm.curChapter) { _, _ in
-                            proxy.scrollTo("chapterTop", anchor: .top)
-                            // Task 20260914-dictation-tts: a chapter switch
-                            // mid-speech must not keep reading the old
-                            // chapter's text under the new chapter's UI (spec
-                            // acceptance criteria) — stop rather than
-                            // auto-restart for the new chapter, matching
-                            // design step 1's "no separate interrupted visual
-                            // state, same transition back to idle as a
-                            // manual toggle-stop" note.
-                            speechController.stop()
-                        }
-                        .onChange(of: vm.curBook) { _, _ in
-                            proxy.scrollTo("chapterTop", anchor: .top)
-                            // Covers switching book while staying on the same
-                            // chapter number (e.g. chapter 1 → chapter 1 of a
-                            // different book) — vm.curChapter's own onChange
-                            // above wouldn't fire in that case since the
-                            // value itself didn't change, but the underlying
-                            // verse text did.
-                            speechController.stop()
-                        }
-                        .onChange(of: pendingScrollVerse) { _, verse in
-                            guard let v = verse else { return }
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                                withAnimation { proxy.scrollTo(v, anchor: .center) }
-                                selectedVerse      = v
-                                pendingScrollVerse = nil
-                            }
-                        }
+                        .overlay(chapterTapZoneAccessibilityMarkers(width: geo.size.width))
                     }
                     .opacity(contentOpacity)
-                    .background(chapterTapZones)
                 }
 
                 // Drop-down nav overlay — slides in from top. Closing was
@@ -722,24 +754,18 @@ struct BibleReaderView: View {
         }
     }
 
-    // Task 20260923-bible-tap-chapter-nav: replaces the previous
+    // Task 20260923-bible-tap-chapter-nav: replaced the previous
     // DragGesture(minimumDistance: 30, ...) swipe with left/right tap
     // zones, reusing changeChapter(forward:) unchanged (same
     // .easeInOut cross-fade, same nextChapter()/prevChapter() boundary
-    // logic). Laid down as a `.background` of the verse ScrollView
-    // rather than an `.overlay` on top of it: SwiftUI hit-tests the
-    // front-most gesture-bearing view at a given point first, so
-    // VerseRow's own `.onTapGesture` (line ~419) — which sits in front
-    // of this background as regular ScrollView content — continues to
-    // win wherever a verse row actually occupies that point. That is
-    // what keeps verse selection working "inside" either zone's
-    // horizontal band (spec acceptance criteria): a tap only reaches
-    // this background layer where there's no verse row underneath it
-    // (the chapter-heading block, inter-row padding, below the last
-    // verse).
+    // logic). Originally laid down as a `.background` of the verse
+    // ScrollView — task 20260923-bible-tap-nav-not-working found that
+    // wiring never actually worked (see the comment above this screen's
+    // `body` GeometryReader for the root cause) and replaced it with the
+    // `.gesture(...)`-on-the-ScrollView-itself approach below.
     //
-    // Zone width: 30% of screen width per edge, leaving a 40% neutral
-    // middle band that intentionally carries no gesture at all — this
+    // Zone width: 30% of `width` per edge, leaving a 40% neutral middle
+    // band that intentionally triggers no chapter change at all — this
     // is where verse text is most likely to sit, so a near-miss verse
     // tap doesn't fall through and misfire a chapter change. Confirmed
     // live in Simulator (iPhone 16 / iPhone SE widths) that 30% per
@@ -748,48 +774,70 @@ struct BibleReaderView: View {
     // margins (Theme.spacingLG) keep the neutral band clear of verse
     // text at the smallest supported width too.
     //
-    // Uses `Color.black.opacity(0.0001)` rather than `Color.clear` for
-    // the two gestured zones — Color.clear is not hit-testable in
-    // SwiftUI (same workaround Theme.swift's TapOutsideDismissCatcher
-    // already documents/uses). The neutral middle band stays
-    // `Color.clear` on purpose so it never captures a tap.
-    //
-    // Explicitly disabled while `showNavSheet` is open: TapOutsideDismissCatcher
-    // already renders above this ZStack layer (zIndex 9) and would
-    // intercept those taps first regardless, but this mirrors the old
-    // DragGesture's own `guard !showNavSheet else { return }` so the
+    // Explicitly guarded by `!showNavSheet`: TapOutsideDismissCatcher
+    // already renders above this ZStack layer (zIndex 9) and, being a
+    // full-screen sibling rather than something attached behind another
+    // interactive view, correctly intercepts those taps first regardless
+    // — but this mirrors the old DragGesture's own
+    // `guard !showNavSheet else { return }` so the
     // no-chapter-change-under-the-open-dropdown behavior stays explicit
     // rather than incidental.
-    //
+    private func chapterTapGesture(width: CGFloat) -> some Gesture {
+        SpatialTapGesture()
+            .onEnded { value in
+                guard !showNavSheet, width > 0 else { return }
+                let x = value.location.x
+                if x < width * 0.3 {
+                    changeChapter(forward: false)
+                } else if x > width * 0.7 {
+                    changeChapter(forward: true)
+                }
+                // Middle 40% is the intentional neutral band above — no
+                // chapter change.
+            }
+    }
+
     // Q14.1/Q14.2 (accessibility): these zones aren't a VoiceOver user's
     // primary path to navigate chapters — BibleNavDropdown (the
     // book/chapter picker) already satisfies that — but each zone still
     // carries its own label/hint/button trait rather than being a
-    // silent gesture-only region.
-    private var chapterTapZones: some View {
-        GeometryReader { geo in
-            HStack(spacing: 0) {
-                Color.black.opacity(0.0001)
-                    .frame(width: geo.size.width * 0.3)
-                    .contentShape(Rectangle())
-                    .onTapGesture { changeChapter(forward: false) }
-                    .accessibilityLabel("Previous chapter")
-                    .accessibilityHint("Goes back to the previous chapter")
-                    .accessibilityAddTraits(.isButton)
+    // silent gesture-only region, matching the original tap-zone design.
+    //
+    // `.allowsHitTesting(false)` on the whole HStack keeps these markers
+    // fully transparent to real touches, so they can never re-introduce
+    // the background-behind-ScrollView bug above (touches pass straight
+    // through to whatever's underneath, chapterTapGesture included) and
+    // never shadow VerseRow's own tap/long-press either. VoiceOver still
+    // finds them: it navigates by the accessibility tree's frame/action
+    // metadata rather than by UIKit touch hit-testing, so it isn't
+    // subject to the same front-to-back rule that broke real touches —
+    // confirmed by this project's TapOutsideDismissCatcher precedent
+    // (Theme.swift), which is also `.accessibilityHidden` yet coexists
+    // fine, and by `.accessibilityAction` being the documented way to
+    // wire a VoiceOver double-tap to a view that carries no gesture of
+    // its own.
+    private func chapterTapZoneAccessibilityMarkers(width: CGFloat) -> some View {
+        HStack(spacing: 0) {
+            Color.clear
+                .frame(width: width * 0.3)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Previous chapter")
+                .accessibilityHint("Goes back to the previous chapter")
+                .accessibilityAddTraits(.isButton)
+                .accessibilityAction { changeChapter(forward: false) }
 
-                Color.clear
-                    .frame(maxWidth: .infinity)
+            Color.clear
+                .frame(maxWidth: .infinity)
 
-                Color.black.opacity(0.0001)
-                    .frame(width: geo.size.width * 0.3)
-                    .contentShape(Rectangle())
-                    .onTapGesture { changeChapter(forward: true) }
-                    .accessibilityLabel("Next chapter")
-                    .accessibilityHint("Advances to the next chapter")
-                    .accessibilityAddTraits(.isButton)
-            }
+            Color.clear
+                .frame(width: width * 0.3)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Next chapter")
+                .accessibilityHint("Advances to the next chapter")
+                .accessibilityAddTraits(.isButton)
+                .accessibilityAction { changeChapter(forward: true) }
         }
-        .allowsHitTesting(!showNavSheet)
+        .allowsHitTesting(false)
     }
 
     private func colorName(_ hex: String) -> String {
