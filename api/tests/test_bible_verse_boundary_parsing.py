@@ -3,40 +3,65 @@ testing step 3): `bible_text.py`'s `_VERSE_SPLIT_RE`/`_HEAD_RE` widened
 character class (curly opening single quote, opening parenthesis, plus the
 `(?<!\\d)` guard) alongside the pre-existing curly-opening-double-quote case.
 
+**Updated for task 20260927-esv-bible-source-migration (testing step 2):**
+this file's real-instance assertions originally hardcoded ESV's exact
+wording/structure. ESV has since been fully replaced by the public-domain
+World English Bible (WEB), sourced from `seven1m/bible_api`'s USFX dataset
+(see `web_source.py`/`generate_bible_data.py`) -- a wording/structure
+change, not a parsing regression: the verse-boundary split logic itself was
+confirmed unchanged and still passes its own structural checks (see
+`test_web_bible_migration_regression.py` for this migration's own bug-class
+regression coverage: John/Mark disputed-passage indexing, the 11-book
+placeholder fix, heading-swallowing, and the newly-found digit-gluing bug).
+The specific fixes made here:
+  - Genesis 8:16's expected wording updated to real WEB text (WEB renders
+    the passage differently from ESV; the split point is what this test
+    verifies, not the exact prose).
+  - Genesis 22:23 no longer opens with an opening parenthesis under WEB (WEB
+    phrases that verse as a plain declarative sentence) -- replaced with
+    Deuteronomy 2:9/2:10, a real WEB instance that does open on "(", so the
+    opening-parenthesis-opener path still has real-data coverage.
+  - The old "Mark has an 18th/John has a 23rd orphan array entry" assertions
+    inverted ESV-scrape-bug artifacts that no longer exist under the WEB
+    pipeline (that pipeline extracts by real `<c>`/`<v>` structural markers,
+    so the orphan-entry bug class is structurally impossible) -- replaced
+    with an assertion that no such orphan entry exists, which is the fix
+    working as intended, not a regression.
+  - The Genesis 31:55 footnote-bracket ("[147]") collision check no longer
+    applies: WEB generation strips footnote subtrees entirely at the
+    source (confirmed: zero literal "[" characters appear anywhere in the
+    generated corpus), so there is no footnote-marker text left to collide
+    with an opening-bracket verse-splitter class at all under this source.
+    Replaced with a direct corpus-wide confirmation of that fact.
+  - The full-corpus parity scan's `known_artifact_chapters` skip-list
+    (`Mark` idx 17, `John` idx 8/9) targeted the old ESV pipeline's orphan
+    array slots. Under WEB, Mark has only 17 entries total (idx 17 is out of
+    range -- harmless leftover) but John has 22 entries, meaning idx 8 and 9
+    are now John's own *real* chapters 8 and 9 -- keeping the skip would
+    silently exclude real chapters from the parity scan. Removed.
+
 Covers:
   1. The specific real-data regression case named in the intake spec
      (Genesis 8:16, curly-double-quote opener) still resolves correctly.
   2. The newly-added curly-single-quote and opening-parenthesis openers
-     recover a verse that previously merged into its predecessor (real
-     `bible.json` instances: Genesis 22:23, Genesis 27:7 per backend.json's
-     own summary).
+     recover a verse that previously merged into its predecessor (real WEB
+     `bible.json` instances: Genesis 8:16, Deuteronomy 2:10).
   3. No regression to the `(?<!\\d)` guard, footnote-marker/section-header
      handling, or the documented "unparseable chapter -> None" fallback
      contract.
-  4. A full-corpus scan (all 66 books) confirming: (a) the specific curly-
-     quote/curly-single-quote/paren gap this task targets is fully closed on
-     every reachable, well-formed chapter, and (b) every remaining
-     backend-vs-client-parser divergence traces back to one of exactly two
-     pre-existing, out-of-scope conditions predating this task -- verse text
-     that opens with a lowercase letter (`bible_text.py`'s own docstring
-     already documents this "enjambed" cosmetic gap; unrelated to this
-     task's punctuation-class fix) and the two disputed "longer ending"
-     appendix/fragment chapters (Mark's index-17 appendix, John's
-     index-8/9 pericope-adulterae fragments) that `_CHAPTER_START_RE`
-     already couldn't open before this task, for a reason unrelated to the
-     verse-boundary character class -- so this task introduces no new,
+  4. A full-corpus scan (all 66 books, every chapter, no skip-list)
+     confirming every backend-vs-client-parser divergence traces back to
+     exactly one pre-existing, out-of-scope condition predating this task --
+     verse text that opens with a lowercase letter (`bible_text.py`'s own
+     docstring already documents this "enjambed" cosmetic gap; unrelated to
+     this task's punctuation-class fix) -- so this task introduces no new,
      unexplained divergence from the client parsers.
   5. The opening-double-square-bracket (`[`) marginal case the frontend gate
-     found (Mark 16:9, John 7:53) does NOT need to be mirrored into this
-     module: those two chapters are already unopenable by
-     `_CHAPTER_START_RE` (a pre-existing, unrelated limitation), so adding
-     `[` here would recover nothing for them -- and would actively regress
-     38 other, unrelated, real chapters where a verse number is immediately
-     followed by a footnote marker (e.g. "55[147] Early in the morning...",
-     Genesis 31:55) because, unlike the client parsers, this module never
-     strips footnote markers before splitting verses, so `[` would wrongly
-     treat the footnote's own bracket as a verse-opener and leave the raw
-     "[147]" citation baked into the recovered verse's text.
+     found under the old ESV data does NOT need to be mirrored into this
+     module: under WEB, footnotes (the only source of literal "[" brackets
+     in the old data) are stripped entirely at generation, so there is no
+     bracket anywhere in the corpus for `[` to collide with in the first
+     place -- confirmed directly rather than assumed.
 
 Run:  cd api && ../.venv/bin/python tests/test_bible_verse_boundary_parsing.py
 """
@@ -65,13 +90,13 @@ def test_genesis_8_16_curly_double_quote():
     text = bible_text_module.verse_text("Genesis", 8, 16)
     check(
         "Genesis 8:16 (curly-double-quote opener) resolves independently",
-        text is not None and text.startswith("“Go out from the ark"),
+        text is not None and text.startswith("“Go out of the ship"),
         repr(text),
     )
     text15 = bible_text_module.verse_text("Genesis", 8, 15)
     check(
         "Genesis 8:15 no longer absorbs verse 16's text",
-        text15 is not None and "Go out from the ark" not in text15,
+        text15 is not None and "Go out of the ship" not in text15,
         repr(text15),
     )
 
@@ -79,19 +104,21 @@ def test_genesis_8_16_curly_double_quote():
 # ── 2. Newly-added curly-single-quote and paren openers ─────────────────────
 
 def test_curly_single_quote_and_paren_openers_real_instances():
-    # Genesis 22:23: "...Bethuel." 23(Bethuel fathered Rebekah)." -- an
-    # opening-parenthesis verse.
-    v23 = bible_text_module.verse_text("Genesis", 22, 23)
+    # Deuteronomy 2:9-10: "...for a possession.” 10(The Emim lived
+    # therein before...)" -- a real WEB opening-parenthesis verse. (Genesis
+    # 22:23, the ESV-era real instance for this case, no longer opens with a
+    # parenthesis under WEB's phrasing -- see this module's docstring.)
+    v10 = bible_text_module.verse_text("Deuteronomy", 2, 10)
     check(
-        "Genesis 22:23 (opening-parenthesis opener) resolves independently",
-        v23 is not None and v23.startswith("("),
-        repr(v23),
+        "Deuteronomy 2:10 (opening-parenthesis opener) resolves independently",
+        v10 is not None and v10.startswith("("),
+        repr(v10),
     )
-    v22 = bible_text_module.verse_text("Genesis", 22, 22)
+    v9 = bible_text_module.verse_text("Deuteronomy", 2, 9)
     check(
-        "Genesis 22:22 no longer absorbs verse 23's parenthetical text",
-        v22 is not None and "fathered Rebekah" not in v22,
-        repr(v22),
+        "Deuteronomy 2:9 no longer absorbs verse 10's parenthetical text",
+        v9 is not None and "Emim" not in v9,
+        repr(v9),
     )
 
 
@@ -143,47 +170,56 @@ def test_no_regression_footnote_and_head_and_first_verse():
 
 
 def test_bracket_not_added_is_correct_not_a_gap():
-    # Confirm the reasoning documented above with a live check: bracket-class
-    # absence doesn't cost us the two real cited cases, because those
-    # chapters are already unparseable for an unrelated, pre-existing
-    # reason (_CHAPTER_START_RE requires the blob to open "chapter:1").
+    # Under WEB, the ESV-era orphan-array-entry bug this test originally
+    # documented no longer exists at all: the WEB/USFX pipeline extracts by
+    # real <c>/<v> structural markers, so a disputed passage can never split
+    # off into its own array slot. Confirm the fix directly (no orphan
+    # entry, exact expected entry counts) rather than the old bug's
+    # continued presence.
     books = bible_text_module._load_raw()
     mark_chapters = books.get("Mark", [])
     john_chapters = books.get("John", [])
 
-    check("Mark has the expected extra (index-17) appendix entry in bible.json", len(mark_chapters) == 18, len(mark_chapters))
-    if len(mark_chapters) == 18:
-        check(
-            "Mark's appendix chapter (idx 17) is still unparseable by _CHAPTER_START_RE (pre-existing, unrelated to this task)",
-            bible_text_module._parse_chapter(mark_chapters[17]) is None,
-            mark_chapters[17][:60],
-        )
+    check("Mark has no orphan appendix entry (exactly 17: placeholder + 16 real chapters)", len(mark_chapters) == 17, len(mark_chapters))
+    check("John has no orphan fragment entries (exactly 22: placeholder + 21 real chapters)", len(john_chapters) == 22, len(john_chapters))
 
-    check("John has the expected extra fragment entries in bible.json", len(john_chapters) == 23, len(john_chapters))
-    if len(john_chapters) == 23:
-        check(
-            "John's pericope-adulterae fragment (idx 9) is still unparseable by _CHAPTER_START_RE (pre-existing, unrelated to this task)",
-            bible_text_module._parse_chapter(john_chapters[9]) is None,
-            john_chapters[9][:60],
-        )
+    # Mark 16's "longer ending" and John 8's half of the disputed pericope
+    # (the passages that caused the old orphan entries) now parse as
+    # ordinary verses inside their real home chapters.
+    check(
+        "Mark 16 (containing the longer ending, 16:9-20) parses normally as an ordinary chapter",
+        len(mark_chapters) > 16 and bible_text_module._parse_chapter(mark_chapters[16]) is not None,
+        mark_chapters[16][:60] if len(mark_chapters) > 16 else None,
+    )
+    check(
+        "John 8 (containing 8:1-11, the back half of the disputed pericope) parses normally as an ordinary chapter",
+        len(john_chapters) > 8 and bible_text_module._parse_chapter(john_chapters[8]) is not None,
+        john_chapters[8][:60] if len(john_chapters) > 8 else None,
+    )
 
-    # And confirm adding "[" would have regressed real, unrelated chapters
-    # (footnote-marker-adjacent verse numbers) since this module doesn't
-    # strip footnote markers before splitting -- Genesis 31:55 is one real
-    # instance ("...country. 55[147] Early in the morning Laban arose...").
+    # And confirm "[" staying excluded from this module's verse-split class
+    # costs nothing under WEB: footnotes (the old data's only source of
+    # literal "[147]"-style brackets) are stripped entirely at generation
+    # for this source, so there is no bracket anywhere in the corpus left
+    # for "[" to collide with -- Genesis 31:55, the ESV-era real instance
+    # cited here previously, no longer carries one.
     gen31 = books.get("Genesis", [])[31]
-    hypothetical_re = re.compile(r"(?<!\d)(\d+)(?=[A-Z“‘(\[])")
-    cleaned = bible_text_module._HEAD_RE.sub("", gen31)
-    m = bible_text_module._CHAPTER_START_RE.match(cleaned)
-    check("Genesis 31 chapter blob is well-formed (sanity check)", bool(m), gen31[:40])
-    if m:
-        real_parts = bible_text_module._VERSE_SPLIT_RE.split(m.group(2))
-        hypothetical_parts = hypothetical_re.split(m.group(2))
-        check(
-            "adding '[' to this module's class would wrongly split on a footnote marker's bracket (Genesis 31:55), confirming '[' should stay excluded here",
-            "55" in hypothetical_parts and "55" not in real_parts,
-            (real_parts.count("55"), hypothetical_parts.count("55")),
-        )
+    check(
+        "Genesis 31 chapter blob carries no literal '[' (footnotes are stripped entirely under WEB)",
+        "[" not in gen31,
+        gen31[:200],
+    )
+    bracket_chapters = [
+        (book, idx)
+        for book, chapters in books.items()
+        for idx in range(1, len(chapters))
+        if "[" in chapters[idx]
+    ]
+    check(
+        "no chapter anywhere in the corpus contains a literal '[' (confirms '[' would recover nothing if added to this module's class)",
+        bracket_chapters == [],
+        bracket_chapters[:10],
+    )
 
 
 # ── 4. Full-corpus scan: confirm no unexplained divergence remains ─────────
@@ -228,8 +264,15 @@ def test_full_corpus_parity_no_unexplained_divergence():
 
     unexplained = []
     lowercase_explained = 0
-    known_artifact_chapters = {("Mark", 17), ("John", 8), ("John", 9)}
-    none_mismatches_outside_known = []
+    # NOTE: the old ESV-era skip-list here (`{("Mark", 17), ("John", 8),
+    # ("John", 9)}`) targeted the old pipeline's own orphan array slots
+    # (John's pericope-adulterae fragment, Mark's appendix entry). Under
+    # WEB, Mark has no idx-17 entry at all (harmless if kept, but stale) and
+    # John's idx 8/9 are now that book's own *real* chapters 8 and 9 --
+    # keeping the skip would silently exclude real chapters from this scan.
+    # Removed; every chapter is scanned for real now (confirmed: 0 divergence
+    # remains once removed).
+    none_mismatches = []
     total_chapters = 0
 
     for book, chapters in books.items():
@@ -239,26 +282,9 @@ def test_full_corpus_parity_no_unexplained_divergence():
             backend_verses = bible_text_module._parse_chapter(blob)
             client_verses = _client_parse_chapter(blob)
 
-            if (book, idx) in known_artifact_chapters:
-                # John idx 8 ("8:11.][41]HEAD:: The Woman Caught in
-                # Adultery") is the other half of the same pre-existing
-                # pericope-adulterae data-splitting artifact as John idx 9
-                # (see test_bracket_not_added_is_correct_not_a_gap): upstream
-                # bible.json generation mis-split John 7's closing footnote
-                # ("...do not include 7:53-8:11.]...") into its own tiny
-                # bogus "chapter" entry, whose leading digits
-                # (_CHAPTER_START_RE greedily matching "8:1" out of "8:11")
-                # produce nonsense verse numbers in both parsers that
-                # disagree with each other for reasons wholly unrelated to
-                # verse-boundary punctuation. Pre-existing, out of this
-                # task's scope (a bible.json content/generation issue, not a
-                # parsing-logic one) -- skip rather than let it masquerade
-                # as a punctuation-class regression.
-                continue
-
             if backend_verses is None or client_verses is None:
                 if backend_verses != client_verses:
-                    none_mismatches_outside_known.append((book, idx))
+                    none_mismatches.append((book, idx))
                 continue
 
             bset, cset = set(backend_verses), set(client_verses)
@@ -276,9 +302,9 @@ def test_full_corpus_parity_no_unexplained_divergence():
 
     check(f"scanned all {total_chapters} chapters across 66 books", total_chapters > 1000, total_chapters)
     check(
-        "no divergence outside the two known pre-existing appendix/fragment chapters (Mark idx17, John idx8/9)",
-        len(none_mismatches_outside_known) == 0,
-        none_mismatches_outside_known,
+        "no None/None-mismatch divergence anywhere in the corpus (no skip-list needed under WEB)",
+        len(none_mismatches) == 0,
+        none_mismatches,
     )
     check(
         "every remaining backend-vs-client divergence is explained by the documented pre-existing lowercase-opener gap",

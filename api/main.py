@@ -174,6 +174,21 @@ async def lifespan(_: FastAPI):
     from backend.interactions.devotion import validate_join_window_config
     validate_join_window_config()
 
+    # Eager Bible data validation (task 20260927-esv-bible-source-migration,
+    # revision 2) -- same rationale as every validate_*_config() call above.
+    # `data/bible.json` is now generated from a vendored, pinned World
+    # English Bible source (backend/bibleHandling/generate_bible_data.py,
+    # backend/bibleHandling/web_source.py) rather than scraped from a PDF or
+    # fetched from api.esv.org; `generate_bible_data.py`'s own `main()`
+    # already runs this same check as a post-generation self-check, and it
+    # was confirmed clean (all 66 books, 1,189 chapters) against the actual
+    # regenerated, shipped `bible.json` this task produced. Wiring it in
+    # here too means a future regeneration that somehow reintroduces a
+    # malformed chapter fails the deploy loudly at boot, instead of
+    # degrading every highlight preview/push silently in production.
+    from backend.interactions.bible_text import validate_bible_data
+    validate_bible_data()
+
     from backend.interactions.scheduler import start_scheduler
     start_scheduler()
     # WS connection-liveness heartbeat (task

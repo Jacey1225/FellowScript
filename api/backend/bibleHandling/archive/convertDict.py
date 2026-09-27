@@ -1,3 +1,21 @@
+# RETIRED (task 20260927-esv-bible-source-migration): superseded by
+# ../generate_bible_data.py, which regenerates data/bible.json from a
+# vendored World English Bible source (../web_source.py, see
+# ../../../../data/vendor/SOURCE.md) instead of scraping
+# data/archive/ESV Bible.pdf -- correctly chapter-indexed, no orphan array
+# entries from disputed/bracketed passages -- see generate_bible_data.py's
+# own docstring for the full root-cause writeup. (An earlier revision of
+# this same migration briefly pointed the generator at api.esv.org instead;
+# that path was itself superseded before shipping -- see
+# ../archive/esv_client.py and docs/legal/archive/esv-license-status.md.)
+# Kept here, frozen, for history only -- never imported by anything live.
+# Its dependencies (fitz/PyMuPDF, pandas, spacy) were already absent from
+# requirements.txt before this move (this tool was run ad hoc, never CI/
+# deploy-tracked), so nothing needed to change there. Moved one directory
+# deeper (into archive/, alongside the prototype notebook it itself
+# replaced) as part of the retirement -- `main_path`'s "three directories up"
+# comment below is now stale (it would resolve to api/backend/ instead of
+# the repo root) and is not worth fixing on dead code; do not run this file.
 import json
 import fitz
 import pandas as pd

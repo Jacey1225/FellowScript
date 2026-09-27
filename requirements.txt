@@ -59,6 +59,14 @@ awslabs.cloudwatch-mcp-server==0.1.8
 # 20260918-admin-activity-monitoring). Uses the non-interactive "Agg"
 # backend only (no display on this server); pulls in numpy transitively.
 matplotlib==3.11.2
+# backend/bibleHandling/web_source.py -- parses the vendored World English
+# Bible USFX source (task 20260927-esv-bible-source-migration) with external
+# entity resolution disabled, as ordinary secure practice for parsing an
+# externally-sourced XML document (safe even though the file is vendored,
+# not fetched live at request time). Was already present transitively (via
+# py-serializable) but not previously imported directly by this codebase;
+# pinned explicitly now that it's a real, direct import.
+defusedxml==0.7.1
 # zoneinfo falls back to this package, per key, whenever a name isn't found
 # under the system's /usr/share/zoneinfo (confirmed on the EC2 deploy target:
 # its tzdata package ships only canonical zone names, not IANA's ~150
