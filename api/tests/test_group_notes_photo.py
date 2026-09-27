@@ -191,9 +191,17 @@ def main():
             url_a, url_a2 = note_a.get("profile_photo_url", ""), (note_a2 or {}).get("profile_photo_url", "")
             check("resolved URL is a presigned S3 GET (query-string signature params, not a bare/static path)",
                   "Signature=" in url_a and "Expires=" in url_a, url_a)
+            # Compare only the base S3 object path, not the full signed query string --
+            # AWS SigV4 presigned URLs legitimately re-sign with a fresh X-Amz-Date/
+            # X-Amz-Signature on every call, even for the identical underlying key, so a
+            # byte-for-byte URL comparison is flaky by construction (fails whenever the
+            # two calls straddle a one-second boundary). The actual invariant this check
+            # cares about -- both calls resolving to the same S3 object -- lives in the
+            # base path before the "?", not in the per-request signature.
+            base_a, base_a2 = url_a.split("?", 1)[0], url_a2.split("?", 1)[0]
             check("both fetches resolve consistently against the same underlying key -- confirms it's "
                   "generate_download_url(profile_photo_key) driving this, not a stale/mismatched value",
-                  url_a == url_a2, str((url_a, url_a2)))
+                  base_a == base_a2, str((url_a, url_a2)))
 
             print("\n=== 4. GroupsManager.fetch_notes/search_notes called directly (unit-level) ===")
             from backend.interactions.groups import GroupsManager
