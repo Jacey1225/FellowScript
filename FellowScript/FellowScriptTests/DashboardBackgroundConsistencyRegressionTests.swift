@@ -94,12 +94,20 @@ final class DashboardBackgroundConsistencyRegressionTests: XCTestCase {
         // Out-of-bounds guard: the avatar's own solid dark circle fill is
         // independent of the page background (it's always dark, always
         // paired with gold text) and must not have been collaterally changed.
+        //
+        // Since this test was written, the avatar circle was refactored into
+        // the reusable, parameterized AvatarView(fillColor:textColor:)
+        // component (still rendered via `Circle().fill(fillColor)` /
+        // `.foregroundColor(textColor)` internally) rather than inlining the
+        // literal hex values directly at this call site — same intentional
+        // colors, just passed as parameters instead of written inline. This
+        // assertion now pins the call site's parameter values instead of the
+        // old fully-inlined literal.
         let source = try readSource("FellowScript/Dashboard/DashboardComponents.swift")
         XCTAssertTrue(
-            source.contains(##"Circle()"##) &&
-            source.contains(##".fill(Color(hex: "#2A1B0B"))"##) &&
-            source.contains(##".foregroundColor(Color(hex: "#F0AE40"))"##),
-            "HeroHeader's avatar circle (fixed dark fill + gold initial) must be unaffected by the page-background/greeting-text fix"
+            source.contains(##"fillColor: Color(hex: "#2A1B0B"),"##) &&
+            source.contains(##"textColor: Color(hex: "#F0AE40")"##),
+            "HeroHeader's avatar circle (fixed dark fill + gold initial, now passed via AvatarView's fillColor/textColor params) must be unaffected by the page-background/greeting-text fix"
         )
     }
 }

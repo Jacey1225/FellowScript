@@ -45,6 +45,35 @@ final class NoteReplyNetworkServiceTests: XCTestCase {
     override func setUp() {
         super.setUp()
         StubURLProtocol.resetRequestLog()
+        // Hardening for this suite's full-target-only (not standalone)
+        // failures (task 20260926-fix-preexisting-test-failures):
+        // StubURLProtocol.stubStatusCode is a process-wide static var shared
+        // by every suite that uses this stub (25+ files across
+        // FellowScriptTests), and none of this file's tests ever set it
+        // themselves -- they only set stubBody, so they've always implicitly
+        // relied on the class's `= 200` default rather than establishing
+        // their own known-good baseline. That's safe only when this suite
+        // happens to run first, or after another suite that happens to leave
+        // the value at 200; if any suite that runs earlier in the full
+        // ~1078-test target ends (per whatever order XCTest's class
+        // enumeration produces, which isn't guaranteed to be simple
+        // alphabetical) on a test that leaves a non-200 value set --
+        // several sibling suites explicitly set 401/403/422/429/500 on their
+        // own error-path tests -- NetworkService.get()'s throwIfError then
+        // throws for every fetch here, since fetchReplies never expects or
+        // handles an error status. Several sibling suites that share this
+        // stub defensively reset stubStatusCode in their own setUp
+        // (AccountEventsDecodeFailureRegressionTests,
+        // HeartbeatManualTriggerTests, NotesLoadFailureHardeningTests) for
+        // exactly this reason; this file did not. Resetting it here makes
+        // this suite self-contained regardless of run order, matching that
+        // established convention -- closing off a concrete, verified
+        // mechanism for order-dependent flakiness in a shared global test
+        // double, even though pinning the exact preceding suite responsible
+        // in any one specific full run is not practical to isolate without
+        // re-running the entire ~1078-test target repeatedly (that
+        // reconfirmation is this task's own Step 3/testing-gate job).
+        StubURLProtocol.stubStatusCode = 200
     }
 
     // MARK: 1 — fetchReplies (group route): decodes the real backend shape,

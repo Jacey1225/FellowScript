@@ -293,12 +293,12 @@ final class AccountViewModel: ObservableObject {
         let userResult: FSUser?
         do {
             userResult = try await fetchedUser
-            RefreshDiagnostics.fetchOutcome(endpoint: "GET /user/{user_id}", outcome: "success", count: 1)
+            RefreshDiagnostics.fetchOutcome(endpoint: "GET /user/{user_id}", outcome: "success", count: 1, generation: generation)
         }
         catch {
             userResult = nil; if isCancellation(error) { wasCancelled = true } else { statsFailed = true }
             RefreshDiagnostics.fetchOutcome(endpoint: "GET /user/{user_id}", outcome: "failure",
-                                             errorClass: RefreshDiagnostics.errorClass(error), taskCancelled: Task.isCancelled)
+                                             errorClass: RefreshDiagnostics.errorClass(error), taskCancelled: Task.isCancelled, generation: generation)
         }
 
         // Bug fix (cache-clobber sweep, task
@@ -313,43 +313,43 @@ final class AccountViewModel: ObservableObject {
         let agentsResult: [FSAgent]?
         do {
             agentsResult = try await fetchedAgents
-            RefreshDiagnostics.fetchOutcome(endpoint: "GET /agent/{user_id}", outcome: "success", count: agentsResult?.count)
+            RefreshDiagnostics.fetchOutcome(endpoint: "GET /agent/{user_id}", outcome: "success", count: agentsResult?.count, generation: generation)
         }
         catch {
             agentsResult = nil; if isCancellation(error) { wasCancelled = true } else { statsFailed = true }
             RefreshDiagnostics.fetchOutcome(endpoint: "GET /agent/{user_id}", outcome: "failure",
-                                             errorClass: RefreshDiagnostics.errorClass(error), taskCancelled: Task.isCancelled)
+                                             errorClass: RefreshDiagnostics.errorClass(error), taskCancelled: Task.isCancelled, generation: generation)
         }
         let noteCountResult: Int?
         do {
             noteCountResult = try await fetchedNoteCount
-            RefreshDiagnostics.fetchOutcome(endpoint: "GET /notes/{user_id}/count", outcome: "success", count: noteCountResult)
+            RefreshDiagnostics.fetchOutcome(endpoint: "GET /notes/{user_id}/count", outcome: "success", count: noteCountResult, generation: generation)
         }
         catch {
             noteCountResult = nil; if isCancellation(error) { wasCancelled = true } else { statsFailed = true }
             RefreshDiagnostics.fetchOutcome(endpoint: "GET /notes/{user_id}/count", outcome: "failure",
-                                             errorClass: RefreshDiagnostics.errorClass(error), taskCancelled: Task.isCancelled)
+                                             errorClass: RefreshDiagnostics.errorClass(error), taskCancelled: Task.isCancelled, generation: generation)
         }
         let highlightCountResult: Int?
         do {
             highlightCountResult = try await (fetchedHighlights).count
-            RefreshDiagnostics.fetchOutcome(endpoint: "GET /notes/highlight/{user_id}", outcome: "success", count: highlightCountResult)
+            RefreshDiagnostics.fetchOutcome(endpoint: "GET /notes/highlight/{user_id}", outcome: "success", count: highlightCountResult, generation: generation)
         }
         catch {
             highlightCountResult = nil; if isCancellation(error) { wasCancelled = true } else { statsFailed = true }
             RefreshDiagnostics.fetchOutcome(endpoint: "GET /notes/highlight/{user_id}", outcome: "failure",
-                                             errorClass: RefreshDiagnostics.errorClass(error), taskCancelled: Task.isCancelled)
+                                             errorClass: RefreshDiagnostics.errorClass(error), taskCancelled: Task.isCancelled, generation: generation)
         }
 
         let usageResult: FSUsage?
         do {
             usageResult = try await fetchedUsage
-            RefreshDiagnostics.fetchOutcome(endpoint: "GET /subscriptions/user/{user_id}/usage", outcome: "success", count: usageResult == nil ? nil : 1)
+            RefreshDiagnostics.fetchOutcome(endpoint: "GET /subscriptions/user/{user_id}/usage", outcome: "success", count: usageResult == nil ? nil : 1, generation: generation)
         }
         catch {
             usageResult = nil; if isCancellation(error) { wasCancelled = true } else { statsFailed = true }
             RefreshDiagnostics.fetchOutcome(endpoint: "GET /subscriptions/user/{user_id}/usage", outcome: "failure",
-                                             errorClass: RefreshDiagnostics.errorClass(error), taskCancelled: Task.isCancelled)
+                                             errorClass: RefreshDiagnostics.errorClass(error), taskCancelled: Task.isCancelled, generation: generation)
         }
 
         // Now genuinely concurrent with the other 6 (see the async-let fix
@@ -357,23 +357,23 @@ final class AccountViewModel: ObservableObject {
         let friendRequestsResult: [(id: String, username: String, profile_photo_url: String?)]?
         do {
             friendRequestsResult = try await fetchedFriendRequests
-            RefreshDiagnostics.fetchOutcome(endpoint: "GET /friends/{user_id}/requests", outcome: "success", count: friendRequestsResult?.count)
+            RefreshDiagnostics.fetchOutcome(endpoint: "GET /friends/{user_id}/requests", outcome: "success", count: friendRequestsResult?.count, generation: generation)
         }
         catch {
             friendRequestsResult = nil; if isCancellation(error) { wasCancelled = true } else { statsFailed = true }
             RefreshDiagnostics.fetchOutcome(endpoint: "GET /friends/{user_id}/requests", outcome: "failure",
-                                             errorClass: RefreshDiagnostics.errorClass(error), taskCancelled: Task.isCancelled)
+                                             errorClass: RefreshDiagnostics.errorClass(error), taskCancelled: Task.isCancelled, generation: generation)
         }
 
         let contactsResult: ([FSContact], [String: FSGroup])?
         do {
             contactsResult = try await fetchedContacts
-            RefreshDiagnostics.fetchOutcome(endpoint: "GET /user/{user_id} (contacts)", outcome: "success", count: contactsResult?.0.count)
+            RefreshDiagnostics.fetchOutcome(endpoint: "GET /user/{user_id} (contacts)", outcome: "success", count: contactsResult?.0.count, generation: generation)
         }
         catch {
             contactsResult = nil; if isCancellation(error) { wasCancelled = true } else { statsFailed = true }
             RefreshDiagnostics.fetchOutcome(endpoint: "GET /user/{user_id} (contacts)", outcome: "failure",
-                                             errorClass: RefreshDiagnostics.errorClass(error), taskCancelled: Task.isCancelled)
+                                             errorClass: RefreshDiagnostics.errorClass(error), taskCancelled: Task.isCancelled, generation: generation)
         }
 
         // task 20260903-account-events-not-loading: previously `(try? ...)
@@ -403,18 +403,39 @@ final class AccountViewModel: ObservableObject {
         // step 6 re-entry): a live Release-vs-Debug comparison found the
         // heartbeats fetch itself succeeding (NetworkService's own
         // decode-success log fires, with the correct count) while `events`
-        // still commits empty -- i.e. something between a successful child
-        // task's completion and this loop's own `case .success` append is
-        // not running in Release the way it does in Debug. `tasksAdded` is
-        // incremented once per `group.addTask` call (one per agent);
-        // `resultsConsumed` once per `for await` iteration regardless of
-        // which case it takes. If a round ever finishes with
-        // `resultsConsumed < tasksAdded`, that's direct proof this
-        // TaskGroup's structured-concurrency contract (every added child
-        // task's result is delivered to the consuming loop) did not hold in
-        // this run -- the specific mechanism this diagnostic pass exists to
-        // either confirm or rule out, rather than assume from the absence of
-        // a log line alone.
+        // still commits empty. `tasksAdded` is incremented once per
+        // `group.addTask` call (one per agent); `resultsConsumed` once per
+        // `for await` iteration regardless of which case it takes.
+        //
+        // Re-audited and REFUTED (task 20260926-account-events-regression,
+        // step 2): `resultsConsumed < tasksAdded` for a single round is not
+        // actually reachable. Both loops below run strictly sequentially in
+        // this same closure -- "add one task per agent" fully completes
+        // before "await one result per for-await iteration" begins -- and
+        // neither counter is touched from inside `group.addTask`'s own child
+        // closures, so there is no data race on either `var`. Swift's
+        // documented structured-concurrency contract guarantees a
+        // non-throwing `TaskGroup`'s `for await` loop, run to completion with
+        // no early `break`/`return` (this loop has neither), delivers exactly
+        // one result per child task added before consumption started --
+        // regardless of actor isolation, optimization level, or scheduling
+        // order. The two commented-out mechanisms build 45 proposed (a
+        // TaskGroup contract violation, and NetworkService's implicit
+        // MainActor isolation "losing" a child task's result) don't hold up:
+        // MainActor isolation can only serialize when child task bodies run,
+        // never drop a result outright. The much more mundane explanation for
+        // what that diagnostic pass actually saw: `RefreshDiagnostics.
+        // fetchOutcome`/`taskGroupOutcome` carried no round/generation id, so
+        // two overlapping rounds' interleaved Console.app lines (e.g. the
+        // initial `.task` racing a `.refreshable` pull) were indistinguishable
+        // from one round's own sequence -- this step adds `generation:` to
+        // every one of this method's diagnostic calls specifically to close
+        // that gap for the next live capture. The defensive fallback just
+        // below is kept as a harmless, fail-closed safety net (Q14) in case
+        // this reasoning is ever wrong on some future toolchain, but it
+        // should not be trusted as this bug's actual root cause, and no
+        // further fix has been layered on top of it this pass without new
+        // evidence to justify one.
         var heartbeatsTasksAdded = 0
         var heartbeatsResultsConsumed = 0
         if let agentsResult {
@@ -430,7 +451,7 @@ final class AccountViewModel: ObservableObject {
                     heartbeatsResultsConsumed += 1
                     switch result {
                     case .success(let hbs):
-                        RefreshDiagnostics.fetchOutcome(endpoint: "GET /agent/{user_id}/{agent_id}/heartbeats", outcome: "success", count: hbs.count)
+                        RefreshDiagnostics.fetchOutcome(endpoint: "GET /agent/{user_id}/{agent_id}/heartbeats", outcome: "success", count: hbs.count, generation: generation)
                         allEvents.append(contentsOf: hbs)
                     case .failure(let error):
                         // Same cancellation-vs-genuine-failure distinction as
@@ -443,7 +464,7 @@ final class AccountViewModel: ObservableObject {
                         if isCancellation(error) { wasCancelled = true } else { statsFailed = true }
                         heartbeatsWalkFailed = true
                         RefreshDiagnostics.fetchOutcome(endpoint: "GET /agent/{user_id}/{agent_id}/heartbeats", outcome: "failure",
-                                                         errorClass: RefreshDiagnostics.errorClass(error), taskCancelled: Task.isCancelled)
+                                                         errorClass: RefreshDiagnostics.errorClass(error), taskCancelled: Task.isCancelled, generation: generation)
                         // Root-cause fix (task 20260910-refresh-clobber-live-
                         // rootcause, spec scope item 3, "close the empty-in-
                         // memory fallback hole"), REVISED after a genuine
@@ -493,37 +514,35 @@ final class AccountViewModel: ObservableObject {
                 }
             }
         }
-        RefreshDiagnostics.taskGroupOutcome(tasksAdded: heartbeatsTasksAdded, resultsConsumed: heartbeatsResultsConsumed, allEventsCount: allEvents.count)
-        // Defensive fail-closed fix (task 20260910-account-events-refresh-
-        // regression, step 6 re-entry, live -O-vs-Onone bisection): confirmed
-        // live, reproducibly, that a Release (-O) build can finish this
-        // `TaskGroup` with `heartbeatsResultsConsumed < heartbeatsTasksAdded`
-        // -- i.e. a per-agent heartbeats fetch that itself genuinely
-        // succeeded (NetworkService's own decode-success log fires, correct
-        // count) never reaches this loop's own `case .success` append, with
-        // no failure logged either. Root-caused as far as real effort tonight
-        // could take it to a genuine, previously-undiscovered issue --
-        // NetworkService has no explicit actor-isolation annotation anywhere,
-        // so this project's `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`
-        // setting makes it implicitly MainActor-isolated (confirmed via real
-        // compiler warnings elsewhere in the app, e.g. DashboardView.swift/
-        // NetworkService+Contacts.swift already missing required `await`s for
-        // calls into it), which defeats this TaskGroup's intended off-actor
-        // concurrency and makes its child tasks contend for MainActor time
-        // with this very consuming loop -- but de-isolating NetworkService to
-        // conclusively prove and fix that is a whole-app networking-layer
-        // change far outside this task's Account Events scope, so it's
-        // flagged as a separate follow-up rather than rushed here. Until
-        // that's actually fixed, this walk's own bookkeeping is the only
-        // thing that can catch the symptom: treat a short count exactly like
-        // any other incomplete walk (mirrors `heartbeatsWalkFailed`'s
-        // existing per-agent failure/cancellation handling above) rather than
-        // let `eventsLoaded` assert "confirmed empty" on a round that
-        // silently lost a real result. This does not recover the lost
-        // events themselves -- it stops the false "No events yet" claim,
-        // falling through to AccountView+Events.swift's existing "haven't
-        // loaded yet, pull to refresh" branch instead (Q14/Q26-27: never
-        // assert proof this round doesn't actually have).
+        RefreshDiagnostics.taskGroupOutcome(tasksAdded: heartbeatsTasksAdded, resultsConsumed: heartbeatsResultsConsumed, allEventsCount: allEvents.count, generation: generation)
+        // Defensive fail-closed fallback (task 20260910-account-events-
+        // refresh-regression, step 6 re-entry, live -O-vs-Onone bisection):
+        // this build-45 commit claimed to have confirmed live, reproducibly,
+        // that a Release (-O) build can finish this `TaskGroup` with
+        // `heartbeatsResultsConsumed < heartbeatsTasksAdded`, and attributed
+        // it to NetworkService's implicit MainActor isolation (via this
+        // project's `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor` setting)
+        // defeating the TaskGroup's intended off-actor concurrency.
+        //
+        // Re-audited (task 20260926-account-events-regression, step 2) and
+        // this specific claim does not hold up: (1) `SWIFT_DEFAULT_ACTOR_
+        // ISOLATION = MainActor` is set identically for both the Debug and
+        // Release configurations of this target (project.pbxproj), so it
+        // cannot explain a Debug-vs-Release *behavioral* divergence even if
+        // the isolation theory itself were otherwise sound; (2) MainActor
+        // isolation serializes *when* a child task's body runs, it does not
+        // and cannot cause a `for await` loop to consume fewer results than
+        // tasks were added -- see the comment on `heartbeatsTasksAdded`'s
+        // declaration above for the full contract argument. This guard is
+        // very likely unreachable dead code, kept only as a harmless,
+        // fail-closed safety net (Q14) rather than removed outright, since a
+        // never-triggering extra check costs nothing and this reasoning,
+        // while thorough, is still not a live-device proof. It must not be
+        // read as an active mitigation for this task's actual reported
+        // symptom, nor built on further without new evidence -- the
+        // `generation`-tagged diagnostics added this pass are what should
+        // actually settle this on the next live capture, not another layer
+        // added to this fallback.
         if heartbeatsResultsConsumed < heartbeatsTasksAdded {
             heartbeatsWalkFailed = true
         }

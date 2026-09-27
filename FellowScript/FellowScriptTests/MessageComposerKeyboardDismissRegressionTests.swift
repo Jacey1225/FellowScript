@@ -89,7 +89,17 @@ final class MessageComposerKeyboardDismissRegressionTests: XCTestCase {
     func test_scrollDismissesKeyboardStillAppliedExactlyOnceViaSharedModifier() throws {
         for relativePath in ["FellowScript/Chat/ChatThreadView.swift", "FellowScript/Chat/AgentChatView.swift"] {
             let source = try readSource(relativePath)
-            let modifierCallCount = source.components(separatedBy: ".dismissesKeyboardOnScrollAndTap()").count - 1
+            // Count only actual modifier CALL sites (a trimmed line that is
+            // exactly the modifier call), not a later explanatory doc
+            // comment that also mentions the modifier name in backticks --
+            // ChatThreadView.swift's sessions-submenu-overlay comment does
+            // exactly that, which a plain whole-file substring count can't
+            // distinguish from a second real call site.
+            let modifierCallCount = source
+                .components(separatedBy: .newlines)
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+                .filter { $0 == ".dismissesKeyboardOnScrollAndTap()" }
+                .count
             XCTAssertEqual(modifierCallCount, 1,
                            "\(relativePath) must call the shared modifier exactly once, not add a second bespoke .scrollDismissesKeyboard call site")
             XCTAssertFalse(source.contains(".scrollDismissesKeyboard(.immediately)") || source.contains(".scrollDismissesKeyboard(.never)"),

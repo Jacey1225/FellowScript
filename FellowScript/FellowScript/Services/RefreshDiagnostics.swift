@@ -135,9 +135,37 @@ enum RefreshDiagnostics {
     /// failures — the key signal for telling routine SwiftUI task
     /// cancellation apart from a genuine transport/HTTP failure (spec open
     /// question 2).
+    ///
+    /// `generation` (task 20260926-account-events-regression, step 2):
+    /// AccountViewModel.load()'s own round id (see that file's
+    /// `loadGeneration`/`generation` local), threaded through here so a live
+    /// capture can attribute each line to the exact round that produced it.
+    /// Before this fix, every one of this screen's concurrent-round log lines
+    /// looked identical whether they came from a lone round or from two
+    /// overlapping rounds (`.task` + a `.refreshable` pull landing mid-flight)
+    /// interleaved on the same Console.app timeline. The build-45 commit's own
+    /// "resultsConsumed < tasksAdded" claim was captured this way — without a
+    /// round id, a genuinely successful `fetchOutcome` line from ROUND A can
+    /// look, at a glance, like it belongs to ROUND B's `taskGroupOutcome`
+    /// summary logged moments later, even though each round's own
+    /// `tasksAdded`/`resultsConsumed` counters (local to that round's own
+    /// `load()` call, never shared across rounds) are mechanically guaranteed
+    /// to match by Swift's own TaskGroup contract: `for await` over a
+    /// non-throwing `TaskGroup`, run to completion with no early `break`/
+    /// `return`, always yields exactly one result per `group.addTask` call
+    /// added before the loop starts consuming (as this walk's own two
+    /// sequential loops — "add every task" then "await every result" — do).
+    /// Nothing about actor isolation, optimization level, or scheduling can
+    /// change that guarantee; only cross-round misattribution from unlabeled
+    /// logs can produce the appearance of a violation. `nil` is accepted for
+    /// call sites outside `AccountViewModel.load()`'s own round-scoped fetches
+    /// (e.g. none currently, but keeps this a non-breaking addition for any
+    /// future caller that has no round concept).
     static func fetchOutcome(endpoint: String, outcome: String, count: Int? = nil,
-                              errorClass: String? = nil, taskCancelled: Bool? = nil) {
+                              errorClass: String? = nil, taskCancelled: Bool? = nil,
+                              generation: Int? = nil) {
         var parts = ["endpoint=\(endpoint)", "outcome=\(outcome)"]
+        if let generation { parts.append("gen=\(generation)") }
         if let count { parts.append("count=\(count)") }
         if let errorClass { parts.append("errorClass=\(errorClass)") }
         if let taskCancelled { parts.append("taskCancelled=\(taskCancelled)") }
@@ -153,13 +181,30 @@ enum RefreshDiagnostics {
     /// is how many times the `for await (agentId, result) in group` loop
     /// actually iterated, and `allEventsCount` is what `allEvents` held right
     /// after that loop exited (before the `eventsUsable` assignment into
-    /// `events`). Structured concurrency's contract is that every added child
-    /// task's result is eventually delivered to the consumer -- so
-    /// `resultsConsumed < tasksAdded` here is direct, positive proof that
-    /// didn't hold for this round, rather than something inferred from the
-    /// mere absence of a downstream log line.
-    static func taskGroupOutcome(tasksAdded: Int, resultsConsumed: Int, allEventsCount: Int) {
-        emit("[heartbeats-taskgroup] tasksAdded=\(tasksAdded) resultsConsumed=\(resultsConsumed) allEventsCount=\(allEventsCount) ts=\(ts())")
+    /// `events`).
+    ///
+    /// Re-audited (task 20260926-account-events-regression, step 2):
+    /// `resultsConsumed`/`tasksAdded` here are both purely local to a single
+    /// `load()` call's own `withTaskGroup` closure -- neither is touched by
+    /// any code running inside `group.addTask`'s child closures, and both
+    /// loops that mutate them (the `for agent in agentsResult` add-loop, then
+    /// the `for await ... in group` consume-loop) run strictly sequentially,
+    /// never concurrently with each other or with another round's own copies
+    /// of these same-named local variables. Structured concurrency's contract
+    /// (every child task added before a non-throwing group's consuming loop
+    /// starts is guaranteed exactly one delivered result, absent an early
+    /// `break`/`return` -- neither of which this loop has) makes
+    /// `resultsConsumed < tasksAdded` mechanically unreachable for a single,
+    /// self-contained round. `generation` is threaded through purely so a
+    /// live capture with two OVERLAPPING rounds in flight (e.g. `.task` +
+    /// a `.refreshable` pull) can no longer have one round's `fetchOutcome`
+    /// line mistaken, on a quick read of interleaved Console.app output, for
+    /// evidence about a *different* round's `taskGroupOutcome` summary --
+    /// which is the far more mundane, mechanically-consistent explanation for
+    /// what the build-45 commit's diagnostic pass actually captured, versus
+    /// its own claimed (and here refuted) TaskGroup-contract violation.
+    static func taskGroupOutcome(tasksAdded: Int, resultsConsumed: Int, allEventsCount: Int, generation: Int) {
+        emit("[heartbeats-taskgroup] gen=\(generation) tasksAdded=\(tasksAdded) resultsConsumed=\(resultsConsumed) allEventsCount=\(allEventsCount) ts=\(ts())")
     }
 
     /// A single Notes segment's (Personal, or one group) splice decision for

@@ -49,18 +49,50 @@ private func note(_ id: String, title: String = "", text: String = "", groupId: 
 
 /// ~300ms debounce (NotesViewModel.searchDebounceNanoseconds) + generous
 /// margin so these tests aren't flaky under CI load.
-private let debounceSettle: UInt64 = 500_000_000
+///
+/// Widened from 500ms (task 20260926-fix-preexisting-test-failures step 2):
+/// kept as defensive hardening against genuine CPU/scheduler contention
+/// under full-suite load, but this was NOT the actual cause of this suite's
+/// full-target-only failure -- see the testing-gate bounce this same task
+/// took on `freshUserId()` below for the real root cause and fix.
+private let debounceSettle: UInt64 = 900_000_000
 
 @MainActor
 final class NotesSearchRegressionTests: XCTestCase {
 
+    /// Task 20260926-fix-preexisting-test-failures (testing-gate bounce,
+    /// step 2 re-entry): every test in this file used to hardcode
+    /// `userId: "user-1"`, and `NotesViewModel.load()`/`fetchAndCache()`
+    /// read/write the REAL `DiskCache.shared` actor (actual files on the
+    /// simulator's on-disk Caches directory, not a mock) under the literal
+    /// key `"notes:user-1"`. 25+ other test files across this target also
+    /// hardcode `"user-1"` and exercise `NotesViewModel.load`/`refresh`
+    /// against that same real disk key with no cleanup, so a stale note left
+    /// behind by some unrelated, earlier-run suite could still be sitting in
+    /// `"notes:user-1"` when this suite's own tests run. `fetchAndCache`'s
+    /// splice logic only strips a stale cache-first read's PERSONAL entries
+    /// once the personal fetch itself succeeds this round -- a leftover
+    /// GROUP-scoped entry from another suite's real write survives untouched
+    /// whenever a non-personal segment (e.g. contacts/groups) doesn't also
+    /// succeed -- which is exactly how `test_search_includesNotesNotYetPaginatedIn`
+    /// saw `vm.notes.count == 2` instead of `1` when run as part of the full
+    /// ~1060-test target, with no debounce/search timing involved at all.
+    /// `RefreshClobberLiveRootcauseRegressionTests.swift` already established
+    /// the fix for this exact class of bug: a unique userId per test via a
+    /// `freshUserId()` helper, so no test ever reads/writes a disk-cache key
+    /// another test (or suite) could have touched. Adopting that same
+    /// convention here instead of widening any sleep window, which doesn't
+    /// touch the actual mechanism.
+    private func freshUserId() -> String { "notes-search-\(UUID().uuidString)" }
+
     // MARK: 1 — title/text matching surfaces results
 
     func test_search_surfacesMatchesByTitleAndText() async throws {
+        let userId = freshUserId()
         let vm = NotesViewModel()
         let service = ThrowingTestDataService()
         vm.service = service
-        vm.configureSearch(userId: "user-1")
+        vm.configureSearch(userId: userId)
 
         service.searchNotesResult = [
             "n-title": note("n-title", title: "Sunday Service notes", text: "unrelated body"),
@@ -75,16 +107,17 @@ final class NotesSearchRegressionTests: XCTestCase {
         XCTAssertTrue(vm.searchResults.contains { $0.0 == "n-body" })
         XCTAssertFalse(vm.isSearching, "isSearching must settle back to false once the query completes")
         XCTAssertEqual(service.lastSearchNotesQuery, "Sunday")
-        XCTAssertEqual(service.lastSearchNotesUserId, "user-1")
+        XCTAssertEqual(service.lastSearchNotesUserId, userId)
     }
 
     // MARK: 2 — results include notes beyond already-loaded pages
 
     func test_search_includesNotesNotYetPaginatedIn() async throws {
+        let userId = freshUserId()
         let vm = NotesViewModel()
         let service = ThrowingTestDataService()
         vm.service = service
-        vm.configureSearch(userId: "user-1")
+        vm.configureSearch(userId: userId)
 
         // Only one page loaded client-side -- "n1" is the only note vm.notes
         // knows about.
@@ -92,7 +125,7 @@ final class NotesSearchRegressionTests: XCTestCase {
             notes: ["n1": note("n1", title: "Recent note")],
             nextCursorCreatedAt: "2026-09-03 00:00:01", nextCursorId: "n1", hasMore: true
         )]
-        await vm.load(service: service, userId: "user-1")
+        await vm.load(service: service, userId: userId)
         XCTAssertEqual(vm.notes.count, 1)
         XCTAssertNil(vm.notes["n-old"], "the old note must NOT be in the already-loaded page")
 
@@ -111,10 +144,11 @@ final class NotesSearchRegressionTests: XCTestCase {
     // MARK: 3 — segment scoping: Personal vs. group route to different endpoints
 
     func test_search_isScopedToCurrentSegment_personalUsesSearchNotes() async throws {
+        let userId = freshUserId()
         let vm = NotesViewModel()
         let service = ThrowingTestDataService()
         vm.service = service
-        vm.configureSearch(userId: "user-1")
+        vm.configureSearch(userId: userId)
         // currentGroupId defaults to nil (Personal).
 
         service.searchNotesResult = ["n1": note("n1", title: "match")]
@@ -126,10 +160,11 @@ final class NotesSearchRegressionTests: XCTestCase {
     }
 
     func test_search_isScopedToCurrentSegment_groupUsesSearchGroupNotesWithGroupId() async throws {
+        let userId = freshUserId()
         let vm = NotesViewModel()
         let service = ThrowingTestDataService()
         vm.service = service
-        vm.configureSearch(userId: "user-1")
+        vm.configureSearch(userId: userId)
 
         vm.currentGroupId = "group-abc"
         service.searchGroupNotesResult = ["g1": note("g1", title: "match", groupId: "group-abc")]
@@ -147,10 +182,11 @@ final class NotesSearchRegressionTests: XCTestCase {
     // segment and never leaks the old segment's results
 
     func test_search_switchingSegmentMidSearch_reQueriesAndDoesNotLeakPriorSegmentResults() async throws {
+        let userId = freshUserId()
         let vm = NotesViewModel()
         let service = ThrowingTestDataService()
         vm.service = service
-        vm.configureSearch(userId: "user-1")
+        vm.configureSearch(userId: userId)
 
         // Search Personal first.
         service.searchNotesResult = ["p1": note("p1", title: "shared keyword", groupId: "")]
@@ -177,10 +213,11 @@ final class NotesSearchRegressionTests: XCTestCase {
     // MARK: 5 — clearSearch returns to normal list with no lingering state
 
     func test_clearSearch_returnsToNormalList_withNoLingeringState() async throws {
+        let userId = freshUserId()
         let vm = NotesViewModel()
         let service = ThrowingTestDataService()
         vm.service = service
-        vm.configureSearch(userId: "user-1")
+        vm.configureSearch(userId: userId)
 
         service.searchNotesResult = ["n1": note("n1", title: "match")]
         vm.searchText = "match"
@@ -204,14 +241,15 @@ final class NotesSearchRegressionTests: XCTestCase {
     // MARK: 6 — no regression when search is inactive
 
     func test_searchInactive_doesNotAffectFilteredNotesOrFireNetworkCalls() async throws {
+        let userId = freshUserId()
         let vm = NotesViewModel()
         let service = ThrowingTestDataService()
         service.fetchNotesPageQueue = [NotesPage(
             notes: ["n1": note("n1", title: "Existing note")],
             nextCursorCreatedAt: "2026-09-03 00:00:01", nextCursorId: "n1", hasMore: false
         )]
-        await vm.load(service: service, userId: "user-1")
-        vm.configureSearch(userId: "user-1")
+        await vm.load(service: service, userId: userId)
+        vm.configureSearch(userId: userId)
 
         XCTAssertFalse(vm.isSearchActive, "search must default to inactive")
         XCTAssertEqual(vm.filteredNotes.count, 1, "normal paginated list must be untouched while search is inactive")
@@ -229,10 +267,11 @@ final class NotesSearchRegressionTests: XCTestCase {
     // MARK: 7 — debounce coalesces rapid keystrokes; stale response discarded
 
     func test_search_debounceCoalescesRapidKeystrokes_intoOneCallForFinalQuery() async throws {
+        let userId = freshUserId()
         let vm = NotesViewModel()
         let service = ThrowingTestDataService()
         vm.service = service
-        vm.configureSearch(userId: "user-1")
+        vm.configureSearch(userId: userId)
 
         service.searchNotesResult = ["n1": note("n1", title: "abc match")]
 
@@ -252,10 +291,11 @@ final class NotesSearchRegressionTests: XCTestCase {
     }
 
     func test_search_staleInFlightResponse_isDiscardedOnceQueryHasChanged() async throws {
+        let userId = freshUserId()
         let vm = NotesViewModel()
         let service = ThrowingTestDataService()
         vm.service = service
-        vm.configureSearch(userId: "user-1")
+        vm.configureSearch(userId: userId)
 
         // First query's response is artificially slow.
         service.searchNotesDelayNanoseconds = 400_000_000
@@ -269,8 +309,9 @@ final class NotesSearchRegressionTests: XCTestCase {
         vm.searchText = "second"
 
         // Wait long enough for BOTH the slow first response and the fast
-        // second response to have landed.
-        try await Task.sleep(nanoseconds: 900_000_000)
+        // second response to have landed. Widened alongside debounceSettle
+        // above for the same full-target-load-contention reason.
+        try await Task.sleep(nanoseconds: 1_400_000_000)
 
         XCTAssertEqual(vm.searchResults.count, 1)
         XCTAssertEqual(vm.searchResults.first?.0, "n-fresh",

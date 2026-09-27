@@ -275,16 +275,28 @@ final class SubmenuVisualRedesignRegressionTests: XCTestCase {
     }
 
     func test_eventSetupSheet_onSaveCallback_andDisabledPredicate_unchanged() throws {
+        // Two later, intentional features each legitimately added a trailing
+        // parameter after this test was written: `notesPublic` (task
+        // 20260902-group-tagged-devotions) and `idempotencyKey` (task
+        // 20260905-heartbeat-timezone-duplicate-bugs). The real signature is
+        // now 6 params, and the call site continues past this test's
+        // original expected closing paren -- this assertion now pins the
+        // original 4 unmapped arguments as a prefix of the real signature/
+        // call, rather than requiring them to be the entire thing.
         let source = try readSource("FellowScript/Account/EventSetupSheet.swift")
-        XCTAssertTrue(source.contains("let onSave:   (_ agentId: String, _ prompt: String, _ timestamps: [String?], _ groupId: String?) -> Void"),
-                      "onSave signature must be unchanged")
+        XCTAssertTrue(source.contains("let onSave:   (_ agentId: String, _ prompt: String, _ timestamps: [String?], _ groupId: String?, _ notesPublic: Bool, _ idempotencyKey: String) -> Void"),
+                      "onSave signature's original 4 params must be unchanged and still lead the (now 6-param) signature")
         XCTAssertTrue(source.contains("onSave(selectedAgentId,") &&
                       source.contains("prompt.trimmingCharacters(in: .whitespaces),") &&
                       source.contains("buildTimestamps(),") &&
-                      source.contains("selectedGroupId.isEmpty ? nil : selectedGroupId)"),
-                      "Save/Update must still call onSave with the same four unmapped arguments")
-        XCTAssertTrue(source.contains(".disabled(prompt.trimmingCharacters(in: .whitespaces).isEmpty || selectedAgentId.isEmpty)"),
-                      "Save/Update must still be disabled on empty prompt or missing agent")
+                      source.contains("selectedGroupId.isEmpty ? nil : selectedGroupId,"),
+                      "Save/Update must still call onSave with the same original four unmapped arguments leading the call")
+        // Later double-tap-guard fix (task
+        // 20260905-heartbeat-timezone-duplicate-bugs) prepended `isSaving ||`
+        // to this predicate; the original guard is still present as a
+        // component of the new predicate.
+        XCTAssertTrue(source.contains(".disabled(isSaving || prompt.trimmingCharacters(in: .whitespaces).isEmpty || selectedAgentId.isEmpty)"),
+                      "Save/Update must still be disabled on empty prompt or missing agent (now combined with the later isSaving guard)")
     }
 
     func test_eventSetupSheet_groupPickerMenu_contentAndBehaviorUnchanged() throws {

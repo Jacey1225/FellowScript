@@ -242,8 +242,14 @@ final class SubmenuFollowupPolishRegressionTests: XCTestCase {
         XCTAssertTrue(detBody.contains(#"PillButton(title: isEditing ? "Update" : "Save") {"#),
                       "Update/Save must use PillButton's gold-gradient recipe, matching the other three sheets' primary actions")
         XCTAssertFalse(detBody.contains(#"Button("Update")"#) && detBody.contains(#"Button("Save")"#))
-        XCTAssertTrue(detBody.contains(".disabled(prompt.trimmingCharacters(in: .whitespaces).isEmpty || selectedAgentId.isEmpty)"),
-                      "disabled predicate on Update/Save must be unchanged")
+        // A later, legitimate double-tap-guard fix (task
+        // 20260905-heartbeat-timezone-duplicate-bugs) prepended `isSaving ||`
+        // to this predicate; the original sub-expression this task cares
+        // about is still present as a component of the new predicate, so the
+        // assertion now checks for it as a suffix rather than requiring the
+        // exact original full-string match.
+        XCTAssertTrue(detBody.contains("isSaving || prompt.trimmingCharacters(in: .whitespaces).isEmpty || selectedAgentId.isEmpty)"),
+                      "disabled predicate on Update/Save must still include the original empty-prompt/missing-agent guard (now combined with the later isSaving guard)")
     }
 
     // MARK: - F. Out-of-scope guard: dayPickerScreen's Next and TimeZonePickerSheet untouched

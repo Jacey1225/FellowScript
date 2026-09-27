@@ -1006,11 +1006,35 @@ def _advance_recurring_session_if_still_candidate(
     ``chime_meeting`` reset to their own column DEFAULT values from
     ``db.py`` (``''``/``'{}'``), not NULL, so the new occurrence never
     inherits a finished call's meeting state.
+
+    Root cause mirrored here from the sibling auto-delete job (task
+    20260926-recurring-session-date-not-advancing): ``chime_meeting_id`` is a
+    nullable column (``db.py``'s ``VARCHAR(255) DEFAULT ''`` has no ``NOT
+    NULL``), and ``_scan_candidates`` above normalizes a SQL ``NULL`` read
+    back to the caller as ``""`` (``r[1] or ""``) -- the same "no real call"
+    sentinel this codebase uses everywhere else it reads this column. This
+    re-check query previously compared the *actual* column value against
+    that normalized ``""`` with a plain ``=``, but SQL's three-valued logic
+    makes ``NULL = ''`` evaluate to NULL (not TRUE) -- never matching. Any
+    row whose real ``chime_meeting_id`` was a genuine SQL NULL (rather than
+    an empty string) would therefore be scanned as a candidate every single
+    cycle, always fail this atomic re-check, and be logged as "skipped:
+    state changed" forever -- indistinguishable in the logs from a real
+    concurrent-join race, but never actually advanced. This is the exact
+    same bug ``_delete_session_if_still_candidate`` had before task
+    20260923-session-opening-window-auto-delete fixed it there, just never
+    mirrored to this sibling job at the time. ``COALESCE(chime_meeting_id,
+    '')`` restores the same NULL-as-"" identity this job already applies on
+    the read side, so a NULL row now matches (and advances) exactly like an
+    empty-string row does, while a row a concurrent join genuinely
+    repopulated with a real meeting id still fails to match either way --
+    the TOCTOU race protection this re-check exists for is unchanged.
     """
     db.cur.execute(
         "UPDATE devotions SET time_start = %s, time_end = %s, "
         "reminder_sent_at = NULL, chime_meeting_id = '', chime_meeting = '{}' "
-        "WHERE _id = %s AND recurring = TRUE AND time_end = %s AND chime_meeting_id = %s",
+        "WHERE _id = %s AND recurring = TRUE AND time_end = %s "
+        "AND COALESCE(chime_meeting_id, '') = %s",
         (new_time_start, new_time_end, session_id, expected_time_end, expected_chime_meeting_id),
     )
     advanced = db.cur.rowcount > 0

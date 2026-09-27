@@ -78,10 +78,22 @@ final class HeartbeatTimezoneDuplicateBugsRegressionTests: XCTestCase {
     // MARK: Bug 1 — 1. No hardcoded UTC override remains anywhere in the file
 
     func test_eventSetupSheet_noLongerHardcodesUTCTimeZone() throws {
+        // Scoped to active code, not `//` comment lines: a later, legitimate
+        // doc comment on buildTimestamps() (explaining the original bug for
+        // future readers) mentions the literal string
+        // `TimeZone(identifier: "UTC")` verbatim inside prose, which a plain
+        // whole-file substring search can't distinguish from a real
+        // reintroduction of the bug. Stripping `//`-prefixed lines before
+        // searching keeps this test able to catch an actual regression while
+        // no longer tripping on that explanatory comment.
         let source = try readSource("FellowScript/Account/EventSetupSheet.swift")
+        let activeCode = source
+            .components(separatedBy: .newlines)
+            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
+            .joined(separator: "\n")
         XCTAssertFalse(
-            source.contains(#"TimeZone(identifier: "UTC")"#),
-            "EventSetupSheet.swift must not construct a hardcoded UTC TimeZone anywhere -- "
+            activeCode.contains(#"TimeZone(identifier: "UTC")"#),
+            "EventSetupSheet.swift must not construct a hardcoded UTC TimeZone anywhere in active code -- "
             + "that was the exact double-conversion bug (task 20260905-heartbeat-timezone-duplicate-bugs); "
             + "timestamps must be authored/read as the device's own local wall-clock time"
         )
@@ -174,7 +186,15 @@ final class HeartbeatTimezoneDuplicateBugsRegressionTests: XCTestCase {
             XCTFail("could not locate the real onSave(...) dispatch call site")
             return
         }
-        let onSaveCallSite = source[onSaveCallRange.lowerBound...].prefix(400)
+        // Window widened from the original 400 chars: a later, legitimate
+        // fail-closed `notesPublic` edit-permission guard (task
+        // 20260902-group-tagged-devotions) inserted an explanatory comment
+        // between two of the call's arguments, pushing the call site's tail
+        // (and this trailing `idempotencyKey)` argument) past the old fixed
+        // window -- the call itself is unchanged in structure, just longer.
+        // 700 leaves comfortable margin over the call site's current ~564
+        // chars without being so wide it could spill into an unrelated call.
+        let onSaveCallSite = source[onSaveCallRange.lowerBound...].prefix(700)
         XCTAssertTrue(onSaveCallSite.contains("idempotencyKey)"),
                       "the generated idempotencyKey must be passed as the final onSave argument")
     }

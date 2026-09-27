@@ -56,6 +56,17 @@ out:
       logged with its cause.
   15. Pre-deployment smoke test: the real app (main.app) boots with
       `session_recurring_advance` registered on the scheduler.
+  16. Root-cause regression (task 20260926-recurring-session-date-not-
+      advancing): a candidate whose `chime_meeting_id` column is a genuine
+      SQL NULL (not `''`) -- e.g. a pre-existing/migrated row -- is advanced
+      like any other never-started-call session, not perpetually re-scanned
+      and "skipped: state changed" every cycle forever. Before this fix,
+      `_advance_recurring_session_if_still_candidate`'s atomic re-check
+      compared the real column value against the `_scan_candidates`-
+      normalized `""` with a plain `=`, and SQL's `NULL = ''` is never TRUE
+      -- the exact same class of bug `test_session_auto_delete_window.py`'s
+      own test 14 already covers for the sibling auto-delete job, mirrored
+      here because it was never mirrored in the fix itself the first time.
 
 The fake Chime client defaults to "meeting still exists" for ANY MeetingId it
 wasn't explicitly told about (same technique as
@@ -606,6 +617,68 @@ def test_real_app_boots_with_recurring_advance_job_registered():
               "session_recurring_advance" in job_ids, str(job_ids))
 
 
+# ── 13. Root-cause regression: NULL chime_meeting_id, not '' ───────────────
+
+def test_null_chime_meeting_id_is_advanced_not_perpetually_skipped():
+    print(
+        "\n=== 13. Recurring session with a genuine SQL NULL chime_meeting_id "
+        "(not ''), past grace -> advanced, not skipped forever ==="
+    )
+    now = datetime.now(tzmod.utc)
+    uid = make_user("radnullchime", timezone="UTC")
+    # Just past grace (not a full week+ past like the other fixtures above)
+    # so that after one week's advance the new occurrence lands safely in
+    # the future -- i.e. genuinely not a candidate on the second poll cycle
+    # below, rather than landing right back on the grace boundary.
+    old_end = now - timedelta(seconds=GRACE + 300)
+    old_start = old_end - timedelta(minutes=30)
+    sid = make_session_direct(
+        uid, time_start=old_start, time_end=old_end, recurring=True,
+        chime_meeting_id=None,
+    )
+    # Confirm the fixture actually landed a real SQL NULL, not '' -- this
+    # test is worthless if it silently degrades to the already-covered
+    # empty-string case.
+    db = DBManager()
+    try:
+        db.cur.execute("SELECT chime_meeting_id FROM devotions WHERE _id = %s", (sid,))
+        stored = db.cur.fetchone()[0]
+    finally:
+        db.close()
+    handler, slog, prior = capture_scheduler_logs()
+    try:
+        check("fixture stored a real SQL NULL chime_meeting_id, not ''",
+              stored is None, f"stored={stored!r}")
+        asyncio.run(run_job())
+        row = get_session_row(sid)
+        check("session with NULL chime_meeting_id, past grace, is advanced",
+              row is not None and row["time_start"] != old_start, str(row))
+        if row:
+            expected_start = old_start + timedelta(days=7)
+            check("new time_start is exactly one week after the old one",
+                  abs((row["time_start"] - expected_start).total_seconds()) < 1,
+                  f"got={row['time_start']} expected={expected_start}")
+            check("chime_meeting_id reset to its default ('') after advance",
+                  row["chime_meeting_id"] == "", repr(row["chime_meeting_id"]))
+        advanced_lines = [r for r in handler.records if "recurring-advanced" in r and sid in r]
+        skipped_lines = [r for r in handler.records if "recurring-advance skipped" in r and sid in r]
+        check("a 'Session recurring-advanced' log line was emitted for this session",
+              len(advanced_lines) == 1, str(handler.records))
+        check("no 'skipped: state changed' log line was emitted for this session",
+              len(skipped_lines) == 0, str(handler.records))
+        # Second cycle: prove this isn't a one-off race win -- rerunning
+        # against the (now-advanced, still NULL-free) row must not resurrect
+        # the perpetual-skip symptom either -- it's simply not a candidate
+        # again until it's another week past grace.
+        asyncio.run(run_job())
+        row2 = get_session_row(sid)
+        check("session's time_start is unchanged on a second, immediate poll cycle",
+              row2 is not None and row2["time_start"] == row["time_start"], str(row2))
+    finally:
+        release_scheduler_logs(handler, slog, prior)
+        cleanup(uid, session_ids=[sid])
+
+
 def main():
     try:
         test_successful_advance_preserves_duration_and_resets_state()
@@ -620,6 +693,7 @@ def main():
         test_call_confirmed_empty_advances_and_clears_meeting_state()
         test_atomic_recheck_prevents_double_advance()
         test_real_app_boots_with_recurring_advance_job_registered()
+        test_null_chime_meeting_id_is_advanced_not_perpetually_skipped()
     finally:
         restore_boto3_client()
 
