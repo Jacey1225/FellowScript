@@ -14,15 +14,7 @@ struct GroupAnnouncementDetailView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: Theme.spacingSM) {
                     if let s = item.banner_url, let url = URL(string: s) {
-                        Color.white.opacity(0.06)
-                            .aspectRatio(16.0 / 9.0, contentMode: .fit)
-                            .overlay {
-                                AsyncImage(url: url) { phase in
-                                    if let image = phase.image { image.resizable().aspectRatio(contentMode: .fill) }
-                                }
-                            }
-                            .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
-                            .accessibilityHidden(true)
+                        AnnouncementBannerImage(source: .url(url))
                     }
                     if !item.published {
                         Text("Scheduled for \(FSAnnouncementDates.display(item.publish_at))")

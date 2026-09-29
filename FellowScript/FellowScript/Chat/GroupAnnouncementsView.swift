@@ -161,7 +161,7 @@ struct GroupAnnouncementsView: View {
         .buttonStyle(.plain)
         .listRowBackground(Color.clear)
         .listRowSeparator(.hidden)
-        .listRowInsets(EdgeInsets(top: 4, leading: Theme.spacingMD, bottom: 4, trailing: Theme.spacingMD))
+        .listRowInsets(EdgeInsets(top: 6, leading: 20, bottom: 6, trailing: 20))
         .swipeActions(edge: .leading, allowsFullSwipe: false) {
             if item.can_edit {
                 Button(role: .destructive) { vm.startDelete(item) } label: {
@@ -212,15 +212,9 @@ private struct AnnouncementRow: View {
     let item: FSGroupAnnouncement
 
     var body: some View {
-        HStack(spacing: Theme.spacingSM) {
+        VStack(alignment: .leading, spacing: 10) {
             if let s = item.banner_url, let url = URL(string: s) {
-                AsyncImage(url: url) { phase in
-                    if let image = phase.image { image.resizable().aspectRatio(contentMode: .fill) }
-                    else { Color.white.opacity(0.06) }
-                }
-                .frame(width: 56, height: 56)
-                .clipShape(RoundedRectangle(cornerRadius: Theme.radiusSM))
-                .accessibilityHidden(true)
+                AnnouncementBannerImage(source: .url(url))
             }
             VStack(alignment: .leading, spacing: 2) {
                 Text(item.title).font(.inter(Theme.fontSM, weight: .semibold)).foregroundColor(Theme.parchment).lineLimit(1)
@@ -236,12 +230,12 @@ private struct AnnouncementRow: View {
                         .font(.inter(Theme.fontXXS)).foregroundColor(Theme.parchment.opacity(0.6))
                 }
             }
-            Spacer(minLength: 0)
         }
-        .padding(Theme.spacingSM)
-        .frame(maxWidth: .infinity, minHeight: 72, alignment: .leading)
-        .background(Theme.cardBg)
-        .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
+        // Same treatment as NoteRow (Notes/NotesRowViews.swift).
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 15)
+        .glassCard(cornerRadius: 20)
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
         .accessibilityHint("Opens the announcement")

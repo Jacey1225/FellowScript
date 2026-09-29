@@ -14,6 +14,11 @@ vi.mock('../lib/announcementsApi.js', async () => {
     deleteAnnouncement: vi.fn(), uploadAnnouncementBanner: vi.fn(),
   };
 });
+// jsdom has no canvas/decoder: stub only the decode/encode edges of the cropper.
+vi.mock('../lib/cropBanner.js', async () => {
+  const actual = await vi.importActual('../lib/cropBanner.js');
+  return { ...actual, resolveCropSource: vi.fn(), cropToFile: vi.fn() };
+});
 vi.mock('../lib/groupInfoApi.js', () => ({
   fetchGroupInfo: vi.fn(), renameGroup: vi.fn(), setGroupMuted: vi.fn(),
   uploadGroupPhoto: vi.fn(), removeGroupPhoto: vi.fn(), confirmGroupPhoto: vi.fn(),
@@ -22,6 +27,7 @@ vi.mock('../lib/groupInfoApi.js', () => ({
 }));
 import * as api from '../lib/announcementsApi.js';
 import * as infoApi from '../lib/groupInfoApi.js';
+import * as crop from '../lib/cropBanner.js';
 import GroupAnnouncements, { _clearAnnouncementCaches } from './GroupAnnouncements.jsx';
 import GroupAnnouncementViewer from './GroupAnnouncementViewer.jsx';
 import GroupInfoPanel, { _clearGroupInfoCaches } from './GroupInfoPanel.jsx';
@@ -42,6 +48,7 @@ beforeEach(() => {
   _clearAnnouncementCaches(); _clearGroupInfoCaches();
   Object.values(api).forEach(f => f.mockReset?.());
   Object.values(infoApi).forEach(f => f.mockReset?.());
+  crop.resolveCropSource.mockReset(); crop.cropToFile.mockReset();
   infoApi.fetchGroupInfo.mockResolvedValue({ title: 'Study Group', photo_url: null, muted: false });
   infoApi.fetchGroupGallery.mockResolvedValue({ items: [], has_more: false });
 });
@@ -229,7 +236,22 @@ describe('create / edit form', () => {
     expect(api.createAnnouncement.mock.calls[0][2].publish_at).toBe(new Date(local).toISOString());
   });
 
-  test('banner is uploaded then its key sent as banner_key', async () => {
+  // Drives the crop step: the picked file resolves to a canvas-safe URL, the
+  // <img> reports its natural size, and Done bakes `cropped` via cropToFile.
+  async function pickAndCrop(file, cropped) {
+    crop.resolveCropSource.mockResolvedValue({ objectUrl: 'blob:src', name: file.name });
+    crop.cropToFile.mockResolvedValue(cropped);
+    fireEvent.change(screen.getByTestId('announcement-banner-input'), { target: { files: [file] } });
+    const dialog = await screen.findByRole('dialog', { name: 'Crop banner' });
+    const img = await waitFor(() => { const i = dialog.querySelector('img.banner-cropper-img'); if (!i) throw new Error('img'); return i; });
+    Object.defineProperty(img, 'naturalWidth', { configurable: true, value: 4000 });
+    Object.defineProperty(img, 'naturalHeight', { configurable: true, value: 3000 });
+    fireEvent.load(img);
+    await waitFor(() => expect(screen.getByText('Done')).not.toBeDisabled());
+    return dialog;
+  }
+
+  test('banner: picking opens the cropper (no upload yet); Done uploads the CROPPED file and sends its key', async () => {
     api.fetchAnnouncements.mockResolvedValue(list([]));
     api.uploadAnnouncementBanner.mockResolvedValue('group-announcements/g1/k');
     api.createAnnouncement.mockResolvedValue(mk('n'));
@@ -239,12 +261,117 @@ describe('create / edit form', () => {
     fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Hi' } });
     fireEvent.change(screen.getByLabelText('Message'), { target: { value: 'There' } });
     const file = new File(['x'], 'a.png', { type: 'image/png' });
-    fireEvent.change(screen.getByTestId('announcement-banner-input'), { target: { files: [file] } });
-    await waitFor(() => expect(api.uploadAnnouncementBanner).toHaveBeenCalledWith('u1', 'g1', file));
-    await screen.findByText('Replace');
+    const cropped = new File(['c'], 'a.jpg', { type: 'image/jpeg' });
+    await pickAndCrop(file, cropped);
+    expect(api.uploadAnnouncementBanner).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByText('Done'));
+    await waitFor(() => expect(api.uploadAnnouncementBanner).toHaveBeenCalledWith('u1', 'g1', cropped));
+    expect(api.uploadAnnouncementBanner.mock.calls[0][2]).not.toBe(file);
+    expect(screen.queryByRole('dialog', { name: 'Crop banner' })).not.toBeInTheDocument();
+    await screen.findByText('Replace photo');
+    expect(screen.getByText('Adjust crop')).toBeInTheDocument();
     fireEvent.click(screen.getByText('Post'));
     await waitFor(() => expect(api.createAnnouncement).toHaveBeenCalled());
     expect(api.createAnnouncement.mock.calls[0][2].banner_key).toBe('group-announcements/g1/k');
+  });
+
+  test('banner: cancelling the crop uploads nothing and leaves no banner', async () => {
+    api.fetchAnnouncements.mockResolvedValue(list([]));
+    mount();
+    await screen.findByText('No announcements yet.');
+    await openForm();
+    await pickAndCrop(new File(['x'], 'a.png', { type: 'image/png' }), new File(['c'], 'a.jpg'));
+    fireEvent.click(screen.getByText('Cancel', { selector: '.banner-cropper-bar button' }));
+    expect(screen.queryByRole('dialog', { name: 'Crop banner' })).not.toBeInTheDocument();
+    expect(api.uploadAnnouncementBanner).not.toHaveBeenCalled();
+    expect(screen.getByText('Add banner photo')).toBeInTheDocument();
+  });
+
+  test('banner: Escape while cropping closes only the cropper, not the form', async () => {
+    api.fetchAnnouncements.mockResolvedValue(list([]));
+    mount();
+    await screen.findByText('No announcements yet.');
+    await openForm();
+    await pickAndCrop(new File(['x'], 'a.png', { type: 'image/png' }), new File(['c'], 'a.jpg'));
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Crop banner' })).not.toBeInTheDocument());
+    expect(screen.getByText('New announcement', { selector: 'h3' })).toBeInTheDocument();
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+  });
+
+  test('banner: oversize or wrong-type file is rejected before the cropper opens', async () => {
+    api.fetchAnnouncements.mockResolvedValue(list([]));
+    mount();
+    await screen.findByText('No announcements yet.');
+    await openForm();
+    fireEvent.change(screen.getByTestId('announcement-banner-input'), { target: { files: [new File(['x'], 'a.gif', { type: 'image/gif' })] } });
+    expect((await screen.findByRole('alert')).textContent).toMatch(/Choose a JPG, PNG, or WebP/);
+    expect(screen.queryByRole('dialog', { name: 'Crop banner' })).not.toBeInTheDocument();
+    expect(crop.resolveCropSource).not.toHaveBeenCalled();
+  });
+
+  test('banner: crop encode failure keeps the cropper open and uploads nothing (never an uncropped file)', async () => {
+    api.fetchAnnouncements.mockResolvedValue(list([]));
+    mount();
+    await screen.findByText('No announcements yet.');
+    await openForm();
+    await pickAndCrop(new File(['x'], 'a.png', { type: 'image/png' }), null);
+    crop.cropToFile.mockRejectedValue(new crop.BannerCropError("Couldn't save the crop. Try again.", 'encode'));
+    fireEvent.click(screen.getByText('Done'));
+    await screen.findByText("Couldn't save the crop. Try again.");
+    expect(api.uploadAnnouncementBanner).not.toHaveBeenCalled();
+    expect(screen.getByRole('dialog', { name: 'Crop banner' })).toBeInTheDocument();
+  });
+
+  test('edit: Adjust crop opens the cropper on the existing banner URL; upload failure surfaces an error', async () => {
+    api.fetchAnnouncements.mockResolvedValue(list([mk('a', { banner_url: 'https://cdn.example/old.jpg' })]));
+    api.uploadAnnouncementBanner.mockRejectedValue(Object.assign(new Error('x'), { status: 500 }));
+    crop.resolveCropSource.mockResolvedValue({ objectUrl: 'blob:old', name: 'banner.jpg' });
+    crop.cropToFile.mockResolvedValue(new File(['c'], 'banner.jpg', { type: 'image/jpeg' }));
+    mount();
+    await screen.findByText('Title a');
+    fireEvent.click(screen.getByLabelText('More actions for Title a'));
+    fireEvent.click(screen.getByText('Edit'));
+    await screen.findByText('Edit announcement');
+    fireEvent.click(screen.getByText('Adjust crop'));
+    const dialog = await screen.findByRole('dialog', { name: 'Crop banner' });
+    expect(crop.resolveCropSource).toHaveBeenCalledWith({ url: 'https://cdn.example/old.jpg' });
+    const img = await waitFor(() => { const i = dialog.querySelector('img.banner-cropper-img'); if (!i) throw new Error('img'); return i; });
+    Object.defineProperty(img, 'naturalWidth', { configurable: true, value: 3000 });
+    Object.defineProperty(img, 'naturalHeight', { configurable: true, value: 1000 });
+    fireEvent.load(img);
+    await waitFor(() => expect(screen.getByText('Done')).not.toBeDisabled());
+    fireEvent.click(screen.getByText('Done'));
+    await waitFor(() => expect(api.uploadAnnouncementBanner).toHaveBeenCalled());
+    await screen.findByText(/Choose a JPG, PNG, or WebP/); // error surfaced, banner key unchanged
+  });
+
+  test('edit: re-crop of a CORS-blocked banner shows the Replace photo error and does not upload', async () => {
+    api.fetchAnnouncements.mockResolvedValue(list([mk('a', { banner_url: 'https://cdn.example/old.jpg' })]));
+    crop.resolveCropSource.mockRejectedValue(new crop.BannerCropError("Can't re-crop this banner. Choose Replace photo instead.", 'cors'));
+    mount();
+    await screen.findByText('Title a');
+    fireEvent.click(screen.getByLabelText('More actions for Title a'));
+    fireEvent.click(screen.getByText('Edit'));
+    await screen.findByText('Edit announcement');
+    fireEvent.click(screen.getByText('Adjust crop'));
+    await screen.findByText("Can't re-crop this banner. Choose Replace photo instead.");
+    expect(api.uploadAnnouncementBanner).not.toHaveBeenCalled();
+    expect(screen.getByText('Done')).toBeDisabled();
+  });
+
+  test('edit: Remove clears the banner and sends banner_key null', async () => {
+    api.fetchAnnouncements.mockResolvedValue(list([mk('a', { banner_url: 'https://cdn.example/old.jpg' })]));
+    api.updateAnnouncement.mockResolvedValue(mk('a'));
+    mount();
+    await screen.findByText('Title a');
+    fireEvent.click(screen.getByLabelText('More actions for Title a'));
+    fireEvent.click(screen.getByText('Edit'));
+    await screen.findByText('Edit announcement');
+    fireEvent.click(screen.getByText('Remove'));
+    fireEvent.click(screen.getByText('Save'));
+    await waitFor(() => expect(api.updateAnnouncement).toHaveBeenCalled());
+    expect(api.updateAnnouncement.mock.calls[0][3].banner_key).toBeNull();
   });
 
   test('free-limit 403 on create shows the upgrade card, keeps the form and writes nothing to the list', async () => {

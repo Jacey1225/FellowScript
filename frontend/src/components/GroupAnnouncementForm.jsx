@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Spin } from 'antd';
 import { ANNOUNCEMENT_LIMITS, uploadAnnouncementBanner } from '../lib/announcementsApi.js';
+import BannerCropper from './BannerCropper.jsx';
 
 // Create/edit form for a group announcement (design-notes.md, "Create / edit
 // form"). Owns only form state; the parent performs the save via `onSubmit`
@@ -23,6 +24,7 @@ export default function GroupAnnouncementForm({ userId, groupId, item, gate, gat
   const [bannerPreview, setBannerPreview] = useState(null);
   const [bannerBusy, setBannerBusy] = useState(false);
   const [bannerError, setBannerError] = useState(null);
+  const [cropSource, setCropSource] = useState(null); // { file } | { url } while the crop step is open
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
   const [touched, setTouched] = useState(false);
@@ -40,16 +42,28 @@ export default function GroupAnnouncementForm({ userId, groupId, item, gate, gat
   const canSubmit = !!trimmedTitle && !!trimmedDesc && !scheduleInvalid && !saving && !bannerBusy;
   const dirty = touched;
 
-  const onFile = async (e) => {
+  // Picking a photo opens the crop step; nothing uploads until the crop is confirmed.
+  const onFile = (e) => {
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file) return;
+    setBannerError(null);
+    if (file.size > ANNOUNCEMENT_LIMITS.bannerMaxBytes || !ANNOUNCEMENT_LIMITS.bannerAccept.includes(file.type)) {
+      setBannerError(`Choose a JPG, PNG, or WebP under ${ANNOUNCEMENT_LIMITS.bannerMaxBytes / 1024 / 1024}MB.`);
+      return;
+    }
+    setCropSource({ file });
+  };
+
+  // The cropper hands back the baked 3:1 JPEG; upload exactly that file.
+  const onCropped = async (cropped) => {
+    setCropSource(null);
     setBannerError(null); setBannerBusy(true); setTouched(true);
     try {
-      const key = await uploadAnnouncementBanner(userId, groupId, file);
+      const key = await uploadAnnouncementBanner(userId, groupId, cropped);
       if (!mountedRef.current) return;
       setBannerKey(key);
-      setBannerPreview(URL.createObjectURL ? URL.createObjectURL(file) : null);
+      setBannerPreview(URL.createObjectURL ? URL.createObjectURL(cropped) : null);
     } catch (err) {
       if (mountedRef.current) setBannerError(err.status === 0 && err.message ? err.message : `Choose a JPG, PNG, or WebP under ${ANNOUNCEMENT_LIMITS.bannerMaxBytes / 1024 / 1024}MB.`);
     } finally {
@@ -80,7 +94,7 @@ export default function GroupAnnouncementForm({ userId, groupId, item, gate, gat
 
   useEffect(() => {
     const onKey = (e) => {
-      if (e.key !== 'Escape' || e.defaultPrevented) return;
+      if (e.key !== 'Escape' || e.defaultPrevented || cropSource) return;
       e.preventDefault();
       cancel();
     };
@@ -98,6 +112,8 @@ export default function GroupAnnouncementForm({ userId, groupId, item, gate, gat
           {saving ? <Spin size="small" /> : (editing ? 'Save' : (mode === 'schedule' ? 'Schedule' : 'Post'))}
         </button>
       </div>
+
+      {cropSource && <BannerCropper source={cropSource} onConfirm={onCropped} onCancel={() => setCropSource(null)} />}
 
       {confirmDiscard && (
         <div className="group-info-banner" role="alertdialog" aria-label="Discard this announcement?">
@@ -117,7 +133,8 @@ export default function GroupAnnouncementForm({ userId, groupId, item, gate, gat
               <img src={currentBanner} alt="" />
               {bannerBusy && <Spin className="group-info-avatar-spin" />}
               <div className="group-info-announcements-banner-actions">
-                <button type="button" className="group-info-text-btn" disabled={bannerBusy} onClick={() => fileRef.current?.click()}>Replace</button>
+                <button type="button" className="group-info-text-btn" disabled={bannerBusy} onClick={() => setCropSource({ url: currentBanner })}>Adjust crop</button>
+                <button type="button" className="group-info-text-btn" disabled={bannerBusy} onClick={() => fileRef.current?.click()}>Replace photo</button>
                 <button type="button" className="group-info-text-btn group-info-danger" disabled={bannerBusy}
                   onClick={() => { setBannerKey(null); setBannerPreview(null); setTouched(true); }}>Remove</button>
               </div>

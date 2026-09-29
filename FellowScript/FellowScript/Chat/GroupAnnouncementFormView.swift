@@ -16,6 +16,12 @@ enum AnnouncementLimits {
     static let bannerHelper = "JPG, PNG, or WebP, up to 15MB."
     static let bannerInvalid = "Choose a JPG, PNG, or WebP under 15MB."
     static let horizonDays = 365
+    // Canonical banner geometry: every surface derives its box from bannerAspect;
+    // the crop is baked into the uploaded JPEG at bannerOutputWidth.
+    static let bannerAspect: CGFloat = 3
+    static let bannerOutputWidth: CGFloat = 1536
+    static let bannerJpegQuality: CGFloat = 0.85
+    static let cropZoomMax: CGFloat = 4
 }
 
 struct GroupAnnouncementFormView: View {
@@ -34,6 +40,7 @@ struct GroupAnnouncementFormView: View {
     @State private var bannerBusy = false
     @State private var bannerError: String?
     @State private var pickerItem: PhotosPickerItem?
+    @State private var cropImage: UIImage?
     @State private var saving = false
     @State private var error: String?
     @State private var gateHit = false
@@ -109,6 +116,14 @@ struct GroupAnnouncementFormView: View {
         .presentationDetents([.large])
         .interactiveDismissDisabled(dirty)
         .onChange(of: pickerItem) { _, item in handlePicked(item) }
+        .fullScreenCover(isPresented: Binding(get: { cropImage != nil }, set: { if !$0 { cropImage = nil } })) {
+            if let cropImage {
+                AnnouncementBannerCropView(image: cropImage, onCancel: { self.cropImage = nil }) { jpeg in
+                    self.cropImage = nil
+                    Task { await uploadCropped(jpeg) }
+                }
+            }
+        }
     }
 
     // ── Fields ───────────────────────────────────────────────────────────────
@@ -133,24 +148,19 @@ struct GroupAnnouncementFormView: View {
         VStack(alignment: .leading, spacing: Theme.spacingXS) {
             label("Banner photo (optional)")
             if hasBanner {
-                Color.white.opacity(0.06)
-                    .aspectRatio(16.0 / 9.0, contentMode: .fit)
-                    .overlay {
-                        if let img = bannerImage {
-                            Image(uiImage: img).resizable().aspectRatio(contentMode: .fill)
-                        } else if let url = currentBannerURL {
-                            AsyncImage(url: url) { phase in
-                                if let image = phase.image { image.resizable().aspectRatio(contentMode: .fill) }
-                            }
-                        }
-                    }
-                    .overlay { if bannerBusy { ProgressView().tint(Theme.gold) } }
-                    .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
-                    .opacity(bannerBusy ? 0.5 : 1)
-                    .accessibilityHidden(true)
+                Group {
+                    if let img = bannerImage { AnnouncementBannerImage(source: .image(img)) }
+                    else if let url = currentBannerURL { AnnouncementBannerImage(source: .url(url)) }
+                }
+                .overlay { if bannerBusy { ProgressView().tint(Theme.gold) } }
+                .opacity(bannerBusy ? 0.5 : 1)
                 HStack {
+                    Button { Task { await adjustCrop() } } label: {
+                        Text("Adjust crop").font(.inter(Theme.fontSM)).foregroundColor(Theme.gold).frame(minHeight: 44)
+                    }
+                    .disabled(bannerBusy)
                     PhotosPicker(selection: $pickerItem, matching: .images) {
-                        Text("Replace").font(.inter(Theme.fontSM)).foregroundColor(Theme.gold).frame(minHeight: 44)
+                        Text("Replace photo").font(.inter(Theme.fontSM)).foregroundColor(Theme.gold).frame(minHeight: 44)
                     }
                     .disabled(bannerBusy)
                     Button("Remove") { banner = .removed; bannerImage = nil; dirty = true }
@@ -165,7 +175,7 @@ struct GroupAnnouncementFormView: View {
                         Text(AnnouncementLimits.bannerHelper).font(.inter(Theme.fontXS)).foregroundColor(Theme.parchment.opacity(0.6))
                     }
                     .frame(maxWidth: .infinity)
-                    .aspectRatio(16.0 / 9.0, contentMode: .fit)
+                    .aspectRatio(AnnouncementLimits.bannerAspect, contentMode: .fit)
                     .overlay(RoundedRectangle(cornerRadius: Theme.radius).strokeBorder(Theme.borderGold, style: StrokeStyle(lineWidth: 1, dash: [6])))
                 }
                 .disabled(bannerBusy)
@@ -268,6 +278,7 @@ struct GroupAnnouncementFormView: View {
     }
 
     // ── Actions ──────────────────────────────────────────────────────────────
+    /// Picking a photo opens the crop step; nothing uploads until the crop is confirmed.
     private func handlePicked(_ item: PhotosPickerItem?) {
         guard let item else { return }
         Task {
@@ -282,16 +293,41 @@ struct GroupAnnouncementFormView: View {
                 bannerError = AnnouncementLimits.bannerInvalid
                 return
             }
-            bannerBusy = true
-            defer { bannerBusy = false }
-            do {
-                let key = try await vm.uploadBanner(data: data, contentType: contentType)
-                banner = .uploaded(key)
-                bannerImage = UIImage(data: data)
-                dirty = true
-            } catch {
-                bannerError = (error as? LocalizedError)?.errorDescription ?? "Upload failed. Please try again."
+            do { cropImage = try AnnouncementCropMath.decode(data: data) }
+            catch { bannerError = (error as? LocalizedError)?.errorDescription ?? "Could not read that photo. Please try again." }
+        }
+    }
+
+    /// Re-crop the current banner: a photo cropped this session is reused; a
+    /// saved remote banner is downloaded first. Failure never uploads anything.
+    private func adjustCrop() async {
+        bannerError = nil
+        if let img = bannerImage { cropImage = img; return }
+        guard let url = currentBannerURL else { return }
+        bannerBusy = true
+        defer { bannerBusy = false }
+        do {
+            let (data, resp) = try await URLSession.shared.data(from: url)
+            guard (resp as? HTTPURLResponse).map({ (200..<300).contains($0.statusCode) }) ?? true else {
+                throw AnnouncementCropError.decode
             }
+            cropImage = try AnnouncementCropMath.decode(data: data)
+        } catch {
+            bannerError = "Can't re-crop this banner. Choose Replace photo instead."
+        }
+    }
+
+    private func uploadCropped(_ jpeg: Data) async {
+        bannerError = nil
+        bannerBusy = true
+        defer { bannerBusy = false }
+        do {
+            let key = try await vm.uploadBanner(data: jpeg, contentType: "image/jpeg")
+            banner = .uploaded(key)
+            bannerImage = UIImage(data: jpeg)
+            dirty = true
+        } catch {
+            bannerError = (error as? LocalizedError)?.errorDescription ?? "Upload failed. Please try again."
         }
     }
 

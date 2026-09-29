@@ -64,15 +64,12 @@ final class GroupAnnouncementWidgetViewModel: ObservableObject {
 struct GroupAnnouncementWidgetView: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.dynamicTypeSize) private var typeSize
     @StateObject private var vm: GroupAnnouncementWidgetViewModel
     @State private var viewing: FSGroupAnnouncement?
 
     init(service: DataServiceProtocol, groupId: String, userId: String) {
         _vm = StateObject(wrappedValue: GroupAnnouncementWidgetViewModel(service: service, groupId: groupId, userId: userId))
     }
-
-    private var height: CGFloat { typeSize.isAccessibilitySize ? 88 : 72 }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -117,7 +114,7 @@ struct GroupAnnouncementWidgetView: View {
 
     private func card(_ item: FSGroupAnnouncement) -> some View {
         ZStack(alignment: .topTrailing) {
-            Button { viewing = item } label: { cardBody(item) }
+            Button { viewing = item } label: { AnnouncementWidgetCardBody(item: item) }
                 .buttonStyle(AnnouncementCardPressStyle(reduceMotion: reduceMotion))
                 .accessibilityLabel("Announcement: \(item.title)")
                 .accessibilityHint("Opens the announcement")
@@ -138,48 +135,70 @@ struct GroupAnnouncementWidgetView: View {
             .accessibilityLabel("Dismiss announcement")
         }
     }
+}
 
-    private func cardBody(_ item: FSGroupAnnouncement) -> some View {
+/// The 3:1 banner card face (title, eyebrow, View chip over a scrim).
+struct AnnouncementWidgetCardBody: View {
+    let item: FSGroupAnnouncement
+
+    /// Layering (regression fix): the card's size comes ONLY from the 3:1 clear
+    /// base. The banner is an `.overlay`, so an oversized aspect-fill photo can
+    /// never grow the card and push the scrim/text out of the clipped frame.
+    var body: some View {
         let url = item.banner_url.flatMap(URL.init(string:))
-        return ZStack(alignment: .bottomLeading) {
-            // Fallback gradient sits under the banner so a missing/failed image needs no error UI.
-            LinearGradient(colors: [Color(hex: "#2a2110"), Color(hex: "#5a4210"), Color(hex: "#C99A10")],
-                           startPoint: .topLeading, endPoint: .bottomTrailing)
-            if let url {
-                AsyncImage(url: url) { phase in
-                    if let image = phase.image { image.resizable().aspectRatio(contentMode: .fill) }
+        return Color.clear
+            .aspectRatio(AnnouncementLimits.bannerAspect, contentMode: .fit)
+            .frame(maxWidth: 560)
+            .frame(maxWidth: .infinity)
+            .background(
+                // Fallback gradient sits under the banner so a missing/failed image needs no error UI.
+                LinearGradient(colors: [Color(hex: "#2a2110"), Color(hex: "#5a4210"), Color(hex: "#C99A10")],
+                               startPoint: .topLeading, endPoint: .bottomTrailing)
+            )
+            .overlay {
+                if let url {
+                    AsyncImage(url: url) { phase in
+                        if let image = phase.image { image.resizable().scaledToFill() }
+                    }
+                    .accessibilityHidden(true)
                 }
-                .accessibilityHidden(true)
-                // Scrim: text always parchment on dark, AA over any banner.
-                LinearGradient(colors: [Color(red: 10/255, green: 10/255, blue: 10/255).opacity(0.35),
-                                        Color(red: 10/255, green: 10/255, blue: 10/255).opacity(0.78)],
-                               startPoint: .top, endPoint: .bottom)
             }
-            HStack(alignment: .center, spacing: Theme.spacingSM) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("ANNOUNCEMENT")
-                        .font(.inter(11, weight: .semibold)).tracking(0.66).foregroundColor(Theme.goldLight)
-                    Text(item.title)
-                        .font(.inter(15, weight: .semibold)).foregroundColor(Color(hex: "#F2F2F2"))
-                        .lineLimit(2).multilineTextAlignment(.leading)
-                }
-                Spacer(minLength: 0)
-                HStack(spacing: 3) {
-                    Text("View").font(.inter(Theme.fontXS, weight: .semibold))
-                    Image(systemName: "chevron.right").font(.system(size: 10, weight: .bold))
-                }
-                .foregroundColor(Theme.goldLight)
-                .padding(.horizontal, 10).padding(.vertical, 4)
-                .background(Capsule().fill(Color.black.opacity(0.55)))
-                .overlay(Capsule().stroke(Theme.goldLight.opacity(0.4), lineWidth: 1))
-                .padding(.trailing, 28)
-                .accessibilityHidden(true)
+            .overlay {
+                // Scrim: white text stays ~9:1 (AA) even over a pure white photo.
+                LinearGradient(stops: [.init(color: .black.opacity(0.78), location: 0),
+                                       .init(color: .black.opacity(0.72), location: 0.4),
+                                       .init(color: .black.opacity(0), location: 0.85)],
+                               startPoint: .bottom, endPoint: .top)
+                    .allowsHitTesting(false)
             }
-            .padding(.horizontal, 12).padding(.vertical, 8)
+            .overlay(alignment: .bottomLeading) { cardText }
+            .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
+            .overlay(RoundedRectangle(cornerRadius: Theme.radius).stroke(Theme.borderGoldFaint, lineWidth: 1))
+    }
+
+    private var cardText: some View {
+        HStack(alignment: .center, spacing: Theme.spacingSM) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("ANNOUNCEMENT")
+                    .font(.inter(11, weight: .semibold)).tracking(0.66).foregroundColor(Theme.goldLight)
+                Text(item.title)
+                    .font(.inter(17, weight: .semibold)).foregroundColor(Color(hex: "#F2F2F2"))
+                    .lineLimit(2).multilineTextAlignment(.leading)
+                    .shadow(color: .black.opacity(0.6), radius: 1, x: 0, y: 1)
+            }
+            Spacer(minLength: 0)
+            HStack(spacing: 3) {
+                Text("View").font(.inter(Theme.fontXS, weight: .semibold))
+                Image(systemName: "chevron.right").font(.system(size: 10, weight: .bold))
+            }
+            .foregroundColor(Theme.goldLight)
+            .padding(.horizontal, 10).padding(.vertical, 4)
+            .background(Capsule().fill(Color.black.opacity(0.55)))
+            .overlay(Capsule().stroke(Theme.goldLight.opacity(0.4), lineWidth: 1))
+            .padding(.trailing, 28)
+            .accessibilityHidden(true)
         }
-        .frame(maxWidth: .infinity, minHeight: height, maxHeight: height)
-        .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
-        .overlay(RoundedRectangle(cornerRadius: Theme.radius).stroke(Theme.borderGoldFaint, lineWidth: 1))
+        .padding(.horizontal, 14).padding(.vertical, 12)
     }
 }
 
@@ -191,3 +210,33 @@ private struct AnnouncementCardPressStyle: ButtonStyle {
             .scaleEffect(configuration.isPressed && !reduceMotion ? 0.99 : 1)
     }
 }
+
+#if DEBUG
+/// Regression previews: a tall 3000x6000 portrait and a pure-white photo must
+/// still show the title and "View" inside the 3:1 frame.
+private func previewBannerURL(tall: Bool, white: Bool) -> String {
+    let size = tall ? CGSize(width: 3000, height: 6000) : CGSize(width: 3000, height: 1000)
+    let fmt = UIGraphicsImageRendererFormat.default(); fmt.scale = 1
+    let data = UIGraphicsImageRenderer(size: size, format: fmt).jpegData(withCompressionQuality: 0.6) { ctx in
+        (white ? UIColor.white : UIColor.systemTeal).setFill()
+        ctx.fill(CGRect(origin: .zero, size: size))
+    }
+    let url = FileManager.default.temporaryDirectory.appendingPathComponent("preview-banner-\(tall)-\(white).jpg")
+    try? data.write(to: url)
+    return url.absoluteString
+}
+
+private func previewItem(_ title: String, _ banner: String) -> FSGroupAnnouncement {
+    FSGroupAnnouncement(id: "p", group_id: "g", creator_id: nil, creator_username: "sam", title: title, description: "",
+                        banner_url: banner, publish_at: "2026-09-29T12:00:00Z", created_at: "2026-09-29T12:00:00Z",
+                        updated_at: "2026-09-29T12:00:00Z", published: true, can_edit: false)
+}
+#Preview("Tall photo") {
+    AnnouncementWidgetCardBody(item: previewItem("Youth night moved to Friday", previewBannerURL(tall: true, white: false)))
+        .padding().background(Color.black)
+}
+#Preview("White photo") {
+    AnnouncementWidgetCardBody(item: previewItem("Potluck this Sunday after service", previewBannerURL(tall: false, white: true)))
+        .padding().background(Color.black)
+}
+#endif

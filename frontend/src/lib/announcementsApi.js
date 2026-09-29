@@ -17,6 +17,13 @@ export const ANNOUNCEMENT_LIMITS = {
   bannerAccept: ['image/jpeg', 'image/png', 'image/webp', 'image/heic'],
   bannerHelper: 'JPG, PNG, or WebP, up to 15MB.',
   scheduleHorizonDays: 365,
+  // Canonical banner geometry (task 20260929-announcement-banner-crop-list-style).
+  // Every surface (crop frame, widget, list row, viewer) derives its box from
+  // bannerAspect; the crop is baked into the uploaded JPEG at bannerOutputWidth.
+  bannerAspect: 3,
+  bannerOutputWidth: 1536,
+  bannerJpegQuality: 0.85,
+  cropZoomMax: 4,
 };
 
 export class AnnouncementsError extends Error {
