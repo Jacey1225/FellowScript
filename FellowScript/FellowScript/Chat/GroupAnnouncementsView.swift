@@ -39,7 +39,6 @@ struct GroupAnnouncementsView: View {
 
     var body: some View {
         ZStack(alignment: .bottom) {
-            Theme.bgPage.ignoresSafeArea()
             VStack(spacing: Theme.spacingSM) {
                 if vm.refreshFailed { refreshBanner }
                 if showGatePrompt { AnnouncementLimitCard(gate: vm.gate, onDismiss: { showGatePrompt = false }) }
@@ -51,9 +50,10 @@ struct GroupAnnouncementsView: View {
             }
             if vm.undoItem != nil { undoToast }
         }
+        .warmBloomBackground()
         .navigationTitle("Announcements")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(Theme.bgPage, for: .navigationBar)
+        .toolbarBackground(.hidden, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {

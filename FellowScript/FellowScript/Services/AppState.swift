@@ -21,6 +21,9 @@ final class AppState: ObservableObject {
     @Published var isAuthenticated = false
     @Published var pendingBibleNav: BibleNavTarget? = nil
     @Published var pendingChatContact: FSContact? = nil   // set to open a chat from another tab
+    /// Task 20260929-announcement-push-widget: set by an announcement push tap;
+    /// the group's chat widget consumes it (opens the viewer) once mounted.
+    @Published var pendingAnnouncementOpen: PendingAnnouncementOpen? = nil
     // Set when the account predates a material Terms of Service change (e.g.
     // the Guideline 1.2 zero-tolerance rewrite) — the UI should block on a
     // re-consent screen until acceptTerms() is called.
@@ -311,6 +314,15 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// Called when the user taps an announcement push: opens the group chat,
+    /// then the widget opens the viewer (falls back to just the chat if the
+    /// announcement is gone).
+    func openAnnouncement(groupId: String, announcementId: String) {
+        guard !groupId.isEmpty, !announcementId.isEmpty else { openSession(groupId: groupId); return }
+        pendingAnnouncementOpen = PendingAnnouncementOpen(groupId: groupId, announcementId: announcementId)
+        openSession(groupId: groupId)
+    }
+
     /// Called when the user taps a ring push (task 20260916-call-ring-members
     /// -- FellowScriptApp.AppDelegate's `didReceive response:` posts
     /// `.ringPushTapped` with the push's `devotion_id`/`group_id`, discriminated
@@ -389,4 +401,10 @@ final class AppState: ObservableObject {
             registerVoipDeviceToken(cachedToken)
         }
     }
+}
+
+
+struct PendingAnnouncementOpen: Equatable {
+    let groupId: String
+    let announcementId: String
 }

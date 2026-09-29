@@ -62,8 +62,7 @@ struct GroupAnnouncementFormView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                Theme.bgPage.ignoresSafeArea()
-                ScrollView {
+                    ScrollView {
                     VStack(alignment: .leading, spacing: 20) {
                         bannerField
                         titleField
@@ -83,9 +82,10 @@ struct GroupAnnouncementFormView: View {
                 }
                 .scrollDismissesKeyboard(.interactively)
             }
+            .warmBloomBackground()
             .navigationTitle(isEditing ? "Edit announcement" : "New announcement")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(Theme.bgPage, for: .navigationBar)
+            .toolbarBackground(.hidden, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -230,11 +230,12 @@ struct GroupAnnouncementFormView: View {
     private var publishField: some View {
         VStack(alignment: .leading, spacing: Theme.spacingXS) {
             label("Publish")
-            Picker("Publish", selection: Binding(get: { schedule }, set: { schedule = $0; dirty = true })) {
-                Text("Now").tag(false)
-                Text("Schedule").tag(true)
+            HStack(spacing: Theme.spacingSM) {
+                publishChip("Now", selected: !schedule, value: false)
+                publishChip("Schedule", selected: schedule, value: true)
             }
-            .pickerStyle(.segmented)
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("Publish")
             .disabled(saving)
             if schedule {
                 DatePicker("Publish date and time", selection: Binding(get: { when }, set: { when = $0; dirty = true }),
@@ -247,6 +248,23 @@ struct GroupAnnouncementFormView: View {
                     .font(.inter(Theme.fontXS)).foregroundColor(Theme.parchment.opacity(0.6))
             }
         }
+    }
+
+    private func publishChip(_ title: String, selected: Bool, value: Bool) -> some View {
+        Button { schedule = value; dirty = true } label: {
+            Text(title)
+                .font(.inter(Theme.fontXS, weight: .semibold))
+                .foregroundColor(selected ? Theme.gold : Theme.parchment.opacity(0.8))
+                .padding(.horizontal, 14)
+                .frame(minHeight: 44)
+                .background(selected ? Theme.gold.opacity(0.15) : Color.clear)
+                .overlay(Capsule().stroke(selected ? Theme.borderGold : Theme.borderGoldDim, lineWidth: 1))
+                .clipShape(Capsule())
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(title)
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
     // ── Actions ──────────────────────────────────────────────────────────────

@@ -11,7 +11,6 @@ struct GroupAnnouncementDetailView: View {
 
     var body: some View {
         ZStack {
-            Theme.bgPage.ignoresSafeArea()
             ScrollView {
                 VStack(alignment: .leading, spacing: Theme.spacingSM) {
                     if let s = item.banner_url, let url = URL(string: s) {
@@ -44,8 +43,9 @@ struct GroupAnnouncementDetailView: View {
                 .padding(Theme.spacingMD)
             }
         }
+        .warmBloomBackground()
         .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(Theme.bgPage, for: .navigationBar)
+        .toolbarBackground(.hidden, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
         .toolbar {
             if item.can_edit {

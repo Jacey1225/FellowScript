@@ -64,6 +64,12 @@ export function fetchAnnouncements(userId, groupId) {
   return request(base(userId, groupId), undefined, "Couldn't load announcements.");
 }
 
+// Chat-header widget source -> { announcement: {...} | null } (newest published,
+// non-deleted announcement inside the server's widget window; member-only).
+export function fetchLatestAnnouncement(userId, groupId) {
+  return request(`${base(userId, groupId)}/latest`, undefined, "Couldn't load the latest announcement.");
+}
+
 // body: { title, description, banner_key?, publish_at? }
 export function createAnnouncement(userId, groupId, body) {
   return request(base(userId, groupId), json('POST', body), "That didn't save. Please try again.");

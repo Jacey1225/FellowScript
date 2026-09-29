@@ -678,6 +678,11 @@ struct ChatThreadView: View {
             VStack(spacing: 0) {
                 header
 
+                // Task 20260929-announcement-push-widget: groups only, directly under the header.
+                if contact.type == .group, GroupAnnouncementsConfig.enabled, let uid = user?.user_id {
+                    GroupAnnouncementWidgetView(service: appState.service, groupId: contact.id, userId: uid)
+                }
+
                 // ── Reconnecting banner (dropped-socket lifecycle state) ───
                 // Same vm.isConnected-driven logic as before — restyled into
                 // a pill using the Ember Glass elevation language (§1) rather
@@ -1464,7 +1469,7 @@ struct GroupMembersPanel: View {
         VStack(alignment: .leading, spacing: Theme.spacingSM) {
             Text("Members")
                 .font(.inter(Theme.fontXXS)).tracking(3).textCase(.uppercase)
-                .foregroundColor(Theme.gold.opacity(0.50))
+                .foregroundColor(Theme.gold.opacity(0.70))
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: Theme.spacingSM) {
@@ -1478,9 +1483,9 @@ struct GroupMembersPanel: View {
                 }
             }
         }
-        .padding(Theme.spacingMD)
+        .padding(.horizontal, Theme.spacingSM)
+        .padding(.vertical, Theme.spacingMD)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.islandBg.opacity(0.70))
         .overlay(alignment: .bottom) { Divider().background(Theme.borderGoldFaint) }
     }
 

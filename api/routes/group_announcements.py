@@ -11,7 +11,7 @@ attached via create/update and re-validated against this group's prefix.
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from backend.auth.dependencies import require_match
@@ -20,6 +20,7 @@ from backend.interactions.announcements import (
     ANNOUNCEMENTS_ENABLED, AnnouncementForbidden, AnnouncementNotFound,
     AnnouncementsManager, parse_publish_at,
 )
+from backend.interactions.announcement_notifier import notify_on_create
 from backend.interactions.attachments import AttachmentConfigError
 from backend.moderation.content_filter import ContentRejected, check_clean, rejection_message
 from backend.rate_limiting import limiter
@@ -96,7 +97,7 @@ async def list_announcements(user_id: str, group_id: str, _: str = Depends(requi
 @limiter.limit("30/minute")
 async def create_announcement(
     request: Request, user_id: str, group_id: str, body: AnnouncementCreateRequest,
-    _: str = Depends(require_match("user_id")),
+    background_tasks: BackgroundTasks, _: str = Depends(require_match("user_id")),
 ) -> dict:
     """Create an announcement.
 
@@ -111,11 +112,28 @@ async def create_announcement(
         if not gate["allowed"]:
             raise HTTPException(status_code=403, detail=gate)
         try:
-            return manager.create_announcement(body.title, body.description, body.banner_key, publish_at)
+            created = manager.create_announcement(body.title, body.description, body.banner_key, publish_at)
+            # Group push runs after the response (off the request path); the
+            # notifier claims atomically and never raises.
+            background_tasks.add_task(notify_on_create, created["id"])
+            return created
         except ValueError as e:
             raise HTTPException(status_code=422, detail=str(e))
         except AnnouncementForbidden:
             raise HTTPException(status_code=403, detail="Invalid banner reference")
+    finally:
+        manager.close()
+
+
+@group_announcements_router.get("/{user_id}/{group_id}/announcements/latest")
+async def latest_announcement(user_id: str, group_id: str, _: str = Depends(require_match("user_id"))) -> dict:
+    """Chat-header widget source: ``{"announcement": {...} | null}``. Declared
+    before the ``{announcement_id}`` route so "latest" is never captured as an id.
+
+    Raises: 403 not a member; 404 feature disabled."""
+    manager = _open(user_id, group_id)
+    try:
+        return manager.latest_widget_announcement()
     finally:
         manager.close()
 

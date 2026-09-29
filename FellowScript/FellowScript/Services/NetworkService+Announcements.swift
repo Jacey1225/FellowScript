@@ -9,6 +9,10 @@ import Foundation
 
 protocol GroupAnnouncementsService {
     func fetchAnnouncements(userId: String, groupId: String) async throws -> FSAnnouncementsPage
+    /// Chat-header widget source (member-only): newest published announcement in the server's window, or nil.
+    func fetchLatestAnnouncement(userId: String, groupId: String) async throws -> FSGroupAnnouncement?
+    /// One announcement by id (push deep link). Throws if gone / not visible.
+    func fetchAnnouncement(userId: String, groupId: String, announcementId: String) async throws -> FSGroupAnnouncement
     func createAnnouncement(userId: String, groupId: String, draft: FSAnnouncementDraft) async throws -> FSGroupAnnouncement
     func updateAnnouncement(userId: String, groupId: String, announcementId: String, draft: FSAnnouncementDraft) async throws -> FSGroupAnnouncement
     func deleteAnnouncement(userId: String, groupId: String, announcementId: String) async throws
@@ -34,6 +38,24 @@ extension NetworkService: GroupAnnouncementsService {
             throw AppError.networkError("Couldn't load announcements.")
         }
         return page
+    }
+
+    // GET …/announcements/latest → {announcement: obj|null}
+    func fetchLatestAnnouncement(userId: String, groupId: String) async throws -> FSGroupAnnouncement? {
+        let data = try await get("\(announcementsPath(userId, groupId))/latest")
+        guard let latest = decode(FSLatestAnnouncement.self, from: data, endpoint: "/groups/{id}/{id}/announcements/latest") else {
+            throw AppError.networkError("Couldn't load the latest announcement.")
+        }
+        return latest.announcement
+    }
+
+    // GET …/announcements/{id}
+    func fetchAnnouncement(userId: String, groupId: String, announcementId: String) async throws -> FSGroupAnnouncement {
+        let data = try await get("\(announcementsPath(userId, groupId))/\(announcementId)")
+        guard let item = decode(FSGroupAnnouncement.self, from: data, endpoint: "/groups/{id}/{id}/announcements/{id}") else {
+            throw AppError.networkError("Couldn't load that announcement.")
+        }
+        return item
     }
 
     // POST → the created announcement

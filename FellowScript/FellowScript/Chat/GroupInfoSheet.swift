@@ -317,7 +317,6 @@ struct GroupInfoSheet: View {
     var body: some View {
         NavigationStack {
         ZStack(alignment: .bottom) {
-            Theme.bgPage.ignoresSafeArea()
             VStack(spacing: 0) {
                 topBar
                 ScrollView {
@@ -335,6 +334,8 @@ struct GroupInfoSheet: View {
             }
             if vm.undoRestoreKey != nil { undoToast }
         }
+        // Same warm bloom ground as the chat screen (shared recipe).
+        .warmBloomBackground()
         // Announcements pushes onto this stack; the sheet keeps its own top bar.
         .toolbar(.hidden, for: .navigationBar)
         .navigationDestination(isPresented: $showAnnouncements) {
@@ -511,8 +512,6 @@ struct GroupInfoSheet: View {
             }
             .padding(Theme.spacingSM)
             .frame(minHeight: 56)
-            .background(Theme.cardBg)
-            .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
             if let err = vm.muteError { errorText(err) }
         }
     }
@@ -533,8 +532,7 @@ struct GroupInfoSheet: View {
             }
             .padding(Theme.spacingSM)
             .frame(minHeight: 56)
-            .background(Theme.cardBg)
-            .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Announcements")

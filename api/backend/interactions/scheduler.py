@@ -1249,6 +1249,15 @@ def start_scheduler() -> None:
     # session to exactly one reminder ever, regardless of poll rate.
     scheduler.add_job(_fire_due_session_reminders, "interval", seconds=SESSION_REMINDER_POLL_INTERVAL_SECONDS,
                       id="session_reminder_fire", replace_existing=True)
+    # Announcement publish-time group push (task 20260929-announcement-push-
+    # widget): poll-and-claim on group_announcements.push_sent_at; the atomic
+    # claim, not the poll rate, guarantees one push per announcement.
+    from backend.interactions.announcement_notifier import (
+        ANNOUNCEMENT_PUSH_POLL_INTERVAL_SECONDS, fire_due_announcement_pushes,
+    )
+    scheduler.add_job(fire_due_announcement_pushes, "interval",
+                      seconds=ANNOUNCEMENT_PUSH_POLL_INTERVAL_SECONDS,
+                      id="announcement_push_fire", replace_existing=True)
     # Non-recurring session auto-delete (task 20260921-session-auto-delete-
     # window): 1-hour grace period past time_end (SESSION_AUTO_DELETE_GRACE_
     # SECONDS), then a fail-closed Chime-presence gate before the actual

@@ -8,6 +8,8 @@ import {
 } from '@ant-design/icons';
 import SessionWidget from './SessionWidget.jsx';
 import GroupInfoPanel from './GroupInfoPanel.jsx';
+import GroupAnnouncementWidget from './GroupAnnouncementWidget.jsx';
+import { ANNOUNCEMENTS_ENABLED } from '../lib/announcementsApi.js';
 
 const { Text } = Typography;
 
@@ -530,6 +532,7 @@ export default function ChatThread({
   const [showGroupInfo, setShowGroupInfo] = useState(false);
   const [panelLightbox, setPanelLightbox] = useState(null);
   const groupInfoBtnRef = useRef(null);
+  const messageInputRef = useRef(null);
   const [showAttachMenu, setShowAttachMenu] = useState(false);
   const [showGifSheet, setShowGifSheet]     = useState(false);
   const [staged, setStaged]                 = useState(null); // { kind, file, previewUrl, fileName, meta, uploadState, objectKey }
@@ -724,6 +727,15 @@ export default function ChatThread({
         </button>
       </div>
 
+      {/* Task 20260929-announcement-push-widget: groups only, directly under the header. */}
+      {ANNOUNCEMENTS_ENABLED && contact?.type === 'group' && user?.user_id && (
+        <GroupAnnouncementWidget
+          userId={user.user_id}
+          groupId={contact.id}
+          onAfterDismiss={() => messageInputRef.current?.focus?.()}
+        />
+      )}
+
       {/* Session island widgets */}
       <SessionWidget
         sessions={sessions}
@@ -842,6 +854,7 @@ export default function ChatThread({
         <input ref={fileInputRef} type="file" accept={ATTACHMENT_LIMITS.file.accept} className="hidden-file-input" onChange={handleFileChange} />
 
         <Input
+          ref={messageInputRef}
           value={text}
           onChange={e => setText(e.target.value)}
           onPressEnter={handleSend}

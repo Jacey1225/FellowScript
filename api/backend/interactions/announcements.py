@@ -31,6 +31,9 @@ ANNOUNCEMENTS_PAGE_SIZE = 50
 ANNOUNCEMENT_MAX_HORIZON_DAYS = 365
 # Window after a delete during which restore (undo) is accepted.
 ANNOUNCEMENT_UNDO_GRACE_SECONDS = 120
+# Chat-header widget shows the latest published announcement only this long
+# after its publish_at (task 20260929-announcement-push-widget).
+ANNOUNCEMENT_WIDGET_WINDOW_DAYS = 7
 
 _COLUMNS = (
     "a._id, a.group_id, a.creator_id, u.username, a.title, a.description, a.banner_key, "
@@ -155,6 +158,24 @@ class AnnouncementsManager(GroupsManager):
             "announcements": [self._serialize(r, creator) for r in rows[:ANNOUNCEMENTS_PAGE_SIZE]],
             "truncated": len(rows) > ANNOUNCEMENTS_PAGE_SIZE,
         }
+
+    def latest_widget_announcement(self) -> dict:
+        """``{"announcement": <dict> | None}``: the newest published,
+        non-deleted announcement from the last ``ANNOUNCEMENT_WIDGET_WINDOW_DAYS``
+        days, excluding blocked authors. Unlike the list, an author's own
+        still-scheduled rows are never returned."""
+        blocked = list(self._blocked_set())
+        self.cur.execute(
+            f"SELECT {_COLUMNS} {_FROM} "
+            "WHERE a.group_id = %s AND a.deleted_at IS NULL "
+            "AND a.publish_at <= now() "
+            "AND a.publish_at >= now() - make_interval(days => %s) "
+            "AND (a.creator_id IS NULL OR NOT (a.creator_id::text = ANY(%s))) "
+            "ORDER BY a.publish_at DESC, a._id DESC LIMIT 1",
+            (self.group_id, ANNOUNCEMENT_WIDGET_WINDOW_DAYS, blocked),
+        )
+        row = self.cur.fetchone()
+        return {"announcement": self._serialize(row, self._group_creator_id()) if row else None}
 
     def get_announcement(self, announcement_id: str) -> dict:
         row = self._fetch_row(announcement_id)

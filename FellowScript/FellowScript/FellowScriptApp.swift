@@ -87,6 +87,11 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         if action == "ring", let devotionId, let groupId, !groupId.isEmpty {
             NotificationCenter.default.post(name: .ringPushTapped,
                                             object: RingPushTarget(devotionId: devotionId, groupId: groupId))
+        } else if action == "announcement", let groupId, !groupId.isEmpty {
+            // Task 20260929-announcement-push-widget: identifiers only in the payload.
+            NotificationCenter.default.post(name: .announcementPushTapped,
+                                            object: AnnouncementPushTarget(groupId: groupId,
+                                                                           announcementId: data["announcement_id"] as? String ?? ""))
         } else if action == "message", let groupId, !groupId.isEmpty {
             NotificationCenter.default.post(name: .sessionPushTapped, object: groupId)
         } else if data["devotion_id"] != nil, let groupId, !groupId.isEmpty {
@@ -99,6 +104,11 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
 // Payload carried by `.ringPushTapped` — both fields are required to resolve
 // straight to the live session (see AppState.joinRingedCall(_:)), unlike the
 // plain session-created push which only ever needs `group_id`.
+struct AnnouncementPushTarget {
+    let groupId: String
+    let announcementId: String
+}
+
 struct RingPushTarget {
     let devotionId: String
     let groupId:    String
@@ -108,6 +118,7 @@ extension Notification.Name {
     static let apnsTokenReceived = Notification.Name("apnsTokenReceived")
     static let sessionPushTapped = Notification.Name("sessionPushTapped")
     static let ringPushTapped    = Notification.Name("ringPushTapped")
+    static let announcementPushTapped = Notification.Name("announcementPushTapped")
     // Task 20260916-callkit-voip-ring: posted by VoipCallManager
     // (PKPushRegistryDelegate) whenever PushKit issues/refreshes this
     // device's VoIP token -- mirrors .apnsTokenReceived's role for the
@@ -172,6 +183,11 @@ struct FellowScriptApp: App {
                 .onReceive(NotificationCenter.default.publisher(for: .sessionPushTapped)) { note in
                     if let groupId = note.object as? String {
                         appState.openSession(groupId: groupId)
+                    }
+                }
+                .onReceive(NotificationCenter.default.publisher(for: .announcementPushTapped)) { note in
+                    if let target = note.object as? AnnouncementPushTarget {
+                        appState.openAnnouncement(groupId: target.groupId, announcementId: target.announcementId)
                     }
                 }
                 // Task 20260916-call-ring-members: a ring push's tap-through

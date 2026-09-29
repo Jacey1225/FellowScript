@@ -38,6 +38,11 @@ struct FSAnnouncementsPage: Codable, Equatable {
     var gate:          FSAnnouncementGate?
 }
 
+/// Chat-header widget source: `{"announcement": {...} | null}`.
+struct FSLatestAnnouncement: Codable, Equatable {
+    var announcement: FSGroupAnnouncement?
+}
+
 enum FSAnnouncementDates {
     /// Python's isoformat() emits microseconds, which ISO8601DateFormatter
     /// does not reliably accept; trim the fraction to milliseconds first.

@@ -226,6 +226,22 @@ def create_tables(cur):
         "CREATE INDEX IF NOT EXISTS idx_group_announcements_creator_created "
         "ON group_announcements(creator_id, created_at)"
     )
+    # Task 20260929-announcement-push-widget: idempotency markers for the
+    # announcement group push. push_sent_at is the publish-time (or immediate)
+    # push claim; creation_push_sent_at is the separate "scheduled" heads-up
+    # for future-dated rows. Both are atomic single-winner claims. Additive +
+    # idempotent. The partial index serves the scheduler's due-scan.
+    cur.execute(
+        "ALTER TABLE group_announcements ADD COLUMN IF NOT EXISTS push_sent_at TIMESTAMPTZ"
+    )
+    cur.execute(
+        "ALTER TABLE group_announcements ADD COLUMN IF NOT EXISTS creation_push_sent_at TIMESTAMPTZ"
+    )
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_group_announcements_push_due "
+        "ON group_announcements(publish_at) "
+        "WHERE push_sent_at IS NULL AND deleted_at IS NULL"
+    )
 
     # ── Level 1: depend on users / groups ──────────────────────────────────────
     cur.execute(
