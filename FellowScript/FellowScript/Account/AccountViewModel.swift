@@ -90,6 +90,36 @@ final class AccountViewModel: ObservableObject {
     // flipped it false while the real round was still ~1s from committing,
     // and the Events section fell through to the confirmed-empty copy.
     private var liveLoadCount = 0
+    // Root-cause fix (task 20260929-account-events-missing-list): true once
+    // this VM instance's cache-first block has ever run once. Mirrors
+    // NotesViewModel's own `hasLoadedOnce`/`showLoadingSpinner` gate
+    // (Notes/NotesViewModel.swift) -- the identical mechanism, applied to a
+    // different sibling screen. That fix (task
+    // 20260910-refresh-clobber-live-rootcause, "mechanism 3: cache-first-
+    // over-live-state") was deliberately left OUT of scope for this file at
+    // the time (see RefreshClobberLiveRootcauseRegressionTests.swift's own
+    // header comment: "AccountViewModel.load()'s cache-first read... is
+    // unchanged, pre-existing, out-of-this-task's-scope behavior"), even
+    // though every prior fix attempt on this exact symptom since has been
+    // fought entirely at the FINAL commit's generation/committedGeneration
+    // guard -- never at this earlier, completely unguarded block. That
+    // asymmetry is the actual gap: `load()`'s cache-first reads (below)
+    // used to assign directly to @Published state, including `events`, on
+    // EVERY call -- the initial `.task`, a `.refreshable` pull, or a
+    // `.task` re-fire alike -- regardless of whether this VM already has
+    // live, correctly-committed data on screen. DiskCache is a single
+    // actor serializing ALL of this app's cache traffic (Notes/Dashboard/
+    // Chat/Account together, not just this screen), so a round's own cache
+    // read is a genuine `await` that can resolve well after a DIFFERENT,
+    // faster round has already committed fresher real data -- at which
+    // point the stale disk snapshot had no business overwriting it, same
+    // mechanism NotesViewModel's own fix closed, just never mirrored here.
+    // Gating cache-first application to the very first call keeps the
+    // "stale-while-revalidate instant display" behavior for a genuinely
+    // fresh screen (cold launch / a fresh `AccountViewModel()` after
+    // force-quit) while stopping every later call from ever reapplying a
+    // disk snapshot over whatever this instance already has live.
+    private var hasLoadedOnce = false
     // True once a load() round has completed the per-agent heartbeats walk
     // with no failure or cancellation on any agent (or the account has no
     // agents at all). Until then `events == []` only means "not proven
@@ -218,24 +248,36 @@ final class AccountViewModel: ObservableObject {
         // already miss/empty at the START of a refresh (before any network
         // call resolves) would point at a prior round's write, not this
         // round's fetch, as the source of an empty Events section.
+        //
+        // Root-cause fix (task 20260929-account-events-missing-list): every
+        // assignment below is now gated on `isInitialLoad` (see
+        // `hasLoadedOnce`'s own comment above for the full mechanism this
+        // closes -- the same "cache-first-over-live-state" gap
+        // NotesViewModel.fetchAndCache already fixed, mirrored here). The
+        // reads themselves, and their diagnostics, still always run (so a
+        // live capture keeps full visibility into what's on disk at the
+        // start of every round) -- only whether a stale disk snapshot gets
+        // APPLIED on top of this instance's already-live state changed.
+        let isInitialLoad = !hasLoadedOnce
+        hasLoadedOnce = true
         let userCacheResult: FSUser? = await DiskCache.shared.load(FSUser.self, forKey: "user:\(uid)")
         RefreshDiagnostics.cacheRead(key: "user:\(uid)", count: userCacheResult == nil ? nil : 1)
-        if let cached = userCacheResult {
+        if isInitialLoad, let cached = userCacheResult {
             profileData = cached
         }
         let agentsCacheResult: [FSAgent]? = await DiskCache.shared.load([FSAgent].self, forKey: "agents:\(uid)")
         RefreshDiagnostics.cacheRead(key: "agents:\(uid)", count: agentsCacheResult?.count)
-        if let cached = agentsCacheResult {
+        if isInitialLoad, let cached = agentsCacheResult {
             agents = cached
         }
         let eventsCacheResult: [FSHeartbeat]? = await DiskCache.shared.load([FSHeartbeat].self, forKey: "events:\(uid)")
         RefreshDiagnostics.cacheRead(key: "events:\(uid)", count: eventsCacheResult?.count)
-        if let cached = eventsCacheResult {
+        if isInitialLoad, let cached = eventsCacheResult {
             events = cached
         }
         let countsCacheResult: [Int]? = await DiskCache.shared.load([Int].self, forKey: "counts:\(uid)")
         RefreshDiagnostics.cacheRead(key: "counts:\(uid)", count: countsCacheResult?.count)
-        if let cached = countsCacheResult, cached.count == 2 {
+        if isInitialLoad, let cached = countsCacheResult, cached.count == 2 {
             noteCount = cached[0]; highlightCount = cached[1]
         }
 

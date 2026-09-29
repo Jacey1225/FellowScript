@@ -273,23 +273,31 @@ final class AccountLoadCancelledRoundPersistsNothingRegressionTests: XCTestCase 
         FSUser(user_id: "cancel-persist-acct-\(label)-\(UUID().uuidString)", username: "user-\(label)", email: "\(label)@example.com")
     }
 
-    /// AccountViewModel.load()'s cache-first read (unlike NotesViewModel's,
-    /// which this task gated to initial-load-only) unconditionally reapplies
-    /// disk state to in-memory on EVERY call, including a refresh -- that's
-    /// unchanged, pre-existing, out-of-this-task's-scope behavior (the
-    /// security gate reviewed it and found no fail-closed regression). That
-    /// means a sentinel planted directly on disk before a cancelled round
-    /// gets read right back into memory at the TOP of that same round, so a
-    /// naive "disk content unchanged" check can't tell a skipped write apart
-    /// from a write that merely re-persists the exact same cache-seeded
-    /// value it just read. To actually isolate the write guard, this test
-    /// gives ONE fetch (agents) a genuinely NEW, successful result --
-    /// legitimately different from whatever's on disk -- while a DIFFERENT
-    /// concurrent fetch (notes count) is cancelled, making the overall round
-    /// `wasCancelled`. If the write guard is intact, that fresh agents data
-    /// must NEVER reach disk this round, even though it's sitting correctly
-    /// in `vm.agents` in memory -- proving the guard is round-level (Q14:
-    /// an ambiguous round can't partially persist), not per-fetch.
+    /// UPDATED (task 20260929-account-events-missing-list, frontend step 1):
+    /// at the time this test was written, AccountViewModel.load()'s
+    /// cache-first read (unlike NotesViewModel's, which this task gated to
+    /// initial-load-only) unconditionally reapplied disk state to in-memory
+    /// on EVERY call, including a refresh -- called out here as
+    /// out-of-that-task's-scope, not verified safe. That asymmetry turned
+    /// out to be exactly the gap every fix attempt on the "account events
+    /// missing" symptom since had missed (all fought at the FINAL commit's
+    /// generation guard, never at this earlier, unguarded block): a round's
+    /// cache read is a real `await` against a single actor serializing this
+    /// app's entire DiskCache traffic, so it can resolve after a different,
+    /// faster round has already committed fresher real data, silently
+    /// reverting it. AccountViewModel.load() now gates cache-first
+    /// application on `hasLoadedOnce` (initial-load-only), mirroring
+    /// NotesViewModel's own fix -- this test's own assertions below are
+    /// unaffected (they exercise the disk *write* guard's round-level
+    /// cancellation behavior, not the cache-first *read* reapplication this
+    /// comment used to describe), so this test still gives ONE fetch
+    /// (agents) a genuinely NEW, successful result -- legitimately different
+    /// from whatever's on disk -- while a DIFFERENT concurrent fetch (notes
+    /// count) is cancelled, making the overall round `wasCancelled`. If the
+    /// write guard is intact, that fresh agents data must NEVER reach disk
+    /// this round, even though it's sitting correctly in `vm.agents` in
+    /// memory -- proving the guard is round-level (Q14: an ambiguous round
+    /// can't partially persist), not per-fetch.
     func test_load_oneFetchCancelled_anotherFetchGenuinelySucceedsWithNewData_freshDataNeverReachesDisk() async {
         let vm = AccountViewModel()
         let service = ThrowingTestDataService()
