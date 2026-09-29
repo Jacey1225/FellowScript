@@ -129,6 +129,10 @@ struct ContentView: View {
         .onChange(of: appState.pendingChatContact) { _, target in
             if target != nil { selectedTab = .chat }
         }
+        // Announcements free-limit card ("See plans") -> Account tab.
+        .onReceive(NotificationCenter.default.publisher(for: .fsOpenSubscriptionPlans)) { _ in
+            selectedTab = .account
+        }
         // Update-nudge popup (task 20260909-ios-version-gate-popup): only
         // ever surfaced once the readiness race has already resolved
         // (`startup.isReady`), so it can never overlap/compete with

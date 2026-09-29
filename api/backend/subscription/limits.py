@@ -13,7 +13,7 @@ The former `agent_notifications` gated resource (a cap on user-authored
 """
 
 from db import DBManager
-from schemas.subscription import FREE_LIMITS, NOTES_WINDOW_DAYS, EXPIRY_GRACE_DAYS
+from schemas.subscription import FREE_LIMITS, NOTES_WINDOW_DAYS, ANNOUNCEMENTS_WINDOW_DAYS, EXPIRY_GRACE_DAYS
 
 
 class LimitsManager(DBManager):
@@ -57,6 +57,15 @@ class LimitsManager(DBManager):
             self.cur.execute(
                 "SELECT COUNT(*) FROM agent_heartbeats WHERE user_id = %s",
                 (user_id,),
+            )
+        elif resource == "announcements":
+            # Counted by created_at (not publish_at) and includes scheduled
+            # and soft-deleted rows, so neither scheduling far ahead nor
+            # delete-and-recreate can be used to bypass the cap.
+            self.cur.execute(
+                "SELECT COUNT(*) FROM group_announcements "
+                "WHERE creator_id = %s AND created_at >= now() - (%s || ' days')::interval",
+                (user_id, ANNOUNCEMENTS_WINDOW_DAYS),
             )
         else:
             return 0

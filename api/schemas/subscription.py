@@ -42,6 +42,9 @@ ADMIN_COMP_PROVIDER = "admin_comp"
 # regardless of client (web or iOS).
 #   - notes:        rolling-7-day window (notes the user authors)
 #   - agent_events: total heartbeats the user owns
+#   - announcements: group announcements the user authored in the rolling
+#                    ANNOUNCEMENTS_WINDOW_DAYS window, across all groups,
+#                    counted from created_at (task 20260929-group-announcements)
 #
 # The former `agent_notifications` cap (total user-authored "agentic"
 # notifications) was removed along with that subsystem — see
@@ -49,8 +52,10 @@ ADMIN_COMP_PROVIDER = "admin_comp"
 FREE_LIMITS: dict[str, int] = {
     "notes": 10,
     "agent_events": 1,
+    "announcements": 1,
 }
 NOTES_WINDOW_DAYS = 7
+ANNOUNCEMENTS_WINDOW_DAYS = 7
 
 
 class Subscription(BaseModel):

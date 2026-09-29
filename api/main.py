@@ -17,6 +17,7 @@ from routes.monitoring import monitoring_router
 from routes.activity_monitoring import activity_monitoring_router
 from routes.profile_photo import profile_photo_router
 from routes.group_info import group_info_router
+from routes.group_announcements import group_announcements_router
 from schemas.users import SignUp, Login, UpdateUser, User, CURRENT_TERMS_VERSION
 from datetime import datetime, timezone
 from pydantic import BaseModel
@@ -301,6 +302,7 @@ app.include_router(monitoring_router)
 app.include_router(activity_monitoring_router)
 app.include_router(profile_photo_router)
 app.include_router(group_info_router)
+app.include_router(group_announcements_router)
 
 main_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 user_path = "data/users.json"

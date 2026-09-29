@@ -199,6 +199,33 @@ def create_tables(cur):
         "muted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),"
         "PRIMARY KEY (user_id, group_id))"
     )
+    # Task 20260929-group-announcements: announcements posted to a group.
+    # Additive + idempotent. Group delete cascades; a departed/deleted author
+    # leaves the announcement in place (creator_id SET NULL). banner_key is an
+    # S3 object key (never a URL). deleted_at is a tombstone: soft delete
+    # enables undo within a grace window, and the row keeps counting toward
+    # the free-tier weekly cap so delete-and-recreate can't bypass it.
+    cur.execute(
+        "CREATE TABLE IF NOT EXISTS group_announcements"
+        "(_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
+        "group_id UUID NOT NULL REFERENCES groups(_id) ON DELETE CASCADE,"
+        "creator_id UUID REFERENCES users(_id) ON DELETE SET NULL,"
+        "title VARCHAR(255) NOT NULL,"
+        "description TEXT NOT NULL DEFAULT '',"
+        "banner_key TEXT,"
+        "publish_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),"
+        "created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),"
+        "updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),"
+        "deleted_at TIMESTAMPTZ)"
+    )
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_group_announcements_group_publish "
+        "ON group_announcements(group_id, publish_at DESC)"
+    )
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_group_announcements_creator_created "
+        "ON group_announcements(creator_id, created_at)"
+    )
 
     # ── Level 1: depend on users / groups ──────────────────────────────────────
     cur.execute(

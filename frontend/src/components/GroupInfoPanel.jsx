@@ -3,13 +3,15 @@ import { createPortal } from 'react-dom';
 import { Avatar, Switch, Spin } from 'antd';
 import {
   CloseOutlined, CameraOutlined, EditOutlined, BellOutlined, FileOutlined,
-  PlayCircleOutlined, DownloadOutlined,
+  PlayCircleOutlined, DownloadOutlined, NotificationOutlined, RightOutlined,
 } from '@ant-design/icons';
 import { useFocusTrap } from '../hooks/useFocusTrap.js';
 import {
   fetchGroupInfo, renameGroup, setGroupMuted, uploadGroupPhoto,
   removeGroupPhoto, confirmGroupPhoto, fetchGroupGallery, GROUP_PHOTO_LIMITS,
 } from '../lib/groupInfoApi.js';
+import { ANNOUNCEMENTS_ENABLED } from '../lib/announcementsApi.js';
+import GroupAnnouncements from './GroupAnnouncements.jsx';
 
 // Task 20260929-group-info-panel (design-notes.md). Groups only. All network
 // calls throw on failure (lib/groupInfoApi.js) and this component never
@@ -104,6 +106,10 @@ export default function GroupInfoPanel({
   const [undo, setUndo] = useState(null);           // { restoreKey }
   const [mutePending, setMutePending] = useState(false);
   const [muteError, setMuteError] = useState(null);
+  const [view, setView] = useState('main');       // 'main' | 'announcements'
+  const viewRef = useRef('main');
+  viewRef.current = view;
+  const announcementsRowRef = useRef(null);
   const [filter, setFilter] = useState('all');
   const [gallery, setGallery] = useState(null);     // { items, cursor, hasMore }
   const [galleryLoading, setGalleryLoading] = useState(false);
@@ -119,7 +125,7 @@ export default function GroupInfoPanel({
     if (!open || !groupId || !userId) return undefined;
     setInfo(infoCache.get(groupId) || null);
     setRefreshError(false);
-    setEditing(false); setNameError(null); setPhotoError(null); setMuteError(null);
+    setEditing(false); setNameError(null); setPhotoError(null); setMuteError(null); setView('main');
     let cancelled = false;
     fetchGroupInfo(userId, groupId)
       .then((data) => { if (cancelled) return; infoCache.set(groupId, data); setInfo(data); })
@@ -180,7 +186,8 @@ export default function GroupInfoPanel({
   useEffect(() => {
     if (!open) return undefined;
     headingRef.current?.focus();
-    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    // Sub-views own Esc (back one level); the panel only closes from main.
+    const onKey = (e) => { if (e.key === 'Escape' && !e.defaultPrevented && viewRef.current === 'main') onClose(); };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   }, [open, onClose]);
@@ -307,7 +314,19 @@ export default function GroupInfoPanel({
         </button>
       </div>
 
-      <div className="group-info-scroll">
+      {view === 'announcements' && (
+        <div className="group-info-scroll">
+          <GroupAnnouncements
+            userId={userId} groupId={groupId}
+            onBack={() => { setView('main'); setTimeout(() => announcementsRowRef.current?.focus(), 0); }}
+            onGroupGone={() => onGroupGone?.()}
+            onUpgrade={() => { window.location.assign('/account'); }}
+            onOpenLightbox={onOpenLightbox}
+          />
+        </div>
+      )}
+
+      <div className="group-info-scroll" hidden={view !== 'main'}>
         {refreshError && (
           <div className="group-info-banner" role="status">
             <span>Couldn't refresh just now. Showing what we have.</span>
@@ -384,6 +403,19 @@ export default function GroupInfoPanel({
             <span className="group-info-skeleton" aria-hidden="true" />
           )}
         </section>
+
+        {/* Announcements */}
+        {ANNOUNCEMENTS_ENABLED && (
+          <button type="button" ref={announcementsRowRef} className="group-info-card group-info-card-button"
+            aria-label="Announcements" onClick={() => setView('announcements')}>
+            <NotificationOutlined className="group-info-card-icon" />
+            <span className="group-info-card-text">
+              <span>Announcements</span>
+              <span className="group-info-helper">Updates for everyone in this group.</span>
+            </span>
+            <RightOutlined aria-hidden="true" />
+          </button>
+        )}
 
         {/* Members */}
         <section>

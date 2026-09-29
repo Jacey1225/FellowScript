@@ -288,6 +288,8 @@ struct GroupInfoSheet: View {
     @State private var showPhotoActions = false
     @State private var showPhotoPicker = false
     @State private var viewerItem: FSGalleryItem?
+    @State private var showAnnouncements = false
+    private let service: DataServiceProtocol
 
     init(contact: FSContact, user: FSUser?, service: DataServiceProtocol,
          memberNames: [String], photoByUsername: [String: String],
@@ -301,6 +303,7 @@ struct GroupInfoSheet: View {
         self.photoByUsername = photoByUsername
         self.onAddMembers = onAddMembers
         self.onGroupGone = onGroupGone
+        self.service = service
         let model = GroupInfoViewModel(service: service, groupId: contact.id, userId: user?.user_id ?? "")
         model.onTitleChanged = onTitleChanged
         model.onPhotoChanged = onPhotoChanged
@@ -312,6 +315,7 @@ struct GroupInfoSheet: View {
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 4), count: 3)
 
     var body: some View {
+        NavigationStack {
         ZStack(alignment: .bottom) {
             Theme.bgPage.ignoresSafeArea()
             VStack(spacing: 0) {
@@ -321,6 +325,7 @@ struct GroupInfoSheet: View {
                         if vm.refreshFailed { refreshBanner }
                         identityBlock
                         muteRow
+                        if GroupAnnouncementsConfig.enabled { announcementsRow }
                         membersSection
                         sharedSection
                     }
@@ -330,6 +335,18 @@ struct GroupInfoSheet: View {
             }
             if vm.undoRestoreKey != nil { undoToast }
         }
+        // Announcements pushes onto this stack; the sheet keeps its own top bar.
+        .toolbar(.hidden, for: .navigationBar)
+        .navigationDestination(isPresented: $showAnnouncements) {
+            GroupAnnouncementsView(
+                service: service, groupId: contact.id, userId: user?.user_id ?? "",
+                onGroupGone: { dismiss(); onGroupGone() }
+            )
+        }
+        }
+        // "See plans" on the announcements limit card: close the sheet so the
+        // Account tab (switched by ContentView) is visible.
+        .onReceive(NotificationCenter.default.publisher(for: .fsOpenSubscriptionPlans)) { _ in dismiss() }
         .preferredColorScheme(.dark)
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)
@@ -425,8 +442,8 @@ struct GroupInfoSheet: View {
                         .padding(.horizontal, Theme.spacingSM)
                         .frame(minHeight: 44)
                         .background(Theme.cardBg)
-                        .overlay(RoundedRectangle(cornerRadius: Theme.radius).stroke(Theme.borderGoldDim, lineWidth: 1))
                         .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
+                        .overlay(RoundedRectangle(cornerRadius: Theme.radius).stroke(Theme.borderGoldDim, lineWidth: 1))
                         .disabled(vm.savingName)
                         .onChange(of: draftName) { _, v in if v.count > 255 { draftName = String(v.prefix(255)) } }
                         .onSubmit { saveName() }
@@ -495,10 +512,32 @@ struct GroupInfoSheet: View {
             .padding(Theme.spacingSM)
             .frame(minHeight: 56)
             .background(Theme.cardBg)
-            .overlay(RoundedRectangle(cornerRadius: Theme.radius).stroke(Theme.borderGoldDim, lineWidth: 1))
             .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
             if let err = vm.muteError { errorText(err) }
         }
+    }
+
+    // Task 20260929-group-announcements: entry row -> Announcements sub-view.
+    private var announcementsRow: some View {
+        Button { showAnnouncements = true } label: {
+            HStack(spacing: Theme.spacingSM) {
+                Image(systemName: "megaphone.fill").foregroundColor(Theme.gold)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Announcements").font(.inter(Theme.fontSM)).foregroundColor(Theme.parchment)
+                    Text("Updates for everyone in this group.")
+                        .font(.inter(Theme.fontXS)).foregroundColor(Theme.textSecondary)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13, weight: .semibold)).foregroundColor(Theme.textSecondary)
+            }
+            .padding(Theme.spacingSM)
+            .frame(minHeight: 56)
+            .background(Theme.cardBg)
+            .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Announcements")
     }
 
     private var membersSection: some View {
