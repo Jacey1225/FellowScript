@@ -1,3 +1,4 @@
+import { surfaceColor } from '../lib/announcementTitleColor.js';
 import React, { useEffect } from 'react';
 
 // Read-only view of one announcement (design-notes.md, "Viewer"). Edit and
@@ -40,7 +41,8 @@ export default function GroupAnnouncementViewer({ item, onBack, onEdit, onDelete
         </button>
       )}
       {!item.published && <span className="group-info-announcements-chip">Scheduled for {formatDateTime(item.publish_at)}</span>}
-      <h3 id="announcement-viewer-title" ref={headingRef} tabIndex={-1} className="group-info-announcements-viewer-title">{item.title}</h3>
+      <h3 id="announcement-viewer-title" ref={headingRef} tabIndex={-1} className="group-info-announcements-viewer-title"
+        style={{ color: surfaceColor(item.title_color) }}>{item.title}</h3>
       <p className="group-info-helper">By {item.creator_username || 'a member'}, {formatDateTime(item.publish_at)}</p>
       <p className="group-info-announcements-body">{item.description}</p>
     </article>

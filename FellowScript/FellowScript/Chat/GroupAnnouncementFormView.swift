@@ -36,6 +36,7 @@ struct GroupAnnouncementFormView: View {
     @State private var schedule: Bool
     @State private var when: Date
     @State private var banner: FSAnnouncementDraft.Banner = .unchanged
+    @State private var titleColor: String?
     @State private var bannerImage: UIImage?
     @State private var bannerBusy = false
     @State private var bannerError: String?
@@ -53,6 +54,7 @@ struct GroupAnnouncementFormView: View {
         self.onDone = onDone
         _title = State(initialValue: editing?.title ?? "")
         _text = State(initialValue: editing?.description ?? "")
+        _titleColor = State(initialValue: AnnouncementTitleColor.normalized(editing?.title_color))
         let scheduled = editing.map { !$0.published } ?? false
         _schedule = State(initialValue: scheduled)
         _when = State(initialValue: editing.flatMap { FSAnnouncementDates.parse($0.publish_at) } ?? Date().addingTimeInterval(3600))
@@ -73,6 +75,7 @@ struct GroupAnnouncementFormView: View {
                     VStack(alignment: .leading, spacing: 20) {
                         bannerField
                         titleField
+                        titleColorField
                         messageField
                         if canReschedule { publishField }
                         if !isEditing, !gateHit, let g = vm.gate, g.unlimited != true {
@@ -101,7 +104,7 @@ struct GroupAnnouncementFormView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button { Task { await submit() } } label: {
-                        if saving { ProgressView().tint(Theme.gold) } else { Text(submitLabel).fontWeight(.bold) }
+                        if saving { ProgressView().tint(Theme.gold) } else { Text(bannerBusy ? "Uploading…" : submitLabel).fontWeight(.bold) }
                     }
                     .foregroundColor(Theme.gold)
                     .disabled(!canSubmit)
@@ -119,6 +122,9 @@ struct GroupAnnouncementFormView: View {
         .fullScreenCover(isPresented: Binding(get: { cropImage != nil }, set: { if !$0 { cropImage = nil } })) {
             if let cropImage {
                 AnnouncementBannerCropView(image: cropImage, onCancel: { self.cropImage = nil }) { jpeg in
+                    // Flip busy synchronously, before the cover dismisses, so Post/Save
+                    // is never enabled in the gap before the upload Task starts.
+                    self.bannerBusy = true
                     self.cropImage = nil
                     Task { await uploadCropped(jpeg) }
                 }
@@ -208,6 +214,27 @@ struct GroupAnnouncementFormView: View {
                 Text("Give it a title.").font(.inter(Theme.fontXS)).foregroundColor(Theme.textSecondary)
             }
         }
+    }
+
+    private var titleColorField: some View {
+        VStack(alignment: .leading, spacing: Theme.spacingXS) {
+            label("Title color")
+            AnnouncementWidgetCardBody(item: previewItem, previewImage: bannerImage)
+                .allowsHitTesting(false)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Preview of the announcement title in \(AnnouncementTitleColor.name(for: titleColor))")
+            AnnouncementTitleColorPicker(hex: $titleColor) { dirty = true }
+                .disabled(saving)
+        }
+    }
+
+    /// Live preview source: the real card face with the draft title and color.
+    private var previewItem: FSGroupAnnouncement {
+        FSGroupAnnouncement(id: "preview", group_id: editing?.group_id ?? "", creator_id: nil, creator_username: nil,
+                            title: trimmedTitle.isEmpty ? "Your title" : trimmedTitle, description: "",
+                            banner_url: (bannerImage == nil && banner == .unchanged) ? editing?.banner_url : nil,
+                            publish_at: "", created_at: "", updated_at: "", published: true, can_edit: false,
+                            title_color: titleColor)
     }
 
     private var messageField: some View {
@@ -331,6 +358,16 @@ struct GroupAnnouncementFormView: View {
         }
     }
 
+    /// Create: send only a non-default color. Edit: send only what changed
+    /// (explicit null resets a previously saved color to the default).
+    private var titleColorChange: FSAnnouncementDraft.TitleColor {
+        let original = AnnouncementTitleColor.normalized(editing?.title_color)
+        let chosen = AnnouncementTitleColor.normalized(titleColor)
+        if chosen == original { return .unchanged }
+        if let chosen { return .set(chosen) }
+        return .reset
+    }
+
     private func submit() async {
         guard canSubmit else { return }
         saving = true
@@ -338,6 +375,7 @@ struct GroupAnnouncementFormView: View {
         defer { saving = false }
         var draft = FSAnnouncementDraft(title: trimmedTitle, description: trimmedText, banner: banner)
         draft.includePublishAt = canReschedule
+        draft.titleColor = titleColorChange
         if schedule { draft.publishAt = when }
         else if isEditing { draft.publishAt = Date() }   // update rejects a null publish_at
         do {

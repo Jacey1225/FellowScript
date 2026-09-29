@@ -2,6 +2,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Spin } from 'antd';
 import { ANNOUNCEMENT_LIMITS, uploadAnnouncementBanner } from '../lib/announcementsApi.js';
 import BannerCropper from './BannerCropper.jsx';
+import TitleColorPicker from './TitleColorPicker.jsx';
+import { normalizeHex, bannerColor, colorName } from '../lib/announcementTitleColor.js';
 
 // Create/edit form for a group announcement (design-notes.md, "Create / edit
 // form"). Owns only form state; the parent performs the save via `onSubmit`
@@ -16,6 +18,7 @@ export default function GroupAnnouncementForm({ userId, groupId, item, gate, gat
   const editing = !!item;
   const canReschedule = !editing || item.published === false;
   const [title, setTitle] = useState(item?.title || '');
+  const [titleColor, setTitleColor] = useState(normalizeHex(item?.title_color));
   const [description, setDescription] = useState(item?.description || '');
   const [mode, setMode] = useState(editing && item.published === false ? 'schedule' : 'now');
   const [when, setWhen] = useState(editing && item.published === false ? toLocalInput(new Date(item.publish_at)) : '');
@@ -76,6 +79,9 @@ export default function GroupAnnouncementForm({ userId, groupId, item, gate, gat
     setSaving(true); setError(null);
     const body = { title: trimmedTitle, description: trimmedDesc };
     if (bannerKey !== undefined) body.banner_key = bannerKey;
+    // Create: send only a non-default color. Edit: send only a change (null resets).
+    const originalColor = normalizeHex(item?.title_color);
+    if (titleColor !== originalColor) body.title_color = titleColor;
     if (canReschedule) {
       if (mode === 'schedule') body.publish_at = new Date(when).toISOString();
       else if (editing) body.publish_at = new Date().toISOString();
@@ -109,7 +115,7 @@ export default function GroupAnnouncementForm({ userId, groupId, item, gate, gat
         <button type="button" className="group-info-text-btn" onClick={cancel}>Cancel</button>
         <h3 ref={headingRef} tabIndex={-1} className="group-info-announcements-title">{heading}</h3>
         <button type="button" className="group-info-pill" onClick={submit} disabled={!canSubmit}>
-          {saving ? <Spin size="small" /> : (editing ? 'Save' : (mode === 'schedule' ? 'Schedule' : 'Post'))}
+          {saving ? <Spin size="small" /> : bannerBusy ? 'Uploading…' : (editing ? 'Save' : (mode === 'schedule' ? 'Schedule' : 'Post'))}
         </button>
       </div>
 
@@ -157,6 +163,20 @@ export default function GroupAnnouncementForm({ userId, groupId, item, gate, gat
             onChange={(e) => { setTitle(e.target.value); setTouched(true); }} />
           {title.length >= ANNOUNCEMENT_LIMITS.titleMax - 20 && <span className="group-info-counter">{title.length}/{ANNOUNCEMENT_LIMITS.titleMax}</span>}
           {!trimmedTitle && <p id="announcement-title-help" className="group-info-helper">Give it a title.</p>}
+        </div>
+
+        <div className="group-info-announcements-field">
+          <span className="group-info-label">Title color</span>
+          <div className={`announce-widget-card title-color-preview${currentBanner ? '' : ' announce-widget-fallback'}`}
+            role="img" aria-label={`Preview of the announcement title in ${colorName(titleColor)}`}>
+            {currentBanner && <img className="announce-widget-img" src={currentBanner} alt="" />}
+            <span className="announce-widget-scrim" aria-hidden="true" />
+            <span className="announce-widget-text">
+              <span className="announce-widget-label">ANNOUNCEMENT</span>
+              <span className="announce-widget-title" style={{ '--title-color': bannerColor(titleColor) }}>{trimmedTitle || 'Your title'}</span>
+            </span>
+          </div>
+          <TitleColorPicker value={titleColor} disabled={saving} onChange={(c) => { setTitleColor(c); setTouched(true); }} />
         </div>
 
         <div className="group-info-announcements-field">

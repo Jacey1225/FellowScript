@@ -1,5 +1,6 @@
+import { bannerColor } from '../lib/announcementTitleColor.js';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { CloseOutlined, RightOutlined } from '@ant-design/icons';
+import { CloseOutlined } from '@ant-design/icons';
 import { fetchLatestAnnouncement, ANNOUNCEMENTS_ENABLED } from '../lib/announcementsApi.js';
 import GroupAnnouncementViewer from './GroupAnnouncementViewer.jsx';
 
@@ -92,9 +93,8 @@ export default function GroupAnnouncementWidget({ userId, groupId, onAfterDismis
         <span className="announce-widget-scrim" aria-hidden="true" />
         <span className="announce-widget-text">
           <span className="announce-widget-label">ANNOUNCEMENT</span>
-          <span className="announce-widget-title">{item.title}</span>
+          <span className="announce-widget-title" style={{ '--title-color': bannerColor(item.title_color) }}>{item.title}</span>
         </span>
-        <span className="announce-widget-cta" aria-hidden="true">View <RightOutlined /></span>
       </button>
       <button type="button" className="announce-widget-dismiss" aria-label="Dismiss announcement" onClick={dismiss}>
         <span className="announce-widget-dismiss-chip"><CloseOutlined /></span>

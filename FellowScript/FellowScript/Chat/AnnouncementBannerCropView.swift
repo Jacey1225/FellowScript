@@ -23,48 +23,74 @@ struct AnnouncementBannerCropView: View {
     private let step: CGFloat = 0.25
     private let nudge: CGFloat = 12
 
+    private let surface = Color(white: 0.05)
+
+    /// Layout (task 20260929-announcement-title-color-crop-layer-fix): opaque
+    /// surface root; header is a safe-area top inset (never under the clock or
+    /// Dynamic Island); the photo is clipped to the crop frame so no pixel can
+    /// bleed under the header or the opaque controls panel below; gestures
+    /// attach to the clipped frame only.
     var body: some View {
-        GeometryReader { geo in
-            let fs = AnnouncementCropMath.frameSize(width: max(1, geo.size.width - margin * 2))
-            VStack(spacing: Theme.spacingMD) {
-                header.background(Color(white: 0.05)).zIndex(1)
-                Spacer(minLength: 0)
-                cropFrame(fs)
-                    .frame(width: fs.width, height: fs.height)
-                    .zIndex(0)
-                VStack(spacing: Theme.spacingSM) {
-                    Text("Drag to position. Pinch or use the slider to zoom.")
-                        .font(.inter(Theme.fontXS)).foregroundColor(Theme.parchment.opacity(0.7))
-                    if let error {
-                        Text(error).font(.inter(Theme.fontXS)).foregroundColor(Theme.error)
-                            .accessibilityLabel(error)
-                    }
-                    controls
+        ZStack {
+            surface.ignoresSafeArea()
+            VStack(spacing: 0) {
+                GeometryReader { geo in
+                    let fs = AnnouncementCropMath.frameSize(width: max(1, geo.size.width - margin * 2))
+                    cropFrame(fs)
+                        .frame(width: fs.width, height: fs.height)
+                        .position(x: geo.size.width / 2, y: geo.size.height / 2)
+                        .onAppear { setFrame(fs) }
+                        .onChange(of: fs) { _, new in setFrame(new) }
                 }
-                .background(Color(white: 0.05)).zIndex(1)
-                Spacer(minLength: 0)
+                .clipped()
+                panel
             }
-            .frame(maxWidth: .infinity)
-            .onAppear { setFrame(fs) }
-            .onChange(of: fs) { _, new in setFrame(new) }
         }
-        .background(Color(white: 0.05).ignoresSafeArea())
+        .safeAreaInset(edge: .top, spacing: 0) {
+            header
+                .background(surface.ignoresSafeArea(edges: .top))
+                .overlay(alignment: .bottom) { Rectangle().fill(Color.white.opacity(0.12)).frame(height: 1) }
+        }
         .preferredColorScheme(.dark)
+    }
+
+    private var panel: some View {
+        VStack(spacing: Theme.spacingSM) {
+            Text("Drag to position. Pinch or use the slider to zoom.")
+                .font(.inter(Theme.fontXS)).foregroundColor(Theme.parchment.opacity(0.7))
+                .multilineTextAlignment(.center)
+            if let error {
+                Label(error, systemImage: "exclamationmark.triangle")
+                    .font(.inter(Theme.fontXS)).foregroundColor(Theme.error)
+                    .accessibilityLabel(error)
+            }
+            ViewThatFits(in: .horizontal) {
+                controls(stacked: false)
+                controls(stacked: true)
+            }
+        }
+        .padding(.vertical, Theme.spacingSM)
+        .frame(maxWidth: .infinity)
+        .background(surface)
+        .zIndex(1)
     }
 
     private var header: some View {
         HStack {
             Button("Cancel", action: onCancel)
-                .font(.inter(Theme.fontSM)).foregroundColor(Theme.gold).frame(minWidth: 44, minHeight: 44)
+                .font(.inter(Theme.fontSM)).foregroundColor(Theme.gold)
+                .frame(minWidth: 44, minHeight: 44).fixedSize()
                 .disabled(encoding)
             Spacer()
             Text("Crop banner").font(.inter(Theme.fontSM, weight: .semibold)).foregroundColor(Theme.parchment)
+                .lineLimit(1).minimumScaleFactor(0.8)
                 .accessibilityAddTraits(.isHeader)
             Spacer()
             Button(action: done) {
                 if encoding { ProgressView().tint(Theme.gold) } else { Text("Done").fontWeight(.bold) }
             }
-            .font(.inter(Theme.fontSM)).foregroundColor(Theme.gold).frame(minWidth: 44, minHeight: 44)
+            .font(.inter(Theme.fontSM)).foregroundColor(Theme.gold)
+            .frame(minWidth: 44, minHeight: 44).fixedSize()
             .disabled(encoding || frame.width <= 0)
         }
         .padding(.horizontal, margin)
@@ -72,22 +98,13 @@ struct AnnouncementBannerCropView: View {
 
     private func cropFrame(_ fs: CGSize) -> some View {
         let d = AnnouncementCropMath.displaySize(natural: image.size, frame: fs, zoom: zoom)
-        let big: CGFloat = 4000
         return ZStack(alignment: .topLeading) {
             Image(uiImage: image).resizable()
                 .frame(width: d.width, height: d.height)
                 .offset(x: offset.x, y: offset.y)
         }
         .frame(width: fs.width, height: fs.height, alignment: .topLeading)
-        .overlay {
-            // Dim everything outside the frame; guides + gold outline on it.
-            Path { p in
-                p.addRect(CGRect(x: -big, y: -big, width: big * 2 + fs.width, height: big * 2 + fs.height))
-                p.addRect(CGRect(origin: .zero, size: fs))
-            }
-            .fill(Color.black.opacity(0.6), style: FillStyle(eoFill: true))
-            .allowsHitTesting(false)
-        }
+        .clipped()   // the photo never renders outside the 3:1 frame
         .overlay {
             Path { p in
                 for i in 1...2 {
@@ -120,17 +137,26 @@ struct AnnouncementBannerCropView: View {
         .accessibilityAction(named: "Reset") { reset() }
     }
 
-    private var controls: some View {
-        HStack(spacing: Theme.spacingSM) {
-            Button { setZoom(zoom - step) } label: { Image(systemName: "minus") }
-                .frame(width: 44, height: 44).accessibilityLabel("Zoom out")
-            Slider(value: Binding(get: { Double(zoom) }, set: { setZoom(CGFloat($0)) }),
-                   in: 1...Double(AnnouncementLimits.cropZoomMax))
-                .tint(Theme.gold).frame(minHeight: 44).accessibilityLabel("Zoom")
-            Button { setZoom(zoom + step) } label: { Image(systemName: "plus") }
-                .frame(width: 44, height: 44).accessibilityLabel("Zoom in")
-            Button("Reset") { reset() }
-                .font(.inter(Theme.fontSM)).frame(minWidth: 44, minHeight: 44).accessibilityLabel("Reset crop")
+    @ViewBuilder
+    private func controls(stacked: Bool) -> some View {
+        let minus = Button { setZoom(zoom - step) } label: { Image(systemName: "minus") }
+            .frame(width: 44, height: 44).accessibilityLabel("Zoom out")
+        let plus = Button { setZoom(zoom + step) } label: { Image(systemName: "plus") }
+            .frame(width: 44, height: 44).accessibilityLabel("Zoom in")
+        let resetButton = Button("Reset") { reset() }
+            .font(.inter(Theme.fontSM)).frame(minWidth: 44, minHeight: 44).fixedSize().accessibilityLabel("Reset crop")
+        let slider = Slider(value: Binding(get: { Double(zoom) }, set: { setZoom(CGFloat($0)) }),
+                            in: 1...Double(AnnouncementLimits.cropZoomMax))
+            .tint(Theme.gold).frame(minHeight: 44).accessibilityLabel("Zoom")
+        Group {
+            if stacked {
+                VStack(spacing: Theme.spacingXS) {
+                    slider
+                    HStack(spacing: Theme.spacingSM) { minus; plus; resetButton }
+                }
+            } else {
+                HStack(spacing: Theme.spacingSM) { minus; slider; plus; resetButton }
+            }
         }
         .foregroundColor(Theme.gold)
         .padding(.horizontal, margin)

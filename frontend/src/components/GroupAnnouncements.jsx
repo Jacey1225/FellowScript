@@ -1,3 +1,4 @@
+import { surfaceColor } from '../lib/announcementTitleColor.js';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { PlusOutlined, MoreOutlined } from '@ant-design/icons';
 import {
@@ -58,7 +59,7 @@ function Row({ item, onOpen, onEdit, onDelete }) {
         <button type="button" className="group-info-announcements-open" onClick={() => (revealed ? setRevealed(false) : onOpen(item))}>
           {item.banner_url && <img className="group-info-announcements-thumb" src={item.banner_url} alt="" loading="lazy" />}
           <span className="group-info-announcements-text">
-            <span className="group-info-announcements-row-title">{item.title}</span>
+            <span className="group-info-announcements-row-title" style={{ color: surfaceColor(item.title_color) }}>{item.title}</span>
             <span className="group-info-announcements-preview">{item.description}</span>
             <span className="group-info-helper">
               {!item.published && <span className="group-info-announcements-chip">Scheduled {formatDateTime(item.publish_at)}</span>}{' '}

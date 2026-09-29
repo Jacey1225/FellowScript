@@ -217,7 +217,8 @@ private struct AnnouncementRow: View {
                 AnnouncementBannerImage(source: .url(url))
             }
             VStack(alignment: .leading, spacing: 2) {
-                Text(item.title).font(.inter(Theme.fontSM, weight: .semibold)).foregroundColor(Theme.parchment).lineLimit(1)
+                Text(item.title).font(.inter(Theme.fontSM, weight: .semibold))
+                    .foregroundColor(AnnouncementTitleColor.surfaceColor(item.title_color, fallback: Theme.parchment)).lineLimit(1)
                 Text(item.description).font(.inter(Theme.fontXS)).foregroundColor(Theme.parchment.opacity(0.7)).lineLimit(2)
                 HStack(spacing: 6) {
                     if !item.published {

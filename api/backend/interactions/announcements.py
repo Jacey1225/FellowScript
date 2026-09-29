@@ -12,6 +12,7 @@ its author additionally sees their own scheduled ones. Soft-deleted rows are
 never returned. Errors are raised, never defaulted.
 """
 
+import re
 from datetime import datetime, timedelta, timezone
 
 from backend.errors import SaveFailedError
@@ -37,7 +38,7 @@ ANNOUNCEMENT_WIDGET_WINDOW_DAYS = 7
 
 _COLUMNS = (
     "a._id, a.group_id, a.creator_id, u.username, a.title, a.description, a.banner_key, "
-    "a.publish_at, a.created_at, a.updated_at"
+    "a.publish_at, a.created_at, a.updated_at, a.title_color"
 )
 _FROM = "FROM group_announcements a LEFT JOIN users u ON u._id = a.creator_id"
 
@@ -79,6 +80,24 @@ def normalize_title(title: str) -> str:
     return cleaned
 
 
+_TITLE_COLOR_RE = re.compile(r"#[0-9A-Fa-f]{6}")
+
+
+def normalize_title_color(color: str | None) -> str | None:
+    """Strict ``#RRGGBB`` (uppercased) or ``None`` (= default parchment).
+    Never coerces: 3-digit, named, whitespace-padded or otherwise malformed
+    values are rejected. ``fullmatch`` so a trailing newline can't slip by.
+
+    Raises:
+        ValueError: not a strict 6-digit hex string.
+    """
+    if color is None:
+        return None
+    if not isinstance(color, str) or not _TITLE_COLOR_RE.fullmatch(color):
+        raise ValueError("title_color must be a #RRGGBB hex color")
+    return color.upper()
+
+
 def normalize_description(description: str | None) -> str:
     cleaned = (description or "").strip()
     if len(cleaned) > ANNOUNCEMENT_DESCRIPTION_MAX_LENGTH:
@@ -101,7 +120,7 @@ class AnnouncementsManager(GroupsManager):
 
     def _serialize(self, row: tuple, group_creator: str | None) -> dict:
         (aid, gid, creator, username, title, description, banner_key,
-         publish_at, created_at, updated_at) = row
+         publish_at, created_at, updated_at, title_color) = row
         creator_s = str(creator) if creator else None
         return {
             "id": str(aid),
@@ -111,6 +130,7 @@ class AnnouncementsManager(GroupsManager):
             "title": title,
             "description": description,
             "banner_url": generate_download_url(banner_key),
+            "title_color": title_color,
             "publish_at": publish_at.isoformat(),
             "created_at": created_at.isoformat(),
             "updated_at": updated_at.isoformat(),
@@ -186,19 +206,21 @@ class AnnouncementsManager(GroupsManager):
     # ── writes ────────────────────────────────────────────────────────────
 
     def create_announcement(self, title: str, description: str | None,
-                            banner_key: str | None, publish_at: datetime | None) -> dict:
+                            banner_key: str | None, publish_at: datetime | None,
+                            title_color: str | None = None) -> dict:
         """Insert an announcement. The caller must already have passed the
-        free-limit gate. Raises ValueError (validation),
+        free-limit gate. Raises ValueError (validation, incl. bad title_color),
         AnnouncementForbidden (foreign banner key), SaveFailedError."""
         title = normalize_title(title)
         description = normalize_description(description)
+        title_color = normalize_title_color(title_color)
         self._check_banner_key(banner_key)
         try:
             self.cur.execute(
                 "INSERT INTO group_announcements "
-                "(group_id, creator_id, title, description, banner_key, publish_at) "
-                "VALUES (%s, %s, %s, %s, %s, COALESCE(%s, now())) RETURNING _id",
-                (self.group_id, self.user_id, title, description, banner_key, publish_at),
+                "(group_id, creator_id, title, description, banner_key, publish_at, title_color) "
+                "VALUES (%s, %s, %s, %s, %s, COALESCE(%s, now()), %s) RETURNING _id",
+                (self.group_id, self.user_id, title, description, banner_key, publish_at, title_color),
             )
             new_id = self.cur.fetchone()[0]
             self.conn.commit()
@@ -209,7 +231,7 @@ class AnnouncementsManager(GroupsManager):
 
     def update_announcement(self, announcement_id: str, fields: dict) -> dict:
         """Partial update. ``fields`` may contain title, description,
-        banner_key (None clears), publish_at (datetime; only while still
+        banner_key (None clears), title_color (None resets), publish_at (datetime; only while still
         unpublished). Only keys present are applied."""
         row = self._fetch_row(announcement_id)
         if not row:
@@ -223,6 +245,8 @@ class AnnouncementsManager(GroupsManager):
         if "banner_key" in fields:
             self._check_banner_key(fields["banner_key"])
             sets["banner_key"] = fields["banner_key"]
+        if "title_color" in fields:
+            sets["title_color"] = normalize_title_color(fields["title_color"])  # None resets to default
         if "publish_at" in fields:
             if fields["publish_at"] is None:
                 raise ValueError("publish_at can't be cleared")

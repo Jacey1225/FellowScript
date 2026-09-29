@@ -35,6 +35,7 @@ class AnnouncementCreateRequest(BaseModel):
     description: str = ""
     banner_key: str | None = None
     publish_at: str | None = None  # ISO-8601 with offset; None = publish now
+    title_color: str | None = None  # strict #RRGGBB; None = default parchment
 
 
 class AnnouncementUpdateRequest(BaseModel):
@@ -43,6 +44,7 @@ class AnnouncementUpdateRequest(BaseModel):
     description: str | None = None
     banner_key: str | None = None
     publish_at: str | None = None
+    title_color: str | None = None  # null resets to default
 
 
 class BannerUploadUrlRequest(BaseModel):
@@ -112,7 +114,8 @@ async def create_announcement(
         if not gate["allowed"]:
             raise HTTPException(status_code=403, detail=gate)
         try:
-            created = manager.create_announcement(body.title, body.description, body.banner_key, publish_at)
+            created = manager.create_announcement(body.title, body.description, body.banner_key, publish_at,
+                                                title_color=body.title_color)
             # Group push runs after the response (off the request path); the
             # notifier claims atomically and never raises.
             background_tasks.add_task(notify_on_create, created["id"])

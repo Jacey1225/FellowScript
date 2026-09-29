@@ -45,7 +45,7 @@ describe('GroupAnnouncementWidget', () => {
     const card = await screen.findByRole('button', { name: /Announcement: Title a/ });
     expect(screen.getByRole('region', { name: 'Latest announcement' })).toBeTruthy();
     expect(card.textContent).toContain('Title a');
-    expect(card.textContent).toContain('View');
+    expect(card.textContent).not.toContain('View');
     expect(container.querySelector('img.announce-widget-img').getAttribute('src')).toBe('https://cdn.example/b.png');
     expect(api.fetchLatestAnnouncement).toHaveBeenCalledWith('u1', 'g1');
   });

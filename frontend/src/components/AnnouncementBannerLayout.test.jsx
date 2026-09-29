@@ -52,15 +52,15 @@ describe('widget: title and View render inside the clipped 3:1 frame with a scri
       const iImg = kids.findIndex(c => c.includes('announce-widget-img'));
       const iScrim = kids.findIndex(c => c.includes('announce-widget-scrim'));
       const iText = kids.findIndex(c => c.includes('announce-widget-text'));
-      const iCta = kids.findIndex(c => c.includes('announce-widget-cta'));
       // paint order: image < scrim < text and View (later siblings paint on top)
       expect(iImg).toBeGreaterThanOrEqual(0);
       expect(iImg).toBeLessThan(iScrim);
       expect(iScrim).toBeLessThan(iText);
-      expect(iScrim).toBeLessThan(iCta);
+      // the old "View" chip is gone: the whole card is the tap target
+      expect(kids.some(c => c.includes('announce-widget-cta'))).toBe(false);
       expect(card.textContent).toContain('ANNOUNCEMENT');
       expect(card.textContent).toContain('Title a');
-      expect(card.textContent).toContain('View');
+      expect(card.textContent).not.toContain('View');
       expect(container.querySelector('img.announce-widget-img').getAttribute('src')).toBe(url);
       // dismiss stays a sibling outside the clipped card
       expect(card.contains(screen.getByLabelText('Dismiss announcement'))).toBe(false);
@@ -85,7 +85,6 @@ describe('widget: title and View render inside the clipped 3:1 frame with a scri
     bottom.forEach(([a]) => expect(a).toBeGreaterThanOrEqual(0.72));
     has(rule('.announce-widget-title'), 'color: #F2F2F2');
     has(rule('.announce-widget-title'), 'text-shadow');
-    has(rule('.announce-widget-cta'), 'position: relative'); // above the absolutely positioned scrim
   });
 
   test('WCAG AA: parchment text over the minimum scrim alpha on a pure white photo is >= 4.5:1', () => {

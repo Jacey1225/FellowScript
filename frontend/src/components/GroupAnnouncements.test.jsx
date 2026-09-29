@@ -424,7 +424,7 @@ describe('create / edit form', () => {
     fireEvent.click(screen.getByLabelText('More actions for Title a'));
     fireEvent.click(screen.getByText('Edit'));
     await screen.findByText('Edit announcement');
-    expect(screen.queryByRole('radiogroup')).not.toBeInTheDocument();
+    expect(screen.queryByRole('radiogroup', { name: 'Publish' })).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Changed' } });
     fireEvent.click(screen.getByText('Save'));
     await waitFor(() => expect(api.updateAnnouncement).toHaveBeenCalledWith('u1', 'g1', 'a', { title: 'Changed', description: 'Body a' }));

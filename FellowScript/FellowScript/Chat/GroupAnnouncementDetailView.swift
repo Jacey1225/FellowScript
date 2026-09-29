@@ -23,7 +23,8 @@ struct GroupAnnouncementDetailView: View {
                             .background(Theme.gold.opacity(0.12)).clipShape(Capsule())
                     }
                     Text(item.title)
-                        .font(.inter(Theme.fontHeading, weight: .semibold)).foregroundColor(Theme.parchment)
+                        .font(.inter(Theme.fontHeading, weight: .semibold))
+                        .foregroundColor(AnnouncementTitleColor.surfaceColor(item.title_color, fallback: Theme.parchment))
                         .accessibilityAddTraits(.isHeader)
                     Text("By \(item.creator_username ?? "a member"), \(FSAnnouncementDates.display(item.publish_at))")
                         .font(.inter(Theme.fontXS)).foregroundColor(Theme.parchment.opacity(0.6))

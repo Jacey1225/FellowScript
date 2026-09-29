@@ -30,6 +30,9 @@ struct FSGroupAnnouncement: Codable, Identifiable, Equatable {
     var published:        Bool
     /// Server-computed: author or group creator may edit/delete.
     var can_edit:         Bool
+    /// Strict `#RRGGBB` or nil (= default parchment). Absent in old payloads.
+    /// Never used as a color directly: go through `AnnouncementTitleColor`.
+    var title_color:      String? = nil
 }
 
 struct FSAnnouncementsPage: Codable, Equatable {
@@ -79,9 +82,12 @@ enum FSAnnouncementDates {
 /// (a published announcement's time can't change).
 struct FSAnnouncementDraft {
     enum Banner: Equatable { case unchanged, removed, uploaded(String) }
+    /// unchanged = omit the key; reset = explicit null (back to default).
+    enum TitleColor: Equatable { case unchanged, reset, set(String) }
     var title: String
     var description: String
     var banner: Banner = .unchanged
+    var titleColor: TitleColor = .unchanged
     var includePublishAt: Bool = true
     var publishAt: Date?        // nil + includePublishAt on create = publish now
 
@@ -91,6 +97,11 @@ struct FSAnnouncementDraft {
         case .unchanged: break
         case .removed: o["banner_key"] = NSNull()
         case .uploaded(let key): o["banner_key"] = key
+        }
+        switch titleColor {
+        case .unchanged: break
+        case .reset: o["title_color"] = NSNull()
+        case .set(let hex): if AnnouncementTitleColor.isValidHex(hex) { o["title_color"] = hex.uppercased() }
         }
         if includePublishAt {
             o["publish_at"] = publishAt.map(FSAnnouncementDates.string(from:)) ?? NSNull()

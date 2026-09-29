@@ -242,6 +242,12 @@ def create_tables(cur):
         "ON group_announcements(publish_at) "
         "WHERE push_sent_at IS NULL AND deleted_at IS NULL"
     )
+    # Task 20260929-announcement-title-color-crop-layer-fix: author-chosen title
+    # color, strict #RRGGBB validated in the API layer. NULL = default
+    # parchment, so existing rows are untouched. Additive + idempotent.
+    cur.execute(
+        "ALTER TABLE group_announcements ADD COLUMN IF NOT EXISTS title_color VARCHAR(7)"
+    )
 
     # ── Level 1: depend on users / groups ──────────────────────────────────────
     cur.execute(

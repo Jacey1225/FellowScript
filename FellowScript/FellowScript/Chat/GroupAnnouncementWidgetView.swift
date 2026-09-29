@@ -140,6 +140,8 @@ struct GroupAnnouncementWidgetView: View {
 /// The 3:1 banner card face (title, eyebrow, View chip over a scrim).
 struct AnnouncementWidgetCardBody: View {
     let item: FSGroupAnnouncement
+    /// Form live preview: a locally cropped photo shown instead of `banner_url`.
+    var previewImage: UIImage? = nil
 
     /// Layering (regression fix): the card's size comes ONLY from the 3:1 clear
     /// base. The banner is an `.overlay`, so an oversized aspect-fill photo can
@@ -156,7 +158,9 @@ struct AnnouncementWidgetCardBody: View {
                                startPoint: .topLeading, endPoint: .bottomTrailing)
             )
             .overlay {
-                if let url {
+                if let previewImage {
+                    Image(uiImage: previewImage).resizable().scaledToFill().accessibilityHidden(true)
+                } else if let url {
                     AsyncImage(url: url) { phase in
                         if let image = phase.image { image.resizable().scaledToFill() }
                     }
@@ -182,21 +186,11 @@ struct AnnouncementWidgetCardBody: View {
                 Text("ANNOUNCEMENT")
                     .font(.inter(11, weight: .semibold)).tracking(0.66).foregroundColor(Theme.goldLight)
                 Text(item.title)
-                    .font(.inter(17, weight: .semibold)).foregroundColor(Color(hex: "#F2F2F2"))
+                    .font(.inter(17, weight: .semibold)).foregroundColor(AnnouncementTitleColor.bannerColor(item.title_color))
                     .lineLimit(2).multilineTextAlignment(.leading)
                     .shadow(color: .black.opacity(0.6), radius: 1, x: 0, y: 1)
             }
             Spacer(minLength: 0)
-            HStack(spacing: 3) {
-                Text("View").font(.inter(Theme.fontXS, weight: .semibold))
-                Image(systemName: "chevron.right").font(.system(size: 10, weight: .bold))
-            }
-            .foregroundColor(Theme.goldLight)
-            .padding(.horizontal, 10).padding(.vertical, 4)
-            .background(Capsule().fill(Color.black.opacity(0.55)))
-            .overlay(Capsule().stroke(Theme.goldLight.opacity(0.4), lineWidth: 1))
-            .padding(.trailing, 28)
-            .accessibilityHidden(true)
         }
         .padding(.horizontal, 14).padding(.vertical, 12)
     }
