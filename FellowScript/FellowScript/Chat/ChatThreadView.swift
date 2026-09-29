@@ -556,7 +556,13 @@ struct ChatThreadView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var text:        String = ""
-    @State private var showMembers: Bool   = false
+    // Task 20260929-group-info-panel: replaces the old inline showMembers
+    // strip -- the header now opens GroupInfoSheet (members are hosted in it).
+    // The overrides carry server-confirmed rename/photo changes so the header
+    // updates immediately; `contact` itself is an immutable `let`.
+    @State private var showGroupInfo: Bool = false
+    @State private var groupTitleOverride: String? = nil
+    @State private var groupPhotoOverride: String?? = nil
     @State private var showSession: Bool   = false
     @State private var showAddMembers: Bool = false
 
@@ -671,17 +677,6 @@ struct ChatThreadView: View {
 
             VStack(spacing: 0) {
                 header
-
-                // ── Member list (group only, mirrors ChatView showMembers block) ──
-                if showMembers && contact.type == .group {
-                    GroupMembersPanel(
-                        memberNames: memberNames,
-                        user:        user,
-                        photoByUsername: vm.photoByUsername,
-                        onAddTapped: { showAddMembers = true }
-                    )
-                    .transition(.move(edge: .top).combined(with: .opacity))
-                }
 
                 // ── Reconnecting banner (dropped-socket lifecycle state) ───
                 // Same vm.isConnected-driven logic as before — restyled into
@@ -869,6 +864,19 @@ struct ChatThreadView: View {
                 vm.handleAppForegrounded()
             }
         }
+        .sheet(isPresented: $showGroupInfo) {
+            GroupInfoSheet(
+                contact: contact,
+                user: appState.currentUser,
+                service: appState.service,
+                memberNames: memberNames,
+                photoByUsername: vm.photoByUsername,
+                onTitleChanged: { groupTitleOverride = $0 },
+                onPhotoChanged: { groupPhotoOverride = .some($0) },
+                onAddMembers: { showAddMembers = true },
+                onGroupGone: { dismiss() }
+            )
+        }
         .sheet(isPresented: $showAddMembers) {
             AddGroupMembersSheet(
                 candidates: friends.filter { !memberIds.contains($0.id) }
@@ -916,15 +924,19 @@ struct ChatThreadView: View {
     // screen can share the exact same visual language (round icon button,
     // serif identity label, amber-gradient pill) as the rest of the restyled
     // Chat surfaces.
+    private var displayName: String { groupTitleOverride ?? contact.name }
+    private var displayPhotoURL: String? {
+        if let override = groupPhotoOverride { return override }
+        return contact.photoUrl
+    }
+
     private var header: some View {
         HStack(spacing: 14) {
             RoundIconButton(systemIcon: "chevron.left") { dismiss() }
                 .accessibilityLabel("Go back")
 
             Button(action: {
-                if contact.type == .group {
-                    withMotionAwareAnimation(.default, reduceMotion: reduceMotion) { showMembers.toggle() }
-                }
+                if contact.type == .group { showGroupInfo = true }
             }) {
                 HStack(spacing: 12) {
                     // Task 20260905-profile-photo-avatar-gaps: `contact.photoUrl`
@@ -933,8 +945,8 @@ struct ChatThreadView: View {
                     // group (no single identity to show here) -- it was simply
                     // unused by this header before this fix.
                     AvatarView(
-                        initial: String(contact.name.prefix(1)).uppercased(),
-                        photoURL: contact.photoUrl,
+                        initial: String(displayName.prefix(1)).uppercased(),
+                        photoURL: displayPhotoURL,
                         diameter: 38,
                         fillColor: Theme.gold.opacity(0.18),
                         textColor: Theme.gold
@@ -942,7 +954,7 @@ struct ChatThreadView: View {
                     .overlay(Circle().stroke(Theme.borderGoldDim, lineWidth: 1))
 
                     HStack(spacing: 5) {
-                        Text(contact.name)
+                        Text(displayName)
                             .font(.inter(Theme.fontHeading, weight: .bold))
                             .foregroundColor(Theme.parchment)
                             .lineLimit(1)
@@ -955,7 +967,8 @@ struct ChatThreadView: View {
                 }
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(contact.type == .group ? "Group: \(contact.name). Tap to see members." : contact.name)
+            .accessibilityLabel(contact.type == .group ? "Group info, \(displayName)" : contact.name)
+            .accessibilityHint(contact.type == .group ? "Opens group settings, members, and shared media" : "")
 
             Spacer(minLength: 8)
 

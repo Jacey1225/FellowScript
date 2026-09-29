@@ -79,7 +79,7 @@ describe('useMessaging.loadContacts — friendEntryCache/groupEntryCache dedup (
     expect(result.current.friends).toEqual([
       expect.objectContaining({ id: 'friend-1', name: 'friend-uname', type: 'friend' }),
     ]);
-    expect(result.current.groups['group-1']).toEqual({ title: 'Group One', users: ['user-1', 'friend-2'] });
+    expect(result.current.groups['group-1']).toEqual({ title: 'Group One', users: ['user-1', 'friend-2'], photoUrl: null });
 
     await act(async () => { await result.current.loadContacts(); });
     // No additional per-friend/per-group fetches on the repeat call -- the
@@ -90,7 +90,7 @@ describe('useMessaging.loadContacts — friendEntryCache/groupEntryCache dedup (
     expect(result.current.friends).toEqual([
       expect.objectContaining({ id: 'friend-1', name: 'friend-uname', type: 'friend' }),
     ]);
-    expect(result.current.groups['group-1']).toEqual({ title: 'Group One', users: ['user-1', 'friend-2'] });
+    expect(result.current.groups['group-1']).toEqual({ title: 'Group One', users: ['user-1', 'friend-2'], photoUrl: null });
   });
 
   test('a genuinely new friend id (never cached) is still fetched fresh alongside an already-cached one', async () => {

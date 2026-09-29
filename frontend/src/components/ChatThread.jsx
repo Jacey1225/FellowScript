@@ -7,6 +7,7 @@ import {
   DownloadOutlined, CloseCircleFilled, SearchOutlined,
 } from '@ant-design/icons';
 import SessionWidget from './SessionWidget.jsx';
+import GroupInfoPanel from './GroupInfoPanel.jsx';
 
 const { Text } = Typography;
 
@@ -521,9 +522,14 @@ export default function ChatThread({
   joinError, onClearJoinError,
   onEditSession, onDeleteSession, onNavigateVerse,
   videoEnabled, videoTiles, onToggleVideo, bindVideoTile,
+  onGroupChanged, onGroupGone,
 }) {
   const [text, setText]               = useState('');
-  const [showMembers, setShowMembers] = useState(false);
+  // Task 20260929-group-info-panel: replaces the old inline showMembers strip;
+  // the member list is hosted inside GroupInfoPanel.
+  const [showGroupInfo, setShowGroupInfo] = useState(false);
+  const [panelLightbox, setPanelLightbox] = useState(null);
+  const groupInfoBtnRef = useRef(null);
   const [showAttachMenu, setShowAttachMenu] = useState(false);
   const [showGifSheet, setShowGifSheet]     = useState(false);
   const [staged, setStaged]                 = useState(null); // { kind, file, previewUrl, fileName, meta, uploadState, objectKey }
@@ -667,19 +673,35 @@ export default function ChatThread({
   );
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', position: 'relative' }}>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.8rem 1rem', borderBottom: '1px solid rgba(255,255,255,0.09)', flexShrink: 0 }}>
         <Button type="text" icon={<ArrowLeftOutlined />} onClick={onBack}
           style={{ color: 'rgba(255,198,26,0.65)', padding: '0 4px' }} />
-        <Text
-          strong
-          style={{ fontFamily: "'Inter', sans-serif", fontSize: '0.88rem', color: 'var(--parchment)', flex: 1, cursor: contact?.type === 'group' ? 'pointer' : 'default' }}
-          onClick={() => contact?.type === 'group' && setShowMembers(v => !v)}
-        >
-          {contact?.name}
-          {contact?.type === 'group' && <TeamOutlined style={{ marginLeft: 6, fontSize: '0.72rem', color: 'rgba(255,198,26,0.5)' }} />}
-        </Text>
+        {contact?.type === 'group' ? (
+          <button
+            ref={groupInfoBtnRef}
+            type="button"
+            className="group-info-header-btn"
+            aria-haspopup="dialog"
+            aria-expanded={showGroupInfo}
+            aria-label={`Group info, ${contact.name}`}
+            onClick={() => setShowGroupInfo(v => !v)}
+          >
+            <Avatar size={32} src={contact.photoUrl} style={{ background: 'rgba(255,198,26,0.12)', color: 'var(--gold)', flexShrink: 0 }}>
+              {(contact.name || '?')[0].toUpperCase()}
+            </Avatar>
+            <span className="group-info-header-name">{contact.name}</span>
+            <TeamOutlined style={{ fontSize: '0.72rem', color: 'rgba(255,198,26,0.5)' }} />
+          </button>
+        ) : (
+          <Text
+            strong
+            style={{ fontFamily: "'Inter', sans-serif", fontSize: '0.88rem', color: 'var(--parchment)', flex: 1 }}
+          >
+            {contact?.name}
+          </Text>
+        )}
         <button
           onClick={onOpenSessionCreator}
           style={{
@@ -720,30 +742,6 @@ export default function ChatThread({
         onToggleVideo={onToggleVideo}
         bindVideoTile={bindVideoTile}
       />
-
-      {/* Group members panel */}
-      {showMembers && contact?.type === 'group' && (
-        <div style={{ padding: '0.7rem 1rem', borderBottom: '1px solid rgba(255,255,255,0.072)', background: 'rgba(255,198,26,0.04)', maxHeight: 160, overflowY: 'auto', flexShrink: 0 }}>
-          <Text style={{ fontSize: '0.55rem', letterSpacing: '0.18em', textTransform: 'uppercase', color: 'rgba(255,198,26,0.45)', display: 'block', marginBottom: '0.4rem' }}>Members</Text>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', marginBottom: '0.3rem' }}>
-            <Avatar size={22} src={user?.profile_photo_url} style={{ background: 'rgba(255,198,26,0.12)', border: 'none', color: 'var(--gold)', fontSize: '0.55rem' }}>
-              {(user?.username || 'Y')[0].toUpperCase()}
-            </Avatar>
-            <Text style={{ fontSize: '0.72rem', color: 'var(--gold)', fontFamily: "'Inter', sans-serif" }}>{user?.username} (you)</Text>
-          </div>
-          {groupMembers.map((m, i) => {
-            const uname = m.username || m.user_id?.slice(0, 8) || '?';
-            return (
-              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', marginBottom: '0.3rem' }}>
-                <Avatar size={22} src={m.photoUrl} style={{ background: 'rgba(255,198,26,0.12)', border: 'none', color: 'var(--gold)', fontSize: '0.55rem' }}>
-                  {uname[0].toUpperCase()}
-                </Avatar>
-                <Text style={{ fontSize: '0.72rem', color: 'rgba(242,242,242,0.65)', fontFamily: "'Inter', sans-serif" }}>{uname}</Text>
-              </div>
-            );
-          })}
-        </div>
-      )}
 
       {/* Messages */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '0.75rem 0.85rem', display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
@@ -858,6 +856,30 @@ export default function ChatThread({
           style={{ flexShrink: 0 }}
         />
       </div>
+
+      <GroupInfoPanel
+        open={showGroupInfo && contact?.type === 'group'}
+        onClose={() => { setShowGroupInfo(false); groupInfoBtnRef.current?.focus(); }}
+        contact={contact}
+        user={user}
+        groupMembers={groupMembers}
+        onGroupChanged={onGroupChanged}
+        onGroupGone={() => { setShowGroupInfo(false); onGroupGone?.(contact); }}
+        onOpenLightbox={(kind, url, e) => setPanelLightbox({
+          kind, url,
+          originX: e ? (e.clientX / window.innerWidth) * 100 : 50,
+          originY: e ? (e.clientY / window.innerHeight) * 100 : 50,
+        })}
+      />
+      {panelLightbox && (
+        <AttachmentLightbox
+          kind={panelLightbox.kind}
+          url={panelLightbox.url}
+          originX={panelLightbox.originX}
+          originY={panelLightbox.originY}
+          onClose={() => setPanelLightbox(null)}
+        />
+      )}
 
       <GifSearchModal
         open={showGifSheet}

@@ -54,6 +54,8 @@ struct RawGroup: Decodable {
     // ``creator_id`` (nil for a pre-existing group that predates the
     // column). See FSContact.creatorId's doc comment for how this is used.
     var creator_id: String? = nil
+    // Task 20260929-group-info-panel: fresh presigned GET (never the stored key).
+    var photo_url: String? = nil
 }
 
 struct RawGroupResponse: Decodable {

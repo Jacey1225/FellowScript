@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Depends, Query, Request
-from backend.interactions.groups import GroupsManager
+from backend.interactions.groups import GroupsManager, normalize_group_title
 from backend.interactions.friends import  FriendsManager, is_nudge_enabled
 from backend.interactions.push import send_push
 from backend.auth.dependencies import require_match
@@ -207,6 +207,13 @@ async def update_group(user_id: str, group_id: str, group: Group, _: str = Depen
             check_clean(title=group.title)
         except ContentRejected as e:
             raise HTTPException(status_code=422, detail=rejection_message(e))
+        # Hardening (task 20260929-group-info-panel): reject a blank/overlong
+        # title as a clean 422 instead of a DB error. Valid titles from old
+        # clients pass through unchanged apart from trimmed whitespace.
+        try:
+            group.title = normalize_group_title(group.title)
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
         manager.update_group(group)
     finally:
         manager.close()

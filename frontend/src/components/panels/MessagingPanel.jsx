@@ -20,6 +20,7 @@ export default function MessagingPanel() {
     onOpenSessionCreator, onEditSession, onDeleteSession,
     onNavigateVerse,
     videoEnabled, videoTiles, onToggleVideo, bindVideoTile,
+    onGroupChanged, onGroupGone,
   } = useMessagingPanel() || {};
 
   // createPortal'd to document.body (see useHostRect's own comment) so this
@@ -91,6 +92,8 @@ export default function MessagingPanel() {
             videoTiles={videoTiles}
             onToggleVideo={onToggleVideo}
             bindVideoTile={bindVideoTile}
+            onGroupChanged={onGroupChanged}
+            onGroupGone={onGroupGone}
           />
         </div>,
         document.body,

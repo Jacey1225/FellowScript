@@ -287,7 +287,7 @@ export default function ContactsPanel({
         {groupList.length === 0
           ? <Text style={{ display: 'block', textAlign: 'center', padding: '0.6rem 0.5rem', color: 'rgba(242,242,242,0.2)', fontSize: '0.62rem' }}>No groups yet</Text>
           : groupList.map(([gid, g]) => {
-              const contact = { id: gid, name: g.title || gid.slice(0, 8), type: 'group', toUsers: g.users || [], group_id: gid };
+              const contact = { id: gid, name: g.title || gid.slice(0, 8), type: 'group', toUsers: g.users || [], group_id: gid, photoUrl: g.photoUrl || null };
               return (
                 <ContactRow key={gid} contact={contact} active={currentContact?.id === gid} onOpen={onOpen}
                   onRemove={() => { onLeaveGroup(gid); onLoad(); }}

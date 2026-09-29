@@ -887,6 +887,33 @@ extension FSHeartbeat {
 }
 
 // ── Group ─────────────────────────────────────────────────────────────────────
+// ── Group info panel (task 20260929-group-info-panel) ─────────────────────────
+// Mirrors api/routes/group_info.py. `photo_url` nil = initials fallback.
+struct FSGroupInfo: Codable, Equatable {
+    let group_id:  String
+    var title:     String
+    var photo_url: String?
+    var muted:     Bool
+    var members:   [String]
+}
+
+struct FSGalleryItem: Codable, Identifiable, Equatable {
+    let id:        String
+    let kind:      String          // image | video | gif | file
+    let url:       String?         // freshly presigned server-side; nil if presign failed
+    let meta:      FSAttachmentMeta?
+    let from_user: String
+    let timestamp: String?
+    let text:      String
+}
+
+struct FSGalleryPage: Codable, Equatable {
+    let items:                 [FSGalleryItem]
+    let next_cursor_timestamp: String?
+    let next_cursor_id:        String?
+    let has_more:              Bool
+}
+
 struct FSGroup: Codable, Identifiable {
     var id:    String = UUID().uuidString
     var title: String = ""

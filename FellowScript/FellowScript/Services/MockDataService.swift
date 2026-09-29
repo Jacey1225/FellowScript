@@ -216,6 +216,17 @@ protocol DataServiceProtocol {
     func leaveGroup(userId: String, groupId: String) async throws
     func deleteGroup(userId: String, groupId: String) async throws
 
+    // Group info panel (task 20260929-group-info-panel) -- member-only
+    // endpoints in api/routes/group_info.py. Default implementations below
+    // throw (never fabricate); NetworkService supplies the real ones.
+    func fetchGroupInfo(userId: String, groupId: String) async throws -> FSGroupInfo
+    func renameGroup(userId: String, groupId: String, title: String) async throws -> String
+    func setGroupMuted(userId: String, groupId: String, muted: Bool) async throws -> Bool
+    func requestGroupPhotoUploadURL(userId: String, groupId: String, contentType: String, sizeBytes: Int?) async throws -> FSUploadURLInfo
+    func confirmGroupPhoto(userId: String, groupId: String, objectKey: String) async throws -> String?
+    func removeGroupPhoto(userId: String, groupId: String) async throws -> String?
+    func fetchGroupGallery(userId: String, groupId: String, kind: String?, cursorTimestamp: String?, cursorId: String?) async throws -> FSGalleryPage
+
     // Sessions / Devotions
     func fetchSessionsForContact(contactId: String) async throws -> [FSSession]
     func createSession(userId: String, devotion: FSSession, contactId: String) async throws -> String
@@ -263,6 +274,21 @@ protocol DataServiceProtocol {
     func acceptSubRequest(subscriptionId: String, fromUserId: String) async throws
     func declineSubRequest(subscriptionId: String, fromUserId: String) async throws
     func syncAppleSubscription(userId: String, jws: String) async throws -> FSSubscription?
+}
+
+// Task 20260929-group-info-panel: default implementations so existing
+// conformers (MockDataService, test doubles) keep compiling. They throw
+// rather than return invented values (throw-not-fabricate); only
+// NetworkService talks to the real endpoints.
+extension DataServiceProtocol {
+    private var groupInfoUnsupported: AppError { AppError.networkError("Group info isn't available right now.") }
+    func fetchGroupInfo(userId: String, groupId: String) async throws -> FSGroupInfo { throw groupInfoUnsupported }
+    func renameGroup(userId: String, groupId: String, title: String) async throws -> String { throw groupInfoUnsupported }
+    func setGroupMuted(userId: String, groupId: String, muted: Bool) async throws -> Bool { throw groupInfoUnsupported }
+    func requestGroupPhotoUploadURL(userId: String, groupId: String, contentType: String, sizeBytes: Int?) async throws -> FSUploadURLInfo { throw groupInfoUnsupported }
+    func confirmGroupPhoto(userId: String, groupId: String, objectKey: String) async throws -> String? { throw groupInfoUnsupported }
+    func removeGroupPhoto(userId: String, groupId: String) async throws -> String? { throw groupInfoUnsupported }
+    func fetchGroupGallery(userId: String, groupId: String, kind: String?, cursorTimestamp: String?, cursorId: String?) async throws -> FSGalleryPage { throw groupInfoUnsupported }
 }
 
 // ── Mock data ─────────────────────────────────────────────────────────────────

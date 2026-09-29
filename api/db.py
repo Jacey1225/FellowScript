@@ -182,6 +182,23 @@ def create_tables(cur):
         "ALTER TABLE groups ADD COLUMN IF NOT EXISTS creator_id UUID "
         "REFERENCES users(_id) ON DELETE SET NULL"
     )
+    # Task 20260929-group-info-panel: optional group profile photo. Stores
+    # only the S3 object *key* (never a URL), exactly like
+    # users.profile_photo_key -- reads resolve it to a fresh presigned GET.
+    # NULL for every existing group (= initials fallback on clients), so the
+    # column is additive and old clients/rows are unaffected.
+    cur.execute("ALTER TABLE groups ADD COLUMN IF NOT EXISTS photo_key TEXT")
+    # Per-user, per-group notification mute. A table (not a column) because
+    # membership lives in the groups.users TEXT[] array, which has no
+    # per-member row to hang state on. Row present = muted. Both FKs cascade
+    # so deleting a user or a group sweeps their mute rows automatically.
+    cur.execute(
+        "CREATE TABLE IF NOT EXISTS group_mutes"
+        "(user_id UUID NOT NULL REFERENCES users(_id) ON DELETE CASCADE,"
+        "group_id UUID NOT NULL REFERENCES groups(_id) ON DELETE CASCADE,"
+        "muted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),"
+        "PRIMARY KEY (user_id, group_id))"
+    )
 
     # ── Level 1: depend on users / groups ──────────────────────────────────────
     cur.execute(

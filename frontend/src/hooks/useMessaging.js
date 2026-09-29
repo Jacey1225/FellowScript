@@ -256,7 +256,7 @@ export function useMessaging({ user }) {
         if (r.ok) {
           const data = await r.json();
           const g = data.group || {};
-          const meta = { title: g.title || gid, users: g.users || [] };
+          const meta = { title: g.title || gid, users: g.users || [], photoUrl: g.photo_url || null };
           groupMap[gid] = meta;
           const allMsgs = [...(data.host_msgs || []), ...(data.other_msgs || [])];
           let preview = '';
@@ -264,7 +264,7 @@ export function useMessaging({ user }) {
             allMsgs.sort(compareTimestamps);
             preview = allMsgs[allMsgs.length - 1].text || '';
           }
-          const entry = { id: gid, name: g.title || gid, type: 'group', toUsers: g.users || [], preview };
+          const entry = { id: gid, name: g.title || gid, type: 'group', toUsers: g.users || [], preview, photoUrl: g.photo_url || null };
           groupEntryCache.current[gid] = { meta, entry };
           return entry;
         }
@@ -591,7 +591,40 @@ export function useMessaging({ user }) {
     }
   }, [user]);
 
+  // Task 20260929-group-info-panel: apply a server-confirmed rename/photo
+  // change (from GroupInfoPanel) to the list row, the open chat header, and
+  // the cached row, so nothing shows the stale value until the next reload.
+  // Only ever called after the API call succeeded.
+  const applyGroupChange = useCallback((groupId, { title, photoUrl } = {}) => {
+    const hasTitle = typeof title === 'string';
+    const hasPhoto = photoUrl !== undefined;
+    setGroups(prev => prev[groupId] ? {
+      ...prev,
+      [groupId]: { ...prev[groupId], ...(hasTitle ? { title } : {}), ...(hasPhoto ? { photoUrl } : {}) },
+    } : prev);
+    setCurrentContact(prev => (prev && prev.id === groupId) ? {
+      ...prev, ...(hasTitle ? { name: title } : {}), ...(hasPhoto ? { photoUrl } : {}),
+    } : prev);
+    const cached = groupEntryCache.current[groupId];
+    if (cached) {
+      groupEntryCache.current[groupId] = {
+        meta: { ...cached.meta, ...(hasTitle ? { title } : {}), ...(hasPhoto ? { photoUrl } : {}) },
+        entry: { ...cached.entry, ...(hasTitle ? { name: title } : {}), ...(hasPhoto ? { photoUrl } : {}) },
+      };
+    }
+  }, []);
+
+  // The server said we're no longer a member (403): drop the stale row and
+  // leave the chat rather than keep showing it.
+  const dropGroup = useCallback((groupId) => {
+    delete groupEntryCache.current[groupId];
+    setGroups(prev => { const { [groupId]: _gone, ...rest } = prev; return rest; });
+    closeChat();
+    message.info("You're no longer in this group.");
+  }, [closeChat]);
+
   return {
+    applyGroupChange, dropGroup,
     friends, groups, currentContact, messages, groupMembers, wsStatus,
     wsRef, friendCache,
     connectWS, disconnectWS, setOnSessionSignal,

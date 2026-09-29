@@ -158,6 +158,8 @@ log_group_cursors (unscoped, no children)
 | 21   | `subscription_request`    |
 | 22   | `sessions`                |
 | 23   | `password_reset_tokens`   |
+
+> 2026-09-29: `groups.photo_key` (ALTER, right after `groups.creator_id`) and `group_mutes` (`user_id`→users, `group_id`→groups, both ON DELETE CASCADE) are created immediately after `groups`, before `user_friends`.
 | 24   | `mfa_codes`               |
 | 25   | `content_reports`         |
 | 26   | `log_group_cursors`       |

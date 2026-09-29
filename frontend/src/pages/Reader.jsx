@@ -83,6 +83,7 @@ export default function Reader() {
     addFriend, removeFriend, createGroup, updateGroup, leaveGroup,
     reportUser, blockUser,
     requestUploadUrl, uploadToS3, searchGifs, browseGifs,
+    applyGroupChange, dropGroup,
   } = useMessaging({ user });
 
   const {
@@ -371,7 +372,9 @@ export default function Reader() {
     onOpenSessionCreator: () => openCreator(), onEditSession: openCreator, onDeleteSession: deleteSession,
     onNavigateVerse: handleNavigateVerse,
     videoEnabled, videoTiles, onToggleVideo: toggleVideo, bindVideoTile,
-  }), [user, friends, msgGroups, currentContact, messages, groupMembers, handleOpenChat, handleCloseChat,
+    onGroupChanged: (patch) => { if (currentContact) applyGroupChange(currentContact.id, patch); },
+    onGroupGone: (contact) => { if (contact) dropGroup(contact.id); },
+  }), [applyGroupChange, dropGroup, user, friends, msgGroups, currentContact, messages, groupMembers, handleOpenChat, handleCloseChat,
        addFriend, removeFriend, reportUser, blockUser, createGroup, updateGroup, leaveGroup,
        contactsLoaded, handleLoadContacts, sendMessage, requestUploadUrl, uploadToS3, searchGifs, browseGifs,
        sessions, activeSessionId, talkingUserId,

@@ -1,8 +1,38 @@
+import uuid
+from datetime import datetime
+
 from schemas.users import User
 from schemas.message import Group
 from db import DBManager
 from backend.errors import SaveFailedError
 from backend.interactions.attachments import generate_download_url
+
+# Group title column is VARCHAR(255) (db.py).
+GROUP_TITLE_MAX_LENGTH = 255
+
+# Tunable: attachments returned per gallery page (explicit load-more paging,
+# no infinite scroll). A plain module constant, matching this codebase's
+# convention for application-behavior tunables (routes/notes.py's
+# NOTES_PAGE_SIZE, attachments.py's PER_KIND_LIMITS) -- not an env var.
+GALLERY_PAGE_SIZE = 24
+
+# Gallery ``kind`` filter values; anything else is rejected, never coerced.
+GALLERY_KINDS = frozenset({"image", "video", "gif", "file"})
+
+
+def normalize_group_title(title: str) -> str:
+    """Strip and validate a group title.
+
+    Raises:
+        ValueError: If the title is blank or longer than the VARCHAR(255)
+            column allows (checked after stripping).
+    """
+    cleaned = (title or "").strip()
+    if not cleaned:
+        raise ValueError("Group name can't be empty")
+    if len(cleaned) > GROUP_TITLE_MAX_LENGTH:
+        raise ValueError(f"Group name must be {GROUP_TITLE_MAX_LENGTH} characters or fewer")
+    return cleaned
 
 
 class GroupsManager(DBManager):
@@ -169,6 +199,14 @@ class GroupsManager(DBManager):
                     for row in self.cur.fetchall()
                 }
         host_msgs = self.lookup("messages", {"from_user": self.user_id, "group_id": self.group_id})
+        # Task 20260929-group-info-panel: never hand the stored photo_key to
+        # the client -- resolve it to a fresh presigned GET at read time
+        # (same rule as attachment_key in format_messages). New fields are
+        # additive; old clients ignore them.
+        group_data = dict(group_data)
+        photo_key = group_data.pop("photo_key", None)
+        group_data["photo_url"] = generate_download_url(photo_key)
+        group_data["muted"] = self.is_muted()
         return {
             "group":      group_data,
             "members":    usernames,
@@ -489,3 +527,152 @@ class GroupsManager(DBManager):
         # return is a real write failure, not an expected no-op.
         if not self.update("groups", {"title": group.title, "users": group.users}, {"_id": self.group_id}):
             raise SaveFailedError()
+
+    # ── Group info panel (task 20260929-group-info-panel) ─────────────────────
+    # None of these methods check membership themselves -- routes must call
+    # ``is_member()`` first (deny-by-default), same as every other method here.
+
+    def rename_group(self, title: str) -> str:
+        """Set only the group's title (members untouched). Returns the
+        normalized title actually stored.
+
+        Raises:
+            ValueError: blank or overlong title.
+            SaveFailedError: the write failed or the group no longer exists.
+        """
+        cleaned = normalize_group_title(title)
+        if not self.update("groups", {"title": cleaned}, {"_id": self.group_id}):
+            raise SaveFailedError()
+        return cleaned
+
+    def get_photo_key(self) -> tuple[bool, str | None]:
+        """(group exists, current photo_key or None)."""
+        group = self.lookup("groups", {"_id": self.group_id})
+        if not group:
+            return False, None
+        _, data = list(group.items())[0]
+        return True, data.get("photo_key")
+
+    def set_photo_key(self, key: str | None) -> None:
+        """Persist (or clear, with None) the group's photo key.
+
+        Raises:
+            SaveFailedError: the write failed or the group no longer exists.
+        """
+        if not self.update("groups", {"photo_key": key}, {"_id": self.group_id}):
+            raise SaveFailedError()
+
+    def is_muted(self) -> bool:
+        """True iff ``self.user_id`` has muted ``self.group_id``."""
+        self.cur.execute(
+            "SELECT 1 FROM group_mutes WHERE user_id = %s AND group_id = %s",
+            (self.user_id, self.group_id),
+        )
+        return self.cur.fetchone() is not None
+
+    def set_muted(self, muted: bool) -> None:
+        """Mute or unmute the group for ``self.user_id``. Idempotent: muting
+        an already-muted group, or unmuting an unmuted one, is a no-op.
+
+        Raises:
+            SaveFailedError: the write itself failed (a caught SQL error).
+        """
+        if muted:
+            if not self.insertion("group_mutes", {"user_id": self.user_id, "group_id": self.group_id}):
+                raise SaveFailedError()
+            return
+        # DBManager.delete reports "matched nothing" as False; for an
+        # idempotent unmute that is a legitimate no-op, so verify by state.
+        self.delete("group_mutes", {"user_id": self.user_id, "group_id": self.group_id})
+        if self.is_muted():
+            raise SaveFailedError()
+
+    def fetch_gallery(
+        self,
+        kind: str | None = None,
+        limit: int = GALLERY_PAGE_SIZE,
+        cursor_timestamp: str | None = None,
+        cursor_id: str | None = None,
+    ) -> dict:
+        """One page of the group's attachments, newest first, keyset-paginated
+        on (timestamp, _id). Blocked users' attachments are excluded in SQL
+        (Guideline 1.2, same relationship set as ``_blocked_set``). URLs are
+        presigned fresh at read time; stored keys are never returned.
+
+        Args:
+            kind: Optional filter, one of ``GALLERY_KINDS``.
+            limit: Page size.
+            cursor_timestamp / cursor_id: Both from the previous page's
+                ``next_cursor_*``; supply together or not at all.
+
+        Returns:
+            dict: ``{"items": [...], "next_cursor_timestamp", "next_cursor_id",
+            "has_more"}``. Each item: ``id``, ``kind``, ``url`` (None if
+            presigning failed), ``meta``, ``from_user`` (username),
+            ``timestamp``, ``text``.
+
+        Raises:
+            ValueError: unknown ``kind``, or a half-supplied cursor.
+        """
+        if kind is not None and kind not in GALLERY_KINDS:
+            raise ValueError(f"Unsupported kind: {kind!r}")
+        if (cursor_timestamp is None) != (cursor_id is None):
+            raise ValueError("cursor_timestamp and cursor_id must be supplied together")
+        if cursor_timestamp is not None:
+            try:
+                datetime.fromisoformat(cursor_timestamp)
+                uuid.UUID(cursor_id)
+            except (ValueError, TypeError):
+                raise ValueError("Invalid gallery cursor")
+
+        where = "group_id = %s AND attachment_kind IS NOT NULL"
+        params: list = [self.group_id]
+        if kind is not None:
+            where += " AND attachment_kind = %s"
+            params.append(kind)
+        blocked = list(self._blocked_set())
+        if blocked:
+            where += " AND (from_user IS NULL OR NOT (from_user = ANY(%s::uuid[])))"
+            params.append(blocked)
+        if cursor_timestamp is not None:
+            where += " AND (timestamp, _id) < (%s::timestamptz, %s::uuid)"
+            params += [cursor_timestamp, cursor_id]
+        self.cur.execute(
+            "SELECT _id, from_user, text, timestamp, attachment_kind, "
+            "attachment_key, attachment_meta FROM messages "
+            f"WHERE {where} ORDER BY timestamp DESC, _id DESC LIMIT %s",
+            params + [limit + 1],
+        )
+        rows = self.cur.fetchall()
+        has_more = len(rows) > limit
+        rows = rows[:limit]
+
+        from_ids = list({str(r[1]) for r in rows if r[1]})
+        usernames: dict[str, str] = {}
+        if from_ids:
+            self.cur.execute(
+                "SELECT _id, username FROM users WHERE _id = ANY(%s::uuid[])",
+                (from_ids,),
+            )
+            usernames = {str(r[0]): r[1] for r in self.cur.fetchall()}
+
+        items = []
+        for r in rows:
+            meta = r[6] or {}
+            url = meta.get("url") if r[4] == "gif" else generate_download_url(r[5])
+            items.append({
+                "id": str(r[0]),
+                "kind": r[4],
+                "url": url,
+                "meta": meta,
+                "from_user": usernames.get(str(r[1]), "") if r[1] else "",
+                "timestamp": r[3].isoformat() if r[3] else None,
+                "text": r[2] or "",
+            })
+        last = rows[-1] if rows else None
+        return {
+            "items": items,
+            "next_cursor_timestamp": last[3].isoformat() if last and has_more else None,
+            "next_cursor_id": str(last[0]) if last and has_more else None,
+            "has_more": has_more,
+        }

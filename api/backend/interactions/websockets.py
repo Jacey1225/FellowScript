@@ -3,6 +3,7 @@ import json
 import logging
 import threading
 import time
+import uuid
 
 import psycopg2
 from fastapi import WebSocket
@@ -426,6 +427,29 @@ class ConnectionManager(DBManager):
         except Exception as e:
             logger.error("Batch device-token lookup failed: %s", e)
 
+        # Task 20260929-group-info-panel: per-user group mute. Muted members
+        # still receive the message in-thread (WS delivery + persisted
+        # history) -- only the offline APNs push below is suppressed. One
+        # batched lookup, and only for a real group (a DM's group_id is a
+        # "uidA|uidB" room key, never a UUID, and has no mute concept).
+        # Fails OPEN on a lookup error (a muted user gets a push they didn't
+        # want) rather than closed (a user silently misses messages): mute is
+        # a comfort preference, not a security control.
+        muted_uids: set[str] = set()
+        if group_id:
+            try:
+                uuid.UUID(str(group_id))
+                self._execute(
+                    "SELECT user_id FROM group_mutes "
+                    "WHERE group_id = %s AND user_id = ANY(%s::uuid[])",
+                    (group_id, list(to_users)),
+                )
+                muted_uids = {str(r[0]) for r in self.cur.fetchall()}
+            except ValueError:
+                pass
+            except Exception as e:
+                logger.error("Group-mute lookup failed for group %s: %s", group_id, e)
+
         for uid in to_users:
             if uid in blocked_relationships:
                 # Group message: still persisted for other members, but skip
@@ -473,6 +497,8 @@ class ConnectionManager(DBManager):
                 # triage per the intake spec's open questions.
                 try:
                     token = device_tokens.get(uid)
+                    if token and uid in muted_uids:
+                        token = None  # muted: skip the push, keep in-thread delivery
                     if token:
                         if text:
                             body = text if len(text) <= 100 else text[:97] + "…"

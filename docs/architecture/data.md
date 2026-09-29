@@ -132,6 +132,17 @@ A friend can see another friend's most recent highlight (including its real vers
 | `title` | TEXT |
 | `members` | UUID[] |
 | `highlights` | JSONB |
+| `photo_key` | TEXT, nullable | S3 object key under `group-photos/{group_id}/...` (2026-09-29); never returned to clients, resolved to a presigned GET as `photo_url`. NULL = initials fallback |
+
+### `group_mutes`
+
+| Column | Type | Notes |
+|---|---|---|
+| `user_id` | UUID FK → `users` ON DELETE CASCADE | Composite PK with `group_id` |
+| `group_id` | UUID FK → `groups` ON DELETE CASCADE | |
+| `muted_at` | TIMESTAMPTZ DEFAULT NOW() | Row present = that user has muted that group |
+
+Added 2026-09-29 (group info panel). A muted member still receives messages in-thread; only the offline APNs push in `websockets.py::send_msg` is skipped, and the unread badge is unchanged. Both `groups.photo_key` and this table are additive and created idempotently by `db.py` (`ADD COLUMN IF NOT EXISTS` / `CREATE TABLE IF NOT EXISTS`). Rollback: `DROP TABLE group_mutes; ALTER TABLE groups DROP COLUMN photo_key;` (old code ignores both).
 
 ---
 

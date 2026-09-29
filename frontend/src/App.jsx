@@ -12,6 +12,7 @@ import Terms from './pages/Terms.jsx';
 import Download from './pages/Download.jsx';
 import AdminGate from './components/AdminGate.jsx';
 import MobileBlockGate from './components/MobileBlockGate.jsx';
+import ReaderWebRedirect from './components/ReaderWebRedirect.jsx';
 import DesktopRouteGuard from './components/DesktopRouteGuard.jsx';
 import VisitTracker from './components/VisitTracker.jsx';
 import AdminDetections from './pages/AdminDetections.jsx';
@@ -104,7 +105,7 @@ export default function App() {
       <DesktopRouteGuard>
         <Routes>
           <Route path="/"       element={<Home />} />
-          <Route path="/reader" element={<MobileBlockGate><Reader /></MobileBlockGate>} />
+          <Route path="/reader" element={<ReaderWebRedirect><MobileBlockGate><Reader /></MobileBlockGate></ReaderWebRedirect>} />
           {/* Task 20260922-reader-nav-download-page: the single "go get the
               app" destination every leaking nav occurrence into /reader now
               routes to instead. Deliberately not on DESKTOP_ALLOWED_ROUTES

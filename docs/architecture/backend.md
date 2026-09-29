@@ -189,6 +189,24 @@ A message may now carry an image/video/file/gif attachment alongside or instead 
 
 ---
 
+## Group info panel (task 20260929-group-info-panel)
+
+`routes/group_info.py` (`/groups/{user_id}/{group_id}/...`), all `require_match` + member-only (403 otherwise; any member may rename/change the photo, same as `PUT /groups/{user_id}/{group_id}`):
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/info` | title, `photo_url`, caller's `muted`, member usernames |
+| PUT | `/title` | rename only (`{"title"}`; content filter, 1-255 chars after trim, else 422) |
+| POST | `/photo/upload-url` | presigned S3 POST for `group-photos/{group_id}/{uploader}/{uuid}` (image MIME/size allowlist reused) |
+| POST | `/photo/confirm` | persist `{"object_key"}`; 403 unless the key is under this group's prefix; replaced object deleted best-effort |
+| DELETE | `/photo` | clears the photo; returns `{"restore_key"}` and keeps the S3 object so the client can undo via `/photo/confirm` |
+| PUT / DELETE | `/mute` | per-user mute on/off (idempotent) |
+| GET | `/gallery?kind=&cursor_timestamp=&cursor_id=` | `GALLERY_PAGE_SIZE` (24) attachments, newest first, keyset-paged; `has_more` + `next_cursor_*`; blocked users excluded; URLs presigned at read time; `kind` in image/video/gif/file |
+
+`GET /groups/{user_id}/{group_id}` now also returns `group.photo_url` and `group.muted` (additive). `PUT /groups/{user_id}/{group_id}` now 422s a blank/overlong title. Push suppression: `websockets.py::send_msg` batches a `group_mutes` lookup and skips the APNs push (not WS/history delivery) for muted recipients; lookup errors fail open.
+
+Migration/rollout plan: additive and idempotent via `db.py` (see `data.md`). Pre-flight: confirm `groups`/`users` exist and no `group_mutes` table conflicts (`\d group_mutes`). Deploy order: backend first (old clients ignore new fields), then clients. Rollback: drop `group_mutes` and `groups.photo_key`; old code never reads them. NOT to be run on production or deployed without explicit user confirmation; record the run (who/when) in the deploy log. Known gap: photo objects of removed/deleted groups are not swept (needs an S3 lifecycle rule or sweep job).
+
 ## `backend/backup/`
 
 A sibling package to `interactions/` for the nightly per-user data backup (see [Data → Nightly Backup Database](data.md) for the schema/scope).

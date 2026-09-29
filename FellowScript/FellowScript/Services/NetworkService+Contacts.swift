@@ -79,6 +79,7 @@ extension NetworkService {
                                            preview: preview, toUsers: users,
                                            memberNames: memberNames,
                                            lastMessageAt: lastMsg?.timestamp ?? "",
+                                           photoUrl: g.photo_url,
                                            creatorId: g.creator_id,
                                            // Task 20260920-chat-self-sent-unread-badge:
                                            // see FSContact.lastMessageSenderId's doc
