@@ -235,6 +235,10 @@ protocol DataServiceProtocol {
     func createGroupInvite(userId: String, groupId: String, expiresInDays: Int, maxUses: Int) async throws -> FSInviteCreated
     func revokeInvite(userId: String, inviteId: String) async throws
     func resetGroupInvites(userId: String, groupId: String) async throws -> Int
+    // Subscription-seat invite links (task 20260930-subscription-seat-invites): plan owner only.
+    func listSubscriptionInvites(userId: String, subscriptionId: String) async throws -> FSInviteList
+    func createSubscriptionInvite(userId: String, subscriptionId: String, expiresInDays: Int, maxUses: Int) async throws -> FSInviteCreated
+    func resetSubscriptionInvites(userId: String, subscriptionId: String) async throws -> Int
 
     // Sessions / Devotions
     func fetchSessionsForContact(contactId: String) async throws -> [FSSession]
@@ -308,6 +312,9 @@ extension DataServiceProtocol {
     func createGroupInvite(userId: String, groupId: String, expiresInDays: Int, maxUses: Int) async throws -> FSInviteCreated { throw invitesUnsupported }
     func revokeInvite(userId: String, inviteId: String) async throws { throw invitesUnsupported }
     func resetGroupInvites(userId: String, groupId: String) async throws -> Int { throw invitesUnsupported }
+    func listSubscriptionInvites(userId: String, subscriptionId: String) async throws -> FSInviteList { throw invitesUnsupported }
+    func createSubscriptionInvite(userId: String, subscriptionId: String, expiresInDays: Int, maxUses: Int) async throws -> FSInviteCreated { throw invitesUnsupported }
+    func resetSubscriptionInvites(userId: String, subscriptionId: String) async throws -> Int { throw invitesUnsupported }
 }
 
 // ── Mock data ─────────────────────────────────────────────────────────────────

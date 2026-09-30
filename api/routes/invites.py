@@ -1,8 +1,9 @@
-"""Invite-link endpoints (task 20260929-group-invite-links, phase 1).
+"""Invite-link endpoints (task 20260929-group-invite-links, phase 1; task
+20260930-subscription-seat-invites, phase 2).
 
-Group invites only today; the ``kind`` is part of the *internal* API (route
-paths name ``groups``) so phase 2 adds sibling routes / handlers without
-changing these. Behavior lives in ``backend/interactions/invites.py``; this
+The ``kind`` is part of the *internal* API (route paths name ``groups`` /
+``subscriptions``); the subscription routes are siblings of the group ones and
+leave them unchanged. Behavior lives in ``backend/interactions/invites.py``; this
 module is only auth, rate limits, the feature flag, and HTTP mapping.
 
   POST   /invites/preview                          public, per-IP limited
@@ -10,6 +11,9 @@ module is only auth, rate limits, the feature flag, and HTTP mapping.
   POST   /invites/{user_id}/groups/{group_id}      create (any member)
   GET    /invites/{user_id}/groups/{group_id}      list active (metadata only)
   POST   /invites/{user_id}/groups/{group_id}/reset  revoke all the caller may
+  POST   /invites/{user_id}/subscriptions/{subscription_id}        create (plan owner only)
+  GET    /invites/{user_id}/subscriptions/{subscription_id}        list (plan owner only)
+  POST   /invites/{user_id}/subscriptions/{subscription_id}/reset  revoke all (plan owner only)
   DELETE /invites/{user_id}/{invite_id}            revoke one
 
 The token travels in a POST *body* (never a URL path/query) for preview and
@@ -70,7 +74,9 @@ def _http(err: InviteError) -> HTTPException:
 @limiter.limit(_rate("preview"))
 async def preview_invite(request: Request, response: Response, body: TokenBody) -> dict:
     """Public, unauthenticated. Minimal info for a currently-usable token:
-    ``{"kind", "group_name", "photo_url", "inviter_username", "member_count"}``.
+    ``{"kind", "group_name", "photo_url", "inviter_username", "member_count"}``
+    for a group link, ``{"kind": "subscription", "inviter_username", "plan_type"}``
+    for a subscription link.
 
     Raises:
         HTTPException 404: uniform body for any unusable token (unknown,
@@ -97,7 +103,9 @@ async def redeem_invite(
     """Join via a token. Idempotent for an existing member.
 
     Returns:
-        dict: ``{"kind", "target_id" (the group_id), "joined", "already_member"}``.
+        dict: ``{"kind", "target_id", "joined", "already_member"}``; for
+        ``kind == "subscription"`` also ``"requested"``/``"pending"`` -- the
+        caller has filed a join request, NOT joined the plan.
 
     Raises:
         HTTPException 404 not_found, 410 expired/revoked, 409 full,
@@ -174,6 +182,87 @@ async def list_group_invites(
             "max_active_links_per_user_per_group": cfg.max_active_links_per_user_per_group,
         },
     }
+
+
+# ── Subscription-seat invites (plan owner only) ───────────────────────────────
+
+@invites_router.post("/{user_id}/subscriptions/{subscription_id}", status_code=201)
+@limiter.limit(_rate("create"))
+async def create_subscription_invite(
+    request: Request, response: Response, user_id: str, subscription_id: str,
+    body: CreateInviteBody | None = None,
+    _: str = Depends(require_match("user_id")),
+) -> dict:
+    """Create a join-request link for a plan. Owner only, on an active group
+    plan with more than one seat. The plaintext ``token``/``url`` are in this
+    response only. Opening the link files a *request*; it never grants access.
+
+    Raises:
+        HTTPException 403 not the plan owner, 409 not_eligible / link_limit,
+        422 value not allowed.
+    """
+    response.headers["Cache-Control"] = "no-store"
+    _require_enabled()
+    body = body or CreateInviteBody()
+    manager = InvitesManager(user_id)
+    try:
+        return manager.create("subscription", subscription_id, body.expires_in_days,
+                              body.max_uses, ip=get_client_ip(request))
+    except InviteError as e:
+        raise _http(e)
+    finally:
+        manager.close()
+
+
+@invites_router.get("/{user_id}/subscriptions/{subscription_id}")
+@limiter.limit(_rate("list"))
+async def list_subscription_invites(
+    request: Request, response: Response, user_id: str, subscription_id: str,
+    _: str = Depends(require_match("user_id")),
+) -> dict:
+    """Active links for a plan (metadata only, never a token) plus the
+    subscription create options. Owner only.
+
+    Raises:
+        HTTPException 403: not the plan owner.
+    """
+    response.headers["Cache-Control"] = "no-store"
+    _require_enabled()
+    cfg = get_invites_config()
+    manager = InvitesManager(user_id)
+    try:
+        invites = manager.list_active("subscription", subscription_id)
+    except InviteError as e:
+        raise _http(e)
+    finally:
+        manager.close()
+    return {
+        "invites": invites,
+        "options": {
+            "default_expiry_days": cfg.subscription_default_expiry_days,
+            "allowed_expiry_days": list(cfg.subscription_allowed_expiry_days),
+            "default_max_uses": cfg.subscription_default_max_uses,
+            "allowed_max_uses": list(cfg.subscription_allowed_max_uses),
+            "max_active_links_per_subscription": cfg.max_active_links_per_subscription,
+        },
+    }
+
+
+@invites_router.post("/{user_id}/subscriptions/{subscription_id}/reset")
+@limiter.limit(_rate("revoke"))
+async def reset_subscription_invites(
+    request: Request, response: Response, user_id: str, subscription_id: str,
+    _: str = Depends(require_match("user_id")),
+) -> dict:
+    """Revoke every active link for the plan. Owner only. Returns ``{"revoked": n}``."""
+    _require_enabled()
+    manager = InvitesManager(user_id)
+    try:
+        return {"revoked": manager.reset("subscription", subscription_id, ip=get_client_ip(request))}
+    except InviteError as e:
+        raise _http(e)
+    finally:
+        manager.close()
 
 
 @invites_router.post("/{user_id}/groups/{group_id}/reset")

@@ -9,6 +9,8 @@ from backend.subscription import stripe_service
 from backend.subscription import apple_service
 from backend.auth.dependencies import get_current_user, require_match, require_admin
 from schemas.subscription import SubscriptionCreate, SubscriptionUpdate
+from backend.interactions.invites import audit as invite_audit
+from backend.rate_limiting import get_client_ip
 
 subscription_router = APIRouter(prefix="/subscriptions")
 logger = logging.getLogger(__name__)
@@ -498,7 +500,7 @@ async def get_requests(subscription_id: str, current_user: str = Depends(get_cur
 
 
 @subscription_router.post("/{subscription_id}/requests/{from_user_id}/accept")
-async def accept_request(subscription_id: str, from_user_id: str, current_user: str = Depends(get_current_user)) -> dict:
+async def accept_request(request: Request, subscription_id: str, from_user_id: str, current_user: str = Depends(get_current_user)) -> dict:
     """Host accepts a pending request, enrolling the user in the plan. Host only.
 
     Raises:
@@ -511,19 +513,28 @@ async def accept_request(subscription_id: str, from_user_id: str, current_user: 
         _require_host(db, subscription_id, current_user)
         result = db.accept_request(subscription_id, from_user_id)
         if result and "error" in result:
+            invite_audit("subscription_request_accept_fail", subscription=subscription_id,
+                         owner=current_user, requester=from_user_id, reason=result["error"],
+                         ip=get_client_ip(request))
             raise HTTPException(status_code=400, detail=result["error"])
+        invite_audit("subscription_request_accept", subscription=subscription_id,
+                     owner=current_user, requester=from_user_id, ip=get_client_ip(request))
         return {"ok": True}
     finally:
         db.close()
 
 
 @subscription_router.delete("/{subscription_id}/requests/{from_user_id}", status_code=204)
-async def decline_request(subscription_id: str, from_user_id: str, current_user: str = Depends(get_current_user)) -> None:
+async def decline_request(request: Request, subscription_id: str, from_user_id: str, current_user: str = Depends(get_current_user)) -> None:
     """Decline (host) or cancel (requester) a pending join request."""
     db = SubscriptionsManager()
     try:
         if current_user != from_user_id:
             _require_host(db, subscription_id, current_user)
         db.delete_request(subscription_id, from_user_id)
+        invite_audit(
+            "subscription_request_cancel" if current_user == from_user_id else "subscription_request_decline",
+            subscription=subscription_id, user=current_user, requester=from_user_id,
+            ip=get_client_ip(request))
     finally:
         db.close()

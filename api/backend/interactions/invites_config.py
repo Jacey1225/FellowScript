@@ -28,6 +28,11 @@ _TOP_KEYS = (
     "enabled", "public_base_url", "default_expiry_days", "allowed_expiry_days",
     "default_max_uses", "allowed_max_uses", "max_active_links_per_user_per_group",
     "rate_limits",
+    # Phase 2 (subscription-seat invites): per-kind tunables. Seat caps make
+    # subscription links deliberately tighter than group links.
+    "subscription_default_expiry_days", "subscription_allowed_expiry_days",
+    "subscription_default_max_uses", "subscription_allowed_max_uses",
+    "max_active_links_per_subscription", "max_pending_requests_per_subscription",
 )
 
 
@@ -45,6 +50,12 @@ class InvitesConfig:
     allowed_max_uses: tuple[int, ...]
     max_active_links_per_user_per_group: int
     rate_limits: dict[str, str]
+    subscription_default_expiry_days: int
+    subscription_allowed_expiry_days: tuple[int, ...]
+    subscription_default_max_uses: int
+    subscription_allowed_max_uses: tuple[int, ...]
+    max_active_links_per_subscription: int
+    max_pending_requests_per_subscription: int
 
 
 def _pos_int(name: str, v) -> int:
@@ -101,6 +112,17 @@ def parse_invites_config(raw: object) -> InvitesConfig:
     if default_uses not in allowed_uses:
         raise InvitesConfigError("invites config: default_max_uses must be one of allowed_max_uses")
 
+    sub_days = _pos_int_list("subscription_allowed_expiry_days", raw["subscription_allowed_expiry_days"])
+    sub_uses = _pos_int_list("subscription_allowed_max_uses", raw["subscription_allowed_max_uses"])
+    sub_default_days = _pos_int("subscription_default_expiry_days", raw["subscription_default_expiry_days"])
+    sub_default_uses = _pos_int("subscription_default_max_uses", raw["subscription_default_max_uses"])
+    if sub_default_days not in sub_days:
+        raise InvitesConfigError(
+            "invites config: subscription_default_expiry_days must be one of subscription_allowed_expiry_days")
+    if sub_default_uses not in sub_uses:
+        raise InvitesConfigError(
+            "invites config: subscription_default_max_uses must be one of subscription_allowed_max_uses")
+
     rl = raw["rate_limits"]
     if not isinstance(rl, dict) or set(rl) != set(_RATE_KEYS):
         raise InvitesConfigError(f"invites config: rate_limits must have exactly the keys {list(_RATE_KEYS)}")
@@ -122,6 +144,14 @@ def parse_invites_config(raw: object) -> InvitesConfig:
         max_active_links_per_user_per_group=_pos_int(
             "max_active_links_per_user_per_group", raw["max_active_links_per_user_per_group"]),
         rate_limits=dict(rl),
+        subscription_default_expiry_days=sub_default_days,
+        subscription_allowed_expiry_days=sub_days,
+        subscription_default_max_uses=sub_default_uses,
+        subscription_allowed_max_uses=sub_uses,
+        max_active_links_per_subscription=_pos_int(
+            "max_active_links_per_subscription", raw["max_active_links_per_subscription"]),
+        max_pending_requests_per_subscription=_pos_int(
+            "max_pending_requests_per_subscription", raw["max_pending_requests_per_subscription"]),
     )
 
 

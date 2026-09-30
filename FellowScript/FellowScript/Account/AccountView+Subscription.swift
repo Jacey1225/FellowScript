@@ -27,6 +27,23 @@ extension AccountView {
                     }
                     ForEach(vm.subMembers) { memberRow($0) }
 
+                    // Task 20260930-subscription-seat-invites: owner-only link that files
+                    // a join request (never membership). Hides itself when the backend
+                    // flag is off (uniform 404 from list).
+                    if plan.max_members > 1 {
+                        Divider().background(Theme.borderGoldFaint)
+                        InviteLinkSection(
+                            service: appState.service, subscriptionId: plan.id,
+                            userId: appState.currentUser?.user_id ?? ""
+                        )
+                        .id(plan.id)
+                        Button { Task { await vm.refreshSubRequests() } } label: {
+                            Text("Refresh join requests")
+                                .font(.inter(Theme.fontSM, weight: .semibold)).foregroundColor(Theme.gold)
+                                .frame(minHeight: 44)
+                        }
+                    }
+
                     if !vm.subRequests.isEmpty {
                         rowCaption("Join Requests")
                         ForEach(vm.subRequests) { requestRow($0) }

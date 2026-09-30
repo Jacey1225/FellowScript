@@ -5,6 +5,7 @@ import {
   CheckOutlined, CloseOutlined, DeleteOutlined,
 } from '@ant-design/icons';
 import { API } from '../config.js';
+import InviteLinkSection from './InviteLinkSection.jsx';
 
 // Radius/fill kept in sync with Account.jsx's own CARD_STYLE (design-notes.md
 // §3's --radius-lg treatment) so the subscription card reads as the same
@@ -202,6 +203,18 @@ export default function SubscriptionCard({ userId, onPlanChange }) {
     finally { setBusy(''); }
   };
 
+  // Re-read only the pending requests (a full load() swaps the card for a
+  // spinner, which would discard a just-created invite link still on screen).
+  const refreshRequests = async () => {
+    setBusy('refresh-req');
+    try {
+      const res = await fetch(`${API}/subscriptions/${plan.id}/requests`);
+      if (res.ok) setRequests(await res.json());
+      else flash('error', 'Could not refresh requests.');
+    } catch { flash('error', 'Could not reach the server.'); }
+    finally { setBusy(''); }
+  };
+
   const acceptRequest = async (uid) => {
     setBusy(`acc-${uid}`);
     try {
@@ -394,6 +407,20 @@ export default function SubscriptionCard({ userId, onPlanChange }) {
                   )}
                 </div>
               ))}
+            </div>
+          )}
+
+          {/* Invite link (task 20260930-subscription-seat-invites). Owner only,
+              multi-seat group plan. Opening the link files a request that shows
+              under Join Requests below; it never grants access. Hides itself when
+              the feature flag is off (uniform 404). */}
+          {isHost && plan.plan_type === 'group' && plan.max_members > 1 && (
+            <div style={{ marginTop: '1rem' }}>
+              <InviteLinkSection kind="subscription" userId={userId} subscriptionId={plan.id} />
+              <Button size="small" type="text" loading={busy === 'refresh-req'} onClick={refreshRequests}
+                style={{ color: 'var(--gold)', fontFamily: "'Inter', sans-serif", fontSize: '0.78rem', paddingLeft: 0 }}>
+                Refresh join requests
+              </Button>
             </div>
           )}
 

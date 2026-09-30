@@ -25,6 +25,8 @@ export const COPY = {
   revoked: { title: 'This invite link was revoked.', body: 'Ask the person who invited you for a new link.' },
   full: { title: 'This invite link has reached its limit.', body: 'Ask the person who invited you for a new link.' },
   blocked: { title: "You can't join this group.", body: null },
+  otherPlan: { title: "You're already on a paid plan.", body: 'Leave your current plan first, then open this link again to request a seat.' },
+  blockedPlan: { title: "You can't request to join this plan.", body: null },
   rate: { title: 'Too many tries.', body: 'Wait a minute and try again.' },
   network: { title: "Couldn't reach FellowScript.", body: 'Check your connection and try again.' },
 };
@@ -34,7 +36,7 @@ function errorKind(err) {
   if (err.status === 429) return 'rate';
   if (err.status === 404) return 'invalid';
   if (err.status === 410) return err.code === 'revoked' ? 'revoked' : 'expired';
-  if (err.status === 409) return 'full';
+  if (err.status === 409) return err.code === 'other_plan' ? 'otherPlan' : 'full';
   if (err.status === 403) return 'blocked';
   return 'network';
 }
@@ -53,6 +55,7 @@ export default function JoinInvite() {
   const [phase, setPhase] = useState(validToken ? 'resolving' : 'error');
   const [preview, setPreview] = useState(null);
   const [errKind, setErrKind] = useState(validToken ? null : 'invalid');
+  const [outcome, setOutcome] = useState(null); // subscription: 'requested' | 'member'
   const [errAction, setErrAction] = useState(null); // 'preview' | 'redeem'
 
   useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
@@ -96,6 +99,13 @@ export default function JoinInvite() {
     try {
       const res = await redeemInvite(user.user_id, token);
       if (!mountedRef.current) return;
+      if (res.kind === 'subscription') {
+        // A request, not membership: the plan owner still has to approve.
+        clearPendingInvite();
+        setOutcome(res.already_member ? 'member' : 'requested');
+        setPhase('done');
+        return;
+      }
       goToGroup(res.target_id);
     } catch (err) {
       if (!mountedRef.current) return;
@@ -113,6 +123,7 @@ export default function JoinInvite() {
   const onRetry = () => { if (errAction === 'redeem') { setPhase('ready'); onJoin(); } else loadPreview(); };
   const leave = () => { navigate('/'); };
 
+  const isSub = preview?.kind === 'subscription';
   const groupName = preview?.group_name || 'this group';
   const initial = groupName[0].toUpperCase();
 
@@ -125,7 +136,8 @@ export default function JoinInvite() {
       </div>
     );
   } else if (phase === 'error') {
-    const c = COPY[errKind] || COPY.invalid;
+    const base = COPY[errKind] || COPY.invalid;
+    const c = isSub && errKind === 'blocked' ? COPY.blockedPlan : base;
     const canRetry = RETRYABLE.has(errKind) && errAction;
     content = (
       <div className="join-body" role="alert">
@@ -135,12 +147,54 @@ export default function JoinInvite() {
         <button type="button" className={canRetry ? 'join-text-btn' : 'join-pill'} onClick={leave}>Back to FellowScript</button>
       </div>
     );
+  } else if (phase === 'done' && isSub) {
+    content = (
+      <div className="join-body" role="status">
+        <h1 ref={headingRef} tabIndex={-1} className="join-heading">
+          {outcome === 'member' ? "You're already on this plan" : 'Request sent'}
+        </h1>
+        <p className="join-copy">
+          {outcome === 'member'
+            ? 'You already have access through this plan.'
+            : `${preview?.inviter_username || 'The plan owner'} has to approve your request. You get access to the plan once they accept it.`}
+        </p>
+        <Link className="join-pill" to={desktop ? '/reader' : '/download'}>{desktop ? 'Back to FellowScript' : 'Get the app'}</Link>
+      </div>
+    );
   } else if (phase === 'done') {
     content = (
       <div className="join-body" role="status">
         <h1 ref={headingRef} tabIndex={-1} className="join-heading">You're in</h1>
         <p className="join-copy">You joined {groupName}. Open the FellowScript app to chat with the group.</p>
         <Link className="join-pill" to="/download">Get the app</Link>
+      </div>
+    );
+  } else if (isSub) {
+    const joining = phase === 'joining';
+    content = (
+      <div className="join-body">
+        <h1 ref={headingRef} tabIndex={-1} className="join-heading">Request to join {preview?.inviter_username}'s plan</h1>
+        <p className="join-copy">
+          {preview?.inviter_username} invited you to their FellowScript plan.
+          <br />
+          They approve each request before you get access.
+        </p>
+        {user ? (
+          <>
+            <button type="button" className="join-pill join-pill-wide" onClick={onJoin} disabled={joining}>
+              {joining ? <Spin size="small" /> : 'Request to join'}
+            </button>
+            <button type="button" className="join-text-btn" onClick={onCancel} disabled={joining}>Cancel</button>
+          </>
+        ) : (
+          <>
+            <button type="button" className="join-pill join-pill-wide"
+              onClick={() => navigate('/signin', { state: { tab: 'signin' } })}>Sign in to request</button>
+            <button type="button" className="join-text-btn"
+              onClick={() => navigate('/signin', { state: { tab: 'signup' } })}>Create an account</button>
+            <button type="button" className="join-text-btn" onClick={onCancel}>Cancel</button>
+          </>
+        )}
       </div>
     );
   } else {

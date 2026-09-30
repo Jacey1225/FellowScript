@@ -1148,6 +1148,17 @@ final class AccountViewModel: ObservableObject {
         } catch { subMsg = (error as? LocalizedError)?.errorDescription ?? "Could not accept." }
     }
 
+    /// Re-reads only the pending requests (loadSubscription flips subLoading,
+    /// which would tear down a just-created invite link still on screen).
+    func refreshSubRequests() async {
+        guard let plan = subscription, plan.plan_type == "group" else { return }
+        do {
+            subRequests = try await service.fetchSubRequests(subscriptionId: plan.id)
+        } catch {
+            subMsg = (error as? LocalizedError)?.errorDescription ?? "Could not refresh requests."
+        }
+    }
+
     func declineRequest(_ fromUserId: String) async {
         guard let uid = profileData?.user_id, let plan = subscription else { return }
         let previous = subRequests

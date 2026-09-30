@@ -13,6 +13,8 @@ import Combine
 /// Why a preview/redeem failed, with the exact copy from design-notes.md.
 enum InviteFailure: Equatable {
     case invalid, expired, revoked, full, blocked, rateLimited, network
+    /// Subscription links only: the caller is already on a different paid plan.
+    case otherPlan
 
     init(_ error: InviteAPIError) {
         switch error.status {
@@ -20,7 +22,7 @@ enum InviteFailure: Equatable {
         case 429:          self = .rateLimited
         case 404:          self = .invalid
         case 410:          self = error.code == "revoked" ? .revoked : .expired
-        case 409:          self = .full
+        case 409:          self = error.code == "other_plan" ? .otherPlan : .full
         case 403:          self = .blocked
         default:           self = .network
         }
@@ -35,7 +37,13 @@ enum InviteFailure: Equatable {
         case .blocked:     return "You can't join this group."
         case .rateLimited: return "Too many tries."
         case .network:     return "Couldn't reach FellowScript."
+        case .otherPlan:   return "You're already on a paid plan."
         }
+    }
+
+    /// Title for a subscription link: only the blocked copy differs.
+    func title(subscription: Bool) -> String {
+        subscription && self == .blocked ? "You can't request to join this plan." : title
     }
 
     /// nil for `.blocked`: no reason, no names, no ask-for-a-new-link hint.
@@ -46,6 +54,7 @@ enum InviteFailure: Equatable {
         case .blocked:     return nil
         case .rateLimited: return "Wait a minute and try again."
         case .network:     return "Check your connection and try again."
+        case .otherPlan:   return "Leave your current plan first, then open this link again to request a seat."
         }
     }
 
@@ -58,6 +67,10 @@ final class JoinInviteViewModel: ObservableObject {
 
     @Published var phase: Phase = .resolving
     @Published var preview: FSInvitePreview?
+    /// Subscription links: what the redeem did (a request was filed, or the
+    /// caller is already on the plan). Never membership.
+    @Published var requestOutcome: RequestOutcome?
+    enum RequestOutcome: Equatable { case requested, alreadyMember }
 
     private let service: DataServiceProtocol
     let token: String
@@ -93,6 +106,9 @@ final class JoinInviteViewModel: ObservableObject {
         phase = .joining
         do {
             let result = try await service.redeemInvite(userId: userId, token: token)
+            if result.kind == "subscription" {
+                requestOutcome = result.already_member ? .alreadyMember : .requested
+            }
             phase = .joined
             return (result, false)
         } catch let e as InviteAPIError {
@@ -177,18 +193,71 @@ private struct JoinInviteContent: View {
         case .ready, .joining:
             readyBody
         case .joined:
-            VStack(spacing: Theme.spacingSM) {
-                Text("You're in")
-                    .font(.playfair(Theme.fontDisplayMD)).foregroundColor(Theme.parchment)
-                    .accessibilityAddTraits(.isHeader)
-                    .accessibilityFocused($headingFocused)
+            if vm.requestOutcome != nil {
+                requestSentBody
+            } else {
+                VStack(spacing: Theme.spacingSM) {
+                    Text("You're in")
+                        .font(.playfair(Theme.fontDisplayMD)).foregroundColor(Theme.parchment)
+                        .accessibilityAddTraits(.isHeader)
+                        .accessibilityFocused($headingFocused)
+                }
             }
         case .failed(let failure):
             errorBody(failure)
         }
     }
 
+    /// Subscription link: a request was filed; the plan owner still has to accept.
+    private var requestSentBody: some View {
+        let owner = vm.preview?.inviter_username ?? ""
+        let already = vm.requestOutcome == .alreadyMember
+        return VStack(spacing: Theme.spacingMD) {
+            Text(already ? "You're already on this plan" : "Request sent")
+                .font(.playfair(Theme.fontDisplayMD)).foregroundColor(Theme.parchment)
+                .multilineTextAlignment(.center)
+                .accessibilityAddTraits(.isHeader)
+                .accessibilityFocused($headingFocused)
+            Text(already
+                 ? "You already have access through this plan."
+                 : "\(owner.isEmpty ? "The plan owner" : owner) has to approve your request. You get access to the plan once they accept it.")
+                .font(.inter(Theme.fontSM)).foregroundColor(Theme.textSecondary)
+                .multilineTextAlignment(.center)
+            wideButton("Done", busy: false) { appState.clearPendingInvite() }
+        }
+        .accessibilityElement(children: .contain)
+    }
+
+    /// Request-to-join confirmation for a subscription link.
+    private var subscriptionReadyBody: some View {
+        let owner = vm.preview?.inviter_username ?? ""
+        return VStack(spacing: Theme.spacingMD) {
+            Text("Request to join \(owner)'s plan")
+                .font(.playfair(Theme.fontDisplayMD)).foregroundColor(Theme.parchment)
+                .multilineTextAlignment(.center)
+                .accessibilityAddTraits(.isHeader)
+                .accessibilityFocused($headingFocused)
+            Text("\(owner) invited you to their FellowScript plan. They approve each request before you get access.")
+                .font(.inter(Theme.fontSM)).foregroundColor(Theme.textSecondary)
+                .multilineTextAlignment(.center)
+            if appState.isAuthenticated {
+                wideButton(vm.phase == .joining ? nil : "Request to join", busy: vm.phase == .joining) { Task { await join() } }
+                textButton("Cancel") { appState.clearPendingInvite() }
+                    .disabled(vm.phase == .joining)
+            } else {
+                wideButton("Sign in to request", busy: false) { appState.inviteDeferredForAuth = true }
+                textButton("Create an account") { appState.inviteDeferredForAuth = true }
+                textButton("Cancel") { appState.clearPendingInvite() }
+            }
+        }
+    }
+
     private var readyBody: some View {
+        if vm.preview?.isSubscription == true { return AnyView(subscriptionReadyBody) }
+        return AnyView(groupReadyBody)
+    }
+
+    private var groupReadyBody: some View {
         VStack(spacing: Theme.spacingMD) {
             AvatarView(
                 initial: String((vm.preview?.group_name ?? "?").prefix(1)).uppercased(),
@@ -225,7 +294,7 @@ private struct JoinInviteContent: View {
 
     private func errorBody(_ failure: InviteFailure) -> some View {
         VStack(spacing: Theme.spacingMD) {
-            Text(failure.title)
+            Text(failure.title(subscription: vm.preview?.isSubscription == true))
                 .font(.playfair(Theme.fontDisplayMD)).foregroundColor(Theme.parchment)
                 .multilineTextAlignment(.center)
                 .accessibilityAddTraits(.isHeader)
@@ -253,6 +322,13 @@ private struct JoinInviteContent: View {
             appState.signOut()
             appState.setPendingInvite(token)
             appState.inviteDeferredForAuth = true
+            return
+        }
+        if vm.requestOutcome != nil {
+            // A request, not membership: keep the confirmation on screen (its
+            // Done button clears the pending invite) and drop the stored token
+            // so a relaunch doesn't re-present it.
+            PendingInviteStore.clear()
             return
         }
         let groupId = outcome.result.target_id

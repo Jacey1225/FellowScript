@@ -12,6 +12,41 @@ from schemas.subscription import (
 )
 
 
+def is_plan_lapsed(current_period_end) -> bool:
+    """True if a paid period ended more than EXPIRY_GRACE_DAYS ago (see
+    ``SubscriptionsManager._is_lapsed``). NULL period end (free/comp) never lapses."""
+    if not current_period_end:
+        return False
+    cpe = current_period_end
+    if cpe.tzinfo is None:
+        cpe = cpe.replace(tzinfo=timezone.utc)
+    return datetime.now(timezone.utc) > cpe + timedelta(days=EXPIRY_GRACE_DAYS)
+
+
+def user_holds_other_paid_plan(cur, user_id: str, subscription_id: str) -> bool:
+    """True if ``user_id`` currently sits on a non-free, non-lapsed plan other
+    than ``subscription_id``. Joining a plan overwrites users.subscription_id,
+    so invite redeem and request acceptance refuse rather than silently
+    displacing a paid entitlement (deny-by-default; no billing-semantics change)."""
+    cur.execute(
+        "SELECT s._id, s.plan_type, s.current_period_end FROM users u "
+        "JOIN subscriptions s ON s._id = u.subscription_id WHERE u._id = %s",
+        (user_id,),
+    )
+    row = cur.fetchone()
+    if not row:
+        return False
+    sid, plan_type, cpe = row
+    return str(sid) != str(subscription_id) and plan_type != "free" and not is_plan_lapsed(cpe)
+
+
+def _purge_subscription_invites(cur, subscription_id: str) -> None:
+    """Drop a plan's invite links (invites.target_id has no FK, so this lives
+    in code). Runs on the caller's cursor so it shares the caller's transaction."""
+    from backend.interactions.invites import purge_target_invites
+    purge_target_invites(cur, "subscription", subscription_id)
+
+
 class SubscriptionsManager(DBManager):
     """CRUD for subscription plans, their members, and group join requests.
 
@@ -148,6 +183,8 @@ class SubscriptionsManager(DBManager):
                  card["brand"], card["last4"], card["exp_month"], card["exp_year"],
                  trial_end, current_period_end, existing_id),
             )
+            if member_count <= 1:
+                _purge_subscription_invites(self.cur, existing_id)
             self.conn.commit()
             return existing_id
 
@@ -242,6 +279,8 @@ class SubscriptionsManager(DBManager):
                 (original_transaction_id, status, price_cents, member_count,
                  trial_end, current_period_end, existing_id),
             )
+            if member_count <= 1:
+                _purge_subscription_invites(self.cur, existing_id)
             self.conn.commit()
             return existing_id
 
@@ -324,12 +363,7 @@ class SubscriptionsManager(DBManager):
         keeps a healthy plan that is briefly mid-renewal from being treated as
         expired.
         """
-        cpe = data.get("current_period_end")
-        if not cpe:
-            return False
-        if cpe.tzinfo is None:
-            cpe = cpe.replace(tzinfo=timezone.utc)
-        return datetime.now(timezone.utc) > cpe + timedelta(days=EXPIRY_GRACE_DAYS)
+        return is_plan_lapsed(data.get("current_period_end"))
 
     def get_subscription(self, subscription_id: str) -> dict | None:
         """Return a single plan (reconciling an elapsed trial first), or ``None``.
@@ -497,6 +531,14 @@ class SubscriptionsManager(DBManager):
             # return value.
             if not self.update("subscriptions", values, {"_id": subscription_id}):
                 raise SaveFailedError()
+            if values.get("max_members") is not None and values["max_members"] <= 1:
+                # Downgraded to a single seat: its invite links are dead.
+                try:
+                    _purge_subscription_invites(self.cur, subscription_id)
+                    self.conn.commit()
+                except Exception:
+                    self.conn.rollback()
+                    raise
         return True
 
     def delete_subscription(self, subscription_id: str) -> None:
@@ -507,6 +549,9 @@ class SubscriptionsManager(DBManager):
             "UPDATE users SET subscription_id = NULL WHERE subscription_id = %s",
             (subscription_id,),
         )
+        # Same transaction as the detach: no window where the plan's links
+        # outlive its members.
+        _purge_subscription_invites(self.cur, subscription_id)
         self.conn.commit()
         # Every caller (the route's _require_host, cancel_by_stripe_sub /
         # cancel_by_apple_txn's find_id_by_* lookup, and
@@ -619,37 +664,60 @@ class SubscriptionsManager(DBManager):
     def accept_request(self, subscription_id: str, from_user_id: str) -> dict | None:
         """Host accepts a pending request, enrolling the user in the plan.
 
-        Enforces the plan's member cap.
+        Runs in ONE transaction holding ``SELECT ... FOR UPDATE`` on the
+        subscriptions row, so concurrent accepts (and invite redeems, which
+        take the same lock) serialize and can never push the plan past
+        ``max_members``. Also refuses if the requester has since joined
+        another paid plan, rather than silently displacing it.
 
         Returns:
             dict | None: ``{"error": str}`` if the plan is missing, no such
-                request exists, or the plan is full; ``None`` on success.
+                request exists, the plan is full, or the requester is on
+                another paid plan; ``None`` on success.
         """
-        result = self.lookup("subscriptions", {"_id": subscription_id})
-        if not result:
-            return {"error": "Subscription not found"}
-        _, sdata = list(result.items())[0]
-        self.cur.execute(
-            "SELECT 1 FROM subscription_request "
-            "WHERE subscription_id = %s AND from_user_id = %s",
-            (subscription_id, from_user_id),
-        )
-        if not self.cur.fetchone():
-            return {"error": "No pending request from this user"}
-        if self._member_count(subscription_id) >= (sdata.get("max_members") or 1):
-            return {"error": "Plan is full"}
-        # The pending-request check above already confirmed both rows
-        # exist, so a False return from either write here is a real
-        # failure, not an expected no-op -- this is the enrollment itself,
-        # not best-effort cleanup.
-        if not self.update("users", {"subscription_id": subscription_id}, {"_id": from_user_id}):
-            raise SaveFailedError()
-        if not self.delete("subscription_request", {
-            "subscription_id": subscription_id,
-            "from_user_id":    from_user_id,
-        }):
-            raise SaveFailedError()
-        return None
+        try:
+            self.cur.execute(
+                "SELECT max_members FROM subscriptions WHERE _id = %s FOR UPDATE",
+                (subscription_id,),
+            )
+            row = self.cur.fetchone()
+            if not row:
+                self.conn.rollback()
+                return {"error": "Subscription not found"}
+            self.cur.execute(
+                "SELECT 1 FROM subscription_request "
+                "WHERE subscription_id = %s AND from_user_id = %s",
+                (subscription_id, from_user_id),
+            )
+            if not self.cur.fetchone():
+                self.conn.rollback()
+                return {"error": "No pending request from this user"}
+            if self._member_count(subscription_id) >= (row[0] or 1):
+                self.conn.rollback()
+                return {"error": "Plan is full"}
+            if user_holds_other_paid_plan(self.cur, from_user_id, subscription_id):
+                self.conn.rollback()
+                return {"error": "This user is already on another paid plan"}
+            # The checks above confirmed both rows exist, so a zero rowcount
+            # here is a real failure, not an expected no-op -- this is the
+            # enrollment itself.
+            self.cur.execute(
+                "UPDATE users SET subscription_id = %s WHERE _id = %s",
+                (subscription_id, from_user_id),
+            )
+            if self.cur.rowcount != 1:
+                raise SaveFailedError()
+            self.cur.execute(
+                "DELETE FROM subscription_request WHERE subscription_id = %s AND from_user_id = %s",
+                (subscription_id, from_user_id),
+            )
+            if self.cur.rowcount != 1:
+                raise SaveFailedError()
+            self.conn.commit()
+            return None
+        except BaseException:
+            self.conn.rollback()
+            raise
 
     def delete_request(self, subscription_id: str, from_user_id: str) -> None:
         """Decline (host) or cancel (requester) a pending join request.
