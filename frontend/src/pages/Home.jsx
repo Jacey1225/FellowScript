@@ -603,6 +603,10 @@ export default function Home() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 11 }}>
               <Link to="/" className="hm-footer-link" style={{ fontSize: 15.5, textDecoration: 'none' }}>Home</Link>
               <Link to="/download" className="hm-footer-link" style={{ fontSize: 15.5, textDecoration: 'none' }}>Read</Link>
+              {/* Task 20260930-downloads-page-indexable: plain <a> to the real,
+                  prerendered, crawlable downloads URL (a HashRouter <Link>
+                  only yields "#/download", which crawlers cannot follow). */}
+              <a href="/download/" className="hm-footer-link" style={{ fontSize: 15.5, textDecoration: 'none' }}>Download</a>
               {user && <Link to="/account" className="hm-footer-link" style={{ fontSize: 15.5, textDecoration: 'none' }}>Account</Link>}
             </div>
           </div>

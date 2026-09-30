@@ -9,6 +9,7 @@ import {
   HOME_SEO_IMAGE,
   homeJsonLd,
 } from './src/seo/homeSeo.js';
+import { buildSeoTags, escapeText } from './src/seo/headTags.js';
 
 // Custom plugin: serve ../data/* from /data/ in dev
 function serveDataDir() {
@@ -28,14 +29,6 @@ function serveDataDir() {
       });
     },
   };
-}
-
-function escapeAttr(value) {
-  return String(value).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
-
-function escapeText(value) {
-  return String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 // Decision (task 20260914-restore-homepage-seo-meta-tags, frontend step):
@@ -88,24 +81,13 @@ function injectHomeSeoPlugin(siteUrl) {
         const canonical = `${siteUrl}${HOME_SEO_PATH}`;
         const ogImage = `${siteUrl}${HOME_SEO_IMAGE}`;
 
-        const tags = [
-          `<meta name="description" content="${escapeAttr(HOME_SEO_DESCRIPTION)}" data-rh="true">`,
-          `<link rel="canonical" href="${escapeAttr(canonical)}" data-rh="true">`,
-          `<meta name="robots" content="index, follow" data-rh="true">`,
-          `<meta property="og:type" content="website" data-rh="true">`,
-          `<meta property="og:title" content="${escapeAttr(HOME_SEO_TITLE)}" data-rh="true">`,
-          `<meta property="og:description" content="${escapeAttr(HOME_SEO_DESCRIPTION)}" data-rh="true">`,
-          `<meta property="og:url" content="${escapeAttr(canonical)}" data-rh="true">`,
-          `<meta property="og:site_name" content="FellowScript" data-rh="true">`,
-          `<meta property="og:image" content="${escapeAttr(ogImage)}" data-rh="true">`,
-          `<meta name="twitter:card" content="summary_large_image" data-rh="true">`,
-          `<meta name="twitter:title" content="${escapeAttr(HOME_SEO_TITLE)}" data-rh="true">`,
-          `<meta name="twitter:description" content="${escapeAttr(HOME_SEO_DESCRIPTION)}" data-rh="true">`,
-          `<meta name="twitter:image" content="${escapeAttr(ogImage)}" data-rh="true">`,
-          ...homeJsonLd(siteUrl).map(
-            (block) => `<script type="application/ld+json" data-rh="true">${JSON.stringify(block)}</script>`
-          ),
-        ].join('\n    ');
+        const tags = buildSeoTags({
+          title: HOME_SEO_TITLE,
+          description: HOME_SEO_DESCRIPTION,
+          canonical,
+          ogImage,
+          jsonLd: homeJsonLd(siteUrl),
+        });
 
         // The static template (frontend/index.html) ships a bare
         // <title>FellowScript</title> placeholder -- swap it for Home's
