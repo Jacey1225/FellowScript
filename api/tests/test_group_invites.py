@@ -583,9 +583,9 @@ def test_flag_off(client):
               outs["preview"].json()["detail"]["code"] == "not_found")
         check("disabled: link not revoked / not consumed",
               invite_row(link["invite_id"])[3] is None and invite_row(link["invite_id"])[1] == 0)
-        # shipped config file is off by default
+        # shipped config file carries a valid bool flag (on since 2026-09-30)
         shipped = json.loads(open(ic.CONFIG_PATH).read())
-        check("shipped api/config/invites.json has enabled=false", shipped["enabled"] is False)
+        check("shipped api/config/invites.json has a bool enabled flag", isinstance(shipped["enabled"], bool))
     finally:
         install()
         cleanup([uc], [gid])

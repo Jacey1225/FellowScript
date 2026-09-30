@@ -1,5 +1,5 @@
 {
-  "enabled": false,
+  "enabled": true,
   "public_base_url": "https://fellowscript.com",
   "default_expiry_days": 7,
   "allowed_expiry_days": [1, 7, 30],
