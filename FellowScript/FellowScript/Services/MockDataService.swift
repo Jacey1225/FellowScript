@@ -227,6 +227,15 @@ protocol DataServiceProtocol {
     func removeGroupPhoto(userId: String, groupId: String) async throws -> String?
     func fetchGroupGallery(userId: String, groupId: String, kind: String?, cursorTimestamp: String?, cursorId: String?) async throws -> FSGalleryPage
 
+    // Group invite links (task 20260929-group-invite-links) -- api/routes/invites.py.
+    // Default implementations throw (never fabricate); NetworkService supplies the real ones.
+    func previewInvite(token: String) async throws -> FSInvitePreview
+    func redeemInvite(userId: String, token: String) async throws -> FSInviteRedeemResult
+    func listGroupInvites(userId: String, groupId: String) async throws -> FSInviteList
+    func createGroupInvite(userId: String, groupId: String, expiresInDays: Int, maxUses: Int) async throws -> FSInviteCreated
+    func revokeInvite(userId: String, inviteId: String) async throws
+    func resetGroupInvites(userId: String, groupId: String) async throws -> Int
+
     // Sessions / Devotions
     func fetchSessionsForContact(contactId: String) async throws -> [FSSession]
     func createSession(userId: String, devotion: FSSession, contactId: String) async throws -> String
@@ -289,6 +298,16 @@ extension DataServiceProtocol {
     func confirmGroupPhoto(userId: String, groupId: String, objectKey: String) async throws -> String? { throw groupInfoUnsupported }
     func removeGroupPhoto(userId: String, groupId: String) async throws -> String? { throw groupInfoUnsupported }
     func fetchGroupGallery(userId: String, groupId: String, kind: String?, cursorTimestamp: String?, cursorId: String?) async throws -> FSGalleryPage { throw groupInfoUnsupported }
+}
+
+extension DataServiceProtocol {
+    private var invitesUnsupported: InviteAPIError { InviteAPIError(status: 0, code: nil, message: "Invite links aren't available right now.") }
+    func previewInvite(token: String) async throws -> FSInvitePreview { throw invitesUnsupported }
+    func redeemInvite(userId: String, token: String) async throws -> FSInviteRedeemResult { throw invitesUnsupported }
+    func listGroupInvites(userId: String, groupId: String) async throws -> FSInviteList { throw invitesUnsupported }
+    func createGroupInvite(userId: String, groupId: String, expiresInDays: Int, maxUses: Int) async throws -> FSInviteCreated { throw invitesUnsupported }
+    func revokeInvite(userId: String, inviteId: String) async throws { throw invitesUnsupported }
+    func resetGroupInvites(userId: String, groupId: String) async throws -> Int { throw invitesUnsupported }
 }
 
 // ── Mock data ─────────────────────────────────────────────────────────────────

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import JoinWithLinkModal from './JoinWithLinkModal.jsx';
 import { Button, Avatar, Typography, Modal, Form, Checkbox, Spin, Dropdown, Radio, Input, message as antMessage } from 'antd';
 import {
   MessageOutlined, PlusOutlined, EditOutlined, DeleteOutlined, UserAddOutlined,
@@ -168,6 +169,7 @@ export default function ContactsPanel({
   const [showAddFriend,  setShowAddFriend]  = useState(false);
   const [friendMsg,      setFriendMsg]      = useState(null); // { type: 'success'|'error', text }
   const [groupModal,     setGroupModal]     = useState(false);
+  const [joinLinkModal,  setJoinLinkModal]  = useState(false);
   const [editingGroup,   setEditingGroup]   = useState(null);
   const [reportTarget,   setReportTarget]   = useState(null);
   const [form]                              = Form.useForm();
@@ -281,8 +283,14 @@ export default function ContactsPanel({
         {/* Groups */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.55rem 0.8rem 0.25rem', borderTop: '1px solid rgba(255,255,255,0.048)', marginTop: '0.3rem' }}>
           <Text style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: '0.52rem', letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(255,198,26,0.4)' }}>Groups</Text>
-          <Button type="text" size="small" icon={<PlusOutlined />} onClick={openNewGroup}
-            style={{ color: 'rgba(255,198,26,0.5)', padding: '0 3px', height: 20 }} />
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <Button type="text" size="small" onClick={() => setJoinLinkModal(true)}
+              style={{ color: 'rgba(255,198,26,0.7)', padding: '0 6px', minHeight: 44, fontSize: '0.62rem' }}>
+              Join with a link
+            </Button>
+            <Button type="text" size="small" icon={<PlusOutlined />} onClick={openNewGroup}
+              style={{ color: 'rgba(255,198,26,0.5)', padding: '0 3px', height: 20 }} />
+          </span>
         </div>
         {groupList.length === 0
           ? <Text style={{ display: 'block', textAlign: 'center', padding: '0.6rem 0.5rem', color: 'rgba(242,242,242,0.2)', fontSize: '0.62rem' }}>No groups yet</Text>
@@ -314,6 +322,8 @@ export default function ContactsPanel({
           </>
         )}
       </div>
+
+      <JoinWithLinkModal open={joinLinkModal} onClose={() => setJoinLinkModal(false)} />
 
       {/* Group modal */}
       <Modal

@@ -22,6 +22,15 @@ export const DESKTOP_ALLOWED_ROUTES = [
   '/verify-2fa',
 ];
 
+// Task 20260929-group-invite-links: routes with a dynamic tail can't be
+// listed exactly. Each entry is [prefix, tail pattern]; a pathname is allowed
+// only when it is the prefix followed by ONE segment matching the pattern
+// (an invite token: 43 url-safe base64 chars), so `/join/` alone, deeper
+// paths, or a malformed token all stay denied.
+export const DESKTOP_ALLOWED_ROUTE_PATTERNS = [
+  /^\/join\/[A-Za-z0-9_-]{43}$/,
+];
+
 // Where a disallowed in-app navigation lands. /reader rather than /account
 // or /signin, since it's the app's existing post-sign-in landing page
 // (SignIn.jsx) and the same page the desktop shell's own webview URL
@@ -38,5 +47,6 @@ export function isDesktopApp() {
 }
 
 export function isAllowedDesktopRoute(pathname) {
-  return DESKTOP_ALLOWED_ROUTES.includes(pathname);
+  return DESKTOP_ALLOWED_ROUTES.includes(pathname)
+    || DESKTOP_ALLOWED_ROUTE_PATTERNS.some((re) => re.test(pathname));
 }

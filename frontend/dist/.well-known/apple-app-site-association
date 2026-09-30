@@ -1,0 +1,12 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": ["886XPLVC69.com.fellowscript.app"],
+        "components": [
+          { "/": "/join/*", "comment": "Group invite links" }
+        ]
+      }
+    ]
+  }
+}

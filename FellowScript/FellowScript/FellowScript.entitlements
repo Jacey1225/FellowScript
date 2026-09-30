@@ -35,6 +35,21 @@
 	  task's security gate's own explicit disclosure deliverable, not
 	  resolved or assumed here.
 	-->
+	<!--
+	  Task 20260929-group-invite-links: Universal Links for
+	  https://fellowscript.com/join/<token>. Requires (1) the Associated
+	  Domains capability enabled on this App ID in the Apple Developer portal
+	  and provisioning regenerated (automatic signing normally handles it --
+	  verify), and (2) the apple-app-site-association file live at
+	  https://fellowscript.com/.well-known/apple-app-site-association (served
+	  as application/json, 200, no redirect). See ops/nginx/invite-links.conf.
+	  Until both are true the link opens in Safari (the web landing page) and
+	  the com.fellowscript.app://join/<token> custom scheme still works.
+	-->
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<string>applinks:fellowscript.com</string>
+	</array>
 	<key>com.apple.developer.applesignin</key>
 	<array>
 		<string>Default</string>

@@ -4,6 +4,7 @@ import { Card, Form, Input, Button, Typography, Alert, Modal } from 'antd';
 import { useAuth } from '../context/AuthContext.jsx';
 import { API } from '../config.js';
 import Seo from '../components/Seo.jsx';
+import { postAuthPath } from '../lib/pendingInvite.js';
 
 const { Title, Text } = Typography;
 
@@ -26,7 +27,7 @@ export default function VerifyMfa() {
       setReacceptLoading(false);
       signIn(reaccept);
       setReaccept(null);
-      navigate('/reader');
+      navigate(postAuthPath());
     }
   };
 
@@ -55,7 +56,7 @@ export default function VerifyMfa() {
       if (!res.ok) { setError(data.detail || 'Invalid or expired code.'); return; }
       if (data.terms_reaccept_required) { setReaccept(data); return; }
       signIn(data);
-      navigate('/reader');
+      navigate(postAuthPath());
     } catch {
       setError('Could not reach the server.');
     } finally {

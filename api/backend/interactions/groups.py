@@ -481,6 +481,21 @@ class GroupsManager(DBManager):
         # real write failure, not an expected no-op.
         if not self.delete("groups", {"_id": self.group_id}):
             raise SaveFailedError()
+        self._purge_invites()
+
+    def _purge_invites(self) -> None:
+        """Drop the deleted group's invite links (invites.target_id has no FK
+        by design, so this cleanup lives in code; task
+        20260929-group-invite-links). The redeem/preview paths also treat a
+        missing group as not-found, so a failure here can never make a link
+        usable -- but it is still surfaced, not swallowed."""
+        from backend.interactions.invites import purge_target_invites
+        try:
+            purge_target_invites(self.cur, "group", self.group_id)
+            self.conn.commit()
+        except Exception:
+            self.conn.rollback()
+            raise
 
     def leave_group(self) -> None:
         """Remove only self.user_id from the group's member list -- the
@@ -509,6 +524,7 @@ class GroupsManager(DBManager):
         else:
             if not self.delete("groups", {"_id": self.group_id}):
                 raise SaveFailedError()
+            self._purge_invites()
 
     def update_group(self, group: Group) -> None:
         """Replace a group's title and member list.

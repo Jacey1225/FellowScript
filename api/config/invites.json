@@ -1,0 +1,17 @@
+{
+  "enabled": false,
+  "public_base_url": "https://fellowscript.com",
+  "default_expiry_days": 7,
+  "allowed_expiry_days": [1, 7, 30],
+  "default_max_uses": 25,
+  "allowed_max_uses": [1, 5, 10, 25, 50, 100],
+  "max_active_links_per_user_per_group": 5,
+  "rate_limits": {
+    "preview": "20/minute",
+    "redeem": "10/minute",
+    "redeem_per_user": "10/minute",
+    "create": "10/minute",
+    "list": "60/minute",
+    "revoke": "30/minute"
+  }
+}

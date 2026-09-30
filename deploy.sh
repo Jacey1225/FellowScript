@@ -32,3 +32,17 @@ scp -i fellowscript-ec2-key.pem \
 # from this repo's frontend build can never actually be served.
 scp -i fellowscript-ec2-key.pem \
   frontend/dist/og-image.png ubuntu@44.216.136.112:/var/www/html/og-image.png
+
+# task 20260929-group-invite-links: the static invite landing page and the
+# Universal Links apple-app-site-association file (both copied verbatim from
+# frontend/public/ by Vite). They live at fixed paths under /var/www/html and
+# are shipped narrowly like the files above. The nginx rules that serve them
+# (ops/nginx/invite-links.conf) are a SEPARATE manual server change that needs
+# explicit confirmation -- this script does not touch nginx.
+ssh -i fellowscript-ec2-key.pem ubuntu@44.216.136.112 "mkdir -p /var/www/html/join /var/www/html/.well-known"
+
+scp -i fellowscript-ec2-key.pem \
+  frontend/dist/join/index.html ubuntu@44.216.136.112:/var/www/html/join/index.html
+
+scp -i fellowscript-ec2-key.pem \
+  frontend/dist/.well-known/apple-app-site-association ubuntu@44.216.136.112:/var/www/html/.well-known/apple-app-site-association

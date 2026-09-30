@@ -18,6 +18,7 @@ from routes.activity_monitoring import activity_monitoring_router
 from routes.profile_photo import profile_photo_router
 from routes.group_info import group_info_router
 from routes.group_announcements import group_announcements_router
+from routes.invites import invites_router
 from schemas.subscription import NOTES_MAX_BODY_BYTES
 from schemas.users import SignUp, Login, UpdateUser, User, CURRENT_TERMS_VERSION
 from datetime import datetime, timezone
@@ -192,6 +193,13 @@ async def lifespan(_: FastAPI):
     from backend.interactions.bible_text import validate_bible_data
     validate_bible_data()
 
+    # Eager invite-links config validation (task 20260929-group-invite-links)
+    # -- api/config/invites.json is a structured file (not env vars) with no
+    # implicit defaults; a missing/invalid file refuses to boot. Deliberately
+    # not caught here.
+    from backend.interactions.invites_config import validate_invites_config
+    validate_invites_config()
+
     from backend.interactions.scheduler import start_scheduler
     start_scheduler()
     # WS connection-liveness heartbeat (task
@@ -321,6 +329,7 @@ app.include_router(activity_monitoring_router)
 app.include_router(profile_photo_router)
 app.include_router(group_info_router)
 app.include_router(group_announcements_router)
+app.include_router(invites_router)
 
 main_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 user_path = "data/users.json"

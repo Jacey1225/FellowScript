@@ -108,6 +108,12 @@ may still be populated.
 | GET | `/groups/{user_id}/{group_id}/notes/search?q=` | Keyword search (case-insensitive substring) over the group's notes' `title`/`text`. Returns every match in one response (not keyset-paginated), blocked users excluded server-side. Caller must be a group member. |
 | GET | `/groups/{user_id}/{note_id}/{group_id}/replies` | All replies to a note shared in the group. Caller must be a group member. |
 | GET | `/groups/{group_id}/highlights` | All highlights in the group |
+| POST | `/invites/preview` | Public, per-IP rate limited. Body `{token}`. Returns `{kind, group_name, photo_url, inviter_username, member_count}` for a usable invite link; every unusable token gets the same 404 `{detail:{code:"not_found"}}`. |
+| POST | `/invites/{user_id}/redeem` | Join a group via invite token (body `{token}`). Idempotent for existing members. Errors (`detail.code`): `not_found` 404, `expired`/`revoked` 410, `full` 409, `blocked` 403 (generic). |
+| POST | `/invites/{user_id}/groups/{group_id}` | Any member creates a link (optional `expires_in_days`, `max_uses` from the configured allowed sets). Returns the plaintext `token`/`url` once only. |
+| GET | `/invites/{user_id}/groups/{group_id}` | Active links (metadata only, own links; all for the group creator) plus create options. |
+| POST | `/invites/{user_id}/groups/{group_id}/reset` | Revoke every active link the caller may revoke. |
+| DELETE | `/invites/{user_id}/{invite_id}` | Revoke one link (its creator or the group creator). |
 
 ---
 

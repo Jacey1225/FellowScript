@@ -33,6 +33,15 @@ final class AppState: ObservableObject {
     // user to set them manually, since Apple can never resupply them.
     @Published var needsProfileCompletion = false
 
+    /// Task 20260929-group-invite-links: the invite token the user arrived with
+    /// (Universal Link / custom scheme). Mirrored into the Keychain by
+    /// PendingInviteStore so it survives sign-in, sign-up, and a cold launch;
+    /// cleared exactly once (see clearPendingInvite()).
+    @Published var pendingInviteToken: String? = nil
+    /// True while a signed-out user is off signing in / up for a pending
+    /// invite -- hides the join screen without discarding the token.
+    @Published var inviteDeferredForAuth = false
+
     // Persisted across launches via UserDefaults (mirrors localStorage in AuthContext.jsx)
     @AppStorage("fs_user_id")        private var storedUserId:   String = ""
     @AppStorage("fs_username")       private var storedUsername:  String = ""
@@ -128,6 +137,37 @@ final class AppState: ObservableObject {
     init(service: DataServiceProtocol = MockDataService.shared) {
         self.service = service
         restoreSession()
+        pendingInviteToken = PendingInviteStore.load()
+    }
+
+    // ── Invite links (task 20260929-group-invite-links) ──────────────────────
+
+    /// Entry point for onOpenURL / onContinueUserActivity. Non-invite URLs are
+    /// ignored. A newer link replaces any pending one (no silent merge).
+    func handleIncomingURL(_ url: URL) {
+        guard let token = InviteLink.token(from: url) else { return }
+        setPendingInvite(token)
+    }
+
+    func setPendingInvite(_ token: String) {
+        guard InviteLink.isWellFormed(token) else { return }
+        if !PendingInviteStore.save(token) {
+            print("[AppState] pending invite could not be saved to the Keychain; holding it in memory only")
+        }
+        pendingInviteToken = token
+        inviteDeferredForAuth = false
+    }
+
+    func clearPendingInvite() {
+        PendingInviteStore.clear()
+        pendingInviteToken = nil
+        inviteDeferredForAuth = false
+    }
+
+    /// After a successful join: open that group's chat on the Chat tab.
+    func openJoinedGroup(groupId: String, name: String) {
+        guard !groupId.isEmpty else { return }
+        pendingChatContact = FSContact(id: groupId, name: name, type: .group)
     }
 
     private func restoreSession() {
@@ -218,6 +258,7 @@ final class AppState: ObservableObject {
     }
 
     func signOut() {
+        clearPendingInvite()
         storedUserId    = ""
         storedUsername  = ""
         storedEmail     = ""

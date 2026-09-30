@@ -325,6 +325,12 @@ struct GroupInfoSheet: View {
                         identityBlock
                         muteRow
                         if GroupAnnouncementsConfig.enabled { announcementsRow }
+                        // Task 20260929-group-invite-links: hides itself when the
+                        // backend feature flag is off (uniform 404 from list).
+                        InviteLinkSection(
+                            service: service, groupId: contact.id, userId: user?.user_id ?? "",
+                            onGroupGone: { dismiss(); onGroupGone() }
+                        )
                         membersSection
                         sharedSection
                     }

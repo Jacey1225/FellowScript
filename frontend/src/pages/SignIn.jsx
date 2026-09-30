@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { Card, Form, Input, Button, Typography, Tabs, Alert, Checkbox, Modal } from 'antd';
 import { UserOutlined, LockOutlined, MailOutlined } from '@ant-design/icons';
 import { useAuth } from '../context/AuthContext.jsx';
 import { isDesktopApp } from '../lib/desktopScope.js';
 import { API } from '../config.js';
 import Seo from '../components/Seo.jsx';
+import { postAuthPath } from '../lib/pendingInvite.js';
 
 const { Title, Text } = Typography;
 
@@ -19,6 +20,7 @@ function nonce() {
 export default function SignIn() {
   const { signIn } = useAuth();
   const navigate   = useNavigate();
+  const location   = useLocation();
   // /privacy and /terms aren't on the desktop allowlist (task
   // 20260906-desktop-scope-lockdown). Unlike AppNav/Account.jsx's purely
   // navigational Privacy/Terms links, the ones below are woven into
@@ -36,7 +38,7 @@ export default function SignIn() {
   const [suLoading, setSuLoading] = useState(false);
   const [googleError,   setGoogleError]   = useState('');
   const [googleLoading, setGoogleLoading] = useState(false);
-  const [activeTab,     setActiveTab]     = useState('signin');
+  const [activeTab,     setActiveTab]     = useState(location.state?.tab === 'signup' ? 'signup' : 'signin');
   const [termsAccepted, setTermsAccepted] = useState(false);
   // Holds the auth response while a "Terms have been updated" re-consent gate
   // is shown, so we can finish signing the user in once they accept.
@@ -52,7 +54,7 @@ export default function SignIn() {
       return;
     }
     signIn(data);
-    navigate('/reader');
+    navigate(postAuthPath());
   };
 
   const handleAcceptUpdatedTerms = async () => {
@@ -66,7 +68,7 @@ export default function SignIn() {
       setReacceptLoading(false);
       signIn(reaccept);
       setReaccept(null);
-      navigate('/reader');
+      navigate(postAuthPath());
     }
   };
 

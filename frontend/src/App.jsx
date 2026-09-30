@@ -10,6 +10,7 @@ import VerifyMfa from './pages/VerifyMfa.jsx';
 import Privacy from './pages/Privacy.jsx';
 import Terms from './pages/Terms.jsx';
 import Download from './pages/Download.jsx';
+import JoinInvite from './pages/JoinInvite.jsx';
 import AdminGate from './components/AdminGate.jsx';
 import MobileBlockGate from './components/MobileBlockGate.jsx';
 import ReaderWebRedirect from './components/ReaderWebRedirect.jsx';
@@ -113,6 +114,10 @@ export default function App() {
               the Tauri shell should ever navigate into (design-notes.md §6). */}
           <Route path="/download"  element={<Download />} />
           <Route path="/account"   element={<Account />} />
+          {/* Task 20260929-group-invite-links: join-by-link confirmation.
+              Public (preview works signed out); allowed on desktop via
+              desktopScope.js's DESKTOP_ALLOWED_ROUTE_PATTERNS. */}
+          <Route path="/join/:token" element={<JoinInvite />} />
           <Route path="/signin"    element={<SignIn />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/reset-password"  element={<ResetPassword />} />

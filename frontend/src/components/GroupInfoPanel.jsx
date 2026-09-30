@@ -12,6 +12,7 @@ import {
 } from '../lib/groupInfoApi.js';
 import { ANNOUNCEMENTS_ENABLED } from '../lib/announcementsApi.js';
 import GroupAnnouncements from './GroupAnnouncements.jsx';
+import InviteLinkSection from './InviteLinkSection.jsx';
 
 // Task 20260929-group-info-panel (design-notes.md). Groups only. All network
 // calls throw on failure (lib/groupInfoApi.js) and this component never
@@ -416,6 +417,11 @@ export default function GroupInfoPanel({
             <RightOutlined aria-hidden="true" />
           </button>
         )}
+
+        {/* Invite link (task 20260929-group-invite-links). Hides itself when
+            the feature flag is off (uniform 404 from the list endpoint). */}
+        <InviteLinkSection userId={userId} groupId={groupId} reducedMotion={reducedMotion}
+          onForbidden={handleFailure} />
 
         {/* Members */}
         <section>

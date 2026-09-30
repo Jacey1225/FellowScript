@@ -1,4 +1,5 @@
 import React, { useEffect, useLayoutEffect, useState, useRef, useCallback, useMemo } from 'react';
+import { peekGroupToOpen, takeGroupToOpen } from '../lib/pendingInvite.js';
 import { useSearchParams } from 'react-router-dom';
 import { Layout } from 'antd';
 import { DockviewReact } from 'dockview-react';
@@ -259,6 +260,19 @@ export default function Reader() {
   }, [openChat, loadSessions, closeAgentChat]);
 
   const handleCloseChat = useCallback(() => { closeChat(); }, [closeChat]);
+
+  // Task 20260929-group-invite-links: after joining via a link the join page
+  // leaves a one-shot group id; open that group's chat once the contact list
+  // (which now includes it) has loaded. If it never shows up, drop the intent
+  // rather than opening anything else.
+  useEffect(() => {
+    const gid = peekGroupToOpen();
+    if (!gid) return;
+    if (!contactsLoaded) { handleLoadContacts(); return; }
+    const g = msgGroups?.[gid];
+    takeGroupToOpen();
+    if (g) handleOpenChat({ id: gid, name: g.title || gid.slice(0, 8), type: 'group', toUsers: g.users || [], group_id: gid, photoUrl: g.photoUrl || null });
+  }, [contactsLoaded, msgGroups, handleLoadContacts, handleOpenChat]);
 
   const handleOpenAgent = useCallback(async (agent) => {
     closeChat();

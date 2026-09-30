@@ -199,6 +199,35 @@ def create_tables(cur):
         "muted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),"
         "PRIMARY KEY (user_id, group_id))"
     )
+    # Task 20260929-group-invite-links: generic shareable-invite table. Only
+    # the SHA-256 hex digest of the token is stored (the plaintext is shown
+    # once at creation and never persisted). ``kind`` is deliberately NOT
+    # CHECK-constrained and ``target_id`` deliberately has NO foreign key so a
+    # later kind (e.g. 'subscription') plugs in via a per-kind handler in
+    # code (backend/interactions/invites.py) with no schema change; the
+    # per-kind cleanup on target deletion therefore lives in code too (see
+    # GroupsManager.delete_group/leave_group). created_by cascades so a
+    # deleted account's links die with it. Additive + idempotent.
+    cur.execute(
+        "CREATE TABLE IF NOT EXISTS invites"
+        "(_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
+        "token_hash CHAR(64) NOT NULL UNIQUE,"
+        "kind VARCHAR(32) NOT NULL,"
+        "target_id UUID NOT NULL,"
+        "created_by UUID NOT NULL REFERENCES users(_id) ON DELETE CASCADE,"
+        "created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),"
+        "expires_at TIMESTAMPTZ NOT NULL,"
+        "max_uses INTEGER NOT NULL CHECK (max_uses > 0),"
+        "use_count INTEGER NOT NULL DEFAULT 0 CHECK (use_count >= 0),"
+        "revoked_at TIMESTAMPTZ)"
+    )
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_invites_target "
+        "ON invites(kind, target_id) WHERE revoked_at IS NULL"
+    )
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_invites_created_by ON invites(created_by)"
+    )
     # Task 20260929-group-announcements: announcements posted to a group.
     # Additive + idempotent. Group delete cascades; a departed/deleted author
     # leaves the announcement in place (creator_id SET NULL). banner_key is an

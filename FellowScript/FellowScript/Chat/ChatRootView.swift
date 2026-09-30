@@ -121,8 +121,18 @@ struct ChatRootView: View {
                 // real `toUsers` for message routing (see
                 // ChatThreadViewModel.sendMessage) instead of an empty list.
                 let resolved = (t.type == .group ? vm.groups : vm.friends).first { $0.id == t.id }
-                activeContact = resolved ?? t
                 appState.pendingChatContact = nil
+                if resolved == nil, t.type == .group {
+                    // Task 20260929-group-invite-links: a group joined via link
+                    // isn't in the loaded list yet -- refresh, then open the
+                    // real contact (fall back to the bare target on failure).
+                    Task {
+                        await vm.refresh(service: appState.service, userId: appState.currentUser?.user_id ?? "")
+                        activeContact = vm.groups.first { $0.id == t.id } ?? t
+                    }
+                } else {
+                    activeContact = resolved ?? t
+                }
             }
         }
         .sheet(item: $activeContact) { contact in

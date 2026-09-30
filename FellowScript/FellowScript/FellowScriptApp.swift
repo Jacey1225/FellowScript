@@ -180,6 +180,14 @@ struct FellowScriptApp: App {
                         appState.registerVoipDeviceToken(token)
                     }
                 }
+                // Task 20260929-group-invite-links: Universal Links
+                // (https://fellowscript.com/join/<token>) arrive as browsing
+                // user activities; the custom scheme arrives via onOpenURL.
+                // AppState validates strictly and ignores anything else.
+                .onOpenURL { url in appState.handleIncomingURL(url) }
+                .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { activity in
+                    if let url = activity.webpageURL { appState.handleIncomingURL(url) }
+                }
                 .onReceive(NotificationCenter.default.publisher(for: .sessionPushTapped)) { note in
                     if let groupId = note.object as? String {
                         appState.openSession(groupId: groupId)

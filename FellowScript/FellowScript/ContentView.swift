@@ -110,6 +110,24 @@ struct ContentView: View {
         .fullScreenCover(isPresented: $call.isExpanded) {
             ChimeCallView().environmentObject(appState)
         }
+        // Task 20260929-group-invite-links: join-by-link confirmation. Shown
+        // for a pending invite once onboarding is done and (if signed in) the
+        // startup screen has resolved; signed-out users see it too (preview
+        // is public) until they choose to sign in, which defers it.
+        .fullScreenCover(isPresented: Binding(
+            get: {
+                appState.pendingInviteToken != nil && hasCompletedOnboarding && !appState.inviteDeferredForAuth
+                    && (appState.isAuthenticated ? startup.isReady : true)
+                    && !appState.termsReacceptRequired && !appState.needsProfileCompletion
+            },
+            // No-op on purpose: the cover can't be swipe-dismissed, and every
+            // exit (Cancel, join, terminal error) clears the pending invite
+            // explicitly. Clearing here would also wrongly discard the token
+            // when "Sign in to join" merely defers the screen.
+            set: { _ in }
+        )) {
+            JoinInviteView().environmentObject(appState)
+        }
         .fullScreenCover(isPresented: .constant(!hasCompletedOnboarding)) {
             OnboardingView(onComplete: { hasCompletedOnboarding = true })
         }
@@ -158,6 +176,8 @@ struct ContentView: View {
             }
         }
         .onChange(of: appState.isAuthenticated) { _, authenticated in
+            // A pending invite resumes at the join screen once auth completes.
+            if authenticated { appState.inviteDeferredForAuth = false }
             if authenticated, let uid = appState.currentUser?.user_id {
                 startup.start(service: appState.service, userId: uid)
             } else {
