@@ -15,6 +15,41 @@
 
 import SwiftUI
 
+// Per-note length helpers. The server caps `text` by Python len() (Unicode code
+// points) of the string exactly as sent (the rich-text HTML). Swift's
+// `String.count` counts grapheme clusters, so count unicodeScalars for parity.
+// The limit itself comes from the usage endpoint (note_chars.limit); nothing
+// here hardcodes it.
+enum NoteLength {
+    enum LimitState { case ok, warn, over }
+    static let warnRatio = 0.9
+
+    static func count(_ s: String) -> Int { s.unicodeScalars.count }
+
+    static func approxWords(_ html: String) -> Int {
+        stripHTMLTags(html).split(whereSeparator: { $0.isWhitespace }).count
+    }
+
+    static func state(count: Int, limit: Int?) -> LimitState {
+        guard let limit, limit > 0 else { return .ok }
+        if count > limit { return .over }
+        if Double(count) >= Double(limit) * warnRatio { return .warn }
+        return .ok
+    }
+
+    /// Mirrors the server's grandfather rule: blocked iff new > limit AND
+    /// (create OR new > stored length).
+    static func isSaveBlocked(count: Int, limit: Int?, originalCount: Int, isEdit: Bool) -> Bool {
+        guard let limit, limit > 0, count > limit else { return false }
+        return !isEdit || count > originalCount
+    }
+
+    static func format(_ n: Int) -> String {
+        let f = NumberFormatter(); f.numberStyle = .decimal
+        return f.string(from: NSNumber(value: n)) ?? "\(n)"
+    }
+}
+
 struct NoteEditorView: View {
     let note:       FSNote?
     let noteId:     String?
@@ -42,6 +77,12 @@ struct NoteEditorView: View {
     @State private var showColorPicker = false
     @State private var isSaving    = false
     @State private var saveErrorMessage: String? = nil
+    // Per-note length limit for the caller's plan, read from the server's
+    // usage endpoint on appear. nil = unknown (no counter; server still
+    // enforces). isSubscribed gates the "Upgrade" line: paid users are
+    // already on the top plan.
+    @State private var noteCharLimit: Int? = nil
+    @State private var isSubscribedPlan: Bool? = nil
     // True full-screen size, measured via a GeometryReader composed with
     // Theme.bgPage.ignoresSafeArea() (see body) — NOT UIScreen.main.bounds.
     // UIScreen.main is deprecated and, confirmed via repeated real-Simulator
@@ -206,6 +247,10 @@ struct NoteEditorView: View {
                         .padding(.top, Theme.spacingSM)
                     }
 
+                    if !isReadOnly, let limit = noteCharLimit {
+                        charCounter(limit: limit)
+                    }
+
                     // ── Writing area ──────────────────────────────────────────
                     ScrollView(.vertical) {
                         VStack(alignment: .leading, spacing: Theme.spacingSM) {
@@ -320,6 +365,7 @@ struct NoteEditorView: View {
         // scroll-to-dismiss feel.
         .dismissesKeyboardOnScrollAndTap()
         .onAppear { populate() }
+        .task { await loadNoteCharLimit() }
         .alert("Couldn't Save Note", isPresented: Binding(
             get: { saveErrorMessage != nil },
             set: { if !$0 { saveErrorMessage = nil } }
@@ -447,8 +493,10 @@ struct NoteEditorView: View {
                 }
             }
         }
-        .disabled(isSaving)
+        .disabled(isSaving || saveBlocked)
+        .opacity(saveBlocked ? 0.45 : 1)
         .accessibilityLabel("Save note")
+        .accessibilityHint(saveBlocked ? "Disabled: the note is over the character limit" : "")
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
@@ -470,7 +518,85 @@ struct NoteEditorView: View {
         }
     }
 
+    // ── Length counter ────────────────────────────────────────────────────────
+    private var originalCharCount: Int { NoteLength.count(note?.text ?? "") }
+
+    /// Length of the body as it will be sent. Empty tracked HTML with a
+    /// non-empty text view means "not published yet", so fall back to the
+    /// stored text; a truly emptied editor counts as 0.
+    private var currentHTMLForCount: String {
+        let live = rtc.htmlOutput
+        if !live.isEmpty { return live }
+        return (rtc.textView?.text ?? "").isEmpty ? "" : (note?.text ?? "")
+    }
+    private var currentCharCount: Int { NoteLength.count(currentHTMLForCount) }
+
+    private var saveBlocked: Bool {
+        NoteLength.isSaveBlocked(count: currentCharCount, limit: noteCharLimit,
+                                 originalCount: originalCharCount, isEdit: noteId != nil && note != nil)
+    }
+
+    @ViewBuilder
+    private func charCounter(limit: Int) -> some View {
+        let count = currentCharCount
+        let state = NoteLength.state(count: count, limit: limit)
+        let words = NoteLength.approxWords(currentHTMLForCount)
+        let blocked = saveBlocked
+        let summary = "\(NoteLength.format(count)) / \(NoteLength.format(limit)) characters (~\(NoteLength.format(words)) words)"
+        let detail: String = {
+            switch state {
+            case .ok:   return ""
+            case .warn: return "Approaching the limit."
+            case .over:
+                let over = NoteLength.format(count - limit)
+                let base = blocked ? "\(over) characters over. Shorten your note to save. Your text is kept."
+                                   : "\(over) characters over. Saving is allowed only if you shorten it."
+                return isSubscribedPlan == false ? base + " Upgrade for a higher limit." : base
+            }
+        }()
+        let tint: Color = state == .over ? Theme.error : (state == .warn ? Theme.gold : Theme.textSecondary)
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            if state != .ok {
+                Image(systemName: state == .over ? "exclamationmark.octagon.fill" : "exclamationmark.triangle.fill")
+                    .accessibilityHidden(true)
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                Text(summary)
+                if !detail.isEmpty { Text(detail) }
+            }
+            Spacer(minLength: 0)
+        }
+        .font(.inter(12))
+        .foregroundColor(tint)
+        .padding(.horizontal, Theme.spacingMD)
+        .padding(.top, Theme.spacingSM)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(detail.isEmpty ? summary : "\(summary). \(detail)")
+        .onChange(of: state) { _, newState in
+            // Announce only when the state changes, not on every keystroke.
+            if newState != .ok, UIAccessibility.isVoiceOverRunning {
+                UIAccessibility.post(notification: .announcement, argument: detail)
+            }
+        }
+    }
+
+    private func loadNoteCharLimit() async {
+        guard !isReadOnly, let uid = appState.currentUser?.user_id else { return }
+        do {
+            if let usage = try await appState.service.fetchUsage(userId: uid),
+               let nc = usage.note_chars, nc.limit > 0 {
+                noteCharLimit = nc.limit
+                isSubscribedPlan = usage.subscribed
+            }
+        } catch {
+            // Best effort: without the limit there is simply no counter; the
+            // server still enforces and a 403 surfaces in the save alert.
+            print("[NoteEditor] could not load note length limit: \(error)")
+        }
+    }
+
     private func handleSave() {
+        guard !saveBlocked else { return }
         isSaving = true
         // Prefer live UITextView content; fall back to tracked @Published value,
         // then original note text — defense against transient empty-string conditions.

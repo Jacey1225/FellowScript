@@ -72,6 +72,7 @@ export default function Reader() {
     filteredNotes, filteredGroup, filterActive,
     loadNotes, loadGroups, selectGroup,
     saveNote, deleteNote, postReply, loadDetailReplies,
+    noteCharInfo, loadNoteCharLimit,
     applyFilter, clearFilter,
   } = useNotes({ user, curBook, curChapter, vsValue: curVerse });
 
@@ -347,9 +348,10 @@ export default function Reader() {
     user, currentGroupId, groups, onGroupChange: handleGroupChange, onNavigateVerse: handleNavigateVerse,
     notesData, groupLoading, filterActive,
     saveNote, deleteNote, postReply, loadDetailReplies,
+    noteCharInfo, loadNoteCharLimit,
     applyFilter, clearFilter,
     books, chapterCount: getChapterCount, verseCount,
-  }), [user, currentGroupId, groups, handleGroupChange, handleNavigateVerse, notesData, groupLoading,
+  }), [noteCharInfo, loadNoteCharLimit, user, currentGroupId, groups, handleGroupChange, handleNavigateVerse, notesData, groupLoading,
        filterActive, saveNote, deleteNote, postReply, loadDetailReplies, applyFilter, clearFilter,
        books, getChapterCount, verseCount]);
 

@@ -888,7 +888,16 @@ enum AppError: LocalizedError {
         case .authFailed(let m):   return m
         case .networkError(let m): return m
         case .mfaRequired:         return "Two-factor authentication code required."
-        case .limitReached(let resource, _, let limit):
+        case .limitReached(let resource, let used, let limit):
+            // Per-note length cap (not a weekly count): the draft stays in the
+            // editor, nothing is truncated. The upgrade line is appended by the
+            // editor only for free users; paid users are already on the top plan.
+            if resource == "note_chars" {
+                let over = used - limit
+                let overPart = over > 0 ? " (\(NoteLength.format(over)) over)" : ""
+                return "This note is too long to save: the limit is \(NoteLength.format(limit)) characters\(overPart). "
+                     + "Shorten it and try again. Your text is kept."
+            }
             let name: String
             switch resource {
             case "notes":        name = "notes"

@@ -3,10 +3,11 @@ import { Switch } from 'antd';
 import { sanitizeNoteHtml } from '../../RichText.jsx';
 import VerseSelector from '../../VerseSelector.jsx';
 import FmtBtn from './FmtBtn.jsx';
-import { TEXT_COLORS, hoverStyleHandlers } from './noteFormat.js';
+import { WarningOutlined, ExclamationCircleOutlined } from '@ant-design/icons';
+import { TEXT_COLORS, hoverStyleHandlers, countCodePoints, approxWords, noteLimitState, isNoteSaveBlocked } from './noteFormat.js';
 
 // ── Note editor (Apple Notes style) ──────────────────────────────────────────
-export default function NoteEditor({ note, noteId, user, currentGroupId, books, chapterCount, verseCount, onSave, onBack }) {
+export default function NoteEditor({ note, noteId, user, currentGroupId, books, chapterCount, verseCount, noteCharLimit = null, isSubscribed = null, onSave, onBack }) {
   const [titleVal,   setTitleVal]   = useState(note?.title || '');
   const [isPublic,   setIsPublic]   = useState(noteId ? (note?.public || false) : false);
   const [verseList,  setVerseList]  = useState(() => {
@@ -17,6 +18,14 @@ export default function NoteEditor({ note, noteId, user, currentGroupId, books, 
   });
   const [showColors,    setShowColors]    = useState(false);
   const [activeFormats, setActiveFormats] = useState({ bold: false, italic: false, underline: false, highlight: false, color: false });
+
+  // Live length of the body exactly as it will be sent (innerHTML), counted in
+  // code points to match the server. origCount is the stored length, used for
+  // the shrink-only grandfather rule. The counter is UX only; the server is
+  // authoritative.
+  const origCount = useRef(countCodePoints(note?.text || '')).current;
+  const [charCount, setCharCount] = useState(origCount);
+  const [wordCount, setWordCount] = useState(() => approxWords(note?.text || ''));
 
   const titleRef     = useRef(null);
   const bodyRef      = useRef(null);
@@ -79,10 +88,24 @@ export default function NoteEditor({ note, noteId, user, currentGroupId, books, 
     return () => document.removeEventListener('mousedown', close);
   }, [showColors]);
 
+  const updateCounts = () => {
+    const html = bodyRef.current?.innerHTML || '';
+    setCharCount(countCodePoints(html));
+    setWordCount(approxWords(html));
+  };
+
+  const limitState = noteLimitState(charCount, noteCharLimit);
+  const saveBlocked = isNoteSaveBlocked(charCount, noteCharLimit, origCount, !!noteId);
+  // Announce only when the state changes, not on every keystroke.
+  const announce = limitState === 'over'
+    ? (saveBlocked ? 'Note is over the character limit. Saving is disabled until you shorten it.' : 'Note is over the character limit. You can save only if you shorten it.')
+    : limitState === 'warn' ? 'Approaching the character limit.' : '';
+
   const addVerse    = (book, chapter, verse) => setVerseList(p => [...p, { book, chapter, verse }]);
   const removeVerse = (i) => setVerseList(p => p.filter((_, j) => j !== i));
 
   const handleSave = async () => {
+    if (saveBlocked) return;
     const ok = await onSave({
       user:     user.user_id,
       // Group attachment is now its own decision, independent of the
@@ -192,7 +215,13 @@ export default function NoteEditor({ note, noteId, user, currentGroupId, books, 
             </>
           )}
         </div>
-        <button className="note-editor-action-btn note-editor-save" onClick={handleSave}>Save</button>
+        <button
+          className="note-editor-action-btn note-editor-save"
+          onClick={handleSave}
+          disabled={saveBlocked}
+          aria-disabled={saveBlocked}
+          style={saveBlocked ? { opacity: 0.45, cursor: 'not-allowed' } : undefined}
+        >Save</button>
       </div>
 
       <div className="note-editor-verse-bar">
@@ -271,7 +300,39 @@ export default function NoteEditor({ note, noteId, user, currentGroupId, books, 
           suppressContentEditableWarning
           className="note-body-textarea"
           data-placeholder="Start writing…"
+          onInput={updateCounts}
         />
+      </div>
+
+      {noteCharLimit != null && (
+        <div
+          className={`note-char-counter note-char-counter--${limitState}`}
+          style={{
+            padding: '0.4rem 0.85rem', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.5rem',
+            borderTop: '1px solid rgba(255,255,255,0.072)', fontFamily: "'Inter', sans-serif", fontSize: '0.72rem',
+            color: limitState === 'over' ? '#ff9c8f' : limitState === 'warn' ? 'var(--gold)' : 'rgba(242,242,242,0.55)',
+          }}
+        >
+          {limitState === 'warn' && <WarningOutlined aria-hidden="true" />}
+          {limitState === 'over' && <ExclamationCircleOutlined aria-hidden="true" />}
+          <span>
+            {charCount.toLocaleString()} / {noteCharLimit.toLocaleString()} characters
+            {' '}(~{wordCount.toLocaleString()} words)
+          </span>
+          {limitState === 'warn' && <span>Approaching the limit.</span>}
+          {limitState === 'over' && (
+            <span>
+              {(charCount - noteCharLimit).toLocaleString()} characters over.{' '}
+              {saveBlocked
+                ? 'Shorten your note to save. Your text is kept.'
+                : 'Saving is allowed only if you shorten it.'}
+              {isSubscribed === false && ' Upgrade for a higher limit.'}
+            </span>
+          )}
+        </div>
+      )}
+      <div role="status" aria-live="polite" style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap' }}>
+        {announce}
       </div>
     </div>
   );

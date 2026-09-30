@@ -18,6 +18,7 @@ from routes.activity_monitoring import activity_monitoring_router
 from routes.profile_photo import profile_photo_router
 from routes.group_info import group_info_router
 from routes.group_announcements import group_announcements_router
+from schemas.subscription import NOTES_MAX_BODY_BYTES
 from schemas.users import SignUp, Login, UpdateUser, User, CURRENT_TERMS_VERSION
 from datetime import datetime, timezone
 from pydantic import BaseModel
@@ -232,6 +233,23 @@ async def _save_failed_handler(request: Request, exc: SaveFailedError) -> JSONRe
 
 
 app.add_exception_handler(SaveFailedError, _save_failed_handler)
+
+
+@app.middleware("http")
+async def _notes_body_size_guard(request: Request, call_next):
+    """Reject oversized /notes request bodies from Content-Length before the
+    handler parses them (task 20260929-free-note-char-cap, payload guard). The
+    per-note character cap runs after parsing, so this bounds what a client can
+    make the server buffer. 413, never a 500. A missing/garbled Content-Length
+    is left to the reverse proxy's own body limit."""
+    if request.url.path.startswith("/notes") and request.method in ("POST", "PUT"):
+        try:
+            declared = int(request.headers.get("content-length", "0"))
+        except ValueError:
+            declared = 0
+        if declared > NOTES_MAX_BODY_BYTES:
+            return JSONResponse(status_code=413, content={"detail": "Request body too large."})
+    return await call_next(request)
 
 
 async def _timeline_generation_failed_handler(request: Request, exc: TimelineGenerationError) -> JSONResponse:

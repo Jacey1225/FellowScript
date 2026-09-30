@@ -372,6 +372,11 @@ class AgentManager(DBManager):
         # (commit_hb_response, via routes/agent.py's commit_heartbeat)
         # still reported success with a generated id even though no note
         # was ever persisted.
+        # Deliberately EXEMPT from the per-note character cap
+        # (FREE_NOTE_CHAR_LIMIT, task 20260929-free-note-char-cap): AI-generated
+        # text is bounded by generation limits and never truncated. The
+        # notes-count gate still applies; later user edits fall under
+        # update_note's grandfather rule.
         note_id = str(uuid.uuid4())
         if not self.insertion(self.note_table, {
             "_id":      note_id,

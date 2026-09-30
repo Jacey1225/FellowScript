@@ -175,11 +175,20 @@ struct FSUsageResource: Codable {
     var maxedOut: Bool { !unlimited && used >= limit }
 }
 
+/// Per-note text length limit for the caller's plan (server-authoritative;
+/// free 30,000 / paid 100,000 at time of writing -- never hardcode, read it).
+struct FSNoteChars: Codable {
+    var unlimited: Bool? = nil
+    var limit:     Int   = 0
+}
+
 struct FSUsage: Codable {
     var subscribed:  Bool   = false
     var plan_type:   String = "free"
     var window_days: Int    = 7
     var resources:   [String: FSUsageResource] = [:]
+    /// nil when the server predates the per-note cap or the field is absent.
+    var note_chars:  FSNoteChars? = nil
 
     var notes:              FSUsageResource { resources["notes"] ?? FSUsageResource() }
     var agentEvents:        FSUsageResource { resources["agent_events"] ?? FSUsageResource() }

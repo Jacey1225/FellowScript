@@ -449,48 +449,34 @@ final class AccountViewModel: ObservableObject {
         // `group.addTask` call (one per agent); `resultsConsumed` once per
         // `for await` iteration regardless of which case it takes.
         //
-        // Re-audited and REFUTED (task 20260926-account-events-regression,
-        // step 2): `resultsConsumed < tasksAdded` for a single round is not
-        // actually reachable. Both loops below run strictly sequentially in
-        // this same closure -- "add one task per agent" fully completes
-        // before "await one result per for-await iteration" begins -- and
-        // neither counter is touched from inside `group.addTask`'s own child
-        // closures, so there is no data race on either `var`. Swift's
-        // documented structured-concurrency contract guarantees a
-        // non-throwing `TaskGroup`'s `for await` loop, run to completion with
-        // no early `break`/`return` (this loop has neither), delivers exactly
-        // one result per child task added before consumption started --
-        // regardless of actor isolation, optimization level, or scheduling
-        // order. The two commented-out mechanisms build 45 proposed (a
-        // TaskGroup contract violation, and NetworkService's implicit
-        // MainActor isolation "losing" a child task's result) don't hold up:
-        // MainActor isolation can only serialize when child task bodies run,
-        // never drop a result outright. The much more mundane explanation for
-        // what that diagnostic pass actually saw: `RefreshDiagnostics.
-        // fetchOutcome`/`taskGroupOutcome` carried no round/generation id, so
-        // two overlapping rounds' interleaved Console.app lines (e.g. the
-        // initial `.task` racing a `.refreshable` pull) were indistinguishable
-        // from one round's own sequence -- this step adds `generation:` to
-        // every one of this method's diagnostic calls specifically to close
-        // that gap for the next live capture. The defensive fallback just
-        // below is kept as a harmless, fail-closed safety net (Q14) in case
-        // this reasoning is ever wrong on some future toolchain, but it
-        // should not be trusted as this bug's actual root cause, and no
-        // further fix has been layered on top of it this pass without new
-        // evidence to justify one.
+        // task 20260930-account-events-release-taskgroup-drop: the earlier
+        // "unreachable" audit (task 20260926-account-events-regression) was
+        // REFUTED by live Release evidence on an iPhone Air (iOS 26.6.2): the
+        // per-agent heartbeats fetch succeeded (NetworkService's decode log,
+        // count=2) yet this round logged `tasksAdded=1 resultsConsumed=0
+        // allEventsCount=0`, while the same account in a Debug build logged
+        // `resultsConsumed=1`. So an -O build DOES drop the group's result
+        // here. Best-supported (unproven) explanation: the `for await
+        // (agentId, result) in group` walk over a tuple-of-Result element
+        // combined with `var` counters/`allEvents` captured and mutated from
+        // inside the `withTaskGroup` body closure (MainActor-inferred under
+        // this project's SWIFT_DEFAULT_ACTOR_ISOLATION) is mis-compiled or
+        // mis-scheduled at -O. The walk below is therefore a plain
+        // sequential `for` loop with no TaskGroup at all: no group closure,
+        // no tuple destructuring, no captured-var mutation from a nested
+        // closure. Counters are kept (tasksAdded = fetches started,
+        // resultsConsumed = results handled) so the device console can still
+        // assert resultsConsumed == tasksAdded.
         var heartbeatsTasksAdded = 0
         var heartbeatsResultsConsumed = 0
         if let agentsResult {
-            await withTaskGroup(of: (String, Result<[FSHeartbeat], Error>).self) { group in
-                for agent in agentsResult {
-                    heartbeatsTasksAdded += 1
-                    group.addTask {
-                        do { return (agent.id, .success(try await service.fetchHeartbeats(userId: user.user_id, agentId: agent.id))) }
-                        catch { return (agent.id, .failure(error)) }
-                    }
-                }
-                for await (agentId, result) in group {
-                    heartbeatsResultsConsumed += 1
+            for agent in agentsResult {
+                heartbeatsTasksAdded += 1
+                let agentId = agent.id
+                let result: Result<[FSHeartbeat], Error>
+                do { result = .success(try await service.fetchHeartbeats(userId: user.user_id, agentId: agentId)) }
+                catch { result = .failure(error) }
+                heartbeatsResultsConsumed += 1
                     switch result {
                     case .success(let hbs):
                         RefreshDiagnostics.fetchOutcome(endpoint: "GET /agent/{user_id}/{agent_id}/heartbeats", outcome: "success", count: hbs.count, generation: generation)
@@ -553,7 +539,6 @@ final class AccountViewModel: ObservableObject {
                             allEvents.append(contentsOf: existing)
                         }
                     }
-                }
             }
         }
         RefreshDiagnostics.taskGroupOutcome(tasksAdded: heartbeatsTasksAdded, resultsConsumed: heartbeatsResultsConsumed, allEventsCount: allEvents.count, generation: generation)
@@ -566,7 +551,10 @@ final class AccountViewModel: ObservableObject {
         // project's `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor` setting)
         // defeating the TaskGroup's intended off-actor concurrency.
         //
-        // Re-audited (task 20260926-account-events-regression, step 2) and
+        // NOTE (task 20260930-account-events-release-taskgroup-drop): the TaskGroup
+        // is gone and the live evidence contradicts the "unreachable" audit below,
+        // which is retained only as history. Originally re-audited (task
+        // 20260926-account-events-regression, step 2) and
         // this specific claim does not hold up: (1) `SWIFT_DEFAULT_ACTOR_
         // ISOLATION = MainActor` is set identically for both the Debug and
         // Release configurations of this target (project.pbxproj), so it

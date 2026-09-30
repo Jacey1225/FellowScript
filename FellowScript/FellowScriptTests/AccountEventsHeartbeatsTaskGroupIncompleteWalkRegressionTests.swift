@@ -58,29 +58,25 @@ final class AccountEventsHeartbeatsTaskGroupIncompleteWalkRegressionTests: XCTes
     }
 
     /// Sanity: the accounting this whole fix depends on must actually be
-    /// wired around the TaskGroup — one increment per `addTask`, one per
-    /// `for await` iteration (regardless of which Result case it is).
+    /// wired around the walk — one increment per started per-agent fetch, one
+    /// per handled result (regardless of which Result case it is). Updated in
+    /// task 20260930-account-events-release-taskgroup-drop: the walk is now a
+    /// plain sequential `for` loop (the TaskGroup dropped results under -O),
+    /// so this pins the new loop shape instead of `group.addTask`/`for await`.
     func test_load_heartbeatsTaskGroup_countsTasksAddedAndResultsConsumed() throws {
         let source = try accountViewModelSource()
-        guard let addTaskRange = source.range(of: "for agent in agentsResult {"),
-              let forAwaitRange = source.range(of: "for await (agentId, result) in group {") else {
-            XCTFail("could not locate the heartbeats TaskGroup's add/consume loops")
+        guard let loopRange = source.range(of: "for agent in agentsResult {"),
+              let switchRange = source.range(of: "switch result {", range: loopRange.upperBound..<source.endIndex) else {
+            XCTFail("could not locate the heartbeats walk's per-agent loop and result switch")
             return
         }
-        let addTaskBlockEnd = source[addTaskRange.upperBound...].range(of: "group.addTask {")
-        XCTAssertNotNil(addTaskBlockEnd, "group.addTask must still follow the per-agent loop")
-
-        let beforeAddTask = source[addTaskRange.upperBound..<(addTaskBlockEnd?.lowerBound ?? forAwaitRange.lowerBound)]
-        XCTAssertTrue(beforeAddTask.contains("heartbeatsTasksAdded += 1"),
-                      "THE FIX: every group.addTask call for an agent's heartbeats fetch must increment heartbeatsTasksAdded")
-
-        let afterForAwait = source[forAwaitRange.upperBound...]
-        guard let switchRange = afterForAwait.range(of: "switch result {") else {
-            XCTFail("could not locate the per-result switch inside the consuming loop"); return
-        }
-        let betweenForAwaitAndSwitch = afterForAwait[afterForAwait.startIndex..<switchRange.lowerBound]
-        XCTAssertTrue(betweenForAwaitAndSwitch.contains("heartbeatsResultsConsumed += 1"),
-                      "THE FIX: every `for await` iteration (success or failure) must increment heartbeatsResultsConsumed, unconditionally, before branching on the result")
+        let head = source[loopRange.upperBound..<switchRange.lowerBound]
+        XCTAssertTrue(head.contains("heartbeatsTasksAdded += 1"),
+                      "every per-agent heartbeats fetch started must increment heartbeatsTasksAdded")
+        XCTAssertTrue(head.contains("try await service.fetchHeartbeats("),
+                      "the fetch must be awaited inline in the loop (no TaskGroup)")
+        XCTAssertTrue(head.contains("heartbeatsResultsConsumed += 1"),
+                      "every handled result (success or failure) must increment heartbeatsResultsConsumed, unconditionally, before branching on the result")
     }
 
     /// THE BUG this fix closes: a round where fewer results were consumed

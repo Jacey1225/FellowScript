@@ -424,6 +424,12 @@ async def summarize_session(user_id: str, agent_id: str, body: dict, _: str = De
         # Deny-by-default per Security Posture Q2/Q14: default closed unless
         # the caller explicitly opts a summary into group-editing.
         notes_public = bool(body.get("notes_public", False))
+        # Deliberately EXEMPT from the per-note character cap
+        # (FREE_NOTE_CHAR_LIMIT, task 20260929-free-note-char-cap): this is
+        # server-generated text, bounded by the LLM's own generation limits,
+        # and is never truncated (throw-not-fabricate). The notes-count gate
+        # above still applies; a later USER edit that grows it past the cap
+        # falls under update_note's grandfather rule.
         note_id = str(uuid.uuid4())
         db.cur.execute(
             "INSERT INTO notes (_id, user_id, title, text, public, group_id, is_reply, timestamp) "

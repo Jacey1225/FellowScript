@@ -57,6 +57,25 @@ FREE_LIMITS: dict[str, int] = {
 NOTES_WINDOW_DAYS = 7
 ANNOUNCEMENTS_WINDOW_DAYS = 7
 
+# Per-note text length cap for the FREE tier (task 20260929-free-note-char-cap).
+# Without it, the FREE_LIMITS["notes"] count cap can be dodged by editing one
+# note forever. ~5000 words x ~6 chars/word (incl. spaces) = 30,000 characters.
+# Counted as Python len(text) (Unicode code points; newlines as received);
+# titles are not counted. Clients read this value from the usage summary
+# (GET /subscriptions/user/{id}/usage -> "note_chars") instead of hardcoding it.
+FREE_NOTE_CHAR_LIMIT = 30000
+# Paid plans get a wider per-note limit (a real plan limit, enforced with the
+# same create/reply/update + grandfather rules as the free limit).
+PAID_NOTE_CHAR_LIMIT = 100000
+# Hard cap on the request body of /notes routes (bytes), checked from
+# Content-Length before the body is parsed. Sized for PAID_NOTE_CHAR_LIMIT
+# worst case (JSON \uXXXX escaping of non-BMP characters).
+NOTES_MAX_BODY_BYTES = 4 * 1024 * 1024
+
+# Eager validation (Configuration Philosophy): a bad tunable fails at import.
+assert isinstance(FREE_NOTE_CHAR_LIMIT, int) and FREE_NOTE_CHAR_LIMIT > 0
+assert isinstance(PAID_NOTE_CHAR_LIMIT, int) and PAID_NOTE_CHAR_LIMIT >= FREE_NOTE_CHAR_LIMIT
+
 
 class Subscription(BaseModel):
     """A subscription plan owned by a host user."""

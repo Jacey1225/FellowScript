@@ -50,6 +50,8 @@ agent notifications" line was removed 2026-08-26 along with the user-authored no
 feature — see the Notifications note below.) Free-tier caps shown in each line are read live
 from `AccountViewModel.usage`
 (`FSUsage`, mirroring the backend's `FREE_LIMITS`/`NOTES_WINDOW_DAYS`) so they never drift out
+
+The usage endpoint also returns `note_chars: {unlimited, limit}` — the caller's per-plan per-note character limit (`FREE_NOTE_CHAR_LIMIT` 30,000 for free, `PAID_NOTE_CHAR_LIMIT` 100,000 for paid; `unlimited` is always false). The note editor reads `limit` from here for its counter; over-limit writes get a 403 with `resource: "note_chars"`. Free users see the upgrade prompt; paid users (already on the top plan) see only the limit message, no upgrade CTA. AI-generated notes are exempt; existing over-cap notes can only shrink.
 of sync with server-enforced limits; a static fallback covers the brief window before usage
 loads. Collapsed by default in both states, matching the app's existing progressive-disclosure
 pattern (e.g. `seatCountEditRow`).

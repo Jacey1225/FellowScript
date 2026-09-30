@@ -28,6 +28,7 @@ export default function NotesPanel() {
     user, currentGroupId, groups, onGroupChange, onNavigateVerse,
     notesData, groupLoading, filterActive,
     saveNote, deleteNote, postReply, loadDetailReplies,
+    noteCharInfo, loadNoteCharLimit,
     applyFilter, clearFilter,
     books, chapterCount, verseCount,
   } = useNotesPanel() || {};
@@ -69,7 +70,7 @@ export default function NotesPanel() {
     });
   }, [notes, currentGroupId, user, filterActive]);
 
-  const openEditor = (id = null) => { setEditorNoteId(id); setEditorOpen(true); };
+  const openEditor = (id = null) => { loadNoteCharLimit?.(); setEditorNoteId(id); setEditorOpen(true); };
   const closeEditor = () => { setEditorOpen(false); setEditorNoteId(null); };
 
   const handleEditorSave = async (body, noteId) => await saveNote(body, noteId);
@@ -156,6 +157,8 @@ export default function NotesPanel() {
           books={books || []}
           chapterCount={chapterCount || (() => 0)}
           verseCount={verseCount || (() => 0)}
+          noteCharLimit={noteCharInfo?.limit ?? null}
+          isSubscribed={noteCharInfo?.subscribed ?? null}
           onSave={handleEditorSave}
           onBack={closeEditor}
         />

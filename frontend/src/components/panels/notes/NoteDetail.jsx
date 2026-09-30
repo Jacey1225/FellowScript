@@ -17,8 +17,9 @@ export default function NoteDetail({ note, noteId, onBack, canReply, onReply, re
   const handleReply = async () => {
     if (!replyText.trim()) return;
     setReplying(true);
-    await onReply(noteId, replyText);
-    setReplyText('');
+    const ok = await onReply(noteId, replyText);
+    // Keep the draft when the reply was rejected (e.g. too long) so nothing is lost.
+    if (ok !== false) setReplyText('');
     setReplying(false);
   };
 

@@ -41,3 +41,40 @@ export function hoverStyleHandlers(hoverStyle, baseStyle) {
     onMouseLeave: e => Object.assign(e.currentTarget.style, baseStyle),
   };
 }
+
+// ── Note length counting ─────────────────────────────────────────────────────
+// The server caps `text` by Python len() (Unicode code points) of the string
+// exactly as sent, and the editor sends innerHTML. Count the same string the
+// same way: [...s].length (code points), never s.length (UTF-16 units). The
+// limit itself comes from the server's usage endpoint (note_chars.limit);
+// nothing here hardcodes it.
+export const NOTE_WARN_RATIO = 0.9;
+
+export function countCodePoints(s) {
+  let n = 0;
+  for (const _ of s || '') n += 1; // eslint-disable-line no-unused-vars
+  return n;
+}
+
+// Approximate words from the visible text (tags/entities stripped). Display only.
+export function approxWords(html) {
+  const tmp = document.createElement('div');
+  tmp.innerHTML = html || '';
+  const t = (tmp.textContent || '').trim();
+  return t ? t.split(/\s+/).length : 0;
+}
+
+// 'ok' | 'warn' | 'over'
+export function noteLimitState(count, limit) {
+  if (!limit) return 'ok';
+  if (count > limit) return 'over';
+  if (count >= limit * NOTE_WARN_RATIO) return 'warn';
+  return 'ok';
+}
+
+// Mirrors the server's grandfather rule: blocked iff new > limit AND
+// (create OR new > stored length).
+export function isNoteSaveBlocked(count, limit, origCount, isEdit) {
+  if (!limit || count <= limit) return false;
+  return !isEdit || count > origCount;
+}

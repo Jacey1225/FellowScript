@@ -3,7 +3,7 @@ from schemas.users import Note
 from db import DBManager
 from backend.errors import SaveFailedError
 from backend.interactions.groups import GroupsManager
-from backend.subscription.limits import check_limit
+from backend.subscription.limits import check_limit, check_note_chars
 from backend.interactions.activity import ActivityManager, NOTE_CREATED, NOTE_EDITED, NOTE_REPLIED, VERSE_HIGHLIGHTED
 from backend.interactions.bible_text import is_valid_reference
 from backend.auth.dependencies import get_current_user, require_match
@@ -201,6 +201,10 @@ async def post_reply(note_id: str, reply: dict, current_user: str = Depends(get_
         if not _can_view_note(parent_data, current_user):
             return {"error": "cannot find note"}
         reply_note = Note(**reply)
+        # Replies are notes: same per-note character cap (create rule).
+        chars_gate = check_note_chars(author, len(reply_note.text or ""))
+        if not chars_gate["allowed"]:
+            raise HTTPException(status_code=403, detail=chars_gate)
         try:
             check_clean(title=reply_note.title, text=reply_note.text)
         except ContentRejected as e:
@@ -238,6 +242,10 @@ async def create_note(user_id: str, note_dict: dict, _: str = Depends(require_ma
         note_id = str(uuid.uuid4())
         note_dict.setdefault("user", user_id)
         note = Note(**note_dict)
+        # Per-note character cap (free tier); create rule: reject iff over cap.
+        chars_gate = check_note_chars(user_id, len(note.text or ""))
+        if not chars_gate["allowed"]:
+            raise HTTPException(status_code=403, detail=chars_gate)
         # IDOR guard: a client-supplied group_id must be one the poster
         # actually belongs to, mirroring community.py::fetch_group_notes's
         # read-side check -- without this, any authenticated user could post
@@ -628,6 +636,18 @@ async def update_note(user_id: str, note_id: str, note_dict: dict, _: str = Depe
                     raise HTTPException(status_code=403, detail="Not a member of this group")
             finally:
                 gm.close()
+        # Per-note character cap. The acting EDITOR's plan applies (group
+        # editors included); this only picks the plan for the cap and never
+        # changes who may edit (authorization was decided above). Lock the row
+        # and read its stored length in this same transaction so two racing
+        # autosaves cannot both pass against a stale old_len; the lock is held
+        # until db.update() commits (or the connection closes on rejection).
+        db.cur.execute("SELECT length(text) FROM notes WHERE _id = %s FOR UPDATE", (note_id,))
+        locked = db.cur.fetchone()
+        old_len = (locked[0] or 0) if locked else 0
+        chars_gate = check_note_chars(user_id, len(note.text or ""), old_len)
+        if not chars_gate["allowed"]:
+            raise HTTPException(status_code=403, detail=chars_gate)
         try:
             check_clean(title=note.title, text=note.text)
         except ContentRejected as e:

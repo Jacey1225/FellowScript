@@ -5,13 +5,25 @@ import { verseRefLabel, unwrapNotesEnvelope } from '../utils.js';
 
 // Shows a friendly upgrade prompt when the backend rejects a create with 403
 // (free-tier limit reached). Returns true if it handled a limit response.
-async function handleLimit(res, label) {
+async function handleLimit(res, label, plan) {
   if (res.status !== 403) return false;
-  let used, limit;
+  let used, limit, resource;
   try {
     const body = await res.json();
-    ({ used, limit } = body.detail || {});
+    ({ used, limit, resource } = body.detail || {});
   } catch {}
+  if (resource === 'note_chars') {
+    // Per-note length cap (not a weekly count). The draft stays in the editor;
+    // nothing is truncated. Paid users are already on the top plan, so no
+    // upgrade prompt for them.
+    const over = used != null && limit != null ? used - limit : null;
+    const fmt = (n) => Number(n).toLocaleString();
+    const base = limit != null
+      ? `This note is too long to save: the limit is ${fmt(limit)} characters${over > 0 ? ` (${fmt(over)} over)` : ''}. Shorten it and try again; your text is kept.`
+      : 'This note is too long to save. Shorten it and try again; your text is kept.';
+    message.warning(plan && plan.subscribed === false ? `${base} Upgrade for a higher limit.` : base);
+    return true;
+  }
   message.warning(
     limit != null
       ? `Free plan limit reached (${label}: ${used}/${limit} this week). Upgrade for unlimited access.`
@@ -92,6 +104,9 @@ export function useNotes({ user, curBook, curChapter, vsValue }) {
   const [filteredGroup,   setFilteredGroup]   = useState(null);
   const [filterActive,    setFilterActive]    = useState(false);
   const [groupLoading,    setGroupLoading]    = useState(false);
+  // Per-note char limit for this user's plan, read from the server (never hardcoded).
+  const [noteCharInfo,    setNoteCharInfo]    = useState({ limit: null, subscribed: null });
+  const noteCharInfoRef = useRef(noteCharInfo);
   const notesCache = useRef({});
   // H13 (compliance sweep) -- client-side dedup for loadGroups' N+1
   // fetch-per-group pattern, mirroring useMessaging.js's friendCache/
@@ -187,6 +202,25 @@ export function useNotes({ user, curBook, curChapter, vsValue }) {
     }
   }, [loadGroupNotes]);
 
+  // Fetch the caller's per-plan note length limit. Failure leaves the previous
+  // value (or null = no client-side counter); the server still enforces.
+  const loadNoteCharLimit = useCallback(async () => {
+    if (!user) return;
+    try {
+      const res = await fetch(`${API}/subscriptions/user/${user.user_id}/usage`);
+      if (!res || !res.ok) return;
+      const data = await res.json();
+      const limit = data?.note_chars?.limit;
+      if (typeof limit === 'number' && limit > 0) {
+        const info = { limit, subscribed: !!data.subscribed };
+        noteCharInfoRef.current = info;
+        setNoteCharInfo(info);
+      }
+    } catch (err) {
+      console.error('Failed to load note length limit:', err);
+    }
+  }, [user]);
+
   // ── CRUD ──────────────────────────────────────────────────────────────────
 
   const saveNote = useCallback(async (noteData, editingId) => {
@@ -200,7 +234,7 @@ export function useNotes({ user, curBook, curChapter, vsValue }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(noteData),
       });
-      if (await handleLimit(res, 'notes')) return false;
+      if (await handleLimit(res, 'notes', noteCharInfoRef.current)) return false;
       if (!res.ok) {
         if (res.status === 422) {
           let detail;
@@ -278,7 +312,7 @@ export function useNotes({ user, curBook, curChapter, vsValue }) {
           group_id: currentGroupId, replies: [], verses: [[], []], is_reply: true,
         }),
       });
-      if (await handleLimit(res, 'notes')) return false;
+      if (await handleLimit(res, 'notes', noteCharInfoRef.current)) return false;
       if (!res.ok) message.error('Could not post your reply. Please try again.');
       return res.ok;
     } catch (err) {
@@ -395,6 +429,7 @@ export function useNotes({ user, curBook, curChapter, vsValue }) {
     filteredNotes, filteredGroup, filterActive,
     loadNotes, loadGroupNotes, loadGroups, selectGroup,
     saveNote, deleteNote, postReply, loadDetailReplies,
+    noteCharInfo, loadNoteCharLimit,
     applyFilter, clearFilter, getNoteRef, getVerse,
   };
 }

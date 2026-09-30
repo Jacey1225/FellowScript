@@ -13,7 +13,7 @@ The former `agent_notifications` gated resource (a cap on user-authored
 """
 
 from db import DBManager
-from schemas.subscription import FREE_LIMITS, NOTES_WINDOW_DAYS, ANNOUNCEMENTS_WINDOW_DAYS, EXPIRY_GRACE_DAYS
+from schemas.subscription import FREE_NOTE_CHAR_LIMIT, PAID_NOTE_CHAR_LIMIT, FREE_LIMITS, NOTES_WINDOW_DAYS, ANNOUNCEMENTS_WINDOW_DAYS, EXPIRY_GRACE_DAYS
 
 
 class LimitsManager(DBManager):
@@ -97,6 +97,30 @@ class LimitsManager(DBManager):
             "remaining": max(0, limit - used),
         }
 
+    def check_note_chars(self, user_id: str, new_len: int, old_len: int | None = None) -> dict:
+        """Whether a note write leaving ``text`` at ``new_len`` chars is allowed.
+
+        Rule (grandfathering): reject iff ``new_len > limit`` AND (``old_len``
+        is None, i.e. a create, OR ``new_len > old_len``). Shrinking or
+        same-length edits of an already over-cap note are always allowed, so a
+        downgraded user is never locked out of trimming their own text.
+        ``limit`` is FREE_NOTE_CHAR_LIMIT for free users and
+        PAID_NOTE_CHAR_LIMIT for subscribed users. Fails closed:
+        any error in the plan lookup propagates (the write is not performed).
+        Body shape matches ``check`` so clients reuse their 403 handling.
+        """
+        subscribed = self.is_subscribed(user_id)
+        limit = PAID_NOTE_CHAR_LIMIT if subscribed else FREE_NOTE_CHAR_LIMIT
+        over = new_len > limit and (old_len is None or new_len > old_len)
+        return {
+            "resource": "note_chars",
+            "allowed": not over,
+            "unlimited": False,
+            "used": new_len,
+            "limit": limit,
+            "remaining": max(0, limit - new_len),
+        }
+
     def usage_summary(self, user_id: str) -> dict:
         """Full usage snapshot for all gated resources (drives the client UI)."""
         subscribed = self.is_subscribed(user_id)
@@ -127,6 +151,13 @@ class LimitsManager(DBManager):
             "plan_type": plan_type,
             "window_days": NOTES_WINDOW_DAYS,
             "resources": resources,
+            # Per-note text length cap. Kept out of "resources" (those are
+            # rolling counts). ``limit`` is the caller's per-plan cap (free 30,000,
+            # paid 100,000); no plan is unlimited.
+            "note_chars": {
+                "unlimited": False,
+                "limit": PAID_NOTE_CHAR_LIMIT if subscribed else FREE_NOTE_CHAR_LIMIT,
+            },
         }
 
 
@@ -143,5 +174,18 @@ def check_limit(user_id: str, resource: str) -> dict:
     manager = LimitsManager()
     try:
         return manager.check(user_id, resource)
+    finally:
+        manager.close()
+
+
+def check_note_chars(user_id: str, new_len: int, old_len: int | None = None) -> dict:
+    """Route-layer helper for the per-note character cap; own connection.
+
+    Unlike ``check_limit`` there is no empty-user_id pass-through: every
+    caller has an authenticated user, and this gate fails closed.
+    """
+    manager = LimitsManager()
+    try:
+        return manager.check_note_chars(user_id, new_len, old_len)
     finally:
         manager.close()
