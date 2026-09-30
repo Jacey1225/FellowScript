@@ -31,9 +31,20 @@ struct AnnouncementBannerCropView: View {
     /// bleed under the header or the opaque controls panel below; gestures
     /// attach to the clipped frame only.
     var body: some View {
-        ZStack {
-            surface.ignoresSafeArea()
+        // Fully manual insets. On the user's phone the cover's header still drew
+        // under the clock / Dynamic Island even though every simulator harness
+        // laid it out correctly (build 70), so this no longer trusts SwiftUI's
+        // safe-area propagation: the root ignores the safe area (so the
+        // GeometryReader sees the real insets) and the header / panel pad by
+        // max(reported inset, key-window inset).
+        GeometryReader { root in
+            let top = max(root.safeAreaInsets.top, Self.windowInsets.top)
+            let bottom = max(root.safeAreaInsets.bottom, Self.windowInsets.bottom)
             VStack(spacing: 0) {
+                header
+                    .padding(.top, top)
+                    .background(surface)
+                    .overlay(alignment: .bottom) { Rectangle().fill(Color.white.opacity(0.12)).frame(height: 1) }
                 GeometryReader { geo in
                     let fs = AnnouncementCropMath.frameSize(width: max(1, geo.size.width - margin * 2))
                     cropFrame(fs)
@@ -43,15 +54,23 @@ struct AnnouncementBannerCropView: View {
                         .onChange(of: fs) { _, new in setFrame(new) }
                 }
                 .clipped()
-                panel
+                panel.padding(.bottom, bottom)
             }
+            .frame(width: root.size.width, height: root.size.height)
+            .background(surface)
         }
-        .safeAreaInset(edge: .top, spacing: 0) {
-            header
-                .background(surface.ignoresSafeArea(edges: .top))
-                .overlay(alignment: .bottom) { Rectangle().fill(Color.white.opacity(0.12)).frame(height: 1) }
-        }
+        .ignoresSafeArea()
+        .background(surface.ignoresSafeArea())
         .preferredColorScheme(.dark)
+    }
+
+    /// Real safe-area insets of the key window (0 when unavailable, e.g. previews).
+    static var windowInsets: UIEdgeInsets {
+        UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap { $0.windows }
+            .first(where: { $0.isKeyWindow })?
+            .safeAreaInsets ?? .zero
     }
 
     private var panel: some View {

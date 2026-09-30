@@ -188,10 +188,15 @@ final class AnnouncementTitleColorTests: XCTestCase {
 
     func testCropViewHeaderInSafeAreaPhotoClippedAndPanelOpaque() throws {
         let src = try readSource("FellowScript/Chat/AnnouncementBannerCropView.swift")
-        // Header is a safe-area top inset, not a zIndex layer inside a GeometryReader.
-        XCTAssertTrue(src.contains(".safeAreaInset(edge: .top, spacing: 0)"))
+        // Insets are fully manual: the root ignores the safe area and the header / panel pad by
+        // max(reported inset, key-window inset), so the header can never sit under the Dynamic
+        // Island whatever the cover's safe-area propagation does (build 70 regression).
+        XCTAssertTrue(src.contains("Self.windowInsets.top"))
+        XCTAssertTrue(src.contains(".padding(.top, top)"))
+        XCTAssertTrue(src.contains("panel.padding(.bottom, bottom)"))
+        XCTAssertTrue(src.contains(".ignoresSafeArea()\n        .background(surface.ignoresSafeArea())"))
         XCTAssertFalse(src.contains("header.zIndex") || src.contains(".zIndex(1)\n                    .frame"), "header no longer relies on zIndex")
-        // Opaque root that ignores safe area, opaque controls panel.
+        // Opaque surface behind everything, opaque controls panel.
         XCTAssertTrue(src.contains("surface.ignoresSafeArea()"))
         XCTAssertTrue(src.contains(".background(surface)"))
         // The photo is clipped to the frame before gestures/overlays attach.

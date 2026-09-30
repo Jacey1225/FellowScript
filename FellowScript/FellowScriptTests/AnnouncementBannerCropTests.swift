@@ -181,7 +181,8 @@ final class AnnouncementBannerCropTests: XCTestCase {
         let clip = try XCTUnwrap(src.range(of: ".clipShape(RoundedRectangle(cornerRadius: Theme.radius))")).lowerBound
         XCTAssertTrue(base < img && img < scrim && scrim < text && text < clip)
         XCTAssertTrue(src.contains(".aspectRatio(AnnouncementLimits.bannerAspect, contentMode: .fit)"))
-        XCTAssertTrue(src.contains("Text(\"View\")") && src.contains("Text(\"ANNOUNCEMENT\")"))
+        XCTAssertTrue(src.contains("Text(\"ANNOUNCEMENT\")"))
+        XCTAssertFalse(src.contains("Text(\"View\")"), "the View chip was removed; the whole card is the tap target")
         XCTAssertFalse(src.contains("minHeight: height"), "old fixed 72pt height frame must be gone")
     }
 
