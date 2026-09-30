@@ -172,11 +172,30 @@ describe('ChatThread — .msg-bubble-media / .attachment-gif-static CSS still br
     expect(body).toMatch(/width:\s*100%/);
   });
 
-  test('.attachment-media itself still has no explicit height (relies on the ancestor width, not a hardcoded aspect box, for its sizing)', () => {
+  test('.msg-bubble.msg-bubble-media never flex-shrinks (overflow:hidden zeroes min-height, which squashed media into slivers)', () => {
+    expect(ruleBodyFor('.msg-bubble.msg-bubble-media')).toMatch(/flex-shrink:\s*0/);
+  });
+
+  test('.attachment-media preserves aspect ratio (contain, height auto), never cover', () => {
+    const body = ruleBodyFor('.attachment-media');
+    expect(body).toMatch(/object-fit:\s*contain/);
+    expect(body).not.toMatch(/object-fit:\s*cover/);
+    expect(body).toMatch(/height:\s*auto/);
+  });
+
+  test('attachment metadata width/height is applied as an inline aspect-ratio', () => {
+    renderThread([{
+      text: '', mine: false, sender: 'Ada', attachmentKind: 'image',
+      attachmentUrl: 'https://example.com/p.jpg', attachmentMeta: { width: 400, height: 200 },
+    }]);
+    expect(screen.getByAltText('photo attachment').getAttribute('style')).toMatch(/aspect-ratio:\s*2/);
+  });
+
+  test('.attachment-media itself has no fixed height (auto height, sized by the ancestor width and the ratio)', () => {
     const body = ruleBodyFor('.attachment-media');
     expect(body).not.toBeNull();
     const declarations = body.split(';').map((d) => d.trim()).filter(Boolean);
-    const hasBareHeight = declarations.some((d) => /^height:/.test(d));
+    const hasBareHeight = declarations.some((d) => /^height:/.test(d) && !/auto/.test(d));
     expect(hasBareHeight).toBe(false);
     expect(body).toMatch(/max-height:/);
   });

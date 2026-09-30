@@ -114,7 +114,7 @@ function JoinErrorRow({ session, joinError, onJoin, onClearJoinError }) {
   );
 }
 
-function UpcomingCard({ session, activeSessionId, onJoin, onLeave, onEdit, onDelete, joinError, onClearJoinError }) {
+export function UpcomingCard({ session, activeSessionId, onJoin, onLeave, onEdit, onDelete, joinError, onClearJoinError }) {
   const isJoined = activeSessionId === session.id;
   return (
     <div style={islandStyle}>
@@ -157,7 +157,7 @@ function UpcomingCard({ session, activeSessionId, onJoin, onLeave, onEdit, onDel
   );
 }
 
-function ActiveCard({ session, user, activeSessionId, talkingUserId, onJoin, onLeave, onEdit, onDelete, onNavigateVerse, videoEnabled, videoTiles = [], onToggleVideo, bindVideoTile, joinError, onClearJoinError }) {
+export function ActiveCard({ session, user, activeSessionId, talkingUserId, onJoin, onLeave, onEdit, onDelete, onNavigateVerse, videoEnabled, videoTiles = [], onToggleVideo, bindVideoTile, joinError, onClearJoinError }) {
   const isJoined = activeSessionId === session.id;
   const names    = useUsernames(session.participants || []);
   const talkingName = talkingUserId
@@ -321,6 +321,14 @@ function ActiveCard({ session, user, activeSessionId, talkingUserId, onJoin, onL
       </div>
     </div>
   );
+}
+
+// Picks the card variant the same way SessionWidget always has: started
+// sessions get the full ActiveCard, future ones the compact UpcomingCard.
+export function SessionCard(props) {
+  const { session } = props;
+  const started = session.time_start && new Date(session.time_start).getTime() <= Date.now();
+  return started ? <ActiveCard {...props} /> : <UpcomingCard {...props} />;
 }
 
 export default function SessionWidget({
