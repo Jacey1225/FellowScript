@@ -396,6 +396,15 @@ def cmd_plan_prices(c, args, log=print) -> int:
 
 
 def cmd_set_prices(c, args, log=print) -> int:
+    if args.apply and not args.start_date:
+        log("ABORT: --start-date YYYY-MM-DD is required with --apply (Apple rejects immediate price "
+            "changes on approved subscriptions)")
+        return 2
+    if args.apply and args.tier_prices is None:
+        log("ABORT: pass --tier-prices-json with the OLD prices with --apply; targets are derived from "
+            "the current price, and ASC reports a scheduled future price as current, so a re-run "
+            "would otherwise compound the cut")
+        return 2
     rows = plan_prices(c, tier_current_prices(c, args.tier_prices))
     log(f"preserve_existing={args.preserve_existing} (False = existing subscribers move to the new price)")
     log(f"{'product':<32} {'now':>6} {'USA new':>8} {'terr':>5} {'to-set':>6} {'missing':>7}")
@@ -405,15 +414,6 @@ def cmd_set_prices(c, args, log=print) -> int:
     bad = _flag_missing(rows, log)
     if bad and args.apply and not args.allow_missing_territories:
         log("ABORT: territories lack equalizations; fix or pass --allow-missing-territories")
-        return 2
-    if args.apply and not args.start_date:
-        log("ABORT: --start-date YYYY-MM-DD is required with --apply (Apple rejects immediate price "
-            "changes on approved subscriptions)")
-        return 2
-    if args.apply and args.tier_prices is None:
-        log("ABORT: pass --tier-prices-json with the OLD prices with --apply; targets are derived from "
-            "the current price, and ASC reports a scheduled future price as current, so a re-run "
-            "would otherwise compound the cut")
         return 2
     log(f"start_date={args.start_date}")
     for r in rows:

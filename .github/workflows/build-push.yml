@@ -185,7 +185,9 @@ jobs:
           python-version: "3.14.6"
 
       - name: Install dependencies
-        run: pip install --no-cache-dir -r requirements.txt
+        # pytest is installed for CI only (tests/test_price_cut_scripts.py is a pytest file that
+        # delegates to pytest.main when run as a script); it is not a production dependency.
+        run: pip install --no-cache-dir -r requirements.txt pytest
 
       - name: Create dummy APNs key for CI boot
         # Not a real key -- validate_apns_config() only checks this file

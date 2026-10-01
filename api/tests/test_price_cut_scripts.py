@@ -258,7 +258,8 @@ CURRENT = {p: sm.OLD_PRICE_CENTS[i] for i, p in enumerate(ap.PRODUCT_ORDER, star
 
 def args(**kw):
     ns = dict(apply=False, preserve_existing=False, allow_missing_territories=False,
-              tier_prices=CURRENT, version=2, price_source="current", delete_old=False)
+              tier_prices=CURRENT, version=2, price_source="current", delete_old=False,
+              start_date="2026-10-03")
     ns.update(kw)
     import argparse
     return argparse.Namespace(**ns)
@@ -287,7 +288,7 @@ def test_set_prices_dry_run_no_writes_and_apply_posts_per_territory(monkeypatch)
     assert len(writes) == 8 * len(TERRS)
     for m, path, body in writes:
         assert m == "POST" and path == "/v1/subscriptionPrices"
-        assert body["data"]["attributes"] == {"startDate": None, "preserveCurrentPrice": False}
+        assert body["data"]["attributes"] == {"startDate": "2026-10-03", "preserveCurrentPrice": False}
     terrs = {w[2]["data"]["relationships"]["territory"]["data"]["id"] for w in writes}
     assert terrs == set(TERRS)
 
@@ -452,3 +453,17 @@ def test_storekit_display_prices_match_server_table():
                 walk(v)
     walk(sk)
     assert {w: found.get(w) for w in words} == {w: GROUP_PRICE_CENTS[i] for i, w in enumerate(words, start=1)}
+
+
+def test_set_prices_apply_requires_start_date_and_old_prices(monkeypatch):
+    monkeypatch.setattr(ap, "_sleep", lambda *_: None)
+    for kw in (dict(apply=True, start_date=None), dict(apply=True, tier_prices=None)):
+        http_c, writes = fake_asc(state())
+        logs = []
+        rc = ap.cmd_set_prices(ap.AscClient(http_c, "t", allow_writes=True), args(**kw), logs.append)
+        assert rc == 2 and writes == [] and any(l.startswith("ABORT") for l in logs)
+
+
+if __name__ == "__main__":
+    # CI runs every tests/test_*.py as a plain script; delegate to pytest (installed by the workflow).
+    sys.exit(pytest.main([__file__, "-q"]))
