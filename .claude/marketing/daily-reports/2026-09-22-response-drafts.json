@@ -1,0 +1,112 @@
+[
+  {
+    "id": "R1",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/Christianity/comments/1wjdqi2/any_one_know_where_to_get_some_group_bible_studies/",
+    "posture": "explicit_need",
+    "delivery": "comment",
+    "draft_text": "I did something pretty similar for a couple of years, writing a fresh study every week for a group of about 15-20 and printing it out each time. What I noticed, the same thing you're describing, is that the weeks I showed up with less prepared material were actually the weeks people talked more. I'd assumed a thick handout was what made a study feel serious. It turned out to mostly just be in the way.\n\nIf you want something ready-made instead of writing weekly, The Gospel Coalition has free studies, and RightNow Media's library is solid if your church already has access to it. Cutting everything down to one passage and two or three questions, and letting people mark up the text themselves instead of reading my notes about it, mattered more than the material itself.\n\nFull disclosure since some subs care about this: I ended up building an app around that shift, FellowScript. It's free for a group your size, and it basically killed the printing loop for me since everyone reads the same passage and leaves notes right on it. Not saying you need it, just figured I'd mention it in case the prep-and-print grind is the part wearing you down too.\nfellowscript.com",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R2",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/TrueChristian/comments/1w2klyq/young_adult_small_group_topics/",
+    "posture": "explicit_need",
+    "delivery": "comment",
+    "draft_text": "The first time I got asked to lead a group I said yes before I had any plan at all, then spent way too long trying to build the \"perfect\" twelve-week series so I'd look like I knew what I was doing. I burned out on the planning before the first meeting even happened, and most of that work never got used.\n\nWhat worked better the second time was starting with just four weeks on one theme, something practically relevant like identity in Christ or what prayer actually looks like day to day, not a whole semester upfront. Keep the format simple: read the passage together, three questions, close in prayer. If it's working after four weeks, extend it. If it's not, you haven't lost a semester.\n\nOne small thing that's helped my own group stay consistent between meetings: I built an app called FellowScript where notes get shared with the group instead of staying in someone's private notebook, so people actually remember what was said last week. Not something you need to start, just useful once the group's running. fellowscript.com",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R3",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/TrueChristian/comments/1wjck51/bible_study/",
+    "posture": "explicit_need",
+    "delivery": "comment",
+    "draft_text": "Fill-in-the-blank workbooks can turn a study into busywork instead of an actual conversation, so what you're feeling makes sense. A lot of churches default to that format because it's easy to run, not because it's the best way to engage with the text.\n\nIf there's any room to say something, it might be worth telling whoever leads it that you'd get more out of a read-and-discuss format, even just for a few weeks as a trial. Some leaders genuinely don't know people want that until someone says so.",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R4",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/TrueChristian/comments/1wb0v4y/is_it_normal_to_feel_pressured_to_become_a/",
+    "posture": "explicit_need",
+    "delivery": "comment",
+    "draft_text": null,
+    "status": "skipped",
+    "skip_reason": "Likely duplicate — matches a thread Jacey appears to have already hand-answered directly today per response-style-guide.md's no-mention example; needs manual verification before drafting a second reply on the same thread."
+  },
+  {
+    "id": "R5",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/pastors/comments/1uvx0zl/bible_study_group_where_to_start/",
+    "posture": "explicit_need",
+    "delivery": "comment",
+    "draft_text": "The first group I led that was mostly older, longtime believers, I used the same fast-paced format that worked with a younger group I'd led before: lots of questions, quick turnaround. It fell flat. People wanted room to actually reflect and tell their own stories, and the pace I brought in just cut that off.\n\nSlowing down mattered more than anything I changed about the material itself. Fewer questions, more silence, letting it be discussion-led instead of me driving it the whole time. A consistent day and time each week ended up mattering more to this group than any particular curriculum.\n\nSmall aside since I'm not sure how relevant it is to your group specifically: I work on an app called FellowScript that keeps everyone's notes in one shared place, which has helped a couple of people in my own group who don't reliably write things down between meetings. Worth a look if that's ever a pain point for yours. fellowscript.com",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R6",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/TrueChristian/comments/1wm13oa/i_think_i_made_a_creep_of_myself_at_church/pb7uo8l/",
+    "posture": "explicit_need",
+    "delivery": "comment",
+    "draft_text": "I hit the same wall when I was single. Every small group at my church skewed married or a lot older, and there wasn't really a lane for someone in their twenties who wasn't paired off yet.\n\nI spent almost a year waiting for a group like that to show up on its own before I realized nobody was going to build it for me. Ask a staff member or pastor for a room and a time slot, then invite three or four people directly instead of putting up a general announcement. Personal invites work a lot better than an open call for this age group, and a small group is easier to actually start than a big one.\n\nOnce you've got even three or four people, it costs nothing to keep growing it. I built FellowScript, an app for exactly that kind of group study, and the group side of it is free with no cap. Not required to start one, just mentioning it in case it's useful once you're off the ground. fellowscript.com",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R7",
+    "platform": "twitter",
+    "url": "https://twitter.com/ThomisticDan/status/2101832340368413096",
+    "posture": "explicit_need",
+    "delivery": "comment",
+    "draft_text": "Forsaking the brethren in Hebrews 10:25 is about neglecting fellowship altogether, not about which medium it happens through. An online study where you actually know the people, show up on a rhythm, and are known back fulfills that a lot more than sitting in a pew next to strangers every week. The risk with online study isn't the platform, it's passivity, watching without any real relationship attached to it. If yours has that, you're not forsaking anything.",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R8",
+    "platform": "instagram",
+    "url": "https://instagram.com/p/DdjzoJKnF8M",
+    "posture": "networking",
+    "delivery": "dm",
+    "draft_text": "Saw your post about the open Bible study, love that you're explicitly inviting people to bring their doubts and questions instead of expecting everyone to already have it figured out. That's a harder thing to actually sustain than it sounds.\n\nCurious how you've kept that spirit alive as the group's grown. Does it get harder to keep it feeling open to someone brand new once there's a group of regulars with history together, or has it stayed pretty natural?",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R9",
+    "platform": "instagram",
+    "url": "https://instagram.com/p/DdkktotpkEv",
+    "posture": "networking",
+    "delivery": "dm",
+    "draft_text": "Saw your post about the CSULB Bible study, food and fellowship after is a great combo for getting people to actually stick around and talk instead of leaving right after.\n\nWhat's worked for you all in keeping people coming back week over week as the semester goes on? Campus groups are always fighting the calendar, midterms, breaks, everyone's schedule falling apart by week eight. Curious if you've found anything that keeps momentum through that stretch.",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R10",
+    "platform": "instagram",
+    "url": "https://instagram.com/p/DdkS2afKult",
+    "posture": "networking",
+    "delivery": "dm",
+    "draft_text": "Saw your post about the weekly online study, always interesting to see how different groups make that work over Zoom instead of in person.\n\nHow do you all handle notes or follow-up between sessions? That's usually the part that gets lost with online groups specifically, everyone's just staring at a screen during the session and then nothing carries over to the next week. Curious if you've found a rhythm that works for keeping people engaged between calls.",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R11",
+    "platform": "facebook",
+    "url": "https://www.facebook.com/groups/2211562545/posts/10163330640277546/",
+    "posture": "networking",
+    "delivery": "comment",
+    "draft_text": "The tech and faith angle here is genuinely interesting, especially running the same conversation across four different states and comparing notes. Most AI-and-church discussions I've seen stay pretty surface-level (is it good or bad), so doing it as an actual ongoing discussion group is a different approach.\n\nWhat's been the most surprising disagreement to come out of it so far? Curious whether people are mostly landing in the same place or genuinely split.",
+    "status": "pending_approval",
+    "skip_reason": null
+  }
+]

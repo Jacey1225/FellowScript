@@ -1,0 +1,119 @@
+[
+  {
+    "id": "R1",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/Christianity/comments/1w3j0ar/",
+    "posture": "explicit_need",
+    "draft_text": "Putting together a multi-week series is its own kind of discipline. Curious how you're keeping the plan and your notes together as you go, especially a few weeks in when people forget what happened in week 1. Asking partly because that's the problem that got me building FellowScript, a Bible study app that puts a study plan into your group's shared feed so people aren't digging through old texts to find week 3's questions. Not saying it's the answer to your post, just wondering if that's part of what's been hard for you too.",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R2",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/TrueChristian/comments/1vcuowy/",
+    "posture": "explicit_need",
+    "draft_text": "Been there, juggling three separate apps for one group is its own part-time job. For what it's worth, I work on FellowScript. We built it around exactly that problem: notes and group chat live in the same place as the scripture you're studying, so you're not bouncing between a spreadsheet and a group chat to figure out what's next. It's built for the study side of things though, not signups or scheduling, so you'd probably still want something lightweight for RSVPs.",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R3",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/TrueChristian/comments/1w2klyq/",
+    "posture": "explicit_need",
+    "draft_text": "First time leading is honestly the hardest one, you're building the habit of prepping and learning to lead at the same time. Two things that helped people I've talked to: pick a passage or short book to move through slowly rather than a new topic every week, it gives you a built-in shape. And write your questions down somewhere your group can see too, not just your own notes, it takes the pressure off you to remember everything out loud. I work on FellowScript, which is basically built for that second part, a shared notes space for a group. But the bigger thing is just picking a simple structure and sticking with it for a few weeks.",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R4",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/Christianity/comments/1w33s2s/",
+    "posture": "explicit_need",
+    "draft_text": "Following this thread for recs too. One thing that's made more of a difference for groups I've talked to than the book choice itself: whether everyone's notes and reflections land somewhere the whole group can actually see between meetings, it keeps the study alive outside the room. I work on FellowScript, which does collaborative devotion plans for exactly that. Mentioning it since it's relevant, though I don't have a book recommendation for your group, that part's outside what I can help with.",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R5",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/Reformed/comments/1tt8rc3/",
+    "posture": "explicit_need",
+    "draft_text": "Running four studies at once is a lot of plates to keep spinning. Genuine question, how are you keeping each group's material and notes separate from each other right now? That's the exact tangle FellowScript, which I work on, was built to untangle: each group gets its own space for notes and plans so nothing bleeds into the wrong study. Not assuming that's your actual bottleneck, just curious given the scale you're running.",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R6",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/Bible/comments/1uvhngd/",
+    "posture": "explicit_need",
+    "draft_text": "Retention almost never comes from the notes themselves, it comes from what you do with them after: saying them out loud, defending why you highlighted something, having someone push back on it. If your notes are just sitting in an app nobody else sees, that's probably the actual gap, not the note-taking method. I work on FellowScript, which anchors notes to specific verses and lets people in your group see and respond to them, built around the idea that retention is a discussion thing, not a filing thing.",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R7",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/Bible/comments/1i9j6sa/",
+    "posture": "explicit_need",
+    "draft_text": "FellowScript might be worth a look, I work on it. Web and iOS with notes that sync, and a macOS desktop app if you study at a computer. Worth knowing upfront: it's built group-first, so notes are tied to a shared study space rather than being a purely solo tool. Still works fine solo, just be aware that's the frame it's designed around before you commit to it.",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R8",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/Bible/comments/1ikq51k/",
+    "posture": "explicit_need",
+    "draft_text": "That's pretty much exactly what FellowScript does. Full disclosure, I work on it: read, take notes tied to specific verses, and share them with whoever you're studying with, whether that's one friend or a small group. Happy to answer specifics if you want them.",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R9",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/Bible/comments/1kg1cje/",
+    "posture": "explicit_need",
+    "draft_text": "FellowScript, I'm one of the people building it, has a three-panel layout: scripture, notes, and messaging side by side, which covers the side-by-side part well. Being upfront though, it's single-translation (ESV) with no cross-reference or lexicon tooling, so if multi-translation comparison or original-language lookup is what you actually need, it won't cover that. Worth knowing before you try it.",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R10",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/Christianity/comments/1wgon2y/",
+    "posture": "explicit_need",
+    "draft_text": "A few things that've worked for groups I've heard from: a simple rotating potluck sign-up so it's not always the host cooking, or a shared per-meeting fund (Venmo or Zelle, a small flat amount like $5) that covers snacks and coffee instead of one person always footing the bill. If the group's growing, worth revisiting the amount every so often since costs scale with headcount faster than people expect.",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R11",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/Christianity/comments/1wcry7q/",
+    "posture": "explicit_need",
+    "draft_text": "On the practical side, your own church's small-group ministry page, or a campus/young-adult ministry if there's one near you, tend to be the easiest way in if you don't already know people to ask directly. But \"small groups just fall apart\" is the real thing worth sitting with. In my experience it's rarely the first meeting that kills a group, it's the six weeks after when nobody's talking between sessions. I work on FellowScript, built partly around that exact gap: shared notes and chat so a group has a reason to stay connected outside the meeting. Mentioning it because you named the actual problem, not as a blanket plug.",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R12",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/Christian/comments/1ug02wf/",
+    "posture": "explicit_need",
+    "draft_text": null,
+    "status": "skipped",
+    "skip_reason": "no product fit — poster wants to join an existing online study, not a tool; full thread text unavailable today (Reddit API rate-limited) to draft a genuine non-generic reply"
+  },
+  {
+    "id": "R13",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/Christianity/comments/1wfwpor/",
+    "posture": "explicit_need",
+    "draft_text": "Totally get the wariness, a lot of \"AI companion\" framing in this space feels off. FellowScript, I work on it, is built human-first: it's fundamentally a group study tool, shared notes, group chat, people actually seeing what you're studying. Accountability comes from real people in your group, not a bot. Since you specifically said no AI: there is an optional AI \"heartbeat\" feature (daily devotional prompts), but it's opt-in and easy to ignore if you don't want it. Didn't want to leave that out and have you find it later and feel misled.",
+    "status": "pending_approval",
+    "skip_reason": null
+  }
+]

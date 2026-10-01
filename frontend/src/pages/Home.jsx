@@ -217,9 +217,9 @@ const plans = [
   {
     name: 'Group',
     price: 'From $10',
-    sub: 'Pick 1 to 8 members · 1 month free trial',
+    sub: 'Pick 1 to 8 members · Billed monthly',
     perks: ['Unlimited notes', 'Unlimited AI check-ins', 'Unlimited notifications', 'Shared reading space & group chat', 'Live study sessions', 'Priority support'],
-    cta: 'Start free trial',
+    cta: 'Subscribe',
     href: '/signin',
     primary: true,
   },
@@ -535,7 +535,7 @@ export default function Home() {
           <h2 style={{ fontFamily: HEAD_FONT, fontSize: 'clamp(34px, 5vw, 74px)', lineHeight: 1.02, fontWeight: 400, letterSpacing: '-0.03em', margin: '0 0 24px', maxWidth: '20em', color: LIGHT_INK }}>
             Start free. <span style={{ color: 'rgba(26,21,18,0.38)' }}>Grow at your own pace.</span>
           </h2>
-          <p style={{ fontSize: 16.5, lineHeight: 1.65, color: 'rgba(26,21,18,0.6)', margin: '0 0 clamp(48px, 7vh, 88px)', maxWidth: '32em' }}>Every paid plan starts with a free month — no card required to begin.</p>
+          <p style={{ fontSize: 16.5, lineHeight: 1.65, color: 'rgba(26,21,18,0.6)', margin: '0 0 clamp(48px, 7vh, 88px)', maxWidth: '32em' }}>The free plan needs no card. Paid plans are billed monthly and you can cancel any time.</p>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 'clamp(20px, 2.4vw, 32px)', alignItems: 'stretch' }}>
             {plans.map(({ name, price, sub, perks, cta: planCta, href, primary }) => (
               <div key={name} style={primary
@@ -603,6 +603,10 @@ export default function Home() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 11 }}>
               <Link to="/" className="hm-footer-link" style={{ fontSize: 15.5, textDecoration: 'none' }}>Home</Link>
               <Link to="/download" className="hm-footer-link" style={{ fontSize: 15.5, textDecoration: 'none' }}>Read</Link>
+              {/* Task 20260930-downloads-page-indexable: plain <a> to the real,
+                  prerendered, crawlable downloads URL (a HashRouter <Link>
+                  only yields "#/download", which crawlers cannot follow). */}
+              <a href="/download/" className="hm-footer-link" style={{ fontSize: 15.5, textDecoration: 'none' }}>Download</a>
               {user && <Link to="/account" className="hm-footer-link" style={{ fontSize: 15.5, textDecoration: 'none' }}>Account</Link>}
             </div>
           </div>

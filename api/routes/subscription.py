@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Request, Depends
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from datetime import datetime, timezone
 import time
 import logging
@@ -9,6 +9,9 @@ from backend.subscription import stripe_service
 from backend.subscription import apple_service
 from backend.auth.dependencies import get_current_user, require_match, require_admin
 from schemas.subscription import SubscriptionCreate, SubscriptionUpdate
+from backend.interactions.invites import audit as invite_audit
+from backend.rate_limiting import get_client_ip, limiter
+from backend.subscription.promo import PromoManager, promo_config, promo_enabled
 
 subscription_router = APIRouter(prefix="/subscriptions")
 logger = logging.getLogger(__name__)
@@ -30,11 +33,32 @@ def _audit(action: str, admin_id: str, subscription_id: str | None = None) -> No
 class CheckoutRequest(BaseModel):
     user_id: str
     member_count: int = 1
+    # Optional creator/friend code (task 20260930-creator-friend-codes). Ignored
+    # entirely while PROMO_CODES_ENABLED is off.
+    promo_code: str | None = Field(default=None, max_length=64)
 
 
 class AppleSyncRequest(BaseModel):
     user_id: str
     jws: str          # StoreKit 2 signed transaction (jwsRepresentation)
+
+
+def _promo_rate() -> str:
+    # Evaluated per request; only matters while the flag is on (see exempt_when).
+    # The placeholder is unreachable-in-effect: with the flag off (or config
+    # never validated, e.g. bare test apps) the limit is exempt.
+    try:
+        return promo_config().validate_rate_limit
+    except Exception:
+        return "100000/minute"
+
+
+def _promo_limit_exempt() -> bool:
+    # While PROMO_CODES_ENABLED is on, checkout creation shares the per-IP
+    # promo rate limit (brute-force guard for codes tried at checkout, since
+    # the code travels in the body and a decorator can't see it). Flag off =>
+    # checkout is untouched.
+    return not promo_enabled()
 
 
 def _ts(epoch):
@@ -73,12 +97,18 @@ async def create_subscription(sub: SubscriptionCreate, current_user: str = Depen
 # These literal routes are declared before the "/{subscription_id}" wildcard.
 
 @subscription_router.post("/checkout")
-async def create_checkout(req: CheckoutRequest, current_user: str = Depends(get_current_user)) -> dict:
-    """Create a Stripe Checkout Session for a free-trial subscription.
+@limiter.limit(_promo_rate, exempt_when=_promo_limit_exempt)
+async def create_checkout(request: Request, req: CheckoutRequest, current_user: str = Depends(get_current_user)) -> dict:
+    """Create a Stripe Checkout Session for a subscription.
 
     Returns ``{"url": str}`` — the browser redirects there to enter payment on
     Stripe's hosted page. The subscription row is created by the webhook once
     checkout completes.
+
+    With PROMO_CODES_ENABLED on and ``promo_code`` supplied, the code is
+    re-validated server-side (never trusting an earlier validate call) and the
+    shared first-month coupon is applied. Any failure returns the same uniform
+    400 ``invalid_promo_code`` and creates no session (fail closed).
     """
     if req.user_id != current_user:
         raise HTTPException(status_code=403, detail="Forbidden")
@@ -89,14 +119,68 @@ async def create_checkout(req: CheckoutRequest, current_user: str = Depends(get_
         email = db.get_user_email(req.user_id)
     finally:
         db.close()
+    promo = None
+    if promo_enabled() and req.promo_code and req.promo_code.strip():
+        pm = PromoManager()
+        try:
+            row = pm.evaluate(req.user_id, req.promo_code, req.member_count, email)
+        finally:
+            pm.close()
+        if not row:
+            raise HTTPException(status_code=400, detail={"code": "invalid_promo_code",
+                                                         "message": "This code isn't valid."})
+        promo = {"code_id": row["id"], "percent_off": promo_config().discount_percent}
     try:
-        url = stripe_service.create_checkout_session(req.user_id, email, req.member_count)
+        url = stripe_service.create_checkout_session(req.user_id, email, req.member_count, promo)
         return {"url": url}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error("Stripe checkout error: %s", e)
         raise HTTPException(status_code=502, detail="Could not start checkout.")
+
+
+def _log_promo_redemption(session: dict, user_id: str, member_count: int) -> None:
+    """Log one promo redemption for a completed checkout session, if it carried one.
+
+    Only logs when the session was actually paid with a discount applied, is an
+    individual plan, and the buyer had no prior paid history (local records;
+    the Stripe-side check already ran at checkout creation). Idempotent on the
+    Checkout Session id. Raises on DB errors so the webhook 500s and retries.
+    """
+    code_id = (session.get("metadata") or {}).get("promo_code_id")
+    if not code_id:
+        return
+    session_id = session.get("id") or ""
+    discount = (session.get("total_details") or {}).get("amount_discount") or 0
+    if not session_id or session.get("payment_status") != "paid" or discount <= 0 or member_count != 1:
+        logger.warning("promo redemption skipped: session %s not a paid, discounted individual checkout", session_id)
+        return
+    pm = PromoManager()
+    try:
+        if pm.redemption_exists(session_id):
+            return
+        code = pm.get_code_by_id(code_id)
+        if not code:
+            logger.warning("promo redemption skipped: unknown code id %s (session %s)", code_id, session_id)
+            return
+        if code["kind"] == "friend" and code["referrer_user_id"] == str(user_id):
+            logger.warning("promo redemption skipped: self-referral (session %s)", session_id)
+            return
+        if pm.has_local_paid_history(user_id):
+            logger.warning("promo redemption skipped: buyer not a new subscriber (session %s)", session_id)
+            return
+        result = pm.log_redemption(
+            code_id=code_id, user_id=user_id, plan="individual", platform="web",
+            store_transaction_id=session.get("invoice") or session_id,
+            idempotency_key=session_id, amount_discount_cents=int(discount),
+        )
+        if result == "over_cap":
+            logger.warning("promo redemption over max_redemptions cap, logged for review (session %s)", session_id)
+        else:
+            logger.info("promo redemption %s (session %s code_id %s)", result, session_id, code_id)
+    finally:
+        pm.close()
 
 
 @subscription_router.post("/stripe/webhook")
@@ -124,6 +208,11 @@ async def stripe_webhook(request: Request) -> dict:
             customer     = obj.get("customer") or ""
             sub_id       = obj.get("subscription") or ""
             if user_id and sub_id:
+                # Promo redemption is logged BEFORE the plan upsert: the upsert
+                # marks the user as having held a paid plan, which would make a
+                # retried delivery look "ineligible". Both steps are idempotent,
+                # and any failure 500s so Stripe retries.
+                _log_promo_redemption(obj, user_id, member_count)
                 sub  = stripe_service.retrieve_subscription(sub_id)
                 card = stripe_service.card_from_subscription(sub)
                 db.upsert_from_stripe(
@@ -498,7 +587,7 @@ async def get_requests(subscription_id: str, current_user: str = Depends(get_cur
 
 
 @subscription_router.post("/{subscription_id}/requests/{from_user_id}/accept")
-async def accept_request(subscription_id: str, from_user_id: str, current_user: str = Depends(get_current_user)) -> dict:
+async def accept_request(request: Request, subscription_id: str, from_user_id: str, current_user: str = Depends(get_current_user)) -> dict:
     """Host accepts a pending request, enrolling the user in the plan. Host only.
 
     Raises:
@@ -511,19 +600,28 @@ async def accept_request(subscription_id: str, from_user_id: str, current_user: 
         _require_host(db, subscription_id, current_user)
         result = db.accept_request(subscription_id, from_user_id)
         if result and "error" in result:
+            invite_audit("subscription_request_accept_fail", subscription=subscription_id,
+                         owner=current_user, requester=from_user_id, reason=result["error"],
+                         ip=get_client_ip(request))
             raise HTTPException(status_code=400, detail=result["error"])
+        invite_audit("subscription_request_accept", subscription=subscription_id,
+                     owner=current_user, requester=from_user_id, ip=get_client_ip(request))
         return {"ok": True}
     finally:
         db.close()
 
 
 @subscription_router.delete("/{subscription_id}/requests/{from_user_id}", status_code=204)
-async def decline_request(subscription_id: str, from_user_id: str, current_user: str = Depends(get_current_user)) -> None:
+async def decline_request(request: Request, subscription_id: str, from_user_id: str, current_user: str = Depends(get_current_user)) -> None:
     """Decline (host) or cancel (requester) a pending join request."""
     db = SubscriptionsManager()
     try:
         if current_user != from_user_id:
             _require_host(db, subscription_id, current_user)
         db.delete_request(subscription_id, from_user_id)
+        invite_audit(
+            "subscription_request_cancel" if current_user == from_user_id else "subscription_request_decline",
+            subscription=subscription_id, user=current_user, requester=from_user_id,
+            ip=get_client_ip(request))
     finally:
         db.close()

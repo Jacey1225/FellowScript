@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Spin } from 'antd';
 import {
   listGroupInvites, createGroupInvite, revokeInvite, resetGroupInvites,
+  listSubscriptionInvites, createSubscriptionInvite, resetSubscriptionInvites,
 } from '../lib/invitesApi.js';
 
 // Task 20260929-group-invite-links (design-notes.md A). The "Invite link"
@@ -29,14 +30,27 @@ function expiryLabel(iso, now = Date.now()) {
 
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 
-function createErrorCopy(err) {
-  if (err.status === 409 && err.code === 'link_limit') return 'You have the maximum number of active links for this group. Revoke one to make another.';
+// Task 20260930-subscription-seat-invites: the same section serves a plan
+// (kind 'subscription', plan owner only). Opening such a link files a join
+// request the owner must accept, so the copy says "request", never "join".
+const KINDS = {
+  group: { list: listGroupInvites, create: createGroupInvite, reset: resetGroupInvites, noun: 'group' },
+  subscription: { list: listSubscriptionInvites, create: createSubscriptionInvite, reset: resetSubscriptionInvites, noun: 'plan' },
+};
+
+function createErrorCopy(err, noun = 'group') {
+  if (err.status === 409 && err.code === 'link_limit') return `You have the maximum number of active links for this ${noun}. Revoke one to make another.`;
+  if (err.status === 409 && err.code === 'not_eligible') return 'Invite links need an active plan with more than one seat.';
   if (err.status === 429) return 'Too many tries. Wait a minute and try again.';
-  if (err.status === 403) return "You can't create an invite link for this group.";
+  if (err.status === 403) return `You can't create an invite link for this ${noun}.`;
   return "Couldn't create the link. Please try again.";
 }
 
-export default function InviteLinkSection({ userId, groupId, reducedMotion = false, onForbidden }) {
+export default function InviteLinkSection({ userId, groupId, subscriptionId, kind = 'group', reducedMotion = false, onForbidden }) {
+  const api = KINDS[kind] || KINDS.group;
+  const isSub = kind === 'subscription';
+  const targetId = isSub ? subscriptionId : groupId;
+  const cacheKey = `${kind}:${targetId}`;
   const mountedRef = useRef(true);
   const urlRef = useRef(null);
   const copyTimerRef = useRef(null);
@@ -65,33 +79,33 @@ export default function InviteLinkSection({ userId, groupId, reducedMotion = fal
   const [resetError, setResetError] = useState(null);
 
   const applyList = useCallback((next) => {
-    listCache.set(groupId, next);
+    listCache.set(cacheKey, next);
     setData(next);
-  }, [groupId]);
+  }, [cacheKey]);
 
   const load = useCallback(() => {
-    if (!userId || !groupId) return () => {};
+    if (!userId || !targetId) return () => {};
     let cancelled = false;
-    const cached = listCache.get(groupId) || null;
+    const cached = listCache.get(cacheKey) || null;
     setData(cached); setUnavailable(false); setLoadError(null); setRefreshError(false);
-    listGroupInvites(userId, groupId)
+    api.list(userId, targetId)
       .then((res) => {
         if (cancelled) return;
         const next = { invites: res.invites || [], options: res.options };
-        listCache.set(groupId, next);
+        listCache.set(cacheKey, next);
         setData(next);
         setExpiryDays((v) => v ?? next.options.default_expiry_days);
         setMaxUses((v) => v ?? next.options.default_max_uses);
       })
       .catch((err) => {
         if (cancelled) return;
-        if (err.status === 404) { setUnavailable(true); listCache.delete(groupId); return; }
+        if (err.status === 404) { setUnavailable(true); listCache.delete(cacheKey); return; }
         if (err.status === 403) { onForbidden?.(err); return; }
         if (cached) setRefreshError(true);
         else setLoadError("Couldn't load invite links.");
       });
     return () => { cancelled = true; };
-  }, [userId, groupId, onForbidden]);
+  }, [userId, targetId, api, onForbidden]);
 
   useEffect(() => {
     setReveal(null); setCreateError(null); setConfirmId(null); setOptionsOpen(false);
@@ -115,7 +129,7 @@ export default function InviteLinkSection({ userId, groupId, reducedMotion = fal
     if (creating || !data?.options) return;
     setCreating(true); setCreateError(null); setResetStatus(null);
     try {
-      const res = await createGroupInvite(userId, groupId, { expiresInDays: expiryDays, maxUses });
+      const res = await api.create(userId, targetId, { expiresInDays: expiryDays, maxUses });
       if (!mountedRef.current) return;
       setReveal({ url: res.url });
       setCopyState('idle');
@@ -129,7 +143,7 @@ export default function InviteLinkSection({ userId, groupId, reducedMotion = fal
     } catch (err) {
       if (!mountedRef.current) return;
       if (err.status === 404) { setUnavailable(true); return; }
-      setCreateError(createErrorCopy(err));
+      setCreateError(createErrorCopy(err, api.noun));
     } finally {
       if (mountedRef.current) setCreating(false);
     }
@@ -161,7 +175,7 @@ export default function InviteLinkSection({ userId, groupId, reducedMotion = fal
   const removeRow = (id) => {
     const drop = () => mountedRef.current && setData((prev) => {
       const next = { ...prev, invites: prev.invites.filter((i) => i.invite_id !== id) };
-      listCache.set(groupId, next);
+      listCache.set(cacheKey, next);
       return next;
     });
     if (reducedMotion) { drop(); return; }
@@ -190,7 +204,7 @@ export default function InviteLinkSection({ userId, groupId, reducedMotion = fal
     if (resetBusy) return;
     setResetBusy(true); setResetError(null);
     try {
-      const res = await resetGroupInvites(userId, groupId);
+      const res = await api.reset(userId, targetId);
       if (!mountedRef.current) return;
       setConfirmReset(false);
       setReveal(null);
@@ -229,7 +243,11 @@ export default function InviteLinkSection({ userId, groupId, reducedMotion = fal
       {data && (
         <>
           {invites.length === 0 && !reveal && (
-            <p className="group-info-helper">Anyone with the link can join this group until it expires.</p>
+            <p className="group-info-helper">
+              {isSub
+                ? 'Anyone with the link can ask to join your plan. You approve each request before they get access.'
+                : 'Anyone with the link can join this group until it expires.'}
+            </p>
           )}
 
           {reveal ? (
@@ -258,7 +276,7 @@ export default function InviteLinkSection({ userId, groupId, reducedMotion = fal
               {options && (
                 <button type="button" className="group-info-text-btn" aria-expanded={optionsOpen}
                   onClick={() => setOptionsOpen((v) => !v)}>
-                  Expires in {plural(expiryDays ?? options.default_expiry_days, 'day', 'days')} · Up to {plural(maxUses ?? options.default_max_uses, 'person', 'people')}
+                  Expires in {plural(expiryDays ?? options.default_expiry_days, 'day', 'days')} · Up to {plural(maxUses ?? options.default_max_uses, isSub ? 'request' : 'person', isSub ? 'requests' : 'people')}
                 </button>
               )}
               {optionsOpen && options && (
@@ -270,7 +288,7 @@ export default function InviteLinkSection({ userId, groupId, reducedMotion = fal
                         onClick={() => setExpiryDays(d)}>{plural(d, 'day', 'days')}</button>
                     ))}
                   </div>
-                  <div className="group-info-chips" role="radiogroup" aria-label="Number of people who can join">
+                  <div className="group-info-chips" role="radiogroup" aria-label={isSub ? 'Number of requests the link allows' : 'Number of people who can join'}>
                     {options.allowed_max_uses.map((n) => (
                       <button key={n} type="button" role="radio" aria-checked={maxUses === n}
                         className={`group-info-chip${maxUses === n ? ' group-info-chip-on' : ''}`}
@@ -296,13 +314,13 @@ export default function InviteLinkSection({ userId, groupId, reducedMotion = fal
                       <div className="group-info-invite-meta">
                         <span>{label}</span>
                         <span className="group-info-helper">
-                          {inv.remaining_uses} of {inv.max_uses} spots left · Created by {who}
+                          {inv.remaining_uses} of {inv.max_uses} {isSub ? 'requests' : 'spots'} left · Created by {who}
                         </span>
                         {rowErrors[inv.invite_id] && <span className="group-info-error" role="alert">{rowErrors[inv.invite_id]}</span>}
                       </div>
                       {confirmId === inv.invite_id ? (
                         <div className="group-info-invite-confirm" role="group" aria-label="Confirm revoke">
-                          <span className="group-info-helper">Revoke this link? People with it will no longer be able to join.</span>
+                          <span className="group-info-helper">{isSub ? 'Revoke this link? People with it will no longer be able to request to join.' : 'Revoke this link? People with it will no longer be able to join.'}</span>
                           <div>
                             <button type="button" className="group-info-text-btn group-info-danger" onClick={() => onRevoke(inv)}>Revoke</button>
                             <button type="button" className="group-info-text-btn" onClick={() => setConfirmId(null)}>Cancel</button>
@@ -323,7 +341,7 @@ export default function InviteLinkSection({ userId, groupId, reducedMotion = fal
           {invites.length >= 2 && (
             confirmReset ? (
               <div className="group-info-invite-confirm" role="group" aria-label="Confirm reset all links">
-                <span className="group-info-helper">Revoke all links you can manage? Nobody will be able to join with them.</span>
+                <span className="group-info-helper">{isSub ? 'Revoke all links for this plan? Nobody will be able to request with them.' : 'Revoke all links you can manage? Nobody will be able to join with them.'}</span>
                 <div>
                   <button type="button" className="group-info-text-btn group-info-danger" onClick={onReset} disabled={resetBusy}>
                     {resetBusy ? <Spin size="small" /> : 'Revoke all'}

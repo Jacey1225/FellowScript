@@ -1,0 +1,119 @@
+[
+  {
+    "id": "R1",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/Christianity/comments/1wjdqi2/any_one_know_where_to_get_some_group_bible_studies/",
+    "posture": "explicit_need",
+    "draft_text": "I did something similar for about two years, writing a full study from scratch every week and printing it for a group of 15 to 20. What surprised me was noticing the same thing you're describing: the weeks I brought less prepared material, people talked more, not less. I'd been treating a thick handout as what made the study feel legitimate, and it was actually getting in the way of people just sitting with the text themselves.\n\nIf you want something ready-made instead of writing weekly, The Gospel Coalition has free studies, and RightNow Media's library is solid if your church already has access. The bigger shift for me wasn't finding better material though, it was cutting it down to a passage and two or three questions and letting the group mark up the text themselves instead of reading my notes about it.\n\nThat's actually part of what got me into building FellowScript. It's free for a group your size, and it killed the printing loop for me: everyone reads the same passage and leaves notes right on it, so nothing gets photocopied anymore. The less-prep shift works fine on paper too, but if the printing and prep grind specifically is what's wearing you down, it might be worth a look. fellowscript.com",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R2",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/Reformed/comments/1wiqvuy/how_do_you_actually_remember_what_you_hear_on/",
+    "posture": "explicit_need",
+    "draft_text": null,
+    "status": "skipped",
+    "skip_reason": "Likely duplicate cross-post of a thread already answered yesterday on r/TrueChristian (same handle style, near-identical title); report flags possible competitor market research. Reddit was unreachable this run to check the poster's post history, so this needs a human look before any engagement."
+  },
+  {
+    "id": "R3",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/TrueChristian/comments/1w2klyq/young_adult_small_group_topics/",
+    "posture": "explicit_need",
+    "draft_text": "My first small group was young adults too, and I'd never led one before either. I spent weeks planning a long systematic theology series because it felt like the serious choice, and it fell apart by week three. The material assumed a foundation the group didn't have yet, since we'd never actually sat in a room together before that.\n\nFor a first group, something short and conversational works better: a single Gospel, or a short letter like Philippians or James, six to eight weeks, with simple observation and application questions instead of a teaching-heavy format. The real skill you're building those first couple months is getting a room of people comfortable talking, not covering material.\n\nWhat helped me hold onto momentum between our first few meetings was having somewhere the group could drop a note or a verse that stuck with them during the week, instead of everything resetting to zero every time we met. Even something as simple as a shared group chat or a shared doc works fine for that — the tool isn't really the point, it's giving people a place to leave a thought between meetings so the momentum doesn't rely entirely on the next session going well.",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R4",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/Reformed/comments/1v4anfo/how_do_you_take_notes_on_your_bible/",
+    "posture": "explicit_need",
+    "draft_text": "I've got a similar attention issue, and full outline-style methods like BSF's homiletics approach never stuck for me either. There are too many fields to fill in for every verse. I tried forcing myself into a rigid multi-part method for a while because it looked thorough, and mostly I just stopped taking notes because it felt like homework.\n\nCutting it down to one question and one observation per passage made the difference. You're not writing a commentary, you're trying to remember what stood out. For ADHD specifically, tying the note directly to the verse instead of a separate notebook page matters more than it seems, since flipping back to find the right page later is its own tax on attention.\n\nThat's actually the exact thing that got me building FellowScript. Notes stay attached to the verse itself instead of a separate page, and sharing them with the men's group is one tap instead of retyping anything into a group thread. The less-is-more part works on paper too, but the verse-attached part might be where things are actually falling apart for you. fellowscript.com",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R5",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/Reformed/comments/1urxvuv/bible_study_training_resources/",
+    "posture": "explicit_need",
+    "draft_text": "I've co-led before too, splitting slides and discussion questions between two people. We leaned hard on slides for a long stretch, and engagement was flattest exactly on the weeks we projected the most content. People were watching, not talking.\n\nFor training resources specifically, Simeon Trust runs solid workshops (in person and online), and The Gospel Coalition has decent leader-training material if you want something structured. But the bigger lever for us wasn't the training itself, it was cutting slide time and having everyone open to the same passage and mark it up together for the first ten minutes before any teaching happened.\n\nThat shift toward everyone marking the same text is actually what pulled me into building FellowScript. It just gives a group a shared place to keep doing that outside the meeting too. It's not a training resource, but it might be worth trying alongside whatever training you land on. fellowscript.com",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R6",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/Bible/comments/1uvhngd/taking_notes_still_not_retaining_much_tips/",
+    "posture": "explicit_need",
+    "draft_text": "I take notes in an app too, and had this exact problem for a long time. Things felt captured in the moment, then a month later they were basically gone. I was tagging by topic, which felt organized, but I'd forget which tag I used and the note would disappear into the pile anyway.\n\nTying every note to the actual verse reference instead of a theme tag changed that for me, along with forcing myself to write one line connecting it to something happening in my life right then. That's what makes it retrievable later. When I land back on that verse, which happens naturally if you're reading through a book more than once, the note resurfaces with it.\n\nThat verse-first structure is part of why I built FellowScript. Notes live attached to the verse, so tagging isn't really necessary, you just land back on the passage. It works fine solo, no group required for that part, but the attach-to-the-verse idea is worth trying even without switching apps. fellowscript.com",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R7",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/Christian/comments/1ug02wf/bible_study_groups_online/",
+    "posture": "explicit_need",
+    "draft_text": "I've got family and friends spread across different churches and time zones too, and we tried a weekly Zoom for a while. The call kept falling apart, not because the content was bad, but because syncing five people's calendars for a live call every week was the actual bottleneck. Eventually it just stopped happening.\n\nThe fix for us wasn't a better call platform. It was decoupling doing the study from being on a call at the same time. Everyone reads and marks the passage on their own time during the week, and the live piece, even just a group thread instead of a call, becomes the recap instead of the whole thing.\n\nThat's most of why I built FellowScript. Group notes and highlights update as people go, so the study doesn't wait on everyone's calendar syncing, and you can still hop on a call in-app if you want the live piece for the recap. It's not the only way to solve this, but if the scheduling part specifically is what's killing it for your group, it might be worth a look. fellowscript.com",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R8",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/pastors/comments/1uvx0zl/bible_study_group_where_to_start/",
+    "posture": "explicit_need",
+    "draft_text": "My first time leading, I had zero group experience either, and I overthought the what-do-we-study question for weeks before we ever met. I picked a long systematic theology series because it felt serious, and it was the wrong call for a group that had never sat in a circle together before. Nobody talked, because the material assumed a foundation we didn't have as a group yet.\n\nFor a first group, something short and conversational works better: a single Gospel, or a short letter like Philippians or James, six to eight weeks, with simple observation and application questions rather than a teaching-heavy format. The skill you're actually building the first few months is getting a room comfortable talking, not covering material.\n\nWhat helped me hold onto momentum between our first few meetings, since as a brand-new leader I had nothing else built up yet, was having somewhere the group could drop a note or a verse that stuck during the week instead of everything resetting to zero each time we met. That's part of why I built FellowScript. It's free for a group your size, and it's not required to start (paper works fine too), but it might help with the momentum piece. fellowscript.com",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R9",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/Christianity/comments/1wfmg6m/college_bible_study/",
+    "posture": "explicit_need",
+    "draft_text": "I helped start a campus group in college too, from nothing: no name recognition, no built-in group of people. We spent the first month trying to recruit broadly with flyers and a table in the student union before we had anything worth inviting people to, and it was mostly wasted effort. What actually worked was starting with three or four people we already knew and growing from there by invite.\n\nFor a first semester, keep it small and low-commitment: a short study, a Gospel or a short letter, six to eight weeks, meeting somewhere consistent like a dorm common room instead of reserving a new room every week. Don't try to be the campus ministry right away. Just be one group that meets reliably.\n\nStaying connected between meetings mattered more than I expected for keeping a brand-new group from fading after the first few weeks. That's part of what got me into building FellowScript. It's free for a group your size, with notes on the passage that everyone can see. It's not a requirement to get started, but it's part of what helped ours hold together past the first month. fellowscript.com",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R10",
+    "platform": "instagram",
+    "url": "https://instagram.com/p/DdZPUwGAJo6",
+    "posture": "networking",
+    "draft_text": "This is such a smart structure for how differently everyone's weeks actually go. I'm curious about the handoff specifically. Once someone finishes on their own schedule and jumps into the weekly conversation, how do you keep it from feeling like they're a step behind people who finished earlier? Do you resurface anything from earlier in the week, or does the conversation just meet everyone where they are?",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R11",
+    "platform": "instagram",
+    "url": "https://instagram.com/p/DdZWN1qjwYu",
+    "posture": "networking",
+    "draft_text": "Weekly and consistent is its own accomplishment. A lot of online studies fade after a few months. What's kept people coming back Thursday after Thursday? Is it the topic lineup, or something about the format itself, live versus replay, YouTube versus Facebook, that's made it stick for your group specifically?",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R12",
+    "platform": "instagram",
+    "url": "https://instagram.com/p/DdZVAV9jcc1",
+    "posture": "networking",
+    "draft_text": "Day 11 and still going is real consistency. I'm curious what the actual turning point was: a specific method someone showed you, or more that you kept experimenting until something clicked? Also curious what you wish someone had told you on day one that you only figured out by day eleven.",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R13",
+    "platform": "instagram",
+    "url": "https://instagram.com/p/DdbEE-2CDem",
+    "posture": "networking",
+    "draft_text": "This is a solid breakdown for group leaders, especially the connect-groups and cell-groups framing. Are you working with any specific denominational networks on this, or is it more general small-group leaders across networks? I've noticed a gap in tooling specifically for cell and connect-group structures versus traditional small groups.",
+    "status": "pending_approval",
+    "skip_reason": null
+  }
+]

@@ -94,6 +94,7 @@ export default function Privacy() {
           <p style={{ ...S.p, marginTop: '0.75rem', marginBottom: '0.4rem' }}><strong style={S.strong}>Subscription and Billing Information</strong></p>
           <ul style={S.ul}>
             <li style={S.li}>Subscription plan type and status (free or group, with a selected member count of 1-8; active, trialing, or canceled)</li>
+            <li style={S.li}>If you use a creator or friend invite code at checkout, a record of the redemption (your account, the code, the creator or friend who shared it, the plan, and the date) so we can credit them. If you share your own invite code, we store it against your account.</li>
             <li style={S.li}>Display-only card metadata (card brand and last 4 digits) and an opaque billing-processor reference — we never receive, see, or store your full card number, CVC, or bank details. Full payment handling is performed entirely by Stripe (web) or Apple's App Store (iOS); see Section 5.</li>
           </ul>
 

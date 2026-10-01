@@ -1,0 +1,160 @@
+[
+  {
+    "target_claim": "A church posting this job is, by definition, a church that has decided small groups warrant a paid staff owner — which makes the job-board category page a durable, checkable identification feed even as individual postings expire.",
+    "counter_claim": "Job-board postings systematically identify only the minority of US churches large enough to fund a paid small-group staff role. Independent size-distribution data shows 70% of US congregations average 100 or fewer weekly attendees and account for only 14% of all worshippers, while roughly 70-80% of ministerial staff (full- and part-time) are employed by congregations under 360 average attendance — meaning paid staff exist at smaller churches too, but the numerical majority of churches are small enough that a dedicated paid small-group role is plausibly rare or absent, and those churches instead route leader identification through the pastor, a deacon, or an informal apprenticeship path rather than a job posting. This directly supports the brief's own flagged risk that job-board sourcing under-represents FellowScript's likely core small/independent audience, though no source quantified exactly what fraction of small churches have a paid small-group-specific role, leaving the precise size of the blind spot unmeasured.",
+    "counter_evidence": [
+      {
+        "url_or_ref": "https://faithcommunitiestoday.org/wp-content/uploads/2021/10/Faith-Communities-Today-2020-Summary-Report.pdf",
+        "title": "Faith Communities Today 2020 Summary Report (Hartford Institute)",
+        "reliability_notes": "Independent research body; large national congregational survey; high reliability for size-distribution figures.",
+        "how_it_contradicts": "Shows 70% of US congregations have ≤100 weekly attendees (up from 45% in 2000) and these small congregations account for only 14% of total attendees — establishing that the numerical majority of churches are small, the segment most likely to lack a paid small-group staff role and thus be invisible to job-board sourcing."
+      },
+      {
+        "url_or_ref": "https://research.lifeway.com/2025/06/03/most-pastors-lead-a-small-congregation-but-most-churchgoers-attend-a-larger-church/",
+        "title": "Most Pastors Lead a Small Congregation, but Most Churchgoers Attend a Larger Church - Lifeway Research",
+        "reliability_notes": "Independent research body, citing the National Church Survey; high reliability.",
+        "how_it_contradicts": "Reports ~70% of full-time and ~80% of part-time ministerial staff work at congregations under 360 average attendance, complicating a simple 'only big churches have paid staff' framing, but does not isolate small-group-specific paid roles, so it bounds rather than fully resolves the segment-mismatch question."
+      },
+      {
+        "url_or_ref": "https://churchleaders.com/smallgroups/small-group-articles/327161-how-to-find-unlimited-new-small-group-leaders.html; https://csbc.com/wp-content/uploads/2020/09/Volunteers-vs-Employees-vs-Independent-Contractors.pdf",
+        "title": "ChurchLeaders small-group leader recruitment guide; CSBC volunteer/employee/contractor guidance",
+        "reliability_notes": "Practitioner-blog and denominational-association guidance tier; moderate reliability, descriptive rather than data-driven.",
+        "how_it_contradicts": "Describes small churches identifying and developing small-group leaders through pastor/deacon-led recruitment and a discipleship-apprenticeship-ownership pipeline rather than a paid, postable staff role — evidence of a leader-identification pathway entirely outside the job-board feed's visibility."
+      }
+    ],
+    "confidence_score": 0.7
+  },
+  {
+    "target_claim": "faith.tools is a previously undiscovered, low-barrier listing channel... This is the most directly actionable reach item in the source set: it is free, self-serve, and puts FellowScript in front of the exact persona browsing for small-group apps.",
+    "counter_claim": "Independent traffic data indicates faith.tools currently has low and recently declining visitor volume, which undercuts the framing of it as the single most directly actionable reach item without qualification. Its own newsletter audience (the site's stated audience-growth channel) is also small.",
+    "counter_evidence": [
+      {
+        "url_or_ref": "https://www.similarweb.com/website/faith.tools/",
+        "title": "Similarweb traffic overview for faith.tools (accessed Sept 2026)",
+        "reliability_notes": "Third-party independent analytics estimator; free-tier estimates are known to be lower-confidence for low-traffic/niche sites, but this is the best available independent proxy and no paid-API or Ahrefs data was accessible.",
+        "how_it_contradicts": "Shows a global rank of roughly #705,275, a category rank of ~#6,885 within 'Faith and Beliefs,' a 25% month-over-month traffic decline, and a 34-second average visit duration — indicating a small and shrinking, not thriving, visitor base, in tension with 'most directly actionable reach item.'"
+      },
+      {
+        "url_or_ref": "https://faithtools.substack.com/",
+        "title": "faith.tools Substack newsletter",
+        "reliability_notes": "Primary source (the channel's own newsletter platform); low independence but a directly checkable fact (subscriber tier framing), not a self-reported traffic claim.",
+        "how_it_contradicts": "The newsletter — the site's own audience-building mechanism — is described as having only 'hundreds' of subscribers, a small base consistent with the low Similarweb traffic estimate rather than contradicting it."
+      }
+    ],
+    "confidence_score": 0.55
+  },
+  {
+    "target_claim": "The SmartGroups free-single-group tier is the one documented offer structure in the source set... It resolves the cost objection at exactly the leader-first entry point FellowScript targets, and is therefore the structure FellowScript should either match or explicitly differentiate against.",
+    "counter_claim": "There is no evidence the SmartGroups free tier is driving significant conversion or usage; the app's own App Store presence shows minimal engagement, and general freemium SaaS benchmarks suggest even well-executed self-serve free tiers typically convert only a low single-digit-to-low-double-digit percentage of users to paid, meaning 'resolves the cost objection' overstates what has actually been demonstrated to work rather than merely exists as a structure.",
+    "counter_evidence": [
+      {
+        "url_or_ref": "https://apps.apple.com/us/app/smartgroups-bible-study/id1501762346",
+        "title": "SmartGroups | Bible Study - App Store listing",
+        "reliability_notes": "Competitor's own platform data (App Store rating count); high reliability for the specific fact, but ratings count is a noisy, incomplete proxy for total installs, free-tier adoption, or revenue.",
+        "how_it_contradicts": "The app shows only 15 total ratings despite a 4.6-star average, suggesting a small overall user base relative to the confidence with which the brief treats the free tier as a proven, transferable structure."
+      },
+      {
+        "url_or_ref": "https://userpilot.com/blog/freemium-to-premium/",
+        "title": "Why Freemium-to-Premium Conversions Are Flopping: What the Benchmarks Are Teaching Us - Userpilot",
+        "reliability_notes": "Cross-domain SaaS industry aggregator citing broader benchmark studies; moderate reliability; explicitly labeled cross-domain per the inherited constraint since no church-specific freemium conversion data exists.",
+        "how_it_contradicts": "Reports self-serve freemium products typically convert 3-5% of free users to paid (good) and 8-12% (great), with a quarter of freemium products converting under 2.5% within six months — establishing that a free tier's mere existence is not evidence it resolves the cost objection at meaningful scale."
+      }
+    ],
+    "confidence_score": 0.6
+  },
+  {
+    "target_claim": "Mapping to FellowScript: the 'teacher' champion maps to the lay small-group leader, the 'district' personalization token maps to the named church and group, and the 'superintendent' maps to the SGPP/lead pastor — but this mapping is the brief's, not any source's.",
+    "counter_claim": "Volunteer 'champions' differ structurally from the paid-professional champions in the EdTech analogy in ways that likely weaken the transfer: volunteers are driven primarily by intrinsic/mission motivation rather than the institutional incentive structure, job security, or procurement standing a salaried teacher has inside a school district, and volunteer/small-group leadership roles are specifically flagged as having comparatively high turnover — general US formal volunteering fell from 30% to 23.2% of adults between 2019 and 2021, and youth/small-group ministry leadership is cited as the highest-turnover volunteer role in churches. This bounds, without fully invalidating, the champion-model transfer the brief's mapping assumes.",
+    "counter_evidence": [
+      {
+        "url_or_ref": "https://link.springer.com/article/10.1186/s40359-026-05327-2",
+        "title": "Understanding volunteer motivation: a systematic review of theoretical frameworks - BMC Psychology",
+        "reliability_notes": "Academic systematic review; independent; high reliability; cross-domain (general volunteer psychology, not church-specific).",
+        "how_it_contradicts": "Establishes volunteers are driven by intrinsic motivations (personal fulfillment, mission alignment) rather than the extrinsic/institutional incentives that structure a salaried employee's relationship to their employer — undercutting a direct one-to-one mapping between a paid teacher-champion and a volunteer leader-champion."
+      },
+      {
+        "url_or_ref": "https://flockconnect.com/blog/church-volunteer-burnout-crisis-2026; https://nickblevins.com/volunteer-retention-strategies-church/",
+        "title": "The church volunteer burnout crisis: 2026 data - FlockConnect; church volunteer retention strategy pieces",
+        "reliability_notes": "Practitioner-blog tier aggregating volunteer statistics; moderate reliability; church-specific but not peer-reviewed.",
+        "how_it_contradicts": "Reports youth and small-group ministry as the church volunteer roles with the highest reported turnover, and that formal US volunteering overall dropped from 30% to 23.2% of adults from 2019-2021 — turnover risk a salaried teacher-champion in the EdTech analogy does not face to the same degree, weakening the durability of the proposed champion model."
+      }
+    ],
+    "confidence_score": 0.55
+  },
+  {
+    "target_claim": "'Another app' fatigue | Tool-fragmentation decision fatigue reported among church staff/leaders (Subsplash) | Vendor blog.",
+    "counter_claim": "The claim is more mixed than a settled fact. A 2026 Barna-fielded (Pushpay-commissioned) State of Church Technology survey of 1,306 church leaders found strong majority positivity toward technology overall — 95% say technology opens new ministry opportunities and 79% say technology has helped their congregation feel more connected — and frames the current challenge as strategic alignment rather than tool fatigue. No independent, non-vendor survey was found that measures 'app fatigue' or 'tool fragmentation exhaustion' as its own distinct metric; every source asserting the fatigue narrative (Subsplash, Pushpay blog posts) is a vendor blog with a direct commercial interest in a consolidation pitch, which is convergence without independent data rather than corroboration.",
+    "counter_evidence": [
+      {
+        "url_or_ref": "https://www.barna.com/research/church-technology-mission/; https://www.globenewswire.com/news-release/2026/03/09/3251986/0/en/pushpay-and-barna-group-s-2026-state-of-church-technology-report-shows-church-tech-has-moved-past-adoption-now-alignment-is-what-matters.html",
+        "title": "2026 State of Church Technology Report - Barna Group / Pushpay",
+        "reliability_notes": "Mixed tier: fielded by Barna, an independent research body, but commissioned and sponsored by Pushpay, a vendor with its own consolidation-pitch commercial interest — weight accordingly, moderate reliability.",
+        "how_it_contradicts": "Finds broad, majority positive sentiment toward church technology adoption (95% opportunity, 79% connection) and frames 2026's central challenge as alignment rather than proliferation-driven fatigue, complicating the 'another app fatigue' framing as a dominant or settled sentiment."
+      },
+      {
+        "url_or_ref": "https://www.subsplash.com/blog/the-hidden-roadblock-to-ministry-growth; https://pushpay.com/blog/future-of-church-technology/",
+        "title": "The Silent Killer of Ministry Growth: Tech Fragmentation & How to Fix It (Subsplash); A Look into the Future of Church Technology (Pushpay)",
+        "reliability_notes": "Vendor blogs, both from companies selling all-in-one consolidation platforms; low independence.",
+        "how_it_contradicts": "Both make the identical 'tool fragmentation is a problem, consolidate' argument without citing independent survey data specifically measuring fatigue — flagged per the plan's guidance as convergence-without-independent-data rather than corroboration of the original claim."
+      }
+    ],
+    "confidence_score": 0.45
+  },
+  {
+    "target_claim": "Some pastors actively discourage phone/app use in church settings and treat well-intentioned technology invitations as distraction sources.",
+    "counter_claim": "The screen-free-church stance is better characterized as a minority/niche advocacy position rather than a mainstream trend, resolving the brief's own open question. The same 2026 Barna-fielded survey found 79% of church leaders reporting technology has helped their congregation feel more connected and 95% affirming technology opens ministry opportunities, and other faith-media outlets explicitly rebut the screen-free argument on accessibility grounds.",
+    "counter_evidence": [
+      {
+        "url_or_ref": "https://www.barna.com/research/church-technology-mission/",
+        "title": "New Research on How Churches Align Technology with Mission - Barna Group",
+        "reliability_notes": "Independent research body (Barna), vendor-sponsored (Pushpay) — moderate-high reliability for the specific sentiment figures.",
+        "how_it_contradicts": "Broad pro-technology sentiment among a nationally representative sample of 1,306 church leaders (95% openness, 79% connection benefit) contextualizes the screen-free advocacy piece as a non-representative outlier rather than a mainstream posture."
+      },
+      {
+        "url_or_ref": "https://www.premiernexgen.com/technology/smartphones-can-be-used-to-build-faith-in-young-people-in-the-church/21185.article",
+        "title": "Should we allow phones in church? - Premier NexGen",
+        "reliability_notes": "Independent faith-media outlet distinct from Christianity Today; moderate reliability, opinion/advocacy piece rather than survey data.",
+        "how_it_contradicts": "Directly rebuts the anti-phone-in-church argument, citing accessibility needs (e.g., phones/tablets as the only readable Bible format for congregants with conditions like macular degeneration) as a reason screen restriction is contested even within faith media, not universally accepted."
+      }
+    ],
+    "confidence_score": 0.6
+  },
+  {
+    "target_claim": "Two faith-specific practitioner sources identify September (school-year start) and January (calendar-year start) as the two highest-attention windows for small-group messaging.",
+    "counter_claim": "No credible counter-evidence or independent tool/vendor-pitch-specific timing source was found after a genuine search. Newer sources (2023-2025) continue to describe only congregant recruitment into small groups on a fall/spring academic-semester cadence — never vendor outreach or software-adoption timing directed at leaders — so the scope gap the brief already flagged (congregant-recruitment timing vs. vendor-pitch timing) remains untested by any source found, in either direction. This is reported as an honest absence per the plan's own guidance, not as a rubber-stamped confirmation of the original claim.",
+    "counter_evidence": [
+      {
+        "url_or_ref": "https://research.lifeway.com/2025/01/14/the-state-of-groups-trends-and-best-practices-for-groups-ministry/; https://www.logos.com/grow/min-how-to-launch-small-groups/",
+        "title": "The State of Groups: Trends and Best Practices for Groups Ministry (Lifeway Research, 2025); 10 Essential Steps to Launching a Vibrant Small Group Ministry (Logos)",
+        "reliability_notes": "Independent research body (Lifeway) and practitioner-blog tier respectively; both more recent than the original 2011/2013 sources per the inherited recency preference.",
+        "how_it_contradicts": "Both confirm the fall/spring semester cadence for congregant recruitment into groups (not vendor pitching to leaders), meaning even the newer sources found do not close the scope gap — they reinforce the same narrower claim about a different audience rather than testing the claim actually needed (leader-facing pitch timing)."
+      }
+    ],
+    "confidence_score": 0.2
+  },
+  {
+    "target_claim": "ChurchTrac markets a small-group management module to a stated 14,000+ churches... RightNow Media reports serving 30,000+ churches and 4 million+ users.",
+    "counter_claim": "No independent audit or third-party verification of either vendor's scale figures was found. ChurchTrac's own site consistently states '14,000+ churches' (matching the brief), but other third-party software-listing/review sources describe ChurchTrac's user base with materially different figures (references to 33,000+ and 60,000+ 'church leaders'), a discrepancy that may reflect different metrics (leaders/users vs. distinct churches) or simply inconsistent/stale secondary reporting — but in either case shows these figures are not independently stabilized. Separately, professional market-research firms estimate the entire global church management software market at wildly divergent sizes (roughly $232M to over $1B depending on the firm), showing no independent baseline exists against which to check any single vendor's self-reported scale.",
+    "counter_evidence": [
+      {
+        "url_or_ref": "https://www.churchtrac.com/",
+        "title": "ChurchTrac homepage and feature pages",
+        "reliability_notes": "Vendor's own material; low independence but directly checkable and internally consistent — repeatedly states '14,000+ churches.'",
+        "how_it_contradicts": "Confirms the brief's cited figure is at least consistent with the vendor's current self-presentation, but as vendor material it cannot itself verify accuracy — the finding here is about absence of independent confirmation, not a direct contradiction."
+      },
+      {
+        "url_or_ref": "third-party listing/aggregator search snippets referencing ChurchTrac at '33,000+' and '60,000+ church leaders' (exact URLs not independently confirmed as authoritative; treat as a discrepancy flag, not a verified counter-figure)",
+        "title": "Third-party ChurchTrac user-count references",
+        "reliability_notes": "Low-moderate reliability; likely derivative secondary reporting rather than independent verification, and the discrepancy could reflect a leaders-vs-churches metric difference rather than a true contradiction.",
+        "how_it_contradicts": "Introduces inconsistency in the scale figure across sources describing the same vendor, undermining confidence that '14,000+' (or any single figure) is a stable, checkable fact rather than a moving marketing number."
+      },
+      {
+        "url_or_ref": "https://www.technavio.com/report/church-management-software-market-industry-analysis; https://straitsresearch.com/report/church-management-software-market",
+        "title": "Church Management Software Market reports (Technavio, Straits Research, and others)",
+        "reliability_notes": "Professional market-research firms, independent of ChurchTrac and RightNow Media specifically; moderate reliability individually, but low reliability as a group given the spread.",
+        "how_it_contradicts": "Independent analysts estimate total global ChMS market size anywhere from ~$232M to over $1B, a >4x spread — demonstrating that even professional independent research in this specific market lacks consensus, so no external benchmark currently exists that could confirm or refute either vendor's specific customer-count claims."
+      }
+    ],
+    "confidence_score": 0.35
+  }
+]

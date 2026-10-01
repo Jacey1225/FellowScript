@@ -1,0 +1,82 @@
+[
+  {
+    "id": "R1",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/askapastor/comments/1qhg2t8/leading_bible_group_advice_nondenominational/",
+    "posture": "explicit_need",
+    "delivery": "comment",
+    "draft_text": "I led a small group with zero formal training either, and the imposter syndrome is real for at least the first six months. What helped the most wasn't finding a better curriculum, it was accepting that \"good discussion\" beats \"complete lesson plan\" every time. I used to write out a full teaching outline every week, like I had to have an answer ready for anything. Most weeks nobody needed that. What people needed was two or three real questions and permission to sit in silence for a bit.\n\nIf you're prepping solo and it feels like you're guessing in a vacuum, cross-referencing what you land on against a couple of solid commentaries (Gospel Coalition's stuff is free and even-handed on doctrine) helped me trust my own prep more than any formal training would have.\n\nI ended up building an app, FellowScript, mostly because I wanted my prep notes to actually live next to the passage instead of in a separate doc I never looked at again during the meeting. Not the fix for the training-confidence piece, but if the scattered-notes part of solo prep is also biting you, it might help. fellowscript.com",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R2",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/Reformed/comments/1urxvuv/bible_study_training_resources/",
+    "posture": "explicit_need",
+    "delivery": "comment",
+    "draft_text": "Something that helped our leader team more than any single training resource: get everyone writing their own study notes against the actual verses instead of a shared slide deck. We ran the slide-deck route for over a year, and the problem wasn't the content, it was that questions parked in a deck have no relationship to the text once the meeting's over. Nobody reopens a slide deck to review what stood out to them on Tuesday.\n\nFor training resources specifically, Gospel Coalition's leader-training material and The Charles Simeon Trust's expository preaching workshops (if any of your leaders are more sermon-prep-minded) are both solid and free or low-cost.\n\nThe slide-deck-vs-text thing above is actually what got me building FellowScript: notes tied to the verse itself instead of a separate doc, so leaders can see what each other's actually noticed while reading, not just what ended up on a slide. Not a training resource exactly, just flagging it in case the notes-living-elsewhere problem is part of what's slowing your team down. fellowscript.com",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R3",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/Reformed/comments/1v4anfo/how_do_you_take_notes_on_your_bible/",
+    "posture": "explicit_need",
+    "delivery": "comment",
+    "draft_text": "I've got a journaling Bible too and went through a phase of trying to write something in the margin for every verse, which just meant I stopped writing anything after about three weeks because the pressure was too high. What stuck long-term: one verse or one short passage a day, one observation and one question, nothing else. If nothing worth writing comes to mind, I leave it blank rather than forcing a sentence just to fill space.\n\nFor a system, I started tagging entries loosely as either \"what it says\" or \"what it means for me\" so I could flip back later and actually find things instead of skimming pages of mixed notes.\n\nSince you're already reading with a group, one thing worth trying even on paper: bring your margin notes to the meeting instead of just your Bible. Half of what makes group discussion good is seeing what someone else actually circled or wrote, not just hearing them talk. That's actually the exact thing I built FellowScript around, digital notes tied to the verse that the group can see, since I wanted that same \"see what he wrote\" moment without everyone passing physical Bibles around. Not necessary for what you're doing on paper, just mentioning it in case the digital side interests you too. fellowscript.com",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R4",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/TrueChristian/comments/1w2klyq/young_adult_small_group_topics/",
+    "posture": "explicit_need",
+    "delivery": "comment",
+    "draft_text": "First group I led was young adults too, and I way overthought the topic selection. Spent weeks trying to find the 'right' curriculum before just picking something and starting. In hindsight, structure mattered way more than topic: a 4-6 week arc on one book or theme, same day and time every week, beats a perfect single-week topic every time because people show up for the rhythm more than the content.\n\nFor an actual starting topic with young adults specifically, something like Philippians or James works well, short enough to finish in one arc, practical enough that people have something to say even on a slow week.\n\nThe thing that actually made my group's rhythm stick, more than the topic pick, was everyone having somewhere to jot what stood out to them between meetings so week 3 didn't feel disconnected from week 1. That's part of why I built FellowScript, scheduled prompts and shared notes so a group's momentum doesn't reset every Sunday. Not saying you need an app for a first group, structure alone will get you most of the way. fellowscript.com",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R5",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/Bible/comments/1p4b8ql/bible_study_methods_for_small_groups/",
+    "posture": "explicit_need",
+    "delivery": "comment",
+    "draft_text": "The shift that made the biggest difference for my group moving away from one-person-teaches: everyone reads and marks up the passage on their own before the meeting, then the 'lesson' is just going around and hearing what people actually noticed. No prep beyond picking the passage and two or three questions in case things stall.\n\nInductive study methods (observation, then interpretation, then application, in that order) work well for this because they give people a shared process to follow even without a teacher directing it.\n\nOne practical snag we hit: people's markup lived in different Bibles or notebooks, so there was nothing to actually compare at the meeting, just people describing what they remembered. I ended up building FellowScript partly to fix that, shared highlights and notes on the same digital text so the group can literally see what everyone marked, not just hear a paraphrase of it. Only relevant if that same snag hits you. fellowscript.com",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R6",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/Christianity/comments/1op8uzg/small_group_bible_study_recommendations/",
+    "posture": "explicit_need",
+    "delivery": "comment",
+    "draft_text": "My wife and I co-led for a couple years and wrote our own questions every week too, it works but it's a real time cost that sneaks up on you, especially on a busy week. What helped: keeping a running doc of questions that worked well so we weren't starting from zero each time, and only writing fresh ones for the specific passage's tricky parts.\n\nFor ready-made material to lean on instead, The Bible Project's discussion guides are free and pair well with a passage-by-passage read, and Gospel Coalition has full small-group curricula if you want something more structured.\n\nThe reusing-old-questions habit is actually part of why I built FellowScript, notes and questions tied to the verse stay there permanently, so next time you're in that passage (or somebody else is) the old work is just sitting there instead of buried in a doc from eight months ago. Not saying you need to switch off what you're doing, just flagging it since the write-it-yourself grind is exactly what wore on us too. fellowscript.com",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R7",
+    "platform": "instagram",
+    "url": "https://instagram.com/p/DdkktotpkEv",
+    "posture": "networking",
+    "delivery": "dm",
+    "draft_text": "Saw your post about the \"why we trust the Bible\" session, that's a great opener for a campus group. I'm into small-group Bible study stuff myself and always enjoy seeing how other groups run things. How's turnout been for a topic night like that compared to your regular weekly meetings? Curious if apologetics-style sessions pull in people who wouldn't normally show up, or if it's mostly your regulars.",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R8",
+    "platform": "instagram",
+    "url": "https://instagram.com/p/DdkqaZeysu9",
+    "posture": "networking",
+    "delivery": "dm",
+    "draft_text": "Saw your post about the men's group, good to see those still running strong. How long has this particular group been meeting? Curious what's helped you all keep the same core showing up week to week, versus the usual drop-off after a few months.",
+    "status": "pending_approval",
+    "skip_reason": null
+  }
+]

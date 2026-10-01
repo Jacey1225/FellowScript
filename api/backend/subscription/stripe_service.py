@@ -1,12 +1,13 @@
 """Stripe billing integration (web).
 
 Thin wrapper around the Stripe SDK: creates hosted Checkout Sessions for the
-free-trial subscription flow, verifies incoming webhooks, and cancels
+subscription flow (optional trial per TRIAL_MONTHS), verifies incoming webhooks, and cancels
 subscriptions. All plan pricing is derived from GROUP_PRICE_CENTS (inline
 price_data) so no pre-created Stripe Products/Prices are required.
 
 Secrets come from the environment (same pattern as DB_PASSWORD / APNs):
     STRIPE_SECRET_KEY      — sk_test_… / sk_live_…
+    TRIAL_MONTHS           — web free-trial length in months; 0 = no trial (required)
     STRIPE_SIGNING_SECRET  — whsec_…  (set after registering the webhook endpoint;
                              STRIPE_WEBHOOK_SECRET is also accepted as an alias)
 """
@@ -14,7 +15,7 @@ Secrets come from the environment (same pattern as DB_PASSWORD / APNs):
 import os
 import logging
 import stripe
-from schemas.subscription import price_for, MIN_MEMBERS, MAX_MEMBERS, TRIAL_MONTHS
+from schemas.subscription import price_for, MIN_MEMBERS, MAX_MEMBERS
 
 logger = logging.getLogger(__name__)
 
@@ -28,23 +29,133 @@ CANCEL_URL  = f"{_SITE}/?sub=cancel#/account"
 DONATE_SUCCESS_URL = f"{_SITE}/?donate=success#/account"
 DONATE_CANCEL_URL  = f"{_SITE}/?donate=cancel#/account"
 
+class TrialConfigError(RuntimeError):
+    """Raised at startup when TRIAL_MONTHS is missing or invalid."""
+
+
+_TRIAL_MONTHS_RAW = os.getenv("TRIAL_MONTHS")
+# Parsed by validate_trial_config() at boot; read via trial_months().
+_trial_months: int | None = None
+
+
+def validate_trial_config() -> None:
+    """Eagerly validate and parse TRIAL_MONTHS (web/Stripe free-trial length).
+
+    Call once at process startup (main.py lifespan). There is no implicit
+    default: 0 means "no trial" and must be set explicitly.
+
+    Raises:
+        TrialConfigError: if TRIAL_MONTHS is unset or not a non-negative integer.
+    """
+    global _trial_months
+    raw = os.getenv("TRIAL_MONTHS", _TRIAL_MONTHS_RAW)
+    if raw is None or not raw.strip():
+        raise TrialConfigError(
+            "TRIAL_MONTHS is not set. There is no implicit default for the web "
+            "free-trial length -- set it explicitly (0 = no trial, 1 = one month)."
+        )
+    try:
+        months = int(raw)
+    except ValueError:
+        raise TrialConfigError(f"TRIAL_MONTHS ({raw!r}) is not a valid integer.")
+    if months < 0:
+        raise TrialConfigError(f"TRIAL_MONTHS ({months}) must be 0 or greater.")
+    _trial_months = months
+
+
+def trial_months() -> int:
+    """Validated TRIAL_MONTHS. Raises if validate_trial_config() has not run."""
+    if _trial_months is None:
+        raise TrialConfigError("TRIAL_MONTHS has not been validated; call validate_trial_config() at startup.")
+    return _trial_months
+
+
 def is_configured() -> bool:
     return bool(stripe.api_key)
 
 
-def create_checkout_session(user_id: str, email: str, member_count: int) -> str:
-    """Create a subscription Checkout Session with a free trial; return its URL.
+def promo_coupon_id(percent_off: int) -> str:
+    """Deterministic id of the single shared first-month coupon for a percent."""
+    return f"fellowscript-first-month-{percent_off}pct"
+
+
+def ensure_promo_coupon(percent_off: int) -> str:
+    """Return the id of the shared ``percent_off`` / ``duration=once`` coupon,
+    creating it on first use. One coupon serves every promo code (the DB is
+    authoritative for which codes are valid; creator/referrer attribution
+    travels in session metadata)."""
+    cid = promo_coupon_id(percent_off)
+    try:
+        coupon = stripe.Coupon.retrieve(cid)
+    except stripe.InvalidRequestError:
+        stripe.Coupon.create(
+            id=cid, percent_off=percent_off, duration="once",
+            name=f"FellowScript first month {percent_off}% off",
+        )
+        return cid
+    # Fail closed if someone edited/replaced the coupon with different terms.
+    if coupon.get("percent_off") != percent_off or coupon.get("duration") != "once":
+        raise RuntimeError(f"Stripe coupon {cid} has unexpected terms")
+    return cid
+
+
+def customer_has_subscription_history(email: str) -> bool:
+    """True if any Stripe customer with this email ever had a real subscription.
+
+    Used by the promo new-subscriber check. Fails closed: any ambiguity
+    (more than one page of customers/subscriptions) returns True, and Stripe
+    errors propagate so the caller denies the discount.
+    """
+    if not email:
+        return True
+    variants = {email, email.strip().lower()}
+    for em in variants:
+        customers = stripe.Customer.list(email=em, limit=20)
+        if customers.get("has_more"):
+            return True
+        for cust in customers.get("data", []):
+            subs = stripe.Subscription.list(customer=cust["id"], status="all", limit=100)
+            if subs.get("has_more"):
+                return True
+            for sub in subs.get("data", []):
+                if sub.get("status") not in ("incomplete", "incomplete_expired"):
+                    return True
+    return False
+
+
+def create_checkout_session(user_id: str, email: str, member_count: int,
+                            promo: dict | None = None) -> str:
+    """Create a subscription Checkout Session; return its URL.
 
     Uses inline ``price_data`` derived from GROUP_PRICE_CENTS, so pricing is
-    server-authoritative and no dashboard Products/Prices are needed. The trial
-    length matches the app's TRIAL_MONTHS; the user is not charged until it ends.
+    server-authoritative and no dashboard Products/Prices are needed. A free
+    trial is applied only when the TRIAL_MONTHS config is > 0 (production: 0,
+    so the buyer is charged immediately); ``trial_period_days`` is omitted
+    entirely when there is no trial.
+
+    ``promo`` (already validated server-side by PromoManager; keys ``code_id``,
+    ``percent_off``) applies the shared once-off coupon to the first invoice and
+    stamps its ids in session/subscription metadata. It is refused (ValueError)
+    for group plans and when a trial is configured (no stacking).
 
     Raises:
-        ValueError: if ``member_count`` is outside 1-8.
+        ValueError: if ``member_count`` is outside 1-8, or a promo is combined
+            with a group plan or a trial.
     """
     if not (MIN_MEMBERS <= member_count <= MAX_MEMBERS):
         raise ValueError(f"member_count must be between {MIN_MEMBERS} and {MAX_MEMBERS}")
     price_cents = price_for(member_count)
+    months = trial_months()
+    metadata = {"user_id": user_id, "member_count": str(member_count)}
+    extra = {}
+    if promo:
+        if member_count != 1 or months > 0:
+            raise ValueError("promo not applicable")
+        metadata["promo_code_id"] = str(promo["code_id"])
+        extra["discounts"] = [{"coupon": ensure_promo_coupon(int(promo["percent_off"]))}]
+    subscription_data = {"metadata": dict(metadata)}
+    if months > 0:
+        subscription_data["trial_period_days"] = months * 30
     name = f"FellowScript Group ({member_count} {'person' if member_count == 1 else 'people'})"
     session = stripe.checkout.Session.create(
         mode="subscription",
@@ -59,13 +170,11 @@ def create_checkout_session(user_id: str, email: str, member_count: int) -> str:
                 "recurring": {"interval": "month"},
             },
         }],
-        subscription_data={
-            "trial_period_days": TRIAL_MONTHS * 30,
-            "metadata": {"user_id": user_id, "member_count": str(member_count)},
-        },
-        metadata={"user_id": user_id, "member_count": str(member_count)},
+        subscription_data=subscription_data,
+        metadata=metadata,
         success_url=SUCCESS_URL,
         cancel_url=CANCEL_URL,
+        **extra,
     )
     return session.url
 

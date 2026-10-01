@@ -1,0 +1,182 @@
+[
+  {
+    "id": "R1",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/OpenChristian/comments/1wp7jbu/how_do_you_start_a_community_bible_study_group/",
+    "posture": "explicit_need",
+    "delivery": "comment",
+    "draft_text": "I did something similar a couple years back. My church's group only met during the day, so a few of us split off and started our own thing in the evenings instead.\n\nThe mistake I made early on was over-planning it before the first meeting: picking a whole curriculum, assigning readings weeks out. Almost nobody stuck with that. It felt like homework before we'd even built any trust as a group.\n\nWhat actually got it off the ground was simpler: one shared passage a week, and everyone brings one line or verse that stood out to them. That's it for the first month or so. Once people are used to showing up and talking, you can go deeper.\n\nI ended up building an app called FellowScript partly because of that same group, just a place for everyone to leave notes on the passage between meetings so nobody's starting from zero each week. Not needed to get going, just something that helped us later. Good luck with it either way.",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R2",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/Bible/comments/1wf9qaq/any_tips_for_studying_the_bible_on_my_own/",
+    "posture": "explicit_need",
+    "delivery": "comment",
+    "draft_text": "Studying solo was harder for me to stick with than I expected. Not the material, the follow-through.\n\nThe thing that actually helped: picking a much smaller unit than I wanted to admit was enough, a handful of verses, not a chapter, and writing down one observation and one question before I let myself move on. Longer sessions always fell apart faster than short consistent ones did for me.\n\nI still keep most of that in a paper notebook, for what it's worth. Pen and paper's fine for solo study, nothing about it needs to be digital. The one place I noticed a difference was when a couple people started seeing what I wrote down instead of just me. That's actually part of why I built FellowScript, notes tied to the verse that you can keep private or open up to a couple people. Not something solo study needs, just flagging it in case the same thing helps you.",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R3",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/Christianity/comments/1w2721k/help_me_learn_to_study_the_bible/",
+    "posture": "explicit_need",
+    "delivery": "comment",
+    "draft_text": "I've done this the other direction too, studying specifically to lead a group afterward, and the biggest shift for me was changing how I took notes, not how much I read.\n\nEarly on I just wrote down what I thought a passage meant. That's fine for yourself, but it's useless when you're trying to teach: you can't remember why you thought that six weeks later. What worked better was writing, for every passage, the observation (what it says), then separately the application (what to do with it), and keeping them attached to the actual verse instead of a separate notebook page.\n\nThat structure is actually most of why I built FellowScript, notes linked directly to the verse so when it's time to teach, you can pull up exactly what you thought and why instead of flipping through pages trying to remember. Not saying you need an app for it, the observation/application split works on paper too. Just sharing what actually made the \"teach later\" part easier for me.",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R4",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/Christians/comments/1wbbkc9/looking_for_an_online_bible_study_group_that/",
+    "posture": "explicit_need",
+    "delivery": "comment",
+    "draft_text": "Eleven is a lot of groups to strike out with. That's rough.\n\nIf nothing's landing, it might honestly be easier to start one instead of keep searching. It doesn't need to be big: post in a couple of the same places you were reaching out to groups, pick one evening, and go with whoever shows up first. Searching for a perfect existing group has a ceiling that starting a small one yourself doesn't.\n\nThe other piece, since evening timing is clearly the hard constraint for you: an async layer helps a lot when people can't all be free the same night every week. Everyone reads the same passage and leaves notes on their own time, then an occasional call instead of a hard weekly slot. That's actually the exact problem that got me building FellowScript. Not a pitch to go start using an app before you've even got people, just worth keeping in mind once you do get a few together.",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R5",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/Bible/comments/1wdl3b4/best_bible_highlighting_options/",
+    "posture": "explicit_need",
+    "delivery": "comment",
+    "draft_text": "I went through the exact post-it spiral. Every book bulging, half of them fell out eventually and I had no idea what they were even marking anymore.\n\nHonest answer on the physical side: get a proper wide-margin edition if you're staying paper, and switch from post-its to actually writing in the margin or underlining. Post-its are great short-term but they don't survive a book getting picked up and put down a hundred times.\n\nThe other option, since you're clearly hitting a physical ceiling: highlighting digitally with the note attached to the verse instead of a separate sticky note. That's actually one of the reasons I built FellowScript, same colored-highlight idea, but the note it's attached to can't fall out or get lost. Not saying paper's wrong, just flagging the digital option since it sounds like you've already outgrown the post-its.",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R6",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/Bible/comments/1wqol8x/every_morning_for_the_last_29_days_ive_read_the/",
+    "posture": "networking",
+    "delivery": "comment",
+    "draft_text": "29 days in a row is no small thing. That's exactly the stretch where most people I know, myself included, usually fall off.\n\nCurious what's kept it going for you this long. Is it the same time each morning, or more that you've built the \"read then journal\" pairing into how you approach it? I've found the actual reading rarely falls off, it's whatever comes right after the reading that's fragile.",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R7",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/Christians/comments/1wh1ho7/a_takeaway_from_a_year_of_studying_the_church_at/",
+    "posture": "networking",
+    "delivery": "comment",
+    "draft_text": "A full year on one church is a different kind of study than most people do. Most of us bounce around a lot more than that.\n\nWhat changed the most for you between the start of that year and now? Is there a takeaway you'd have completely missed if you'd only spent a few weeks on it instead? And how'd you keep it from going stale over that many months?",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R8",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/Christians/comments/1vw5k8f/why_doesnt_any_church_meet_anymore_for_daily/",
+    "posture": "explicit_need",
+    "delivery": "comment",
+    "draft_text": "This one's been on my mind too. Best guess from groups I've been part of: weekly became the default because it's the easiest thing to schedule around work, not because anyone decided daily wasn't valuable. Once weekly's the norm, daily just looks unrealistic to suggest.\n\nThe groups I've seen actually pull off something closer to daily didn't do it by adding more meetings. They kept one weekly meeting and filled the gaps async: everyone reading the same passage on their own each day and leaving a note or two, so there's still a daily thread even without a daily meeting.\n\nThat's actually the specific gap that got me building FellowScript: same passage, same day, notes shared between the people in your group, so the \"daily\" part isn't riding on everyone's calendars lining up. Not saying you need an app for this, just sharing what's worked for groups I've seen manage it.",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R9",
+    "platform": "x",
+    "url": "https://twitter.com/Bornagain19880",
+    "posture": "networking",
+    "delivery": "comment",
+    "draft_text": "A Bible study over Spaces is a format I haven't seen many people try. How are you planning to keep it structured with that many people able to just drop in and out? Are you doing one passage per session, or more open discussion?",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R10",
+    "platform": "instagram",
+    "url": "https://instagram.com/inwoodbiblestudy",
+    "posture": "networking",
+    "delivery": "dm",
+    "draft_text": "Saw your post about the weekly study. How long has the group been meeting? Curious what's kept people coming back week to week, that's usually the hardest part to get right.",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R11",
+    "platform": "instagram",
+    "url": "https://instagram.com/staycmae",
+    "posture": "networking",
+    "delivery": "dm",
+    "draft_text": "Saw your post about the women's group you're running. How'd you end up being the one to start it? And now that it's going, what's been the hardest part of keeping it consistent as more people join?",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R12",
+    "platform": "x",
+    "url": "https://twitter.com/LilBuff9",
+    "posture": "networking",
+    "delivery": "comment",
+    "draft_text": "BSF's one of the more structured formats out there: lecture, discussion questions, homework between sessions. How's that structure worked for you compared to a looser group study? Curious if the homework part is what actually keeps people showing up prepared.",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R13",
+    "platform": "instagram",
+    "url": "https://instagram.com/firstpresgainesville",
+    "posture": "networking",
+    "delivery": "dm",
+    "draft_text": "Saw your post inviting young professionals into a small group. Is this a new group forming or an existing one opening up? Curious what's been the biggest hurdle in getting that age group specifically to actually show up consistently.",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R14",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/Actscelerate/comments/1wixw7p/loran_livingston_affirms_the_gifts_of_the_holy/pak4rdu/",
+    "posture": "networking",
+    "delivery": "comment",
+    "draft_text": "This tracks with what I've seen too. The bigger a church gets, the more the actual relational stuff quietly gets pushed to the edges of the calendar. Has it been better for you in smaller churches specifically, or is it more about whether a given church protects small-group time on purpose regardless of size?",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R15",
+    "platform": "linkedin",
+    "url": "https://www.linkedin.com/company/churches-of-christ-in-queensland",
+    "posture": "networking",
+    "delivery": "comment",
+    "draft_text": "Really like the Havachat model. A member starting something like that from the ground up instead of it coming down from leadership usually means it actually sticks. How did it start out, informally between a couple people first, or did it launch as an actual program from day one?",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R16",
+    "platform": "linkedin",
+    "url": "https://www.linkedin.com/in/ronnie-greene",
+    "posture": "networking",
+    "delivery": "comment",
+    "draft_text": "That's a good one to sit with. Was that something that came up in discussion with the group, or more something you noticed on your own afterward? Curious how much of it changed how you approach the group going forward.",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R17",
+    "platform": "instagram",
+    "url": "https://instagram.com/blw_trailblazers",
+    "posture": "networking",
+    "delivery": "dm",
+    "draft_text": "Saw your post about the weekly study. Is this a group that's been running a while or fairly new? What's been the biggest thing that's helped people actually keep coming back?",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R18",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/Christianmarriage/comments/1wdv5sg/no_time_for_me/p9ylwzr/",
+    "posture": "networking",
+    "delivery": "comment",
+    "draft_text": "Jumping in on this since it's the actual crux of it, I think. A fellowship or small group changes this a lot, in my experience. Are you currently in one, or has it been hard to find one that fits your schedule specifically?",
+    "status": "pending_approval",
+    "skip_reason": null
+  }
+]

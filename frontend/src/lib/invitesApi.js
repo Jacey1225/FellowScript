@@ -113,3 +113,23 @@ export function revokeInvite(userId, inviteId) {
 export function resetGroupInvites(userId, groupId) {
   return request(`/invites/${userId}/groups/${groupId}/reset`, { method: 'POST' }, "Couldn't reset the links. Please try again.");
 }
+
+// Task 20260930-subscription-seat-invites: plan-owner-only sibling routes.
+// Opening a subscription link files a join *request*; it never grants access.
+// 403 = not the plan owner; 409 not_eligible = plan can't take links.
+export function listSubscriptionInvites(userId, subscriptionId) {
+  return request(`/invites/${userId}/subscriptions/${subscriptionId}`, undefined, "Couldn't load invite links.");
+}
+
+export function createSubscriptionInvite(userId, subscriptionId, { expiresInDays, maxUses }) {
+  return request(
+    `/invites/${userId}/subscriptions/${subscriptionId}`,
+    json('POST', { expires_in_days: expiresInDays, max_uses: maxUses }),
+    "Couldn't create the link. Please try again.",
+  );
+}
+
+// Resolves { revoked: n }.
+export function resetSubscriptionInvites(userId, subscriptionId) {
+  return request(`/invites/${userId}/subscriptions/${subscriptionId}/reset`, { method: 'POST' }, "Couldn't reset the links. Please try again.");
+}

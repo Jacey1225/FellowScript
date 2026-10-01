@@ -548,6 +548,81 @@ def create_tables(cur):
         "REFERENCES subscriptions(_id) ON DELETE SET NULL"
     )
 
+    # Task 20260930-creator-friend-codes: promo (creator + friend invite) codes.
+    # Additive + idempotent. Codes are stored normalized (UPPERCASE) so lookups
+    # are case-insensitive; the CHECK + UNIQUE pair makes that a DB invariant.
+    cur.execute(
+        "CREATE TABLE IF NOT EXISTS creators"
+        "(_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
+        "name TEXT NOT NULL,"
+        "notes TEXT NOT NULL DEFAULT '',"
+        "active BOOLEAN NOT NULL DEFAULT TRUE,"
+        "created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),"
+        "updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())"
+    )
+    # kind 'creator' -> creator_id set; kind 'friend' -> referrer_user_id set.
+    # redemption_count only counts redemptions logged within max_redemptions
+    # (atomic conditional UPDATE in PromoManager.log_redemption).
+    cur.execute(
+        "CREATE TABLE IF NOT EXISTS promo_codes"
+        "(_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
+        "code TEXT NOT NULL UNIQUE CHECK (code = UPPER(code)),"
+        "kind TEXT NOT NULL CHECK (kind IN ('creator','friend')),"
+        "creator_id UUID REFERENCES creators(_id) ON DELETE RESTRICT,"
+        "referrer_user_id UUID REFERENCES users(_id) ON DELETE CASCADE,"
+        "active BOOLEAN NOT NULL DEFAULT TRUE,"
+        "max_redemptions INTEGER CHECK (max_redemptions IS NULL OR max_redemptions > 0),"
+        "redemption_count INTEGER NOT NULL DEFAULT 0 CHECK (redemption_count >= 0),"
+        "expires_at TIMESTAMPTZ,"
+        "created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),"
+        "CHECK ((kind = 'creator' AND creator_id IS NOT NULL AND referrer_user_id IS NULL) OR "
+        "       (kind = 'friend' AND referrer_user_id IS NOT NULL AND creator_id IS NULL)))"
+    )
+    # One friend code per user: makes on-demand generation race-safe.
+    cur.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_promo_codes_friend_referrer "
+        "ON promo_codes(referrer_user_id) WHERE kind = 'friend'"
+    )
+    # Audit-trail rows survive deletion of the user/code/creator (SET NULL).
+    # idempotency_key (the Stripe Checkout Session id) is UNIQUE: a replayed
+    # webhook can never write a second row. over_cap rows are logged for admin
+    # review but do not count toward max_redemptions.
+    cur.execute(
+        "CREATE TABLE IF NOT EXISTS promo_redemptions"
+        "(_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
+        "user_id UUID REFERENCES users(_id) ON DELETE SET NULL,"
+        "code_id UUID REFERENCES promo_codes(_id) ON DELETE SET NULL,"
+        "code TEXT NOT NULL,"
+        "kind TEXT NOT NULL,"
+        "creator_id UUID REFERENCES creators(_id) ON DELETE SET NULL,"
+        "referrer_user_id UUID REFERENCES users(_id) ON DELETE SET NULL,"
+        "plan TEXT NOT NULL,"
+        "platform TEXT NOT NULL,"
+        "store_transaction_id TEXT NOT NULL,"
+        "idempotency_key TEXT NOT NULL UNIQUE,"
+        "amount_discount_cents INTEGER,"
+        "over_cap BOOLEAN NOT NULL DEFAULT FALSE,"
+        "created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())"
+    )
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_promo_redemptions_creator ON promo_redemptions(creator_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_promo_redemptions_user ON promo_redemptions(user_id)")
+    # Durable "ever held a paid plan" marker. subscriptions rows are deleted on
+    # cancel, so history must live elsewhere for the new-subscriber check.
+    cur.execute(
+        "CREATE TABLE IF NOT EXISTS subscriber_history"
+        "(user_id UUID PRIMARY KEY REFERENCES users(_id) ON DELETE CASCADE,"
+        "provider TEXT NOT NULL,"
+        "first_paid_at TIMESTAMPTZ NOT NULL DEFAULT NOW())"
+    )
+    # Idempotent backfill from rows that still exist (deleted rows are gone;
+    # the Stripe-side email lookup in the eligibility check covers web history).
+    cur.execute(
+        "INSERT INTO subscriber_history (user_id, provider) "
+        "SELECT DISTINCT ON (user_id) user_id, provider FROM subscriptions "
+        "WHERE user_id IS NOT NULL AND provider IN ('stripe','apple') AND plan_type != 'free' "
+        "ON CONFLICT (user_id) DO NOTHING"
+    )
+
     # ── Level 2: depend on Level 1 ─────────────────────────────────────────────
     cur.execute(
         "CREATE TABLE IF NOT EXISTS note_verses"

@@ -211,12 +211,27 @@ Per-kind upload limits (server-enforced via the presigned POST policy's `content
 | Method | Route | Description |
 |---|---|---|
 | GET | `/subscriptions/user/{user_id}` | Get current subscription + usage summary |
-| POST | `/subscriptions/checkout` | Create a Stripe Checkout session (web). Body: `{user_id, member_count}` (1-8) — price is looked up server-side by count |
+| POST | `/subscriptions/checkout` | Create a Stripe Checkout session (web). Body: `{user_id, member_count, promo_code?}` (1-8) — price is looked up server-side by count. With `PROMO_CODES_ENABLED` on, an optional `promo_code` is re-validated server-side and applies the first-month coupon; any invalid code returns a uniform `400 {code: "invalid_promo_code"}` and creates no session. Ignored while the flag is off |
 | POST | `/subscriptions/stripe/webhook` | Stripe webhook handler |
 | POST | `/subscriptions/apple/sync` | Record/refresh a plan from a StoreKit 2 signed transaction (iOS). One of 8 fixed-price products maps to a member count server-side |
 | POST | `/subscriptions/apple/notifications` | Apple App Store Server Notification handler |
 | PUT | `/subscriptions/{subscription_id}` | Update a plan (host only). Body may include `member_count` to change plan size — re-prices from the same table |
 | POST | `/subscriptions/admin/grant-individual` | **Admin-only** (`require_admin`; `401`/`403` semantics as below). No body — the target is always the calling admin, never a client-supplied user. Grants the caller a free, active, individual-tier membership (`plan_type='individual'`, `provider='admin_comp'`, $0, no Stripe/Apple billing) with the same unlimited access a paying individual subscriber gets. Idempotent — calling it again returns the same existing grant rather than creating a duplicate. Never expires (not subject to the `EXPIRY_GRACE_DAYS` lapse sweep). Every grant is recorded in the `admin_audit` log. Returns the resulting subscription, same shape as `GET /{subscription_id}`. |
+
+### Promo codes (creator + friend invite codes)
+
+Feature-flagged by `PROMO_CODES_ENABLED` (default off). While off, every route below answers a uniform `404` (before auth). Details: `docs/architecture/backend.md` "Promo codes".
+
+| Method | Route | Description |
+|---|---|---|
+| POST | `/promo/{user_id}/validate` | Authenticated, rate-limited (`PROMO_VALIDATE_RATE_LIMIT`, per IP and per user). Body `{code, member_count?}`. Returns `{valid: true, percent_off}` or the identical `{valid: false}` for every failure. Creates nothing, logs nothing |
+| POST | `/promo/{user_id}/friend-code` | Authenticated. Get-or-create the caller's personal invite code. Returns `{code, link, percent_off}` |
+| POST/GET | `/admin/promo/creators` | **Admin-only.** Create / list creators (`name`, `notes`, `active`) |
+| PATCH | `/admin/promo/creators/{id}` | **Admin-only.** Update or deactivate a creator |
+| POST/GET | `/admin/promo/codes` | **Admin-only.** Create creator codes (`code`, `creator_id`, optional `max_redemptions`, `expires_at`) / list (`kind`, `creator_id`, paging) |
+| PATCH | `/admin/promo/codes/{id}` | **Admin-only.** Activate/deactivate, change cap or expiry |
+| GET | `/admin/promo/report` | **Admin-only.** Completed redemptions per creator (+ `over_cap_redemptions`) |
+| GET | `/admin/promo/redemptions` | **Admin-only.** Redemption list (`creator_id`, `kind`, paging) |
 
 ---
 

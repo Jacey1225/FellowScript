@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { StaticRouter } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext.jsx';
 import Home from './pages/Home.jsx';
+import Download from './pages/Download.jsx';
 
 // Build-time-only entry point (task 20260920-fix-spa-crawlability). Loaded
 // exclusively by scripts/prerender.mjs, after the ordinary client
@@ -39,6 +40,18 @@ export function renderHome() {
     <StaticRouter location="/">
       <AuthProvider>
         <Home />
+      </AuthProvider>
+    </StaticRouter>
+  );
+}
+
+// Task 20260930-downloads-page-indexable: the downloads page's crawlable body,
+// rendered with both the mobile and desktop branches (snapshot prop).
+export function renderDownload() {
+  return renderToStaticMarkup(
+    <StaticRouter location="/download">
+      <AuthProvider>
+        <Download snapshot />
       </AuthProvider>
     </StaticRouter>
   );

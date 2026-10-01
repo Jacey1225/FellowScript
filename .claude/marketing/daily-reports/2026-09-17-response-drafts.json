@@ -1,0 +1,128 @@
+[
+  {
+    "id": "R1",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/TrueChristian/comments/1wiqwvv/how_do_you_actually_remember_what_you_hear_on/",
+    "posture": "explicit_need",
+    "draft_text": "For me it was never really about which tool: notebook vs. app vs. whatever. It was building the habit of going back to my notes mid-week instead of taking them and letting them sit. I write 2-3 lines during the sermon, then Tuesday or Wednesday I reread them and try to connect them to whatever I'm reading on my own. That's the part that actually made things stick.\n\nThe other thing that helped more than I expected: linking notes to the actual verse instead of just a page in a notebook, so when I come back to that passage later the note is right there. I work on FellowScript, which does this and lets a group see each other's notes on the same verses. It turned my private note-taking into something my group actually talks about during the week, not just Sunday. The group-visibility part is what took it from a discipline I kept meaning to do to something that actually happens.",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R2",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/Reformed/comments/1w9f77b/balancing_teaching_and_community/",
+    "posture": "explicit_need",
+    "draft_text": "This is the tension every small group leader I know eventually runs into: teaching and closeness end up fighting each other for the same 90 minutes. What's helped the groups I've seen handle it well is moving some of the \"life together\" part to the days between meetings instead of cramming it into group night. A shared thread where people drop what they're actually chewing on from the week, not just prayer requests but actual verses and notes, does more for closeness than an extra 20 minutes of chit-chat at the start of group.\n\nI work on FellowScript, which is built for that gap: notes tied to specific verses that the whole group can see, so people are engaging with scripture together on a Tuesday, not just Sunday. It wouldn't replace your teaching time, just gives the community side somewhere to live during the week.",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R3",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/Christianity/comments/1wgon2y/how_to_split_costs_in_a_bible_study_group/",
+    "posture": "explicit_need",
+    "draft_text": "We ran into this with our group once it grew past a dozen people. What worked for us: one person (usually the host) fronts the actual consumables (coffee, snacks) and everyone venmos a flat $5-10 whenever they come, no tracking who owes what for which week. If you're doing a shared meal or study materials specifically, a simple sign-up sheet where people bring or pay for one thing on rotation avoids the awkward \"settle up\" conversation entirely. Whatever you land on, the earlier you name it out loud as a group instead of letting the host quietly absorb it, the less resentment builds up later.",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R4",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/pastors/comments/1uvx0zl/bible_study_group_where_to_start/",
+    "posture": "explicit_need",
+    "draft_text": "Starting from scratch, I'd pick one thing over trying to do it all at once: either a single book of the Bible (a gospel or one of Paul's shorter letters works well for a first group) or a short topical study with a workbook already built, rather than writing your own curriculum in year one. Keep the first few weeks light on teaching and heavy on just getting people talking. How the group functions matters more early on than how deep the material is.\n\nFor keeping people engaged between meetings (I work on FellowScript, so full disclosure), the biggest lift for a brand-new group is usually just having somewhere people can drop a note or a verse that stuck with them during the week. It doesn't have to be an app, but something has to exist there or the group only exists on meeting night.",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R5",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/Reformed/comments/1tt8rc3/looking_for_a_bible_study/",
+    "posture": "explicit_need",
+    "draft_text": "For curriculum specifically, a few that hold up well across different maturity levels in a group: Jen Wilkin's studies (especially if you want something more inductive/text-driven than workbook-driven), or The Gospel Coalition's women's studies if you want something free and solid theologically. If you're running four studies at once, the biggest practical win isn't the material, it's making sure each group has its own designated discussion leader rather than you trying to be present for all four — burnout is the real risk at that scale, not curriculum quality.",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R6",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/Bible/comments/1wf9qaq/any_tips_for_studying_the_bible_on_my_own/",
+    "posture": "explicit_need",
+    "draft_text": "The thing that changed my own solo study the most wasn't a method: it was picking a single small chunk (like one chapter, sometimes just a few verses) and actually writing down one question and one observation before moving on, instead of reading a few chapters and moving on with nothing captured. Consistency beats coverage by a lot. A few verses a day with a note beats three chapters skimmed.\n\nIf you ever find yourself wanting a second set of eyes on what you're seeing in the text, even a couple friends doing the same passage on their own time and comparing notes once a week can make solo study feel less like reading into a void. Not necessary, just something that's helped people I know stick with it longer.",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R7",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/Christianity/comments/1wfmg6m/college_bible_study/",
+    "posture": "explicit_need",
+    "draft_text": "Starting a college group, the two things that make or break the first semester: pick a low-commitment first study (something short, 6-8 weeks max) so people can commit without it feeling like a huge ask, and get someone other than you to help host or lead discussion early so it doesn't become \"your\" group that only exists when you show up.\n\nFor keeping everyone on the same page during the week (disclosure: I work on FellowScript), it's free for a group your size. The part that's actually useful for a college group specifically is that everyone can see each other's notes on the same verses, which tends to spark more conversation in the group chat than just a reminder text about when you're meeting next.",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R8",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/Bible/comments/1wigiy6/which_bible_app_can_set_up_custom_reading_plans/",
+    "posture": "explicit_need",
+    "draft_text": "For actually custom, build-your-own reading plans, YouVersion (Bible App) is still the most flexible for that specifically: you can build a plan from scratch, not just pick from their library. If you want plans built around specific dates or a group of people finishing together (like a New Testament in 90 days with friends), that's a different feature set worth checking depending on the app.\n\nNot a perfect fit for what you're asking, but flagging in case it's useful: FellowScript (I work on it) does group devotion plans rather than personal custom reading plans. Good if the actual goal is reading with people, not so much if you specifically want a solo custom plan builder.",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R9",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/Christianity/comments/1wipg4r/fellowship/",
+    "posture": "explicit_need",
+    "draft_text": "The most reliable way I've seen this actually happen (versus just browsing church websites) is asking your own church directly if they have a small groups or connect ministry. Most do but don't advertise it well, so you sometimes have to ask a staff member by name rather than looking for a sign-up on the website. If you're between churches or don't have one yet, a lot of denominational sites (PCA, Acts29, EFCA, etc.) have church finders that let you filter by size, which tends to correlate with how active the small group culture is.\n\nOnce you're in a group, honestly the harder part is staying connected between meetings rather than finding the group in the first place. That's the part I've seen trip people up more. (I work on FellowScript, which is built around exactly that gap, if it's useful once you're in a group and not just looking for one.)",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R10",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/Christianity/comments/1wfek8t/i_hate_that_god_created_me/pac9tes/",
+    "posture": "networking",
+    "draft_text": "This really resonates. The isolation from that stretch was rough for a lot of people, and it's interesting how many folks I've talked to trace their way back through exactly this: a specific group of people rather than church in the abstract. Curious what made the friendships stick for you after. Was it a regular group/Bible study structure, or more organic than that? I've noticed the people who stay connected long-term usually have some kind of recurring touchpoint, even a small one, versus just seeing each other on Sundays.",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R11",
+    "platform": "twitter",
+    "url": "https://twitter.com/GPC_WaiyakiWay/status/2100520586506076202",
+    "posture": "networking",
+    "draft_text": "An away day is such an underrated format. Something about getting people out of the building changes the conversations that happen. What's the food and activities lineup looking like? Always curious how churches balance structured programming vs. just leaving room for people to actually talk.",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R12",
+    "platform": "twitter",
+    "url": "https://twitter.com/ucf_kampala/status/2100524923609399384",
+    "posture": "networking",
+    "draft_text": "Love this framing. Brunch does something a regular service slot doesn't: people linger instead of rushing off. How'd this format come about? Was it a response to people not sticking around after the usual service, or something you started fresh?",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R13",
+    "platform": "linkedin",
+    "url": "https://www.linkedin.com/posts/deborah-s-tribe-025502427_deborahstribe-gemexperience-kenya-activity-7506293108624564224-WxZR",
+    "posture": "networking",
+    "draft_text": "This looks like such a meaningful gathering. Curious how the GEM Experience has evolved between the 1st and 2nd one. Did you change the format based on what you learned the first time around, or keep the core the same and just build on it?",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R14",
+    "platform": "twitter/linkedin",
+    "url": "https://twitter.com/LEMPMentorship/status/2100538852502876601 and https://www.linkedin.com/posts/livingeffectivelymentorshipprogram_lemp-activity-7506301621426122752-Zfj_",
+    "posture": "networking",
+    "draft_text": "A weekly interdenominational study that's actually sustained is genuinely hard to pull off. Curious what's kept people coming back week over week. Is it the topic rotation, the group itself, or something about the online format specifically that's made it stick where a lot of online studies fizzle?",
+    "status": "pending_approval",
+    "skip_reason": null
+  }
+]

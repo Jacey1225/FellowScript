@@ -1,0 +1,102 @@
+[
+  {
+    "id": "R1",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/Christianity/comments/1wt2v2r/21m_looking_for_a_bible_study_buddy_or_a_few/",
+    "posture": "explicit_need",
+    "delivery": "comment",
+    "draft_text": "Good on you for putting this out there. Small remote groups usually survive the first couple of weeks and then fade around week three or four, because the call ends up being the only thing holding them together. It helps if everyone reads the same chapter beforehand and writes down a question or two, so the call starts with something already on the table. Keeping it to three or four people and picking one book, a gospel or a short epistle, gives you a natural finish line too. Full disclosure, I work on FellowScript, a free Bible app where a group can leave notes on the same passage before you meet. You don't need it for any of this, a shared doc does the same job. Hope you find your people.",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R2",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/Christianity/comments/1wjdqi2/any_one_know_where_to_get_some_group_bible_studies/",
+    "posture": "explicit_need",
+    "delivery": "comment",
+    "draft_text": "Writing your own material for 20 people every week is a lot, so running dry makes sense. If you want something ready-made, The Gospel Coalition has free studies, and RightNow Media is solid if your church has access. Cutting the handout down to a passage and two or three questions, and letting people mark up the text themselves, often gets more discussion than a thick packet does. I work on FellowScript, a free app where the group reads the same passage and leaves notes right on it, so nothing gets printed. Worth a look only if the prep and printing is what's wearing you down.",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R3",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/Christianity/comments/1vyifqn/suggestions_for_a_great_bible_studyhome_group/",
+    "posture": "explicit_need",
+    "delivery": "comment",
+    "draft_text": "Congrats on taking this on. Two things tend to help new leaders. A consistent rhythm: same night, same length, same opening question, so people know what they're walking into. And a way for quieter people to contribute before the meeting, like a question they answer in writing ahead of time, since the loudest voice usually fills the room otherwise. I work on FellowScript, which lets a group leave notes on a passage before meeting, though a group chat with a weekly question does the same job.",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R4",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/Christianity/comments/1wgon2y/how_to_split_costs_in_a_bible_study_group/",
+    "posture": "explicit_need",
+    "delivery": "comment",
+    "draft_text": "For a group that size I'd keep it simple. The hosts cover the main dish or drinks, and everyone else signs up for one item, so nobody is doing math. If people want to chip in, a small jar by the door works better than requesting payments, and it stays quietly optional. Splitting costs evenly with a spreadsheet tends to make it feel like a transaction.",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R5",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/Christianity/comments/1wcry7q/how_do_people_find_christian_community/",
+    "posture": "explicit_need",
+    "delivery": "comment",
+    "draft_text": "Shift work makes a fixed weekly group really hard, so I get why they keep falling apart. What tends to work better is a group that doesn't need everyone in the same room at the same time: same passage for the week, everyone drops a note or question whenever they can, and one live call now and then. I work on FellowScript, which is built around that async setup, though a group chat and a shared passage would get you most of the way. What does your schedule look like? That changes what would work.",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R6",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/Christianity/comments/1wkz57j/bible_study_map/",
+    "posture": "networking",
+    "delivery": "comment",
+    "draft_text": "This looks really useful. How are you using it when you prep for your group? I'm curious whether it changes what you bring to the discussion, or mostly helps you get your own head around the passage first.",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R7",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/TrueChristian/comments/1wsse24/using_ai_to_chat_with_biblical_figures/",
+    "posture": "networking",
+    "delivery": "comment",
+    "draft_text": "I'm wary of the roleplay version. Putting invented words in the mouth of Paul or David gets you a confident voice that isn't in the text. Where I could see AI being useful is the opposite direction, something that asks you a question and sends you back to the passage rather than answering for the person. Curious whether anyone here has found a way of using it that actually pushed them into scripture more.",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R8",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/Christianity/comments/1w7as0a/bible_study_group_whats_the_point/",
+    "posture": "explicit_need",
+    "delivery": "comment",
+    "draft_text": "That's a fair question, and a lot of groups don't answer it well. Groups tend to be worth it when they're small enough that everyone talks and the point is the people more than the material. If yours isn't that, it's reasonable to feel like you're just sitting through it. Being Catholic may also mean the format isn't built around how you already read, and that's no failing on your part.",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R9",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/Bible/comments/1wofb67/i_read_the_bible_cover_to_cover_in_5_days/",
+    "posture": "networking",
+    "delivery": "comment",
+    "draft_text": "Five days is a serious pace. What did you notice reading it that fast that you'd have missed going slower? And did anything stick with you afterward, or was it more of a sweep than a deep read?",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R10",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/Christianity/comments/1w1d5o9/i_keep_dreaming_about_building_a_bible_app_should/",
+    "posture": "networking",
+    "delivery": "comment",
+    "draft_text": "The fact that you keep dreaming about it is worth taking seriously. I work on a Bible app myself, and one thing I'd suggest is talking to people who lead small groups before you write anything, since what they struggle with may not be what you assume. Which part of Bible study would you want the app to fix?",
+    "status": "pending_approval",
+    "skip_reason": null
+  }
+]

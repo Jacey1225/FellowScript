@@ -2,7 +2,9 @@
 
 A generic ``invites`` table (db.py) with a per-``kind`` handler registry, so
 phase 2 (subscription-seat invites) plugs in by adding a handler -- no schema
-change. Only kind ``'group'`` exists today.
+change. Kinds: ``'group'`` (phase 1) and ``'subscription'`` (phase 2: a link
+creates a pending join *request* for the plan owner to accept -- it never
+grants membership by itself).
 
 Security properties (see the intake spec's threat model):
   * Tokens are 256-bit CSPRNG (``secrets.token_urlsafe(32)``); only the
@@ -32,6 +34,7 @@ from datetime import datetime, timedelta, timezone
 from backend.interactions.attachments import generate_download_url
 from backend.interactions.invites_config import get_invites_config
 from db import DBManager
+from backend.subscription.subscriptions import is_plan_lapsed, user_holds_other_paid_plan
 
 logger = logging.getLogger(__name__)
 
@@ -83,6 +86,12 @@ def _audit(event: str, **fields) -> None:
     logger.info("INVITE_AUDIT event=%s %s", event, parts)
 
 
+def audit(event: str, **fields) -> None:
+    """Public audit hook (subscription accept/decline/request events reuse the
+    INVITE_AUDIT line format). Callers must pass only ids/refs, never tokens."""
+    _audit(event, **fields)
+
+
 def _as_uuid(value: str) -> str | None:
     try:
         return str(uuid.UUID(str(value)))
@@ -91,14 +100,49 @@ def _as_uuid(value: str) -> str | None:
 
 
 # ── Per-kind handlers ─────────────────────────────────────────────────────────
+#
+# A handler adapts the generic create/list/revoke/preview/redeem machinery to
+# one kind of target. "Target row" is whatever ``lock_target``/``read_target``
+# return; only the handler interprets it. Interface:
+#
+#   limits(cfg)                          per-kind create tunables
+#   lock_target(cur, tid) / read_target  row (locked FOR UPDATE / plain) or None
+#   is_actor(row, uid)                   may uid create/list/reset links?
+#   is_manager(row, uid)                 may uid see/revoke every link?
+#   create_precheck(cur, row, tid)       raise InviteError if not linkable now
+#   revoke_nonactor_error()              error for a non-actor revoking
+#   existing_outcome(cur, uid, tid, row) (reason, result) no-op, or None
+#   redeem_precheck(cur, uid, tid, row)  (reason, InviteError) rejection, or None
+#   apply(cur, uid, tid) -> bool         perform the redeem effect; False = no-op
+#   success_result                       redeem response fields when applied
+#   preview(cur, tid, created_by)        public info dict, or None (not found)
+#   purge(cur, tid)                      drop the target's invites
+
+class _Limits:
+    def __init__(self, default_days, allowed_days, default_uses, allowed_uses, max_active, limit_msg):
+        self.default_days = default_days
+        self.allowed_days = allowed_days
+        self.default_uses = default_uses
+        self.allowed_uses = allowed_uses
+        self.max_active = max_active
+        self.limit_msg = limit_msg
+
 
 class GroupInviteHandler:
     """Kind ``'group'``: target_id is groups._id; redeeming appends the user
     to groups.users."""
 
     kind = "group"
+    forbidden_create_msg = "You can't create an invite link for this group."
+    forbidden_msg = "Not a member of this group"
+    success_result = {"joined": True, "already_member": False}
 
-    def lock_group(self, cur, target_id: str):
+    def limits(self, cfg) -> _Limits:
+        return _Limits(cfg.default_expiry_days, cfg.allowed_expiry_days, cfg.default_max_uses,
+                       cfg.allowed_max_uses, cfg.max_active_links_per_user_per_group,
+                       "You have too many active links for this group. Revoke one first.")
+
+    def lock_target(self, cur, target_id: str):
         """Lock + return (title, users, creator_id, photo_key), or None."""
         cur.execute(
             "SELECT title, COALESCE(users, '{}'), creator_id, photo_key "
@@ -107,9 +151,35 @@ class GroupInviteHandler:
         )
         return cur.fetchone()
 
-    def is_manager(self, group_row, user_id: str) -> bool:
-        creator = group_row[2]
+    def read_target(self, cur, target_id: str):
+        cur.execute(
+            "SELECT title, COALESCE(users, '{}'), creator_id, photo_key FROM groups WHERE _id = %s",
+            (target_id,),
+        )
+        return cur.fetchone()
+
+    def is_actor(self, row, user_id: str) -> bool:
+        return user_id in row[1]
+
+    def is_manager(self, row, user_id: str) -> bool:
+        creator = row[2]
         return creator is not None and str(creator) == user_id
+
+    def create_precheck(self, cur, row, target_id: str) -> None:
+        return None
+
+    def revoke_nonactor_error(self) -> InviteError:
+        return InviteError("not_found", 404, "Invite not found.")
+
+    def existing_outcome(self, cur, user_id: str, target_id: str, row):
+        if user_id in row[1]:
+            return "already_member", {"joined": False, "already_member": True}
+        return None
+
+    def redeem_precheck(self, cur, user_id: str, target_id: str, row):
+        if self.has_blocked_relationship(cur, user_id, target_id):
+            return "blocked", InviteError("blocked", 403, "You can't join this group.")
+        return None
 
     def has_blocked_relationship(self, cur, user_id: str, target_id: str) -> bool:
         """True if ``user_id`` is blocked-by / has blocked ANY current member."""
@@ -121,7 +191,7 @@ class GroupInviteHandler:
         )
         return cur.fetchone() is not None
 
-    def add_member(self, cur, user_id: str, target_id: str) -> None:
+    def apply(self, cur, user_id: str, target_id: str) -> bool:
         cur.execute(
             "UPDATE groups SET users = array_append(COALESCE(users, '{}'), %s) "
             "WHERE _id = %s AND NOT (%s = ANY(COALESCE(users, '{}')))",
@@ -129,6 +199,7 @@ class GroupInviteHandler:
         )
         if cur.rowcount != 1:
             raise RuntimeError("group member append affected no row")
+        return True
 
     def preview(self, cur, target_id: str, created_by: str) -> dict | None:
         cur.execute(
@@ -156,7 +227,126 @@ class GroupInviteHandler:
         cur.execute("DELETE FROM invites WHERE kind = 'group' AND target_id = %s", (target_id,))
 
 
-HANDLERS = {h.kind: h for h in (GroupInviteHandler(),)}
+class SubscriptionInviteHandler:
+    """Kind ``'subscription'``: target_id is subscriptions._id. Only the plan
+    owner (subscriptions.user_id) may create/list/revoke/reset links, and only
+    on an active group plan with more than one seat. Redeeming NEVER changes
+    users.subscription_id: it inserts a pending ``subscription_request`` that
+    the owner must accept (SubscriptionsManager.accept_request, which re-checks
+    capacity under a row lock). Target row:
+    (owner_id, plan_type, status, max_members, current_period_end)."""
+
+    kind = "subscription"
+    forbidden_create_msg = "Only the plan owner can create invite links."
+    forbidden_msg = "Only the plan owner can manage invite links."
+    success_result = {"joined": False, "already_member": False, "requested": True, "pending": True}
+
+    _COLS = "user_id, plan_type, status, max_members, current_period_end"
+
+    def limits(self, cfg) -> _Limits:
+        return _Limits(cfg.subscription_default_expiry_days, cfg.subscription_allowed_expiry_days,
+                       cfg.subscription_default_max_uses, cfg.subscription_allowed_max_uses,
+                       cfg.max_active_links_per_subscription,
+                       "You have too many active links for this plan. Revoke one first.")
+
+    def lock_target(self, cur, target_id: str):
+        cur.execute(f"SELECT {self._COLS} FROM subscriptions WHERE _id = %s FOR UPDATE", (target_id,))
+        return cur.fetchone()
+
+    def read_target(self, cur, target_id: str):
+        cur.execute(f"SELECT {self._COLS} FROM subscriptions WHERE _id = %s", (target_id,))
+        return cur.fetchone()
+
+    def is_actor(self, row, user_id: str) -> bool:
+        return row[0] is not None and str(row[0]) == user_id
+
+    is_manager = is_actor
+
+    @staticmethod
+    def _eligible(row) -> bool:
+        """Active (non-lapsed) group plan with more than one seat."""
+        _, plan_type, status, max_members, cpe = row
+        return (
+            plan_type == "group"
+            and status in ("trialing", "active")
+            and (max_members or 1) > 1
+            and not is_plan_lapsed(cpe)
+        )
+
+    @staticmethod
+    def _member_count(cur, target_id: str) -> int:
+        cur.execute("SELECT COUNT(*) FROM users WHERE subscription_id = %s", (target_id,))
+        return cur.fetchone()[0]
+
+    def _joinable(self, cur, row, target_id: str) -> bool:
+        return self._eligible(row) and self._member_count(cur, target_id) < (row[3] or 1)
+
+    def create_precheck(self, cur, row, target_id: str) -> None:
+        if not self._eligible(row):
+            raise InviteError(
+                "not_eligible", 409,
+                "Invite links are only available on an active group plan with more than one seat.")
+
+    def revoke_nonactor_error(self) -> InviteError:
+        return InviteError("forbidden", 403, "Only the plan owner can manage invite links.")
+
+    def existing_outcome(self, cur, user_id: str, target_id: str, row):
+        cur.execute("SELECT subscription_id FROM users WHERE _id = %s", (user_id,))
+        r = cur.fetchone()
+        if r and r[0] and str(r[0]) == target_id:  # includes the owner
+            return "already_member", {"joined": False, "already_member": True,
+                                      "requested": False, "pending": False}
+        cur.execute(
+            "SELECT 1 FROM subscription_request WHERE subscription_id = %s AND from_user_id = %s",
+            (target_id, user_id))
+        if cur.fetchone():
+            return "already_requested", {"joined": False, "already_member": False,
+                                         "requested": False, "pending": True}
+        return None
+
+    def redeem_precheck(self, cur, user_id: str, target_id: str, row):
+        # Plan not active/group/multi-seat, or no open seat: uniform not_found.
+        if not self._joinable(cur, row, target_id):
+            return "plan_unavailable", _not_found()
+        if user_holds_other_paid_plan(cur, user_id, target_id):
+            return "other_plan", InviteError(
+                "other_plan", 409,
+                "You're already on a paid plan. Leave it before asking to join another.")
+        cur.execute(
+            "SELECT 1 FROM blocked_users b JOIN users u ON u.subscription_id = %s "
+            "WHERE (b.blocker_id = %s AND b.blocked_id = u._id) "
+            "OR (b.blocked_id = %s AND b.blocker_id = u._id) LIMIT 1",
+            (target_id, user_id, user_id),
+        )
+        if cur.fetchone() is not None:
+            return "blocked", InviteError("blocked", 403, "You can't join this plan.")
+        cur.execute("SELECT COUNT(*) FROM subscription_request WHERE subscription_id = %s", (target_id,))
+        if cur.fetchone()[0] >= get_invites_config().max_pending_requests_per_subscription:
+            return "pending_cap", _not_found()
+        return None
+
+    def apply(self, cur, user_id: str, target_id: str) -> bool:
+        """Insert the pending request. False if a concurrent path already did."""
+        cur.execute(
+            "INSERT INTO subscription_request (subscription_id, from_user_id) VALUES (%s, %s) "
+            "ON CONFLICT DO NOTHING",
+            (target_id, user_id),
+        )
+        return cur.rowcount == 1
+
+    def preview(self, cur, target_id: str, created_by: str) -> dict | None:
+        row = self.read_target(cur, target_id)
+        if not row or not self._joinable(cur, row, target_id):
+            return None
+        cur.execute("SELECT username FROM users WHERE _id = %s", (row[0],))
+        u = cur.fetchone()
+        return {"kind": self.kind, "inviter_username": u[0] if u else None, "plan_type": "group"}
+
+    def purge(self, cur, target_id: str) -> None:
+        cur.execute("DELETE FROM invites WHERE kind = 'subscription' AND target_id = %s", (target_id,))
+
+
+HANDLERS = {h.kind: h for h in (GroupInviteHandler(), SubscriptionInviteHandler())}
 
 
 def _handler(kind: str):
@@ -184,33 +374,36 @@ class InvitesManager(DBManager):
         """Mint a new link. Returns the plaintext token exactly once.
 
         Raises:
-            InviteError: forbidden (not a member), bad_request (value not in
-                the configured allowed set), link_limit (soft cap reached).
+            InviteError: forbidden (not an actor: group member / plan owner),
+                not_eligible (subscription plan can't take links),
+                bad_request (value not in the configured allowed set),
+                link_limit (soft cap reached).
         """
         cfg = get_invites_config()
         handler = _handler(kind)
-        days = cfg.default_expiry_days if expires_in_days is None else expires_in_days
-        uses = cfg.default_max_uses if max_uses is None else max_uses
-        if days not in cfg.allowed_expiry_days or uses not in cfg.allowed_max_uses:
+        lim = handler.limits(cfg)
+        days = lim.default_days if expires_in_days is None else expires_in_days
+        uses = lim.default_uses if max_uses is None else max_uses
+        if days not in lim.allowed_days or uses not in lim.allowed_uses:
             raise InviteError("bad_request", 422, "That expiry or use limit isn't allowed.")
         tid = _as_uuid(target_id)
         if tid is None:
-            raise InviteError("forbidden", 403, "You can't create an invite link for this group.")
+            raise InviteError("forbidden", 403, handler.forbidden_create_msg)
         token = generate_token()
         token_hash = hash_token(token)
         expires_at = datetime.now(timezone.utc) + timedelta(days=days)
         try:
-            group = handler.lock_group(self.cur, tid)  # also serializes the cap check
-            if not group or self.user_id not in group[1]:
-                raise InviteError("forbidden", 403, "You can't create an invite link for this group.")
+            row = handler.lock_target(self.cur, tid)  # also serializes the cap check
+            if not row or not handler.is_actor(row, self.user_id):
+                raise InviteError("forbidden", 403, handler.forbidden_create_msg)
+            handler.create_precheck(self.cur, row, tid)
             self.cur.execute(
                 "SELECT COUNT(*) FROM invites WHERE kind = %s AND target_id = %s AND created_by = %s "
                 "AND revoked_at IS NULL AND expires_at > NOW() AND use_count < max_uses",
                 (kind, tid, self.user_id),
             )
-            if self.cur.fetchone()[0] >= cfg.max_active_links_per_user_per_group:
-                raise InviteError("link_limit", 409,
-                                  "You have too many active links for this group. Revoke one first.")
+            if self.cur.fetchone()[0] >= lim.max_active:
+                raise InviteError("link_limit", 409, lim.limit_msg)
             self.cur.execute(
                 "INSERT INTO invites (token_hash, kind, target_id, created_by, expires_at, max_uses) "
                 "VALUES (%s, %s, %s, %s, %s, %s) RETURNING _id, created_at",
@@ -236,24 +429,20 @@ class InvitesManager(DBManager):
     # -- list -----------------------------------------------------------------
     def list_active(self, kind: str, target_id: str) -> list[dict]:
         """Active links the caller may see: their own, or all if they manage
-        the target (group creator). Metadata only -- never a token.
+        the target (group creator / plan owner). Metadata only -- never a token.
 
         Raises:
-            InviteError: forbidden (not a member).
+            InviteError: forbidden (not an actor).
         """
         handler = _handler(kind)
         tid = _as_uuid(target_id)
         if tid is None:
-            raise InviteError("forbidden", 403, "Not a member of this group")
+            raise InviteError("forbidden", 403, handler.forbidden_msg)
         try:
-            self.cur.execute(
-                "SELECT title, COALESCE(users, '{}'), creator_id, photo_key FROM groups WHERE _id = %s",
-                (tid,),
-            )
-            group = self.cur.fetchone()
-            if not group or self.user_id not in group[1]:
-                raise InviteError("forbidden", 403, "Not a member of this group")
-            manager = handler.is_manager(group, self.user_id)
+            row = handler.read_target(self.cur, tid)
+            if not row or not handler.is_actor(row, self.user_id):
+                raise InviteError("forbidden", 403, handler.forbidden_msg)
+            manager = handler.is_manager(row, self.user_id)
             self.cur.execute(
                 "SELECT i._id, i.created_by, u.username, i.created_at, i.expires_at, i.max_uses, i.use_count "
                 "FROM invites i JOIN users u ON u._id = i.created_by "
@@ -285,12 +474,13 @@ class InvitesManager(DBManager):
     # -- revoke ---------------------------------------------------------------
     def revoke(self, invite_id: str, ip: str = "-") -> None:
         """Revoke one link. Allowed for the link's creator or the target's
-        manager (group creator), and only while still a member. Idempotent.
+        manager, and only while still an actor. Idempotent.
 
         Raises:
-            InviteError: not_found (unknown id OR caller isn't a member --
-                indistinguishable), forbidden (member, but neither creator
-                nor manager).
+            InviteError: not_found (unknown id; for groups also a non-member --
+                indistinguishable), forbidden (known non-owner of a
+                subscription, or a group member who is neither creator nor
+                manager).
         """
         iid = _as_uuid(invite_id)
         if iid is None:
@@ -302,10 +492,12 @@ class InvitesManager(DBManager):
                 raise InviteError("not_found", 404, "Invite not found.")
             kind, target_id, created_by, token_hash = row
             handler = _handler(kind)
-            group = handler.lock_group(self.cur, str(target_id))
-            if not group or self.user_id not in group[1]:
+            target = handler.lock_target(self.cur, str(target_id))
+            if not target:
                 raise InviteError("not_found", 404, "Invite not found.")
-            if str(created_by) != self.user_id and not handler.is_manager(group, self.user_id):
+            if not handler.is_actor(target, self.user_id):
+                raise handler.revoke_nonactor_error()
+            if str(created_by) != self.user_id and not handler.is_manager(target, self.user_id):
                 raise InviteError("forbidden", 403, "You can't revoke this invite link.")
             self.cur.execute(
                 "UPDATE invites SET revoked_at = NOW() WHERE _id = %s AND revoked_at IS NULL", (iid,))
@@ -318,23 +510,23 @@ class InvitesManager(DBManager):
 
     def reset(self, kind: str, target_id: str, ip: str = "-") -> int:
         """Revoke every active link the caller is allowed to revoke for this
-        target (all of them for the group creator, else only their own).
+        target (all of them for the manager, else only their own).
 
         Returns:
             int: number of links revoked.
 
         Raises:
-            InviteError: forbidden (not a member).
+            InviteError: forbidden (not an actor).
         """
         handler = _handler(kind)
         tid = _as_uuid(target_id)
         if tid is None:
-            raise InviteError("forbidden", 403, "Not a member of this group")
+            raise InviteError("forbidden", 403, handler.forbidden_msg)
         try:
-            group = handler.lock_group(self.cur, tid)
-            if not group or self.user_id not in group[1]:
-                raise InviteError("forbidden", 403, "Not a member of this group")
-            manager = handler.is_manager(group, self.user_id)
+            row = handler.lock_target(self.cur, tid)
+            if not row or not handler.is_actor(row, self.user_id):
+                raise InviteError("forbidden", 403, handler.forbidden_msg)
+            manager = handler.is_manager(row, self.user_id)
             self.cur.execute(
                 "UPDATE invites SET revoked_at = NOW() WHERE kind = %s AND target_id = %s "
                 "AND revoked_at IS NULL " + ("" if manager else "AND created_by = %s ")
@@ -379,14 +571,18 @@ class InvitesManager(DBManager):
 
     # -- redeem ---------------------------------------------------------------
     def redeem(self, token: str, ip: str = "-") -> dict:
-        """Join the target via ``token`` as ``self.user_id``.
+        """Redeem ``token`` as ``self.user_id``: a group link joins the group;
+        a subscription link only files a pending join request.
 
         Returns:
-            dict: ``{"kind", "target_id", "joined", "already_member"}``.
+            dict: ``{"kind", "target_id", "joined", "already_member"}`` plus,
+                for subscriptions, ``"requested"`` (a new request was filed)
+                and ``"pending"`` (a request is awaiting the owner).
 
         Raises:
-            InviteError: not_found (unknown token), expired, revoked, full,
-                blocked (deliberately generic -- never says who blocked whom).
+            InviteError: not_found (unknown token / unusable target), expired,
+                revoked, full, blocked (deliberately generic -- never says who
+                blocked whom), other_plan (subscription only; caller's own state).
         """
         token_hash = hash_token(token)
         ref = _ref(token_hash)
@@ -402,22 +598,27 @@ class InvitesManager(DBManager):
             handler = HANDLERS[kind]
 
             # Lock the target first (consistent order: target, then invite).
-            group = handler.lock_group(self.cur, target_id)
-            if not group:
+            target = handler.lock_target(self.cur, target_id)
+            if not target:
                 self.conn.rollback()
                 _audit("redeem_fail", reason="target_gone", ref=ref, user=self.user_id, ip=ip)
                 raise _not_found()
-            if self.user_id in group[1]:
-                self.conn.rollback()
-                _audit("redeem_noop", reason="already_member", invite=invite_id, ref=ref,
-                       user=self.user_id, ip=ip)
-                return {"kind": kind, "target_id": target_id, "joined": False, "already_member": True}
 
-            if handler.has_blocked_relationship(self.cur, self.user_id, target_id):
+            existing = handler.existing_outcome(self.cur, self.user_id, target_id, target)
+            if existing is not None:
+                reason, extra = existing
                 self.conn.rollback()
-                _audit("redeem_fail", reason="blocked", invite=invite_id, ref=ref,
+                _audit("redeem_noop", reason=reason, invite=invite_id, ref=ref,
                        user=self.user_id, ip=ip)
-                raise InviteError("blocked", 403, "You can't join this group.")
+                return {"kind": kind, "target_id": target_id, **extra}
+
+            rejected = handler.redeem_precheck(self.cur, self.user_id, target_id, target)
+            if rejected is not None:
+                reason, err = rejected
+                self.conn.rollback()
+                _audit("redeem_fail", reason=reason, invite=invite_id, ref=ref,
+                       user=self.user_id, ip=ip)
+                raise err
 
             # The single atomic gate: expiry, revocation and max_uses are all
             # enforced by this one statement, so racing redeems of the last
@@ -447,7 +648,14 @@ class InvitesManager(DBManager):
                 _audit("redeem_fail", reason=reason, invite=invite_id, ref=ref, user=self.user_id, ip=ip)
                 raise err
 
-            handler.add_member(self.cur, self.user_id, target_id)
+            if not handler.apply(self.cur, self.user_id, target_id):
+                # A concurrent path already produced the effect: no-op, and the
+                # use consumed above is rolled back with it.
+                self.conn.rollback()
+                _audit("redeem_noop", reason="already_requested", invite=invite_id, ref=ref,
+                       user=self.user_id, ip=ip)
+                return {"kind": kind, "target_id": target_id, "joined": False, "already_member": False,
+                        "requested": False, "pending": True}
             self.conn.commit()
         except InviteError:
             raise
@@ -455,8 +663,9 @@ class InvitesManager(DBManager):
             self.conn.rollback()
             raise
         _audit("redeem", invite=invite_id, ref=ref, kind=kind, target=target_id,
-               user=self.user_id, ip=ip)
-        return {"kind": kind, "target_id": target_id, "joined": True, "already_member": False}
+               user=self.user_id, ip=ip,
+               outcome="requested" if kind == "subscription" else "joined")
+        return {"kind": kind, "target_id": target_id, **handler.success_result}
 
 
 def purge_target_invites(cur, kind: str, target_id: str) -> None:

@@ -1,0 +1,8 @@
+{
+  "task_id": "20260911-fellowscript-larger-scale-reach",
+  "stage": "evaluating-diffs",
+  "result": "pass",
+  "summary": "Larger channels exist, but only Planning Center's free self-serve integrations directory (78,000+ churches vendor-stated, directory reach unproven) is actionable now for a one- or two-person team, and it is an on-ramp rather than a demonstrated audience. RightNow Media (~20,000 paying churches, not the 30,000+ it advertises) is the best requires-leverage candidate with no public vendor path; the paid channels (Lifeway, TGC, Christianity Today) are real but every headline number counts a looser unit than it sounds and none publishes a price.",
+  "artifact_url": "https://claude.ai/code/artifact/56154ef1-7708-460c-9818-0016e78c5d23",
+  "conclusion": ".claude/research/20260911-fellowscript-larger-scale-reach/conclusion.md"
+}

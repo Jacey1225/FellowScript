@@ -6,7 +6,8 @@ import {
   PictureOutlined, FileOutlined, SmileOutlined, PlayCircleOutlined,
   DownloadOutlined, CloseCircleFilled, SearchOutlined,
 } from '@ant-design/icons';
-import SessionWidget from './SessionWidget.jsx';
+import { SessionCard } from './SessionWidget.jsx';
+import SessionsMenu from './SessionsMenu.jsx';
 import GroupInfoPanel from './GroupInfoPanel.jsx';
 import GroupAnnouncementWidget from './GroupAnnouncementWidget.jsx';
 import { ANNOUNCEMENTS_ENABLED } from '../lib/announcementsApi.js';
@@ -101,10 +102,28 @@ function AttachmentLightbox({ kind, url, originX, originY, onClose }) {
 }
 
 // ── Per-kind attachment rendering inside the existing message bubble (design gate §4) ──
+function meta0Ratio(m) {
+  const w = Number(m && m.width);
+  const h = Number(m && m.height);
+  return w > 0 && h > 0 ? w / h : null;
+}
+
 function AttachmentContent({ message }) {
   const [videoPlaying, setVideoPlaying] = useState(false);
   const [gifTapped, setGifTapped] = useState(false);
   const [failed, setFailed] = useState(false);
+  // Natural media ratio, from attachment metadata when present, else measured
+  // on load; applied as inline aspect-ratio so media keeps its true shape
+  // (and reserves space before load when metadata supplies dimensions).
+  const metaRatio = meta0Ratio(message.attachmentMeta);
+  const [naturalRatio, setNaturalRatio] = useState(null);
+  const ratioStyle = (naturalRatio || metaRatio) ? { aspectRatio: String(naturalRatio || metaRatio) } : undefined;
+  const onMediaLoad = (e) => {
+    const t = e.currentTarget;
+    const w = t.naturalWidth || t.videoWidth;
+    const h = t.naturalHeight || t.videoHeight;
+    if (w && h) setNaturalRatio(w / h);
+  };
   // Lightbox state lifted one level above the per-kind branches (design gate
   // §"Component shape") so a single lightbox instance serves both the image
   // and gif branches of this same message, rather than duplicating overlay
@@ -138,6 +157,8 @@ function AttachmentContent({ message }) {
           src={message.attachmentUrl}
           alt="photo attachment"
           className="attachment-media attachment-media-expandable"
+          style={ratioStyle}
+          onLoad={onMediaLoad}
           onError={() => setFailed(true)}
           onClick={(e) => openLightbox('image', message.attachmentUrl, e)}
         />
@@ -148,13 +169,14 @@ function AttachmentContent({ message }) {
     } else if (videoPlaying) {
       content = (
         // eslint-disable-next-line jsx-a11y/media-has-caption
-        <video src={message.attachmentUrl} className="attachment-media" controls autoPlay onError={() => setFailed(true)} />
+        <video src={message.attachmentUrl} className="attachment-media" style={ratioStyle} onLoadedMetadata={onMediaLoad} controls autoPlay onError={() => setFailed(true)} />
       );
     } else {
       content = (
         <button
           type="button"
           className="attachment-media attachment-video-placeholder"
+          style={ratioStyle}
           onClick={() => setVideoPlaying(true)}
           aria-label="video attachment, tap to play"
         >
@@ -179,10 +201,11 @@ function AttachmentContent({ message }) {
         <button
           type="button"
           className="attachment-media attachment-gif-static"
+          style={ratioStyle}
           onClick={() => setGifTapped(true)}
           aria-label="GIF attachment, tap to play"
         >
-          <img src={meta.preview_url || playableUrl} alt="" className="attachment-media" onError={() => setFailed(true)} />
+          <img src={meta.preview_url || playableUrl} alt="" className="attachment-media" style={ratioStyle} onLoad={onMediaLoad} onError={() => setFailed(true)} />
           <PlayCircleOutlined className="attachment-gif-play-badge" />
         </button>
       );
@@ -192,6 +215,8 @@ function AttachmentContent({ message }) {
           src={playableUrl}
           alt="GIF attachment"
           className="attachment-media attachment-media-expandable"
+          style={ratioStyle}
+          onLoad={onMediaLoad}
           onError={() => setFailed(true)}
           onClick={(e) => openLightbox('gif', playableUrl, e)}
         />
@@ -705,26 +730,24 @@ export default function ChatThread({
             {contact?.name}
           </Text>
         )}
-        <button
-          onClick={onOpenSessionCreator}
-          style={{
-            background: 'rgba(255,198,26,0.08)',
-            border: 'none',
-            borderRadius: 6,
-            color: 'rgba(255,198,26,0.75)',
-            cursor: 'pointer',
-            fontSize: '0.62rem',
-            letterSpacing: '0.06em',
-            fontFamily: "'Inter', sans-serif",
-            padding: '0.22rem 0.55rem',
-            whiteSpace: 'nowrap',
-            transition: 'background 0.15s, border-color 0.15s, color 0.15s',
-          }}
-          onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,198,26,0.16)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.33)'; e.currentTarget.style.color = 'var(--gold)'; }}
-          onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,198,26,0.08)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.168)'; e.currentTarget.style.color = 'rgba(255,198,26,0.75)'; }}
-        >
-          + Session
-        </button>
+        <SessionsMenu
+          sessions={sessions}
+          activeSessionId={activeSessionId}
+          joinError={joinError}
+          onClearJoinError={onClearJoinError}
+          onJoin={onJoinSession}
+          onLeave={onLeaveSession}
+          onEdit={onEditSession}
+          onDelete={onDeleteSession}
+          onOpenSessionCreator={onOpenSessionCreator}
+          user={user}
+          talkingUserId={talkingUserId}
+          onNavigateVerse={onNavigateVerse}
+          videoEnabled={videoEnabled}
+          videoTiles={videoTiles}
+          onToggleVideo={onToggleVideo}
+          bindVideoTile={bindVideoTile}
+        />
       </div>
 
       {/* Task 20260929-announcement-push-widget: groups only, directly under the header. */}
@@ -736,24 +759,29 @@ export default function ChatThread({
         />
       )}
 
-      {/* Session island widgets */}
-      <SessionWidget
-        sessions={sessions}
-        user={user}
-        activeSessionId={activeSessionId}
-        talkingUserId={talkingUserId}
-        onJoin={onJoinSession}
-        onLeave={onLeaveSession}
-        joinError={joinError}
-        onClearJoinError={onClearJoinError}
-        onEdit={onEditSession}
-        onDelete={onDeleteSession}
-        onNavigateVerse={onNavigateVerse}
-        videoEnabled={videoEnabled}
-        videoTiles={videoTiles}
-        onToggleVideo={onToggleVideo}
-        bindVideoTile={bindVideoTile}
-      />
+      {/* Joined session stays pinned (always mounted) so call tiles/controls survive the Sessions menu closing. */}
+      {(() => {
+        const pinned = (sessions || []).find(x => x.id === activeSessionId);
+        return pinned ? (
+          <SessionCard
+            session={pinned}
+            user={user}
+            activeSessionId={activeSessionId}
+            talkingUserId={talkingUserId}
+            onJoin={onJoinSession}
+            onLeave={onLeaveSession}
+            joinError={joinError}
+            onClearJoinError={onClearJoinError}
+            onEdit={onEditSession}
+            onDelete={onDeleteSession}
+            onNavigateVerse={onNavigateVerse}
+            videoEnabled={videoEnabled}
+            videoTiles={videoTiles}
+            onToggleVideo={onToggleVideo}
+            bindVideoTile={bindVideoTile}
+          />
+        ) : null;
+      })()}
 
       {/* Messages */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '0.75rem 0.85rem', display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>

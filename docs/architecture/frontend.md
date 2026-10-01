@@ -85,6 +85,9 @@ The desktop app's native macOS menu bar also has a "Reload" item under View (`Cm
 | `RichText.jsx` | `NoteBody` renderer for saved HTML notes; `stripHtml` utility |
 | `VerseSelector.jsx` | Verse picker used inside the note editor to link verses |
 | `SubscriptionCard.jsx` | Displays current plan (free tier vs. paid), usage limits, upgrade prompt |
+| `FriendInviteCode.jsx` | Friend invite code (get on demand, copy, share) shown by `SubscriptionCard` only when the promo flag is on |
+
+Promo codes (task 20260930-creator-friend-codes): `lib/promoCode.js` captures a shared `/?code=XYZ` link before React mounts (kept in localStorage for 7 days, stripped from the URL) and `SubscriptionCard` prefills it. Whether the promo UI shows is learned from the server (`POST /promo/{user}/validate` answers 404 while `PROMO_CODES_ENABLED` is off, so the field and invite section stay hidden). The field is offered for single-member plans only, any failure shows one uniform message, and the server re-validates at checkout. There is no free trial in the web purchase flow: the buyer is billed at once, or the first month is discounted when a code is applied.
 | `SessionWidget.jsx` | Devotion session UI |
 | `SessionCreator.jsx` | Create a new devotion plan |
 | `DonationButton.jsx` | One-time donation flow |

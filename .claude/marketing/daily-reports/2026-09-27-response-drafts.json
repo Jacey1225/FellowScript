@@ -1,0 +1,82 @@
+[
+  {
+    "id": "R1",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/Christianity/comments/1wr6hz7/mindfulness_study/",
+    "posture": "explicit_need",
+    "delivery": "comment",
+    "draft_text": "I led a short study through the Fruit of the Spirit a while back, half improvised, using it as a stand-in for a \"Christian mindfulness\" study. I made the mistake of dropping a full reading list on the group up front and telling everyone to work through it before we met. It fell apart fast because everyone finished different chunks at different times, so the discussion never actually matched what people had read that week.\n\nWhat worked better after that was slowing way down: one short passage a week, same passage for everyone. Gal 5:22-23, then Phil 4:4-9, then Matt 6:25-34, then Ps 46. Nobody's catching up, nobody's ahead, and the discussion actually lines up with what was read.\n\nThat's actually part of what got me building FellowScript, a way to keep everyone's notes on that week's passage visible to the rest of the group instead of scattered across whatever app each person happens to use. Not saying you need an app for a 4-passage study, but if it grows past that, might be worth a look. fellowscript.com",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R2",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/TrueChristian/comments/1w2klyq/young_adult_small_group_topics/",
+    "posture": "explicit_need",
+    "delivery": "comment",
+    "draft_text": "First group I ever led, I'd never actually been part of one myself before that. I just got asked and said yes.\n\nI way overprepared the first week, wrote pages of notes trying to cover the whole book in one sitting, and it came out sounding like a lecture. Nobody said a word the whole time.\n\nWhat actually worked once I recovered was picking one short book, covering one chapter a week, and showing up with 3 questions I wrote myself instead of pulling them from a workbook. Keeps the prep manageable and leaves room for people to actually talk instead of just listening.\n\nThat whole first-time scramble is part of what got me building FellowScript. I share my prep notes with the group ahead of the meeting now, so people show up having at least seen the questions instead of hearing them cold. Not necessary for week one, but if you keep leading, it's worth a look. fellowscript.com",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R3",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/Baptist/comments/1w74kgi/grow_together_in_christ_beginning_a_home/",
+    "posture": "networking",
+    "delivery": "comment",
+    "draft_text": "Starting something built around all three of those at once, prayer, the Word, and actually carrying each other's burdens, is a bigger lift than picking one lane, in my experience. How are you thinking about keeping the Word part going in between when you actually meet, once the new-group energy wears off a bit?",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R4",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/Christians/comments/1w6ze8e/skipping_your_churchs_bible_study_for_another/",
+    "posture": "explicit_need",
+    "delivery": "comment",
+    "draft_text": "I did something similar a few years back. I left the group my church had put me in for one a friend was running, purely because the second one actually went somewhere every week. Felt a little guilty about it for a while, like I was picking convenience over commitment.\n\nLooking back, the point of a bible study is what happens in the room, not whose name is on the calendar invite. If the other group is where you're actually engaging, that's not a lesser commitment, just an honest one.",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R5",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/Bible/comments/1w18koz/readingstudying_the_bible/",
+    "posture": "explicit_need",
+    "delivery": "comment",
+    "draft_text": "I've done the two-person version of this before: no group, just one other person and a shared chapter each week.\n\nWe started out reading together out loud in the same sitting every time, which sounds nice but turned into a scheduling nightmare the second our weeks stopped lining up. What worked better was each of us reading the same chapter on our own time, jotting down one or two observations, then comparing before we actually talked it through. Kept us in sync without needing the same free evening every week.\n\nThat's actually part of why I built FellowScript, notes tied to the verse that either of you can see, so the comparing part doesn't need its own separate text thread. Works the same for two people as it does for a full group. fellowscript.com",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R6",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/Christianity/comments/1wfmg6m/college_bible_study/",
+    "posture": "explicit_need",
+    "delivery": "comment",
+    "draft_text": "I ran a study years ago where half the group was commuting in from a different campus, so we were never actually all in the same room at once. I kept handing out printed sheets at the meetings themselves, so anyone who missed a week just fell out of the loop completely, with no way to catch back up.\n\nThe actual fix wasn't the study format, it was having one shared place for the passage and everyone's notes that didn't depend on being physically there. A missed week became a gap instead of a dead end.\n\nFellowScript's actually free for a group your size, and that's the exact problem it solves for me now: everyone's on the same passage and can see each other's notes whether they made it that week or not. fellowscript.com",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R7",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/Christianity/comments/1wgx1t8/again_i_tell_you_if_two_of_you_on_earth_agree/",
+    "posture": "networking",
+    "delivery": "comment",
+    "draft_text": "Starting one this small is honestly the harder version to keep going long term, in my experience, there's no built-in group pressure to show up the way there is with a bigger one. What's the plan for keeping it going if one of the two or three of you has to miss a few weeks in a row?",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R8",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/Christians/comments/1vzkwlw/when_does_helpful_ai_become_dependence_and_what/",
+    "posture": "explicit_need",
+    "delivery": "comment",
+    "draft_text": "I've caught myself using AI to summarize a passage instead of actually sitting with it, and the difference shows up right after: I remember basically nothing from the summarized version a day later.\n\nWhere it's actually helped me is the opposite use, asking it about something confusing in the text instead of letting it read the text for me. Feels like the line is less about the tool itself and more about whether it's replacing your own attention or just pointing you back to it.",
+    "status": "pending_approval",
+    "skip_reason": null
+  }
+]

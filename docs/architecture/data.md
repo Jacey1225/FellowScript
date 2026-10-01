@@ -66,6 +66,10 @@ Every new user receives a `plan_type='free'` row on signup. Free plans are exclu
 
 There is a single paid tier (`'group'`) covering 1-8 members at a fixed per-count price (`schemas/subscription.py`'s `GROUP_PRICE_CENTS`) — the old separate `'individual'` plan_type was folded into this as the 1-member case (identical $10 price). Apple StoreKit needs one fixed-price product per member count (`com.fellowscript.access.one` … `com.fellowscript.access.eight`) since IAP can't compute an arbitrary price; Stripe Checkout computes the price inline for any count via `price_data`, no pre-created Products needed.
 
+### `creators` / `promo_codes` / `promo_redemptions` / `subscriber_history`
+
+Task 20260930-creator-friend-codes (additive, created by `create_tables`). `creators(name, notes, active)`. `promo_codes(code UNIQUE and stored UPPERCASE, kind 'creator'|'friend', creator_id | referrer_user_id (CHECK: exactly the one matching kind), active, max_redemptions, redemption_count, expires_at)`; a partial unique index allows one friend code per user. `promo_redemptions` is the audit log: `user_id, code_id, code, kind, creator_id, referrer_user_id, plan, platform, store_transaction_id, idempotency_key UNIQUE (the Stripe Checkout Session id), amount_discount_cents, over_cap, created_at`; FKs are `ON DELETE SET NULL` so history survives deletions. `subscriber_history(user_id PK)` durably records that a user ever held a paid/trial plan (written by `upsert_from_stripe`/`upsert_from_apple`, backfilled from existing rows) because `subscriptions` rows are deleted on cancel.
+
 ---
 
 ### `notes`

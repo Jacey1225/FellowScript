@@ -46,3 +46,13 @@ scp -i fellowscript-ec2-key.pem \
 
 scp -i fellowscript-ec2-key.pem \
   frontend/dist/.well-known/apple-app-site-association ubuntu@44.216.136.112:/var/www/html/.well-known/apple-app-site-association
+
+# task 20260930-downloads-page-indexable: the prerendered, indexable downloads
+# page (frontend/scripts/prerender.mjs writes dist/download/index.html). Shipped
+# narrowly like join/ above. Whether the server resolves /download/ to this file
+# depends on its catch-all try_files; ops/nginx/download-page.conf is a prepared,
+# NOT applied, snippet that makes it explicit. This script does not touch nginx.
+ssh -i fellowscript-ec2-key.pem ubuntu@44.216.136.112 "mkdir -p /var/www/html/download"
+
+scp -i fellowscript-ec2-key.pem \
+  frontend/dist/download/index.html ubuntu@44.216.136.112:/var/www/html/download/index.html

@@ -1,0 +1,92 @@
+[
+  {
+    "id": "R1",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/Reformed/comments/1wiqvuy/how_do_you_actually_remember_what_you_hear_on/",
+    "posture": "explicit_need",
+    "delivery": "comment",
+    "draft_text": "I had this exact problem for years. I'd walk out of church locked in on something, and by Wednesday I couldn't even tell you the passage it came from, let alone what I was supposed to do with it.\n\nWhat didn't work was just telling myself I'd \"sit with it\" during the week. That's not a plan, that's a hope, and it never survived a busy Tuesday.\n\nWhat actually stuck: one sentence about what struck me, and one specific way to live it out that week, written down before I even left the building. Then saying it out loud to one other person before Wednesday. The saying it out loud part mattered more than the writing, honestly. It's what kept me from just filing it away and moving on.\n\nThat's actually close to the itch that got me building FellowScript, a place where that one sentence is written against the actual passage and a couple people in your group can see it, so it's not just sitting in a notebook nobody else ever looks at. Not saying you need an app for it, just sharing what finally worked for me. fellowscript.com",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R2",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/Christianity/comments/1wjdqi2/any_one_know_where_to_get_some_group_bible_studies/",
+    "posture": "explicit_need",
+    "delivery": "comment",
+    "draft_text": "I did something close to this for almost two years, writing a full lesson from scratch every week for a group of about 20. It's genuinely more sustainable to stop doing that than to find better material.\n\nMy mistake was treating a thick handout as what made the study feel legit. It didn't. It usually meant I talked more and people engaged less.\n\nIf you want ready-made material: The Gospel Coalition has solid free studies, and RightNow Media's library is good if your church has a subscription already. Either way, I'd pick one book of the Bible and go through it slowly rather than jumping topic to topic. It's a lot less prep than building something new every week, and the group tends to go deeper.\n\nThat printing and prep grind is actually what got me building FellowScript. Everyone reads the same passage and leaves notes right on it, so there's nothing to photocopy or rewrite. Not saying you need an app for this, just flagging it in case the prep load specifically is the thing wearing you down. fellowscript.com",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R3",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/TrueChristian/comments/1w2klyq/young_adult_small_group_topics/",
+    "posture": "explicit_need",
+    "delivery": "comment",
+    "draft_text": "My first group was young adults too, and I remember staring at a blank page trying to pick \"topics\" out of thin air. It never held together for more than two weeks.\n\nWhat worked way better than a topic list: picking one short book and going through it a few verses at a time. Philippians or James are both good for that age group, short enough to finish, practical enough that people actually bring stuff up during the week, not just at the meeting.\n\nOnce I had that, staying consistent week to week was the harder part for me, so I ended up building FellowScript around scheduling that plan out in advance so the group gets the next passage automatically instead of me remembering to send it. Not required to run a group well, just what worked for me once I had the book picked. fellowscript.com",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R4",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/TrueChristian/comments/1wb0v4y/is_it_normal_to_feel_pressured_to_become_a/",
+    "posture": "networking",
+    "delivery": "comment",
+    "draft_text": "Yeah, that's a really normal thing to feel, and honestly it doesn't mean you're not ready. A lot of the leaders I know felt pushed into it before they felt qualified, and that feeling didn't really go away until partway through actually doing it.\n\nIs the pressure more about not feeling spiritually equipped yet, or more just the logistics, time, prep, that kind of thing? Those usually need pretty different answers.",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R5",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/Reformed/comments/1w9f77b/balancing_teaching_and_community/",
+    "posture": "explicit_need",
+    "delivery": "comment",
+    "draft_text": "I've dealt with a version of this, co-leading with real distance between meetings, and the thing that actually hurt us wasn't the teaching. It was that nothing happened between Sundays. The connection only existed for the hour we were physically together.\n\nWhat helped was giving the group one small thing to respond to midweek: same passage, one question, everybody writes something before the next meeting, distance or not. It's a low bar, but it's the difference between a group that only exists once a week and one that actually knows what's going on with each other.\n\nThat's the specific gap FellowScript ended up being built around for me. Everyone's looking at the same passage and notes between meetings even when nobody's in the same room. Not a fix for everything you're weighing right now, just wanted to flag it in case the midweek gap specifically is part of what's wearing on you. fellowscript.com",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R6",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/Christianity/comments/1wkz57j/bible_study_map/",
+    "posture": "networking",
+    "delivery": "comment",
+    "draft_text": "This is a great resource to put together, genuinely useful having it all in one visual. How do you keep it updated as your group actually works through it, and does everyone in the group use it, or is it mostly something you maintain and share out?",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R7",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/Bible/comments/1wf9qaq/any_tips_for_studying_the_bible_on_my_own/",
+    "posture": "explicit_need",
+    "delivery": "comment",
+    "draft_text": "Studying alone is honestly harder to keep up long-term than it looks going in. Not because the material's hard to find, it's that there's no one checking whether you actually did it.\n\nWhat helped me most: shrinking the sessions way down. One small passage, sometimes just a few verses, then writing one question and one observation before moving on, instead of reading three chapters and retaining basically none of it. Consistency beat how much I read, every time.\n\nPart of why I built FellowScript was that same problem: notes tied to the actual verse, that you can keep totally private or let a couple people see if you ever want some accountability. Works fine solo too, that's not required. Just flagging it in case the staying consistent part is the piece you're missing, same as it was for me. fellowscript.com",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R8",
+    "platform": "twitter",
+    "url": "https://twitter.com/ThomisticDan/status/2101832340368413096",
+    "posture": "explicit_need",
+    "delivery": "comment",
+    "draft_text": "Worth separating two things here: \"not forsaking the gathering\" (Heb 10:25) is about giving up meeting with other believers altogether, not about the specific format that meeting takes. An online study with real back and forth, people actually showing up and engaging with each other, isn't the thing that verse is warning against. Checking out entirely and not being known by anyone is.\n\nWhere it gets risky is if online becomes the whole thing and in-person church stops happening at all. You lose the ordinances, the physical body gathered, pastoral care in person. I'd treat online study as something that runs alongside Sunday gathering, not instead of it.\n\nI work on an app (FellowScript) built around exactly that middle ground: async group study between in-person meetings, not a replacement for them. Figured it was relevant given the question. fellowscript.com",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R9",
+    "platform": "twitter",
+    "url": "https://twitter.com/fellowshipswfl/status/2101990404149125569",
+    "posture": "networking",
+    "delivery": "comment",
+    "draft_text": "Running the same book across every group each semester is a smart way to keep the whole church roughly in step with each other. How do you handle it when an individual group falls behind the shared pace? Do they just catch up on their own, or does the format flex for that?",
+    "status": "pending_approval",
+    "skip_reason": null
+  }
+]

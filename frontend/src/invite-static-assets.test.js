@@ -44,7 +44,12 @@ describe('entitlements + nginx + deploy', () => {
     const d = read('deploy.sh');
     expect(d).toContain('frontend/dist/join/index.html');
     expect(d).toContain('frontend/dist/.well-known/apple-app-site-association');
-    const added = d.slice(d.indexOf('task 20260929-group-invite-links'));
+    // Bounded at the next task's marker (20260930-downloads-page-indexable
+    // appends its own narrow mkdir + scp below; covered in
+    // seo/downloadSeo.build.test.js and robots-sitemap.test.js).
+    const start = d.indexOf('task 20260929-group-invite-links');
+    const next = d.indexOf('task 20260930-downloads-page-indexable');
+    const added = d.slice(start, next === -1 ? undefined : next);
     expect(added).not.toMatch(/nginx (-|reload)|systemctl|rsync|--delete|rm -rf|sudo/);
     expect((added.match(/^ssh /gm) || [])).toHaveLength(1); // only the mkdir -p
     expect(added).toContain('mkdir -p /var/www/html/join /var/www/html/.well-known');

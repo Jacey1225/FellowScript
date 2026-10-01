@@ -123,9 +123,40 @@ describe('ChatThread — send behavior (functional regression guard)', () => {
     expect(screen.getByText('Ada')).toBeInTheDocument();
   });
 
-  test('the "+ Session" header button calls onOpenSessionCreator', () => {
+  test('the header shows a "Sessions" button and no "+ Session" chip', () => {
+    renderThread();
+    expect(screen.queryByText('+ Session')).toBeNull();
+    const btn = screen.getByRole('button', { name: /^Sessions/ });
+    expect(btn).toHaveAttribute('aria-haspopup', 'dialog');
+    expect(btn).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  test('Schedule session inside the Sessions menu calls onOpenSessionCreator and closes it', () => {
     const { onOpenSessionCreator } = renderThread();
-    fireEvent.click(screen.getByText('+ Session'));
+    fireEvent.click(screen.getByRole('button', { name: /^Sessions/ }));
+    fireEvent.click(screen.getByText('Schedule session'));
     expect(onOpenSessionCreator).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('dialog', { name: 'Sessions' })).toBeNull();
+  });
+
+  test('session cards are not rendered inline; only inside the opened menu', () => {
+    const sessions = [{
+      id: 's1', title: 'Evening Study',
+      time_start: new Date(Date.now() + 3600e3).toISOString(), time_end: '', participants: [],
+    }];
+    renderThread({ sessions });
+    expect(screen.queryByText('Evening Study')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /^Sessions/ }));
+    expect(screen.getByText('Evening Study')).toBeInTheDocument();
+  });
+
+  test('the joined session stays pinned outside the menu', () => {
+    const sessions = [{
+      id: 's1', title: 'Live Call',
+      time_start: new Date(Date.now() - 600e3).toISOString(), time_end: '', participants: ['u1'],
+    }];
+    renderThread({ sessions, activeSessionId: 's1' });
+    expect(screen.getByText('Live Call')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Sessions, in a call' })).toBeInTheDocument();
   });
 });

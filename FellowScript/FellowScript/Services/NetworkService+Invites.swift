@@ -14,6 +14,31 @@ struct FSInvitePreview: Decodable, Equatable {
     let photo_url: String?
     let inviter_username: String
     let member_count: Int
+    /// Subscription links only (task 20260930-subscription-seat-invites): the
+    /// preview carries just kind, inviter_username and plan_type, so the group
+    /// fields fall back to empty values.
+    var plan_type: String? = nil
+
+    var isSubscription: Bool { kind == "subscription" }
+
+    init(kind: String, group_name: String, photo_url: String?, inviter_username: String, member_count: Int, plan_type: String? = nil) {
+        self.kind = kind; self.group_name = group_name; self.photo_url = photo_url
+        self.inviter_username = inviter_username; self.member_count = member_count; self.plan_type = plan_type
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case kind, group_name, photo_url, inviter_username, member_count, plan_type
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        kind = try c.decode(String.self, forKey: .kind)
+        inviter_username = try c.decode(String.self, forKey: .inviter_username)
+        group_name = try c.decodeIfPresent(String.self, forKey: .group_name) ?? ""
+        photo_url = try c.decodeIfPresent(String.self, forKey: .photo_url)
+        member_count = try c.decodeIfPresent(Int.self, forKey: .member_count) ?? 0
+        plan_type = try c.decodeIfPresent(String.self, forKey: .plan_type)
+    }
 }
 
 struct FSInviteOptions: Codable, Equatable {
@@ -21,7 +46,8 @@ struct FSInviteOptions: Codable, Equatable {
     let allowed_expiry_days: [Int]
     let default_max_uses: Int
     let allowed_max_uses: [Int]
-    let max_active_links_per_user_per_group: Int
+    let max_active_links_per_user_per_group: Int?
+    let max_active_links_per_subscription: Int?
 }
 
 /// Metadata only -- the list endpoint never returns a token.
@@ -58,6 +84,10 @@ struct FSInviteRedeemResult: Decodable, Equatable {
     let target_id: String
     let joined: Bool
     let already_member: Bool
+    /// Subscription links: a join request was filed (not membership) / a
+    /// request is awaiting the plan owner.
+    var requested: Bool? = nil
+    var pending: Bool? = nil
 }
 
 /// `status` 0 = the request never got a response (network). `code` is the
@@ -149,6 +179,29 @@ extension NetworkService {
         let data = try await inviteCall("/invites/\(userId)/groups/\(groupId)", method: "POST",
                                         body: InviteCreateBody(expires_in_days: expiresInDays, max_uses: maxUses), fallback: fallback)
         return try decodeInvite(FSInviteCreated.self, data, fallback: fallback)
+    }
+
+    // Task 20260930-subscription-seat-invites: plan-owner-only sibling routes.
+    // GET /invites/{userId}/subscriptions/{subscriptionId} -- 404 = feature unavailable.
+    func listSubscriptionInvites(userId: String, subscriptionId: String) async throws -> FSInviteList {
+        let fallback = "Couldn't load invite links."
+        let data = try await inviteCall("/invites/\(userId)/subscriptions/\(subscriptionId)", method: "GET", fallback: fallback)
+        return try decodeInvite(FSInviteList.self, data, fallback: fallback)
+    }
+
+    // POST /invites/{userId}/subscriptions/{subscriptionId}
+    func createSubscriptionInvite(userId: String, subscriptionId: String, expiresInDays: Int, maxUses: Int) async throws -> FSInviteCreated {
+        let fallback = "Couldn't create the link. Please try again."
+        let data = try await inviteCall("/invites/\(userId)/subscriptions/\(subscriptionId)", method: "POST",
+                                        body: InviteCreateBody(expires_in_days: expiresInDays, max_uses: maxUses), fallback: fallback)
+        return try decodeInvite(FSInviteCreated.self, data, fallback: fallback)
+    }
+
+    // POST /invites/{userId}/subscriptions/{subscriptionId}/reset -> {revoked}
+    func resetSubscriptionInvites(userId: String, subscriptionId: String) async throws -> Int {
+        let fallback = "Couldn't reset the links. Please try again."
+        let data = try await inviteCall("/invites/\(userId)/subscriptions/\(subscriptionId)/reset", method: "POST", fallback: fallback)
+        return try decodeInvite(InviteResetResponse.self, data, fallback: fallback).revoked
     }
 
     // DELETE /invites/{userId}/{inviteId}

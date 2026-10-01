@@ -1,0 +1,107 @@
+[
+  {
+    "target_claim": "RightNow Media's own Global Reach page states 140 countries, 30,000+ subscribing churches, 4.5M+ users, 25,000+ videos, 13 languages... The Wesleyan Church and the Learn of Christ review site repeat these figures, but both are reproductions of vendor copy, not independent measurement.",
+    "counter_claim": "no credible counter-evidence found that the reach figure is materially inflated; independent proxies are roughly consistent with the vendor's order of magnitude, though the internal 20,000+/30,000+/32,000 discrepancy remains unreconciled by any source checked",
+    "counter_evidence": [
+      {
+        "url_or_ref": "https://db.ministrywatch.com/ministry.php?ein=752353393",
+        "title": "MinistryWatch — RightNow Ministries International financial profile (IRS Form 990-derived)",
+        "reliability_notes": "Independent nonprofit financial watchdog aggregating IRS Form 990 data; not vendor marketing copy. High reliability for the specific figures reported (revenue, staff comp, transparency rating), though MinistryWatch flags a 'C' transparency grade because RightNow does not post its own audited financials.",
+        "how_it_contradicts": "Does not contradict — provides an independent sanity check. 2025 program service revenue of ~$35.9M, divided across the vendor's own stated pricing tiers (~$1,200-$5,000+/church/year found via search), implies roughly 7,000-30,000 paying churches depending on tier mix — the same order of magnitude as the 30,000+ figure, not an order of magnitude smaller. This weakens (does not eliminate) the suspicion that the church count is a vendor-inflated headline number, though it says nothing about the separate 4.5M 'users' figure, which includes free end-users invisible to financial data."
+      },
+      {
+        "url_or_ref": "https://mwm.ai/apps/rightnow-media/925747028",
+        "title": "MWM App Intelligence — RightNow Media iOS app install/rank data",
+        "reliability_notes": "Third-party app-intelligence estimator with its own tracking methodology (\"15M+ apps tracked\"), independent of RightNow's own marketing, but a free-tier estimate with unknown precision, comparable in kind to the Similarweb reads already used elsewhere in the brief.",
+        "how_it_contradicts": "Reports ~2.5M+ all-time iOS downloads, outside the top 30 in the US Free Education category. This is a lifetime-download figure for one platform only (excludes Android, web/TV apps, and church-branded portal access), so it under-counts total reach by construction and cannot be read as confirming or denying the 4.5M 'users' figure either way; reported honestly as inconclusive rather than as contradicting."
+      },
+      {
+        "url_or_ref": "web search: RightNow Media Google Play install bracket",
+        "title": "Google Play install bracket for RightNow Media Android app",
+        "reliability_notes": "Google Play's own coarse install-bracket disclosure (bucketed ranges, e.g. 500,000+), independent of vendor copy but very low precision.",
+        "how_it_contradicts": "Consistent with, not contradicting, a multi-million combined-platform user base; adds directional support rather than counter-evidence."
+      },
+      {
+        "url_or_ref": "web search: Hartford Institute for Religion Research — Fast Facts on American Religion",
+        "title": "Hartford Institute / Faith Communities Today — ~373,000 total US religious congregations",
+        "reliability_notes": "Academic religion-research institute; the standard denominator cited in sociology-of-religion literature. Independent of any vendor.",
+        "how_it_contradicts": "Used as a sanity-check denominator: 30,000+ churches would be ~8% of all US congregations. This is a plausible share for a widely-distributed video-curriculum vendor and does not, by itself, indicate implausibility — though RightNow claims a global (140-country) footprint, making a US-only denominator an imperfect fit and this check inconclusive rather than damning."
+      },
+      {
+        "url_or_ref": "web search: RightNow Media president Brian Mosley interview / Zippia executive profile",
+        "title": "Zippia executive profile citing RightNow leadership 'equipping over 32,000 churches and organizations worldwide'",
+        "reliability_notes": "Low-reliability aggregator (Zippia), itself likely paraphrasing RightNow's own team/LinkedIn copy rather than independent reporting — does not meet the plan's bar for genuine independent corroboration.",
+        "how_it_contradicts": "Does not contradict; introduces a third, still-vendor-adjacent figure (32,000) close to the higher end of the existing 20,000+/30,000+ discrepancy. No source found (denominational, trade press, executive interview, or press release) explains or reconciles the gap between the 20,000+ 'partners' and 30,000+ 'subscribing churches' figures — this specific open question from the plan remains unresolved despite a direct, good-faith search."
+      }
+    ],
+    "confidence_score": 0.25
+  },
+  {
+    "target_claim": "Planning Center... 73,000 (Apps Run The World) vs. 100,000+ (faith.tools), with no current first-party figure... The sources support naming Planning Center's open developer program as the single best actionable-now candidate (free, self-serve, a listing path, and the largest install base in the ChMS set even at the lower 73K figure).",
+    "counter_claim": "Planning Center does currently publish its own first-party church count on its product pages, and that figure (78,000+) sits closer to the lower Apps Run The World estimate than to the higher faith.tools estimate, suggesting the 100,000+ figure is the less accurate of the two secondary sources; separately, at least one substantial third-party vendor has built and publicly announced a real integration through Planning Center's developer program, partially (not fully) supporting that the program is a used distribution channel rather than an inert catalog",
+    "counter_evidence": [
+      {
+        "url_or_ref": "https://www.planningcenter.com/services",
+        "title": "Planning Center Services product page",
+        "reliability_notes": "Primary source, current vendor-stated figure, checked directly rather than via a secondary reproduction. Still vendor-stated (not independently measured), but it directly resolves the brief's claim that 'no current first-party figure' exists.",
+        "how_it_contradicts": "States 'Trusted by over 78,000 churches' as of this check. This directly contradicts the brief's premise that no current first-party figure exists, and narrows the contested range: 78,000 sits close to Apps Run The World's 73,000 and well below faith.tools' 100,000+, weakening confidence in the higher figure and, by extension, in any framing of Planning Center's install base advantage that leaned on the 100K+ end of the range."
+      },
+      {
+        "url_or_ref": "https://www.planningcenter.com/people",
+        "title": "Planning Center People product page",
+        "reliability_notes": "Same vendor, independent page checked separately to confirm consistency rather than relying on a single page.",
+        "how_it_contradicts": "Repeats the identical 'Trusted by over 78,000 churches' figure, cross-confirming this is a stable current company-wide claim, not a one-off page's stale copy."
+      },
+      {
+        "url_or_ref": "https://www.planningcenter.com/church-center",
+        "title": "Planning Center Church Center product page",
+        "reliability_notes": "Third independent Planning Center page checked, same result.",
+        "how_it_contradicts": "Repeats 'trusted by over 78,000 churches,' a third confirmation of the same current first-party figure, reinforcing that this is Planning Center's real current headline number rather than either contested secondary figure."
+      },
+      {
+        "url_or_ref": "https://www.appsruntheworld.com/apps-top-500-software-vendors/planning-center/",
+        "title": "Apps Run The World — Planning Center vendor profile",
+        "reliability_notes": "Direct fetch of the primary secondary source the brief already cited, re-verified rather than re-quoted from a search snippet.",
+        "how_it_contradicts": "Confirms 'over 73,000 churches' as stated (also separately shows an apparently inconsistent '80,000' total-customers metric on the same page), meaning even this one secondary source is not fully internally consistent — a further reason to weight Planning Center's own 78,000 figure over either secondary estimate."
+      },
+      {
+        "url_or_ref": "https://www.businesswire.com/news/home/20250310923763/en/Vanco-Announces-Seamless-Integration-With-Planning-Center%E2%80%99s-Church-Management-Platform",
+        "title": "BusinessWire — Vanco announces integration with Planning Center's platform",
+        "reliability_notes": "Independent trade/business press release describing a real, named third-party company's completed integration — a first-hand account of the kind the plan asked for, not a repetition of Planning Center's own copy.",
+        "how_it_contradicts": "Provides partial support that Planning Center's developer program produces real, market-facing integrations (Vanco, a significant payments vendor). This does not resolve the brief's specific open question — whether the integrations directory is visible to ordinary church staff or would accept a small-group consumer-facing app rather than an enterprise payments/back-office tool — so it should be read as a partial, not complete, answer to that question."
+      },
+      {
+        "url_or_ref": "https://www.g2.com/sellers/planning-center and https://www.capterra.com/church-management-software/compare/142580-76708/Pushpay-vs-Planning-Center",
+        "title": "G2 and Capterra review-volume comparison, Planning Center vs. Pushpay",
+        "reliability_notes": "Independent review-platform aggregate data, used here only as a relative-scale cross-check per the plan's own instruction, not as an absolute customer count.",
+        "how_it_contradicts": "Does not contradict — corroborates Planning Center's relative scale advantage (Capterra: 1,137 vs. 183 reviews; G2: 353 vs. 118 reviews), consistent with Planning Center being the largest ChMS vendor in this set regardless of which absolute church-count figure is used."
+      },
+      {
+        "url_or_ref": "no independent developer/church-staff first-hand account found",
+        "title": "Attempted search: developer forums, Reddit r/ChurchTech, GitHub, blog first-hand accounts of the Planning Center integrations directory driving real traffic",
+        "reliability_notes": "n/a — documented gap, not a source",
+        "how_it_contradicts": "No first-hand account was found either confirming or denying that the integrations directory functions as a real discovery channel for church staff, or that it would accept a consumer-facing small-group app. This specific open question from the brief remains unresolved despite a direct, good-faith search across the angles specified in the plan."
+      }
+    ],
+    "confidence_score": 0.55
+  },
+  {
+    "target_claim": "Lifeway Leadership Podcast Network claims 200,000+ Christians, leaders, teams, and decision makers reached monthly... Listen Notes ranks network shows among the more popular of millions of podcasts, and one show... is cited at close to 2M cumulative downloads — corroborating the general reach claim in kind, though lifetime downloads are not the same unit as monthly reach.",
+    "counter_claim": "no credible independent counter-evidence found for or against the 200,000+/month figure; independent per-show analytics data for the network's other shows could not be located despite a direct, good-faith attempt, and general industry-level skepticism about podcast download/reach metrics as vanity metrics applies to the genre broadly but was not found to reference Lifeway specifically",
+    "counter_evidence": [
+      {
+        "url_or_ref": "attempted: Podchaser, Rephonic, Apple Podcasts for Unseen Leadership, The Ron Edmondson Leadership Podcast, and The One Thing (current Lifeway Leadership Podcast Network shows per leadership.lifeway.com/podcasts/)",
+        "title": "Attempted independent per-show analytics for the current Lifeway Leadership Podcast Network roster",
+        "reliability_notes": "n/a — documented gap, not a source found",
+        "how_it_contradicts": "No independent download/listener estimate, chart ranking, or ratings-count data could be found for any of the three shows Lifeway currently lists in its own network (the network roster itself has apparently changed since the 5 Leadership Questions / Group Answers era cited in the brief). This means the plan's intended per-show triangulation could not be built for the current network composition, and the 200,000+/month figure remains effectively single-sourced and uncorroborated in any unit that matches 'monthly reach.'"
+      },
+      {
+        "url_or_ref": "https://www.outcomesrocket.com/insights/podcasts-as-a-marketing-powerhouse-strategies-impact-and-future-outlook-2026 and https://www.podcastnewsdaily.com/news/as-podcast-marketing-grows-survey-finds-roi-questions-still-loom/article_3c862a00-1401-4e6e-a6f3-697b6343e521.html",
+        "title": "2026 podcast-advertising industry commentary on download/reach-metric skepticism ('downloads are vanity')",
+        "reliability_notes": "General industry trade commentary and survey data (45.8% of marketers not convinced of podcast advertising effectiveness), independent of Lifeway, used only as a genre-level sanity check per the plan's own constraint.",
+        "how_it_contradicts": "Does not name or specifically rebut Lifeway's figure. It supports a general, order-of-magnitude caution that network-level podcast reach claims across the advertising industry tend to be measured and presented in ways marketers themselves distrust — grounds for treating 200,000+/month as unverified rather than false, consistent with the brief's own existing caveat."
+      }
+    ],
+    "confidence_score": 0.15
+  }
+]

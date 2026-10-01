@@ -1,0 +1,256 @@
+[
+  {
+    "url_or_ref": "https://www.churchtrac.com/solutions/group-leaders",
+    "title": "Church Small Group Software | ChurchTrac",
+    "type": "found",
+    "reliability_notes": "Vendor site (commercially interested) but factual claim about customer base scale (14,000+ churches) is a checkable, specific number, not a vague marketing claim.",
+    "key_claims_supported": [
+      "Church small-group management software (customer base) is a proxy signal for identifying churches with active, named small-group programs at scale."
+    ],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "https://www.instantchurchdirectory.com/online-member-directory",
+    "title": "Instant Church Directory - online member directory",
+    "type": "found",
+    "reliability_notes": "Vendor site; describes a common church software pattern (staff/group directories with leader contact info) rather than a single claim about FellowScript's audience.",
+    "key_claims_supported": [
+      "Individual churches commonly publish staff/group directories listing small-group leader names and contact info, which is a per-church identification mechanic rather than a scalable one."
+    ],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "https://www.christianleadersalliance.org/christian-leaders-alliance-ordination-directory/",
+    "title": "Christian Minister Directory | Verify CLA Clergy",
+    "type": "found",
+    "reliability_notes": "Legitimate searchable clergy directory, but covers ordained/credentialed ministers broadly, not small-group leaders specifically -- lower direct relevance, included for completeness on identification mechanics.",
+    "key_claims_supported": [
+      "Searchable public clergy directories exist (by name, location, credential) but target ordained ministers generally, not the lay small-group-leader population FellowScript needs most."
+    ],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "https://www.churchstaffing.com/jobs/category/small-group-pastor/",
+    "title": "Find a Small Group Pastor Job (ChurchStaffing.com)",
+    "type": "found",
+    "reliability_notes": "Primary source: a live, named job board with real church names actively hiring/staffing dedicated small-group roles. Individual postings expire, but the category page itself is a durable identification channel.",
+    "key_claims_supported": [
+      "Church job boards (ChurchStaffing.com) list named churches currently investing in dedicated 'Small Groups Pastor/Director' staff -- a concrete, checkable identification signal for which churches have (or are about to have) a person filling this decision-making role.",
+      "Named example churches with this role: Ada Bible Church, CrossWinds Church, The MET Church, Revolution Church, The Church Next Door, CrossPoint Community Church, Impact Church."
+    ],
+    "corroboration_count": 2
+  },
+  {
+    "url_or_ref": "https://www.ziprecruiter.com/Jobs/Small-Group-Pastor",
+    "title": "$42k-$62k Small Group Pastor Jobs (ZipRecruiter)",
+    "type": "found",
+    "reliability_notes": "Aggregator job board; corroborates ChurchStaffing.com's identification mechanic from a second, independent platform with an added data point (salary range).",
+    "key_claims_supported": [
+      "Church job boards (ChurchStaffing.com) list named churches currently investing in dedicated 'Small Groups Pastor/Director' staff -- a concrete, checkable identification signal.",
+      "Small Group Pastor compensation clusters around $42k-$62k, useful context for how this role is resourced/prioritized by a church."
+    ],
+    "corroboration_count": 2
+  },
+  {
+    "url_or_ref": "https://churchleaders.com/smallgroups/small-group-articles/156661-the-job-description-of-a-small-group-director.html",
+    "title": "4 Essentials for a Small Group Leader Job Description | ChurchLeaders",
+    "type": "found",
+    "reliability_notes": "Established church-leadership trade publication; documents actual title variation, useful for constructing LinkedIn/job-board search strings.",
+    "key_claims_supported": [
+      "Small-group decision-maker titles vary by church size/structure: Small Groups Pastor, Groups Director/Pastor, Connections Pastor, Engagement Pastor, Pastor of Discipleship and Care (Small Groups & Counseling) -- concrete search-term set for LinkedIn/job-board identification."
+    ],
+    "corroboration_count": 2
+  },
+  {
+    "url_or_ref": "https://www.markhowelllive.com/about/ and https://www.linkedin.com/in/markchowell/",
+    "title": "Mark Howell (MarkHowellLive.com / SmallGroupResources.net) -- Small Group Ministry Practitioner and Coach",
+    "type": "found",
+    "reliability_notes": "Named individual practitioner with a long, verifiable public track record (20+ years as Groups Pastor at named large churches; 1,100+ blog posts; ChurchLeaders contributor). A concrete potential co-marketing/reach intermediary, not a controlled study.",
+    "key_claims_supported": [
+      "A single well-known small-group-ministry consultant (Mark Howell / SmallGroupResources.net) has an existing audience of small-group leaders across many churches built through blogging, coaching calls, and consulting -- a plausible guest-content or referral-partnership reach channel for a small team, distinct from institutional or paid-ad channels."
+    ],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "https://katieallred.com/church-facebook-groups/",
+    "title": "14+ Awesome Facebook Groups for Church Leaders",
+    "type": "found",
+    "reliability_notes": "Practitioner blog listing named, joinable Facebook groups. No member counts were stated in the source itself, and static fetch could not retrieve live Facebook membership numbers (see gaps).",
+    "key_claims_supported": [
+      "Named Facebook groups for church leaders exist and are joinable, including one specifically branded 'Small Group Network,' but most listed groups target adjacent niches (children's ministry, worship, youth ministry, general senior pastors) rather than small-group leaders specifically -- confirms the channel type exists but member counts/activity levels remain undocumented."
+    ],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "https://smallgroupnetwork.com/align-accelerate/",
+    "title": "Align + Accelerate Workshops | Small Group Network",
+    "type": "found",
+    "reliability_notes": "Primary source -- the event organizer's own page with concrete, current pricing and attendee-role targeting language.",
+    "key_claims_supported": [
+      "Small Group Network runs named, recurring training events (ALIGN, one-day; ACCELERATE, two-day) explicitly targeting 'Small Group Point People (SGPP)' -- the person who oversees a church's small-group ministry -- with concrete pricing: $124 per course individually, $209/individual (or $189-199 team rate) for the in-person ACCELERATE event, and a $49/month ALL ACCESS subscription that includes all courses plus 50% off in-person events.",
+      "This gives concrete cost-to-attend figures for a small team considering conference-based reach, extending the prior research run's unsubstantiated 'champion-sourcing through conference networking' claim with actual numbers."
+    ],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "https://smallgroupnetwork.com/conferences/ and https://smallgroupnetwork.com/",
+    "title": "Small Group Conferences / Small Group Network homepage",
+    "type": "found",
+    "reliability_notes": "Primary source, same organization; corroborates the conference program's existence and stated audience ('For Small Group Pastors').",
+    "key_claims_supported": [
+      "Small Group Network runs named, recurring training events (ALIGN, ACCELERATE) explicitly targeting small-group point people/pastors."
+    ],
+    "corroboration_count": 2
+  },
+  {
+    "url_or_ref": "https://www.rightnowmedia.org/blog/rightnowmedia-story and https://www.rightnowmedia.org/blog/rightnow-media-global-reach",
+    "title": "The RightNow Media Story / RightNow Media's Global Reach",
+    "type": "found",
+    "reliability_notes": "Primary vendor source (self-reported scale figures, commercially interested) but the specific numbers are checkable/falsifiable claims rather than vague marketing language.",
+    "key_claims_supported": [
+      "RightNow Media serves 30,000+ churches in 100+ countries and 4 million+ users, offers 25,000+ Bible study videos, and sends leaders monthly 'how to lead an effective small group' emails -- confirms curriculum/video platforms as both an identification signal (a large, self-selected small-group-leader user base) and a potential co-marketing surface, with real scale numbers not present in either prior research run."
+    ],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "https://faith.tools/small-groups and https://faith.tools/for-pastors",
+    "title": "Best Apps for Small Groups / Apps for Pastors | faith.tools",
+    "type": "found",
+    "reliability_notes": "A live, independently-run curated directory (not FellowScript- or competitor-affiliated) with a documented, low-barrier submission and paid-sponsorship mechanism -- directly checkable and actionable.",
+    "key_claims_supported": [
+      "faith.tools is a curated, church-leader-facing directory of 50+ small-group apps (browsable, filterable by platform) with a free submission path (go.faith.tools/submit, 'I list apps when I can') and a paid sponsorship/premium-placement option (faith.tools/sponsor) -- a concrete, low-cost, previously undiscovered reach/identification channel more specific than anything in the prior two research runs."
+    ],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "https://smartgroups.app/ , https://smartgroups.app/faqs , https://play.google.com/store/apps/details?id=app.smartgroups.sgapp , https://apps.apple.com/us/app/smartgroups-bible-study/id1501762346",
+    "title": "SmartGroups -- AI-Powered Bible Study for Churches (site, FAQ, app store listings)",
+    "type": "found",
+    "reliability_notes": "Primary source (the competitor's own site/FAQ/app-store listings) for pricing and testimonial content -- directly checkable and current as of this research date. Resolves a gap the prior research run explicitly flagged ('SmartGroups' actual tactics remain undocumented').",
+    "key_claims_supported": [
+      "SmartGroups (FellowScript's closest named comparable) uses a free tier for a single small group with full feature access and no credit card required, with paid church plans starting at $59/month for multiple groups -- a concrete objection-handling structure (removes the cost-to-the-leader objection for a single group) that FellowScript could evaluate adopting or explicitly differentiating against.",
+      "SmartGroups displays user testimonials praising organization and keeping the whole group 'on the same page' -- an example of the proof-point format (peer testimonial) that resonates with this persona."
+    ],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "https://leadhaste.com/blog/cold-email-template-for-education",
+    "title": "Cold Email Template for Education (Copy-Paste Examples That Get Replies) -- LeadHaste",
+    "type": "found",
+    "reliability_notes": "Cross-domain (EdTech sales) practitioner source, explicitly NOT faith-specific -- flagged per the plan's requirement to label cross-domain borrowing. Provides literal, checkable template text (subject-line formats and body-copy excerpts), not just principles.",
+    "key_claims_supported": [
+      "No faith-specific cold-outreach script/DM template for pastors or small-group leaders was found (consistent with both prior research runs). The closest available analog is EdTech cold-outreach templates aimed at superintendents/curriculum directors/IT directors, which use short, hyper-personalized subject lines (e.g., '{{first_name}}, your {{district_name}} literacy plan') and treat the message as 'a thoughtful note from a peer' rather than a sales blast -- adaptable in structure to a pastor/small-group-leader outreach template, but not itself faith-specific evidence."
+    ],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "https://moderninbound.com/blog/cold-email-for-edtech-companies and https://telecrm.in/blog/sales-pitch-for-edtech/ and https://firstsales.io/sales-guide/edtech-sales-pitch/",
+    "title": "Cold Email for EdTech Companies / Sales Pitch for EdTech (multiple practitioner sources)",
+    "type": "found",
+    "reliability_notes": "Cross-domain (EdTech sales) practitioner sources; corroborate the same bottom-up/faculty-champion pattern from three independent vendors, though all are commercially-interested sales-consulting content.",
+    "key_claims_supported": [
+      "EdTech's bottom-up adoption pattern relies on identifying an internal champion (a teacher) whose peer endorsement carries more weight than any vendor pitch, and successful outreach favors brevity (50-125 words), specific institutional pain points, and outcome-focused framing over feature lists -- the structural analog available for adapting to pastor/small-group-leader outreach, explicitly cross-domain rather than faith-specific."
+    ],
+    "corroboration_count": 3
+  },
+  {
+    "url_or_ref": "https://www.smallgroups.com/articles/2013/effective-marketing-for-small-group-ministry.html and https://stephenblandino.com/2011/11/7-push-pull-strategies-to-promote-your-small-groups.html",
+    "title": "Effective Marketing for Small-Group Ministry (smallgroups.com) / 7 Push and Pull Strategies to Promote Your Small Groups (Stephen Blandino)",
+    "type": "found",
+    "reliability_notes": "Faith-specific practitioner sources, but note the scope mismatch: these describe how a church promotes small-group participation to congregants, not how a vendor pitches a tool to a leader/pastor -- relevant as an adjacent messaging analog, not a direct pitch-to-leader source.",
+    "key_claims_supported": [
+      "September (school-year start) and January (calendar-year start) are the two documented highest-attention windows for small-group-related messaging in church contexts -- a timing data point relevant to when FellowScript might pitch or launch a leader-facing campaign, though sourced from congregant-recruitment marketing rather than tool-adoption pitching."
+    ],
+    "corroboration_count": 2
+  },
+  {
+    "url_or_ref": "https://www.subsplash.com/blog/the-hidden-roadblock-to-ministry-growth",
+    "title": "The Silent Killer of Ministry Growth: Tech Fragmentation & How to Fix It | Subsplash",
+    "type": "found",
+    "reliability_notes": "Vendor blog (Subsplash sells church software, commercially interested in the 'consolidate your tools' narrative) -- treat the framing as a hypothesis to reuse carefully, not neutral evidence.",
+    "key_claims_supported": [
+      "'Another app' / tool-fragmentation fatigue is a documented objection: staff and leaders report decision fatigue from managing multiple disconnected tools, with data living in silos and users getting confused -- supports a positioning angle for FellowScript as consolidating scattered tools (group texts, paper notes) rather than adding one more app, but the source itself is commercially motivated to make this argument."
+    ],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "https://www.christianitytoday.com/2024/10/a-vision-for-screen-free-church-smartphones-livestreaming/",
+    "title": "A Vision for Screen-Free Church | Christianity Today",
+    "type": "found",
+    "reliability_notes": "Reputable, editorially independent evangelical publication -- not commercially tied to any church-software vendor, strengthens the objection claim.",
+    "key_claims_supported": [
+      "Some pastors actively discourage phone/app use during church contexts, viewing well-intentioned technology invitations as potential distraction sources -- direct, independently-sourced evidence for the 'screen-time-in-church-context' objection named in the research plan."
+    ],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "https://rsisinternational.org/journals/ijriss/articles/ethical-challenges-of-integrating-digital-technology-into-church-leadership-and-discipleship/",
+    "title": "Ethical Challenges of Integrating Digital Technology into Church Leadership and Discipleship | International Journal of Research and Innovation in Social Science",
+    "type": "found",
+    "reliability_notes": "Open-access academic journal article -- higher-reliability tier than vendor blogs for the data-privacy and doctrinal-integrity claims, though the journal's own impact/rigor tier wasn't independently verified.",
+    "key_claims_supported": [
+      "Church data-management/app adoption carries documented data-privacy and breach risk (identity theft, financial fraud, unauthorized access), and rapid technology adoption in ministry contexts carries a documented risk of undermining doctrinal integrity/oversight -- academic corroboration for two of the plan's named objection categories (data privacy, doctrinal/content-safety concerns)."
+    ],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "https://newrepublic.com/article/179397/evangelical-app-targeting-immigrants-surveillance and https://sojo.net/magazine/november-2022/your-church-watching-you",
+    "title": "How Evangelicals Use Digital Surveillance to Target the Unconverted (New Republic) / Is Your Church Watching You? (Sojourners)",
+    "type": "found",
+    "reliability_notes": "Independent, reputable journalism corroborating a data-privacy-and-surveillance concern in church-tech from a different specific angle (ad-targeting/tracking apps rather than small-group tools) -- tangential corroboration, not a direct hit on FellowScript's category.",
+    "key_claims_supported": [
+      "Church-tech data-privacy concern is a live, independently reported issue in the faith-app space generally, reinforcing (from outside the vendor-blog ecosystem) that data-privacy objections are a real dynamic to plan messaging/proof-points around."
+    ],
+    "corroboration_count": 2
+  },
+  {
+    "url_or_ref": "https://www.chmeetings.com/blog/how-to-use-ai-in-churches/",
+    "title": "How To Use AI In Churches: Tools, Ethics & Templates | ChMeetings",
+    "type": "found",
+    "reliability_notes": "Vendor blog, single mention of Doctrinally.AI as an example product -- weak, single-source evidence, included only as an illustrative proof-point-format example, not a verified case study.",
+    "key_claims_supported": [
+      "At least one adjacent church-tech product (Doctrinally.AI) markets itself specifically on doctrinal safeguards (answers grounded in a specific church's own sermons/documents rather than generic content) -- an example of the proof-point format ('doctrinally vetted/grounded') that could address the doctrinal-safety objection, though this is a single weak mention, not independent corroboration."
+    ],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "https://www.umcdiscipleship.org/resources/small-group-coordinator",
+    "title": "Small Group Coordinator | Discipleship Ministries (United Methodist Church)",
+    "type": "found",
+    "reliability_notes": "Primary denominational source (UMC's own discipleship-ministries resource) describing the role's actual scope of responsibility.",
+    "key_claims_supported": [
+      "The 'Small Group Coordinator' / 'Ministry Coordinator' role is documented (in at least the UMC denominational context) as supporting, organizing, and implementing small-group ministry in partnership with the lead pastor -- not as an independent decision-maker -- corroborating the prior research run's finding that this role implements rather than decides."
+    ],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "https://network.crcna.org/topic/spiritual-formation/small-groups/anyone-have-well-thought-out-job-description-small-groups",
+    "title": "Anyone have a well thought out job description for a Small Groups Coordinator? | CRC Network",
+    "type": "found",
+    "reliability_notes": "Practitioner forum (Christian Reformed Church network) -- a second, independent denominational source describing the same role scope.",
+    "key_claims_supported": [
+      "The Small Groups Coordinator role's scope (organizing/supporting leaders and members, not independently deciding software adoption) is corroborated in a second denominational context (CRC), reinforcing the UMC finding above."
+    ],
+    "corroboration_count": 2
+  },
+  {
+    "url_or_ref": "https://www.churchstaffing.com/job/251602/small-groups-coordinator/community-of-faith",
+    "title": "Small Groups Coordinator, Community of Faith | ChurchStaffing.com",
+    "type": "found",
+    "reliability_notes": "Primary job-posting source confirming the role exists as a distinct paid staffing category (as opposed to being purely theoretical/denominational-guidance language).",
+    "key_claims_supported": [
+      "'Small Groups Coordinator' is an actual, currently-staffed paid role at real churches (not just a denominational-guidance concept), corroborating that the role exists in practice as a support/implementation function distinct from 'Small Groups Pastor.'"
+    ],
+    "corroboration_count": 3
+  },
+  {
+    "url_or_ref": "Life.Church LifeGroups resources (https://open.life.church/training/211-lifegroups-small-groups-know-feel-do , https://open.life.church/resources/3338-lifegroup-resources) -- searched in place of the plan-named 'LifeGroups.com'",
+    "title": "LifeGroups & Small Groups: Know, Feel, Do / LifeGroup Resources | Life.Church Open Network",
+    "type": "found",
+    "reliability_notes": "Search for the plan's named 'LifeGroups.com' network did not resolve to an independent cross-church network -- it surfaced only Life.Church's own internal 'LifeGroups' branding/resources for its own congregation. Flagging as a correction to the research plan's assumption, not a confirmed source for a distinct entity.",
+    "key_claims_supported": [
+      "'LifeGroups' as named in the research plan (step 3) appears to be a single church's (Life.Church) internal small-group program name/brand, not a standalone curriculum publisher or cross-church network comparable to RightNow Media or Small Group Network -- this specific plan item does not check out as described and should not be cited as a distinct network in the brief."
+    ],
+    "corroboration_count": 1
+  }
+]

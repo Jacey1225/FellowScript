@@ -1,10 +1,13 @@
-import React, { useEffect, useState, useCallback } from 'react';
-import { Button, Spin, Alert, Tag, Avatar, Popconfirm, InputNumber } from 'antd';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
+import { Button, Spin, Alert, Tag, Avatar, Popconfirm, InputNumber, Input } from 'antd';
 import {
   CrownOutlined, TeamOutlined, UserOutlined,
   CheckOutlined, CloseOutlined, DeleteOutlined,
 } from '@ant-design/icons';
 import { API } from '../config.js';
+import InviteLinkSection from './InviteLinkSection.jsx';
+import FriendInviteCode from './FriendInviteCode.jsx';
+import { validatePromoCode, readPendingCode, clearPendingCode, normalizeCode } from '../lib/promoCode.js';
 
 // Radius/fill kept in sync with Account.jsx's own CARD_STYLE (design-notes.md
 // §3's --radius-lg treatment) so the subscription card reads as the same
@@ -57,7 +60,32 @@ export default function SubscriptionCard({ userId, onPlanChange }) {
   const [selectedCount, setSelectedCount] = useState(1);  // signup member-count picker
   const [editCount, setEditCount] = useState(null);        // host's in-progress seat-count edit
 
+  // Promo codes (task 20260930-creator-friend-codes). `promoEnabled` is learned
+  // from the server (validate answers 404 while the feature flag is off), so
+  // with the flag off none of the promo UI renders.
+  const [promoEnabled, setPromoEnabled] = useState(false);
+  const [promoInput,   setPromoInput]   = useState('');
+  const [promo,        setPromo]        = useState(null);   // { code, percentOff } once the server accepted it
+  const [promoError,   setPromoError]   = useState('');
+  const promoProbed = useRef(false);
+
   const isHost = plan && plan.user_id === userId;
+
+  // One probe per mount: empty-code validate tells us whether the feature is on.
+  // A code carried in from a shared ?code= link is prefilled and checked once.
+  const probePromo = async () => {
+    if (promoProbed.current) return;
+    promoProbed.current = true;
+    const res = await validatePromoCode(userId, '', 1);
+    if (!res.enabled) return;
+    setPromoEnabled(true);
+    const pending = readPendingCode();
+    if (!pending) return;
+    setPromoInput(pending);
+    const r = await validatePromoCode(userId, pending, 1);
+    if (r.valid) setPromo({ code: pending, percentOff: r.percentOff });
+    else if (!r.limited) clearPendingCode();
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -100,6 +128,7 @@ export default function SubscriptionCard({ userId, onPlanChange }) {
         } catch {}
       }));
       setJoinable(found);
+      probePromo();
     } catch {
       setMsg({ type: 'error', text: 'Could not load subscription.' });
     } finally {
@@ -127,7 +156,7 @@ export default function SubscriptionCard({ userId, onPlanChange }) {
         tries += 1;
         try {
           const r = await fetch(`${API}/subscriptions/user/${userId}`);
-          if (r.ok) { await load(); onPlanChange?.(); flash('success', 'Subscription active — enjoy your free month!'); return; }
+          if (r.ok) { await load(); onPlanChange?.(); clearPendingCode(); flash('success', 'Subscription active.'); return; }
         } catch {}
         if (tries < 6) setTimeout(poll, 1500);
         else { await load(); flash('info', 'Almost there — refresh in a moment if your plan is not shown yet.'); }
@@ -145,11 +174,20 @@ export default function SubscriptionCard({ userId, onPlanChange }) {
     try {
       const res  = await fetch(`${API}/subscriptions/checkout`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id: userId, member_count: memberCount }),
+        body: JSON.stringify({
+          user_id: userId, member_count: memberCount,
+          // Only an individual plan can carry a code; the server re-checks everything.
+          ...(promoEnabled && promo && memberCount === 1 ? { promo_code: promo.code } : {}),
+        }),
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok && data.url) { window.location.href = data.url; return; }
-      flash('error', data.detail || 'Could not start checkout.');
+      if (data.detail && data.detail.code === 'invalid_promo_code') {
+        setPromo(null); clearPendingCode();
+        setPromoError("That code can't be used. No discount was applied and you were not charged.");
+        return;
+      }
+      flash('error', typeof data.detail === 'string' ? data.detail : 'Could not start checkout.');
     } catch { flash('error', 'Could not reach the server.'); }
     finally { setBusy(''); }
   };
@@ -167,6 +205,21 @@ export default function SubscriptionCard({ userId, onPlanChange }) {
     } catch { flash('error', 'Could not reach the server.'); }
     finally { setBusy(''); }
   };
+
+  const applyPromo = async () => {
+    const code = normalizeCode(promoInput);
+    if (!code) return;
+    setBusy('promo'); setPromoError('');
+    const r = await validatePromoCode(userId, code, 1);
+    if (r.valid) { setPromo({ code, percentOff: r.percentOff }); }
+    else {
+      setPromo(null);
+      setPromoError(r.limited ? 'Too many tries. Wait a minute and try again.' : "That code can't be used.");
+    }
+    setBusy('');
+  };
+
+  const removePromo = () => { setPromo(null); setPromoError(''); setPromoInput(''); clearPendingCode(); };
 
   const cancelPlan = async () => {
     setBusy('cancel');
@@ -199,6 +252,18 @@ export default function SubscriptionCard({ userId, onPlanChange }) {
       await fetch(`${API}/subscriptions/${plan.id}/members/${userId}`, { method: 'DELETE' });
       await load(); onPlanChange?.(); flash('success', 'You left the plan.');
     } catch { flash('error', 'Could not leave plan.'); }
+    finally { setBusy(''); }
+  };
+
+  // Re-read only the pending requests (a full load() swaps the card for a
+  // spinner, which would discard a just-created invite link still on screen).
+  const refreshRequests = async () => {
+    setBusy('refresh-req');
+    try {
+      const res = await fetch(`${API}/subscriptions/${plan.id}/requests`);
+      if (res.ok) setRequests(await res.json());
+      else flash('error', 'Could not refresh requests.');
+    } catch { flash('error', 'Could not reach the server.'); }
     finally { setBusy(''); }
   };
 
@@ -300,12 +365,39 @@ export default function SubscriptionCard({ userId, onPlanChange }) {
               style={{ width: '100%', marginBottom: '0.6rem' }}
             />
             <div style={{ fontFamily: "'Inter', sans-serif", fontSize: '0.72rem', color: 'rgba(200,134,26,0.7)', marginBottom: '0.9rem' }}>
-              Free for 1 month, then {money(GROUP_PRICE_CENTS[selectedCount])}/mo
+              {promo && selectedCount === 1
+                ? `First month ${money(Math.round(GROUP_PRICE_CENTS[1] * (100 - promo.percentOff) / 100))} (${promo.percentOff}% off), then ${money(GROUP_PRICE_CENTS[1])}/mo`
+                : `${money(GROUP_PRICE_CENTS[selectedCount])}/mo, billed today`}
             </div>
+            {promoEnabled && (
+              selectedCount === 1 ? (
+                <div style={{ marginBottom: '0.9rem' }}>
+                  {promo ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <Tag color="gold">{promo.code}</Tag>
+                      <span style={{ ...MUTED, flex: 1 }}>{promo.percentOff}% off your first month</span>
+                      <Button size="small" type="text" onClick={removePromo} style={{ color: 'rgba(244,228,193,0.5)' }}>Remove</Button>
+                    </div>
+                  ) : (
+                    <>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <Input size="small" value={promoInput} maxLength={64} placeholder="Promo or invite code"
+                          aria-label="Promo or invite code" autoComplete="off"
+                          onChange={(e) => setPromoInput(e.target.value)} onPressEnter={applyPromo} />
+                        <Button size="small" loading={busy === 'promo'} disabled={!promoInput.trim()} onClick={applyPromo}>Apply</Button>
+                      </div>
+                      {promoError && <div role="alert" style={{ ...MUTED, color: '#e07b6a', marginTop: 4 }}>{promoError}</div>}
+                    </>
+                  )}
+                </div>
+              ) : (
+                <div style={{ ...MUTED, fontSize: '0.72rem', marginBottom: '0.9rem' }}>Codes apply to single-member plans.</div>
+              )
+            )}
             <Button type="primary" block loading={busy === 'start'}
               onClick={() => startCheckout(selectedCount)}
               style={{ borderRadius: 8, fontFamily: "'Inter', sans-serif" }}>
-              Start free trial
+              Subscribe
             </Button>
           </div>
         </>
@@ -397,6 +489,20 @@ export default function SubscriptionCard({ userId, onPlanChange }) {
             </div>
           )}
 
+          {/* Invite link (task 20260930-subscription-seat-invites). Owner only,
+              multi-seat group plan. Opening the link files a request that shows
+              under Join Requests below; it never grants access. Hides itself when
+              the feature flag is off (uniform 404). */}
+          {isHost && plan.plan_type === 'group' && plan.max_members > 1 && (
+            <div style={{ marginTop: '1rem' }}>
+              <InviteLinkSection kind="subscription" userId={userId} subscriptionId={plan.id} />
+              <Button size="small" type="text" loading={busy === 'refresh-req'} onClick={refreshRequests}
+                style={{ color: 'var(--gold)', fontFamily: "'Inter', sans-serif", fontSize: '0.78rem', paddingLeft: 0 }}>
+                Refresh join requests
+              </Button>
+            </div>
+          )}
+
           {/* Pending join requests (host view) */}
           {isHost && plan.plan_type === 'group' && requests.length > 0 && (
             <div style={{ marginTop: '1rem' }}>
@@ -433,6 +539,9 @@ export default function SubscriptionCard({ userId, onPlanChange }) {
           </div>
         </>
       )}
+
+      {/* Friend invite code (hidden while the promo feature flag is off). */}
+      {!loading && promoEnabled && <FriendInviteCode userId={userId} percentOff={promo?.percentOff} />}
 
       {/* Outstanding requests this user sent */}
       {!loading && myReqs.length > 0 && (

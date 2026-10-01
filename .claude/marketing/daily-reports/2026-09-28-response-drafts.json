@@ -1,0 +1,132 @@
+[
+  {
+    "id": "R1",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/pastors/comments/1vlkmzq/advice_needed_how_do_we_transition_a_12yearold/",
+    "posture": "explicit_need",
+    "delivery": "comment",
+    "draft_text": "I went through something similar trying to get relational groups going in a church that was pretty comfortable just showing up Sunday and leaving. What actually got traction wasn't announcing a new \"small groups program.\" That stalled out immediately. It was asking four or five of the most engaged people directly, one at a time, if they'd try meeting every other week, with no pitch to the whole church at all.\n\nThe other thing that mattered was giving that first group something to do between Sundays: a passage to sit with, a question to answer, so the group existed outside the meeting itself and not just as a calendar event.\n\nThat's actually the piece I ended up building an app around. I work on FellowScript, and it keeps a small group on the same passage and notes between meetings so there's something happening midweek without you having to manage it by hand. Not saying you need an app for that part specifically, but if that's the gap you're hitting, it might be worth a look: fellowscript.com",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R2",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/Christians/comments/1uvitwh/bible_study_group_where_to_start/",
+    "posture": "explicit_need",
+    "delivery": "comment",
+    "draft_text": "I got handed a mixed-age group with zero warning a couple years back, and the first few weeks were rough because I was trying to teach it like a class instead of run it like a conversation. What worked was picking one short passage a week, showing up with three or four real questions (not trivia, more like \"where have you actually felt this\" type questions), and just letting people talk instead of filling every silence myself.\n\nThe other thing that helped a lot: having everyone's notes and highlights visible to the rest of the group instead of just in my own head. People engage more when they can see what someone else in the room actually thought about a verse before they show up.\n\nThat's part of why I built FellowScript. I work on it, it's free to start for a group your size, and the shared notes and highlights piece is basically that same idea, just not dependent on me remembering to relay it. Not a requirement to run a good group by any means, just flagging it in case the visibility piece is the part you're missing too: fellowscript.com",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R3",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/Christian/comments/1ug02wf/bible_study_groups_online/",
+    "posture": "explicit_need",
+    "delivery": "comment",
+    "draft_text": "I've got people in my life going through basically this exact problem. Everyone's in a different city on a different schedule, and nobody's ever going to land on one Zoom time that works for more than half the group. What ended up working wasn't trying to schedule around it at all. It was giving up on \"meeting\" as the unit and making the passage the unit instead: same reading, same week, everyone goes through it on their own clock, then you check in on what people noticed whenever you're both free.\n\nThat's actually the exact problem that got me into building FellowScript. I work on it, and it's built around exactly that: a group reads the same passage async and can see each other's notes and highlights on it without needing to be online at the same time. Not the only way to do this, but if the scheduling wall is the actual blocker for you all, might be worth a look: fellowscript.com",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R4",
+    "platform": "twitter",
+    "url": "https://twitter.com/ThomisticDan/status/2101832340368413096",
+    "posture": "explicit_need",
+    "delivery": "comment",
+    "draft_text": "Genuinely don't think it has to be one or the other. Hebrews 10:25 is about not giving up gathering altogether, not really a referendum on medium. The actual danger it's warning against is isolating yourself, not picking Tuesday night over Sunday morning. If the online thing is on top of real relationships where people actually know you, not a replacement for ever being known by anyone, I don't think you're forsaking anything. If it's quietly becoming the only place you show up though, that's worth being honest with yourself about. The format's not really the test, the isolation is.",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R5",
+    "platform": "youtube",
+    "url": "https://youtube.com/watch?v=63-OTJ7iWPo",
+    "posture": "networking",
+    "delivery": "comment",
+    "draft_text": "Just watched this. Really appreciated how much time you gave to the \"do not let the sun go down on your anger\" part instead of rushing past it like a throwaway line. Curious how you all handle it when the passage points at something specific someone in the group is visibly still working through in real time: do you let the conversation sit there, or steer it back to the text?",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R6",
+    "platform": "youtube",
+    "url": "https://youtube.com/watch?v=qCsiLT-BT8E",
+    "posture": "networking",
+    "delivery": "comment",
+    "draft_text": "Been sitting in on a few of these kinds of live group studies lately, and what strikes me about the weekly rhythm is how much it changes the kind of questions people ask compared to a one-off study. You get to actually build on what came up the week before instead of starting cold every time. How do you all keep track of what was said in past weeks so it actually carries forward, or is it more just whoever remembers?",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R7",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/Bible/comments/1vsmnre/question_for_people_who_bible_journal_3/",
+    "posture": "explicit_need",
+    "delivery": "comment",
+    "draft_text": "I went through a stretch where my journaling started feeling like it was just for me, and honestly it made me journal less because there wasn't really a point to it beyond, well, me. What got me writing consistently again wasn't changing how I journaled. It was having one or two other people actually see what I wrote down sometimes, not to turn it into a whole group thing, just enough that it felt like it mattered past my own notebook.\n\nThat's actually part of why I ended up building FellowScript. I work on it, and your highlights and notes can stay private or be visible to a couple people if you want, so it's not all or nothing between a private journal and a full group study. Not saying that's the only fix, just flagging it since the insular feeling is exactly what pushed me toward it: fellowscript.com",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R8",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/TrueChristian/comments/1wgfzk7/question_about_small_groups/",
+    "posture": "explicit_need",
+    "delivery": "comment",
+    "draft_text": "Honestly the fastest way in is usually just asking, awkward as it feels. Most churches have small groups running that never make it onto a website or bulletin. Email or catch the pastor after a service and ask directly if there's a group for your age or stage, they'll almost always know one that has room. If the church itself doesn't have anything, campus ministries (if you're near a college) or a place like Cru or InterVarsity often run open groups that don't require being a student. Showing up once as a guest before committing is completely normal too, most groups expect that.",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R9",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/Christian/comments/1vbwwhq/starting_a_youth_bible_study_tips/",
+    "posture": "explicit_need",
+    "delivery": "comment",
+    "draft_text": "Biggest thing I'd say for youth specifically: keep the ratio of talking to listening way more toward listening than you think you need to. Teenagers can smell a lecture coming and check out fast. Pick one short passage, ask questions that don't have an obvious \"Sunday school answer\" (things like \"when has this actually been hard to believe for you\"), and let uncomfortable silences sit instead of filling them yourself. Food helps more than curriculum does, in my experience. A good study with pizza will outlast a great curriculum with nothing to eat.",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R10",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/Reformed/comments/1uyzxps/looking_for_discussion_questions_one_day_bible/",
+    "posture": "explicit_need",
+    "delivery": "comment",
+    "draft_text": "For one-off studies, Ligonier's got a decent free library of single-session studies with discussion questions already built in, and The Gospel Coalition has some shorter topical ones too if you're looking for something not tied to a whole book. If you want to write your own instead, the simplest structure I've found is one observation question (what does the text say), one interpretation question (what does it mean), and one application question (what do we do about it). Keeps you from either over-preparing or winging it.",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R11",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/Christianity/comments/1ws2lak/recent_bad_experience_with_a_new_bible_study/",
+    "posture": "explicit_need",
+    "delivery": "comment",
+    "draft_text": "Sorry you went through that. A bad first experience with a group can make you gun-shy about trying again, which is a real loss because a genuinely good group is worth having. For what it's worth, one bad group usually says more about that specific group's culture (who's running it, how open people actually are) than it does about groups in general or about you. If you're up for trying again at some point, it might help to sit in as a guest once or twice before committing, so you can get a read on the group before you're emotionally invested in it.",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R12",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/youthministry/comments/1q6pm7u/how_do_you_study_the_bible_together_outside_of/",
+    "posture": "explicit_need",
+    "delivery": "comment",
+    "draft_text": "When I've tried to get something going outside of a scheduled meeting, the thing that actually worked wasn't a new meeting time. It was picking one passage a week that everyone reads on their own and then just checking in on it whenever people happened to be around, not scheduling a whole second gathering.\n\nThat's basically the exact thing I ended up building FellowScript around. I work on it, and a group stays on the same passage during the week and can see each other's notes without needing to coordinate a time. Thread's a bit old so not sure this'll reach you, but leaving it here in case it's still useful: fellowscript.com",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R13",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/TrueChristian/comments/1wmr4tb/genuine_question_why_arent_christians_more/",
+    "posture": "explicit_need",
+    "delivery": "comment",
+    "draft_text": "I think a big piece of it is that a lot of people were taught Bible stories as kids and never re-engaged with the text as adults with adult questions, so the familiarity stalls out at a Sunday-school level and never gets refreshed. It's also just genuinely long and non-linear compared to almost anything else people read, so without some structure (a plan, a group, a teacher) most people don't know where to start past Genesis and the Gospels.",
+    "status": "pending_approval",
+    "skip_reason": null
+  }
+]

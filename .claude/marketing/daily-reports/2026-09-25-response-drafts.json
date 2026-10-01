@@ -1,0 +1,112 @@
+[
+  {
+    "id": "R1",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/Christianity/comments/1wob9d9/small_groups/",
+    "posture": "explicit_need",
+    "delivery": "comment",
+    "draft_text": "I hit this exact wall in a group I used to be part of. We kept saying we'd \"get to the study\" after catching up, and catching up just never stopped. Took about four months before someone finally said out loud that we hadn't opened a Bible together since Easter.\n\nWhat fixed it wasn't a stricter rule. It was picking one short passage in advance and having everyone bring one note or question about it before we even sat down, so the study part didn't have to compete with the catching-up part, it just came first because everyone already had something to say.\n\nI ended up building a small app around that habit, FellowScript, which I work on. It's a way for a group to land on the same passage and see each other's notes ahead of the meeting. Not saying that's the fix for your group, but committing to the passage before you show up instead of once you're all in the room is what got ours back on track.",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R2",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/Reformed/comments/1w9f77b/balancing_teaching_and_community/",
+    "posture": "explicit_need",
+    "delivery": "comment",
+    "draft_text": "Co-led a group for about two years at a church big enough that most of us didn't live near each other either, closest person to me was still a 20 minute drive. What killed our community outside the Sunday meeting wasn't distance, it was that nobody had a reason to reach out mid-week besides texting \"hey how's it going,\" which gets old fast and everyone stops doing it by week six.\n\nWhat held up longer was giving people something small and specific to bring back: one verse, one honest note on how it landed that week, instead of leaving the connection to general vibes. It gave people an actual reason to open a thread mid-week instead of it going quiet.\n\nThat's part of why I've been building FellowScript, which I work on. It's a shared thread where the group's notes on the week's passage sit together even when nobody's in the same room. Not a fix for the teaching and community balance question itself, but if the distance piece is what's wearing on you, it might be worth a look.",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R3",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/TrueChristian/comments/1wb0v4y/is_it_normal_to_feel_pressured_to_become_a/",
+    "posture": "explicit_need",
+    "delivery": "comment",
+    "draft_text": "Got put in almost the same spot: three meetings in, told I was \"ready,\" and I very much was not. Said yes anyway because saying no felt like letting the group down, then spent the next two months winging it and panicking quietly before each meeting.\n\nWhat helped wasn't more training, since none was coming. It was giving myself a simple prep rhythm: read the passage a few days ahead, jot down three things (one observation, one question I genuinely didn't know the answer to, one place it hit close to home), and share those with the group a day before we met instead of improvising live. That took the pressure off having to \"perform\" leadership and turned it into just being a few days ahead of everyone else.\n\nI ended up building that rhythm into an app, FellowScript, which I work on. Group members can see each other's notes on the passage ahead of the meeting, so the leader isn't the only one showing up prepared. Not saying you need it, just sharing what got me through that first stretch, since \"zero training, thrown in anyway\" is a rough way to start.",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R4",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/TrueChristian/comments/1wjck51/bible_study/",
+    "posture": "explicit_need",
+    "delivery": "comment",
+    "draft_text": "Ran into the same frustration leading a group a while back. Every curriculum we tried was fill-in-the-blank questions clearly written to have one \"correct\" answer, and it killed actual discussion. People stopped reading the text closely because the workbook was already telling them what to notice.\n\nWhat worked better: drop the workbook, assign the passage, and have everyone bring one thing they noticed and one question to the meeting. No answer key. Some weeks the conversation was messier, but it was real, people were wrestling with the text instead of hunting for the blank to fill in.\n\nThat's basically the premise behind FellowScript, an app I work on. It's a way for a group to read the same passage and leave notes on it that everyone else can see, no curriculum attached. Not saying you need an app for the read-and-discuss format itself, that part just requires ditching the workbook, but if keeping everyone's notes in one place is useful, it's there.",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R5",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/TrueChristian/comments/1wpi8tc/any_tips_on_taking_notes_when_reading_the_bible/",
+    "posture": "explicit_need",
+    "delivery": "comment",
+    "draft_text": "A method that's stuck with me: instead of trying to write something for every verse, pick just three things per passage. One observation, what does it actually say. One question, what don't I understand or want to dig into. One application, what does this ask of me today. Keeps you from either writing nothing or writing a page of restated verses.\n\nIt also helps to date each entry and note the passage reference at the top before anything else. Sounds obvious, but six months in you'll want to find what you wrote about a specific verse, and \"somewhere in March\" isn't searchable.\n\nIf you're using a physical notebook, leave the facing page blank for follow-up notes when you circle back to the same passage later. Worth doing from day one, since you will circle back, and cramming margin notes in later is worse than just having the space.",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R6",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/TrueChristian/comments/1wolagb/should_christians_use_ai_to_study_the_bible/",
+    "posture": "explicit_need",
+    "delivery": "comment",
+    "draft_text": "I think it depends entirely on what you're using it for. Asking an AI to summarize what a passage \"means\" so you don't have to sit with it yourself is a real problem, it hands over the part of study that's supposed to be work. But using it as a prompt back into the text, like asking what cross-references you're missing or how someone from a different tradition would read a verse, isn't functionally different from a study Bible's footnotes or a commentary. Those are also someone else's interpretation sitting next to the text.\n\nThe line I'd watch for isn't the tool, it's whether you're still opening your Bible afterward. If the AI answer becomes the destination instead of a detour back to the text, that's the failure mode, same as it would be with any commentary you stopped questioning.",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R7",
+    "platform": "reddit",
+    "url": "https://www.reddit.com/r/Christianity/comments/1wnj8ox/healthcare_worker_bible_study/",
+    "posture": "explicit_need",
+    "delivery": "comment",
+    "draft_text": "Had someone in a group I led who was an ER nurse, and \"meet same time every week\" just flatly didn't work for her. She'd miss two out of three meetings some months and started to feel like she wasn't really part of the group anymore, through no fault of her own.\n\nWhat worked: everyone read and noted on their own schedule during the week, whenever their shift allowed, then we had a standing thread where people dropped their notes on the passage as they got to it, and only tried to get everyone on a call when schedules actually lined up instead of forcing a fixed weekly slot. She went from feeling like a dropout to genuinely caught up, just async.\n\nI ended up building FellowScript, which I work on, partly with that in mind. It's a shared thread for a group's notes on the passage that doesn't require everyone online at once, plus an occasional call when it works. Not saying it's the only way to do this, but the shift-schedule problem is exactly what pushed me toward building it that way.",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R8",
+    "platform": "twitter",
+    "url": "https://twitter.com/ThomisticDan/status/2101832340368413096",
+    "posture": "networking",
+    "delivery": "comment",
+    "draft_text": "Genuinely curious what's driving the online study for you. Is it distance from a church, or more that the online group itself has become the deeper connection? Those feel like different questions with different answers. Hebrews 10:25 gets brought up a lot in these threads, but it's talking about a specific kind of neglect, not really the medium. I don't think it forbids online gathering outright, but I'd want to know if the online study is supplementing a body you're still part of, or if it's become the whole thing for you.",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R9",
+    "platform": "instagram",
+    "url": "https://instagram.com/p/DdkS2afKult",
+    "posture": "networking",
+    "delivery": "dm",
+    "draft_text": "Hey, saw your post about the weekly online Bible study you're running. How long has the group been going? I'm always curious how groups that meet mostly online keep people showing up week to week instead of fading out after a month or two. Is that something you've had to actively work at, or has it stayed pretty steady?",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R10",
+    "platform": "instagram",
+    "url": "https://instagram.com/p/DdiswJQDhH_",
+    "posture": "networking",
+    "delivery": "dm",
+    "draft_text": "Hey, came across your post about the fellowship group. What's the format usually like, more discussion-based, or is someone teaching each week? I ask because I've found the hardest part of keeping a group going isn't the first few weeks, it's the stretch after the initial excitement wears off. Curious if that's matched your experience or if yours has run differently.",
+    "status": "pending_approval",
+    "skip_reason": null
+  },
+  {
+    "id": "R11",
+    "platform": "youtube",
+    "url": "https://youtube.com/watch?v=qCsiLT-BT8E",
+    "posture": "networking",
+    "delivery": "comment",
+    "draft_text": "Been watching a bit of your Saturday study series. How long has this particular group been meeting together? Curious whether it's mostly the same core group each week or if it varies a lot, since I've found that's usually the biggest factor in how deep the discussion can go over time.",
+    "status": "pending_approval",
+    "skip_reason": null
+  }
+]

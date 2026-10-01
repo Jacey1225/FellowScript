@@ -30,6 +30,15 @@ describe('robots.txt', () => {
     expect(robots).toMatch(/^Allow:\s*\/terms\s*$/m);
   });
 
+  // Task 20260930-downloads-page-indexable: only the real, prerendered
+  // trailing-slash path is allowed; deny-by-default stays intact.
+  test('allows the real downloads path and nothing broader', () => {
+    expect(robots).toMatch(/^Allow:\s*\/download\/\s*$/m);
+    expect(robots).toMatch(/^Disallow:\s*\/\s*$/m);
+    const allows = Array.from(robots.matchAll(/^Allow:\s*(\S+)\s*$/gm)).map((m) => m[1]);
+    expect(allows.sort()).toEqual(['/$', '/download/', '/privacy', '/terms']);
+  });
+
   test('explicitly names the known authenticated routes as disallowed', () => {
     for (const route of ['/reader', '/account', '/signin', '/forgot-password', '/reset-password', '/verify-2fa']) {
       const escaped = route.replace(/\//g, '\\/');
@@ -51,6 +60,8 @@ describe('sitemap.xml', () => {
     const locs = Array.from(sitemap.matchAll(/<loc>(.*?)<\/loc>/g)).map((m) => m[1]);
 
     expect(locs).toContain('https://fellowscript.com/');
+    expect(locs).toContain('https://fellowscript.com/download/');
+    expect(locs.some((l) => l.endsWith('/download'))).toBe(false);
     for (const loc of locs) {
       expect(loc.startsWith('https://fellowscript.com')).toBe(true);
     }
@@ -102,5 +113,16 @@ describe('deploy.sh', () => {
     const deploySh = fs.readFileSync(path.join(REPO_ROOT, 'deploy.sh'), 'utf8');
     expect(deploySh).toMatch(/robots\.txt/);
     expect(deploySh).toMatch(/sitemap\.xml/);
+    expect(deploySh).toMatch(/frontend\/dist\/download\/index\.html/);
+  });
+});
+
+describe('deploy.sh downloads page step (task 20260930-downloads-page-indexable)', () => {
+  test('gained only a narrow mkdir + single-file scp, never nginx/rsync/sudo', () => {
+    const d = fs.readFileSync(path.join(REPO_ROOT, 'deploy.sh'), 'utf8');
+    const added = d.slice(d.indexOf('task 20260930-downloads-page-indexable'));
+    expect(added).not.toMatch(/nginx (-|reload)|systemctl|rsync|--delete|rm -rf|sudo/);
+    expect(added).toContain('mkdir -p /var/www/html/download');
+    expect(added).toContain('frontend/dist/download/index.html');
   });
 });

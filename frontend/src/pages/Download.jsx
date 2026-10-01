@@ -2,6 +2,16 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import Seo from '../components/Seo.jsx';
 import { isMobileUserAgent } from '../lib/deviceGate.js';
+import {
+  DOWNLOAD_SEO_TITLE,
+  DOWNLOAD_SEO_DESCRIPTION,
+  DOWNLOAD_SEO_PATH,
+  DOWNLOAD_SEO_IMAGE,
+  APP_STORE_URL,
+  MACOS_DOWNLOAD_URL,
+  downloadJsonLd,
+} from '../seo/downloadSeo.js';
+import { SITE_URL } from '../config.js';
 
 // Task 20260922-reader-nav-download-page: the single "go get the app"
 // destination every previously-leaking `/reader` nav occurrence now points
@@ -23,11 +33,8 @@ const AMBER_LIGHT = '#F3C48B';
 const HEAD_FONT = "'Schibsted Grotesk', sans-serif";
 const BODY_FONT = "'Hanken Grotesk', system-ui, sans-serif";
 
-const APP_STORE_URL = 'https://apps.apple.com/us/app/fellowscript-study-connect/id6791701454';
-
-// Live GitHub Release asset (desktop-v0.1.0) — relocated from Home.jsx's
-// former "On your desktop" section verbatim (design-notes.md §3/§4).
-const MACOS_DOWNLOAD_URL = 'https://github.com/Jacey1225/FellowScript/releases/download/desktop-v0.1.0/FellowScript.dmg';
+// APP_STORE_URL / MACOS_DOWNLOAD_URL now live in src/seo/downloadSeo.js (shared
+// with the build-time head tags and JSON-LD so they cannot drift).
 
 // Filled brand glyphs — relocated from Home.jsx alongside the section that
 // used them (they had no other caller there). Both paths are the official
@@ -201,7 +208,10 @@ function DesktopDownload() {
 }
 
 // ── Page ──────────────────────────────────────────────────────────────────
-export default function Download() {
+// `snapshot` (build-time prerender only, see entry-server.jsx): render both the
+// mobile and desktop branches so a crawler sees every download option
+// regardless of UA. Live users never pass it.
+export default function Download({ snapshot = false }) {
   // Task 20260922-reader-nav-download-page: same UA-check approach as
   // MobileBlockGate.jsx / Home.jsx's former readNavProps (a UX gate, not a
   // security boundary — see deviceGate.js's own comment on that). This is
@@ -212,9 +222,11 @@ export default function Download() {
   return (
     <div style={{ minHeight: '100vh', fontFamily: BODY_FONT, color: CREAM, background: INK }}>
       <Seo
-        title="Download FellowScript"
-        description="Get the FellowScript app — on the App Store for iPhone, or as a native desktop app for macOS and Windows."
-        path="/download"
+        title={DOWNLOAD_SEO_TITLE}
+        description={DOWNLOAD_SEO_DESCRIPTION}
+        path={DOWNLOAD_SEO_PATH}
+        image={DOWNLOAD_SEO_IMAGE}
+        jsonLd={downloadJsonLd(SITE_URL)}
       />
       {/* No motion/parallax on this page — a two-branch utility page, not a
           scroll-narrative marketing section (design-notes.md §3). The only
@@ -246,7 +258,12 @@ export default function Download() {
       </header>
 
       <main>
-        {mobile ? <MobileDownload /> : <DesktopDownload />}
+        {snapshot ? (
+          <>
+            <MobileDownload />
+            <DesktopDownload />
+          </>
+        ) : mobile ? <MobileDownload /> : <DesktopDownload />}
       </main>
     </div>
   );

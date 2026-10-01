@@ -15,8 +15,11 @@ MAX_MEMBERS = 8
 def price_for(member_count: int) -> int:
     return GROUP_PRICE_CENTS.get(member_count, GROUP_PRICE_CENTS[MIN_MEMBERS])
 
-# Every new subscription starts with a free trial of this length. The first
-# billing date is computed as created_at + TRIAL_MONTHS and stored as trial_end.
+# Trial length for plans created through the internal create_subscription path
+# (SubscriptionsManager.create_subscription). NOT the web checkout trial: Stripe
+# Checkout reads the TRIAL_MONTHS env setting via stripe_service.trial_months()
+# (0 = no trial). The first billing date here is computed as
+# created_at + TRIAL_MONTHS and stored as trial_end.
 TRIAL_MONTHS = 1
 
 # Safety-net for lapsed plans. A subscription whose paid period (current_period_end)

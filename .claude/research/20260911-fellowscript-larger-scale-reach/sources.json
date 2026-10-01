@@ -1,0 +1,258 @@
+[
+  {
+    "url_or_ref": "https://www.rightnowmedia.org/us/global",
+    "title": "Global Reach | RightNow Media",
+    "type": "found",
+    "reliability_notes": "Primary/vendor-stated. RightNow Media's own page.",
+    "key_claims_supported": ["RightNow Media reach: 140 countries, 30,000+ subscribing churches, 4.5M+ users, 25,000+ videos, 13 languages"],
+    "corroboration_count": 3
+  },
+  {
+    "url_or_ref": "https://www.wesleyan.org/rightnowmedia",
+    "title": "RightNow Media - The Wesleyan Church",
+    "type": "found",
+    "reliability_notes": "Independent denominational reproduction of RightNow Media's reach figures; corroborates vendor number but does not independently verify it (denominations typically just repeat vendor marketing copy for their own churches).",
+    "key_claims_supported": ["RightNow Media reach figures (churches/users) repeated by a third-party denominational body"],
+    "corroboration_count": 3
+  },
+  {
+    "url_or_ref": "https://learnofchrist.com/resources/rightnow-media",
+    "title": "RightNow Media Review 2026 | Learn of Christ",
+    "type": "found",
+    "reliability_notes": "Independent-ish review site; still substantially repeats vendor-stated numbers rather than measuring independently.",
+    "key_claims_supported": ["RightNow Media reach figures repeated by a third-party review site"],
+    "corroboration_count": 3
+  },
+  {
+    "url_or_ref": "https://www.rightnowmedia.org/us/pricing",
+    "title": "Pricing / Partner page | RightNow Media",
+    "type": "found",
+    "reliability_notes": "Primary/vendor-stated, but states a different figure (20,000+ churches, schools, and ministries who 'partner') than the Global Reach page's 30,000+ subscribing churches. Likely two different metrics (donor-subsidized partners vs. all subscribing orgs) but not reconciled anywhere on the site — flag as an internal discrepancy worth pressing in critique.",
+    "key_claims_supported": ["RightNow Media states 20,000+ churches/schools/ministries as 'partners', a smaller and differently-defined figure than the 30,000+ subscribing churches claim"],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "search: RightNow Media sponsorship/advertise/partner/guest-content mechanism (rightnowmedia.org/us/faq, /us/launch, /us/tell-your-pastor, /atwork/us/launch)",
+    "title": "RightNow Media FAQ, Launch Resources, Tell Your Pastor, RightNow @Work Launch pages",
+    "type": "found",
+    "reliability_notes": "Absence-of-evidence finding across RightNow Media's own public pages plus general search. No page, FAQ, or partner program describes a mechanism for a third-party app to buy sponsored placement, appear as a guest webinar, or get content into the monthly leader email. The only documented 'partner' path is a church/organization subscribing (i.e., becoming a customer), not a vendor buying reach. Treat as a documented negative finding, not proof no such mechanism exists privately (a small team could still ask via the demo-request form).",
+    "key_claims_supported": ["No public mechanism found for third-party/vendor access to RightNow Media's leader-facing channels (monthly email, webinars, sponsored content) short of becoming a subscribing organization or asking directly"],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "https://www.similarweb.com/website/rightnowmedia.org/",
+    "title": "rightnowmedia.org Traffic Analytics | Similarweb (free-tier read)",
+    "type": "found",
+    "reliability_notes": "Free-tier traffic estimator, same tool Part 1 used for faith.tools. Numbers returned were partly garbled (nonsensical global-rank string) but the total-visits figure (~990.9K/month) and category rank (#7811 in Faith and Beliefs) are directionally usable. Most RightNow usage likely happens inside church-branded portals/apps rather than the main marketing domain, so a sub-1M-visit main site does not itself contradict a 4.5M lifetime-user claim, but it means the marketing site is not the reach channel to target.",
+    "key_claims_supported": ["rightnowmedia.org main website draws roughly 990K visits/month per Similarweb free-tier estimate — most stated user reach is not concentrated on the public marketing site"],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "https://www.discipleleaders.com/",
+    "title": "Disciple Leaders Network",
+    "type": "found",
+    "reliability_notes": "Primary source (organization's own site). Formally 'Baptist Association of Christian Educators d/b/a Disciple Leaders Network' — a real cross-church network distinct from Life.Church's single-congregation LifeGroups.com, and open (per its stated free membership for pastors/staff/volunteers leading Sunday School, small groups, or discipleship ministry per a supporting search snippet) to non-SBC leaders in principle, though its roots and current membership skew Baptist. No total member/church count is published anywhere on the site. A 'Become A Partner' section exists but its terms for an outside vendor/app were not disclosed without direct contact.",
+    "key_claims_supported": ["Disciple Leaders Network is a real cross-church (not single-congregation) discipleship/small-groups network with a national conference and a partner program, but publishes no member/church count and no public vendor-access terms"],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "search: Disciple Leaders Network free membership scope (scbaptist.org, oklahomabaptists.org, discipleleaders.com)",
+    "title": "South Carolina Baptist Convention / Oklahoma Baptists / Disciple Leaders Network pages",
+    "type": "found",
+    "reliability_notes": "State-convention pages promoting DLN membership as free for churches' small-group/Sunday School/discipleship leaders; corroborates DLN's real, ongoing, cross-church existence but these are affiliated Baptist bodies, not independent verification of reach.",
+    "key_claims_supported": ["DLN membership is free for pastors, staff, and volunteers leading Sunday School/small groups/discipleship ministry"],
+    "corroboration_count": 2
+  },
+  {
+    "url_or_ref": "https://ag.org/ministries",
+    "title": "Ministries of the Assemblies of God | Assemblies of God (USA)",
+    "type": "found",
+    "reliability_notes": "Primary denominational source. Confirms 'Disciple Well' as an AG discipleship/small-groups initiative, but no member-church count or external-vendor access mechanism was found for it in this pass.",
+    "key_claims_supported": ["Assemblies of God runs a discipleship initiative ('Disciple Well') distinct from a generic small-groups product, but with no published reach number or vendor-access path found"],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "https://discipleship.org/",
+    "title": "Discipleship.org — a collaborative community of disciple-making churches and networks",
+    "type": "found",
+    "reliability_notes": "Primary source. Describes itself as a collaborative community of networks and hosts a National Disciple Making Forum, but publishes no aggregate church/leader count and no documented sponsorship or vendor-access mechanism was found.",
+    "key_claims_supported": ["Discipleship.org is a real cross-network discipleship body with an annual national forum, but with no published reach figure or vendor-access mechanism found"],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "search: 3DM Movement network scope (3dmfortwaynehub.com, vergenetwork.org)",
+    "title": "3DM Hub Fort Wayne / Verge Network pages on 3DM",
+    "type": "found",
+    "reliability_notes": "Only a regional hub figure was found (~30 churches in the Fort Wayne hub); no aggregate global/national figure exists in any source found. Treat as a small, thinly-documented network relative to the scale this run is looking for.",
+    "key_claims_supported": ["3DM Movement is organized into small regional hubs (e.g., ~30 churches in one Fort Wayne hub) with no discoverable aggregate reach number — likely too small-scale to meet this run's bar"],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "https://www.thegospelcoalition.org/advertise-with-us/",
+    "title": "Advertise with Us | The Gospel Coalition",
+    "type": "found",
+    "reliability_notes": "Primary/vendor-stated (TGC's own ad-sales page). States 40M 'active users', 2M+ listeners, 100K+ newsletter subscribers, 15K event attendees. No pricing published; access is via an account rep, first-come-first-served placement. The 40M figure should be treated skeptically pending corroboration (see Similarweb entry below) — likely a lifetime/cumulative or loosely-defined 'active users' figure rather than a comparable monthly-audience number.",
+    "key_claims_supported": ["The Gospel Coalition offers display ads, sponsored content, podcast sponsorships, and event sponsorships to advertisers, claiming 40M active users / 2M+ listeners / 100K+ subscribers / 15K event attendees"],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "https://www.similarweb.com/website/thegospelcoalition.org/",
+    "title": "thegospelcoalition.org Traffic Analytics | Similarweb (free-tier read)",
+    "type": "found",
+    "reliability_notes": "Independent traffic estimator. Shows ~6.0M total visits/month, global rank ~#15,153, #31 in the Faith and Beliefs category. This is a real, sizeable audience, but it is an order of magnitude below TGC's own '40M active users' claim, following the same vendor-inflation pattern Part 1 found with faith.tools. Use this as the more defensible working figure and flag the 40M figure as vendor-stated and likely a different (looser) metric.",
+    "key_claims_supported": ["TGC's independently-estimated monthly traffic (~6M visits) is far below its own '40M active users' marketing claim, indicating the vendor figure is inflated or measures something different (e.g., cumulative reach) rather than a comparable monthly audience"],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "https://leadership.lifeway.com/podcasts/advertising/",
+    "title": "Advertising on the Lifeway Leadership Podcast Network",
+    "type": "found",
+    "reliability_notes": "Primary/vendor-stated (Lifeway's own ad-sales page). Claims 200,000+ Christians, leaders, teams, and decision makers reached monthly across the network. No independent corroboration found for this specific network-wide figure; pricing is custom, negotiated via contact form.",
+    "key_claims_supported": ["Lifeway Leadership Podcast Network reaches 200,000+ listeners/month and sells host-read ads, custom content, and endorsements via a custom media plan"],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "https://leadership.lifeway.com/podcast-group-answers/",
+    "title": "Group Answers Podcast — Lifeway",
+    "type": "found",
+    "reliability_notes": "Primary source checked directly for the specific small-group-leader-focused show named in the plan; it discloses no audience size, download count, or sponsorship terms specific to this show. Documented negative finding — this specific podcast's reach is not publicly quantified anywhere found in this pass, unlike the network-wide 200,000+ figure above.",
+    "key_claims_supported": ["Group Answers Podcast (Lifeway, small-group-leader-specific) has no publicly disclosed audience size or per-show sponsorship terms, distinct from the network-wide Lifeway Leadership Podcast Network figure"],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "https://podcasts.apple.com/us/podcast/discipleship-leaders-podcast/id1700274746",
+    "title": "Discipleship Leaders Podcast (Fellowship Bible Church) — Apple Podcasts",
+    "type": "found",
+    "reliability_notes": "Direct platform read. Only 6 ratings total (5.0 average) — a very small, noisy signal (same 'ratings as circumstantial traction proxy' method Part 1 used for SmartGroups). Indicates this specific single-church-produced show has limited reach, not a large-scale channel.",
+    "key_claims_supported": ["Discipleship Leaders Podcast (single-church-produced) shows only 6 Apple ratings — weak circumstantial evidence of small audience size"],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "https://churchanswers.com/about/ and search: Church Answers / Thom Rainer network scope",
+    "title": "Church Answers — About Us; Thom Rainer network coverage",
+    "type": "found",
+    "reliability_notes": "Church Answers (the paid community around Thom & Sam Rainer, publishers of the 'Rainer on Leadership' podcast) states 1,800+ members. This is a broader general-church-leadership audience, not small-group-specific, so it's adjacent context rather than a direct hit on the persona.",
+    "key_claims_supported": ["Church Answers (Rainer on Leadership's parent community) has 1,800+ paying members — a real but modest, general (not small-group-specific) church-leadership audience"],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "search: Rainer on Leadership podcast audience (Feedspot via podcast.feedspot.com, Apple Podcasts id638894745)",
+    "title": "Rainer on Leadership podcast listener estimates",
+    "type": "found",
+    "reliability_notes": "Third-party aggregator (Feedspot) estimate of 10K-50K monthly listeners — a wide, low-precision range typical of these estimator tools; treat as rough. Apple Podcasts shows 487 ratings at 4.8/5, a stronger traction signal than the Discipleship Leaders Podcast above but still not independently verified download data. General church-leadership content, not small-group-specific.",
+    "key_claims_supported": ["Rainer on Leadership has an estimated 10K-50K monthly listeners (wide-range third-party estimate) and 487 Apple ratings — a real, general (not small-group-specific) church-leadership audience of meaningful but imprecisely-known size"],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "search: Lifeway Leadership Podcast Network individual show downloads (Listen Notes, leadership.lifeway.com/podcasts/)",
+    "title": "Listen Notes rankings; Lifeway Leadership Podcast Network show pages",
+    "type": "found",
+    "reliability_notes": "Listen Notes (independent podcast database) notes network shows rank among the more popular of millions of podcasts by its own Listen Score, and one network show ('5 Leadership Questions') is cited elsewhere as having close to 2M cumulative downloads. Cumulative lifetime downloads are a different metric than monthly reach and should not be conflated with the network's '200,000+/month' claim above.",
+    "key_claims_supported": ["At least one Lifeway Leadership Podcast Network show has accumulated close to 2M downloads lifetime, per an independent podcast database — corroborates the network's general reach claim in kind, though not in identical units"],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "https://christianitytodayads.com/pastorsandchurchleaders and christianitytodayads.com (general)",
+    "title": "CT Advertising: Pastors & Church Leaders audience page",
+    "type": "found",
+    "reliability_notes": "Primary/vendor-stated (Christianity Today's own ad-sales pages). Claims CT overall reaches 4.5M+ Christian leaders monthly, 1.25M unique visitors, 2.2M page impressions, and 395,000 opt-in eblast subscribers across 15+ eblasts. SmallGroups.com (the small-group-specific CT property named in the plan) is one audience segment within this broader reach, not separately quantified.",
+    "key_claims_supported": ["Christianity Today's broader ad platform (which includes SmallGroups.com) claims 4.5M+ monthly leader reach and 395,000 opt-in eblast subscribers, but SmallGroups.com's own specific audience size is not separately broken out"],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "https://www.planningcenter.com/developers and https://api.planningcenteronline.com/docs/overview/getting-started",
+    "title": "Planning Center for Developers / API Getting Started",
+    "type": "found",
+    "reliability_notes": "Primary source. Confirms a genuinely self-serve, free path: any developer can register an OAuth application against Planning Center's public REST API without a partnership deal, and Planning Center invites completed integrations to be submitted for inclusion in its public integrations directory. This is the clearest 'actionable now for a 1-2 person team' finding in this run — a technical build, not a business-development ask.",
+    "key_claims_supported": ["Planning Center runs a free, self-serve developer/OAuth API program open to any third party, with a path to get a finished integration listed in its public integrations directory — no partnership deal or fee required to start building"],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "https://www.planningcenter.com/ (homepage, direct fetch) vs. faith.tools/app/276-planning-center vs. appsruntheworld.com Planning Center profile",
+    "title": "Planning Center homepage; faith.tools listing; Apps Run The World vendor profile",
+    "type": "found",
+    "reliability_notes": "Discrepancy found and worth flagging for critique: Planning Center's own current homepage does not state a total-churches figure (it cites '22K helpful members in our online communities' instead). Third-party sites disagree with each other: faith.tools cites '100,000+ churches,' while Apps Run The World (a B2B software ranking aggregator) cites '73,000 churches.' Neither is Planning Center's own current stated claim, and a Semrush read from December 2022 (stale, ~686K visits/3mo) doesn't resolve it either. Treat any 'X churches' figure for Planning Center as unverified and internally inconsistent across secondary sources.",
+    "key_claims_supported": ["Planning Center's total-churches figure is contested across sources (73,000 vs. 100,000+ from two different third parties) and is not currently stated on Planning Center's own homepage — flag as unverified/inflated-candidate for critique, same pattern as Part 1's faith.tools and ChurchTrac findings"],
+    "corroboration_count": 2
+  },
+  {
+    "url_or_ref": "https://pushpay.com/ (homepage) and https://faith.tools/app/145-subsplash-adjacent Pushpay listing",
+    "title": "Pushpay homepage; faith.tools Pushpay-adjacent listing",
+    "type": "found",
+    "reliability_notes": "Pushpay's own homepage states '14,000+ churches' as a tagline claim (primary/vendor-stated); a directory-style third-party source repeats the same order-of-magnitude figure. Better corroborated than Planning Center's contested figure above, though both ultimately trace back toward vendor messaging rather than an audited count.",
+    "key_claims_supported": ["Pushpay states 14,000+ churches as its customer base, a figure repeated consistently (not contradicted) across the sources checked"],
+    "corroboration_count": 2
+  },
+  {
+    "url_or_ref": "https://pushpay.com/developers/ and https://pushpay.io/docs/introduction",
+    "title": "Pushpay Developers / Pushpay API docs",
+    "type": "found",
+    "reliability_notes": "Primary source. Confirms Pushpay also runs a self-serve OAuth2 developer API (ChMS API v1/v2, Giving API) with sandbox and production credentials — technically similar in kind to Planning Center's open developer model. However, no public 'become a partner' program with explicit terms for a third-party consumer app (vs. a ChMS-to-ChMS data integration) was found; the practical bar for a small team to get real leader-facing exposure (vs. just API access) is unclear and likely requires a direct partnership ask.",
+    "key_claims_supported": ["Pushpay has a self-serve developer API similar in kind to Planning Center's, but with no documented consumer-app partner/marketplace program that would give a third-party app leader-facing visibility — treat as partially actionable (technical access) but requiring-leverage for actual distribution/reach"],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "search: Pushpay + Church Community Builder combined customer base (prnewswire.com business-combination release, churchtechtoday.com coverage)",
+    "title": "Pushpay/Church Community Builder business combination announcements",
+    "type": "found",
+    "reliability_notes": "Company press release plus independent trade-press (ChurchTechToday) coverage of the same acquisition; two independent sources agree Church Community Builder served roughly 4,000+ US churches pre-merger and the combined post-merger customer base is cited elsewhere as roughly 10,000. Reasonable corroboration for a mid-tier ChMS player, smaller in scale than Planning Center or Pushpay's own current 14,000+ figure.",
+    "key_claims_supported": ["Church Community Builder served 4,000+ US churches pre-acquisition; combined Pushpay+CCB customer base is cited around 10,000 — a real but comparatively smaller ChMS install base than Planning Center or Pushpay standalone"],
+    "corroboration_count": 2
+  },
+  {
+    "url_or_ref": "search: ChurchTrac / Breeze integration ecosystem scope (GetApp, SourceForge Breeze integrations page, churchtrac.com/churchtrac-vs-breeze)",
+    "title": "GetApp, SourceForge, ChurchTrac comparison pages on integration ecosystems",
+    "type": "found",
+    "reliability_notes": "Multiple independent comparison/review aggregators agree ChurchTrac's integration ecosystem is small (Stripe, PraiseCharts, Mailchimp) with 'no extensive app marketplace like Planning Center offers.' Consistent across sources — a reasonably well-corroborated negative finding.",
+    "key_claims_supported": ["ChurchTrac (and Breeze, to a lesser extent) has a small, non-marketplace integration ecosystem, unlike Planning Center's open developer program — no scalable third-party listing mechanism found here"],
+    "corroboration_count": 2
+  },
+  {
+    "url_or_ref": "https://www.facebook.com/groups/SGNContact/",
+    "title": "Small Group Network Facebook Group (direct fetch)",
+    "type": "found",
+    "reliability_notes": "Direct read of the platform's own displayed member/activity counters — the highest-reliability kind of source for this figure (no better independent corroboration is possible for a single platform's own count, same epistemic status as Part 1's direct Similarweb reads). This resolves Part 1's Step 2 gap: the group exists, is findable (linked from smallgroupnetwork.com), and its real size and activity level are now known.",
+    "key_claims_supported": ["Small Group Network's own Facebook group ('SGNContact') has 15.2K members but only ~19 posts/month and no new members in the past week — a real but low-engagement community, not a hot channel"],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "https://www.facebook.com/groups/158837360893790/",
+    "title": "Small Group Ministry Network Facebook Group (direct fetch)",
+    "type": "found",
+    "reliability_notes": "Direct platform read, same method as above. This is a distinct, smaller group from Small Group Network's own group.",
+    "key_claims_supported": ["A separate 'Small Group Ministry Network' Facebook group has only 420 members — confirms this channel is genuinely small-scale, not a hidden large audience"],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "https://www.facebook.com/groups/churchcomm/",
+    "title": "Church Communications Facebook Group (direct fetch)",
+    "type": "found",
+    "reliability_notes": "Direct platform read showing 38.4K members, corroborated in direction (not exact figure) by independent search-indexed mentions of Katie Allred's community as '30,000+' to '35,000+' church leaders. This is a general church-communications audience, not small-group-leader-specific, so it's adjacent/out-of-persona rather than a direct hit — flagged accordingly, consistent with the plan's scope guidance to only count audiences that demonstrably include leaders/pastors as an identifiable segment.",
+    "key_claims_supported": ["The largest church-leader Facebook community found (Church Communications, ~38K members) is a general communications/marketing audience, not small-group-specific — it demonstrates real member counts are retrievable via direct fetch, but this particular large group is not squarely in-persona"],
+    "corroboration_count": 2
+  },
+  {
+    "url_or_ref": "https://katieallred.com/church-facebook-groups/",
+    "title": "14+ Awesome Facebook Groups for Church Leaders — Katie Allred",
+    "type": "found",
+    "reliability_notes": "Primary curated list (same source Part 1 identified but could not previously retrieve counts from). Confirms Small Group Network is the only small-group-ministry-specific entry among 14 named groups; the rest target adjacent niches (children's, youth, worship, general communications), matching Part 1's characterization.",
+    "key_claims_supported": ["Among 14 named Facebook groups for church leaders, exactly one (Small Group Network) is small-group-ministry-specific; the rest serve adjacent but distinct niches"],
+    "corroboration_count": 1
+  },
+  {
+    "url_or_ref": "search: Apple App Store featured-placement mechanics (apptweak.com, radaso.com, asomobile.net, semnexus.com, appscreenshotstudio.com)",
+    "title": "Multiple ASO (app store optimization) industry guides on App Store featuring",
+    "type": "found",
+    "reliability_notes": "Five independent ASO-industry sources agree on the general mechanism: Apple's editorial team selects featured placements via a pitch/nomination process (App Store Connect 'Featuring → Nominations'), based on design/technical quality and engagement, submitted weeks to months in advance — not purchasable and not faith-category-specific. No faith/Bible-category-specific discovery mechanism (e.g., a dedicated curated collection cadence) was found beyond this general process.",
+    "key_claims_supported": ["No faith-category-specific App Store discovery/placement mechanism exists beyond Apple's standard editorial featuring process, which is open to any app that meets quality bar and pitches ahead of time — a real but generic, non-faith-specific channel, and not something a small team can treat as reliably scalable or fast"],
+    "corroboration_count": 5
+  },
+  {
+    "url_or_ref": "user-provided: Part 1 conclusion (.claude/research/20260911-fellowscript-leader-identify-reach-pitch/conclusion.md)",
+    "title": "Conclusion: Identifying, Reaching, and Pitching FellowScript to Small-Group Leaders and Pastors (Part 1)",
+    "type": "user-provided",
+    "reliability_notes": "Required background context per this run's own plan — not a fresh source to corroborate, but the baseline this run explicitly builds on and must reference by name (RightNow Media open question, faith.tools/conference baseline, Facebook-groups gap).",
+    "key_claims_supported": ["Baseline findings and open questions this run is extending: RightNow Media's leader-email mechanism was unaddressed; faith.tools and SGN conferences are the small-scale baseline; Facebook groups were entirely unresolved in Part 1"],
+    "corroboration_count": 1
+  }
+]

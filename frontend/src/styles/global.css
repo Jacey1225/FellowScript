@@ -1021,6 +1021,10 @@ body {
   padding: 0;
   overflow: hidden;
   width: 220px;
+  /* The bubble is a flex item of the message column and overflow:hidden
+     zeroes its automatic min-height, so a height-constrained column would
+     shrink it into a thin sliver. Never shrink media bubbles vertically. */
+  flex-shrink: 0;
 }
 
 .attachment-media {
@@ -1028,14 +1032,20 @@ body {
   width: 100%;
   max-width: 220px;
   max-height: 260px;
-  object-fit: cover;
+  height: auto;
+  flex-shrink: 0;
+  /* contain: never crop; the true ratio is applied inline (aspect-ratio)
+     once the media's natural size is known, so this only matters when the
+     max-height bound is hit. */
+  object-fit: contain;
   border-radius: var(--radius-md);
   background: rgba(255,198,26,0.08);
 }
 
 .attachment-video-placeholder {
   width: 220px;
-  height: 160px;
+  height: auto;
+  aspect-ratio: 16 / 9;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2085,3 +2095,34 @@ body {
 .title-color-input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
 .title-color-warning { color: var(--gold); }
 .title-color-preview { position: relative; display: block; width: 100%; max-width: 560px; aspect-ratio: 3 / 1; height: auto; cursor: default; pointer-events: none; }
+
+/* ── Sessions submenu (task 20260930-desktop-sessions-submenu) ──
+   Portaled to body; literal values (no tokens) so backdrop-filter blur isn't suppressed by dockview ancestors. */
+.sessions-menu-btn { display: inline-flex; align-items: center; gap: 0.35rem; position: relative; min-height: 32px; padding: 0 0.7rem; border: none; border-radius: 6px; background: rgba(255,198,26,0.08); color: rgba(255,198,26,0.9); cursor: pointer; font-family: 'Inter', sans-serif; font-size: 0.62rem; letter-spacing: 0.06em; white-space: nowrap; margin-left: auto; transition: background 0.15s, color 0.15s; }
+.sessions-menu-btn:hover { background: rgba(255,198,26,0.16); color: var(--gold); }
+.sessions-menu-btn-open { background: rgba(255,198,26,0.16); }
+.sessions-menu-btn:focus-visible, .sessions-menu-close:focus-visible, .sessions-menu-schedule:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
+.sessions-menu-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--gold); }
+.sessions-menu-dot-error { background: #e8877e; }
+.sessions-menu-scrim { position: fixed; inset: 0; z-index: 159; background: transparent; }
+.sessions-menu { position: fixed; z-index: 160; width: min(92vw, 360px); display: flex; flex-direction: column; background: rgba(18,13,5,0.72); -webkit-backdrop-filter: blur(20px) saturate(1.2); backdrop-filter: blur(20px) saturate(1.2); border: 1px solid rgba(255,255,255,0.132); border-radius: 12px; box-shadow: 0 8px 28px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,198,26,0.08); transform-origin: top right; animation: sessionsMenuIn 0.2s cubic-bezier(0.4,0,0.2,1) both; }
+@supports not (backdrop-filter: blur(1px)) { .sessions-menu { background: rgba(18,13,5,0.95); } }
+@keyframes sessionsMenuIn { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: none; } }
+.sessions-menu-header { display: flex; align-items: center; justify-content: space-between; padding: 0.5rem 0.5rem 0.25rem 0.9rem; }
+.sessions-menu-title { margin: 0; font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 0.7rem; letter-spacing: 0.2em; text-transform: uppercase; color: rgba(255,198,26,0.85); }
+.sessions-menu-close { width: 32px; height: 32px; border: none; background: none; border-radius: 6px; color: rgba(255,198,26,0.85); cursor: pointer; }
+.sessions-menu-close:hover { background: rgba(255,198,26,0.12); }
+.sessions-menu-list { max-height: min(60vh, 420px); overflow-y: auto; padding: 0 0.5rem; }
+.sessions-menu-list > div > .session-island, .sessions-menu-list .session-island { margin: 0.25rem 0 !important; }
+.sessions-menu-list > div[style], .sessions-menu-past > div[style] { margin: 0.25rem 0 !important; }
+.sessions-menu-section-label { font-size: 0.55rem; letter-spacing: 0.2em; text-transform: uppercase; color: rgba(255,198,26,0.6); font-family: 'Inter', sans-serif; padding: 0.4rem 0.4rem 0.1rem; }
+.sessions-menu-past { opacity: 0.75; }
+.sessions-menu-empty { margin: 0; padding: 0.75rem 0.4rem; font-size: 0.72rem; color: rgba(242,242,242,0.6); font-family: 'Inter', sans-serif; }
+.sessions-menu-footer { position: sticky; bottom: 0; padding: 0.5rem; }
+.sessions-menu-schedule { width: 100%; min-height: 40px; border: none; border-radius: 999px; cursor: pointer; color: var(--ink); font-family: 'Space Grotesk', sans-serif; font-weight: 600; font-size: 0.75rem; background: linear-gradient(135deg, var(--gold-light), var(--gold) 60%, var(--gold-dim)); }
+@media (max-width: 640px) { .sessions-menu-btn { min-height: 44px; } }
+@media (prefers-reduced-motion: reduce) {
+  .sessions-menu { animation: sessionsMenuFade 0.1s linear both; }
+  .sessions-menu-btn { transition: none; }
+}
+@keyframes sessionsMenuFade { from { opacity: 0; } to { opacity: 1; } }

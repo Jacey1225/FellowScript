@@ -67,6 +67,7 @@ Disallow: /reset-password
 Disallow: /verify-2fa
 Disallow: /
 Allow: /$
+Allow: /download/
 Allow: /privacy
 Allow: /terms
 

@@ -149,6 +149,15 @@ jobs:
       # TestClient(main_module.app)/main.py's lifespan can boot. "10" matches
       # the value deployed in local dev/production's own .env.
       SESSION_JOIN_GRACE_MINUTES: "10"
+      # validate_trial_config() (task 20260930-creator-friend-codes) fails fast
+      # at app boot the same way the validators above do -- same rationale,
+      # same fix. "0" (no trial) matches the intended production value.
+      TRIAL_MONTHS: "0"
+      # validate_promo_config() (task 20260930-creator-friend-codes step 3) fails
+      # fast at boot like the validators above. Flag stays "false" (feature OFF).
+      PROMO_CODES_ENABLED: "false"
+      PROMO_DISCOUNT_PERCENT: "50"
+      PROMO_VALIDATE_RATE_LIMIT: "10/minute"
 
     steps:
       - name: Checkout

@@ -19,6 +19,7 @@ from routes.profile_photo import profile_photo_router
 from routes.group_info import group_info_router
 from routes.group_announcements import group_announcements_router
 from routes.invites import invites_router
+from routes.promo import promo_router, promo_admin_router
 from schemas.subscription import NOTES_MAX_BODY_BYTES
 from schemas.users import SignUp, Login, UpdateUser, User, CURRENT_TERMS_VERSION
 from datetime import datetime, timezone
@@ -178,6 +179,19 @@ async def lifespan(_: FastAPI):
     from backend.interactions.devotion import validate_join_window_config
     validate_join_window_config()
 
+    # Eager web free-trial config validation (task 20260930-creator-friend-codes,
+    # step 1) -- TRIAL_MONTHS (0 = no trial) has no implicit default, same
+    # rationale as every validate_*_config() call above. Deliberately not
+    # caught here.
+    from backend.subscription.stripe_service import validate_trial_config
+    validate_trial_config()
+
+    # Eager promo-code config validation (task 20260930-creator-friend-codes):
+    # PROMO_CODES_ENABLED / PROMO_DISCOUNT_PERCENT / PROMO_VALIDATE_RATE_LIMIT,
+    # no implicit defaults. Deliberately not caught here.
+    from backend.subscription.promo import validate_promo_config
+    validate_promo_config()
+
     # Eager Bible data validation (task 20260927-esv-bible-source-migration,
     # revision 2) -- same rationale as every validate_*_config() call above.
     # `data/bible.json` is now generated from a vendored, pinned World
@@ -321,6 +335,8 @@ app.include_router(devo_router)
 app.include_router(agent_router)
 app.include_router(notification_router)
 app.include_router(subscription_router)
+app.include_router(promo_router)
+app.include_router(promo_admin_router)
 app.include_router(donation_router)
 app.include_router(report_router)
 app.include_router(block_router)

@@ -7,6 +7,11 @@ import { fsTheme } from './theme.js';
 import './styles/global.css';
 import 'dockview-react/dist/styles/dockview.css';
 import './styles/reader-dock.css';
+import { captureCodeFromUrl } from './lib/promoCode.js';
+
+// Shared friend/creator link (/?code=XYZ): remember the code so the purchase
+// flow can prefill it after sign-in. The server still validates it at checkout.
+captureCodeFromUrl();
 
 // Apply saved theme before first paint to avoid flash
 document.documentElement.setAttribute('data-theme', localStorage.getItem('fs_theme') || 'dark');
