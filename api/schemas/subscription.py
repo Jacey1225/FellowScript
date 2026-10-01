@@ -5,8 +5,17 @@ from datetime import datetime
 # Server-authoritative price table for the single "group" plan tier. The host
 # picks how many people (1-8) the plan covers; price is looked up by that
 # count here — never trusted from the client.
+#
+# Price cut 2026-10-01 (task 20261001-subscription-price-cut). Rule:
+#   1 member  = 499 (pinned: 50% of the old 999/1000 tier).
+#   2-8       = old tier price x 0.45 (50% off, then a further 10% off), rounded
+#               half-up to the nearest 5 cents.
+# Old table (kept only in api/scripts/stripe_price_migration.py as OLD_PRICE_CENTS):
+#   1000, 1799, 2699, 3599, 4499, 5399, 6299, 7199.
+# Mirrored (not fetched) by frontend/src/components/SubscriptionCard.jsx and the
+# iOS fallback in Account/AccountView+Subscription.swift; a drift test compares them.
 GROUP_PRICE_CENTS: dict[int, int] = {
-    1: 1000, 2: 1799, 3: 2699, 4: 3599, 5: 4499, 6: 5399, 7: 6299, 8: 7199,
+    1: 499, 2: 810, 3: 1215, 4: 1620, 5: 2025, 6: 2430, 7: 2835, 8: 3240,
 }
 MIN_MEMBERS = 1
 MAX_MEMBERS = 8

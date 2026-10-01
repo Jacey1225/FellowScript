@@ -56,6 +56,12 @@ export function renameGroup(userId, groupId, title) {
   return request(`${base(userId, groupId)}/title`, json('PUT', { title }), "That name didn't save. Please try again.");
 }
 
+// Owner only. `maxMembers` null clears the cap. 403 = not the owner, 422 =
+// out of range or below the current member count (message is user-presentable).
+export function setGroupMaxMembers(userId, groupId, maxMembers) {
+  return request(`${base(userId, groupId)}/max-members`, json('PUT', { max_members: maxMembers }), "Couldn't save the limit. Please try again.");
+}
+
 export function setGroupMuted(userId, groupId, muted) {
   return request(`${base(userId, groupId)}/mute`, { method: muted ? 'PUT' : 'DELETE' }, "Couldn't update notifications. Please try again.");
 }

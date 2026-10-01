@@ -29,7 +29,7 @@ final class AccountViewModelUpdateSeatsErrorHandlingTests: XCTestCase {
         vm.service = service
         vm.profileData = FSUser(user_id: "host-1", username: "host", email: "host@example.com")
         vm.subscription = FSSubscription(id: "sub-1", user_id: "host-1", plan_type: "group",
-                                          status: "active", price_cents: 1799, max_members: 2)
+                                          status: "active", price_cents: 810, max_members: 2)
         return vm
     }
 

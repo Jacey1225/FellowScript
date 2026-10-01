@@ -17,16 +17,16 @@ const { Title, Text } = Typography;
 // -- this component stays fully additive and AdminDetections.jsx's own
 // styling constants are never touched).
 const CARD_STYLE = {
-  background: 'rgba(6,4,1,0.88)',
-  border: '1px solid rgba(200,134,26,0.16)',
+  background: 'rgba(32,24,16,0.62)',
+  border: '1px solid rgba(200,134,26,0.22)',
   backdropFilter: 'blur(14px)',
-  borderRadius: 14,
+  borderRadius: 22,
   padding: '1.5rem',
 };
 
 const EYEBROW_STYLE = {
-  fontFamily: "'Lora', serif", fontSize: '0.6rem', letterSpacing: '0.32em',
-  textTransform: 'uppercase', color: 'rgba(200,134,26,0.55)', display: 'block', marginBottom: '0.2rem',
+  fontFamily: "'Inter', sans-serif", fontWeight: 600, fontSize: '0.62rem', letterSpacing: '0.3em',
+  textTransform: 'uppercase', color: 'rgba(224,170,60,0.78)', display: 'block', marginBottom: '0.2rem',
 };
 
 const CARD_LABEL_STYLE = {

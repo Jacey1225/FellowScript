@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import {
   Layout, Card, Form, Input, Button, Typography,
-  Avatar, Spin, Alert, Divider, Row, Col,
+  Avatar, Spin, Alert, Divider,
   Switch, Modal, Checkbox, Select, TimePicker, Progress, message, Dropdown,
 } from 'antd';
 import {
@@ -35,11 +35,11 @@ const { Title, Text, Paragraph } = Typography;
 // card below spreads this same object, so it stays a tinted variant of the
 // same card shape rather than a separate one.
 const CARD_STYLE = {
-  background: 'rgba(26,20,15,0.85)',
-  border: '1px solid rgba(200,134,26,0.16)',
+  background: 'rgba(32,24,16,0.62)',
+  border: '1px solid rgba(200,134,26,0.22)',
   backdropFilter: 'blur(14px)',
-  borderRadius: 20,
-  marginBottom: '1.5rem',
+  borderRadius: 22,
+  marginBottom: '1.25rem',
 };
 
 // Full IANA timezone list where supported (most modern browsers); falls back
@@ -76,13 +76,9 @@ const WEEKDAYS = [
 
 function StatBox({ value, label }) {
   return (
-    <div style={{ textAlign: 'center', padding: '1.1rem 0.5rem' }}>
-      <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 'clamp(1.8rem,3vw,2.4rem)', fontWeight: 700, color: 'var(--gold)', lineHeight: 1 }}>
-        {value ?? '—'}
-      </div>
-      <div style={{ fontFamily: "'Lora', serif", fontSize: '0.6rem', letterSpacing: '0.22em', textTransform: 'uppercase', color: 'rgba(244,228,193,0.4)', marginTop: '0.45rem' }}>
-        {label}
-      </div>
+    <div className="fs-stat">
+      <span className="fs-stat__num">{value ?? '—'}</span>
+      <span className="fs-stat__label">{label}</span>
     </div>
   );
 }
@@ -901,7 +897,7 @@ export default function Account() {
       <AppBloom variant="account" />
       <AppNav />
 
-      <Content style={{ paddingTop: 'calc(var(--nav-h) + 2.5rem)', paddingBottom: '5rem', paddingLeft: '2rem', paddingRight: '2rem', maxWidth: 680, margin: '0 auto', width: '100%' }}>
+      <Content className="fs-account-pad" style={{ maxWidth: 680, margin: '0 auto', width: '100%' }}>
 
         {/* Back navigation (task 20260906-account-back-navigation) -- a
             visible, clickable page-level control per the user's
@@ -925,18 +921,19 @@ export default function Account() {
         </button>
 
         {/* Header */}
-        <div style={{ marginBottom: '2rem', animation: 'fadeUp 0.55s ease forwards', opacity: 0, display: 'flex', alignItems: 'center', gap: '1.1rem' }}>
-          <div style={{ position: 'relative', width: 76, height: 76, flexShrink: 0 }}>
+        <div className="fs-account-head" style={{ animation: 'fadeUp 0.55s ease forwards', opacity: 0 }}>
+          <div style={{ position: 'relative', width: 92, height: 92, flexShrink: 0 }}>
             <Avatar
-              size={76}
+              size={92}
               src={data.profile_photo_url}
               className={photoJustUpdated ? 'fs-avatar-crossfade' : undefined}
               style={{
                 background: 'rgba(200,134,26,0.12)',
-                border: '1.5px solid var(--gold)',
+                border: '2px solid var(--gold)',
+                boxShadow: '0 0 0 4px rgba(255,198,26,0.08), 0 0 28px rgba(255,198,26,0.18)',
                 color: 'var(--gold)',
                 fontFamily: "'Playfair Display', serif",
-                fontSize: '1.7rem',
+                fontSize: '2rem',
               }}
             >
               {(data.username || 'A')[0].toUpperCase()}
@@ -947,8 +944,8 @@ export default function Account() {
               disabled={photoUploading}
               aria-label={data.profile_photo_url ? 'Change profile photo' : 'Add a profile photo'}
               style={{
-                position: 'absolute', bottom: -2, right: -2, width: 28, height: 28, borderRadius: '50%',
-                border: '1.5px solid var(--gold)', background: 'rgba(12,7,2,0.92)', color: 'var(--gold)',
+                position: 'absolute', bottom: 0, right: 0, width: 30, height: 30, borderRadius: '50%',
+                border: '2px solid #14110D', background: 'var(--gold)', color: '#14110D',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 cursor: photoUploading ? 'default' : 'pointer', padding: 0,
               }}
@@ -963,13 +960,16 @@ export default function Account() {
               onChange={handlePhotoChange}
             />
           </div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.6rem', letterSpacing: '0.32em', textTransform: 'uppercase', color: 'rgba(200,134,26,0.55)', display: 'block', marginBottom: '0.2rem' }}>
+          <div style={{ minWidth: 0 }}>
+            <Text className="fs-eyebrow">
               Your Profile
             </Text>
-            <Title level={2} style={{ margin: 0, fontFamily: "'Playfair Display', serif", color: 'var(--parchment)' }}>
+            <Title level={2} style={{ margin: 0, fontFamily: "'Playfair Display', serif", color: 'var(--parchment)', fontSize: 'clamp(1.5rem, 5vw, 1.9rem)' }}>
               {profileLoading ? 'Account' : <>{data.username || 'Account'}</>}
             </Title>
+            {(data.email || user.email) && (
+              <div className="fs-muted" style={{ color: 'rgba(244,228,193,0.45)' }}>{data.email || user.email}</div>
+            )}
             {data.profile_photo_url && !photoUploading && (
               <Button type="link" size="small" onClick={handleRemovePhoto}
                 style={{ padding: 0, height: 'auto', fontFamily: "'Lora', serif", fontSize: '0.72rem', color: 'rgba(244,228,193,0.4)' }}>
@@ -985,29 +985,29 @@ export default function Account() {
 
         {/* Stats */}
         <Card style={{ ...CARD_STYLE, animationDelay: '0.08s', animation: 'fadeUp 0.55s ease forwards', opacity: 0 }}>
-          <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.56rem', letterSpacing: '0.3em', textTransform: 'uppercase', color: 'rgba(200,134,26,0.5)', display: 'block', marginBottom: '0.4rem' }}>
+          <Text className="fs-eyebrow" style={{ marginBottom: '0.4rem' }}>
             Overview
           </Text>
           {profileLoading
             ? <div style={{ textAlign: 'center', padding: '2rem' }}><Spin /></div>
-            : <Row>
-                <Col span={6}><StatBox value={(data.friends || []).length} label="Friends" /></Col>
-                <Col span={6}><StatBox value={(data.groups  || []).length} label="Groups"  /></Col>
-                <Col span={6}><StatBox value={notesCount}                  label="Notes"   /></Col>
-                <Col span={6}><StatBox value={versesCount}                 label="Verses"  /></Col>
-              </Row>
+            : <div className="fs-stats">
+                <StatBox value={(data.friends || []).length} label="Friends" />
+                <StatBox value={(data.groups  || []).length} label="Groups"  />
+                <StatBox value={notesCount}                  label="Notes"   />
+                <StatBox value={versesCount}                 label="Verses"  />
+              </div>
           }
         </Card>
 
         {/* Subscription */}
-        <div style={{ animationDelay: '0.12s', animation: 'fadeUp 0.55s ease forwards', opacity: 0 }}>
+        <div className="fs-sub-scope" style={{ animationDelay: '0.12s', animation: 'fadeUp 0.55s ease forwards', opacity: 0 }}>
           <SubscriptionCard userId={user.user_id} onPlanChange={loadUsage} />
         </div>
 
         {/* Plan usage */}
         {usage && (
           <Card style={{ ...CARD_STYLE, animationDelay: '0.13s', animation: 'fadeUp 0.55s ease forwards', opacity: 0 }}>
-            <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.56rem', letterSpacing: '0.3em', textTransform: 'uppercase', color: 'rgba(200,134,26,0.5)', display: 'block', marginBottom: '1rem' }}>
+            <Text className="fs-eyebrow" style={{ marginBottom: '1rem' }}>
               Plan Usage
             </Text>
             <UsageMeter label="Notes" hint={`last ${usage.window_days} days`} data={usage.resources?.notes} />
@@ -1031,7 +1031,7 @@ export default function Account() {
 
         {/* Edit profile */}
         <Card style={{ ...CARD_STYLE, animationDelay: '0.16s', animation: 'fadeUp 0.55s ease forwards', opacity: 0 }}>
-          <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.56rem', letterSpacing: '0.3em', textTransform: 'uppercase', color: 'rgba(200,134,26,0.5)', display: 'block', marginBottom: '1rem' }}>
+          <Text className="fs-eyebrow" style={{ marginBottom: '1rem' }}>
             Edit Profile
           </Text>
           {editMsg && <Alert type={editMsg.type} message={editMsg.text} showIcon style={{ marginBottom: 16, borderRadius: 8 }} />}
@@ -1053,7 +1053,7 @@ export default function Account() {
             <Form.Item name="password" label="New Password" extra="Leave blank to keep current password.">
               <Input.Password prefix={<LockOutlined />} placeholder="New password…" />
             </Form.Item>
-            <Button type="primary" htmlType="submit" loading={editLoading} style={{ borderRadius: 8, fontFamily: "'Lora', serif", letterSpacing: '0.08em' }}>
+            <Button type="primary" htmlType="submit" loading={editLoading} shape="round" style={{ fontFamily: "'Lora', serif", letterSpacing: '0.08em' }}>
               Save Changes
             </Button>
           </Form>
@@ -1061,7 +1061,7 @@ export default function Account() {
 
         {/* Two-factor authentication */}
         <Card style={{ ...CARD_STYLE, animationDelay: '0.20s', animation: 'fadeUp 0.55s ease forwards', opacity: 0 }}>
-          <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.56rem', letterSpacing: '0.3em', textTransform: 'uppercase', color: 'rgba(200,134,26,0.5)', display: 'block', marginBottom: '1rem' }}>
+          <Text className="fs-eyebrow" style={{ marginBottom: '1rem' }}>
             Two-Factor Authentication
           </Text>
           {mfaMsg && <Alert type={mfaMsg.type} message={mfaMsg.text} showIcon style={{ marginBottom: 16, borderRadius: 8 }} />}
@@ -1075,7 +1075,7 @@ export default function Account() {
 
         {/* Blocked users */}
         <Card style={{ ...CARD_STYLE, animationDelay: '0.22s', animation: 'fadeUp 0.55s ease forwards', opacity: 0 }}>
-          <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.56rem', letterSpacing: '0.3em', textTransform: 'uppercase', color: 'rgba(200,134,26,0.5)', display: 'block', marginBottom: '0.8rem' }}>
+          <Text className="fs-eyebrow" style={{ marginBottom: '0.8rem' }}>
             Blocked Users
           </Text>
           {blockedLoading
@@ -1099,7 +1099,7 @@ export default function Account() {
 
         {/* Friend requests */}
         <Card style={{ ...CARD_STYLE, animationDelay: '0.24s', animation: 'fadeUp 0.55s ease forwards', opacity: 0 }}>
-          <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.56rem', letterSpacing: '0.3em', textTransform: 'uppercase', color: 'rgba(200,134,26,0.5)', display: 'block', marginBottom: '0.8rem' }}>
+          <Text className="fs-eyebrow" style={{ marginBottom: '0.8rem' }}>
             Friend Requests
           </Text>
           {profileLoading
@@ -1128,7 +1128,7 @@ export default function Account() {
         {/* Agents */}
         <Card style={{ ...CARD_STYLE, animationDelay: '0.32s', animation: 'fadeUp 0.55s ease forwards', opacity: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.8rem' }}>
-            <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.56rem', letterSpacing: '0.3em', textTransform: 'uppercase', color: 'rgba(200,134,26,0.5)' }}>
+            <Text className="fs-eyebrow" style={{ marginBottom: 0 }}>
               Agents
             </Text>
             <Button size="small" type="text" icon={<PlusOutlined />} onClick={() => { setNewAgentRole(''); setAgentModal(true); }}
@@ -1199,7 +1199,7 @@ export default function Account() {
         {/* Events */}
         <Card style={{ ...CARD_STYLE, animationDelay: '0.38s', animation: 'fadeUp 0.55s ease forwards', opacity: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.8rem' }}>
-            <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.56rem', letterSpacing: '0.3em', textTransform: 'uppercase', color: 'rgba(200,134,26,0.5)' }}>
+            <Text className="fs-eyebrow" style={{ marginBottom: 0 }}>
               Events
             </Text>
             <Button size="small" type="text" icon={<PlusOutlined />}
@@ -1339,14 +1339,14 @@ export default function Account() {
         )}
 
         {/* Sign out */}
-        <Button block size="large" icon={<LogoutOutlined />} onClick={handleSignOut}
-          style={{ marginBottom: '1.5rem', borderRadius: 8, fontFamily: "'Lora', serif", letterSpacing: '0.1em', textTransform: 'uppercase', animation: 'fadeUp 0.55s ease 0.32s forwards', opacity: 0 }}>
+        <Button block size="large" shape="round" icon={<LogoutOutlined />} onClick={handleSignOut}
+          style={{ marginBottom: '1.25rem', fontFamily: "'Lora', serif", letterSpacing: '0.1em', textTransform: 'uppercase', animation: 'fadeUp 0.55s ease 0.32s forwards', opacity: 0 }}>
           Sign Out
         </Button>
 
         {/* Danger zone */}
         <Card style={{ ...CARD_STYLE, borderColor: 'rgba(220,50,50,0.25)', background: 'rgba(40,8,8,0.75)', animationDelay: '0.46s', animation: 'fadeUp 0.55s ease forwards', opacity: 0 }}>
-          <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.56rem', letterSpacing: '0.3em', textTransform: 'uppercase', color: 'rgba(220,80,80,0.7)', display: 'block', marginBottom: '0.5rem' }}>
+          <Text className="fs-eyebrow" style={{ color: '#e08b8b', marginBottom: '0.5rem' }}>
             Danger Zone
           </Text>
           <Paragraph style={{ fontFamily: "'Lora', serif", fontSize: '0.8rem', color: 'rgba(244,228,193,0.45)', lineHeight: 1.75, marginBottom: '1.2rem' }}>
@@ -1361,8 +1361,8 @@ export default function Account() {
               placeholder={profileData?.username || user?.username || 'yourname'}
               style={{ maxWidth: 260, borderRadius: 8 }} />
           </div>
-          <Button danger icon={<DeleteOutlined />} loading={deleteLoading} onClick={handleDelete}
-            style={{ borderRadius: 8, fontFamily: "'Lora', serif" }}>
+          <Button danger shape="round" icon={<DeleteOutlined />} loading={deleteLoading} onClick={handleDelete}
+            style={{ fontFamily: "'Lora', serif" }}>
             Delete My Account
           </Button>
         </Card>

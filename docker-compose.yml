@@ -60,6 +60,7 @@ services:
     # .env or into each other.
     volumes:
       - ./AuthKey_DNZPK26TF2.p8:/secrets/AuthKey_DNZPK26TF2.p8:ro
+      - ./SubscriptionKey_G6DRYNCNRS.p8:/secrets/SubscriptionKey_G6DRYNCNRS.p8:ro
       - ${HOME}/.aws/credentials:/secrets/aws/credentials:ro
       - ${HOME}/.aws/config:/secrets/aws/config:ro
 

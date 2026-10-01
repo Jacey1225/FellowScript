@@ -158,6 +158,22 @@ jobs:
       PROMO_CODES_ENABLED: "false"
       PROMO_DISCOUNT_PERCENT: "50"
       PROMO_VALIDATE_RATE_LIMIT: "10/minute"
+      # validate_owner_rewards_config() (task 20261001-promo-owner-rewards) fails
+      # fast at boot like the validators above. Flag "false" => the Apple key
+      # file is never read, so these are throwaway CI values (not real secrets).
+      OWNER_REWARDS_ENABLED: "false"
+      OWNER_REWARD_PERCENT: "50"
+      OWNER_REWARD_EXPIRY_DAYS: "90"
+      OWNER_REWARD_CAP_COUNT: "10"
+      OWNER_REWARD_CAP_WINDOW_DAYS: "30"
+      OWNER_REWARD_MAX_OUTSTANDING: "3"
+      OWNER_REWARD_IP_CAP_COUNT: "3"
+      OWNER_REWARD_CLAIM_RATE_LIMIT: "5/minute"
+      OWNER_REWARD_APPLE_RESERVATION_MINUTES: "15"
+      OWNER_REWARD_HASH_SALT: "ci-throwaway-salt-not-a-secret"
+      APPLE_PROMO_KEY_ID: "G6DRYNCNRS"
+      APPLE_PROMO_KEY_PATH: "/tmp/ci-unused-apple-promo-key.p8"
+      APPLE_PROMO_OFFERS: '{"com.fellowscript.access.one":"invite_reward_50_v2","com.fellowscript.access.two":"invite_reward_50_v2_2","com.fellowscript.access.three":"invite_reward_50_v2_3","com.fellowscript.access.four":"invite_reward_50_v2_4","com.fellowscript.access.five":"invite_reward_50_v2_5","com.fellowscript.access.six":"invite_reward_50_v2_6","com.fellowscript.access.seven":"invite_reward_50_v2_7","com.fellowscript.access.eight":"invite_reward_50_v2_8"}'
 
     steps:
       - name: Checkout

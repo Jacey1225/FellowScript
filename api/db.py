@@ -228,6 +228,13 @@ def create_tables(cur):
     cur.execute(
         "CREATE INDEX IF NOT EXISTS idx_invites_created_by ON invites(created_by)"
     )
+    # Task 20260930-group-invite-permanent-member-cap: group invite links never
+    # expire, so expires_at becomes nullable (NULL = permanent). Subscription
+    # links still always carry an expiry; existing rows keep theirs. DROP NOT
+    # NULL is idempotent. groups.max_members is the owner-set member cap
+    # (NULL = unlimited; every pre-existing group stays uncapped).
+    cur.execute("ALTER TABLE invites ALTER COLUMN expires_at DROP NOT NULL")
+    cur.execute("ALTER TABLE groups ADD COLUMN IF NOT EXISTS max_members INTEGER")
     # Task 20260929-group-announcements: announcements posted to a group.
     # Additive + idempotent. Group delete cascades; a departed/deleted author
     # leaves the announcement in place (creator_id SET NULL). banner_key is an
@@ -606,6 +613,77 @@ def create_tables(cur):
     )
     cur.execute("CREATE INDEX IF NOT EXISTS idx_promo_redemptions_creator ON promo_redemptions(creator_id)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_promo_redemptions_user ON promo_redemptions(user_id)")
+    # Task 20260930-... 20261001-promo-owner-rewards: owner rewards. Additive +
+    # idempotent. owner_email (lowercased) attaches a creator code to the person
+    # who earns rewards when it is used (friend codes use referrer_user_id).
+    cur.execute("ALTER TABLE promo_codes ADD COLUMN IF NOT EXISTS owner_email TEXT")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_promo_codes_owner_email ON promo_codes(owner_email)")
+    # Reward ledger = source of truth. status earned -> claimed | expired.
+    # idempotency_key UNIQUE (signup:<invitee id> / purchase:<redemption key>)
+    # makes replays impossible; the partial unique indexes enforce one signup
+    # reward per invitee account AND per invitee email (survives account
+    # deletion/re-creation). Apple claims are two-phase: the signing endpoint
+    # sets apple_nonce/apple_reserved_until, reconciliation (sync/notification)
+    # flips status to 'claimed' with claim_ref = the Apple transaction id.
+    cur.execute(
+        "CREATE TABLE IF NOT EXISTS owner_rewards"
+        "(_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
+        "owner_user_id UUID NOT NULL REFERENCES users(_id) ON DELETE CASCADE,"
+        "source TEXT NOT NULL CHECK (source IN ('signup','purchase')),"
+        "code_id UUID REFERENCES promo_codes(_id) ON DELETE SET NULL,"
+        "code TEXT NOT NULL,"
+        "invitee_user_id UUID REFERENCES users(_id) ON DELETE SET NULL,"
+        "invitee_email_hash TEXT,"
+        "invitee_ip_hash TEXT,"
+        "percent INTEGER NOT NULL CHECK (percent BETWEEN 1 AND 100),"
+        "status TEXT NOT NULL DEFAULT 'earned' CHECK (status IN ('earned','claimed','expired')),"
+        "idempotency_key TEXT NOT NULL UNIQUE,"
+        "earned_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),"
+        "expires_at TIMESTAMPTZ NOT NULL,"
+        "claimed_at TIMESTAMPTZ,"
+        "claimed_via TEXT CHECK (claimed_via IS NULL OR claimed_via IN ('stripe','apple')),"
+        "claim_ref TEXT,"
+        "apple_nonce TEXT,"
+        "apple_reserved_until TIMESTAMPTZ,"
+        "CHECK ((status = 'claimed') = (claimed_at IS NOT NULL)))"
+    )
+    # Task 20261001-owner-rewards-security-fixes: Apple double-claim fix. The time
+    # after which an issued promotional-offer signature can no longer be redeemed
+    # at Apple (signed-at + 24h validity + skew margin). No re-issue (and no
+    # expiry of the reward) before then; apple_nonce is unique so a nonce binds to
+    # exactly one reward. Additive + idempotent.
+    cur.execute("ALTER TABLE owner_rewards ADD COLUMN IF NOT EXISTS apple_signature_expires_at TIMESTAMPTZ")
+    cur.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_owner_rewards_apple_nonce "
+        "ON owner_rewards(apple_nonce) WHERE apple_nonce IS NOT NULL"
+    )
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_owner_rewards_owner ON owner_rewards(owner_user_id, status)")
+    cur.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_owner_rewards_signup_invitee "
+        "ON owner_rewards(invitee_user_id) WHERE source = 'signup' AND invitee_user_id IS NOT NULL"
+    )
+    cur.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_owner_rewards_signup_email "
+        "ON owner_rewards(invitee_email_hash) WHERE source = 'signup' AND invitee_email_hash IS NOT NULL"
+    )
+    cur.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_owner_rewards_claim_ref "
+        "ON owner_rewards(claimed_via, claim_ref) WHERE claim_ref IS NOT NULL AND claimed_via = 'apple'"
+    )
+    # Append-only audit trail for consequential promo/reward actions. No PII:
+    # ids and reason codes only (never code text of a denied attempt, email, IP).
+    cur.execute(
+        "CREATE TABLE IF NOT EXISTS promo_audit_log"
+        "(_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
+        "ts TIMESTAMPTZ NOT NULL DEFAULT NOW(),"
+        "action TEXT NOT NULL,"
+        "actor_user_id UUID,"
+        "owner_user_id UUID,"
+        "reward_id UUID,"
+        "code_id UUID,"
+        "detail TEXT NOT NULL DEFAULT '')"
+    )
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_promo_audit_log_ts ON promo_audit_log(ts)")
     # Durable "ever held a paid plan" marker. subscriptions rows are deleted on
     # cancel, so history must live elsewhere for the new-subscriber check.
     cur.execute(

@@ -106,6 +106,23 @@ def generate_friend_code() -> str:
     return "".join(secrets.choice(_FRIEND_ALPHABET) for _ in range(_FRIEND_CODE_LEN))
 
 
+def generate_creator_code() -> str:
+    """Unguessable admin-side creator code: ``FS-`` + 12 chars (~60 bits), from
+    the CSPRNG; matches ``_CODE_RE``."""
+    return "FS-" + "".join(secrets.choice(_FRIEND_ALPHABET) for _ in range(12))
+
+
+_OWNER_EMAIL_RE = re.compile(r"^[^@\s]{1,64}@[^@\s]{1,255}$")
+
+
+def normalize_owner_email(raw) -> str | None:
+    """Trim + lowercase; None if not email-shaped."""
+    if not isinstance(raw, str):
+        return None
+    e = raw.strip().lower()
+    return e if _OWNER_EMAIL_RE.match(e) and len(e) <= 255 else None
+
+
 def _iso(v):
     return v.isoformat() if isinstance(v, datetime) else v
 
@@ -219,9 +236,10 @@ class PromoManager(DBManager):
             if row:
                 return row[0]
             self.cur.execute(
-                "INSERT INTO promo_codes (code, kind, referrer_user_id) VALUES (%s, 'friend', %s) "
+                "INSERT INTO promo_codes (code, kind, referrer_user_id, owner_email) "
+                "VALUES (%s, 'friend', %s, (SELECT LOWER(email) FROM users WHERE _id = %s)) "
                 "ON CONFLICT DO NOTHING",
-                (generate_friend_code(), user_id),
+                (generate_friend_code(), user_id, user_id),
             )
             self.conn.commit()
         raise RuntimeError("could not allocate friend code")
@@ -231,6 +249,15 @@ class PromoManager(DBManager):
     def redemption_exists(self, idempotency_key: str) -> bool:
         self.cur.execute("SELECT 1 FROM promo_redemptions WHERE idempotency_key = %s", (idempotency_key,))
         return self.cur.fetchone() is not None
+
+    def get_redemption(self, idempotency_key: str) -> dict | None:
+        """The logged redemption for an idempotency key (code id, buyer, whether it
+        was logged past the code's cap), or None."""
+        self.cur.execute(
+            "SELECT code_id, user_id, over_cap FROM promo_redemptions WHERE idempotency_key = %s",
+            (idempotency_key,))
+        r = self.cur.fetchone()
+        return {"code_id": str(r[0]) if r[0] else None, "user_id": str(r[1]), "over_cap": bool(r[2])} if r else None
 
     def log_redemption(self, *, code_id: str, user_id: str, plan: str, platform: str,
                        store_transaction_id: str, idempotency_key: str,
@@ -314,23 +341,28 @@ class PromoManager(DBManager):
                 "creator_id": str(r[3]) if r[3] else None,
                 "referrer_user_id": str(r[4]) if r[4] else None,
                 "active": r[5], "max_redemptions": r[6], "redemption_count": r[7],
-                "expires_at": _iso(r[8]), "created_at": _iso(r[9])}
+                "expires_at": _iso(r[8]), "created_at": _iso(r[9]), "owner_email": r[10]}
 
     _CODE_COLS = ("_id, code, kind, creator_id, referrer_user_id, active, max_redemptions, "
-                  "redemption_count, expires_at, created_at")
+                  "redemption_count, expires_at, created_at, owner_email")
 
     def create_creator_code(self, code: str, creator_id: str, max_redemptions: int | None,
-                            expires_at) -> dict:
+                            expires_at, owner_email: str | None = None) -> dict:
         norm = normalize_code(code)
+        email = None
+        if owner_email is not None:
+            email = normalize_owner_email(owner_email)
+            if not email:
+                raise PromoError(422, "owner_email is not a valid email address")
         if not norm:
             raise PromoError(422, "code must be 3-32 chars: letters, digits, '-' or '_'")
         self.cur.execute("SELECT 1 FROM creators WHERE _id = %s", (creator_id,))
         if not self.cur.fetchone():
             raise PromoError(404, "creator not found")
         self.cur.execute(
-            f"INSERT INTO promo_codes (code, kind, creator_id, max_redemptions, expires_at) "
-            f"VALUES (%s, 'creator', %s, %s, %s) ON CONFLICT (code) DO NOTHING RETURNING {self._CODE_COLS}",
-            (norm, creator_id, max_redemptions, expires_at))
+            f"INSERT INTO promo_codes (code, kind, creator_id, max_redemptions, expires_at, owner_email) "
+            f"VALUES (%s, 'creator', %s, %s, %s, %s) ON CONFLICT (code) DO NOTHING RETURNING {self._CODE_COLS}",
+            (norm, creator_id, max_redemptions, expires_at, email))
         r = self.cur.fetchone()
         self.conn.commit()
         if not r:
@@ -338,9 +370,13 @@ class PromoManager(DBManager):
         return self._code_dict(r)
 
     def update_code(self, code_id: str, fields: dict) -> dict | None:
-        allowed = {k: v for k, v in fields.items() if k in ("active", "max_redemptions", "expires_at")}
+        allowed = {k: v for k, v in fields.items() if k in ("active", "max_redemptions", "expires_at", "owner_email")}
         if not allowed:
             raise PromoError(422, "nothing to update")
+        if "owner_email" in allowed and allowed["owner_email"] is not None:
+            allowed["owner_email"] = normalize_owner_email(allowed["owner_email"])
+            if not allowed["owner_email"]:
+                raise PromoError(422, "owner_email is not a valid email address")
         sets = ", ".join(f"{k} = %s" for k in allowed)
         self.cur.execute(
             f"UPDATE promo_codes SET {sets} WHERE _id = %s RETURNING {self._CODE_COLS}",
@@ -361,6 +397,77 @@ class PromoManager(DBManager):
             f"SELECT {self._CODE_COLS} FROM promo_codes {w} ORDER BY created_at DESC LIMIT %s OFFSET %s",
             [*params, limit, offset])
         return [self._code_dict(r) for r in self.cur.fetchall()]
+
+    def create_creator_with_code(self, name: str, notes: str, owner_email: str, code: str | None,
+                                 max_redemptions: int | None, expires_at,
+                                 actor_id: str | None = None) -> dict:
+        """Admin one-shot: create a creator and a creator code attached to
+        ``owner_email`` in ONE transaction. With no ``code`` a secure random one
+        is generated (retried on the astronomically unlikely collision)."""
+        email = normalize_owner_email(owner_email)
+        if not email:
+            raise PromoError(422, "owner_email is not a valid email address")
+        norm = None
+        if code is not None and code.strip():
+            norm = normalize_code(code)
+            if not norm:
+                raise PromoError(422, "code must be 3-32 chars: letters, digits, '-' or '_'")
+        try:
+            self.cur.execute(
+                "INSERT INTO creators (name, notes) VALUES (%s, %s) "
+                "RETURNING _id, name, notes, active, created_at, updated_at", (name, notes))
+            creator = self._creator_dict(self.cur.fetchone())
+            row = None
+            for _ in range(5 if norm is None else 1):
+                candidate = norm or generate_creator_code()
+                self.cur.execute(
+                    f"INSERT INTO promo_codes (code, kind, creator_id, max_redemptions, expires_at, owner_email) "
+                    f"VALUES (%s, 'creator', %s, %s, %s, %s) ON CONFLICT (code) DO NOTHING "
+                    f"RETURNING {self._CODE_COLS}",
+                    (candidate, creator["id"], max_redemptions, expires_at, email))
+                row = self.cur.fetchone()
+                if row:
+                    break
+            if not row:
+                self.conn.rollback()
+                raise PromoError(409, "code already exists")
+            out = self._code_dict(row)
+            self.cur.execute(
+                "INSERT INTO promo_audit_log (action, actor_user_id, code_id, detail) VALUES (%s,%s,%s,%s)",
+                ("promo_creator_code_create", actor_id, out["id"], ""))
+            self.conn.commit()
+            return {"creator": creator, "code": out}
+        except PromoError:
+            raise
+        except Exception:
+            self.conn.rollback()
+            raise
+
+    def audit(self, action: str, actor_user_id: str | None, code_id: str | None = None, detail: str = "") -> None:
+        """Durable admin audit row (ids/reason only)."""
+        self.cur.execute(
+            "INSERT INTO promo_audit_log (action, actor_user_id, code_id, detail) VALUES (%s,%s,%s,%s)",
+            (action, actor_user_id, code_id, detail[:200]))
+        self.conn.commit()
+
+    def list_codes_overview(self, kind: str | None = None, limit: int = 100, offset: int = 0) -> list[dict]:
+        """Codes with creator name, attached email, redemption count and reward
+        counts, for the admin page."""
+        where, params = "", []
+        if kind:
+            where, params = "WHERE p.kind = %s", [kind]
+        self.cur.execute(
+            "SELECT p._id, p.code, p.kind, p.active, p.owner_email, c.name, p.redemption_count, "
+            " p.max_redemptions, p.expires_at, p.created_at, "
+            " COALESCE(rw.earned, 0), COALESCE(rw.claimed, 0) "
+            "FROM promo_codes p LEFT JOIN creators c ON c._id = p.creator_id "
+            "LEFT JOIN (SELECT code_id, COUNT(*) AS earned, COUNT(*) FILTER (WHERE status='claimed') AS claimed "
+            "           FROM owner_rewards WHERE code_id IS NOT NULL GROUP BY code_id) rw ON rw.code_id = p._id "
+            f"{where} ORDER BY p.created_at DESC LIMIT %s OFFSET %s", [*params, limit, offset])
+        return [{"id": str(r[0]), "code": r[1], "kind": r[2], "active": r[3], "owner_email": r[4],
+                 "creator_name": r[5], "redemption_count": r[6], "max_redemptions": r[7],
+                 "expires_at": _iso(r[8]), "created_at": _iso(r[9]),
+                 "rewards_earned": r[10], "rewards_claimed": r[11]} for r in self.cur.fetchall()]
 
     # ── Admin: reporting ──────────────────────────────────────────────────────
 

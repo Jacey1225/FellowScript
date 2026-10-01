@@ -150,6 +150,10 @@ final class AccountViewModel: ObservableObject {
     @Published var subLoading      = true
     @Published var subBusy         = false
     @Published var subMsg: String? = nil
+    // Owner reward (task 20261001-promo-owner-rewards). nil = feature off / not loaded.
+    @Published var rewardSummary: FSRewardSummary? = nil
+    @Published var rewardBusy = false
+    @Published var rewardMsg: String? = nil
     // Apple plan that was cancelled (auto-renew off) but still in its paid period.
     @Published var autoRenewOff    = false
     @Published var planEndDate: Date? = nil
@@ -1082,6 +1086,31 @@ final class AccountViewModel: ObservableObject {
         } else if let e = StoreKitManager.shared.lastError {
             subMsg = e
         }
+    }
+
+    /// Load the caller's reward state. A failure keeps the last known summary
+    /// (preserve-cache-on-failed-refresh); a uniform 404 (flag off) hides the UI.
+    func loadRewardSummary(userId: String) async {
+        do {
+            rewardSummary = try await service.fetchRewardSummary(userId: userId)
+        } catch {
+            print("[AccountViewModel] loadRewardSummary failed: \(error)")
+        }
+    }
+
+    /// Claim the earned reward via an Apple promotional offer.
+    func claimReward() async {
+        guard let uid = profileData?.user_id, !rewardBusy else { return }
+        rewardBusy = true; rewardMsg = nil
+        defer { rewardBusy = false }
+        let ok = await StoreKitManager.shared.claimOwnerReward(userId: uid, service: service)
+        if ok {
+            rewardMsg = "Reward applied. Your next month is discounted."
+            await loadSubscription(userId: uid)
+        } else if let e = StoreKitManager.shared.lastError {
+            rewardMsg = e
+        }
+        await loadRewardSummary(userId: uid)
     }
 
     func restorePurchases() async {

@@ -44,7 +44,8 @@ class TokenBody(BaseModel):
 
 class CreateInviteBody(BaseModel):
     """Both optional; omitted values use the configured defaults. Values must
-    be members of the configured allowed sets."""
+    be members of the configured allowed sets. ``expires_in_days`` applies to
+    subscription links only; group links never expire and ignore it."""
     expires_in_days: int | None = None
     max_uses: int | None = None
 
@@ -180,6 +181,7 @@ async def list_group_invites(
             "default_max_uses": cfg.default_max_uses,
             "allowed_max_uses": list(cfg.allowed_max_uses),
             "max_active_links_per_user_per_group": cfg.max_active_links_per_user_per_group,
+            "max_group_members_ceiling": cfg.max_group_members_ceiling,
         },
     }
 

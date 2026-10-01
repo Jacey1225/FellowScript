@@ -99,6 +99,51 @@ def ensure_promo_coupon(percent_off: int) -> str:
     return cid
 
 
+def ensure_owner_reward_coupon(percent_off: int) -> str:
+    """Shared ``percent_off`` / ``duration=once`` coupon for owner rewards
+    (separate id from the invitee first-month coupon). Fails closed if the
+    existing coupon's terms were changed."""
+    cid = f"fellowscript-owner-reward-{percent_off}pct"
+    try:
+        coupon = stripe.Coupon.retrieve(cid)
+    except stripe.InvalidRequestError:
+        stripe.Coupon.create(
+            id=cid, percent_off=percent_off, duration="once",
+            name=f"FellowScript owner reward {percent_off}% off next month",
+        )
+        return cid
+    if coupon.get("percent_off") != percent_off or coupon.get("duration") != "once":
+        raise RuntimeError(f"Stripe coupon {cid} has unexpected terms")
+    return cid
+
+
+def apply_owner_reward(stripe_sub_id: str, percent_off: int, reward_id: str) -> bool:
+    """Attach the once-off owner-reward coupon to a Stripe subscription so the
+    NEXT invoice is discounted. Returns True if the discount for ``reward_id``
+    is in place (applied now, or already applied by an earlier attempt that
+    crashed before the ledger commit: recognized via subscription metadata
+    ``owner_reward_id``). Returns False (nothing changed) when applying would
+    be ambiguous: subscription not active, set to cancel, or already carrying
+    some OTHER discount (never stack or overwrite). Stripe errors propagate.
+    """
+    sub = stripe.Subscription.retrieve(stripe_sub_id)
+    coupon = ensure_owner_reward_coupon(percent_off)
+    if (sub.get("metadata") or {}).get("owner_reward_id") == reward_id:
+        d = sub.get("discount") or {}
+        if (d.get("coupon") or {}).get("id") == coupon:
+            return True
+    if sub.get("status") != "active" or sub.get("cancel_at_period_end"):
+        return False
+    if sub.get("discount") or sub.get("discounts"):
+        return False
+    stripe.Subscription.modify(
+        stripe_sub_id, discounts=[{"coupon": coupon}],
+        metadata={"owner_reward_id": reward_id},
+        idempotency_key=f"owner-reward-{reward_id}",
+    )
+    return True
+
+
 def customer_has_subscription_history(email: str) -> bool:
     """True if any Stripe customer with this email ever had a real subscription.
 

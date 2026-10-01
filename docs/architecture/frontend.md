@@ -174,8 +174,21 @@ Three gestures are implemented once in `Theme.swift` and applied consistently ac
 
 Backend: `api/routes/invites.py` (feature flag `api/config/invites.json` `enabled`, ships `false`). Clients treat the uniform 404 as "feature unavailable": `components/InviteLinkSection.jsx` (inside `GroupInfoPanel.jsx`) hides itself, and `pages/JoinInvite.jsx` shows the generic invalid-link screen.
 
+- Task `20261001-group-invite-permanent-member-cap`: group links never expire (`expires_at` is null; no expiry picker for groups, rows read "Never expires"; legacy links still show their expiry; subscription links unchanged). `GroupInfoPanel.jsx` / iOS `GroupInfoSheet.swift` show a "Member limit" field (owner edits via `PUT /groups/{u}/{g}/max-members`, `setGroupMaxMembers`; others see it read-only). A 409 `group_full` on redeem renders "This group is full." in `JoinInvite.jsx` and iOS `JoinInviteView.swift`.
 - `lib/invitesApi.js`: API wrappers, `parseInviteInput` (URL or bare token, host must be fellowscript.com, 43-char url-safe token), `InviteApiError` with `status`/`code`.
 - `lib/pendingInvite.js`: pending token in `sessionStorage`; `postAuthPath()` sends SignIn/VerifyMfa back to `/join/<token>` instead of `/reader`. Cleared on sign-out.
 - Plaintext link exists only in `InviteLinkSection` component state right after creation; the list is metadata only.
 - Desktop: `components/JoinWithLinkModal.jsx` (paste a link or token) beside the Groups header in `ContactsPanel.jsx`; after a join, `Reader.jsx` opens the group once (`fs_open_group`).
 - Static landing page `frontend/public/join/index.html` (validated token, fixed same-origin `/#/join/<token>` link) and `frontend/public/.well-known/apple-app-site-association` (appID `886XPLVC69.com.fellowscript.app`, path `/join/*`). `deploy.sh` ships both; the nginx rules are prepared in `ops/nginx/invite-links.conf` and are NOT applied by any script.
+
+## Owner rewards UI (task `20261001-promo-owner-rewards`)
+
+All of it sits behind the backend `OWNER_REWARDS_ENABLED` flag (default OFF). With the flag off the API answers a uniform 404 and every surface below hides itself or shows a neutral "not available" notice. Nothing in the client grants a reward or discount; the server decides everything.
+
+- **`/#/admin/promo`** (`pages/AdminPromoCodes.jsx`, wrapped in `AdminGate`, linked from `/admin`). Admin creates a creator plus a secure random code attached to an owner email (`POST /admin/promo/creator-codes`), lists codes with owner email, redemption count and rewards earned/claimed (`GET /admin/promo/codes-overview`), and deactivates a code (`POST /admin/promo/codes/{id}/deactivate`, idempotent). 401 redirects to sign-in, 403 to home, 404 shows the "not enabled" notice. `require_admin` on the server is the real enforcement.
+- **`/#/invite`** (`pages/InviteFriends.jsx`, signed-in only). Reuses `FriendInviteCode` (`POST /promo/{user_id}/friend-code`) to generate or retrieve the user's invite code/link, and shows reward counts from `GET /rewards/{user_id}` (best-effort; hidden on any failure). Notes that friends new to paid plans who subscribe on iPhone cannot use a code there and should subscribe on the web.
+- API wrappers live in `lib/ownerRewardsApi.js` (throw on any failure).
+
+### iOS: claim reward (Apple owners)
+
+Stripe owners get the discount automatically on their next invoice, so iOS shows a claim row only for Apple subscribers (`reward.provider == "apple"` with `earned > 0`). `AccountView+Rewards.swift` renders it inside the subscription card; `AccountViewModel.loadRewardSummary`/`claimReward` drive it; `NetworkService+Rewards.swift` calls `GET /rewards/{id}` and `POST /rewards/{id}/apple/claim`. `StoreKitManager.claimOwnerReward` purchases the server-signed offer with `Product.PurchaseOption.promotionalOffer(...)` plus `.appAccountToken(applicationUsername)`, then forwards the verified transaction to `/subscriptions/apple/sync`, where the backend marks the reward claimed. A failed sync leaves the transaction unfinished so `syncEntitlements()` retries it. Limitation: a brand-new iOS subscriber cannot get a discount from a code (Apple restriction); they use the web.

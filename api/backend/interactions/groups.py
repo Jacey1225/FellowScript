@@ -35,6 +35,15 @@ def normalize_group_title(title: str) -> str:
     return cleaned
 
 
+class GroupFullError(Exception):
+    """Adding members would push the group past its owner-set ``max_members``."""
+
+
+class GroupOwnerOnlyError(Exception):
+    """The caller isn't the group's creator (fail closed: also raised when the
+    group has no creator_id, so legacy ownerless groups can't set a cap)."""
+
+
 class GroupsManager(DBManager):
     """Handles all group-level data operations for a single user/group context."""
 
@@ -541,12 +550,82 @@ class GroupsManager(DBManager):
         # member's group list from it, so updating this column is sufficient.
         # `existing` above already confirmed the row exists, so a False
         # return is a real write failure, not an expected no-op.
+        # Member cap (groups.max_members): this endpoint replaces the whole
+        # member list from client input, so it is a join path too. Lock the
+        # row (the same lock invite redemption takes) and refuse any list that
+        # adds a member beyond the cap. Pure removals/renames still pass.
+        try:
+            self.cur.execute(
+                "SELECT COALESCE(users, '{}'), max_members FROM groups WHERE _id = %s FOR UPDATE",
+                (self.group_id,),
+            )
+            locked = self.cur.fetchone()
+            if locked is None:
+                self.conn.rollback()
+                return
+            current, cap = locked
+            new_users = list(dict.fromkeys(group.users or []))
+            if cap is not None and (set(new_users) - set(current)) and len(new_users) > cap:
+                self.conn.rollback()
+                raise GroupFullError()
+        except GroupFullError:
+            raise
+        except BaseException:
+            self.conn.rollback()
+            raise
         if not self.update("groups", {"title": group.title, "users": group.users}, {"_id": self.group_id}):
             raise SaveFailedError()
 
     # ── Group info panel (task 20260929-group-info-panel) ─────────────────────
     # None of these methods check membership themselves -- routes must call
     # ``is_member()`` first (deny-by-default), same as every other method here.
+
+    def get_member_cap_info(self) -> tuple[int | None, bool, int]:
+        """(max_members or None, caller is creator, member count). Reads the
+        group row; call after ``is_member()``."""
+        self.cur.execute(
+            "SELECT max_members, creator_id, COALESCE(cardinality(users), 0) FROM groups WHERE _id = %s",
+            (self.group_id,),
+        )
+        row = self.cur.fetchone()
+        self.conn.rollback()  # read-only; release the snapshot
+        if not row:
+            return None, False, 0
+        cap, creator, count = row
+        return cap, creator is not None and str(creator) == self.user_id, count
+
+    def set_max_members(self, cap: int | None, ceiling: int, floor: int) -> None:
+        """Set (or clear, with None) the group's member cap. Owner only.
+
+        Raises:
+            GroupOwnerOnlyError: caller isn't groups.creator_id (or none set).
+            ValueError: not an int (bool rejected), outside [floor, ceiling],
+                or below the current member count.
+            SaveFailedError: the group vanished or the write failed.
+        """
+        if cap is not None:
+            if isinstance(cap, bool) or not isinstance(cap, int):
+                raise ValueError("Max members must be a whole number")
+            if cap < floor or cap > ceiling:
+                raise ValueError(f"Max members must be between {floor} and {ceiling}")
+        try:
+            self.cur.execute(
+                "SELECT creator_id, COALESCE(cardinality(users), 0) FROM groups WHERE _id = %s FOR UPDATE",
+                (self.group_id,),
+            )
+            row = self.cur.fetchone()
+            if row is None:
+                raise SaveFailedError()
+            creator, count = row
+            if creator is None or str(creator) != self.user_id:
+                raise GroupOwnerOnlyError()
+            if cap is not None and cap < count:
+                raise ValueError(f"This group already has {count} members; the limit can't be lower")
+            self.cur.execute("UPDATE groups SET max_members = %s WHERE _id = %s", (cap, self.group_id))
+            self.conn.commit()
+        except BaseException:
+            self.conn.rollback()
+            raise
 
     def rename_group(self, title: str) -> str:
         """Set only the group's title (members untouched). Returns the

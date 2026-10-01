@@ -17,7 +17,10 @@ export function _clearInviteCaches() { listCache.clear(); }
 
 const LEAVE_MS = 200;
 
+// Group links never expire (expires_at is null); legacy group links minted
+// before that change still carry an expiry and keep showing it.
 function expiryLabel(iso, now = Date.now()) {
+  if (iso == null) return 'Never expires';
   const t = new Date(iso).getTime();
   if (Number.isNaN(t)) return '';
   const ms = t - now;
@@ -129,14 +132,14 @@ export default function InviteLinkSection({ userId, groupId, subscriptionId, kin
     if (creating || !data?.options) return;
     setCreating(true); setCreateError(null); setResetStatus(null);
     try {
-      const res = await api.create(userId, targetId, { expiresInDays: expiryDays, maxUses });
+      const res = await api.create(userId, targetId, isSub ? { expiresInDays: expiryDays, maxUses } : { maxUses });
       if (!mountedRef.current) return;
       setReveal({ url: res.url });
       setCopyState('idle');
       setOptionsOpen(false);
       const created = {
         invite_id: res.invite_id, created_by_username: null, is_mine: true,
-        created_at: res.created_at, expires_at: res.expires_at,
+        created_at: res.created_at, expires_at: res.expires_at ?? null,
         max_uses: res.max_uses, use_count: res.use_count, remaining_uses: res.max_uses - res.use_count,
       };
       applyList({ ...data, invites: [created, ...data.invites] });
@@ -246,7 +249,7 @@ export default function InviteLinkSection({ userId, groupId, subscriptionId, kin
             <p className="group-info-helper">
               {isSub
                 ? 'Anyone with the link can ask to join your plan. You approve each request before they get access.'
-                : 'Anyone with the link can join this group until it expires.'}
+                : 'Anyone with the link can join this group until you revoke it.'}
             </p>
           )}
 
@@ -276,18 +279,18 @@ export default function InviteLinkSection({ userId, groupId, subscriptionId, kin
               {options && (
                 <button type="button" className="group-info-text-btn" aria-expanded={optionsOpen}
                   onClick={() => setOptionsOpen((v) => !v)}>
-                  Expires in {plural(expiryDays ?? options.default_expiry_days, 'day', 'days')} · Up to {plural(maxUses ?? options.default_max_uses, isSub ? 'request' : 'person', isSub ? 'requests' : 'people')}
+                  {isSub ? `Expires in ${plural(expiryDays ?? options.default_expiry_days, 'day', 'days')} · ` : ''}Up to {plural(maxUses ?? options.default_max_uses, isSub ? 'request' : 'person', isSub ? 'requests' : 'people')}
                 </button>
               )}
               {optionsOpen && options && (
                 <div className="group-info-invite-options">
-                  <div className="group-info-chips" role="radiogroup" aria-label="Link expires in">
+                  {isSub && <div className="group-info-chips" role="radiogroup" aria-label="Link expires in">
                     {options.allowed_expiry_days.map((d) => (
                       <button key={d} type="button" role="radio" aria-checked={expiryDays === d}
                         className={`group-info-chip${expiryDays === d ? ' group-info-chip-on' : ''}`}
                         onClick={() => setExpiryDays(d)}>{plural(d, 'day', 'days')}</button>
                     ))}
-                  </div>
+                  </div>}
                   <div className="group-info-chips" role="radiogroup" aria-label={isSub ? 'Number of requests the link allows' : 'Number of people who can join'}>
                     {options.allowed_max_uses.map((n) => (
                       <button key={n} type="button" role="radio" aria-checked={maxUses === n}

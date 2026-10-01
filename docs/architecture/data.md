@@ -55,7 +55,7 @@ So all four consumers (`BibleReaderView.swift`, `bible_text.py`, `useBible.js`, 
 | `plan_type` | TEXT | `'free'`, `'group'` |
 | `provider` | TEXT | `'none'`, `'stripe'`, `'apple'` |
 | `status` | TEXT | `'active'`, `'trialing'`, `'canceled'` |
-| `price_cents` | INTEGER | 0 for free plan; derived from `max_members` via `GROUP_PRICE_CENTS` for a group plan |
+| `price_cents` | INTEGER | 0 for free plan; derived from `max_members` via `GROUP_PRICE_CENTS` for a group plan. Rows written before the 2026-10-01 price cut keep the old value until backfilled with the SQL from `stripe_price_migration.py --print-db-sql` (Stripe events do not touch this column) |
 | `max_members` | INTEGER | 1 for free; 1-8 for group — the host-selected member count, chosen at signup or changed later via a plan update |
 | `current_period_end` | TIMESTAMPTZ | NULL for free plan (never expires) |
 | `stripe_subscription_id` | TEXT | |
@@ -64,7 +64,7 @@ So all four consumers (`BibleReaderView.swift`, `bible_text.py`, `useBible.js`, 
 
 Every new user receives a `plan_type='free'` row on signup. Free plans are excluded from `is_subscribed()` checks so free-tier limits still apply.
 
-There is a single paid tier (`'group'`) covering 1-8 members at a fixed per-count price (`schemas/subscription.py`'s `GROUP_PRICE_CENTS`) — the old separate `'individual'` plan_type was folded into this as the 1-member case (identical $10 price). Apple StoreKit needs one fixed-price product per member count (`com.fellowscript.access.one` … `com.fellowscript.access.eight`) since IAP can't compute an arbitrary price; Stripe Checkout computes the price inline for any count via `price_data`, no pre-created Products needed.
+There is a single paid tier (`'group'`) covering 1-8 members at a fixed per-count price (`schemas/subscription.py`'s `GROUP_PRICE_CENTS`) — the old separate `'individual'` plan_type was folded into this as the 1-member case (priced $4.99 since the 2026-10-01 price cut; was $10). Apple StoreKit needs one fixed-price product per member count (`com.fellowscript.access.one` … `com.fellowscript.access.eight`) since IAP can't compute an arbitrary price; Stripe Checkout computes the price inline for any count via `price_data`, no pre-created Products needed.
 
 ### `creators` / `promo_codes` / `promo_redemptions` / `subscriber_history`
 

@@ -49,6 +49,7 @@ extension AccountView {
                         ForEach(vm.subRequests) { requestRow($0) }
                     }
                 }
+                ownerRewardRow
                 Divider().background(Theme.borderGoldFaint)
                 managePlanRow(plan)
             } else {
@@ -277,10 +278,10 @@ extension AccountView {
     // Fallback prices (mirrors api/schemas/subscription.py GROUP_PRICE_CENTS) used
     // only until StoreKit's own localized prices have loaded.
     static let fallbackPriceCents: [Int: Int] = [
-        1: 1000, 2: 1799, 3: 2699, 4: 3599, 5: 4499, 6: 5399, 7: 6299, 8: 7199,
+        1: 499, 2: 810, 3: 1215, 4: 1620, 5: 2025, 6: 2430, 7: 2835, 8: 3240,
     ]
     func fallbackPriceLabel(for count: Int) -> String {
-        String(format: "$%.2f", Double(Self.fallbackPriceCents[count] ?? 1000) / 100)
+        String(format: "$%.2f", Double(Self.fallbackPriceCents[count] ?? 499) / 100)
     }
 
     func memberCountPickerRow() -> some View {

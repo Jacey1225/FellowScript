@@ -10,10 +10,10 @@ const { Text } = Typography;
 // local copy, not a shared import, so this component stays fully additive
 // and AdminDetections.jsx's own styling constants are never touched).
 const CARD_STYLE = {
-  background: 'rgba(6,4,1,0.88)',
-  border: '1px solid rgba(200,134,26,0.16)',
+  background: 'rgba(32,24,16,0.62)',
+  border: '1px solid rgba(200,134,26,0.22)',
   backdropFilter: 'blur(14px)',
-  borderRadius: 14,
+  borderRadius: 22,
   marginBottom: '1.5rem',
   padding: '1.1rem 1.25rem',
 };
@@ -62,7 +62,7 @@ export default function AdminMembershipGrant() {
 
   return (
     <div style={CARD_STYLE}>
-      <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.6rem', letterSpacing: '0.28em', textTransform: 'uppercase', color: 'rgba(200,134,26,0.55)', display: 'block', marginBottom: '0.6rem' }}>
+      <Text className="fs-eyebrow">
         Admin Membership
       </Text>
 
@@ -79,7 +79,7 @@ export default function AdminMembershipGrant() {
           <Text style={{ fontFamily: "'Inter', sans-serif", fontSize: '0.8rem', color: 'rgba(244,228,193,0.5)', display: 'block', marginBottom: '0.8rem' }}>
             Grant yourself a free, unbilled individual membership — no Stripe/Apple billing involved.
           </Text>
-          <Button type="primary" loading={loading} onClick={grant} style={{ borderRadius: 8, fontFamily: "'Inter', sans-serif" }}>
+          <Button type="primary" loading={loading} onClick={grant} shape="round" style={{ fontFamily: "'Inter', sans-serif" }}>
             Grant free individual membership
           </Button>
         </>

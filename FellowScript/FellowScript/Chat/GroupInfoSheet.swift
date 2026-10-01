@@ -57,6 +57,9 @@ final class GroupInfoViewModel: ObservableObject {
     @Published var nameError: String?
     @Published var photoError: String?
     @Published var muteError: String?
+    @Published var capError: String?
+    @Published var savingCap = false
+    @Published var capSaved = false
     @Published var savingName = false
     @Published var photoBusy = false
     @Published var mutePending = false
@@ -186,6 +189,26 @@ final class GroupInfoViewModel: ObservableObject {
         }
     }
 
+    /// Owner only. nil clears the cap. Returns true on a server-confirmed save.
+    func setMaxMembers(_ value: Int?) async -> Bool {
+        guard !savingCap else { return false }
+        savingCap = true
+        capError = nil
+        capSaved = false
+        defer { savingCap = false }
+        do {
+            let confirmed = try await service.setGroupMaxMembers(userId: userId, groupId: groupId, maxMembers: value)
+            info?.max_members = confirmed
+            if let info { await DiskCache.shared.save(info, forKey: infoKey) }
+            capSaved = true
+            return true
+        } catch {
+            if isNotMember(error) { removedFromGroup = true }
+            else { capError = message(error, fallback: "Couldn't save the limit. Please try again.") }
+            return false
+        }
+    }
+
     func setMuted(_ muted: Bool) async {
         guard !mutePending else { return }
         mutePending = true
@@ -284,6 +307,7 @@ struct GroupInfoSheet: View {
 
     @State private var editingName = false
     @State private var draftName = ""
+    @State private var capDraft = ""
     @State private var photoPickerItem: PhotosPickerItem?
     @State private var showPhotoActions = false
     @State private var showPhotoPicker = false
@@ -331,6 +355,7 @@ struct GroupInfoSheet: View {
                             service: service, groupId: contact.id, userId: user?.user_id ?? "",
                             onGroupGone: { dismiss(); onGroupGone() }
                         )
+                        memberLimitSection
                         membersSection
                         sharedSection
                     }
@@ -542,6 +567,58 @@ struct GroupInfoSheet: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Announcements")
+    }
+
+    // Task 20260930-group-invite-permanent-member-cap. Owner edits the limit;
+    // everyone else sees it read-only (or nothing when there is none).
+    @ViewBuilder
+    private var memberLimitSection: some View {
+        if let info = vm.info, info.is_owner || info.max_members != nil {
+            let current = info.max_members.map(String.init) ?? ""
+            VStack(alignment: .leading, spacing: Theme.spacingXS) {
+                sectionLabel("Member limit")
+                if info.is_owner {
+                    Text("Most people allowed in this group. Leave blank for no limit.")
+                        .font(.inter(Theme.fontXS)).foregroundColor(Theme.textSecondary)
+                    TextField("No limit", text: $capDraft)
+                        .keyboardType(.numberPad)
+                        .font(.inter(Theme.fontSM))
+                        .foregroundColor(Theme.parchment)
+                        .padding(.horizontal, Theme.spacingSM)
+                        .frame(minHeight: 44)
+                        .background(Theme.cardBg)
+                        .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
+                        .overlay(RoundedRectangle(cornerRadius: Theme.radius).stroke(Theme.borderGoldDim, lineWidth: 1))
+                        .disabled(vm.savingCap)
+                        .onChange(of: capDraft) { _, v in
+                            let digits = String(v.filter(\.isNumber).prefix(6))
+                            if digits != v { capDraft = digits }
+                            vm.capError = nil; vm.capSaved = false
+                        }
+                        .accessibilityLabel("Maximum members")
+                    if let ceiling = info.max_members_ceiling {
+                        Text("Up to \(ceiling). Not lower than the \(info.member_count ?? info.members.count) people here now.")
+                            .font(.inter(Theme.fontXS)).foregroundColor(Theme.textSecondary)
+                    }
+                    if let err = vm.capError { errorText(err) }
+                    if vm.capSaved {
+                        Text("Limit saved.").font(.inter(Theme.fontXS)).foregroundColor(Theme.textSecondary)
+                            .accessibilityLabel("Member limit saved")
+                    }
+                    PillButton(title: vm.savingCap ? "Saving…" : "Save limit") {
+                        let trimmed = capDraft.trimmingCharacters(in: .whitespaces)
+                        Task { _ = await vm.setMaxMembers(trimmed.isEmpty ? nil : Int(trimmed)) }
+                    }
+                    .disabled(vm.savingCap || capDraft.trimmingCharacters(in: .whitespaces) == current)
+                } else if let cap = info.max_members {
+                    Text("Up to \(cap) people can be in this group.")
+                        .font(.inter(Theme.fontXS)).foregroundColor(Theme.textSecondary)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .onAppear { capDraft = current }
+            .onChange(of: current) { _, v in capDraft = v }
+        }
     }
 
     private var membersSection: some View {

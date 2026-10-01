@@ -209,15 +209,17 @@ def test_create_list_revoke(client):
         check("only sha256 hash stored", row[0].strip() == hashlib.sha256(token.encode()).hexdigest())
         dump = q("SELECT row_to_json(i)::text FROM invites i WHERE _id = %s", (body["invite_id"],))[0][0]
         check("plaintext token appears nowhere in the stored row", token not in dump)
-        check("defaults applied: max_uses 25, ~7d expiry", body["max_uses"] == 25 and 6.9 < (
-            __import__("datetime").datetime.fromisoformat(body["expires_at"])
-            - __import__("datetime").datetime.now(__import__("datetime").timezone.utc)).total_seconds() / 86400 <= 7.01)
+        check("defaults applied: max_uses 25, group link never expires (expires_at null)",
+              body["max_uses"] == 25 and body["expires_at"] is None, str(body))
+        check("stored expires_at is NULL for group links", invite_row(body["invite_id"])[4] is None)
 
         # bad option values
         r = create(client, tm, um, gid, max_uses=7)
         check("max_uses not in allowed set -> 422", r.status_code == 422, str(r.status_code))
         r = create(client, tm, um, gid, expires_in_days=3)
-        check("expiry not in allowed set -> 422", r.status_code == 422, str(r.status_code))
+        check("group create ignores client-sent expires_in_days (old clients) -> 201, never expires",
+              r.status_code == 201 and r.json()["expires_at"] is None, f"{r.status_code} {r.text}")
+        client.delete(f"/invites/{um}/{r.json()['invite_id']}", headers={**ck(tm), **ip_hdr()})
 
         # creator makes their own link too
         rc = create(client, tc, uc, gid, max_uses=5, expires_in_days=1)

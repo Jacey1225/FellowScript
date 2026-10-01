@@ -7,7 +7,7 @@ import {
 } from '@ant-design/icons';
 import { useFocusTrap } from '../hooks/useFocusTrap.js';
 import {
-  fetchGroupInfo, renameGroup, setGroupMuted, uploadGroupPhoto,
+  fetchGroupInfo, renameGroup, setGroupMuted, setGroupMaxMembers, uploadGroupPhoto,
   removeGroupPhoto, confirmGroupPhoto, fetchGroupGallery, GROUP_PHOTO_LIMITS,
 } from '../lib/groupInfoApi.js';
 import { ANNOUNCEMENTS_ENABLED } from '../lib/announcementsApi.js';
@@ -105,6 +105,10 @@ export default function GroupInfoPanel({
   const [photoMenu, setPhotoMenu] = useState(false);
   const [photoJustUpdated, setPhotoJustUpdated] = useState(false);
   const [undo, setUndo] = useState(null);           // { restoreKey }
+  const [capDraft, setCapDraft] = useState('');
+  const [capSaving, setCapSaving] = useState(false);
+  const [capError, setCapError] = useState(null);
+  const [capSaved, setCapSaved] = useState(false);
   const [mutePending, setMutePending] = useState(false);
   const [muteError, setMuteError] = useState(null);
   const [view, setView] = useState('main');       // 'main' | 'announcements'
@@ -199,6 +203,32 @@ export default function GroupInfoPanel({
       infoCache.set(groupId, next);
       return next;
     });
+  };
+
+  const capInitial = info?.max_members == null ? '' : String(info.max_members);
+  useEffect(() => { setCapDraft(capInitial); setCapError(null); setCapSaved(false); }, [capInitial, groupId]);
+
+  const saveCap = async () => {
+    if (capSaving) return;
+    const raw = capDraft.trim();
+    let value = null;
+    if (raw !== '') {
+      if (!/^\d+$/.test(raw)) { setCapError('Enter a whole number.'); return; }
+      value = parseInt(raw, 10);
+    }
+    setCapSaving(true); setCapError(null); setCapSaved(false);
+    try {
+      await setGroupMaxMembers(userId, groupId, value);
+      if (!mountedRef.current) return;
+      applyInfo({ max_members: value });
+      setCapSaved(true);
+    } catch (err) {
+      if (!mountedRef.current) return;
+      if (err?.status === 403) setCapError('Only the group owner can change this.');
+      else setCapError(err?.status === 422 && err.message ? err.message : "Couldn't save the limit. Please try again.");
+    } finally {
+      if (mountedRef.current) setCapSaving(false);
+    }
   };
 
   const startEdit = () => { setDraft(info?.title ?? contact?.name ?? ''); setNameError(null); setEditing(true); };
@@ -422,6 +452,38 @@ export default function GroupInfoPanel({
             the feature flag is off (uniform 404 from the list endpoint). */}
         <InviteLinkSection userId={userId} groupId={groupId} reducedMotion={reducedMotion}
           onForbidden={handleFailure} />
+
+        {/* Member limit: owner edits, everyone else sees a read-only value. */}
+        {info && (info.is_owner || info.max_members != null) && (
+          <section aria-label="Member limit">
+            <h3 className="group-info-label">Member limit</h3>
+            {info.is_owner ? (
+              <div className="group-info-rename">
+                <label htmlFor="group-max-members" className="group-info-helper">
+                  Most people allowed in this group. Leave blank for no limit.
+                </label>
+                <input id="group-max-members" className="group-info-input" inputMode="numeric"
+                  value={capDraft} disabled={capSaving} placeholder="No limit"
+                  onChange={(e) => { setCapDraft(e.target.value); setCapError(null); setCapSaved(false); }}
+                  onKeyDown={(e) => { if (e.key === 'Enter') saveCap(); }}
+                  aria-invalid={!!capError} aria-describedby={capError ? 'group-max-members-error' : undefined} />
+                {info.max_members_ceiling != null && (
+                  <span className="group-info-helper">Up to {info.max_members_ceiling}. Not lower than the {memberList.length} {memberList.length === 1 ? 'person' : 'people'} here now.</span>
+                )}
+                {capError && <p id="group-max-members-error" className="group-info-error" role="alert">{capError}</p>}
+                <div className="group-info-rename-actions">
+                  <button type="button" className="group-info-pill" onClick={saveCap}
+                    disabled={capSaving || capDraft.trim() === capInitial}>
+                    {capSaving ? <Spin size="small" /> : 'Save limit'}
+                  </button>
+                </div>
+                <span className="group-info-sr" aria-live="polite">{capSaved ? 'Member limit saved' : ''}</span>
+              </div>
+            ) : (
+              <p className="group-info-helper">Up to {info.max_members} people can be in this group.</p>
+            )}
+          </section>
+        )}
 
         {/* Members */}
         <section>

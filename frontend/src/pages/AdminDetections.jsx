@@ -1,16 +1,14 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Layout, Typography, Spin, Alert, Select, DatePicker, Pagination, Tag, Button, Popover,
+  Typography, Spin, Alert, Select, DatePicker, Pagination, Tag, Button, Popover,
 } from 'antd';
 import { RightOutlined, CheckCircleFilled } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
 import relativeTime from 'dayjs/plugin/relativeTime';
-import AppNav from '../components/AppNav.jsx';
 import DetectionDetailOverlay from '../components/DetectionDetailOverlay.jsx';
-import AdminMembershipGrant from '../components/AdminMembershipGrant.jsx';
-import AdminActivityMonitoring from '../components/AdminActivityMonitoring.jsx';
+import { AdminPageHeader } from '../components/AdminShell.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useIsDesktopViewport } from '../hooks/useIsDesktopViewport.js';
 import { useFocusTrap } from '../hooks/useFocusTrap.js';
@@ -20,15 +18,14 @@ import { fsTheme } from '../theme.js';
 dayjs.extend(utc);
 dayjs.extend(relativeTime);
 
-const { Content } = Layout;
-const { Title, Text } = Typography;
+const { Text } = Typography;
 const { RangePicker } = DatePicker;
 
 const CARD_STYLE = {
-  background: 'rgba(6,4,1,0.88)',
-  border: '1px solid rgba(200,134,26,0.16)',
+  background: 'rgba(32,24,16,0.62)',
+  border: '1px solid rgba(200,134,26,0.22)',
   backdropFilter: 'blur(14px)',
-  borderRadius: 14,
+  borderRadius: 22,
   marginBottom: '1.5rem',
 };
 
@@ -278,46 +275,18 @@ export default function AdminDetections() {
   // Blank page + spinner until the gate-fetch resolves -- no partial chrome.
   if (!checked) {
     return (
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ minHeight: '40vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <Spin size="large" />
       </div>
     );
   }
 
   return (
-    <Layout style={{ minHeight: '100vh', background: 'transparent' }}>
-      <AppNav />
-
-      <Content style={{ paddingTop: 'calc(var(--nav-h) + 2.5rem)', paddingBottom: '5rem', paddingLeft: '2rem', paddingRight: '2rem', maxWidth: 900, margin: '0 auto', width: '100%' }}>
-
-        {/* Header */}
-        <div style={{ marginBottom: '2rem', animation: 'fadeUp 0.55s ease forwards', opacity: 0 }}>
-          <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.6rem', letterSpacing: '0.32em', textTransform: 'uppercase', color: 'rgba(200,134,26,0.55)', display: 'block', marginBottom: '0.2rem' }}>
-            CloudWatch error monitoring · debugging agent reports
-          </Text>
-          <Title level={2} style={{ margin: 0, fontFamily: "'Playfair Display', serif", color: 'var(--parchment)' }}>
-            Error Detections
-          </Title>
-        </div>
-
-        {/* Admin free-membership comp grant (task 20260914-admin-free-membership):
-            lives on this same gated /admin surface alongside the detection
-            console below, but is fully self-contained (own state, own
-            request) and does not touch any of this page's own
-            filter/fetch/pagination behavior. */}
-        <div style={{ animation: 'fadeUp 0.55s ease forwards', opacity: 0 }}>
-          <AdminMembershipGrant />
-        </div>
-
-        {/* Activity Monitoring panel (task 20260918-admin-activity-monitoring):
-            lives on this same gated /admin surface alongside the detection
-            console below, but is fully self-contained (own state, own
-            requests) and does not touch any of this page's own
-            filter/fetch/pagination behavior -- same precedent as
-            AdminMembershipGrant above. */}
-        <div style={{ animation: 'fadeUp 0.55s ease forwards', opacity: 0, animationDelay: '0.04s' }}>
-          <AdminActivityMonitoring />
-        </div>
+    <>
+      <div>
+        <AdminPageHeader title="Error logs">
+          <span className="fs-muted">CloudWatch error monitoring · debugging agent reports</span>
+        </AdminPageHeader>
 
         {/* Filter bar (desktop: inline Select + RangePicker, unchanged) /
             chip-filter strip (mobile, Direction C, design-notes.md §3) */}
@@ -325,7 +294,7 @@ export default function AdminDetections() {
           <div style={{ ...CARD_STYLE, padding: '1.1rem 1.25rem', animationDelay: '0.08s', animation: 'fadeUp 0.55s ease forwards', opacity: 0 }}>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.9rem', alignItems: 'center' }}>
               <div style={{ minWidth: 220 }}>
-                <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.68rem', letterSpacing: '0.16em', textTransform: 'uppercase', color: 'rgba(200,134,26,0.55)', display: 'block', marginBottom: 6 }}>
+                <Text className="fs-eyebrow">
                   Log group
                 </Text>
                 <Select
@@ -339,7 +308,7 @@ export default function AdminDetections() {
                 />
               </div>
               <div style={{ minWidth: 280 }}>
-                <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.68rem', letterSpacing: '0.16em', textTransform: 'uppercase', color: 'rgba(200,134,26,0.55)', display: 'block', marginBottom: 6 }}>
+                <Text className="fs-eyebrow">
                   Time range
                 </Text>
                 <RangePicker
@@ -361,7 +330,7 @@ export default function AdminDetections() {
         )}
 
         {/* List */}
-        <div style={{ ...CARD_STYLE, padding: listLoading || listError || items.length === 0 ? '1.5rem' : 0, animationDelay: '0.14s', animation: 'fadeUp 0.55s ease forwards', opacity: 0 }}>
+        <div style={{ ...CARD_STYLE, padding: listLoading || listError || items.length === 0 ? '1.5rem' : 0, overflowX: 'auto', animationDelay: '0.14s', animation: 'fadeUp 0.55s ease forwards', opacity: 0 }}>
           {listLoading ? (
             <div style={{ textAlign: 'center', padding: '2rem' }}><Spin size="small" /></div>
           ) : listError ? (
@@ -499,7 +468,7 @@ export default function AdminDetections() {
             />
           </div>
         )}
-      </Content>
+      </div>
 
       {/* Direction C mobile "list-overlay drawer" (design-notes.md §3):
           always mounted -- like Reader.jsx's mobile overlays -- so the
@@ -507,6 +476,6 @@ export default function AdminDetections() {
           none }` outside the (max-width: 1024px) breakpoint keeps this
           invisible/inert on desktop regardless of `overlayOpen`. */}
       <DetectionDetailOverlay id={overlayId} open={overlayOpen} onClose={handleCloseOverlay} />
-    </Layout>
+    </>
   );
 }

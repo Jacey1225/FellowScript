@@ -106,6 +106,9 @@ class SignUp(BaseModel):
     username: str = Field(default_factory=str)
     email: str = Field(default_factory=str)
     plain_pass: str = Field(default_factory=str)
+    # Optional friend invite code (task 20261001-promo-owner-rewards). Never
+    # validated here and never echoed: a bad/unknown code simply earns nothing.
+    invite_code: str | None = Field(default=None, max_length=64)
     # validate_default=True is required here: pydantic v2 does NOT run
     # validators on a field's default value unless told to, and the default
     # (False) is exactly the invalid case this validator exists to catch — an

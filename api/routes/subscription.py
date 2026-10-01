@@ -12,6 +12,9 @@ from schemas.subscription import SubscriptionCreate, SubscriptionUpdate
 from backend.interactions.invites import audit as invite_audit
 from backend.rate_limiting import get_client_ip, limiter
 from backend.subscription.promo import PromoManager, promo_config, promo_enabled
+from backend.subscription.owner_rewards import (
+    RewardManager, credit_purchase_reward, reconcile_apple_offer, rewards_enabled,
+)
 
 subscription_router = APIRouter(prefix="/subscriptions")
 logger = logging.getLogger(__name__)
@@ -140,47 +143,82 @@ async def create_checkout(request: Request, req: CheckoutRequest, current_user: 
         raise HTTPException(status_code=502, detail="Could not start checkout.")
 
 
-def _log_promo_redemption(session: dict, user_id: str, member_count: int) -> None:
+def _log_promo_redemption(session: dict, user_id: str, member_count: int) -> tuple[str, str] | None:
     """Log one promo redemption for a completed checkout session, if it carried one.
 
     Only logs when the session was actually paid with a discount applied, is an
     individual plan, and the buyer had no prior paid history (local records;
     the Stripe-side check already ran at checkout creation). Idempotent on the
     Checkout Session id. Raises on DB errors so the webhook 500s and retries.
+
+    Returns ``(code_id, buyer_id)`` when the session has a counted (not
+    over-cap) redemption on record, whether logged just now or by an earlier
+    delivery of the same event, so the caller can (re)attempt the owner reward;
+    otherwise None. The replay case matters: if a previous delivery logged the
+    redemption but crediting then failed, the retry must credit again. The
+    reward's own UNIQUE key (``purchase:<session id>``) makes that re-attempt a
+    no-op once the reward exists.
     """
     code_id = (session.get("metadata") or {}).get("promo_code_id")
     if not code_id:
-        return
+        return None
     session_id = session.get("id") or ""
     discount = (session.get("total_details") or {}).get("amount_discount") or 0
     if not session_id or session.get("payment_status") != "paid" or discount <= 0 or member_count != 1:
         logger.warning("promo redemption skipped: session %s not a paid, discounted individual checkout", session_id)
-        return
+        return None
     pm = PromoManager()
     try:
-        if pm.redemption_exists(session_id):
-            return
-        code = pm.get_code_by_id(code_id)
-        if not code:
-            logger.warning("promo redemption skipped: unknown code id %s (session %s)", code_id, session_id)
-            return
-        if code["kind"] == "friend" and code["referrer_user_id"] == str(user_id):
-            logger.warning("promo redemption skipped: self-referral (session %s)", session_id)
-            return
-        if pm.has_local_paid_history(user_id):
-            logger.warning("promo redemption skipped: buyer not a new subscriber (session %s)", session_id)
-            return
-        result = pm.log_redemption(
-            code_id=code_id, user_id=user_id, plan="individual", platform="web",
-            store_transaction_id=session.get("invoice") or session_id,
-            idempotency_key=session_id, amount_discount_cents=int(discount),
-        )
-        if result == "over_cap":
-            logger.warning("promo redemption over max_redemptions cap, logged for review (session %s)", session_id)
-        else:
+        existing = pm.get_redemption(session_id)
+        if existing is None:
+            code = pm.get_code_by_id(code_id)
+            if not code:
+                logger.warning("promo redemption skipped: unknown code id %s (session %s)", code_id, session_id)
+                return None
+            if code["kind"] == "friend" and code["referrer_user_id"] == str(user_id):
+                logger.warning("promo redemption skipped: self-referral (session %s)", session_id)
+                return None
+            if pm.has_local_paid_history(user_id):
+                logger.warning("promo redemption skipped: buyer not a new subscriber (session %s)", session_id)
+                return None
+            result = pm.log_redemption(
+                code_id=code_id, user_id=user_id, plan="individual", platform="web",
+                store_transaction_id=session.get("invoice") or session_id,
+                idempotency_key=session_id, amount_discount_cents=int(discount),
+            )
+            if result == "over_cap":
+                logger.warning("promo redemption over max_redemptions cap, logged for review (session %s)", session_id)
+                return None
             logger.info("promo redemption %s (session %s code_id %s)", result, session_id, code_id)
+            if result == "logged":
+                return code_id, str(user_id)
+            # 'duplicate': a concurrent delivery logged it between our check and
+            # insert; fall through to read the stored row.
+            existing = pm.get_redemption(session_id)
+        if existing is None or existing["over_cap"] or not existing["code_id"]:
+            return None
+        return existing["code_id"], existing["user_id"]
     finally:
         pm.close()
+
+
+def _apply_next_stripe_reward(stripe_sub_id: str | None, status: str | None) -> None:
+    """After a Stripe subscription update (e.g. a renewal consumed the previous
+    once-off discount), queue the owner's next earned reward. Best-effort: a
+    failure is logged and the reward stays earned for the next attempt, so it
+    never fails the webhook."""
+    if not stripe_sub_id or status != "active" or not rewards_enabled():
+        return
+    rm = RewardManager()
+    try:
+        owner = rm.owner_for_stripe_sub(stripe_sub_id)
+        if owner:
+            rm.apply_stripe_reward(owner)
+    except Exception as e:
+        rm.conn.rollback()
+        logger.error("owner reward re-apply failed: %s", type(e).__name__)
+    finally:
+        rm.close()
 
 
 @subscription_router.post("/stripe/webhook")
@@ -212,7 +250,7 @@ async def stripe_webhook(request: Request) -> dict:
                 # marks the user as having held a paid plan, which would make a
                 # retried delivery look "ineligible". Both steps are idempotent,
                 # and any failure 500s so Stripe retries.
-                _log_promo_redemption(obj, user_id, member_count)
+                credit = _log_promo_redemption(obj, user_id, member_count)
                 sub  = stripe_service.retrieve_subscription(sub_id)
                 card = stripe_service.card_from_subscription(sub)
                 db.upsert_from_stripe(
@@ -223,6 +261,16 @@ async def stripe_webhook(request: Request) -> dict:
                     card=card,
                 )
                 logger.info("Stripe checkout completed → plan for user %s", user_id)
+                # Owner reward for a creator-code purchase, AFTER the buyer's plan
+                # is safely recorded so a crediting failure can never block the
+                # buyer's activation. Runs on every delivery that has a counted
+                # redemption (a replay re-attempts crediting if the first try
+                # failed; the reward's idempotency key makes it a no-op once it
+                # exists). Transient/infra errors propagate -> 500 -> Stripe
+                # retries; ineligible/permanent outcomes return normally
+                # (fail closed, nothing granted).
+                if credit:
+                    credit_purchase_reward(credit[0], credit[1], obj.get("id") or "")
 
         elif etype == "customer.subscription.updated":
             db.update_status_from_stripe(
@@ -230,6 +278,7 @@ async def stripe_webhook(request: Request) -> dict:
                 current_period_end=_ts(obj.get("current_period_end")),
                 trial_end=_ts(obj.get("trial_end")),
             )
+            _apply_next_stripe_reward(obj.get("id"), obj.get("status"))
 
         elif etype == "customer.subscription.deleted":
             db.cancel_by_stripe_sub(obj.get("id"))
@@ -308,6 +357,13 @@ async def apple_sync(req: AppleSyncRequest, current_user: str = Depends(get_curr
                 status_code=409,
                 detail="This Apple subscription is already linked to a different account.",
             )
+        # Owner reward: a verified transaction carrying our promotional offer
+        # claims the reserved reward. The app re-syncs on launch, so a failure
+        # here is logged and retried by the next sync.
+        try:
+            reconcile_apple_offer(req.user_id, payload)
+        except Exception as e:
+            logger.error("apple reward reconcile failed: %s", type(e).__name__)
         return db.get_user_subscription(req.user_id) or {"status": status}
     finally:
         db.close()
@@ -342,6 +398,14 @@ async def apple_notifications(request: Request) -> dict:
     try:
         if ntype in ("DID_RENEW", "SUBSCRIBED", "DID_CHANGE_RENEWAL_STATUS", "OFFER_REDEEMED"):
             db.update_status_by_apple_txn(otxn, "active", _ms(txn.get("expiresDate")))
+            if rewards_enabled() and txn.get("offerIdentifier"):
+                # Raises on DB errors -> 500 below so Apple retries.
+                rm = RewardManager()
+                try:
+                    owner = rm.user_for_apple_txn(otxn)
+                finally:
+                    rm.close()
+                reconcile_apple_offer(owner, txn)
         elif ntype in ("EXPIRED", "REFUND", "REVOKE", "GRACE_PERIOD_EXPIRED"):
             db.cancel_by_apple_txn(otxn)
     except Exception as e:

@@ -6,7 +6,7 @@ import { describe, test, expect, vi, beforeEach, afterEach, beforeAll } from 'vi
 import { render, screen, fireEvent, cleanup, waitFor, act } from '@testing-library/react';
 
 vi.mock('../lib/groupInfoApi.js', () => ({
-  fetchGroupInfo: vi.fn(), renameGroup: vi.fn(), setGroupMuted: vi.fn(),
+  fetchGroupInfo: vi.fn(), renameGroup: vi.fn(), setGroupMuted: vi.fn(), setGroupMaxMembers: vi.fn(),
   uploadGroupPhoto: vi.fn(), removeGroupPhoto: vi.fn(), confirmGroupPhoto: vi.fn(),
   fetchGroupGallery: vi.fn(),
   GROUP_PHOTO_LIMITS: { maxBytes: 15 * 1024 * 1024, accept: ['image/png'], oversizeCopy: 'x' },
@@ -172,6 +172,94 @@ describe('GroupInfoPanel', () => {
     await screen.findByText(/Nothing shared yet/);
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(onClose).toHaveBeenCalled();
+  });
+});
+
+describe('GroupInfoPanel member limit (owner-set cap)', () => {
+  const OWNER = { ...INFO, is_owner: true, max_members: null, member_count: 2, max_members_ceiling: 250 };
+
+  test('owner sees the field with ceiling hint; blank value shows No limit placeholder', async () => {
+    api.fetchGroupInfo.mockResolvedValue(OWNER);
+    panel();
+    const input = await screen.findByLabelText(/Most people allowed/);
+    expect(input).toHaveValue('');
+    expect(input).toHaveAttribute('placeholder', 'No limit');
+    expect(screen.getByText(/Up to 250/)).toBeInTheDocument();
+    expect(screen.getByText('Save limit').closest('button')).toBeDisabled(); // unchanged
+  });
+
+  test('owner saves a number: PUT called with integer and UI reflects it', async () => {
+    api.fetchGroupInfo.mockResolvedValue(OWNER);
+    api.setGroupMaxMembers.mockResolvedValue({ max_members: 10 });
+    panel();
+    const input = await screen.findByLabelText(/Most people allowed/);
+    fireEvent.change(input, { target: { value: ' 10 ' } });
+    fireEvent.click(screen.getByText('Save limit'));
+    await waitFor(() => expect(api.setGroupMaxMembers).toHaveBeenCalledWith('u1', 'g1', 10));
+    // saved value becomes the baseline: Save is disabled again, no error shown
+    await waitFor(() => expect(screen.getByText('Save limit').closest('button')).toBeDisabled());
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(input).toHaveValue('10');
+  });
+
+  test('owner clears the limit by blanking the field: sends null', async () => {
+    api.fetchGroupInfo.mockResolvedValue({ ...OWNER, max_members: 10 });
+    api.setGroupMaxMembers.mockResolvedValue({ max_members: null });
+    panel();
+    const input = await screen.findByLabelText(/Most people allowed/);
+    await waitFor(() => expect(input).toHaveValue('10'));
+    fireEvent.change(input, { target: { value: '' } });
+    fireEvent.click(screen.getByText('Save limit'));
+    await waitFor(() => expect(api.setGroupMaxMembers).toHaveBeenCalledWith('u1', 'g1', null));
+  });
+
+  test('non-integer input is rejected client-side without calling the API', async () => {
+    api.fetchGroupInfo.mockResolvedValue(OWNER);
+    panel();
+    const input = await screen.findByLabelText(/Most people allowed/);
+    for (const bad of ['abc', '5.5', '-3', '1e2']) {
+      fireEvent.change(input, { target: { value: bad } });
+      fireEvent.click(screen.getByText('Save limit'));
+      expect(await screen.findByText('Enter a whole number.')).toBeInTheDocument();
+    }
+    expect(api.setGroupMaxMembers).not.toHaveBeenCalled();
+  });
+
+  test('422 shows the server message; 403 shows owner-only copy; other errors generic', async () => {
+    api.fetchGroupInfo.mockResolvedValue(OWNER);
+    api.setGroupMaxMembers.mockRejectedValueOnce(Object.assign(new Error('This group already has 2 members'), { status: 422 }));
+    panel();
+    const input = await screen.findByLabelText(/Most people allowed/);
+    fireEvent.change(input, { target: { value: '1' } });
+    fireEvent.click(screen.getByText('Save limit'));
+    expect(await screen.findByText('This group already has 2 members')).toBeInTheDocument();
+    api.setGroupMaxMembers.mockRejectedValueOnce(Object.assign(new Error('x'), { status: 403 }));
+    fireEvent.click(screen.getByText('Save limit'));
+    expect(await screen.findByText('Only the group owner can change this.')).toBeInTheDocument();
+    api.setGroupMaxMembers.mockRejectedValueOnce(Object.assign(new Error('boom'), { status: 500 }));
+    fireEvent.click(screen.getByText('Save limit'));
+    expect(await screen.findByText("Couldn't save the limit. Please try again.")).toBeInTheDocument();
+  });
+
+  test('non-owner sees a read-only line and no input when a cap is set', async () => {
+    api.fetchGroupInfo.mockResolvedValue({ ...INFO, is_owner: false, max_members: 12, member_count: 3, max_members_ceiling: 250 });
+    panel();
+    expect(await screen.findByText('Up to 12 people can be in this group.')).toBeInTheDocument();
+    expect(screen.queryByLabelText(/Most people allowed/)).toBeNull();
+    expect(screen.queryByText('Save limit')).toBeNull();
+  });
+
+  test('non-owner with no cap sees nothing; legacy info without cap fields renders no section', async () => {
+    api.fetchGroupInfo.mockResolvedValue({ ...INFO, is_owner: false, max_members: null });
+    const { unmount } = panel();
+    await screen.findByText(/Nothing shared yet/);
+    expect(screen.queryByText('Member limit')).toBeNull();
+    unmount();
+    _clearGroupInfoCaches();
+    api.fetchGroupInfo.mockResolvedValue(INFO);
+    panel();
+    await screen.findByText(/Nothing shared yet/);
+    expect(screen.queryByText('Member limit')).toBeNull();
   });
 });
 

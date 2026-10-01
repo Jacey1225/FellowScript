@@ -216,7 +216,7 @@ const plans = [
   },
   {
     name: 'Group',
-    price: 'From $10',
+    price: 'From $4.99',
     sub: 'Pick 1 to 8 members · Billed monthly',
     perks: ['Unlimited notes', 'Unlimited AI check-ins', 'Unlimited notifications', 'Shared reading space & group chat', 'Live study sessions', 'Priority support'],
     cta: 'Subscribe',

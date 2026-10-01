@@ -47,12 +47,12 @@ describe('InviteLinkSection', () => {
   test('create shows the link once with Copy, then Done hides it for good', async () => {
     listGroupInvites.mockResolvedValue({ invites: [], options: OPTIONS });
     createGroupInvite.mockResolvedValue({
-      invite_id: 'n1', token: 'Z'.repeat(43), url: URL, created_at: future(0), expires_at: future(7), max_uses: 25, use_count: 0,
+      invite_id: 'n1', token: 'Z'.repeat(43), url: URL, created_at: future(0), expires_at: null, max_uses: 25, use_count: 0,
     });
     const { container } = mount();
     fireEvent.click(await screen.findByText('Create invite link'));
     expect(await screen.findByText(URL)).toBeInTheDocument();
-    expect(createGroupInvite).toHaveBeenCalledWith('u1', 'g1', { expiresInDays: 7, maxUses: 25 });
+    expect(createGroupInvite).toHaveBeenCalledWith('u1', 'g1', { maxUses: 25 }); // group links never send an expiry
     expect(screen.getByText(/shown once/)).toBeInTheDocument();
     fireEvent.click(screen.getByText('Copy'));
     await waitFor(() => expect(navigator.clipboard.writeText).toHaveBeenCalledWith(URL));
@@ -82,16 +82,62 @@ describe('InviteLinkSection', () => {
     expect(await screen.findByText(/Couldn't copy/)).toBeInTheDocument();
   });
 
-  test('chosen expiry and uses options are sent to create', async () => {
+  test('group options show no expiry choice; chosen uses option is sent without expiry', async () => {
     listGroupInvites.mockResolvedValue({ invites: [], options: OPTIONS });
-    createGroupInvite.mockResolvedValue({ invite_id: 'n1', url: URL, created_at: future(0), expires_at: future(30), max_uses: 5, use_count: 0 });
+    createGroupInvite.mockResolvedValue({ invite_id: 'n1', url: URL, created_at: future(0), expires_at: null, max_uses: 5, use_count: 0 });
     mount();
-    fireEvent.click(await screen.findByText(/Expires in 7 days · Up to 25 people/));
-    fireEvent.click(screen.getByRole('radio', { name: '30 days' }));
+    const toggle = await screen.findByText(/Up to 25 people/);
+    expect(toggle.textContent).not.toMatch(/Expires/);
+    fireEvent.click(toggle);
+    expect(screen.queryByRole('radiogroup', { name: 'Link expires in' })).toBeNull();
+    expect(screen.queryByRole('radio', { name: '30 days' })).toBeNull();
     fireEvent.click(screen.getByRole('radio', { name: '5' }));
     fireEvent.click(screen.getByText('Create invite link'));
     await screen.findByText(URL);
-    expect(createGroupInvite).toHaveBeenCalledWith('u1', 'g1', { expiresInDays: 30, maxUses: 5 });
+    expect(createGroupInvite).toHaveBeenCalledWith('u1', 'g1', { maxUses: 5 });
+    expect(createGroupInvite.mock.calls[0][2]).not.toHaveProperty('expiresInDays');
+  });
+
+  test('permanent links (expires_at null) render "Never expires"; legacy links keep their expiry', async () => {
+    listGroupInvites.mockResolvedValue({
+      invites: [INV('p1', { expires_at: null, is_mine: true }), INV('l1', { expires_at: future(5) })], options: OPTIONS,
+    });
+    mount();
+    await screen.findAllByText(/spots left/);
+    expect(screen.getByText(/Never expires/)).toBeInTheDocument();
+    expect(screen.getAllByText(/spots left/)).toHaveLength(2);
+    // legacy link keeps its real expiry (surfaced in the revoke button's label)
+    expect(screen.getByRole('button', { name: /Revoke link expires .*created by ann/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Revoke link never expires/i })).toBeInTheDocument();
+  });
+
+  test('empty group state says links last until revoked (no expiry promise)', async () => {
+    listGroupInvites.mockResolvedValue({ invites: [], options: OPTIONS });
+    mount();
+    expect(await screen.findByText(/until you revoke it/)).toBeInTheDocument();
+    expect(screen.queryByText(/until it expires/)).toBeNull();
+  });
+
+  test('a freshly created permanent link row says Never expires and offers Revoke', async () => {
+    listGroupInvites.mockResolvedValue({ invites: [], options: OPTIONS });
+    createGroupInvite.mockResolvedValue({ invite_id: 'n1', url: URL, created_at: future(0), expires_at: null, max_uses: 25, use_count: 0 });
+    mount();
+    fireEvent.click(await screen.findByText('Create invite link'));
+    await screen.findByText(URL);
+    fireEvent.click(screen.getByText('Done'));
+    expect(screen.getByText(/Never expires/)).toBeInTheDocument();
+    expect(screen.getByText('Revoke')).toBeInTheDocument();
+  });
+
+  test('revoked permanent link disappears from the list and a re-list stays empty', async () => {
+    listGroupInvites.mockResolvedValue({ invites: [INV('p1', { expires_at: null, is_mine: true })], options: OPTIONS });
+    revokeInvite.mockResolvedValue({});
+    mount();
+    await screen.findByText(/Never expires/);
+    fireEvent.click(screen.getByText('Revoke'));
+    fireEvent.click(within(screen.getByRole('group', { name: 'Confirm revoke' })).getByText('Revoke'));
+    await waitFor(() => expect(revokeInvite).toHaveBeenCalledWith('u1', 'p1'));
+    await waitFor(() => expect(screen.queryByText(/Never expires/)).toBeNull());
   });
 
   test('create errors are shown: link limit and rate limit', async () => {

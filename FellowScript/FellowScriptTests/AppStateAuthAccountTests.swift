@@ -1043,6 +1043,27 @@ final class ThrowingTestDataService: DataServiceProtocol {
         if let syncAppleSubscriptionResult { return syncAppleSubscriptionResult }
         return try await MockDataService.shared.syncAppleSubscription(userId: userId, jws: jws)
     }
+
+    // Owner rewards seams (task 20261001-promo-owner-rewards testing).
+    var rewardSummaryError:  Error?
+    var rewardSummaryResult: FSRewardSummary?
+    private(set) var rewardSummaryCallCount = 0
+    var claimRewardError:  Error?
+    var claimRewardResult: FSApplePromoSignature?
+    private(set) var claimRewardCallCount = 0
+
+    func fetchRewardSummary(userId: String) async throws -> FSRewardSummary? {
+        rewardSummaryCallCount += 1
+        if let rewardSummaryError { throw rewardSummaryError }
+        return rewardSummaryResult
+    }
+
+    func claimAppleReward(userId: String) async throws -> FSApplePromoSignature {
+        claimRewardCallCount += 1
+        if let claimRewardError { throw claimRewardError }
+        if let claimRewardResult { return claimRewardResult }
+        throw AppError.networkError("no claim result configured")
+    }
 }
 
 // MARK: - Tests

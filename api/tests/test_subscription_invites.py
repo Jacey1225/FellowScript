@@ -204,6 +204,13 @@ def test_create_authz(client):
               row[0] == inv.hash_token(link["token"]) and link["token"] not in row[0])
         check("row kind is 'subscription'",
               q("SELECT kind FROM invites WHERE _id = %s", (link["invite_id"],))[0][0] == "subscription")
+        # Task 20261001-group-invite-permanent-member-cap: only GROUP links went
+        # permanent; subscription-seat links must still carry a real expiry.
+        check("subscription link still expires (expires_at non-null, in the future, ~config days)",
+              link["expires_at"] is not None and row[4] is not None
+              and 0 < (row[4] - __import__("datetime").datetime.now(__import__("datetime").timezone.utc)).total_seconds()
+              <= ic.get_invites_config().subscription_default_expiry_days * 86400 + 5,
+              str((link["expires_at"], row[4])))
         check("disallowed max_uses (25 not in subscription set) -> 422",
               create(client, to, uo, sid, max_uses=25).status_code == 422)
         check("plaintext token never logged", not any(link["token"] in l for l in cap.lines))

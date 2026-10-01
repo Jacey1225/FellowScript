@@ -204,6 +204,7 @@ struct AccountView: View {
                 await store.loadProducts()
                 await store.syncEntitlements(userId: user.user_id, service: appState.service)
                 await vm.loadSubscription(userId: user.user_id)
+                await vm.loadRewardSummary(userId: user.user_id)
             }
         }
         .sheet(item: $activeSheet) { sheet in

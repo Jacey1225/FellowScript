@@ -7,6 +7,11 @@
   GET /admin/promo/report                 redemption counts per creator
   GET /admin/promo/redemptions            redemption list
 
+Owner rewards (task 20261001-promo-owner-rewards) add, all uniform-404 unless
+OWNER_REWARDS_ENABLED: POST /admin/promo/creator-codes, GET /admin/promo/codes-overview,
+POST /admin/promo/codes/{id}/deactivate, GET /rewards/{user_id},
+POST /rewards/{user_id}/apple/claim.
+
 Behavior lives in ``backend/subscription/promo.py``; this module is auth, the
 feature flag, rate limits and HTTP mapping. With PROMO_CODES_ENABLED off every
 route answers a uniform 404 (checked before auth so the surface looks absent).
@@ -24,6 +29,7 @@ from backend.auth.dependencies import require_admin, require_match
 from backend.rate_limiting import get_client_ip, limiter
 from backend.subscription import stripe_service
 from backend.subscription.promo import PromoError, PromoManager, promo_config, promo_enabled
+from backend.subscription.owner_rewards import RewardManager, rewards_config, rewards_enabled
 
 logger = logging.getLogger(__name__)
 audit_logger = logging.getLogger("admin_audit")
@@ -32,6 +38,23 @@ audit_logger = logging.getLogger("admin_audit")
 def _require_enabled() -> None:
     if not promo_enabled():
         raise HTTPException(status_code=404, detail="Not found")
+
+
+def _require_rewards_enabled() -> None:
+    # Uniform 404 before auth while OWNER_REWARDS_ENABLED is off (or promo is off).
+    if not rewards_enabled():
+        raise HTTPException(status_code=404, detail="Not found")
+
+
+def _claim_rate() -> str:
+    try:
+        return rewards_config().claim_rate_limit
+    except Exception:
+        return "100000/minute"   # unreachable in effect: exempt_when below
+
+
+def _rewards_not_limited() -> bool:
+    return not rewards_enabled()
 
 
 def _rate() -> str:
@@ -242,6 +265,106 @@ async def update_code(code_id: str, body: CodeUpdate, admin_id: str = Depends(re
         raise HTTPException(status_code=404, detail="Not found")
     _audit("promo_code_update", admin_id, cid)
     return out
+
+
+# ── Owner rewards: admin (new routes; 404 unless OWNER_REWARDS_ENABLED) ───────
+
+rewards_admin_router = APIRouter(prefix="/admin/promo", dependencies=[Depends(_require_rewards_enabled)])
+
+
+class CreatorCodeCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    notes: str = Field(default="", max_length=2000)
+    owner_email: str = Field(min_length=3, max_length=255)
+    code: str | None = Field(default=None, max_length=64)   # omitted -> secure random
+    max_redemptions: int | None = Field(default=None, gt=0)
+    expires_at: datetime | None = None
+
+
+@rewards_admin_router.post("/creator-codes", status_code=201)
+async def create_creator_code(body: CreatorCodeCreate, admin_id: str = Depends(require_admin)) -> dict:
+    """Create a creator and a (secure, generated unless supplied) code attached
+    to ``owner_email`` in one step. Admin only."""
+    db = PromoManager()
+    try:
+        out = db.create_creator_with_code(body.name.strip(), body.notes, body.owner_email, body.code,
+                                          body.max_redemptions, _utc(body.expires_at), admin_id)
+    except PromoError as e:
+        raise _http(e)
+    finally:
+        db.close()
+    _audit("promo_creator_code_create", admin_id, out["code"]["id"])
+    return out
+
+
+@rewards_admin_router.get("/codes-overview")
+async def codes_overview(kind: str | None = None, limit: int = 100, offset: int = 0,
+                         admin_id: str = Depends(require_admin)) -> list[dict]:
+    """Codes with creator, attached email, redemption and reward counts. Admin only."""
+    if kind not in (None, "creator", "friend"):
+        raise HTTPException(status_code=422, detail="kind must be creator or friend")
+    db = RewardManager()
+    try:
+        return db.list_codes_overview(kind, max(1, min(limit, 500)), max(0, offset))
+    finally:
+        db.close()
+
+
+@rewards_admin_router.post("/codes/{code_id}/deactivate")
+async def deactivate_code(code_id: str, admin_id: str = Depends(require_admin)) -> dict:
+    """Deactivate a code (idempotent). Admin only; audited."""
+    cid = _uuid(code_id)
+    db = PromoManager()
+    try:
+        out = db.update_code(cid, {"active": False})
+        if out is None:
+            raise HTTPException(status_code=404, detail="Not found")
+        db.audit("promo_code_deactivate", admin_id, cid)
+    finally:
+        db.close()
+    _audit("promo_code_deactivate", admin_id, cid)
+    return out
+
+
+# ── Owner rewards: user surface ───────────────────────────────────────────────
+
+rewards_router = APIRouter(prefix="/rewards", dependencies=[Depends(_require_rewards_enabled)])
+
+
+@rewards_router.get("/{user_id}")
+async def reward_summary(user_id: str, response: Response,
+                         _: str = Depends(require_match("user_id"))) -> dict:
+    """The caller's reward counts and whether an Apple claim is available."""
+    response.headers["Cache-Control"] = "no-store"
+    db = RewardManager()
+    try:
+        return db.summary(user_id)
+    finally:
+        db.close()
+
+
+@rewards_router.post("/{user_id}/apple/claim")
+@limiter.limit(_claim_rate, exempt_when=_rewards_not_limited)
+@limiter.limit(_claim_rate, key_func=_user_key, exempt_when=_rewards_not_limited)
+async def claim_apple_reward(request: Request, response: Response, user_id: str,
+                             _: str = Depends(require_match("user_id"))) -> dict:
+    """Reserve the caller's oldest earned reward and return the ES256 StoreKit 2
+    promotional-offer signature. Every denial is a uniform 404 (no reward, not an
+    Apple individual subscriber, unmapped product); 409 while a prior claim is
+    still reserved; any other failure is a generic 500 and grants nothing. The
+    reward becomes 'claimed' only when Apple's verified transaction arrives."""
+    response.headers["Cache-Control"] = "no-store"
+    db = RewardManager()
+    try:
+        sig = db.claim_apple(user_id)
+    except PromoError as e:
+        raise _http(e)
+    except Exception as e:
+        logger.error("apple reward claim failed for %s: %s", user_id, type(e).__name__)
+        raise HTTPException(status_code=500, detail="Could not create claim")
+    finally:
+        db.close()
+    return sig
 
 
 @promo_admin_router.get("/report")

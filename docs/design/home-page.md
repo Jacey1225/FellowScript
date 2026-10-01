@@ -37,14 +37,13 @@ The home page (`/`) is the public-facing landing page. It is visible to everyone
 ### 5. Community Spotlight
 Mock group conversation showing the collaborative note/chat experience — sample study group discussing Romans 8.
 
-### 6. Pricing (3-plan cards)
+### 6. Pricing (2-plan cards)
 | Plan | Price | Limits |
 |---|---|---|
-| Free | $0 | 5 notes/week, limited agent events |
-| Individual | $4.99/mo | Unlimited notes, agent events, notifications |
-| Group | $9.99/mo | Everything in Individual + group management tools |
+| Free | $0 | 10 notes/week, 1 AI check-in event, 3 scheduled notifications |
+| Group | From $4.99/mo | Pick 1 to 8 members ($4.99 for 1 member up to $32.40 for 8); unlimited notes, AI check-ins and notifications, shared reading space and group chat |
 
-"Most popular" badge displayed on the Individual plan.
+The Group card is the highlighted (primary) plan. Prices mirror `GROUP_PRICE_CENTS` in `api/schemas/subscription.py` (cut 2026-10-01).
 
 ### 7. On Your Desktop
 Two-card section between Pricing and the closing Quote CTA, offering the Tauri-based desktop app (a dedicated window onto the same live, cookie-authenticated reader — not an offline/bundled build).

@@ -124,6 +124,7 @@ describe('redeem', () => {
     ['expired', 410, 'expired', COPY.expired.title],
     ['revoked', 410, 'revoked', COPY.revoked.title],
     ['full', 409, 'full', COPY.full.title],
+    ['group full (member cap)', 409, 'group_full', COPY.groupFull.title],
     ['not found', 404, 'not_found', COPY.invalid.title],
     ['blocked', 403, 'blocked', COPY.blocked.title],
   ])('terminal error %s shows exact copy and clears the pending invite', async (_n, status, code, title) => {
@@ -133,6 +134,11 @@ describe('redeem', () => {
     expect(await screen.findByText(title)).toBeInTheDocument();
     expect(getPendingInvite()).toBeNull();
     expect(screen.queryByText('Try again')).toBeNull();
+  });
+
+  test('group_full copy is distinct from link-exhausted copy and warm', () => {
+    expect(COPY.groupFull.title).toBe('This group is full.');
+    expect(COPY.groupFull.title).not.toBe(COPY.full.title);
   });
 
   test('blocked copy is generic and leaks nothing about who blocked whom', () => {

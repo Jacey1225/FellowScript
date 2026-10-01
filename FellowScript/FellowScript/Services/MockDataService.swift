@@ -222,6 +222,7 @@ protocol DataServiceProtocol {
     func fetchGroupInfo(userId: String, groupId: String) async throws -> FSGroupInfo
     func renameGroup(userId: String, groupId: String, title: String) async throws -> String
     func setGroupMuted(userId: String, groupId: String, muted: Bool) async throws -> Bool
+    func setGroupMaxMembers(userId: String, groupId: String, maxMembers: Int?) async throws -> Int?
     func requestGroupPhotoUploadURL(userId: String, groupId: String, contentType: String, sizeBytes: Int?) async throws -> FSUploadURLInfo
     func confirmGroupPhoto(userId: String, groupId: String, objectKey: String) async throws -> String?
     func removeGroupPhoto(userId: String, groupId: String) async throws -> String?
@@ -232,7 +233,7 @@ protocol DataServiceProtocol {
     func previewInvite(token: String) async throws -> FSInvitePreview
     func redeemInvite(userId: String, token: String) async throws -> FSInviteRedeemResult
     func listGroupInvites(userId: String, groupId: String) async throws -> FSInviteList
-    func createGroupInvite(userId: String, groupId: String, expiresInDays: Int, maxUses: Int) async throws -> FSInviteCreated
+    func createGroupInvite(userId: String, groupId: String, expiresInDays: Int?, maxUses: Int) async throws -> FSInviteCreated
     func revokeInvite(userId: String, inviteId: String) async throws
     func resetGroupInvites(userId: String, groupId: String) async throws -> Int
     // Subscription-seat invite links (task 20260930-subscription-seat-invites): plan owner only.
@@ -287,6 +288,10 @@ protocol DataServiceProtocol {
     func acceptSubRequest(subscriptionId: String, fromUserId: String) async throws
     func declineSubRequest(subscriptionId: String, fromUserId: String) async throws
     func syncAppleSubscription(userId: String, jws: String) async throws -> FSSubscription?
+    // Owner rewards (task 20261001-promo-owner-rewards). Default implementations
+    // (extension below) report "unavailable"; NetworkService supplies the real ones.
+    func fetchRewardSummary(userId: String) async throws -> FSRewardSummary?
+    func claimAppleReward(userId: String) async throws -> FSApplePromoSignature
 }
 
 // Task 20260929-group-info-panel: default implementations so existing
@@ -298,6 +303,7 @@ extension DataServiceProtocol {
     func fetchGroupInfo(userId: String, groupId: String) async throws -> FSGroupInfo { throw groupInfoUnsupported }
     func renameGroup(userId: String, groupId: String, title: String) async throws -> String { throw groupInfoUnsupported }
     func setGroupMuted(userId: String, groupId: String, muted: Bool) async throws -> Bool { throw groupInfoUnsupported }
+    func setGroupMaxMembers(userId: String, groupId: String, maxMembers: Int?) async throws -> Int? { throw groupInfoUnsupported }
     func requestGroupPhotoUploadURL(userId: String, groupId: String, contentType: String, sizeBytes: Int?) async throws -> FSUploadURLInfo { throw groupInfoUnsupported }
     func confirmGroupPhoto(userId: String, groupId: String, objectKey: String) async throws -> String? { throw groupInfoUnsupported }
     func removeGroupPhoto(userId: String, groupId: String) async throws -> String? { throw groupInfoUnsupported }
@@ -305,11 +311,18 @@ extension DataServiceProtocol {
 }
 
 extension DataServiceProtocol {
+    func fetchRewardSummary(userId: String) async throws -> FSRewardSummary? { nil }
+    func claimAppleReward(userId: String) async throws -> FSApplePromoSignature {
+        throw AppError.networkError("Rewards aren't available right now.")
+    }
+}
+
+extension DataServiceProtocol {
     private var invitesUnsupported: InviteAPIError { InviteAPIError(status: 0, code: nil, message: "Invite links aren't available right now.") }
     func previewInvite(token: String) async throws -> FSInvitePreview { throw invitesUnsupported }
     func redeemInvite(userId: String, token: String) async throws -> FSInviteRedeemResult { throw invitesUnsupported }
     func listGroupInvites(userId: String, groupId: String) async throws -> FSInviteList { throw invitesUnsupported }
-    func createGroupInvite(userId: String, groupId: String, expiresInDays: Int, maxUses: Int) async throws -> FSInviteCreated { throw invitesUnsupported }
+    func createGroupInvite(userId: String, groupId: String, expiresInDays: Int?, maxUses: Int) async throws -> FSInviteCreated { throw invitesUnsupported }
     func revokeInvite(userId: String, inviteId: String) async throws { throw invitesUnsupported }
     func resetGroupInvites(userId: String, groupId: String) async throws -> Int { throw invitesUnsupported }
     func listSubscriptionInvites(userId: String, subscriptionId: String) async throws -> FSInviteList { throw invitesUnsupported }
@@ -858,7 +871,7 @@ final class MockDataService: DataServiceProtocol {
     }
     static let mockActiveSubscription = FSSubscription(
         id: "sub-mock-001", user_id: mockUser.user_id, plan_type: "group",
-        status: "active", price_cents: 2699, max_members: 3
+        status: "active", price_cents: 1215, max_members: 3
     )
     // Mirrors the real backend's usage_summary() shape exactly (api/backend/
     // subscription/limits.py:105-116): even for a subscribed user, `limit`

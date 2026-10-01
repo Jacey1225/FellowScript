@@ -28,7 +28,7 @@ const LABEL = {
 const MUTED = { fontFamily: "'Inter', sans-serif", fontSize: '0.8rem', color: 'rgba(244,228,193,0.35)' };
 
 // Server-authoritative price table (mirrors api/schemas/subscription.py GROUP_PRICE_CENTS).
-const GROUP_PRICE_CENTS = { 1: 1000, 2: 1799, 3: 2699, 4: 3599, 5: 4499, 6: 5399, 7: 6299, 8: 7199 };
+const GROUP_PRICE_CENTS = { 1: 499, 2: 810, 3: 1215, 4: 1620, 5: 2025, 6: 2430, 7: 2835, 8: 3240 };
 const MIN_MEMBERS = 1;
 const MAX_MEMBERS = 8;
 
@@ -36,7 +36,7 @@ const statusColor = (s) => ({
   active: 'gold', trialing: 'blue', past_due: 'orange', canceled: 'red', inactive: 'default',
 }[s] || 'default');
 
-const money = (cents) => `$${Math.round((cents || 0) / 100)}`;
+const money = (cents) => `$${((cents || 0) / 100).toFixed(2)}`;
 
 // Server timestamps look like "2026-08-15 19:42:23+00:00"; normalise for Date().
 const fmtDate = (s) => {

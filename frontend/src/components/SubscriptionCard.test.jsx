@@ -23,7 +23,7 @@ const HOST_GROUP_PLAN = {
   plan_type: 'group',
   status: 'active',
   is_trial: false,
-  price_cents: 2699,
+  price_cents: 1215,
   max_members: 3,
   next_billing_date: null,
   card_brand: null,

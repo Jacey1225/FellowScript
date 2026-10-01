@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Depends, Query, Request
-from backend.interactions.groups import GroupsManager, normalize_group_title
+from backend.interactions.groups import GroupFullError, GroupsManager, normalize_group_title
 from backend.interactions.friends import  FriendsManager, is_nudge_enabled
 from backend.interactions.push import send_push
 from backend.auth.dependencies import require_match
@@ -214,7 +214,11 @@ async def update_group(user_id: str, group_id: str, group: Group, _: str = Depen
             group.title = normalize_group_title(group.title)
         except ValueError as e:
             raise HTTPException(status_code=422, detail=str(e))
-        manager.update_group(group)
+        try:
+            manager.update_group(group)
+        except GroupFullError:
+            raise HTTPException(
+                status_code=409, detail={"code": "group_full", "message": "This group is full."})
     finally:
         manager.close()
 

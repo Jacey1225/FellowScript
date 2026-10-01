@@ -12,6 +12,7 @@
   "subscription_allowed_max_uses": [1, 3, 5, 10],
   "max_active_links_per_subscription": 3,
   "max_pending_requests_per_subscription": 10,
+  "max_group_members_ceiling": 250,
   "rate_limits": {
     "preview": "20/minute",
     "redeem": "10/minute",

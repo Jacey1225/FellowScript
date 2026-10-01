@@ -88,15 +88,17 @@ final class InviteLinksViewModel: ObservableObject {
     }
 
     func create() async {
-        guard !creating, let days = effectiveExpiryDays, let uses = effectiveMaxUses else { return }
+        guard !creating, let uses = effectiveMaxUses else { return }
+        let days = effectiveExpiryDays
+        if isSubscription && days == nil { return }
         creating = true
         createError = nil
         resetStatus = nil
         defer { creating = false }
         do {
             let created = try isSubscription
-                ? await service.createSubscriptionInvite(userId: userId, subscriptionId: targetId, expiresInDays: days, maxUses: uses)
-                : await service.createGroupInvite(userId: userId, groupId: targetId, expiresInDays: days, maxUses: uses)
+                ? await service.createSubscriptionInvite(userId: userId, subscriptionId: targetId, expiresInDays: days ?? 0, maxUses: uses)
+                : await service.createGroupInvite(userId: userId, groupId: targetId, expiresInDays: nil, maxUses: uses)
             revealedURL = created.url
             let item = FSInviteItem(
                 invite_id: created.invite_id, created_by_username: nil, is_mine: true,
@@ -247,7 +249,7 @@ struct InviteLinkSection: View {
                 if list.invites.isEmpty && vm.revealedURL == nil {
                     Text(isSubscription
                          ? "Anyone with the link can ask to join your plan. You approve each request before they get access."
-                         : "Anyone with the link can join this group until it expires.")
+                         : "Anyone with the link can join this group until you revoke it.")
                         .font(.inter(Theme.fontXS)).foregroundColor(Theme.textSecondary)
                 }
 
@@ -307,15 +309,17 @@ struct InviteLinkSection: View {
             let days = vm.effectiveExpiryDays ?? options.default_expiry_days
             let uses = vm.effectiveMaxUses ?? options.default_max_uses
             Button { optionsOpen.toggle() } label: {
-                Text("Expires in \(days) \(days == 1 ? "day" : "days") · Up to \(uses) \(isSubscription ? (uses == 1 ? "request" : "requests") : (uses == 1 ? "person" : "people"))")
+                Text("\(isSubscription ? "Expires in \(days) \(days == 1 ? "day" : "days") · " : "")Up to \(uses) \(isSubscription ? (uses == 1 ? "request" : "requests") : (uses == 1 ? "person" : "people"))")
                     .font(.inter(Theme.fontXS)).foregroundColor(Theme.gold)
                     .frame(minHeight: 44, alignment: .leading)
             }
-            .accessibilityHint(optionsOpen ? "Hide options" : "Change expiry and number of people")
+            .accessibilityHint(optionsOpen ? "Hide options" : (isSubscription ? "Change expiry and number of requests" : "Change number of people"))
 
             if optionsOpen {
-                chipRow(label: "Link expires in", values: options.allowed_expiry_days,
-                        selected: days, title: { "\($0) \($0 == 1 ? "day" : "days")" }) { vm.expiryDays = $0 }
+                if isSubscription {
+                    chipRow(label: "Link expires in", values: options.allowed_expiry_days,
+                            selected: days, title: { "\($0) \($0 == 1 ? "day" : "days")" }) { vm.expiryDays = $0 }
+                }
                 chipRow(label: isSubscription ? "Number of requests the link allows" : "Number of people who can join", values: options.allowed_max_uses,
                         selected: uses, title: { "\($0)" }) { vm.maxUses = $0 }
             }
@@ -423,7 +427,8 @@ struct InviteLinkSection: View {
     }
 
     /// "Expires Oct 7", or "Expires in 5 hours" when under 24h remain.
-    static func expiryLabel(_ iso: String, now: Date = Date()) -> String {
+    static func expiryLabel(_ iso: String?, now: Date = Date()) -> String {
+        guard let iso else { return "Never expires" }
         guard let date = parseFlexibleISO8601(iso) else { return "" }
         let secs = date.timeIntervalSince(now)
         if secs < 24 * 3600 {

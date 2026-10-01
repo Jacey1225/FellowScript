@@ -33,7 +33,18 @@ _TOP_KEYS = (
     "subscription_default_expiry_days", "subscription_allowed_expiry_days",
     "subscription_default_max_uses", "subscription_allowed_max_uses",
     "max_active_links_per_subscription", "max_pending_requests_per_subscription",
+    # Owner-settable per-group member cap: the highest value an owner may set.
+    "max_group_members_ceiling",
 )
+
+# DEPRECATED (task 20260930-group-invite-permanent-member-cap): group invite
+# links never expire, so ``default_expiry_days`` / ``allowed_expiry_days`` no
+# longer affect group link creation. They stay required and validated so an
+# existing config file keeps booting; they are only echoed to old clients via
+# GET /invites/.../groups/... "options". Subscription_* keys are unchanged.
+
+# A group cap below this is meaningless (a one-person "group").
+MIN_GROUP_MEMBERS_CAP = 2
 
 
 class InvitesConfigError(RuntimeError):
@@ -56,6 +67,7 @@ class InvitesConfig:
     subscription_allowed_max_uses: tuple[int, ...]
     max_active_links_per_subscription: int
     max_pending_requests_per_subscription: int
+    max_group_members_ceiling: int
 
 
 def _pos_int(name: str, v) -> int:
@@ -123,6 +135,11 @@ def parse_invites_config(raw: object) -> InvitesConfig:
         raise InvitesConfigError(
             "invites config: subscription_default_max_uses must be one of subscription_allowed_max_uses")
 
+    ceiling = _pos_int("max_group_members_ceiling", raw["max_group_members_ceiling"])
+    if ceiling < MIN_GROUP_MEMBERS_CAP:
+        raise InvitesConfigError(
+            f"invites config: max_group_members_ceiling must be at least {MIN_GROUP_MEMBERS_CAP}")
+
     rl = raw["rate_limits"]
     if not isinstance(rl, dict) or set(rl) != set(_RATE_KEYS):
         raise InvitesConfigError(f"invites config: rate_limits must have exactly the keys {list(_RATE_KEYS)}")
@@ -152,6 +169,7 @@ def parse_invites_config(raw: object) -> InvitesConfig:
             "max_active_links_per_subscription", raw["max_active_links_per_subscription"]),
         max_pending_requests_per_subscription=_pos_int(
             "max_pending_requests_per_subscription", raw["max_pending_requests_per_subscription"]),
+        max_group_members_ceiling=ceiling,
     )
 
 

@@ -11,13 +11,17 @@ import Privacy from './pages/Privacy.jsx';
 import Terms from './pages/Terms.jsx';
 import Download from './pages/Download.jsx';
 import JoinInvite from './pages/JoinInvite.jsx';
-import AdminGate from './components/AdminGate.jsx';
+import AdminShell from './components/AdminShell.jsx';
 import MobileBlockGate from './components/MobileBlockGate.jsx';
 import ReaderWebRedirect from './components/ReaderWebRedirect.jsx';
 import DesktopRouteGuard from './components/DesktopRouteGuard.jsx';
 import VisitTracker from './components/VisitTracker.jsx';
 import AdminDetections from './pages/AdminDetections.jsx';
 import AdminDetectionDetail from './pages/AdminDetectionDetail.jsx';
+import AdminPromoCodes from './pages/AdminPromoCodes.jsx';
+import AdminTrends from './pages/AdminTrends.jsx';
+import AdminAccountActions from './pages/AdminAccountActions.jsx';
+import InviteFriends from './pages/InviteFriends.jsx';
 
 export default function App() {
   return (
@@ -118,6 +122,8 @@ export default function App() {
               Public (preview works signed out); allowed on desktop via
               desktopScope.js's DESKTOP_ALLOWED_ROUTE_PATTERNS. */}
           <Route path="/join/:token" element={<JoinInvite />} />
+          {/* Task 20261001-promo-owner-rewards: signed-in user's invite link page. */}
+          <Route path="/invite"    element={<InviteFriends />} />
           <Route path="/signin"    element={<SignIn />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/reset-password"  element={<ResetPassword />} />
@@ -128,8 +134,16 @@ export default function App() {
               nav/menu component. Reachable only by navigating to the URL
               directly. Server-side `require_admin` is the real enforcement;
               AdminGate is defense-in-depth UX only. See design-notes.md §0. */}
-          <Route path="/admin" element={<AdminGate><AdminDetections /></AdminGate>} />
-          <Route path="/admin/detections/:id" element={<AdminGate><AdminDetectionDetail /></AdminGate>} />
+          <Route path="/admin" element={<AdminShell />}>
+            <Route index element={<Navigate to="/admin/errors" replace />} />
+            <Route path="trends" element={<AdminTrends />} />
+            <Route path="errors" element={<AdminDetections />} />
+            <Route path="accounts" element={<AdminAccountActions />} />
+            {/* Task 20261001-promo-owner-rewards: admin creator-code page (hidden,
+                admin-only server-side; 404 from the API = flag off). */}
+            <Route path="promo" element={<AdminPromoCodes />} />
+            <Route path="detections/:id" element={<AdminDetectionDetail />} />
+          </Route>
           <Route path="*"          element={<Navigate to="/" replace />} />
         </Routes>
       </DesktopRouteGuard>

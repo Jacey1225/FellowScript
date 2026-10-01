@@ -105,7 +105,7 @@ final class StoreKitManagerPurchaseSyncFailureTests: XCTestCase {
         let service = ThrowingTestDataService()
         service.syncAppleSubscriptionResult = FSSubscription(
             id: "sub-ok", user_id: "test-user-2", plan_type: "group",
-            status: "active", price_cents: 1000, max_members: 1
+            status: "active", price_cents: 499, max_members: 1
         )
 
         let productID = try XCTUnwrap(StoreKitManager.productID[1])

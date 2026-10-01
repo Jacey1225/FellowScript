@@ -235,6 +235,9 @@ final class JoinInviteViewModelTests: XCTestCase {
         XCTAssertEqual(f(410, "expired"), .expired)
         XCTAssertEqual(f(410), .expired)
         XCTAssertEqual(f(409), .full)
+        XCTAssertEqual(f(409, "full"), .full)
+        XCTAssertEqual(f(409, "group_full"), .groupFull)
+        XCTAssertEqual(f(409, "other_plan"), .otherPlan)
         XCTAssertEqual(f(403), .blocked)
         XCTAssertEqual(InviteFailure.blocked.title, "You can't join this group.")
         XCTAssertNil(InviteFailure.blocked.body, "blocked copy must not hint at why")
@@ -242,9 +245,11 @@ final class JoinInviteViewModelTests: XCTestCase {
         XCTAssertEqual(InviteFailure.expired.title, "This invite link has expired.")
         XCTAssertEqual(InviteFailure.revoked.title, "This invite link was revoked.")
         XCTAssertEqual(InviteFailure.full.title, "This invite link has reached its limit.")
+        XCTAssertEqual(InviteFailure.groupFull.title, "This group is full.")
+        XCTAssertNotEqual(InviteFailure.groupFull.title, InviteFailure.full.title)
         XCTAssertTrue(InviteFailure.rateLimited.isRetryable)
         XCTAssertTrue(InviteFailure.network.isRetryable)
-        for terminal in [InviteFailure.invalid, .expired, .revoked, .full, .blocked] { XCTAssertFalse(terminal.isRetryable) }
+        for terminal in [InviteFailure.invalid, .expired, .revoked, .full, .groupFull, .blocked] { XCTAssertFalse(terminal.isRetryable) }
     }
 
     func test_preview_success_readyState_andTokenOnlyInBody() async {
@@ -318,6 +323,7 @@ final class JoinInviteViewModelTests: XCTestCase {
             (410, #"{"detail":{"code":"expired","message":"x"}}"#, .expired),
             (410, #"{"detail":{"code":"revoked","message":"x"}}"#, .revoked),
             (409, #"{"detail":{"code":"full","message":"x"}}"#, .full),
+            (409, #"{"detail":{"code":"group_full","message":"This group is full."}}"#, .groupFull),
             (403, #"{"detail":{"code":"blocked","message":"x"}}"#, .blocked),
             (404, #"{"detail":"Not found"}"#, .invalid),
         ]
@@ -443,7 +449,8 @@ final class InviteLinksViewModelTests: XCTestCase {
         XCTAssertEqual(m.list?.invites.first?.remaining_uses, 25)
         let req = StubURLProtocol.requestLog.last
         XCTAssertEqual(req?.method, "POST")
-        XCTAssertEqual(req?.bodyJSON?["expires_in_days"] as? Int, 7)
+        // Group links never expire: the create body must not carry an expiry.
+        XCTAssertNil(req?.bodyJSON?["expires_in_days"], "group create must not send expires_in_days")
         XCTAssertEqual(req?.bodyJSON?["max_uses"] as? Int, 25)
         // Encoded list rows (what is cached to disk) never carry a token/url.
         let encoded = String(data: try! JSONEncoder().encode(m.list!), encoding: .utf8)!

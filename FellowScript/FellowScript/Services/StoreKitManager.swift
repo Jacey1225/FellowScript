@@ -48,7 +48,7 @@ final class StoreKitManager: ObservableObject {
         guard let id = productID(for: memberCount) else { return nil }
         return products.first { $0.id == id }
     }
-    /// Localized price like "$17.99" for a member count, or nil if products aren't loaded.
+    /// Localized price like "$8.10" for a member count, or nil if products aren't loaded.
     func displayPrice(for memberCount: Int) -> String? {
         product(for: memberCount)?.displayPrice
     }
@@ -123,6 +123,60 @@ final class StoreKitManager: ObservableObject {
             }
         } catch {
             lastError = "Purchase could not be completed."
+            return false
+        }
+    }
+
+    /// Claim an earned owner reward (task 20261001-promo-owner-rewards): the
+    /// server returns an ES256-signed promotional-offer signature for the
+    /// caller's current product; we purchase it with
+    /// `Product.PurchaseOption.promotionalOffer`, tagging the purchase with
+    /// `appAccountToken` = the signature's applicationUsername (a per-user UUID
+    /// the server minted; it must match what was signed). The reward is marked
+    /// claimed server-side only when the verified transaction reaches
+    /// /subscriptions/apple/sync, so a failed sync leaves the transaction
+    /// unfinished and it is retried by syncEntitlements(), exactly as purchase().
+    /// Returns true when a verified promotional purchase completed and synced.
+    func claimOwnerReward(userId: String, service: DataServiceProtocol) async -> Bool {
+        lastError = nil
+        purchasing = true
+        defer { purchasing = false }
+        do {
+            let sig = try await service.claimAppleReward(userId: userId)
+            guard Self.productIDs.contains(sig.productIdentifier),
+                  let product = products.first(where: { $0.id == sig.productIdentifier }),
+                  let nonce = UUID(uuidString: sig.nonce),
+                  let signature = Data(base64Encoded: sig.signature),
+                  let token = UUID(uuidString: sig.applicationUsername) else {
+                lastError = "Your reward couldn't be applied right now. Please try again later."
+                return false
+            }
+            let result = try await product.purchase(options: [
+                .appAccountToken(token),
+                .promotionalOffer(offerID: sig.offerIdentifier, keyID: sig.keyIdentifier,
+                                  nonce: nonce, signature: signature, timestamp: sig.timestamp),
+            ])
+            switch result {
+            case .success(let verification):
+                let txn = try checkVerified(verification)
+                do {
+                    try await report(jws: verification.jwsRepresentation, userId: userId, service: service)
+                } catch {
+                    lastError = "Your reward went through with Apple, but we couldn't confirm it with FellowScript yet. It will retry automatically the next time you open this screen."
+                    return false
+                }
+                await txn.finish()
+                return true
+            case .userCancelled:
+                return false
+            case .pending:
+                lastError = "Your reward is pending approval."
+                return false
+            @unknown default:
+                return false
+            }
+        } catch {
+            lastError = (error as? LocalizedError)?.errorDescription ?? "Your reward couldn't be claimed."
             return false
         }
     }

@@ -67,7 +67,7 @@ function renderPage({ user = ADMIN_USER, initialEntries = ['/admin/detections/de
     <MemoryRouter initialEntries={initialEntries}>
       <Routes>
         <Route path="/admin/detections/:id" element={<AdminDetectionDetail />} />
-        <Route path="/admin" element={<div>Admin List Page</div>} />
+        <Route path="/admin/errors" element={<div>Admin List Page</div>} />
         <Route path="/signin" element={<div>Sign In Page</div>} />
         <Route path="/" element={<div>Home Page</div>} />
       </Routes>

@@ -1,11 +1,11 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { Layout, Typography, Spin, Alert, Tag, Button, Collapse, message } from 'antd';
+import { Typography, Spin, Alert, Tag, Button, Collapse, message } from 'antd';
 import { LeftOutlined, CheckCircleFilled, DownloadOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
 import relativeTime from 'dayjs/plugin/relativeTime';
-import AppNav from '../components/AppNav.jsx';
+import { AdminPageHeader } from '../components/AdminShell.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import { API } from '../config.js';
 import { fsTheme } from '../theme.js';
@@ -14,14 +14,13 @@ import { downloadRemediationMarkdown } from '../lib/remediationMarkdown.js';
 dayjs.extend(utc);
 dayjs.extend(relativeTime);
 
-const { Content } = Layout;
 const { Title, Text, Paragraph } = Typography;
 
 const CARD_STYLE = {
-  background: 'rgba(6,4,1,0.88)',
-  border: '1px solid rgba(200,134,26,0.16)',
+  background: 'rgba(32,24,16,0.62)',
+  border: '1px solid rgba(200,134,26,0.22)',
   backdropFilter: 'blur(14px)',
-  borderRadius: 14,
+  borderRadius: 22,
   marginBottom: '1.5rem',
 };
 
@@ -161,7 +160,7 @@ export default function AdminDetectionDetail() {
       }
       if (res.status === 404) {
         message.error('This detection no longer exists.');
-        navigate('/admin', { replace: true });
+        navigate('/admin/errors', { replace: true });
         return;
       }
       if (res.status === 502) {
@@ -189,7 +188,7 @@ export default function AdminDetectionDetail() {
   // Blank page + spinner until the gate-fetch resolves.
   if (!checked) {
     return (
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ minHeight: '40vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <Spin size="large" />
       </div>
     );
@@ -215,12 +214,9 @@ export default function AdminDetectionDetail() {
       : (report ? 'Rerun' : 'Generate Report');
 
   return (
-    <Layout style={{ minHeight: '100vh', background: 'transparent' }}>
-      <AppNav />
-
-      <Content style={{ paddingTop: 'calc(var(--nav-h) + 2.5rem)', paddingBottom: '5rem', paddingLeft: '2rem', paddingRight: '2rem', maxWidth: 780, margin: '0 auto', width: '100%' }}>
-
-        <Link to="/admin" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: "'Lora', serif", fontSize: '0.78rem', color: 'rgba(200,134,26,0.7)', textDecoration: 'none', marginBottom: '1.25rem' }}>
+    <div style={{ maxWidth: 780 }}>
+        <AdminPageHeader title="Error detail" />
+        <Link to="/admin/errors" className="fs-btn-pill" style={{ marginBottom: '1.25rem' }}>
           <LeftOutlined style={{ fontSize: '0.65rem' }} /> Back to Detections
         </Link>
 
@@ -233,7 +229,7 @@ export default function AdminDetectionDetail() {
             type="error"
             showIcon
             message="Detection not found."
-            action={<Link to="/admin"><Button size="small">Back to Detections</Button></Link>}
+            action={<Link to="/admin/errors"><Button size="small">Back to Detections</Button></Link>}
             style={{ borderRadius: 8 }}
           />
         )}
@@ -368,7 +364,6 @@ export default function AdminDetectionDetail() {
             </div>
           </>
         )}
-      </Content>
-    </Layout>
+    </div>
   );
 }

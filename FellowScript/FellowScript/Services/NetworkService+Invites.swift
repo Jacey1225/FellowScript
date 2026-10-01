@@ -56,7 +56,8 @@ struct FSInviteItem: Codable, Identifiable, Equatable {
     let created_by_username: String?
     let is_mine: Bool
     let created_at: String
-    let expires_at: String
+    /// nil = never expires (group links). Legacy group links keep an expiry.
+    let expires_at: String?
     let max_uses: Int
     let use_count: Int
     let remaining_uses: Int
@@ -74,7 +75,7 @@ struct FSInviteCreated: Decodable {
     let token: String
     let url: String
     let created_at: String
-    let expires_at: String
+    let expires_at: String?
     let max_uses: Int
     let use_count: Int
 }
@@ -102,7 +103,7 @@ struct InviteAPIError: LocalizedError, Equatable {
 
 private struct InviteTokenBody: Encodable { let token: String }
 private struct InviteCreateBody: Encodable {
-    let expires_in_days: Int
+    let expires_in_days: Int?   // nil for group links (they never expire)
     let max_uses: Int
 }
 private struct InviteResetResponse: Decodable { let revoked: Int }
@@ -174,7 +175,7 @@ extension NetworkService {
     }
 
     // POST /invites/{userId}/groups/{groupId}
-    func createGroupInvite(userId: String, groupId: String, expiresInDays: Int, maxUses: Int) async throws -> FSInviteCreated {
+    func createGroupInvite(userId: String, groupId: String, expiresInDays: Int?, maxUses: Int) async throws -> FSInviteCreated {
         let fallback = "Couldn't create the link. Please try again."
         let data = try await inviteCall("/invites/\(userId)/groups/\(groupId)", method: "POST",
                                         body: InviteCreateBody(expires_in_days: expiresInDays, max_uses: maxUses), fallback: fallback)

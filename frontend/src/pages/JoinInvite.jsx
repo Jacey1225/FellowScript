@@ -24,6 +24,7 @@ export const COPY = {
   expired: { title: 'This invite link has expired.', body: 'Ask the person who invited you for a new link.' },
   revoked: { title: 'This invite link was revoked.', body: 'Ask the person who invited you for a new link.' },
   full: { title: 'This invite link has reached its limit.', body: 'Ask the person who invited you for a new link.' },
+  groupFull: { title: 'This group is full.', body: 'Ask the group owner to make room, then open the link again.' },
   blocked: { title: "You can't join this group.", body: null },
   otherPlan: { title: "You're already on a paid plan.", body: 'Leave your current plan first, then open this link again to request a seat.' },
   blockedPlan: { title: "You can't request to join this plan.", body: null },
@@ -36,7 +37,10 @@ function errorKind(err) {
   if (err.status === 429) return 'rate';
   if (err.status === 404) return 'invalid';
   if (err.status === 410) return err.code === 'revoked' ? 'revoked' : 'expired';
-  if (err.status === 409) return err.code === 'other_plan' ? 'otherPlan' : 'full';
+  if (err.status === 409) {
+    if (err.code === 'group_full') return 'groupFull';
+    return err.code === 'other_plan' ? 'otherPlan' : 'full';
+  }
   if (err.status === 403) return 'blocked';
   return 'network';
 }

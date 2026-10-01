@@ -131,7 +131,8 @@ def test_checkout_params():
           sd.get("metadata") == {"user_id": "u1", "member_count": "1"}, str(sd))
     check("TRIAL_MONTHS=0: mode subscription, price_data unchanged",
           kw["mode"] == "subscription"
-          and kw["line_items"][0]["price_data"]["unit_amount"] == stripe_service.price_for(1),
+          and kw["line_items"][0]["price_data"]["unit_amount"] == stripe_service.price_for(1)
+          and kw["line_items"][0]["price_data"]["unit_amount"] == 499,
           str(kw["line_items"]))
     # The schema constant (TRIAL_MONTHS=1) must no longer drive checkout.
     check("schema TRIAL_MONTHS constant does not leak into checkout", "trial_period_days" not in sd)

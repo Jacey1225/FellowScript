@@ -19,11 +19,11 @@ from routes.profile_photo import profile_photo_router
 from routes.group_info import group_info_router
 from routes.group_announcements import group_announcements_router
 from routes.invites import invites_router
-from routes.promo import promo_router, promo_admin_router
+from routes.promo import promo_router, promo_admin_router, rewards_admin_router, rewards_router
 from schemas.subscription import NOTES_MAX_BODY_BYTES
 from schemas.users import SignUp, Login, UpdateUser, User, CURRENT_TERMS_VERSION
 from datetime import datetime, timezone
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 import uvicorn
 import bcrypt
 import os
@@ -39,6 +39,7 @@ from slowapi.middleware import SlowAPIMiddleware
 from db import DBManager, BACKUP_DB_NAME, _connect, create_tables
 from backend.errors import SaveFailedError, TimelineGenerationError, NoSummarizableContentError
 from backend.rate_limiting import get_client_ip, limiter
+from backend.subscription.owner_rewards import credit_signup_reward
 from backend.interactions.helpers import load_users_data, save_users_data, save_user_row
 from backend.interactions.attachments import generate_download_url, delete_object
 from backend.subscription.subscriptions import SubscriptionsManager
@@ -55,6 +56,7 @@ class GoogleAuth(BaseModel):
     # Only enforced on the new-account branch below — these classes also serve
     # existing-user sign-ins, where the field is irrelevant.
     terms_accepted: bool = False
+    invite_code: str | None = Field(default=None, max_length=64)
 
 
 class AppleAuth(BaseModel):
@@ -62,6 +64,7 @@ class AppleAuth(BaseModel):
     full_name: str | None = None
     email: str | None = None
     terms_accepted: bool = False
+    invite_code: str | None = Field(default=None, max_length=64)
 
 
 class PasswordResetRequest(BaseModel):
@@ -191,6 +194,12 @@ async def lifespan(_: FastAPI):
     # no implicit defaults. Deliberately not caught here.
     from backend.subscription.promo import validate_promo_config
     validate_promo_config()
+
+    # Eager owner-reward config validation (task 20261001-promo-owner-rewards):
+    # OWNER_REWARD* / APPLE_PROMO_* (no implicit defaults); the Apple .p8 is
+    # only loaded when OWNER_REWARDS_ENABLED=true. Deliberately not caught here.
+    from backend.subscription.owner_rewards import validate_owner_rewards_config
+    validate_owner_rewards_config()
 
     # Eager Bible data validation (task 20260927-esv-bible-source-migration,
     # revision 2) -- same rationale as every validate_*_config() call above.
@@ -337,6 +346,8 @@ app.include_router(notification_router)
 app.include_router(subscription_router)
 app.include_router(promo_router)
 app.include_router(promo_admin_router)
+app.include_router(rewards_admin_router)
+app.include_router(rewards_router)
 app.include_router(donation_router)
 app.include_router(report_router)
 app.include_router(block_router)
@@ -491,6 +502,8 @@ async def signup(request: Request, info: SignUp, response: Response) -> dict:
         sm.create_free_plan(user.user_id)
     finally:
         sm.close()
+    # Owner reward for a friend invite code (fail closed; never affects signup).
+    credit_signup_reward(user.user_id, user.email, info.invite_code, get_client_ip(request))
     issue_session(response, user.user_id)
     return user.model_dump(exclude={"hash_pass"})
 
@@ -951,7 +964,7 @@ async def delete_user(user_id: str, _: str = Depends(require_match("user_id"))) 
 
 
 @app.post("/auth/google")
-async def google_auth(info: GoogleAuth, response: Response) -> dict:
+async def google_auth(request: Request, info: GoogleAuth, response: Response) -> dict:
     async with httpx.AsyncClient() as client:
         r = await client.get(
             "https://oauth2.googleapis.com/tokeninfo",
@@ -1028,6 +1041,7 @@ async def google_auth(info: GoogleAuth, response: Response) -> dict:
             sm.create_free_plan(uid)
         finally:
             sm.close()
+        credit_signup_reward(uid, email, info.invite_code, get_client_ip(request))
         # google_sub isn't a User schema field; record it so returning Google
         # sign-ins match on the stable identifier.
         if sub:
@@ -1046,7 +1060,7 @@ async def google_auth(info: GoogleAuth, response: Response) -> dict:
 
 
 @app.post("/auth/apple")
-async def apple_auth(info: AppleAuth, response: Response) -> dict:
+async def apple_auth(request: Request, info: AppleAuth, response: Response) -> dict:
     """Authenticate a Sign in with Apple identity token.
 
     Verifies the token's RSA signature against Apple's published JWKS, plus its
@@ -1142,6 +1156,7 @@ async def apple_auth(info: AppleAuth, response: Response) -> dict:
             sm.create_free_plan(uid)
         finally:
             sm.close()
+        credit_signup_reward(uid, email, info.invite_code, get_client_ip(request))
         data = users[uid]
 
     issue_session(response, uid)

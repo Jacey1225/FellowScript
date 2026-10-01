@@ -206,3 +206,43 @@ def decode_jws(jws: str) -> dict:
         raise ValueError("Apple JWS signature verification failed") from e
 
     return json.loads(_b64url_decode(payload_b64))
+
+
+# ── Promotional-offer signing (owner rewards) ────────────────────────────────
+
+def product_for_member_count(member_count: int) -> str | None:
+    """Inverse of ``member_count_for``."""
+    for pid, n in APPLE_PRODUCTS.items():
+        if n == member_count:
+            return pid
+    return None
+
+
+def sign_promotional_offer(private_key, *, key_id: str, bundle_id: str, product_id: str,
+                           offer_id: str, application_username: str, nonce: str,
+                           timestamp_ms: int) -> dict:
+    """Build the StoreKit promotional-offer signature (ES256).
+
+    Signed string (Apple's documented format), fields joined with U+2063:
+    ``bundleId, keyId, productId, offerId, applicationUsername, nonce(lowercase
+    UUID), timestamp(ms)``. The signature is DER-encoded ECDSA/SHA-256, returned
+    base64 (the client base64-decodes it into ``Data`` for
+    ``Product.PurchaseOption.promotionalOffer``). The private key is passed in by
+    the caller (loaded once from a path, never logged); this function never
+    reads or prints key material.
+    """
+    if not isinstance(private_key, ec.EllipticCurvePrivateKey) or private_key.curve.name != "secp256r1":
+        raise ValueError("promotional-offer signing key must be an EC P-256 key")
+    nonce = nonce.lower()
+    msg = "⁣".join([bundle_id, key_id, product_id, offer_id, application_username,
+                         nonce, str(int(timestamp_ms))]).encode("utf-8")
+    der = private_key.sign(msg, ec.ECDSA(hashes.SHA256()))
+    return {
+        "keyIdentifier": key_id,
+        "nonce": nonce,
+        "timestamp": int(timestamp_ms),
+        "signature": base64.b64encode(der).decode("ascii"),
+        "productIdentifier": product_id,
+        "offerIdentifier": offer_id,
+        "applicationUsername": application_username,
+    }

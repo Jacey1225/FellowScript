@@ -10,6 +10,16 @@ import Foundation
 private struct GroupTitleBody: Encodable { let title: String }
 private struct GroupTitleResponse: Decodable { let title: String }
 private struct GroupMuteResponse: Decodable { let muted: Bool }
+private struct GroupMaxMembersBody: Encodable {
+    let max_members: Int?
+    // Explicit null clears the cap (the synthesized encoder would omit nil).
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(max_members, forKey: .max_members)
+    }
+    enum CodingKeys: String, CodingKey { case max_members }
+}
+private struct GroupMaxMembersResponse: Decodable { let max_members: Int? }
 private struct GroupPhotoUploadURLBody: Encodable {
     let content_type: String
     let size_bytes:   Int?
@@ -36,6 +46,17 @@ extension NetworkService {
             throw AppError.networkError("That name didn't save. Please try again.")
         }
         return resp.title
+    }
+
+    // PUT /groups/{userId}/{groupId}/max-members → {group_id, max_members}
+    // Owner only (403 otherwise); nil clears the cap. 422 carries a
+    // user-presentable detail (out of range / below current member count).
+    func setGroupMaxMembers(userId: String, groupId: String, maxMembers: Int?) async throws -> Int? {
+        let data = try await request("/groups/\(userId)/\(groupId)/max-members", method: "PUT", body: GroupMaxMembersBody(max_members: maxMembers))
+        guard let resp = decode(GroupMaxMembersResponse.self, from: data, endpoint: "/groups/{id}/{id}/max-members") else {
+            throw AppError.networkError("Couldn't save the limit. Please try again.")
+        }
+        return resp.max_members
     }
 
     // PUT /DELETE /groups/{userId}/{groupId}/mute → {muted}

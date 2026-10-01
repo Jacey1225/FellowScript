@@ -10,7 +10,7 @@ vi.mock('./InviteLinkSection.jsx', () => ({
 import SubscriptionCard from './SubscriptionCard.jsx';
 
 const ME = 'owner-1';
-const PLAN = { id: 'sub-1', user_id: ME, plan_type: 'group', status: 'active', is_trial: false, price_cents: 2699, max_members: 3 };
+const PLAN = { id: 'sub-1', user_id: ME, plan_type: 'group', status: 'active', is_trial: false, price_cents: 1215, max_members: 3 };
 const res = (body, ok = true, status = ok ? 200 : 500) => ({ ok, status, json: async () => body });
 
 function queueLoad(plan, requests = []) {

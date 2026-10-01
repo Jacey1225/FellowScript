@@ -16,14 +16,16 @@ group before persisting it.
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, StrictInt
 
 from backend.auth.dependencies import require_match
 from backend.interactions.attachments import AttachmentConfigError, delete_object, generate_download_url
 from backend.interactions.group_photo import generate_group_photo_upload_policy, is_group_photo_key
-from backend.interactions.groups import GALLERY_PAGE_SIZE, GroupsManager
+from backend.interactions.groups import GALLERY_PAGE_SIZE, GroupOwnerOnlyError, GroupsManager
+from backend.interactions.invites import audit as invite_audit
+from backend.interactions.invites_config import MIN_GROUP_MEMBERS_CAP, get_invites_config
 from backend.moderation.content_filter import ContentRejected, check_clean, rejection_message
-from backend.rate_limiting import limiter
+from backend.rate_limiting import get_client_ip, limiter
 
 group_info_router = APIRouter(prefix="/groups")
 logger = logging.getLogger(__name__)
@@ -32,6 +34,12 @@ logger = logging.getLogger(__name__)
 class GroupTitleRequest(BaseModel):
     """PUT /groups/{user_id}/{group_id}/title body."""
     title: str
+
+
+class GroupMaxMembersRequest(BaseModel):
+    """PUT .../max-members body. ``null`` clears the cap. StrictInt so a JSON
+    bool/float/string is a 422, never coerced."""
+    max_members: StrictInt | None = None
 
 
 class GroupPhotoUploadUrlRequest(BaseModel):
@@ -59,7 +67,8 @@ async def fetch_group_info(user_id: str, group_id: str, _: str = Depends(require
 
     Returns:
         dict: ``{"group_id", "title", "photo_url" (None = initials
-        fallback), "muted", "members"}``.
+        fallback), "muted", "members", "max_members" (None = unlimited),
+        "member_count", "is_owner", "max_members_ceiling"}``.
 
     Raises:
         HTTPException 403: caller is not a member. 404: group vanished.
@@ -80,12 +89,17 @@ async def fetch_group_info(user_id: str, group_id: str, _: str = Depends(require
                 (member_ids,),
             )
             members = [r[0] for r in manager.cur.fetchall()]
+        max_members, is_owner, member_count = manager.get_member_cap_info()
         return {
             "group_id": group_id,
             "title": data.get("title", ""),
             "photo_url": generate_download_url(photo_key),
             "muted": manager.is_muted(),
             "members": members,
+            "max_members": max_members,
+            "member_count": member_count,
+            "is_owner": is_owner,
+            "max_members_ceiling": get_invites_config().max_group_members_ceiling,
         }
     finally:
         manager.close()
@@ -115,6 +129,37 @@ async def rename_group(
         except ValueError as e:
             raise HTTPException(status_code=422, detail=str(e))
         return {"group_id": group_id, "title": title}
+    finally:
+        manager.close()
+
+
+@group_info_router.put("/{user_id}/{group_id}/max-members")
+@limiter.limit("30/minute")
+async def set_group_max_members(
+    request: Request, user_id: str, group_id: str, body: GroupMaxMembersRequest,
+    _: str = Depends(require_match("user_id")),
+) -> dict:
+    """Set or clear (``null``) the group's member cap. Group creator only.
+
+    Raises:
+        HTTPException 403: not a member, or not the group's creator.
+        422: not an integer, outside the configured range, or below the
+        group's current member count.
+    """
+    manager = GroupsManager(user_id, group_id)
+    try:
+        _require_member(manager)
+        try:
+            manager.set_max_members(
+                body.max_members, get_invites_config().max_group_members_ceiling, MIN_GROUP_MEMBERS_CAP)
+        except GroupOwnerOnlyError:
+            raise HTTPException(status_code=403, detail="Only the group owner can change this")
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+        invite_audit("set_max_members", target=group_id, user=user_id,
+                     max_members=body.max_members if body.max_members is not None else "none",
+                     ip=get_client_ip(request))
+        return {"group_id": group_id, "max_members": body.max_members}
     finally:
         manager.close()
 

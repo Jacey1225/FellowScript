@@ -117,7 +117,7 @@ final class NetworkServiceSyncAppleSubscriptionErrorHandlingTests: XCTestCase {
         StubURLProtocol.stubStatusCode = 200
         StubURLProtocol.stubBody = #"""
         {"id": "sub-abc123", "user_id": "user-123", "plan_type": "group", "provider": "apple",
-         "status": "active", "price_cents": 1799, "max_members": 2}
+         "status": "active", "price_cents": 810, "max_members": 2}
         """#.data(using: .utf8)!
 
         let result = try await NetworkService.shared.syncAppleSubscription(userId: "user-123", jws: "fake-jws")

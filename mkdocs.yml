@@ -34,4 +34,5 @@ nav:
     - Docker Containerization Plan: architecture/docker-plan.md
     - Git-Based Deploy Plan: architecture/git-deploy-plan.md
     - GHCR Server-Side Deploy Plan: architecture/ghcr-deploy-plan.md
+    - Price Cut Runbook: architecture/price-cut-runbook.md
   - API: api/overview.md

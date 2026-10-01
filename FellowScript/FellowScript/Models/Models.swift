@@ -136,7 +136,7 @@ struct FSSubscription: Codable, Identifiable {
         next_billing_date    = decodeLenient(c, forKey: .next_billing_date,    default: "", type: "FSSubscription")
     }
 
-    var priceLabel: String { "$\(price_cents / 100)" }
+    var priceLabel: String { String(format: "$%.2f", Double(price_cents) / 100) }
     func isHost(_ userId: String) -> Bool { user_id == userId }
 
     // "2026-08-15 19:42:23+00:00" → "Aug 15, 2026"
@@ -904,6 +904,38 @@ struct FSGroupInfo: Codable, Equatable {
     var photo_url: String?
     var muted:     Bool
     var members:   [String]
+    // Task 20260930-group-invite-permanent-member-cap. nil = unlimited. Decoded
+    // leniently so a cached or older response without these keys still loads.
+    var max_members:         Int? = nil
+    var member_count:        Int? = nil
+    var is_owner:            Bool = false
+    var max_members_ceiling: Int? = nil
+
+    enum CodingKeys: String, CodingKey {
+        case group_id, title, photo_url, muted, members
+        case max_members, member_count, is_owner, max_members_ceiling
+    }
+
+    init(group_id: String, title: String, photo_url: String? = nil, muted: Bool, members: [String],
+         max_members: Int? = nil, member_count: Int? = nil, is_owner: Bool = false, max_members_ceiling: Int? = nil) {
+        self.group_id = group_id; self.title = title; self.photo_url = photo_url
+        self.muted = muted; self.members = members
+        self.max_members = max_members; self.member_count = member_count
+        self.is_owner = is_owner; self.max_members_ceiling = max_members_ceiling
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        group_id = try c.decode(String.self, forKey: .group_id)
+        title = try c.decode(String.self, forKey: .title)
+        photo_url = try c.decodeIfPresent(String.self, forKey: .photo_url)
+        muted = try c.decode(Bool.self, forKey: .muted)
+        members = try c.decode([String].self, forKey: .members)
+        max_members = try c.decodeIfPresent(Int.self, forKey: .max_members)
+        member_count = try c.decodeIfPresent(Int.self, forKey: .member_count)
+        is_owner = try c.decodeIfPresent(Bool.self, forKey: .is_owner) ?? false
+        max_members_ceiling = try c.decodeIfPresent(Int.self, forKey: .max_members_ceiling)
+    }
 }
 
 struct FSGalleryItem: Codable, Identifiable, Equatable {

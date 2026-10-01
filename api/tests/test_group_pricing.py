@@ -26,7 +26,7 @@ def check(label, got, want):
 
 
 EXPECTED_PRICES = {
-    1: 1000, 2: 1799, 3: 2699, 4: 3599, 5: 4499, 6: 5399, 7: 6299, 8: 7199,
+    1: 499, 2: 810, 3: 1215, 4: 1620, 5: 2025, 6: 2430, 7: 2835, 8: 3240,
 }
 
 
@@ -34,6 +34,11 @@ def test_price_table():
     print("\n=== price_for() matches the exact price table for all 8 counts ===")
     for count, cents in EXPECTED_PRICES.items():
         check(f"price_for({count})", price_for(count), cents)
+    # 2026-10-01 price cut: tier 1 pinned at 4.99; tiers 2-8 = old x 0.45 rounded half-up to 5c.
+    old = {1: 1000, 2: 1799, 3: 2699, 4: 3599, 5: 4499, 6: 5399, 7: 6299, 8: 7199}
+    for count in range(2, 9):
+        check(f"tier {count} == round-half-up-5c(0.45 x old)", price_for(count), int(old[count] * 0.45 / 5 + 0.5) * 5)
+    check("tiers strictly increasing", all(price_for(i) < price_for(i + 1) for i in range(1, 8)), True)
     check("MIN_MEMBERS", MIN_MEMBERS, 1)
     check("MAX_MEMBERS", MAX_MEMBERS, 8)
     check("out-of-range count falls back to 1-member price", price_for(99), EXPECTED_PRICES[1])

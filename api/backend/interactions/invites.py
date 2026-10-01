@@ -133,6 +133,9 @@ class GroupInviteHandler:
     to groups.users."""
 
     kind = "group"
+    # Group links never expire (expires_at stored NULL); the group
+    # expiry config keys are deprecated and ignored here.
+    permanent = True
     forbidden_create_msg = "You can't create an invite link for this group."
     forbidden_msg = "Not a member of this group"
     success_result = {"joined": True, "already_member": False}
@@ -143,9 +146,9 @@ class GroupInviteHandler:
                        "You have too many active links for this group. Revoke one first.")
 
     def lock_target(self, cur, target_id: str):
-        """Lock + return (title, users, creator_id, photo_key), or None."""
+        """Lock + return (title, users, creator_id, photo_key, max_members), or None."""
         cur.execute(
-            "SELECT title, COALESCE(users, '{}'), creator_id, photo_key "
+            "SELECT title, COALESCE(users, '{}'), creator_id, photo_key, max_members "
             "FROM groups WHERE _id = %s FOR UPDATE",
             (target_id,),
         )
@@ -153,7 +156,8 @@ class GroupInviteHandler:
 
     def read_target(self, cur, target_id: str):
         cur.execute(
-            "SELECT title, COALESCE(users, '{}'), creator_id, photo_key FROM groups WHERE _id = %s",
+            "SELECT title, COALESCE(users, '{}'), creator_id, photo_key, max_members "
+            "FROM groups WHERE _id = %s",
             (target_id,),
         )
         return cur.fetchone()
@@ -177,6 +181,11 @@ class GroupInviteHandler:
         return None
 
     def redeem_precheck(self, cur, user_id: str, target_id: str, row):
+        # Member cap (groups.max_members, NULL = unlimited). ``row`` was read
+        # under the group row lock, so this is atomic with the append. Existing
+        # members never reach here (existing_outcome returns first).
+        if row[4] is not None and len(row[1]) >= row[4]:
+            return "group_full", InviteError("group_full", 409, "This group is full.")
         if self.has_blocked_relationship(cur, user_id, target_id):
             return "blocked", InviteError("blocked", 403, "You can't join this group.")
         return None
@@ -194,7 +203,8 @@ class GroupInviteHandler:
     def apply(self, cur, user_id: str, target_id: str) -> bool:
         cur.execute(
             "UPDATE groups SET users = array_append(COALESCE(users, '{}'), %s) "
-            "WHERE _id = %s AND NOT (%s = ANY(COALESCE(users, '{}')))",
+            "WHERE _id = %s AND NOT (%s = ANY(COALESCE(users, '{}'))) "
+            "AND (max_members IS NULL OR COALESCE(cardinality(users), 0) < max_members)",
             (user_id, target_id, user_id),
         )
         if cur.rowcount != 1:
@@ -203,13 +213,15 @@ class GroupInviteHandler:
 
     def preview(self, cur, target_id: str, created_by: str) -> dict | None:
         cur.execute(
-            "SELECT title, photo_key, COALESCE(users, '{}') FROM groups WHERE _id = %s",
+            "SELECT title, photo_key, COALESCE(users, '{}'), max_members FROM groups WHERE _id = %s",
             (target_id,),
         )
         row = cur.fetchone()
         if not row:
             return None
-        title, photo_key, users = row
+        title, photo_key, users, max_members = row
+        if max_members is not None and len(users) >= max_members:
+            return None  # full group: uniform not_found, and the cap isn't leaked
         inviter = None
         if str(created_by) in users:  # a departed inviter's name isn't shown
             cur.execute("SELECT username FROM users WHERE _id = %s", (created_by,))
@@ -237,6 +249,7 @@ class SubscriptionInviteHandler:
     (owner_id, plan_type, status, max_members, current_period_end)."""
 
     kind = "subscription"
+    permanent = False
     forbidden_create_msg = "Only the plan owner can create invite links."
     forbidden_msg = "Only the plan owner can manage invite links."
     success_result = {"joined": False, "already_member": False, "requested": True, "pending": True}
@@ -382,16 +395,21 @@ class InvitesManager(DBManager):
         cfg = get_invites_config()
         handler = _handler(kind)
         lim = handler.limits(cfg)
-        days = lim.default_days if expires_in_days is None else expires_in_days
         uses = lim.default_uses if max_uses is None else max_uses
-        if days not in lim.allowed_days or uses not in lim.allowed_uses:
+        if handler.permanent:
+            # Group links never expire; any client-sent expires_in_days
+            # (old clients) is accepted and ignored.
+            days = None
+        else:
+            days = lim.default_days if expires_in_days is None else expires_in_days
+        if (days is not None and days not in lim.allowed_days) or uses not in lim.allowed_uses:
             raise InviteError("bad_request", 422, "That expiry or use limit isn't allowed.")
         tid = _as_uuid(target_id)
         if tid is None:
             raise InviteError("forbidden", 403, handler.forbidden_create_msg)
         token = generate_token()
         token_hash = hash_token(token)
-        expires_at = datetime.now(timezone.utc) + timedelta(days=days)
+        expires_at = None if days is None else datetime.now(timezone.utc) + timedelta(days=days)
         try:
             row = handler.lock_target(self.cur, tid)  # also serializes the cap check
             if not row or not handler.is_actor(row, self.user_id):
@@ -399,7 +417,7 @@ class InvitesManager(DBManager):
             handler.create_precheck(self.cur, row, tid)
             self.cur.execute(
                 "SELECT COUNT(*) FROM invites WHERE kind = %s AND target_id = %s AND created_by = %s "
-                "AND revoked_at IS NULL AND expires_at > NOW() AND use_count < max_uses",
+                "AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > NOW()) AND use_count < max_uses",
                 (kind, tid, self.user_id),
             )
             if self.cur.fetchone()[0] >= lim.max_active:
@@ -415,13 +433,13 @@ class InvitesManager(DBManager):
             self.conn.rollback()
             raise
         _audit("create", invite=invite_id, ref=_ref(token_hash), kind=kind, target=tid,
-               user=self.user_id, ip=ip, expires_at=expires_at.isoformat(), max_uses=uses)
+               user=self.user_id, ip=ip, expires_at=expires_at.isoformat() if expires_at else "never", max_uses=uses)
         return {
             "invite_id": str(invite_id),
             "token": token,
             "url": f"{cfg.public_base_url}/join/{token}",
             "created_at": created_at.isoformat(),
-            "expires_at": expires_at.isoformat(),
+            "expires_at": expires_at.isoformat() if expires_at else None,
             "max_uses": uses,
             "use_count": 0,
         }
@@ -447,7 +465,7 @@ class InvitesManager(DBManager):
                 "SELECT i._id, i.created_by, u.username, i.created_at, i.expires_at, i.max_uses, i.use_count "
                 "FROM invites i JOIN users u ON u._id = i.created_by "
                 "WHERE i.kind = %s AND i.target_id = %s AND i.revoked_at IS NULL "
-                "AND i.expires_at > NOW() AND i.use_count < i.max_uses "
+                "AND (i.expires_at IS NULL OR i.expires_at > NOW()) AND i.use_count < i.max_uses "
                 + ("" if manager else "AND i.created_by = %s ")
                 + "ORDER BY i.created_at DESC",
                 (kind, tid) if manager else (kind, tid, self.user_id),
@@ -463,7 +481,7 @@ class InvitesManager(DBManager):
                 "created_by_username": r[2],
                 "is_mine": str(r[1]) == self.user_id,
                 "created_at": r[3].isoformat(),
-                "expires_at": r[4].isoformat(),
+                "expires_at": r[4].isoformat() if r[4] else None,
                 "max_uses": r[5],
                 "use_count": r[6],
                 "remaining_uses": r[5] - r[6],
@@ -552,7 +570,7 @@ class InvitesManager(DBManager):
         try:
             self.cur.execute(
                 "SELECT kind, target_id, created_by FROM invites WHERE token_hash = %s "
-                "AND revoked_at IS NULL AND expires_at > NOW() AND use_count < max_uses",
+                "AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > NOW()) AND use_count < max_uses",
                 (token_hash,),
             )
             row = self.cur.fetchone()
@@ -625,13 +643,13 @@ class InvitesManager(DBManager):
             # use can only ever produce one winner.
             self.cur.execute(
                 "UPDATE invites SET use_count = use_count + 1 WHERE _id = %s "
-                "AND revoked_at IS NULL AND expires_at > NOW() AND use_count < max_uses "
+                "AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > NOW()) AND use_count < max_uses "
                 "RETURNING use_count",
                 (invite_id,),
             )
             if self.cur.fetchone() is None:
                 self.cur.execute(
-                    "SELECT revoked_at IS NOT NULL, expires_at <= NOW(), use_count >= max_uses "
+                    "SELECT revoked_at IS NOT NULL, COALESCE(expires_at <= NOW(), false), use_count >= max_uses "
                     "FROM invites WHERE _id = %s", (invite_id,))
                 st = self.cur.fetchone()
                 self.conn.rollback()

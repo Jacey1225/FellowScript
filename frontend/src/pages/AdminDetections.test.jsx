@@ -89,7 +89,7 @@ describe('AdminDetections — self-guard (independent of AdminGate)', () => {
     renderPage();
 
     expect(await screen.findByText('Sign In Page')).toBeInTheDocument();
-    expect(screen.queryByText('Error Detections')).not.toBeInTheDocument();
+    expect(screen.queryByText('Error logs')).not.toBeInTheDocument();
   });
 
   test('403 (authenticated, non-admin) redirects home, rendering no admin content', async () => {
@@ -97,7 +97,7 @@ describe('AdminDetections — self-guard (independent of AdminGate)', () => {
     renderPage();
 
     expect(await screen.findByText('Home Page')).toBeInTheDocument();
-    expect(screen.queryByText('Error Detections')).not.toBeInTheDocument();
+    expect(screen.queryByText('Error logs')).not.toBeInTheDocument();
   });
 });
 
@@ -109,10 +109,10 @@ describe('AdminDetections — loading / empty / error states', () => {
 
     // Blank gate spinner while `checked` is still false.
     expect(container.querySelector('.ant-spin')).toBeTruthy();
-    expect(screen.queryByText('Error Detections')).not.toBeInTheDocument();
+    expect(screen.queryByText('Error logs')).not.toBeInTheDocument();
 
     resolveFetch(jsonResponse(200, { items: [], total: 0, limit: 20, offset: 0 }));
-    await screen.findByText('Error Detections');
+    await screen.findByText('Error logs');
   });
 
   test('renders the empty state when there are no matching detections', async () => {
@@ -196,7 +196,7 @@ describe('AdminDetections — desktop (>1024px) feed', () => {
     setDesktop(true);
     global.fetch.mockResolvedValueOnce(jsonResponse(200, { items: [makeItem()], total: 1, limit: 20, offset: 0 }));
     renderPage();
-    await screen.findByText('Error Detections');
+    await screen.findByText('Error logs');
 
     expect(screen.queryByRole('group', { name: 'Filter by log group and time range' })).not.toBeInTheDocument();
   });
@@ -207,7 +207,7 @@ describe('AdminDetections — desktop filters (Select + RangePicker) round-trip'
     setDesktop(true);
     global.fetch.mockResolvedValueOnce(jsonResponse(200, { items: [makeItem()], total: 1, limit: 20, offset: 0 }));
     const { container } = renderPage();
-    await screen.findByText('Error Detections');
+    await screen.findByText('Error logs');
 
     global.fetch.mockResolvedValueOnce(jsonResponse(200, { items: [], total: 0, limit: 20, offset: 0 }));
 
@@ -226,7 +226,7 @@ describe('AdminDetections — desktop filters (Select + RangePicker) round-trip'
     setDesktop(true);
     global.fetch.mockResolvedValueOnce(jsonResponse(200, { items: [makeItem()], total: 1, limit: 20, offset: 0 }));
     const { container } = renderPage();
-    await screen.findByText('Error Detections');
+    await screen.findByText('Error logs');
 
     global.fetch.mockResolvedValueOnce(jsonResponse(200, { items: [], total: 0, limit: 20, offset: 0 }));
 
@@ -252,7 +252,7 @@ describe('AdminDetections — pagination (desktop)', () => {
       jsonResponse(200, { items: [makeItem()], total: 45, limit: 20, offset: 0 })
     );
     renderPage();
-    await screen.findByText('Error Detections');
+    await screen.findByText('Error logs');
     // showTotal renders "1–20 of 45"
     expect(await screen.findByText('1–20 of 45')).toBeInTheDocument();
 
@@ -305,7 +305,7 @@ describe('AdminDetections — mobile (≤1024px) two-line row', () => {
 
     // List stays mounted underneath (scroll position preserved -- nothing
     // unmounted/re-fetched for the list itself).
-    expect(screen.getByText('Error Detections')).toBeInTheDocument();
+    expect(screen.getByText('Error logs')).toBeInTheDocument();
 
     // No route navigation happened: still on /admin.
     expect(screen.queryByText('Detail Page')).not.toBeInTheDocument();
@@ -340,7 +340,7 @@ describe('AdminDetections — mobile chip-filter strip', () => {
     setDesktop(false);
     global.fetch.mockResolvedValueOnce(jsonResponse(200, { items: [], total: 0, limit: 20, offset: 0 }));
     renderPage();
-    await screen.findByText('Error Detections');
+    await screen.findByText('Error logs');
 
     const strip = screen.getByRole('group', { name: 'Filter by log group and time range' });
     const buttons = strip.querySelectorAll('button');
@@ -359,7 +359,7 @@ describe('AdminDetections — mobile chip-filter strip', () => {
     setDesktop(false);
     global.fetch.mockResolvedValueOnce(jsonResponse(200, { items: [], total: 0, limit: 20, offset: 0 }));
     renderPage();
-    await screen.findByText('Error Detections');
+    await screen.findByText('Error logs');
 
     global.fetch.mockResolvedValueOnce(jsonResponse(200, { items: [], total: 0, limit: 20, offset: 0 }));
     fireEvent.click(screen.getByTitle('/fellowscript/nginx/access'));
@@ -376,7 +376,7 @@ describe('AdminDetections — mobile chip-filter strip', () => {
     setDesktop(false);
     global.fetch.mockResolvedValueOnce(jsonResponse(200, { items: [], total: 0, limit: 20, offset: 0 }));
     renderPage();
-    await screen.findByText('Error Detections');
+    await screen.findByText('Error logs');
 
     const timePill = screen.getByRole('button', { name: /^Time:/ });
     timePill.focus();

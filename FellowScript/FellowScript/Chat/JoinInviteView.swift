@@ -12,7 +12,7 @@ import Combine
 
 /// Why a preview/redeem failed, with the exact copy from design-notes.md.
 enum InviteFailure: Equatable {
-    case invalid, expired, revoked, full, blocked, rateLimited, network
+    case invalid, expired, revoked, full, groupFull, blocked, rateLimited, network
     /// Subscription links only: the caller is already on a different paid plan.
     case otherPlan
 
@@ -22,7 +22,12 @@ enum InviteFailure: Equatable {
         case 429:          self = .rateLimited
         case 404:          self = .invalid
         case 410:          self = error.code == "revoked" ? .revoked : .expired
-        case 409:          self = error.code == "other_plan" ? .otherPlan : .full
+        case 409:
+            switch error.code {
+            case "other_plan": self = .otherPlan
+            case "group_full": self = .groupFull
+            default:           self = .full
+            }
         case 403:          self = .blocked
         default:           self = .network
         }
@@ -34,6 +39,7 @@ enum InviteFailure: Equatable {
         case .expired:     return "This invite link has expired."
         case .revoked:     return "This invite link was revoked."
         case .full:        return "This invite link has reached its limit."
+        case .groupFull:   return "This group is full."
         case .blocked:     return "You can't join this group."
         case .rateLimited: return "Too many tries."
         case .network:     return "Couldn't reach FellowScript."
@@ -54,6 +60,7 @@ enum InviteFailure: Equatable {
         case .blocked:     return nil
         case .rateLimited: return "Wait a minute and try again."
         case .network:     return "Check your connection and try again."
+        case .groupFull:   return "Ask the group owner to make room, then open the link again."
         case .otherPlan:   return "Leave your current plan first, then open this link again to request a seat."
         }
     }
