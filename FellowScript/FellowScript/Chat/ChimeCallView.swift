@@ -138,6 +138,9 @@ final class CallController: ObservableObject {
                 try await service.summarizeSession(userId: userId, agentId: agentId,
                                                     session: session, groupId: session.group_id)
             } catch {
+                // Free plan: session summaries are subscribers-only. The shared
+                // upgrade prompt replaces the generic "couldn't put together" toast.
+                if UpgradePromptCenter.shared.present(for: error) { return }
                 RefreshDiagnostics.summarizeOutcome(stage: stage, errorClass: Self.summarizeErrorClass(error))
                 self.showSummarizeNotice(
                     "We couldn't put together your session summary this time — check back in your notes in a bit."

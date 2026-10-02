@@ -35,6 +35,7 @@ import PhotosUI
 struct AccountView: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.accessibilityReduceMotion) var reduceMotion
+    @ObservedObject var upgradeCenter = UpgradePromptCenter.shared
     @StateObject var vm = AccountViewModel()
     @ObservedObject var store = StoreKitManager.shared
 
@@ -119,6 +120,7 @@ struct AccountView: View {
                                center: UnitPoint(x: 0.92, y: 0.60), startRadius: 10, endRadius: 340)
                     .ignoresSafeArea()
 
+                ScrollViewReader { scrollProxy in
                 ScrollView {
                     VStack(spacing: 20) {
                         // ── Profile header (avatar + name) ────────────────────
@@ -129,6 +131,7 @@ struct AccountView: View {
 
                         // ── Subscription ───────────────────────────────────────
                         subscriptionSection
+                            .id("subscriptionSection")
 
                         // ── Plan usage ─────────────────────────────────────────
                         usageSection
@@ -176,6 +179,15 @@ struct AccountView: View {
                 .refreshable {
                     await refreshAccountData()
                 }
+                // Upgrade prompt "Subscribe": scroll to the subscription section
+                // (animated only when Reduce Motion is off), then clear the signal.
+                .onChange(of: upgradeCenter.scrollToSubscription) { _, wanted in
+                    if wanted { scrollToSubscriptionSection(scrollProxy) }
+                }
+                .onAppear {
+                    if upgradeCenter.scrollToSubscription { scrollToSubscriptionSection(scrollProxy) }
+                }
+                }
             }
             .navigationTitle("Account")
             .navigationBarTitleDisplayMode(.large)
@@ -187,6 +199,10 @@ struct AccountView: View {
         // 20260831-interaction-polish-conventions) — covers every TextField
         // in this screen's Edit Profile / Danger Zone sections below.
         .dismissesKeyboardOnScrollAndTap()
+        // A blocked action means the meters just changed (e.g. now full): refresh them.
+        .onChange(of: upgradeCenter.blockCount) { _, _ in
+            Task { await vm.refreshUsage() }
+        }
         .task {
             if let user = appState.currentUser {
                 await vm.load(service: appState.service, user: user)

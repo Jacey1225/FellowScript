@@ -20,7 +20,7 @@ FellowScript is a faith-based Bible study platform for reading scripture, taking
 | Devotions | Collaborative devotion plans shared across a group |
 | Scheduled devotions | Pick a time and a prompt; every day at that time your AI study partner writes a devotion for you, even when the app is closed (internal name: agent heartbeats) |
 | Notifications | In-app notifications for group activity and your scheduled devotions |
-| Subscriptions | Free tier (10 notes per week, 1 scheduled devotion in total) + Individual and Group paid plans via Stripe (web) or Apple IAP (iOS) |
+| Subscriptions | Free tier (5 notes per week, 1 scheduled devotion in total) + Individual and Group paid plans via Stripe (web) or Apple IAP (iOS) |
 | Account | Profile management and account deletion for web and iOS |
 
 ### Naming: user-facing term vs. internal identifiers

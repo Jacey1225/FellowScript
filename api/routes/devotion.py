@@ -4,6 +4,7 @@ from backend.interactions.devotion import DevotionManager, is_ring_enabled, is_r
 from backend.auth.dependencies import get_current_user, require_match
 from backend.moderation.content_filter import check_clean, ContentRejected, rejection_message
 from backend.rate_limiting import limiter
+from backend.subscription.limits import LimitsManager
 import boto3
 import logging
 import uuid
@@ -63,9 +64,26 @@ async def create_devotion(req: DevotionRequest, current_user: str = Depends(get_
     if req.user_id != current_user:
         raise HTTPException(status_code=403, detail="Forbidden")
     _check_devotion_clean(req.devotion)
+    # Free plan: at most one active (not yet ended) session created at a time.
+    # The creator is the authenticated caller, never the body's creator_id.
+    # A per-user advisory lock is held across check + insert so concurrent
+    # creates cannot both pass the cap.
+    req.devotion.creator_id = current_user
+    limits = LimitsManager()
+    try:
+        limits.lock_session_creation(current_user)
+        gate = limits.check(current_user, "sessions")
+        if not gate["allowed"]:
+            raise HTTPException(status_code=403, detail=gate)
+        saver = DevotionManager()
+        try:
+            session_id = saver.save_devotion(req.devotion)
+        finally:
+            saver.close()
+    finally:
+        limits.close()  # closing the connection releases the advisory lock
     db = DevotionManager()
     try:
-        session_id = db.save_devotion(req.devotion)
         await _notify_session_created(db, req.devotion, session_id, current_user)
         return {"id": session_id}
     finally:
@@ -107,7 +125,23 @@ async def update_devotion(req: DevotionRequest, current_user: str = Depends(get_
             raise HTTPException(status_code=404, detail="Session not found")
         if not db.is_authorized(session, current_user):
             raise HTTPException(status_code=403, detail="Not authorized")
-        ok = db.update_devotion(req.devotion_id, req.devotion)
+        # creator_id is never client-settable on update (it would let any
+        # participant take over a session and its entitlement accounting).
+        creator = (session.get("creator_id") if isinstance(session, dict) else None) or ""
+        req.devotion.creator_id = str(creator)
+        if creator:
+            limits = LimitsManager()
+            try:
+                limits.lock_session_creation(str(creator))
+                gate = limits.check_session_reactivation(
+                    str(creator), req.devotion_id, req.devotion.recurring, req.devotion.time_end or None)
+                if not gate["allowed"]:
+                    raise HTTPException(status_code=403, detail=gate)
+                ok = db.update_devotion(req.devotion_id, req.devotion)
+            finally:
+                limits.close()
+        else:
+            ok = db.update_devotion(req.devotion_id, req.devotion)
         if not ok:
             raise HTTPException(status_code=404, detail="Session not found")
         return {"ok": True}

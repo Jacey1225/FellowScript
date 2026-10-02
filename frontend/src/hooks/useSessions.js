@@ -7,6 +7,7 @@ import {
   MeetingSessionConfiguration,
 } from 'amazon-chime-sdk-js';
 import { message } from 'antd';
+import { handleBlockedResponse } from '../lib/upgradePrompt.js';
 import { API } from '../config.js';
 
 // For 1-on-1 friend chats the two users each see the other as currentContact,
@@ -163,6 +164,7 @@ export function useSessions({ user, wsRef, currentContact }) {
         }),
       });
       if (!res.ok) {
+        if (await handleBlockedResponse(res)) return false;
         message.error('Could not create that session. Please try again.');
         return false;
       }

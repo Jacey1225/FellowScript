@@ -7,6 +7,7 @@
 // not exactly {browse: true} means "hidden". Responses carry no PII; nothing
 // here logs listing text or filter values.
 import { API } from '../config.js';
+import { blockedFromBody } from './upgradePrompt.js';
 
 export class ExplorerApiError extends Error {
   constructor(message, status, code = null, retryAfter = null) {
@@ -53,8 +54,10 @@ export async function request(path, options, fallback) {
   if (!res.ok) {
     let message = fallback;
     let code = null;
+    let blocked = null;
     try {
       const d = await res.json();
+      blocked = blockedFromBody(res.status, d);
       const detail = d?.detail;
       if (detail && typeof detail === 'object' && !Array.isArray(detail)) {
         if (typeof detail.code === 'string') code = detail.code;
@@ -66,7 +69,9 @@ export async function request(path, options, fallback) {
       // Non-JSON error body: keep the fallback copy.
     }
     const retryAfter = res.status === 429 ? parseRetryAfter(res.headers?.get?.('Retry-After')) : null;
-    throw new ExplorerApiError(message, res.status, code, retryAfter);
+    const err = new ExplorerApiError(message, res.status, code, retryAfter);
+    if (blocked) err.blocked = blocked; // Free-plan block: callers show the upgrade modal.
+    throw err;
   }
   if (res.status === 204) return {};
   return res.json();

@@ -205,6 +205,8 @@ final class DashboardViewModel: ObservableObject {
             notes[savedId] = updated
             return nil
         } catch {
+            // Free-plan block: shared upgrade prompt, editor stays open without an alert.
+            if UpgradePromptCenter.shared.present(for: error) { return PlanBlock.handledMarker }
             return error.localizedDescription
         }
     }

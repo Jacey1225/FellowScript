@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, WebSocket, Depends
 from backend.interactions.agent import AgentManager, detect_leaked_action_json
 from backend.interactions.groups import GroupsManager
 from backend.errors import SaveFailedError, NoSummarizableContentError
-from backend.subscription.limits import check_limit
+from backend.subscription.limits import check_limit, check_paid_only
 from backend.auth.dependencies import require_match, authenticate_ws
 from schemas.agent import AgentHeartbeats
 from schemas.agent import _DEFAULT_ROLE as DEFAULT_ROLE
@@ -298,6 +298,11 @@ async def summarize_session(user_id: str, agent_id: str, body: dict, _: str = De
     # cap and expects 403) -- a capped user is rejected the same way
     # regardless of what their session contains, without the model ever
     # being invoked either way.
+    # Session summaries are a paid-only feature (task 20261002-free-plan-limits-ui):
+    # checked first, fail closed, so a free user never reaches the model.
+    paid_gate = check_paid_only(user_id, "session_summaries")
+    if not paid_gate["allowed"]:
+        raise HTTPException(status_code=403, detail=paid_gate)
     gate = check_limit(user_id, "notes")
     if not gate["allowed"]:
         raise HTTPException(status_code=403, detail=gate)

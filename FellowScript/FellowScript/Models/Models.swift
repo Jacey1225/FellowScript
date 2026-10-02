@@ -189,6 +189,9 @@ struct FSUsage: Codable {
     var resources:   [String: FSUsageResource] = [:]
     /// nil when the server predates the per-note cap or the field is absent.
     var note_chars:  FSNoteChars? = nil
+    /// Features with no free allowance (session_summaries, explorer_publish).
+    /// nil when the server predates them. See PlanBlock.swift.
+    var paid_only:   [String: FSPaidOnlyFlag]? = nil
 
     var notes:              FSUsageResource { resources["notes"] ?? FSUsageResource() }
     var agentEvents:        FSUsageResource { resources["agent_events"] ?? FSUsageResource() }

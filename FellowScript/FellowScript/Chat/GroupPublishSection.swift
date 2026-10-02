@@ -32,12 +32,11 @@ struct GroupPublishSection: View {
     let capabilities: FSCapabilities
     let context: GroupInfoSectionContext
     @State private var destination: ExploreDestination?
+    @EnvironmentObject private var appState: AppState
 
     var body: some View {
         Button {
-            if let url = ExploreEntry.publishURL(from: capabilities, groupId: context.groupId) {
-                destination = ExploreDestination(url: url)
-            }
+            Task { await openPublish() }
         } label: {
             HStack(spacing: Theme.spacingSM) {
                 Image(systemName: "square.and.arrow.up").foregroundColor(Theme.gold)
@@ -65,6 +64,25 @@ struct GroupPublishSection: View {
         .accessibilityAddTraits(.isButton)
         .accessibilityIdentifier("publish-to-explorer-row")
         .exploreSafariSheet($destination)
+    }
+
+    /// Publishing is subscribers-only (task 20261002-free-plan-limits-ui). The
+    /// listing form itself lives on the web (which shows the same prompt if the
+    /// server blocks it); here the row pre-empts the round trip when the usage
+    /// payload already says this user may not publish. A usage fetch failure
+    /// never blocks: the server stays authoritative.
+    @MainActor
+    private func openPublish() async {
+        if let uid = appState.currentUser?.user_id,
+           let usage = try? await appState.service.fetchUsage(userId: uid),
+           let gate = usage.paid_only?["explorer_publish"], !gate.allowed {
+            UpgradePromptCenter.shared.present(
+                for: AppError.limitReached(resource: "explorer_publish", used: 0, limit: 0))
+            return
+        }
+        if let url = ExploreEntry.publishURL(from: capabilities, groupId: context.groupId) {
+            destination = ExploreDestination(url: url)
+        }
     }
 
     static let registration = GroupInfoExtraSection(

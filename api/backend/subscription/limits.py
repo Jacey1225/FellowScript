@@ -1,7 +1,8 @@
 """Free-tier usage gateway.
 
-Users without an active subscription are capped on how many notes and agent
-events (heartbeats) they can create. Subscribed users (individual or group,
+Users without an active subscription are capped on how many notes, agent
+events (heartbeats), announcements and active sessions they can create, and
+are blocked from paid-only features (session summaries, Explorer publish). Subscribed users (individual or group,
 trialing or active) are unlimited and skip counting.
 
 Enforcement lives here and is called from the create routes, so the caps hold
@@ -13,7 +14,7 @@ The former `agent_notifications` gated resource (a cap on user-authored
 """
 
 from db import DBManager
-from schemas.subscription import FREE_NOTE_CHAR_LIMIT, PAID_NOTE_CHAR_LIMIT, FREE_LIMITS, NOTES_WINDOW_DAYS, ANNOUNCEMENTS_WINDOW_DAYS, EXPIRY_GRACE_DAYS
+from schemas.subscription import FREE_NOTE_CHAR_LIMIT, PAID_NOTE_CHAR_LIMIT, FREE_LIMITS, PAID_ONLY_RESOURCES, NOTES_WINDOW_DAYS, ANNOUNCEMENTS_WINDOW_DAYS, EXPIRY_GRACE_DAYS
 
 
 class LimitsManager(DBManager):
@@ -67,6 +68,17 @@ class LimitsManager(DBManager):
                 "WHERE creator_id = %s AND created_at >= now() - (%s || ' days')::interval",
                 (user_id, ANNOUNCEMENTS_WINDOW_DAYS),
             )
+        elif resource == "sessions":
+            # Sessions (devotions table) the user created that have not ended:
+            # recurring sessions never end (they roll forward), and a missing
+            # time_end is open-ended, so both count as active. No lifetime
+            # cap: an ended session stops counting.
+            self.cur.execute(
+                "SELECT COUNT(*) FROM devotions "
+                "WHERE creator_id = %s "
+                "AND (recurring = TRUE OR time_end IS NULL OR time_end >= now())",
+                (user_id,),
+            )
         else:
             return 0
         row = self.cur.fetchone()
@@ -95,6 +107,58 @@ class LimitsManager(DBManager):
             "used": used,
             "limit": limit,
             "remaining": max(0, limit - used),
+        }
+
+    def lock_session_creation(self, user_id: str) -> None:
+        """Serialize a user's session creates/reactivations (session-level
+        advisory lock, released when this manager's connection closes). Held
+        across check + insert so concurrent requests cannot both pass the cap."""
+        self.cur.execute("SELECT pg_advisory_lock(hashtextextended(%s, 0))", ("sessions:" + str(user_id),))
+
+    def check_session_reactivation(self, user_id: str, session_id: str,
+                                   new_recurring: bool, new_time_end: str | None) -> dict:
+        """Gate a PUT that would turn an ended session of ``user_id`` back into
+        an active one (extending ``time_end`` / setting recurring), which would
+        otherwise dodge the create cap. Only the ended -> active transition is
+        gated, so a free user's existing sessions stay editable."""
+        limit = FREE_LIMITS["sessions"]
+        ok = {"resource": "sessions", "allowed": True, "unlimited": False,
+              "used": 0, "limit": limit, "remaining": limit}
+        if self.is_subscribed(user_id):
+            return {**ok, "unlimited": True, "remaining": None}
+        self.cur.execute(
+            "SELECT (recurring = TRUE OR time_end IS NULL OR time_end >= now()) "
+            "FROM devotions WHERE _id = %s", (session_id,))
+        row = self.cur.fetchone()
+        was_active = bool(row and row[0])
+        self.cur.execute(
+            "SELECT (%s::boolean OR %s::timestamptz IS NULL OR %s::timestamptz >= now())",
+            (bool(new_recurring), new_time_end or None, new_time_end or None))
+        will_be_active = bool(self.cur.fetchone()[0])
+        if was_active or not will_be_active:
+            return ok
+        self.cur.execute(
+            "SELECT COUNT(*) FROM devotions WHERE creator_id = %s AND _id != %s "
+            "AND (recurring = TRUE OR time_end IS NULL OR time_end >= now())",
+            (user_id, session_id))
+        used = self.cur.fetchone()[0]
+        return {**ok, "allowed": used < limit, "used": used, "remaining": max(0, limit - used)}
+
+    def check_paid_only(self, user_id: str, resource: str) -> dict:
+        """Gate for a feature with no free allowance (``PAID_ONLY_RESOURCES``).
+
+        Fails closed: an unknown resource name, or a lookup error (propagates),
+        blocks. Subscribed users (incl. admin comp, trialing, grace) pass.
+        Body shape matches ``check`` plus ``paid_only: True`` so clients reuse
+        one detector keyed on ``resource``.
+        """
+        blocked_for_free = PAID_ONLY_RESOURCES.get(resource, True)
+        subscribed = self.is_subscribed(user_id)
+        allowed = subscribed or not blocked_for_free
+        return {
+            "resource": resource, "allowed": allowed, "unlimited": subscribed,
+            "used": 0, "limit": 0, "remaining": None if subscribed else 0,
+            "paid_only": True,
         }
 
     def check_note_chars(self, user_id: str, new_len: int, old_len: int | None = None) -> dict:
@@ -150,7 +214,14 @@ class LimitsManager(DBManager):
             "subscribed": subscribed,
             "plan_type": plan_type,
             "window_days": NOTES_WINDOW_DAYS,
+            "announcements_window_days": ANNOUNCEMENTS_WINDOW_DAYS,
             "resources": resources,
+            # Features with no free allowance: ``allowed`` is what this user
+            # may do right now; ``free_allowed`` is the plan rule itself.
+            "paid_only": {
+                name: {"allowed": subscribed or not blocked, "free_allowed": not blocked}
+                for name, blocked in PAID_ONLY_RESOURCES.items()
+            },
             # Per-note text length cap. Kept out of "resources" (those are
             # rolling counts). ``limit`` is the caller's per-plan cap (free 30,000,
             # paid 100,000); no plan is unlimited.
@@ -174,6 +245,16 @@ def check_limit(user_id: str, resource: str) -> dict:
     manager = LimitsManager()
     try:
         return manager.check(user_id, resource)
+    finally:
+        manager.close()
+
+
+def check_paid_only(user_id: str, resource: str) -> dict:
+    """Route-layer helper for paid-only gates; own connection, fails closed
+    (no empty-user_id pass-through, errors propagate and the action is not run)."""
+    manager = LimitsManager()
+    try:
+        return manager.check_paid_only(user_id, resource)
     finally:
         manager.close()
 

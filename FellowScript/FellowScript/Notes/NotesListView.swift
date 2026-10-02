@@ -135,10 +135,13 @@ struct NotesListView: View {
                 let uid = appState.currentUser?.user_id ?? ""
                 let ok = await vm.saveNote(saved, editingId: editingId, userId: uid)
                 if ok { return nil }
-                let msg = vm.saveError
-                vm.saveError = nil
-                return msg ?? "That note could not be saved. Please revise and try again."
+                return vm.failedSaveMessage()
             }
+        }
+        // "Subscribe" on the upgrade prompt: close any note sheets so the Account tab shows.
+        .onReceive(NotificationCenter.default.publisher(for: .fsOpenSubscriptionPlans)) { _ in
+            showEditor = false
+            detailNote = nil
         }
         .sheet(item: $detailNote) { note in
             // `editingId: saved.id` (not the outer `note.id`) -- task
@@ -166,9 +169,7 @@ struct NotesListView: View {
                 let uid = appState.currentUser?.user_id ?? ""
                 let ok = await vm.saveNote(saved, editingId: saved.id, userId: uid)
                 if ok { return nil }
-                let msg = vm.saveError
-                vm.saveError = nil
-                return msg ?? "That note could not be saved. Please revise and try again."
+                return vm.failedSaveMessage()
             }
         }
         .alert("Save Failed", isPresented: Binding(

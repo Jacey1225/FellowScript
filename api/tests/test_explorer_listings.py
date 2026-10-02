@@ -65,6 +65,7 @@ import main as main_module  # noqa: E402
 import db as db_module  # noqa: E402
 import schema_ddl  # noqa: E402
 from db import DBManager  # noqa: E402
+from _plan_common import grant_paid  # noqa: E402
 from backend.auth.sessions import SessionManager  # noqa: E402
 from backend.interactions import flags, lifecycle, listing_sweeper, listings, reports  # noqa: E402
 from backend.interactions.listing_content import ListingError  # noqa: E402
@@ -106,6 +107,7 @@ def make_user(suspended=False, terms=CURRENT_TERMS_VERSION):
       (uid, f"xl_{uid[:8]}", f"xl_{uid[:8]}@example.com", "2020-01-01" if suspended else None, terms),
       fetch=False)
     USERS.append(uid)
+    grant_paid(uid)  # Explorer publish is paid-only (20261002-free-plan-limits-ui)
     return uid
 
 

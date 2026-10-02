@@ -18,6 +18,7 @@ import {
   submitOwnerListing, unpublishOwnerListing, deleteOwnerListing,
 } from '../lib/explorerOwnerApi.js';
 import { setPendingExplore } from '../lib/pendingInvite.js';
+import { showUpgradePrompt } from '../lib/upgradePrompt.js';
 import '../styles/explore.css';
 
 // Task 20261001-explorer-listings step 10. /#/explore/manage: owner-only,
@@ -109,6 +110,11 @@ export default function ExploreManage() {
   }, [userId]);
 
   const handleError = useCallback((err) => {
+    // Free-plan block on publish: shared themed upgrade modal (task 20261002-free-plan-limits-ui).
+    if (err?.blocked) {
+      showUpgradePrompt(err.blocked);
+      return { kind: 'blocked', message: '' };
+    }
     const d = describeOwnerError(err);
     if (d.kind === 'off') { setGate('off'); return d; }
     if (d.kind === 'auth') { navigate('/signin', { replace: true }); return d; }

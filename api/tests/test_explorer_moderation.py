@@ -57,6 +57,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 import main as main_module  # noqa: E402
 from db import DBManager  # noqa: E402
+from _plan_common import grant_paid  # noqa: E402
 from backend.auth.sessions import SessionManager  # noqa: E402
 from backend.interactions import flags, lifecycle, listing_reports, listings, reports  # noqa: E402
 from backend.interactions.listings_config import get_listings_config  # noqa: E402
@@ -97,6 +98,7 @@ def make_user(admin=False, suspended=False):
       (uid, f"xm_{uid[:8]}", f"xm_{uid[:8]}@example.com", admin, "2020-01-01" if suspended else None,
        CURRENT_TERMS_VERSION), fetch=False)
     USERS.append(uid)
+    grant_paid(uid)  # Explorer publish is paid-only (20261002-free-plan-limits-ui)
     return uid
 
 

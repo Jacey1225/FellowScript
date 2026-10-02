@@ -928,7 +928,7 @@ final class MockDataService: DataServiceProtocol {
     static let mockActiveUsage = FSUsage(
         subscribed: true, plan_type: "group", window_days: 7,
         resources: [
-            "notes":        FSUsageResource(unlimited: true, used: 0, limit: 10, remaining: nil),
+            "notes":        FSUsageResource(unlimited: true, used: 0, limit: 5, remaining: nil),
             "agent_events": FSUsageResource(unlimited: true, used: 0, limit: 1,  remaining: nil),
         ]
     )

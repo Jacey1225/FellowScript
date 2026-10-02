@@ -152,6 +152,7 @@ struct ChatRootView: View {
         .exploreSafariSheet($exploreDestination)
         .sheet(item: $activeContact) { contact in
             ChatThreadView(contact: contact, user: appState.currentUser)
+                .upgradePrompt(onSubscribe: { activeContact = nil })
         }
         .sheet(item: $activeAgent) { agent in
             AgentChatView(agent: agent)

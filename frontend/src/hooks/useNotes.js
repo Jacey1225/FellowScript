@@ -1,16 +1,18 @@
 import { useState, useCallback, useRef } from 'react';
 import { message } from 'antd';
 import { API } from '../config.js';
+import { blockedFromBody, showUpgradePrompt } from '../lib/upgradePrompt.js';
 import { verseRefLabel, unwrapNotesEnvelope } from '../utils.js';
 
 // Shows a friendly upgrade prompt when the backend rejects a create with 403
 // (free-tier limit reached). Returns true if it handled a limit response.
 async function handleLimit(res, label, plan) {
   if (res.status !== 403) return false;
-  let used, limit, resource;
+  let used, limit, resource, blocked = null;
   try {
     const body = await res.json();
     ({ used, limit, resource } = body.detail || {});
+    blocked = blockedFromBody(res.status, body);
   } catch {}
   if (resource === 'note_chars') {
     // Per-note length cap (not a weekly count). The draft stays in the editor;
@@ -22,6 +24,11 @@ async function handleLimit(res, label, plan) {
       ? `This note is too long to save: the limit is ${fmt(limit)} characters${over > 0 ? ` (${fmt(over)} over)` : ''}. Shorten it and try again; your text is kept.`
       : 'This note is too long to save. Shorten it and try again; your text is kept.';
     message.warning(plan && plan.subscribed === false ? `${base} Upgrade for a higher limit.` : base);
+    return true;
+  }
+  if (blocked) {
+    // Shared themed "not available on the Free plan" modal (task 20261002-free-plan-limits-ui).
+    showUpgradePrompt(blocked);
     return true;
   }
   message.warning(

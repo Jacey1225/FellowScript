@@ -366,6 +366,8 @@ struct NoteEditorView: View {
         .dismissesKeyboardOnScrollAndTap()
         .onAppear { populate() }
         .task { await loadNoteCharLimit() }
+        // Free-plan note cap: shared upgrade prompt above the editor; Subscribe closes the editor.
+        .upgradePrompt(onSubscribe: { dismiss() })
         .alert("Couldn't Save Note", isPresented: Binding(
             get: { saveErrorMessage != nil },
             set: { if !$0 { saveErrorMessage = nil } }
@@ -644,7 +646,9 @@ struct NoteEditorView: View {
         Task {
             let errorMessage = await onSave?(saved)
             isSaving = false
-            if let errorMessage {
+            if errorMessage == PlanBlock.handledMarker {
+                // Upgrade prompt already shown (Free-plan block); keep the draft open.
+            } else if let errorMessage {
                 saveErrorMessage = errorMessage
             } else {
                 dismiss()

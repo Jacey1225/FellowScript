@@ -600,6 +600,23 @@ final class NotesViewModel: ObservableObject {
     /// NetworkService+Notes.swift and NotesViewModel.swift.
     @Published var refreshError: String? = nil
 
+    /// Set when the last saveNote was rejected by a Free-plan gate and the
+    /// upgrade prompt was shown instead of `saveError`. Editor closures read
+    /// and clear it (see `consumePlanBlock`).
+    var lastSaveBlockedByPlan = false
+
+    /// Editor `onSave` helper: the error string to hand back to NoteEditorView
+    /// after a failed save (`PlanBlock.handledMarker` when the prompt was shown).
+    func failedSaveMessage() -> String {
+        if lastSaveBlockedByPlan {
+            lastSaveBlockedByPlan = false
+            return PlanBlock.handledMarker
+        }
+        let msg = saveError
+        saveError = nil
+        return msg ?? "That note could not be saved. Please revise and try again."
+    }
+
     func saveNote(_ note: FSNote, editingId: String?, userId: String) async -> Bool {
         print("[VM] saveNote called — editingId=\(editingId ?? "nil") text.count=\(note.text.count)")
         do {
@@ -610,6 +627,12 @@ final class NotesViewModel: ObservableObject {
             return true
         } catch {
             print("[VM] saveNote FAILED — \(error)")
+            // Free-plan block (6th note this week): the shared upgrade prompt
+            // replaces the inline alert; the draft stays in the editor.
+            if UpgradePromptCenter.shared.present(for: error) {
+                lastSaveBlockedByPlan = true
+                return false
+            }
             saveError = error.localizedDescription
             return false
         }

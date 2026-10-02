@@ -28,7 +28,7 @@ describe('scheduled devotions wording', () => {
   });
 
   test('subscription card and Home use the new term', () => {
-    expect(sub).toContain('1 scheduled devotion');
+    expect(sub).toContain('Scheduled devotions');
     expect(sub).not.toContain('1 AI event');
     expect(home).toContain('1 scheduled devotion');
     expect(home).toContain('Unlimited scheduled devotions');

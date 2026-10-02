@@ -133,14 +133,15 @@ final class CallControllerSummarizeDiagnosticsRegressionTests: XCTestCase {
         XCTAssertFalse(notice.isEmpty)
     }
 
-    /// The weekly notes-cap 403 (`AppError.limitReached`, already
-    /// distinguished upstream before this fix) must still behave identically
-    /// — same warm toast, no regression from adding the new classification
-    /// branch alongside it.
-    func test_end_notesCapReached_surfacesWarmNotice_unchanged() async throws {
+    /// A plan-gate 403 (`AppError.limitReached`) on the summarize call is a
+    /// Free-plan block (task 20261002-free-plan-limits-ui): the shared upgrade
+    /// prompt replaces the generic warm toast, so there is no "couldn't put
+    /// together" notice (it would contradict the prompt).
+    func test_end_planBlock_showsUpgradePrompt_notWarmNotice() async throws {
+        UpgradePromptCenter.shared.dismiss()
         let service = ThrowingTestDataService()
         service.fetchAgentsResult = [FSAgent(id: "agent-1", user_id: "user-1", role: "", enabled: true, chats: [])]
-        service.summarizeSessionError = AppError.limitReached(resource: "notes", used: 10, limit: 10)
+        service.summarizeSessionError = AppError.limitReached(resource: "session_summaries", used: 0, limit: 0)
         let session = makeSession(summarize: true, creatorId: "user-1")
 
         let call = CallController.shared
@@ -149,8 +150,9 @@ final class CallControllerSummarizeDiagnosticsRegressionTests: XCTestCase {
         try await Task.sleep(nanoseconds: 300_000_000)
 
         XCTAssertEqual(service.summarizeSessionCallCount, 1)
-        let notice = try XCTUnwrap(call.summarizeNotice)
-        XCTAssertFalse(notice.isEmpty)
+        XCTAssertEqual(UpgradePromptCenter.shared.prompt?.resource, "session_summaries")
+        XCTAssertNil(call.summarizeNotice)
+        UpgradePromptCenter.shared.dismiss()
     }
 
     /// A generic/unclassified failure (e.g. a transient network hiccup whose

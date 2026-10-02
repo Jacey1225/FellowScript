@@ -2367,3 +2367,50 @@ body {
   .msg-more-btn, .group-threads-row { transition: none; }
   .group-threads-row:active { transform: none; }
 }
+
+/* ── Free-plan upgrade modal (task 20261002-free-plan-limits-ui) ──────────────
+   Matches .fs-signin-card: translucent warm-brown glass, soft gold border,
+   rounded corners. antd portals to <body>, so selectors are scoped by class. */
+.fs-upgrade-modal-wrap .ant-modal-mask,
+.ant-modal-mask:has(+ .fs-upgrade-modal-wrap) { background: rgba(14,9,4,0.62); backdrop-filter: blur(4px); }
+.fs-upgrade-modal .ant-modal-content {
+  background: rgba(92,68,42,0.34);
+  border: 1px solid rgba(255,225,170,0.28);
+  border-radius: 22px;
+  backdrop-filter: blur(14px);
+  box-shadow: 0 24px 60px rgba(0,0,0,0.45);
+  padding: 28px 28px 22px;
+}
+@supports not (backdrop-filter: blur(1px)) {
+  .fs-upgrade-modal .ant-modal-content { background: #3a2a17; }
+}
+.fs-upgrade-inner { display: flex; flex-direction: column; align-items: center; text-align: center; }
+.fs-upgrade-icon {
+  width: 64px; height: 64px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  font-size: 40px; color: var(--gold-light, #e8b04a);
+  background: rgba(214,160,70,0.16); border: 1px solid rgba(255,225,170,0.22); margin-bottom: 14px;
+}
+.fs-upgrade-icon .anticon { font-size: 30px; }
+.fs-upgrade-title { font-family: 'Lora', serif; font-size: 1.25rem; font-weight: 600; margin: 0 0 8px; color: var(--gold-light, #e8b04a); }
+.fs-upgrade-body { font-size: 0.95rem; line-height: 1.55; margin: 0 0 18px; color: rgba(244,228,193,0.92); }
+.fs-upgrade-modal .fs-upgrade-primary.ant-btn {
+  min-height: 44px; border-radius: 12px; border: none; font-weight: 600; color: #1a140f;
+  background: linear-gradient(135deg, var(--gold, #c8861a), var(--gold-light, #e8b04a));
+}
+.fs-upgrade-modal .fs-upgrade-secondary.ant-btn { min-height: 44px; margin-top: 6px; border-radius: 12px; color: rgba(244,228,193,0.8); }
+.fs-upgrade-modal .ant-btn:focus-visible { outline: 2px solid var(--gold, #c8861a); outline-offset: 2px; }
+[data-theme="light"] .fs-upgrade-modal .ant-modal-content { background: var(--widget-bg, rgba(246,238,220,0.99)); }
+[data-theme="light"] .fs-upgrade-body { color: rgba(40,28,14,0.9); }
+[data-theme="light"] .fs-upgrade-title { color: #7a4f0a; }
+[data-theme="light"] .fs-upgrade-modal .fs-upgrade-secondary.ant-btn { color: rgba(40,28,14,0.75); }
+.fs-upgrade-modal.ant-zoom-enter-active, .fs-upgrade-modal.ant-zoom-appear-active {
+  animation-duration: 280ms; animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+}
+.fs-upgrade-modal.ant-zoom-leave-active { animation-duration: 160ms; animation-timing-function: ease-in; }
+@media (prefers-reduced-motion: reduce) {
+  .fs-upgrade-modal.ant-zoom-enter-active, .fs-upgrade-modal.ant-zoom-appear-active,
+  .fs-upgrade-modal.ant-zoom-leave-active { animation-name: fsUpgradeFade; animation-duration: 120ms; }
+}
+@keyframes fsUpgradeFade { from { opacity: 0; } to { opacity: 1; } }
+.fs-sub-scope:focus { outline: none; }
+#subscription { scroll-margin-top: 80px; }

@@ -1,5 +1,7 @@
 from pydantic import BaseModel, Field
+import json
 import uuid
+from pathlib import Path
 from datetime import datetime
 
 # Server-authoritative price table for the single "group" plan tier. The host
@@ -57,17 +59,61 @@ ADMIN_COMP_PROVIDER = "admin_comp"
 #   - announcements: group announcements the user authored in the rolling
 #                    ANNOUNCEMENTS_WINDOW_DAYS window, across all groups,
 #                    counted from created_at (task 20260929-group-announcements)
+#   - sessions:     free users may CREATE at most ``sessions.max_active``
+#                   not-yet-ended sessions at a time (no lifetime cap);
+#                   joining is never limited (task 20261002-free-plan-limits-ui)
+#   - PAID_ONLY_RESOURCES: gates with no free allowance (session summaries,
+#                   Explorer publish/submit)
+#
+# Tunables live in api/config/free_limits.json (every key required, validated
+# eagerly at import so a bad file refuses to boot).
 #
 # The former `agent_notifications` cap (total user-authored "agentic"
 # notifications) was removed along with that subsystem — see
 # .claude/pipeline/20260826-activity-based-notifications.
+_FREE_LIMITS_PATH = Path(__file__).resolve().parents[1] / "config" / "free_limits.json"
+
+
+def _load_free_limits_config() -> dict:
+    try:
+        raw = json.loads(_FREE_LIMITS_PATH.read_text())["free_limits"]
+    except (OSError, ValueError, KeyError) as e:
+        raise RuntimeError(f"free_limits.json missing or invalid: {e}") from None
+    expected = {"counts", "sessions", "paid_only", "notes_window_days", "announcements_window_days"}
+    if set(raw) != expected:
+        raise RuntimeError(f"free_limits.json keys must be exactly {sorted(expected)}")
+
+    def _pos_int(v, name):
+        if isinstance(v, bool) or not isinstance(v, int) or v < 1:
+            raise RuntimeError(f"free_limits.json: {name} must be a positive integer")
+        return v
+
+    counts = raw["counts"]
+    if set(counts) != {"notes", "agent_events", "announcements"}:
+        raise RuntimeError("free_limits.json: counts keys must be notes, agent_events, announcements")
+    for k, v in counts.items():
+        _pos_int(v, f"counts.{k}")
+    if set(raw["sessions"]) != {"max_active"}:
+        raise RuntimeError("free_limits.json: sessions keys must be exactly max_active")
+    _pos_int(raw["sessions"]["max_active"], "sessions.max_active")
+    if set(raw["paid_only"]) != {"session_summaries", "explorer_publish"} or not all(
+        isinstance(v, bool) for v in raw["paid_only"].values()
+    ):
+        raise RuntimeError("free_limits.json: paid_only must be booleans for session_summaries, explorer_publish")
+    _pos_int(raw["notes_window_days"], "notes_window_days")
+    _pos_int(raw["announcements_window_days"], "announcements_window_days")
+    return raw
+
+
+_FREE_CFG = _load_free_limits_config()
 FREE_LIMITS: dict[str, int] = {
-    "notes": 10,
-    "agent_events": 1,
-    "announcements": 1,
+    **_FREE_CFG["counts"],
+    "sessions": _FREE_CFG["sessions"]["max_active"],
 }
-NOTES_WINDOW_DAYS = 7
-ANNOUNCEMENTS_WINDOW_DAYS = 7
+# Resources with no free allowance. True = blocked for free users (fail closed).
+PAID_ONLY_RESOURCES: dict[str, bool] = dict(_FREE_CFG["paid_only"])
+NOTES_WINDOW_DAYS = _FREE_CFG["notes_window_days"]
+ANNOUNCEMENTS_WINDOW_DAYS = _FREE_CFG["announcements_window_days"]
 
 # Per-note text length cap for the FREE tier (task 20260929-free-note-char-cap).
 # Without it, the FREE_LIMITS["notes"] count cap can be dodged by editing one

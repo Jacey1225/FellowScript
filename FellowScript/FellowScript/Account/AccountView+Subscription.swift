@@ -9,6 +9,61 @@ import SwiftUI
 
 extension AccountView {
 
+    /// Scrolls to the subscription card, then clears the one-shot signal.
+    func scrollToSubscriptionSection(_ proxy: ScrollViewProxy) {
+        upgradeCenter.scrollToSubscription = false
+        // Next runloop turn so a just-mounted Account tab has laid out its sections.
+        DispatchQueue.main.async {
+            if reduceMotion {
+                proxy.scrollTo("subscriptionSection", anchor: .top)
+            } else {
+                withAnimation(.easeInOut(duration: 0.35)) { proxy.scrollTo("subscriptionSection", anchor: .top) }
+            }
+        }
+    }
+
+    /// "Free plan includes" list, rendered only from the usage payload. Paid-only
+    /// rows carry a lock glyph plus text (not colour alone).
+    @ViewBuilder
+    var freePlanLimitsList: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("FREE PLAN INCLUDES")
+                .font(.inter(Theme.fontXS, weight: .semibold)).tracking(2)
+                .foregroundColor(Theme.textGoldMuted)
+                .padding(.bottom, Theme.spacingXS)
+                .accessibilityAddTraits(.isHeader)
+            if let usage = vm.usage {
+                ForEach(Array(usage.freePlanRows.enumerated()), id: \.offset) { _, row in
+                    freeLimitRow(row)
+                    Divider().background(Theme.borderGoldFaint)
+                }
+            } else {
+                Text("Loading limits")
+                    .font(.inter(Theme.fontSM)).foregroundColor(Theme.textSecondary)
+            }
+        }
+        .accessibilityIdentifier("freePlanLimitsList")
+    }
+
+    func freeLimitRow(_ row: FreePlanLimitRow) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: Theme.spacingSM) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(row.label).font(.inter(Theme.fontSM)).foregroundColor(Theme.parchment)
+                if let caption = row.caption {
+                    Text(caption).font(.inter(Theme.fontXS)).foregroundColor(Theme.textSecondary)
+                }
+            }
+            Spacer(minLength: Theme.spacingSM)
+            HStack(spacing: 4) {
+                if row.locked { Image(systemName: "lock.fill").font(.system(size: 11)).accessibilityHidden(true) }
+                Text(row.value).font(.inter(Theme.fontSM)).multilineTextAlignment(.trailing)
+            }
+            .foregroundColor(Theme.gold)
+        }
+        .frame(minHeight: 44)
+        .accessibilityElement(children: .combine)
+    }
+
     var subscriptionSection: some View {
         VStack(alignment: .leading, spacing: Theme.spacingSM) {
             sectionLabel("Subscription")
@@ -53,6 +108,7 @@ extension AccountView {
                 Divider().background(Theme.borderGoldFaint)
                 managePlanRow(plan)
             } else {
+                freePlanLimitsList
                 rowCaption("Start with a free 1-month trial — you won't be billed until it ends.")
                 memberCountPickerRow()
                 if !vm.joinablePlans.isEmpty {
@@ -186,14 +242,18 @@ extension AccountView {
 
             if isExpanded.wrappedValue {
                 VStack(alignment: .leading, spacing: Theme.spacingXS + 2) {
-                    // Fallback numbers mirror the server source of truth
-                    // (api/schemas/subscription.py FREE_LIMITS / NOTES_WINDOW_DAYS)
-                    // for the brief window before vm.usage loads — same pattern
-                    // as fallbackPriceCents above, which mirrors GROUP_PRICE_CENTS.
+                    // Numbers come only from the usage payload (never hardcoded);
+                    // until it loads the captions stay neutral.
                     benefitRow("Unlimited notes",
-                                "Free plan: \(vm.usage?.notes.limit ?? 10) every \(vm.usage?.window_days ?? 7) days")
+                                vm.usage.map { "Free plan: \($0.notes.limit) \($0.windowPhrase)" } ?? "Loading limits")
                     benefitRow("Unlimited scheduled devotions",
-                                "Free plan includes \(vm.usage?.agentEvents.limit ?? 1) in total. Paid plans have as many as you like, such as one for morning and one for bedtime.")
+                                vm.usage.map { "Free plan includes \($0.agentEvents.limit) in total. Paid plans have as many as you like, such as one for morning and one for bedtime." } ?? "Loading limits")
+                    if let hosting = vm.usage?.sessions {
+                        benefitRow("Unlimited hosted sessions",
+                                    "Free plan: \(hosting.limit) at a time. Join as many as you like.")
+                    }
+                    benefitRow("Session summaries and Explorer publishing",
+                                "Included with your plan. Free plan members can still browse and join Explorer.")
                     benefitRow("Shared group access for up to \(memberCount) member\(memberCount == 1 ? "" : "s")",
                                 "Unlimited usage is shared across everyone on the plan")
                 }

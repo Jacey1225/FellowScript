@@ -109,7 +109,11 @@ struct ContentView: View {
         // Expanded full-screen call
         .fullScreenCover(isPresented: $call.isExpanded) {
             ChimeCallView().environmentObject(appState)
+                // Free-plan summary block surfaces over the call screen.
+                .upgradePrompt()
         }
+        // Shared "Not available on the Free plan" prompt (task 20261002-free-plan-limits-ui).
+        .upgradePrompt()
         // Task 20260929-group-invite-links: join-by-link confirmation. Shown
         // for a pending invite once onboarding is done and (if signed in) the
         // startup screen has resolved; signed-out users see it too (preview

@@ -43,6 +43,7 @@ os.environ.setdefault("AWS_DEFAULT_REGION", "us-east-1")
 
 from fastapi.testclient import TestClient  # noqa: E402
 from db import DBManager  # noqa: E402
+from _plan_common import grant_paid  # noqa: E402
 
 PASSED, FAILED = [], []
 
@@ -67,6 +68,8 @@ def signup(client, prefix: str):
         "plain_pass": "TestPass123!", "terms_accepted": True,
     })
     assert r.status_code == 201, f"signup failed: {r.status_code} {r.text}"
+    # Free-plan limits (20261002-free-plan-limits-ui) cap notes per week; this file tests something else, so use a paid user.
+    grant_paid(r.json()["user_id"])
     return r.json()["user_id"], r.cookies.get("session")
 
 

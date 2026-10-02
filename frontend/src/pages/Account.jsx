@@ -23,6 +23,7 @@ import Seo from '../components/Seo.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import { isDesktopApp } from '../lib/desktopScope.js';
 import { API } from '../config.js';
+import { handleBlockedResponse } from '../lib/upgradePrompt.js';
 
 dayjs.extend(utc);
 
@@ -97,10 +98,10 @@ function UsageMeter({ label, hint, data }) {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '0.3rem' }}>
         <Text style={{ fontFamily: "'Lora', serif", color: 'rgba(244,228,193,0.85)', fontSize: '0.85rem' }}>
           {label}
-          {hint && <span style={{ color: 'rgba(244,228,193,0.4)', fontSize: '0.7rem', marginLeft: 6 }}>{hint}</span>}
+          {hint && <span style={{ color: 'rgba(244,228,193,0.6)', fontSize: '0.7rem', marginLeft: 6 }}>{hint}</span>}
         </Text>
         <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.8rem', color: unlimited ? 'var(--gold)' : maxed ? '#e08b8b' : 'rgba(244,228,193,0.7)' }}>
-          {unlimited ? 'Unlimited' : `${used} / ${limit}`}
+          {unlimited ? 'Unlimited' : `${used} / ${limit}`}{maxed ? ' · Limit reached' : ''}
         </Text>
       </div>
       {!unlimited && (
@@ -108,6 +109,7 @@ function UsageMeter({ label, hint, data }) {
           percent={pct}
           showInfo={false}
           size="small"
+          aria-label={`${label}: ${used} of ${limit}`}
           strokeColor={maxed ? '#c0392b' : 'var(--gold)'}
           trailColor="rgba(244,228,193,0.12)"
         />
@@ -115,6 +117,25 @@ function UsageMeter({ label, hint, data }) {
     </div>
   );
 }
+
+// Read-only status row for a feature with no free allowance (no progress bar).
+// `usage.paid_only[name].free_allowed === false` means Subscribers only.
+function PaidOnlyRow({ label, info }) {
+  if (!info) return null;
+  const subscribersOnly = info.free_allowed === false;
+  const text = !subscribersOnly ? 'Included' : info.allowed ? 'Included' : 'Subscribers only';
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '1rem' }}>
+      <Text style={{ fontFamily: "'Lora', serif", color: 'rgba(244,228,193,0.85)', fontSize: '0.85rem' }}>{label}</Text>
+      <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.8rem', color: info.allowed ? 'var(--gold)' : 'rgba(244,228,193,0.7)' }}>
+        {!info.allowed && <LockOutlined aria-hidden="true" style={{ marginRight: 5 }} />}{text}
+      </Text>
+    </div>
+  );
+}
+
+// "per week" for the 7-day window, otherwise "every N days".
+const windowHint = (days) => (!days || days === 7 ? 'per week' : `every ${days} days`);
 
 // Converts local "HH:mm" from a dayjs object → UTC "HH:mm" string
 function toUTCTime(dayjsVal) {
@@ -492,13 +513,11 @@ export default function Account() {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
         });
         if (res.status === 403) {
-          const b = await res.json().catch(() => ({}));
-          const { used, limit } = b.detail || {};
-          message.warning(
-            limit != null
-              ? `Free plan limit reached (scheduled devotions: ${used}/${limit}). Upgrade for as many as you like.`
-              : `You've reached your free plan limit for scheduled devotions. Upgrade for as many as you like.`
-          );
+          // Shared themed upgrade modal (task 20261002-free-plan-limits-ui); the
+          // event editor stays open underneath so nothing the user typed is lost.
+          const handled = await handleBlockedResponse(res);
+          if (!handled) message.error('You do not have permission to add that scheduled devotion.');
+          else await loadUsage();
         } else if (res.ok || res.status === 201) {
           setEvModal(false);
           await loadAgents();
@@ -1002,8 +1021,8 @@ export default function Account() {
         </Card>
 
         {/* Subscription */}
-        <div className="fs-sub-scope" style={{ animationDelay: '0.12s', animation: 'fadeUp 0.55s ease forwards', opacity: 0 }}>
-          <SubscriptionCard userId={user.user_id} onPlanChange={loadUsage} />
+        <div id="subscription" tabIndex={-1} className="fs-sub-scope" style={{ animationDelay: '0.12s', animation: 'fadeUp 0.55s ease forwards', opacity: 0 }}>
+          <SubscriptionCard userId={user.user_id} onPlanChange={loadUsage} usage={usage} />
         </div>
 
         {/* Plan usage */}
@@ -1012,15 +1031,18 @@ export default function Account() {
             <Text className="fs-eyebrow" style={{ marginBottom: '1rem' }}>
               Plan Usage
             </Text>
-            <UsageMeter label="Notes" hint={`last ${usage.window_days} days`} data={usage.resources?.notes} />
+            <UsageMeter label="Notes" hint={windowHint(usage.window_days)} data={usage.resources?.notes} />
             <UsageMeter label="Scheduled devotions" data={usage.resources?.agent_events} />
+            {usage.resources?.sessions && <UsageMeter label="Hosting sessions" hint="at a time" data={usage.resources.sessions} />}
             <UsageMeter label="Notifications" data={usage.resources?.agent_notifications} />
+            <PaidOnlyRow label="Session summaries" info={usage.paid_only?.session_summaries} />
+            <PaidOnlyRow label="Explorer publishing" info={usage.paid_only?.explorer_publish} />
             {!usage.subscribed && (
               <Alert
                 type="info"
                 showIcon
                 style={{ marginTop: '0.5rem', borderRadius: 8, background: 'rgba(200,134,26,0.08)', border: '1px solid rgba(200,134,26,0.25)' }}
-                message="You're on the free plan. Upgrade to an Individual or Group plan for unlimited notes, scheduled devotions, and notifications."
+                message="You're on the Free plan. Subscribe for unlimited notes, scheduled devotions and hosted sessions, plus session summaries and Explorer publishing."
               />
             )}
           </Card>

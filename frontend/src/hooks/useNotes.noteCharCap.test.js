@@ -9,6 +9,7 @@ import { describe, test, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { message } from 'antd';
 import { useNotes } from './useNotes.js';
+import { getUpgradePrompt, dismissUpgradePrompt } from '../lib/upgradePrompt.js';
 
 const USER = { user_id: 'user-1', username: 'tester' };
 
@@ -180,14 +181,16 @@ describe('useNotes.saveNote — server 403 note_chars', () => {
     expect(result.current.allNotes['n1']).toBeUndefined();
   });
 
-  test('the existing weekly notes-count 403 keeps its original wording (regression)', async () => {
+  test('the weekly notes-count 403 now opens the shared upgrade modal (no inline toast)', async () => {
+    dismissUpgradePrompt();
     const { result } = renderHook(() => useNotes({ user: USER }));
     global.fetch.mockResolvedValueOnce(weekly403());
-    await act(async () => { await result.current.saveNote(NOTE, null); });
-    const msg = message.warning.mock.calls[0][0];
-    expect(msg).toContain('Free plan limit reached');
-    expect(msg).toContain('10/10 this week');
-    expect(msg).toContain('Upgrade for unlimited access');
+    let ok;
+    await act(async () => { ok = await result.current.saveNote(NOTE, null); });
+    expect(ok).toBe(false);
+    expect(message.warning).not.toHaveBeenCalled();
+    expect(getUpgradePrompt().info).toEqual({ resource: 'notes', paidOnly: false, used: 10, limit: 10 });
+    dismissUpgradePrompt();
   });
 });
 

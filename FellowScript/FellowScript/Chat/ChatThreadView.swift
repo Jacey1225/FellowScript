@@ -1420,9 +1420,14 @@ struct ChatThreadView: View {
                 // to the other party on the web client too.
                 let roomKey = ChatThreadViewModel.roomKey(contact: contact, userId: uid)
                 Task {
-                    _ = try? await appState.service.createSession(
-                        userId: uid, devotion: session, contactId: roomKey
-                    )
+                    do {
+                        _ = try await appState.service.createSession(
+                            userId: uid, devotion: session, contactId: roomKey
+                        )
+                    } catch {
+                        // Free-plan session cap: shared upgrade prompt; other errors stay silent as before.
+                        UpgradePromptCenter.shared.present(for: error)
+                    }
                     vm.sessions = (try? await appState.service.fetchSessionsForContact(contactId: roomKey)) ?? vm.sessions
                 }
                 showSession = false

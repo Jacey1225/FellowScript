@@ -1,0 +1,18 @@
+{
+  "free_limits": {
+    "counts": {
+      "notes": 5,
+      "agent_events": 1,
+      "announcements": 1
+    },
+    "sessions": {
+      "max_active": 1
+    },
+    "paid_only": {
+      "session_summaries": true,
+      "explorer_publish": true
+    },
+    "notes_window_days": 7,
+    "announcements_window_days": 7
+  }
+}

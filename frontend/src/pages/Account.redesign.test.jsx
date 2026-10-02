@@ -98,7 +98,7 @@ describe('Account page after restyle', () => {
     expect(await screen.findByText('Plan Usage')).toBeInTheDocument();
     expect(screen.getByText('3 / 10')).toBeInTheDocument();
     expect(screen.getByText('1 / 5')).toBeInTheDocument();
-    expect(screen.getByText(/You're on the free plan/)).toBeInTheDocument();
+    expect(screen.getByText(/You're on the Free plan\. Subscribe for unlimited/)).toBeInTheDocument();
   });
 
   test('plan usage shows Unlimited when subscribed, without the upgrade notice', async () => {
@@ -106,7 +106,7 @@ describe('Account page after restyle', () => {
       notes: { unlimited: true }, agent_events: { unlimited: true }, agent_notifications: { unlimited: true } } } });
     renderAccount();
     expect((await screen.findAllByText('Unlimited')).length).toBe(3);
-    expect(screen.queryByText(/You're on the free plan/)).toBeNull();
+    expect(screen.queryByText(/You're on the Free plan/)).toBeNull();
   });
 
   test('cancel flow: confirm issues DELETE to the plan and reports success', async () => {

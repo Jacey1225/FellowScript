@@ -28,6 +28,7 @@ import AdminUserActions from './pages/AdminUserActions.jsx';
 import AdminTrends from './pages/AdminTrends.jsx';
 import AdminAccountActions from './pages/AdminAccountActions.jsx';
 import InviteFriends from './pages/InviteFriends.jsx';
+import UpgradeModal from './components/UpgradeModal.jsx';
 import TermsGate from './components/TermsGate.jsx';
 
 export default function App() {
@@ -113,6 +114,8 @@ export default function App() {
       <VisitTracker />
       {/* Task 20261002-shared-foundation: live Updated Terms gate (capabilities terms_current false). */}
       <TermsGate />
+      {/* Task 20261002-free-plan-limits-ui: shared Free-plan upgrade modal. */}
+      <UpgradeModal />
       {/* Restricts the Tauri desktop shell to lib/desktopScope.js's
           DESKTOP_ALLOWED_ROUTES (task 20260906-desktop-scope-lockdown); a
           no-op in the ordinary web frontend. See DesktopRouteGuard.jsx. */}

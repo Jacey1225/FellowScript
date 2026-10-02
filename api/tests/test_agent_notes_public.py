@@ -35,6 +35,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from db import DBManager
+from _plan_common import grant_paid  # noqa: E402
 from backend.auth.sessions import SessionManager
 from backend.interactions.agent import AgentManager
 from routes.agent import agent_router
@@ -288,6 +289,7 @@ def main():
 
     print("\n=== 5. summarize_session's notes_public body field ===")
     uid5, token5 = make_test_user()
+    grant_paid(uid5)  # session summaries are paid-only (20261002-free-plan-limits-ui)
     agent_id5 = make_agent(uid5)
     original_call_api2 = AgentManager._call_api
     AgentManager._call_api = lambda self, role, messages: "A generated summary."

@@ -201,7 +201,8 @@ extension NetworkService {
             "user_id": userId,
             "devotion": try jsonObject(d),
         ]
-        let data = try await requestRaw("/devotions/", method: "POST", jsonObject: body)
+        // checked: a Free-plan sessions block (403) must surface as AppError.limitReached.
+        let data = try await checkedRequestRaw("/devotions/", method: "POST", jsonObject: body)
         return decode([String: String].self, from: data)?["id"] ?? UUID().uuidString
     }
 

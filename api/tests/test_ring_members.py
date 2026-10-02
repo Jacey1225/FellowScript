@@ -94,6 +94,7 @@ os.environ["RING_COOLDOWN_MINUTES"] = "5"
 from fastapi.testclient import TestClient  # noqa: E402
 
 from db import DBManager  # noqa: E402
+from _plan_common import grant_paid  # noqa: E402
 import main as main_module  # noqa: E402
 import routes.devotion as devotion_module  # noqa: E402
 import backend.interactions.devotion as devotion_backend_module  # noqa: E402
@@ -128,6 +129,9 @@ def signup(client, prefix: str):
         "plain_pass": "TestPass123!", "terms_accepted": True,
     }, headers={"cf-connecting-ip": fake_ip})
     assert r.status_code == 201, f"signup failed: {r.status_code} {r.text}"
+    # Free-plan limits (20261002-free-plan-limits-ui) cap sessions/notes and make
+    # summaries paid-only; this file tests something else, so use a paid user.
+    grant_paid(r.json()["user_id"])
     return r.json()["user_id"], r.cookies.get("session")
 
 

@@ -743,7 +743,9 @@ final class AccountViewModel: ObservableObject {
             events.append(hb)
             await refreshUsage()
         } catch {
-            // Free-tier cap (or other failure): don't add the event, tell the user.
+            // Free-tier cap: shared upgrade prompt instead of the inline alert.
+            if UpgradePromptCenter.shared.present(for: error) { await refreshUsage(); return }
+            // Other failure: don't add the event, tell the user.
             limitMsg = (error as? LocalizedError)?.errorDescription ?? "Could not create scheduled devotion."
         }
     }

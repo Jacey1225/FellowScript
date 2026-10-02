@@ -234,12 +234,21 @@ extension AccountView {
             let unlimited = vm.hasUnlimitedPlan
             VStack(alignment: .leading, spacing: Theme.spacingSM) {
                 sectionLabel("Plan Usage")
-                usageRow("Notes", usage.notes, hint: "last \(usage.window_days) days", forceUnlimited: unlimited)
+                usageRow("Notes", usage.notes, hint: usage.windowPhrase, forceUnlimited: unlimited)
                 Divider().background(Theme.borderGoldFaint)
                 usageRow("Scheduled devotions", usage.agentEvents, hint: nil, forceUnlimited: unlimited)
-                if !unlimited {
+                if let hosting = usage.sessions {
                     Divider().background(Theme.borderGoldFaint)
-                    Text("You're on the free plan. Upgrade to a Group plan for unlimited notes and scheduled devotions.")
+                    usageRow("Hosting sessions", hosting, hint: "at a time", forceUnlimited: unlimited)
+                }
+                if !unlimited {
+                    ForEach(usage.freePlanRows.filter { $0.locked }, id: \.label) { row in
+                        Divider().background(Theme.borderGoldFaint)
+                        freeLimitRow(FreePlanLimitRow(label: row.label == "Publish to Explorer" ? "Explorer publishing" : row.label,
+                                                      value: row.value, caption: nil, locked: true))
+                    }
+                    Divider().background(Theme.borderGoldFaint)
+                    Text("You're on the Free plan. Subscribe for unlimited notes, scheduled devotions and hosted sessions, plus session summaries and Explorer publishing.")
                         .font(.inter(Theme.fontSM))
                         .foregroundColor(Theme.textGoldMuted)
                 }
@@ -262,7 +271,7 @@ extension AccountView {
                         .foregroundColor(Theme.textMuted)
                 }
                 Spacer()
-                Text(unlimited ? "Unlimited" : "\(r.used) / \(r.limit)")
+                Text(unlimited ? "Unlimited" : "\(r.used) / \(r.limit)" + (r.maxedOut ? " · Limit reached" : ""))
                     .font(.inter(Theme.fontSM))
                     .foregroundColor(unlimited ? Theme.gold : (r.maxedOut ? Theme.error : Theme.textGoldMuted))
             }

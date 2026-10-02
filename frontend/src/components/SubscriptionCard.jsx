@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { Button, Spin, Alert, Tag, Avatar, Popconfirm, InputNumber, Input } from 'antd';
 import {
   CrownOutlined, TeamOutlined, UserOutlined,
-  CheckOutlined, CloseOutlined, DeleteOutlined,
+  CheckOutlined, CloseOutlined, DeleteOutlined, LockOutlined,
 } from '@ant-design/icons';
 import { API } from '../config.js';
 import InviteLinkSection from './InviteLinkSection.jsx';
@@ -45,10 +45,50 @@ const fmtDate = (s) => {
   return isNaN(d.getTime()) ? '' : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 };
 
+
+// Task 20261002-free-plan-limits-ui: every Free-plan limit, rendered from the
+// /usage payload (no hardcoded numbers). Paid-only rows carry a lock glyph plus
+// text, not colour alone.
+const LIMIT_ROW = {
+  display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, flexWrap: 'wrap',
+  padding: '0.45rem 0', borderBottom: '1px solid rgba(255,225,170,0.08)',
+};
+const LIMIT_LABEL = { fontFamily: "'Lora', serif", fontSize: '0.85rem', color: 'rgba(244,228,193,0.9)' };
+const LIMIT_VALUE = { fontFamily: "'Lora', serif", fontSize: '0.85rem', color: 'var(--gold)', textAlign: 'right' };
+const LIMIT_CAPTION = { fontFamily: "'Inter', sans-serif", fontSize: '0.72rem', color: 'rgba(244,228,193,0.7)' };
+
+export function FreePlanLimits({ usage }) {
+  const r = usage?.resources;
+  if (!r) return <p style={{ ...LIMIT_CAPTION, marginBottom: '1rem' }}>Loading limits</p>;
+  const days = usage.window_days;
+  const notesText = r.notes ? `${r.notes.limit} ${!days || days === 7 ? 'per week' : `every ${days} days`}` : null;
+  const paid = usage.paid_only || {};
+  const paidText = (p) => (p && p.free_allowed ? 'Included' : 'Subscribers only');
+  const Row = ({ label, value, caption, locked }) => (
+    <li style={LIMIT_ROW}>
+      <span style={LIMIT_LABEL}>{label}{caption && <span style={{ ...LIMIT_CAPTION, display: 'block' }}>{caption}</span>}</span>
+      <span style={LIMIT_VALUE}>{locked && <LockOutlined aria-hidden="true" style={{ marginRight: 5 }} />}{value}</span>
+    </li>
+  );
+  return (
+    <div style={{ marginBottom: '1.1rem' }} data-testid="free-plan-limits">
+      <span style={{ ...LABEL, marginBottom: '0.4rem' }} className="fs-eyebrow">Free plan includes</span>
+      <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+        {notesText && <Row label="Notes" value={notesText} />}
+        {r.agent_events && <Row label="Scheduled devotions" value={`${r.agent_events.limit} in total`} />}
+        {r.sessions && <Row label="Hosting sessions" value={`${r.sessions.limit} at a time`} caption="Join as many as you like" />}
+        {paid.session_summaries && <Row label="Session summaries" value={paidText(paid.session_summaries)} locked={!paid.session_summaries.free_allowed} />}
+        {paid.explorer_publish && <Row label="Publish to Explorer" value={paidText(paid.explorer_publish)} caption="Browsing and joining stay free" locked={!paid.explorer_publish.free_allowed} />}
+        {r.agent_notifications && <Row label="Notifications" value={`${r.agent_notifications.limit}`} />}
+      </ul>
+    </div>
+  );
+}
+
 // `onPlanChange` is invoked whenever the acting user's own plan changes (start,
 // cancel, or leave) so the parent can refresh dependent UI — notably the free-tier
 // usage/limits panel, which flips between capped and unlimited with the plan.
-export default function SubscriptionCard({ userId, onPlanChange }) {
+export default function SubscriptionCard({ userId, onPlanChange, usage = null }) {
   const [loading,  setLoading]  = useState(true);
   const [plan,     setPlan]     = useState(null);   // the plan the user is on (host or member)
   const [members,  setMembers]  = useState([]);     // group members (host view)
@@ -342,12 +382,12 @@ export default function SubscriptionCard({ userId, onPlanChange }) {
                   <span style={{ fontFamily: "'DM Serif Display', serif", fontSize: '1.1rem', color: 'var(--parchment)' }}>Free Plan</span>
                   <Tag color="default">Active</Tag>
                 </div>
-                <span style={MUTED}>10 notes/week · 1 scheduled devotion · 3 notifications</span>
               </div>
             </div>
           )}
+          {isFree && <FreePlanLimits usage={usage} />}
           <p style={{ ...MUTED, marginBottom: '1rem', lineHeight: 1.65 }}>
-            Upgrade to unlock <span style={{ color: 'var(--gold)' }}>unlimited notes, scheduled devotions,</span> and notifications. Free includes 1 scheduled devotion; paid plans let you have as many as you like, such as one for morning and one for bedtime.
+            Subscribe to unlock <span style={{ color: 'var(--gold)' }}>unlimited notes, scheduled devotions, hosted sessions,</span> session summaries and Explorer publishing. Paid plans let you schedule as many devotions as you like, such as one for morning and one for bedtime.
             Choose how many people join your plan — up to 8.
           </p>
           <div style={{ border: '1px solid rgba(200,134,26,0.2)', borderRadius: 12, padding: '1.1rem', maxWidth: 320 }}>

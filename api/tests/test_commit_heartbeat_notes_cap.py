@@ -42,6 +42,7 @@ from backend.interactions.agent import AgentManager
 from routes.agent import agent_router
 from routes.notes import notes_router
 from routes.subscription import subscription_router
+from schemas.subscription import FREE_LIMITS
 
 app = FastAPI()
 for r in (agent_router, notes_router, subscription_router):
@@ -178,7 +179,7 @@ def main():
     agent_id1 = make_agent(uid1)
     hb_id1 = make_heartbeat(agent_id1, uid1)
     try:
-        insert_notes(uid1, 9)  # one slot left under the limit of 10
+        insert_notes(uid1, FREE_LIMITS['notes'] - 1)  # one slot left under the free limit
         before = notes_count(uid1)
         r = client.post(
             f"/agent/{uid1}/{agent_id1}/{hb_id1}/commit_heartbeat",
@@ -196,7 +197,7 @@ def main():
     agent_id2 = make_agent(uid2)
     hb_id2 = make_heartbeat(agent_id2, uid2)
     try:
-        insert_notes(uid2, 10)  # exactly at the free-plan cap
+        insert_notes(uid2, FREE_LIMITS['notes'])  # exactly at the free-plan cap
         check("last_fired starts NULL (never fired)", get_last_fired(hb_id2) is None, str(get_last_fired(hb_id2)))
 
         r_denied = client.post(
@@ -208,11 +209,11 @@ def main():
             "last_fired is STILL NULL after the denial -- the once-per-day claim was never burned",
             get_last_fired(hb_id2) is None, str(get_last_fired(hb_id2)),
         )
-        check("no note was created by the denied attempt", notes_count(uid2) == 10, str(notes_count(uid2)))
+        check("no note was created by the denied attempt", notes_count(uid2) == FREE_LIMITS["notes"], str(notes_count(uid2)))
 
         # User drops back under the cap later the same day (e.g. deleted a note).
         delete_notes(uid2, 1)
-        check("user now has 9 notes (one under the cap)", notes_count(uid2) == 9, str(notes_count(uid2)))
+        check("user now has one note under the cap", notes_count(uid2) == FREE_LIMITS["notes"] - 1, str(notes_count(uid2)))
 
         r_retry = client.post(
             f"/agent/{uid2}/{agent_id2}/{hb_id2}/commit_heartbeat",
@@ -224,13 +225,13 @@ def main():
             r_retry.status_code == 200 and r_retry.json() == {"success": "saved note"},
             f"{r_retry.status_code} {r_retry.text}",
         )
-        check("exactly one note created by the retry", notes_count(uid2) == 10, str(notes_count(uid2)))
+        check("exactly one note created by the retry", notes_count(uid2) == FREE_LIMITS["notes"], str(notes_count(uid2)))
 
         # And now the once-per-day guard applies normally: a second same-day
         # attempt (still under cap, since the earlier note didn't push over)
         # is skipped by commit_hb_response's own idempotency claim -- not by
         # the notes-cap gate, which is a distinct guard.
-        insert_notes(uid2, 0)  # no-op, just documents the notes count is 10 again after the retry
+        insert_notes(uid2, 0)  # no-op, just documents the notes count is back at the cap after the retry
     finally:
         cleanup(uid2)
 

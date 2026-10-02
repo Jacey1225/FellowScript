@@ -168,7 +168,10 @@ final class NetworkService: DataServiceProtocol {
     func throwIfError(_ response: URLResponse, _ data: Data) throws {
         guard let http = response as? HTTPURLResponse, http.statusCode >= 400 else { return }
         let body = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
-        if http.statusCode == 403, let gate = body?["detail"] as? [String: Any],
+        // The gate dict is normally under `detail`; a bare body with
+        // `allowed: false` is accepted too (task 20261002-free-plan-limits-ui).
+        let bareGate: [String: Any]? = (body?["allowed"] as? Bool) == false ? body : nil
+        if http.statusCode == 403, let gate = (body?["detail"] as? [String: Any]) ?? bareGate,
            let resource = gate["resource"] as? String {
             throw AppError.limitReached(
                 resource: resource,

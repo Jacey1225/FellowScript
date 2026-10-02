@@ -40,7 +40,7 @@ Mock group conversation showing the collaborative note/chat experience — sampl
 ### 6. Pricing (2-plan cards)
 | Plan | Price | Limits |
 |---|---|---|
-| Free | $0 | 10 notes/week, 1 scheduled devotion, 3 scheduled notifications |
+| Free | $0 | 5 notes/week, 1 scheduled devotion, 3 scheduled notifications |
 | Group | From $4.99/mo | Pick 1 to 8 members ($4.99 for 1 member up to $32.40 for 8); unlimited notes, scheduled devotions and notifications, shared reading space and group chat |
 
 The Group card is the highlighted (primary) plan. Prices mirror `GROUP_PRICE_CENTS` in `api/schemas/subscription.py` (cut 2026-10-01).

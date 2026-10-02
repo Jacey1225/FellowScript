@@ -52,6 +52,7 @@ from backend.interactions.listings import ListingsManager
 from backend.interactions.listings_config import get_listings_config
 from backend.observability import feature_summary
 from backend.rate_limiting import limiter
+from backend.subscription.limits import check_paid_only
 from schemas.explorer_public import ListingDetail, ListingPage, PublicFilters
 
 explorer_router = APIRouter(prefix="/explorer")
@@ -253,6 +254,11 @@ def submit_my_listing(
     manager = _manager(user_id)
     try:
         manager.require_terms()
+        # Publishing to Explorer is paid-only (task 20261002-free-plan-limits-ui).
+        # Fail closed; browse/join and the owner's other routes are unaffected.
+        paid_gate = check_paid_only(user_id, "explorer_publish")
+        if not paid_gate["allowed"]:
+            raise HTTPException(status_code=403, detail=paid_gate)
         return manager.submit(
             group_id,
             consent=body.consent,

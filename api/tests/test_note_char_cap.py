@@ -33,6 +33,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 import main as main_module  # noqa: E402
 from db import DBManager  # noqa: E402
+from _plan_common import grant_paid  # noqa: E402
 from backend.interactions.agent import AgentManager  # noqa: E402
 from backend.subscription.limits import LimitsManager  # noqa: E402
 from schemas.subscription import (  # noqa: E402
@@ -383,7 +384,12 @@ def run(client, users, groups):
         db.conn.commit()
     finally:
         db.close()
-    big = "s" * 45000
+    # Session summaries are paid-only (20261002-free-plan-limits-ui), so the summary is
+    # produced as a paid user, then the user is put back on the free plan: the output
+    # (120000 chars) exceeds BOTH the free and the paid per-note cap, proving the AI
+    # path is exempt, and the later edits below are checked under the free cap.
+    grant_paid(au)
+    big = "s" * 120000
     orig_call = AgentManager._call_api
     AgentManager._call_api = lambda self, role, msgs: big
     try:
@@ -392,13 +398,14 @@ def run(client, users, groups):
                         headers=cookie(at))
     finally:
         AgentManager._call_api = orig_call
-    check("free summarize_session with 45000-char AI output -> 200 (exempt)", r.status_code in (200, 201), r.text[:200])
+    set_free(au)
+    check("summarize_session with 120000-char AI output -> 200 (exempt from char caps)", r.status_code in (200, 201), r.text[:200])
     if r.status_code in (200, 201):
-        check("summary stored untruncated", stored_len(r.json()["note_id"]) == 45000)
+        check("summary stored untruncated", stored_len(r.json()["note_id"]) == 120000)
         # the user then editing it: shrink-only
         sn = r.json()["note_id"]
-        check("user grow of AI note rejected", put(client, au, at, sn, "s" * 45001).status_code == 403)
-        check("user shrink of AI note allowed", put(client, au, at, sn, "s" * 44000).status_code == 200)
+        check("user grow of AI note rejected", put(client, au, at, sn, "s" * 120001).status_code == 403)
+        check("user shrink of AI note allowed", put(client, au, at, sn, "s" * 119000).status_code == 200)
     am = AgentManager(au)
     try:
         hb_id = am.note_via_hb({"title": "hb", "text": "h" * 50000, "verses": []})

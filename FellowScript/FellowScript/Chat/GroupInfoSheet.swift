@@ -382,6 +382,8 @@ struct GroupInfoSheet: View {
         // "See plans" on the announcements limit card: close the sheet so the
         // Account tab (switched by ContentView) is visible.
         .onReceive(NotificationCenter.default.publisher(for: .fsOpenSubscriptionPlans)) { _ in dismiss() }
+        // Free-plan publish pre-check shows the shared prompt above this sheet.
+        .upgradePrompt()
         .preferredColorScheme(.dark)
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)

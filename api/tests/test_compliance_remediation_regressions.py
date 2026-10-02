@@ -70,6 +70,7 @@ os.environ.setdefault("AWS_DEFAULT_REGION", "us-east-1")
 
 from fastapi.testclient import TestClient  # noqa: E402
 from db import DBManager  # noqa: E402
+from _plan_common import grant_paid  # noqa: E402
 import db as db_module  # noqa: E402
 import main as main_module  # noqa: E402
 from backend.interactions.groups import GroupsManager  # noqa: E402
@@ -510,6 +511,7 @@ def test_dependency_errors_3_summarize_session_502_on_api_failure(client):
     import backend.interactions.agent as agent_module
 
     uid, tok = signup(client, f"dep3_{uuid.uuid4().hex[:8]}")
+    grant_paid(uid)  # session summaries are paid-only (20261002-free-plan-limits-ui)
     agent_id = str(uuid.uuid4())
     try:
         db = DBManager()

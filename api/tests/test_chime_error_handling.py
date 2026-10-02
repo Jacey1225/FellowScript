@@ -86,6 +86,7 @@ import main as main_module  # noqa: E402
 import routes.messaging as messaging_module  # noqa: E402
 import routes.devotion as devotion_module  # noqa: E402
 from db import DBManager  # noqa: E402
+from _plan_common import grant_paid  # noqa: E402
 
 PASSED, FAILED = [], []
 
@@ -235,6 +236,9 @@ def create_devotion_session(client, token, uid, participants=None):
     now = datetime.now(timezone.utc)
     time_start = (now - timedelta(minutes=1)).isoformat()
     time_end = (now + timedelta(hours=1)).isoformat()
+    # Free users may hold only one active session (20261002-free-plan-limits-ui)
+    # and this file creates several per user; the subject here is Chime errors.
+    grant_paid(uid)
     devo_id = str(uuid.uuid4())
     payload = {
         "devotion_id": devo_id, "user_id": uid,

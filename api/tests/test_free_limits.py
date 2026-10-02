@@ -15,6 +15,7 @@ Run:  cd api && ../.venv/bin/python tests/test_free_limits.py
 
 import _pathfix  # noqa: F401
 import _fake_timeline  # noqa: F401
+from _thr_common import require_scratch_db  # scratch 55432 locally, CI 5432 under GITHUB_ACTIONS
 
 import uuid
 from fastapi import FastAPI
@@ -75,6 +76,7 @@ def cleanup(uid: str):
 
 
 def main():
+    require_scratch_db()
     uid, uname = make_test_user()
     print(f"\nCreated free-plan test user: {uname} ({uid})\n")
     try:
@@ -83,30 +85,34 @@ def main():
         print("Initial usage:", usage["resources"])
         check("subscribed flag", usage["subscribed"], False)
 
-        # ── Notes: 10 allowed, 11th & 12th blocked ───────────────────────────
-        print("\nNOTES (limit 10 / 7 days):")
+        # ── Notes: 5 allowed, 6th & 7th blocked (free limit tightened 10 -> 5) ─
+        print("\nNOTES (limit 5 / 7 days):")
+        check("usage reports notes limit 5", usage["resources"]["notes"]["limit"], 5)
         note_codes = []
         for i in range(12):
             r = client.post(f"/notes/{uid}", json={"title": f"n{i}", "text": "body"})
             note_codes.append(r.status_code)
-        check("first 10 notes accepted", note_codes[:10], [201] * 10)
-        check("11th note blocked (403)", note_codes[10], 403)
-        check("12th note blocked (403)", note_codes[11], 403)
+        check("first 5 notes accepted", note_codes[:5], [201] * 5)
+        check("6th note blocked (403)", note_codes[5], 403)
+        check("7th note blocked (403)", note_codes[6], 403)
+        check("every later note blocked (403)", note_codes[5:], [403] * 7)
         # Inspect the 403 body shape the clients rely on.
         blocked = client.post(f"/notes/{uid}", json={"title": "x", "text": "y"})
         detail = blocked.json()["detail"]
         check("403 detail resource", detail.get("resource"), "notes")
-        check("403 detail used", detail.get("used"), 10)
-        check("403 detail limit", detail.get("limit"), 10)
+        check("403 detail used", detail.get("used"), 5)
+        check("403 detail limit", detail.get("limit"), 5)
 
-        # summarize_session persists its output as a note, so it must honour the
-        # same notes cap. Its gate runs before the AI call, so a capped user is
-        # rejected without the model ever being invoked (safe to assert here).
+        # summarize_session is paid-only for free users (task
+        # 20261002-free-plan-limits-ui); its gates run before the AI call, so a
+        # free user is rejected without the model ever being invoked.
         summ = client.post(
             f"/agent/{uid}/{uuid.uuid4()}/summarize",
             json={"session": {"title": "t", "prompts": [], "verses": []}},
         )
-        check("summarize blocked when notes cap reached (403)", summ.status_code, 403)
+        check("summarize blocked for a free user (403)", summ.status_code, 403)
+        check("summarize 403 resource is session_summaries (paid-only gate first)",
+              summ.json()["detail"].get("resource"), "session_summaries")
 
         # ── Agent events (heartbeats): 1 allowed, 2nd blocked ────────────────
         print("\nAGENT EVENTS (limit 1):")
@@ -152,7 +158,7 @@ def main():
         print("\nFINAL usage snapshot:")
         final = client.get(f"/subscriptions/user/{uid}/usage").json()["resources"]
         print("  ", final)
-        check("notes used == 10", final["notes"]["used"], 10)
+        check("notes used == 5", final["notes"]["used"], 5)
         check("events used == 1", final["agent_events"]["used"], 1)
         check("notes remaining == 0", final["notes"]["remaining"], 0)
 
@@ -171,7 +177,7 @@ def main():
         sub_usage = client.get(f"/subscriptions/user/{uid}/usage").json()
         check("now subscribed", sub_usage["subscribed"], True)
         check("notes unlimited", sub_usage["resources"]["notes"]["unlimited"], True)
-        # An 11th-plus note is now allowed despite 10 already existing this week.
+        # A 6th-plus note is now allowed despite 5 already existing this week.
         extra = client.post(f"/notes/{uid}", json={"title": "extra", "text": "b"})
         check("note accepted past free cap when subscribed", extra.status_code, 201)
 

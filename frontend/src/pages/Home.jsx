@@ -210,7 +210,7 @@ const plans = [
     name: 'Free',
     price: '$0',
     sub: 'No card needed',
-    perks: ['Beautiful Bible reader', '10 notes per week', '1 scheduled devotion', '3 scheduled notifications', 'Verse highlights & bookmarks'],
+    perks: ['Beautiful Bible reader', '5 notes per week', '1 scheduled devotion', '3 scheduled notifications', 'Verse highlights & bookmarks'],
     cta: 'Start reading',
     href: '/signin',
     primary: false,

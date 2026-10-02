@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { message } from 'antd';
 import { API, WS_BASE } from '../config.js';
+import { handleBlockedResponse } from '../lib/upgradePrompt.js';
 import { compareTimestamps } from '../utils.js';
 
 export function useAgentChat({ user, onNoteSaved }) {
@@ -274,6 +275,7 @@ export function useAgentChat({ user, onNoteSaved }) {
         await loadHeartbeats(agents);
         return true;
       }
+      if (await handleBlockedResponse(res)) return false;
       message.error('Could not save that scheduled devotion. Please try again.');
     } catch (err) {
       console.error('Failed to add heartbeat:', err);
@@ -290,7 +292,10 @@ export function useAgentChat({ user, onNoteSaved }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ session: sessionData, group_id: groupId }),
       });
-      if (!res.ok) message.error('Could not summarize that session. Please try again.');
+      if (!res.ok) {
+        if (await handleBlockedResponse(res)) return false;
+        message.error('Could not summarize that session. Please try again.');
+      }
       return res.ok;
     } catch (err) {
       console.error('Failed to summarize session:', err);
