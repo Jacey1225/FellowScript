@@ -169,6 +169,23 @@ def create_tables(cur):
     cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT FALSE")
     cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_photo_key TEXT")
 
+    # Append-only audit trail of admin-role grants/revokes (task
+    # 20261002-admin-user-actions). Created before the admin seed below
+    # because the seed consults it. Ids and booleans only, no PII. FKs are
+    # SET NULL so deleting an account never deletes the audit history.
+    cur.execute(
+        "CREATE TABLE IF NOT EXISTS admin_role_audit"
+        "(_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
+        "ts TIMESTAMPTZ NOT NULL DEFAULT NOW(),"
+        "actor_user_id UUID REFERENCES users(_id) ON DELETE SET NULL,"
+        "target_user_id UUID REFERENCES users(_id) ON DELETE SET NULL,"
+        "action TEXT NOT NULL CHECK (action IN ('grant','revoke')),"
+        "previous_value BOOLEAN NOT NULL,"
+        "new_value BOOLEAN NOT NULL)"
+    )
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_admin_role_audit_ts ON admin_role_audit(ts)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_admin_role_audit_target ON admin_role_audit(target_user_id)")
+
     # One-time admin seed, re-applied (idempotently) every time create_tables()
     # runs -- i.e. on every non-destructive schema-apply deploy step (see
     # reference_deploy.md). Resolves the admin account by a live email lookup
@@ -181,7 +198,11 @@ def create_tables(cur):
     # hasn't set ADMIN_SEED_EMAIL yet.
     _ADMIN_SEED_EMAIL = os.getenv("ADMIN_SEED_EMAIL", "jaceysimps@gmail.com")
     cur.execute(
-        "UPDATE users SET is_admin = TRUE WHERE email = %s AND is_admin = FALSE",
+        "UPDATE users SET is_admin = TRUE WHERE email = %s AND is_admin = FALSE "
+        # An admin who was deliberately revoked through the admin API (audit
+        # row exists) must not be silently re-promoted on the next boot.
+        "AND NOT EXISTS (SELECT 1 FROM admin_role_audit a "
+        "WHERE a.target_user_id = users._id AND a.action = 'revoke')",
         (_ADMIN_SEED_EMAIL,),
     )
     if cur.rowcount == 0:

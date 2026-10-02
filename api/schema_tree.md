@@ -30,6 +30,7 @@ error_detections       # CloudWatch watchdog findings, unscoped to any user
 
 ```
 user_friends           → users, users
+admin_role_audit       → users (actor_user_id, target_user_id; ON DELETE SET NULL, append-only grant/revoke trail)
 friend_requests        → users, users
 blocked_users          → users, users
 highlights             → users

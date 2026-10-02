@@ -474,6 +474,18 @@ Read-only feed of CloudWatch error detections collected by the background watchd
 | POST | `/monitoring/detections/{detection_id}/report` | On-demand (re)generate the debugging agent's report for one detection, overwriting any prior report for it. `404` if the detection doesn't exist, `502` if the upstream OpenRouter call fails. |
 | POST | `/monitoring/detections/{detection_id}/report/download-audit` | Audit-only: records that an admin downloaded the (client-assembled) remediation Markdown handoff file for one detection. Returns no detection/report content — just `{ "logged": true }`. `404` if the detection doesn't exist. The admin page calls this immediately before triggering the local file download, since the `.md` itself is built entirely client-side from data already fetched. |
 
+### Admin user actions
+
+All routes require an admin session (`require_admin`: `401` no session, `403` non-admin) and return `Cache-Control: no-store`. Rate limits and page sizes come from `api/config/admin_users.json`.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/admin/users` | Search/paginate users. Query: `q` (case-insensitive partial match on username or email, max length from config), `page` (from 1), `page_size` (capped server-side). Returns `{ users: [{ id, username, email, is_admin }], total, page, page_size }`; nothing else about a user is exposed. |
+| POST | `/admin/users/{user_id}/grant-admin` | Grant admin. Returns `{ id, is_admin, changed }`; `changed: false` if already admin (no audit row). `404` unknown or malformed id. |
+| POST | `/admin/users/{user_id}/revoke-admin` | Revoke admin. `409` (`cannot_revoke_self`/`last_admin`) with no state change; `changed: false` if not an admin. `404` unknown id. |
+
+Each real role change writes one `admin_role_audit` row (actor, target, action, previous/new value, timestamp) in the same transaction, plus an `admin_audit` log line. Changes are serialized by a transaction-scoped advisory lock so concurrent revokes cannot remove the last admin. The `ADMIN_SEED_EMAIL` boot seed will not re-promote an account that has an audited revoke.
+
 Nothing under `/monitoring` executes, queues, or takes any action against the server — this surface (including the debugging agent) is strictly read-only/reporting. The debugging agent (`backend/monitoring/debug_agent.py`) reads a detection's `message` + `context`, redacts anything shaped like a secret/credential/API key/connection-string password before it reaches the OpenRouter prompt, and produces a root-cause + remediation-narrative write-up — a recommendation for a human operator, never a record of an action taken. It reuses `AgentManager`'s existing OpenRouter credential/wiring (`backend/interactions/agent.py`) rather than a second isolated key. It runs automatically once per newly-persisted detection (from the watchdog's poll cycle) and routes `error_detections.status` to `"diagnosed"` on success; the `POST` route above lets the admin page trigger a rerun.
 
 ## Activity Monitoring

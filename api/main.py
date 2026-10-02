@@ -14,6 +14,7 @@ from routes.donation import donation_router
 from routes.reports import report_router
 from routes.blocks import block_router
 from routes.monitoring import monitoring_router
+from routes.admin_users import admin_users_router
 from routes.activity_monitoring import activity_monitoring_router
 from routes.profile_photo import profile_photo_router
 from routes.group_info import group_info_router
@@ -230,6 +231,8 @@ async def lifespan(_: FastAPI):
     # not caught here.
     from backend.interactions.invites_config import validate_invites_config
     validate_invites_config()
+    from backend.auth.admin_users_config import validate_admin_users_config
+    validate_admin_users_config()
     from backend.interactions.invites_config import validate_invite_link_secret
     validate_invite_link_secret()  # INVITE_LINK_SECRET: required, min length, never logged
 
@@ -373,6 +376,7 @@ app.include_router(donation_router)
 app.include_router(report_router)
 app.include_router(block_router)
 app.include_router(monitoring_router)
+app.include_router(admin_users_router)
 app.include_router(activity_monitoring_router)
 app.include_router(profile_photo_router)
 app.include_router(group_info_router)

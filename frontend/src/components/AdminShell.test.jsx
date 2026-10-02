@@ -27,6 +27,9 @@ vi.mock('../pages/AdminPromoCodes.jsx', () => ({
 vi.mock('../pages/AdminListings.jsx', () => ({
   default: () => <h1 data-admin-heading tabIndex={-1}>Group listings</h1>,
 }));
+vi.mock('../pages/AdminUserActions.jsx', () => ({
+  default: () => <h1 data-admin-heading tabIndex={-1}>User actions</h1>,
+}));
 vi.mock('./AdminActivityMonitoring.jsx', () => ({ default: () => <div data-testid="activity" /> }));
 vi.mock('./AdminMembershipGrant.jsx', () => ({ default: () => <div data-testid="grant" /> }));
 
@@ -60,6 +63,7 @@ describe('Admin routing', () => {
     ['#/admin/accounts', 'Account actions'],
     ['#/admin/promo', 'Promo codes'],
     ['#/admin/listings', 'Group listings'],
+    ['#/admin/users', 'User actions'],
     ['#/admin/detections/abc', 'Detection detail'],
   ])('deep link %s renders inside the shell with heading %s', async (hash, heading) => {
     await renderAt(hash);
@@ -96,15 +100,15 @@ describe('Admin routing', () => {
 });
 
 describe('Admin sidebar a11y', () => {
-  test('nav is labeled, lists the five sections in order', async () => {
+  test('nav is labeled, lists the six sections in order', async () => {
     await renderAt('#/admin/trends');
     await screen.findByRole('heading', { name: 'Trends' });
     const links = within(nav()).getAllByRole('link');
     expect(links.map((l) => l.textContent.trim())).toEqual(
-      ['Trends', 'Error logs', 'Account actions', 'Promo codes', 'Group listings'].map((s) => expect.stringContaining(s)),
+      ['Trends', 'Error logs', 'Account actions', 'Promo codes', 'Group listings', 'User actions'].map((s) => expect.stringContaining(s)),
     );
     expect(links.map((l) => l.getAttribute('href'))).toEqual(
-      ['#/admin/trends', '#/admin/errors', '#/admin/accounts', '#/admin/promo', '#/admin/listings'],
+      ['#/admin/trends', '#/admin/errors', '#/admin/accounts', '#/admin/promo', '#/admin/listings', '#/admin/users'],
     );
   });
 
@@ -114,6 +118,7 @@ describe('Admin sidebar a11y', () => {
     ['#/admin/accounts', 'Account actions'],
     ['#/admin/promo', 'Promo codes'],
     ['#/admin/listings', 'Group listings'],
+    ['#/admin/users', 'User actions'],
   ])('%s marks only %s with aria-current=page', async (hash, label) => {
     await renderAt(hash);
     await screen.findByRole('heading', { name: label });
@@ -134,7 +139,7 @@ describe('Admin sidebar a11y', () => {
     await renderAt('#/admin/trends');
     await screen.findByRole('heading', { name: 'Trends' });
     const icons = nav().querySelectorAll('.anticon');
-    expect(icons.length).toBe(5);
+    expect(icons.length).toBe(6);
     icons.forEach((i) => expect(i.getAttribute('aria-hidden')).toBe('true'));
   });
 

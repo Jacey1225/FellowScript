@@ -24,6 +24,7 @@ import AdminDetections from './pages/AdminDetections.jsx';
 import AdminDetectionDetail from './pages/AdminDetectionDetail.jsx';
 import AdminPromoCodes from './pages/AdminPromoCodes.jsx';
 import AdminListings from './pages/AdminListings.jsx';
+import AdminUserActions from './pages/AdminUserActions.jsx';
 import AdminTrends from './pages/AdminTrends.jsx';
 import AdminAccountActions from './pages/AdminAccountActions.jsx';
 import InviteFriends from './pages/InviteFriends.jsx';
@@ -162,6 +163,7 @@ export default function App() {
                 admin-only server-side; 404 from the API = flag off). */}
             <Route path="promo" element={<AdminPromoCodes />} />
             <Route path="listings" element={<AdminListings />} />
+            <Route path="users" element={<AdminUserActions />} />
             <Route path="detections/:id" element={<AdminDetectionDetail />} />
           </Route>
           <Route path="*"          element={<Navigate to="/" replace />} />

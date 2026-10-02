@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { Link, Outlet, useLocation, useMatch } from 'react-router-dom';
 import {
-  LineChartOutlined, BugOutlined, UserSwitchOutlined, GiftOutlined, CompassOutlined,
+  LineChartOutlined, BugOutlined, UserSwitchOutlined, GiftOutlined, CompassOutlined, TeamOutlined,
 } from '@ant-design/icons';
 import AdminGate from './AdminGate.jsx';
 import AppBloom from './AppBloom.jsx';
@@ -19,6 +19,7 @@ export const ADMIN_SECTIONS = [
   { to: '/admin/accounts', label: 'Account actions', title: 'Account actions', Icon: UserSwitchOutlined },
   { to: '/admin/promo',    label: 'Promo codes',     title: 'Promo codes',     Icon: GiftOutlined },
   { to: '/admin/listings', label: 'Group listings',  title: 'Group listings',  Icon: CompassOutlined },
+  { to: '/admin/users',    label: 'User actions',    title: 'User actions',    Icon: TeamOutlined },
 ];
 
 export function AdminPageHeader({ title, children }) {

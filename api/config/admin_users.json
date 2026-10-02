@@ -1,0 +1,10 @@
+{
+  "default_page_size": 25,
+  "max_page_size": 100,
+  "max_search_length": 100,
+  "rate_limits": {
+    "list": "60/minute",
+    "mutate": "10/minute",
+    "mutate_per_admin": "10/minute"
+  }
+}

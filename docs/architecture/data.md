@@ -42,7 +42,7 @@ So all four consumers (`BibleReaderView.swift`, `bible_text.py`, `useBible.js`, 
 | `terms_version` | TEXT | Which `CURRENT_TERMS_VERSION` (`schemas/users.py`) was accepted; a mismatch on login triggers a `terms_reaccept_required` soft gate |
 | `suspended_at` | TIMESTAMPTZ | Guideline 1.2 moderation eject — set only by `backend/moderation/admin_actions.py`, never by the normal profile-update path. A suspended account 403s on every auth route |
 | `needs_profile_completion` | BOOLEAN | Default `false`. Set `true` when a first-ever Apple sign-in is missing `full_name`/`email` — Apple only ever supplies these once per Apple ID + app, so a missed grant can't be recovered later. Cleared the next time the client sets a real `username`/`email` via `PUT /user/{id}` |
-| `is_admin` | BOOLEAN | Default `false`. Staff/admin flag checked by `require_admin` (`backend/auth/dependencies.py`) to gate admin-only surfaces, e.g. `/monitoring/detections*`. Seeded (idempotently, by live email lookup — never a hardcoded id) for exactly one account in `db.py::create_tables`; not editable via any user-facing endpoint |
+| `is_admin` | BOOLEAN | Default `false`. Staff/admin flag checked by `require_admin` (`backend/auth/dependencies.py`) to gate admin-only surfaces, e.g. `/monitoring/detections*`. Seeded (idempotently, by live email lookup — never a hardcoded id) for exactly one account in `db.py::create_tables`; editable only via the admin-only `/admin/users/{id}/grant-admin` and `/revoke-admin` routes, each change audited in `admin_role_audit` (actor, target, action, previous/new value, timestamp; append-only, FKs `ON DELETE SET NULL`) |
 
 ---
 
