@@ -22,7 +22,11 @@ export default function MessagingPanel() {
     videoEnabled, videoTiles, onToggleVideo, bindVideoTile,
     onGroupChanged, onGroupGone,
     olderPage, onLoadOlder,
+    threadView, threadMessages, threadPage, threadLoad, restoredDraft,
+    onCloseThread, onRetryThread, onLoadOlderThread, onSendThreadMessage,
+    onStartThread, onDeleteMessage, onRestoreMessage,
   } = useMessagingPanel() || {};
+  const inThread = !!threadView;
 
   // createPortal'd to document.body (see useHostRect's own comment) so this
   // full-bleed overlay escapes .dv-groupview's own backdrop-filter, which
@@ -68,12 +72,13 @@ export default function MessagingPanel() {
           }}
         >
           <ChatThread
+            key={inThread ? `thread:${threadView.thread.id}` : 'main'}
             contact={currentContact}
-            messages={messages || []}
+            messages={(inThread ? threadMessages : messages) || []}
             groupMembers={groupMembers || []}
             user={user}
-            onBack={onBack}
-            onSend={sendMessage}
+            onBack={inThread ? onCloseThread : onBack}
+            onSend={inThread ? onSendThreadMessage : sendMessage}
             onRequestUploadUrl={onRequestUploadUrl}
             onUploadToS3={onUploadToS3}
             onSearchGifs={onSearchGifs}
@@ -95,8 +100,15 @@ export default function MessagingPanel() {
             bindVideoTile={bindVideoTile}
             onGroupChanged={onGroupChanged}
             onGroupGone={onGroupGone}
-            olderPage={olderPage}
-            onLoadOlder={onLoadOlder}
+            olderPage={inThread ? threadPage : olderPage}
+            onLoadOlder={inThread ? onLoadOlderThread : onLoadOlder}
+            thread={inThread ? threadView.thread : null}
+            threadLoad={threadLoad}
+            onRetryThread={onRetryThread}
+            restoredDraft={restoredDraft}
+            onStartThread={onStartThread}
+            onDeleteMessage={onDeleteMessage}
+            onRestoreMessage={onRestoreMessage}
           />
         </div>,
         document.body,

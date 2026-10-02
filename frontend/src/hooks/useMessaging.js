@@ -1,13 +1,17 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { message } from 'antd';
 import { API, WS_BASE } from '../config.js';
-import { compareTimestamps } from '../utils.js';
+import { compareTimestamps, threadFrameToRow } from '../utils.js';
 import { useCapabilities } from './useCapabilities.js';
 import {
   INITIAL_PAGE_LIMIT, OLDER_PAGE_LIMIT, ACK_FALLBACK_MS,
   newClientRef, parsePage, pageQuery,
   mergeOlder, mergeLive, reconcileAck, findLostAckMatch,
 } from '../lib/chatPaging.js';
+import {
+  createThread, deleteGroupMessage, restoreGroupMessage, fetchThreadMessagesUrl,
+  insertRestored, DEFAULT_UNDO_SECONDS,
+} from '../lib/threadsApi.js';
 
 // WS reconnect backoff: 3s -> 30s cap, doubling each failed attempt.
 const WS_RECONNECT_MIN_MS = 3000;
@@ -27,6 +31,14 @@ export function useMessaging({ user }) {
   const [groupMembers,   setGroupMembers]   = useState([]);
   const [wsStatus,       setWsStatus]       = useState('connecting'); // 'connecting' | 'connected' | 'reconnecting' | 'offline'
   const [olderPage,      setOlderPage]      = useState(PAGING_IDLE);
+  // Task 20261001-message-threads. One open thread at a time, one level deep:
+  // threadView = { thread } while a thread is open over the group chat.
+  const [threadView,     setThreadView]     = useState(null);
+  const [threadMessages, setThreadMessages] = useState([]);
+  const [threadPage,     setThreadPage]     = useState(PAGING_IDLE);
+  const [threadLoad,     setThreadLoad]     = useState('idle'); // 'idle' | 'loading' | 'error'
+  // A thread send that failed hands its text back so the composer can refill.
+  const [restoredDraft,  setRestoredDraft]  = useState(null);
   // Task 20261001-chat-pagination. Server-gated feature flags come from the
   // SF capabilities client; a missing/false capability (or no provider) means
   // the legacy full-history fetch. Read through a ref so callbacks stay stable.
@@ -39,6 +51,14 @@ export function useMessaging({ user }) {
   const chatTokenRef = useRef(0);
   const pageRef = useRef({ cursor: null, hasMore: false, loading: false, paged: false });
   const ackTimersRef = useRef(new Map());
+  const threadViewRef = useRef(null);
+  const threadTokenRef = useRef(0);
+  const threadPageRef = useRef({ cursor: null, hasMore: false, loading: false });
+  const threadMessagesRef = useRef([]);
+  const deletedRowsRef = useRef(new Map());
+  const threadFrameCbRef = useRef(null);
+  useEffect(() => { threadViewRef.current = threadView; }, [threadView]);
+  useEffect(() => { threadMessagesRef.current = threadMessages; }, [threadMessages]);
   const messagesRef = useRef([]);
   useEffect(() => { messagesRef.current = messages; }, [messages]);
   const clearAckTimers = useCallback(() => {
@@ -129,8 +149,21 @@ export function useMessaging({ user }) {
           if (typeof data.client_ref === 'string' && data.client_ref && typeof data.id === 'string' && data.id) {
             const t = ackTimersRef.current.get(data.client_ref);
             if (t) { clearTimeout(t); ackTimersRef.current.delete(data.client_ref); }
-            setMessages(prev => reconcileAck(prev, data));
+            // A thread send's ack carries thread_id: reconcile only the list
+            // that holds the optimistic bubble.
+            if (typeof data.thread_id === 'string' && data.thread_id) {
+              setThreadMessages(prev => reconcileAck(prev, data));
+            } else {
+              setMessages(prev => reconcileAck(prev, data));
+            }
           }
+          return;
+        }
+        // Task 20261001-message-threads: thread / delete frames go through a
+        // callback ref (same style as sessionSignalCbRef); never a second
+        // WebSocket. Not chat bubbles in their own right.
+        if (data.type === 'thread_message' || data.type === 'message_deleted' || data.type === 'message_restored') {
+          threadFrameCbRef.current?.(data);
           return;
         }
         if (data.type === 'error') {
@@ -146,8 +179,16 @@ export function useMessaging({ user }) {
           // openChat, removeFriend) -- plus a console log for diagnosis, so
           // the failure isn't silently swallowed.
           console.error('WS error frame:', data.reason || 'unknown', data.detail || '');
+          if (data.reason === 'terms_reaccept_required') {
+            // Present the Updated Terms gate (capabilities refresh flips
+            // termsCurrent), keep what the user typed.
+            capsRef.current?.refresh?.();
+          }
+          threadFrameCbRef.current?.({ type: 'thread_send_failed', reason: data.reason });
           message.error({
-            content: data.detail || "Couldn't send that message. Please try again.",
+            content: data.reason === 'terms_reaccept_required'
+              ? 'Please review and accept the updated Terms to continue.'
+              : (data.detail || "Couldn't send that message. Please try again."),
             key: 'fs-ws-send-error',
             duration: 4,
           });
@@ -329,11 +370,247 @@ export function useMessaging({ user }) {
     return { friends: friendList, groups: groupList };
   }, [user]);
 
+  // ── Threads (task 20261001-message-threads) ────────────────────────────────
+
+  const resetThread = useCallback(() => {
+    threadTokenRef.current += 1;
+    threadPageRef.current = { cursor: null, hasMore: false, loading: false };
+    threadViewRef.current = null;
+    setThreadView(null);
+    setThreadMessages([]);
+    setThreadPage(PAGING_IDLE);
+    setThreadLoad('idle');
+    setRestoredDraft(null);
+  }, []);
+
+  const groupIdOfContact = (cc) => (cc && cc.type === 'group') ? (cc.group_id || cc.id) : null;
+
+  const fetchThreadFirstPage = useCallback(async (thread, token) => {
+    const gid = groupIdOfContact(currentContactRef.current);
+    if (!user || !gid) return;
+    setThreadLoad('loading');
+    try {
+      const res = await fetch(fetchThreadMessagesUrl(user.user_id, gid, thread.id, INITIAL_PAGE_LIMIT, null));
+      if (token !== threadTokenRef.current) return;
+      if (res.status === 404) {
+        message.info("That thread isn't available anymore.");
+        resetThread();
+        return;
+      }
+      if (!res.ok) throw new Error(`thread page HTTP ${res.status}`);
+      const pg = parsePage(await res.json());
+      if (token !== threadTokenRef.current) return;
+      if (!pg) throw new Error('thread page response had no page block');
+      threadPageRef.current = { cursor: pg.cursor, hasMore: pg.hasMore, loading: false };
+      setThreadPage({ ...PAGING_IDLE, paged: true, hasMore: pg.hasMore });
+      setThreadMessages(pg.messages);
+      setThreadLoad('idle');
+    } catch (err) {
+      if (token !== threadTokenRef.current) return;
+      console.error('Failed to open thread:', err);
+      setThreadLoad('error');
+    }
+  }, [user, resetThread]);
+
+  const openThread = useCallback((thread) => {
+    if (!thread || typeof thread.id !== 'string') return;
+    const token = ++threadTokenRef.current;
+    threadPageRef.current = { cursor: null, hasMore: false, loading: false };
+    threadViewRef.current = { thread };
+    setThreadView({ thread });
+    setThreadMessages([]);
+    setThreadPage(PAGING_IDLE);
+    setRestoredDraft(null);
+    fetchThreadFirstPage(thread, token);
+  }, [fetchThreadFirstPage]);
+
+  const retryThread = useCallback(() => {
+    const tv = threadViewRef.current;
+    if (tv) fetchThreadFirstPage(tv.thread, threadTokenRef.current);
+  }, [fetchThreadFirstPage]);
+
+  const closeThread = useCallback(() => { resetThread(); }, [resetThread]);
+
+  const loadOlderThread = useCallback(async () => {
+    const tv = threadViewRef.current;
+    const gid = groupIdOfContact(currentContactRef.current);
+    const st = threadPageRef.current;
+    if (!user || !tv || !gid || !st.hasMore || !st.cursor || st.loading) return;
+    const token = threadTokenRef.current;
+    st.loading = true;
+    setThreadPage(p => ({ ...p, loading: true, error: false }));
+    try {
+      const res = await fetch(fetchThreadMessagesUrl(user.user_id, gid, tv.thread.id, OLDER_PAGE_LIMIT, st.cursor));
+      if (token !== threadTokenRef.current) return;
+      if (!res.ok) throw new Error(`older thread page HTTP ${res.status}`);
+      const pg = parsePage(await res.json());
+      if (token !== threadTokenRef.current) return;
+      if (!pg) throw new Error('older thread page had no page block');
+      st.cursor = pg.cursor;
+      st.hasMore = pg.hasMore;
+      st.loading = false;
+      setThreadMessages(prev => mergeOlder(prev, pg.messages));
+      setThreadPage(p => ({
+        ...p, hasMore: pg.hasMore, loading: false, error: false,
+        loadedCount: pg.messages.length, loadedTick: p.loadedTick + 1,
+      }));
+    } catch (err) {
+      if (token !== threadTokenRef.current) return;
+      console.error('Failed to load older thread messages:', err);
+      st.loading = false;
+      setThreadPage(p => ({ ...p, loading: false, error: true }));
+    }
+  }, [user]);
+
+  // Start (or open the existing) thread anchored on a main-chat message.
+  // Returns true when a thread was opened.
+  const startThread = useCallback(async (msg) => {
+    const gid = groupIdOfContact(currentContactRef.current);
+    if (!user || !gid || !msg || !msg.id) return false;
+    try {
+      const summary = await createThread(user.user_id, gid, msg.id);
+      openThread(summary);
+      return true;
+    } catch (err) {
+      if (err && err.code === 'terms_reaccept_required') {
+        capsRef.current?.refresh?.();
+        message.info('Please review and accept the updated Terms to start a thread.');
+      } else if (err && err.code === 'thread_limit') {
+        message.error('This group has reached its thread limit.');
+      } else if (err && err.status === 404) {
+        message.error("Couldn't start a thread on that message.");
+      } else {
+        message.error(err?.message || "Couldn't start a thread. Please try again.");
+      }
+      return false;
+    }
+  }, [user, openThread]);
+
+  // Thread messages go over the existing socket as a thread_message frame; the
+  // server derives the group and recipients from thread_id.
+  const sendThreadMessage = useCallback((text, attachment = null) => {
+    const tv = threadViewRef.current;
+    if (!user || !tv || !wsRef.current || wsRef.current.readyState !== 1) return;
+    const clientRef = newClientRef();
+    const payload = {
+      type: 'thread_message',
+      from_user: user.user_id,
+      thread_id: tv.thread.id,
+      text,
+      client_ref: clientRef,
+    };
+    if (attachment) {
+      payload.attachment_kind = attachment.kind;
+      payload.attachment_meta = attachment.meta || {};
+      if (attachment.objectKey) payload.attachment_key = attachment.objectKey;
+    }
+    wsRef.current.send(JSON.stringify(payload));
+    setThreadMessages(prev => [...prev, {
+      key: `c:${clientRef}`, clientRef, pending: true,
+      text, mine: true, timestamp: new Date().toISOString(), sender: '',
+      attachmentKind: attachment ? attachment.kind : null,
+      attachmentMeta: attachment ? (attachment.meta || null) : null,
+      attachmentUrl: (attachment && attachment.kind === 'gif') ? null : (attachment?.localUrl || null),
+    }]);
+  }, [user]);
+
+  // Delete (author only, group chat) with the server's undo window. The row
+  // leaves the list immediately and is put back if the call fails. Resolves to
+  // { id, undoSeconds } or null.
+  const deleteMessage = useCallback(async (msg) => {
+    const gid = groupIdOfContact(currentContactRef.current);
+    if (!user || !gid || !msg || !msg.id) return null;
+    deletedRowsRef.current.set(msg.id, msg);
+    setMessages(prev => prev.filter(m => m.id !== msg.id));
+    try {
+      const res = await deleteGroupMessage(user.user_id, gid, msg.id);
+      const secs = Number(res && res.undo_seconds);
+      return { id: msg.id, undoSeconds: secs > 0 ? secs : DEFAULT_UNDO_SECONDS };
+    } catch (err) {
+      console.error('Failed to delete message:', err);
+      deletedRowsRef.current.delete(msg.id);
+      setMessages(prev => insertRestored(prev, msg));
+      message.error("Couldn't delete that message. Please try again.");
+      return null;
+    }
+  }, [user]);
+
+  const restoreMessage = useCallback(async (messageId) => {
+    const gid = groupIdOfContact(currentContactRef.current);
+    const row = deletedRowsRef.current.get(messageId);
+    if (!user || !gid || !row) return false;
+    try {
+      await restoreGroupMessage(user.user_id, gid, messageId);
+      deletedRowsRef.current.delete(messageId);
+      setMessages(prev => insertRestored(prev, row));
+      return true;
+    } catch (err) {
+      console.error('Failed to restore message:', err);
+      deletedRowsRef.current.delete(messageId);
+      message.error("Couldn't undo that delete. It can only be undone for a few seconds.");
+      return false;
+    }
+  }, [user]);
+
+  // Frames from the one socket (registered through threadFrameCbRef above).
+  const handleThreadFrame = useCallback((data) => {
+    const cc = currentContactRef.current;
+    const gid = groupIdOfContact(cc);
+    const sameGroup = gid && typeof data.group_id === 'string' && data.group_id.toLowerCase() === String(gid).toLowerCase();
+    if (data.type === 'thread_message') {
+      const tv = threadViewRef.current;
+      if (!tv || data.thread_id !== tv.thread.id) return;
+      const row = threadFrameToRow(data);
+      if (row) setThreadMessages(prev => mergeLive(prev, row));
+      return;
+    }
+    if (data.type === 'message_deleted') {
+      if (!sameGroup || typeof data.id !== 'string') return;
+      setMessages(prev => prev.filter(m => m.id !== data.id));
+      const tv = threadViewRef.current;
+      if (tv && tv.thread.root_message_id === data.id) {
+        const next = { thread: { ...tv.thread, root_deleted: true } };
+        threadViewRef.current = next;
+        setThreadView(next);
+      }
+      return;
+    }
+    if (data.type === 'message_restored') {
+      if (!sameGroup) return;
+      const row = threadFrameToRow(data);
+      if (row) setMessages(prev => insertRestored(prev, row));
+      const tv = threadViewRef.current;
+      if (tv && tv.thread.root_message_id === data.id && tv.thread.root_deleted) {
+        const next = { thread: { ...tv.thread, root_deleted: false } };
+        threadViewRef.current = next;
+        setThreadView(next);
+      }
+      return;
+    }
+    if (data.type === 'thread_send_failed') {
+      // The send did not land: drop the unacked optimistic bubble and give the
+      // text back to the composer (never lose what the user typed).
+      const tv = threadViewRef.current;
+      if (!tv) return;
+      const pending = [...threadMessagesRef.current].reverse().find(m => m.pending && !m.id);
+      if (!pending) return;
+      setThreadMessages(prev => prev.filter(m => m !== pending && m.clientRef !== pending.clientRef));
+      if (pending.text && !pending.attachmentKind) {
+        setRestoredDraft(prev => ({ tick: (prev ? prev.tick : 0) + 1, text: pending.text }));
+      }
+    }
+  }, []);
+  useEffect(() => {
+    threadFrameCbRef.current = handleThreadFrame;
+    return () => { threadFrameCbRef.current = null; };
+  }, [handleThreadFrame]);
+
   // ── Open chat ─────────────────────────────────────────────────────────────
 
   const openChat = useCallback(async (contact) => {
     const token = ++chatTokenRef.current;
     clearAckTimers();
+    resetThread();
     pageRef.current = { cursor: null, hasMore: false, loading: false, paged: false };
     setOlderPage(PAGING_IDLE);
     setCurrentContact(contact);
@@ -407,17 +684,18 @@ export function useMessaging({ user }) {
       console.error('Failed to open chat:', err);
       message.error('Could not load that conversation. Check your connection and try again.');
     }
-  }, [user, clearAckTimers]);
+  }, [user, clearAckTimers, resetThread]);
 
   const closeChat = useCallback(() => {
     chatTokenRef.current += 1;
     clearAckTimers();
+    resetThread();
     pageRef.current = { cursor: null, hasMore: false, loading: false, paged: false };
     setOlderPage(PAGING_IDLE);
     setCurrentContact(null);
     setMessages([]);
     setGroupMembers([]);
-  }, [clearAckTimers]);
+  }, [clearAckTimers, resetThread]);
 
   // Task 20261001-chat-pagination: older page for the open thread. Safe to
   // call repeatedly (no-op while loading or at the start of the conversation);
@@ -772,6 +1050,9 @@ export function useMessaging({ user }) {
     applyGroupChange, dropGroup,
     friends, groups, currentContact, messages, groupMembers, wsStatus,
     olderPage, loadOlder,
+    threadView, threadMessages, threadPage, threadLoad, restoredDraft,
+    openThread, closeThread, retryThread, loadOlderThread, startThread, sendThreadMessage,
+    deleteMessage, restoreMessage,
     wsRef, friendCache,
     connectWS, disconnectWS, setOnSessionSignal,
     loadContacts, openChat, closeChat, sendMessage,

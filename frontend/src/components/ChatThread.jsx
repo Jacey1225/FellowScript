@@ -1,16 +1,20 @@
 import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { Button, Avatar, Typography, Input, Popover, Modal, Spin } from 'antd';
+import { Button, Avatar, Typography, Input, Popover, Modal, Spin, message as antMessage } from 'antd';
 import {
   SendOutlined, ArrowLeftOutlined, TeamOutlined, PlusOutlined,
   PictureOutlined, FileOutlined, SmileOutlined, PlayCircleOutlined,
   DownloadOutlined, CloseCircleFilled, SearchOutlined,
+  BranchesOutlined, CopyOutlined, DeleteOutlined,
 } from '@ant-design/icons';
 import { SessionCard } from './SessionWidget.jsx';
 import SessionsMenu from './SessionsMenu.jsx';
 import GroupInfoPanel from './GroupInfoPanel.jsx';
 import GroupAnnouncementWidget from './GroupAnnouncementWidget.jsx';
 import { ANNOUNCEMENTS_ENABLED } from '../lib/announcementsApi.js';
+import ActionableBubble from './MessageActionMenu.jsx';
+import { useCapabilities } from '../hooks/useCapabilities.js';
+import { DEFAULT_UNDO_SECONDS } from '../lib/threadsApi.js';
 
 const { Text } = Typography;
 
@@ -539,6 +543,66 @@ function StagedAttachmentChip({ staged, onRemove, onRetry }) {
   );
 }
 
+// ── Message actions (task 20261001-message-threads) ──────────────────────────
+// What a message can offer, by where it is shown:
+//  - thread message: Copy only (there is no delete route for thread messages);
+//  - group-chat message: Start thread (threads on), Copy, Delete (author only,
+//    message_delete on); DMs: Copy only.
+// Copy is hidden for image/video/file; a GIF copies its URL.
+export function copyTextFor(m) {
+  if (m.attachmentKind === 'gif') return (m.attachmentMeta && m.attachmentMeta.url) || m.attachmentUrl || '';
+  if (m.attachmentKind) return '';
+  return m.text ? String(m.text) : '';
+}
+
+async function copyToClipboard(text) {
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch (err) {
+    // Fall through to the legacy path.
+  }
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand && document.execCommand('copy');
+    document.body.removeChild(ta);
+    return !!ok;
+  } catch (err) {
+    return false;
+  }
+}
+
+// Undo toast stack for deleted messages (design: "Message deleted  [Undo]",
+// role=status, a real button, auto-dismiss after the server's undo window).
+function UndoToasts({ toasts, onUndo, onExpire }) {
+  return (
+    <div className="msg-undo-stack" role="status" aria-live="polite">
+      {toasts.map(t => <UndoToast key={t.id} toast={t} onUndo={onUndo} onExpire={onExpire} />)}
+    </div>
+  );
+}
+
+function UndoToast({ toast, onUndo, onExpire }) {
+  useEffect(() => {
+    const timer = setTimeout(() => onExpire(toast.id), toast.seconds * 1000);
+    return () => clearTimeout(timer);
+  }, [toast.id, toast.seconds, onExpire]);
+  return (
+    <div className="msg-undo-toast">
+      <span>Message deleted</span>
+      <button type="button" className="msg-undo-btn" onClick={() => onUndo(toast.id)}>Undo</button>
+    </div>
+  );
+}
+
 // ── Chat thread (iMessage style) ──────────────────────────────────────────────
 
 export default function ChatThread({
@@ -554,7 +618,18 @@ export default function ChatThread({
   // loadedCount, loadedTick } for the open thread plus the older-page loader.
   // Both optional: absent means a legacy full-history thread.
   olderPage, onLoadOlder,
+  // Task 20261001-message-threads. `thread` set = this view is a thread over
+  // the group chat (one level deep): `messages`/`olderPage`/`onSend` are then
+  // the thread's. threadLoad: 'idle' | 'loading' | 'error'. restoredDraft:
+  // { tick, text } hands a failed send's text back to the composer.
+  thread, threadLoad, onRetryThread, restoredDraft,
+  onStartThread, onDeleteMessage, onRestoreMessage,
 }) {
+  const inThread = !!thread;
+  const caps = useCapabilities();
+  const features = (caps && caps.features) || {};
+  const threadHeadingRef = useRef(null);
+  const [undoToasts, setUndoToasts] = useState([]);
   const [text, setText]               = useState('');
   // Task 20260929-group-info-panel: replaces the old inline showMembers strip;
   // the member list is hosted inside GroupInfoPanel.
@@ -637,6 +712,23 @@ export default function ChatThread({
       setNewBelow(true);
     }
   }, [messages]);
+
+  // Thread view: focus moves to the thread heading on open (screen readers
+  // announce where they are), then to the composer once an empty thread loads.
+  useEffect(() => {
+    if (inThread) threadHeadingRef.current?.focus?.({ preventScroll: true });
+  }, [inThread, thread?.id]);
+  useEffect(() => {
+    if (inThread && threadLoad === 'idle' && messages.length === 0) messageInputRef.current?.focus?.();
+  }, [inThread, threadLoad, messages.length]);
+
+  // A failed thread send gives its text back (never lose what was typed).
+  useEffect(() => {
+    if (restoredDraft && restoredDraft.text) {
+      setText(prev => prev || restoredDraft.text);
+      messageInputRef.current?.focus?.();
+    }
+  }, [restoredDraft]);
 
   // A finished (or failed) older-page request never leaves a stale anchor.
   useEffect(() => { if (!loadingOlder) anchorRef.current = null; }, [loadingOlder]);
@@ -774,6 +866,46 @@ export default function ChatThread({
     setAttachmentError(null);
   };
 
+  const isGroup = contact?.type === 'group';
+  const dismissToast = useCallback((id) => setUndoToasts(prev => prev.filter(t => t.id !== id)), []);
+
+  const handleDelete = useCallback(async (m) => {
+    if (!onDeleteMessage) return;
+    messageInputRef.current?.focus?.();
+    const res = await onDeleteMessage(m);
+    if (res) {
+      setUndoToasts(prev => [...prev, { id: res.id, seconds: res.undoSeconds || DEFAULT_UNDO_SECONDS }]);
+    }
+  }, [onDeleteMessage]);
+
+  const handleUndo = useCallback(async (id) => {
+    dismissToast(id);
+    if (onRestoreMessage) await onRestoreMessage(id);
+  }, [dismissToast, onRestoreMessage]);
+
+  const actionsFor = (m) => {
+    const list = [];
+    const settled = !!m.id && !m.pending;
+    if (!inThread && isGroup && features.threads === true && settled && onStartThread) {
+      list.push({ key: 'thread', label: 'Start thread', icon: <BranchesOutlined />, onSelect: () => onStartThread(m) });
+    }
+    const copyText = copyTextFor(m);
+    if (copyText) {
+      list.push({
+        key: 'copy', label: 'Copy', icon: <CopyOutlined />,
+        onSelect: async () => {
+          const ok = await copyToClipboard(copyText);
+          if (ok) antMessage.success({ content: 'Copied', key: 'fs-copy', duration: 1.5 });
+          else antMessage.error({ content: "Couldn't copy that message.", key: 'fs-copy', duration: 2 });
+        },
+      });
+    }
+    if (!inThread && isGroup && features.message_delete === true && m.mine && settled && onDeleteMessage) {
+      list.push({ key: 'delete', label: 'Delete', icon: <DeleteOutlined />, destructive: true, onSelect: () => handleDelete(m) });
+    }
+    return list;
+  };
+
   // Task 20260904-attach-picker-layout-polish: same gold-gradient pill
   // treatment already used inline for NotesPanel.jsx's "New Note"/"New" and
   // AgentChatPanel.jsx's "New Agent Chat" buttons -- reused verbatim here
@@ -811,8 +943,19 @@ export default function ChatThread({
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.8rem 1rem', borderBottom: '1px solid rgba(255,255,255,0.09)', flexShrink: 0 }}>
         <Button type="text" icon={<ArrowLeftOutlined />} onClick={onBack}
-          style={{ color: 'rgba(255,198,26,0.65)', padding: '0 4px' }} />
-        {contact?.type === 'group' ? (
+          aria-label={inThread ? `Back to ${contact?.name || 'group chat'}` : undefined}
+          style={{ color: 'rgba(255,198,26,0.65)', padding: '0 4px', minWidth: 44, minHeight: 44 }} />
+        {inThread ? (
+          <h2
+            ref={threadHeadingRef}
+            tabIndex={-1}
+            className="thread-header-title"
+            aria-label={`Thread: ${thread.title || 'Thread'}`}
+          >
+            <span className="thread-header-group">{contact?.name}</span>
+            <span className="thread-header-name">{thread.title || 'Thread'}</span>
+          </h2>
+        ) : contact?.type === 'group' ? (
           <button
             ref={groupInfoBtnRef}
             type="button"
@@ -836,7 +979,7 @@ export default function ChatThread({
             {contact?.name}
           </Text>
         )}
-        <SessionsMenu
+        {!inThread && <SessionsMenu
           sessions={sessions}
           activeSessionId={activeSessionId}
           joinError={joinError}
@@ -853,11 +996,20 @@ export default function ChatThread({
           videoTiles={videoTiles}
           onToggleVideo={onToggleVideo}
           bindVideoTile={bindVideoTile}
-        />
+        />}
       </div>
 
+      {inThread && (
+        <div className="thread-root-card" role="group" aria-label="Original message">
+          <span className="thread-root-chip">Thread</span>
+          {thread.root_deleted
+            ? <p className="thread-root-text thread-root-deleted">Original message deleted</p>
+            : <p className="thread-root-text">{thread.root_preview || ''}</p>}
+        </div>
+      )}
+
       {/* Task 20260929-announcement-push-widget: groups only, directly under the header. */}
-      {ANNOUNCEMENTS_ENABLED && contact?.type === 'group' && user?.user_id && (
+      {!inThread && ANNOUNCEMENTS_ENABLED && contact?.type === 'group' && user?.user_id && (
         <GroupAnnouncementWidget
           userId={user.user_id}
           groupId={contact.id}
@@ -866,7 +1018,7 @@ export default function ChatThread({
       )}
 
       {/* Joined session stays pinned (always mounted) so call tiles/controls survive the Sessions menu closing. */}
-      {(() => {
+      {!inThread && (() => {
         const pinned = (sessions || []).find(x => x.id === activeSessionId);
         return pinned ? (
           <SessionCard
@@ -920,9 +1072,21 @@ export default function ChatThread({
             <Text style={{ fontSize: '0.68rem', color: 'rgba(242,242,242,0.3)', fontFamily: "'Inter', sans-serif" }}>Start of conversation</Text>
           </div>
         )}
-        {messages.length === 0 && (
+        {inThread && threadLoad === 'loading' && messages.length === 0 && (
+          <div style={{ textAlign: 'center', padding: '2rem 1rem' }} aria-label="Loading thread"><Spin size="small" /></div>
+        )}
+        {inThread && threadLoad === 'error' && (
+          <div style={{ textAlign: 'center', padding: '1.5rem 1rem' }}>
+            <Button type="link" size="small" onClick={onRetryThread} style={{ color: 'rgba(255,198,26,0.75)', fontSize: '0.72rem' }}>
+              Couldn't load this thread. Retry
+            </Button>
+          </div>
+        )}
+        {messages.length === 0 && !(inThread && threadLoad !== 'idle') && (
           <div style={{ textAlign: 'center', padding: '2rem 1rem' }}>
-            <Text style={{ fontSize: '0.72rem', color: 'rgba(242,242,242,0.22)', fontFamily: "'Inter', sans-serif" }}>No messages yet. Say hello!</Text>
+            <Text style={{ fontSize: '0.72rem', color: 'rgba(242,242,242,0.22)', fontFamily: "'Inter', sans-serif" }}>
+              {inThread ? 'Start the conversation' : 'No messages yet. Say hello!'}
+            </Text>
           </div>
         )}
         {messages.map((m, i) => {
@@ -943,11 +1107,13 @@ export default function ChatThread({
             : m.attachmentKind === 'file'  ? `${m.sender || 'You'}: file attachment, ${m.attachmentMeta?.filename || 'file'}, download`
             : undefined;
           return (
-            <div
+            <ActionableBubble
               key={m.key ?? `i${i}`}
               data-msg-id={m.key ?? undefined}
               className={`msg-bubble ${m.mine ? 'sent' : 'received'} ${isMedia ? 'msg-bubble-media' : ''}`}
               aria-label={ariaLabel}
+              mine={!!m.mine}
+              actions={actionsFor(m)}
             >
               {!m.mine && m.sender && !isMedia && <div className="msg-bubble-sender">{m.sender}</div>}
               {m.attachmentKind ? <AttachmentContent message={m} /> : m.text}
@@ -959,7 +1125,7 @@ export default function ChatThread({
                   {new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                 </div>
               )}
-            </div>
+            </ActionableBubble>
           );
         })}
         <div ref={endRef} />
@@ -973,6 +1139,7 @@ export default function ChatThread({
           New messages
         </Button>
       )}
+      {undoToasts.length > 0 && <UndoToasts toasts={undoToasts} onUndo={handleUndo} onExpire={dismissToast} />}
       </div>
 
       {/* Staged attachment + inline error */}
@@ -1044,7 +1211,7 @@ export default function ChatThread({
         />
       </div>
 
-      <GroupInfoPanel
+      {!inThread && <GroupInfoPanel
         open={showGroupInfo && contact?.type === 'group'}
         onClose={() => { setShowGroupInfo(false); groupInfoBtnRef.current?.focus(); }}
         contact={contact}
@@ -1057,7 +1224,7 @@ export default function ChatThread({
           originX: e ? (e.clientX / window.innerWidth) * 100 : 50,
           originY: e ? (e.clientY / window.innerHeight) * 100 : 50,
         })}
-      />
+      />}
       {panelLightbox && (
         <AttachmentLightbox
           kind={panelLightbox.kind}

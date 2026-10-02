@@ -87,6 +87,9 @@ export default function Reader() {
     requestUploadUrl, uploadToS3, searchGifs, browseGifs,
     applyGroupChange, dropGroup,
     olderPage, loadOlder,
+    threadView, threadMessages, threadPage, threadLoad, restoredDraft,
+    openThread, closeThread, retryThread, loadOlderThread, startThread, sendThreadMessage,
+    deleteMessage, restoreMessage,
   } = useMessaging({ user });
 
   const {
@@ -392,7 +395,13 @@ export default function Reader() {
     onGroupChanged: (patch) => { if (currentContact) applyGroupChange(currentContact.id, patch); },
     onGroupGone: (contact) => { if (contact) dropGroup(contact.id); },
     olderPage, onLoadOlder: loadOlder,
-  }), [olderPage, loadOlder, applyGroupChange, dropGroup, user, friends, msgGroups, currentContact, messages, groupMembers, handleOpenChat, handleCloseChat,
+    threadView, threadMessages, threadPage, threadLoad, restoredDraft,
+    onOpenThread: openThread, onCloseThread: closeThread, onRetryThread: retryThread,
+    onLoadOlderThread: loadOlderThread, onSendThreadMessage: sendThreadMessage,
+    onStartThread: startThread, onDeleteMessage: deleteMessage, onRestoreMessage: restoreMessage,
+  }), [threadView, threadMessages, threadPage, threadLoad, restoredDraft, openThread, closeThread, retryThread,
+       loadOlderThread, sendThreadMessage, startThread, deleteMessage, restoreMessage,
+       olderPage, loadOlder, applyGroupChange, dropGroup, user, friends, msgGroups, currentContact, messages, groupMembers, handleOpenChat, handleCloseChat,
        addFriend, removeFriend, reportUser, blockUser, createGroup, updateGroup, leaveGroup,
        contactsLoaded, handleLoadContacts, sendMessage, requestUploadUrl, uploadToS3, searchGifs, browseGifs,
        sessions, activeSessionId, talkingUserId,

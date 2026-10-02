@@ -8,10 +8,13 @@
 // ctx: { features, userId, groupId, info, isOwner }. component receives ctx too.
 // An empty registry renders nothing.
 import GroupPublishSection from './GroupPublishSection.jsx';
+import GroupThreadsSection from './GroupThreadsSection.jsx';
 
 export const GROUP_INFO_SECTIONS = [
   // Task 20261001-explorer-listings: owner-only, flag-gated (fails closed).
   { key: 'publish', order: 10, isVisible: (ctx) => !!ctx.isOwner && ctx.features?.explorer_publish === true, component: GroupPublishSection },
+  // Task 20261001-message-threads: flag-gated (fails closed), order 30.
+  { key: 'threads', order: 30, isVisible: (ctx) => ctx.features?.threads === true, component: GroupThreadsSection },
 ];
 
 export function getVisibleGroupInfoSections(ctx, sections = GROUP_INFO_SECTIONS) {

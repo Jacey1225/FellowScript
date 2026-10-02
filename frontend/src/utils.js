@@ -25,6 +25,25 @@ export function compareTimestamps(a, b) {
   return 0;
 }
 
+// Task 20261001-message-threads. Live `thread_message` and `message_restored`
+// frames name their fields sender/body/created_at (never from_user/text, so
+// older clients ignore them). Maps one to the row shape ChatThread renders.
+// attachment_key is never read. Returns null for a frame with no usable id.
+export function threadFrameToRow(frame) {
+  if (!frame || typeof frame.id !== 'string' || !frame.id) return null;
+  return {
+    id: frame.id,
+    key: frame.id,
+    text: typeof frame.body === 'string' ? frame.body : '',
+    mine: false,
+    timestamp: frame.created_at,
+    sender: typeof frame.sender === 'string' ? frame.sender : '',
+    attachmentKind: frame.attachment_kind || null,
+    attachmentMeta: frame.attachment_meta || null,
+    attachmentUrl: frame.attachment_url || null,
+  };
+}
+
 export function hexWithAlpha(hex, alpha) {
   const r = parseInt(hex.slice(1, 3), 16);
   const g = parseInt(hex.slice(3, 5), 16);
