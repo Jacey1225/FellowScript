@@ -1313,5 +1313,10 @@ def start_scheduler() -> None:
     # can't be bypassed.
     scheduler.add_job(_run_error_watchdog, "interval", seconds=WATCHDOG_POLL_INTERVAL_SECONDS,
                       id="cloudwatch_watchdog", replace_existing=True)
+    # Hourly FEATURE_SUMMARY line (counts only; the one aggregate visibility
+    # surface for 404/429/probe traffic that is not logged per request).
+    from backend.observability.feature_summary import run_feature_summary_job
+    scheduler.add_job(run_feature_summary_job, "interval", hours=1,
+                      id="feature_summary", replace_existing=True)
     scheduler.start()
     logger.info("Notification scheduler started — checking every minute")

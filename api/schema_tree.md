@@ -89,6 +89,20 @@ agentic_context         → agent_heartbeats, users, notes
 
 ---
 
+## DDL modules (api/schema_ddl/, applied after everything above)
+
+<!-- shared-foundation (20261002-shared-foundation) -->
+`create_tables` ends by applying the modules named in `db.DDL_MODULES`, in order, in the same
+transaction (one name per line; an unknown module raises and stops the boot; the runner sets
+`lock_timeout` to 30 s first). Tables created there:
+
+```
+feature_flags           # module "flags": name PK, state off|canary|on, canary_user_ids UUID[], updated_at, updated_by (text, no FK); 8 rows seeded off
+pending_s3_deletes      # module "outbox": key PK, enqueued_at, attempts, last_attempt_at (S3 keys awaiting deletion; no FK)
+```
+
+---
+
 ## Full dependency map
 
 ```

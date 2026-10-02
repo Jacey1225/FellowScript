@@ -453,3 +453,21 @@ A second, separate admin panel (task `20260918-admin-activity-monitoring`, exten
 | GET | `/activity-monitoring/data/{metric}` | Admin | JSON version of `/plots/{metric}`: `{ metric, title, ylabel, series: [{ day, value }, ...] }`. Same `metric` validation and `404` behavior as `/plots/{metric}`. `Cache-Control: no-store`. |
 
 Every admin GET above logs one `admin_action` audit line (`action=view_activity_monitoring`) via the same `admin_audit` logger `/monitoring` uses. The average-per-user denominator is the current total user count (not a historically accurate per-day cohort) — a deliberate snapshot-dashboard simplification, not a billing-grade calculation. The `/data/*` endpoints carry exactly the same (day, value) resolution the `/plots/*` images already visually encode — no raw per-row data, device IDs, or per-user breakdowns — so the JSON surface discloses nothing beyond what the PNG already showed. See [Data → `visits`](../architecture/data.md#visits) for the schema.
+
+---
+
+## App capabilities and feature flags (task 20261002-shared-foundation)
+
+<!-- shared-foundation -->
+Ships inert: every flag seeds `off`, so nothing user-visible changes until a flag is flipped (only by the owner, never by the build pipeline).
+
+| Method | Route | Auth | Description |
+|---|---|---|---|
+| GET | `/app/capabilities` | Session (`get_current_user`; no user id in the path) | `{ "v": 1, "features": { <flag>: bool, ... }, "links": { "explore": string \| null }, "terms_current": bool }`, `Cache-Control: no-store`. `features` has one boolean per flag the server exposes, evaluated for the calling user (canary lists applied); `links.explore` is non-null only when `explorer_browse` is on; `terms_current` is true when the user's accepted Terms version equals the current one. No ids, canary lists or state names are returned. `401` without a session. Clients treat any non-200, network error or malformed body as "all features off, `terms_current` true". |
+| PUT | `/admin/flags/{name}` | Admin (`require_admin`) | Body `{ "state": "off" \| "canary" \| "on", "canary_user_ids": [uuid, ...] \| omitted }`. Omitting the list keeps the stored one. `404` unknown flag; `422` invalid state, a canary list containing anything that is not an existing user id, or `canary` on `explorer_browse` (off/on only). `401`/`403` for non-admins. Emits one INFO audit line `FLAG_CHANGE name=<n> state=<s> actor=<user_id> canary_count=<k>`. The flag cache is 10 s per process; this route invalidates it immediately. |
+
+Without a deploy the owner can also run `docker exec fellowscript-api python -m backend.admin_flags list` or `... set <name> <off|canary|on> [--canary id,id]` (takes effect within 10 s).
+
+Routes that create new user-generated content for later features answer `403 { "detail": { "code": "terms_reaccept_required" } }` when the user has not accepted the current Terms (`backend/auth/terms.py`).
+
+**Paging convention (shared cursor codec, `backend/interactions/paging.py`).** Keyset lists take `limit`, `cursor_timestamp` (ISO 8601; normalised to UTC `Z` with microseconds), optional `cursor_seq` (integer >= 0) and `cursor_id`; timestamp and id come together or neither; any malformed value answers `422 { "detail": { "code": "invalid_cursor" } }` before any query. Responses are `{ "<items>": [...], "page": { "limit", "has_more", "next_cursor_timestamp", "next_cursor_seq", "next_cursor_id" } }` with the `next_cursor_*` fields null unless `has_more`.

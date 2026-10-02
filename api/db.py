@@ -71,6 +71,14 @@ def _redact_db_error(e: sql.Error) -> str:
     return text
 
 
+# Names of api/schema_ddl/<name>.py modules, applied in this order at the end
+# of create_tables. One name per line: each task adds a one-line edit.
+DDL_MODULES = (
+    "flags",
+    "outbox",
+)
+
+
 def backfill_revoke_departed_group_invites(cur) -> int:
     """Revoke every still-active kind='group' invite whose creator is no longer
     in that group's ``users`` (left/removed before the removal-path revoke
@@ -1207,6 +1215,11 @@ def create_tables(cur):
     cur.execute(
         "CREATE INDEX IF NOT EXISTS idx_visits_device_created ON visits(device_id, created_at)"
     )
+
+    # Ordered, idempotent DDL modules (api/schema_ddl/). Runs last, in the same
+    # transaction. An unknown or missing module raises and stops the boot.
+    from schema_ddl import apply_modules
+    apply_modules(cur, DDL_MODULES)
 
     logger.info("All tables created.")
 

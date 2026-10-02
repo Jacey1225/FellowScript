@@ -19,6 +19,8 @@ from routes.profile_photo import profile_photo_router
 from routes.group_info import group_info_router
 from routes.group_announcements import group_announcements_router
 from routes.invites import invites_router
+from routes.app_capabilities import capabilities_router
+from routes.flags_admin import flags_admin_router
 from routes.promo import promo_router, promo_admin_router, rewards_admin_router, rewards_router
 from schemas.subscription import NOTES_MAX_BODY_BYTES
 from schemas.users import SignUp, Login, UpdateUser, User, CURRENT_TERMS_VERSION
@@ -225,6 +227,12 @@ async def lifespan(_: FastAPI):
     from backend.interactions.invites_config import validate_invite_link_secret
     validate_invite_link_secret()  # INVITE_LINK_SECRET: required, min length, never logged
 
+    # Registered startup checks (backend/startup_checks.py): config sections and
+    # registries added by later tasks, one entry per line. Deliberately not
+    # caught here.
+    from backend.startup_checks import validate_all
+    validate_all()
+
     from backend.interactions.scheduler import start_scheduler
     start_scheduler()
     # WS connection-liveness heartbeat (task
@@ -359,6 +367,8 @@ app.include_router(profile_photo_router)
 app.include_router(group_info_router)
 app.include_router(group_announcements_router)
 app.include_router(invites_router)
+app.include_router(capabilities_router)
+app.include_router(flags_admin_router)
 
 main_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 user_path = "data/users.json"
