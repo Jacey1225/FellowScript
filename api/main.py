@@ -18,6 +18,7 @@ from routes.activity_monitoring import activity_monitoring_router
 from routes.profile_photo import profile_photo_router
 from routes.group_info import group_info_router
 from routes.group_announcements import group_announcements_router
+from routes.messages_delete import messages_delete_router
 from routes.invites import invites_router
 from routes.app_capabilities import capabilities_router
 from routes.explorer import explorer_router
@@ -374,6 +375,7 @@ app.include_router(activity_monitoring_router)
 app.include_router(profile_photo_router)
 app.include_router(group_info_router)
 app.include_router(group_announcements_router)
+app.include_router(messages_delete_router)
 app.include_router(invites_router)
 app.include_router(capabilities_router)
 app.include_router(explorer_router)

@@ -1330,5 +1330,11 @@ def start_scheduler() -> None:
     scheduler.add_job(run_listing_sweeper_job, "interval",
                       seconds=get_listings_config().sweeper_interval_seconds,
                       id=LISTING_SWEEP_JOB_ID, replace_existing=True)
+    # Message delete retention: purge soft-deleted text/attachments after the evidence
+    # window (R-SCHED: thin async job, work in an executor). Runs even while the
+    # message_delete flag is off.
+    from backend.interactions.message_delete import JOB_ID as MESSAGE_PURGE_JOB_ID, SWEEP_INTERVAL_SECONDS as MESSAGE_PURGE_INTERVAL, run_message_purge_job
+    scheduler.add_job(run_message_purge_job, "interval", seconds=MESSAGE_PURGE_INTERVAL,
+                      id=MESSAGE_PURGE_JOB_ID, replace_existing=True)
     scheduler.start()
     logger.info("Notification scheduler started — checking every minute")
