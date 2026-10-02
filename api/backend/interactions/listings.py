@@ -809,6 +809,7 @@ def admin_queue(cur, status: str = "pending_review", limit: int = 50) -> list[di
     cur.execute(
         "SELECT gl.public_id, gl.status, gl.title, gl.summary, gl.group_id::text, g.creator_id::text, "
         "gl.hidden_reason_code, gl.reject_reason_code, gl.updated_at, "
+        "gl.description_text, gl.church_name, gl.city, gl.region, gl.country, "
         "(SELECT count(DISTINCT cr.reporter_id) FROM content_reports cr "
         " WHERE cr.content_type = 'group_listing' AND cr.content_id = gl._id AND cr.status = 'open') "
         "FROM group_listings gl LEFT JOIN groups g ON g._id = gl.group_id "
@@ -816,7 +817,8 @@ def admin_queue(cur, status: str = "pending_review", limit: int = 50) -> list[di
         (status, limit),
     )
     keys = ("public_id", "status", "title", "summary", "group_id", "owner_id",
-            "hidden_reason_code", "reject_reason_code", "updated_at", "open_reports")
+            "hidden_reason_code", "reject_reason_code", "updated_at",
+            "description_text", "church_name", "city", "region", "country", "open_reports")
     items = []
     for r in cur.fetchall():
         item = dict(zip(keys, r))

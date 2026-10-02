@@ -438,7 +438,8 @@ def test_admin_endpoints(cli):
         check("queue (default pending_review) lists the listing", r.status_code == 200 and len(mine) == 1, (r.status_code, r.text[:200]))
         check("queue item shape", mine and set(mine[0]) == {"public_id", "status", "title", "summary", "group_id", "owner_id",
                                                            "hidden_reason_code", "reject_reason_code", "updated_at",
-                                                           "open_reports"}, mine[:1])
+                                                           "description_text", "church_name", "city", "region",
+                                                           "country", "open_reports"}, mine[:1])
         limiter.reset()
         r = cli.get(f"{ADMIN}/queue?status=bogus", headers=ha)
         check("queue invalid status -> 422 invalid_status", r.status_code == 422 and dcode(r) == "invalid_status", r.text)

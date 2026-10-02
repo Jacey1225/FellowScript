@@ -23,6 +23,7 @@ import VisitTracker from './components/VisitTracker.jsx';
 import AdminDetections from './pages/AdminDetections.jsx';
 import AdminDetectionDetail from './pages/AdminDetectionDetail.jsx';
 import AdminPromoCodes from './pages/AdminPromoCodes.jsx';
+import AdminListings from './pages/AdminListings.jsx';
 import AdminTrends from './pages/AdminTrends.jsx';
 import AdminAccountActions from './pages/AdminAccountActions.jsx';
 import InviteFriends from './pages/InviteFriends.jsx';
@@ -160,6 +161,7 @@ export default function App() {
             {/* Task 20261001-promo-owner-rewards: admin creator-code page (hidden,
                 admin-only server-side; 404 from the API = flag off). */}
             <Route path="promo" element={<AdminPromoCodes />} />
+            <Route path="listings" element={<AdminListings />} />
             <Route path="detections/:id" element={<AdminDetectionDetail />} />
           </Route>
           <Route path="*"          element={<Navigate to="/" replace />} />
