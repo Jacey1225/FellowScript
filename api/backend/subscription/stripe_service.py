@@ -21,6 +21,14 @@ logger = logging.getLogger(__name__)
 
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY", "")
 
+
+def _plain(obj):
+    """Return plain dicts/lists for a Stripe SDK object. stripe>=13 objects are
+    no longer dict subclasses (no ``.get``), and this module and the webhook
+    handlers read them with ``.get``; convert once at the SDK boundary."""
+    to_dict = getattr(obj, "to_dict", None)
+    return to_dict() if callable(to_dict) else obj
+
 # Where Stripe returns the browser after checkout. The query lives before the
 # HashRouter fragment so window.location.search sees it on the account page.
 _SITE = os.getenv("SITE_URL", "https://fellowscript.com")
@@ -86,7 +94,7 @@ def ensure_promo_coupon(percent_off: int) -> str:
     travels in session metadata)."""
     cid = promo_coupon_id(percent_off)
     try:
-        coupon = stripe.Coupon.retrieve(cid)
+        coupon = _plain(stripe.Coupon.retrieve(cid))
     except stripe.InvalidRequestError:
         stripe.Coupon.create(
             id=cid, percent_off=percent_off, duration="once",
@@ -105,7 +113,7 @@ def ensure_owner_reward_coupon(percent_off: int) -> str:
     existing coupon's terms were changed."""
     cid = f"fellowscript-owner-reward-{percent_off}pct"
     try:
-        coupon = stripe.Coupon.retrieve(cid)
+        coupon = _plain(stripe.Coupon.retrieve(cid))
     except stripe.InvalidRequestError:
         stripe.Coupon.create(
             id=cid, percent_off=percent_off, duration="once",
@@ -126,7 +134,7 @@ def apply_owner_reward(stripe_sub_id: str, percent_off: int, reward_id: str) -> 
     be ambiguous: subscription not active, set to cancel, or already carrying
     some OTHER discount (never stack or overwrite). Stripe errors propagate.
     """
-    sub = stripe.Subscription.retrieve(stripe_sub_id)
+    sub = _plain(stripe.Subscription.retrieve(stripe_sub_id))
     coupon = ensure_owner_reward_coupon(percent_off)
     if (sub.get("metadata") or {}).get("owner_reward_id") == reward_id:
         d = sub.get("discount") or {}
@@ -155,11 +163,11 @@ def customer_has_subscription_history(email: str) -> bool:
         return True
     variants = {email, email.strip().lower()}
     for em in variants:
-        customers = stripe.Customer.list(email=em, limit=20)
+        customers = _plain(stripe.Customer.list(email=em, limit=20))
         if customers.get("has_more"):
             return True
         for cust in customers.get("data", []):
-            subs = stripe.Subscription.list(customer=cust["id"], status="all", limit=100)
+            subs = _plain(stripe.Subscription.list(customer=cust["id"], status="all", limit=100))
             if subs.get("has_more"):
                 return True
             for sub in subs.get("data", []):
@@ -259,14 +267,14 @@ def construct_event(payload: bytes, sig_header: str):
     secret = os.getenv("STRIPE_SIGNING_SECRET") or os.getenv("STRIPE_WEBHOOK_SECRET") or ""
     if not secret:
         raise ValueError("STRIPE_SIGNING_SECRET is not set")
-    return stripe.Webhook.construct_event(payload, sig_header, secret)
+    return _plain(stripe.Webhook.construct_event(payload, sig_header, secret))
 
 
 def retrieve_subscription(subscription_id: str):
     """Fetch a Stripe subscription with its default payment method expanded."""
-    return stripe.Subscription.retrieve(
+    return _plain(stripe.Subscription.retrieve(
         subscription_id, expand=["default_payment_method"]
-    )
+    ))
 
 
 def cancel_subscription(subscription_id: str) -> bool:
@@ -293,15 +301,24 @@ def cancel_subscription(subscription_id: str) -> bool:
         return False
 
 
+def _field(obj, key):
+    """Read ``key`` from a plain dict or an attribute-style object."""
+    if obj is None:
+        return None
+    if isinstance(obj, dict):
+        return obj.get(key)
+    return getattr(obj, key, None)
+
+
 def card_from_subscription(sub) -> dict:
     """Extract non-sensitive card display fields from a subscription's PM."""
-    pm = getattr(sub, "default_payment_method", None)
-    card = getattr(pm, "card", None) if pm else None
+    pm = _field(sub, "default_payment_method")
+    card = _field(pm, "card") if pm else None
     if not card:
         return {"brand": "", "last4": "", "exp_month": "", "exp_year": ""}
     return {
-        "brand":     getattr(card, "brand", "") or "",
-        "last4":     getattr(card, "last4", "") or "",
-        "exp_month": str(getattr(card, "exp_month", "") or ""),
-        "exp_year":  str(getattr(card, "exp_year", "") or ""),
+        "brand":     _field(card, "brand") or "",
+        "last4":     _field(card, "last4") or "",
+        "exp_month": str(_field(card, "exp_month") or ""),
+        "exp_year":  str(_field(card, "exp_year") or ""),
     }
