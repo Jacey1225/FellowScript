@@ -21,6 +21,7 @@ import Combine
 struct ChatRootView: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var exploreDestination: ExploreDestination?
     @StateObject private var vm: ChatViewModel
 
     // Required (no default): a bare `ChatViewModel()` default expression is
@@ -75,9 +76,18 @@ struct ChatRootView: View {
                     .padding(.horizontal, 20)
                     .padding(.top, 18)
 
+                // Task 20261001-ios-explorer-entry: Groups segment only, and
+                // only when /app/capabilities enables explorer_browse with a
+                // valid link (hidden on any failure).
+                if selectedSegment == 1, let exploreURL = ExploreEntry.browseURL(from: appState.capabilities) {
+                    ExploreEntryRow { exploreDestination = ExploreDestination(url: exploreURL) }
+                        .padding(.horizontal, 20)
+                        .padding(.top, 8)
+                }
+
                 ChatSearchField(text: $searchQuery)
                     .padding(.horizontal, 20)
-                    .padding(.top, 12)
+                    .padding(.top, selectedSegment == 1 && ExploreEntry.browseURL(from: appState.capabilities) != nil ? 10 : 12)
 
                 if vm.isLoading {
                     loadingView
@@ -139,6 +149,7 @@ struct ChatRootView: View {
                 }
             }
         }
+        .exploreSafariSheet($exploreDestination)
         .sheet(item: $activeContact) { contact in
             ChatThreadView(contact: contact, user: appState.currentUser)
         }
