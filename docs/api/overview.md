@@ -185,7 +185,17 @@ REST history: `GET /message/messages/{host_user}/?guest_user=...` returns past D
 - Timestamps: the client timestamp stays the primary sort key. A value that does not parse, or is later than now plus `future_timestamp_skew_seconds` (default 300), is stored as the server time. Recipient frames keep the client's original string when it was accepted unchanged; a clamped value is relayed as whole-second `...Z`. Past timestamps are never changed.
 - Ties are broken by `messages.seq` (server sequence `messages_seq`; rows from before the migration read as 0), then by id.
 - Soft-deleted rows (`deleted_at` set) are excluded from the history reads. Legacy responses are otherwise unchanged.
-- Tunables live in `api/config/chat.json`, section `pagination` (all keys required; the server refuses to boot on a bad file). Paged endpoints and the `chat_pagination` flags arrive in the next steps of this task.
+- Tunables live in `api/config/chat.json`, section `pagination` (all keys required; the server refuses to boot on a bad file). The paged group endpoints below are gated by the `chat_pagination` feature flag.
+
+### Group chat history paging (task 20261001-chat-pagination, backend 1b)
+
+Opt-in and flag-gated (`chat_pagination`, off by default; clients read `GET /app/capabilities` and send `limit` only when it is true).
+
+- `GET /groups/{user_id}/{group_id}?limit=N`: with the flag on for the caller, the response is `{group, members, messages, page}` where `messages` is the newest page, oldest-first, and `host_msgs`/`other_msgs` are omitted. With no `limit`, or with the flag off (or an older server), the response is the legacy `{group, members, host_msgs, other_msgs}` shape; a client treats a missing `page` key as full history. `limit` must be an integer of at least 1 (otherwise `422`, only while the flag is on); a value above `max_page_size` is clamped. `403` for a non-member.
+- `GET /groups/{user_id}/{group_id}/messages?limit=&cursor_timestamp=&cursor_seq=&cursor_id=`: one older page, `{messages, page}`. While the flag is off for the caller this answers `404`. Order of checks: session, `user_id` match, flag (`404`), membership (`403`), `limit` and cursor (`422`, before any SQL), then the query. Rate limited by `pagination.rate_limits.messages_page` in `api/config/chat.json`.
+- `page` is `{limit, has_more, next_cursor_timestamp, next_cursor_seq, next_cursor_id}`. Pass the three `next_cursor_*` values back as `cursor_timestamp`, `cursor_seq` and `cursor_id` (timestamp and id together or neither; seq optional, default 0). They are null when `has_more` is false.
+- Row shape: `{id, from_user (username), mine, text, timestamp (ISO 8601 UTC, microseconds, Z), attachment_kind, attachment_meta, attachment_url}`. `attachment_url` is a fresh short-lived presigned GET (null when there is no stored attachment); the stored key is never returned.
+- Pages are ordered `timestamp DESC, seq DESC, id DESC` with a keyset predicate, so inserts and deletes never shift older pages. Only the caller's own messages and those of current, unblocked members are returned (blocking is filtered in SQL, so a page never shrinks), and soft-deleted rows are excluded.
 
 ### Attachments (task 20260904-messaging-attachments)
 

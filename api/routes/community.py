@@ -1,7 +1,12 @@
+import re
+import uuid
+
 from fastapi import APIRouter, HTTPException, Depends, Query, Request
 from backend.interactions.groups import GroupFullError, GroupsManager, InvalidMemberError, normalize_group_title
 from backend.interactions.friends import  FriendsManager, is_nudge_enabled
 from backend.interactions.push import send_push
+from backend.interactions import flags, paging
+from backend.interactions.chat_config import get_pagination_config
 from backend.auth.dependencies import require_match
 from backend.moderation.content_filter import check_clean, ContentRejected, rejection_message
 from backend.rate_limiting import limiter
@@ -44,29 +49,120 @@ async def create_group(user_id: str, group: Group, _: str = Depends(require_matc
     return {"group_id": group.group_id}
 
 
+_LIMIT_RE = re.compile(r"[+-]?[0-9]{1,64}", re.ASCII)
+
+
+def _parse_page_limit(raw: str, default: int, maximum: int) -> int:
+    """``limit`` query value -> effective page size. Non-integer or < 1 is 422
+    (fail closed, never a legacy fallthrough); above the max is clamped. The
+    error body never echoes the value."""
+    if not isinstance(raw, str) or not _LIMIT_RE.fullmatch(raw):
+        raise HTTPException(status_code=422, detail={"code": "invalid_limit"})
+    value = int(raw)
+    if value < 1:
+        raise HTTPException(status_code=422, detail={"code": "invalid_limit"})
+    return paging.clamp_limit(value, default, maximum)
+
+
 @group_router.get("/{user_id}/{group_id}")
-async def fetch_group(user_id: str, group_id: str, _: str = Depends(require_match("user_id"))) -> dict:
+async def fetch_group(
+    user_id: str,
+    group_id: str,
+    limit: str | None = Query(default=None, description="Opt in to paging: page size for the newest page of history. Ignored while chat pagination is off for the caller."),
+    _: str = Depends(require_match("user_id")),
+) -> dict:
     """Fetch full group data including members and message history.
+
+    With ``limit`` and the ``chat_pagination`` flag on for the caller, the
+    response carries ``messages`` (oldest-first, newest page) and a ``page``
+    block instead of ``host_msgs``/``other_msgs``. Otherwise (no ``limit``,
+    flag off) it is the legacy shape; a client treats a missing ``page`` key
+    as full history.
 
     Args:
         user_id: UUID of the requesting user.
         group_id: ID of the group to retrieve.
+        limit: optional page size (integer >= 1; above the configured max is
+            clamped; invalid is 422 only while the flag is on).
 
     Returns:
-        dict: Contains ``group``, ``members``, ``host_msgs``, and ``other_msgs``.
+        dict: Contains ``group``, ``members`` and either ``host_msgs`` +
+            ``other_msgs`` (legacy) or ``messages`` + ``page``.
 
     Raises:
         HTTPException 404: If the group does not exist.
         HTTPException 403: If the caller is not a member of the group.
+        HTTPException 422: Invalid ``limit`` (flag on).
     """
     manager = GroupsManager(user_id, group_id)
     try:
         if not manager.is_member():
             raise HTTPException(status_code=403, detail="Not a member of this group")
-        result = manager.fetch_group()
+        page_limit = None
+        if limit is not None and flags.is_enabled("chat_pagination", user_id):
+            cfg = get_pagination_config()
+            page_limit = _parse_page_limit(limit, cfg.initial_page_size, cfg.max_page_size)
+        result = manager.fetch_group(paged=page_limit is not None)
         if "error" in result:
             raise HTTPException(status_code=404, detail=result["error"])
+        if page_limit is not None:
+            page = manager.fetch_message_page(page_limit)
+            result.update(paging.envelope(
+                "messages", page["messages"], page_limit, page["has_more"], page["next_cursor"],
+            ))
         return result
+    finally:
+        manager.close()
+
+
+@group_router.get("/{user_id}/{group_id}/messages")
+@limiter.limit(lambda: get_pagination_config().rate_limits["messages_page"])
+def fetch_group_messages(
+    request: Request,
+    user_id: str,
+    group_id: str,
+    limit: str | None = Query(default=None, description="Page size; default is the configured page_size, above max_page_size is clamped."),
+    cursor_timestamp: str | None = Query(default=None, description="ISO 8601 timestamp of the oldest row of the previous page (the page's next_cursor_timestamp)."),
+    cursor_seq: str | None = Query(default=None, description="next_cursor_seq of the previous page (integer >= 0, optional)."),
+    cursor_id: str | None = Query(default=None, description="next_cursor_id of the previous page."),
+    _: str = Depends(require_match("user_id")),
+) -> dict:
+    """One older page of group history, oldest-first within the page.
+
+    Authorization order: authenticate -> ``require_match`` -> flag (404 while
+    ``chat_pagination`` is off for the caller, as if the route did not exist)
+    -> membership (403) -> validate ``limit`` and the cursor (422, before any
+    SQL) -> query. Membership and the current-members author filter are
+    re-applied on every request, so a forged cursor can only choose a window
+    of rows the caller may already see.
+
+    Returns:
+        dict: ``{"messages": [...], "page": {limit, has_more,
+            next_cursor_timestamp, next_cursor_seq, next_cursor_id}}``; the
+            ``next_cursor_*`` fields are null when ``has_more`` is false.
+    """
+    if not flags.is_enabled("chat_pagination", user_id):
+        raise HTTPException(status_code=404, detail="Not Found")
+    try:
+        uuid.UUID(group_id)
+    except ValueError:
+        # Same 403 a non-member gets, without the lookup that would log an
+        # ERROR for an expected denial (a malformed id never names a group).
+        raise HTTPException(status_code=403, detail="Not a member of this group")
+    manager = GroupsManager(user_id, group_id)
+    try:
+        if not manager.is_member():
+            raise HTTPException(status_code=403, detail="Not a member of this group")
+        cfg = get_pagination_config()
+        page_limit = cfg.page_size if limit is None else _parse_page_limit(limit, cfg.page_size, cfg.max_page_size)
+        params = {
+            k: v for k, v in (
+                ("cursor_timestamp", cursor_timestamp), ("cursor_seq", cursor_seq), ("cursor_id", cursor_id),
+            ) if v is not None
+        }
+        cursor = paging.decode_cursor(params, id_type="uuid", with_seq=True)
+        page = manager.fetch_message_page(page_limit, cursor)
+        return paging.envelope("messages", page["messages"], page_limit, page["has_more"], page["next_cursor"])
     finally:
         manager.close()
 

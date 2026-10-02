@@ -449,7 +449,7 @@ class FriendsManager(DBManager):
             "SELECT uf.friend_id, u.username, u.profile_photo_key, "
             "  (SELECT MAX(m.timestamp) FROM messages m "
             "   JOIN message_recipients mr ON mr.message_id = m._id "
-            "   WHERE m.group_id IS NULL "
+            "   WHERE m.group_id IS NULL AND m.deleted_at IS NULL "
             "     AND ((m.from_user = uf.user_id AND mr.user_id = uf.friend_id) "
             "       OR (m.from_user = uf.friend_id AND mr.user_id = uf.user_id))"
             "  ) AS last_contact "

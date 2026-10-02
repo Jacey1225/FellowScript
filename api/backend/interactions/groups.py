@@ -9,7 +9,7 @@ from schemas.message import Group
 from db import DBManager, _redact_db_error
 from backend.errors import SaveFailedError
 from backend.interactions.attachments import generate_download_url
-from backend.interactions import lifecycle
+from backend.interactions import lifecycle, paging
 
 logger = logging.getLogger(__name__)
 
@@ -296,8 +296,81 @@ class GroupsManager(DBManager):
         }):
             raise SaveFailedError()
 
-    def fetch_group(self) -> dict:
+    def fetch_message_page(self, limit: int, cursor: "paging.Cursor | None" = None) -> dict:
+        """One keyset page of group history, newest page first.
+
+        A SINGLE query: ``group_id`` and ``deleted_at IS NULL`` and
+        ``from_user = ANY(author_set)`` (the caller plus CURRENT live members
+        minus both-direction blocks, so a page never shrinks and never fakes
+        an "end of history"), optionally bounded by the keyset predicate on
+        ``(timestamp, COALESCE(seq, 0), _id)``. It fetches ``limit + 1`` rows
+        so ``has_more`` is exact. Rows come back OLDEST-first so a client
+        prepends a page verbatim; ``next_cursor`` is the oldest row of the
+        page and is set only when ``has_more``.
+
+        ``limit`` must already be clamped by the caller; the cursor must come
+        from ``paging.decode_cursor`` (validated, bound as typed parameters,
+        never string-built). Returns ``{"messages", "has_more", "next_cursor"}``
+        with the row shape ``{id, from_user (username), mine, text, timestamp
+        (ISO Z), attachment_kind, attachment_meta, attachment_url}``; the
+        stored ``attachment_key`` never leaves the server.
+        """
+        authors = author_set(self.cur, self.group_id, self.user_id)
+        sql_text = (
+            "SELECT _id, from_user, text, timestamp, attachment_kind, attachment_key, "
+            "attachment_meta, COALESCE(seq, 0) AS seq "
+            "FROM messages WHERE group_id = %s::uuid AND deleted_at IS NULL "
+            "AND from_user = ANY(%s::uuid[]) "
+        )
+        params: list = [self.group_id, authors]
+        if cursor is not None:
+            sql_text += f"AND (timestamp, COALESCE(seq, 0), _id) < ({paging.TS_SQL}, {paging.SEQ_SQL}, {cursor.id_sql}) "
+            params.extend(cursor.params())
+        sql_text += "ORDER BY timestamp DESC, COALESCE(seq, 0) DESC, _id DESC LIMIT %s"
+        params.append(limit + 1)
+        self.cur.execute(sql_text, params)
+        rows = self.cur.fetchall()
+        self.conn.rollback()  # read-only; release the snapshot
+
+        has_more = len(rows) > limit
+        rows = rows[:limit]
+        next_cursor = None
+        if has_more and rows:
+            oldest = rows[-1]
+            next_cursor = paging.encode_cursor(oldest[3], oldest[7], oldest[0])
+
+        usernames: dict[str, str] = {}
+        from_uids = {str(r[1]) for r in rows if r[1]}
+        if from_uids:
+            self.cur.execute(
+                "SELECT _id, username FROM users WHERE _id = ANY(%s::uuid[])",
+                (list(from_uids),),
+            )
+            usernames = {str(r[0]): r[1] for r in self.cur.fetchall()}
+            self.conn.rollback()
+        me = str(self.user_id).lower()
+        messages = []
+        for _id, from_user, text, ts, kind, key, meta, _seq in reversed(rows):
+            from_uid = str(from_user) if from_user else ""
+            messages.append({
+                "id": str(_id),
+                "from_user": usernames.get(from_uid, ""),
+                "mine": from_uid.lower() == me,
+                "text": text,
+                "timestamp": paging.format_timestamp(ts),
+                "attachment_kind": kind,
+                "attachment_meta": meta,
+                "attachment_url": generate_download_url(key) if key else None,
+            })
+        return {"messages": messages, "has_more": has_more, "next_cursor": next_cursor}
+
+    def fetch_group(self, paged: bool = False) -> dict:
         """Retrieve full group data including members and message history.
+
+        Args:
+            paged: when True the two unbounded message queries are skipped
+                (the caller supplies the newest page via ``fetch_message_page``)
+                and ``host_msgs``/``other_msgs`` are omitted from the result.
 
         Returns:
             dict: Contains ``group`` metadata, ``members`` list, ``host_msgs``,
@@ -323,7 +396,7 @@ class GroupsManager(DBManager):
             usernames = [user_map[uid] for uid in member_ids if uid in user_map]
 
             unblocked_ids = [uid for uid in member_ids if uid not in blocked]
-            if unblocked_ids:
+            if unblocked_ids and not paged:
                 self.cur.execute(
                     "SELECT * FROM messages WHERE from_user = ANY(%s::uuid[]) AND group_id = %s "
                     "AND deleted_at IS NULL",
@@ -334,14 +407,16 @@ class GroupsManager(DBManager):
                     row[0]: dict(zip(cols[1:], row[1:]))
                     for row in self.cur.fetchall()
                 }
-        # Raw SELECT (not lookup) so soft-deleted rows can be excluded; same
-        # columns and keying as lookup() returned.
-        self.cur.execute(
-            "SELECT * FROM messages WHERE from_user = %s AND group_id = %s AND deleted_at IS NULL",
-            (self.user_id, self.group_id),
-        )
-        cols = [desc[0] for desc in self.cur.description]
-        host_msgs = {row[0]: dict(zip(cols[1:], row[1:])) for row in self.cur.fetchall()}
+        host_msgs: dict = {}
+        if not paged:
+            # Raw SELECT (not lookup) so soft-deleted rows can be excluded;
+            # same columns and keying as lookup() returned.
+            self.cur.execute(
+                "SELECT * FROM messages WHERE from_user = %s AND group_id = %s AND deleted_at IS NULL",
+                (self.user_id, self.group_id),
+            )
+            cols = [desc[0] for desc in self.cur.description]
+            host_msgs = {row[0]: dict(zip(cols[1:], row[1:])) for row in self.cur.fetchall()}
         # Task 20260929-group-info-panel: never hand the stored photo_key to
         # the client -- resolve it to a fresh presigned GET at read time
         # (same rule as attachment_key in format_messages). New fields are
@@ -350,6 +425,8 @@ class GroupsManager(DBManager):
         photo_key = group_data.pop("photo_key", None)
         group_data["photo_url"] = generate_download_url(photo_key)
         group_data["muted"] = self.is_muted()
+        if paged:
+            return {"group": group_data, "members": usernames}
         return {
             "group":      group_data,
             "members":    usernames,
