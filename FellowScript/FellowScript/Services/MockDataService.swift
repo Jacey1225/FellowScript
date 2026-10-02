@@ -48,6 +48,8 @@ protocol DataServiceProtocol {
     func signInWithApple(identityToken: String, fullName: String?, email: String?, termsAccepted: Bool) async throws -> FSUser
     func acceptTerms(userId: String) async throws
     func logout() async throws
+    /// Task 20261002-shared-foundation: GET /app/capabilities. Throws on any failure.
+    func fetchCapabilities() async throws -> FSCapabilities
 
     // Two-factor authentication
     func verifyMfaLogin(userId: String, code: String) async throws -> FSUser
@@ -309,6 +311,14 @@ extension DataServiceProtocol {
     func confirmGroupPhoto(userId: String, groupId: String, objectKey: String) async throws -> String? { throw groupInfoUnsupported }
     func removeGroupPhoto(userId: String, groupId: String) async throws -> String? { throw groupInfoUnsupported }
     func fetchGroupGallery(userId: String, groupId: String, kind: String?, cursorTimestamp: String?, cursorId: String?) async throws -> FSGalleryPage { throw groupInfoUnsupported }
+}
+
+// Task 20261002-shared-foundation: default so existing conformers keep
+// compiling; throws (callers map to FSCapabilities.allOff), never invents "on".
+extension DataServiceProtocol {
+    func fetchCapabilities() async throws -> FSCapabilities {
+        throw AppError.networkError("Capabilities unavailable.")
+    }
 }
 
 extension DataServiceProtocol {

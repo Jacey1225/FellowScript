@@ -33,6 +33,13 @@ final class AppState: ObservableObject {
     // user to set them manually, since Apple can never resupply them.
     @Published var needsProfileCompletion = false
 
+    /// Task 20261002-shared-foundation: server feature capabilities. Starts
+    /// (and falls back to) all-off; never set from anything but a fully valid
+    /// 200 response. See refreshCapabilities().
+    @Published private(set) var capabilities: FSCapabilities = .allOff
+    private var capabilitiesFetchedAt: Date = .distantPast
+    private var capabilitiesSeq = 0
+
     /// Task 20260929-group-invite-links: the invite token the user arrived with
     /// (Universal Link / custom scheme). Mirrored into the Keychain by
     /// PendingInviteStore so it survives sign-in, sign-up, and a cold launch;
@@ -140,6 +147,35 @@ final class AppState: ObservableObject {
         pendingInviteToken = PendingInviteStore.load()
     }
 
+    // ── Capabilities (task 20261002-shared-foundation) ───────────────────────
+
+    /// One fetch per launch / sign-in / foreground (foreground calls are
+    /// throttled). Fail closed: any error or malformed body leaves every
+    /// feature off and terms treated as current. When the server says the
+    /// signed-in user has not accepted the current Terms, the existing
+    /// re-consent gate (termsReacceptRequired -> TermsReacceptView) is raised;
+    /// this never lowers that flag (acceptTerms() does).
+    func refreshCapabilities(force: Bool = false) {
+        guard let uid = currentUser?.user_id, isAuthenticated else {
+            capabilitiesSeq += 1
+            capabilities = .allOff
+            return
+        }
+        if !force, Date().timeIntervalSince(capabilitiesFetchedAt) < 15 { return }
+        capabilitiesFetchedAt = Date()
+        capabilitiesSeq += 1
+        let seq = capabilitiesSeq
+        Task { [weak self] in
+            guard let self else { return }
+            let fetched: FSCapabilities
+            do { fetched = try await self.service.fetchCapabilities() } catch { fetched = .allOff }
+            // Drop a stale result (sign-out, different user, or a newer fetch).
+            guard seq == self.capabilitiesSeq, self.currentUser?.user_id == uid else { return }
+            self.capabilities = fetched
+            if !fetched.termsCurrent { self.termsReacceptRequired = true }
+        }
+    }
+
     // ── Invite links (task 20260929-group-invite-links) ──────────────────────
 
     /// Entry point for onOpenURL / onContinueUserActivity. Non-invite URLs are
@@ -181,6 +217,7 @@ final class AppState: ObservableObject {
         // whatever VoIP token PushKit already minted at launch, not wait for
         // a fresh sign-in that may never happen this session.
         registerCachedVoipTokenIfNeeded()
+        refreshCapabilities(force: true)
         // Addendum to task 20260905-profile-photo-avatar-gaps: the bare
         // FSUser rebuilt above from @AppStorage carries no
         // `profile_photo_url` (or any other server-only field) -- until
@@ -264,6 +301,9 @@ final class AppState: ObservableObject {
         storedEmail     = ""
         currentUser     = nil
         isAuthenticated = false
+        capabilitiesSeq += 1
+        capabilities    = .allOff
+        capabilitiesFetchedAt = .distantPast
         // Task 20260913-chat-unread-badges: wipe this device's last-read
         // markers too, same reasoning as the cache clear below -- otherwise
         // a second account signing in on this device would inherit the
@@ -298,6 +338,7 @@ final class AppState: ObservableObject {
         isAuthenticated = true
         termsReacceptRequired = user.terms_reaccept_required
         needsProfileCompletion = user.needs_profile_completion
+        refreshCapabilities(force: true)
         // Task 20260916-callkit-voip-ring: same catch-up as
         // restoreSession() above, for the fresh-sign-in path.
         registerCachedVoipTokenIfNeeded()

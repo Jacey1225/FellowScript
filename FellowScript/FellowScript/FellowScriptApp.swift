@@ -162,6 +162,7 @@ struct FellowScriptApp: App {
         WindowGroup {
             ContentView()
                 .environmentObject(appState)
+                .environment(\.fsCapabilities, appState.capabilities)
                 .preferredColorScheme(.dark)
                 .onReceive(NotificationCenter.default.publisher(for: .apnsTokenReceived)) { note in
                     if let token = note.object as? String {
@@ -223,6 +224,8 @@ struct FellowScriptApp: App {
         .onChange(of: scenePhase) { phase in
             if phase == .active {
                 appState.requestPushNotifications()
+                // Task 20261002-shared-foundation: re-read capabilities (throttled).
+                appState.refreshCapabilities()
                 // Task 20260916-call-background-persistence: resume local
                 // video (if it was on and the call is still actually
                 // connected) now that the app is foreground again. No-ops

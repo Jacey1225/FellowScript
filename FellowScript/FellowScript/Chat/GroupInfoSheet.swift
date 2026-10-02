@@ -356,6 +356,9 @@ struct GroupInfoSheet: View {
                             onGroupGone: { dismiss(); onGroupGone() }
                         )
                         memberLimitSection
+                        GroupInfoExtraSectionsView(context: .init(
+                            service: service, groupId: contact.id, userId: user?.user_id ?? "",
+                            isOwner: vm.info?.is_owner ?? false))
                         membersSection
                         sharedSection
                     }
