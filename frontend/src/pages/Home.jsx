@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useParallaxBlobs } from '../hooks/useParallaxBlobs.js';
 import Seo from '../components/Seo.jsx';
+import { useExploreEnabled } from '../hooks/useExploreEnabled.js';
 import { SITE_URL } from '../config.js';
 import {
   HOME_SEO_PATH,
@@ -230,6 +231,9 @@ const plans = [
 export default function Home() {
   const { user } = useAuth();
   const cta = user ? '/reader' : '/signin';
+  // Task 20261001-explorer-listings step 9: runtime probe only (false during
+  // prerender, so the static Home bytes are unchanged).
+  const exploreOn = useExploreEnabled();
 
   const heroBgRef = useRef(null);
   const communityBgRef = useRef(null);
@@ -319,6 +323,9 @@ export default function Home() {
                   — matches the adjacent Home/Account links' <Link> usage
                   instead of being the odd one out as a plain <a>. */}
               <Link to="/download" className="hm-nav-link" style={{ display: 'block', padding: '8px 16px', borderRadius: 999, fontSize: 12.5, letterSpacing: '0.08em', textTransform: 'uppercase', textDecoration: 'none' }}>Read</Link>
+              {exploreOn && (
+                <Link to="/explore" className="hm-nav-link" style={{ display: 'block', padding: '8px 16px', borderRadius: 999, fontSize: 12.5, letterSpacing: '0.08em', textTransform: 'uppercase', textDecoration: 'none' }}>Explore</Link>
+              )}
               {user && (
                 <Link to="/account" className="hm-nav-link" style={{ display: 'block', padding: '8px 16px', borderRadius: 999, fontSize: 12.5, letterSpacing: '0.08em', textTransform: 'uppercase', textDecoration: 'none' }}>Account</Link>
               )}
@@ -449,6 +456,19 @@ export default function Home() {
           </div>
         </div>
       </section>
+
+      {/* Task 20261001-explorer-listings step 9: shown only after the runtime
+          probe succeeds, so the prerendered Home is unchanged. */}
+      {exploreOn && (
+        <section style={{ padding: 'clamp(48px, 7vh, 90px) clamp(20px, 5vw, 64px)', background: INK }}>
+          <div style={{ maxWidth: 1240, margin: '0 auto', display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 24, paddingTop: 36, borderTop: '1px solid rgba(255,244,230,0.14)' }}>
+            <h2 style={{ fontFamily: HEAD_FONT, fontSize: 'clamp(26px, 3.2vw, 44px)', lineHeight: 1.08, fontWeight: 400, letterSpacing: '-0.03em', margin: 0, color: '#FFF9F0', maxWidth: '22em' }}>
+              Find a group near your faith and season of life.
+            </h2>
+            <PillButton to="/explore" primary>Browse groups</PillButton>
+          </div>
+        </section>
+      )}
 
       {/* ══ Everything you need ══ */}
       <section style={{ padding: 'clamp(90px, 13vh, 180px) clamp(20px, 5vw, 64px)', background: LIGHT_BG, color: LIGHT_INK }}>
@@ -607,6 +627,7 @@ export default function Home() {
                   prerendered, crawlable downloads URL (a HashRouter <Link>
                   only yields "#/download", which crawlers cannot follow). */}
               <a href="/download/" className="hm-footer-link" style={{ fontSize: 15.5, textDecoration: 'none' }}>Download</a>
+              {exploreOn && <Link to="/explore" className="hm-footer-link" style={{ fontSize: 15.5, textDecoration: 'none' }}>Explore</Link>}
               {user && <Link to="/account" className="hm-footer-link" style={{ fontSize: 15.5, textDecoration: 'none' }}>Account</Link>}
             </div>
           </div>

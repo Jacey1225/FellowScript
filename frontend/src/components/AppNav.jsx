@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Layout, Menu, Drawer, Button, Tooltip, Avatar } from 'antd';
-import { MenuOutlined, ReadOutlined, HomeOutlined, UserOutlined, BulbOutlined, BulbFilled } from '@ant-design/icons';
+import { MenuOutlined, ReadOutlined, HomeOutlined, UserOutlined, BulbOutlined, BulbFilled, CompassOutlined } from '@ant-design/icons';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useTheme } from '../hooks/useTheme.js';
 import { isDesktopApp } from '../lib/desktopScope.js';
+import { useExploreEnabled } from '../hooks/useExploreEnabled.js';
 
 const { Header } = Layout;
 
@@ -28,6 +29,9 @@ export default function AppNav() {
   // point at the allowed fallback route instead of "/". A no-op (regular
   // Home behavior) in the ordinary web frontend.
   const desktopApp   = isDesktopApp();
+  // Task 20261001-explorer-listings step 9: runtime probe, web only (the
+  // desktop shell never links out to website pages).
+  const exploreOn    = useExploreEnabled() && !desktopApp;
   const logoHref     = desktopApp ? '/reader' : '/';
 
   const accountLabel = user ? (user.username || 'Account') : 'Sign In';
@@ -43,11 +47,13 @@ export default function AppNav() {
   const currentKey = location.pathname === '/reader'  ? 'reader'
                    : location.pathname === '/account' ? 'account'
                    : location.pathname === '/signin'  ? 'account'
+                   : location.pathname.startsWith('/explore') ? 'explore'
                    : '';
 
   const items = [
     ...(desktopApp ? [] : [{ key: 'home', label: 'Home', icon: <HomeOutlined /> }]),
     { key: 'reader',  label: 'Read',        icon: <ReadOutlined /> },
+    ...(exploreOn ? [{ key: 'explore', label: 'Explore', icon: <CompassOutlined /> }] : []),
     { key: 'account', label: accountLabel,  icon: <UserOutlined /> },
   ];
 
@@ -58,7 +64,7 @@ export default function AppNav() {
   // the desktop shell, /reader stays — that's legitimate in-app navigation
   // within the native app the visitor already has (design-notes.md §5).
   const onMenuClick = ({ key }) => {
-    const paths = { home: logoHref, reader: desktopApp ? '/reader' : '/download', account: accountHref };
+    const paths = { home: logoHref, explore: '/explore', reader: desktopApp ? '/reader' : '/download', account: accountHref };
     navigate(paths[key] || logoHref);
     setDrawerOpen(false);
   };

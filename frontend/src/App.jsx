@@ -11,6 +11,8 @@ import Privacy from './pages/Privacy.jsx';
 import Terms from './pages/Terms.jsx';
 import Download from './pages/Download.jsx';
 import JoinInvite from './pages/JoinInvite.jsx';
+import Explore from './pages/Explore.jsx';
+import ExploreListing from './pages/ExploreListing.jsx';
 import AdminShell from './components/AdminShell.jsx';
 import MobileBlockGate from './components/MobileBlockGate.jsx';
 import ReaderWebRedirect from './components/ReaderWebRedirect.jsx';
@@ -127,6 +129,14 @@ export default function App() {
           <Route path="/join/:token" element={<JoinInvite />} />
           {/* Task 20261001-promo-owner-rewards: signed-in user's invite link page. */}
           <Route path="/invite"    element={<InviteFriends />} />
+          {/* Task 20261001-explorer-listings step 9: public Explore browse
+              pages (website only). Deliberately no MobileBlockGate (phones
+              must reach it) and not on DESKTOP_ALLOWED_ROUTES. The Home/nav
+              link to it is added client-side only after the signed-out
+              GET /explorer/config probe says browse is on; the routes
+              themselves answer a "not available" state when the flag is off. */}
+          <Route path="/explore"            element={<Explore />} />
+          <Route path="/explore/:publicId"  element={<ExploreListing />} />
           <Route path="/signin"    element={<SignIn />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/reset-password"  element={<ResetPassword />} />
