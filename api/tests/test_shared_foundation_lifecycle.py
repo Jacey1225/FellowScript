@@ -850,7 +850,12 @@ def test_prune_group_members():
     g_dirty = mk_group_row([live1, dead, "junk", live2], live1)
     g_clean = mk_group_row([live1, live2], live1)
     g_allgone = mk_group_row([dead, "junk"], None)
-    before = {g: group_users(g) for g in (g_dirty, g_clean, g_allgone)}
+    # Security-gate fix (step 6): a build-78 client could have stored an
+    # UPPERCASE-hex spelling of a live user id verbatim via the old PUT /groups.
+    # The prune must compare lower(member_id) so that live member is NOT removed.
+    g_upper_mixed = mk_group_row([live1.upper(), dead, live2], live1)
+    g_upper_clean = mk_group_row([live2.upper(), live1.upper()], live1)
+    before = {g: group_users(g) for g in (g_dirty, g_clean, g_allgone, g_upper_mixed, g_upper_clean)}
     dry = prune_group_members.prune(apply=False)
     after_dry = {g: group_users(g) for g in before}
     check("dry run changes nothing", after_dry == before, after_dry)
@@ -863,11 +868,17 @@ def test_prune_group_members():
     check("--apply leaves a clean group untouched", group_users(g_clean) == [live1, live2])
     check("--apply never deletes an emptied group", group_users(g_allgone) == [], group_users(g_allgone))
     check("--apply reported updated groups", res["groups_updated"] >= 2, res)
+    check("uppercase-hex live member id is NOT pruned (only the dead id goes, spelling kept)",
+          group_users(g_upper_mixed) == [live1.upper(), live2], group_users(g_upper_mixed))
+    check("a group whose members are all uppercase-hex live ids is untouched",
+          group_users(g_upper_clean) == before[g_upper_clean] == [live2.upper(), live1.upper()],
+          group_users(g_upper_clean))
     res2 = prune_group_members.prune(apply=True)
     check("--apply is idempotent (second run updates nothing)", res2["groups_updated"] == 0, res2)
     check("second run leaves rows unchanged",
-          group_users(g_dirty) == [live1, live2] and group_users(g_allgone) == [])
-    cleanup([live1, live2], [g_dirty, g_clean, g_allgone])
+          group_users(g_dirty) == [live1, live2] and group_users(g_allgone) == []
+          and group_users(g_upper_mixed) == [live1.upper(), live2])
+    cleanup([live1, live2], [g_dirty, g_clean, g_allgone, g_upper_mixed, g_upper_clean])
 
 
 # ── 7. reports / moderation registries ────────────────────────────────────────

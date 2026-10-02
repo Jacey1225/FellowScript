@@ -247,7 +247,7 @@ async def test_websocket_endpoint_disconnect_runs_on_any_exception():
         async def connect(self, user_id, ws):
             pass
 
-        async def disconnect(self, user_id):
+        async def disconnect(self, user_id, ws=None):
             disconnect_calls.append(user_id)
 
         def touch(self, user_id):

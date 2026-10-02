@@ -481,7 +481,43 @@ def test_matched_signal_query_param_endtoend():
             dbm2.close()
 
 
+def test_4xx_query_excludes_public_families():
+    """20261002-shared-foundation step 7(g) (decision J25): the 4xx anomaly
+    query must not count the two public, scrape-able families, yet must still
+    match an ordinary 4xx line. The query is a Logs Insights string; its
+    ``like /regex/`` terms are extracted and applied with Python's re (same
+    syntax for these simple patterns), which proves the exclusion clause
+    itself rather than just that a string is present."""
+    import re
+    print("\n[4xx query excludes the two public families]")
+    q = watchdog._HTTP_4XX_QUERY
+    positive = re.search(r"filter @message like /(.+?)/ and @message not like", q)
+    negative = re.search(r"@message not like /(.+)/\s*$", q)
+    check("query has one positive and one exclusion regex", bool(positive and negative), True)
+    pos, neg = re.compile(positive.group(1)), re.compile(negative.group(1))
+
+    def counted(line):
+        return bool(pos.search(line)) and not neg.search(line)
+
+    def nginx(path, status=404):
+        return ('203.0.113.5 - - [02/Oct/2026:00:00:00 +0000] "GET %s HTTP/1.1" %d 12 "-" "ua"'
+                % (path, status))
+
+    check("ordinary 4xx line is still counted", counted(nginx("/notes/abc")), True)
+    check("ordinary 401 line is still counted", counted(nginx("/login", 401)), True)
+    check("/api/explorer/ 4xx line is excluded", counted(nginx("/api/explorer/listings")), False)
+    check("/api/explorer/ with a query string is excluded",
+          counted(nginx("/api/explorer/listings?cursor=x", 429)), False)
+    check("/api/auth/apple-web/ 4xx line is excluded", counted(nginx("/api/auth/apple-web/config")), False)
+    check("a 200 line is never counted", counted(nginx("/notes/abc", 200)), False)
+    check("a similarly named non-public path is still counted",
+          counted(nginx("/api/explorers/x")), True)
+    check("5xx lines are untouched by the 4xx query", counted(nginx("/notes/abc", 500)), False)
+    check("exclusion is exactly one extra clause", q.count("not like"), 1)
+
+
 if __name__ == "__main__":
+    test_4xx_query_excludes_public_families()
     asyncio.run(test_client_decode_failure_signal_detected_endtoend())
     asyncio.run(test_4xx_anomaly_below_threshold_no_detection())
     asyncio.run(test_4xx_anomaly_at_threshold_persists_one_detection())

@@ -78,19 +78,47 @@ def main():
         from main import get_client_ip
         from starlette.requests import Request as StarletteRequest
 
-        def fake_request(cf_ip: str | None):
+        def fake_request(cf_ip: str | None, peer: str | None = "127.0.0.1", raw_header: str | None = None):
+            # Default peer is the trusted loopback (nginx on the same host);
+            # step 7(a) of 20261002-shared-foundation replaced the old
+            # 198.51.100.9 stand-in because cf-connecting-ip is now honoured
+            # ONLY from a trusted peer.
+            val = raw_header if raw_header is not None else cf_ip
             scope = {
-                "type": "http", "headers": [(b"cf-connecting-ip", cf_ip.encode())] if cf_ip else [],
-                "client": ("198.51.100.9", 0),  # a stand-in "Cloudflare edge IP"
+                "type": "http", "headers": [(b"cf-connecting-ip", val.encode())] if val else [],
+                "client": (peer, 0) if peer else None,
             }
             return StarletteRequest(scope)
 
         check("CF-Connecting-IP header is used when present",
               get_client_ip(fake_request("203.0.113.5")) == "203.0.113.5")
         check("falls back to request.client.host when header absent (local/dev)",
-              get_client_ip(fake_request(None)) == "198.51.100.9")
+              get_client_ip(fake_request(None)) == "127.0.0.1")
         check("two different real visitors behind the same edge IP are distinguished",
               get_client_ip(fake_request("203.0.113.5")) != get_client_ip(fake_request("203.0.113.6")))
+        check("non-loopback peer plus cf-connecting-ip returns the peer (header ignored)",
+              get_client_ip(fake_request("203.0.113.5", peer="198.51.100.9")) == "198.51.100.9")
+        check("non-loopback peer cannot pick its bucket by rotating the header",
+              get_client_ip(fake_request("203.0.113.5", peer="198.51.100.9"))
+              == get_client_ip(fake_request("203.0.113.6", peer="198.51.100.9")))
+        check("malformed header from a trusted peer returns the peer",
+              get_client_ip(fake_request(None, raw_header="not-an-ip")) == "127.0.0.1")
+        check("injection-shaped header from a trusted peer returns the peer",
+              get_client_ip(fake_request(None, raw_header="1.2.3.4, 5.6.7.8")) == "127.0.0.1")
+        check("IPv6 loopback peer is trusted and an IPv6 header is honoured",
+              get_client_ip(fake_request("2001:db8::1", peer="::1")) == "2001:db8::1")
+        check("X-Real-IP is never read (trusted peer, no cf header)",
+              get_client_ip(StarletteRequest({"type": "http", "headers": [(b"x-real-ip", b"9.9.9.9")],
+                                              "client": ("127.0.0.1", 0)})) == "127.0.0.1")
+        check("X-Real-IP is never read (untrusted peer)",
+              get_client_ip(StarletteRequest({"type": "http", "headers": [(b"x-real-ip", b"9.9.9.9")],
+                                              "client": ("198.51.100.9", 0)})) == "198.51.100.9")
+        try:
+            none_ip = get_client_ip(fake_request("203.0.113.5", peer=None))
+            check("request.client None does not raise", isinstance(none_ip, str), repr(none_ip))
+            check("request.client None never honours the header", none_ip != "203.0.113.5", none_ip)
+        except Exception as exc:
+            check("request.client None does not raise", False, repr(exc))
 
         print("\n=== 6. Rate limiting: brute-forcing /signup eventually returns 429 ===")
         codes2 = []

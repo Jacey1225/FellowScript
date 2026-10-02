@@ -169,7 +169,7 @@ def main():
         async def connect(self, user_id, ws):
             pass
 
-        async def disconnect(self, user_id):
+        async def disconnect(self, user_id, ws=None):
             pass
 
         def touch(self, user_id):
