@@ -1,0 +1,54 @@
+import React, { createContext, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useAuth } from './AuthContext.jsx';
+import { CAPABILITIES_OFF, fetchCapabilities } from '../lib/capabilities.js';
+
+// Task 20261002-shared-foundation step 8. Holds the last /app/capabilities
+// result. One fetch per launch / sign-in (user change) / foreground return;
+// no polling and no retry loop. Signed out: nothing is fetched and everything
+// stays off.
+const DEFAULT_VALUE = {
+  ...CAPABILITIES_OFF,
+  isEnabled: () => false,
+  refresh: async () => CAPABILITIES_OFF,
+};
+
+export const CapabilitiesContext = createContext(DEFAULT_VALUE);
+
+const MIN_FOREGROUND_GAP_MS = 15000;
+
+export function CapabilitiesProvider({ children }) {
+  const auth = useAuth();
+  const userId = auth?.user?.user_id || null;
+  const [caps, setCaps] = useState(CAPABILITIES_OFF);
+  const lastFetchRef = useRef(0);
+  const seqRef = useRef(0);
+
+  const refresh = useCallback(async () => {
+    if (!userId) { setCaps(CAPABILITIES_OFF); return CAPABILITIES_OFF; }
+    const seq = ++seqRef.current;
+    lastFetchRef.current = Date.now();
+    const next = await fetchCapabilities();
+    if (seq === seqRef.current) setCaps(next);
+    return next;
+  }, [userId]);
+
+  useEffect(() => {
+    if (!userId) { seqRef.current += 1; setCaps(CAPABILITIES_OFF); return undefined; }
+    refresh();
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible') return;
+      if (Date.now() - lastFetchRef.current < MIN_FOREGROUND_GAP_MS) return;
+      refresh();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [userId, refresh]);
+
+  const value = useMemo(() => ({
+    ...caps,
+    isEnabled: (name) => caps.features[name] === true,
+    refresh,
+  }), [caps, refresh]);
+
+  return <CapabilitiesContext.Provider value={value}>{children}</CapabilitiesContext.Provider>;
+}

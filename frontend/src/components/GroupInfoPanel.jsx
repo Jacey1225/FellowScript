@@ -13,6 +13,8 @@ import {
 import { ANNOUNCEMENTS_ENABLED } from '../lib/announcementsApi.js';
 import GroupAnnouncements from './GroupAnnouncements.jsx';
 import InviteLinkSection from './InviteLinkSection.jsx';
+import { getVisibleGroupInfoSections } from './groupInfoSections.js';
+import { useCapabilities } from '../hooks/useCapabilities.js';
 
 // Task 20260929-group-info-panel (design-notes.md). Groups only. All network
 // calls throw on failure (lib/groupInfoApi.js) and this component never
@@ -83,6 +85,7 @@ export default function GroupInfoPanel({
   const groupId = contact?.id;
   const userId = user?.user_id;
   const wide = useSidePanelLayout();
+  const { features } = useCapabilities();
   const reducedMotion = typeof window !== 'undefined' && !!window.matchMedia &&
     window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const panelRef = useRef(null);
@@ -484,6 +487,12 @@ export default function GroupInfoPanel({
             )}
           </section>
         )}
+
+        {/* Extra sections (groupInfoSections.js registry; empty renders nothing). */}
+        {getVisibleGroupInfoSections({ features, userId, groupId, info, isOwner: !!info?.is_owner }).map((s) => {
+          const Extra = s.component;
+          return <Extra key={s.key} features={features} userId={userId} groupId={groupId} info={info} isOwner={!!info?.is_owner} />;
+        })}
 
         {/* Members */}
         <section>

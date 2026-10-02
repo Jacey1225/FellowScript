@@ -22,6 +22,7 @@ import AdminPromoCodes from './pages/AdminPromoCodes.jsx';
 import AdminTrends from './pages/AdminTrends.jsx';
 import AdminAccountActions from './pages/AdminAccountActions.jsx';
 import InviteFriends from './pages/InviteFriends.jsx';
+import TermsGate from './components/TermsGate.jsx';
 
 export default function App() {
   return (
@@ -104,6 +105,8 @@ export default function App() {
           rendering below -- it no-ops entirely inside the Tauri desktop
           shell (see VisitTracker.jsx). Renders nothing. */}
       <VisitTracker />
+      {/* Task 20261002-shared-foundation: live Updated Terms gate (capabilities terms_current false). */}
+      <TermsGate />
       {/* Restricts the Tauri desktop shell to lib/desktopScope.js's
           DESKTOP_ALLOWED_ROUTES (task 20260906-desktop-scope-lockdown); a
           no-op in the ordinary web frontend. See DesktopRouteGuard.jsx. */}
