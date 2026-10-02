@@ -95,7 +95,8 @@ _SUMMARY_SQL = (
     "(m._id IS NULL OR m.deleted_at IS NOT NULL) AS root_deleted, "
     "(SELECT COUNT(*) FROM thread_messages tm WHERE tm.thread_id = t._id "
     " AND tm.deleted_at IS NULL AND tm.from_user = ANY(%s::uuid[])) AS reply_count, "
-    "t.last_activity_at, COALESCE(cu.username, '') "
+    "t.last_activity_at, COALESCE(cu.username, ''), "
+    "(t.root_author_id IS NOT NULL AND t.root_author_id = ANY(%s::uuid[])) AS root_author_visible "
     "FROM threads t "
     "LEFT JOIN messages m ON m._id = t.root_message_id "
     "LEFT JOIN users cu ON cu._id = t.created_by "
@@ -104,6 +105,11 @@ _SUMMARY_SQL = (
 
 def _summary_row(row) -> dict:
     root_deleted = bool(row[5])
+    # A root authored by someone the caller blocked (either direction), who left
+    # the group or whose account is gone must not keep showing its text in the
+    # list, exactly as the main chat hides that author's messages (block rule).
+    if not row[9]:
+        root_deleted = True
     return {
         "id": row[0],
         "group_id": row[1],
@@ -229,7 +235,7 @@ class ThreadsManager(DBManager):
             raise
 
     def _summary(self, thread_id: str, authors: list[str]) -> dict:
-        self.cur.execute(_SUMMARY_SQL + "WHERE t._id = %s::uuid", (authors, thread_id))
+        self.cur.execute(_SUMMARY_SQL + "WHERE t._id = %s::uuid", (authors, authors, thread_id))
         return _summary_row(self.cur.fetchone())
 
     # ---- list ----------------------------------------------------------
@@ -253,7 +259,7 @@ class ThreadsManager(DBManager):
             sql = _SUMMARY_SQL + (
                 "WHERE t.group_id = %s::uuid AND (t.created_by IS NULL OR t.created_by <> ALL(%s::uuid[])) "
             )
-            params: list = [authors, gid, blocked]
+            params: list = [authors, authors, gid, blocked]
             if cursor is not None:
                 sql += f"AND (t.last_activity_at, t._id) < ({paging.TS_SQL}, {cursor.id_sql}) "
                 params.extend([cursor.timestamp, cursor.id])
