@@ -23,6 +23,16 @@
   color: var(--parchment, #F2F2F2); background: var(--card-bg, #1A1A1C); border: 1px solid var(--card-border-strong, rgba(255,255,255,.14)); border-radius: var(--radius-pill, 999px);
 }
 .ex-field textarea, .ex-field select { border-radius: var(--radius-md, 14px); }
+/* Translucent warm fields on the brown canvas (body.page-warm). */
+body.page-warm .ex-search input, body.page-warm .ex-field input,
+body.page-warm .ex-field select, body.page-warm .ex-field textarea {
+  background: rgba(255, 232, 190, 0.08); border-color: rgba(255, 225, 170, 0.22);
+  backdrop-filter: blur(6px);
+}
+body.page-warm .ex-search input:focus, body.page-warm .ex-field input:focus,
+body.page-warm .ex-field select:focus, body.page-warm .ex-field textarea:focus {
+  background: rgba(255, 232, 190, 0.12); border-color: rgba(255, 198, 26, 0.6);
+}
 .ex-btn { display: inline-flex; align-items: center; justify-content: center; gap: .4rem; min-height: 44px; padding: .55rem 1.1rem; border-radius: var(--radius-pill, 999px); font: 600 .9rem 'Inter', sans-serif; cursor: pointer; border: 1px solid var(--card-border-strong, rgba(255,255,255,.14)); background: transparent; color: var(--parchment, #F2F2F2); text-decoration: none; }
 .ex-btn:disabled { opacity: .5; cursor: not-allowed; }
 .ex-btn--primary { background: var(--gold, #FFC61A); color: #1A1306; border-color: transparent; }
