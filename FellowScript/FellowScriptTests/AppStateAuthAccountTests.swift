@@ -57,6 +57,18 @@ final class ThrowingTestDataService: DataServiceProtocol {
     private(set) var acceptTermsCallCount = 0
     private(set) var lastAcceptTermsUserId: String?
 
+    // Task 20261002-shared-foundation step 9: capabilities seam. nil result
+    // plus no error = fall through to the protocol default (throws).
+    var fetchCapabilitiesResult: FSCapabilities?
+    var fetchCapabilitiesError: Error?
+    private(set) var fetchCapabilitiesCallCount = 0
+    func fetchCapabilities() async throws -> FSCapabilities {
+        fetchCapabilitiesCallCount += 1
+        if let fetchCapabilitiesError { throw fetchCapabilitiesError }
+        if let fetchCapabilitiesResult { return fetchCapabilitiesResult }
+        throw AppError.networkError("Capabilities unavailable.")
+    }
+
     func logout() async throws {
         logoutCallCount += 1
         if let logoutError { throw logoutError }
