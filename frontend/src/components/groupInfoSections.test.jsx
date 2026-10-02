@@ -20,7 +20,7 @@ afterEach(() => { cleanup(); GROUP_INFO_SECTIONS.length = 0; });
 describe('registry', () => {
   test('ships the registered entries in order: publish(10), join_requests(20), threads(30)', () => {
     expect(GROUP_INFO_SECTIONS.map((s) => s.order)).toEqual([10, 20, 30]);
-    expect(GROUP_INFO_SECTIONS.map((s) => s.key)).toEqual(['publish', expect.any(String), 'threads']);
+    expect(GROUP_INFO_SECTIONS.map((s) => s.key)).toEqual(['publish', 'join_requests', 'threads']);
     expect(getVisibleGroupInfoSections({ features: {}, isOwner: true }).map((s) => s.key)).toEqual([]);
     expect(getVisibleGroupInfoSections({ features: { threads: true } }).map((s) => s.key)).toEqual(['threads']);
     expect(getVisibleGroupInfoSections({ features: { threads: true, explorer_publish: true }, isOwner: true }).map((s) => s.key)).toEqual(['publish', 'threads']);
