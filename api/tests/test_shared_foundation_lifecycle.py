@@ -1043,17 +1043,17 @@ def test_registrations_fresh_subprocess():
     # CLI: a report whose type has no remover exits non-zero and removes nothing
     reporter, target = make_user(), make_user()
     rid = str(uuid.uuid4())
+    # thread_message now has a remover (THR registers it through load_all, and the cold
+    # CLI process runs load_all), so the "no remover" case uses a type nobody registers.
+    NO_REMOVER_TYPE = "unregistered_stub_type"
+    check("stub type really has no remover in this process", NO_REMOVER_TYPE not in removers.CONTENT_REMOVERS)
     q("INSERT INTO content_reports (_id, reporter_id, reported_user_id, content_type, content_id, reason) "
-      "VALUES (%s,%s,%s,'thread_message',%s,'x')", (rid, reporter, target, str(uuid.uuid4())), fetch=False)
-    in_registry = "thread_message" in removers.CONTENT_REMOVERS
-    if not in_registry:
-        r = run_py(args=["-m", "backend.moderation.admin_actions", "resolve", rid, "--remove-content"])
-        check("CLI exits non-zero for a content type with no remover", r.returncode != 0, (r.returncode, r.stderr[-300:]))
-        check("CLI says which type has no remover", "No remover registered" in r.stderr, r.stderr[-300:])
-        st = q("SELECT status FROM content_reports WHERE _id = %s", (rid,))[0][0]
-        check("report stays open when nothing could be removed", st == "open", st)
-    else:
-        check("thread_message already registered by a later task (CLI stub case n/a)", True)
+      "VALUES (%s,%s,%s,%s,%s,'x')", (rid, reporter, target, NO_REMOVER_TYPE, str(uuid.uuid4())), fetch=False)
+    r = run_py(args=["-m", "backend.moderation.admin_actions", "resolve", rid, "--remove-content"])
+    check("CLI exits non-zero for a content type with no remover", r.returncode != 0, (r.returncode, r.stderr[-300:]))
+    check("CLI says which type has no remover", "No remover registered" in r.stderr, r.stderr[-300:])
+    st = q("SELECT status FROM content_reports WHERE _id = %s", (rid,))[0][0]
+    check("report stays open when nothing could be removed", st == "open", st)
     q("DELETE FROM content_reports WHERE _id = %s", (rid,), fetch=False)
 
     # CLI: a type that does have a remover works from a cold process (load_all ran)
