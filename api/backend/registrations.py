@@ -18,3 +18,4 @@ def load_all() -> None:
     from backend.moderation import removers  # noqa: F401  SF: CONTENT_REMOVERS for the five existing types
     from backend import listings_wiring  # noqa: F401  LST: member_leave / user_delete hooks for listings
     from backend import threads_wiring  # noqa: F401  THR: thread_message resolver/remover, group_delete key collector
+    from backend import join_requests_wiring  # noqa: F401  JRQ: member_leave / user_delete / listing_hidden hooks for join requests

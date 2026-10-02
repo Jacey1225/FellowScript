@@ -1336,5 +1336,14 @@ def start_scheduler() -> None:
     from backend.interactions.message_delete import JOB_ID as MESSAGE_PURGE_JOB_ID, SWEEP_INTERVAL_SECONDS as MESSAGE_PURGE_INTERVAL, run_message_purge_job
     scheduler.add_job(run_message_purge_job, "interval", seconds=MESSAGE_PURGE_INTERVAL,
                       id=MESSAGE_PURGE_JOB_ID, replace_existing=True)
+    # Join requests: expire stale/ownerless pending rows and purge decided rows past
+    # retention (R-SCHED: thin async job, DB work in an executor). Runs even while
+    # the join_requests flag is off.
+    from backend.interactions.join_request_sweeper import (
+        JOB_ID as JOIN_REQUEST_SWEEP_JOB_ID, SWEEP_INTERVAL_SECONDS as JOIN_REQUEST_SWEEP_INTERVAL,
+        run_join_request_sweeper_job,
+    )
+    scheduler.add_job(run_join_request_sweeper_job, "interval", seconds=JOIN_REQUEST_SWEEP_INTERVAL,
+                      id=JOIN_REQUEST_SWEEP_JOB_ID, replace_existing=True)
     scheduler.start()
     logger.info("Notification scheduler started — checking every minute")

@@ -114,6 +114,12 @@ thread_messages         # module "threads": _id PK, thread_id FK threads CASCADE
                         #   partial INDEX on deleted_by
 thread_followers        # module "threads": PK (thread_id FK threads CASCADE, user_id FK users CASCADE); INDEX (user_id)
 # <!-- /THR -->
+# <!-- JRQ (20261001-explorer-join-requests) -->
+group_join_requests     # module "join_requests": id UUID PK DEFAULT gen_random_uuid(), group_id FK groups ON DELETE CASCADE, user_id FK users ON DELETE CASCADE,
+                        #   status pending|approved|denied|withdrawn|expired (CHECK), note, block_reapply, created_at, decided_at, decided_by FK users SET NULL, owner_notified_at;
+                        #   partial UNIQUE (group_id, user_id) WHERE status = 'pending'; INDEX (group_id, status, created_at), (user_id, created_at),
+                        #   (group_id, user_id, created_at DESC), (status, created_at), partial (decided_by); no FK to group_listings
+# <!-- /JRQ -->
 ```
 
 ---

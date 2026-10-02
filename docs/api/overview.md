@@ -560,3 +560,29 @@ Sending is a WebSocket frame on the existing socket: `{ "type": "thread_message"
 
 Reports: `POST /reports/` with `content_type: "thread_message"` takes the thread message's `id`; an unknown id is `404` and stores nothing.
 <!-- /THR -->
+
+## Join requests (task 20261001-explorer-join-requests)
+
+<!-- JRQ (20261001-explorer-join-requests) -->
+Gated by flag `join_requests` (off by default; clients read it from `GET /app/capabilities` as `features.join_requests`). While the flag is off for the caller every route below answers the same `404 { "detail": { "code": "not_found" } }`, as do an unknown id, a listing that cannot be requested and any caller who is not the group's owner. All paths need the session user in `{user_id}`. Every wait on a row lock is bounded; on timeout the route answers `409 { "code": "busy" }`.
+
+Requester routes:
+
+| Method | Route | Description |
+|---|---|---|
+| POST | `/join-requests/{user_id}/listings/{public_id}/request` | Ask to join a published listing (public id only, never a group id). Body `{ "note"? }` (plain text, 280 characters, content filtered: `422 invalid_note` or `422 note_rejected`). `201 { "status": "pending", "id", "created_at" }` when created; `200` for an idempotent repeat or `{ "status": "already_member" }` (given only to a member). Needs `explorer_browse` on, an accepting listing whose owner is also inside the flag, and current Terms (`403 { "code": "terms_reaccept_required" }`). `403 { "code": "cannot_request" }` is one generic answer for a block, cooldown after a denial, an owner "do not ask again", a pending or daily cap, or a suspended account. Anything else that cannot be requested is `404`. |
+| GET | `/join-requests/{user_id}/requests?public_id=` | Your own requests, newest first: `{ "requests": [{ id, status, created_at, public_id, title, group_id? }], "already_member"? }`. `status` is `pending`, `approved`, `not_approved` (denied and expired look the same) or `withdrawn`. `group_id` appears only for an approved request while you are still a member. `already_member` appears when `public_id` is given. |
+| POST | `/join-requests/{user_id}/requests/{request_id}/withdraw` | Withdraw your own pending request. `{ "status": "withdrawn" }`; repeating is `200`; a decided request is `409 not_pending`. |
+
+Owner routes (group owner only: creator, still a member, not suspended; everyone else gets `404`):
+
+| Method | Route | Description |
+|---|---|---|
+| GET | `/join-requests/{user_id}/groups/{group_id}/requests` | `{ "accepting_requests": bool \| null, "pending_count", "requests": [{ id, applicant_user_id, username, profile_photo_url, note, created_at }] }`, newest first. `accepting_requests` is null when the group has no listing. `applicant_user_id` is for Report and Block only. |
+| POST | `/join-requests/{user_id}/groups/{group_id}/requests/{request_id}/approve` | Adds the applicant to the group in one transaction (member cap and blocks re-checked). `{ "status": "approved", "already_member" }`; repeating is `200`. `409 group_full` leaves the request pending; `409 no_longer_available` (blocked or suspended applicant; the request is expired); `409 not_pending`. |
+| POST | `/join-requests/{user_id}/groups/{group_id}/requests/{request_id}/deny` | Body `{ "block_reapply"?: bool }`. `{ "status": "denied", "undo_seconds" }`. The applicant is not notified and cannot ask again for the cooldown (14 days), or ever with `block_reapply`. |
+| POST | `/join-requests/{user_id}/groups/{group_id}/requests/{request_id}/undo-deny` | Restore your own denial inside `undo_seconds` (10, server clock): `{ "status": "pending" }`, else `409 not_undoable`. |
+| PUT | `/join-requests/{user_id}/groups/{group_id}/accepting` | Body `{ "accepting": true\|false }` (strict booleans). Switches intake of NEW requests for the group's listing; pending requests are untouched. `{ "accepting" }`. `404` when the group has no listing. Works while `explorer_browse` is off. |
+
+Push (flag `join_request_push`, evaluated for the owner): the owner gets at most one `join_request` push per group per 30 minutes with generic text, and the applicant gets one when approved; data `{ "action": "join_request", "group_id" }`. Notes, usernames and ids never appear in push text.
+<!-- /JRQ -->
