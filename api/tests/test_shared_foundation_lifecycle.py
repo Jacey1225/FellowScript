@@ -999,9 +999,11 @@ def test_registrations_fresh_subprocess():
         "from backend.interactions import reports\n"
         "from backend.moderation import removers, admin_actions\n"
         "from routes.reports import ReportRequest\n"
+        "from backend.interactions import lifecycle\n"
+        "hk = {k: sorted(f.__name__ for f in lifecycle.hooks(k)) for k in lifecycle.KINDS}\n"
         "lit = list(ReportRequest.model_fields['content_type'].annotation.__args__)\n"
         "print(json.dumps({'lit': lit, 'res': sorted(reports.CONTENT_RESOLVERS),\n"
-        "  'rem': sorted(removers.CONTENT_REMOVERS), 'same': admin_actions.CONTENT_REMOVERS is removers.CONTENT_REMOVERS}))\n"
+        "  'rem': sorted(removers.CONTENT_REMOVERS), 'hooks': hk, 'same': admin_actions.CONTENT_REMOVERS is removers.CONTENT_REMOVERS}))\n"
     )
     r = run_py(code)
     check("subprocess ran cleanly", r.returncode == 0, r.stderr[-400:])
@@ -1021,6 +1023,18 @@ def test_registrations_fresh_subprocess():
     check("every Literal type except the not-yet-built listing/thread types is registered in both",
           (lit - NEW_TYPES) <= res and (lit - NEW_TYPES) <= rem, (lit, res, rem))
     check("fresh process: admin_actions shares the removers dict", out["same"])
+    # R3-m3 (tightened once LST landed): the listing hooks exist in a cold process
+    # only because registrations.load_all imports backend.listings_wiring, and the
+    # group_listing resolver/remover pair is never half-registered.
+    hooks = out.get("hooks", {})
+    check("fresh process: LST member_leave hook registered by load_all",
+          "hide_listing_when_owner_leaves" in hooks.get("member_leave", []), hooks)
+    check("fresh process: LST user_delete hook registered by load_all",
+          "delete_listings_of_deleted_owner" in hooks.get("user_delete", []), hooks)
+    check("fresh process: group_listing is in both registries or neither",
+          ("group_listing" in res) == ("group_listing" in rem), (res, rem))
+    check("fresh process: the SF collectors are still registered next to the LST hooks",
+          bool(hooks.get("user_delete")) and len(hooks.get("user_delete", [])) >= 2, hooks)
 
     # CLI: a report whose type has no remover exits non-zero and removes nothing
     reporter, target = make_user(), make_user()
