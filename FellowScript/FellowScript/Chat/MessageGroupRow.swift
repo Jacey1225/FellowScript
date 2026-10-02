@@ -195,6 +195,10 @@ struct MessageGroupRow: View {
     var failedMessageIds: Set<String> = []
     var onRetry: ((String) -> Void)? = nil
 
+    /// Scroll anchor id for one message. Prefixed so it can never collide with
+    /// a MessageDisplayGroup row id (a group's id IS its first message's id).
+    static func anchorId(for messageId: String) -> String { "msg-anchor:\(messageId)" }
+
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             if group.isOutgoing { Spacer(minLength: 40) }
@@ -239,6 +243,10 @@ struct MessageGroupRow: View {
                             .accessibilityLabel("Failed to send message, tap to retry")
                         }
                     }
+                    // Task 20261001-chat-pagination: stable per-message scroll
+                    // anchor (see anchorId(for:)). Group ids change when an
+                    // older page merges into the first group; this does not.
+                    .id(Self.anchorId(for: message.id))
                 }
             }
 

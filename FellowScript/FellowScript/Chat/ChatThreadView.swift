@@ -35,6 +35,7 @@
 // interleaved into the message list.
 
 import SwiftUI
+import UIKit
 import Combine
 
 // ── ViewModel (WebSocket + history) ──────────────────────────────────────────
@@ -90,6 +91,36 @@ final class ChatThreadViewModel: ObservableObject {
     // wholesale is the natural reset point).
     private var pendingAttachmentByMessageId: [String: StagedAttachment] = [:]
 
+    // ── Pagination (task 20261001-chat-pagination) ───────────────────────────
+    // Behavioural reference: the web client (frontend/src/lib/chatPaging.js,
+    // hooks/useMessaging.js). Paging is opt-in per thread: only when the SF
+    // capabilities client reports chat_pagination (groups) / chat_pagination_dm
+    // (DMs) does load() ask for ?limit=; false/missing is the unchanged legacy
+    // full-history fetch (and no client_ref is sent, so no ack comes back).
+    static let initialPageLimit = 30
+    static let olderPageLimit   = 30
+    /// DiskCache keeps only the newest window of a paged thread, so a long
+    /// scrolled-back session never persists its whole history.
+    static let cacheWindow      = 50
+
+    /// True when this thread was opened with a page envelope.
+    @Published private(set) var pagingEnabled = false
+    @Published private(set) var hasMoreOlder  = false
+    @Published private(set) var isLoadingOlder = false
+    /// Set when an older-page fetch failed; the view shows a retry control and
+    /// does not auto-retry until it is cleared.
+    @Published var olderLoadFailed = false
+    /// Bumped each time an older page actually merged rows in (the view
+    /// re-anchors its scroll position on this, by message id).
+    @Published private(set) var olderMergeToken = 0
+    /// Bumped when an ack replaced a bubble's local id in place (no count
+    /// change), so the view recomputes its id-keyed group/anchor caches.
+    @Published private(set) var ackRevision = 0
+    private var olderCursor: FSMessageCursor? = nil
+    /// Bumped by every load(); a response that returns after the thread was
+    /// reloaded is discarded.
+    private var loadGeneration = 0
+
     private var wsTask: URLSessionWebSocketTask?
     private var wsBase:   String = ""
     private var wsUserId: String = ""
@@ -118,9 +149,14 @@ final class ChatThreadViewModel: ObservableObject {
         return contact.id
     }
 
-    func load(service: DataServiceProtocol, contact: FSContact, userId: String) async {
+    func load(service: DataServiceProtocol, contact: FSContact, userId: String, capabilities: FSCapabilities = .allOff) async {
         let sessionKey = Self.roomKey(contact: contact, userId: userId)
         currentContact = contact
+        loadGeneration += 1
+        let generation = loadGeneration
+        // Gate: false/missing capability = legacy full-history fetch.
+        let pageLimit: Int? = capabilities.isEnabled(contact.type == .group ? "chat_pagination" : "chat_pagination_dm")
+            ? Self.initialPageLimit : nil
 
         // ── Cache-first: show the last-seen thread instantly ─────────────────────
         // Keyed by sessionKey (sorted [userId, contact.id] for a friend DM, or
@@ -142,26 +178,83 @@ final class ChatThreadViewModel: ObservableObject {
             // every fetched message's raw `from_user` sender id can be
             // stamped with the real username below, instead of rendering the
             // raw id the way MessageDisplayGroup/MessageAttachments used to.
-            async let fetchedMessages = service.fetchGroupMessages(userId: userId, groupId: contact.id)
+            async let fetchedHistory = service.fetchMessageHistory(userId: userId, contactId: contact.id, isGroup: true, limit: pageLimit)
             let usernameById = await resolveGroupMemberPhotos(contact: contact, service: service, viewerId: userId)
             groupUsernameById = usernameById
-            let fetched = (try? await fetchedMessages) ?? messages
-            messages = fetched.map { resolvedMessage($0, senderName: usernameById[$0.sender]) }
+            let history = try? await fetchedHistory
+            if generation == loadGeneration {
+                applyHistory(history, resolve: { self.resolvedMessage($0, senderName: usernameById[$0.sender]) })
+            }
         } else {
-            let fetched = (try? await service.fetchFriendMessages(userId: userId, friendId: contact.id)) ?? messages
+            let history = try? await service.fetchMessageHistory(userId: userId, contactId: contact.id, isGroup: false, limit: pageLimit)
             // A DM's only other participant is `contact` itself, already
             // resolved (name + photo) by fetchContacts -- no extra fetch
             // needed to turn a raw from_user id into a display name here.
-            messages = fetched.map { resolvedMessage($0, senderName: $0.sender == contact.id ? contact.name : nil) }
+            if generation == loadGeneration {
+                applyHistory(history, resolve: { self.resolvedMessage($0, senderName: $0.sender == contact.id ? contact.name : nil) })
+            }
             if let photoUrl = contact.photoUrl { photoByUsername[contact.name] = photoUrl }
         }
         sessions = (try? await service.fetchSessionsForContact(contactId: sessionKey)) ?? sessions
 
         // ── Persist the fresh thread for the next open ───────────────────────────
-        await DiskCache.shared.save(messages, forKey: "messages:\(sessionKey)")
+        // A paged thread persists only its newest window (older pages the
+        // user scrolled back through are not written to disk).
+        await DiskCache.shared.save(pagingEnabled ? Array(messages.suffix(Self.cacheWindow)) : messages,
+                                    forKey: "messages:\(sessionKey)")
         await DiskCache.shared.save(sessions, forKey: "sessions:\(sessionKey)")
 
         connectWebSocket(wsBase: service.wsBase, userId: userId)
+    }
+
+    /// Applies a fetch result. A failed fetch (nil) keeps whatever the cache
+    /// already showed, exactly as before.
+    private func applyHistory(_ history: FSMessageHistory?, resolve: (FSMessage) -> FSMessage) {
+        switch history {
+        case .legacy(let fetched):
+            messages = fetched.map(resolve)
+            pagingEnabled = false; hasMoreOlder = false; olderCursor = nil
+        case .paged(let page):
+            messages = page.messages.map(resolve)
+            pagingEnabled = true
+            hasMoreOlder = page.hasMore
+            olderCursor = page.cursor
+        case nil:
+            break
+        }
+        olderLoadFailed = false
+    }
+
+    /// Fetches the next older page and merges it by message id (rows already
+    /// present are skipped; server order is kept, never re-sorted by
+    /// timestamp string). Failure sets `olderLoadFailed` for a retry control;
+    /// it never fabricates an empty "start of conversation".
+    func loadOlder(service: DataServiceProtocol, contact: FSContact, userId: String) async {
+        guard pagingEnabled, hasMoreOlder, !isLoadingOlder, let cursor = olderCursor else { return }
+        isLoadingOlder = true
+        olderLoadFailed = false
+        let generation = loadGeneration
+        defer { if generation == loadGeneration { isLoadingOlder = false } }
+        do {
+            let page = try await service.fetchOlderMessages(userId: userId, contactId: contact.id,
+                                                             isGroup: contact.type == .group,
+                                                             limit: Self.olderPageLimit, cursor: cursor)
+            guard generation == loadGeneration else { return }
+            let have = Set(messages.map(\.id))
+            let fresh = page.messages.filter { !have.contains($0.id) }
+            if !fresh.isEmpty {
+                messages = fresh + messages
+                olderMergeToken += 1
+                UIAccessibility.post(notification: .announcement,
+                                     argument: fresh.count == 1 ? "Loaded 1 earlier message" : "Loaded \(fresh.count) earlier messages")
+            }
+            olderCursor = page.cursor
+            hasMoreOlder = page.hasMore
+        } catch {
+            guard generation == loadGeneration else { return }
+            print("[ChatThreadViewModel] older page failed: \(error)")
+            olderLoadFailed = true
+        }
     }
 
     /// Resolves every other group member's username → photo URL (task
@@ -243,7 +336,13 @@ final class ChatThreadViewModel: ObservableObject {
     /// this, per design gate §3.
     func sendMessage(text: String, attachment: StagedAttachment?, contact: FSContact, userId: String) {
         let iso = ISO8601DateFormatter().string(from: Date())
+        let messageId = UUID().uuidString
         var body: [String: Any] = ["from_user": userId, "timestamp": iso, "text": text]
+        // Task 20261001-chat-pagination: the local UUID doubles as client_ref
+        // (36 chars of [0-9a-f-], inside the server's 1-64 [A-Za-z0-9_-]
+        // shape) so the sender-only ack can replace this bubble's id in place.
+        // Only on a thread opened paged; legacy threads send nothing new.
+        if pagingEnabled { body["client_ref"] = messageId }
         if contact.type == .group {
             body["group_id"] = contact.id
             body["to_users"] = contact.toUsers
@@ -281,7 +380,6 @@ final class ChatThreadViewModel: ObservableObject {
            let str  = String(data: data, encoding: .utf8) {
             wsTask?.send(.string(str)) { _ in }
         }
-        let messageId = UUID().uuidString
         // No `attachmentURL` on the optimistic echo — image/video render from
         // `localAttachmentPreviews` instead (see field doc comment above);
         // `gifContent` already prefers `attachmentMeta.url` over
@@ -335,6 +433,33 @@ final class ChatThreadViewModel: ObservableObject {
         guard !pendingSendIds.isEmpty else { return }
         let failedId = pendingSendIds.removeFirst()
         failedMessageIds.insert(failedId)
+    }
+
+    /// Reconciles an `ack` frame with the optimistic bubble (same rule as the
+    /// web client's reconcileAck): the bubble whose local id is the acked
+    /// `client_ref` is replaced IN PLACE with the server id and stored
+    /// timestamp (never appended); if a row with the server id is already
+    /// present (a refetch beat the ack) the optimistic bubble is deleted
+    /// instead; an unknown client_ref changes nothing. The id-keyed side
+    /// tables (local attachment preview, failed/pending sets) follow the id.
+    private func handleAck(clientRef: String, id: String, timestamp: String?) {
+        guard let idx = messages.firstIndex(where: { $0.id == clientRef }) else { return }
+        pendingSendIds.removeAll { $0 == clientRef }
+        pendingAttachmentByMessageId.removeValue(forKey: clientRef)
+        failedMessageIds.remove(clientRef)
+        let preview = localAttachmentPreviews.removeValue(forKey: clientRef)
+        if messages.contains(where: { $0.id == id }) {
+            messages.remove(at: idx)
+        } else {
+            let old = messages[idx]
+            if let preview { localAttachmentPreviews[id] = preview }
+            messages[idx] = FSMessage(
+                id: id, text: old.text, mine: old.mine, sender: old.sender,
+                timestamp: (timestamp?.isEmpty == false ? timestamp! : old.timestamp),
+                attachmentKind: old.attachmentKind, attachmentURL: old.attachmentURL, attachmentMeta: old.attachmentMeta
+            )
+        }
+        ackRevision += 1
     }
 
     func disconnect() {
@@ -439,6 +564,16 @@ final class ChatThreadViewModel: ObservableObject {
                     // chat delivery frame carries no `type` key at all.
                     if let type = json["type"] as? String {
                         switch type {
+                        case "ack":
+                            // Task 20261001-chat-pagination: sender-only frame
+                            // for a message sent with client_ref. Never a
+                            // bubble (it carries a `type` and no text), and
+                            // never confused with an error frame: an error
+                            // frame is never treated as an ack.
+                            if let ref = json["client_ref"] as? String, let ackId = json["id"] as? String {
+                                let ackTs = json["timestamp"] as? String
+                                Task { @MainActor in self.handleAck(clientRef: ref, id: ackId, timestamp: ackTs) }
+                            }
                         case "error":
                             self.handleSendError(reason: json["reason"] as? String, detail: json["detail"] as? String)
                         case "ping":
@@ -500,7 +635,13 @@ final class ChatThreadViewModel: ObservableObject {
                                 attachmentURL:  json["attachment_url"] as? String,
                                 attachmentMeta: attachmentMeta
                             )
-                            Task { @MainActor in self.messages.append(incoming) }
+                            // Dedup by id (a live frame for a row a history
+                            // fetch already delivered must not render twice);
+                            // a frame without an id always appends.
+                            Task { @MainActor in
+                                if json["id"] is String, self.messages.contains(where: { $0.id == incoming.id }) { return }
+                                self.messages.append(incoming)
+                            }
                         }
                     }
                 }
@@ -649,6 +790,80 @@ struct ChatThreadView: View {
     // path as the new-message case that was already working correctly.
     @State private var readyForInitialScroll = false
 
+    // ── Older-history paging (task 20261001-chat-pagination) ─────────────────
+    // Message id of the first row at the moment an older page was requested.
+    // After the page merges, the view scrolls back to THAT MESSAGE (by the
+    // per-message anchor marker in MessageGroupRow), not to a
+    // MessageDisplayGroup.id: a group's id is its first message's id, so it
+    // changes whenever an older page merges into the first group.
+    @State private var olderAnchorMessageId: String? = nil
+    // Whether the "load earlier" header is inside the viewport (real viewport
+    // visibility, not LazyVStack realization, so a thread that has not been
+    // scrolled to the bottom yet never triggers a load).
+    @State private var olderHeaderVisible = false
+    // Id of the last message the scroll position was last pinned to; the
+    // bottom scroll only runs when the tail actually changed (append), never
+    // for a prepend of older rows.
+    @State private var lastTailId: String? = nil
+
+    private func requestOlderPage() {
+        guard readyForInitialScroll, olderHeaderVisible,
+              vm.pagingEnabled, vm.hasMoreOlder, !vm.isLoadingOlder, !vm.olderLoadFailed,
+              let uid = appState.currentUser?.user_id else { return }
+        olderAnchorMessageId = vm.messages.first?.id
+        Task { await vm.loadOlder(service: appState.service, contact: contact, userId: uid) }
+    }
+
+    private func retryOlderPage() {
+        vm.olderLoadFailed = false
+        requestOlderPage()
+    }
+
+    /// Top-of-thread row: spinner while an older page loads, a retry button
+    /// after a failure, "Start of conversation" once history is exhausted
+    /// (paged threads only -- a legacy thread has no marker).
+    @ViewBuilder
+    private var olderHistoryHeader: some View {
+        if vm.pagingEnabled {
+            Group {
+                if vm.olderLoadFailed {
+                    Button(action: retryOlderPage) {
+                        Text("Couldn't load earlier messages. Tap to retry")
+                            .font(.inter(Theme.fontXS))
+                            .foregroundColor(Theme.error)
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Couldn't load earlier messages, retry")
+                    .accessibilityHint("Double tap to try again")
+                } else if vm.hasMoreOlder {
+                    HStack(spacing: 6) {
+                        // Only the spinner is "motion"; it is hidden under
+                        // Reduce Motion in favor of static text.
+                        if !reduceMotion { ProgressView().tint(Theme.gold).scaleEffect(0.75) }
+                        Text(vm.isLoadingOlder ? "Loading earlier messages…" : "Earlier messages")
+                            .font(.inter(Theme.fontXS))
+                            .foregroundColor(Theme.textGoldMuted)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(vm.isLoadingOlder ? "Loading earlier messages" : "Earlier messages available")
+                } else if !vm.messages.isEmpty {
+                    Text("Start of conversation")
+                        .font(.inter(Theme.fontXS))
+                        .foregroundColor(Theme.textSecondary)
+                        .frame(maxWidth: .infinity)
+                        .accessibilityLabel("Start of conversation")
+                }
+            }
+            .padding(.vertical, Theme.spacingSM)
+            .onScrollVisibilityChange(threshold: 0.01) { visible in
+                olderHeaderVisible = visible
+                if visible { requestOlderPage() }
+            }
+        }
+    }
+
     // Recomputes both caches from the current vm.messages/user -- called
     // once up front (via `.task`, so the very first render after load()
     // populates vm.messages isn't stuck showing an empty cache) and again
@@ -709,6 +924,7 @@ struct ChatThreadView: View {
                 ScrollViewReader { proxy in
                     ScrollView {
                         LazyVStack(spacing: 0) {
+                            olderHistoryHeader
                             let rows = threadRows
                             ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
                                 switch row {
@@ -751,9 +967,30 @@ struct ChatThreadView: View {
                     }
                     .onChange(of: vm.messages.count) { _ in
                         recomputeMessageGroups()
-                        if let lastGroup = messageGroups.last {
-                            withMotionAwareAnimation(.default, reduceMotion: reduceMotion) { proxy.scrollTo(lastGroup.id, anchor: .bottom) }
+                        // Append-only: scroll to the newest group only when the
+                        // tail message changed. Prepending an older page leaves
+                        // the tail alone (the re-anchor below handles it), and
+                        // an ack that swaps a local id in place does not change
+                        // the count at all.
+                        let tailId = vm.messages.last?.id
+                        defer { lastTailId = tailId }
+                        guard tailId != lastTailId, let lastGroup = messageGroups.last else { return }
+                        withMotionAwareAnimation(.default, reduceMotion: reduceMotion) { proxy.scrollTo(lastGroup.id, anchor: .bottom) }
+                    }
+                    // An older page merged: keep the reader on the message
+                    // they were looking at (by message id; never animated, so
+                    // Reduce Motion needs no special case).
+                    .onChange(of: vm.olderMergeToken) { _ in
+                        recomputeMessageGroups()
+                        if let anchor = olderAnchorMessageId {
+                            olderAnchorMessageId = nil
+                            proxy.scrollTo(MessageGroupRow.anchorId(for: anchor), anchor: .top)
                         }
+                    }
+                    // An ack replaced a bubble's id in place (same count).
+                    .onChange(of: vm.ackRevision) { _ in
+                        recomputeMessageGroups()
+                        lastTailId = vm.messages.last?.id
                     }
                     // Initial-open scroll (see `readyForInitialScroll`'s
                     // declaration above for why this lives here, on the same
@@ -762,7 +999,14 @@ struct ChatThreadView: View {
                     // not animated -- see `.task` below for why.
                     .onChange(of: readyForInitialScroll) { ready in
                         guard ready, let lastGroup = messageGroups.last else { return }
+                        lastTailId = vm.messages.last?.id
                         proxy.scrollTo(lastGroup.id, anchor: .bottom)
+                        // Short threads keep the header on screen after the
+                        // snap; re-check once the scroll has settled.
+                        Task {
+                            try? await Task.sleep(nanoseconds: 200_000_000)
+                            requestOlderPage()
+                        }
                     }
                 }
             }
@@ -825,7 +1069,7 @@ struct ChatThreadView: View {
             // opening this screen is itself the "seen" signal, regardless of
             // how the fetch that follows turns out.
             appState.markRead(contact)
-            await vm.load(service: appState.service, contact: contact, userId: uid)
+            await vm.load(service: appState.service, contact: contact, userId: uid, capabilities: appState.capabilities)
             // Populates the messageGroups/threadRows cache for the first
             // render after load() -- `.onChange(of: vm.messages.count)`
             // covers every later change, but wouldn't fire for this initial

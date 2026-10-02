@@ -10,6 +10,33 @@
 
 import Foundation
 
+// Task 20261001-chat-pagination: wire-independent paging types shared by
+// NetworkService, DataServiceProtocol and ChatThreadViewModel.
+
+/// Keyset cursor of the oldest row of the page just received (the page's
+/// next_cursor_timestamp / next_cursor_seq / next_cursor_id). Opaque to the
+/// client: it is only echoed back to the older-messages route.
+struct FSMessageCursor: Equatable {
+    let timestamp: String
+    let seq: Int?
+    let id: String
+}
+
+/// One page of history, oldest-first. `cursor` is non-nil exactly when
+/// `hasMore` is true.
+struct FSMessagePage {
+    let messages: [FSMessage]
+    let hasMore: Bool
+    let cursor: FSMessageCursor?
+}
+
+/// What a history fetch returned: the legacy full history (flag off, no
+/// `page` block) or a page.
+enum FSMessageHistory {
+    case legacy([FSMessage])
+    case paged(FSMessagePage)
+}
+
 extension NetworkService {
 
     // GET /friends/{userId}/{friendId}       → {host_msgs, other_msgs}
@@ -27,6 +54,88 @@ extension NetworkService {
         guard let resp = decode(RawGroupResponse.self, from: data) else { return [] }
         let mine  = (resp.host_msgs  ?? []).map { m in FSMessage(id: m.id ?? UUID().uuidString, text: m.text ?? "", mine: true,  sender: "",          timestamp: m.timestamp ?? "", attachmentKind: m.attachment_kind, attachmentURL: m.attachment_url, attachmentMeta: m.attachment_meta) }
         let theirs = (resp.other_msgs ?? []).map { m in FSMessage(id: m.id ?? UUID().uuidString, text: m.text ?? "", mine: false, sender: m.from_user ?? "", timestamp: m.timestamp ?? "", attachmentKind: m.attachment_kind, attachmentURL: m.attachment_url, attachmentMeta: m.attachment_meta) }
+        return (mine + theirs).sorted { $0.timestamp < $1.timestamp }
+    }
+
+    // ── Paged history (task 20261001-chat-pagination) ─────────────────────────
+    // Behavioural reference: frontend/src/lib/chatPaging.js. Opt-in only: the
+    // caller (ChatThreadViewModel / fetchContacts) passes a limit solely when
+    // the SF capabilities client says chat_pagination (groups) or
+    // chat_pagination_dm (DMs) is on; a nil limit is the untouched legacy
+    // full-history fetch. A response without a `page` block (old server, flag
+    // flipped off, 200 with the legacy shape) is decoded as legacy history, so
+    // an unexpected shape can never blank a thread.
+
+    // GET /groups/{userId}/{groupId}?limit=N  or  GET /friends/{userId}/{friendId}?limit=N
+    func fetchMessageHistory(userId: String, contactId: String, isGroup: Bool, limit: Int?) async throws -> FSMessageHistory {
+        guard let limit else {
+            let legacy = isGroup
+                ? try await fetchGroupMessages(userId: userId, groupId: contactId)
+                : try await fetchFriendMessages(userId: userId, friendId: contactId)
+            return .legacy(legacy)
+        }
+        let base = isGroup ? "/groups/\(userId)/\(contactId)" : "/friends/\(userId)/\(contactId)"
+        let data = try await get("\(base)?limit=\(limit)")
+        if let page = parsePage(data: data) {
+            return .paged(page)
+        }
+        return .legacy(isGroup ? legacyGroupMessages(from: data) : legacyFriendMessages(from: data))
+    }
+
+    // GET /groups/{userId}/{groupId}/messages?limit=&cursor_timestamp=&cursor_seq=&cursor_id=
+    // GET /friends/{userId}/{friendId}/messages?...
+    // Throws on any non-200 (404 while the flag is off), a transport error, or
+    // a body with no `page` block -- the caller shows a retry control, it never
+    // fabricates an empty "start of conversation".
+    func fetchOlderMessages(userId: String, contactId: String, isGroup: Bool, limit: Int, cursor: FSMessageCursor) async throws -> FSMessagePage {
+        let base = isGroup ? "/groups/\(userId)/\(contactId)/messages" : "/friends/\(userId)/\(contactId)/messages"
+        var query = "limit=\(limit)&cursor_timestamp=\(encodeURIComponent(cursor.timestamp))"
+        if let seq = cursor.seq { query += "&cursor_seq=\(seq)" }
+        query += "&cursor_id=\(encodeURIComponent(cursor.id))"
+        let data = try await get("\(base)?\(query)")
+        guard let page = parsePage(data: data) else {
+            throw AppError.networkError("Couldn't load earlier messages.")
+        }
+        return page
+    }
+
+    /// nil when the body has no `page` block or no `messages` array (legacy /
+    /// old server). `has_more` without a usable cursor is treated as the end,
+    /// since it cannot be continued.
+    func parsePage(data: Data) -> FSMessagePage? {
+        guard let resp = decode(RawPagedResponse.self, from: data),
+              let page = resp.page, let rows = resp.messages else { return nil }
+        let messages = rows.map { Self.pagedMessage($0) }
+        var cursor: FSMessageCursor? = nil
+        if page.has_more == true, let ts = page.next_cursor_timestamp, let id = page.next_cursor_id {
+            cursor = FSMessageCursor(timestamp: ts, seq: page.next_cursor_seq, id: id)
+        }
+        return FSMessagePage(messages: messages, hasMore: cursor != nil, cursor: cursor)
+    }
+
+    /// One paged row -> FSMessage. `mine` comes from the row; `from_user` is a
+    /// username (not an id) on paged rows.
+    static func pagedMessage(_ m: RawMsg) -> FSMessage {
+        let mine = m.mine ?? false
+        return FSMessage(id: m.id ?? UUID().uuidString, text: m.text ?? "", mine: mine,
+                         sender: mine ? "" : (m.from_user ?? ""), timestamp: m.timestamp,
+                         attachmentKind: m.attachment_kind, attachmentURL: m.attachment_url,
+                         attachmentMeta: m.attachment_meta)
+    }
+
+    private func legacyFriendMessages(from data: Data) -> [FSMessage] {
+        guard let resp = decode(RawChatResponse.self, from: data) else { return [] }
+        return Self.legacyMerge(host: resp.host_msgs, other: resp.other_msgs)
+    }
+
+    private func legacyGroupMessages(from data: Data) -> [FSMessage] {
+        guard let resp = decode(RawGroupResponse.self, from: data) else { return [] }
+        return Self.legacyMerge(host: resp.host_msgs, other: resp.other_msgs)
+    }
+
+    private static func legacyMerge(host: [RawMsg]?, other: [RawMsg]?) -> [FSMessage] {
+        let mine   = (host  ?? []).map { m in FSMessage(id: m.id ?? UUID().uuidString, text: m.text ?? "", mine: true,  sender: "",             timestamp: m.timestamp, attachmentKind: m.attachment_kind, attachmentURL: m.attachment_url, attachmentMeta: m.attachment_meta) }
+        let theirs = (other ?? []).map { m in FSMessage(id: m.id ?? UUID().uuidString, text: m.text ?? "", mine: false, sender: m.from_user ?? "", timestamp: m.timestamp, attachmentKind: m.attachment_kind, attachmentURL: m.attachment_url, attachmentMeta: m.attachment_meta) }
         return (mine + theirs).sorted { $0.timestamp < $1.timestamp }
     }
 

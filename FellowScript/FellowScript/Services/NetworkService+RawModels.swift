@@ -30,6 +30,34 @@ struct RawMsg: Decodable {
     let attachment_kind: String?
     let attachment_meta: FSAttachmentMeta?
     let attachment_url:  String?
+    // Task 20261001-chat-pagination: paged rows carry `mine` (and a username
+    // in `from_user`); legacy rows omit it and are split into host_msgs /
+    // other_msgs instead.
+    let mine: Bool?
+}
+
+/// Task 20261001-chat-pagination: the `page` block of a paged history
+/// response (shared-contract-v2 6.10/6.11). next_cursor_* are null unless
+/// has_more is true.
+struct RawPage: Decodable {
+    let limit: Int?
+    let has_more: Bool?
+    let next_cursor_timestamp: String?
+    let next_cursor_seq: Int?
+    let next_cursor_id: String?
+}
+
+/// Paged history body: `messages` (oldest-first) + `page`. Decoded alongside
+/// the legacy shapes from the same response data; a body without `page` (or
+/// without a `messages` array) is the legacy full-history shape.
+struct RawPagedResponse: Decodable {
+    let messages: [RawMsg]?
+    let page: RawPage?
+}
+
+/// `GET /message/messages/{userId}/` wraps either shape in `payload`.
+struct RawPagedPayload: Decodable {
+    let payload: RawPagedResponse?
 }
 
 struct RawChatResponse: Decodable {

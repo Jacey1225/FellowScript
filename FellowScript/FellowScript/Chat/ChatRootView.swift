@@ -97,9 +97,13 @@ struct ChatRootView: View {
         // search field.
         .dismissesKeyboardOnScrollAndTap()
         .task {
+            vm.capabilities = appState.capabilities
             await vm.load(service: appState.service, userId: appState.currentUser?.user_id ?? "")
             recomputeUnread()
         }
+        // Task 20261001-chat-pagination: keep the preview gate current; the
+        // next load/refresh uses it.
+        .onChange(of: appState.capabilities) { _, caps in vm.capabilities = caps }
         // Task 20260913-chat-unread-badges: whenever the friend/group list
         // itself changes (initial load, pull-to-refresh, a new group just
         // created, ...) or a thread elsewhere got marked read
@@ -684,6 +688,10 @@ struct ChatRootView: View {
 @MainActor
 final class ChatViewModel: ObservableObject {
     var service: DataServiceProtocol = MockDataService.shared
+    // Task 20261001-chat-pagination: SF capabilities snapshot (set by
+    // ChatRootView). false/missing = legacy full-history previews; on =
+    // limit=1 previews. Starts fail-closed (.allOff).
+    var capabilities: FSCapabilities = .allOff
 
     @Published var friends:   [FSContact] = []
     @Published var groups:    [FSContact] = []
@@ -787,7 +795,7 @@ final class ChatViewModel: ObservableObject {
             agents = cached
         }
 
-        async let contactsTask = try? service.fetchContacts(userId: userId)
+        async let contactsTask = try? service.fetchContacts(userId: userId, capabilities: capabilities)
         async let agentsTask   = try? service.fetchAgents(userId: userId)
 
         // Bug fix (cache-clobber sweep, task

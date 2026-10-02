@@ -16,6 +16,20 @@ extension NetworkService {
     // GET /groups/{userId}/{groupId}                           → group info + messages
 
     func fetchContacts(userId: String) async throws -> ([FSContact], [String: FSGroup]) {
+        try await fetchContacts(userId: userId, capabilities: .allOff)
+    }
+
+    // Task 20261001-chat-pagination: with chat_pagination (groups) /
+    // chat_pagination_dm (DMs) on, each row's last-message preview asks for
+    // limit=1 instead of downloading the full history; a response without a
+    // `page` block falls back to the legacy decode of the same body. Preview
+    // semantics are unchanged: lastMessageSenderId is the current user's id for
+    // an own message (paged rows say `mine`, and carry a username, not an id),
+    // so AppState.hasUnread's self-sent suppression, lastMessageAt and the
+    // contact sort keep working.
+    func fetchContacts(userId: String, capabilities: FSCapabilities) async throws -> ([FSContact], [String: FSGroup]) {
+        let pageDMs    = capabilities.isEnabled("chat_pagination_dm")
+        let pageGroups = capabilities.isEnabled("chat_pagination")
         let userData = try await get("/user/\(userId)")
         guard let profile = decode(FSUser.self, from: userData) else { return ([], [:]) }
 
@@ -34,13 +48,23 @@ extension NetworkService {
                     // lastMessageSenderId's doc comment for why this stays
                     // nil rather than guessing on a missing/failed fetch.
                     var lastFrom: String? = nil
-                    if let md = try? await self.get("/message/messages/\(userId)/?guest_user=\(fid)"),
-                       let resp = self.decode(RawMsgPayload.self, from: md) {
-                        let all  = resp.payload?.allMsgs ?? []
-                        let last = all.sorted { $0.timestamp < $1.timestamp }.last
-                        preview  = last?.text ?? ""
-                        lastAt   = last?.timestamp ?? ""
-                        lastFrom = last?.from_user
+                    let previewPath = "/message/messages/\(userId)/?guest_user=\(fid)" + (pageDMs ? "&limit=1" : "")
+                    if let md = try? await self.get(previewPath) {
+                        if pageDMs, let paged = self.decode(RawPagedPayload.self, from: md)?.payload,
+                           paged.page != nil, let rows = paged.messages {
+                            // Server order, newest page last: no string re-sort.
+                            if let last = rows.last {
+                                preview  = last.text ?? ""
+                                lastAt   = last.timestamp
+                                lastFrom = (last.mine ?? false) ? userId : last.from_user
+                            }
+                        } else if let resp = self.decode(RawMsgPayload.self, from: md) {
+                            let all  = resp.payload?.allMsgs ?? []
+                            let last = all.sorted { $0.timestamp < $1.timestamp }.last
+                            preview  = last?.text ?? ""
+                            lastAt   = last?.timestamp ?? ""
+                            lastFrom = last?.from_user
+                        }
                     }
                     // Task 20260905-profile-photo: `u` is the friend's own
                     // full profile (already fetched above for `username`),
@@ -61,7 +85,7 @@ extension NetworkService {
         var groupMap: [String: FSGroup] = [:]
         var groupContacts: [FSContact]  = []
         for gid in profile.groups {
-            guard let gd = try? await get("/groups/\(userId)/\(gid)"),
+            guard let gd = try? await get(pageGroups ? "/groups/\(userId)/\(gid)?limit=1" : "/groups/\(userId)/\(gid)"),
                   let resp = decode(RawGroupResponse.self, from: gd) else {
                 groupContacts.append(FSContact(id: gid, name: String(gid.prefix(8)), type: .group))
                 continue
@@ -70,8 +94,16 @@ extension NetworkService {
             let title = g.title ?? gid
             let users = g.users ?? []
             groupMap[gid] = FSGroup(id: gid, title: title, users: users, creatorId: g.creator_id)
-            let allMsgs  = (resp.host_msgs ?? []) + (resp.other_msgs ?? [])
-            let lastMsg  = allMsgs.sorted { $0.timestamp < $1.timestamp }.last
+            var lastMsg: RawMsg?
+            var lastFromId: String?
+            if pageGroups, let paged = decode(RawPagedResponse.self, from: gd), paged.page != nil, let rows = paged.messages {
+                lastMsg    = rows.last
+                lastFromId = (rows.last?.mine ?? false) ? userId : rows.last?.from_user
+            } else {
+                let allMsgs = (resp.host_msgs ?? []) + (resp.other_msgs ?? [])
+                lastMsg    = allMsgs.sorted { $0.timestamp < $1.timestamp }.last
+                lastFromId = lastMsg?.from_user
+            }
             let preview  = lastMsg?.text ?? ""
             // Backend `members` is the list of member usernames (excluding self).
             let memberNames = resp.members ?? []
@@ -85,7 +117,7 @@ extension NetworkService {
                                            // see FSContact.lastMessageSenderId's doc
                                            // comment -- nil when there's no last
                                            // message at all, never guessed.
-                                           lastMessageSenderId: lastMsg?.from_user))
+                                           lastMessageSenderId: lastFromId))
         }
 
         return (friends + groupContacts, groupMap)

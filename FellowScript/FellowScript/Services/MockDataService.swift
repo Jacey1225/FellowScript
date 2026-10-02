@@ -154,6 +154,16 @@ protocol DataServiceProtocol {
     func fetchFriendMessages(userId: String, friendId: String) async throws -> [FSMessage]
     func fetchGroupMessages(userId: String, groupId: String) async throws -> [FSMessage]
 
+    // Task 20261001-chat-pagination. Optional-by-default requirements (see the
+    // extension below): a conformer that does not implement them keeps the
+    // legacy full-history behaviour, so paging is opt-in per service.
+    /// Same as fetchContacts(userId:), but previews use limit=1 where the
+    /// capability for that conversation kind is on.
+    func fetchContacts(userId: String, capabilities: FSCapabilities) async throws -> ([FSContact], [String: FSGroup])
+    /// `limit` nil = legacy full history; non-nil = ask for the newest page.
+    func fetchMessageHistory(userId: String, contactId: String, isGroup: Bool, limit: Int?) async throws -> FSMessageHistory
+    func fetchOlderMessages(userId: String, contactId: String, isGroup: Bool, limit: Int, cursor: FSMessageCursor) async throws -> FSMessagePage
+
     // Attachments (task 20260904-messaging-attachments): request a presigned
     // S3 POST policy, then upload the raw bytes directly to S3 with it — the
     // server never receives them. GIF search is a thin authenticated proxy
@@ -295,6 +305,22 @@ protocol DataServiceProtocol {
     // (extension below) report "unavailable"; NetworkService supplies the real ones.
     func fetchRewardSummary(userId: String) async throws -> FSRewardSummary?
     func claimAppleReward(userId: String) async throws -> FSApplePromoSignature
+}
+
+extension DataServiceProtocol {
+    func fetchContacts(userId: String, capabilities: FSCapabilities) async throws -> ([FSContact], [String: FSGroup]) {
+        try await fetchContacts(userId: userId)
+    }
+
+    func fetchMessageHistory(userId: String, contactId: String, isGroup: Bool, limit: Int?) async throws -> FSMessageHistory {
+        .legacy(isGroup
+            ? try await fetchGroupMessages(userId: userId, groupId: contactId)
+            : try await fetchFriendMessages(userId: userId, friendId: contactId))
+    }
+
+    func fetchOlderMessages(userId: String, contactId: String, isGroup: Bool, limit: Int, cursor: FSMessageCursor) async throws -> FSMessagePage {
+        throw AppError.networkError("Earlier messages unavailable.")
+    }
 }
 
 // Task 20260929-group-info-panel: default implementations so existing
