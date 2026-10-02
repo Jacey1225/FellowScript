@@ -6,6 +6,7 @@ import {
 import AdminGate from './AdminGate.jsx';
 import AppBloom from './AppBloom.jsx';
 import AppNav from './AppNav.jsx';
+import { useWarmCanvas } from '../hooks/useWarmCanvas.js';
 import Seo from './Seo.jsx';
 
 // Task 20261001-admin-account-redesign: layout route for the hidden admin
@@ -30,6 +31,7 @@ export function AdminPageHeader({ title, children }) {
 }
 
 export default function AdminShell() {
+  useWarmCanvas();
   const { pathname } = useLocation();
   const onDetail = !!useMatch('/admin/detections/*');
   const mainRef = useRef(null);
