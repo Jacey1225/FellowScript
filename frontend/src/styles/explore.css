@@ -4,6 +4,7 @@
 .ex-page { position: relative; min-height: 100vh; color: var(--parchment, #F2F2F2); }
 .ex-main { position: relative; z-index: 1; max-width: 1200px; margin: 0 auto; padding: calc(var(--nav-h, 64px) + 1.5rem) clamp(16px, 4vw, 32px) 4rem; }
 .ex-head { margin-bottom: 1.25rem; }
+.ex-list-cta { display: inline-block; margin-top: .75rem; text-decoration: none; }
 .ex-h1 { font-family: 'Cormorant Garamond', Georgia, serif; font-weight: 600; font-size: clamp(2rem, 5vw, 3rem); line-height: 1.05; margin: 0 0 .35rem; color: var(--parchment, #F2F2F2); }
 .ex-h1:focus { outline: none; }
 .ex-sub { margin: 0; font-family: 'Inter', sans-serif; color: rgba(242,242,242,.65); }

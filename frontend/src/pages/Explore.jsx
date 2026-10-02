@@ -151,6 +151,7 @@ export default function Explore() {
         <header className="ex-head">
           <h1 className="ex-h1" ref={headingRef}>Explore groups</h1>
           <p className="ex-sub">Find a group near your faith and season of life.</p>
+          <Link to="/explore/manage" className="ex-btn ex-btn--primary ex-list-cta">List your group</Link>
         </header>
 
         <form className="ex-controls" role="search" onSubmit={submitSearch}>
