@@ -194,6 +194,10 @@ struct MessageGroupRow: View {
     // source-compatible with any pre-existing call site.
     var failedMessageIds: Set<String> = []
     var onRetry: ((String) -> Void)? = nil
+    // Task 20261001-message-threads: long-press menu + VoiceOver custom
+    // actions for one message. nil / an empty result adds nothing, so every
+    // other caller and a flags-off chat behave exactly as before.
+    var actionsFor: ((FSMessage) -> [MessageRowAction])? = nil
 
     /// Scroll anchor id for one message. Prefixed so it can never collide with
     /// a MessageDisplayGroup row id (a group's id IS its first message's id).
@@ -309,6 +313,7 @@ struct MessageGroupRow: View {
         .clipShape(RoundedRectangle(cornerRadius: Theme.radiusLG))
         .topEdgeHighlight(RoundedRectangle(cornerRadius: Theme.radiusLG))
         .accessibilityLabel(accessibilityLabel(for: message))
+        .messageActions(actionsFor?(message) ?? [])
     }
 
     /// Extends the pre-existing `"{sender}: {text}"` pattern with a
@@ -364,5 +369,49 @@ struct MessageGroupRow: View {
         }
         .frame(width: 32, height: 32)
         .accessibilityHidden(true)
+    }
+}
+
+// ── Message actions (task 20261001-message-threads) ───────────────────────────
+
+/// One entry of a message's action menu. The same list drives the native
+/// long-press `.contextMenu` and the VoiceOver custom actions (the accessible
+/// alternative to a long press).
+struct MessageRowAction: Identifiable {
+    let kind: FSMessageActionKind
+    let perform: () -> Void
+    var id: String { kind.rawValue }
+}
+
+private struct MessageActionsModifier: ViewModifier {
+    let actions: [MessageRowAction]
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if actions.isEmpty {
+            content
+        } else {
+            // System context menu: free preview, platform dismissal, and no
+            // custom gesture, so link / image / video / GIF taps keep working.
+            content
+                .contextMenu {
+                    ForEach(actions) { action in
+                        Button(role: action.kind.isDestructive ? .destructive : nil, action: action.perform) {
+                            Label(action.kind.title, systemImage: action.kind.systemImage)
+                        }
+                    }
+                }
+                .accessibilityActions {
+                    ForEach(actions) { action in
+                        Button(action.kind.title, action: action.perform)
+                    }
+                }
+        }
+    }
+}
+
+extension View {
+    func messageActions(_ actions: [MessageRowAction]) -> some View {
+        modifier(MessageActionsModifier(actions: actions))
     }
 }

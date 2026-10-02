@@ -121,9 +121,13 @@ final class ChatThreadViewModel: ObservableObject {
     /// reloaded is discarded.
     private var loadGeneration = 0
 
-    private var wsTask: URLSessionWebSocketTask?
-    private var wsBase:   String = ""
-    private var wsUserId: String = ""
+    // Task 20261001-message-threads (10a): the socket lifecycle now lives in
+    // ChatSocketOwner (behaviour unchanged). This view model owns exactly ONE
+    // owner for its whole life and thread view is a MODE of this same view
+    // model (`activeThread`), so a thread never opens a second socket (the
+    // server keeps one websocket per user; a new connection replaces the old).
+    private let socket = ChatSocketOwner()
+    private var wsUserId: String { socket.userId }
     // Task 20260908-chat-userid-exposure: the thread's own contact, plus (for
     // a group) a resolved memberId → username map — both stashed here (not
     // just used locally inside load()) so receiveLoop()'s live-frame path can
@@ -132,11 +136,11 @@ final class ChatThreadViewModel: ObservableObject {
     // id straight onto FSMessage.sender the way it used to.
     private var currentContact:    FSContact? = nil
     private var groupUsernameById: [String: String] = [:]
-    private var reconnectAttempt = 0
-    private var reconnectTask: Task<Void, Never>?
-    // Set by disconnect() (view going away) so a `.failure` from that
-    // intentional cancel doesn't trigger a reconnect loop.
-    private var isDisconnecting = false
+
+    init() {
+        socket.onFrame = { [weak self] json in self?.handleFrame(json) }
+        socket.onConnectionChange = { [weak self] connected in self?.isConnected = connected }
+    }
 
     /// The session/devotion room id. Must match the web client's `roomKey` so
     /// sessions (and their Chime calls) are shared cross-platform:
@@ -204,7 +208,11 @@ final class ChatThreadViewModel: ObservableObject {
                                     forKey: "messages:\(sessionKey)")
         await DiskCache.shared.save(sessions, forKey: "sessions:\(sessionKey)")
 
-        connectWebSocket(wsBase: service.wsBase, userId: userId)
+        // Gate for sending client_ref on main-chat sends: pagination OR a
+        // feature that needs the server id of a just-sent message (Start
+        // thread / Delete). Flags off => nothing new is sent.
+        ackEnabled = pageLimit != nil || capabilities.isEnabled("threads") || capabilities.isEnabled("message_delete")
+        socket.connect(wsBase: service.wsBase, userId: userId)
     }
 
     /// Applies a fetch result. A failed fetch (nil) keeps whatever the cache
@@ -236,9 +244,17 @@ final class ChatThreadViewModel: ObservableObject {
         let generation = loadGeneration
         defer { if generation == loadGeneration { isLoadingOlder = false } }
         do {
-            let page = try await service.fetchOlderMessages(userId: userId, contactId: contact.id,
+            // Task 20261001-message-threads: in thread mode the same cursor
+            // paging runs against the thread's own messages route.
+            let page: FSMessagePage
+            if let thread = activeThread {
+                page = try await service.fetchThreadMessages(userId: userId, groupId: contact.id, threadId: thread.id,
+                                                              limit: Self.olderPageLimit, cursor: cursor)
+            } else {
+                page = try await service.fetchOlderMessages(userId: userId, contactId: contact.id,
                                                              isGroup: contact.type == .group,
                                                              limit: Self.olderPageLimit, cursor: cursor)
+            }
             guard generation == loadGeneration else { return }
             let have = Set(messages.map(\.id))
             let fresh = page.messages.filter { !have.contains($0.id) }
@@ -342,13 +358,23 @@ final class ChatThreadViewModel: ObservableObject {
         // (36 chars of [0-9a-f-], inside the server's 1-64 [A-Za-z0-9_-]
         // shape) so the sender-only ack can replace this bubble's id in place.
         // Only on a thread opened paged; legacy threads send nothing new.
-        if pagingEnabled { body["client_ref"] = messageId }
-        if contact.type == .group {
-            body["group_id"] = contact.id
-            body["to_users"] = contact.toUsers
+        if let thread = activeThread {
+            // Task 20261001-message-threads: a thread send is a frame on the
+            // SAME socket. The group and recipients are derived server-side
+            // from thread_id, so no group_id / to_users is sent. client_ref is
+            // always sent (thread rows are always paged) so the ack gives the
+            // optimistic bubble its server id.
+            body = ["type": "thread_message", "thread_id": thread.id, "text": text,
+                    "client_ref": messageId, "from_user": userId]
         } else {
-            body["to_users"] = [contact.id]
-            body["group_id"] = ""
+            if pagingEnabled || ackEnabled { body["client_ref"] = messageId }
+            if contact.type == .group {
+                body["group_id"] = contact.id
+                body["to_users"] = contact.toUsers
+            } else {
+                body["to_users"] = [contact.id]
+                body["group_id"] = ""
+            }
         }
 
         var attachmentKind: String? = nil
@@ -378,7 +404,7 @@ final class ChatThreadViewModel: ObservableObject {
 
         if let data = try? JSONSerialization.data(withJSONObject: body),
            let str  = String(data: data, encoding: .utf8) {
-            wsTask?.send(.string(str)) { _ in }
+            socket.send(str)
         }
         // No `attachmentURL` on the optimistic echo — image/video render from
         // `localAttachmentPreviews` instead (see field doc comment above);
@@ -427,11 +453,26 @@ final class ChatThreadViewModel: ObservableObject {
     /// approximation -- neither frame shape carries a client-generated
     /// correlation id). Logs `reason`/`detail` to console only, same
     /// no-raw-error-in-UI posture as the self-echo-drop `print(...)` in
-    /// receiveLoop() below (Q17 pet peeve: no technical/raw error dumps).
+    /// handleFrame() below (Q17 pet peeve: no technical/raw error dumps).
+    ///
+    /// Task 20261001-message-threads: `terms_reaccept_required` is not a
+    /// failed send to retry. A text-only bubble is pulled back out and its
+    /// text returned to the composer (never lost); the view raises the existing
+    /// Updated Terms gate through `termsGateSignal`.
     private func handleSendError(reason: String?, detail: String?) {
         print("[ChatThreadViewModel] send failed reason=\(reason ?? "unknown") detail=\(detail ?? "none")")
         guard !pendingSendIds.isEmpty else { return }
         let failedId = pendingSendIds.removeFirst()
+        if reason == "terms_reaccept_required" {
+            termsGateSignal += 1
+            if pendingAttachmentByMessageId[failedId] == nil,
+               let idx = messages.firstIndex(where: { $0.id == failedId }) {
+                restoredDraft = messages[idx].text
+                messages.remove(at: idx)
+                localAttachmentPreviews.removeValue(forKey: failedId)
+                return
+            }
+        }
         failedMessageIds.insert(failedId)
     }
 
@@ -442,238 +483,359 @@ final class ChatThreadViewModel: ObservableObject {
     /// present (a refetch beat the ack) the optimistic bubble is deleted
     /// instead; an unknown client_ref changes nothing. The id-keyed side
     /// tables (local attachment preview, failed/pending sets) follow the id.
-    private func handleAck(clientRef: String, id: String, timestamp: String?) {
-        guard let idx = messages.firstIndex(where: { $0.id == clientRef }) else { return }
+    ///
+    /// Task 20261001-message-threads: an ack carrying `thread_id` reconciles
+    /// only the open thread's list (and only if that thread is still open); an
+    /// ack without it belongs to the main chat, which is the stash while a
+    /// thread is open.
+    private func handleAck(clientRef: String, id: String, timestamp: String?, threadId: String?) {
+        if let threadId {
+            guard activeThread?.id == threadId else { return }
+            if Self.reconcile(&messages, clientRef: clientRef, id: id, timestamp: timestamp) { afterAck(clientRef: clientRef, id: id) }
+            return
+        }
+        if activeThread == nil {
+            if Self.reconcile(&messages, clientRef: clientRef, id: id, timestamp: timestamp) { afterAck(clientRef: clientRef, id: id) }
+        } else if var st = mainStash {
+            if Self.reconcile(&st.messages, clientRef: clientRef, id: id, timestamp: timestamp) {
+                st.pendingSendIds.removeAll { $0 == clientRef }
+                st.failedMessageIds.remove(clientRef)
+                mainStash = st
+                pendingAttachmentByMessageId.removeValue(forKey: clientRef)
+                if let preview = localAttachmentPreviews.removeValue(forKey: clientRef) { localAttachmentPreviews[id] = preview }
+            }
+        }
+    }
+
+    private func afterAck(clientRef: String, id: String) {
         pendingSendIds.removeAll { $0 == clientRef }
         pendingAttachmentByMessageId.removeValue(forKey: clientRef)
         failedMessageIds.remove(clientRef)
-        let preview = localAttachmentPreviews.removeValue(forKey: clientRef)
-        if messages.contains(where: { $0.id == id }) {
-            messages.remove(at: idx)
+        if let preview = localAttachmentPreviews.removeValue(forKey: clientRef) { localAttachmentPreviews[id] = preview }
+        ackRevision += 1
+    }
+
+    /// Pure list half of the ack rule. Returns true when `list` held the
+    /// optimistic bubble.
+    private static func reconcile(_ list: inout [FSMessage], clientRef: String, id: String, timestamp: String?) -> Bool {
+        guard let idx = list.firstIndex(where: { $0.id == clientRef }) else { return false }
+        if list.contains(where: { $0.id == id }) {
+            list.remove(at: idx)
         } else {
-            let old = messages[idx]
-            if let preview { localAttachmentPreviews[id] = preview }
-            messages[idx] = FSMessage(
+            let old = list[idx]
+            list[idx] = FSMessage(
                 id: id, text: old.text, mine: old.mine, sender: old.sender,
                 timestamp: (timestamp?.isEmpty == false ? timestamp! : old.timestamp),
                 attachmentKind: old.attachmentKind, attachmentURL: old.attachmentURL, attachmentMeta: old.attachmentMeta
             )
         }
-        ackRevision += 1
+        return true
     }
 
-    func disconnect() {
-        isDisconnecting = true
-        reconnectTask?.cancel()
-        wsTask?.cancel(with: .goingAway, reason: nil)
-        wsTask = nil
-    }
+    func disconnect() { socket.disconnect() }
 
     // ── App-lifecycle wiring (task 20260902-chat-push-notification-failure) ──
     // Previously the socket was only ever closed by onDisappear (the chat
     // *view* leaving the hierarchy), not by the app being backgrounded. A
-    // backgrounded-but-still-foreground-view chat (user hits the Home button
-    // without navigating away) left active_connections[uid] registered
-    // server-side well after the app could no longer surface an incoming
-    // frame as a notification, so the server's `ws.send_json` "succeeded"
-    // and never fell through to the APNs push branch. The backend heartbeat
-    // (step 1) is the real backstop for every disconnection mode including a
-    // force-quit or dropped network the client can never self-report, but
-    // proactively closing here shrinks the race window for the common
-    // graceful-backgrounding case instead of waiting out that timeout.
+    // backgrounded-but-still-foreground-view chat left active_connections[uid]
+    // registered server-side well after the app could no longer surface an
+    // incoming frame as a notification, so the server's `ws.send_json`
+    // "succeeded" and never fell through to the APNs push branch. The backend
+    // heartbeat is the real backstop; proactively closing here shrinks the
+    // race window for the common graceful-backgrounding case. The reconnect
+    // path (handleAppForegrounded) only resumes a connection the socket owner
+    // itself closed.
     //
-    // Reuses the same isDisconnecting-guarded disconnect() as onDisappear —
-    // an intentional close either way, so the existing `.failure` handling
-    // in receiveLoop() correctly treats this as "not a real drop" and never
-    // schedules a reconnect on its own.
-    func handleAppBackgrounded() {
-        guard !isDisconnecting else { return }
-        disconnect()
-    }
+    // Task 20260921-recurring-session-next-occurrence: deliberately does NOT
+    // re-fetch `sessions` here (no new client-side polling; re-opening the
+    // thread re-runs load()).
+    func handleAppBackgrounded() { socket.handleAppBackgrounded() }
+    func handleAppForegrounded() { socket.handleAppForegrounded() }
 
-    // Mirrors load()'s initial connectWebSocket call, but only resumes a
-    // connection this view model itself closed via handleAppBackgrounded()
-    // — if the view never finished its initial load (wsBase still empty) or
-    // disconnect() was called for view teardown instead, there's nothing to
-    // resume here.
-    //
-    // Task 20260921-recurring-session-next-occurrence (frontend step 3):
-    // deliberately does NOT re-fetch `sessions` here. The scheduler's
-    // recurring-advance job (scheduler.py's _advance_recurring_sessions)
-    // was built as passive-refetch-only, matching
-    // 20260921-session-auto-delete-window's identical precedent — no push/
-    // websocket notification of an advanced time_start/time_end. That
-    // means foregrounding the app while a thread's sessions sheet is
-    // *already open* will not by itself pick up a recurring session that
-    // advanced while backgrounded; the reliable refresh path is re-opening
-    // the thread (ChatRootView presents ChatThreadView via
-    // `.sheet(item: $activeContact)`, so dismissing and reselecting the
-    // contact creates a fresh ChatThreadViewModel and re-runs `load()`,
-    // which re-fetches sessions). Noted here as a known/accepted gap per
-    // architecture's own scope decision rather than silently added new
-    // polling — adding a sessions re-fetch on every foreground would be
-    // new client-side polling infrastructure, which is out of this task's
-    // scope.
-    func handleAppForegrounded() {
-        guard isDisconnecting, !wsBase.isEmpty else { return }
-        isDisconnecting = false
-        reconnectAttempt = 0
-        connectWebSocket(wsBase: wsBase, userId: wsUserId)
-    }
-
-    private func connectWebSocket(wsBase: String, userId: String) {
-        self.wsBase   = wsBase
-        self.wsUserId = userId
-        guard let url = URL(string: "\(wsBase)/message/ws/\(userId)") else { return }
-        wsTask = URLSession.shared.webSocketTask(with: url)
-        wsTask?.resume()
-        isConnected = true
-        // Do NOT reset reconnectAttempt here — this is called both for the
-        // initial connect (where reconnectAttempt is already 0) and for
-        // every retry scheduleReconnect() makes. Resetting it here made the
-        // exponential backoff never actually grow past its first ~1s delay,
-        // since scheduleReconnect() calls straight back into this function.
-        // reconnectAttempt is reset instead in receiveLoop()'s `.success`
-        // case, once a frame actually arrives and the connection is
-        // confirmed genuinely live.
-        receiveLoop()
-    }
-
-    private func receiveLoop() {
-        wsTask?.receive { [weak self] result in
-            guard let self else { return }
-            switch result {
-            case .success(let msg):
-                // A frame arrived, so this connection is confirmed live —
-                // this is the "genuinely fresh/successful connection" point,
-                // not merely a call to connectWebSocket(). Reset backoff here.
-                self.reconnectAttempt = 0
-                if case .string(let text) = msg,
-                   let data = text.data(using: .utf8),
-                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                    // Task 20260910-chat-message-disappear-reentry: explicit
-                    // branch on `type` (Q26 — explicit checks, not implicit
-                    // control flow) instead of the old bare `let msgText =
-                    // json["text"] as? String` guard, which silently skipped
-                    // this entire body — with no log, no UI feedback, no
-                    // rollback of the optimistic message already showing —
-                    // for any frame lacking a `text` key, including the
-                    // backend's own explicit `{"type":"error",...}` failure
-                    // frames (design-notes.md; api/backend/interactions/
-                    // websockets.py ConnectionManager.send_msg). An ordinary
-                    // chat delivery frame carries no `type` key at all.
-                    if let type = json["type"] as? String {
-                        switch type {
-                        case "ack":
-                            // Task 20261001-chat-pagination: sender-only frame
-                            // for a message sent with client_ref. Never a
-                            // bubble (it carries a `type` and no text), and
-                            // never confused with an error frame: an error
-                            // frame is never treated as an ack.
-                            if let ref = json["client_ref"] as? String, let ackId = json["id"] as? String {
-                                let ackTs = json["timestamp"] as? String
-                                Task { @MainActor in self.handleAck(clientRef: ref, id: ackId, timestamp: ackTs) }
-                            }
-                        case "error":
-                            self.handleSendError(reason: json["reason"] as? String, detail: json["detail"] as? String)
-                        case "ping":
-                            break // heartbeat — no UI action, same no-op as before, now explicit
-                        default:
-                            break // unrecognized type — explicit no-op, not a silent guard-fail
-                        }
-                    } else if let msgText = json["text"] as? String {
-                        let fromUser = (json["from_user"] as? String) ?? ""
-                        // Self-echo guard (group-chat duplication fix, task
-                        // 20260902-group-chat-message-duplication): a group send
-                        // is fanned out to every member in `to_users`, which the
-                        // client populates as the full member list *including
-                        // the sender* (sendMessage() above / contact.toUsers).
-                        // Backend step 1 stops re-delivering that live frame
-                        // back to from_user_id at the source, but this check
-                        // stays as defense-in-depth on the client, matching this
-                        // method's existing standard of not leaning on a single
-                        // fragile assumption (see the reconnect/backoff comments
-                        // above). Without it, the sender's own message would
-                        // render twice: once from the optimistic local echo in
-                        // sendMessage() (labeled "You"), and again here as an
-                        // ordinary inbound message — with a raw user-id sender
-                        // label, since this path has no "is this me" lookup.
-                        // This is an explicit, visible skip (logged, not a bare
-                        // silent drop) of a known, expected case — distinct from
-                        // the unparseable-frame case below, which is a genuine
-                        // "couldn't understand this frame" gap.
-                        if !fromUser.isEmpty, fromUser == self.wsUserId {
-                            print("[ChatThreadViewModel] dropping self-echoed inbound frame from_user=\(fromUser) — already shown via optimistic local append")
-                        } else {
-                            // Task 20260904-messaging-attachments: attachment_kind/
-                            // attachment_meta/attachment_url ride along on the same
-                            // frame — null/absent for an ordinary text-only message.
-                            // attachment_meta is decoded via the same FSAttachmentMeta
-                            // shape NetworkService.swift's history-load path uses, so
-                            // a live-delivered attachment renders identically to one
-                            // loaded from history.
-                            var attachmentMeta: FSAttachmentMeta? = nil
-                            if let metaDict = json["attachment_meta"] as? [String: Any], !metaDict.isEmpty,
-                               let metaData = try? JSONSerialization.data(withJSONObject: metaDict) {
-                                attachmentMeta = try? JSONDecoder().decode(FSAttachmentMeta.self, from: metaData)
-                            }
-                            // Task 20260908-chat-userid-exposure: resolves the raw
-                            // from_user id to a display name the same way load()'s
-                            // history-fetch path does, using state (currentContact/
-                            // groupUsernameById) load() already populated -- see
-                            // resolvedSenderName(forRawId:) below. Falls back to
-                            // the raw id (this path's pre-fix behavior, not a new
-                            // regression) if that state isn't ready yet or the
-                            // lookup doesn't have this sender.
-                            let incoming = FSMessage(
-                                id:        (json["id"] as? String) ?? UUID().uuidString,
-                                text:      msgText,
-                                mine:      false,
-                                sender:    self.resolvedSenderName(forRawId: fromUser),
-                                timestamp: (json["timestamp"] as? String) ?? "",
-                                attachmentKind: json["attachment_kind"] as? String,
-                                attachmentURL:  json["attachment_url"] as? String,
-                                attachmentMeta: attachmentMeta
-                            )
-                            // Dedup by id (a live frame for a row a history
-                            // fetch already delivered must not render twice);
-                            // a frame without an id always appends.
-                            Task { @MainActor in
-                                if json["id"] is String, self.messages.contains(where: { $0.id == incoming.id }) { return }
-                                self.messages.append(incoming)
-                            }
-                        }
-                    }
+    // ── Live frames ───────────────────────────────────────────────────────────
+    // One socket, one dispatch. Every frame the user can receive arrives here
+    // in order: ordinary main-chat deliveries (no `type`), ack / error, and the
+    // task 20261001-message-threads frames thread_message, message_deleted and
+    // message_restored. Unknown types are an explicit no-op.
+    private func handleFrame(_ json: [String: Any]) {
+        // Task 20260910-chat-message-disappear-reentry: explicit branch on
+        // `type` (Q26) -- an ordinary chat delivery frame carries no `type`.
+        if let type = json["type"] as? String {
+            switch type {
+            case "ack":
+                // Task 20261001-chat-pagination: sender-only frame for a
+                // message sent with client_ref. Never a bubble, never an error.
+                if let ref = json["client_ref"] as? String, let ackId = json["id"] as? String {
+                    handleAck(clientRef: ref, id: ackId, timestamp: json["timestamp"] as? String,
+                              threadId: json["thread_id"] as? String)
                 }
-                // Keep listening regardless of whether this particular frame
-                // parsed (e.g. a non-text control frame) — previously an
-                // unparseable frame silently ended the loop the same way a
-                // dropped connection did.
-                self.receiveLoop()
-            case .failure:
-                // The task itself failed (dropped connection, backgrounding,
-                // idle-timeout, or the server evicting a stale socket). This
-                // used to just return, silently ending message delivery for
-                // the rest of the view's lifetime with no visible error state
-                // — see backend step 8 finding #2. Reconnect with capped
-                // exponential backoff instead of giving up.
-                Task { @MainActor in self.scheduleReconnect() }
+            case "error":
+                handleSendError(reason: json["reason"] as? String, detail: json["detail"] as? String)
+            case "thread_message":
+                handleThreadFrame(json)
+            case "message_deleted":
+                handleMessageDeleted(json)
+            case "message_restored":
+                handleMessageRestored(json)
+            case "ping":
+                break // heartbeat -- no UI action
+            default:
+                break // unrecognized type -- explicit no-op
             }
+            return
+        }
+        guard let msgText = json["text"] as? String else { return }
+        let fromUser = (json["from_user"] as? String) ?? ""
+        // Self-echo guard (task 20260902-group-chat-message-duplication): a
+        // group send is fanned out to every member in `to_users`, including the
+        // sender. The backend no longer re-delivers to the sender, but this
+        // stays as defense-in-depth.
+        if !fromUser.isEmpty, fromUser == wsUserId {
+            print("[ChatThreadViewModel] dropping self-echoed inbound frame from_user=\(fromUser) -- already shown via optimistic local append")
+            return
+        }
+        // Task 20260904-messaging-attachments: attachment_* ride along on the
+        // same frame, decoded exactly like the history-load path.
+        var attachmentMeta: FSAttachmentMeta? = nil
+        if let metaDict = json["attachment_meta"] as? [String: Any], !metaDict.isEmpty,
+           let metaData = try? JSONSerialization.data(withJSONObject: metaDict) {
+            attachmentMeta = try? JSONDecoder().decode(FSAttachmentMeta.self, from: metaData)
+        }
+        // Task 20260908-chat-userid-exposure: resolve the raw from_user id to a
+        // display name from state load() populated.
+        let incoming = FSMessage(
+            id:        (json["id"] as? String) ?? UUID().uuidString,
+            text:      msgText,
+            mine:      false,
+            sender:    resolvedSenderName(forRawId: fromUser),
+            timestamp: (json["timestamp"] as? String) ?? "",
+            attachmentKind: json["attachment_kind"] as? String,
+            attachmentURL:  json["attachment_url"] as? String,
+            attachmentMeta: attachmentMeta
+        )
+        // Dedup by id (a live frame for a row a history fetch already
+        // delivered must not render twice); a frame without an id always appends.
+        let hasId = json["id"] is String
+        if activeThread == nil {
+            if hasId, messages.contains(where: { $0.id == incoming.id }) { return }
+            messages.append(incoming)
+        } else if var st = mainStash {
+            // A thread is open: the main chat keeps receiving into its stash so
+            // nothing is lost when the user goes back.
+            if hasId, st.messages.contains(where: { $0.id == incoming.id }) { return }
+            st.messages.append(incoming)
+            mainStash = st
         }
     }
 
-    private func scheduleReconnect() {
-        guard !isDisconnecting else { return }
-        isConnected = false
-        wsTask = nil
-        reconnectAttempt += 1
-        let delaySeconds = min(pow(2.0, Double(reconnectAttempt - 1)), 30.0) // 1s, 2s, 4s, …, capped at 30s
-        reconnectTask?.cancel()
-        reconnectTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: UInt64(delaySeconds * 1_000_000_000))
-            guard let self, !Task.isCancelled, !self.isDisconnecting else { return }
-            self.connectWebSocket(wsBase: self.wsBase, userId: self.wsUserId)
+    private func handleThreadFrame(_ json: [String: Any]) {
+        guard let tid = json["thread_id"] as? String, activeThread?.id == tid,
+              let msg = FSMessage(threadFrame: json) else { return }
+        if messages.contains(where: { $0.id == msg.id }) { return }
+        messages.append(msg)
+        if var t = activeThread { t.replyCount += 1; activeThread = t }
+    }
+
+    private func handleMessageDeleted(_ json: [String: Any]) {
+        guard let id = json["id"] as? String, frameBelongsToCurrentGroup(json) else { return }
+        removeMainMessage(id)
+        if var t = activeThread, t.rootMessageId == id { t.rootDeleted = true; activeThread = t }
+    }
+
+    private func handleMessageRestored(_ json: [String: Any]) {
+        guard frameBelongsToCurrentGroup(json), let msg = FSMessage(restoredFrame: json) else { return }
+        mutateMain { $0 = fsInsertRestored($0, msg) }
+        if var t = activeThread, t.rootMessageId == msg.id {
+            t.rootDeleted = false
+            t.rootPreview = msg.text
+            activeThread = t
         }
+    }
+
+    private func frameBelongsToCurrentGroup(_ json: [String: Any]) -> Bool {
+        guard let contact = currentContact, contact.type == .group else { return false }
+        return (json["group_id"] as? String)?.lowercased() == contact.id.lowercased()
+    }
+
+    /// Applies `change` to the main chat's list: the displayed list normally,
+    /// the stash while a thread is open.
+    private func mutateMain(_ change: (inout [FSMessage]) -> Void) {
+        if activeThread == nil {
+            change(&messages)
+        } else if var st = mainStash {
+            change(&st.messages)
+            mainStash = st
+        }
+    }
+
+    private func removeMainMessage(_ id: String) {
+        mutateMain { $0.removeAll { $0.id == id } }
+    }
+
+    // ── Threads (task 20261001-message-threads) ───────────────────────────────
+    // A thread is a MODE of this view model: opening one stashes the main
+    // chat's list/paging state, loads the thread's own paged rows into the same
+    // `messages` / paging fields (so the view's grouping, scroll, older-page
+    // and retry code runs unchanged), and keeps using the same socket. Going
+    // back restores the stash exactly. Main-chat frames that arrive meanwhile
+    // are written into the stash.
+
+    private struct MainChatStash {
+        var messages: [FSMessage]
+        var pagingEnabled: Bool
+        var hasMoreOlder: Bool
+        var olderCursor: FSMessageCursor?
+        var olderLoadFailed: Bool
+        var pendingSendIds: [String]
+        var failedMessageIds: Set<String>
+    }
+
+    /// Set while a thread is open; nil in the main chat.
+    @Published private(set) var activeThread: FSThreadSummary? = nil
+    @Published private(set) var isLoadingThread = false
+    /// The thread's first page failed to load (the view shows a retry control;
+    /// nothing is fabricated).
+    @Published private(set) var threadLoadFailed = false
+    /// Bumped when a send hit terms_reaccept_required (the view refreshes
+    /// capabilities, which raises the existing Updated Terms gate).
+    @Published private(set) var termsGateSignal = 0
+    /// Text handed back to the composer after terms_reaccept_required.
+    @Published var restoredDraft: String? = nil
+    private var mainStash: MainChatStash? = nil
+    /// Whether main-chat sends carry a client_ref (see load()).
+    private var ackEnabled = false
+
+    var isThreadOpen: Bool { activeThread != nil }
+
+    /// Opens `summary` as the current mode and loads its first page.
+    func openThread(_ summary: FSThreadSummary, service: DataServiceProtocol, contact: FSContact, userId: String) async {
+        guard contact.type == .group else { return }
+        if activeThread?.id == summary.id { return }
+        if mainStash == nil {
+            mainStash = MainChatStash(messages: messages, pagingEnabled: pagingEnabled, hasMoreOlder: hasMoreOlder,
+                                      olderCursor: olderCursor, olderLoadFailed: olderLoadFailed,
+                                      pendingSendIds: pendingSendIds, failedMessageIds: failedMessageIds)
+        }
+        loadGeneration += 1
+        activeThread = summary
+        messages = []
+        pagingEnabled = true
+        hasMoreOlder = false
+        olderCursor = nil
+        olderLoadFailed = false
+        isLoadingOlder = false
+        pendingSendIds = []
+        failedMessageIds = []
+        await loadThreadFirstPage(service: service, contact: contact, userId: userId)
+    }
+
+    /// Retry / initial load of the open thread's newest page.
+    func loadThreadFirstPage(service: DataServiceProtocol, contact: FSContact, userId: String) async {
+        guard let thread = activeThread else { return }
+        let generation = loadGeneration
+        isLoadingThread = true
+        threadLoadFailed = false
+        defer { if generation == loadGeneration { isLoadingThread = false } }
+        do {
+            let page = try await service.fetchThreadMessages(userId: userId, groupId: contact.id, threadId: thread.id,
+                                                              limit: Self.initialPageLimit, cursor: nil)
+            guard generation == loadGeneration, activeThread?.id == thread.id else { return }
+            // Keep frames/acks that arrived while the page was in flight.
+            let pageIds = Set(page.messages.map(\.id))
+            let arrived = messages.filter { !pageIds.contains($0.id) }
+            messages = page.messages + arrived
+            hasMoreOlder = page.hasMore
+            olderCursor = page.cursor
+        } catch {
+            guard generation == loadGeneration, activeThread?.id == thread.id else { return }
+            print("[ChatThreadViewModel] thread load failed: \(error)")
+            threadLoadFailed = true
+        }
+    }
+
+    /// Resolves a thread id (push deep link) to its list row, then opens it. A
+    /// thread that is not found in the first pages still opens (title falls
+    /// back to "Thread"); the messages route is the real authorization check.
+    func openThread(id: String, service: DataServiceProtocol, contact: FSContact, userId: String) async {
+        var summary: FSThreadSummary? = nil
+        var cursorTs: String? = nil
+        var cursorId: String? = nil
+        for _ in 0..<5 {
+            guard let page = try? await service.fetchThreads(userId: userId, groupId: contact.id, limit: 20,
+                                                              cursorTimestamp: cursorTs, cursorId: cursorId) else { break }
+            if let hit = page.threads.first(where: { $0.id.lowercased() == id.lowercased() }) { summary = hit; break }
+            guard page.hasMore else { break }
+            cursorTs = page.cursorTimestamp
+            cursorId = page.cursorId
+        }
+        await openThread(summary ?? FSThreadSummary(id: id), service: service, contact: contact, userId: userId)
+    }
+
+    /// Back to the main chat; restores the stashed state exactly.
+    func closeThread() {
+        guard activeThread != nil, let st = mainStash else { return }
+        loadGeneration += 1
+        activeThread = nil
+        mainStash = nil
+        messages = st.messages
+        pagingEnabled = st.pagingEnabled
+        hasMoreOlder = st.hasMoreOlder
+        olderCursor = st.olderCursor
+        olderLoadFailed = st.olderLoadFailed
+        pendingSendIds = st.pendingSendIds
+        failedMessageIds = st.failedMessageIds
+        isLoadingOlder = false
+        isLoadingThread = false
+        threadLoadFailed = false
+        ackRevision += 1
+    }
+
+    /// POST /threads on `message`, then open the returned thread. Throws
+    /// FSThreadsError (terms gate / thread limit / not found) for the view.
+    func startThread(from message: FSMessage, service: DataServiceProtocol, contact: FSContact, userId: String) async throws {
+        let summary = try await service.createThread(userId: userId, groupId: contact.id, messageId: message.id)
+        await openThread(summary, service: service, contact: contact, userId: userId)
+    }
+
+    // ── Delete / undo (main-chat messages, author only) ───────────────────────
+
+    /// Optimistic delete: the bubble disappears immediately; on failure it is
+    /// put back at its time position and the error is rethrown. Returns the
+    /// server's undo window.
+    func deleteOwnMessage(_ message: FSMessage, service: DataServiceProtocol, contact: FSContact, userId: String) async throws -> FSMessageDeleteResult {
+        removeMainMessage(message.id)
+        do {
+            return try await service.deleteGroupMessage(userId: userId, groupId: contact.id, messageId: message.id)
+        } catch {
+            mutateMain { $0 = fsInsertRestored($0, message) }
+            throw error
+        }
+    }
+
+    /// Undo within the window. Failure leaves the message deleted.
+    func undoDelete(_ message: FSMessage, service: DataServiceProtocol, contact: FSContact, userId: String) async throws {
+        try await service.restoreGroupMessage(userId: userId, groupId: contact.id, messageId: message.id)
+        mutateMain { $0 = fsInsertRestored($0, message) }
+        if var t = activeThread, t.rootMessageId == message.id {
+            t.rootDeleted = false
+            t.rootPreview = message.text
+            activeThread = t
+        }
+    }
+
+    // ── Action-menu support ───────────────────────────────────────────────────
+
+    /// A message has a server id and is neither in flight nor failed.
+    func isSettled(_ message: FSMessage) -> Bool {
+        !pendingSendIds.contains(message.id) && !failedMessageIds.contains(message.id)
+    }
+
+    /// The user id behind a received group message's sender name (reverse of
+    /// the memberId -> username map load() resolved); nil when unknown.
+    func senderUserId(for message: FSMessage) -> String? {
+        guard !message.mine, let contact = currentContact else { return nil }
+        if contact.type == .friend { return contact.id }
+        return groupUsernameById.first(where: { $0.value == message.sender })?.key
     }
 }
 
@@ -706,6 +868,16 @@ struct ChatThreadView: View {
     @State private var groupPhotoOverride: String?? = nil
     @State private var showSession: Bool   = false
     @State private var showAddMembers: Bool = false
+
+    // ── Message actions + threads (task 20261001-message-threads) ────────────
+    @State private var toasts: [ChatToast] = []
+    @State private var reportTarget: FSContact? = nil
+    @State private var blockConfirmTarget: FSContact? = nil
+    /// Main-chat message a Start thread is waiting to resume on after the
+    /// Updated Terms gate is accepted.
+    @State private var pendingThreadStart: FSMessage? = nil
+    @AccessibilityFocusState private var threadTitleFocused: Bool
+    @FocusState private var composerFocused: Bool
 
     // ── Sessions submenu (task 20260920-chat-sessions-submenu) ────────────────
     // Replaces the old always-visible inline SessionBanner + header
@@ -891,10 +1063,15 @@ struct ChatThreadView: View {
                 .ignoresSafeArea()
 
             VStack(spacing: 0) {
-                header
+                if vm.isThreadOpen {
+                    threadHeader
+                    threadRootCard
+                } else {
+                    header
+                }
 
                 // Task 20260929-announcement-push-widget: groups only, directly under the header.
-                if contact.type == .group, GroupAnnouncementsConfig.enabled, let uid = user?.user_id {
+                if !vm.isThreadOpen, contact.type == .group, GroupAnnouncementsConfig.enabled, let uid = user?.user_id {
                     GroupAnnouncementWidgetView(service: appState.service, groupId: contact.id, userId: uid)
                 }
 
@@ -924,6 +1101,7 @@ struct ChatThreadView: View {
                 ScrollViewReader { proxy in
                     ScrollView {
                         LazyVStack(spacing: 0) {
+                            threadStateView
                             olderHistoryHeader
                             let rows = threadRows
                             ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
@@ -936,7 +1114,8 @@ struct ChatThreadView: View {
                                         onRetry: { messageId in
                                             let uid = appState.currentUser?.user_id ?? ""
                                             vm.retryFailedMessage(messageId, contact: contact, userId: uid)
-                                        }
+                                        },
+                                        actionsFor: { message in rowActions(for: message) }
                                     )
                                         .id(row.id)
                                 case .dayDivider(_, let label):
@@ -992,6 +1171,24 @@ struct ChatThreadView: View {
                         recomputeMessageGroups()
                         lastTailId = vm.messages.last?.id
                     }
+                    // Task 20261001-message-threads: entering/leaving a thread
+                    // swaps the whole list (the count can be equal across the
+                    // swap, so the count-based handler alone is not enough).
+                    .onChange(of: vm.activeThread?.id) { newId in
+                        recomputeMessageGroups()
+                        lastTailId = vm.messages.last?.id
+                        if let lastGroup = messageGroups.last {
+                            proxy.scrollTo(lastGroup.id, anchor: .bottom)
+                        }
+                        if newId != nil {
+                            // VoiceOver lands on the thread title; the composer
+                            // stays one swipe away.
+                            Task {
+                                try? await Task.sleep(nanoseconds: 300_000_000)
+                                threadTitleFocused = true
+                            }
+                        }
+                    }
                     // Initial-open scroll (see `readyForInitialScroll`'s
                     // declaration above for why this lives here, on the same
                     // synchronous onChange path as the case above, rather
@@ -1041,6 +1238,7 @@ struct ChatThreadView: View {
             // targets the ScrollView, which stays inside this VStack either
             // way. See AgentChatView.swift for the identical fix applied to
             // the same latent pattern there.
+            .overlay(alignment: .bottom) { toastStack }
             .dismissesKeyboardOnScrollAndTap()
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 composer
@@ -1100,6 +1298,37 @@ struct ChatThreadView: View {
                 let (contacts, _) = (try? await appState.service.fetchContacts(userId: uid)) ?? ([], [:])
                 friends = contacts.filter { $0.type == .friend }
             }
+            // Task 20261001-message-threads: a thread push tap opened this
+            // group chat first; now open the thread inside it.
+            await consumePendingThreadOpen()
+        }
+        // A thread push tapped while this group's chat is already open.
+        .onChange(of: appState.pendingThreadOpen) { _, _ in
+            Task { await consumePendingThreadOpen() }
+        }
+        // thread_message send hit terms_reaccept_required: refresh capabilities,
+        // which raises the existing Updated Terms gate (the typed text is
+        // handed back to the composer below, never lost).
+        // An empty thread focuses the composer (not under VoiceOver, where
+        // focus stays on the thread title).
+        .onChange(of: vm.isLoadingThread) { _, loading in
+            if !loading, vm.isThreadOpen, !vm.threadLoadFailed, vm.messages.isEmpty,
+               !UIAccessibility.isVoiceOverRunning {
+                composerFocused = true
+            }
+        }
+        .onChange(of: vm.termsGateSignal) { _, _ in appState.refreshCapabilities(force: true) }
+        .onChange(of: vm.restoredDraft) { _, draft in
+            guard let draft else { return }
+            if text.isEmpty { text = draft }
+            vm.restoredDraft = nil
+        }
+        // Resume a Start thread that was waiting on the Updated Terms gate.
+        .onChange(of: appState.termsReacceptRequired) { _, required in
+            if !required, let m = pendingThreadStart {
+                pendingThreadStart = nil
+                startThread(from: m)
+            }
         }
         .onDisappear { vm.disconnect() }
         // App-lifecycle wiring (task 20260902-chat-push-notification-failure)
@@ -1125,6 +1354,48 @@ struct ChatThreadView: View {
                 onAddMembers: { showAddMembers = true },
                 onGroupGone: { dismiss() }
             )
+            // Task 20261001-message-threads: the Threads section opens a thread
+            // through this closure (it closes the sheet and switches this view
+            // model into thread mode on its one socket).
+            .environment(\.fsOpenThread, FSOpenThreadAction { summary in
+                showGroupInfo = false
+                openThread(summary)
+            })
+        }
+        .sheet(item: $reportTarget) { target in
+            ReportUserSheet(contact: target) { reason, detail in
+                Task {
+                    do {
+                        try await appState.service.reportUser(reportedUserId: target.id, reason: reason, detail: detail)
+                        showToast("Report sent. Thank you.")
+                    } catch {
+                        showToast((error as? LocalizedError)?.errorDescription ?? "Could not send report. Please try again.")
+                    }
+                }
+                reportTarget = nil
+            }
+        }
+        .confirmationDialog(
+            "Block \(blockConfirmTarget?.name ?? "this user")?",
+            isPresented: Binding(get: { blockConfirmTarget != nil }, set: { if !$0 { blockConfirmTarget = nil } }),
+            titleVisibility: .visible
+        ) {
+            Button("Block", role: .destructive) {
+                guard let target = blockConfirmTarget else { return }
+                let uid = appState.currentUser?.user_id ?? ""
+                blockConfirmTarget = nil
+                Task {
+                    do {
+                        try await appState.service.blockUser(userId: uid, blockedId: target.id)
+                        showToast("Blocked \(target.name).")
+                    } catch {
+                        showToast((error as? LocalizedError)?.errorDescription ?? "Could not block this user. Please try again.")
+                    }
+                }
+            }
+            Button("Cancel", role: .cancel) { blockConfirmTarget = nil }
+        } message: {
+            Text("You won't see their messages and they won't be able to message you.")
         }
         .sheet(isPresented: $showAddMembers) {
             AddGroupMembersSheet(
@@ -1164,6 +1435,246 @@ struct ChatThreadView: View {
             Button("OK", role: .cancel) { membersErrorMsg = nil }
         } message: {
             Text(membersErrorMsg ?? "")
+        }
+    }
+
+    // ── Thread mode + message actions (task 20261001-message-threads) ────────
+    // Design: Alternative A (anchored native-feel menu, pinned root header),
+    // provisional approval. A thread is a MODE of this view and its view model
+    // (one socket): the header swaps to a persistent Back control + thread
+    // title, the root message is pinned under it, and everything below
+    // (grouping, scroll, older pages, composer, retry) is the unchanged chat UI.
+
+    private func openThread(_ summary: FSThreadSummary) {
+        let uid = appState.currentUser?.user_id ?? ""
+        Task { await vm.openThread(summary, service: appState.service, contact: contact, userId: uid) }
+    }
+
+    /// Opens a pushed thread inside this group's chat once the chat is loaded.
+    /// Waits briefly for capabilities (a cold launch from a push has none yet);
+    /// with the flag still off the push just leaves the user in the chat.
+    private func consumePendingThreadOpen() async {
+        guard readyForInitialScroll, contact.type == .group,
+              let pending = appState.pendingThreadOpen, pending.groupId == contact.id else { return }
+        appState.pendingThreadOpen = nil
+        var waited = 0
+        while !appState.capabilities.isEnabled("threads") && waited < 10 {
+            try? await Task.sleep(nanoseconds: 500_000_000)
+            waited += 1
+        }
+        guard appState.capabilities.isEnabled("threads") else { return }
+        let uid = appState.currentUser?.user_id ?? ""
+        await vm.openThread(id: pending.threadId, service: appState.service, contact: contact, userId: uid)
+    }
+
+    private func rowActions(for message: FSMessage) -> [MessageRowAction] {
+        let caps = appState.capabilities
+        let ctx = FSMessageActionContext(
+            isGroup: contact.type == .group,
+            inThread: vm.isThreadOpen,
+            threadsEnabled: caps.isEnabled("threads"),
+            messageDeleteEnabled: caps.isEnabled("message_delete"),
+            isSettled: vm.isSettled(message),
+            senderUserId: vm.senderUserId(for: message)
+        )
+        return FSMessageActionPolicy.actions(for: message, in: ctx).map { kind in
+            MessageRowAction(kind: kind) { performAction(kind, on: message) }
+        }
+    }
+
+    private func performAction(_ kind: FSMessageActionKind, on message: FSMessage) {
+        switch kind {
+        case .copy:
+            if let text = message.copyableText {
+                UIPasteboard.general.string = text
+                showToast("Copied", seconds: 1.5)
+            }
+        case .startThread:
+            startThread(from: message)
+        case .delete:
+            deleteMessage(message)
+        case .report:
+            if let id = vm.senderUserId(for: message) {
+                reportTarget = FSContact(id: id, name: message.sender, type: .friend)
+            }
+        case .block:
+            if let id = vm.senderUserId(for: message) {
+                blockConfirmTarget = FSContact(id: id, name: message.sender, type: .friend)
+            }
+        }
+    }
+
+    private func startThread(from message: FSMessage) {
+        let uid = appState.currentUser?.user_id ?? ""
+        Task {
+            do {
+                try await vm.startThread(from: message, service: appState.service, contact: contact, userId: uid)
+            } catch let error as FSThreadsError {
+                switch error {
+                case .termsReacceptRequired:
+                    // Existing Updated Terms gate; the create resumes once accepted.
+                    pendingThreadStart = message
+                    appState.refreshCapabilities(force: true)
+                    showToast("Accept the updated Terms to start a thread.", seconds: 4)
+                case .threadLimit:
+                    showToast(error.errorDescription ?? "This group has reached its thread limit.", seconds: 4)
+                case .notFound:
+                    showToast("Couldn't start a thread on that message.", seconds: 4)
+                case .failed(let m):
+                    showToast(m, seconds: 4)
+                }
+            } catch {
+                showToast("Couldn't start a thread on that message.", seconds: 4)
+            }
+        }
+    }
+
+    /// Optimistic delete with a 10 s (server `undo_seconds`) Undo toast; no
+    /// confirmation dialog (undo-after-the-fact).
+    private func deleteMessage(_ message: FSMessage) {
+        let uid = appState.currentUser?.user_id ?? ""
+        Task {
+            do {
+                let result = try await vm.deleteOwnMessage(message, service: appState.service, contact: contact, userId: uid)
+                showToast("Message deleted", seconds: Double(max(result.undoSeconds, 1)), undoTitle: "Undo") {
+                    Task {
+                        do {
+                            try await vm.undoDelete(message, service: appState.service, contact: contact, userId: uid)
+                        } catch {
+                            showToast("Couldn't undo that delete.", seconds: 4)
+                        }
+                    }
+                }
+            } catch {
+                showToast("Couldn't delete that message. Please try again.", seconds: 4)
+            }
+        }
+    }
+
+    private func showToast(_ message: String, seconds: Double = 2.5, undoTitle: String? = nil, undo: (() -> Void)? = nil) {
+        let toast = ChatToast(message: message, seconds: seconds, undoTitle: undoTitle, undo: undo)
+        withMotionAwareAnimation(.easeOut(duration: 0.18), reduceMotion: reduceMotion) {
+            toasts.append(toast)
+        }
+        let spoken = undoTitle == nil ? message : "\(message). \(undoTitle ?? "") available for \(Int(seconds)) seconds"
+        UIAccessibility.post(notification: .announcement, argument: spoken)
+    }
+
+    private func dismissToast(_ id: UUID) {
+        withMotionAwareAnimation(.easeIn(duration: 0.12), reduceMotion: reduceMotion) {
+            toasts.removeAll { $0.id == id }
+        }
+    }
+
+    private var toastStack: some View {
+        VStack(spacing: 8) {
+            ForEach(toasts) { toast in
+                ChatToastRow(toast: toast, onDismiss: { dismissToast(toast.id) })
+                    .transition(reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .bottom)))
+            }
+        }
+        .padding(.horizontal, Theme.spacingMD)
+        .padding(.bottom, Theme.spacingSM)
+    }
+
+    /// Back control (labelled with the group name) + thread title + group name.
+    private var threadHeader: some View {
+        HStack(spacing: 14) {
+            RoundIconButton(systemIcon: "chevron.left") {
+                withMotionAwareAnimation(.easeOut(duration: 0.18), reduceMotion: reduceMotion) { vm.closeThread() }
+            }
+            .accessibilityLabel("Back to \(displayName)")
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(vm.activeThread?.title ?? "Thread")
+                    .font(.inter(Theme.fontHeading, weight: .bold))
+                    .foregroundColor(Theme.parchment)
+                    .lineLimit(1)
+                    .accessibilityAddTraits(.isHeader)
+                    .accessibilityFocused($threadTitleFocused)
+                Text(displayName)
+                    .font(.inter(Theme.fontXS))
+                    .foregroundColor(Theme.textSecondary)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 8)
+        }
+        .padding(.horizontal, Theme.spacingMD)
+        .padding(.top, Theme.spacingSM)
+        .padding(.bottom, Theme.spacingSM)
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(Theme.borderGoldFaint).frame(height: 1)
+        }
+    }
+
+    /// Pinned root message. A deleted root shows "Original message deleted";
+    /// the thread stays usable. Hidden when the root text is unknown (a
+    /// pushed thread not found in the list).
+    @ViewBuilder
+    private var threadRootCard: some View {
+        if let t = vm.activeThread, t.rootDeleted || !t.rootPreview.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Thread")
+                    .font(.inter(Theme.fontXXS, weight: .semibold))
+                    .foregroundColor(Theme.gold)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 2)
+                    .background(Theme.gold.opacity(0.15))
+                    .clipShape(Capsule())
+                Text(t.rootDeleted ? "Original message deleted" : t.rootPreview)
+                    .font(.inter(Theme.fontSM))
+                    .foregroundColor(t.rootDeleted ? Theme.textSecondary : Theme.parchment)
+                    .italic(t.rootDeleted)
+                    .lineLimit(3)
+                    .multilineTextAlignment(.leading)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(Theme.spacingSM)
+            .background(Color.white.opacity(0.045))
+            .overlay(RoundedRectangle(cornerRadius: Theme.radius).stroke(Theme.borderGoldFaint, lineWidth: 1))
+            .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
+            .padding(.horizontal, Theme.spacingMD)
+            .padding(.top, Theme.spacingSM)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(t.rootDeleted ? "Thread root: original message deleted" : "Thread root: \(t.rootPreview)")
+        }
+    }
+
+    /// Loading / error+Retry / empty states of the open thread (top of the list).
+    @ViewBuilder
+    private var threadStateView: some View {
+        if vm.isThreadOpen {
+            if vm.threadLoadFailed {
+                VStack(spacing: 6) {
+                    Text("Couldn't load this thread.")
+                        .font(.inter(Theme.fontXS)).foregroundColor(Theme.error)
+                    Button("Retry") {
+                        let uid = appState.currentUser?.user_id ?? ""
+                        Task { await vm.loadThreadFirstPage(service: appState.service, contact: contact, userId: uid) }
+                    }
+                    .font(.inter(Theme.fontXS, weight: .semibold)).foregroundColor(Theme.gold)
+                    .frame(minWidth: 44, minHeight: 44)
+                    .accessibilityHint("Reloads this thread")
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, Theme.spacingSM)
+            } else if vm.isLoadingThread && vm.messages.isEmpty {
+                HStack(spacing: 6) {
+                    if !reduceMotion { ProgressView().tint(Theme.gold).scaleEffect(0.75) }
+                    Text("Loading thread…")
+                        .font(.inter(Theme.fontXS)).foregroundColor(Theme.textGoldMuted)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, Theme.spacingSM)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Loading thread")
+            } else if vm.messages.isEmpty {
+                Text("Start the conversation")
+                    .font(.inter(Theme.fontSM)).foregroundColor(Theme.textSecondary)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, Theme.spacingLG)
+                    .accessibilityLabel("No replies yet. Start the conversation")
+            }
         }
     }
 
@@ -1480,7 +1991,7 @@ struct ChatThreadView: View {
                 attachButton
 
                 TextField("", text: $text,
-                          prompt: Text("Type a message…").foregroundColor(Theme.textSecondary), axis: .vertical)
+                          prompt: Text(vm.isThreadOpen ? "Reply in thread…" : "Type a message…").foregroundColor(Theme.textSecondary), axis: .vertical)
                     .font(.inter(Theme.fontBody))
                     .foregroundColor(Theme.parchment)
                     .lineLimit(1...4)
@@ -1489,6 +2000,7 @@ struct ChatThreadView: View {
                     .background(Color.white.opacity(0.05))
                     .overlay(Capsule().stroke(Theme.borderGoldDim, lineWidth: 1))
                     .clipShape(Capsule())
+                    .focused($composerFocused)
                     .submitLabel(.send)
                     .onSubmit(sendMessage)
                     .accessibilityLabel("Message input field")
@@ -2577,6 +3089,51 @@ struct SessionCreatorSheet: View {
                     saveError = "Couldn't save your changes. Please try again."
                 }
             }
+        }
+    }
+}
+
+// ── Transient toast (task 20261001-message-threads) ───────────────────────────
+
+/// One bottom toast: "Copied", an error, or "Message deleted  [Undo]".
+struct ChatToast: Identifiable {
+    let id = UUID()
+    let message: String
+    let seconds: Double
+    var undoTitle: String? = nil
+    var undo: (() -> Void)? = nil
+}
+
+private struct ChatToastRow: View {
+    let toast: ChatToast
+    let onDismiss: () -> Void
+
+    var body: some View {
+        HStack(spacing: Theme.spacingSM) {
+            Text(toast.message)
+                .font(.inter(Theme.fontSM))
+                .foregroundColor(Theme.parchment)
+                .fixedSize(horizontal: false, vertical: true)
+            if let title = toast.undoTitle, let undo = toast.undo {
+                Spacer(minLength: 8)
+                Button(title) {
+                    undo()
+                    onDismiss()
+                }
+                .font(.inter(Theme.fontSM, weight: .semibold))
+                .foregroundColor(Theme.gold)
+                .frame(minWidth: 44, minHeight: 44)
+                .accessibilityLabel(title)
+            }
+        }
+        .padding(.horizontal, Theme.spacingMD)
+        .frame(minHeight: 44)
+        .background(.regularMaterial)
+        .overlay(Capsule().stroke(Theme.borderGoldDim, lineWidth: 1))
+        .clipShape(Capsule())
+        .task {
+            try? await Task.sleep(nanoseconds: UInt64(toast.seconds * 1_000_000_000))
+            onDismiss()
         }
     }
 }

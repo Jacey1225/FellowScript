@@ -164,6 +164,14 @@ protocol DataServiceProtocol {
     func fetchMessageHistory(userId: String, contactId: String, isGroup: Bool, limit: Int?) async throws -> FSMessageHistory
     func fetchOlderMessages(userId: String, contactId: String, isGroup: Bool, limit: Int, cursor: FSMessageCursor) async throws -> FSMessagePage
 
+    // Threads + message delete (task 20261001-message-threads) --
+    // NetworkService+Threads.swift. Default implementations throw there.
+    func fetchThreads(userId: String, groupId: String, limit: Int, cursorTimestamp: String?, cursorId: String?) async throws -> FSThreadsPage
+    func createThread(userId: String, groupId: String, messageId: String) async throws -> FSThreadSummary
+    func fetchThreadMessages(userId: String, groupId: String, threadId: String, limit: Int, cursor: FSMessageCursor?) async throws -> FSMessagePage
+    func deleteGroupMessage(userId: String, groupId: String, messageId: String) async throws -> FSMessageDeleteResult
+    func restoreGroupMessage(userId: String, groupId: String, messageId: String) async throws
+
     // Attachments (task 20260904-messaging-attachments): request a presigned
     // S3 POST policy, then upload the raw bytes directly to S3 with it — the
     // server never receives them. GIF search is a thin authenticated proxy

@@ -92,6 +92,13 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
             NotificationCenter.default.post(name: .announcementPushTapped,
                                             object: AnnouncementPushTarget(groupId: groupId,
                                                                            announcementId: data["announcement_id"] as? String ?? ""))
+        } else if action == "thread_message", let groupId, !groupId.isEmpty {
+            // Task 20261001-message-threads: the push carries group_id +
+            // thread_id (identifiers only). Opens the group chat first, then
+            // the thread (AppState.openThread).
+            NotificationCenter.default.post(name: .threadPushTapped,
+                                            object: ThreadPushTarget(groupId: groupId,
+                                                                     threadId: data["thread_id"] as? String ?? ""))
         } else if action == "message", let groupId, !groupId.isEmpty {
             NotificationCenter.default.post(name: .sessionPushTapped, object: groupId)
         } else if data["devotion_id"] != nil, let groupId, !groupId.isEmpty {
@@ -109,6 +116,11 @@ struct AnnouncementPushTarget {
     let announcementId: String
 }
 
+struct ThreadPushTarget {
+    let groupId: String
+    let threadId: String
+}
+
 struct RingPushTarget {
     let devotionId: String
     let groupId:    String
@@ -119,6 +131,7 @@ extension Notification.Name {
     static let sessionPushTapped = Notification.Name("sessionPushTapped")
     static let ringPushTapped    = Notification.Name("ringPushTapped")
     static let announcementPushTapped = Notification.Name("announcementPushTapped")
+    static let threadPushTapped = Notification.Name("threadPushTapped")
     // Task 20260916-callkit-voip-ring: posted by VoipCallManager
     // (PKPushRegistryDelegate) whenever PushKit issues/refreshes this
     // device's VoIP token -- mirrors .apnsTokenReceived's role for the
@@ -197,6 +210,11 @@ struct FellowScriptApp: App {
                 .onReceive(NotificationCenter.default.publisher(for: .announcementPushTapped)) { note in
                     if let target = note.object as? AnnouncementPushTarget {
                         appState.openAnnouncement(groupId: target.groupId, announcementId: target.announcementId)
+                    }
+                }
+                .onReceive(NotificationCenter.default.publisher(for: .threadPushTapped)) { note in
+                    if let target = note.object as? ThreadPushTarget {
+                        appState.openThread(groupId: target.groupId, threadId: target.threadId)
                     }
                 }
                 // Task 20260916-call-ring-members: a ring push's tap-through

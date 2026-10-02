@@ -38,6 +38,7 @@ enum GroupInfoExtraSections {
     /// Append-only table. Empty until a feature task registers a section.
     static let registry: [GroupInfoExtraSection] = [
         GroupPublishSection.registration,   // order 10: owner-only Publish to Explorer
+        GroupThreadsSection.registration,   // order 30: message threads (flag `threads`)
     ]
 
     static func visible(_ sections: [GroupInfoExtraSection] = registry,
