@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Depends, Query, Request
-from backend.interactions.groups import GroupFullError, GroupsManager, normalize_group_title
+from backend.interactions.groups import GroupFullError, GroupsManager, InvalidMemberError, normalize_group_title
 from backend.interactions.friends import  FriendsManager, is_nudge_enabled
 from backend.interactions.push import send_push
 from backend.auth.dependencies import require_match
@@ -10,6 +10,10 @@ from routes.notes import NOTES_PAGE_SIZE
 
 group_router = APIRouter(prefix="/groups")
 friend_router = APIRouter(prefix="/friends")
+
+# One body for every invalid new member id (malformed, unknown or suspended):
+# no existence oracle.
+INVALID_MEMBER_DETAIL = {"code": "invalid_member", "message": "One of the people you tried to add can't be added."}
 
 
 # ── Groups ─────────────────────────────────────────────────────────────────────
@@ -31,7 +35,10 @@ async def create_group(user_id: str, group: Group, _: str = Depends(require_matc
         raise HTTPException(status_code=422, detail=rejection_message(e))
     manager = GroupsManager(user_id)
     try:
-        manager.create_group(group.users, group)
+        try:
+            manager.create_group(group.users, group)
+        except InvalidMemberError:
+            raise HTTPException(status_code=422, detail=INVALID_MEMBER_DETAIL)
     finally:
         manager.close()
     return {"group_id": group.group_id}
@@ -219,6 +226,8 @@ async def update_group(user_id: str, group_id: str, group: Group, _: str = Depen
         except GroupFullError:
             raise HTTPException(
                 status_code=409, detail={"code": "group_full", "message": "This group is full."})
+        except InvalidMemberError:
+            raise HTTPException(status_code=422, detail=INVALID_MEMBER_DETAIL)
     finally:
         manager.close()
 

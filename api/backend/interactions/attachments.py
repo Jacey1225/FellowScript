@@ -53,7 +53,7 @@ import uuid
 
 import boto3
 from botocore.config import Config
-from botocore.exceptions import ClientError
+from botocore.exceptions import BotoCoreError, ClientError
 
 logger = logging.getLogger(__name__)
 
@@ -313,3 +313,29 @@ def delete_object(object_key: str | None) -> None:
         _client().delete_object(Bucket=S3_BUCKET_NAME, Key=object_key)
     except (AttachmentConfigError, ClientError) as e:
         logger.error("Could not delete S3 object %s: %s", object_key, e)
+
+
+# S3 error codes that mean "this principal may not delete this object".
+_DENIED_CODES = frozenset({"AccessDenied", "403", "Forbidden", "AllAccessDisabled"})
+
+
+def delete_object_status(object_key: str) -> str:
+    """Delete one S3 object and report the outcome for the outbox sweeper.
+
+    Returns ``"ok"`` (deleted, or already absent: S3 answers success for a
+    missing key), ``"denied"`` (AccessDenied-class error: an IAM gap, not a
+    transient fault) or ``"error"`` (anything else). Never raises and, unlike
+    ``delete_object``, never logs: the caller aggregates counts per run.
+    ``delete_object`` itself is unchanged and is not used by the outbox.
+    """
+    if not object_key:
+        return "ok"
+    try:
+        validate_attachment_config()
+        _client().delete_object(Bucket=S3_BUCKET_NAME, Key=object_key)
+        return "ok"
+    except ClientError as e:
+        code = str((e.response or {}).get("Error", {}).get("Code", ""))
+        return "denied" if code in _DENIED_CODES else "error"
+    except (AttachmentConfigError, BotoCoreError):
+        return "error"

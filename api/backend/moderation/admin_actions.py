@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 
 from db import DBManager
 from backend.auth.sessions import SessionManager
+from backend.moderation.removers import CONTENT_REMOVERS  # same dict object; see removers.py
 
 
 def list_open_reports() -> None:
@@ -36,15 +37,15 @@ def list_open_reports() -> None:
 
 
 def _remove_content(db: DBManager, content_type: str, content_id: str | None) -> None:
-    if content_type == "note" and content_id:
-        db.cur.execute("DELETE FROM notes WHERE _id = %s", (content_id,))
-    elif content_type == "message" and content_id:
-        db.cur.execute("DELETE FROM messages WHERE _id = %s", (content_id,))
-    elif content_type == "devotion_prompt" and content_id:
-        db.cur.execute("UPDATE devotions SET prompts = '{}' WHERE _id = %s", (content_id,))
-    elif content_type == "group_title" and content_id:
-        db.cur.execute("UPDATE groups SET title = 'Group' WHERE _id = %s", (content_id,))
-    # content_type == "user": nothing to remove, the report is about the account itself.
+    remover = CONTENT_REMOVERS.get(content_type)
+    if remover is None:
+        # Never silently remove nothing: a content type with no registered
+        # remover (e.g. registrations.load_all() not run) stops the CLI.
+        db.conn.rollback()
+        print(f"No remover registered for content type {content_type!r}; nothing was removed.",
+              file=sys.stderr)
+        sys.exit(1)
+    remover(db.cur, content_id)
     db.conn.commit()
 
 
@@ -118,6 +119,10 @@ def main() -> None:
     resolve_parser.add_argument("--dismiss", action="store_true", help="Mark as dismissed (false positive) instead of acting.")
 
     args = parser.parse_args()
+    # Separate process: only db and SessionManager are imported above, so load
+    # every registration module (resolvers, removers, lifecycle hooks) here.
+    from backend.registrations import load_all
+    load_all()
     if args.command == "list":
         list_open_reports()
     elif args.command == "resolve":

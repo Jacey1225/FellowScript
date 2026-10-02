@@ -1313,6 +1313,11 @@ def start_scheduler() -> None:
     # can't be bypassed.
     scheduler.add_job(_run_error_watchdog, "interval", seconds=WATCHDOG_POLL_INTERVAL_SECONDS,
                       id="cloudwatch_watchdog", replace_existing=True)
+    # SF outbox: drains pending_s3_deletes off the event loop (R-SCHED). Request
+    # paths only enqueue, they never flush.
+    from backend.interactions.s3_outbox import run_s3_outbox_job, FLUSH_INTERVAL_SECONDS
+    scheduler.add_job(run_s3_outbox_job, "interval", seconds=FLUSH_INTERVAL_SECONDS,
+                      id="s3_outbox_flush", replace_existing=True)
     # Hourly FEATURE_SUMMARY line (counts only; the one aggregate visibility
     # surface for 404/429/probe traffic that is not logged per request).
     from backend.observability.feature_summary import run_feature_summary_job

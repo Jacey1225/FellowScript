@@ -233,6 +233,11 @@ async def lifespan(_: FastAPI):
     from backend.startup_checks import validate_all
     validate_all()
 
+    # Import every module that registers lifecycle hooks / report resolvers /
+    # report removers (the CLIs call this too; see backend/registrations.py).
+    from backend.registrations import load_all as load_registrations
+    load_registrations()
+
     from backend.interactions.scheduler import start_scheduler
     start_scheduler()
     # WS connection-liveness heartbeat (task
@@ -936,6 +941,15 @@ async def delete_user(user_id: str, _: str = Depends(require_match("user_id"))) 
         if not row:
             raise HTTPException(status_code=404, detail="User not found")
         photo_key = row[0]
+        # R3-5 / lifecycle: take the account out of every group's member list
+        # (groups.users is a TEXT[] with no FK, so a deleted id would otherwise
+        # stay behind and break later sends) BEFORE the user row goes. A
+        # last-member group is deleted by the same function. Keys the hooks
+        # report are enqueued to the S3 outbox in this same transaction; a hook
+        # that raises aborts the whole deletion (the connection closes
+        # un-committed). Nothing here flushes or talks to S3.
+        from backend.interactions import lifecycle
+        lifecycle.enqueue_s3_deletes(db.cur, lifecycle.run("user_delete", db.cur, user_id))
         # Tables whose FK to users has no ON DELETE rule must be handled manually.
         db.cur.execute("DELETE FROM notes    WHERE user_id   = %s", (user_id,))
         db.cur.execute("UPDATE messages   SET from_user   = NULL WHERE from_user   = %s", (user_id,))

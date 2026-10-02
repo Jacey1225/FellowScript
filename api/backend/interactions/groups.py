@@ -9,6 +9,7 @@ from schemas.message import Group
 from db import DBManager, _redact_db_error
 from backend.errors import SaveFailedError
 from backend.interactions.attachments import generate_download_url
+from backend.interactions import lifecycle
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +48,57 @@ class GroupFullError(Exception):
 class GroupOwnerOnlyError(Exception):
     """The caller isn't the group's creator (fail closed: also raised when the
     group has no creator_id, so legacy ownerless groups can't set a cap)."""
+
+
+class InvalidMemberError(Exception):
+    """A NEW member id supplied to create/update is not a valid, existing,
+    non-suspended user. Identical for malformed and non-existent ids so the
+    422 never becomes an existence oracle."""
+
+
+# R4-1: the ONE place the groups.users (TEXT[]) -> users join is written.
+# Readers (PAG author_set, WSH recipients, THR recipients, LST live member
+# count) import this and never write their own join. It is a correlated
+# subquery body: it references the outer groups alias ``g``, e.g.
+#   SELECT x.id FROM groups g, LATERAL (SELECT u._id::text AS id, m.ord
+#       {LIVE_MEMBER_JOIN}) x WHERE g._id = %s
+# The users side is matched through a CASE-guarded uuid cast of the array
+# element, never ``u._id::text = x`` (that casts the indexed column and
+# full-scans users); the CASE also stops a junk string from raising a uuid
+# cast error. A NULL element or a NULL array yields no row. ``ORDINALITY``
+# keeps array order for ``live_member_ids``.
+LIVE_MEMBER_JOIN = (
+    "FROM unnest(g.users) WITH ORDINALITY AS m(member_id, ord) "
+    "JOIN users u ON u._id = CASE WHEN m.member_id ~* "
+    "'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' "
+    "THEN m.member_id::uuid END"
+)
+
+
+def live_member_ids(cur, group_id: str) -> list[str]:
+    """Canonical lowercase ids of the group's current members that still exist
+    as users, array order preserved, de-duplicated. Empty for an unknown or
+    malformed group id. Built from ``LIVE_MEMBER_JOIN``."""
+    canon = _canonical_uuid(group_id)
+    if canon is None:
+        return []
+    cur.execute(
+        "SELECT x.id FROM groups g, LATERAL (SELECT u._id::text AS id, m.ord "
+        + LIVE_MEMBER_JOIN
+        + ") x WHERE g._id = %s::uuid GROUP BY x.id ORDER BY min(x.ord)",
+        (canon,),
+    )
+    return [r[0] for r in cur.fetchall()]
+
+
+def _canonical_uuid(value) -> str | None:
+    """Lowercase canonical UUID string, or None when ``value`` is not a UUID."""
+    if not isinstance(value, str):
+        return None
+    try:
+        return str(uuid.UUID(value))
+    except ValueError:
+        return None
 
 
 class GroupsManager(DBManager):
@@ -153,12 +205,39 @@ class GroupsManager(DBManager):
             result.append(data)
         return result
 
+    def _validate_new_member_ids(self, ids) -> dict[str, str]:
+        """Map each raw id -> canonical id for ids that are valid, existing,
+        non-suspended users. Raises ``InvalidMemberError`` (same error for a
+        malformed, non-existent or suspended id) on the first bad one. The
+        caller's own id always passes without a lookup."""
+        canon_by_raw: dict[str, str] = {}
+        for raw in ids:
+            canon = _canonical_uuid(raw)
+            if canon is None:
+                raise InvalidMemberError()
+            canon_by_raw[raw] = canon
+        needed = [c for c in dict.fromkeys(canon_by_raw.values()) if c != str(self.user_id).lower()]
+        if needed:
+            self.cur.execute(
+                "SELECT _id::text FROM users WHERE _id = ANY(%s::uuid[]) AND suspended_at IS NULL",
+                (needed,),
+            )
+            live = {r[0] for r in self.cur.fetchall()}
+            self.conn.rollback()  # read-only; release the snapshot
+            if any(c not in live for c in needed):
+                raise InvalidMemberError()
+        return canon_by_raw
+
     def create_group(self, users: list[str], group: Group) -> None:
         """Create a new group and add it to each member's groups list.
 
         Args:
             users: List of user IDs to add as initial members.
             group: ``Group`` schema instance with group_id, title, and users.
+
+        Raises:
+            InvalidMemberError: a supplied member id is malformed, does not
+                exist or is suspended (the creator's own id always passes).
         """
         # Membership lives in the groups.users column; GET /user derives each
         # user's group list from it, so no separate per-user sync is needed.
@@ -167,10 +246,12 @@ class GroupsManager(DBManager):
         # constructor arg) -- never from the client-supplied `group` payload,
         # so a caller can't spoof ownership of a group they didn't actually
         # create.
+        canon = self._validate_new_member_ids(list(group.users or []))
+        members = list(dict.fromkeys(canon[raw] for raw in (group.users or [])))
         if not self.insertion("groups", {
             "_id":         group.group_id,
             "title":       group.title,
-            "users":       group.users,
+            "users":       members,
             "creator_id":  self.user_id,
         }):
             raise SaveFailedError()
@@ -487,29 +568,85 @@ class GroupsManager(DBManager):
         devotions (ON DELETE SET NULL on notes/messages' group_id FK;
         devotions.group_id is a plain unlinked TEXT column, out of scope
         for this task -- see intake spec).
+
+        One transaction: the group row lock, the ``group_delete`` collectors
+        (photo and announcement-banner S3 keys), the outbox enqueue, the row
+        delete and the invite purge commit together or not at all. Nothing
+        here talks to S3; the outbox job deletes the objects later.
         """
         if not self.group_id:
             return
-        # delete_group is only ever called after the caller already loaded
-        # this group (routes/community.py), so a False return here is a
-        # real write failure, not an expected no-op.
-        if not self.delete("groups", {"_id": self.group_id}):
-            raise SaveFailedError()
-        self._purge_invites()
-
-    def _purge_invites(self) -> None:
-        """Drop the deleted group's invite links (invites.target_id has no FK
-        by design, so this cleanup lives in code; task
-        20260929-group-invite-links). The redeem/preview paths also treat a
-        missing group as not-found, so a failure here can never make a link
-        usable -- but it is still surfaced, not swallowed."""
         from backend.interactions.invites import purge_target_invites
         try:
+            self.cur.execute("SELECT 1 FROM groups WHERE _id = %s FOR UPDATE", (self.group_id,))
+            # delete_group is only ever called after the caller already loaded
+            # this group (routes/community.py), so a missing row here is a
+            # real write failure, not an expected no-op.
+            if self.cur.fetchone() is None:
+                raise SaveFailedError()
+            keys = lifecycle.run("group_delete", self.cur, self.group_id)
+            lifecycle.enqueue_s3_deletes(self.cur, keys)
+            self.cur.execute("DELETE FROM groups WHERE _id = %s", (self.group_id,))
+            if self.cur.rowcount != 1:
+                raise SaveFailedError()
+            # invites.target_id has no FK by design, so this cleanup lives in
+            # code (task 20260929-group-invite-links). Same transaction now: a
+            # failure rolls the whole delete back instead of leaving a group
+            # gone with live invite links.
             purge_target_invites(self.cur, "group", self.group_id)
             self.conn.commit()
-        except Exception:
+        except SaveFailedError:
             self.conn.rollback()
             raise
+        except sql.Error as e:
+            logger.error("DB_WRITE_FAILURE op=delete_group table=groups error=%s", _redact_db_error(e))
+            self.conn.rollback()
+            raise SaveFailedError()
+        except BaseException:
+            self.conn.rollback()
+            raise
+
+    @staticmethod
+    def remove_member_in_tx(cur, group_id: str, user_id: str) -> str:
+        """Remove ``user_id`` from one group inside the caller's transaction.
+
+        This is exactly the ``leave_group`` transaction body (shared with the
+        ``user_delete`` hook so account deletion and leaving cannot drift).
+        It does NOT commit or roll back; the caller owns the transaction.
+
+        Under the groups row lock (the lock invite redeem and the member cap
+        take first): remove the id; if members remain, revoke the leaver's
+        group invite links and run the ``member_leave`` hooks; if the list is
+        now empty, run the ``group_delete`` collectors, delete the group and
+        purge its invites. Any S3 keys reported are enqueued to the outbox in
+        the same transaction.
+
+        Returns:
+            ``"missing"`` (no such group), ``"left"`` or ``"deleted"``.
+        """
+        from backend.interactions.invites import purge_target_invites, revoke_member_group_invites
+        cur.execute(
+            "SELECT COALESCE(users, '{}') FROM groups WHERE _id = %s FOR UPDATE",
+            (group_id,),
+        )
+        row = cur.fetchone()
+        if row is None:
+            return "missing"
+        remaining = [u for u in row[0] if u != user_id]
+        if remaining:
+            cur.execute("UPDATE groups SET users = %s WHERE _id = %s", (remaining, group_id))
+            if cur.rowcount != 1:
+                raise SaveFailedError()
+            revoke_member_group_invites(cur, group_id, [user_id])
+            lifecycle.enqueue_s3_deletes(cur, lifecycle.run("member_leave", cur, group_id, user_id))
+            return "left"
+        keys = lifecycle.run("group_delete", cur, group_id)
+        lifecycle.enqueue_s3_deletes(cur, keys)
+        cur.execute("DELETE FROM groups WHERE _id = %s", (group_id,))
+        if cur.rowcount != 1:
+            raise SaveFailedError()
+        purge_target_invites(cur, "group", group_id)
+        return "deleted"
 
     def leave_group(self) -> None:
         """Remove only self.user_id from the group's member list -- the
@@ -527,33 +664,16 @@ class GroupsManager(DBManager):
         """
         if not self.group_id:
             return
-        from backend.interactions.invites import purge_target_invites, revoke_member_group_invites
-        # One transaction under the groups row lock (the lock invite redeem and
-        # the member cap take first): the membership change and the revoke of
-        # the leaver's group invite links (creator included) commit together
-        # or not at all, so a failed revoke fails the leave (fail closed) and
-        # a concurrent redeem can't race a link past the departure.
+        # One transaction under the groups row lock: the membership change,
+        # the revoke of the leaver's group invite links (creator included),
+        # the lifecycle hooks and the outbox enqueue commit together or not at
+        # all, so a failed revoke fails the leave (fail closed) and a
+        # concurrent redeem can't race a link past the departure.
         try:
-            self.cur.execute(
-                "SELECT COALESCE(users, '{}') FROM groups WHERE _id = %s FOR UPDATE",
-                (self.group_id,),
-            )
-            row = self.cur.fetchone()
-            if row is None:
+            outcome = self.remove_member_in_tx(self.cur, self.group_id, self.user_id)
+            if outcome == "missing":
                 self.conn.rollback()
                 return
-            remaining = [u for u in row[0] if u != self.user_id]
-            if remaining:
-                self.cur.execute(
-                    "UPDATE groups SET users = %s WHERE _id = %s", (remaining, self.group_id))
-                if self.cur.rowcount != 1:
-                    raise SaveFailedError()
-                revoke_member_group_invites(self.cur, self.group_id, [self.user_id])
-            else:
-                self.cur.execute("DELETE FROM groups WHERE _id = %s", (self.group_id,))
-                if self.cur.rowcount != 1:
-                    raise SaveFailedError()
-                purge_target_invites(self.cur, "group", self.group_id)
             self.conn.commit()
         except SaveFailedError:
             self.conn.rollback()
@@ -565,6 +685,41 @@ class GroupsManager(DBManager):
         except BaseException:
             self.conn.rollback()
             raise
+
+    def _clean_member_list(self, requested, current: set[str]) -> list[str]:
+        """Validate a replacement member list (called under the groups row lock).
+
+        - An id already in the stored list that no longer resolves to a user
+          (deleted account or junk string) is dropped silently, so build-78
+          clients that echo the raw array back keep working.
+        - An id already in the list that still exists is kept as stored (a
+          suspended existing member is not "new", it stays).
+        - Any NEW id must be a UUID of an existing, non-suspended user, else
+          ``InvalidMemberError`` (same error for malformed and unknown ids).
+        Order is the client's order, de-duplicated.
+        """
+        raws = list(dict.fromkeys(requested))
+        canon = {raw: _canonical_uuid(raw) for raw in raws}
+        lookup = list(dict.fromkeys(c for c in canon.values() if c))
+        status: dict[str, bool] = {}  # canonical id -> suspended?
+        if lookup:
+            self.cur.execute(
+                "SELECT _id::text, suspended_at IS NOT NULL FROM users WHERE _id = ANY(%s::uuid[])",
+                (lookup,),
+            )
+            status = {r[0]: r[1] for r in self.cur.fetchall()}
+        cleaned: list[str] = []
+        for raw in raws:
+            c = canon[raw]
+            if raw in current:
+                if c is not None and c in status:
+                    cleaned.append(raw)
+                continue
+            if c is None or c not in status or status[c]:
+                self.conn.rollback()
+                raise InvalidMemberError()
+            cleaned.append(c)
+        return list(dict.fromkeys(cleaned))
 
     def update_group(self, group: Group) -> None:
         """Replace a group's title and member list.
@@ -595,8 +750,8 @@ class GroupsManager(DBManager):
                 self.conn.rollback()
                 return
             current, cap = locked
-            new_users = list(dict.fromkeys(group.users or []))
-            if cap is not None and (set(new_users) - set(current)) and len(new_users) > cap:
+            cleaned = self._clean_member_list(group.users or [], set(current))
+            if cap is not None and (set(cleaned) - set(current)) and len(cleaned) > cap:
                 self.conn.rollback()
                 raise GroupFullError()
             # Same transaction/lock: write the new list and revoke the group
@@ -604,14 +759,14 @@ class GroupsManager(DBManager):
             from backend.interactions.invites import revoke_member_group_invites
             self.cur.execute(
                 "UPDATE groups SET title = %s, users = %s WHERE _id = %s",
-                (group.title, group.users, self.group_id),
+                (group.title, cleaned, self.group_id),
             )
             if self.cur.rowcount != 1:
                 raise SaveFailedError()
             revoke_member_group_invites(
-                self.cur, self.group_id, set(current) - set(group.users or []))
+                self.cur, self.group_id, set(current) - set(cleaned))
             self.conn.commit()
-        except GroupFullError:
+        except (GroupFullError, InvalidMemberError):
             raise
         except SaveFailedError:
             self.conn.rollback()

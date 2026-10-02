@@ -116,6 +116,11 @@ may still be populated.
 | GET | `/invites/{user_id}/{invite_id}/reveal` | Authenticated, `no-store`, rate limited. Re-shows an active group link (`{invite_id, url}`) to its creator or the group creator. Every failure (unknown, revoked, expired, legacy link created before reveal existed, subscription link, not authorized) is the same 404 `not_found`. List items carry `revealable` (bool). |
 | DELETE | `/invites/{user_id}/{invite_id}` | Revoke one link (its creator or the group creator). |
 
+<!-- shared-foundation -->
+**Member-list behaviour change (task 20261002-shared-foundation).** `PUT /groups/{user_id}/{group_id}` silently drops ids that are already in the group's stored member list but no longer exist as users (clients that echo the raw array keep working). Any NEW id must be a UUID of an existing, non-suspended user; otherwise the route answers `422 { "detail": { "code": "invalid_member", "message": ... } }`, with an identical body for malformed, unknown and suspended ids. This is a change for build-78 clients: adding a new member who is suspended now returns 422 where it was accepted before. `POST /groups/{user_id}` applies the same check to every supplied member id (the creator's own id always passes). Deleting an account (`DELETE /user/{user_id}`) now removes that id from every group's member list; a group whose last member deletes their account is deleted. Deleting or emptying a group queues its photo and announcement banner objects for deletion (no response change).
+
+**Reports (`POST /reports/`).** `content_type` also accepts `group_listing` and `thread_message`. A malformed `content_id` answers `422` (it used to be a 500; `group_listing` ids are 10-character alphanumeric public ids, every other type takes a UUID). Content that cannot be found for a listing or thread type answers `404` and nothing is stored; the five original types keep their lenient behaviour. The stored `content_id` is the canonical internal id.
+
 ---
 
 ## Friends

@@ -10,6 +10,70 @@ from backend.email.templates import content_report_email
 logger = logging.getLogger(__name__)
 
 
+class ContentNotFoundError(Exception):
+    """The reported content does not exist (or no resolver is registered for
+    its type). The route answers 404 and nothing is stored."""
+
+
+# content_type -> resolver(cur, content_id, reported_user_id)
+#   -> (author_id, snippet, canonical_content_id) | None
+# None means "not found". The five original types are lenient (they return the
+# input id and an empty snippet when the row is missing, as before); LST and
+# THR register group_listing / thread_message here from their own modules.
+CONTENT_RESOLVERS: dict = {}
+
+
+def register_resolver(content_type: str, fn) -> None:
+    CONTENT_RESOLVERS[content_type] = fn
+
+
+def _resolve_note(cur, content_id, reported_user_id):
+    cur.execute("SELECT user_id, title, text FROM notes WHERE _id = %s", (content_id,))
+    row = cur.fetchone()
+    if not row:
+        return reported_user_id, "", content_id
+    uid, title, text = row
+    return str(uid), f"{title}\n\n{text}".strip(), content_id
+
+
+def _resolve_message(cur, content_id, reported_user_id):
+    cur.execute("SELECT from_user, text FROM messages WHERE _id = %s", (content_id,))
+    row = cur.fetchone()
+    if not row:
+        return reported_user_id, "", content_id
+    uid, text = row
+    return (str(uid) if uid else reported_user_id), text or "", content_id
+
+
+def _resolve_devotion_prompt(cur, content_id, reported_user_id):
+    cur.execute("SELECT creator_id, prompts FROM devotions WHERE _id = %s", (content_id,))
+    row = cur.fetchone()
+    if not row:
+        return reported_user_id, "", content_id
+    uid, prompts = row
+    return (str(uid) if uid else reported_user_id), " | ".join(prompts or []), content_id
+
+
+def _resolve_group_title(cur, content_id, reported_user_id):
+    # Groups have no single owner — the client must supply which member is
+    # being reported for the title.
+    cur.execute("SELECT title FROM groups WHERE _id = %s", (content_id,))
+    row = cur.fetchone()
+    return reported_user_id, (row[0] if row else ""), content_id
+
+
+def _resolve_user(cur, content_id, reported_user_id):
+    # A direct report of the account, no content item.
+    return reported_user_id, "", content_id
+
+
+register_resolver("note", _resolve_note)
+register_resolver("message", _resolve_message)
+register_resolver("devotion_prompt", _resolve_devotion_prompt)
+register_resolver("group_title", _resolve_group_title)
+register_resolver("user", _resolve_user)
+
+
 class ReportsManager(DBManager):
     """Guideline 1.2 report/flag queue. Every report is emailed to the
     developer immediately and also persisted, so the DB row is a manual-poll
@@ -20,48 +84,14 @@ class ReportsManager(DBManager):
         super().__init__()
         self.reporter_id = reporter_id
 
-    def _resolve_content(self, content_type: str, content_id: str | None,
-                          reported_user_id: str) -> tuple[str, str]:
-        """Look up the CURRENT authoritative author + text server-side — never
-        trust the client for who/what is being reported, so a reporter can't
-        spoof either. Returns (resolved_reported_user_id, content_snippet)."""
-        if content_type == "note":
-            self.cur.execute("SELECT user_id, title, text FROM notes WHERE _id = %s", (content_id,))
-            row = self.cur.fetchone()
-            if not row:
-                return reported_user_id, ""
-            uid, title, text = row
-            return str(uid), f"{title}\n\n{text}".strip()
-
-        if content_type == "message":
-            self.cur.execute("SELECT from_user, text FROM messages WHERE _id = %s", (content_id,))
-            row = self.cur.fetchone()
-            if not row:
-                return reported_user_id, ""
-            uid, text = row
-            return str(uid) if uid else reported_user_id, text or ""
-
-        if content_type == "devotion_prompt":
-            self.cur.execute("SELECT creator_id, prompts FROM devotions WHERE _id = %s", (content_id,))
-            row = self.cur.fetchone()
-            if not row:
-                return reported_user_id, ""
-            uid, prompts = row
-            return str(uid) if uid else reported_user_id, " | ".join(prompts or [])
-
-        if content_type == "group_title":
-            # Groups have no single owner — the client must supply which
-            # member is being reported for the title.
-            self.cur.execute("SELECT title FROM groups WHERE _id = %s", (content_id,))
-            row = self.cur.fetchone()
-            return reported_user_id, (row[0] if row else "")
-
-        # content_type == "user": a direct report of the account, no content item.
-        return reported_user_id, ""
-
     def create_report(self, content_type: str, content_id: str | None,
                        reported_user_id: str, reason: str, detail: str) -> dict:
-        resolved_user_id, snippet = self._resolve_content(content_type, content_id, reported_user_id)
+        resolved = self._resolve_content(content_type, content_id, reported_user_id)
+        if resolved is None:
+            # Listing/thread types (and any type with no registered resolver)
+            # answer "not found" and store nothing.
+            raise ContentNotFoundError()
+        resolved_user_id, snippet, canonical_id = resolved
         report_id = str(uuid.uuid4())
         # A Guideline 1.2 report/flag is compliance-relevant -- a failed
         # write here must never look like a successfully filed report.
@@ -70,7 +100,7 @@ class ReportsManager(DBManager):
             "reporter_id": self.reporter_id,
             "reported_user_id": resolved_user_id or None,
             "content_type": content_type,
-            "content_id": content_id,
+            "content_id": canonical_id,
             "content_snippet": snippet,
             "reason": reason,
             "detail": detail,
@@ -81,7 +111,7 @@ class ReportsManager(DBManager):
         reported_username = self._username(resolved_user_id) if resolved_user_id else "(unknown)"
         subject, html_body, text_body = content_report_email(
             report_id, reporter_username, reported_username, resolved_user_id or "",
-            content_type, content_id, snippet, reason, detail,
+            content_type, canonical_id, snippet, reason, detail,
         )
         try:
             send_email(self._support_email(), subject, html_body, text_body)
@@ -91,6 +121,18 @@ class ReportsManager(DBManager):
             logger.error("Failed to send content_report email for report %s", report_id)
 
         return {"id": report_id}
+
+    def _resolve_content(self, content_type: str, content_id: str | None,
+                          reported_user_id: str) -> tuple[str, str, str | None] | None:
+        """Look up the CURRENT authoritative author + text server-side — never
+        trust the client for who/what is being reported, so a reporter can't
+        spoof either. Dispatches through ``CONTENT_RESOLVERS``; returns
+        (resolved_reported_user_id, content_snippet, canonical_content_id) or
+        None when the type has no resolver or the resolver found nothing."""
+        resolver = CONTENT_RESOLVERS.get(content_type)
+        if resolver is None:
+            return None
+        return resolver(self.cur, content_id, reported_user_id)
 
     def _username(self, user_id: str | None) -> str:
         if not user_id:
