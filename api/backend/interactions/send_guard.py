@@ -90,8 +90,9 @@ def is_current_member(cur, group_id: str, user_id: str) -> bool:
         return False
     cur.execute(
         "SELECT 1 FROM groups g JOIN users u ON u._id = %s::uuid "
-        "WHERE g._id = %s::uuid AND u.suspended_at IS NULL AND %s = ANY(g.users)",
-        (uid, gid, uid),
+        "WHERE g._id = %s::uuid AND u.suspended_at IS NULL AND "
+        "(%s = ANY(g.users) OR EXISTS (SELECT 1 FROM unnest(g.users) m WHERE lower(m) = %s))",
+        (uid, gid, uid, uid),
     )
     return cur.fetchone() is not None
 
