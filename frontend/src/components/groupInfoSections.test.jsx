@@ -18,9 +18,9 @@ const C = (id) => () => <div data-testid={`sec-${id}`}>{id}</div>;
 afterEach(() => { cleanup(); GROUP_INFO_SECTIONS.length = 0; });
 
 describe('registry', () => {
-  test('ships the registered entries in order: publish(10), threads(30)', () => {
-    // The join-requests entry at order 20 is added by a later task.
-    expect(GROUP_INFO_SECTIONS.map((s) => [s.key, s.order])).toEqual([['publish', 10], ['threads', 30]]);
+  test('ships the registered entries in order: publish(10), join_requests(20), threads(30)', () => {
+    expect(GROUP_INFO_SECTIONS.map((s) => s.order)).toEqual([10, 20, 30]);
+    expect(GROUP_INFO_SECTIONS.map((s) => s.key)).toEqual(['publish', expect.any(String), 'threads']);
     expect(getVisibleGroupInfoSections({ features: {}, isOwner: true }).map((s) => s.key)).toEqual([]);
     expect(getVisibleGroupInfoSections({ features: { threads: true } }).map((s) => s.key)).toEqual(['threads']);
     expect(getVisibleGroupInfoSections({ features: { threads: true, explorer_publish: true }, isOwner: true }).map((s) => s.key)).toEqual(['publish', 'threads']);

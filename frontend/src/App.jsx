@@ -14,6 +14,7 @@ import JoinInvite from './pages/JoinInvite.jsx';
 import Explore from './pages/Explore.jsx';
 import ExploreListing from './pages/ExploreListing.jsx';
 import ExploreManage from './pages/ExploreManage.jsx';
+import ExploreRequests from './pages/ExploreRequests.jsx';
 import AdminShell from './components/AdminShell.jsx';
 import MobileBlockGate from './components/MobileBlockGate.jsx';
 import ReaderWebRedirect from './components/ReaderWebRedirect.jsx';
@@ -139,6 +140,7 @@ export default function App() {
           <Route path="/explore"            element={<Explore />} />
           {/* Step 10: owner publish/manage page (sign-in required, flag-gated). */}
           <Route path="/explore/manage"     element={<ExploreManage />} />
+          <Route path="/explore/requests"   element={<ExploreRequests />} />
           <Route path="/explore/:publicId"  element={<ExploreListing />} />
           <Route path="/signin"    element={<SignIn />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />

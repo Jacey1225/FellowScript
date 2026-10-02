@@ -7,6 +7,7 @@ import { useCountdown } from '../hooks/useCountdown.js';
 import AppBloom from '../components/AppBloom.jsx';
 import AppNav from '../components/AppNav.jsx';
 import Seo from '../components/Seo.jsx';
+import JoinRequestsList from '../components/JoinRequestsList.jsx';
 import ListingForm from '../components/explore/ListingForm.jsx';
 import ListingPreview from '../components/explore/ListingPreview.jsx';
 import { bodyFromForm, emptyForm, formFromListing, formSignature } from '../components/explore/listingForm.js';
@@ -54,7 +55,8 @@ function GatePage({ title, children, headingRef }) {
 export default function ExploreManage() {
   const { user } = useAuth() || {};
   const userId = user?.user_id || null;
-  const { refresh } = useCapabilities();
+  const { refresh, features } = useCapabilities() || {};
+  const joinOn = features?.join_requests === true;
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const wantedGroup = params.get('group');
@@ -417,16 +419,27 @@ export default function ExploreManage() {
                         </span>
                       )}
                     </div>
-                    {/* Reserved mount point for the Join requests tab (join-requests task). */}
-                    <div className="ex-join-requests-slot" data-slot="join-requests" />
                   </section>
                 )}
+
+                {/* Join requests (join-requests task): hidden unless the capability is true. */}
+<div className="ex-join-requests-slot" data-slot="join-requests">
+                  {joinOn && listing && (
+                    <section className="ex-form-section" aria-labelledby="ex-jr-h">
+                      <h2 id="ex-jr-h" className="ex-form-h">Join requests</h2>
+                      <JoinRequestsList userId={userId} groupId={groupId} />
+                    </section>
+                  )}
+                </div>
               </>
             )}
           </>
         )}
 
-        <p className="ex-foot"><Link to="/explore" className="ex-link">Back to Explore</Link></p>
+        <p className="ex-foot">
+          {joinOn && <><Link to="/explore/requests" className="ex-link">My requests</Link>{' · '}</>}
+          <Link to="/explore" className="ex-link">Back to Explore</Link>
+        </p>
       </main>
     </div>
   );
