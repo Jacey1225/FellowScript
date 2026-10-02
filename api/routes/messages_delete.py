@@ -41,6 +41,8 @@ def _restore_rate() -> str:
 
 def _user_key(request: Request) -> str:
     # Runs after require_match resolved the path user_id against the session.
+    # slowapi buckets by URL path (holds {message_id}); shared_limit with a fixed
+    # scope on each decorator is what makes this one bucket per user.
     return f"message-delete-user:{request.path_params.get('user_id')}"
 
 
@@ -56,7 +58,7 @@ def _push_frame(recipients: list[str], frame: dict) -> None:
 
 
 @messages_delete_router.delete("/{user_id}/{group_id}/messages/{message_id}")
-@limiter.limit(_delete_rate, key_func=_user_key)
+@limiter.shared_limit(_delete_rate, scope="message_delete", key_func=_user_key)
 def delete_message(
     request: Request, user_id: str, group_id: str, message_id: str,
     _: str = Depends(require_match("user_id")),
@@ -78,7 +80,7 @@ def delete_message(
 
 
 @messages_delete_router.post("/{user_id}/{group_id}/messages/{message_id}/restore")
-@limiter.limit(_restore_rate, key_func=_user_key)
+@limiter.shared_limit(_restore_rate, scope="message_restore", key_func=_user_key)
 def restore_message(
     request: Request, user_id: str, group_id: str, message_id: str,
     _: str = Depends(require_match("user_id")),

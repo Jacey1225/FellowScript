@@ -213,7 +213,7 @@ def list_my_groups(request: Request, user_id: str, _: str = Depends(require_matc
 
 
 @explorer_router.get("/{user_id}/groups/{group_id}/listing")
-@limiter.limit(_rate("owner_read"), key_func=_user_key)
+@limiter.shared_limit(_rate("owner_read"), scope="explorer_owner_get", key_func=_user_key)
 def get_my_listing(
     request: Request, user_id: str, group_id: str, _: str = Depends(require_match("user_id")),
 ) -> dict:
@@ -227,7 +227,7 @@ def get_my_listing(
 
 
 @explorer_router.put("/{user_id}/groups/{group_id}/listing")
-@limiter.limit(_rate("owner_write"), key_func=_user_key)
+@limiter.shared_limit(_rate("owner_write"), scope="explorer_owner_save", key_func=_user_key)
 def save_my_listing(
     request: Request, user_id: str, group_id: str, body: ListingBody,
     _: str = Depends(require_match("user_id")),
@@ -244,7 +244,7 @@ def save_my_listing(
 
 
 @explorer_router.post("/{user_id}/groups/{group_id}/listing/submit")
-@limiter.limit(_rate("owner_write"), key_func=_user_key)
+@limiter.shared_limit(_rate("owner_write"), scope="explorer_owner_submit", key_func=_user_key)
 def submit_my_listing(
     request: Request, user_id: str, group_id: str, body: SubmitBody,
     _: str = Depends(require_match("user_id")),
@@ -266,7 +266,7 @@ def submit_my_listing(
 
 
 @explorer_router.post("/{user_id}/groups/{group_id}/listing/unpublish")
-@limiter.limit(_rate("owner_write"), key_func=_user_key)
+@limiter.shared_limit(_rate("owner_write"), scope="explorer_owner_unpublish", key_func=_user_key)
 def unpublish_my_listing(
     request: Request, user_id: str, group_id: str, _: str = Depends(require_match("user_id")),
 ) -> dict:
@@ -280,7 +280,7 @@ def unpublish_my_listing(
 
 
 @explorer_router.delete("/{user_id}/groups/{group_id}/listing", status_code=204)
-@limiter.limit(_rate("owner_write"), key_func=_user_key)
+@limiter.shared_limit(_rate("owner_write"), scope="explorer_owner_delete", key_func=_user_key)
 def delete_my_listing(
     request: Request, user_id: str, group_id: str, _: str = Depends(require_match("user_id")),
 ) -> None:
