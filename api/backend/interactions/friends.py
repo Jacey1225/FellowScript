@@ -6,6 +6,7 @@ from db import DBManager
 from backend.errors import SaveFailedError
 from backend.interactions.attachments import generate_download_url
 from backend.interactions.blocks import BlockManager
+from backend.interactions import paging
 from backend.interactions.bible_text import parse_highlight_key, verse_text
 
 logger = logging.getLogger(__name__)
@@ -229,11 +230,111 @@ class FriendsManager(DBManager):
             "id": str(_id),
         }
 
-    def read_friend(self, friend_id: str) -> dict:
+    def fetch_dm_page(self, friend_id: str, limit: int, cursor: "paging.Cursor | None" = None,
+                      friend_username: str | None = None) -> dict:
+        """One keyset page of the DM history between the caller and ``friend_id``.
+
+        Same semantics as the legacy two queries (``group_id IS NULL``,
+        ``message_recipients`` join, not soft-deleted, both directions) but as
+        two index-friendly branches (one per direction, each bounded by the
+        keyset predicate and ``LIMIT limit + 1``) merged and re-limited, so a
+        page is exact and ``has_more`` is exact. Rows are OLDEST-first;
+        ``next_cursor`` is the oldest row, set only when ``has_more``.
+
+        ``limit`` must already be clamped; ``cursor`` comes from
+        ``paging.decode_cursor`` (bound as typed parameters). The caller has
+        already checked that the friend exists and is not blocked.
+
+        Returns:
+            dict: ``{"messages", "has_more", "next_cursor"}``; row shape
+                ``{id, from_user (username), mine, text, timestamp (ISO Z),
+                attachment_kind, attachment_meta, attachment_url}``.
+        """
+        cols = (
+            "m._id, m.from_user, m.text, m.timestamp, m.attachment_kind, "
+            "m.attachment_key, m.attachment_meta, COALESCE(m.seq, 0) AS seq"
+        )
+        keyset = ""
+        keyset_params: tuple = ()
+        if cursor is not None:
+            keyset = (
+                f"AND (m.timestamp, COALESCE(m.seq, 0), m._id) < "
+                f"({paging.TS_SQL}, {paging.SEQ_SQL}, {cursor.id_sql}) "
+            )
+            keyset_params = cursor.params()
+        branch = (
+            f"(SELECT {cols} FROM messages m "
+            "JOIN message_recipients mr ON m._id = mr.message_id "
+            "WHERE m.from_user = %s::uuid AND mr.user_id = %s::uuid "
+            "AND m.group_id IS NULL AND m.deleted_at IS NULL "
+            f"{keyset}"
+            "ORDER BY m.timestamp DESC, COALESCE(m.seq, 0) DESC, m._id DESC LIMIT %s)"
+        )
+        sql_text = (
+            f"SELECT * FROM ({branch} UNION ALL {branch}) t "
+            "ORDER BY timestamp DESC, seq DESC, _id DESC LIMIT %s"
+        )
+        params = (
+            (self.user_id, friend_id) + keyset_params + (limit + 1,)
+            + (friend_id, self.user_id) + keyset_params + (limit + 1,)
+            + (limit + 1,)
+        )
+        self.cur.execute(sql_text, params)
+        rows = self.cur.fetchall()
+        self.conn.rollback()  # read-only; release the snapshot
+
+        has_more = len(rows) > limit
+        rows = rows[:limit]
+        next_cursor = None
+        if has_more and rows:
+            oldest = rows[-1]
+            next_cursor = paging.encode_cursor(oldest[3], oldest[7], oldest[0])
+
+        if friend_username is None:
+            found = self.lookup("users", {"_id": friend_id})
+            friend_username = list(found.values())[0].get("username", "") if found else ""
+        me = str(self.user_id).lower()
+        messages = []
+        for _id, from_user, text, ts, kind, key, meta, _seq in reversed(rows):
+            mine = str(from_user).lower() == me
+            messages.append({
+                "id": str(_id),
+                "from_user": self.user.username if mine else friend_username,
+                "mine": mine,
+                "text": text,
+                "timestamp": paging.format_timestamp(ts),
+                "attachment_kind": kind,
+                "attachment_meta": meta,
+                "attachment_url": generate_download_url(key) if key else None,
+            })
+        return {"messages": messages, "has_more": has_more, "next_cursor": next_cursor}
+
+    def dm_page_for_route(self, friend_id: str, limit: int, cursor: "paging.Cursor | None" = None) -> dict:
+        """Existence + block gate then ``fetch_dm_page`` (the older-pages route).
+
+        Returns ``{"error": str}`` exactly as ``read_friend`` does for an
+        unknown or blocked friend.
+        """
+        result = self.lookup("users", {"_id": friend_id})
+        if not result:
+            return {"error": "Friend not found"}
+        blocks = BlockManager(self.user_id)
+        try:
+            if blocks.is_blocked(friend_id):
+                return {"error": "This contact is unavailable"}
+        finally:
+            blocks.close()
+        _, friend_data = list(result.items())[0]
+        return self.fetch_dm_page(friend_id, limit, cursor, friend_data.get("username", ""))
+
+    def read_friend(self, friend_id: str, page_limit: int | None = None) -> dict:
         """Fetch a friend's profile and the shared DM history.
 
         Args:
             friend_id: UUID of the friend to retrieve.
+            page_limit: when set (flag on, already clamped), the newest page is
+                returned as ``messages`` + ``page`` instead of ``host_msgs`` /
+                ``other_msgs``; None keeps the exact legacy shape.
 
         Returns:
             dict: Contains ``friend`` profile (without hash_pass), ``host_msgs``,
@@ -249,6 +350,15 @@ class FriendsManager(DBManager):
         finally:
             blocks.close()
         _, friend_data = list(result.items())[0]
+        if page_limit is not None:
+            page = self.fetch_dm_page(friend_id, page_limit, None, friend_data.get("username", ""))
+            friend_view = {k: v for k, v in friend_data.items() if k != "hash_pass"}
+            friend_view["profile_photo_url"] = generate_download_url(friend_view.pop("profile_photo_key", None))
+            out = {"friend": friend_view}
+            out.update(paging.envelope(
+                "messages", page["messages"], page_limit, page["has_more"], page["next_cursor"],
+            ))
+            return out
         # Task 20260904-messaging-attachments: attachment_kind/attachment_meta
         # ride along with text/timestamp; attachment_key itself is never
         # handed to the client -- it's resolved to a fresh, short-lived

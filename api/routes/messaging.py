@@ -1,6 +1,8 @@
-from fastapi import APIRouter, HTTPException, Request, WebSocket, WebSocketDisconnect, Depends
+from fastapi import APIRouter, HTTPException, Request, WebSocket, WebSocketDisconnect, Depends, Query
 from backend.interactions.websockets import ConnectionManager
 from backend.interactions.friends import FriendsManager
+from backend.interactions import flags
+from backend.interactions.chat_config import get_pagination_config
 from backend.interactions.devotion import DevotionManager
 from backend.interactions.attachments import generate_upload_policy, AttachmentConfigError
 from backend.interactions.gif_search import search_gifs, browse_gifs, GifConfigError, GifSearchError
@@ -226,10 +228,20 @@ async def join_meeting(session_id: str, user_id: str, _: str = Depends(require_m
 
 
 @ws_router.get("/messages/{host_user}/")
-async def read_dm(host_user: str, guest_user: str, _: str = Depends(require_match("host_user"))) -> dict:
+async def read_dm(
+    host_user: str,
+    guest_user: str,
+    limit: str | None = Query(default=None, description="Opt in to paging (e.g. limit=1 for a last-message preview). Ignored while DM pagination is off for the caller."),
+    _: str = Depends(require_match("host_user")),
+) -> dict:
     friend_manager = FriendsManager(host_user)
     try:
-        result = friend_manager.read_friend(guest_user)
+        page_limit = None
+        if limit is not None and flags.is_enabled("chat_pagination_dm", host_user):
+            from routes.community import _parse_page_limit  # shared limit validation
+            cfg = get_pagination_config()
+            page_limit = _parse_page_limit(limit, cfg.initial_page_size, cfg.max_page_size)
+        result = friend_manager.read_friend(guest_user, page_limit=page_limit)
         if "error" in result:
             raise HTTPException(status_code=404, detail=result["error"])
         return {"payload": result}

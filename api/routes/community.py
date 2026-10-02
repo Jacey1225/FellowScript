@@ -445,26 +445,92 @@ async def get_friend_activity(user_id: str, _: str = Depends(require_match("user
 
 
 @friend_router.get("/{user_id}/{friend_id}")
-async def read_friend(user_id: str, friend_id: str, _: str = Depends(require_match("user_id"))) -> dict:
+async def read_friend(
+    user_id: str,
+    friend_id: str,
+    limit: str | None = Query(default=None, description="Opt in to paging: page size for the newest page of DM history. Ignored while DM pagination is off for the caller."),
+    _: str = Depends(require_match("user_id")),
+) -> dict:
     """Fetch a friend's profile and the shared DM history.
+
+    With ``limit`` and the ``chat_pagination_dm`` flag on for the caller, the
+    response carries ``friend`` plus ``messages`` (oldest-first, newest page)
+    and a ``page`` block instead of ``host_msgs``/``other_msgs``. Otherwise
+    it is the legacy shape; a missing ``page`` key means full history.
 
     Args:
         user_id: UUID of the requesting user.
         friend_id: UUID of the friend to read.
+        limit: optional page size (integer >= 1; above the configured max is
+            clamped; invalid is 422 only while the flag is on).
 
     Returns:
-        dict: Contains ``friend`` profile data, ``host_msgs``, and
-            ``other_msgs`` between the two users.
+        dict: Contains ``friend`` profile data and either ``host_msgs`` +
+            ``other_msgs`` (legacy) or ``messages`` + ``page``.
 
     Raises:
         HTTPException 404: If the friend record is not found.
+        HTTPException 422: Invalid ``limit`` (flag on).
     """
     manager = FriendsManager(user_id)
     try:
-        result = manager.read_friend(friend_id)
+        page_limit = None
+        if limit is not None and flags.is_enabled("chat_pagination_dm", user_id):
+            cfg = get_pagination_config()
+            page_limit = _parse_page_limit(limit, cfg.initial_page_size, cfg.max_page_size)
+        result = manager.read_friend(friend_id, page_limit=page_limit)
         if "error" in result:
             raise HTTPException(status_code=404, detail=result["error"])
         return result
+    finally:
+        manager.close()
+
+
+@friend_router.get("/{user_id}/{friend_id}/messages")
+@limiter.limit(lambda: get_pagination_config().rate_limits["messages_page"])
+def fetch_friend_messages(
+    request: Request,
+    user_id: str,
+    friend_id: str,
+    limit: str | None = Query(default=None, description="Page size; default is the configured page_size, above max_page_size is clamped."),
+    cursor_timestamp: str | None = Query(default=None, description="ISO 8601 timestamp of the oldest row of the previous page (the page's next_cursor_timestamp)."),
+    cursor_seq: str | None = Query(default=None, description="next_cursor_seq of the previous page (integer >= 0, optional)."),
+    cursor_id: str | None = Query(default=None, description="next_cursor_id of the previous page."),
+    _: str = Depends(require_match("user_id")),
+) -> dict:
+    """One older page of DM history, oldest-first within the page.
+
+    Authorization order: authenticate -> ``require_match`` -> flag (404 while
+    ``chat_pagination_dm`` is off for the caller) -> friend exists and is not
+    blocked (404, same as ``read_friend``) -> validate ``limit`` and the
+    cursor (422, before any SQL) -> query. Only rows exchanged between the
+    caller and ``friend_id`` can be returned, so a forged cursor can only
+    choose a window of the caller's own conversation.
+
+    Returns:
+        dict: ``{"messages": [...], "page": {limit, has_more,
+            next_cursor_timestamp, next_cursor_seq, next_cursor_id}}``.
+    """
+    if not flags.is_enabled("chat_pagination_dm", user_id):
+        raise HTTPException(status_code=404, detail="Not Found")
+    try:
+        uuid.UUID(friend_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Friend not found")
+    manager = FriendsManager(user_id)
+    try:
+        cfg = get_pagination_config()
+        page_limit = cfg.page_size if limit is None else _parse_page_limit(limit, cfg.page_size, cfg.max_page_size)
+        params = {
+            k: v for k, v in (
+                ("cursor_timestamp", cursor_timestamp), ("cursor_seq", cursor_seq), ("cursor_id", cursor_id),
+            ) if v is not None
+        }
+        cursor = paging.decode_cursor(params, id_type="uuid", with_seq=True)
+        page = manager.dm_page_for_route(friend_id, page_limit, cursor)
+        if "error" in page:
+            raise HTTPException(status_code=404, detail=page["error"])
+        return paging.envelope("messages", page["messages"], page_limit, page["has_more"], page["next_cursor"])
     finally:
         manager.close()
 

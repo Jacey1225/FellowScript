@@ -13,6 +13,7 @@ come after the column exists; creating it first fails with
   4b partial index on deleted_by so the ON DELETE SET NULL foreign key does
      not scan ``messages`` on every DELETE FROM users
   5  idx_messages_group_page
+  6  idx_messages_dm_page (partial, group_id IS NULL; DM keyset pages)
 
 Never ``CREATE INDEX CONCURRENTLY`` here: this runs inside the boot
 transaction. For a very large table the operator builds the index out of band
@@ -38,4 +39,9 @@ def apply(cur) -> None:
     cur.execute(
         "CREATE INDEX IF NOT EXISTS idx_messages_group_page "
         "ON messages (group_id, timestamp DESC, (COALESCE(seq, 0)) DESC, _id DESC)"
+    )
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_messages_dm_page "
+        "ON messages (from_user, timestamp DESC, (COALESCE(seq, 0)) DESC, _id DESC) "
+        "WHERE group_id IS NULL"
     )

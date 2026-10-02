@@ -197,6 +197,14 @@ Opt-in and flag-gated (`chat_pagination`, off by default; clients read `GET /app
 - Row shape: `{id, from_user (username), mine, text, timestamp (ISO 8601 UTC, microseconds, Z), attachment_kind, attachment_meta, attachment_url}`. `attachment_url` is a fresh short-lived presigned GET (null when there is no stored attachment); the stored key is never returned.
 - Pages are ordered `timestamp DESC, seq DESC, id DESC` with a keyset predicate, so inserts and deletes never shift older pages. Only the caller's own messages and those of current, unblocked members are returned (blocking is filtered in SQL, so a page never shrinks), and soft-deleted rows are excluded.
 
+### Direct message history paging (task 20261001-chat-pagination, backend step 4)
+
+Same opt-in contract and page envelope as group paging, behind its own flag `chat_pagination_dm` (off by default; capability `features.chat_pagination_dm`).
+
+- `GET /friends/{user_id}/{friend_id}?limit=N` and `GET /message/messages/{host_user}/?guest_user=...&limit=N` (use `limit=1` for a last-message preview): with the flag on for the caller the response carries `friend` (or the existing `payload` wrapper) plus `messages` and `page` instead of `host_msgs`/`other_msgs`. Without `limit`, or with the flag off, the legacy shape is unchanged.
+- `GET /friends/{user_id}/{friend_id}/messages?limit=&cursor_timestamp=&cursor_seq=&cursor_id=`: one older page, `{messages, page}`. `404` while the flag is off, and the same `404` as the legacy read for an unknown or blocked friend; `422` for a bad `limit` or cursor (before any SQL). Rate limited by `pagination.rate_limits.messages_page`.
+- Rows use the group row shape (`mine` is true for the caller's own messages). Only messages exchanged between the two users are returned (`group_id IS NULL`, joined through `message_recipients`), and soft-deleted rows are excluded. Index: `idx_messages_dm_page`.
+
 ### Attachments (task 20260904-messaging-attachments)
 
 A message may carry an attachment instead of (or alongside) `text` — send/receive payloads gain three optional fields:
