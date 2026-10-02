@@ -49,7 +49,7 @@ enum ExploreEntry {
         var allowed = CharacterSet.urlQueryAllowed
         allowed.remove(charactersIn: "&=+#?%/")
         guard let enc = groupId.addingPercentEncoding(withAllowedCharacters: allowed) else { return nil }
-        comps.path = ""
+        comps.path = "/"
         comps.query = nil
         comps.percentEncodedFragment = "/explore/manage?group=\(enc)"
         return comps.url

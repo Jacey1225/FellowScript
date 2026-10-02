@@ -144,8 +144,10 @@ final class GroupInfoExtraSectionsTests: XCTestCase {
         GroupInfoSectionContext(service: MockDataService.shared, groupId: "g", userId: "u", isOwner: false)
     }
 
-    func test_emptyRegistry_rendersNothing() {
-        XCTAssertTrue(GroupInfoExtraSections.registry.isEmpty)
+    func test_registry_onlyPublishRegistered_rendersNothingWhenAllOff() {
+        // IOS#2 registered the owner-only Publish row at order 10; nothing else yet.
+        XCTAssertEqual(GroupInfoExtraSections.registry.map(\.id), ["publish"])
+        XCTAssertEqual(GroupInfoExtraSections.registry.map(\.order), [10])
         XCTAssertTrue(GroupInfoExtraSections.visible(capabilities: .allOff, context: ctx).isEmpty)
     }
 
