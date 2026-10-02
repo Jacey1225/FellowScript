@@ -170,7 +170,7 @@ struct EventRow: View {
                 Image(systemName: "bolt.fill").foregroundColor(Theme.gold).font(.caption)
             }
             VStack(alignment: .leading, spacing: 2) {
-                Text(event.prompt.isEmpty ? "Untitled Event" : String(event.prompt.prefix(50)))
+                Text(event.prompt.isEmpty ? "Untitled devotion" : String(event.prompt.prefix(50)))
                     .font(.inter(Theme.fontBody))
                     .foregroundColor(Theme.parchment)
                     .lineLimit(1)
@@ -200,8 +200,8 @@ struct EventRow: View {
             }
             .buttonStyle(.plain)
             .disabled(isFiring)
-            .accessibilityLabel(isFiring ? "Firing event now" : "Fire event now")
-            .accessibilityHint("Immediately runs this event's agent and saves a note, without waiting for its schedule.")
+            .accessibilityLabel(isFiring ? "Writing devotion now" : "Write devotion now")
+            .accessibilityHint("Has your AI study partner write this scheduled devotion right now and saves a note, without waiting for its schedule.")
             // Discoverability hint: signals a long-press context menu is available.
             Image(systemName: "ellipsis")
                 .foregroundColor(Theme.textMuted)
@@ -215,7 +215,7 @@ struct EventRow: View {
             Button(role: .destructive, action: onDelete) { Label("Delete", systemImage: "trash") }
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Event: \(event.prompt.isEmpty ? "Untitled Event" : String(event.prompt.prefix(50))). Scheduled \(event.scheduleSummary).")
+        .accessibilityLabel("Scheduled devotion: \(event.prompt.isEmpty ? "Untitled devotion" : String(event.prompt.prefix(50))). Scheduled \(event.scheduleSummary).")
         .accessibilityHint("Double-tap and hold for options.")
         .accessibilityAction(named: "Edit", onEdit)
         .accessibilityAction(named: "Delete", onDelete)

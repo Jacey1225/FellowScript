@@ -192,8 +192,8 @@ extension AccountView {
                     // as fallbackPriceCents above, which mirrors GROUP_PRICE_CENTS.
                     benefitRow("Unlimited notes",
                                 "Free plan: \(vm.usage?.notes.limit ?? 10) every \(vm.usage?.window_days ?? 7) days")
-                    benefitRow("Unlimited agent events",
-                                "Free plan: \(vm.usage?.agentEvents.limit ?? 1)")
+                    benefitRow("Unlimited scheduled devotions",
+                                "Free plan includes \(vm.usage?.agentEvents.limit ?? 1) in total. Paid plans have as many as you like, such as one for morning and one for bedtime.")
                     benefitRow("Shared group access for up to \(memberCount) member\(memberCount == 1 ? "" : "s")",
                                 "Unlimited usage is shared across everyone on the plan")
                 }

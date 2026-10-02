@@ -8,7 +8,7 @@ vi.mock('../lib/invitesApi.js', async () => {
   return {
     ...actual,
     listGroupInvites: vi.fn(), createGroupInvite: vi.fn(), resetGroupInvites: vi.fn(), revokeInvite: vi.fn(),
-    listSubscriptionInvites: vi.fn(), createSubscriptionInvite: vi.fn(), resetSubscriptionInvites: vi.fn(),
+    revealGroupInvite: vi.fn(), listSubscriptionInvites: vi.fn(), createSubscriptionInvite: vi.fn(), resetSubscriptionInvites: vi.fn(),
   };
 });
 import * as api from '../lib/invitesApi.js';
@@ -92,5 +92,16 @@ describe('InviteLinkSection kind=subscription', () => {
     api.listGroupInvites.mockReturnValue(new Promise(() => {}));
     render(<InviteLinkSection userId="u1" groupId="same" reducedMotion />);
     expect(screen.queryByText(/requests left/)).toBeNull();
+  });
+
+  test('subscription rows keep the old copy and never offer Show link or legacy notice', async () => {
+    api.listSubscriptionInvites.mockResolvedValue({ invites: [INV('a'), { ...INV('b'), revealable: false }], options: OPTIONS });
+    const { container } = mount();
+    await screen.findAllByText(/requests left/);
+    expect(screen.getByText("Links can't be shown again after they're created.")).toBeInTheDocument();
+    expect(screen.queryByText('Show link')).toBeNull();
+    expect(screen.queryByText('Create new link')).toBeNull();
+    expect(container.textContent).not.toMatch(/created before showing links/);
+    expect(api.revealGroupInvite).not.toHaveBeenCalled();
   });
 });

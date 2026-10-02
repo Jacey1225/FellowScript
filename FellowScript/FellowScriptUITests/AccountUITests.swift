@@ -544,7 +544,7 @@ final class AccountUITests: XCTestCase {
     func test_eventsSection_newEventDisabled_whenNoAgents_reenabledAfterCreatingAgent() {
         let app = signInAndReachAccount()
 
-        let newEventButton = app.buttons["Create new event"]
+        let newEventButton = app.buttons["Create new scheduled devotion"]
         scrollUntilExists(newEventButton, app: app)
         XCTAssertTrue(newEventButton.isEnabled, "with the seeded mock agent present, New Event must start enabled")
 
@@ -579,7 +579,7 @@ final class AccountUITests: XCTestCase {
 
         // Events' "+ New Event" must now be disabled — gated on vm.agents.isEmpty,
         // unchanged by the visual restyle into the ghost-label-pill family.
-        let newEventAfterDelete = app.buttons["Create new event"]
+        let newEventAfterDelete = app.buttons["Create new scheduled devotion"]
         scrollUntilExists(newEventAfterDelete, app: app)
         XCTAssertFalse(newEventAfterDelete.isEnabled, "New Event must be disabled once the agents list is empty")
 
@@ -591,7 +591,7 @@ final class AccountUITests: XCTestCase {
         XCTAssertTrue(createButton.waitForExistence(timeout: 5), "expected the New Agent sheet's Create toolbar button")
         createButton.tap()
 
-        let newEventAfterCreate = app.buttons["Create new event"]
+        let newEventAfterCreate = app.buttons["Create new scheduled devotion"]
         scrollUntilExists(newEventAfterCreate, app: app, timeout: 15)
         XCTAssertTrue(newEventAfterCreate.isEnabled, "New Event must re-enable once an agent exists again")
     }
@@ -694,8 +694,9 @@ final class AccountUITests: XCTestCase {
         let notesRow = app.staticTexts["Unlimited notes"]
         XCTAssertTrue(notesRow.waitForExistence(timeout: 5), "expected the 'Unlimited notes' benefit row after expanding\n\(app.debugDescription)")
         XCTAssertTrue(app.staticTexts["Free plan: 10 every 7 days"].exists)
-        XCTAssertTrue(app.staticTexts["Unlimited agent events"].exists)
-        XCTAssertTrue(app.staticTexts["Free plan: 1"].exists)
+        XCTAssertTrue(app.staticTexts["Unlimited scheduled devotions"].exists)
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Free plan includes 1 in total.")).firstMatch.exists,
+                       "scheduled-devotions benefit subtitle must explain the free limit vs. paid plans\n\(app.debugDescription)")
 
         // Pre-purchase state: benefit copy must track the live Stepper
         // selection (selectedMemberCount starts at 1), not a static blurb.
@@ -751,7 +752,7 @@ final class AccountUITests: XCTestCase {
 
         XCTAssertTrue(app.staticTexts["Unlimited notes"].waitForExistence(timeout: 5),
                        "expected benefit rows in the active-subscriber state\n\(app.debugDescription)")
-        XCTAssertTrue(app.staticTexts["Unlimited agent events"].exists)
+        XCTAssertTrue(app.staticTexts["Unlimited scheduled devotions"].exists)
 
         // memberCount comes from plan.max_members (3) here, not a Stepper
         // selection — proves activePlanRow's call site wires the real plan

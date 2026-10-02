@@ -222,6 +222,8 @@ async def lifespan(_: FastAPI):
     # not caught here.
     from backend.interactions.invites_config import validate_invites_config
     validate_invites_config()
+    from backend.interactions.invites_config import validate_invite_link_secret
+    validate_invite_link_secret()  # INVITE_LINK_SECRET: required, min length, never logged
 
     from backend.interactions.scheduler import start_scheduler
     start_scheduler()

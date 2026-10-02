@@ -261,6 +261,11 @@ def create_tables(cur):
     # (NULL = unlimited; every pre-existing group stays uncapped).
     cur.execute("ALTER TABLE invites ALTER COLUMN expires_at DROP NOT NULL")
     cur.execute("ALTER TABLE groups ADD COLUMN IF NOT EXISTS max_members INTEGER")
+    # Task 20261002-group-invite-show-link: per-link random nonce from which a
+    # NEW group link's token is HMAC-derived (reveal endpoint). NULL = legacy
+    # link (random token, not recoverable) or subscription link. The nonce is
+    # not secret by itself (the HMAC key is server-side). Additive + idempotent.
+    cur.execute("ALTER TABLE invites ADD COLUMN IF NOT EXISTS reveal_nonce BYTEA")
     # Task 20261002-revoke-leaving-member-invite-links: leaving/removal now
     # revokes the member's group links in code; this one-off-but-idempotent
     # backfill revokes the ones orphaned before that fix.

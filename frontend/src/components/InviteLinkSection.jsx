@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Spin } from 'antd';
 import {
   listGroupInvites, createGroupInvite, revokeInvite, resetGroupInvites,
-  listSubscriptionInvites, createSubscriptionInvite, resetSubscriptionInvites,
+  revealGroupInvite, listSubscriptionInvites, createSubscriptionInvite, resetSubscriptionInvites,
 } from '../lib/invitesApi.js';
 
 // Task 20260929-group-invite-links (design-notes.md A). The "Invite link"
@@ -73,6 +73,9 @@ export default function InviteLinkSection({ userId, groupId, subscriptionId, kin
   const [createError, setCreateError] = useState(null);
   const [reveal, setReveal] = useState(null);         // { url } -- state only, never persisted
   const [copyState, setCopyState] = useState('idle'); // idle | copied | failed
+  const [shown, setShown] = useState({});           // invite_id -> url; state only, never persisted
+  const [showBusy, setShowBusy] = useState(null);
+  const [rowCopy, setRowCopy] = useState(null);       // invite_id just copied
   const [confirmId, setConfirmId] = useState(null);
   const [leavingIds, setLeavingIds] = useState([]);
   const [rowErrors, setRowErrors] = useState({});
@@ -114,6 +117,7 @@ export default function InviteLinkSection({ userId, groupId, subscriptionId, kin
     setReveal(null); setCreateError(null); setConfirmId(null); setOptionsOpen(false);
     setResetStatus(null); setResetError(null); setConfirmReset(false); setRowErrors({});
     setExpiryDays(null); setMaxUses(null); setCopyState('idle');
+    setShown({}); setShowBusy(null); setRowCopy(null);
     return load();
   }, [load]);
 
@@ -141,6 +145,7 @@ export default function InviteLinkSection({ userId, groupId, subscriptionId, kin
         invite_id: res.invite_id, created_by_username: null, is_mine: true,
         created_at: res.created_at, expires_at: res.expires_at ?? null,
         max_uses: res.max_uses, use_count: res.use_count, remaining_uses: res.max_uses - res.use_count,
+        revealable: !isSub,
       };
       applyList({ ...data, invites: [created, ...data.invites] });
     } catch (err) {
@@ -172,6 +177,43 @@ export default function InviteLinkSection({ userId, groupId, subscriptionId, kin
     } catch {
       // User dismissed the share sheet (AbortError) or it failed: the link is
       // still on screen with Copy, nothing to report.
+    }
+  };
+
+  // Group links can be shown again at any time (server re-derives the url).
+  const onShowLink = async (inv) => {
+    if (showBusy) return;
+    setShowBusy(inv.invite_id);
+    setRowErrors((e) => ({ ...e, [inv.invite_id]: null }));
+    try {
+      const res = await revealGroupInvite(userId, inv.invite_id);
+      if (!mountedRef.current) return;
+      setShown((s) => ({ ...s, [inv.invite_id]: res.url }));
+    } catch (err) {
+      if (!mountedRef.current) return;
+      const copy = err.status === 429
+        ? 'Too many tries. Wait a minute and try again.'
+        : err.status === 404
+          ? "Couldn't show this link. It may have been revoked. Make a new link to share."
+          : "Couldn't show the link. Please try again.";
+      setRowErrors((e) => ({ ...e, [inv.invite_id]: copy }));
+    } finally {
+      if (mountedRef.current) setShowBusy(null);
+    }
+  };
+
+  const hideLink = (id) => setShown((s) => { const n = { ...s }; delete n[id]; return n; });
+
+  const onCopyRow = async (id) => {
+    const url = shown[id];
+    if (!url) return;
+    clearTimeout(copyTimerRef.current);
+    try {
+      await navigator.clipboard.writeText(url);
+      setRowCopy(id);
+      copyTimerRef.current = setTimeout(() => mountedRef.current && setRowCopy(null), 2000);
+    } catch {
+      setRowErrors((e) => ({ ...e, [id]: "Couldn't copy. Select the link and copy it." }));
     }
   };
 
@@ -268,7 +310,9 @@ export default function InviteLinkSection({ userId, groupId, subscriptionId, kin
               {copyState === 'failed' && (
                 <p className="group-info-error" role="alert">Couldn't copy. Select the link and copy it.</p>
               )}
-              <p className="group-info-helper">This link is shown once. If you close this, make a new link to share again.</p>
+              <p className="group-info-helper">{isSub
+                ? 'This link is shown once. If you close this, make a new link to share again.'
+                : 'You can show this link again any time from the list below.'}</p>
               <button type="button" className="group-info-text-btn" onClick={() => setReveal(null)}>Done</button>
             </div>
           ) : (
@@ -306,7 +350,7 @@ export default function InviteLinkSection({ userId, groupId, subscriptionId, kin
 
           {invites.length > 0 && (
             <>
-              <p className="group-info-helper">Links can't be shown again after they're created.</p>
+              {isSub && <p className="group-info-helper">Links can't be shown again after they're created.</p>}
               <ul className="group-info-invite-list">
                 {invites.map((inv) => {
                   const label = expiryLabel(inv.expires_at);
@@ -320,6 +364,32 @@ export default function InviteLinkSection({ userId, groupId, subscriptionId, kin
                           {inv.remaining_uses} of {inv.max_uses} {isSub ? 'requests' : 'spots'} left · Created by {who}
                         </span>
                         {rowErrors[inv.invite_id] && <span className="group-info-error" role="alert">{rowErrors[inv.invite_id]}</span>}
+                        {!isSub && inv.revealable === false && (
+                          <span className="group-info-helper">
+                            This link was created before showing links was available, so it can't be shown. Create a new link to share it again.
+                          </span>
+                        )}
+                        {!isSub && inv.revealable !== false && shown[inv.invite_id] && (
+                          <div className="group-info-invite-reveal">
+                            <div tabIndex={-1} className="group-info-invite-url" aria-label={`Invite link ${shown[inv.invite_id]}`}>{shown[inv.invite_id]}</div>
+                            <div className="group-info-invite-actions">
+                              <button type="button" className="group-info-pill" onClick={() => onCopyRow(inv.invite_id)}>
+                                {rowCopy === inv.invite_id ? 'Copied' : 'Copy'}
+                              </button>
+                              <button type="button" className="group-info-text-btn" onClick={() => hideLink(inv.invite_id)}>Hide</button>
+                            </div>
+                          </div>
+                        )}
+                        {!isSub && inv.revealable === false && (
+                          <button type="button" className="group-info-text-btn" onClick={onCreate} disabled={creating || !options}>Create new link</button>
+                        )}
+                        {!isSub && inv.revealable !== false && !shown[inv.invite_id] && (
+                          <button type="button" className="group-info-text-btn" disabled={showBusy === inv.invite_id}
+                            aria-label={`Show link ${label.toLowerCase()}, created by ${who}`}
+                            onClick={() => onShowLink(inv)}>
+                            {showBusy === inv.invite_id ? <Spin size="small" /> : 'Show link'}
+                          </button>
+                        )}
                       </div>
                       {confirmId === inv.invite_id ? (
                         <div className="group-info-invite-confirm" role="group" aria-label="Confirm revoke">

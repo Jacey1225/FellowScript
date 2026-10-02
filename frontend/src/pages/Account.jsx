@@ -494,8 +494,8 @@ export default function Account() {
           const { used, limit } = b.detail || {};
           message.warning(
             limit != null
-              ? `Free plan limit reached (events: ${used}/${limit}). Upgrade for unlimited access.`
-              : `You've reached your free plan limit for events. Upgrade for unlimited access.`
+              ? `Free plan limit reached (scheduled devotions: ${used}/${limit}). Upgrade for as many as you like.`
+              : `You've reached your free plan limit for scheduled devotions. Upgrade for as many as you like.`
           );
         } else if (res.ok || res.status === 201) {
           setEvModal(false);
@@ -739,7 +739,7 @@ export default function Account() {
 
   // ── Event modal step content ───────────────────────────────────────────────
 
-  const evModalTitle = ['How often?', 'Select Days', 'Event Details'][evStep];
+  const evModalTitle = ['How often?', 'Select Days', 'Devotion Details'][evStep];
 
   const evModalContent = () => {
     if (evStep === 0) {
@@ -817,7 +817,7 @@ export default function Account() {
           </div>
         )}
         <div>
-          <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.7rem', letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(200,134,26,0.55)', display: 'block', marginBottom: 6 }}>Event Time</Text>
+          <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.7rem', letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(200,134,26,0.55)', display: 'block', marginBottom: 6 }}>Devotion Time</Text>
           <TimePicker value={evTime} onChange={v => v && setEvTime(v)} format="HH:mm" use12Hours={false} style={{ width: '100%' }} />
         </div>
         {/* Gold dropdown-trigger + group submenu (task 20260902-group-tagged-devotions).
@@ -854,7 +854,7 @@ export default function Account() {
         <div>
           <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.7rem', letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(200,134,26,0.55)', display: 'block', marginBottom: 6 }}>Prompt</Text>
           <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.72rem', color: 'rgba(244,228,193,0.35)', display: 'block', marginBottom: 8 }}>
-            The agent will respond to this prompt when the event fires and save the response as a note.
+            Every day at your chosen time, your AI study partner writes a devotion from this prompt and saves it as a note, even when the app is closed.
           </Text>
           <Input.TextArea
             value={evPrompt} onChange={e => setEvPrompt(e.target.value)}
@@ -1011,14 +1011,14 @@ export default function Account() {
               Plan Usage
             </Text>
             <UsageMeter label="Notes" hint={`last ${usage.window_days} days`} data={usage.resources?.notes} />
-            <UsageMeter label="Agent events" data={usage.resources?.agent_events} />
-            <UsageMeter label="Agent notifications" data={usage.resources?.agent_notifications} />
+            <UsageMeter label="Scheduled devotions" data={usage.resources?.agent_events} />
+            <UsageMeter label="Notifications" data={usage.resources?.agent_notifications} />
             {!usage.subscribed && (
               <Alert
                 type="info"
                 showIcon
                 style={{ marginTop: '0.5rem', borderRadius: 8, background: 'rgba(200,134,26,0.08)', border: '1px solid rgba(200,134,26,0.25)' }}
-                message="You're on the free plan. Upgrade to an Individual or Group plan for unlimited notes, events, and notifications."
+                message="You're on the free plan. Upgrade to an Individual or Group plan for unlimited notes, scheduled devotions, and notifications."
               />
             )}
           </Card>
@@ -1200,23 +1200,23 @@ export default function Account() {
         <Card style={{ ...CARD_STYLE, animationDelay: '0.38s', animation: 'fadeUp 0.55s ease forwards', opacity: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.8rem' }}>
             <Text className="fs-eyebrow" style={{ marginBottom: 0 }}>
-              Events
+              Scheduled devotions
             </Text>
             <Button size="small" type="text" icon={<PlusOutlined />}
               onClick={openEventModal}
               disabled={agents.length === 0}
               style={{ color: 'rgba(200,134,26,0.6)', fontSize: '0.7rem' }}>
-              New Event
+              New scheduled devotion
             </Button>
           </div>
           <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.74rem', color: 'rgba(244,228,193,0.35)', display: 'block', marginBottom: '1rem', lineHeight: 1.65 }}>
-            Scheduled events trigger an agent to write a note automatically at the set time.
+            Pick a time and a prompt. Every day at that time your AI study partner writes a devotion for you and saves it as a note, even when the app is closed. Try a morning devotion, an evening prayer prompt, a weekly recap, or a reading-plan check-in.
           </Text>
           {agentsLoading
             ? <Spin size="small" />
             : events.length === 0
               ? <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.8rem', color: 'rgba(244,228,193,0.28)' }}>
-                  {agents.length === 0 ? 'Create an agent first to add events.' : 'No events yet. Add one to get started.'}
+                  {agents.length === 0 ? 'Create an agent in the Agents section first to schedule a devotion.' : 'No scheduled devotions yet. Add one to wake up to a devotion each day.'}
                 </Text>
               : events.map(ev => {
                   const agent = agents.find(a => a.id === ev.agent_id);
@@ -1227,7 +1227,7 @@ export default function Account() {
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.82rem', color: 'var(--parchment)', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {ev.prompt || 'Untitled Event'}
+                          {ev.prompt || 'Untitled devotion'}
                         </Text>
                         <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.65rem', color: 'rgba(244,228,193,0.35)' }}>
                           {scheduleSummary(ev.timestamps)}{agent ? ` · ${agentLabel(agent)}` : ''}
@@ -1270,7 +1270,7 @@ export default function Account() {
         <Modal
           open={evModal}
           title={<Text style={{ fontFamily: "'Playfair Display', serif", color: 'var(--parchment)' }}>
-            {editingEvent ? `Edit Event` : evModalTitle}
+            {editingEvent ? `Edit scheduled devotion` : evModalTitle}
           </Text>}
           onCancel={() => setEvModal(false)}
           footer={evModalFooter()}

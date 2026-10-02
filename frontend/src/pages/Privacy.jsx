@@ -103,7 +103,7 @@ export default function Privacy() {
             <li style={S.li}>Bible study notes (public and private)</li>
             <li style={S.li}>Verse highlights and bookmarks</li>
             <li style={S.li}>Messages sent within groups or direct conversations</li>
-            <li style={S.li}>AI agent conversation history and custom agent configurations</li>
+            <li style={S.li}>AI agent conversation history, custom agent configurations, and your scheduled devotions (the prompts and times you choose, and the notes they produce)</li>
             <li style={S.li}>Custom notification schedules and reminder prompts you configure</li>
           </ul>
 
@@ -171,7 +171,7 @@ export default function Privacy() {
           <ul style={S.ul}>
             <li style={S.li}><strong style={S.strong}>With other users:</strong> Content you mark as "public" (notes, highlights) is visible to your connections. Private content is visible only to you. Your username is visible to friends and group members.</li>
             <li style={S.li}><strong style={S.strong}>Infrastructure providers:</strong> We use Amazon Web Services (AWS) for cloud hosting and video calling infrastructure. AWS processes data on our behalf under a data processing agreement and may not use your data for their own purposes.</li>
-            <li style={S.li}><strong style={S.strong}>AI provider:</strong> Conversations with AI agents and notification prompt content are sent to OpenRouter (our AI infrastructure provider) to generate responses. OpenRouter processes this data under their privacy policy. We do not send personally identifiable account information (name, email) to OpenRouter alongside AI queries.</li>
+            <li style={S.li}><strong style={S.strong}>AI provider:</strong> Conversations with AI agents, scheduled devotion prompts, and notification prompt content are sent to OpenRouter (our AI infrastructure provider) to generate responses. OpenRouter processes this data under their privacy policy. We do not send personally identifiable account information (name, email) to OpenRouter alongside AI queries.</li>
             <li style={S.li}><strong style={S.strong}>Payment processors:</strong> On the web, subscription and one-time payments are processed by <strong style={S.strong}>Stripe</strong>, which receives your email address and payment method details directly — we never see or store your full card number. On iOS, purchases are processed entirely by <strong style={S.strong}>Apple's App Store</strong> (StoreKit) under Apple's own privacy policy.</li>
             <li style={S.li}><strong style={S.strong}>Sign-in providers:</strong> If you choose to sign in with <strong style={S.strong}>Apple</strong> or <strong style={S.strong}>Google</strong>, that provider authenticates you and shares a stable account identifier (and, on first authorization only, your name/email) with us, governed by Apple's or Google's own privacy policy.</li>
             <li style={S.li}><strong style={S.strong}>Apple push notifications:</strong> Push notification delivery is facilitated by Apple's APNs infrastructure. Apple receives your device token and notification payload to deliver notifications. Apple's handling of this data is governed by Apple's Privacy Policy.</li>

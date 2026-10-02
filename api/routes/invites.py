@@ -14,6 +14,7 @@ module is only auth, rate limits, the feature flag, and HTTP mapping.
   POST   /invites/{user_id}/subscriptions/{subscription_id}        create (plan owner only)
   GET    /invites/{user_id}/subscriptions/{subscription_id}        list (plan owner only)
   POST   /invites/{user_id}/subscriptions/{subscription_id}/reset  revoke all (plan owner only)
+  GET    /invites/{user_id}/{invite_id}/reveal     re-show a derived group link (creator/manager)
   DELETE /invites/{user_id}/{invite_id}            revoke one
 
 The token travels in a POST *body* (never a URL path/query) for preview and
@@ -280,6 +281,37 @@ async def reset_group_invites(
         return {"revoked": manager.reset("group", group_id, ip=get_client_ip(request))}
     except InviteError as e:
         raise _http(e)
+    finally:
+        manager.close()
+
+
+@invites_router.get("/{user_id}/{invite_id}/reveal")
+@limiter.limit(_rate("reveal"))
+@limiter.limit(_rate("reveal_per_user"), key_func=_user_key)
+async def reveal_invite(
+    request: Request, response: Response, user_id: str, invite_id: str,
+    _: str = Depends(require_match("user_id")),
+) -> dict:
+    """Re-show an active group link's URL to its creator or the group's
+    manager. Legacy (non-derived) links cannot be revealed.
+
+    Returns:
+        dict: ``{"invite_id", "url"}``. ``Cache-Control: no-store``.
+
+    Raises:
+        HTTPException 404: one uniform not_found for every failure (unknown,
+        revoked, expired, exhausted, legacy, subscription, not authorized).
+        429: rate limited.
+    """
+    response.headers["Cache-Control"] = "no-store"
+    _require_enabled()
+    manager = InvitesManager(user_id)
+    try:
+        return manager.reveal(invite_id, ip=get_client_ip(request))
+    except InviteError as e:
+        exc = _http(e)
+        exc.headers = {"Cache-Control": "no-store"}
+        raise exc
     finally:
         manager.close()
 

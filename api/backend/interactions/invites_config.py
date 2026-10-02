@@ -15,6 +15,7 @@ of the client builds, and flipping it is a deliberate, separate step.
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlparse
@@ -23,7 +24,7 @@ from limits import parse as _parse_rate
 
 CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "invites.json"
 
-_RATE_KEYS = ("preview", "redeem", "redeem_per_user", "create", "list", "revoke")
+_RATE_KEYS = ("preview", "redeem", "redeem_per_user", "create", "list", "revoke", "reveal", "reveal_per_user")
 _TOP_KEYS = (
     "enabled", "public_base_url", "default_expiry_days", "allowed_expiry_days",
     "default_max_uses", "allowed_max_uses", "max_active_links_per_user_per_group",
@@ -204,3 +205,49 @@ def set_invites_config_for_tests(cfg: InvitesConfig | None) -> None:
     """Test hook: install (or clear, with None) an in-memory config."""
     global _config
     _config = cfg
+
+
+# -- INVITE_LINK_SECRET (task 20261002-group-invite-show-link) ----------------
+#
+# Server-side HMAC key used to derive new group-link tokens from a per-link
+# nonce so the link can be re-shown (reveal endpoint). Env var, required, no
+# implicit default, validated eagerly at startup. The value is never logged,
+# dumped, or echoed in an error message.
+#
+# Rotation: changing the secret does NOT affect redeem/preview/revoke (they use
+# only the stored SHA-256 hash). It makes reveal fail (uniform not_found) for
+# every previously derived link, since the recomputed token no longer matches
+# the stored hash. Create new links after rotating.
+
+INVITE_LINK_SECRET_ENV = "INVITE_LINK_SECRET"
+MIN_INVITE_LINK_SECRET_LEN = 32
+
+
+class InviteSecretConfigError(RuntimeError):
+    """INVITE_LINK_SECRET is unset or too short. Never contains the value."""
+
+
+def get_invite_link_secret() -> bytes:
+    """Return the HMAC key bytes.
+
+    Raises:
+        InviteSecretConfigError: if the variable is unset/blank or shorter
+            than ``MIN_INVITE_LINK_SECRET_LEN`` characters.
+    """
+    raw = os.environ.get(INVITE_LINK_SECRET_ENV)
+    if raw is None or not raw.strip():
+        raise InviteSecretConfigError(
+            f"{INVITE_LINK_SECRET_ENV} is not set. There is no implicit default -- "
+            f"set it to a random secret of at least {MIN_INVITE_LINK_SECRET_LEN} characters."
+        )
+    if len(raw) < MIN_INVITE_LINK_SECRET_LEN:
+        raise InviteSecretConfigError(
+            f"{INVITE_LINK_SECRET_ENV} is too short: it must be at least "
+            f"{MIN_INVITE_LINK_SECRET_LEN} characters."
+        )
+    return raw.encode("utf-8")
+
+
+def validate_invite_link_secret() -> None:
+    """Eager startup check (main.py lifespan). Deliberately not caught."""
+    get_invite_link_secret()

@@ -38,13 +38,13 @@ uses native push/pop navigation.
 There is only one paid tier — **Group** (1-8 members), priced by member count. There is no
 separate "individual" plan; a 1-member group plan covers that case.
 
-Upgrade prompt: "Upgrade to unlock unlimited notes, AI check-ins, and notifications."
+Upgrade prompt: "Upgrade to unlock unlimited notes, scheduled devotions, and notifications. Free includes 1 scheduled devotion; paid plans let you have as many as you like, such as one for morning and one for bedtime."
 
 Clicking **Upgrade** on web opens a Stripe Checkout session (`POST /subscriptions/stripe/checkout`). On iOS, tapping the plan tile triggers StoreKit 2 (`StoreKitManager`).
 
 **"What's included" disclosure (iOS)** — both the active-subscriber row and the pre-purchase
 member-count picker include a tappable "What's included" row (`chevron.down`/`chevron.up`)
-that expands in place to list the plan's benefits: unlimited notes, unlimited agent events,
+that expands in place to list the plan's benefits: unlimited notes, unlimited scheduled devotions (wire name `agent_events`),
 and shared group access for up to the selected/purchased member count. (The former "unlimited
 agent notifications" line was removed 2026-08-26 along with the user-authored notification
 feature — see the Notifications note below.) Free-tier caps shown in each line are read live
@@ -66,10 +66,13 @@ Account deletion requires the user to type their username as confirmation, then 
 
 The delete endpoint manually removes owned notes, nulls message and devotion author fields, then deletes the user row. All remaining related rows (subscriptions, highlights, bookmarks, agents) cascade automatically via FK constraints.
 
-### Events
+### Scheduled devotions (internal: Events / heartbeats)
 
-Each event row lists one scheduled agent heartbeat (recurring AI check-in that generates and
-saves a note when it fires). Edit/Delete are reachable via a long-press context menu on both
+User-facing term (renamed from "Events" / "Agent events"): "scheduled devotions". Each row lists one
+scheduled devotion (internal name: agent heartbeat): every day at the chosen time your AI study
+partner writes a devotion and saves it as a note, even when the app is closed. Free plan includes 1 in total;
+paid plans: as many as you like. Code, routes and analytics keep the internal names (see the naming table in
+`docs/index.md`). Edit/Delete are reachable via a long-press context menu on both
 platforms.
 
 **Manual "execute now" trigger (iOS only, 2026-09-01; force-fire, 2026-09-01).** Each `EventRow`

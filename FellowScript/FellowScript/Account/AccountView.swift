@@ -244,7 +244,7 @@ struct AccountView: View {
         } message: {
             Text(vm.limitMsg ?? "")
         }
-        .alert("Agent Error", isPresented: Binding(
+        .alert("Something Went Wrong", isPresented: Binding(
             get:  { vm.agentMsg != nil },
             set:  { if !$0 { vm.agentMsg = nil } }
         )) {

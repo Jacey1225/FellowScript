@@ -236,10 +236,10 @@ extension AccountView {
                 sectionLabel("Plan Usage")
                 usageRow("Notes", usage.notes, hint: "last \(usage.window_days) days", forceUnlimited: unlimited)
                 Divider().background(Theme.borderGoldFaint)
-                usageRow("Agent events", usage.agentEvents, hint: nil, forceUnlimited: unlimited)
+                usageRow("Scheduled devotions", usage.agentEvents, hint: nil, forceUnlimited: unlimited)
                 if !unlimited {
                     Divider().background(Theme.borderGoldFaint)
-                    Text("You're on the free plan. Upgrade to a Group plan for unlimited notes and events.")
+                    Text("You're on the free plan. Upgrade to a Group plan for unlimited notes and scheduled devotions.")
                         .font(.inter(Theme.fontSM))
                         .foregroundColor(Theme.textGoldMuted)
                 }

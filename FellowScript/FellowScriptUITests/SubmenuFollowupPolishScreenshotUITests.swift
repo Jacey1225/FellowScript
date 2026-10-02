@@ -246,11 +246,11 @@ final class SubmenuFollowupPolishScreenshotUITests: XCTestCase {
         XCTAssertTrue(accountTab.waitForExistence(timeout: 10), "expected the Account tab.\n\(app.debugDescription)")
         waitHittableThenTap(accountTab)
 
-        let createEventButton = app.buttons["Create new event"]
+        let createEventButton = app.buttons["Create new scheduled devotion"]
         XCTAssertTrue(createEventButton.waitForExistence(timeout: 10), "expected AccountView's Create new event control.\n\(app.debugDescription)")
         scrollToAndTap(createEventButton, app: app)
 
-        let title = app.staticTexts["New Event"]
+        let title = app.staticTexts["New scheduled devotion"]
         XCTAssertTrue(title.waitForExistence(timeout: 8), "expected EventSetupSheet.recurrenceScreen's centered `.principal` title.\n\(app.debugDescription)")
 
         let cancelButton = app.buttons["Cancel"]
@@ -271,7 +271,7 @@ final class SubmenuFollowupPolishScreenshotUITests: XCTestCase {
         XCTAssertTrue(accountTab.waitForExistence(timeout: 10))
         waitHittableThenTap(accountTab)
 
-        let createEventButton = app.buttons["Create new event"]
+        let createEventButton = app.buttons["Create new scheduled devotion"]
         XCTAssertTrue(createEventButton.waitForExistence(timeout: 10), "expected AccountView's Create new event control.\n\(app.debugDescription)")
         scrollToAndTap(createEventButton, app: app)
 
@@ -285,7 +285,7 @@ final class SubmenuFollowupPolishScreenshotUITests: XCTestCase {
 
         // Item 2: EVENT TIME and GROUP must both be visible together, on the
         // same screen without scrolling, as one merged row.
-        let eventTimeLabel = app.staticTexts["EVENT TIME"]
+        let eventTimeLabel = app.staticTexts["DEVOTION TIME"]
         let groupLabel = app.staticTexts["GROUP"]
         XCTAssertTrue(eventTimeLabel.waitForExistence(timeout: 8), "expected the EVENT TIME card in the merged row.\n\(app.debugDescription)")
         XCTAssertTrue(groupLabel.waitForExistence(timeout: 5), "expected the GROUP card in the same merged row")

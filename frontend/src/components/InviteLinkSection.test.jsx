@@ -5,9 +5,9 @@ import { render, screen, cleanup, waitFor, fireEvent, within } from '@testing-li
 
 vi.mock('../lib/invitesApi.js', async () => {
   const actual = await vi.importActual('../lib/invitesApi.js');
-  return { ...actual, listGroupInvites: vi.fn(), createGroupInvite: vi.fn(), revokeInvite: vi.fn(), resetGroupInvites: vi.fn() };
+  return { ...actual, listGroupInvites: vi.fn(), createGroupInvite: vi.fn(), revokeInvite: vi.fn(), resetGroupInvites: vi.fn(), revealGroupInvite: vi.fn() };
 });
-import { listGroupInvites, createGroupInvite, revokeInvite, resetGroupInvites, InviteApiError } from '../lib/invitesApi.js';
+import { listGroupInvites, createGroupInvite, revokeInvite, resetGroupInvites, revealGroupInvite, InviteApiError } from '../lib/invitesApi.js';
 import InviteLinkSection, { _clearInviteCaches } from './InviteLinkSection.jsx';
 
 const OPTIONS = { default_expiry_days: 7, default_max_uses: 25, allowed_expiry_days: [1, 7, 30], allowed_max_uses: [1, 5, 25] };
@@ -22,7 +22,7 @@ const mount = (props = {}) => render(<InviteLinkSection userId="u1" groupId="g1"
 
 beforeEach(() => {
   _clearInviteCaches();
-  [listGroupInvites, createGroupInvite, revokeInvite, resetGroupInvites].forEach((f) => f.mockReset());
+  [listGroupInvites, createGroupInvite, revokeInvite, resetGroupInvites, revealGroupInvite].forEach((f) => f.mockReset());
   Object.assign(navigator, { clipboard: { writeText: vi.fn().mockResolvedValue() } });
 });
 afterEach(() => { cleanup(); delete navigator.share; });
@@ -40,7 +40,8 @@ describe('InviteLinkSection', () => {
     expect(await screen.findByText(/22 of 25 spots left · Created by you/)).toBeInTheDocument();
     expect(screen.getByText(/Created by ann/)).toBeInTheDocument();
     expect(container.textContent).not.toMatch(/fellowscript\.com\/join/);
-    expect(screen.getByText("Links can't be shown again after they're created.")).toBeInTheDocument();
+    expect(container.textContent).not.toMatch(/can't be shown again/);
+    expect(screen.getAllByText('Show link')).toHaveLength(2);
     expect(screen.getByText('Reset all links')).toBeInTheDocument();
   });
 
@@ -53,7 +54,8 @@ describe('InviteLinkSection', () => {
     fireEvent.click(await screen.findByText('Create invite link'));
     expect(await screen.findByText(URL)).toBeInTheDocument();
     expect(createGroupInvite).toHaveBeenCalledWith('u1', 'g1', { maxUses: 25 }); // group links never send an expiry
-    expect(screen.getByText(/shown once/)).toBeInTheDocument();
+    expect(container.textContent).not.toMatch(/shown once/);
+    expect(screen.getByText(/show this link again any time/)).toBeInTheDocument();
     fireEvent.click(screen.getByText('Copy'));
     await waitFor(() => expect(navigator.clipboard.writeText).toHaveBeenCalledWith(URL));
     expect(await screen.findByText('Copied')).toBeInTheDocument();
@@ -212,5 +214,93 @@ describe('InviteLinkSection', () => {
     const onForbidden = vi.fn();
     mount({ onForbidden });
     await waitFor(() => expect(onForbidden).toHaveBeenCalled());
+  });
+
+  describe('Show link (group reveal)', () => {
+    test('Show link fetches, shows url inline with Copy and Hide', async () => {
+      listGroupInvites.mockResolvedValue({ invites: [INV('i1', { is_mine: true, revealable: true })], options: OPTIONS });
+      revealGroupInvite.mockResolvedValue({ url: URL, invite_id: 'i1' });
+      const { container } = mount();
+      fireEvent.click(await screen.findByText('Show link'));
+      expect(await screen.findByText(URL)).toBeInTheDocument();
+      expect(revealGroupInvite).toHaveBeenCalledWith('u1', 'i1');
+      fireEvent.click(screen.getByText('Copy'));
+      await waitFor(() => expect(navigator.clipboard.writeText).toHaveBeenCalledWith(URL));
+      expect(await screen.findByText('Copied')).toBeInTheDocument();
+      fireEvent.click(screen.getByText('Hide'));
+      expect(container.textContent).not.toContain(URL);
+      expect(screen.getByText('Show link')).toBeInTheDocument();
+    });
+
+    test('revealable undefined (old server) is treated as revealable', async () => {
+      listGroupInvites.mockResolvedValue({ invites: [INV('i1')], options: OPTIONS });
+      mount();
+      expect(await screen.findByText('Show link')).toBeInTheDocument();
+      expect(screen.queryByText('Create new link')).toBeNull();
+    });
+
+    test('legacy (revealable=false) row shows notice and Create new link, no Show link', async () => {
+      listGroupInvites.mockResolvedValue({ invites: [INV('old', { revealable: false })], options: OPTIONS });
+      createGroupInvite.mockResolvedValue({ invite_id: 'n1', url: URL, created_at: future(0), expires_at: null, max_uses: 25, use_count: 0 });
+      mount();
+      expect(await screen.findByText(/created before showing links was available/)).toBeInTheDocument();
+      expect(screen.queryByText('Show link')).toBeNull();
+      fireEvent.click(screen.getByText('Create new link'));
+      expect(await screen.findByText(URL)).toBeInTheDocument();
+      expect(createGroupInvite).toHaveBeenCalledWith('u1', 'g1', { maxUses: 25 });
+      expect(revealGroupInvite).not.toHaveBeenCalled();
+    });
+
+    test('404 reveal shows friendly message and no url', async () => {
+      listGroupInvites.mockResolvedValue({ invites: [INV('i1', { revealable: true })], options: OPTIONS });
+      revealGroupInvite.mockRejectedValue(new InviteApiError('x', 404, 'not_found'));
+      const { container } = mount();
+      fireEvent.click(await screen.findByText('Show link'));
+      expect(await screen.findByText(/Couldn't show this link/)).toBeInTheDocument();
+      expect(container.textContent).not.toMatch(/fellowscript\.com\/join/);
+      expect(screen.getByText('Show link')).toBeInTheDocument();
+    });
+
+    test('429 and generic failures show their own messages', async () => {
+      listGroupInvites.mockResolvedValue({ invites: [INV('i1', { revealable: true })], options: OPTIONS });
+      revealGroupInvite.mockRejectedValueOnce(new InviteApiError('x', 429));
+      mount();
+      fireEvent.click(await screen.findByText('Show link'));
+      expect(await screen.findByText(/Too many tries/)).toBeInTheDocument();
+      revealGroupInvite.mockRejectedValueOnce(new InviteApiError('x', 500));
+      fireEvent.click(screen.getByText('Show link'));
+      expect(await screen.findByText(/Couldn't show the link\. Please try again/)).toBeInTheDocument();
+    });
+
+    test('revealed url lives only in component state: not in localStorage/sessionStorage, gone after unmount', async () => {
+      listGroupInvites.mockResolvedValue({ invites: [INV('i1', { revealable: true })], options: OPTIONS });
+      revealGroupInvite.mockResolvedValue({ url: URL, invite_id: 'i1' });
+      const first = mount();
+      fireEvent.click(await screen.findByText('Show link'));
+      await screen.findByText(URL);
+      const writes = [];
+      const mk = () => ({ setItem: (k, v) => writes.push(String(v)), getItem: () => null, removeItem: () => {} });
+      vi.stubGlobal('localStorage', mk());
+      vi.stubGlobal('sessionStorage', mk());
+      fireEvent.click(screen.getByText('Hide'));
+      fireEvent.click(screen.getByText('Show link'));
+      await screen.findByText(URL);
+      expect(writes.join('|')).not.toContain('Z'.repeat(43));
+      vi.unstubAllGlobals();
+      first.unmount();
+      mount();
+      await screen.findByText('Show link');
+      expect(document.body.textContent).not.toContain(URL);
+    });
+
+    test('revealed url cleared when the group changes', async () => {
+      listGroupInvites.mockResolvedValue({ invites: [INV('i1', { revealable: true })], options: OPTIONS });
+      revealGroupInvite.mockResolvedValue({ url: URL, invite_id: 'i1' });
+      const { rerender } = mount();
+      fireEvent.click(await screen.findByText('Show link'));
+      await screen.findByText(URL);
+      rerender(<InviteLinkSection userId="u1" groupId="g2" reducedMotion />);
+      await waitFor(() => expect(document.body.textContent).not.toContain(URL));
+    });
   });
 });

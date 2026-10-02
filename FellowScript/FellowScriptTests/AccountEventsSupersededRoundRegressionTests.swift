@@ -260,7 +260,7 @@ final class AccountEventsSectionNotYetLoadedBranchRegressionTests: XCTestCase {
         XCTAssertTrue(loading.lowerBound < notLoaded.lowerBound && notLoaded.lowerBound < empty.lowerBound)
         let branch = String(source[notLoaded.upperBound..<empty.lowerBound])
         XCTAssertTrue(branch.contains("Pull down to refresh"), "the not-yet-loaded copy must point at the existing retry path")
-        XCTAssertFalse(branch.contains("No events yet"), "must not reuse the confirmed-empty copy")
+        XCTAssertFalse(branch.contains("No scheduled devotions yet"), "must not reuse the confirmed-empty copy")
         XCTAssertFalse(branch.contains("ProgressView"), "must not pretend a round is still running")
     }
 }

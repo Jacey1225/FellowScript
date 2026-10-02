@@ -19,6 +19,8 @@
     "redeem_per_user": "10/minute",
     "create": "10/minute",
     "list": "60/minute",
-    "revoke": "30/minute"
+    "revoke": "30/minute",
+    "reveal": "30/minute",
+    "reveal_per_user": "30/minute"
   }
 }

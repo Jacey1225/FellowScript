@@ -72,7 +72,7 @@ function MobileDownload() {
         Get the FellowScript app
       </h1>
       <p style={{ fontSize: 16, lineHeight: 1.65, color: 'rgba(255,243,228,0.72)', margin: 0, maxWidth: '26em' }}>
-        FellowScript's reader lives in the app, built for your phone from the ground up — highlights, notes, and daily check-ins all in one calm place.
+        FellowScript's reader lives in the app, built for your phone from the ground up — highlights, notes, and scheduled devotions all in one calm place.
       </p>
       <a
         href={APP_STORE_URL}

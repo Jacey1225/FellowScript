@@ -676,7 +676,7 @@ final class AccountViewModel: ObservableObject {
         // nothing and leaving whatever was already on screen is the
         // fail-closed-consistent (Q14), honest choice here.
         if statsFailed && !wasCancelled {
-            statsMsg = "We couldn't load some of your account data (notes, highlights, agents, events, or profile/usage info) just now. Pull down to refresh and try again."
+            statsMsg = "We couldn't load some of your account data (notes, highlights, agents, scheduled devotions, or profile/usage info) just now. Pull down to refresh and try again."
         }
 
         // ── Write fresh account data back to the cache ────────────────────────────
@@ -744,7 +744,7 @@ final class AccountViewModel: ObservableObject {
             await refreshUsage()
         } catch {
             // Free-tier cap (or other failure): don't add the event, tell the user.
-            limitMsg = (error as? LocalizedError)?.errorDescription ?? "Could not create event."
+            limitMsg = (error as? LocalizedError)?.errorDescription ?? "Could not create scheduled devotion."
         }
     }
 
@@ -801,18 +801,18 @@ final class AccountViewModel: ObservableObject {
                 agentMsg = serverError
             } else {
                 await refreshUsage()
-                showEventFireMsg(.success, "Event fired — check your notes.")
+                showEventFireMsg(.success, "Devotion written — check your notes.")
             }
         } catch let error as AppError {
             firingHeartbeatIds.remove(event.id)
             if case .limitReached = error {
                 limitMsg = error.errorDescription ?? "You've reached your free plan limit for notes."
             } else {
-                agentMsg = error.errorDescription ?? "Could not fire event."
+                agentMsg = error.errorDescription ?? "Could not write devotion."
             }
         } catch {
             firingHeartbeatIds.remove(event.id)
-            agentMsg = (error as? LocalizedError)?.errorDescription ?? "Could not fire event."
+            agentMsg = (error as? LocalizedError)?.errorDescription ?? "Could not write devotion."
         }
     }
 
@@ -839,7 +839,7 @@ final class AccountViewModel: ObservableObject {
                 // Revert the optimistic removal so the UI and server can't
                 // permanently disagree with no signal to the user (compile-errors #2).
                 events = previous
-                agentMsg = (error as? LocalizedError)?.errorDescription ?? "Could not delete event."
+                agentMsg = (error as? LocalizedError)?.errorDescription ?? "Could not delete scheduled devotion."
             }
         }
     }
@@ -856,7 +856,7 @@ final class AccountViewModel: ObservableObject {
         } catch {
             // Server rejected the edit — leave the pre-existing event untouched
             // rather than applying it locally, and tell the user.
-            agentMsg = (error as? LocalizedError)?.errorDescription ?? "Could not save event."
+            agentMsg = (error as? LocalizedError)?.errorDescription ?? "Could not save scheduled devotion."
         }
     }
 

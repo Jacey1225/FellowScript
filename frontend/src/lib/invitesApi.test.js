@@ -4,7 +4,7 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   previewInvite, redeemInvite, listGroupInvites, createGroupInvite,
-  revokeInvite, resetGroupInvites, parseInviteInput, isWellFormedInviteToken,
+  revokeInvite, resetGroupInvites, revealGroupInvite, parseInviteInput, isWellFormedInviteToken,
   InviteApiError,
 } from './invitesApi.js';
 
@@ -117,5 +117,28 @@ describe('token format + pasted input parsing', () => {
     ['garbage', 'hello world'],
   ])('rejects %s', (_n, input) => {
     expect(parseInviteInput(input)).toBeNull();
+  });
+});
+
+describe('revealGroupInvite', () => {
+  test('GETs the reveal route with no-store and no token anywhere in the request', async () => {
+    fetchMock.mockResolvedValue(ok({ url: `https://fellowscript.com/join/${TOKEN}`, invite_id: 'i1' }));
+    const res = await revealGroupInvite('u1', 'i1');
+    const [url, opts] = fetchMock.mock.calls[0];
+    expect(url).toContain('/invites/u1/i1/reveal');
+    expect(opts.cache).toBe('no-store');
+    expect(opts.method).toBeUndefined();
+    expect(opts.body).toBeUndefined();
+    expect(res.url).toContain(TOKEN);
+  });
+
+  test('404 throws InviteApiError with status 404 (never fabricates a url)', async () => {
+    fetchMock.mockResolvedValue(fail(404, { detail: 'not found' }));
+    await expect(revealGroupInvite('u1', 'i1')).rejects.toMatchObject({ name: 'InviteApiError', status: 404 });
+  });
+
+  test('network failure throws status 0', async () => {
+    fetchMock.mockRejectedValue(new Error('offline'));
+    await expect(revealGroupInvite('u1', 'i1')).rejects.toMatchObject({ status: 0 });
   });
 });

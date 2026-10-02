@@ -234,6 +234,7 @@ protocol DataServiceProtocol {
     func redeemInvite(userId: String, token: String) async throws -> FSInviteRedeemResult
     func listGroupInvites(userId: String, groupId: String) async throws -> FSInviteList
     func createGroupInvite(userId: String, groupId: String, expiresInDays: Int?, maxUses: Int) async throws -> FSInviteCreated
+    func revealGroupInvite(userId: String, inviteId: String) async throws -> String
     func revokeInvite(userId: String, inviteId: String) async throws
     func resetGroupInvites(userId: String, groupId: String) async throws -> Int
     // Subscription-seat invite links (task 20260930-subscription-seat-invites): plan owner only.
@@ -323,6 +324,7 @@ extension DataServiceProtocol {
     func redeemInvite(userId: String, token: String) async throws -> FSInviteRedeemResult { throw invitesUnsupported }
     func listGroupInvites(userId: String, groupId: String) async throws -> FSInviteList { throw invitesUnsupported }
     func createGroupInvite(userId: String, groupId: String, expiresInDays: Int?, maxUses: Int) async throws -> FSInviteCreated { throw invitesUnsupported }
+    func revealGroupInvite(userId: String, inviteId: String) async throws -> String { throw invitesUnsupported }
     func revokeInvite(userId: String, inviteId: String) async throws { throw invitesUnsupported }
     func resetGroupInvites(userId: String, groupId: String) async throws -> Int { throw invitesUnsupported }
     func listSubscriptionInvites(userId: String, subscriptionId: String) async throws -> FSInviteList { throw invitesUnsupported }
@@ -937,10 +939,15 @@ enum AppError: LocalizedError {
                 return "This note is too long to save: the limit is \(NoteLength.format(limit)) characters\(overPart). "
                      + "Shorten it and try again. Your text is kept."
             }
+            if resource == "agent_events" {
+                // User-facing term is "scheduled devotions"; the wire name
+                // "agent_events" is a public identifier and stays as-is.
+                return "Your free plan includes \(limit) scheduled devotion\(limit == 1 ? "" : "s"). "
+                     + "Upgrade to a Group plan for as many as you like, such as one for morning and one for bedtime."
+            }
             let name: String
             switch resource {
             case "notes":        name = "notes"
-            case "agent_events": name = "agent events"
             default:             name = resource
             }
             return "You've reached your free plan limit for \(name) (max \(limit)). "

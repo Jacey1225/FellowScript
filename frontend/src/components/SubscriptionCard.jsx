@@ -342,12 +342,12 @@ export default function SubscriptionCard({ userId, onPlanChange }) {
                   <span style={{ fontFamily: "'DM Serif Display', serif", fontSize: '1.1rem', color: 'var(--parchment)' }}>Free Plan</span>
                   <Tag color="default">Active</Tag>
                 </div>
-                <span style={MUTED}>10 notes/week · 1 AI event · 3 notifications</span>
+                <span style={MUTED}>10 notes/week · 1 scheduled devotion · 3 notifications</span>
               </div>
             </div>
           )}
           <p style={{ ...MUTED, marginBottom: '1rem', lineHeight: 1.65 }}>
-            Upgrade to unlock <span style={{ color: 'var(--gold)' }}>unlimited notes, AI check-ins,</span> and notifications.
+            Upgrade to unlock <span style={{ color: 'var(--gold)' }}>unlimited notes, scheduled devotions,</span> and notifications. Free includes 1 scheduled devotion; paid plans let you have as many as you like, such as one for morning and one for bedtime.
             Choose how many people join your plan — up to 8.
           </p>
           <div style={{ border: '1px solid rgba(200,134,26,0.2)', borderRadius: 12, padding: '1.1rem', maxWidth: 320 }}>

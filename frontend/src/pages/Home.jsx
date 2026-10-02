@@ -176,8 +176,8 @@ const features = [
   },
   {
     icon: <path d="M12 3l2.4 5.6L20 11l-5.6 2.4L12 19l-2.4-5.6L4 11l5.6-2.4z" />,
-    title: 'AI Daily Check-ins',
-    desc: 'A gentle, personal question each day, rooted in Scripture.',
+    title: 'Scheduled Devotions',
+    desc: 'Pick a time, and your AI study partner writes a devotion for you every day, even when the app is closed.',
   },
   {
     icon: <><circle cx="9" cy="8" r="3.2" /><path d="M3 20c0-3.3 2.7-5.5 6-5.5s6 2.2 6 5.5" /><path d="M16 5.5a3 3 0 0 1 0 5.6" /><path d="M18 20c0-2.6-1-4.4-2.6-5.3" /></>,
@@ -209,7 +209,7 @@ const plans = [
     name: 'Free',
     price: '$0',
     sub: 'No card needed',
-    perks: ['Beautiful Bible reader', '10 notes per week', '1 AI check-in event', '3 scheduled notifications', 'Verse highlights & bookmarks'],
+    perks: ['Beautiful Bible reader', '10 notes per week', '1 scheduled devotion', '3 scheduled notifications', 'Verse highlights & bookmarks'],
     cta: 'Start reading',
     href: '/signin',
     primary: false,
@@ -218,7 +218,7 @@ const plans = [
     name: 'Group',
     price: 'From $4.99',
     sub: 'Pick 1 to 8 members · Billed monthly',
-    perks: ['Unlimited notes', 'Unlimited AI check-ins', 'Unlimited notifications', 'Shared reading space & group chat', 'Live study sessions', 'Priority support'],
+    perks: ['Unlimited notes', 'Unlimited scheduled devotions', 'Unlimited notifications', 'Shared reading space & group chat', 'Live study sessions', 'Priority support'],
     cta: 'Subscribe',
     href: '/signin',
     primary: true,
@@ -330,7 +330,7 @@ export default function Home() {
           <div style={{ maxWidth: 760 }}>
             <div style={{ display: 'inline-flex', alignItems: 'center', gap: 9, padding: '7px 15px 7px 12px', borderRadius: 999, background: 'rgba(23,18,15,0.4)', border: '1px solid rgba(255,244,230,0.2)', backdropFilter: 'blur(8px)', marginBottom: 34 }}>
               <span style={{ width: 7, height: 7, borderRadius: '50%', background: AMBER, boxShadow: '0 0 10px 2px rgba(232,163,85,0.7)' }} />
-              <span style={{ fontSize: 12, letterSpacing: '0.04em', color: '#FFF3E2' }}>Now with daily AI check-ins</span>
+              <span style={{ fontSize: 12, letterSpacing: '0.04em', color: '#FFF3E2' }}>Now with scheduled devotions</span>
             </div>
             <div style={{ fontFamily: HEAD_FONT, fontSize: 12, letterSpacing: '0.28em', textTransform: 'uppercase', color: '#F0C08A', marginBottom: 22 }}>// FELLOWSCRIPT</div>
             <h1 style={{ fontFamily: HEAD_FONT, fontSize: 'clamp(44px, 6.4vw, 104px)', lineHeight: 0.96, fontWeight: 400, letterSpacing: '-0.035em', color: '#FFF9F0', margin: '0 0 28px', textWrap: 'balance' }}>
@@ -416,7 +416,7 @@ export default function Home() {
                   section device (the earlier Mon–Sun ticker was cut per the
                   user's explicit direction) — the "daily, not weekly" claim
                   is carried here as plain, static, always-visible text, same
-                  badge shape as the hero's "Now with daily AI check-ins"
+                  badge shape as the hero's "Now with scheduled devotions"
                   pill above, for consistency rather than a competing device. */}
               <div className="hm-family-reveal" style={{ transitionDelay: '160ms', display: 'inline-flex', alignItems: 'center', gap: 9, padding: '7px 15px 7px 12px', borderRadius: 999, background: 'rgba(232,163,85,0.12)', border: '1px solid rgba(232,163,85,0.32)' }}>
                 <span aria-hidden="true" style={{ width: 7, height: 7, borderRadius: '50%', background: AMBER }} />

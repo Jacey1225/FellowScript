@@ -120,7 +120,7 @@ export function useAgentChat({ user, onNoteSaved }) {
           // same toast instead of stacking new ones (matches useMessaging's
           // 'fs-ws-status' keyed-toast pattern).
           message.error({
-            content: 'A scheduled check-in failed to save. Retrying automatically.',
+            content: 'A scheduled devotion failed to save. Retrying automatically.',
             key: `fs-heartbeat-${hb._id}`,
             duration: 4,
           });
@@ -274,10 +274,10 @@ export function useAgentChat({ user, onNoteSaved }) {
         await loadHeartbeats(agents);
         return true;
       }
-      message.error('Could not save that check-in schedule. Please try again.');
+      message.error('Could not save that scheduled devotion. Please try again.');
     } catch (err) {
       console.error('Failed to add heartbeat:', err);
-      message.error('Could not save that check-in schedule. Check your connection and try again.');
+      message.error('Could not save that scheduled devotion. Check your connection and try again.');
     }
     return false;
   }, [user, agents, loadHeartbeats]);

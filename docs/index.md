@@ -18,10 +18,28 @@ FellowScript is a faith-based Bible study platform for reading scripture, taking
 | Friends | Send/accept friend requests; start direct messages |
 | Group & Direct Messaging | Real-time WebSocket chat — group threads and 1-on-1 DMs |
 | Devotions | Collaborative devotion plans shared across a group |
-| AI Agent | Daily check-in heartbeats with AI-generated devotional prompts |
-| Notifications | In-app notifications for group activity and agent events |
-| Subscriptions | Free tier (limited notes/events) + Individual and Group paid plans via Stripe (web) or Apple IAP (iOS) |
+| Scheduled devotions | Pick a time and a prompt; every day at that time your AI study partner writes a devotion for you, even when the app is closed (internal name: agent heartbeats) |
+| Notifications | In-app notifications for group activity and your scheduled devotions |
+| Subscriptions | Free tier (10 notes per week, 1 scheduled devotion in total) + Individual and Group paid plans via Stripe (web) or Apple IAP (iOS) |
 | Account | Profile management and account deletion for web and iOS |
+
+### Naming: user-facing term vs. internal identifiers
+
+Users see "scheduled devotions". The internal names below are public identifiers (API
+routes and fields, database columns, Swift/JS symbols, analytics keys) and are deliberately
+**not** renamed, so older app builds keep working.
+
+| User-facing term | Internal identifier |
+|---|---|
+| Scheduled devotions (usage meter label, plan limit) | `agent_events` (usage/limit resource key) |
+| A single scheduled devotion | `agent_heartbeats` row, `FSHeartbeat` / `heartbeats` in client code |
+| Create, edit, delete, "write it now" | `/agent/{user_id}/...heartbeat...` routes (e.g. `commit_heartbeat`) |
+| Free plan: 1 scheduled devotion in total, paid plans unlimited | `FREE_LIMITS["agent_events"] = 1` |
+
+Copy guidelines: label "Scheduled devotions", sentence "scheduled devotion", creation button
+"New scheduled devotion". Avoid "agent", "event", "heartbeat" and "automation" in user-facing text
+for this feature. Examples to use: morning devotion, evening prayer prompt, weekly recap,
+reading-plan check-in.
 
 ---
 

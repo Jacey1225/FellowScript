@@ -134,7 +134,7 @@ export default function Terms() {
         {/* 7 */}
         <div style={S.section}>
           <h2 style={S.h2}>7. AI Features</h2>
-          <p style={S.p}>FellowScript offers AI-powered Bible study assistance ("AI Agents") and AI-generated notification content. These features are provided for personal study enrichment only. AI responses are generated automatically and may not always be accurate, complete, or theologically authoritative.</p>
+          <p style={S.p}>FellowScript offers AI-powered Bible study assistance ("AI Agents"), scheduled devotions (daily devotions your AI study partner writes at a time you choose), and AI-generated notification content. These features are provided for personal study enrichment only. AI responses are generated automatically and may not always be accurate, complete, or theologically authoritative.</p>
           <p style={S.p}><strong style={S.strong}>You should not rely solely on AI-generated content for matters of faith, doctrine, or spiritual guidance.</strong> Always consult Scripture, qualified clergy, or reputable theological resources for authoritative guidance.</p>
           <p style={S.p}>By using AI features, you agree that your conversation inputs and notification prompts may be sent to our AI infrastructure provider (OpenRouter) to generate responses, as described in our Privacy Policy.</p>
         </div>

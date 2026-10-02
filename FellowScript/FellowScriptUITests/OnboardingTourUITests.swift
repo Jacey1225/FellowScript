@@ -153,7 +153,7 @@ final class OnboardingTourUITests: XCTestCase {
         // step was fully superseded by this one), so this is also the last
         // step; the trailing button must read "Get Started", not "Next".
         XCTAssertTrue(advanceTour(app), "expected Next to advance from step 10 to step 11 (EVENTS, the final step)")
-        XCTAssertTrue(app.staticTexts["EVENTS"].waitForExistence(timeout: 5), "expected the final step's section label to read EVENTS")
+        XCTAssertTrue(app.staticTexts["SCHEDULED DEVOTIONS"].waitForExistence(timeout: 5), "expected the final step's section label to read SCHEDULED DEVOTIONS")
         XCTAssertTrue(
             onboardingButton(app, containing: "Get Started").waitForExistence(timeout: 5),
             "expected the trailing nav button to read Get Started on the final step (steps.count - 1), not Next"

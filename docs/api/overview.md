@@ -113,6 +113,7 @@ may still be populated.
 | POST | `/invites/{user_id}/groups/{group_id}` | Any member creates a link (optional `expires_in_days`, `max_uses` from the configured allowed sets). Returns the plaintext `token`/`url` once only. |
 | GET | `/invites/{user_id}/groups/{group_id}` | Active links (metadata only, own links; all for the group creator) plus create options. |
 | POST | `/invites/{user_id}/groups/{group_id}/reset` | Revoke every active link the caller may revoke. |
+| GET | `/invites/{user_id}/{invite_id}/reveal` | Authenticated, `no-store`, rate limited. Re-shows an active group link (`{invite_id, url}`) to its creator or the group creator. Every failure (unknown, revoked, expired, legacy link created before reveal existed, subscription link, not authorized) is the same 404 `not_found`. List items carry `revealable` (bool). |
 | DELETE | `/invites/{user_id}/{invite_id}` | Revoke one link (its creator or the group creator). |
 
 ---
@@ -357,7 +358,7 @@ screen.
 |---|---|---|
 | GET | `/agent/{user_id}` | Get agent configuration |
 | PUT | `/agent/{user_id}` | Update agent config (frequency, tone, etc.) |
-| POST | `/agent/{user_id}/heartbeat` | Trigger an AI check-in event (enforces free-tier cap) |
+| POST | `/agent/{user_id}/heartbeat` | Trigger a scheduled devotion (enforces free-tier cap) |
 | POST | `/agent/{user_id}/{agent_id}/summarize` | Summarize a study session (body: `{session, group_id}`) and save the result as a note titled `Session Summary — {title}`. Enforces the same free-tier `notes` cap as note creation |
 
 Task 20260907-session-summary-wireup wired this endpoint up end-to-end: a

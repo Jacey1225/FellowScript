@@ -68,7 +68,7 @@ final class EventRowBaselineTests: XCTestCase {
     func test_emptyPrompt_fallsBackToUntitledEvent() throws {
         let sut = EventRow(event: heartbeat(prompt: ""), agentName: "Spiritual Guide",
                             isFiring: false, onEdit: {}, onDelete: {}, onFire: {})
-        XCTAssertNoThrow(try sut.inspect().find(text: "Untitled Event"))
+        XCTAssertNoThrow(try sut.inspect().find(text: "Untitled devotion"))
     }
 
     func test_longPrompt_isTruncatedToFiftyCharacters() throws {
@@ -116,8 +116,8 @@ final class EventRowBaselineTests: XCTestCase {
         let firing = EventRow(event: heartbeat(), agentName: "Guide", isFiring: true, onEdit: {}, onDelete: {}, onFire: {})
         let idle   = EventRow(event: heartbeat(), agentName: "Guide", isFiring: false, onEdit: {}, onDelete: {}, onFire: {})
 
-        XCTAssertEqual(try firing.inspect().find(ViewType.Button.self).accessibilityLabel().string(), "Firing event now")
-        XCTAssertEqual(try idle.inspect().find(ViewType.Button.self).accessibilityLabel().string(), "Fire event now")
+        XCTAssertEqual(try firing.inspect().find(ViewType.Button.self).accessibilityLabel().string(), "Writing devotion now")
+        XCTAssertEqual(try idle.inspect().find(ViewType.Button.self).accessibilityLabel().string(), "Write devotion now")
     }
 
     func test_rootAccessibilityLabel_combinesPromptAndScheduleSummary() throws {
@@ -125,7 +125,7 @@ final class EventRowBaselineTests: XCTestCase {
                             isFiring: false, onEdit: {}, onDelete: {}, onFire: {})
         let root = try sut.inspect().hStack()
         XCTAssertEqual(try root.accessibilityLabel().string(),
-                        "Event: Pray for patience. Scheduled Every day.")
+                        "Scheduled devotion: Pray for patience. Scheduled Every day.")
     }
 }
 

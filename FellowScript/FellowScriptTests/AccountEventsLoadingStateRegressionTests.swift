@@ -18,7 +18,7 @@
 // finished saw the confirmed-empty copy every time, even though the round
 // was still in flight and would have succeeded. The fix: eventsSection now
 // branches three ways -- `vm.events.isEmpty && vm.isLoading` shows a
-// "Loading your events…" row; `vm.events.isEmpty` alone (unchanged) is the
+// "Loading your scheduled devotions…" row; `vm.events.isEmpty` alone (unchanged) is the
 // genuinely-empty case; the populated ForEach branch is untouched.
 //
 // Two levels of coverage, since eventsSection is a computed extension
@@ -198,9 +198,9 @@ final class AccountEventsSectionLoadingBranchRegressionTests: XCTestCase {
 
         XCTAssertTrue(loadingBranch.contains("ProgressView().tint(Theme.gold)"),
                       "the loading row must use the same plain gold-tinted spinner convention as BlockedUsersView/AttachmentLightboxView, not a bespoke loading treatment")
-        XCTAssertTrue(loadingBranch.contains("Loading your events…"),
+        XCTAssertTrue(loadingBranch.contains("Loading your scheduled devotions…"),
                       "the loading row must show explicit loading copy, not silently reuse the confirmed-empty text")
-        XCTAssertFalse(loadingBranch.contains("No events yet"),
+        XCTAssertFalse(loadingBranch.contains("No scheduled devotions yet"),
                        "the loading branch must not also contain the confirmed-empty copy -- the two states must render distinctly")
     }
 
@@ -217,7 +217,7 @@ final class AccountEventsSectionLoadingBranchRegressionTests: XCTestCase {
         }
         let emptyBranch = String(afterEmpty[..<populatedMarker.lowerBound])
 
-        XCTAssertTrue(emptyBranch.contains("No events yet. Tap + to schedule one."),
+        XCTAssertTrue(emptyBranch.contains("No scheduled devotions yet. Tap + to add one and wake up to a devotion each day."),
                       "the genuinely-empty branch's copy must be unchanged by this fix -- only the loading branch is new")
         XCTAssertFalse(emptyBranch.contains("ProgressView"),
                        "the genuinely-empty branch must not show a spinner -- that would contradict its own \"confirmed empty\" claim")

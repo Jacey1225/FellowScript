@@ -32,6 +32,9 @@ final class InviteLinksViewModel: ObservableObject {
     @Published var createError: String?
     /// Show-once reveal. State only; never persisted.
     @Published var revealedURL: String?
+    /// invite_id -> url for links the user tapped Show on. State only; never persisted.
+    @Published var shownURLs: [String: String] = [:]
+    @Published var showBusyId: String?
     @Published var rowErrors: [String: String] = [:]
     @Published var resetBusy = false
     @Published var resetError: String?
@@ -104,7 +107,8 @@ final class InviteLinksViewModel: ObservableObject {
                 invite_id: created.invite_id, created_by_username: nil, is_mine: true,
                 created_at: created.created_at, expires_at: created.expires_at,
                 max_uses: created.max_uses, use_count: created.use_count,
-                remaining_uses: created.max_uses - created.use_count
+                remaining_uses: created.max_uses - created.use_count,
+                revealable: isSubscription ? nil : true
             )
             list?.invites.insert(item, at: 0)
             await persist()
@@ -122,12 +126,34 @@ final class InviteLinksViewModel: ObservableObject {
         }
     }
 
+    /// Re-derives a group link on the server so it can be shown/copied again.
+    func showLink(_ item: FSInviteItem) async {
+        guard !isSubscription, showBusyId == nil else { return }
+        showBusyId = item.invite_id
+        rowErrors[item.invite_id] = nil
+        defer { showBusyId = nil }
+        do {
+            shownURLs[item.invite_id] = try await service.revealGroupInvite(userId: userId, inviteId: item.invite_id)
+        } catch let e as InviteAPIError {
+            switch e.status {
+            case 404: rowErrors[item.invite_id] = "Couldn't show this link. It may have been revoked. Make a new link to share."
+            case 429: rowErrors[item.invite_id] = "Too many tries. Wait a minute and try again."
+            default:  rowErrors[item.invite_id] = "Couldn't show the link. Please try again."
+            }
+        } catch {
+            rowErrors[item.invite_id] = "Couldn't show the link. Please try again."
+        }
+    }
+
+    func hideLink(_ id: String) { shownURLs[id] = nil }
+
     func revoke(_ item: FSInviteItem, reduceMotion: Bool) async {
         rowErrors[item.invite_id] = nil
         do {
             try await service.revokeInvite(userId: userId, inviteId: item.invite_id)
             withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) {
                 list?.invites.removeAll { $0.invite_id == item.invite_id }
+                shownURLs[item.invite_id] = nil
             }
             await persist()
         } catch let e as InviteAPIError {
@@ -150,6 +176,7 @@ final class InviteLinksViewModel: ObservableObject {
                 : await service.resetGroupInvites(userId: userId, groupId: targetId)
             list?.invites = []
             revealedURL = nil
+            shownURLs = [:]
             resetStatus = "\(n) \(n == 1 ? "link" : "links") revoked"
             await persist()
             return true
@@ -170,6 +197,7 @@ struct InviteLinkSection: View {
 
     @State private var optionsOpen = false
     @State private var copied = false
+    @State private var copiedRowId: String?
     @State private var copyTask: Task<Void, Never>?
     @State private var revokeTarget: FSInviteItem?
     @State private var confirmReset = false
@@ -197,7 +225,7 @@ struct InviteLinkSection: View {
         }
         .task { await vm.load() }
         .onChange(of: vm.removedFromGroup) { _, gone in if gone { onGroupGone() } }
-        .onDisappear { vm.revealedURL = nil }
+        .onDisappear { vm.revealedURL = nil; vm.shownURLs = [:] }
         .confirmationDialog("Revoke this link?", isPresented: Binding(
             get: { revokeTarget != nil }, set: { if !$0 { revokeTarget = nil } }
         ), titleVisibility: .visible, presenting: revokeTarget) { item in
@@ -260,8 +288,10 @@ struct InviteLinkSection: View {
                 }
 
                 if !list.invites.isEmpty {
-                    Text("Links can't be shown again after they're created.")
-                        .font(.inter(Theme.fontXS)).foregroundColor(Theme.textSecondary)
+                    if isSubscription {
+                        Text("Links can't be shown again after they're created.")
+                            .font(.inter(Theme.fontXS)).foregroundColor(Theme.textSecondary)
+                    }
                     VStack(spacing: 0) {
                         ForEach(list.invites) { item in
                             row(item)
@@ -384,7 +414,9 @@ struct InviteLinkSection: View {
                     }
                 }
             }
-            Text("This link is shown once. If you close this, make a new link to share again.")
+            Text(isSubscription
+                 ? "This link is shown once. If you close this, make a new link to share again."
+                 : "You can show this link again any time from the list below.")
                 .font(.inter(Theme.fontXS)).foregroundColor(Theme.textSecondary)
             Button("Done") { vm.revealedURL = nil; copied = false }
                 .font(.inter(Theme.fontSM, weight: .semibold)).foregroundColor(Theme.gold).frame(minHeight: 44)
@@ -417,8 +449,62 @@ struct InviteLinkSection: View {
                 .accessibilityLabel("Revoke link \(label.lowercased()), created by \(who)")
             }
             if let err = vm.rowErrors[item.invite_id] { errorText(err) }
+            if !isSubscription { groupLinkControls(item, label: label, who: who) }
         }
         .frame(minHeight: 56)
+    }
+
+    /// Group links: Show/Copy for revealable links, a notice plus a create-new
+    /// action for legacy (revealable == false) links.
+    @ViewBuilder
+    private func groupLinkControls(_ item: FSInviteItem, label: String, who: String) -> some View {
+        if item.revealable == false {
+            Text("This link was created before showing links was available, so it can't be shown. Create a new link to share it again.")
+                .font(.inter(Theme.fontXS)).foregroundColor(Theme.textSecondary)
+            if vm.revealedURL == nil {
+                Button { Task { await vm.create() } } label: {
+                    Text(vm.creating ? "Creating…" : "Create new link")
+                        .font(.inter(Theme.fontSM, weight: .semibold)).foregroundColor(Theme.gold)
+                        .frame(minHeight: 44)
+                }
+                .disabled(vm.creating)
+            }
+        } else if let url = vm.shownURLs[item.invite_id] {
+            Text(url)
+                .font(.inter(Theme.fontSM)).foregroundColor(Theme.parchment)
+                .lineLimit(1).truncationMode(.middle)
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                .accessibilityLabel("Invite link \(url)")
+            HStack(spacing: Theme.spacingSM) {
+                Button {
+                    UIPasteboard.general.string = url
+                    copiedRowId = item.invite_id
+                    copyTask?.cancel()
+                    copyTask = Task {
+                        try? await Task.sleep(nanoseconds: 2_000_000_000)
+                        if !Task.isCancelled { copiedRowId = nil }
+                    }
+                    UIAccessibility.post(notification: .announcement, argument: "Link copied")
+                } label: {
+                    Text(copiedRowId == item.invite_id ? "Copied" : "Copy").font(.system(size: 15, weight: .bold))
+                        .foregroundColor(Theme.ink)
+                        .padding(.horizontal, 18).frame(minWidth: 88, minHeight: 44)
+                        .background(Theme.goldGradient).clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                Button("Hide") { vm.hideLink(item.invite_id) }
+                    .font(.inter(Theme.fontSM, weight: .semibold)).foregroundColor(Theme.gold).frame(minHeight: 44)
+            }
+        } else {
+            Button { Task { await vm.showLink(item) } } label: {
+                Text(vm.showBusyId == item.invite_id ? "Showing…" : "Show link")
+                    .font(.inter(Theme.fontSM, weight: .semibold)).foregroundColor(Theme.gold)
+                    .frame(minHeight: 44)
+            }
+            .disabled(vm.showBusyId == item.invite_id)
+            .accessibilityLabel("Show link \(label.lowercased()), created by \(who)")
+        }
     }
 
     private func errorText(_ text: String) -> some View {

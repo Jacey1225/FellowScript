@@ -94,7 +94,7 @@ extension NetworkService {
         // success.
         guard let decoded = decode([FSHeartbeat].self, from: data, endpoint: endpoint) else {
             RefreshDiagnostics.fetchOutcome(endpoint: endpoint, outcome: "decode-failure-thrown")
-            throw AppError.networkError("Could not read this agent's events.")
+            throw AppError.networkError("Could not read this agent's scheduled devotions.")
         }
         RefreshDiagnostics.fetchOutcome(endpoint: endpoint, outcome: "success", count: decoded.count)
         return decoded

@@ -7,7 +7,7 @@
 //      title reading off-center once toolbar button widths changed --
 //      fixed with a `.principal` ToolbarItem that centers independently of
 //      the leading/trailing item widths.
-//   2. EventSetupSheet.detailsScreen's stacked EVENT TIME / GROUP cards
+//   2. EventSetupSheet.detailsScreen's stacked DEVOTION TIME / GROUP cards
 //      merged into one row.
 //   3. All four sheets' Cancel/primary toolbar buttons swapped from plain
 //      system-styled Buttons to this app's own established chip
@@ -25,7 +25,7 @@
 //   A. All four sheets' relevant screens carry a `.principal` ToolbarItem
 //      with the expected title text (decoupling the title from
 //      leading/trailing item widths).
-//   B. EventSetupSheet.detailsScreen's EVENT TIME and GROUP controls sit in
+//   B. EventSetupSheet.detailsScreen's DEVOTION TIME and GROUP controls sit in
 //      one `.widgetCard()` (a single HStack), not two separate cards.
 //   C. All four sheets' Cancel affordance is the ghost-chip recipe (a
 //      Button wrapping a Text with a faint parchment-tinted Capsule
@@ -102,7 +102,7 @@ final class SubmenuFollowupPolishRegressionTests: XCTestCase {
         let recBody = String(source[recRange.upperBound..<recEnd])
         XCTAssertTrue(recBody.contains("ToolbarItem(placement: .principal)"),
                       "recurrenceScreen has no trailing item at all, so its default inline title was never truly centered -- needs the same `.principal` fix")
-        XCTAssertTrue(recBody.contains("isEditing ? \"Edit Event\" : \"New Event\""))
+        XCTAssertTrue(recBody.contains("isEditing ? \"Edit scheduled devotion\" : \"New scheduled devotion\""))
 
         guard let detRange = source.range(of: "private var detailsScreen: some View {") else {
             XCTFail("detailsScreen not found"); return
@@ -114,7 +114,7 @@ final class SubmenuFollowupPolishRegressionTests: XCTestCase {
         XCTAssertTrue(detBody.contains("Text(\"Details\")"))
     }
 
-    // MARK: - B. EventSetupSheet.detailsScreen: EVENT TIME + GROUP merged into one row
+    // MARK: - B. EventSetupSheet.detailsScreen: DEVOTION TIME + GROUP merged into one row
 
     func test_eventSetupSheet_detailsScreen_eventTimeAndGroupAreOneRow() throws {
         let source = try readSource("FellowScript/Account/EventSetupSheet.swift")
@@ -132,20 +132,20 @@ final class SubmenuFollowupPolishRegressionTests: XCTestCase {
         }
         let row = String(detBody[hstackRange.lowerBound..<closingCardRange.upperBound])
 
-        XCTAssertTrue(row.contains("EVENT TIME"), "EVENT TIME must be inside the row-combining HStack")
-        XCTAssertTrue(row.contains("\"GROUP\""), "GROUP must be inside the same row-combining HStack as EVENT TIME")
+        XCTAssertTrue(row.contains("DEVOTION TIME"), "DEVOTION TIME must be inside the row-combining HStack")
+        XCTAssertTrue(row.contains("\"GROUP\""), "GROUP must be inside the same row-combining HStack as DEVOTION TIME")
         // Only the one widgetCard() (closing this shared row) should appear
-        // inside the HStack's own body -- confirms EVENT TIME and GROUP are
+        // inside the HStack's own body -- confirms DEVOTION TIME and GROUP are
         // not still each individually wrapped in their own widgetCard().
         let rowBodyOnly = String(row.dropLast(".widgetCard()".count))
         XCTAssertFalse(rowBodyOnly.contains(".widgetCard()"),
-                       "EVENT TIME and GROUP must share exactly one widgetCard() (the row's own), not carry individual ones")
+                       "DEVOTION TIME and GROUP must share exactly one widgetCard() (the row's own), not carry individual ones")
         // The separate PROMPT card must come strictly after this merged row.
         guard let promptRange = detBody.range(of: "Text(\"PROMPT\")") else {
             XCTFail("PROMPT card not found"); return
         }
         XCTAssertTrue(closingCardRange.upperBound <= promptRange.lowerBound,
-                      "the merged EVENT TIME/GROUP row's widgetCard() must close before the separate PROMPT card begins")
+                      "the merged DEVOTION TIME/GROUP row's widgetCard() must close before the separate PROMPT card begins")
     }
 
     func test_eventSetupSheet_detailsScreen_dateAndMenuBindingsUnchanged() throws {

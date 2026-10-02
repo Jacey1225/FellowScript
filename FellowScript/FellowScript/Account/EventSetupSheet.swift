@@ -124,7 +124,7 @@ struct EventSetupSheet: View {
                     .foregroundColor(Theme.parchment)
                     .padding(.top, Theme.spacingXL)
 
-                Text("Choose a schedule for this event.")
+                Text("Choose how often this scheduled devotion should arrive.")
                     .font(.inter(Theme.fontSM))
                     .foregroundColor(Theme.textMuted)
                     .multilineTextAlignment(.center)
@@ -149,7 +149,7 @@ struct EventSetupSheet: View {
         // treatment on this and the other two steps below so the whole
         // multi-step flow reads consistently.
         .warmBloomBackground()
-        .navigationTitle(isEditing ? "Edit Event" : "New Event")
+        .navigationTitle(isEditing ? "Edit scheduled devotion" : "New scheduled devotion")
         .navigationBarTitleDisplayMode(.inline)
         // Follow-up polish (task 20260902-submenu-followup-polish): ghost-
         // chip Cancel (see ChatRootView.swift's sheetGhostCancelLabel for the
@@ -165,7 +165,7 @@ struct EventSetupSheet: View {
             }
             .suppressAutomaticGlassChrome()
             ToolbarItem(placement: .principal) {
-                Text(isEditing ? "Edit Event" : "New Event")
+                Text(isEditing ? "Edit scheduled devotion" : "New scheduled devotion")
                     .font(.system(size: 17, weight: .semibold))
                     .foregroundColor(Theme.parchment)
             }
@@ -307,9 +307,9 @@ struct EventSetupSheet: View {
             VStack(alignment: .leading, spacing: Theme.spacingLG) {
                 if agents.count > 1 {
                     VStack(alignment: .leading, spacing: Theme.spacingSM) {
-                        Text("AGENT")
+                        Text("WRITTEN BY")
                             .font(.inter(Theme.fontXXS)).tracking(4).foregroundColor(Theme.textGoldMuted)
-                        Picker("Agent", selection: $selectedAgentId) {
+                        Picker("Written by", selection: $selectedAgentId) {
                             ForEach(agents) { agent in
                                 Text(agent.displayLabel).tag(agent.id)
                             }
@@ -340,7 +340,7 @@ struct EventSetupSheet: View {
                 // `maxWidth: .infinity`) absorbs the rest of the row's width.
                 HStack(alignment: .top, spacing: Theme.spacingMD) {
                     VStack(alignment: .leading, spacing: Theme.spacingSM) {
-                        Text("EVENT TIME")
+                        Text("DEVOTION TIME")
                             .font(.inter(Theme.fontXXS)).tracking(4).foregroundColor(Theme.textGoldMuted)
                         DatePicker("Time", selection: $selectedTime, displayedComponents: .hourAndMinute)
                             .font(.inter(Theme.fontBody))
@@ -396,7 +396,7 @@ struct EventSetupSheet: View {
                             Spacer()
                         }
                         .padding(.vertical, 4)
-                        Text("Optionally tie this event's notes to one of your groups. Leave as No Group to keep it personal.")
+                        Text("Optionally tie this scheduled devotion's notes to one of your groups. Leave as No Group to keep it personal.")
                             .font(.inter(Theme.fontXS))
                             .foregroundColor(Theme.textMuted)
                     }
@@ -419,7 +419,7 @@ struct EventSetupSheet: View {
                                 Text(notesPublic ? "Group Can Edit" : "Owner Only")
                                     .font(.inter(Theme.fontBody))
                                     .foregroundColor(Theme.parchment)
-                                Text("Whether other members of \(selectedGroupLabel) may edit the notes this event generates.")
+                                Text("Whether other members of \(selectedGroupLabel) may edit the notes this scheduled devotion writes.")
                                     .font(.inter(Theme.fontXS))
                                     .foregroundColor(Theme.textMuted)
                             }
@@ -432,7 +432,7 @@ struct EventSetupSheet: View {
                 VStack(alignment: .leading, spacing: Theme.spacingSM) {
                     Text("PROMPT")
                         .font(.inter(Theme.fontXXS)).tracking(4).foregroundColor(Theme.textGoldMuted)
-                    Text("The agent will respond to this prompt when the event fires and save the response as a note.")
+                    Text("Every day at your chosen time, your AI study partner writes a devotion from this prompt and saves it as a note, even when the app is closed.")
                         .font(.inter(Theme.fontSM))
                         .foregroundColor(Theme.textMuted)
                     TextEditor(text: $prompt)

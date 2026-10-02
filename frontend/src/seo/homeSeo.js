@@ -29,7 +29,7 @@ export const HOME_SEO_PATH = '/';
 export const HOME_SEO_TITLE = 'FellowScript — Walk with God, Together';
 
 export const HOME_SEO_DESCRIPTION =
-  'A daily Bible reading companion with verse highlights, personal notes, gentle AI check-ins, and real-time group study — walk with God, together.';
+  'A daily Bible reading companion with verse highlights, personal notes, scheduled devotions written for you, and real-time group study — walk with God, together.';
 
 // task 20260916-fix-seo-score-production-deploy: this used to be
 // '/data/logo.png', which 404s in production -- nginx's `location /data/`

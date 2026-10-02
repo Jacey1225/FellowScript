@@ -306,9 +306,9 @@ endpoint or editor:
 
 ---
 
-## AI-Generated Note Edit Permission (Scheduled Events)
+## AI-Generated Note Edit Permission (Scheduled Devotions)
 
-Scheduled agent "heartbeat" events (`AgentHeartbeats`, configured via iOS's
+Scheduled devotions (internal: agent "heartbeat" events, `AgentHeartbeats`, configured via iOS's
 `EventSetupSheet`) can be tied to a group, so the note the agent generates on
 fire inherits that group's `group_id`. A dedicated "EDIT PERMISSION" toggle
 on the event's Details screen — shown only once a group is selected, mirroring

@@ -30,7 +30,7 @@ The home page (`/`) is the public-facing landing page. It is visible to everyone
 | Digital Bible | Full 66-book Bible with chapter navigation |
 | Rich Notes | Formatted notes (bold, italic, highlight, color) linked to verses |
 | Community Groups | Study groups with shared notes, highlights, and real-time chat |
-| AI Check-Ins | Daily AI-generated devotional prompts and agent heartbeats |
+| Scheduled Devotions | Pick a time; your AI study partner writes a devotion for you every day, even when the app is closed |
 | Highlights | Per-verse color highlights; group members' highlights visible in-context |
 | Bookmarks | Quick-return bookmarks per chapter |
 
@@ -40,8 +40,8 @@ Mock group conversation showing the collaborative note/chat experience — sampl
 ### 6. Pricing (2-plan cards)
 | Plan | Price | Limits |
 |---|---|---|
-| Free | $0 | 10 notes/week, 1 AI check-in event, 3 scheduled notifications |
-| Group | From $4.99/mo | Pick 1 to 8 members ($4.99 for 1 member up to $32.40 for 8); unlimited notes, AI check-ins and notifications, shared reading space and group chat |
+| Free | $0 | 10 notes/week, 1 scheduled devotion, 3 scheduled notifications |
+| Group | From $4.99/mo | Pick 1 to 8 members ($4.99 for 1 member up to $32.40 for 8); unlimited notes, scheduled devotions and notifications, shared reading space and group chat |
 
 The Group card is the highlighted (primary) plan. Prices mirror `GROUP_PRICE_CENTS` in `api/schemas/subscription.py` (cut 2026-10-01).
 

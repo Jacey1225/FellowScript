@@ -24,7 +24,9 @@ Security properties (see the intake spec's threat model):
 """
 from __future__ import annotations
 
+import base64
 import hashlib
+import hmac
 import logging
 import re
 import secrets
@@ -32,7 +34,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 from backend.interactions.attachments import generate_download_url
-from backend.interactions.invites_config import get_invites_config
+from backend.interactions.invites_config import get_invite_link_secret, get_invites_config
 from db import DBManager
 from backend.subscription.subscriptions import is_plan_lapsed, user_holds_other_paid_plan
 
@@ -66,6 +68,14 @@ def _not_found() -> InviteError:
 
 def generate_token() -> str:
     return secrets.token_urlsafe(TOKEN_BYTES)
+
+
+def derive_token(nonce: bytes) -> str:
+    """Token for a revealable group link: base64url(HMAC-SHA256(secret, nonce)),
+    unpadded -> 43 chars / 256 bits, matching ``_TOKEN_RE``. Never stored; the
+    reveal path recomputes it and checks it against the stored hash."""
+    mac = hmac.new(get_invite_link_secret(), bytes(nonce), hashlib.sha256).digest()
+    return base64.urlsafe_b64encode(mac).rstrip(b"=").decode("ascii")
 
 
 def hash_token(token: str) -> str:
@@ -407,7 +417,10 @@ class InvitesManager(DBManager):
         tid = _as_uuid(target_id)
         if tid is None:
             raise InviteError("forbidden", 403, handler.forbidden_create_msg)
-        token = generate_token()
+        # Group links get an HMAC-derived token so they can be re-shown later
+        # (reveal); subscription links keep a random, unrecoverable token.
+        nonce = secrets.token_bytes(TOKEN_BYTES) if kind == "group" else None
+        token = derive_token(nonce) if nonce is not None else generate_token()
         token_hash = hash_token(token)
         expires_at = None if days is None else datetime.now(timezone.utc) + timedelta(days=days)
         try:
@@ -423,9 +436,9 @@ class InvitesManager(DBManager):
             if self.cur.fetchone()[0] >= lim.max_active:
                 raise InviteError("link_limit", 409, lim.limit_msg)
             self.cur.execute(
-                "INSERT INTO invites (token_hash, kind, target_id, created_by, expires_at, max_uses) "
-                "VALUES (%s, %s, %s, %s, %s, %s) RETURNING _id, created_at",
-                (token_hash, kind, tid, self.user_id, expires_at, uses),
+                "INSERT INTO invites (token_hash, kind, target_id, created_by, expires_at, max_uses, reveal_nonce) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING _id, created_at",
+                (token_hash, kind, tid, self.user_id, expires_at, uses, nonce),
             )
             invite_id, created_at = self.cur.fetchone()
             self.conn.commit()
@@ -462,7 +475,8 @@ class InvitesManager(DBManager):
                 raise InviteError("forbidden", 403, handler.forbidden_msg)
             manager = handler.is_manager(row, self.user_id)
             self.cur.execute(
-                "SELECT i._id, i.created_by, u.username, i.created_at, i.expires_at, i.max_uses, i.use_count "
+                "SELECT i._id, i.created_by, u.username, i.created_at, i.expires_at, i.max_uses, i.use_count, "
+                "(i.reveal_nonce IS NOT NULL) "
                 "FROM invites i JOIN users u ON u._id = i.created_by "
                 "WHERE i.kind = %s AND i.target_id = %s AND i.revoked_at IS NULL "
                 "AND (i.expires_at IS NULL OR i.expires_at > NOW()) AND i.use_count < i.max_uses "
@@ -485,6 +499,7 @@ class InvitesManager(DBManager):
                 "max_uses": r[5],
                 "use_count": r[6],
                 "remaining_uses": r[5] - r[6],
+                "revealable": bool(r[7]),
             }
             for r in rows
         ]
@@ -558,6 +573,65 @@ class InvitesManager(DBManager):
             raise
         _audit("reset", kind=kind, target=tid, user=self.user_id, revoked=count, ip=ip)
         return count
+
+    # -- reveal ---------------------------------------------------------------
+    def reveal(self, invite_id: str, ip: str = "-") -> dict:
+        """Recompute and return the URL of an active, derived group link, for
+        its creator or the group's manager (and only while a current member).
+
+        Every failure -- bad id, unknown, wrong kind, revoked, expired,
+        exhausted, legacy (no nonce), non-member, neither creator nor manager,
+        or a derived token that no longer matches the stored hash (rotated
+        secret) -- raises the one uniform ``not_found``. The token is never
+        logged; the audit line carries ids/ref only.
+        """
+        iid = _as_uuid(invite_id)
+        reason = "bad_id"
+        token = None
+        as_role = None
+        try:
+            if iid is not None:
+                self.cur.execute(
+                    "SELECT kind, target_id, created_by, token_hash, reveal_nonce, "
+                    "revoked_at IS NOT NULL, COALESCE(expires_at <= NOW(), false), use_count >= max_uses "
+                    "FROM invites WHERE _id = %s", (iid,))
+                row = self.cur.fetchone()
+                reason = "unknown"
+                if row:
+                    kind, target_id, created_by, token_hash, nonce, revoked, expired, exhausted = row
+                    handler = HANDLERS.get(kind)
+                    if kind != "group" or handler is None:
+                        reason = "wrong_kind"
+                    elif revoked or expired or exhausted:
+                        reason = "inactive"
+                    elif nonce is None:
+                        reason = "legacy"
+                    else:
+                        target = handler.read_target(self.cur, str(target_id))
+                        if not target or not handler.is_actor(target, self.user_id):
+                            reason = "not_member"
+                        else:
+                            as_role = "creator" if str(created_by) == self.user_id else (
+                                "manager" if handler.is_manager(target, self.user_id) else None)
+                            if as_role is None:
+                                reason = "forbidden"
+                            else:
+                                candidate = derive_token(nonce)
+                                stored = str(token_hash).strip()
+                                if hmac.compare_digest(hash_token(candidate), stored):
+                                    token = candidate
+                                else:
+                                    reason = "key_mismatch"
+            self.conn.rollback()  # read-only; release the snapshot
+        except BaseException:
+            self.conn.rollback()
+            raise
+        if token is None:
+            _audit("reveal_miss", reason=reason, invite=iid or "-", user=self.user_id, ip=ip)
+            raise _not_found()
+        _audit("reveal", invite=iid, ref=_ref(token_hash), target=target_id,
+               user=self.user_id, ip=ip, **{"as": as_role})
+        return {"invite_id": str(iid), "url": f"{get_invites_config().public_base_url}/join/{token}"}
 
     # -- preview --------------------------------------------------------------
     def preview(self, token: str, ip: str = "-") -> dict:

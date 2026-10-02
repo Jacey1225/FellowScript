@@ -11,9 +11,9 @@ extension AccountView {
 
     var eventsSection: some View {
         VStack(alignment: .leading, spacing: Theme.spacingSM) {
-            sectionLabel("Events")
+            sectionLabel("Scheduled devotions")
 
-            Text("Events are AI-powered check-ins. When the scheduled time arrives, your agent responds to the prompt and saves a note.")
+            Text("Pick a time and a prompt. Every day at that time your AI study partner writes a devotion for you and saves it as a note, even when the app is closed. Try a morning devotion, an evening prayer prompt, a weekly recap, or a reading-plan check-in.")
                 .font(.inter(Theme.fontSM))
                 .foregroundColor(Theme.textMuted)
 
@@ -69,7 +69,7 @@ extension AccountView {
                 Divider().background(Theme.borderGoldFaint)
                 HStack(spacing: Theme.spacingSM) {
                     ProgressView().tint(Theme.gold)
-                    Text("Loading your events…")
+                    Text("Loading your scheduled devotions…")
                         .font(.inter(Theme.fontSM))
                         .foregroundColor(Theme.textMuted)
                 }
@@ -85,12 +85,12 @@ extension AccountView {
                 // above (a round is still running) and from the confirmed-
                 // empty copy below (a clean round established emptiness).
                 Divider().background(Theme.borderGoldFaint)
-                Text("Your events haven't loaded yet. Pull down to refresh.")
+                Text("Your scheduled devotions haven't loaded yet. Pull down to refresh.")
                     .font(.inter(Theme.fontSM))
                     .foregroundColor(Theme.textMuted)
             } else if vm.events.isEmpty {
                 Divider().background(Theme.borderGoldFaint)
-                Text("No events yet. Tap + to schedule one.")
+                Text("No scheduled devotions yet. Tap + to add one and wake up to a devotion each day.")
                     .font(.inter(Theme.fontSM))
                     .foregroundColor(Theme.textMuted)
             } else {
@@ -113,10 +113,10 @@ extension AccountView {
                 appState.requestPushNotifications()
                 activeSheet = .newEvent
             }) {
-                ghostLabelPill(icon: "plus", "New Event", color: vm.agents.isEmpty ? Theme.textMuted : Theme.gold)
+                ghostLabelPill(icon: "plus", "New scheduled devotion", color: vm.agents.isEmpty ? Theme.textMuted : Theme.gold)
             }
             .disabled(vm.agents.isEmpty)
-            .accessibilityLabel("Create new event")
+            .accessibilityLabel("Create new scheduled devotion")
         }
         .padding(.horizontal, 18).padding(.vertical, 16)
         .glassCard(cornerRadius: 20)

@@ -709,10 +709,10 @@ private struct TourStep {
         ),
         // EVENTS (step 11)
         .init(
-            section: "EVENTS",
+            section: "SCHEDULED DEVOTIONS",
             heading: "Devotion that never misses",
-            body: "In Account → Events, set a time and a prompt. Every day at that moment, your AI agent writes a personal devotional note and saves it straight to your journal — automatically.",
-            hint: "Account → Events → New Event",
+            body: "In Account → Scheduled devotions, pick a time and a prompt. Every day at that moment, your AI study partner writes a devotion for you and saves it straight to your journal, even when the app is closed. Try a morning devotion or an evening prayer prompt.",
+            hint: "Account → Scheduled devotions → New scheduled devotion",
             activeTab: 4,
             screenshotAsset: "tour-heartbeat"
         ),

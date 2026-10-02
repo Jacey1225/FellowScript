@@ -105,6 +105,13 @@ export function createGroupInvite(userId, groupId, { expiresInDays, maxUses }) {
   );
 }
 
+// Authenticated, group links only. Resolves { url, invite_id }. Every failure
+// (not revealable, revoked, not allowed ...) is the same uniform 404. The url
+// is a secret: callers keep it in component state only, never log or persist.
+export function revealGroupInvite(userId, inviteId) {
+  return request(`/invites/${userId}/${inviteId}/reveal`, { cache: 'no-store' }, "Couldn't show the link.");
+}
+
 export function revokeInvite(userId, inviteId) {
   return request(`/invites/${userId}/${inviteId}`, { method: 'DELETE' }, "Couldn't revoke. Please try again.");
 }

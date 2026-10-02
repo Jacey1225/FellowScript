@@ -61,6 +61,9 @@ struct FSInviteItem: Codable, Identifiable, Equatable {
     let max_uses: Int
     let use_count: Int
     let remaining_uses: Int
+    /// nil/true = the server can re-derive the link (Show link works); false =
+    /// a legacy link made before reveal existed. nil covers old cached lists.
+    var revealable: Bool? = nil
     var id: String { invite_id }
 }
 
@@ -106,6 +109,7 @@ private struct InviteCreateBody: Encodable {
     let expires_in_days: Int?   // nil for group links (they never expire)
     let max_uses: Int
 }
+private struct InviteRevealResponse: Decodable { let url: String }
 private struct InviteResetResponse: Decodable { let revoked: Int }
 
 // ── Client ───────────────────────────────────────────────────────────────────
@@ -203,6 +207,15 @@ extension NetworkService {
         let fallback = "Couldn't reset the links. Please try again."
         let data = try await inviteCall("/invites/\(userId)/subscriptions/\(subscriptionId)/reset", method: "POST", fallback: fallback)
         return try decodeInvite(InviteResetResponse.self, data, fallback: fallback).revoked
+    }
+
+    // GET /invites/{userId}/{inviteId}/reveal -- group links only. Every failure
+    // is a uniform 404. The returned URL is a secret: callers hold it in memory
+    // only and never log or persist it.
+    func revealGroupInvite(userId: String, inviteId: String) async throws -> String {
+        let fallback = "Couldn't show the link."
+        let data = try await inviteCall("/invites/\(userId)/\(inviteId)/reveal", method: "GET", fallback: fallback)
+        return try decodeInvite(InviteRevealResponse.self, data, fallback: fallback).url
     }
 
     // DELETE /invites/{userId}/{inviteId}
