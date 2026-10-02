@@ -144,10 +144,11 @@ final class GroupInfoExtraSectionsTests: XCTestCase {
         GroupInfoSectionContext(service: MockDataService.shared, groupId: "g", userId: "u", isOwner: false)
     }
 
-    func test_registry_onlyPublishRegistered_rendersNothingWhenAllOff() {
-        // IOS#2 registered the owner-only Publish row at order 10; nothing else yet.
-        XCTAssertEqual(GroupInfoExtraSections.registry.map(\.id), ["publish"])
-        XCTAssertEqual(GroupInfoExtraSections.registry.map(\.order), [10])
+    func test_registry_publishAndThreadsRegistered_rendersNothingWhenAllOff() {
+        // IOS#2 registered the owner-only Publish row at order 10; the
+        // message-threads task (20261001-message-threads) added Threads at 30.
+        XCTAssertEqual(GroupInfoExtraSections.registry.map(\.id), ["publish", "threads"])
+        XCTAssertEqual(GroupInfoExtraSections.registry.map(\.order), [10, 30])
         XCTAssertTrue(GroupInfoExtraSections.visible(capabilities: .allOff, context: ctx).isEmpty)
     }
 
