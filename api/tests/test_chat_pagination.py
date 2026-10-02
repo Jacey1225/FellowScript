@@ -278,7 +278,8 @@ def test_ddl():
         ddl.apply(cur)
         ddl_checks(cur, "pagtest_fresh", "fresh apply #2 (idempotent)")
         cur.execute("SELECT count(*) FROM pg_indexes WHERE schemaname = 'pagtest_fresh' AND tablename = 'messages' AND indexname LIKE 'idx_messages_%'")
-        check("second apply created no duplicate indexes", cur.fetchone()[0] == 2)
+        # group page, deleted_by, and the DM page index added by the DM step.
+        check("second apply created no duplicate indexes", cur.fetchone()[0] == 3)
     finally:
         d.conn.rollback()
         d.close()
