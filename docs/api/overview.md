@@ -511,7 +511,7 @@ Routes that create new user-generated content for later features answer `403 { "
 ## Explorer listings: owner routes (task 20261001-explorer-listings, backend A)
 
 <!-- explorer-listings -->
-Ships inert: every route below answers a uniform `404 { "detail": { "code": "not_found" } }` while the `explorer_publish` flag is off for the caller (and nothing user-visible changes). Authenticated routes use `require_match("user_id")`; writes also answer `403 terms_reaccept_required` for a stale Terms version. Listing text is public once published, so it is moderated: every listing goes to `pending_review` and an admin approves it (config `require_approval`), text fields pass the content filter and a youth-term list (listings are for adults 18 and over), and the owner attests to being an adult and consents to publication. A listing is public only while its group's creator exists, is still a member and is not suspended. Public read routes (list, detail), reports and admin routes are added in later steps.
+Ships inert: every route below answers a uniform `404 { "detail": { "code": "not_found" } }` while the `explorer_publish` flag is off for the caller (and nothing user-visible changes). Authenticated routes use `require_match("user_id")`; writes also answer `403 terms_reaccept_required` for a stale Terms version. Listing text is public once published, so it is moderated: every listing goes to `pending_review` and an admin approves it (config `require_approval`), text fields pass the content filter and a youth-term list (listings are for adults 18 and over), and the owner attests to being an adult and consents to publication. A listing is public only while its group's creator exists, is still a member and is not suspended. Reports and admin routes are added in a later step.
 
 | Method | Route | Description |
 |---|---|---|
@@ -523,5 +523,17 @@ Ships inert: every route below answers a uniform `404 { "detail": { "code": "not
 | POST | `/explorer/{user_id}/groups/{group_id}/listing/submit` | Body `{ "consent": true, "adult_attested": true, "accepting_requests": bool? }` (`422 consent_required` / `adult_attestation_required` / `title_required`). Moves draft, rejected or unpublished to `pending_review` (an unpublished listing whose approved text is unchanged goes straight back to `published`). `accepting_requests` omitted leaves the stored value, which is closed for a new listing. `409 hidden_by_admin` when hidden. |
 | POST | `/explorer/{user_id}/groups/{group_id}/listing/unpublish` | `published` or `pending_review` to `unpublished`, immediately. |
 | DELETE | `/explorer/{user_id}/groups/{group_id}/listing` | Hard delete (`204`). |
+
+### Explorer public browse API (backend B, signed out)
+
+No session. Answers a uniform `404 { "detail": { "code": "not_found" } }` while `explorer_browse` is off. Per-IP rate limit plus a key-less global backstop; when the dedicated public thread pool is saturated or a query exceeds `public_query_timeout_ms` the answer is `429 { "detail": { "code": "busy" } }` with `Retry-After` (never 5xx). Successful responses carry `Cache-Control: public, max-age=60`. The only identifier is the 10-character `public_id`; responses never contain group ids, user ids, usernames, member lists, emails or invite state. URL shapes are frozen for join-requests and iOS.
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/explorer/filters` | Signed-out filter vocabulary: `{ "vocab": { denominations, goals, practices, hobbies, age_ranges, life_stages, languages, gender_makeup, meeting_formats, frequencies: [{slug,label}] }, "countries": [ISO codes], "size_buckets": [label], "limits": {...}, "support_email" }`. |
+| GET | `/explorer/listings` | `{ "listings": [card], "page": { limit, has_more, next_cursor_timestamp, next_cursor_seq: null, next_cursor_id } }`, newest first on `(published_at, public_id)`; `next_cursor_id` is a `public_id`. Query: `q` (text filter, max 80 chars, no relevance sort), facet filters `denominations goals practices hobbies age_ranges life_stages languages` (repeat or comma separate; any value within a facet, all facets must match; max 5 values, max 10 filters), `gender_makeup meeting_format frequency` (one slug), `country` (ISO), `region`/`city` (prefix), `include_full` (default false hides full groups), `limit` (default 12, max 24), `cursor_timestamp` + `cursor_id`. `422 invalid_filter` (with `field`) or `invalid_cursor` before any SQL. No totals. |
+| GET | `/explorer/listings/{public_id}` | One listing: the card fields plus `description_blocks` and `requestable`. Unknown, unpublished or hidden: the same 404. |
+
+A card holds `public_id, title, summary`, the facet arrays, `country, region, city, church_name, size_bucket, seats ("open" or "full"), published_at`.
 
 Statuses: `draft`, `pending_review`, `published`, `unpublished`, `hidden`, `rejected`. Deleting the group, the owner leaving, or the owner's account being deleted removes or hides the listing.

@@ -9,8 +9,17 @@
   POST   /explorer/{user_id}/groups/{group_id}/listing/unpublish
   DELETE /explorer/{user_id}/groups/{group_id}/listing
 
-The public list and detail routes (backend step 4) and the admin and report
-routes (step 6) are added here later.
+  GET    /explorer/filters                                      PUBLIC filter vocabulary and limits (signed out)
+  GET    /explorer/listings                                     PUBLIC list: filters, q, keyset page
+  GET    /explorer/listings/{public_id}                         PUBLIC detail
+
+The public routes are thin ``async def`` handlers that call
+``await public_guard.run_public(sync_impl, ...)`` (dedicated thread limiter, 429
+``busy`` + ``Retry-After`` instead of 5xx), carry the per-IP limit plus the
+key-less global backstop, answer a uniform 404 while ``explorer_browse`` is off
+and send ``Cache-Control: public, max-age=60``. They are declared BEFORE the
+``/{user_id}/...`` owner routes so a literal segment always wins. Admin and
+report routes (step 6) are added here later.
 
 Rules (R-ROUTE): authenticated routes are plain ``def`` (threadpool) because
 they take ``FOR UPDATE`` row locks; ``require_match`` resolves the path user
@@ -31,18 +40,19 @@ import logging
 from typing import Any
 
 import anyio.to_thread
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, StrictBool
 
 from backend import public_guard
 from backend.auth.dependencies import require_match
-from backend.interactions import flags
+from backend.interactions import flags, listings_public
 from backend.interactions.listing_content import ListingError, options_payload
 from backend.interactions.listings import ListingsManager
 from backend.interactions.listings_config import get_listings_config
 from backend.observability import feature_summary
 from backend.rate_limiting import limiter
+from schemas.explorer_public import ListingDetail, ListingPage, PublicFilters
 
 explorer_router = APIRouter(prefix="/explorer")
 logger = logging.getLogger(__name__)
@@ -89,6 +99,46 @@ async def explorer_config(request: Request) -> JSONResponse:
     if not browse:
         feature_summary.incr("probe_off_hits")
     return JSONResponse({"browse": browse}, headers={"Cache-Control": _PROBE_CACHE_CONTROL})
+
+
+# -- public browse API (signed out; contract frozen at the end of backend step 4) -----------
+
+_PUBLIC_CACHE_CONTROL = "public, max-age=60"
+
+
+@explorer_router.get("/filters", response_model=PublicFilters)
+@limiter.limit(_rate("config"))
+@public_guard.global_limit(_global_rate)
+async def public_filters(request: Request, response: Response) -> PublicFilters:
+    """Controlled vocabularies, size buckets and paging limits for the signed-out
+    filter UI. Same lists as the owner form, nothing else."""
+    result = await public_guard.run_public(listings_public.get_filters)
+    response.headers["Cache-Control"] = _PUBLIC_CACHE_CONTROL
+    return result
+
+
+@explorer_router.get("/listings", response_model=ListingPage)
+@limiter.limit(_rate("list"))
+@public_guard.global_limit(_global_rate)
+async def public_list(request: Request, response: Response) -> ListingPage:
+    """Published listings, newest first, keyset paged on (published_at, public_id).
+
+    Query: ``q`` (text filter), facet filters (repeat the parameter or comma
+    separate; any value within a facet, all facets must match), ``country``,
+    ``region``/``city`` (prefix), ``include_full``, ``limit`` and the cursor
+    triple ``cursor_timestamp`` + ``cursor_id`` from the previous page."""
+    result = await public_guard.run_public(listings_public.list_listings, request.query_params)
+    response.headers["Cache-Control"] = _PUBLIC_CACHE_CONTROL
+    return result
+
+
+@explorer_router.get("/listings/{public_id}", response_model=ListingDetail)
+@limiter.limit(_rate("detail"))
+@public_guard.global_limit(_global_rate)
+async def public_detail(request: Request, response: Response, public_id: str) -> ListingDetail:
+    result = await public_guard.run_public(listings_public.get_listing, public_id)
+    response.headers["Cache-Control"] = _PUBLIC_CACHE_CONTROL
+    return result
 
 
 class ListingBody(BaseModel):
