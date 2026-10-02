@@ -19,7 +19,7 @@ from db import DBManager
 # An entry is "live" when it equals the text of an existing user id. A one-off
 # single pass, so the text form is fine here (the hot-path readers use
 # groups.LIVE_MEMBER_JOIN instead).
-_LIVE = "COALESCE(m.member_id IN (SELECT _id::text FROM users), false)"
+_LIVE = "COALESCE(lower(m.member_id) IN (SELECT _id::text FROM users), false)"
 
 _COUNTS_SQL = f"""
 SELECT
