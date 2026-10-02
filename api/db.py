@@ -78,6 +78,7 @@ DDL_MODULES = (
     "outbox",
     "chat_pagination",
     "listings",
+    "threads",
 )
 
 

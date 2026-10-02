@@ -1084,7 +1084,7 @@ class GroupsManager(DBManager):
             except (ValueError, TypeError):
                 raise ValueError("Invalid gallery cursor")
 
-        where = "group_id = %s AND attachment_kind IS NOT NULL"
+        where = "group_id = %s AND attachment_kind IS NOT NULL AND deleted_at IS NULL"
         params: list = [self.group_id]
         if kind is not None:
             where += " AND attachment_kind = %s"

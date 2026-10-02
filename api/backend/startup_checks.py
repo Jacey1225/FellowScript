@@ -33,10 +33,17 @@ def check_listings_config() -> None:
     validate_listings_config()
 
 
+def check_threads_config() -> None:
+    from backend.interactions.threads_config import validate_threads_config
+
+    validate_threads_config()
+
+
 CHECKS = (
     check_flag_registry,
     check_chat_pagination_config,
     check_listings_config,
+    check_threads_config,
 )
 
 

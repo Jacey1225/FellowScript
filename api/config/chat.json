@@ -7,5 +7,20 @@
     "rate_limits": {
       "messages_page": "120/minute"
     }
+  },
+  "threads": {
+    "title_max_length": 80,
+    "auto_title_length": 60,
+    "root_preview_length": 140,
+    "max_threads_per_group": 200,
+    "create_rate": "10/minute",
+    "send_rate": "60/minute"
+  },
+  "message_delete": {
+    "undo_seconds": 10,
+    "evidence_retention_days": 30,
+    "delete_rate": "30/minute",
+    "restore_rate": "30/minute",
+    "sweep_batch_size": 200
   }
 }

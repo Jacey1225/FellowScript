@@ -50,6 +50,12 @@ _PER_USER_METRIC_TABLES = {
     "logins": ("sessions", "created_at"),
 }
 
+# Fixed server-side extra join predicates (never request-derived). Soft-deleted
+# messages are not counted as activity.
+_PER_USER_METRIC_EXTRA = {
+    "messages": " AND t.deleted_at IS NULL",
+}
+
 
 class ActivityMonitoringManager(DBManager):
     PER_USER_METRICS = _PER_USER_METRIC_TABLES
@@ -111,7 +117,8 @@ class ActivityMonitoringManager(DBManager):
         self.cur.execute(
             f"SELECT d::date AS day, COUNT(t.*) AS cnt "
             f"FROM generate_series(CURRENT_DATE - %s::int, CURRENT_DATE, interval '1 day') AS d "
-            f"LEFT JOIN {table} t ON date_trunc('day', t.{ts_col}) = d::date "
+            f"LEFT JOIN {table} t ON date_trunc('day', t.{ts_col}) = d::date"
+            f"{_PER_USER_METRIC_EXTRA.get(metric, '')} "
             f"GROUP BY d ORDER BY d",
             (window_days,),
         )
