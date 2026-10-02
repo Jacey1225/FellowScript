@@ -284,6 +284,9 @@ def test_websocket_identity_end_to_end(client):
     print("websocket identity end to end (real route)")
     from routes.messaging import manager
     uid, other = make_user(), make_user()
+    # Setup: the main-chat send guard requires friendship for a DM.
+    q("INSERT INTO user_friends (user_id, friend_id) VALUES (%s, %s), (%s, %s) ON CONFLICT DO NOTHING",
+      (uid, other, other, uid), fetch=False)
     hdr = lambda u: {"cookie": f"session={session_cookie(u)}"}  # noqa: E731
     try:
         with client.websocket_connect(f"/message/ws/{uid}", headers=hdr(uid)) as ws_a:

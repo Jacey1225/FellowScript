@@ -81,31 +81,33 @@ def validate_attachment_key(sender_id: str, kind, key) -> bool:
     return key.startswith(prefix) and len(key) > len(prefix)
 
 
-def is_current_member(cur, group_id: str, user_id: str) -> bool:
-    """True when ``user_id`` is in ``groups.users`` of ``group_id`` and is not
-    suspended. One query; False for malformed ids or an unknown group."""
-    gid = _canonical_uuid(group_id)
-    uid = _canonical_uuid(user_id)
-    if gid is None or uid is None:
-        return False
+def _not_suspended(cur, user_id: str) -> bool:
     cur.execute(
-        "SELECT 1 FROM groups g JOIN users u ON u._id = %s::uuid "
-        "WHERE g._id = %s::uuid AND u.suspended_at IS NULL AND "
-        "(%s = ANY(g.users) OR EXISTS (SELECT 1 FROM unnest(g.users) m WHERE lower(m) = %s))",
-        (uid, gid, uid, uid),
+        "SELECT 1 FROM users WHERE _id = %s::uuid AND suspended_at IS NULL", (user_id,)
     )
     return cur.fetchone() is not None
+
+
+def is_current_member(cur, group_id: str, user_id: str) -> bool:
+    """True when ``user_id`` is a live member of ``group_id`` and is not
+    suspended. Membership comes from ``groups.live_member_ids`` (the shared
+    guarded join, which matches stored ids case-insensitively); False for
+    malformed ids or an unknown group."""
+    uid = _canonical_uuid(user_id)
+    if uid is None or uid not in live_member_ids(cur, group_id):
+        return False
+    return _not_suspended(cur, uid)
 
 
 def resolve_main_chat_recipients(cur, sender_id: str, group_id: str) -> "list[str] | None":
     """Full live member list of the group (sender included), or None when the
     sender is not a current, non-suspended member or ``group_id`` is not a UUID.
     Members come from ``groups.live_member_ids`` (dead and junk ids ignored)."""
-    if not is_current_member(cur, group_id, sender_id):
+    me = _canonical_uuid(sender_id)
+    if me is None:
         return None
     members = live_member_ids(cur, group_id)
-    me = _canonical_uuid(sender_id)
-    if me not in members:
+    if me not in members or not _not_suspended(cur, me):
         return None
     return members
 

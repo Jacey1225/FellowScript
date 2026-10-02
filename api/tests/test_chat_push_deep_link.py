@@ -75,6 +75,19 @@ def make_test_user(username_prefix: str) -> str:
     return uid
 
 
+def make_friends(a: str, b: str) -> None:
+    """Friendship rows (both directions); the main-chat send guard requires them for a DM."""
+    db = DBManager()
+    try:
+        db.cur.execute(
+            "INSERT INTO user_friends (user_id, friend_id) VALUES (%s, %s), (%s, %s) ON CONFLICT DO NOTHING",
+            (a, b, b, a),
+        )
+        db.conn.commit()
+    finally:
+        db.close()
+
+
 def make_test_group(group_id: str, users: list[str]) -> None:
     db = DBManager()
     try:
@@ -155,6 +168,7 @@ async def test_offline_dm_message_push_synthesizes_sorted_room_key():
 
     sender_id = make_test_user("deeplink_dm_sender")
     recipient_id = make_test_user("deeplink_dm_recipient")
+    make_friends(sender_id, recipient_id)
 
     pushed, orig_send_push = _install_fake_push()
     manager = ConnectionManager()
@@ -196,6 +210,7 @@ async def test_online_recipient_never_triggers_push_or_data_building():
 
     sender_id = make_test_user("deeplink_online_sender")
     online_recipient = make_test_user("deeplink_online_recipient")
+    make_friends(sender_id, online_recipient)
 
     pushed, orig_send_push = _install_fake_push()
     manager = ConnectionManager()

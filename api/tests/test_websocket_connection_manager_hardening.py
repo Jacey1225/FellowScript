@@ -125,6 +125,16 @@ async def test_send_msg_eviction_and_fallback():
     sender_id  = make_test_user("wshard_sender")
     healthy_id = make_test_user("wshard_healthy")
     stale_id   = make_test_user("wshard_stale")
+    # Setup: the main-chat send guard rejects a multi-recipient DM, so the
+    # two-recipient send is made a real group send (a groups row whose users
+    # hold the sender, healthy and stale ids) with group_id set.
+    group_id   = str(uuid.uuid4())
+    _gdb = DBManager()
+    try:
+        _gdb.insertion("groups", {"_id": group_id, "title": "wshard-test-group",
+                                  "users": [sender_id, healthy_id, stale_id]})
+    finally:
+        _gdb.close()
 
     pushed = []
 
@@ -151,7 +161,7 @@ async def test_send_msg_eviction_and_fallback():
             "from_user": sender_id,
             "to_users":  [healthy_id, stale_id],
             "text":      marker,
-            "group_id":  None,
+            "group_id":  group_id,
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
 
@@ -199,6 +209,12 @@ async def test_send_msg_eviction_and_fallback():
     finally:
         manager.close()
         ws_module.send_push = orig_send_push
+        _gdb = DBManager()
+        try:
+            _gdb.cur.execute("DELETE FROM groups WHERE _id = %s", (group_id,))
+            _gdb.conn.commit()
+        finally:
+            _gdb.close()
         cleanup(sender_id, healthy_id, stale_id)
 
 

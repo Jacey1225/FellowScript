@@ -142,6 +142,19 @@ def make_test_user(username_prefix: str) -> str:
     return uid
 
 
+def make_friends(a: str, b: str) -> None:
+    """Friendship rows (both directions); the main-chat send guard requires them for a DM."""
+    db = DBManager()
+    try:
+        db.cur.execute(
+            "INSERT INTO user_friends (user_id, friend_id) VALUES (%s, %s), (%s, %s) ON CONFLICT DO NOTHING",
+            (a, b, b, a),
+        )
+        db.conn.commit()
+    finally:
+        db.close()
+
+
 def cleanup(*user_ids):
     db = DBManager()
     try:
@@ -236,6 +249,7 @@ async def test_send_msg_survives_stale_cursor_end_to_end():
 
     sender_id = make_test_user("wsstale_sender")
     recipient_id = make_test_user("wsstale_recipient")
+    make_friends(sender_id, recipient_id)
 
     manager = ConnectionManager()
     try:
@@ -287,6 +301,7 @@ async def test_send_msg_username_lookup_recovers_not_just_falls_back():
 
     sender_id = make_test_user("wsstale_pushsender")
     recipient_id = make_test_user("wsstale_pushrecipient")
+    make_friends(sender_id, recipient_id)
 
     pushed = []
 
@@ -398,6 +413,7 @@ async def test_save_message_raises_save_failed_when_insert_exhausted():
 
     sender_id = make_test_user("wsstale_insertfail_sender")
     recipient_id = make_test_user("wsstale_insertfail_recipient")
+    make_friends(sender_id, recipient_id)
 
     manager = ConnectionManager()
     try:

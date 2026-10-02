@@ -73,6 +73,19 @@ def signup(client, username):
     return r.json()["user_id"], r.cookies.get("session")
 
 
+def make_friends(a, b):
+    """Friendship rows (both directions); the main-chat send guard requires them for a DM."""
+    db = DBManager()
+    try:
+        db.cur.execute(
+            "INSERT INTO user_friends (user_id, friend_id) VALUES (%s, %s), (%s, %s) ON CONFLICT DO NOTHING",
+            (a, b, b, a),
+        )
+        db.conn.commit()
+    finally:
+        db.close()
+
+
 def cleanup(*user_ids):
     db = DBManager()
     try:
@@ -94,6 +107,7 @@ def main():
         uid_b, _        = signup(client, f"wsspoof_b_{uuid.uuid4().hex[:8]}")  # the identity A will try to impersonate
         uid_c, token_c = signup(client, f"wsspoof_c_{uuid.uuid4().hex[:8]}")  # DM recipient (kept offline on purpose)
 
+        make_friends(uid_a, uid_c)
         try:
             print("=== 1. A connects as self and sends a frame claiming from_user=B (impersonation attempt) ===")
             marker_text = f"forged-{uuid.uuid4().hex[:8]}"

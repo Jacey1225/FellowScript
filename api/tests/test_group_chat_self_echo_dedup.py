@@ -95,6 +95,19 @@ def make_test_user(username_prefix: str) -> str:
     return uid
 
 
+def make_friends(a: str, b: str) -> None:
+    """Friendship rows (both directions); the main-chat send guard requires them for a DM."""
+    db = DBManager()
+    try:
+        db.cur.execute(
+            "INSERT INTO user_friends (user_id, friend_id) VALUES (%s, %s), (%s, %s) ON CONFLICT DO NOTHING",
+            (a, b, b, a),
+        )
+        db.conn.commit()
+    finally:
+        db.close()
+
+
 def make_test_group(group_id: str, users: list[str]) -> None:
     db = DBManager()
     try:
@@ -208,6 +221,7 @@ async def test_dm_send_is_unaffected():
 
     sender_id   = make_test_user("dupfix_dm_sender")
     recipient   = make_test_user("dupfix_dm_recipient")
+    make_friends(sender_id, recipient)
 
     manager = ConnectionManager()
     try:

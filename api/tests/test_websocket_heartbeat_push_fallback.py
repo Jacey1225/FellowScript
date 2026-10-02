@@ -110,6 +110,19 @@ def make_test_user(username_prefix: str) -> str:
     return uid
 
 
+def make_friends(a: str, b: str) -> None:
+    """Friendship rows (both directions); the main-chat send guard requires them for a DM."""
+    db = DBManager()
+    try:
+        db.cur.execute(
+            "INSERT INTO user_friends (user_id, friend_id) VALUES (%s, %s), (%s, %s) ON CONFLICT DO NOTHING",
+            (a, b, b, a),
+        )
+        db.conn.commit()
+    finally:
+        db.close()
+
+
 def make_test_group(group_id: str, users: list[str]) -> None:
     db = DBManager()
     try:
@@ -153,6 +166,7 @@ async def test_dm_stale_registered_socket_evicted_by_heartbeat_then_pushed():
 
     sender_id = make_test_user("hb_dm_sender")
     stale_id  = make_test_user("hb_dm_stale")
+    make_friends(sender_id, stale_id)
 
     pushed, orig_send_push = _install_fake_push()
 
@@ -288,6 +302,7 @@ async def test_never_connected_offline_dm_and_group_still_push():
 
     sender_id      = make_test_user("hb_never_sender")
     dm_offline     = make_test_user("hb_never_dm_offline")
+    make_friends(sender_id, dm_offline)
     group_offline  = make_test_user("hb_never_grp_offline")
     group_id       = str(uuid.uuid4())
     make_test_group(group_id, [sender_id, group_offline])

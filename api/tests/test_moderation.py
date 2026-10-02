@@ -265,8 +265,21 @@ def main():
             )
 
             chat_marker = f"chat-mild-{uuid.uuid4().hex[:8]}"
+            # Setup: the main-chat send guard requires a DM recipient who is a
+            # befriended, existing user (a DM to oneself is rejected), so the
+            # mild message goes to a second user who is friends with uid3.
+            r_pal, _ = make_user(client, "chatpal")
+            uid_pal = r_pal.json()["user_id"]
+            cleanup_uids.append((uid_pal, r_pal.cookies.get("session")))
+            _fdb = DBManager()
+            _fdb.cur.execute(
+                "INSERT INTO user_friends (user_id, friend_id) VALUES (%s, %s), (%s, %s) ON CONFLICT DO NOTHING",
+                (uid3, uid_pal, uid_pal, uid3),
+            )
+            _fdb.conn.commit()
+            _fdb.close()
             ws.send_json({
-                "to_users": [uid3],
+                "to_users": [uid_pal],
                 "text": f"damn, {chat_marker}",
                 "group_id": None,
                 "timestamp": "2026-08-30T00:00:01Z",
