@@ -27,9 +27,16 @@ def check_chat_pagination_config() -> None:
     validate_pagination_config()
 
 
+def check_listings_config() -> None:
+    from backend.interactions.listings_config import validate_listings_config
+
+    validate_listings_config()
+
+
 CHECKS = (
     check_flag_registry,
     check_chat_pagination_config,
+    check_listings_config,
 )
 
 

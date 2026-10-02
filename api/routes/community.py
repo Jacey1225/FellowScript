@@ -2,7 +2,9 @@ import re
 import uuid
 
 from fastapi import APIRouter, HTTPException, Depends, Query, Request
-from backend.interactions.groups import GroupFullError, GroupsManager, InvalidMemberError, normalize_group_title
+from backend.interactions.groups import (
+    GroupFullError, GroupsManager, InvalidMemberError, ListedGroupOwnerOnlyError, normalize_group_title,
+)
 from backend.interactions.friends import  FriendsManager, is_nudge_enabled
 from backend.interactions.push import send_push
 from backend.interactions import flags, paging
@@ -322,6 +324,10 @@ async def update_group(user_id: str, group_id: str, group: Group, _: str = Depen
         except GroupFullError:
             raise HTTPException(
                 status_code=409, detail={"code": "group_full", "message": "This group is full."})
+        except ListedGroupOwnerOnlyError:
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "owner_only", "message": "Only the group's owner can change the members of a listed group."})
         except InvalidMemberError:
             raise HTTPException(status_code=422, detail=INVALID_MEMBER_DETAIL)
     finally:

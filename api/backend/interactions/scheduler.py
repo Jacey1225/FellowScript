@@ -1323,5 +1323,12 @@ def start_scheduler() -> None:
     from backend.observability.feature_summary import run_feature_summary_job
     scheduler.add_job(run_feature_summary_job, "interval", hours=1,
                       id="feature_summary", replace_existing=True)
+    # Explorer listings: hide listings whose owner was suspended or left (R-SCHED:
+    # thin async job, DB work in an executor). The interval is a config tunable.
+    from backend.interactions.listing_sweeper import JOB_ID as LISTING_SWEEP_JOB_ID, run_listing_sweeper_job
+    from backend.interactions.listings_config import get_listings_config
+    scheduler.add_job(run_listing_sweeper_job, "interval",
+                      seconds=get_listings_config().sweeper_interval_seconds,
+                      id=LISTING_SWEEP_JOB_ID, replace_existing=True)
     scheduler.start()
     logger.info("Notification scheduler started — checking every minute")

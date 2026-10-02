@@ -53,6 +53,14 @@ class GroupOwnerOnlyError(Exception):
     group has no creator_id, so legacy ownerless groups can't set a cap)."""
 
 
+class ListedGroupOwnerOnlyError(Exception):
+    """The group has Explorer presence (a listing in review, published or
+    hidden) and this ``PUT /groups`` change is owner-only: a non-creator adding
+    members, or anyone removing the creator from the member list. The route
+    maps it to 409 ``{"code": "owner_only"}``. Groups without a listing never
+    raise it."""
+
+
 class InvalidMemberError(Exception):
     """A NEW member id supplied to create/update is not a valid, existing,
     non-suspended user. Identical for malformed and non-existent ids so the
@@ -846,6 +854,33 @@ class GroupsManager(DBManager):
             cleaned.append(c)
         return list(dict.fromkeys(cleaned))
 
+    def _guard_listed_group(self, current: list[str], cleaned: list[str]) -> None:
+        """Owner-only member changes for a group with Explorer presence (J4c).
+
+        Called under the groups row lock. For a group without a listing this is
+        one indexed lookup and changes nothing, so build-78 clients that add
+        members through this route keep working for every ordinary group. For a
+        listed group, a non-creator may not ADD members and nobody may remove
+        the creator (the listing's owner) from the member list.
+        """
+        from backend.interactions.listings import group_has_explorer_presence
+
+        if not group_has_explorer_presence(self.cur, self.group_id):
+            return
+        self.cur.execute("SELECT creator_id::text FROM groups WHERE _id = %s", (self.group_id,))
+        row = self.cur.fetchone()
+        creator = row[0] if row else None
+        added = set(cleaned) - set(current)
+        caller_is_creator = creator is not None and creator == str(self.user_id).lower()
+        creator_removed = (
+            creator is not None
+            and any(isinstance(m, str) and m.lower() == creator for m in current)
+            and not any(isinstance(m, str) and m.lower() == creator for m in cleaned)
+        )
+        if (added and not caller_is_creator) or creator_removed:
+            self.conn.rollback()
+            raise ListedGroupOwnerOnlyError()
+
     def update_group(self, group: Group) -> None:
         """Replace a group's title and member list.
 
@@ -876,6 +911,7 @@ class GroupsManager(DBManager):
                 return
             current, cap = locked
             cleaned = self._clean_member_list(group.users or [], set(current))
+            self._guard_listed_group(current, cleaned)
             if cap is not None and (set(cleaned) - set(current)) and len(cleaned) > cap:
                 self.conn.rollback()
                 raise GroupFullError()
@@ -891,7 +927,7 @@ class GroupsManager(DBManager):
             revoke_member_group_invites(
                 self.cur, self.group_id, set(current) - set(cleaned))
             self.conn.commit()
-        except (GroupFullError, InvalidMemberError):
+        except (GroupFullError, InvalidMemberError, ListedGroupOwnerOnlyError):
             raise
         except SaveFailedError:
             self.conn.rollback()

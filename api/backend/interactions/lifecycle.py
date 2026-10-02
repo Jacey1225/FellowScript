@@ -5,7 +5,9 @@ Four registries (kinds):
 - ``group_delete``   fn(cur, group_id) -> keys    runs BEFORE the group row is deleted
 - ``member_leave``   fn(cur, group_id, user_id) -> keys   a member left, group survives
 - ``user_delete``    fn(cur, user_id) -> keys     runs BEFORE ``DELETE FROM users``
-- ``listing_hidden`` fn(cur, listing_id) -> keys  a listing was removed or hidden
+- ``listing_hidden`` fn(cur, group_id, reason) -> keys  a group's listing was hidden or removed
+  (``reason`` is a short code such as ``owner_gone``; the listing's owner module
+  calls ``run('listing_hidden', cur, group_id, reason)``)
 
 A hook returns an iterable of S3 object keys to delete (or ``None``). ``run``
 collects them and the CALLER enqueues them with ``enqueue_s3_deletes`` in the

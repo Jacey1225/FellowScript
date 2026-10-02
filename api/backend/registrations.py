@@ -16,3 +16,4 @@ def load_all() -> None:
     from backend import lifecycle_wiring  # noqa: F401  SF: group photo / banner collectors, user_delete
     from backend.interactions import reports  # noqa: F401  SF: CONTENT_RESOLVERS for the five existing types
     from backend.moderation import removers  # noqa: F401  SF: CONTENT_REMOVERS for the five existing types
+    from backend import listings_wiring  # noqa: F401  LST: member_leave / user_delete hooks for listings

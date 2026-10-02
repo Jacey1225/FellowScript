@@ -1,0 +1,178 @@
+{
+  "listings": {
+    "require_approval": true,
+    "consent_version": "explorer-2026-10-v1",
+    "per_owner_cap": 3,
+    "title_max_length": 80,
+    "summary_max_length": 280,
+    "church_name_max_length": 120,
+    "region_max_length": 80,
+    "city_max_length": 80,
+    "max_values_per_field": 5,
+    "max_free_tags": 5,
+    "free_tag_max_length": 30,
+    "description_max_blocks": 30,
+    "description_max_text_chars": 5000,
+    "description_max_block_chars": 2000,
+    "page_size_default": 12,
+    "page_size_max": 24,
+    "max_facet_values": 5,
+    "max_facets": 10,
+    "q_max_length": 80,
+    "public_query_timeout_ms": 2000,
+    "public_global_rate_limit": "600/minute",
+    "public_concurrency": 8,
+    "public_max_waiting": 16,
+    "report_auto_hide_threshold": 3,
+    "sweeper_interval_seconds": 300,
+    "sweeper_batch_size": 100,
+    "support_email": "support@fellowscript.com",
+    "rate_limits": {
+      "list": "30/minute",
+      "detail": "60/minute",
+      "config": "120/minute",
+      "owner_read": "60/minute",
+      "owner_write": "10/minute",
+      "report": "10/minute",
+      "admin": "60/minute"
+    },
+    "reject_reason_codes": ["inappropriate", "not_adults_only", "misleading", "spam", "duplicate", "incomplete", "other"],
+    "hide_reason_codes": ["inappropriate", "not_adults_only", "misleading", "spam", "reported", "other"],
+    "youth_terms": [
+      "teen", "teens", "teenage", "teenager", "teenagers", "tween", "tweens", "preteen", "preteens",
+      "youth", "adolescent", "adolescents", "juvenile", "juveniles", "underage",
+      "kid", "kids", "child", "children", "minor", "minors",
+      "middle school", "junior high", "high school", "highschool", "elementary", "grade school",
+      "under 18", "under eighteen", "under 16", "under 17", "13-17", "14-18", "12-17"
+    ],
+    "blocked_link_hosts": [
+      "bit.ly", "tinyurl.com", "t.co", "goo.gl", "ow.ly", "is.gd", "buff.ly", "rebrand.ly", "cutt.ly",
+      "shorturl.at", "tiny.cc", "lnkd.in", "rb.gy", "t.ly", "s.id", "v.gd", "bl.ink", "short.io"
+    ],
+    "size_buckets": [
+      {"max_members": 5, "label": "2-5"},
+      {"max_members": 10, "label": "6-10"},
+      {"max_members": 20, "label": "11-20"},
+      {"max_members": null, "label": "21+"}
+    ],
+    "vocab": {
+      "denominations": [
+        {"slug": "anglican_episcopal", "label": "Anglican / Episcopal"},
+        {"slug": "assemblies_of_god", "label": "Assemblies of God"},
+        {"slug": "baptist", "label": "Baptist"},
+        {"slug": "catholic", "label": "Catholic"},
+        {"slug": "church_of_christ", "label": "Church of Christ"},
+        {"slug": "eastern_orthodox", "label": "Eastern Orthodox"},
+        {"slug": "evangelical", "label": "Evangelical"},
+        {"slug": "lutheran", "label": "Lutheran"},
+        {"slug": "mennonite_anabaptist", "label": "Mennonite / Anabaptist"},
+        {"slug": "methodist", "label": "Methodist"},
+        {"slug": "nazarene", "label": "Nazarene"},
+        {"slug": "non_denominational", "label": "Non-denominational"},
+        {"slug": "pentecostal_charismatic", "label": "Pentecostal / Charismatic"},
+        {"slug": "presbyterian_reformed", "label": "Presbyterian / Reformed"},
+        {"slug": "seventh_day_adventist", "label": "Seventh-day Adventist"},
+        {"slug": "interdenominational", "label": "Interdenominational"},
+        {"slug": "other_christian", "label": "Other Christian"}
+      ],
+      "goals": [
+        {"slug": "bible_study", "label": "Bible study"},
+        {"slug": "prayer", "label": "Prayer"},
+        {"slug": "accountability", "label": "Accountability"},
+        {"slug": "fellowship", "label": "Fellowship"},
+        {"slug": "discipleship", "label": "Discipleship"},
+        {"slug": "worship", "label": "Worship"},
+        {"slug": "service", "label": "Serving others"},
+        {"slug": "evangelism", "label": "Sharing the gospel"},
+        {"slug": "mentoring", "label": "Mentoring"},
+        {"slug": "scripture_memory", "label": "Scripture memory"},
+        {"slug": "book_study", "label": "Book study"},
+        {"slug": "spiritual_growth", "label": "Spiritual growth"},
+        {"slug": "community", "label": "Community"},
+        {"slug": "marriage_family", "label": "Marriage and family"}
+      ],
+      "practices": [
+        {"slug": "daily_scripture", "label": "Daily Scripture reading"},
+        {"slug": "group_prayer", "label": "Group prayer"},
+        {"slug": "fasting", "label": "Fasting"},
+        {"slug": "journaling", "label": "Journaling"},
+        {"slug": "lectio_divina", "label": "Lectio divina"},
+        {"slug": "memorization", "label": "Memorization"},
+        {"slug": "worship_music", "label": "Worship music"},
+        {"slug": "sabbath", "label": "Sabbath rest"},
+        {"slug": "service_projects", "label": "Service projects"},
+        {"slug": "shared_meals", "label": "Shared meals"},
+        {"slug": "sermon_discussion", "label": "Sermon discussion"},
+        {"slug": "testimony_sharing", "label": "Sharing testimonies"}
+      ],
+      "hobbies": [
+        {"slug": "hiking", "label": "Hiking"},
+        {"slug": "running", "label": "Running"},
+        {"slug": "cooking", "label": "Cooking"},
+        {"slug": "board_games", "label": "Board games"},
+        {"slug": "music", "label": "Music"},
+        {"slug": "reading", "label": "Reading"},
+        {"slug": "sports", "label": "Sports"},
+        {"slug": "coffee", "label": "Coffee"},
+        {"slug": "gardening", "label": "Gardening"},
+        {"slug": "art", "label": "Art"},
+        {"slug": "travel", "label": "Travel"},
+        {"slug": "photography", "label": "Photography"},
+        {"slug": "volunteering", "label": "Volunteering"},
+        {"slug": "camping", "label": "Camping"},
+        {"slug": "fitness", "label": "Fitness"},
+        {"slug": "movies", "label": "Movies"}
+      ],
+      "age_ranges": [
+        {"slug": "18_29", "label": "18-29"},
+        {"slug": "30_39", "label": "30-39"},
+        {"slug": "40_49", "label": "40-49"},
+        {"slug": "50_64", "label": "50-64"},
+        {"slug": "65_plus", "label": "65+"},
+        {"slug": "all_adults", "label": "All adults (18+)"}
+      ],
+      "life_stages": [
+        {"slug": "single", "label": "Single"},
+        {"slug": "newly_married", "label": "Newly married"},
+        {"slug": "parents", "label": "Parents"},
+        {"slug": "empty_nesters", "label": "Empty nesters"},
+        {"slug": "retirees", "label": "Retirees"},
+        {"slug": "working_professionals", "label": "Working professionals"},
+        {"slug": "college_and_grad", "label": "College and grad students (adults)"}
+      ],
+      "languages": [
+        {"slug": "en", "label": "English"},
+        {"slug": "es", "label": "Spanish"},
+        {"slug": "fr", "label": "French"},
+        {"slug": "pt", "label": "Portuguese"},
+        {"slug": "de", "label": "German"},
+        {"slug": "it", "label": "Italian"},
+        {"slug": "ko", "label": "Korean"},
+        {"slug": "zh", "label": "Chinese"},
+        {"slug": "ja", "label": "Japanese"},
+        {"slug": "tl", "label": "Tagalog"},
+        {"slug": "vi", "label": "Vietnamese"},
+        {"slug": "ar", "label": "Arabic"},
+        {"slug": "ru", "label": "Russian"},
+        {"slug": "hi", "label": "Hindi"},
+        {"slug": "sw", "label": "Swahili"}
+      ],
+      "gender_makeup": [
+        {"slug": "mixed", "label": "Mixed"},
+        {"slug": "women_only", "label": "Women only"},
+        {"slug": "men_only", "label": "Men only"}
+      ],
+      "meeting_formats": [
+        {"slug": "in_person", "label": "In person"},
+        {"slug": "online", "label": "Online"},
+        {"slug": "hybrid", "label": "Hybrid"}
+      ],
+      "frequencies": [
+        {"slug": "weekly", "label": "Weekly"},
+        {"slug": "biweekly", "label": "Every two weeks"},
+        {"slug": "monthly", "label": "Monthly"},
+        {"slug": "flexible", "label": "Flexible"}
+      ]
+    }
+  }
+}

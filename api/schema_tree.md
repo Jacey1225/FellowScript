@@ -99,6 +99,12 @@ transaction (one name per line; an unknown module raises and stops the boot; the
 ```
 feature_flags           # module "flags": name PK, state off|canary|on, canary_user_ids UUID[], updated_at, updated_by (text, no FK); 8 rows seeded off
 pending_s3_deletes      # module "outbox": key PK, enqueued_at, attempts, last_attempt_at (S3 keys awaiting deletion; no FK)
+group_listings          # module "listings": _id PK (internal), public_id (10-char base62, UNIQUE), group_id UNIQUE FK groups ON DELETE CASCADE,
+                        #   status draft|pending_review|published|unpublished|hidden|rejected, accepting_requests (default FALSE), title (80, own snapshot),
+                        #   summary, description_blocks JSONB, description_text (app-maintained), facet arrays + country/region/city/church_name,
+                        #   banner_key/photo_key/banner_alt (reserved, unused), search_tsv (generated, 'simple'), consent_version/consented_at/adult_attested,
+                        #   approved_at, reviewed_by/at, reject_reason_code, hidden_at/reason, published_at, created_at, updated_at; fs_arr_text() IMMUTABLE helper
+group_listing_media     # module "listings": created EMPTY (listing_id FK CASCADE, object_key UNIQUE, kind, size_bytes, width, height, alt_text, status)
 ```
 
 ---
