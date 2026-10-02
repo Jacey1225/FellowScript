@@ -220,6 +220,21 @@ A message may now carry an image/video/file/gif attachment alongside or instead 
 
 ---
 
+## Main-chat send guard (task 20261002-ws-send-hardening)
+
+`backend/interactions/send_guard.py` (`authorize_send`) is the single owner of main-chat WebSocket send authorization, called once from `ConnectionManager.send_msg` before the block check and `save_message`. It is stateless; every query goes through the `_GuardCursor` adapter into `ConnectionManager._execute`, so stale-cursor repair applies. Group sends require a current, non-suspended member and derive recipients from the group's live member list (client `to_users` ignored). DMs require exactly one existing friend who is not the sender. `image`/`video`/`file` attachment keys must be under `attachments/<sender_id>/`. Outcomes:
+
+| Outcome | Cause | Sender sees |
+|---|---|---|
+| `SendDecision` | authorized | normal send |
+| `Reject` | genuine authorization denial (non-member, non-friend, forged recipients, foreign attachment key, bad group id) | `{type: error, reason: not_allowed}` (uniform, cause logged internally only) |
+| `Drop` | blocked DM | nothing (silent, as before) |
+| `Unavailable` | infrastructure failure inside the guard (database unreachable, query error, timeout) | `{type: error, reason: send_failed}` (retriable) |
+
+Both `Reject` and `Unavailable` fail closed: the message is not saved. The split exists so an outage is never reported to users as "not allowed"; clients can retry `send_failed` but should not retry `not_allowed`.
+
+---
+
 ## Group info panel (task 20260929-group-info-panel)
 
 `routes/group_info.py` (`/groups/{user_id}/{group_id}/...`), all `require_match` + member-only (403 otherwise; any member may rename/change the photo, same as `PUT /groups/{user_id}/{group_id}`):

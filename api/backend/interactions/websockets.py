@@ -16,9 +16,28 @@ from backend.interactions.attachments import generate_download_url
 from backend.interactions.chat_config import get_pagination_config
 from backend.interactions.paging import format_timestamp
 from backend.interactions.push import send_push
+from backend.interactions.send_guard import authorize_send, Drop, Reject, SendDecision, Unavailable
 from backend.moderation.content_filter import check_clean, ContentRejected, rejection_message
 
 logger = logging.getLogger(__name__)
+
+
+class _GuardCursor:
+    """Cursor-shaped adapter handed to ``send_guard``: every execute goes
+    through ``ConnectionManager._execute`` so locking and stale-cursor repair
+    behave exactly as for the neighbouring queries."""
+
+    def __init__(self, manager: "ConnectionManager") -> None:
+        self._manager = manager
+
+    def execute(self, query: str, params: tuple = ()) -> None:
+        self._manager._execute(query, params)
+
+    def fetchone(self):
+        return self._manager.cur.fetchone()
+
+    def fetchall(self):
+        return self._manager.cur.fetchall()
 
 # Push-notification fallback body for an attachment-only message (empty
 # `text`) -- otherwise the push would show a blank body. Purely cosmetic;
@@ -470,6 +489,43 @@ class ConnectionManager(DBManager):
                     "detail": rejection_message(e),
                 })
             return
+
+        # Send authorization (task 20261002-ws-send-hardening): membership,
+        # friendship and attachment-key ownership, with recipients derived
+        # server-side. One uniform not_allowed frame for every authorization denial (infrastructure failures get send_failed); a DM in a
+        # blocked relationship is dropped silently, as it always was.
+        decision = authorize_send(_GuardCursor(self), from_user_id, payload)
+        if not isinstance(decision, SendDecision):
+            _gid = str(group_id) if group_id else ""
+            try:
+                _gid = str(uuid.UUID(_gid)) if _gid else "-"
+            except ValueError:
+                _gid = "-"
+            logger.info(
+                "send_guard %s sender=%s kind=%s group=%s cause=%s",
+                "dropped" if isinstance(decision, Drop) else "rejected",
+                from_user_id, "group" if group_id else "dm", _gid, decision.cause,
+            )
+            if isinstance(decision, (Reject, Unavailable)):
+                sender_ws = self.active_connections.get(from_user_id)
+                if sender_ws:
+                    if isinstance(decision, Unavailable):
+                        # Infrastructure failure: fail closed (nothing saved) but
+                        # report the retriable frame, not an authorization denial.
+                        await sender_ws.send_json({
+                            "type": "error",
+                            "reason": "send_failed",
+                            "detail": "Couldn't send your message. Please try again.",
+                        })
+                    else:
+                        await sender_ws.send_json({
+                            "type": "error",
+                            "reason": "not_allowed",
+                            "detail": "Couldn't send your message.",
+                        })
+            return
+        payload["to_users"] = decision.recipients
+        to_users = decision.recipients
 
         # Guideline 1.2 block enforcement. One query for the sender's full
         # bidirectional blocked-relationship set (either direction), reused
