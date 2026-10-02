@@ -7,7 +7,12 @@
 // Reserved orders (shared-contract-v2): publish 10, join_requests 20, threads 30.
 // ctx: { features, userId, groupId, info, isOwner }. component receives ctx too.
 // An empty registry renders nothing.
-export const GROUP_INFO_SECTIONS = [];
+import GroupPublishSection from './GroupPublishSection.jsx';
+
+export const GROUP_INFO_SECTIONS = [
+  // Task 20261001-explorer-listings: owner-only, flag-gated (fails closed).
+  { key: 'publish', order: 10, isVisible: (ctx) => !!ctx.isOwner && ctx.features?.explorer_publish === true, component: GroupPublishSection },
+];
 
 export function getVisibleGroupInfoSections(ctx, sections = GROUP_INFO_SECTIONS) {
   return [...sections]

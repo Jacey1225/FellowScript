@@ -33,11 +33,50 @@ export function clearPendingInvite() {
   sessionStorage.removeItem(KEY);
 }
 
+// Task 20261001-explorer-listings step 10: an Explore URL (for example the
+// publish/manage page) a signed-out visitor was sent from, kept across the
+// sign-in redirects so they return to it. Separate key from the invite token
+// (an invite always wins). Only an in-app /explore path is ever stored, this
+// tab only (sessionStorage), 24h expiry, consumed once on a successful sign-in.
+const EXPLORE_KEY = 'fs_pending_explore';
+const EXPLORE_PATH_RE = /^\/explore(\/[A-Za-z0-9_-]{1,32})?(\?[A-Za-z0-9_=&-]{0,120})?$/;
+
+export function setPendingExplore(path, now = Date.now()) {
+  if (typeof path !== 'string' || !EXPLORE_PATH_RE.test(path)) return;
+  sessionStorage.setItem(EXPLORE_KEY, JSON.stringify({ path, at: now }));
+}
+
+export function getPendingExplore(now = Date.now()) {
+  let stored;
+  try {
+    stored = JSON.parse(sessionStorage.getItem(EXPLORE_KEY) || 'null');
+  } catch {
+    stored = null;
+  }
+  if (!stored || typeof stored.path !== 'string' || !EXPLORE_PATH_RE.test(stored.path)
+    || typeof stored.at !== 'number' || now - stored.at > PENDING_INVITE_TTL_MS) {
+    sessionStorage.removeItem(EXPLORE_KEY);
+    return null;
+  }
+  return stored.path;
+}
+
+export function clearPendingExplore() {
+  sessionStorage.removeItem(EXPLORE_KEY);
+}
+
 // Where to land right after a successful sign-in / sign-up: back on the
-// pending invite's screen when there is one, otherwise the reader.
+// pending invite's screen when there is one, then a pending Explore page
+// (consumed here), otherwise the reader.
 export function postAuthPath() {
   const token = getPendingInvite();
-  return token ? `/join/${token}` : '/reader';
+  if (token) return `/join/${token}`;
+  const explore = getPendingExplore();
+  if (explore) {
+    clearPendingExplore();
+    return explore;
+  }
+  return '/reader';
 }
 
 // Group to open in the reader right after a join (desktop). One-shot.

@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useCallback } from 'react';
 import { API } from '../config.js';
-import { clearPendingInvite } from '../lib/pendingInvite.js';
+import { clearPendingInvite, clearPendingExplore } from '../lib/pendingInvite.js';
 
 const AuthContext = createContext(null);
 
@@ -32,6 +32,7 @@ export function AuthProvider({ children }) {
     localStorage.removeItem('fs_user');
     localStorage.removeItem('last_page');
     clearPendingInvite();
+    clearPendingExplore();
     setUser(null);
   }, []);
 

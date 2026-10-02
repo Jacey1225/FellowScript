@@ -13,6 +13,7 @@ import Download from './pages/Download.jsx';
 import JoinInvite from './pages/JoinInvite.jsx';
 import Explore from './pages/Explore.jsx';
 import ExploreListing from './pages/ExploreListing.jsx';
+import ExploreManage from './pages/ExploreManage.jsx';
 import AdminShell from './components/AdminShell.jsx';
 import MobileBlockGate from './components/MobileBlockGate.jsx';
 import ReaderWebRedirect from './components/ReaderWebRedirect.jsx';
@@ -136,6 +137,8 @@ export default function App() {
               GET /explorer/config probe says browse is on; the routes
               themselves answer a "not available" state when the flag is off. */}
           <Route path="/explore"            element={<Explore />} />
+          {/* Step 10: owner publish/manage page (sign-in required, flag-gated). */}
+          <Route path="/explore/manage"     element={<ExploreManage />} />
           <Route path="/explore/:publicId"  element={<ExploreListing />} />
           <Route path="/signin"    element={<SignIn />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
