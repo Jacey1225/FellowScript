@@ -76,6 +76,7 @@ def _redact_db_error(e: sql.Error) -> str:
 DDL_MODULES = (
     "flags",
     "outbox",
+    "chat_pagination",
 )
 
 

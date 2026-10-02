@@ -1,0 +1,11 @@
+{
+  "pagination": {
+    "initial_page_size": 30,
+    "page_size": 30,
+    "max_page_size": 100,
+    "future_timestamp_skew_seconds": 300,
+    "rate_limits": {
+      "messages_page": "120/minute"
+    }
+  }
+}

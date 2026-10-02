@@ -225,6 +225,8 @@ class FriendsManager(DBManager):
             "attachment_kind": attachment_kind,
             "attachment_meta": attachment_meta or {},
             "attachment_url": generate_download_url(attachment_key) if attachment_key else None,
+            # Additive stable id (string UUID); every other key is unchanged.
+            "id": str(_id),
         }
 
     def read_friend(self, friend_id: str) -> dict:
@@ -255,7 +257,7 @@ class FriendsManager(DBManager):
             "SELECT m._id, m.text, m.timestamp, m.attachment_kind, m.attachment_key, m.attachment_meta "
             "FROM messages m "
             "JOIN message_recipients mr ON m._id = mr.message_id "
-            "WHERE m.from_user = %s AND mr.user_id = %s AND m.group_id IS NULL",
+            "WHERE m.from_user = %s AND mr.user_id = %s AND m.group_id IS NULL AND m.deleted_at IS NULL",
             (self.user_id, friend_id)
         )
         host_msgs = [
@@ -265,7 +267,7 @@ class FriendsManager(DBManager):
             "SELECT m._id, m.text, m.timestamp, m.attachment_kind, m.attachment_key, m.attachment_meta "
             "FROM messages m "
             "JOIN message_recipients mr ON m._id = mr.message_id "
-            "WHERE m.from_user = %s AND mr.user_id = %s AND m.group_id IS NULL",
+            "WHERE m.from_user = %s AND mr.user_id = %s AND m.group_id IS NULL AND m.deleted_at IS NULL",
             (friend_id, self.user_id)
         )
         other_msgs = [

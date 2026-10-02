@@ -21,8 +21,15 @@ def check_flag_registry() -> None:
         raise RuntimeError("explorer_browse must stay no_canary (off/on only)")
 
 
+def check_chat_pagination_config() -> None:
+    from backend.interactions.chat_config import validate_pagination_config
+
+    validate_pagination_config()
+
+
 CHECKS = (
     check_flag_registry,
+    check_chat_pagination_config,
 )
 
 

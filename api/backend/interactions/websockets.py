@@ -1,9 +1,11 @@
 import asyncio
 import json
 import logging
+import re
 import threading
 import time
 import uuid
+from datetime import datetime, timedelta, timezone
 
 import psycopg2
 from fastapi import WebSocket
@@ -11,6 +13,8 @@ from schemas.message import Message, ATTACHMENT_KINDS
 from db import DBManager, _connect
 from backend.errors import SaveFailedError
 from backend.interactions.attachments import generate_download_url
+from backend.interactions.chat_config import get_pagination_config
+from backend.interactions.paging import format_timestamp
 from backend.interactions.push import send_push
 from backend.moderation.content_filter import check_clean, ContentRejected, rejection_message
 
@@ -25,6 +29,64 @@ _ATTACHMENT_PUSH_LABELS = {
     "file":  "📎 File",
     "gif":   "GIF",
 }
+
+
+# Optional client-chosen reference echoed back in the sender-only ``ack``
+# frame so the client can match its optimistic bubble to the stored row.
+# Anything outside this shape is ignored (the message is still saved, no ack).
+_CLIENT_REF_RE = re.compile(r"[A-Za-z0-9_-]{1,64}")
+
+
+def valid_client_ref(value) -> str | None:
+    """The ref when it is a 1-64 char ``[A-Za-z0-9_-]`` string, else None."""
+    if isinstance(value, str) and _CLIENT_REF_RE.fullmatch(value):
+        return value
+    return None
+
+
+def parse_client_timestamp(raw) -> datetime | None:
+    """Aware UTC datetime for a client-supplied ISO 8601 string, or None.
+
+    A trailing ``Z`` is read as UTC and a naive value is taken as UTC.
+    Anything that does not parse (or overflows) is None.
+    """
+    if not isinstance(raw, str) or not raw or len(raw) > 64:
+        return None
+    text = raw.strip()
+    if not text:
+        return None
+    if text[-1] in "Zz":
+        text = text[:-1] + "+00:00"
+    try:
+        dt = datetime.fromisoformat(text)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+    except (ValueError, OverflowError):
+        return None
+
+
+def clamp_message_timestamp(raw, now: datetime | None = None, skew_seconds: int | None = None) -> datetime:
+    """The instant to store for a client timestamp.
+
+    An unparseable value, or one later than ``now + skew``, stores ``now``;
+    past values are kept as sent. The client timestamp stays the primary sort
+    key, so this only stops a forged far-future value from pinning a message
+    to the bottom of the history.
+    """
+    if now is None:
+        now = datetime.now(timezone.utc)
+    if skew_seconds is None:
+        skew_seconds = get_pagination_config().future_timestamp_skew_seconds
+    parsed = parse_client_timestamp(raw)
+    if parsed is None or parsed > now + timedelta(seconds=skew_seconds):
+        return now
+    return parsed
+
+
+def wire_timestamp_whole_seconds(ts: datetime) -> str:
+    """``2026-10-02T10:00:00Z``: the only format iOS itself sends and parses."""
+    return ts.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 class ConnectionManager(DBManager):
@@ -145,8 +207,14 @@ class ConnectionManager(DBManager):
                 self._reconnect()
                 self.cur.execute(query, params)
 
-    def save_message(self, msg: Message) -> None:
+    def save_message(self, msg: Message) -> "tuple[str, str] | None":
         """Persist the message and its recipient links.
+
+        Returns:
+            ``(message_id, stored_timestamp)`` where the timestamp is the
+            stored instant as ISO 8601 UTC with microseconds and a trailing
+            ``Z``; ``None`` if the INSERT returned no row (callers must cope).
+            The client timestamp is clamped first (``clamp_message_timestamp``).
 
         Raises:
             SaveFailedError: If a ``message_recipients`` link fails to
@@ -168,9 +236,9 @@ class ConnectionManager(DBManager):
             self._execute(
                 "INSERT INTO messages "
                 "(from_user, group_id, text, timestamp, attachment_kind, attachment_key, attachment_meta) "
-                "VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING _id",
+                "VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING _id, timestamp",
                 (
-                    msg.from_user, msg.group_id or None, msg.text, str(msg.timestamp),
+                    msg.from_user, msg.group_id or None, msg.text, clamp_message_timestamp(msg.timestamp),
                     msg.attachment_kind, msg.attachment_key, json.dumps(msg.attachment_meta or {}),
                 )
             )
@@ -182,13 +250,19 @@ class ConnectionManager(DBManager):
             logger.error("save_message INSERT failed after reconnect retry: %s", e)
             raise SaveFailedError() from e
         row = self.cur.fetchone()
+        message_id = None
+        stored_ts = None
         if row:
             message_id = str(row[0])
+            stored_ts = format_timestamp(row[1])
             for uid in msg.to_users:
                 if not self.insertion("message_recipients", {"message_id": message_id, "user_id": uid}):
                     self.conn.commit()
                     raise SaveFailedError()
         self.conn.commit()
+        if message_id is None:
+            return None
+        return message_id, stored_ts
 
     async def connect(self, user_id: str, ws: WebSocket) -> None:
         """Accept a new WebSocket connection and register it.
@@ -436,7 +510,7 @@ class ConnectionManager(DBManager):
             return
 
         try:
-            self.save_message(Message(**payload))
+            saved = self.save_message(Message(**payload))
         except SaveFailedError as e:
             # Mirror the ContentRejected handling just above: no HTTP
             # response exists on this path, so tell the sender's own
@@ -452,11 +526,25 @@ class ConnectionManager(DBManager):
                 })
             return
 
+        # Recipient frames keep the client's own timestamp string when the
+        # stored instant equals it (shipped clients parse that exact string).
+        # Only a clamped or unparseable value is replaced, in the whole-second
+        # Z form iOS itself sends. ``saved`` is None only if the INSERT
+        # returned no row: then there is no id, no ack, and the original
+        # timestamp is relayed as before.
+        frame_timestamp = payload.get("timestamp")
+        message_id = None
+        if saved:
+            message_id, stored_iso = saved
+            stored_dt = parse_client_timestamp(stored_iso)
+            if stored_dt is not None and parse_client_timestamp(frame_timestamp) != stored_dt:
+                frame_timestamp = wire_timestamp_whole_seconds(stored_dt)
+
         frame = {
             "from_user": from_user_id,
             "text":      text,
             "group_id":  group_id,
-            "timestamp": payload.get("timestamp"),
+            "timestamp": frame_timestamp,
             "attachment_kind": attachment_kind,
             "attachment_meta": attachment_meta,
             # Freshly presigned at delivery time, never the stored key
@@ -465,6 +553,29 @@ class ConnectionManager(DBManager):
             # attachment_meta above).
             "attachment_url": generate_download_url(attachment_key) if attachment_key else None,
         }
+        if message_id is not None:
+            # Omitted (never null) when there is no id.
+            frame["id"] = message_id
+
+        # Sender-only ack, after the commit: lets the sender replace its
+        # optimistic bubble's local id in place. It carries a ``type`` and no
+        # from_user/text, so no client can render it as a bubble, and it is
+        # never sent to recipients. Only when the client supplied a valid
+        # client_ref.
+        client_ref = valid_client_ref(payload.get("client_ref"))
+        if saved and client_ref is not None:
+            sender_ws = self.active_connections.get(from_user_id)
+            if sender_ws:
+                try:
+                    await sender_ws.send_json({
+                        "type": "ack",
+                        "client_ref": client_ref,
+                        "id": message_id,
+                        "group_id": group_id or "",
+                        "timestamp": saved[1],
+                    })
+                except Exception as e:
+                    logger.warning("Ack send to %s failed: %s", from_user_id, type(e).__name__)
 
         # Resolve sender username once for the notification title. Already
         # had a generic catch-and-fall-back before this task -- that stays,

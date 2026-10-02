@@ -22,6 +22,9 @@ GROUP_TITLE_MAX_LENGTH = 255
 # NOTES_PAGE_SIZE, attachments.py's PER_KIND_LIMITS) -- not an env var.
 GALLERY_PAGE_SIZE = 24
 
+# messages columns added for paging / soft delete; never part of a response row.
+_INTERNAL_MESSAGE_COLUMNS = ("seq", "deleted_at", "deleted_by")
+
 # Gallery ``kind`` filter values; anything else is rejected, never coerced.
 GALLERY_KINDS = frozenset({"image", "video", "gif", "file"})
 
@@ -89,6 +92,37 @@ def live_member_ids(cur, group_id: str) -> list[str]:
         (canon,),
     )
     return [r[0] for r in cur.fetchall()]
+
+
+def author_set(cur, group_id: str, user_id: str) -> list[str]:
+    """Ids whose messages ``user_id`` may see in ``group_id``: the caller plus
+    the group's CURRENT members, minus anyone in a blocked relationship with
+    the caller in either direction.
+
+    Members are resolved only through ``live_member_ids`` (the shared
+    ``LIVE_MEMBER_JOIN``), so a dead account id or a junk string in
+    ``groups.users`` is ignored and can never make a ``= ANY(...::uuid[])``
+    page predicate raise. The caller's own id is always included (their own
+    messages stay visible) and is never filtered by a block. Blocking is
+    applied here so the page query can filter in SQL and a page never shrinks
+    or fakes an "end of history". Canonical lowercase uuid strings, de-duplicated.
+
+    This is the read-side guard that keeps messages injected by a non-member
+    (the send path trusts client-supplied ``group_id``) out of history.
+    """
+    me = _canonical_uuid(user_id)
+    members = live_member_ids(cur, group_id)
+    if me is None:
+        return []
+    cur.execute(
+        "SELECT blocked_id::text FROM blocked_users WHERE blocker_id = %s::uuid "
+        "UNION SELECT blocker_id::text FROM blocked_users WHERE blocked_id = %s::uuid",
+        (me, me),
+    )
+    blocked = {str(r[0]).lower() for r in cur.fetchall()}
+    authors = {me}
+    authors.update(m for m in members if m not in blocked)
+    return sorted(authors)
 
 
 def _canonical_uuid(value) -> str | None:
@@ -181,7 +215,7 @@ class GroupsManager(DBManager):
             )
             usernames = {str(r[0]): r[1] for r in self.cur.fetchall()}
         result = []
-        for _, data in messages.items():
+        for message_id, data in messages.items():
             from_uid = str(data.get("from_user", "") or "")
             if from_uid in usernames:
                 data = {**data, "from_user": usernames[from_uid]}
@@ -202,6 +236,12 @@ class GroupsManager(DBManager):
             attachment_key = data.pop("attachment_key", None)
             if attachment_key:
                 data["attachment_url"] = generate_download_url(attachment_key)
+            # Ordering/soft-delete columns are internal: the legacy shape is
+            # unchanged except for the additive ``id`` (string UUID), added
+            # last so key order is otherwise identical.
+            for internal in _INTERNAL_MESSAGE_COLUMNS:
+                data.pop(internal, None)
+            data["id"] = str(message_id)
             result.append(data)
         return result
 
@@ -285,7 +325,8 @@ class GroupsManager(DBManager):
             unblocked_ids = [uid for uid in member_ids if uid not in blocked]
             if unblocked_ids:
                 self.cur.execute(
-                    "SELECT * FROM messages WHERE from_user = ANY(%s::uuid[]) AND group_id = %s",
+                    "SELECT * FROM messages WHERE from_user = ANY(%s::uuid[]) AND group_id = %s "
+                    "AND deleted_at IS NULL",
                     (unblocked_ids, self.group_id),
                 )
                 cols = [desc[0] for desc in self.cur.description]
@@ -293,7 +334,14 @@ class GroupsManager(DBManager):
                     row[0]: dict(zip(cols[1:], row[1:]))
                     for row in self.cur.fetchall()
                 }
-        host_msgs = self.lookup("messages", {"from_user": self.user_id, "group_id": self.group_id})
+        # Raw SELECT (not lookup) so soft-deleted rows can be excluded; same
+        # columns and keying as lookup() returned.
+        self.cur.execute(
+            "SELECT * FROM messages WHERE from_user = %s AND group_id = %s AND deleted_at IS NULL",
+            (self.user_id, self.group_id),
+        )
+        cols = [desc[0] for desc in self.cur.description]
+        host_msgs = {row[0]: dict(zip(cols[1:], row[1:])) for row in self.cur.fetchall()}
         # Task 20260929-group-info-panel: never hand the stored photo_key to
         # the client -- resolve it to a fresh presigned GET at read time
         # (same rule as attachment_key in format_messages). New fields are

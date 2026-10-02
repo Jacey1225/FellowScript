@@ -178,6 +178,15 @@ Messages are JSON payloads with a `type` field:
 
 REST history: `GET /message/messages/{host_user}/?guest_user=...` returns past DMs between two users; group history comes back from `GroupsManager`'s group-read call.
 
+### Message ids, acks and timestamps (task 20261001-chat-pagination, backend 1a)
+
+- Every history row (group and DM) and every delivered chat frame carries `id` (string UUID). It is additive: existing clients ignore it. The frame omits `id` rather than sending null if the server could not read the stored id.
+- A sender may add an optional `client_ref` (1-64 characters from `A-Za-z0-9_-`) to a chat payload. When it is valid, the server answers on the sender's own socket only, after the message is stored: `{"type":"ack","client_ref":...,"id":...,"group_id":...,"timestamp":...}` (`group_id` is empty for a DM, `timestamp` is ISO 8601 UTC with microseconds). The ack has no `from_user` or `text`, so it never renders as a bubble. An invalid or missing `client_ref` is ignored: the message is still saved, with no ack.
+- Timestamps: the client timestamp stays the primary sort key. A value that does not parse, or is later than now plus `future_timestamp_skew_seconds` (default 300), is stored as the server time. Recipient frames keep the client's original string when it was accepted unchanged; a clamped value is relayed as whole-second `...Z`. Past timestamps are never changed.
+- Ties are broken by `messages.seq` (server sequence `messages_seq`; rows from before the migration read as 0), then by id.
+- Soft-deleted rows (`deleted_at` set) are excluded from the history reads. Legacy responses are otherwise unchanged.
+- Tunables live in `api/config/chat.json`, section `pagination` (all keys required; the server refuses to boot on a bad file). Paged endpoints and the `chat_pagination` flags arrive in the next steps of this task.
+
 ### Attachments (task 20260904-messaging-attachments)
 
 A message may carry an attachment instead of (or alongside) `text` — send/receive payloads gain three optional fields:
