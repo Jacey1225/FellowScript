@@ -690,3 +690,34 @@ def purge_target_invites(cur, kind: str, target_id: str) -> None:
     """Delete every invite for a deleted target (no FK, so callers that
     delete a target must call this in the same transaction/connection)."""
     _handler(kind).purge(cur, target_id)
+
+
+def revoke_member_group_invites(cur, group_id: str, member_ids) -> int:
+    """Revoke (``revoked_at = NOW()``, the same state ``revoke``/``reset`` use)
+    every still-active kind='group' link for ``group_id`` created by any of
+    ``member_ids``. Called when members leave or are removed, so a former
+    member's permanent link can't outlive their membership (task
+    20261002-revoke-leaving-member-invite-links).
+
+    Runs on the caller's cursor and does NOT commit: the caller must already
+    hold the groups row lock (the same lock redeem takes first -- order is
+    always group row, then invite rows) and commits the membership change and
+    this revoke together, so a failure here rolls back the membership change
+    (fail closed). Idempotent: only rows with ``revoked_at IS NULL`` match.
+    Subscription-kind links are never touched.
+
+    Returns:
+        int: number of links revoked.
+    """
+    ids = [str(m) for m in dict.fromkeys(member_ids or []) if m]
+    if not ids:
+        return 0
+    cur.execute(
+        "UPDATE invites SET revoked_at = NOW() WHERE kind = 'group' AND target_id = %s "
+        "AND revoked_at IS NULL AND created_by::text = ANY(%s::text[])",
+        (group_id, ids),
+    )
+    count = cur.rowcount
+    if count:
+        _audit("auto_revoke", kind="group", target=group_id, members=len(ids), count=count)
+    return count

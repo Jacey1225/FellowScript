@@ -71,6 +71,32 @@ def _redact_db_error(e: sql.Error) -> str:
     return text
 
 
+def backfill_revoke_departed_group_invites(cur) -> int:
+    """Revoke every still-active kind='group' invite whose creator is no longer
+    in that group's ``users`` (left/removed before the removal-path revoke
+    shipped). Same state as the normal revoke (``revoked_at = NOW()``).
+
+    Idempotent and safe to re-run (only ``revoked_at IS NULL`` rows match; a
+    second run matches nothing). Never touches kind='subscription', never
+    touches a link whose creator is still a member, and never un-revokes.
+    Links whose group no longer exists are revoked too (already unusable).
+    Runs from ``create_tables`` at startup, so it applies on the next deploy.
+
+    Returns:
+        int: number of links revoked.
+    """
+    cur.execute(
+        "UPDATE invites SET revoked_at = NOW() "
+        "WHERE kind = 'group' AND revoked_at IS NULL AND NOT EXISTS ("
+        "SELECT 1 FROM groups g WHERE g._id = invites.target_id "
+        "AND invites.created_by::text = ANY(COALESCE(g.users, '{}')))"
+    )
+    count = cur.rowcount
+    if count:
+        logger.info("INVITE_AUDIT event=backfill_revoke_departed kind=group count=%s", count)
+    return count
+
+
 def create_tables(cur):
     logger.info("Creating tables...")
     # ── Level 0: no foreign keys ───────────────────────────────────────────────
@@ -235,6 +261,10 @@ def create_tables(cur):
     # (NULL = unlimited; every pre-existing group stays uncapped).
     cur.execute("ALTER TABLE invites ALTER COLUMN expires_at DROP NOT NULL")
     cur.execute("ALTER TABLE groups ADD COLUMN IF NOT EXISTS max_members INTEGER")
+    # Task 20261002-revoke-leaving-member-invite-links: leaving/removal now
+    # revokes the member's group links in code; this one-off-but-idempotent
+    # backfill revokes the ones orphaned before that fix.
+    backfill_revoke_departed_group_invites(cur)
     # Task 20260929-group-announcements: announcements posted to a group.
     # Additive + idempotent. Group delete cascades; a departed/deleted author
     # leaves the announcement in place (creator_id SET NULL). banner_key is an

@@ -1,11 +1,16 @@
+import logging
 import uuid
 from datetime import datetime
 
+import psycopg2 as sql
+
 from schemas.users import User
 from schemas.message import Group
-from db import DBManager
+from db import DBManager, _redact_db_error
 from backend.errors import SaveFailedError
 from backend.interactions.attachments import generate_download_url
+
+logger = logging.getLogger(__name__)
 
 # Group title column is VARCHAR(255) (db.py).
 GROUP_TITLE_MAX_LENGTH = 255
@@ -522,18 +527,44 @@ class GroupsManager(DBManager):
         """
         if not self.group_id:
             return
-        existing = self.lookup("groups", {"_id": self.group_id})
-        if not existing:
-            return
-        _, data = list(existing.items())[0]
-        remaining = [u for u in (data.get("users") or []) if u != self.user_id]
-        if remaining:
-            if not self.update("groups", {"users": remaining}, {"_id": self.group_id}):
-                raise SaveFailedError()
-        else:
-            if not self.delete("groups", {"_id": self.group_id}):
-                raise SaveFailedError()
-            self._purge_invites()
+        from backend.interactions.invites import purge_target_invites, revoke_member_group_invites
+        # One transaction under the groups row lock (the lock invite redeem and
+        # the member cap take first): the membership change and the revoke of
+        # the leaver's group invite links (creator included) commit together
+        # or not at all, so a failed revoke fails the leave (fail closed) and
+        # a concurrent redeem can't race a link past the departure.
+        try:
+            self.cur.execute(
+                "SELECT COALESCE(users, '{}') FROM groups WHERE _id = %s FOR UPDATE",
+                (self.group_id,),
+            )
+            row = self.cur.fetchone()
+            if row is None:
+                self.conn.rollback()
+                return
+            remaining = [u for u in row[0] if u != self.user_id]
+            if remaining:
+                self.cur.execute(
+                    "UPDATE groups SET users = %s WHERE _id = %s", (remaining, self.group_id))
+                if self.cur.rowcount != 1:
+                    raise SaveFailedError()
+                revoke_member_group_invites(self.cur, self.group_id, [self.user_id])
+            else:
+                self.cur.execute("DELETE FROM groups WHERE _id = %s", (self.group_id,))
+                if self.cur.rowcount != 1:
+                    raise SaveFailedError()
+                purge_target_invites(self.cur, "group", self.group_id)
+            self.conn.commit()
+        except SaveFailedError:
+            self.conn.rollback()
+            raise
+        except sql.Error as e:
+            logger.error("DB_WRITE_FAILURE op=leave_group table=groups error=%s", _redact_db_error(e))
+            self.conn.rollback()
+            raise SaveFailedError()
+        except BaseException:
+            self.conn.rollback()
+            raise
 
     def update_group(self, group: Group) -> None:
         """Replace a group's title and member list.
@@ -568,13 +599,30 @@ class GroupsManager(DBManager):
             if cap is not None and (set(new_users) - set(current)) and len(new_users) > cap:
                 self.conn.rollback()
                 raise GroupFullError()
+            # Same transaction/lock: write the new list and revoke the group
+            # invite links of every dropped member (fail closed on error).
+            from backend.interactions.invites import revoke_member_group_invites
+            self.cur.execute(
+                "UPDATE groups SET title = %s, users = %s WHERE _id = %s",
+                (group.title, group.users, self.group_id),
+            )
+            if self.cur.rowcount != 1:
+                raise SaveFailedError()
+            revoke_member_group_invites(
+                self.cur, self.group_id, set(current) - set(group.users or []))
+            self.conn.commit()
         except GroupFullError:
             raise
+        except SaveFailedError:
+            self.conn.rollback()
+            raise
+        except sql.Error as e:
+            logger.error("DB_WRITE_FAILURE op=update_group table=groups error=%s", _redact_db_error(e))
+            self.conn.rollback()
+            raise SaveFailedError()
         except BaseException:
             self.conn.rollback()
             raise
-        if not self.update("groups", {"title": group.title, "users": group.users}, {"_id": self.group_id}):
-            raise SaveFailedError()
 
     # ── Group info panel (task 20260929-group-info-panel) ─────────────────────
     # None of these methods check membership themselves -- routes must call
