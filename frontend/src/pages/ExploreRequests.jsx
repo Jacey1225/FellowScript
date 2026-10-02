@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext.jsx';
 import { useCapabilities } from '../hooks/useCapabilities.js';
 import AppBloom from '../components/AppBloom.jsx';
 import AppNav from '../components/AppNav.jsx';
+import { useWarmCanvas } from '../hooks/useWarmCanvas.js';
 import Seo from '../components/Seo.jsx';
 import { fetchMyRequests, withdrawRequest, dateLabel, joinRequestsEnabled } from '../lib/joinRequestsApi.js';
 import { setPendingExplore } from '../lib/pendingInvite.js';
@@ -16,6 +17,7 @@ import '../styles/joinRequests.css';
 const STATUS = { pending: 'Pending', approved: 'Approved', not_approved: 'Not approved', withdrawn: 'Withdrawn' };
 
 export default function ExploreRequests() {
+  useWarmCanvas();
   const { user } = useAuth() || {};
   const userId = user?.user_id || null;
   const caps = useCapabilities();

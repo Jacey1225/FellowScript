@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Spin } from 'antd';
 import AppBloom from '../components/AppBloom.jsx';
 import AppNav from '../components/AppNav.jsx';
+import { useWarmCanvas } from '../hooks/useWarmCanvas.js';
 import Seo from '../components/Seo.jsx';
 import ListingCard from '../components/explore/ListingCard.jsx';
 import FilterPanel, { countActiveFilters, MULTI_FACETS, SINGLE_FACETS } from '../components/explore/FilterPanel.jsx';
@@ -31,6 +32,7 @@ export function errorKind(err) {
 }
 
 export default function Explore() {
+  useWarmCanvas();
   const [meta, setMeta] = useState(null);
   const [query, setQuery] = useState('');
   const [applied, setApplied] = useState({ q: '', filters: {}, includeFull: false });

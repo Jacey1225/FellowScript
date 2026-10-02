@@ -15,6 +15,7 @@ import {
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
 import AppNav from '../components/AppNav.jsx';
+import { useWarmCanvas } from '../hooks/useWarmCanvas.js';
 import AppBloom from '../components/AppBloom.jsx';
 import SubscriptionCard from '../components/SubscriptionCard.jsx';
 import DonationButton from '../components/DonationButton.jsx';
@@ -148,6 +149,7 @@ function scheduleSummary(timestamps) {
 }
 
 export default function Account() {
+  useWarmCanvas();
   const { user, signOut, updateUser } = useAuth();
   const navigate = useNavigate();
   const [form] = Form.useForm();

@@ -91,6 +91,26 @@
   --bg-page-2: #0D0906;
 }
 
+/* Warm brown-and-gold canvas for Account + Explore (matches the iOS app):
+   lighter chestnut-to-umber gradient instead of near-black, a flush
+   transparent header (no band, border or blur), and translucent warm cards.
+   Dark mode only; toggled via hooks/useWarmCanvas.js. */
+[data-theme="dark"] body.page-warm {
+  --bg-page:       #2b1f12;
+  --bg-page-2:     #1c140c;
+  --island-bg:     rgba(92,68,42,0.34);
+  --island-border: rgba(255,225,170,0.14);
+  --bloom-primary:   radial-gradient(ellipse 70% 52% at 18% -6%, rgba(214,160,70,0.42) 0%, rgba(214,160,70,0) 70%);
+  --bloom-secondary: radial-gradient(ellipse 55% 44% at 96% 104%, rgba(214,160,70,0.28) 0%, rgba(214,160,70,0) 70%);
+  background: linear-gradient(180deg, #43301a 0%, #2f2213 42%, #1d150d 100%) fixed;
+}
+[data-theme="dark"] body.page-warm #root { background: transparent; }
+body.page-warm .fs-nav.ant-layout-header {
+  background: transparent !important;
+  border-bottom: none;
+  backdrop-filter: none;
+}
+
 /* ── Light mode overrides ── */
 [data-theme="light"] {
   --bg-page:         #EDE0C4;

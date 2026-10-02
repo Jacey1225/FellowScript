@@ -6,6 +6,7 @@ import { useCapabilities } from '../hooks/useCapabilities.js';
 import { useCountdown } from '../hooks/useCountdown.js';
 import AppBloom from '../components/AppBloom.jsx';
 import AppNav from '../components/AppNav.jsx';
+import { useWarmCanvas } from '../hooks/useWarmCanvas.js';
 import Seo from '../components/Seo.jsx';
 import JoinRequestsList from '../components/JoinRequestsList.jsx';
 import ListingForm from '../components/explore/ListingForm.jsx';
@@ -53,6 +54,7 @@ function GatePage({ title, children, headingRef }) {
 }
 
 export default function ExploreManage() {
+  useWarmCanvas();
   const { user } = useAuth() || {};
   const userId = user?.user_id || null;
   const { refresh, features } = useCapabilities() || {};

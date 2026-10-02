@@ -4,6 +4,7 @@ import { Spin } from 'antd';
 import { useAuth } from '../context/AuthContext.jsx';
 import AppBloom from '../components/AppBloom.jsx';
 import AppNav from '../components/AppNav.jsx';
+import { useWarmCanvas } from '../hooks/useWarmCanvas.js';
 import Seo from '../components/Seo.jsx';
 import ListingHero from '../components/explore/ListingHero.jsx';
 import DescriptionBlocks from '../components/explore/DescriptionBlocks.jsx';
@@ -41,6 +42,7 @@ const CHIP_GROUPS = [
 ];
 
 export default function ExploreListing() {
+  useWarmCanvas();
   const { publicId } = useParams();
   const { user } = useAuth();
   const headingRef = useRef(null);
