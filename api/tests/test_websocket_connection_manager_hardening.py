@@ -201,8 +201,8 @@ async def test_send_msg_eviction_and_fallback():
                 msg_id = str(row[0])
                 db.cur.execute("SELECT user_id FROM message_recipients WHERE message_id = %s", (msg_id,))
                 recipients = {str(r[0]) for r in db.cur.fetchall()}
-                check("both recipients (including the one whose socket failed) are recorded",
-                      recipients == {healthy_id, stale_id}, str(recipients))
+                check("all group recipients (incl. sender and the one whose socket failed) are recorded",
+                      recipients == {sender_id, healthy_id, stale_id}, str(recipients))
         finally:
             db.close()
 

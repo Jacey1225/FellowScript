@@ -634,8 +634,8 @@ def test_delete_user_hygiene(client):
     check("send to the cleaned group raises nothing and sends no error frame", ok_errors == [], ok_errors)
     saved = q("SELECT count(*) FROM messages WHERE group_id = %s AND text = 'after-delete'", (g2,))[0][0]
     check("the message was persisted", saved == 1, saved)
-    check("control: a dead id left in to_users is still rejected over the socket (what the cleanup prevents)",
-          len(ctrl_errors) >= 1, ctrl_errors)
+    check("control: the guard ignores client-supplied to_users (dead id) - no error frame, recipients derived server-side",
+          ctrl_errors == [], ctrl_errors)
     cleanup([b, c], [g1, g2, g3], [pk, bk])
 
 
