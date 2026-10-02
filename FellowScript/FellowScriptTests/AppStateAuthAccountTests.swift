@@ -655,6 +655,30 @@ final class ThrowingTestDataService: DataServiceProtocol {
         return try await MockDataService.shared.fetchFriendMessages(userId: userId, friendId: friendId)
     }
 
+    // Task 20261001-chat-pagination testing: paging seams. `historyResult`
+    // nil = fall through to the legacy fetch*Messages path (the protocol
+    // default's behavior); `historyLimits` records the limit each load asked
+    // for; `olderResults` is consumed FIFO by fetchOlderMessages (empty =
+    // throws, matching the protocol default).
+    var historyResult: FSMessageHistory?
+    private(set) var historyLimits: [Int?] = []
+    var olderResults: [Result<FSMessagePage, Error>] = []
+    private(set) var olderCursors: [FSMessageCursor] = []
+
+    func fetchMessageHistory(userId: String, contactId: String, isGroup: Bool, limit: Int?) async throws -> FSMessageHistory {
+        historyLimits.append(limit)
+        if limit != nil, let historyResult { return historyResult }
+        return .legacy(isGroup
+            ? try await fetchGroupMessages(userId: userId, groupId: contactId)
+            : try await fetchFriendMessages(userId: userId, friendId: contactId))
+    }
+
+    func fetchOlderMessages(userId: String, contactId: String, isGroup: Bool, limit: Int, cursor: FSMessageCursor) async throws -> FSMessagePage {
+        olderCursors.append(cursor)
+        guard !olderResults.isEmpty else { throw AppError.networkError("Earlier messages unavailable.") }
+        return try olderResults.removeFirst().get()
+    }
+
     func fetchGroupMessages(userId: String, groupId: String) async throws -> [FSMessage] {
         if let fetchGroupMessagesResult { return fetchGroupMessagesResult }
         return try await MockDataService.shared.fetchGroupMessages(userId: userId, groupId: groupId)
