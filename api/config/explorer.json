@@ -174,5 +174,27 @@
         {"slug": "flexible", "label": "Flexible"}
       ]
     }
+  },
+  "join_requests": {
+    "max_pending_per_group": 20,
+    "max_pending_per_user": 10,
+    "max_requests_per_user_per_day": 10,
+    "cooldown_days": 14,
+    "pending_expiry_days": 30,
+    "retention_days": 90,
+    "note_max_length": 280,
+    "min_account_age_hours": 0,
+    "undo_deny_seconds": 10,
+    "notify_window_minutes": 30,
+    "lock_timeout_ms": 3000,
+    "rate_limits": {
+      "create": "10/hour",
+      "create_ip": "30/hour",
+      "withdraw": "30/minute",
+      "mine": "60/minute",
+      "owner_read": "60/minute",
+      "decide": "30/minute",
+      "accepting": "10/minute"
+    }
   }
 }

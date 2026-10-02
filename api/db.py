@@ -79,6 +79,7 @@ DDL_MODULES = (
     "chat_pagination",
     "listings",
     "threads",
+    "join_requests",
 )
 
 

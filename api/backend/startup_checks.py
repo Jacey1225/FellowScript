@@ -39,11 +39,18 @@ def check_threads_config() -> None:
     validate_threads_config()
 
 
+def check_join_requests_config() -> None:
+    from backend.interactions.join_requests_config import validate_join_requests_config
+
+    validate_join_requests_config()
+
+
 CHECKS = (
     check_flag_registry,
     check_chat_pagination_config,
     check_listings_config,
     check_threads_config,
+    check_join_requests_config,
 )
 
 
