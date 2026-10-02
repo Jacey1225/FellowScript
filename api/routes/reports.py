@@ -6,7 +6,11 @@ from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 
 from backend.auth.dependencies import get_current_user
+from limits import parse as parse_rate
+
+from backend.interactions.listings_config import get_listings_config
 from backend.interactions.reports import ContentNotFoundError, ReportsManager
+from backend.rate_limiting import limiter
 
 report_router = APIRouter(prefix="/reports")
 
@@ -40,8 +44,18 @@ class ReportRequest(BaseModel):
     detail: str = ""
 
 
+def _listing_report_limited(user_id: str) -> bool:
+    """Per-reporter limit for listing reports (config ``rate_limits.report``).
+    Applied only to ``group_listing`` so the existing report types keep their
+    behaviour. True when the caller is over the limit."""
+    rate = parse_rate(get_listings_config().rate_limits["report"])
+    return not limiter.limiter.hit(rate, "listing-report", user_id)
+
+
+# Plain ``def``: the manager does blocking DB work, an after-report hook that
+# takes row locks, and an SES send, so it must run in the threadpool.
 @report_router.post("/", status_code=201)
-async def create_report(req: ReportRequest, current_user: str = Depends(get_current_user)) -> dict:
+def create_report(req: ReportRequest, current_user: str = Depends(get_current_user)) -> dict:
     """File a report on objectionable content or an abusive user (Guideline 1.2).
 
     Every report is emailed to the developer immediately and persisted for
@@ -51,6 +65,7 @@ async def create_report(req: ReportRequest, current_user: str = Depends(get_curr
         HTTPException 422: If content_id is missing for a content report, is
             malformed, or reported_user_id is missing for a direct user report.
         HTTPException 404: If the reported listing/thread content doesn't exist.
+        HTTPException 429: If a listing report exceeds the per-reporter limit.
     """
     if req.content_type != "user" and not req.content_id:
         raise HTTPException(status_code=422, detail="content_id is required unless content_type is 'user'")
@@ -58,6 +73,8 @@ async def create_report(req: ReportRequest, current_user: str = Depends(get_curr
         raise HTTPException(status_code=422, detail="reported_user_id is required when content_type is 'user'")
 
     content_id = _validated_content_id(req.content_type, req.content_id)
+    if req.content_type == "group_listing" and _listing_report_limited(current_user):
+        raise HTTPException(status_code=429, detail="Too many reports. Please try again later.")
 
     manager = ReportsManager(current_user)
     try:

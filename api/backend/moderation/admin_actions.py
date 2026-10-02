@@ -58,6 +58,12 @@ def _eject_user(db: DBManager, reported_user_id: str | None) -> None:
         (datetime.now(timezone.utc), reported_user_id),
     )
     db.conn.commit()
+    # A suspended owner's Explorer listing stops being public: public_where
+    # already hides it, this also stores the state and expires dependent
+    # requests (listing_hidden hooks) without waiting for the sweeper.
+    from backend.interactions.listings import hide_listings_of_owner
+    hide_listings_of_owner(db.cur, reported_user_id)
+    db.conn.commit()
     # Kill any active session immediately — a suspension shouldn't wait for
     # the user's cookie to expire or for them to happen to log out.
     sm = SessionManager()

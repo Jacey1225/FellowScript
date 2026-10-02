@@ -27,6 +27,17 @@ def register_resolver(content_type: str, fn) -> None:
     CONTENT_RESOLVERS[content_type] = fn
 
 
+# content_type -> fn(cur, canonical_content_id) -> callable | None, run on the
+# manager's cursor right after the report row is stored. The hook may change
+# state (the caller commits); a returned callable runs AFTER the commit (used
+# for owner emails). A hook failure is logged and never fails the report.
+CONTENT_AFTER_REPORT: dict = {}
+
+
+def register_after_report(content_type: str, fn) -> None:
+    CONTENT_AFTER_REPORT[content_type] = fn
+
+
 def _resolve_note(cur, content_id, reported_user_id):
     cur.execute("SELECT user_id, title, text FROM notes WHERE _id = %s", (content_id,))
     row = cur.fetchone()
@@ -106,6 +117,7 @@ class ReportsManager(DBManager):
             "detail": detail,
         }):
             raise SaveFailedError()
+        self._run_after_report(content_type, canonical_id)
 
         reporter_username = self._username(self.reporter_id)
         reported_username = self._username(resolved_user_id) if resolved_user_id else "(unknown)"
@@ -121,6 +133,23 @@ class ReportsManager(DBManager):
             logger.error("Failed to send content_report email for report %s", report_id)
 
         return {"id": report_id}
+
+    def _run_after_report(self, content_type: str, canonical_id: str | None) -> None:
+        hook = CONTENT_AFTER_REPORT.get(content_type)
+        if hook is None or not canonical_id:
+            return
+        try:
+            after_commit = hook(self.cur, canonical_id)
+            self.conn.commit()
+        except Exception:  # noqa: BLE001 - the report itself is already stored
+            self.conn.rollback()
+            logger.warning("AFTER_REPORT_HOOK_FAILED type=%s", content_type)
+            return
+        if after_commit is not None:
+            try:
+                after_commit()
+            except Exception:  # noqa: BLE001
+                logger.warning("AFTER_REPORT_NOTIFY_FAILED type=%s", content_type)
 
     def _resolve_content(self, content_type: str, content_id: str | None,
                           reported_user_id: str) -> tuple[str, str, str | None] | None:

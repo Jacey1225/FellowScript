@@ -722,3 +722,92 @@ def admin_remove(cur, public_id: str, admin_id: str) -> dict:
     if not remove_in_tx(cur, gid, "admin_removed"):
         raise _not_found()
     return {"public_id": public_id, "status": "removed"}
+
+
+# ---------------------------------------------------------------------------
+# Suspension, reports, admin queue (cursor in, the caller commits)
+# ---------------------------------------------------------------------------
+
+def hide_listings_of_owner(cur, user_id: str) -> int:
+    """Hide (reason ``owner_suspended``) every visible listing of a group the
+    user created, right now. ``public_where`` already stops showing such a
+    listing the moment ``users.suspended_at`` is set; this makes the stored
+    state agree and fires the ``listing_hidden`` hooks without waiting for the
+    sweeper. Returns the number of listings hidden. Takes each group row lock
+    before the listing row (program lock order)."""
+    uid = _canon(user_id)
+    if uid is None:
+        return 0
+    cur.execute(
+        "SELECT gl.group_id::text FROM group_listings gl JOIN groups g ON g._id = gl.group_id "
+        "WHERE g.creator_id = %s AND gl.status IN ('pending_review', 'published') ORDER BY gl.group_id",
+        (uid,),
+    )
+    hidden = 0
+    for (gid,) in cur.fetchall():
+        cur.execute("SELECT 1 FROM groups WHERE _id = %s FOR UPDATE", (gid,))
+        if hide_in_tx(cur, gid, REASON_OWNER_SUSPENDED):
+            hidden += 1
+    return hidden
+
+
+def auto_hide_if_reported(cur, listing_id: str) -> dict | None:
+    """After a report on a listing is stored: when the number of DISTINCT open
+    reporters (the owner's own reports excluded) reaches the configured
+    threshold, hide the listing (reason ``reported``) and run the hooks.
+    Returns ``{"group_id", "public_id", "reason"}`` when it hid something, else
+    None. The caller commits."""
+    lid = _canon(listing_id)
+    if lid is None:
+        return None
+    cur.execute(
+        "SELECT gl.group_id::text, gl.public_id, g.creator_id::text "
+        "FROM group_listings gl JOIN groups g ON g._id = gl.group_id WHERE gl._id = %s",
+        (lid,),
+    )
+    row = cur.fetchone()
+    if row is None:
+        return None
+    gid, public_id, creator = row
+    cur.execute("SELECT 1 FROM groups WHERE _id = %s FOR UPDATE", (gid,))
+    cur.execute(
+        "SELECT count(DISTINCT reporter_id) FROM content_reports "
+        "WHERE content_type = 'group_listing' AND content_id = %s AND status = 'open' "
+        "AND reporter_id IS DISTINCT FROM %s",
+        (lid, creator),
+    )
+    if cur.fetchone()[0] < get_listings_config().report_auto_hide_threshold:
+        return None
+    if not hide_in_tx(cur, gid, REASON_REPORTED):
+        return None
+    logger.info("LISTING_AUTO_HIDDEN group=%s", gid)
+    return {"group_id": gid, "public_id": public_id, "reason": REASON_REPORTED}
+
+
+QUEUE_STATUSES = ("pending_review", "hidden", "published", "rejected")
+
+
+def admin_queue(cur, status: str = "pending_review", limit: int = 50) -> list[dict]:
+    """Moderation queue for admins: oldest first, with the open-report count.
+    Admin-only data (group and owner ids are included); never use for a public
+    response."""
+    if status not in QUEUE_STATUSES:
+        raise ListingError(422, "invalid_status", "Unknown status.", "status")
+    limit = max(1, min(int(limit), 100))
+    cur.execute(
+        "SELECT gl.public_id, gl.status, gl.title, gl.summary, gl.group_id::text, g.creator_id::text, "
+        "gl.hidden_reason_code, gl.reject_reason_code, gl.updated_at, "
+        "(SELECT count(DISTINCT cr.reporter_id) FROM content_reports cr "
+        " WHERE cr.content_type = 'group_listing' AND cr.content_id = gl._id AND cr.status = 'open') "
+        "FROM group_listings gl LEFT JOIN groups g ON g._id = gl.group_id "
+        "WHERE gl.status = %s ORDER BY gl.updated_at, gl.public_id LIMIT %s",
+        (status, limit),
+    )
+    keys = ("public_id", "status", "title", "summary", "group_id", "owner_id",
+            "hidden_reason_code", "reject_reason_code", "updated_at", "open_reports")
+    items = []
+    for r in cur.fetchall():
+        item = dict(zip(keys, r))
+        item["updated_at"] = paging.format_timestamp(item["updated_at"])
+        items.append(item)
+    return items

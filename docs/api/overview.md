@@ -123,6 +123,8 @@ may still be populated.
 
 **Reports (`POST /reports/`).** `content_type` also accepts `group_listing` and `thread_message`. A malformed `content_id` answers `422` (it used to be a 500; `group_listing` ids are 10-character alphanumeric public ids, every other type takes a UUID). Content that cannot be found for a listing or thread type answers `404` and nothing is stored; the five original types keep their lenient behaviour. The stored `content_id` is the canonical internal id.
 
+**Explorer listing moderation.** Reports on a listing send its 10-character `public_id`; the server stores the listing's internal id and a snapshot (title, summary, description, status, public id; at most 5000 characters). A listing report is limited per reporter (`listings.rate_limits.report`, `429` over the limit). When the listing has reports from `report_auto_hide_threshold` distinct reporters it is hidden (reason `reported`) and the owner is emailed. Admin endpoints (`require_admin`): `GET /admin/explorer/listings/queue?status=`, `POST /admin/explorer/listings/{public_id}/approve|reject|hide|restore` (`reject` and `hide` take `{"reason_code": ...}` from the configured lists and email the owner), `DELETE /admin/explorer/listings/{public_id}`. CLI: `python -m backend.admin_listings hide <public_id> [--reason CODE]`, `restore <public_id>`, `hide-all` (rollback lever, reason `bulk`); `python -m backend.moderation.admin_actions resolve <report_id> --remove-content` removes a reported listing and `--eject` also hides the suspended owner's listings at once.
+
 ---
 
 ## Friends

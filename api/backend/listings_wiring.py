@@ -1,5 +1,5 @@
-"""Registers the Explorer-listings lifecycle hooks (and, in a later step, the
-``group_listing`` report resolver and remover).
+"""Registers the Explorer-listings lifecycle hooks and the ``group_listing``
+report resolver, after-report hook (auto-hide) and remover.
 
 Imported by ``backend.registrations.load_all`` (one line), which ``main.py``
 and the ``python -m`` CLIs call. Every import of ``listings`` is FUNCTION-LEVEL:
@@ -11,7 +11,8 @@ cascade with the group. Media S3 keys are added by the media task.
 """
 from __future__ import annotations
 
-from backend.interactions import lifecycle
+from backend.interactions import lifecycle, listing_reports, reports
+from backend.moderation import removers
 
 
 def hide_listing_when_owner_leaves(cur, group_id: str, user_id: str) -> list[str]:
@@ -40,3 +41,9 @@ def delete_listings_of_deleted_owner(cur, user_id: str) -> list[str]:
 
 lifecycle.register("member_leave", hide_listing_when_owner_leaves)
 lifecycle.register("user_delete", delete_listings_of_deleted_owner)
+
+# Moderation: report by public_id -> canonical listing _id, remover by stored _id,
+# auto-hide after N distinct reporters (see listing_reports).
+reports.register_resolver("group_listing", listing_reports.resolve_group_listing)
+reports.register_after_report("group_listing", listing_reports.after_listing_report)
+removers.register_remover("group_listing", listing_reports.remove_group_listing)

@@ -21,6 +21,7 @@ from routes.group_announcements import group_announcements_router
 from routes.invites import invites_router
 from routes.app_capabilities import capabilities_router
 from routes.explorer import explorer_router
+from routes.explorer_admin import explorer_admin_router
 from routes.flags_admin import flags_admin_router
 from routes.promo import promo_router, promo_admin_router, rewards_admin_router, rewards_router
 from schemas.subscription import NOTES_MAX_BODY_BYTES
@@ -376,6 +377,7 @@ app.include_router(group_announcements_router)
 app.include_router(invites_router)
 app.include_router(capabilities_router)
 app.include_router(explorer_router)
+app.include_router(explorer_admin_router)
 app.include_router(flags_admin_router)
 
 main_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")

@@ -198,3 +198,32 @@ def content_report_email(
         + _FOOTER_TEXT
     )
     return subject, _wrap_html(subject, body_html), text_body
+
+
+def listing_moderation_email(action: str, title: str, reason_label: str) -> tuple[str, str, str]:
+    """Returns (subject, html_body, text_body) telling a group owner their
+    Explorer listing was rejected or hidden. ``title`` is owner-written text and
+    is HTML-escaped. Appeals are by email to SUPPORT_EMAIL."""
+    verb = "was not approved" if action == "reject" else "has been hidden"
+    subject = f"Your Explorer listing {verb}"
+    safe_title = html.escape(title) if title else "your listing"
+    body_html = f"""
+      <p style="font-size:14px;line-height:1.6;color:#241a0d;">
+        Your Explorer listing &ldquo;{safe_title}&rdquo; {verb}.
+      </p>
+      <p style="font-size:14px;line-height:1.6;color:#241a0d;">
+        <strong>Reason:</strong> {html.escape(reason_label)}
+      </p>
+      <p style="font-size:13px;line-height:1.6;color:#6b5d47;">
+        You can review the status in the app or on the website. If you think this
+        is a mistake, reply to <a href="mailto:{SUPPORT_EMAIL}" style="color:#a3690f;">{SUPPORT_EMAIL}</a>
+        and we will take another look.
+      </p>
+    """
+    text_body = (
+        f"Your Explorer listing \"{title or 'your listing'}\" {verb}.\n"
+        f"Reason: {reason_label}\n\n"
+        f"If you think this is a mistake, reply to {SUPPORT_EMAIL} and we will take another look."
+        + _FOOTER_TEXT
+    )
+    return subject, _wrap_html(subject, body_html), text_body

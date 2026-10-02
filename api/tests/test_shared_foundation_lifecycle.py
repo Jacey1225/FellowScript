@@ -1020,8 +1020,12 @@ def test_registrations_fresh_subprocess():
     # present in BOTH, and every other Literal value must be registered in both.
     asym = {t for t in lit if (t in res) != (t in rem)}
     check("resolvers and removers are registered symmetrically for every Literal type", not asym, asym)
-    check("every Literal type except the not-yet-built listing/thread types is registered in both",
-          (lit - NEW_TYPES) <= res and (lit - NEW_TYPES) <= rem, (lit, res, rem))
+    # group_listing is owned by LST (registered by listings_wiring via load_all) and must now be
+    # present in BOTH registries; thread_message stays with THR and is not required yet.
+    check("every Literal type except the not-yet-built thread type is registered in both",
+          (lit - {"thread_message"}) <= res and (lit - {"thread_message"}) <= rem, (lit, res, rem))
+    check("fresh process: group_listing is present in BOTH registries",
+          "group_listing" in res and "group_listing" in rem, (res, rem))
     check("fresh process: admin_actions shares the removers dict", out["same"])
     # R3-m3 (tightened once LST landed): the listing hooks exist in a cold process
     # only because registrations.load_all imports backend.listings_wiring, and the
