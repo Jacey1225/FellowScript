@@ -6,6 +6,7 @@ import { useAuth } from '../context/AuthContext.jsx';
 import { isDesktopApp } from '../lib/desktopScope.js';
 import { API } from '../config.js';
 import Seo from '../components/Seo.jsx';
+import { useWarmCanvas } from '../hooks/useWarmCanvas.js';
 import { postAuthPath } from '../lib/pendingInvite.js';
 
 const { Title, Text } = Typography;
@@ -18,6 +19,7 @@ function nonce() {
 }
 
 export default function SignIn() {
+  useWarmCanvas();
   const { signIn } = useAuth();
   const navigate   = useNavigate();
   const location   = useLocation();
@@ -231,7 +233,7 @@ export default function SignIn() {
         path="/signin"
         noindex
       />
-      <Card style={{ width: '100%', maxWidth: 420, background: 'rgba(10,6,2,0.88)', border: '1px solid rgba(200,134,26,0.2)', backdropFilter: 'blur(12px)' }}>
+      <Card className="fs-signin-card" style={{ width: '100%', maxWidth: 420 }}>
         <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
           <Title level={3} style={{ margin: 0, fontFamily: "'Playfair Display', serif" }}>
             <span style={{ color: 'var(--parchment)' }}>Fellow</span>

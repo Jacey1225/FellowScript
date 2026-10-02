@@ -105,6 +105,21 @@
   background: linear-gradient(180deg, #43301a 0%, #2f2213 42%, #1d150d 100%) fixed;
 }
 [data-theme="dark"] body.page-warm #root { background: transparent; }
+/* Sign-in card: same translucent warm widget look as Account/Admin cards. */
+body.page-warm .fs-signin-card.ant-card {
+  background: rgba(92,68,42,0.34) !important;
+  border: 1px solid rgba(255,225,170,0.16) !important;
+  border-radius: 22px;
+  backdrop-filter: blur(14px);
+}
+body.page-warm .fs-signin-card .ant-input-affix-wrapper,
+body.page-warm .fs-signin-card .ant-input {
+  background: rgba(255,232,190,0.08) !important;
+  border-color: rgba(255,225,170,0.22) !important;
+  border-radius: 12px;
+}
+body.page-warm .fs-signin-card .ant-input-affix-wrapper > input.ant-input { background: transparent !important; }
+
 body.page-warm .fs-nav.ant-layout-header {
   background: transparent !important;
   border-bottom: none;
