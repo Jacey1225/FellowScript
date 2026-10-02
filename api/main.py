@@ -48,6 +48,7 @@ from backend.subscription.subscriptions import SubscriptionsManager
 from backend.auth.sessions import SessionManager
 from backend.auth.password_reset import PasswordResetManager
 from backend.auth.mfa import MFAManager
+from backend.auth.passwords import verify_password
 from backend.auth.dependencies import get_current_user, require_match, SESSION_COOKIE
 from backend.email.ses_client import send_email, EmailSendError
 from backend.email.templates import password_reset_email, mfa_code_email, mfa_setup_code_email
@@ -561,7 +562,7 @@ async def login(request: Request, info: Login, response: Response) -> dict:
     if not result:
         raise HTTPException(status_code=404, detail="User not found")
     uid, data = result
-    if not bcrypt.checkpw(info.plain_pass.encode(), data["hash_pass"].encode()):
+    if not verify_password(info.plain_pass, data.get("hash_pass") or ""):
         raise HTTPException(status_code=401, detail="Incorrect password")
     if data.get("suspended_at"):
         raise HTTPException(status_code=403, detail="This account has been suspended for violating our Terms of Service.")
@@ -687,7 +688,7 @@ async def mfa_disable(request: Request, info: MFADisable, user_id: str = Depends
     data = users.get(user_id)
     if not data:
         raise HTTPException(status_code=404, detail="User not found")
-    if not bcrypt.checkpw(info.plain_pass.encode(), data["hash_pass"].encode()):
+    if not verify_password(info.plain_pass, data.get("hash_pass") or ""):
         raise HTTPException(status_code=401, detail="Incorrect password")
     mfa = MFAManager()
     try:

@@ -190,7 +190,7 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str, msg_type: str =
         # future message sent to them would then hit the same failure, and
         # (before the send_msg/send_sig hardening above) could even crash an
         # unrelated sender's connection loop. Run cleanup on every exit path.
-        await manager.disconnect(user_id)
+        await manager.disconnect(user_id, websocket)
 
 
 @chime_router.post("/{session_id}")

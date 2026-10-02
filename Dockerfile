@@ -55,4 +55,7 @@ USER app
 
 EXPOSE 8000
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+# --no-proxy-headers is mandatory with backend/rate_limiting.py get_client_ip:
+# without it uvicorn rewrites request.client to the forwarded (Cloudflare edge)
+# address and the trusted-peer check would fall through to that rotating IP.
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--no-proxy-headers"]

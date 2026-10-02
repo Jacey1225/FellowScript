@@ -359,3 +359,11 @@ The watchdog (`backend/monitoring/watchdog.py`) treats the bare word `ERROR` at 
 
 - **R-SCHED.** Every new scheduler job is a thin `async def` registered with `scheduler.add_job(..., id=..., replace_existing=True)`; all psycopg2, boto3 and SES work runs through `await loop.run_in_executor(None, sync_fn)`; one aggregated WARNING per run with counts; no per-key or per-recipient log lines.
 - **R-ROUTE.** New authenticated routes are plain `def` (FastAPI runs them in the threadpool), because some take `FOR UPDATE` locks and a lock wait on the event loop would freeze every WebSocket. Public routes use `run_public` (added later in this task). Existing `async def` routes are not rewritten.
+
+### Edge and runtime hardening (step 5)
+
+- **Client IP.** `backend/rate_limiting.py` `get_client_ip` trusts `CF-Connecting-IP` only when the TCP peer is loopback (nginx) or the test client, and only when the value parses as an IP; otherwise the peer is the rate-limit key. `X-Real-IP` is never read. The Dockerfile starts uvicorn with `--no-proxy-headers` so the peer is not rewritten; the two must ship together. `ops/nginx/real-ip.conf` (prepared, not applied) makes nginx overwrite the header.
+- **WebSocket registry.** `ConnectionManager.disconnect(user_id, ws)` removes an entry only if that socket is still the registered one, so an old socket's cleanup cannot evict a newer connection. The heartbeat loop calls `evict_suspended()` about once a minute and closes sockets of suspended accounts with code 1008.
+- **Public API isolation.** `backend/public_guard.py` runs public handlers' blocking work on a dedicated `anyio.CapacityLimiter` (`configure(concurrency, max_waiting)` once at startup, no defaults). Overload and statement timeouts answer 429 `{"code": "busy"}` with `Retry-After`, never 5xx (the watchdog scans nginx 5xx lines); timeouts are summarised in one WARNING per minute.
+- **Password check.** `backend/auth/passwords.py` `verify_password` returns False for an empty or invalid hash, so `/login` and `/auth/mfa/disable` return the usual 401 for Apple and Google accounts instead of a 500.
+- **Watchdog.** `_HTTP_4XX_QUERY` excludes `/api/explorer/` and `/api/auth/apple-web/` so expected 404 and 429 there cannot trip the 4xx anomaly.

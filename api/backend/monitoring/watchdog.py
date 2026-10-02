@@ -134,7 +134,15 @@ ANOMALY_4XX_CURSOR_KEY = "/fellowscript/nginx/access#4xx-rate-anomaly"
 # only matching lines are counted (limit still applies -- see
 # QUERY_RESULT_LIMIT -- undercounting on a truncated window makes the check
 # more conservative, never less, since the count only ever grows).
-_HTTP_4XX_QUERY = 'fields @timestamp, @message | filter @message like /"\\s4\\d{2}\\s/'
+# The single "and @message not like" clause excludes the two public,
+# rate-limited path families (/api/explorer/ and /api/auth/apple-web/): expected
+# 404 and 429 (load shedding) there must not trip the 30-per-window anomaly or
+# cost an LLM triage call. Keep the filter shape -- a Logs Insights query that
+# is syntactically rejected makes this detector log a warning and go quiet.
+_HTTP_4XX_QUERY = (
+    'fields @timestamp, @message | filter @message like /"\\s4\\d{2}\\s/'
+    ' and @message not like /\\s\\/api\\/(explorer|auth\\/apple-web)\\//'
+)
 # Absolute count of 4xx responses within one ~90s poll window (see
 # WATCHDOG_POLL_INTERVAL_SECONDS) treated as anomalous. Intentionally a
 # fixed count rather than a ratio against total traffic -- this app has no

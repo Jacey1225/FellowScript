@@ -8,7 +8,7 @@ import uuid
 import psycopg2
 from fastapi import WebSocket
 from schemas.message import Message, ATTACHMENT_KINDS
-from db import DBManager
+from db import DBManager, _connect
 from backend.errors import SaveFailedError
 from backend.interactions.attachments import generate_download_url
 from backend.interactions.push import send_push
@@ -57,6 +57,10 @@ class ConnectionManager(DBManager):
     # push -- see the acceptance criteria in this task's intake spec.
     HEARTBEAT_INTERVAL = 25.0
     HEARTBEAT_TIMEOUT   = 70.0
+    # How often the heartbeat loop also drops sockets of suspended accounts
+    # (a suspension takes effect on new logins immediately; this closes the
+    # already-open WebSocket within about a minute).
+    SUSPEND_CHECK_INTERVAL = 60.0
 
     def __init__(self) -> None:
         super().__init__()
@@ -69,6 +73,7 @@ class ConnectionManager(DBManager):
         self.active_connections: dict[str, WebSocket] = {}
         self.last_seen: dict[str, float] = {}
         self._heartbeat_task: "asyncio.Task | None" = None
+        self._last_suspend_check: float = time.monotonic()
         # Guards _execute/_reconnect below (task 20260910-ws-stale-cursor-crash).
         # This app runs a single uvicorn worker with no thread pool for these
         # synchronous DB calls (see main.py's uvicorn invocation), so two
@@ -196,12 +201,22 @@ class ConnectionManager(DBManager):
         self.active_connections[user_id] = ws
         self.last_seen[user_id] = time.monotonic()
 
-    async def disconnect(self, user_id: str) -> None:
+    async def disconnect(self, user_id: str, ws: "WebSocket | None" = None) -> None:
         """Remove a user's WebSocket from the active registry on disconnect.
+
+        Identity-aware: when ``ws`` is given, the registry entry (and its
+        ``last_seen``) is removed only if the registered socket IS that socket.
+        A user who reconnected replaces the registered socket (the old one is
+        not closed); the old socket's own cleanup must then not evict the new
+        one. ``ws=None`` keeps the unconditional removal for callers that have
+        no socket to compare.
 
         Args:
             user_id: UUID of the disconnecting user.
+            ws: The socket whose receive loop is ending, if known.
         """
+        if ws is not None and self.active_connections.get(user_id) is not ws:
+            return
         self.active_connections.pop(user_id, None)
         self.last_seen.pop(user_id, None)
 
@@ -232,6 +247,10 @@ class ConnectionManager(DBManager):
         while True:
             await asyncio.sleep(self.HEARTBEAT_INTERVAL)
             await self.run_heartbeat_check()
+            now = time.monotonic()
+            if now - self._last_suspend_check >= self.SUSPEND_CHECK_INTERVAL:
+                self._last_suspend_check = now
+                await self.evict_suspended()
 
     async def run_heartbeat_check(self) -> None:
         """One heartbeat tick: probe every registered connection and evict
@@ -260,6 +279,57 @@ class ConnectionManager(DBManager):
                 )
                 self.active_connections.pop(uid, None)
                 self.last_seen.pop(uid, None)
+
+    @staticmethod
+    def _suspended_user_ids(user_ids: list[str]) -> set[str]:
+        """Return which of ``user_ids`` are suspended. Blocking: run in an
+        executor. Uses its own short-lived connection so it never touches this
+        singleton's shared cursor from a worker thread."""
+        valid = []
+        for uid in user_ids:
+            try:
+                valid.append(str(uuid.UUID(str(uid))))
+            except ValueError:
+                continue
+        if not valid:
+            return set()
+        conn = _connect()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT _id::text FROM users "
+                    "WHERE _id = ANY(%s::uuid[]) AND suspended_at IS NOT NULL",
+                    (valid,),
+                )
+                return {row[0] for row in cur.fetchall()}
+        finally:
+            conn.close()
+
+    async def evict_suspended(self) -> None:
+        """Close and unregister the sockets of suspended accounts (code 1008).
+
+        The DB query runs in the default executor so the event loop never
+        blocks on psycopg2. Never raises: a failure is logged and retried on
+        the next tick.
+        """
+        ids = list(self.active_connections.keys())
+        if not ids:
+            return
+        try:
+            loop = asyncio.get_running_loop()
+            suspended = await loop.run_in_executor(None, self._suspended_user_ids, ids)
+        except Exception as e:
+            logger.warning("Suspended-account socket check failed: %s", type(e).__name__)
+            return
+        for uid in suspended:
+            ws = self.active_connections.pop(uid, None)
+            self.last_seen.pop(uid, None)
+            if ws is None:
+                continue
+            try:
+                await ws.close(code=1008)
+            except Exception:
+                pass
 
     async def send_msg(self, payload: dict) -> None:
         """Persist a chat message, deliver it to online recipients via WebSocket,
