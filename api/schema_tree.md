@@ -105,6 +105,15 @@ group_listings          # module "listings": _id PK (internal), public_id (10-ch
                         #   banner_key/photo_key/banner_alt (reserved, unused), search_tsv (generated, 'simple'), consent_version/consented_at/adult_attested,
                         #   approved_at, reviewed_by/at, reject_reason_code, hidden_at/reason, published_at, created_at, updated_at; fs_arr_text() IMMUTABLE helper
 group_listing_media     # module "listings": created EMPTY (listing_id FK CASCADE, object_key UNIQUE, kind, size_bytes, width, height, alt_text, status)
+# <!-- THR (20261001-message-threads) -->
+threads                 # module "threads": _id PK DEFAULT gen_random_uuid(), group_id FK groups ON DELETE CASCADE, root_message_id FK messages ON DELETE SET NULL
+                        #   (partial UNIQUE where not null: one thread per root), root_preview, root_author_id FK users SET NULL, title VARCHAR(80), created_by FK users SET NULL,
+                        #   created_at, last_activity_at; INDEX (group_id, last_activity_at DESC, _id DESC)
+thread_messages         # module "threads": _id PK, thread_id FK threads CASCADE, from_user FK users SET NULL, text, attachment_kind/key/meta, created_at,
+                        #   seq (default nextval('messages_seq')), deleted_at, deleted_by FK users SET NULL; INDEX (thread_id, created_at DESC, seq DESC, _id DESC),
+                        #   partial INDEX on deleted_by
+thread_followers        # module "threads": PK (thread_id FK threads CASCADE, user_id FK users CASCADE); INDEX (user_id)
+# <!-- /THR -->
 ```
 
 ---

@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException, Request, WebSocket, WebSocketDisconnect, Depends, Query
 from backend.interactions.websockets import ConnectionManager
+from backend.interactions.thread_send import send_thread_message
 from backend.interactions.friends import FriendsManager
 from backend.interactions import flags
 from backend.interactions.chat_config import get_pagination_config
@@ -180,6 +181,8 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str, msg_type: str =
                     continue
                 if effective_type in _SIGNAL_TYPES:
                     await manager.send_sig(payload)
+                elif effective_type == "thread_message":
+                    await send_thread_message(manager, payload)
                 else:
                     await manager.send_msg(payload)
         except WebSocketDisconnect:

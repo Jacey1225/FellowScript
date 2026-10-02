@@ -539,3 +539,24 @@ No session. Answers a uniform `404 { "detail": { "code": "not_found" } }` while 
 A card holds `public_id, title, summary`, the facet arrays, `country, region, city, church_name, size_bucket, seats ("open" or "full"), published_at`.
 
 Statuses: `draft`, `pending_review`, `published`, `unpublished`, `hidden`, `rejected`. Deleting the group, the owner leaving, or the owner's account being deleted removes or hides the listing.
+
+---
+
+## Message threads and message delete (task 20261001-message-threads)
+
+<!-- THR (20261001-message-threads) -->
+Gated by flags `threads` and `message_delete` (off by default; clients read them from `GET /app/capabilities`). While a flag is off for the caller every route below answers the same `404 { "detail": { "code": "not_found" } }`, as do an unknown id, a non-member, a thread or message of another group and any other denial. All paths need the session user in `{user_id}`.
+
+| Method | Route | Description |
+|---|---|---|
+| DELETE | `/groups/{user_id}/{group_id}/messages/{message_id}` | Soft-delete your own group message (`message_delete`). Returns `{ "id", "undo_seconds" }`. Not gated by terms. |
+| POST | `/groups/{user_id}/{group_id}/messages/{message_id}/restore` | Undo your own delete within `undo_seconds` (10). Returns `{ "id" }`. |
+| POST | `/groups/{user_id}/{group_id}/threads` | Start the thread on a message, or open the one that exists. Body `{ "message_id", "title"? }` (blank title is auto-generated, max 80 characters, content filtered: `422`). `201` when created, `200` when it already existed. Returns `{ id, group_id, title, root_preview, root_message_id, root_deleted, reply_count, last_activity_at, created_by (username), created }`. `403 { "code": "terms_reaccept_required" }` when Terms are stale, `409 { "code": "thread_limit" }` at the per-group cap. |
+| GET | `/groups/{user_id}/{group_id}/threads?limit=&cursor_timestamp=&cursor_id=` | Threads, most recently active first (default 20, max 50). `{ "threads": [{ id, title, root_preview (null when the root is deleted), root_deleted, reply_count, last_activity_at, created_by }], "page": {...} }`. Keyset on `(last_activity_at, id)`: `next_cursor_seq` is always null and clients omit `cursor_seq` (sending it is `422`). Threads by creators in a block relationship with the caller are excluded. |
+| GET | `/groups/{user_id}/{group_id}/threads/{thread_id}/messages?limit=&cursor_timestamp=&cursor_seq=&cursor_id=` | One page of a thread's messages: the same `{ messages, page }` envelope, ordering, cursor rules and row shape as the main chat page (`{id, from_user, mine, text, timestamp, attachment_kind, attachment_meta, attachment_url}`) plus `thread_id` on each row. Only messages by the caller and current, unblocked members. |
+| PUT | `/groups/{user_id}/{group_id}/threads/{thread_id}` | Rename (creator only). Body `{ "title" }`. Returns `{ "id", "title" }`. |
+
+Sending is a WebSocket frame on the existing socket: `{ "type": "thread_message", "thread_id", "text", "client_ref"?, "attachment_kind"?, "attachment_key"?, "attachment_meta"? }`. The server derives the group and recipients from `thread_id` and ignores any `group_id`, `to_users` or `from_user` in the frame. The sender gets `{ "type": "ack", "client_ref", "id", "group_id", "thread_id", "timestamp" }`; members get `{ "type": "thread_message", "thread_id", "group_id", "id", "sender", "body", "created_at", "seq", "attachment_kind", "attachment_meta", "attachment_url" }` (no `from_user`, no `text`). Errors arrive as `{ "type": "error", "reason": ... }` with `not_allowed`, `rate_limited`, `terms_reaccept_required`, `message_rejected`, `send_failed` or `message_not_saved`. Other new frames, sent to online members: `{ "type": "message_deleted", id, group_id, deleted_at }` and `{ "type": "message_restored", id, group_id, sender, body, created_at, seq, attachment_* }`. Push for a thread message goes only to followers and carries `{ "action": "thread_message", "group_id", "thread_id" }`.
+
+Reports: `POST /reports/` with `content_type: "thread_message"` takes the thread message's `id`; an unknown id is `404` and stores nothing.
+<!-- /THR -->
