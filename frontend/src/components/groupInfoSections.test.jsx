@@ -18,7 +18,15 @@ const C = (id) => () => <div data-testid={`sec-${id}`}>{id}</div>;
 afterEach(() => { cleanup(); GROUP_INFO_SECTIONS.length = 0; });
 
 describe('registry', () => {
-  test('ships empty', () => { expect(GROUP_INFO_SECTIONS).toEqual([]); });
+  test('ships the registered entries in order: publish(10), threads(30)', () => {
+    // The join-requests entry at order 20 is added by a later task.
+    expect(GROUP_INFO_SECTIONS.map((s) => [s.key, s.order])).toEqual([['publish', 10], ['threads', 30]]);
+    expect(getVisibleGroupInfoSections({ features: {}, isOwner: true }).map((s) => s.key)).toEqual([]);
+    expect(getVisibleGroupInfoSections({ features: { threads: true } }).map((s) => s.key)).toEqual(['threads']);
+    expect(getVisibleGroupInfoSections({ features: { threads: true, explorer_publish: true }, isOwner: true }).map((s) => s.key)).toEqual(['publish', 'threads']);
+    expect(getVisibleGroupInfoSections({ features: { threads: 'true' } }).map((s) => s.key)).toEqual([]);
+    expect(getVisibleGroupInfoSections({}).map((s) => s.key)).toEqual([]);
+  });
   test('sorted by order: publish 10, join_requests 20, threads 30', () => {
     const s = [
       { key: 'threads', order: 30, isVisible: () => true, component: C('threads') },
