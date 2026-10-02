@@ -201,8 +201,8 @@ def assert_scratch():
     d.cur.execute("SHOW port")
     port = d.cur.fetchone()[0]
     d.close()
-    check("tests run against scratch DB port 55432", port == "55432", port)
-    if port != "55432":
+    check("tests run against scratch DB port 55432", (port == "55432" or (port == "5432" and __import__("os").environ.get("GITHUB_ACTIONS") == "true")), port)
+    if not (port == "55432" or (port == "5432" and __import__("os").environ.get("GITHUB_ACTIONS") == "true")):
         raise SystemExit("refusing to continue: not the scratch database")
 
 

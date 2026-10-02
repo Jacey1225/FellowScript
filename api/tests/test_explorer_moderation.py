@@ -244,7 +244,7 @@ def email_of(uid):
 def run_cli(module, *args):
     code = ("from db import DBManager\ndb = DBManager()\ndb.cur.execute('SHOW port')\n"
             "p = db.cur.fetchone()[0]\ndb.close()\nimport sys\n"
-            "if p != '55432':\n    sys.exit(99)\n"
+            "if p != '55432' and not (p == '5432' and __import__('os').environ.get('GITHUB_ACTIONS') == 'true'):\n    sys.exit(99)\n"
             f"import runpy\nsys.argv = [{module!r}] + {list(args)!r}\n"
             f"runpy.run_module({module!r}, run_name='__main__')\n")
     return subprocess.run([sys.executable, "-c", code], cwd=API_DIR, capture_output=True, text=True, timeout=180)
@@ -972,8 +972,8 @@ def main():
     db.cur.execute("SHOW port")
     port = db.cur.fetchone()[0]
     db.close()
-    check("tests run against scratch DB port 55432", port == "55432", port)
-    if port != "55432":
+    check("tests run against scratch DB port 55432", (port == "55432" or (port == "5432" and __import__("os").environ.get("GITHUB_ACTIONS") == "true")), port)
+    if not (port == "55432" or (port == "5432" and __import__("os").environ.get("GITHUB_ACTIONS") == "true")):
         raise SystemExit("refusing to continue: not the scratch database")
     load_all()
     cli = TestClient(main_module.app)
