@@ -108,16 +108,6 @@ function VisitsTooltip({ active, payload, label }) {
   );
 }
 
-// Square dot marker for the visits chart's "Unique devices" series -- pairs
-// with its dashed line so the distinction survives without relying on color
-// alone (design-notes.md §3/§7).
-function SquareDot({ cx, cy, stroke }) {
-  const size = 6;
-  return (
-    <rect x={cx - size / 2} y={cy - size / 2} width={size} height={size} fill={stroke} stroke="none" />
-  );
-}
-
 // Single-series average-per-user line chart, shared between the inline card
 // view and the expanded overlay (design-notes.md §3/§4 -- same data, same
 // colors, same time window, just larger).
@@ -143,7 +133,7 @@ function MetricLineChart({ series, ylabel, height, animate }) {
           dataKey="value"
           stroke="var(--gold)"
           strokeWidth={2.2}
-          dot={{ r: 5, fill: 'var(--gold)' }}
+          dot={false}
           activeDot={{ r: 6 }}
           isAnimationActive={animate}
           animationDuration={400}
@@ -176,7 +166,7 @@ function VisitsLineChart({ series, height, animate }) {
           name="Raw visits"
           stroke={VISITS_RAW_COLOR}
           strokeWidth={2.2}
-          dot={{ r: 5, fill: VISITS_RAW_COLOR }}
+          dot={false}
           activeDot={{ r: 6 }}
           isAnimationActive={animate}
           animationDuration={400}
@@ -188,7 +178,7 @@ function VisitsLineChart({ series, height, animate }) {
           stroke={VISITS_UNIQUE_COLOR}
           strokeWidth={2.2}
           strokeDasharray="6 4"
-          dot={<SquareDot />}
+          dot={false}
           activeDot={{ r: 6 }}
           isAnimationActive={animate}
           animationDuration={400}
