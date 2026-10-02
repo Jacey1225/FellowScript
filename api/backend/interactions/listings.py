@@ -705,6 +705,8 @@ def admin_restore(cur, public_id: str, admin_id: str) -> dict:
         raise ListingError(409, "invalid_state", "Only a hidden listing can be restored.")
     if owner_available(cur, gid) is not None:
         raise ListingError(409, "owner_unavailable", "The owner is no longer able to publish this listing.")
+    cur.execute("SELECT _id::text, hidden_reason_code FROM group_listings WHERE group_id = %s", (gid,))
+    listing_id, was_reason = cur.fetchone()
     cur.execute(
         "UPDATE group_listings SET "
         "status = CASE WHEN approved_at IS NOT NULL THEN 'published' ELSE 'pending_review' END, "
@@ -713,7 +715,17 @@ def admin_restore(cur, public_id: str, admin_id: str) -> dict:
         "updated_at = NOW() WHERE group_id = %s RETURNING status",
         (_canon(admin_id), gid),
     )
-    return {"public_id": public_id, "status": cur.fetchone()[0]}
+    new_status = cur.fetchone()[0]
+    if was_reason == REASON_REPORTED:
+        # The admin reviewed the reports that auto-hid this listing and judged them
+        # unfounded. Close them, otherwise the open reports keep counting and the very next
+        # report (even a repeat from one of the same accounts) would hide it again at once.
+        cur.execute(
+            "UPDATE content_reports SET status = 'dismissed', resolved_at = NOW() "
+            "WHERE content_type = 'group_listing' AND content_id = %s AND status = 'open'",
+            (listing_id,),
+        )
+    return {"public_id": public_id, "status": new_status}
 
 
 def admin_remove(cur, public_id: str, admin_id: str) -> dict:

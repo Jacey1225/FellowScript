@@ -89,6 +89,11 @@ _NUMERIC_HOST_RE = re.compile(r"^[0-9a-fx.]+$", re.IGNORECASE)
 _TAG_CHARS_RE = re.compile(r"^[\w][\w '\-&.]*$", re.UNICODE)
 _WS_RE = re.compile(r"\s+")
 _MAX_URL_LEN = 500
+_IMAGE_START_RE = re.compile(r"!\[")
+# City / region: letters, spaces and . ' - , ( ) / only. No digits, so a phone number or a
+# street address ("123 Main St") cannot ride along in a field that is not re-reviewed on edit.
+_PLACE_RE = re.compile(r"^[^\W\d_](?:[^\W\d_]|[ '\u2019.,()/\-])*$", re.UNICODE)
+_LEET = str.maketrans({"0": "o", "1": "i", "3": "e", "4": "a", "5": "s", "7": "t", "@": "a", "$": "s", "!": "i"})
 
 
 def _collapse(value: str) -> str:
@@ -114,6 +119,16 @@ def _plain_field(cfg_max: int, field: str, value: Any, *, required_str: bool = F
         raise ListingError(422, "too_long", f"{field} must be {cfg_max} characters or fewer.", field)
     if cleaned:
         _check_plain(field, cleaned)
+    return cleaned
+
+
+def _place_field(cfg_max: int, field: str, value: Any) -> str | None:
+    cleaned = _plain_field(cfg_max, field, value)
+    if cleaned and not _PLACE_RE.fullmatch(cleaned):
+        raise ListingError(
+            422, "invalid_place",
+            "Use a place name (letters only). Street addresses and numbers aren't allowed.", field,
+        )
     return cleaned
 
 
@@ -168,6 +183,10 @@ def validate_markdown_text(cfg: ListingsConfig, text: str, field: str) -> None:
         raise ListingError(422, "invalid_text", "That text has characters we can't accept.", field)
     if _TAG_LIKE_RE.search(text):
         raise ListingError(422, "html_not_allowed", "HTML isn't allowed in the description.", field)
+    if _IMAGE_START_RE.search(text):
+        # Reference-style (![alt][ref]) and shortcut (![ref]) images resolve through a
+        # link definition that would otherwise pass as a plain https link.
+        raise ListingError(422, "media_not_supported", "Images and videos are added separately.", field)
     for match in _INLINE_LINK_RE.finditer(text):
         bang, _label, target = match.groups()
         if bang:
@@ -343,9 +362,9 @@ def normalise(cfg: ListingsConfig, data: Mapping[str, Any]) -> dict:
     if "church_name" in data:
         out["church_name"] = _plain_field(cfg.church_name_max_length, "church_name", data["church_name"]) or None
     if "region" in data:
-        out["region"] = _plain_field(cfg.region_max_length, "region", data["region"]) or None
+        out["region"] = _place_field(cfg.region_max_length, "region", data["region"]) or None
     if "city" in data:
-        city = _plain_field(cfg.city_max_length, "city", data["city"]) or None
+        city = _place_field(cfg.city_max_length, "city", data["city"]) or None
         out["city"] = city
         out["city_norm"] = city_norm(city)
     if "country" in data:
@@ -372,6 +391,20 @@ def normalise(cfg: ListingsConfig, data: Mapping[str, Any]) -> dict:
     return out
 
 
+def match_forms(text: str) -> tuple[str, ...]:
+    """Forms of ``text`` the word filters look at: the text itself plus a canonical
+    form (NFKD, combining marks and invisible format characters such as zero-width
+    spaces dropped, so full-width letters and 'te<ZWSP>en' do not slip past) and a
+    leetspeak-folded copy of that ('t33n'). The stored text is never altered."""
+    decomposed = unicodedata.normalize("NFKD", text)
+    canonical = "".join(ch for ch in decomposed if unicodedata.category(ch) not in ("Mn", "Cf"))
+    forms = [text]
+    for form in (canonical, canonical.translate(_LEET)):
+        if form not in forms:
+            forms.append(form)
+    return tuple(forms)
+
+
 def reject_unsafe_text(cfg: ListingsConfig, values: Mapping[str, Any]) -> None:
     """Youth-term list and ``check_clean`` over every free-text value present."""
     texts: dict[str, str] = {}
@@ -381,13 +414,14 @@ def reject_unsafe_text(cfg: ListingsConfig, values: Mapping[str, Any]) -> None:
     if values.get("free_tags"):
         texts["free_tags"] = " ; ".join(values["free_tags"])
     for field, text in texts.items():
-        if cfg.youth_pattern.search(text):
+        if any(cfg.youth_pattern.search(form) for form in match_forms(text)):
             raise ListingError(422, "youth_not_supported", YOUTH_MESSAGE, field)
     for field, text in texts.items():
-        try:
-            check_clean(**{field: text})
-        except ContentRejected as e:
-            raise ListingError(422, "content_rejected", rejection_message(e), field) from None
+        for form in match_forms(text)[:2]:  # original + canonical (check_clean folds leetspeak itself)
+            try:
+                check_clean(**{field: form})
+            except ContentRejected as e:
+                raise ListingError(422, "content_rejected", rejection_message(e), field) from None
 
 
 def options_payload(cfg: ListingsConfig) -> dict:

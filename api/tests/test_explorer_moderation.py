@@ -338,6 +338,17 @@ def test_auto_hide(cli):
             n = len(captured)
             report(cli, r4, pid(gid))
             check("a further report on a hidden listing does not re-run hooks or re-hide", len(captured) == n)
+            # Security review: restoring an auto-hidden listing closes the open reports, so a
+            # repeat report from one of the same accounts cannot hide it again at once.
+            limiter.reset()
+            rr = cli.post(f"{ADMIN}/{pid(gid)}/restore", headers=hdr(admin))
+            check("admin restore of the auto-hidden listing -> published", rr.status_code == 200 and visible(gid), rr.text)
+            open_n = q("SELECT count(*) FROM content_reports WHERE content_type = 'group_listing' "
+                       "AND content_id = (SELECT _id FROM group_listings WHERE group_id = %s) AND status = 'open'",
+                       (gid,))[0][0]
+            check("restore dismissed the open reports of the auto-hide", open_n == 0, open_n)
+            report(cli, r1, pid(gid), reason="repeat")
+            check("a repeat report after restore does not re-hide", status(gid) == "published" and visible(gid), status(gid))
 
         # dismissed reports do not count; owner reports do not count
         o2, a, b, c = make_user(), make_user(), make_user(), make_user()
