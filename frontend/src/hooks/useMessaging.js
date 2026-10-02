@@ -2,6 +2,12 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { message } from 'antd';
 import { API, WS_BASE } from '../config.js';
 import { compareTimestamps } from '../utils.js';
+import { useCapabilities } from './useCapabilities.js';
+import {
+  INITIAL_PAGE_LIMIT, OLDER_PAGE_LIMIT, ACK_FALLBACK_MS,
+  newClientRef, parsePage, pageQuery,
+  mergeOlder, mergeLive, reconcileAck, findLostAckMatch,
+} from '../lib/chatPaging.js';
 
 // WS reconnect backoff: 3s -> 30s cap, doubling each failed attempt.
 const WS_RECONNECT_MIN_MS = 3000;
@@ -10,6 +16,9 @@ const WS_RECONNECT_MAX_MS = 30000;
 // switches to a firmer "offline" one rather than looking like it's about to succeed.
 const WS_OFFLINE_AFTER_ATTEMPTS = 3;
 
+// Task 20261001-chat-pagination: state of the open thread's older-page loader.
+const PAGING_IDLE = { paged: false, hasMore: false, loading: false, error: false, loadedCount: 0, loadedTick: 0 };
+
 export function useMessaging({ user }) {
   const [friends,        setFriends]        = useState([]);
   const [groups,         setGroups]         = useState({});
@@ -17,6 +26,26 @@ export function useMessaging({ user }) {
   const [messages,       setMessages]       = useState([]);
   const [groupMembers,   setGroupMembers]   = useState([]);
   const [wsStatus,       setWsStatus]       = useState('connecting'); // 'connecting' | 'connected' | 'reconnecting' | 'offline'
+  const [olderPage,      setOlderPage]      = useState(PAGING_IDLE);
+  // Task 20261001-chat-pagination. Server-gated feature flags come from the
+  // SF capabilities client; a missing/false capability (or no provider) means
+  // the legacy full-history fetch. Read through a ref so callbacks stay stable.
+  const caps = useCapabilities();
+  const capsRef = useRef(caps);
+  capsRef.current = caps;
+  const isPagedFor = (type) => capsRef.current?.isEnabled?.(type === 'group' ? 'chat_pagination' : 'chat_pagination_dm') === true;
+  // Per-open-thread paging state. `token` changes on every openChat/closeChat
+  // so a late response for a previous thread is dropped.
+  const chatTokenRef = useRef(0);
+  const pageRef = useRef({ cursor: null, hasMore: false, loading: false, paged: false });
+  const ackTimersRef = useRef(new Map());
+  const messagesRef = useRef([]);
+  useEffect(() => { messagesRef.current = messages; }, [messages]);
+  const clearAckTimers = useCallback(() => {
+    ackTimersRef.current.forEach(t => clearTimeout(t));
+    ackTimersRef.current.clear();
+  }, []);
+  useEffect(() => clearAckTimers, [clearAckTimers]);
   const wsRef              = useRef(null);
   const friendCache        = useRef({});
   // H13 (compliance sweep) -- client-side dedup for loadContacts' N+1
@@ -92,6 +121,18 @@ export function useMessaging({ user }) {
         if (data.type === 'ping') {
           return; // heartbeat -- no-op, never a chat message
         }
+        // Task 20261001-chat-pagination: sender-only ack of a message sent
+        // with a client_ref. Reconciles the optimistic bubble in place; never
+        // rendered as a bubble itself. An `error` frame (no client_ref) is
+        // never treated as an ack.
+        if (data.type === 'ack') {
+          if (typeof data.client_ref === 'string' && data.client_ref && typeof data.id === 'string' && data.id) {
+            const t = ackTimersRef.current.get(data.client_ref);
+            if (t) { clearTimeout(t); ackTimersRef.current.delete(data.client_ref); }
+            setMessages(prev => reconcileAck(prev, data));
+          }
+          return;
+        }
         if (data.type === 'error') {
           // A rejected/failed send (content-filter rejection, blocked
           // relationship, or a save failure -- websockets.py's send_msg).
@@ -135,7 +176,9 @@ export function useMessaging({ user }) {
         const cc = currentContactRef.current;
         if (cc && data.from_user !== user.user_id &&
             (data.group_id || '') === (cc.group_id || '')) {
-          setMessages(prev => [...prev, {
+          setMessages(prev => mergeLive(prev, {
+            // Message id (new servers); absent on an old server's frame.
+            ...(typeof data.id === 'string' && data.id ? { id: data.id, key: data.id } : {}),
             text: data.text || '',
             mine: false,
             timestamp: data.timestamp,
@@ -148,7 +191,7 @@ export function useMessaging({ user }) {
             attachmentKind: data.attachment_kind || null,
             attachmentMeta: data.attachment_meta || null,
             attachmentUrl:  data.attachment_url || null,
-          }]);
+          }));
         }
       } catch (err) {
         console.error('Failed to parse incoming WS message:', err);
@@ -223,13 +266,21 @@ export function useMessaging({ user }) {
       const name = friendCache.current[fid] || fid.slice(0, 8);
       let preview = '';
       try {
-        const mr = await fetch(`${API}/message/messages/${user.user_id}/?guest_user=${fid}`);
+        // Task 20261001-chat-pagination: limit=1 preview when the DM flag is
+        // on; a response with no `page` block is the legacy full history.
+        const previewLimit = isPagedFor('friend') ? '&limit=1' : '';
+        const mr = await fetch(`${API}/message/messages/${user.user_id}/?guest_user=${fid}${previewLimit}`);
         if (mr.ok) {
           const md  = await mr.json();
-          const all = [...(md.payload?.host_msgs || []), ...(md.payload?.other_msgs || [])];
-          if (all.length) {
-            all.sort(compareTimestamps);
-            preview = all[all.length - 1].text || '';
+          const pg  = parsePage(md.payload);
+          if (pg) {
+            preview = pg.messages.length ? (pg.messages[pg.messages.length - 1].text || '') : '';
+          } else {
+            const all = [...(md.payload?.host_msgs || []), ...(md.payload?.other_msgs || [])];
+            if (all.length) {
+              all.sort(compareTimestamps);
+              preview = all[all.length - 1].text || '';
+            }
           }
         }
       } catch (err) {
@@ -252,16 +303,17 @@ export function useMessaging({ user }) {
       if (cached) { groupMap[gid] = cached.meta; return cached.entry; }
 
       try {
-        const r = await fetch(`${API}/groups/${user.user_id}/${gid}`);
+        const r = await fetch(`${API}/groups/${user.user_id}/${gid}${isPagedFor('group') ? '?limit=1' : ''}`);
         if (r.ok) {
           const data = await r.json();
           const g = data.group || {};
           const meta = { title: g.title || gid, users: g.users || [], photoUrl: g.photo_url || null };
           groupMap[gid] = meta;
-          const allMsgs = [...(data.host_msgs || []), ...(data.other_msgs || [])];
+          const pg = parsePage(data);
+          const allMsgs = pg ? pg.messages : [...(data.host_msgs || []), ...(data.other_msgs || [])];
           let preview = '';
           if (allMsgs.length) {
-            allMsgs.sort(compareTimestamps);
+            if (!pg) allMsgs.sort(compareTimestamps);
             preview = allMsgs[allMsgs.length - 1].text || '';
           }
           const entry = { id: gid, name: g.title || gid, type: 'group', toUsers: g.users || [], preview, photoUrl: g.photo_url || null };
@@ -280,15 +332,22 @@ export function useMessaging({ user }) {
   // ── Open chat ─────────────────────────────────────────────────────────────
 
   const openChat = useCallback(async (contact) => {
+    const token = ++chatTokenRef.current;
+    clearAckTimers();
+    pageRef.current = { cursor: null, hasMore: false, loading: false, paged: false };
+    setOlderPage(PAGING_IDLE);
     setCurrentContact(contact);
     setMessages([]);
     setGroupMembers([]);
     try {
+      const limitQs = isPagedFor(contact.type) ? `?limit=${INITIAL_PAGE_LIMIT}` : '';
       const res = contact.type === 'friend'
-        ? await fetch(`${API}/friends/${user.user_id}/${contact.id}`)
-        : await fetch(`${API}/groups/${user.user_id}/${contact.id}`);
+        ? await fetch(`${API}/friends/${user.user_id}/${contact.id}${limitQs}`)
+        : await fetch(`${API}/groups/${user.user_id}/${contact.id}${limitQs}`);
+      if (token !== chatTokenRef.current) return;
       if (res.ok) {
         const data = await res.json();
+        if (token !== chatTokenRef.current) return;
         if (contact.type === 'group') {
           // fetch_group's own `data.members` is a bare list of usernames
           // (no ids, no photos) -- resolve the richer { user_id, username,
@@ -313,13 +372,24 @@ export function useMessaging({ user }) {
             }
             return { user_id: uid, username: uid.slice(0, 8), photoUrl: null };
           }));
+          if (token !== chatTokenRef.current) return;
           setGroupMembers(resolvedMembers);
+        }
+        // Paged response: server order is kept verbatim (oldest-first), never
+        // re-sorted by timestamp string. No `page` block = legacy full history.
+        const pg = parsePage(data);
+        if (pg) {
+          pageRef.current = { cursor: pg.cursor, hasMore: pg.hasMore, loading: false, paged: true };
+          setOlderPage({ ...PAGING_IDLE, paged: true, hasMore: pg.hasMore });
+          setMessages(pg.messages);
+          return;
         }
         const all = [
           ...(data.host_msgs  || []).map(m => ({ ...m, mine: true })),
           ...(data.other_msgs || []).map(m => ({ ...m, mine: false })),
         ].sort(compareTimestamps);
         setMessages(all.map(m => ({
+          ...(typeof m.id === 'string' && m.id ? { id: m.id, key: m.id } : {}),
           text: m.text, mine: m.mine, timestamp: m.timestamp,
           sender: m.mine ? '' : (m.from_user || ''),
           // Task 20260904-messaging-attachments — see this file's WS
@@ -337,13 +407,81 @@ export function useMessaging({ user }) {
       console.error('Failed to open chat:', err);
       message.error('Could not load that conversation. Check your connection and try again.');
     }
-  }, [user]);
+  }, [user, clearAckTimers]);
 
   const closeChat = useCallback(() => {
+    chatTokenRef.current += 1;
+    clearAckTimers();
+    pageRef.current = { cursor: null, hasMore: false, loading: false, paged: false };
+    setOlderPage(PAGING_IDLE);
     setCurrentContact(null);
     setMessages([]);
     setGroupMembers([]);
-  }, []);
+  }, [clearAckTimers]);
+
+  // Task 20261001-chat-pagination: older page for the open thread. Safe to
+  // call repeatedly (no-op while loading or at the start of the conversation);
+  // after an error the same call is the retry.
+  const loadOlder = useCallback(async () => {
+    const cc = currentContactRef.current;
+    const st = pageRef.current;
+    if (!user || !cc || !st.paged || !st.hasMore || !st.cursor || st.loading) return;
+    const token = chatTokenRef.current;
+    st.loading = true;
+    setOlderPage(p => ({ ...p, loading: true, error: false }));
+    try {
+      const base = cc.type === 'friend'
+        ? `${API}/friends/${user.user_id}/${encodeURIComponent(cc.id)}/messages`
+        : `${API}/groups/${user.user_id}/${cc.id}/messages`;
+      const res = await fetch(`${base}?${pageQuery(OLDER_PAGE_LIMIT, st.cursor)}`);
+      if (token !== chatTokenRef.current) return;
+      if (!res.ok) throw new Error(`older page HTTP ${res.status}`);
+      const pg = parsePage(await res.json());
+      if (token !== chatTokenRef.current) return;
+      if (!pg) throw new Error('older page response had no page block');
+      st.cursor = pg.cursor;
+      st.hasMore = pg.hasMore;
+      st.loading = false;
+      setMessages(prev => mergeOlder(prev, pg.messages));
+      setOlderPage(p => ({
+        ...p, hasMore: pg.hasMore, loading: false, error: false,
+        loadedCount: pg.messages.length, loadedTick: p.loadedTick + 1,
+      }));
+    } catch (err) {
+      if (token !== chatTokenRef.current) return;
+      console.error('Failed to load older messages:', err);
+      st.loading = false;
+      setOlderPage(p => ({ ...p, loading: false, error: true }));
+    }
+  }, [user]);
+
+  // Lost-ack fallback (once per send): if no ack arrived within 5 s, refetch
+  // the newest page and match the pending bubble by text + attachment kind
+  // within 120 s. Never removes the bubble when nothing matches.
+  const scheduleAckFallback = useCallback((clientRef, contact, token) => {
+    const timer = setTimeout(async () => {
+      ackTimersRef.current.delete(clientRef);
+      if (token !== chatTokenRef.current) return;
+      const pendingMsg = messagesRef.current.find(m => m.clientRef === clientRef && !m.id);
+      if (!pendingMsg) return;
+      try {
+        const base = contact.type === 'friend'
+          ? `${API}/friends/${user.user_id}/${encodeURIComponent(contact.id)}/messages`
+          : `${API}/groups/${user.user_id}/${contact.id}/messages`;
+        const res = await fetch(`${base}?${pageQuery(OLDER_PAGE_LIMIT, null)}`);
+        if (!res.ok || token !== chatTokenRef.current) return;
+        const pg = parsePage(await res.json());
+        if (!pg || token !== chatTokenRef.current) return;
+        const match = findLostAckMatch(messagesRef.current, pendingMsg, pg.messages);
+        if (match) {
+          setMessages(prev => reconcileAck(prev, { client_ref: clientRef, id: match.id, timestamp: match.timestamp }));
+        }
+      } catch (err) {
+        console.error('Lost-ack fallback fetch failed:', err);
+      }
+    }, ACK_FALLBACK_MS);
+    ackTimersRef.current.set(clientRef, timer);
+  }, [user]);
 
   // ── Send message ──────────────────────────────────────────────────────────
   // `attachment`, when present, is `{ kind, meta, objectKey }` — `kind` is one
@@ -366,8 +504,15 @@ export function useMessaging({ user }) {
       payload.attachment_meta = attachment.meta || {};
       if (attachment.objectKey) payload.attachment_key = attachment.objectKey;
     }
+    // client_ref only on a thread that was opened paged (capability on), so a
+    // server without pagination never sees the extra field and no ack is
+    // awaited that cannot come.
+    const clientRef = pageRef.current.paged ? newClientRef() : null;
+    if (clientRef) payload.client_ref = clientRef;
     wsRef.current.send(JSON.stringify(payload));
+    if (clientRef) scheduleAckFallback(clientRef, currentContact, chatTokenRef.current);
     setMessages(prev => [...prev, {
+      ...(clientRef ? { key: `c:${clientRef}`, clientRef, pending: true } : {}),
       text, mine: true, timestamp: payload.timestamp, sender: '',
       attachmentKind: attachment ? attachment.kind : null,
       attachmentMeta: attachment ? (attachment.meta || null) : null,
@@ -378,7 +523,7 @@ export function useMessaging({ user }) {
       // as a real delivered/loaded message (design gate §4).
       attachmentUrl: (attachment && attachment.kind === 'gif') ? null : (attachment?.localUrl || null),
     }]);
-  }, [user, currentContact]);
+  }, [user, currentContact, scheduleAckFallback]);
 
   // ── Attachments (task 20260904-messaging-attachments) ─────────────────────
   // Wire contract per design-notes.md / backend step 2: request a presigned
@@ -626,6 +771,7 @@ export function useMessaging({ user }) {
   return {
     applyGroupChange, dropGroup,
     friends, groups, currentContact, messages, groupMembers, wsStatus,
+    olderPage, loadOlder,
     wsRef, friendCache,
     connectWS, disconnectWS, setOnSessionSignal,
     loadContacts, openChat, closeChat, sendMessage,

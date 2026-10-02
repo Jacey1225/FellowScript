@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { Button, Avatar, Typography, Input, Popover, Modal, Spin } from 'antd';
 import {
@@ -550,6 +550,10 @@ export default function ChatThread({
   onEditSession, onDeleteSession, onNavigateVerse,
   videoEnabled, videoTiles, onToggleVideo, bindVideoTile,
   onGroupChanged, onGroupGone,
+  // Task 20261001-chat-pagination: { paged, hasMore, loading, error,
+  // loadedCount, loadedTick } for the open thread plus the older-page loader.
+  // Both optional: absent means a legacy full-history thread.
+  olderPage, onLoadOlder,
 }) {
   const [text, setText]               = useState('');
   // Task 20260929-group-info-panel: replaces the old inline showMembers strip;
@@ -566,7 +570,109 @@ export default function ChatThread({
   const photoVideoInputRef = useRef(null);
   const fileInputRef       = useRef(null);
 
-  useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
+  const scrollerRef = useRef(null);
+  // Scroll anchor captured when an older page is requested: the first visible
+  // message (by id) and its offset from the scroller's top.
+  const anchorRef = useRef(null);
+  const prevLastKeyRef = useRef(null);
+  const nearBottomRef = useRef(true);
+  const [newBelow, setNewBelow] = useState(false);
+  const paged = !!olderPage?.paged;
+  const hasMore = !!olderPage?.hasMore;
+  const loadingOlder = !!olderPage?.loading;
+  const olderError = !!olderPage?.error;
+
+  const lastKeyOf = (list) => {
+    const last = list[list.length - 1];
+    return last ? (last.key ?? `n${list.length}`) : null;
+  };
+
+  const captureAnchor = useCallback(() => {
+    const sc = scrollerRef.current;
+    if (!sc) return;
+    const top = sc.getBoundingClientRect().top;
+    const els = sc.querySelectorAll('[data-msg-id]');
+    for (const el of els) {
+      const r = el.getBoundingClientRect();
+      if (r.bottom > top) {
+        anchorRef.current = { id: el.getAttribute('data-msg-id'), offset: r.top - top };
+        return;
+      }
+    }
+    anchorRef.current = null;
+  }, []);
+
+  const requestOlder = useCallback(() => {
+    if (!onLoadOlder || !hasMore || loadingOlder) return;
+    captureAnchor();
+    onLoadOlder();
+  }, [onLoadOlder, hasMore, loadingOlder, captureAnchor]);
+
+  // Keep the viewport still when an older page is prepended (anchor by message
+  // id); otherwise scroll to the newest message only when the thread was just
+  // opened, the user sent it, or they are already near the bottom. A live
+  // message that arrives while scrolled up raises the "New messages" pill.
+  useLayoutEffect(() => {
+    const sc = scrollerRef.current;
+    const anchor = anchorRef.current;
+    if (anchor && sc) {
+      anchorRef.current = null;
+      const el = Array.from(sc.querySelectorAll('[data-msg-id]')).find(e => e.getAttribute('data-msg-id') === anchor.id);
+      if (el) {
+        const delta = (el.getBoundingClientRect().top - sc.getBoundingClientRect().top) - anchor.offset;
+        if (delta) sc.scrollTop += delta;
+        return;
+      }
+    }
+    const lastKey = lastKeyOf(messages);
+    const prevKey = prevLastKeyRef.current;
+    prevLastKeyRef.current = lastKey;
+    if (lastKey === prevKey) return;
+    const last = messages[messages.length - 1];
+    const firstLoad = prevKey === null;
+    if (firstLoad || nearBottomRef.current || last?.mine) {
+      endRef.current?.scrollIntoView?.({ behavior: (firstLoad || prefersReducedMotion()) ? 'auto' : 'smooth' });
+      setNewBelow(false);
+    } else {
+      setNewBelow(true);
+    }
+  }, [messages]);
+
+  // A finished (or failed) older-page request never leaves a stale anchor.
+  useEffect(() => { if (!loadingOlder) anchorRef.current = null; }, [loadingOlder]);
+
+  // A new thread starts clean.
+  useEffect(() => {
+    prevLastKeyRef.current = null;
+    nearBottomRef.current = true;
+    anchorRef.current = null;
+    setNewBelow(false);
+  }, [contact?.id]);
+
+  // Content too short to scroll still needs to be able to reach older pages.
+  useEffect(() => {
+    const sc = scrollerRef.current;
+    if (!sc || !paged || !hasMore || loadingOlder || olderError) return;
+    if (sc.scrollHeight <= sc.clientHeight) requestOlder();
+  }, [messages, paged, hasMore, loadingOlder, olderError, requestOlder]);
+
+  const handleScroll = useCallback((e) => {
+    const sc = e.currentTarget;
+    const nearBottom = sc.scrollHeight - sc.scrollTop - sc.clientHeight < 80;
+    nearBottomRef.current = nearBottom;
+    if (nearBottom) setNewBelow(false);
+    if (paged && sc.scrollTop < 120) requestOlder();
+  }, [paged, requestOlder]);
+
+  const jumpToNewest = useCallback(() => {
+    endRef.current?.scrollIntoView?.({ behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
+    setNewBelow(false);
+  }, []);
+
+  // Screen-reader announcement after an older page lands.
+  const loadedAnnouncement = olderPage?.loadedTick
+    ? `${olderPage.loadedCount} earlier message${olderPage.loadedCount === 1 ? '' : 's'} loaded`
+    : '';
 
   // Staged previewUrl is a `URL.createObjectURL(file)` blob URL — release it
   // once no longer staged/replaced, so this doesn't leak memory across a long
@@ -784,7 +890,36 @@ export default function ChatThread({
       })()}
 
       {/* Messages */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '0.75rem 0.85rem', display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
+      <div style={{ flex: 1, minHeight: 0, position: 'relative', display: 'flex', flexDirection: 'column' }}>
+      <div
+        ref={scrollerRef}
+        onScroll={handleScroll}
+        style={{ flex: 1, overflowY: 'auto', padding: '0.75rem 0.85rem', display: 'flex', flexDirection: 'column', gap: '0.45rem' }}
+      >
+        <div
+          role="status"
+          aria-live="polite"
+          style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap' }}
+        >
+          {loadedAnnouncement}
+        </div>
+        {paged && loadingOlder && (
+          <div style={{ textAlign: 'center', padding: '0.25rem 0' }} aria-label="Loading earlier messages">
+            <Spin size="small" />
+          </div>
+        )}
+        {paged && olderError && !loadingOlder && (
+          <div style={{ textAlign: 'center', padding: '0.25rem 0' }}>
+            <Button type="link" size="small" onClick={requestOlder} style={{ color: 'rgba(255,198,26,0.75)', fontSize: '0.72rem' }}>
+              Couldn't load earlier messages. Retry
+            </Button>
+          </div>
+        )}
+        {paged && !hasMore && !loadingOlder && !olderError && messages.length > 0 && (
+          <div style={{ textAlign: 'center', padding: '0.25rem 0' }}>
+            <Text style={{ fontSize: '0.68rem', color: 'rgba(242,242,242,0.3)', fontFamily: "'Inter', sans-serif" }}>Start of conversation</Text>
+          </div>
+        )}
         {messages.length === 0 && (
           <div style={{ textAlign: 'center', padding: '2rem 1rem' }}>
             <Text style={{ fontSize: '0.72rem', color: 'rgba(242,242,242,0.22)', fontFamily: "'Inter', sans-serif" }}>No messages yet. Say hello!</Text>
@@ -809,7 +944,8 @@ export default function ChatThread({
             : undefined;
           return (
             <div
-              key={i}
+              key={m.key ?? `i${i}`}
+              data-msg-id={m.key ?? undefined}
               className={`msg-bubble ${m.mine ? 'sent' : 'received'} ${isMedia ? 'msg-bubble-media' : ''}`}
               aria-label={ariaLabel}
             >
@@ -827,6 +963,16 @@ export default function ChatThread({
           );
         })}
         <div ref={endRef} />
+      </div>
+      {newBelow && (
+        <Button
+          size="small"
+          onClick={jumpToNewest}
+          style={{ position: 'absolute', bottom: 8, left: '50%', transform: 'translateX(-50%)', zIndex: 2 }}
+        >
+          New messages
+        </Button>
+      )}
       </div>
 
       {/* Staged attachment + inline error */}
