@@ -30,6 +30,7 @@ async function request(path, options, fallback) {
     } catch { /* keep fallback */ }
     throw new OwnerRewardsApiError(message, res.status);
   }
+  if (res.status === 204) return null;
   return res.json();
 }
 
@@ -57,6 +58,16 @@ export function listCodesOverview({ kind, limit = 100, offset = 0 } = {}) {
 // Admin: idempotent deactivate.
 export function deactivateCode(codeId) {
   return request(`/admin/promo/codes/${encodeURIComponent(codeId)}/deactivate`, { method: 'POST' }, "Couldn't deactivate the code.");
+}
+
+// Admin: idempotent reactivate (expiry, cap and creator checks still apply at redemption).
+export function reactivateCode(codeId) {
+  return request(`/admin/promo/codes/${encodeURIComponent(codeId)}/reactivate`, { method: 'POST' }, "Couldn't reactivate the code.");
+}
+
+// Admin: soft-delete a creator code (204, idempotent). Redemption history is kept.
+export function deleteCode(codeId) {
+  return request(`/admin/promo/codes/${encodeURIComponent(codeId)}`, { method: 'DELETE' }, "Couldn't delete the code.");
 }
 
 // User: { percent_off, earned, claimed, expired, next_expiry, provider, can_claim_apple, ... }.

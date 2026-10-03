@@ -1,10 +1,11 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Typography, Spin, Alert, Button, Input, InputNumber, Tag, Select } from 'antd';
+import { Typography, Spin, Alert, Button, Input, InputNumber, Tag, Select, Popconfirm } from 'antd';
 import { AdminPageHeader } from '../components/AdminShell.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import {
   createCreatorCode, listCodesOverview, deactivateCode,
+  reactivateCode, deleteCode,
 } from '../lib/ownerRewardsApi.js';
 
 const { Text } = Typography;
@@ -25,7 +26,7 @@ const MUTED = { fontFamily: "'Inter', sans-serif", fontSize: '0.8rem', color: 'r
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // Task 20261001-promo-owner-rewards: admin page (/#/admin/promo) to create secure
-// creator codes bound to an owner email, deactivate them, and see redemption and
+// creator codes bound to an owner email, deactivate/reactivate/delete them, and see redemption and
 // reward counts. Server-side `require_admin` is the real enforcement; this page
 // only reads the answer. Hidden like /admin (not linked from user nav). A 404 means
 // the feature flag is off: the page shows a neutral "not available" notice.
@@ -90,18 +91,21 @@ export default function AdminPromoCodes() {
     }
   };
 
-  const deactivate = async (row) => {
+  const runAction = async (row, fn, failMsg) => {
     setBusyId(row.id);
     setError(null);
     try {
-      await deactivateCode(row.id);
+      await fn(row.id);
       await load();
     } catch (err) {
-      if (!handleAuthError(err)) setError(err.message || "Couldn't deactivate the code.");
+      if (!handleAuthError(err)) setError(err.message || failMsg);
     } finally {
       setBusyId(null);
     }
   };
+  const deactivate = (row) => runAction(row, deactivateCode, "Couldn't deactivate the code.");
+  const reactivate = (row) => runAction(row, reactivateCode, "Couldn't reactivate the code.");
+  const remove = (row) => runAction(row, deleteCode, "Couldn't delete the code.");
 
   if (!checked) {
     return (
@@ -188,11 +192,29 @@ export default function AdminPromoCodes() {
                           <td style={{ padding: 8 }}>{r.rewards_earned} / {r.rewards_claimed}</td>
                           <td style={{ padding: 8 }}><Tag color={r.active ? 'gold' : 'default'}>{r.active ? 'Active' : 'Inactive'}</Tag></td>
                           <td style={{ padding: 8 }}>
-                            {r.active && (
-                              <Button size="small" danger shape="round" loading={busyId === r.id} onClick={() => deactivate(r)} aria-label={`Deactivate ${r.code}`}>
-                                Deactivate
-                              </Button>
-                            )}
+                            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                              {r.active ? (
+                                <Button size="small" danger shape="round" loading={busyId === r.id} onClick={() => deactivate(r)} aria-label={`Deactivate ${r.code}`}>
+                                  Deactivate
+                                </Button>
+                              ) : (
+                                <Button size="small" shape="round" loading={busyId === r.id} onClick={() => reactivate(r)} aria-label={`Reactivate ${r.code}`}>
+                                  Reactivate
+                                </Button>
+                              )}
+                              {r.kind === 'creator' && (
+                                <Popconfirm
+                                  title="Delete this code?"
+                                  description="It can no longer be redeemed. Redemption history and earned rewards are kept. This can't be undone."
+                                  okText="Delete" okButtonProps={{ danger: true }} cancelText="Cancel"
+                                  onConfirm={() => remove(r)}
+                                >
+                                  <Button size="small" danger type="primary" shape="round" disabled={busyId === r.id} aria-label={`Delete ${r.code}`}>
+                                    Delete
+                                  </Button>
+                                </Popconfirm>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       ))}

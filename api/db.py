@@ -687,6 +687,10 @@ def create_tables(cur):
     # who earns rewards when it is used (friend codes use referrer_user_id).
     cur.execute("ALTER TABLE promo_codes ADD COLUMN IF NOT EXISTS owner_email TEXT")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_promo_codes_owner_email ON promo_codes(owner_email)")
+    # Task 20261003-admin-promo-code-lifecycle: soft delete tombstone (creator codes
+    # only). Row + code text stay (UNIQUE keeps the text reserved) so redemptions,
+    # owner_rewards and reporting joins on code_id keep working.
+    cur.execute("ALTER TABLE promo_codes ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ")
     # Reward ledger = source of truth. status earned -> claimed | expired.
     # idempotency_key UNIQUE (signup:<invitee id> / purchase:<redemption key>)
     # makes replays impossible; the partial unique indexes enforce one signup

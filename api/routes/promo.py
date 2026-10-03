@@ -9,7 +9,8 @@
 
 Owner rewards (task 20261001-promo-owner-rewards) add, all uniform-404 unless
 OWNER_REWARDS_ENABLED: POST /admin/promo/creator-codes, GET /admin/promo/codes-overview,
-POST /admin/promo/codes/{id}/deactivate, GET /rewards/{user_id},
+POST /admin/promo/codes/{id}/deactivate, POST /admin/promo/codes/{id}/reactivate,
+DELETE /admin/promo/codes/{id} (soft delete, creator codes only), GET /rewards/{user_id},
 POST /rewards/{user_id}/apple/claim.
 
 Behavior lives in ``backend/subscription/promo.py``; this module is auth, the
@@ -324,6 +325,42 @@ async def deactivate_code(code_id: str, admin_id: str = Depends(require_admin)) 
         db.close()
     _audit("promo_code_deactivate", admin_id, cid)
     return out
+
+
+@rewards_admin_router.post("/codes/{code_id}/reactivate")
+async def reactivate_code(code_id: str, admin_id: str = Depends(require_admin)) -> dict:
+    """Reactivate a code (idempotent). Only flips ``active``; expiry, cap and
+    creator-active checks still apply at redemption. Deleted codes are 404."""
+    cid = _uuid(code_id)
+    db = PromoManager()
+    try:
+        out = db.update_code(cid, {"active": True})
+        if out is None:
+            raise HTTPException(status_code=404, detail="Not found")
+        db.audit("promo_code_reactivate", admin_id, cid)
+    finally:
+        db.close()
+    _audit("promo_code_reactivate", admin_id, cid)
+    return out
+
+
+@rewards_admin_router.delete("/codes/{code_id}", status_code=204)
+async def delete_code(code_id: str, admin_id: str = Depends(require_admin)) -> Response:
+    """Soft-delete a creator code (idempotent). Redemption history and earned
+    rewards are kept; the code can no longer be validated or redeemed. Friend
+    codes are rejected (422). Admin only; audited."""
+    cid = _uuid(code_id)
+    db = PromoManager()
+    try:
+        if not db.delete_code(cid):
+            raise HTTPException(status_code=404, detail="Not found")
+        db.audit("promo_code_delete", admin_id, cid)
+    except PromoError as e:
+        raise _http(e)
+    finally:
+        db.close()
+    _audit("promo_code_delete", admin_id, cid)
+    return Response(status_code=204)
 
 
 # ── Owner rewards: user surface ───────────────────────────────────────────────

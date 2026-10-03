@@ -201,11 +201,13 @@ class PromoManager(DBManager):
             logger.error("promo evaluate failed (denying): %s", e)
             return None
 
-    def find_code(self, code: str) -> dict | None:
+    def find_code(self, code: str, include_deleted: bool = False) -> dict | None:
+        """Code row by text. Soft-deleted codes are invisible unless asked for."""
         self.cur.execute(
             "SELECT p._id, p.code, p.kind, p.creator_id, p.referrer_user_id, p.active, "
             "       p.max_redemptions, p.redemption_count, p.expires_at, COALESCE(c.active, TRUE) "
-            "FROM promo_codes p LEFT JOIN creators c ON c._id = p.creator_id WHERE p.code = %s",
+            "FROM promo_codes p LEFT JOIN creators c ON c._id = p.creator_id WHERE p.code = %s"
+            + ("" if include_deleted else " AND p.deleted_at IS NULL"),
             (code,),
         )
         r = self.cur.fetchone()
@@ -220,9 +222,11 @@ class PromoManager(DBManager):
         }
 
     def get_code_by_id(self, code_id: str) -> dict | None:
+        """Includes soft-deleted codes: a checkout that started before the delete
+        must still log its redemption and credit the owner reward."""
         self.cur.execute("SELECT code FROM promo_codes WHERE _id = %s", (code_id,))
         r = self.cur.fetchone()
-        return self.find_code(r[0]) if r else None
+        return self.find_code(r[0], include_deleted=True) if r else None
 
     # ── Friend invite codes ───────────────────────────────────────────────────
 
@@ -379,20 +383,38 @@ class PromoManager(DBManager):
                 raise PromoError(422, "owner_email is not a valid email address")
         sets = ", ".join(f"{k} = %s" for k in allowed)
         self.cur.execute(
-            f"UPDATE promo_codes SET {sets} WHERE _id = %s RETURNING {self._CODE_COLS}",
+            f"UPDATE promo_codes SET {sets} WHERE _id = %s AND deleted_at IS NULL RETURNING {self._CODE_COLS}",
             [*allowed.values(), code_id])
         r = self.cur.fetchone()
         self.conn.commit()
         return self._code_dict(r) if r else None
 
+    def delete_code(self, code_id: str) -> bool:
+        """Soft-delete a creator code (idempotent). Returns False if the code is
+        unknown. Friend codes are rejected (422) so get_or_create_friend_code can
+        never silently regenerate one. History rows are untouched."""
+        self.cur.execute("SELECT kind, deleted_at FROM promo_codes WHERE _id = %s FOR UPDATE", (code_id,))
+        r = self.cur.fetchone()
+        if not r:
+            self.conn.rollback()
+            return False
+        if r[0] != "creator":
+            self.conn.rollback()
+            raise PromoError(422, "only creator codes can be deleted")
+        if r[1] is None:
+            self.cur.execute(
+                "UPDATE promo_codes SET deleted_at = NOW(), active = FALSE WHERE _id = %s", (code_id,))
+        self.conn.commit()
+        return True
+
     def list_codes(self, kind: str | None = None, creator_id: str | None = None,
                    limit: int = 100, offset: int = 0) -> list[dict]:
-        where, params = [], []
+        where, params = ["deleted_at IS NULL"], []
         if kind:
             where.append("kind = %s"); params.append(kind)
         if creator_id:
             where.append("creator_id = %s"); params.append(creator_id)
-        w = ("WHERE " + " AND ".join(where)) if where else ""
+        w = "WHERE " + " AND ".join(where)
         self.cur.execute(
             f"SELECT {self._CODE_COLS} FROM promo_codes {w} ORDER BY created_at DESC LIMIT %s OFFSET %s",
             [*params, limit, offset])
@@ -453,9 +475,9 @@ class PromoManager(DBManager):
     def list_codes_overview(self, kind: str | None = None, limit: int = 100, offset: int = 0) -> list[dict]:
         """Codes with creator name, attached email, redemption count and reward
         counts, for the admin page."""
-        where, params = "", []
+        where, params = "WHERE p.deleted_at IS NULL", []
         if kind:
-            where, params = "WHERE p.kind = %s", [kind]
+            where, params = "WHERE p.deleted_at IS NULL AND p.kind = %s", [kind]
         self.cur.execute(
             "SELECT p._id, p.code, p.kind, p.active, p.owner_email, c.name, p.redemption_count, "
             " p.max_redemptions, p.expires_at, p.created_at, "

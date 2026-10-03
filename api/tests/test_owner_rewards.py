@@ -304,6 +304,8 @@ def test_flag_off(client, admin, user):
         ("post", "/admin/promo/creator-codes", {"name": "x", "owner_email": "a@b.co"}, atok),
         ("get", "/admin/promo/codes-overview", None, atok),
         ("post", f"/admin/promo/codes/{uuid.uuid4()}/deactivate", None, atok),
+        ("post", f"/admin/promo/codes/{uuid.uuid4()}/reactivate", None, atok),
+        ("delete", f"/admin/promo/codes/{uuid.uuid4()}", None, atok),
         ("get", f"/rewards/{uid}", None, utok),
         ("post", f"/rewards/{uid}/apple/claim", None, utok),
     ]
@@ -1195,6 +1197,151 @@ def test_audit_no_pii(client):
     check("DB check: claimed requires claimed_at", bad)
 
 
+def test_code_lifecycle(client, admin, user):
+    print("\n== Admin code lifecycle: deactivate / reactivate / delete (task 20261003) ==")
+    set_flags(True)
+    aid, atok = admin
+    uid, utok = user
+    A, U = ip_hdr(atok), None
+    owner, _ = signup(client)
+    oemail = q("SELECT email FROM users WHERE _id=%s", (owner,))[0][0]
+    give_sub(owner)
+    cc = client.post("/admin/promo/creator-codes", json={"name": "Life", "owner_email": oemail},
+                     headers=ip_hdr(atok)).json()
+    CREATORS.append(cc["creator"]["id"])
+    cid, text = cc["code"]["id"], cc["code"]["code"]
+
+    def evaluable():
+        buyer, _ = signup(client)
+        db = RewardManager()
+        try:
+            return db.evaluate(buyer, text, 1, "b@example.com") is not None
+        finally:
+            db.close()
+
+    def validate_http():
+        b, bt = signup(client)
+        r = client.post(f"/promo/{b}/validate", json={"code": text}, headers=ip_hdr(bt))
+        return r.status_code, r.json()
+
+    # authz
+    for m in ("post", "delete"):
+        path = f"/admin/promo/codes/{cid}" + ("/reactivate" if m == "post" else "")
+        check(f"{m.upper()} lifecycle anon denied", getattr(client, m)(path, headers=ip_hdr()).status_code in (401, 403))
+        check(f"{m.upper()} lifecycle non-admin denied", getattr(client, m)(path, headers=ip_hdr(utok)).status_code in (401, 403))
+    check("denied attempts changed nothing",
+          q("SELECT active, deleted_at FROM promo_codes WHERE _id=%s", (cid,))[0] == (True, None))
+    check("fresh code evaluable", evaluable())
+
+    # deactivate -> reactivate
+    client.post(f"/admin/promo/codes/{cid}/deactivate", headers=ip_hdr(atok))
+    check("deactivated: not evaluable", not evaluable())
+    sc, js = validate_http()
+    check("deactivated: validate uniform {valid:false}", sc == 200 and js == {"valid": False}, f"{sc} {js}")
+    r = client.post(f"/admin/promo/codes/{cid}/reactivate", headers=ip_hdr(atok))
+    check("reactivate 200 active true", r.status_code == 200 and r.json()["active"] is True, r.text)
+    r = client.post(f"/admin/promo/codes/{cid}/reactivate", headers=ip_hdr(atok))
+    check("reactivate idempotent", r.status_code == 200 and r.json()["active"] is True)
+    check("reactivated: evaluable again", evaluable())
+    sc, js = validate_http()
+    check("reactivated: validate valid true", sc == 200 and js.get("valid") is True, f"{sc} {js}")
+    check("reactivate unknown => 404", client.post(f"/admin/promo/codes/{uuid.uuid4()}/reactivate",
+          headers=ip_hdr(atok)).status_code == 404)
+    check("reactivate malformed => 404/422", client.post("/admin/promo/codes/not-a-uuid/reactivate",
+          headers=ip_hdr(atok)).status_code in (400, 404, 422))
+
+    # reactivate must not bypass expiry / cap
+    q("UPDATE promo_codes SET expires_at = NOW() - INTERVAL '1 day' WHERE _id=%s", (cid,))
+    client.post(f"/admin/promo/codes/{cid}/deactivate", headers=ip_hdr(atok))
+    client.post(f"/admin/promo/codes/{cid}/reactivate", headers=ip_hdr(atok))
+    check("reactivate does not bypass expires_at", not evaluable())
+    q("UPDATE promo_codes SET expires_at = NULL WHERE _id=%s", (cid,))
+    check("expiry cleared: evaluable", evaluable())
+
+    # a redemption + earned reward exist before delete
+    buyer, _ = signup(client)
+    pdb = promo.PromoManager()
+    try:
+        res = pdb.log_redemption(code_id=cid, user_id=buyer, plan="individual", platform="stripe",
+                                 store_transaction_id="sess_life", idempotency_key=f"life-{uuid.uuid4().hex}",
+                                 amount_discount_cents=100)
+    finally:
+        pdb.close()
+    check("redemption logged pre-delete", res == "logged", str(res))
+    ow.credit_purchase_reward(cid, buyer, "sess_life")
+    rewards_before = rewards_of(owner)
+    check("owner reward earned pre-delete", len(rewards_before) == 1, str(rewards_before))
+
+    # delete
+    d = client.delete(f"/admin/promo/codes/{cid}", headers=ip_hdr(atok))
+    check("delete 204 empty body", d.status_code == 204 and d.content == b"", f"{d.status_code}")
+    d = client.delete(f"/admin/promo/codes/{cid}", headers=ip_hdr(atok))
+    check("delete idempotent 204", d.status_code == 204)
+    row = q("SELECT active, deleted_at, code FROM promo_codes WHERE _id=%s", (cid,))[0]
+    check("soft delete: row kept, inactive, tombstoned, text reserved",
+          row[0] is False and row[1] is not None and row[2] == text, str(row))
+    check("deleted: not evaluable", not evaluable())
+    sc, js = validate_http()
+    check("deleted: validate uniform {valid:false}", sc == 200 and js == {"valid": False}, f"{sc} {js}")
+    ov = client.get("/admin/promo/codes-overview", headers=ip_hdr(atok)).json()
+    check("deleted: gone from overview", all(x["id"] != cid for x in ov))
+    lst = client.get("/admin/promo/codes", headers=ip_hdr(atok))
+    check("deleted: gone from list_codes", lst.status_code != 200 or all(x["id"] != cid for x in lst.json()))
+    check("reactivate deleted => 404", client.post(f"/admin/promo/codes/{cid}/reactivate",
+          headers=ip_hdr(atok)).status_code == 404)
+    check("PATCH deleted => 404", client.patch(f"/admin/promo/codes/{cid}", json={"active": True},
+          headers=ip_hdr(atok)).status_code == 404)
+    check("still deleted after failed reactivate/patch",
+          q("SELECT deleted_at IS NOT NULL, active FROM promo_codes WHERE _id=%s", (cid,))[0] == (True, False))
+    check("delete unknown => 404", client.delete(f"/admin/promo/codes/{uuid.uuid4()}",
+          headers=ip_hdr(atok)).status_code == 404)
+    check("delete malformed => 404/422", client.delete("/admin/promo/codes/not-a-uuid",
+          headers=ip_hdr(atok)).status_code in (400, 404, 422))
+    check("code text stays reserved (recreate => 409)",
+          client.post("/admin/promo/creator-codes", json={"name": "Re", "owner_email": "re@example.com", "code": text},
+                      headers=ip_hdr(atok)).status_code == 409)
+    for c in q("SELECT _id FROM creators WHERE name='Re'"):
+        CREATORS.append(str(c[0]))
+
+    # history preserved
+    reds = q("SELECT code, code_id FROM promo_redemptions WHERE user_id=%s", (buyer,))
+    check("redemption history kept with code text", reds == [(text, uuid.UUID(cid))] or
+          (len(reds) == 1 and reds[0][0] == text and str(reds[0][1]) == cid), str(reds))
+    ra = client.get("/admin/promo/redemptions", headers=ip_hdr(atok))
+    check("redemptions list still shows deleted code row",
+          ra.status_code == 200 and any(x.get("code") == text for x in ra.json()))
+    check("earned owner reward intact and still earned", rewards_of(owner) == rewards_before and
+          rewards_of(owner)[0][0] == "earned")
+    pdb = promo.PromoManager()
+    try:
+        late = pdb.log_redemption(code_id=cid, user_id=owner, plan="individual", platform="stripe",
+                                  store_transaction_id="sess_late", idempotency_key=f"late-{uuid.uuid4().hex}",
+                                  amount_discount_cents=100)
+        check("in-flight checkout after delete still logs (history not lost)", late == "logged", str(late))
+        check("get_code_by_id still resolves deleted code", pdb.get_code_by_id(cid) is not None)
+        check("find_code hides deleted", pdb.find_code(text) is None and pdb.find_code(text, include_deleted=True))
+    finally:
+        pdb.close()
+
+    # friend codes: not deletable, can be deactivated/reactivated, never regenerated
+    fo, _ = signup(client)
+    ftext = friend_code(fo)
+    fid = str(q("SELECT _id FROM promo_codes WHERE code=%s", (ftext,))[0][0])
+    r = client.delete(f"/admin/promo/codes/{fid}", headers=ip_hdr(atok))
+    check("friend code delete => 422, untouched", r.status_code == 422 and
+          q("SELECT deleted_at FROM promo_codes WHERE _id=%s", (fid,))[0][0] is None, f"{r.status_code}")
+    check("friend code deactivate ok", client.post(f"/admin/promo/codes/{fid}/deactivate",
+          headers=ip_hdr(atok)).json()["active"] is False)
+    check("friend code reactivate ok", client.post(f"/admin/promo/codes/{fid}/reactivate",
+          headers=ip_hdr(atok)).json()["active"] is True)
+    check("friend code stable (no regeneration)", friend_code(fo) == ftext)
+
+    acts = [r[0] for r in q("SELECT action FROM promo_audit_log WHERE code_id=%s", (cid,))]
+    check("reactivate + delete audited", "promo_code_reactivate" in acts and "promo_code_delete" in acts, str(acts))
+    dets = q("SELECT * FROM promo_audit_log WHERE code_id=%s", (cid,))
+    check("audit rows carry no code text", all(text not in str(r) for r in dets))
+
+
 def cleanup():
     ids = tuple(USERS) or (None,)
     for table_sql in (
@@ -1239,6 +1386,7 @@ def main():
             test_stripe_apply(client)
             test_apple(client)
             test_admin(client, admin, user)
+            test_code_lifecycle(client, admin, user)
             test_audit_no_pii(client)
             set_flags(False)
     finally:

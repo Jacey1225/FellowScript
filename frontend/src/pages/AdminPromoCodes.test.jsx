@@ -9,9 +9,9 @@ vi.mock('../context/AuthContext.jsx', () => ({ useAuth: () => mockAuth }));
 vi.mock('../components/AppNav.jsx', () => ({ default: () => null }));
 vi.mock('../lib/ownerRewardsApi.js', async () => {
   const actual = await vi.importActual('../lib/ownerRewardsApi.js');
-  return { ...actual, createCreatorCode: vi.fn(), listCodesOverview: vi.fn(), deactivateCode: vi.fn() };
+  return { ...actual, createCreatorCode: vi.fn(), listCodesOverview: vi.fn(), deactivateCode: vi.fn(), reactivateCode: vi.fn(), deleteCode: vi.fn() };
 });
-import { createCreatorCode, listCodesOverview, deactivateCode, OwnerRewardsApiError } from '../lib/ownerRewardsApi.js';
+import { createCreatorCode, listCodesOverview, deactivateCode, reactivateCode, deleteCode, OwnerRewardsApiError } from '../lib/ownerRewardsApi.js';
 import AdminPromoCodes from './AdminPromoCodes.jsx';
 
 function Where() { const l = useLocation(); return <div data-testid="where">{l.pathname}</div>; }
@@ -32,6 +32,7 @@ const ROW = {
 
 beforeEach(() => {
   createCreatorCode.mockReset(); listCodesOverview.mockReset(); deactivateCode.mockReset();
+  reactivateCode.mockReset(); deleteCode.mockReset();
 });
 afterEach(() => cleanup());
 
@@ -116,16 +117,58 @@ describe('AdminPromoCodes', () => {
     expect(screen.queryByTestId('created-code')).toBeNull();
   });
 
-  test('deactivate calls API for the row and reloads; inactive rows have no button', async () => {
+  test('deactivate calls API for the row and reloads; inactive rows show Reactivate instead', async () => {
     listCodesOverview.mockResolvedValueOnce([ROW, { ...ROW, id: 'c2', code: 'OLD', active: false }]);
     listCodesOverview.mockResolvedValue([{ ...ROW, active: false }]);
     deactivateCode.mockResolvedValue({});
     renderPage();
     await screen.findByText('CREATOR1');
     expect(screen.getAllByText('Deactivate')).toHaveLength(1);
+    expect(screen.getAllByText('Reactivate')).toHaveLength(1);
     fireEvent.click(screen.getByLabelText('Deactivate CREATOR1'));
     await waitFor(() => expect(deactivateCode).toHaveBeenCalledWith('c1'));
     await waitFor(() => expect(screen.queryByText('Deactivate')).toBeNull());
+  });
+
+  test('reactivate calls API for the row and reloads', async () => {
+    listCodesOverview.mockResolvedValueOnce([{ ...ROW, active: false }]);
+    listCodesOverview.mockResolvedValue([ROW]);
+    reactivateCode.mockResolvedValue({});
+    renderPage();
+    await screen.findByText('CREATOR1');
+    fireEvent.click(screen.getByLabelText('Reactivate CREATOR1'));
+    await waitFor(() => expect(reactivateCode).toHaveBeenCalledWith('c1'));
+    await waitFor(() => expect(screen.getByText('Active')).toBeInTheDocument());
+  });
+
+  test('delete needs confirmation, then calls API and reloads', async () => {
+    listCodesOverview.mockResolvedValueOnce([ROW]);
+    listCodesOverview.mockResolvedValue([]);
+    deleteCode.mockResolvedValue(null);
+    renderPage();
+    await screen.findByText('CREATOR1');
+    fireEvent.click(screen.getByLabelText('Delete CREATOR1'));
+    expect(deleteCode).not.toHaveBeenCalled();
+    fireEvent.click(await screen.findByRole('button', { name: /^Delete$/ }));
+    await waitFor(() => expect(deleteCode).toHaveBeenCalledWith('c1'));
+    expect(await screen.findByText('No codes yet.')).toBeInTheDocument();
+  });
+
+  test('friend codes have no Delete button', async () => {
+    listCodesOverview.mockResolvedValue([{ ...ROW, kind: 'friend' }]);
+    renderPage();
+    await screen.findByText('CREATOR1');
+    expect(screen.queryByLabelText('Delete CREATOR1')).toBeNull();
+    expect(screen.getByLabelText('Deactivate CREATOR1')).toBeInTheDocument();
+  });
+
+  test('action failure shows inline error', async () => {
+    listCodesOverview.mockResolvedValue([{ ...ROW, active: false }]);
+    reactivateCode.mockRejectedValue(new OwnerRewardsApiError('nope', 500));
+    renderPage();
+    await screen.findByText('CREATOR1');
+    fireEvent.click(screen.getByLabelText('Reactivate CREATOR1'));
+    expect(await screen.findByText('nope')).toBeInTheDocument();
   });
 
   test('kind filter reloads with kind', async () => {

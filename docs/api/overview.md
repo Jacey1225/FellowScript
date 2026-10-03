@@ -267,6 +267,8 @@ Feature-flagged by `PROMO_CODES_ENABLED` (default off). While off, every route b
 | PATCH | `/admin/promo/creators/{id}` | **Admin-only.** Update or deactivate a creator |
 | POST/GET | `/admin/promo/codes` | **Admin-only.** Create creator codes (`code`, `creator_id`, optional `max_redemptions`, `expires_at`) / list (`kind`, `creator_id`, paging) |
 | PATCH | `/admin/promo/codes/{id}` | **Admin-only.** Activate/deactivate, change cap or expiry |
+| POST | `/admin/promo/codes/{id}/reactivate` | **Admin-only** (owner-rewards flag). Set a code active again; idempotent; 404 if deleted |
+| DELETE | `/admin/promo/codes/{id}` | **Admin-only** (owner-rewards flag). Soft-delete a creator code (204, idempotent); keeps redemption history; friend codes 422 |
 | GET | `/admin/promo/report` | **Admin-only.** Completed redemptions per creator (+ `over_cap_redemptions`) |
 | GET | `/admin/promo/redemptions` | **Admin-only.** Redemption list (`creator_id`, `kind`, paging) |
 
