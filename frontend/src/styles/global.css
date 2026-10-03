@@ -1905,13 +1905,15 @@ body {
 }
 .group-info-side {
   position: absolute; top: 0; right: 0; bottom: 0; width: 320px; max-width: 100%;
-  background: var(--card-bg); border-left: 1px solid var(--card-border);
+  background: rgba(32,24,17,0.6); border-left: 1px solid rgba(237,230,214,0.10);
+  backdrop-filter: blur(16px) saturate(160%); -webkit-backdrop-filter: blur(16px) saturate(160%);
   animation: groupInfoSideIn 0.28s cubic-bezier(0.4,0,0.2,1) both;
 }
 .group-info-sheet {
   position: fixed; left: 0; right: 0; bottom: 0; max-height: 90vh; height: 90vh;
-  background: var(--bloom-primary), var(--bloom-secondary), #1a1712; border-radius: var(--radius-lg) var(--radius-lg) 0 0;
-  border-top: 1px solid var(--card-border);
+  background: rgba(32,24,17,0.6); border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  backdrop-filter: blur(16px) saturate(160%); -webkit-backdrop-filter: blur(16px) saturate(160%);
+  border-top: 1px solid rgba(237,230,214,0.10);
   padding-bottom: env(safe-area-inset-bottom);
   z-index: 151;
   animation: groupInfoSheetIn 0.28s cubic-bezier(0.4,0,0.2,1) both;
@@ -2442,5 +2444,3 @@ body {
 .explore-groups-row:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
 .explore-groups-row-text { flex: 1; }
 @media (prefers-reduced-motion: reduce) { .explore-groups-row { transition: none; } }
-.group-info-header-hint { display: inline-flex; align-items: center; gap: 0.25rem; flex-shrink: 0; padding: 0.15rem 0.5rem; border: 1px solid rgba(255,198,26,0.3); border-radius: 999px; font-size: 0.6rem; font-weight: 500; letter-spacing: 0.04em; color: rgba(255,198,26,0.9); }
-.group-info-header-btn:hover .group-info-header-hint { background: rgba(255,198,26,0.1); }

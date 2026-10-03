@@ -2,7 +2,7 @@ import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from
 import { createPortal } from 'react-dom';
 import { Button, Avatar, Typography, Input, Popover, Modal, Spin, message as antMessage } from 'antd';
 import {
-  SendOutlined, ArrowLeftOutlined, TeamOutlined, PlusOutlined,
+  SendOutlined, ArrowLeftOutlined, PlusOutlined,
   PictureOutlined, FileOutlined, SmileOutlined, PlayCircleOutlined,
   DownloadOutlined, CloseCircleFilled, SearchOutlined,
   BranchesOutlined, CopyOutlined, DeleteOutlined, ExclamationCircleOutlined,
@@ -979,10 +979,6 @@ export default function ChatThread({
               {(contact.name || '?')[0].toUpperCase()}
             </Avatar>
             <span className="group-info-header-name">{contact.name}</span>
-            {/* Visible label (task 20261003-web-reader-ios-parity step 5): the lone icon
-                was easy to miss, and group info holds members, invite links,
-                announcements, threads and Add friends. */}
-            <span className="group-info-header-hint"><TeamOutlined aria-hidden="true" /> Group info</span>
           </button>
         ) : (
           <Text
