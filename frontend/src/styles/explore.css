@@ -171,3 +171,18 @@ body.page-warm .ex-field select:focus, body.page-warm .ex-field textarea:focus {
 .ex-join-requests-slot:empty { display: none; }
 .ex-check:focus-within { outline: 2px solid var(--gold, #FFC61A); outline-offset: 2px; border-radius: 8px; }
 @media (max-width: 479px) { .ex-actions .ex-btn { flex: 1 1 100%; } }
+
+/* Warm translucent widgets (matches Account/Admin cards) on the brown canvas. */
+body.page-warm .ex-page {
+  --card-bg: rgba(92, 68, 42, 0.34);
+  --card-bg-2: rgba(110, 82, 50, 0.42);
+  --card-border: rgba(255, 225, 170, 0.16);
+  --card-border-strong: rgba(255, 225, 170, 0.24);
+}
+body.page-warm .ex-card, body.page-warm .ex-form-section, body.page-warm .ex-detail, body.page-warm .ex-status {
+  -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+}
+body.page-warm .ex-sheet {
+  background: rgba(52, 37, 22, 0.94); -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px);
+}
+body.page-warm .ex-field select option { background: #3a2a18; color: #f2e8d5; }
