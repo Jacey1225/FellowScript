@@ -189,7 +189,7 @@ struct HeroHeader: View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 6) {
                 Text(headlineText)
-                    .font(Font.playfair(effectiveSize, weight: .bold))
+                    .font(Font.inter(effectiveSize, weight: .bold))
                     .foregroundColor(Theme.parchment)
                     .lineSpacing(2)
                     .multilineTextAlignment(.leading)
@@ -205,17 +205,10 @@ struct HeroHeader: View {
                     .accessibilityLabel(headlineText)
                     .accessibilityAddTraits(.isHeader)
             }
-            Spacer()
-            // Identity avatar (decorative — not a control, so no dead button).
-            AvatarView(
-                initial:   String(username.prefix(1)).uppercased(),
-                photoURL:  photoURL,
-                diameter:  44,
-                fillColor: Color(hex: "#2A1B0B"),
-                textColor: Color(hex: "#F0AE40")
-            )
-            .accessibilityHidden(true)
+            // No identity avatar here: the headline takes the full width
+            // (the Account tab already shows the profile photo).
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 20)
         .padding(.top, 14)
         .padding(.bottom, 18)

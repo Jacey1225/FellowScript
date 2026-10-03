@@ -85,29 +85,20 @@ final class DashboardBackgroundConsistencyRegressionTests: XCTestCase {
         )
         // The greeting Text's foregroundColor must be Theme.parchment.
         XCTAssertTrue(
-            source.contains("Text(headlineText)\n                    .font(Font.playfair(effectiveSize, weight: .bold))\n                    .foregroundColor(Theme.parchment)"),
+            source.contains("Text(headlineText)\n                    .font(Font.inter(effectiveSize, weight: .bold))\n                    .foregroundColor(Theme.parchment)"),
             "HeroHeader's greeting text must use Theme.parchment (matching every other headline on this bgPage+bloom background), not the old dark ink that relied on the now-removed gradient for contrast"
         )
     }
 
-    func test_source_heroHeader_avatarCircle_stillHasItsOwnFixedDarkFill_untouched() throws {
-        // Out-of-bounds guard: the avatar's own solid dark circle fill is
-        // independent of the page background (it's always dark, always
-        // paired with gold text) and must not have been collaterally changed.
-        //
-        // Since this test was written, the avatar circle was refactored into
-        // the reusable, parameterized AvatarView(fillColor:textColor:)
-        // component (still rendered via `Circle().fill(fillColor)` /
-        // `.foregroundColor(textColor)` internally) rather than inlining the
-        // literal hex values directly at this call site — same intentional
-        // colors, just passed as parameters instead of written inline. This
-        // assertion now pins the call site's parameter values instead of the
-        // old fully-inlined literal.
+    func test_source_heroHeader_hasNoAvatar_headlineUsesFullWidth() throws {
+        // Owner request: the headline takes the whole row, so the identity
+        // avatar (decorative, and duplicated by the Account tab) is gone.
         let source = try readSource("FellowScript/Dashboard/DashboardComponents.swift")
-        XCTAssertTrue(
-            source.contains(##"fillColor: Color(hex: "#2A1B0B"),"##) &&
-            source.contains(##"textColor: Color(hex: "#F0AE40")"##),
-            "HeroHeader's avatar circle (fixed dark fill + gold initial, now passed via AvatarView's fillColor/textColor params) must be unaffected by the page-background/greeting-text fix"
-        )
+        let start = try XCTUnwrap(source.range(of: "struct HeroHeader: View"))
+        let end = try XCTUnwrap(source.range(of: "// Mirrors activity.py's closed activity-type string set"))
+        let heroSource = String(source[start.lowerBound..<end.lowerBound])
+        XCTAssertFalse(heroSource.contains("AvatarView("), "HeroHeader must not render the profile avatar")
+        XCTAssertTrue(heroSource.contains(".frame(maxWidth: .infinity, alignment: .leading)"),
+                      "the headline row must span the full width")
     }
 }
