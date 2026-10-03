@@ -56,12 +56,14 @@ PUBLIC_VOCAB_KEYS = (
 _LIST_COLUMNS = (
     "gl.public_id, gl.title, gl.summary, gl.denominations, gl.goals, gl.practices, gl.hobbies, "
     "gl.free_tags, gl.age_ranges, gl.life_stages, gl.languages, gl.gender_makeup, gl.meeting_format, "
-    "gl.frequency, gl.country, gl.region, gl.city, gl.church_name, gl.published_at, gl.photo_key"
+    "gl.frequency, gl.country, gl.region, gl.city, gl.church_name, gl.published_at, gl.photo_key, "
+    "gl.banner_key, gl.banner_alt"
 )
 _COLUMN_KEYS = (
     "public_id", "title", "summary", "denominations", "goals", "practices", "hobbies",
     "free_tags", "age_ranges", "life_stages", "languages", "gender_makeup", "meeting_format",
     "frequency", "country", "region", "city", "church_name", "published_at", "photo_key",
+    "banner_key", "banner_alt",
 )
 _ARRAY_KEYS = (
     "denominations", "goals", "practices", "hobbies", "free_tags", "age_ranges", "life_stages", "languages",
@@ -224,8 +226,12 @@ def _card_fields(cfg: ListingsConfig, row: tuple, max_members, member_count) -> 
     values = dict(zip(_COLUMN_KEYS, row))
     count = int(member_count or 0)
     full = max_members is not None and count >= max_members
-    out = {key: values[key] for key in _COLUMN_KEYS if key not in ("published_at", "photo_key")}
+    out = {key: values[key] for key in _COLUMN_KEYS
+           if key not in ("published_at", "photo_key", "banner_key", "banner_alt")}
     out["photo_url"] = listings_media.media_url(listings_media.public_listing_key(values["public_id"], values["photo_key"]))
+    banner_key = listings_media.public_listing_key(values["public_id"], values["banner_key"])
+    out["banner_url"] = listings_media.media_url(banner_key)
+    out["banner_alt"] = values["banner_alt"] if banner_key else None
     for key in _ARRAY_KEYS:
         out[key] = list(values[key] or [])
     out["country"] = values["country"].strip() if values["country"] else None
@@ -317,7 +323,7 @@ def get_listing(public_id: str) -> ListingDetail:
         raise _not_found()
     cfg = get_listings_config()
     sql = (
-        f"SELECT {_LIST_COLUMNS}, gl.banner_key, gl.banner_alt, gl._id::text, gl.description_blocks, "
+        f"SELECT {_LIST_COLUMNS}, gl._id::text, gl.description_blocks, "
         "g.max_members, COALESCE(mc.n, 0) "
         "FROM group_listings gl JOIN groups g ON g._id = gl.group_id "
         f"{_MEMBER_COUNT_LATERAL} "
@@ -331,12 +337,9 @@ def get_listing(public_id: str) -> ListingDetail:
                 raise _not_found()
             requestable = listing_requestable(cur, public_id) is not None
             images = listings_media.public_images(cur, row[-4])
-    fields = _card_fields(cfg, row[:-6], row[-2], row[-1])
-    banner_key = listings_media.public_listing_key(public_id, row[-6])
+    fields = _card_fields(cfg, row[:-4], row[-2], row[-1])
     return ListingDetail(
         **fields,
         description_blocks=_public_blocks(row[-3], images),
-        banner_url=listings_media.media_url(banner_key),
-        banner_alt=row[-5] if banner_key else None,
         requestable=requestable,
     )

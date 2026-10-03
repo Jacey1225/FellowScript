@@ -509,6 +509,7 @@ def test_requeue_and_views(cli, stub):
     r = cli.get("/explorer/listings", params={"q": "Media Requeue"})
     card = [c for c in r.json().get("listings", []) if c["public_id"] == pid]
     check("public list card carries photo_url", r.status_code == 200 and card and card[0]["photo_url"], r.text[:200])
+    check("public list card carries banner_url and banner_alt (owner report: banner missing on Explore cards)", bool(card) and bool(card[0].get("banner_url")) and card[0].get("banner_alt") == "Banner for the public", card[:1])
     # an unpublished listing leaks nothing
     q("UPDATE group_listings SET status = 'unpublished' WHERE group_id = %s", (gid,), fetch=False)
     reset_limits()
