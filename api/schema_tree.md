@@ -121,6 +121,10 @@ group_join_requests     # module "join_requests": id UUID PK DEFAULT gen_random_
                         #   partial UNIQUE (group_id, user_id) WHERE status = 'pending'; INDEX (group_id, status, created_at), (user_id, created_at),
                         #   (group_id, user_id, created_at DESC), (status, created_at), partial (decided_by); no FK to group_listings
 # <!-- /JRQ -->
+# <!-- HMS (20261002-home-announcement-headline) -->
+home_messages           # module "home_messages": _id UUID PK DEFAULT gen_random_uuid(), text VARCHAR(500), enabled (default FALSE), starts_at/ends_at TIMESTAMPTZ (CHECK end > start),
+                        #   priority INT, destination TEXT (CHECK 'none', reserved), created_at, updated_at, created_by/updated_by (text, no FK)
+# <!-- /HMS -->
 ```
 
 ---

@@ -6,8 +6,10 @@ and the ``python -m`` CLIs call. Every import of ``listings`` is FUNCTION-LEVEL:
 ``groups.py`` imports ``lifecycle`` and ``listings`` imports ``groups``, so a
 module-level import here would be circular.
 
-Group deletion needs no collector: ``group_listings`` rows (and their media rows)
-cascade with the group. Media S3 keys are added by the media task.
+Group deletion: ``group_listings`` rows and their media rows cascade with the group;
+``collect_listing_media_keys`` reports the media S3 keys for the outbox first. A
+listing HIDE does not delete media (an admin restore must still work); a listing
+removal does (``listings.remove_in_tx``).
 """
 from __future__ import annotations
 
@@ -32,15 +34,28 @@ def delete_listings_of_deleted_owner(cur, user_id: str) -> list[str]:
     """user_delete hook: delete the listings of every group whose creator is the
     deleted account. (Groups the user was the last member of are already gone,
     with their listings, via the group_delete path.)"""
+    from backend.interactions import listings_media
+
+    # Collect the media keys BEFORE the rows (and their media rows) go.
+    keys = listings_media.collect_owner_keys(cur, user_id)
     cur.execute(
         "DELETE FROM group_listings WHERE group_id IN (SELECT _id FROM groups WHERE creator_id = %s)",
         (str(user_id),),
     )
-    return []
+    return keys
+
+
+def collect_listing_media_keys(cur, group_id: str) -> list[str]:
+    """group_delete hook: the listing's media rows cascade with the group, so
+    report their S3 keys (re-encoded derivatives only) for the outbox."""
+    from backend.interactions import listings_media
+
+    return listings_media.collect_group_keys(cur, group_id)
 
 
 lifecycle.register("member_leave", hide_listing_when_owner_leaves)
 lifecycle.register("user_delete", delete_listings_of_deleted_owner)
+lifecycle.register("group_delete", collect_listing_media_keys)
 
 # Moderation: report by public_id -> canonical listing _id, remover by stored _id,
 # auto-hide after N distinct reporters (see listing_reports).

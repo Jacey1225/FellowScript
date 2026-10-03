@@ -11,12 +11,15 @@ import Seo from '../components/Seo.jsx';
 import JoinRequestsList from '../components/JoinRequestsList.jsx';
 import ListingForm from '../components/explore/ListingForm.jsx';
 import ListingPreview from '../components/explore/ListingPreview.jsx';
-import { bodyFromForm, emptyForm, formFromListing, formSignature } from '../components/explore/listingForm.js';
+import {
+  bodyFromForm, emptyForm, formFromListing, formSignature, imageBlocksMissingAlt, unreferencedImageIds,
+} from '../components/explore/listingForm.js';
 import { STATUS_COPY, describeOwnerError, reasonLabel } from '../components/explore/manageStatus.js';
 import {
   fetchOwnerOptions, fetchOwnerGroups, fetchOwnerListing, saveOwnerListing,
   submitOwnerListing, unpublishOwnerListing, deleteOwnerListing,
 } from '../lib/explorerOwnerApi.js';
+import { deleteListingMedia } from '../lib/listingMediaApi.js';
 import { setPendingExplore } from '../lib/pendingInvite.js';
 import { showUpgradePrompt } from '../lib/upgradePrompt.js';
 import '../styles/explore.css';
@@ -26,7 +29,8 @@ import '../styles/explore.css';
 // fail closed). A group owner picks a group (?group=<id> preselects it),
 // fills in the details, previews, then submits for review with consent and
 // the adult attestation. Status, edit, unpublish and delete live here too.
-// Banner/photo/media are a later task. Wording of the consent block is
+// Photo, banner and description images (task 20261002-explorer-listing-media)
+// upload straight away from the form once the draft exists. Wording of the consent block is
 // owned by the legal-copy task and kept together in CONSENT_COPY.
 
 export const CONSENT_COPY = {
@@ -187,11 +191,48 @@ export default function ExploreManage() {
   const dirty = form ? formSignature(form) !== savedSig : false;
   const showAccepting = !status || status === 'draft' || status === 'rejected';
 
+  const missingAlt = form ? imageBlocksMissingAlt(form).length > 0 : false;
+
+  // Photo/banner/image changed on the server: patch local state at once, then
+  // refresh the status (a change on a live listing sends it back for review).
+  const onMediaChange = useCallback(({ kind, item, removed }) => {
+    setListing((cur) => {
+      if (!cur) return cur;
+      let media = cur.media || [];
+      const patch = {};
+      if (removed) {
+        media = media.filter((m) => m.media_id !== removed);
+        if (kind === 'photo') patch.photo_url = null;
+        if (kind === 'banner') { patch.banner_url = null; patch.banner_alt = null; }
+      } else if (item) {
+        media = kind === 'image' ? [...media, item] : [...media.filter((m) => m.kind !== kind), item];
+        if (kind === 'photo') patch.photo_url = item.url;
+        if (kind === 'banner') { patch.banner_url = item.url; patch.banner_alt = item.alt_text; }
+      }
+      return { ...cur, ...patch, media };
+    });
+    fetchOwnerListing(userId, groupId)
+      .then((l) => {
+        if (!mounted.current) return;
+        setListing((cur) => (cur ? { ...cur, status: l.status, reject_reason_code: l.reject_reason_code, hidden_reason_code: l.hidden_reason_code } : cur));
+        loadGroups().catch(() => {});
+      })
+      .catch(() => {});
+  }, [userId, groupId, loadGroups]);
+
   const save = async () => {
     const saved = await saveOwnerListing(userId, groupId, bodyFromForm(form));
     if (!mounted.current) return saved;
     setListing(saved);
     setSavedSig(formSignature(form));
+    // Description images no paragraph block points at any more are released (best effort).
+    const stale = unreferencedImageIds(saved.media, form.blocks);
+    if (stale.length) {
+      Promise.all(stale.map((id) => deleteListingMedia(userId, groupId, id).catch(() => null)))
+        .then(() => fetchOwnerListing(userId, groupId))
+        .then((l) => { if (mounted.current && l) setListing(l); })
+        .catch(() => {});
+    }
     return saved;
   };
 
@@ -274,7 +315,7 @@ export default function ExploreManage() {
   const groups = groupsData.groups || [];
   const statusCopy = status ? STATUS_COPY[status] : null;
   const supportMail = options.support_email ? `mailto:${options.support_email}?subject=${encodeURIComponent('Explore listing question')}` : null;
-  const canSubmit = !!form && !readOnly && !LIVE.includes(status) && consent && adult && !!form.title.trim() && !busy;
+  const canSubmit = !!form && !readOnly && !LIVE.includes(status) && consent && adult && !!form.title.trim() && !missingAlt && !busy;
 
   return (
     <div className="ex-page">
@@ -343,7 +384,9 @@ export default function ExploreManage() {
                   </section>
                 )}
 
-                <ListingForm form={form} onChange={setForm} options={options} disabled={readOnly || !!busy} />
+                <ListingForm form={form} onChange={setForm} options={options} disabled={readOnly || !!busy}
+                  media={options.media ? { userId, groupId, listing, options: options.media, onChange: onMediaChange, disabled: readOnly || !!busy } : null} />
+                {missingAlt && <p className="ex-error" role="alert">Every image needs a description before you can save.</p>}
 
                 {notice?.kind === 'error' && (
                   <p className="ex-error" role="alert">
@@ -356,7 +399,7 @@ export default function ExploreManage() {
 
                 <div className="ex-actions">
                   <button type="button" className="ex-btn ex-btn--pill" onClick={onSave}
-                    disabled={readOnly || !!busy || !dirty || !form.title.trim() || wait > 0}>
+                    disabled={readOnly || !!busy || !dirty || !form.title.trim() || missingAlt || wait > 0}>
                     {busy === 'save' ? <Spin size="small" /> : (listing ? 'Save changes' : 'Save draft')}
                   </button>
                   <button type="button" className="ex-btn ex-btn--quiet" onClick={() => setShowPreview((v) => !v)}
@@ -370,7 +413,13 @@ export default function ExploreManage() {
                     <p className="ex-hint">This is how visitors will see your listing.</p>
                     <ListingPreview
                       vocab={options.vocab}
-                      listing={bodyFromForm(form)}
+                      listing={{
+                        ...bodyFromForm(form),
+                        photo_url: listing?.photo_url || null,
+                        banner_url: listing?.banner_url || null,
+                        banner_alt: listing?.banner_alt || null,
+                        media: listing?.media || [],
+                      }}
                     />
                   </div>
                 )}

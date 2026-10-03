@@ -50,7 +50,7 @@ from psycopg2.extras import Json
 
 from backend.errors import SaveFailedError
 from backend.auth.terms import require_current_terms
-from backend.interactions import lifecycle, paging
+from backend.interactions import lifecycle, listings_media, paging
 from backend.interactions.groups import live_member_ids
 from backend.interactions.listing_content import (
     CONTENT_COLUMNS,
@@ -284,6 +284,8 @@ def remove_in_tx(cur, group_id: str, reason: str) -> bool:
         return False
     if row[0] in PRESENCE_STATUSES:
         _run_hidden_hooks(cur, gid, reason)
+    # Media rows cascade with the listing, so queue their S3 keys first (same transaction).
+    lifecycle.enqueue_s3_deletes(cur, listings_media.collect_group_keys(cur, gid))
     cur.execute("DELETE FROM group_listings WHERE group_id = %s", (gid,))
     return cur.rowcount == 1
 
@@ -381,7 +383,9 @@ class ListingsManager(DBManager):
             (group_id,),
         )
         row = self.cur.fetchone()
-        return None if row is None else _owner_view(row)
+        if row is None:
+            return None
+        return listings_media.decorate_owner_view(self.cur, _owner_view(row))
 
     # -- reads --------------------------------------------------------------
 
@@ -446,6 +450,8 @@ class ListingsManager(DBManager):
             gid = group["group_id"]
             updates = normalise(self.cfg, data)
             existing = self._fetch(gid, for_update=True)
+            if "description_blocks" in updates:
+                listings_media.verify_description_media(self.cur, gid, updates["description_blocks"])
             created = False
             if existing is None:
                 self._create_draft(gid, group["title"], updates)

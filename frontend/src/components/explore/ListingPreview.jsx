@@ -5,7 +5,7 @@ import { labelFor, placeLine } from './exploreLabels.js';
 
 // Preview of a listing as visitors will see it, rendered from the owner's
 // form state through the SAME safe renderers as the public detail page
-// (restricted Markdown, no images or HTML, nofollow links). Preview only:
+// (restricted Markdown, first-party images only, no HTML, nofollow links). Preview only:
 // nothing here is saved or sent.
 const GROUPS = [
   ['denominations', 'denominations', 'Denomination'],
@@ -22,7 +22,13 @@ const GROUPS = [
 
 export default function ListingPreview({ listing, vocab }) {
   const place = placeLine(listing);
-  const blocks = (listing.description_blocks || []).filter((b) => b.type === 'text' && b.text.trim());
+  // Image blocks are resolved to their server-issued URL (by media_id) before rendering.
+  const urls = Object.fromEntries((listing.media || []).map((m) => [m.media_id, m.url]));
+  const blocks = (listing.description_blocks || []).flatMap((b) => {
+    if (b.type === 'text' && b.text.trim()) return [b];
+    if (b.type === 'image' && urls[b.media_id]) return [{ type: 'image', url: urls[b.media_id], alt: b.alt }];
+    return [];
+  });
   return (
     <article className="ex-detail ex-preview" aria-label="Preview of your listing">
       <ListingHero listing={{ ...listing, title: listing.title || 'Your group name' }} size="detail" />

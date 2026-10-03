@@ -144,13 +144,28 @@ struct HeroHeader: View {
     // unchanged.
     var photoURL: String? = nil
 
-    private var greeting: String {
-        let h = Calendar.current.component(.hour, from: Date())
-        switch h {
-        case 5..<12:  return "Good morning"
-        case 12..<17: return "Good afternoon"
-        default:      return "Good evening"
-        }
+    // Task 20261002-home-announcement-headline: an admin-set announcement
+    // (nil = none) replaces the old time-of-day greeting as the larger
+    // headline. Every failure/empty path lands on the fallback below.
+    var announcement: String? = nil
+
+    @ScaledMetric(relativeTo: .largeTitle) private var headlineSize: CGFloat = 36
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var announcementText: String? { HomeMessageText.clean(announcement) }
+
+    /// "Welcome Back, <name>!" (or "Welcome Back!" when the name is blank).
+    var fallbackText: String {
+        let name = username.trimmingCharacters(in: .whitespacesAndNewlines)
+        return name.isEmpty ? "Welcome Back!" : "Welcome Back, \(name)!"
+    }
+
+    var headlineText: String { announcementText ?? fallbackText }
+
+    // Two tiers only: long announcements step down so ~120 chars sit in about
+    // three lines on a 390pt phone.
+    private var effectiveSize: CGFloat {
+        headlineText.count > 60 && announcementText != nil ? headlineSize * 0.85 : headlineSize
     }
 
     var body: some View {
@@ -173,10 +188,22 @@ struct HeroHeader: View {
         // the bloom's brightest point) without inventing a new treatment.
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 6) {
-                Text("\(greeting), \(username)")
-                    .font(.system(size: 27, weight: .heavy))
+                Text(headlineText)
+                    .font(Font.playfair(effectiveSize, weight: .bold))
                     .foregroundColor(Theme.parchment)
-                    .lineLimit(2)
+                    .lineSpacing(2)
+                    .multilineTextAlignment(.leading)
+                    .lineLimit(announcementText != nil ? 4 : 2)
+                    .minimumScaleFactor(0.7)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .dynamicTypeSize(...DynamicTypeSize.accessibility2)
+                    .frame(minHeight: headlineSize * 2.6, alignment: .topLeading)
+                    .id(headlineText)
+                    .transition(.opacity)
+                    .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: headlineText)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(headlineText)
+                    .accessibilityAddTraits(.isHeader)
             }
             Spacer()
             // Identity avatar (decorative — not a control, so no dead button).

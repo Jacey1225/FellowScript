@@ -80,6 +80,7 @@ DDL_MODULES = (
     "listings",
     "threads",
     "join_requests",
+    "home_messages",
 )
 
 

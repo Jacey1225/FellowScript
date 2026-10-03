@@ -13,6 +13,9 @@ import AdminAccountActions from './AdminAccountActions.jsx';
 import { API } from '../config.js';
 
 vi.mock('../hooks/useIsDesktopViewport.js', () => ({ useIsDesktopViewport: () => true }));
+// The Home announcements card (task 20261002-home-announcement-headline) fetches on mount and
+// would consume the mockResolvedValueOnce responses meant for the grant control; it has its own test file.
+vi.mock('../components/AdminHomeMessages.jsx', () => ({ default: () => null }));
 
 function Where() { const l = useLocation(); return <div data-testid="where">{l.pathname}</div>; }
 function renderAt(path, el) {

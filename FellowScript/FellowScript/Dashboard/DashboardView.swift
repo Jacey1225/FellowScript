@@ -216,6 +216,8 @@ final class DashboardViewModel: ObservableObject {
 struct DashboardView: View {
     @EnvironmentObject var appState: AppState
     @StateObject private var vm: DashboardViewModel
+    // Task 20261002-home-announcement-headline: cached-first, fail-soft headline.
+    @StateObject private var homeMessage = HomeMessageStore()
 
     // Required (no default): task 20260901-dashboard-stale-reload-ui moved
     // DashboardViewModel to be a StartupCoordinator-owned shared instance
@@ -307,7 +309,8 @@ struct DashboardView: View {
                 LazyVStack(spacing: 10) {
                     HeroHeader(
                         username: appState.currentUser?.username ?? "friend",
-                        photoURL: appState.currentUser?.profile_photo_url
+                        photoURL: appState.currentUser?.profile_photo_url,
+                        announcement: homeMessage.text
                     )
 
                     // ── Editorial Hero: Friend Activity ───────────────────────────────
@@ -358,12 +361,15 @@ struct DashboardView: View {
             // the way it would there — no separate refresh()/showLoadingSpinner
             // split is needed for this screen.
             .refreshable {
+                Task { await homeMessage.refresh(service: appState.service) }
                 if let uid = appState.currentUser?.user_id {
                     await vm.load(service: appState.service, userId: uid)
                 }
             }
         }
         .task {
+            // Fire-and-forget: Home content never waits on the headline.
+            Task { await homeMessage.refresh(service: appState.service) }
             if let uid = appState.currentUser?.user_id {
                 await vm.load(service: appState.service, userId: uid)
             }

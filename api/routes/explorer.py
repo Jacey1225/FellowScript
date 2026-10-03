@@ -8,6 +8,10 @@
   POST   /explorer/{user_id}/groups/{group_id}/listing/submit   consent + adult attestation -> review
   POST   /explorer/{user_id}/groups/{group_id}/listing/unpublish
   DELETE /explorer/{user_id}/groups/{group_id}/listing
+  POST   /explorer/{user_id}/groups/{group_id}/listing/media/upload-url   presigned POST for one image
+  POST   /explorer/{user_id}/groups/{group_id}/listing/media/confirm      re-encode the uploaded file, add it
+  POST   /explorer/{user_id}/groups/{group_id}/listing/media/group-photo  use the group's current photo
+  DELETE /explorer/{user_id}/groups/{group_id}/listing/media/{media_id}
 
   GET    /explorer/filters                                      PUBLIC filter vocabulary and limits (signed out)
   GET    /explorer/listings                                     PUBLIC list: filters, q, keyset page
@@ -46,10 +50,12 @@ from pydantic import BaseModel, ConfigDict, Field, StrictBool
 
 from backend import public_guard
 from backend.auth.dependencies import require_match
-from backend.interactions import flags, listings_public
+from backend.interactions import flags, listings_media, listings_public
 from backend.interactions.listing_content import ListingError, options_payload
 from backend.interactions.listings import ListingsManager
 from backend.interactions.listings_config import get_listings_config
+from backend.interactions.listings_media_config import get_media_config
+from backend.interactions.listings_media_service import ListingMediaManager
 from backend.observability import feature_summary
 from backend.rate_limiting import limiter
 from backend.subscription.limits import check_paid_only
@@ -68,6 +74,10 @@ def _rate(name: str):
 
 def _global_rate():
     return get_listings_config().public_global_rate_limit
+
+
+def _media_rate(name: str):
+    return lambda: get_media_config().rate_limits[name]
 
 
 def _user_key(request: Request) -> str:
@@ -199,7 +209,12 @@ def listing_options(request: Request, user_id: str, _: str = Depends(require_mat
     """Vocabularies and limits the owner form needs (from config)."""
     if not flags.is_enabled("explorer_publish", user_id):
         raise _off()
-    return options_payload(get_listings_config())
+    payload = options_payload(get_listings_config())
+    media = listings_media.options_payload(get_media_config())
+    payload["media"] = media
+    if not media["video_enabled"]:
+        payload["block_types"] = [b for b in payload["block_types"] if b != "video"]
+    return payload
 
 
 @explorer_router.get("/{user_id}/groups")
@@ -293,6 +308,94 @@ def delete_my_listing(
     manager = _manager(user_id)
     try:
         manager.delete_listing(group_id)
+    except ListingError as e:
+        raise _http(e)
+    finally:
+        manager.close()
+
+
+# -- listing media (owner only; explorer_publish gates every route) -------------------------
+
+class MediaUploadBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    kind: str = Field(max_length=20)
+    content_type: str = Field(max_length=100)
+
+
+class MediaConfirmBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    kind: str = Field(max_length=20)
+    object_key: str = Field(max_length=300)
+    alt_text: str | None = Field(default=None, max_length=1000)
+
+
+def _media_manager(user_id: str) -> ListingMediaManager:
+    """Flag gate then manager; a flag-off hit is the same 404 as a missing group."""
+    if not flags.is_enabled("explorer_publish", user_id):
+        raise _off()
+    return ListingMediaManager(user_id)
+
+
+@explorer_router.post("/{user_id}/groups/{group_id}/listing/media/upload-url")
+@limiter.shared_limit(_media_rate("upload_url_user"), scope="explorer_media_upload_user", key_func=_user_key)
+@limiter.shared_limit(_media_rate("upload_url_ip"), scope="explorer_media_upload_ip")
+def media_upload_url(
+    request: Request, user_id: str, group_id: str, body: MediaUploadBody,
+    _: str = Depends(require_match("user_id")),
+) -> dict:
+    """Presigned POST for one image (JPEG, PNG or WebP). Nothing is referenced until confirm."""
+    manager = _media_manager(user_id)
+    try:
+        return manager.upload_url(group_id, body.kind, body.content_type)
+    except ListingError as e:
+        raise _http(e)
+    finally:
+        manager.close()
+
+
+@explorer_router.post("/{user_id}/groups/{group_id}/listing/media/confirm")
+@limiter.shared_limit(_media_rate("confirm"), scope="explorer_media_confirm", key_func=_user_key)
+@limiter.shared_limit(_media_rate("upload_url_ip"), scope="explorer_media_confirm_ip")
+def media_confirm(
+    request: Request, user_id: str, group_id: str, body: MediaConfirmBody,
+    _: str = Depends(require_match("user_id")),
+) -> dict:
+    """Validate and re-encode the uploaded file into a new key; returns the media item."""
+    manager = _media_manager(user_id)
+    try:
+        return manager.confirm(group_id, body.kind, body.object_key, body.alt_text)
+    except ListingError as e:
+        raise _http(e)
+    finally:
+        manager.close()
+
+
+@explorer_router.post("/{user_id}/groups/{group_id}/listing/media/group-photo")
+@limiter.shared_limit(_media_rate("confirm"), scope="explorer_media_group_photo", key_func=_user_key)
+@limiter.shared_limit(_media_rate("upload_url_ip"), scope="explorer_media_group_photo_ip")
+def media_use_group_photo(
+    request: Request, user_id: str, group_id: str, _: str = Depends(require_match("user_id")),
+) -> dict:
+    """Use the group's current photo as the listing photo (re-encoded, never copied raw)."""
+    manager = _media_manager(user_id)
+    try:
+        return manager.use_group_photo(group_id)
+    except ListingError as e:
+        raise _http(e)
+    finally:
+        manager.close()
+
+
+@explorer_router.delete("/{user_id}/groups/{group_id}/listing/media/{media_id}", status_code=204)
+@limiter.shared_limit(_media_rate("manage"), scope="explorer_media_manage", key_func=_user_key)
+def media_delete(
+    request: Request, user_id: str, group_id: str, media_id: str, _: str = Depends(require_match("user_id")),
+) -> None:
+    manager = _media_manager(user_id)
+    try:
+        manager.delete_media(group_id, media_id)
     except ListingError as e:
         raise _http(e)
     finally:

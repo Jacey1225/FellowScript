@@ -80,12 +80,12 @@ final class DashboardBackgroundConsistencyRegressionTests: XCTestCase {
     func test_source_heroHeader_greetingText_usesParchment_notOldDarkInk() throws {
         let source = try readSource("FellowScript/Dashboard/DashboardComponents.swift")
         XCTAssertTrue(
-            source.contains(##"Text("\(greeting), \(username)")"##),
+            source.contains("Text(headlineText)"),
             "sanity check: the greeting Text call site must still exist"
         )
         // The greeting Text's foregroundColor must be Theme.parchment.
         XCTAssertTrue(
-            source.contains("Text(\"\\(greeting), \\(username)\")\n                    .font(.system(size: 27, weight: .heavy))\n                    .foregroundColor(Theme.parchment)"),
+            source.contains("Text(headlineText)\n                    .font(Font.playfair(effectiveSize, weight: .bold))\n                    .foregroundColor(Theme.parchment)"),
             "HeroHeader's greeting text must use Theme.parchment (matching every other headline on this bgPage+bloom background), not the old dark ink that relied on the now-removed gradient for contrast"
         )
     }

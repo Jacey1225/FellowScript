@@ -1,14 +1,23 @@
 import React, { useId, useMemo, useState } from 'react';
-import { MULTI_FIELDS, SINGLE_FIELDS, newBlock, countryLabel } from './listingForm.js';
+import { MULTI_FIELDS, SINGLE_FIELDS, newBlock, newImageBlock, countryLabel } from './listingForm.js';
+import ListingMedia from './ListingMedia.jsx';
+import MediaUploader from './MediaUploader.jsx';
+import { safeMediaUrl } from '../../lib/safeMediaUrl.js';
 
 // Details form for an Explorer listing: controlled vocabulary pills and
 // selects (from /explorer/{user}/options), place as country + region + city
 // only (never a street address), and the description as a list of text
-// paragraphs (Markdown subset). No media here; banner and photo belong to a
-// later task. `disabled` makes the whole form read-only (hidden listings).
-export default function ListingForm({ form, onChange, options, disabled = false }) {
+// paragraphs (Markdown subset) plus description images with required alt text.
+// `media` (optional) switches on the photo/banner/image UI:
+// { userId, groupId, listing, options, onChange, disabled }. Absent = text only.
+// `disabled` makes the whole form read-only (hidden listings).
+export default function ListingForm({ form, onChange, options, disabled = false, media = null }) {
   const uid = useId();
   const [tagDraft, setTagDraft] = useState('');
+  const mediaOn = !!media && !!media.options;
+  const mediaItems = media?.listing?.media || [];
+  const maxImages = media?.options?.max_description_images || 6;
+  const imageCount = form.blocks.filter((b) => b.type === 'image').length;
   const { vocab = {}, limits = {}, countries = [] } = options || {};
   const maxValues = limits.max_values_per_field || 5;
   const set = (patch) => onChange({ ...form, ...patch });
@@ -30,7 +39,7 @@ export default function ListingForm({ form, onChange, options, disabled = false 
     setTagDraft('');
   };
 
-  const setBlock = (id, text) => set({ blocks: form.blocks.map((b) => (b.id === id ? { ...b, text } : b)) });
+  const setBlock = (id, patch) => set({ blocks: form.blocks.map((b) => (b.id === id ? { ...b, ...patch } : b)) });
   const moveBlock = (i, d) => {
     const next = [...form.blocks];
     const j = i + d;
@@ -39,11 +48,13 @@ export default function ListingForm({ form, onChange, options, disabled = false 
     set({ blocks: next });
   };
   const maxBlocks = limits.description_max_blocks || 30;
-  const totalChars = form.blocks.reduce((n, b) => n + b.text.length, 0);
+  const totalChars = form.blocks.reduce((n, b) => n + (b.type === 'image' ? 0 : b.text.length), 0);
 
   return (
     <fieldset className="ex-form" disabled={disabled}>
       <legend className="ex-sr-only">Listing details</legend>
+
+      {mediaOn && <ListingMedia media={media} />}
 
       <div className="ex-form-section">
         <h2 className="ex-form-h">The basics</h2>
@@ -158,28 +169,60 @@ export default function ListingForm({ form, onChange, options, disabled = false 
         <h2 className="ex-form-h">Description</h2>
         <p className="ex-hint">
           Tell people what your group is like. You can use **bold**, *italics*, lists and links that start with https://.
-          Images, videos and raw HTML are not supported yet.
+          {mediaOn ? 'You can add pictures between paragraphs. Raw HTML is not supported.' : 'Images and raw HTML are not supported.'}
         </p>
-        {form.blocks.map((b, i) => (
-          <div className="ex-block" key={b.id}>
-            <label className="ex-field">
-              <span>Paragraph {i + 1}</span>
-              <textarea value={b.text} rows={5} maxLength={limits.description_max_block_chars || 2000}
-                onChange={(e) => setBlock(b.id, e.target.value)} />
-            </label>
-            <div className="ex-block-actions">
-              <button type="button" className="ex-btn ex-btn--quiet" onClick={() => moveBlock(i, -1)} disabled={i === 0}
-                aria-label={`Move paragraph ${i + 1} up`}>Up</button>
-              <button type="button" className="ex-btn ex-btn--quiet" onClick={() => moveBlock(i, 1)} disabled={i === form.blocks.length - 1}
-                aria-label={`Move paragraph ${i + 1} down`}>Down</button>
-              <button type="button" className="ex-btn ex-btn--quiet" onClick={() => set({ blocks: form.blocks.filter((x) => x.id !== b.id) })}
-                aria-label={`Remove paragraph ${i + 1}`}>Remove</button>
+        {form.blocks.map((b, i) => {
+          const label = b.type === 'image' ? `image ${i + 1}` : `paragraph ${i + 1}`;
+          const item = b.type === 'image' ? mediaItems.find((m) => m.media_id === b.media_id) : null;
+          const url = item ? safeMediaUrl(item.url) : null;
+          const missingAlt = b.type === 'image' && !(b.alt || '').trim();
+          return (
+            <div className="ex-block" key={b.id}>
+              {b.type === 'image' ? (
+                <div className="ex-block-image">
+                  {url
+                    ? <img src={url} alt="" className="ex-block-thumb" loading="lazy" referrerPolicy="no-referrer" />
+                    : <span className="ex-hint">Picture preview unavailable.</span>}
+                  <label className="ex-field">
+                    <span>Describe image {i + 1} (required)</span>
+                    <input type="text" value={b.alt || ''} required aria-invalid={missingAlt}
+                      maxLength={media?.options?.alt_max_length || 300} autoComplete="off"
+                      onChange={(e) => setBlock(b.id, { alt: e.target.value })} />
+                    {missingAlt && <span className="ex-error" role="alert">Add a description before you save.</span>}
+                  </label>
+                </div>
+              ) : (
+                <label className="ex-field">
+                  <span>Paragraph {i + 1}</span>
+                  <textarea value={b.text} rows={5} maxLength={limits.description_max_block_chars || 2000}
+                    onChange={(e) => setBlock(b.id, { text: e.target.value })} />
+                </label>
+              )}
+              <div className="ex-block-actions">
+                <button type="button" className="ex-btn ex-btn--quiet" onClick={() => moveBlock(i, -1)} disabled={i === 0}
+                  aria-label={`Move ${label} up`}>Up</button>
+                <button type="button" className="ex-btn ex-btn--quiet" onClick={() => moveBlock(i, 1)} disabled={i === form.blocks.length - 1}
+                  aria-label={`Move ${label} down`}>Down</button>
+                <button type="button" className="ex-btn ex-btn--quiet" onClick={() => set({ blocks: form.blocks.filter((x) => x.id !== b.id) })}
+                  aria-label={`Remove ${label}`}>Remove</button>
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
         <div className="ex-block-foot">
           <button type="button" className="ex-btn ex-btn--pill" onClick={() => set({ blocks: [...form.blocks, newBlock()] })}
             disabled={form.blocks.length >= maxBlocks}>Add a paragraph</button>
+          {mediaOn && (
+            media.listing ? (
+              <MediaUploader userId={media.userId} groupId={media.groupId} kind="image" altRequired
+                mediaOptions={media.options} label="Add an image"
+                disabled={media.disabled || imageCount >= maxImages || form.blocks.length >= maxBlocks}
+                onDone={(item) => {
+                  media.onChange({ kind: 'image', item });
+                  set({ blocks: [...form.blocks, newImageBlock(item.media_id, item.alt_text || '')] });
+                }} />
+            ) : <span className="ex-hint">Save your draft first to add images.</span>
+          )}
           <span className="ex-hint">{totalChars} of {limits.description_max_text_chars || 5000} characters</span>
         </div>
       </div>

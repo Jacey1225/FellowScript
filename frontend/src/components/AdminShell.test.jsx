@@ -32,6 +32,7 @@ vi.mock('../pages/AdminUserActions.jsx', () => ({
 }));
 vi.mock('./AdminActivityMonitoring.jsx', () => ({ default: () => <div data-testid="activity" /> }));
 vi.mock('./AdminMembershipGrant.jsx', () => ({ default: () => <div data-testid="grant" /> }));
+vi.mock('./AdminHomeMessages.jsx', () => ({ default: () => <div data-testid="home-messages" /> }));
 
 const mockAuth = { user: { user_id: 'admin-1', username: 'a' } };
 vi.mock('../context/AuthContext.jsx', () => ({ useAuth: () => mockAuth }));

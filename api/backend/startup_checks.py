@@ -33,6 +33,12 @@ def check_listings_config() -> None:
     validate_listings_config()
 
 
+def check_media_config() -> None:
+    from backend.interactions.listings_media_config import validate_media_config
+
+    validate_media_config()
+
+
 def check_threads_config() -> None:
     from backend.interactions.threads_config import validate_threads_config
 
@@ -45,12 +51,20 @@ def check_join_requests_config() -> None:
     validate_join_requests_config()
 
 
+def check_home_messages_config() -> None:
+    from backend.interactions.home_messages_config import validate_home_messages_config
+
+    validate_home_messages_config()
+
+
 CHECKS = (
     check_flag_registry,
     check_chat_pagination_config,
     check_listings_config,
+    check_media_config,
     check_threads_config,
     check_join_requests_config,
+    check_home_messages_config,
 )
 
 

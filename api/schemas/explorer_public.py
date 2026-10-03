@@ -10,7 +10,9 @@ Contract freeze (end of backend step 4): URL shapes
 ``GET /explorer/config``, ``GET /explorer/filters``,
 ``GET /explorer/listings`` and ``GET /explorer/listings/{public_id}``; the
 only identifier a client ever sees is the 10-character ``public_id``.
-Media URL fields are absent in the text-only core (the media task adds them).
+Media fields (media task): ``photo_url`` on every card, ``banner_url`` / ``banner_alt`` on the
+detail, and ``image`` / ``video`` description blocks. URLs are short-lived presigned GETs
+issued by the server; a client never builds a storage URL itself.
 """
 from typing import Any, Literal
 
@@ -43,11 +45,16 @@ class ListingCard(_Strict):
     size_bucket: str
     seats: Literal["open", "full"]
     published_at: str
+    photo_url: str | None = None
 
 
 class ListingDetail(ListingCard):
-    # Allowlisted blocks: text blocks only in this task, shape {"type", "text"}.
+    # Allowlisted blocks, rebuilt field by field: text {"type","text"}, image
+    # {"type","url","alt","width","height"}, video (only while enabled)
+    # {"type","provider","video_id","title"}.
     description_blocks: list[dict[str, Any]]
+    banner_url: str | None = None
+    banner_alt: str | None = None
     # True when a person could ask to join right now (listing_requestable).
     requestable: bool
 

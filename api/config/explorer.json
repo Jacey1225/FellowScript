@@ -175,6 +175,35 @@
       ]
     }
   },
+  "media": {
+    "video_enabled": false,
+    "video_providers": ["youtube", "vimeo"],
+    "allowed_mime": ["image/jpeg", "image/png", "image/webp"],
+    "image_max_upload_mb": 8,
+    "image_min_upload_bytes": 1024,
+    "max_pixels": 36000000,
+    "max_side_px": 6000,
+    "output_max_side_px": 2000,
+    "jpeg_quality": 85,
+    "webp_quality": 85,
+    "max_images_per_listing": 8,
+    "max_bytes_per_listing": 12582912,
+    "alt_max_length": 200,
+    "upload_url_ttl_seconds": 300,
+    "download_url_ttl_seconds": 3600,
+    "download_url_cache_seconds": 3000,
+    "confirm_concurrency": 2,
+    "confirm_wait_seconds": 5,
+    "orphan_grace_hours": 24,
+    "sweep_interval_minutes": 360,
+    "sweep_max_keys_per_run": 500,
+    "rate_limits": {
+      "upload_url_user": "20/hour",
+      "upload_url_ip": "60/hour",
+      "confirm": "40/hour",
+      "manage": "60/minute"
+    }
+  },
   "join_requests": {
     "max_pending_per_group": 20,
     "max_pending_per_user": 10,

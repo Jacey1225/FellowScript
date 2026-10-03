@@ -448,3 +448,9 @@ def options_payload(cfg: ListingsConfig) -> dict:
         "support_email": cfg.support_email,
         "require_approval": cfg.require_approval,
     }
+
+
+# The media task registers the ``image`` and ``video`` block validators here, at the
+# end, once every name above exists (``listings_media`` imports this module too;
+# either import order works because it only reads names defined above).
+from backend.interactions import listings_media  # noqa: E402,F401

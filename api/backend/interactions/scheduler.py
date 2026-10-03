@@ -1330,6 +1330,13 @@ def start_scheduler() -> None:
     scheduler.add_job(run_listing_sweeper_job, "interval",
                       seconds=get_listings_config().sweeper_interval_seconds,
                       id=LISTING_SWEEP_JOB_ID, replace_existing=True)
+    # Listing media: enqueue orphaned objects under listings/ in the S3 outbox (R-SCHED:
+    # thin async job, boto3 + DB work in an executor; never deletes inline).
+    from backend.interactions.listings_media_sweeper import JOB_ID as LISTING_MEDIA_SWEEP_JOB_ID, run_listing_media_sweeper_job
+    from backend.interactions.listings_media_config import get_media_config
+    scheduler.add_job(run_listing_media_sweeper_job, "interval",
+                      minutes=get_media_config().sweep_interval_minutes,
+                      id=LISTING_MEDIA_SWEEP_JOB_ID, replace_existing=True)
     # Message delete retention: purge soft-deleted text/attachments after the evidence
     # window (R-SCHED: thin async job, work in an executor). Runs even while the
     # message_delete flag is off.

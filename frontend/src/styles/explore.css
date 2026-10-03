@@ -186,3 +186,27 @@ body.page-warm .ex-sheet {
   background: rgba(52, 37, 22, 0.94); -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px);
 }
 body.page-warm .ex-field select option { background: #3a2a18; color: #f2e8d5; }
+
+/* Task 20261002-explorer-listing-media step 4: listing photo/banner/image upload UI. */
+.ex-media-slot { display: flex; flex-direction: column; gap: .5rem; padding-top: .25rem; }
+.ex-media-slot + .ex-media-slot { border-top: 1px solid var(--card-border, rgba(255,255,255,.08)); padding-top: 1rem; }
+.ex-media-h { margin: 0; font: 600 .95rem 'Inter', sans-serif; color: var(--parchment, #F2F2F2); }
+.ex-media-preview { margin: 0; display: flex; flex-direction: column; gap: .35rem; }
+.ex-media-preview img { display: block; max-width: 100%; border-radius: var(--radius-md, 14px); border: 1px solid var(--card-border, rgba(255,255,255,.08)); background: var(--card-bg-2, #232326); }
+.ex-media-slot--photo .ex-media-preview img { width: 96px; height: 96px; object-fit: cover; border-radius: 50%; }
+.ex-media-slot--banner .ex-media-preview img { width: 100%; max-width: 480px; aspect-ratio: 3 / 1; object-fit: cover; }
+.ex-uploader { display: flex; flex-direction: column; gap: .6rem; min-width: 0; }
+.ex-uploader-row, .ex-uploader-staged .ex-block-actions { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+.ex-uploader-staged { display: flex; flex-direction: column; gap: .5rem; padding: .75rem; border: 1px solid var(--card-border, rgba(255,255,255,.08)); border-radius: var(--radius-md, 14px); background: rgba(255,198,26,.04); }
+.ex-progress { width: 100%; height: .5rem; accent-color: var(--gold, #FFC61A); }
+.ex-block-image { display: flex; flex-direction: column; gap: .5rem; }
+.ex-block-thumb { display: block; max-width: 220px; max-height: 140px; object-fit: cover; border-radius: var(--radius-md, 14px); border: 1px solid var(--card-border, rgba(255,255,255,.08)); }
+.ex-field input[aria-invalid="true"] { border-color: #FF8A80; }
+.ex-desc-image { margin: 1rem 0; }
+.ex-desc-image img { display: block; max-width: 100%; height: auto; border-radius: var(--radius-md, 14px); }
+.ex-desc-video { margin: 1rem 0; aspect-ratio: 16 / 9; }
+.ex-desc-video iframe { width: 100%; height: 100%; border: 0; border-radius: var(--radius-md, 14px); }
+body.page-warm .ex-media-preview img, body.page-warm .ex-block-thumb, body.page-warm .ex-uploader-staged {
+  border-color: rgba(255,255,255,.168);
+}
+body.page-warm .ex-uploader-staged { background: rgba(255,255,255,.05); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); }

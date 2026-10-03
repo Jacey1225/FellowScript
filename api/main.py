@@ -27,6 +27,7 @@ from routes.explorer import explorer_router
 from routes.explorer_admin import explorer_admin_router
 from routes.join_requests import join_requests_router
 from routes.flags_admin import flags_admin_router
+from routes.home_messages import home_message_router, home_messages_admin_router
 from routes.promo import promo_router, promo_admin_router, rewards_admin_router, rewards_router
 from schemas.subscription import NOTES_MAX_BODY_BYTES
 from schemas.users import SignUp, Login, UpdateUser, User, CURRENT_TERMS_VERSION
@@ -389,6 +390,8 @@ app.include_router(explorer_router)
 app.include_router(explorer_admin_router)
 app.include_router(join_requests_router)
 app.include_router(flags_admin_router)
+app.include_router(home_message_router)
+app.include_router(home_messages_admin_router)
 
 main_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 user_path = "data/users.json"

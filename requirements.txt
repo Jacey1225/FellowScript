@@ -59,6 +59,12 @@ awslabs.cloudwatch-mcp-server==0.1.8
 # 20260918-admin-activity-monitoring). Uses the non-interactive "Agg"
 # backend only (no display on this server); pulls in numpy transitively.
 matplotlib==3.11.2
+# api/backend/interactions/listings_media.py -- decode and metadata-stripping
+# re-encode of Explorer listing images (task 20261002-explorer-listing-media).
+# Already installed transitively by matplotlib above; pinned explicitly here to
+# the installed version so the security-relevant decoder cannot drift with a
+# matplotlib bump. JPEG/PNG/WebP only: there is deliberately no pillow-heif.
+pillow==12.3.0
 # backend/bibleHandling/web_source.py -- parses the vendored World English
 # Bible USFX source (task 20260927-esv-bible-source-migration) with external
 # entity resolution disabled, as ordinary secure practice for parsing an

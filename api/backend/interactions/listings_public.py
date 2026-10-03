@@ -25,7 +25,7 @@ from typing import Mapping
 from fastapi import HTTPException
 
 from backend import public_guard
-from backend.interactions import flags, paging
+from backend.interactions import flags, listings_media, paging
 from backend.interactions.groups import LIVE_MEMBER_JOIN
 from backend.interactions.listing_content import ISO_COUNTRIES, city_norm
 from backend.interactions.listings import is_public_id, listing_requestable, public_where
@@ -56,12 +56,12 @@ PUBLIC_VOCAB_KEYS = (
 _LIST_COLUMNS = (
     "gl.public_id, gl.title, gl.summary, gl.denominations, gl.goals, gl.practices, gl.hobbies, "
     "gl.free_tags, gl.age_ranges, gl.life_stages, gl.languages, gl.gender_makeup, gl.meeting_format, "
-    "gl.frequency, gl.country, gl.region, gl.city, gl.church_name, gl.published_at"
+    "gl.frequency, gl.country, gl.region, gl.city, gl.church_name, gl.published_at, gl.photo_key"
 )
 _COLUMN_KEYS = (
     "public_id", "title", "summary", "denominations", "goals", "practices", "hobbies",
     "free_tags", "age_ranges", "life_stages", "languages", "gender_makeup", "meeting_format",
-    "frequency", "country", "region", "city", "church_name", "published_at",
+    "frequency", "country", "region", "city", "church_name", "published_at", "photo_key",
 )
 _ARRAY_KEYS = (
     "denominations", "goals", "practices", "hobbies", "free_tags", "age_ranges", "life_stages", "languages",
@@ -224,7 +224,8 @@ def _card_fields(cfg: ListingsConfig, row: tuple, max_members, member_count) -> 
     values = dict(zip(_COLUMN_KEYS, row))
     count = int(member_count or 0)
     full = max_members is not None and count >= max_members
-    out = {key: values[key] for key in _COLUMN_KEYS if key != "published_at"}
+    out = {key: values[key] for key in _COLUMN_KEYS if key not in ("published_at", "photo_key")}
+    out["photo_url"] = listings_media.media_url(listings_media.public_listing_key(values["public_id"], values["photo_key"]))
     for key in _ARRAY_KEYS:
         out[key] = list(values[key] or [])
     out["country"] = values["country"].strip() if values["country"] else None
@@ -234,14 +235,11 @@ def _card_fields(cfg: ListingsConfig, row: tuple, max_members, member_count) -> 
     return out
 
 
-def _public_blocks(blocks) -> list[dict]:
-    """Rebuild description blocks field by field. Only the block types this
-    task knows are emitted (text); an unknown type is dropped, never passed on."""
-    out: list[dict] = []
-    for block in blocks or []:
-        if isinstance(block, Mapping) and block.get("type") == "text" and isinstance(block.get("text"), str):
-            out.append({"type": "text", "text": block["text"]})
-    return out
+def _public_blocks(blocks, images=None) -> list[dict]:
+    """Rebuild description blocks field by field (text, image, and video only while
+    enabled); an unknown type is dropped, never passed on. ``images`` maps media id
+    to the issued URL and size (see ``listings_media.public_images``)."""
+    return listings_media.public_blocks(blocks, images or {})
 
 
 # -- list ---------------------------------------------------------------------------------
@@ -319,7 +317,8 @@ def get_listing(public_id: str) -> ListingDetail:
         raise _not_found()
     cfg = get_listings_config()
     sql = (
-        f"SELECT {_LIST_COLUMNS}, gl.description_blocks, g.max_members, COALESCE(mc.n, 0) "
+        f"SELECT {_LIST_COLUMNS}, gl.banner_key, gl.banner_alt, gl._id::text, gl.description_blocks, "
+        "g.max_members, COALESCE(mc.n, 0) "
         "FROM group_listings gl JOIN groups g ON g._id = gl.group_id "
         f"{_MEMBER_COUNT_LATERAL} "
         f"WHERE gl.public_id = %s AND {public_where('gl')}"
@@ -331,9 +330,13 @@ def get_listing(public_id: str) -> ListingDetail:
             if row is None:
                 raise _not_found()
             requestable = listing_requestable(cur, public_id) is not None
-    fields = _card_fields(cfg, row[:-3], row[-2], row[-1])
+            images = listings_media.public_images(cur, row[-4])
+    fields = _card_fields(cfg, row[:-6], row[-2], row[-1])
+    banner_key = listings_media.public_listing_key(public_id, row[-6])
     return ListingDetail(
         **fields,
-        description_blocks=_public_blocks(row[-3]),
+        description_blocks=_public_blocks(row[-3], images),
+        banner_url=listings_media.media_url(banner_key),
+        banner_alt=row[-5] if banner_key else None,
         requestable=requestable,
     )

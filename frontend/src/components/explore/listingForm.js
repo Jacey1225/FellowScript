@@ -17,7 +17,8 @@ export const SINGLE_FIELDS = [
 const TEXT_FIELDS = ['title', 'summary', 'church_name', 'country', 'region', 'city'];
 
 let blockSeq = 0;
-export const newBlock = (text = '') => ({ id: `b${++blockSeq}`, text });
+export const newBlock = (text = '') => ({ id: `b${++blockSeq}`, type: 'text', text });
+export const newImageBlock = (mediaId, alt = '') => ({ id: `b${++blockSeq}`, type: 'image', media_id: mediaId, alt });
 
 export function emptyForm(groupTitle = '') {
   const f = { title: groupTitle || '', free_tags: [], blocks: [] };
@@ -34,9 +35,15 @@ export function formFromListing(l, groupTitle = '') {
   MULTI_FIELDS.forEach(([k]) => { f[k] = Array.isArray(l[k]) ? [...l[k]] : []; });
   SINGLE_FIELDS.forEach(([k]) => { f[k] = l[k] || ''; });
   f.free_tags = Array.isArray(l.free_tags) ? [...l.free_tags] : [];
-  f.blocks = (l.description_blocks || [])
-    .filter((b) => b && b.type === 'text' && typeof b.text === 'string')
-    .map((b) => newBlock(b.text));
+  const have = new Set((l.media || []).filter((m) => m.kind === 'image').map((m) => m.media_id));
+  f.blocks = (l.description_blocks || []).flatMap((b) => {
+    if (b && b.type === 'text' && typeof b.text === 'string') return [newBlock(b.text)];
+    // An image block whose media row is gone is dropped (the server would reject it on save).
+    if (b && b.type === 'image' && typeof b.media_id === 'string' && have.has(b.media_id)) {
+      return [newImageBlock(b.media_id, typeof b.alt === 'string' ? b.alt : '')];
+    }
+    return [];
+  });
   return f;
 }
 
@@ -48,11 +55,23 @@ export function bodyFromForm(f) {
   MULTI_FIELDS.forEach(([k]) => { body[k] = f[k]; });
   SINGLE_FIELDS.forEach(([k]) => { body[k] = f[k] || null; });
   body.free_tags = f.free_tags;
-  body.description_blocks = f.blocks
-    .map((b) => b.text.trim())
-    .filter(Boolean)
-    .map((text) => ({ type: 'text', text }));
+  body.description_blocks = f.blocks.flatMap((b) => {
+    if (b.type === 'image') return [{ type: 'image', media_id: b.media_id, alt: (b.alt || '').trim() }];
+    const text = (b.text || '').trim();
+    return text ? [{ type: 'text', text }] : [];
+  });
   return body;
+}
+
+// Image blocks that still lack alt text (cannot be saved).
+export function imageBlocksMissingAlt(f) {
+  return f.blocks.filter((b) => b.type === 'image' && !(b.alt || '').trim());
+}
+
+// Ready description images no block references any more (safe to delete after a save).
+export function unreferencedImageIds(media, blocks) {
+  const used = new Set(blocks.filter((b) => b.type === 'image').map((b) => b.media_id));
+  return (media || []).filter((m) => m.kind === 'image' && !used.has(m.media_id)).map((m) => m.media_id);
 }
 
 // Stable string for dirty checks (block ids ignored).

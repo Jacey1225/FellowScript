@@ -253,23 +253,136 @@ final class HeroHeaderTests: XCTestCase {
     func test_rendersGreetingWithUsername_noEyebrow_noSubtitleLine() throws {
         let sut = HeroHeader(username: "Jacey")
 
-        XCTAssertNoThrow(try sut.inspect().find(textWhere: { text, _ in text.contains("Jacey") }),
-                          "the greeting line must still include the live username")
+        XCTAssertNoThrow(try sut.inspect().find(text: "Welcome Back, Jacey!"),
+                          "with no announcement the fallback headline must render")
         XCTAssertThrowsError(try sut.inspect().find(text: "YOUR RHYTHM"),
                               "the 'YOUR RHYTHM' eyebrow is leaked internal jargon absent from the approved mockup") { _ in }
         XCTAssertThrowsError(try sut.inspect().find(textWhere: { text, _ in text.contains("Last read") }),
                               "the 'Last read X · N notes' subtitle line is leaked internal jargon absent from the approved mockup") { _ in }
+        XCTAssertThrowsError(try sut.inspect().find(textWhere: { text, _ in text.hasPrefix("Good ") }),
+                              "the time-of-day greeting is gone") { _ in }
     }
 
-    func test_greeting_reflectsOneOfTheThreeTimeOfDayVariants() throws {
-        let sut = HeroHeader(username: "Jacey")
+    func test_announcementText_replacesFallback() throws {
+        let sut = HeroHeader(username: "Jacey", announcement: "  Retreat signups open Friday  ")
+        XCTAssertNoThrow(try sut.inspect().find(text: "Retreat signups open Friday"))
+        XCTAssertThrowsError(try sut.inspect().find(text: "Welcome Back, Jacey!")) { _ in }
+    }
 
-        // Exactly one of the three greeting variants renders, proving the
-        // live time-of-day logic (not the mockup's static "Good morning,
-        // friend" copy) still drives the text.
-        let matches = ["Good morning, Jacey", "Good afternoon, Jacey", "Good evening, Jacey"]
-            .filter { text in (try? sut.inspect().find(text: text)) != nil }
-        XCTAssertEqual(matches.count, 1,
-                        "exactly one time-of-day greeting variant must render, got: \(matches)")
+    func test_blankAnnouncement_fallsBack() throws {
+        let sut = HeroHeader(username: "Jacey", announcement: "   ")
+        XCTAssertNoThrow(try sut.inspect().find(text: "Welcome Back, Jacey!"))
+    }
+
+    func test_emptyUsername_noDanglingComma() throws {
+        XCTAssertNoThrow(try HeroHeader(username: "  ").inspect().find(text: "Welcome Back!"))
+    }
+
+    func test_longAnnouncement_isCappedDefensively() {
+        let long = String(repeating: "a", count: 500)
+        XCTAssertEqual(HomeMessageText.clean(long)?.count, 200)
+    }
+
+    func test_payload_toleratesUnknownKeysMissingFieldsAndNull() throws {
+        let dec = JSONDecoder()
+        let a = try dec.decode(FSHomeMessagePayload.self, from: Data(#"{"v":9,"extra":1,"message":{"id":"x","text":"Hi","destination":"weird","new":true}}"#.utf8))
+        XCTAssertEqual(a.displayText, "Hi")
+        let b = try dec.decode(FSHomeMessagePayload.self, from: Data(#"{"v":1,"message":null}"#.utf8))
+        XCTAssertNil(b.displayText)
+        let c = try dec.decode(FSHomeMessagePayload.self, from: Data(#"{"message":{"id":"x"}}"#.utf8))
+        XCTAssertNil(c.displayText)
+        let d = try dec.decode(FSHomeMessagePayload.self, from: Data(#"{"message":"garbage"}"#.utf8))
+        XCTAssertNil(d.displayText)
+    }
+
+    @MainActor
+    func test_store_cacheLifecycle() {
+        let suite = "homemsg-test-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        var clock = Date(timeIntervalSince1970: 1_000_000)
+
+        let store = HomeMessageStore(defaults: defaults, now: { clock })
+        XCTAssertNil(store.text)
+        store.apply("Hello")
+        XCTAssertEqual(store.text, "Hello")
+
+        // Fresh cache is used on next launch; stale cache (>1h) is not.
+        XCTAssertEqual(HomeMessageStore(defaults: defaults, now: { clock }).text, "Hello")
+        clock = clock.addingTimeInterval(3601)
+        XCTAssertNil(HomeMessageStore(defaults: defaults, now: { clock }).text)
+
+        // Server null clears the cache.
+        store.apply(nil)
+        XCTAssertNil(store.text)
+        clock = clock.addingTimeInterval(-3601)
+        XCTAssertNil(HomeMessageStore(defaults: defaults, now: { clock }).text)
+    }
+
+    // MARK: refresh() paths through the HomeMessageService seam (testing gate)
+
+    private struct StubHomeService: HomeMessageService {
+        let result: Result<String?, Error>
+        func fetchHomeMessage() async throws -> String? { try result.get() }
+    }
+
+    @MainActor
+    private func freshDefaults() -> (UserDefaults, () -> Void) {
+        let suite = "homemsg-refresh-\(UUID().uuidString)"
+        let d = UserDefaults(suiteName: suite)!
+        return (d, { d.removePersistentDomain(forName: suite) })
+    }
+
+    @MainActor
+    func test_refresh_success_showsAndCachesMessage() async {
+        let (d, cleanup) = freshDefaults(); defer { cleanup() }
+        let store = HomeMessageStore(defaults: d)
+        await store.refresh(service: StubHomeService(result: .success("Invite your friends, get 50% off")))
+        XCTAssertEqual(store.text, "Invite your friends, get 50% off")
+        XCTAssertEqual(HomeMessageStore(defaults: d).text, "Invite your friends, get 50% off")
+    }
+
+    @MainActor
+    func test_refresh_failure_keepsCachedMessage() async {
+        let (d, cleanup) = freshDefaults(); defer { cleanup() }
+        let store = HomeMessageStore(defaults: d)
+        store.apply("Cached headline")
+        await store.refresh(service: StubHomeService(result: .failure(AppError.networkError("boom"))))
+        XCTAssertEqual(store.text, "Cached headline", "a failed refresh must never clear the last good message")
+        XCTAssertEqual(HomeMessageStore(defaults: d).text, "Cached headline")
+    }
+
+    @MainActor
+    func test_refresh_failure_withNothingCached_staysOnFallback() async {
+        let (d, cleanup) = freshDefaults(); defer { cleanup() }
+        let store = HomeMessageStore(defaults: d)
+        await store.refresh(service: StubHomeService(result: .failure(AppError.networkError("boom"))))
+        XCTAssertNil(store.text)
+    }
+
+    @MainActor
+    func test_refresh_serverNull_clearsCache() async {
+        let (d, cleanup) = freshDefaults(); defer { cleanup() }
+        let store = HomeMessageStore(defaults: d)
+        store.apply("Old")
+        await store.refresh(service: StubHomeService(result: .success(nil)))
+        XCTAssertNil(store.text)
+        XCTAssertNil(HomeMessageStore(defaults: d).text)
+    }
+
+    @MainActor
+    func test_refresh_nonServiceValue_isNoOp() async {
+        let (d, cleanup) = freshDefaults(); defer { cleanup() }
+        let store = HomeMessageStore(defaults: d)
+        store.apply("Keep")
+        await store.refresh(service: nil)
+        XCTAssertEqual(store.text, "Keep")
+    }
+
+    func test_announcement_rendersVerbatimAsPlainText_noMarkdownOrHTMLInterpretation() throws {
+        let raw = "**bold** <b>x</b> [link](https://e.com)"
+        let sut = HeroHeader(username: "Jacey", announcement: raw)
+        XCTAssertNoThrow(try sut.inspect().find(text: raw),
+                          "announcement text must render verbatim, never parsed as markdown/HTML")
     }
 }

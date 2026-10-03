@@ -1,0 +1,12 @@
+{
+  "home_messages": {
+    "text_max_length": 120,
+    "max_enabled": 3,
+    "cache_ttl_seconds": 60,
+    "admin_list_limit": 200,
+    "rate_limits": {
+      "read": "60/minute",
+      "admin": "60/minute"
+    }
+  }
+}

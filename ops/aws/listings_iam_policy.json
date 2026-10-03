@@ -1,0 +1,27 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "FellowScriptListingMedia",
+      "Effect": "Allow",
+      "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
+      "Resource": "arn:aws:s3:::fellowscript-ec2-s3-335651423109-us-west-1-an/listings/*"
+    },
+    {
+      "Sid": "FellowScriptListingSweep",
+      "Effect": "Allow",
+      "Action": "s3:ListBucket",
+      "Resource": "arn:aws:s3:::fellowscript-ec2-s3-335651423109-us-west-1-an",
+      "Condition": { "StringLike": { "s3:prefix": ["listings/*"] } }
+    },
+    {
+      "Sid": "FellowScriptGroupMediaDelete",
+      "Effect": "Allow",
+      "Action": "s3:DeleteObject",
+      "Resource": [
+        "arn:aws:s3:::fellowscript-ec2-s3-335651423109-us-west-1-an/group-photos/*",
+        "arn:aws:s3:::fellowscript-ec2-s3-335651423109-us-west-1-an/group-announcements/*"
+      ]
+    }
+  ]
+}
