@@ -1,7 +1,10 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { Avatar, Button, Typography } from 'antd';
-import { AudioOutlined, PhoneOutlined, EditOutlined, DeleteOutlined, VideoCameraOutlined, CloseOutlined } from '@ant-design/icons';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Avatar, Button, Modal, Typography } from 'antd';
+import { AudioOutlined, PhoneOutlined, EditOutlined, DeleteOutlined, VideoCameraOutlined, CloseOutlined, BellOutlined } from '@ant-design/icons';
 import { API } from '../config.js';
+import { useJoinWindow } from '../hooks/useJoinWindow.js';
+import { isSessionHost, JOIN_GRACE_MINUTES } from '../lib/sessionAccess.js';
+import RingMembersModal from './RingMembersModal.jsx';
 
 const { Text } = Typography;
 
@@ -114,7 +117,58 @@ function JoinErrorRow({ session, joinError, onJoin, onClearJoinError }) {
   );
 }
 
-export function UpcomingCard({ session, activeSessionId, onJoin, onLeave, onEdit, onDelete, joinError, onClearJoinError }) {
+// Join is only enabled inside the join window (grace minutes before start until
+// the end). Disabled state is announced (aria-label) and explained (title).
+// Server stays authoritative; this only prevents a pointless failing request.
+function JoinButton({ session, onJoin }) {
+  const open = useJoinWindow(session);
+  return (
+    <Button
+      size="small"
+      disabled={!open}
+      onClick={() => onJoin(session.id)}
+      aria-label={open ? `Join ${session.title}` : `Join ${session.title}, not open yet`}
+      title={open ? undefined : `Opens ${JOIN_GRACE_MINUTES} minutes before the start time`}
+      style={open
+        ? { fontSize: '0.62rem', height: 20, padding: '0 7px', background: 'rgba(255,198,26,0.7)', borderColor: 'transparent', color: '#fff' }
+        : { fontSize: '0.62rem', height: 20, padding: '0 7px' }}
+    >
+      Join
+    </Button>
+  );
+}
+
+// Host-only Edit and Delete. Delete asks first (iOS "Delete Session?" alert):
+// the server delete is permanent. Renders nothing for non-hosts or when
+// creator_id is missing (fail closed).
+function HostControls({ session, user, onEdit, onDelete }) {
+  const [confirming, setConfirming] = useState(false);
+  if (!isSessionHost(session, user)) return null;
+  return (
+    <>
+      <IconBtn icon={<EditOutlined />} title="Edit session" onClick={() => onEdit(session)} />
+      <IconBtn icon={<DeleteOutlined />} title="Delete session" onClick={() => setConfirming(true)} danger />
+      <Modal
+        open={confirming}
+        title="Delete Session?"
+        okText="Delete"
+        okButtonProps={{ danger: true }}
+        cancelText="Cancel"
+        onOk={() => { setConfirming(false); onDelete(session.id); }}
+        onCancel={() => setConfirming(false)}
+        centered
+        destroyOnHidden
+        width="min(420px, calc(100vw - 32px))"
+      >
+        <p style={{ margin: 0 }}>
+          This permanently deletes &quot;{session.title}&quot; for everyone. This can&apos;t be undone.
+        </p>
+      </Modal>
+    </>
+  );
+}
+
+export function UpcomingCard({ session, user, activeSessionId, onJoin, onLeave, onEdit, onDelete, joinError, onClearJoinError }) {
   const isJoined = activeSessionId === session.id;
   return (
     <div style={islandStyle}>
@@ -140,15 +194,9 @@ export function UpcomingCard({ session, activeSessionId, onJoin, onLeave, onEdit
                 Leave
               </Button>
             ) : (
-              <Button
-                size="small" onClick={() => onJoin(session.id)}
-                style={{ fontSize: '0.62rem', height: 20, padding: '0 7px', background: 'rgba(255,198,26,0.7)', borderColor: 'transparent', color: '#fff' }}
-              >
-                Join
-              </Button>
+              <JoinButton session={session} onJoin={onJoin} />
             )}
-            <IconBtn icon={<EditOutlined />} title="Edit session" onClick={() => onEdit(session)} />
-            <IconBtn icon={<DeleteOutlined />} title="Delete session" onClick={() => onDelete(session.id)} danger />
+            <HostControls session={session} user={user} onEdit={onEdit} onDelete={onDelete} />
           </div>
         </div>
         <JoinErrorRow session={session} joinError={joinError} onJoin={onJoin} onClearJoinError={onClearJoinError} />
@@ -157,9 +205,13 @@ export function UpcomingCard({ session, activeSessionId, onJoin, onLeave, onEdit
   );
 }
 
-export function ActiveCard({ session, user, activeSessionId, talkingUserId, onJoin, onLeave, onEdit, onDelete, onNavigateVerse, videoEnabled, videoTiles = [], onToggleVideo, bindVideoTile, joinError, onClearJoinError }) {
+export function ActiveCard({ session, user, ringCandidates, activeSessionId, talkingUserId, onJoin, onLeave, onEdit, onDelete, onNavigateVerse, videoEnabled, videoTiles = [], onToggleVideo, bindVideoTile, joinError, onClearJoinError }) {
   const isJoined = activeSessionId === session.id;
   const names    = useUsernames(session.participants || []);
+  // Ring members (task 20261003-web-reader-ios-parity): only while joined.
+  // sentRing remembers who was rung during this call across modal reopenings.
+  const [ringOpen, setRingOpen] = useState(false);
+  const sentRing = useRef(new Set());
   const talkingName = talkingUserId
     ? (talkingUserId === user?.user_id ? user?.username : names[talkingUserId] || talkingUserId?.slice(0, 6))
     : null;
@@ -174,6 +226,9 @@ export function ActiveCard({ session, user, activeSessionId, talkingUserId, onJo
             <Text style={{ fontFamily: "'Inter', sans-serif", fontSize: '0.82rem', color: 'var(--parchment)', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {session.title}
             </Text>
+            {isJoined && Array.isArray(ringCandidates) && ringCandidates.length > 0 && (
+              <IconBtn icon={<BellOutlined />} title="Ring members" onClick={() => setRingOpen(true)} />
+            )}
             {isJoined && (
               <IconBtn
                 icon={<VideoCameraOutlined />}
@@ -182,8 +237,7 @@ export function ActiveCard({ session, user, activeSessionId, talkingUserId, onJo
                 active={videoEnabled}
               />
             )}
-            <IconBtn icon={<EditOutlined />} title="Edit session" onClick={() => onEdit(session)} />
-            <IconBtn icon={<DeleteOutlined />} title="Delete session" onClick={() => onDelete(session.id)} danger />
+            <HostControls session={session} user={user} onEdit={onEdit} onDelete={onDelete} />
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexShrink: 0 }}>
@@ -201,17 +255,23 @@ export function ActiveCard({ session, user, activeSessionId, talkingUserId, onJo
                 Leave
               </Button>
             ) : (
-              <Button
-                size="small" onClick={() => onJoin(session.id)}
-                style={{ fontSize: '0.62rem', height: 20, padding: '0 7px', background: 'rgba(255,198,26,0.7)', borderColor: 'transparent', color: '#fff' }}
-              >
-                Join
-              </Button>
+              <JoinButton session={session} onJoin={onJoin} />
             )}
           </div>
         </div>
 
         <JoinErrorRow session={session} joinError={joinError} onJoin={onJoin} onClearJoinError={onClearJoinError} />
+
+        {isJoined && (
+          <RingMembersModal
+            open={ringOpen}
+            onClose={() => setRingOpen(false)}
+            session={session}
+            user={user}
+            candidates={ringCandidates}
+            sentRef={sentRing}
+          />
+        )}
 
         {/* Row 1b: time + recurring */}
         <div style={{ marginBottom: '0.35rem' }}>
@@ -328,7 +388,10 @@ export function ActiveCard({ session, user, activeSessionId, talkingUserId, onJo
 export function SessionCard(props) {
   const { session } = props;
   const started = session.time_start && new Date(session.time_start).getTime() <= Date.now();
-  return started ? <ActiveCard {...props} /> : <UpcomingCard {...props} />;
+  // A session joined inside the early-join grace window is already live, so it
+  // gets the full card (call controls, Ring) even before time_start.
+  const joined = props.activeSessionId === session.id;
+  return (started || joined) ? <ActiveCard {...props} /> : <UpcomingCard {...props} />;
 }
 
 export default function SessionWidget({
@@ -379,6 +442,7 @@ export default function SessionWidget({
           <UpcomingCard
             key={session.id}
             session={session}
+            user={user}
             activeSessionId={activeSessionId}
             onJoin={onJoin}
             onLeave={onLeave}

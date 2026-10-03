@@ -204,13 +204,15 @@ describe('live frames and acks', () => {
     expect(r.current.messages[1]).toMatchObject({ id: 'm9', pending: false, text: 'hello' });
   });
 
-  test('error frame is never an ack and leaves the pending bubble', async () => {
+  test('error frame is never an ack: the bubble stays unacked (no id) and is marked failed for retry', async () => {
     const r = await paged();
     act(() => { r.current.sendMessage('hello'); });
     const ref = JSON.parse(ws().sent[0]).client_ref;
     act(() => { ws().onmessage({ data: JSON.stringify({ type: 'error', client_ref: ref, id: 'm9', reason: 'x', detail: 'no' }) }); });
     expect(r.current.messages).toHaveLength(2);
-    expect(r.current.messages[1].pending).toBe(true);
+    // Task 20261003-web-reader-ios-parity: previously left looking pending.
+    expect(r.current.messages[1]).toMatchObject({ failed: true, pending: false });
+    expect(r.current.messages[1].id).toBeUndefined();
     expect(message.error).toHaveBeenCalled();
   });
 

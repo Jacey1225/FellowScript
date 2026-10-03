@@ -216,6 +216,8 @@ export function useSessions({ user, wsRef, currentContact }) {
         }),
       });
       if (!res.ok) {
+        // Same shared upgrade modal as create, in case the server plan-gates an edit.
+        if (await handleBlockedResponse(res)) return false;
         message.error('Could not update that session. Please try again.');
         return false;
       }

@@ -97,7 +97,9 @@ describe('SessionsMenu', () => {
   });
 
   test('row actions wire through: join, edit, delete', () => {
-    const p = props({ sessions: [mk('s1', 'Study', 2 * H)] });
+    // Starts in 5 minutes: inside the 10 minute join grace. Host-only controls
+    // need creator_id === user.user_id; delete asks for confirmation first.
+    const p = props({ sessions: [{ ...mk('s1', 'Study', 5 * 60e3), creator_id: 'u1' }] });
     render(<SessionsMenu {...p} />);
     openMenu();
     const dlg = within(screen.getByRole('dialog'));
@@ -106,6 +108,8 @@ describe('SessionsMenu', () => {
     fireEvent.click(dlg.getByTitle('Edit session'));
     expect(p.onEdit).toHaveBeenCalledWith(p.sessions[0]);
     fireEvent.click(dlg.getByTitle('Delete session'));
+    expect(p.onDelete).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
     expect(p.onDelete).toHaveBeenCalledWith('s1');
   });
 

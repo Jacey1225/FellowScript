@@ -15,6 +15,13 @@ const DEFAULT_VALUE = {
 export const CapabilitiesContext = createContext(DEFAULT_VALUE);
 
 const MIN_FOREGROUND_GAP_MS = 15000;
+// Task 20261003-web-reader-ios-parity (step 5): a failed first fetch (cold
+// network when the desktop webview opens, a 5s timeout) used to leave every
+// server-gated feature (threads, delete, publish, join requests, Explore row)
+// hidden for the whole session until the app was backgrounded and refocused.
+// Retry a FAILED fetch at most twice (not a loop, not polling). A real
+// response, even "everything off", is never retried.
+export const CAPABILITIES_RETRY_DELAYS_MS = [3000, 10000];
 
 export function CapabilitiesProvider({ children }) {
   const auth = useAuth();
@@ -34,14 +41,25 @@ export function CapabilitiesProvider({ children }) {
 
   useEffect(() => {
     if (!userId) { seqRef.current += 1; setCaps(CAPABILITIES_OFF); return undefined; }
-    refresh();
+    let cancelled = false;
+    const timers = [];
+    const attempt = async (i) => {
+      const result = await refresh();
+      if (cancelled || result !== CAPABILITIES_OFF || i >= CAPABILITIES_RETRY_DELAYS_MS.length) return;
+      timers.push(setTimeout(() => attempt(i + 1), CAPABILITIES_RETRY_DELAYS_MS[i]));
+    };
+    attempt(0);
     const onVisible = () => {
       if (document.visibilityState !== 'visible') return;
       if (Date.now() - lastFetchRef.current < MIN_FOREGROUND_GAP_MS) return;
       refresh();
     };
     document.addEventListener('visibilitychange', onVisible);
-    return () => document.removeEventListener('visibilitychange', onVisible);
+    return () => {
+      cancelled = true;
+      timers.forEach(clearTimeout);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
   }, [userId, refresh]);
 
   const value = useMemo(() => ({

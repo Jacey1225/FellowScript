@@ -105,6 +105,37 @@ export function useMessaging({ user }) {
   const currentContactRef = useRef(currentContact);
   useEffect(() => { currentContactRef.current = currentContact; }, [currentContact]);
 
+  // ── Failed sends (task 20261003-web-reader-ios-parity, C6/C7) ──────────────
+  // A rejected main-chat send used to leave the optimistic bubble looking
+  // delivered. Now the bubble is marked `failed` and shows "Couldn't send. Tap
+  // to retry" (iOS parity); for the Updated Terms gate a text-only message is
+  // removed and its text handed back to the composer instead.
+  const SEND_FAIL_WINDOW_MS = 15000;
+  const failLatestSend = useCallback((reason) => {
+    const list = messagesRef.current;
+    let idx = -1;
+    for (let i = list.length - 1; i >= 0; i--) {
+      const m = list[i];
+      if (m.mine && !m.id && !m.failed) {
+        const age = Date.now() - Date.parse(m.timestamp);
+        if (Number.isFinite(age) && age <= SEND_FAIL_WINDOW_MS) idx = i;
+        break;
+      }
+    }
+    if (idx === -1) return;
+    const target = list[idx];
+    if (target.clientRef) {
+      const t = ackTimersRef.current.get(target.clientRef);
+      if (t) { clearTimeout(t); ackTimersRef.current.delete(target.clientRef); }
+    }
+    if (reason === 'terms_reaccept_required' && target.text && !target.attachmentKind) {
+      setMessages(prev => prev.filter(m => m !== target));
+      setRestoredDraft(prev => ({ tick: (prev ? prev.tick : 0) + 1, text: target.text }));
+      return;
+    }
+    setMessages(prev => prev.map(m => (m === target ? { ...m, failed: true, pending: false } : m)));
+  }, []);
+
   // ── WebSocket ──────────────────────────────────────────────────────────────
 
   const connectWS = useCallback(() => {
@@ -185,6 +216,10 @@ export function useMessaging({ user }) {
             capsRef.current?.refresh?.();
           }
           threadFrameCbRef.current?.({ type: 'thread_send_failed', reason: data.reason });
+          // Task 20261003-web-reader-ios-parity (C6/C7): a rejected MAIN-chat
+          // send. The error frame names no message, so the newest unacked
+          // message of mine sent moments ago is the one that failed.
+          if (!threadViewRef.current) failLatestSend(data.reason);
           message.error({
             content: data.reason === 'terms_reaccept_required'
               ? 'Please review and accept the updated Terms to continue.'
@@ -769,7 +804,19 @@ export function useMessaging({ user }) {
   // `objectKey` is the S3 object key from a completed upload (image/video/
   // file only — always absent for gif, which never uploads bytes of ours).
   const sendMessage = useCallback((text, attachment = null) => {
-    if (!user || !currentContact || !wsRef.current || wsRef.current.readyState !== 1) return;
+    if (!user || !currentContact) return;
+    if (!wsRef.current || wsRef.current.readyState !== 1) {
+      // Not connected: never drop the text silently. Show it as a failed
+      // bubble the user can retry once the connection is back.
+      setMessages(prev => [...prev, {
+        text, mine: true, timestamp: new Date().toISOString(), sender: '', failed: true,
+        retryAttachment: attachment,
+        attachmentKind: attachment ? attachment.kind : null,
+        attachmentMeta: attachment ? (attachment.meta || null) : null,
+        attachmentUrl: (attachment && attachment.kind === 'gif') ? null : (attachment?.localUrl || null),
+      }]);
+      return;
+    }
     const payload = {
       from_user: user.user_id,
       timestamp: new Date().toISOString(),
@@ -792,6 +839,7 @@ export function useMessaging({ user }) {
     setMessages(prev => [...prev, {
       ...(clientRef ? { key: `c:${clientRef}`, clientRef, pending: true } : {}),
       text, mine: true, timestamp: payload.timestamp, sender: '',
+      retryAttachment: attachment,
       attachmentKind: attachment ? attachment.kind : null,
       attachmentMeta: attachment ? (attachment.meta || null) : null,
       // No attachmentUrl on the optimistic echo for image/video/file — the
@@ -802,6 +850,13 @@ export function useMessaging({ user }) {
       attachmentUrl: (attachment && attachment.kind === 'gif') ? null : (attachment?.localUrl || null),
     }]);
   }, [user, currentContact, scheduleAckFallback]);
+
+  // Retry a failed bubble: drop it and send the same text/attachment again.
+  const retryFailedMessage = useCallback((m) => {
+    if (!m || !m.failed) return;
+    setMessages(prev => prev.filter(x => x !== m));
+    sendMessage(m.text, m.retryAttachment || null);
+  }, [sendMessage]);
 
   // ── Attachments (task 20260904-messaging-attachments) ─────────────────────
   // Wire contract per design-notes.md / backend step 2: request a presigned
@@ -1014,6 +1069,46 @@ export function useMessaging({ user }) {
     }
   }, [user]);
 
+  // Task 20261003-web-reader-ios-parity (step 3): "Add friends" from the group
+  // info panel. Same endpoint as updateGroup (PUT /groups/{user}/{group}, any
+  // member may add, owner only for listed groups), but returns a structured
+  // result so the panel can show the server's own reason (group full / owner
+  // only) instead of a generic toast. `added` is [{ user_id, username, photoUrl }].
+  // Local state is only changed after the server confirmed the write.
+  const addGroupMembers = useCallback(async (groupId, added) => {
+    if (!user) return { ok: false, detail: 'Not signed in.' };
+    const base = (currentContactRef.current && currentContactRef.current.id === groupId)
+      ? currentContactRef.current : null;
+    if (!base || !added || !added.length) return { ok: false, detail: 'Nothing to add.' };
+    const users = [...new Set([user.user_id, ...(base.toUsers || []), ...added.map(a => a.user_id)])];
+    let res;
+    try {
+      res = await fetch(`${API}/groups/${user.user_id}/${groupId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ group_id: groupId, title: base.name, users }),
+      });
+    } catch (err) {
+      console.error('Failed to add group members:', err);
+      return { ok: false, detail: 'Could not reach the server. Please try again.' };
+    }
+    if (!(res.ok || res.status === 204)) {
+      let detail = "Couldn't add members. Please try again.";
+      try {
+        const d = await res.json();
+        if (d && d.detail && typeof d.detail === 'object' && typeof d.detail.message === 'string') detail = d.detail.message;
+        else if (d && typeof d.detail === 'string') detail = d.detail;
+      } catch { /* keep the fallback copy */ }
+      return { ok: false, status: res.status, detail };
+    }
+    delete groupEntryCache.current[groupId];
+    added.forEach(a => { memberCache.current[a.user_id] = { username: a.username, photoUrl: a.photoUrl || null }; });
+    setGroups(prev => prev[groupId] ? { ...prev, [groupId]: { ...prev[groupId], users } } : prev);
+    setCurrentContact(prev => (prev && prev.id === groupId) ? { ...prev, toUsers: users } : prev);
+    setGroupMembers(prev => [...prev, ...added.filter(a => !prev.some(m => m.user_id === a.user_id))]);
+    return { ok: true };
+  }, [user]);
+
   // Task 20260929-group-info-panel: apply a server-confirmed rename/photo
   // change (from GroupInfoPanel) to the list row, the open chat header, and
   // the cached row, so nothing shows the stale value until the next reload.
@@ -1047,7 +1142,7 @@ export function useMessaging({ user }) {
   }, [closeChat]);
 
   return {
-    applyGroupChange, dropGroup,
+    applyGroupChange, dropGroup, addGroupMembers,
     friends, groups, currentContact, messages, groupMembers, wsStatus,
     olderPage, loadOlder,
     threadView, threadMessages, threadPage, threadLoad, restoredDraft,
@@ -1055,7 +1150,7 @@ export function useMessaging({ user }) {
     deleteMessage, restoreMessage,
     wsRef, friendCache,
     connectWS, disconnectWS, setOnSessionSignal,
-    loadContacts, openChat, closeChat, sendMessage,
+    loadContacts, openChat, closeChat, sendMessage, retryFailedMessage,
     addFriend, removeFriend, createGroup, updateGroup, leaveGroup,
     reportUser, blockUser,
     requestUploadUrl, uploadToS3, searchGifs, browseGifs,

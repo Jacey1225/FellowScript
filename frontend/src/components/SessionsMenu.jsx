@@ -29,7 +29,7 @@ export default function SessionsMenu({
   sessions, activeSessionId, joinError, onClearJoinError,
   onJoin, onLeave, onEdit, onDelete, onOpenSessionCreator,
   user, talkingUserId, onNavigateVerse,
-  videoEnabled, videoTiles, onToggleVideo, bindVideoTile,
+  videoEnabled, videoTiles, onToggleVideo, bindVideoTile, ringCandidates,
 }) {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState(null);
@@ -72,7 +72,7 @@ export default function SessionsMenu({
 
   const cardProps = {
     user, activeSessionId, talkingUserId, onJoin, onLeave, onEdit, onDelete, onNavigateVerse,
-    videoEnabled, videoTiles, onToggleVideo, bindVideoTile, joinError, onClearJoinError,
+    videoEnabled, videoTiles, onToggleVideo, bindVideoTile, joinError, onClearJoinError, ringCandidates,
   };
   const empty = upcoming.length === 0 && past.length === 0;
   const label = inCall ? 'Sessions, in a call' : listedError ? 'Sessions, needs attention' : 'Sessions';

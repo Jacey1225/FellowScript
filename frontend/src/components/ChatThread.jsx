@@ -5,7 +5,7 @@ import {
   SendOutlined, ArrowLeftOutlined, TeamOutlined, PlusOutlined,
   PictureOutlined, FileOutlined, SmileOutlined, PlayCircleOutlined,
   DownloadOutlined, CloseCircleFilled, SearchOutlined,
-  BranchesOutlined, CopyOutlined, DeleteOutlined,
+  BranchesOutlined, CopyOutlined, DeleteOutlined, ExclamationCircleOutlined,
 } from '@ant-design/icons';
 import { SessionCard } from './SessionWidget.jsx';
 import SessionsMenu from './SessionsMenu.jsx';
@@ -624,6 +624,8 @@ export default function ChatThread({
   // { tick, text } hands a failed send's text back to the composer.
   thread, threadLoad, onRetryThread, restoredDraft,
   onStartThread, onDeleteMessage, onRestoreMessage,
+  // Task 20261003-web-reader-ios-parity: friends + add-members for group info.
+  friends, onAddGroupMembers, onRetryMessage,
 }) {
   const inThread = !!thread;
   const caps = useCapabilities();
@@ -867,6 +869,14 @@ export default function ChatThread({
   };
 
   const isGroup = contact?.type === 'group';
+  // Who a joined caller can ring (task 20261003-web-reader-ios-parity):
+  // the group's other members, or the one friend in a DM. The server
+  // re-validates every target against the real roster.
+  const ringCandidates = isGroup
+    ? (groupMembers || [])
+    : (contact?.type === 'friend' && contact.toUsers?.[0]
+      ? [{ user_id: contact.toUsers[0], username: contact.name }]
+      : []);
   const dismissToast = useCallback((id) => setUndoToasts(prev => prev.filter(t => t.id !== id)), []);
 
   const handleDelete = useCallback(async (m) => {
@@ -969,7 +979,10 @@ export default function ChatThread({
               {(contact.name || '?')[0].toUpperCase()}
             </Avatar>
             <span className="group-info-header-name">{contact.name}</span>
-            <TeamOutlined style={{ fontSize: '0.72rem', color: 'rgba(255,198,26,0.5)' }} />
+            {/* Visible label (task 20261003-web-reader-ios-parity step 5): the lone icon
+                was easy to miss, and group info holds members, invite links,
+                announcements, threads and Add friends. */}
+            <span className="group-info-header-hint"><TeamOutlined aria-hidden="true" /> Group info</span>
           </button>
         ) : (
           <Text
@@ -996,6 +1009,7 @@ export default function ChatThread({
           videoTiles={videoTiles}
           onToggleVideo={onToggleVideo}
           bindVideoTile={bindVideoTile}
+          ringCandidates={ringCandidates}
         />}
       </div>
 
@@ -1037,6 +1051,7 @@ export default function ChatThread({
             videoTiles={videoTiles}
             onToggleVideo={onToggleVideo}
             bindVideoTile={bindVideoTile}
+            ringCandidates={ringCandidates}
           />
         ) : null;
       })()}
@@ -1110,7 +1125,7 @@ export default function ChatThread({
             <ActionableBubble
               key={m.key ?? `i${i}`}
               data-msg-id={m.key ?? undefined}
-              className={`msg-bubble ${m.mine ? 'sent' : 'received'} ${isMedia ? 'msg-bubble-media' : ''}`}
+              className={`msg-bubble ${m.mine ? 'sent' : 'received'} ${isMedia ? 'msg-bubble-media' : ''}${m.failed ? ' msg-bubble-failed' : ''}`}
               aria-label={ariaLabel}
               mine={!!m.mine}
               actions={actionsFor(m)}
@@ -1120,7 +1135,17 @@ export default function ChatThread({
               {m.attachmentKind && m.text && (
                 <div className={isMedia ? 'attachment-caption' : undefined}>{m.text}</div>
               )}
-              {m.timestamp && (
+              {m.failed ? (
+                <button
+                  type="button"
+                  className="msg-retry-btn"
+                  onClick={() => onRetryMessage?.(m)}
+                  disabled={!onRetryMessage}
+                  aria-label="Message not sent. Tap to retry"
+                >
+                  <ExclamationCircleOutlined aria-hidden="true" /> Couldn&apos;t send. Tap to retry
+                </button>
+              ) : m.timestamp && (
                 <div className="msg-bubble-meta">
                   {new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                 </div>
@@ -1217,6 +1242,8 @@ export default function ChatThread({
         contact={contact}
         user={user}
         groupMembers={groupMembers}
+        friends={friends}
+        onAddMembers={onAddGroupMembers}
         onGroupChanged={onGroupChanged}
         onGroupGone={() => { setShowGroupInfo(false); onGroupGone?.(contact); }}
         onOpenLightbox={(kind, url, e) => setPanelLightbox({

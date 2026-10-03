@@ -13,8 +13,10 @@ import {
 import { ANNOUNCEMENTS_ENABLED } from '../lib/announcementsApi.js';
 import GroupAnnouncements from './GroupAnnouncements.jsx';
 import InviteLinkSection from './InviteLinkSection.jsx';
+import AddGroupMembersModal from './AddGroupMembersModal.jsx';
 import { getVisibleGroupInfoSections } from './groupInfoSections.js';
 import { useCapabilities } from '../hooks/useCapabilities.js';
+import { scrollToSubscription } from '../lib/upgradePrompt.js';
 
 // Task 20260929-group-info-panel (design-notes.md). Groups only. All network
 // calls throw on failure (lib/groupInfoApi.js) and this component never
@@ -81,6 +83,7 @@ function GalleryTile({ item, onOpenLightbox }) {
 
 export default function GroupInfoPanel({
   open, onClose, contact, user, groupMembers = [], onGroupChanged, onGroupGone, onOpenLightbox,
+  friends = [], onAddMembers,
 }) {
   const groupId = contact?.id;
   const userId = user?.user_id;
@@ -114,6 +117,12 @@ export default function GroupInfoPanel({
   const [capSaved, setCapSaved] = useState(false);
   const [mutePending, setMutePending] = useState(false);
   const [muteError, setMuteError] = useState(null);
+  // "See plans" must stay inside the HashRouter: assigning a path such as
+  // /account is a full navigation, which lands on Home on the web and is
+  // blocked by the desktop shell's navigation allowlist.
+  const goToPlans = () => { window.location.hash = '#/account'; scrollToSubscription(); };
+  const [addOpen, setAddOpen] = useState(false);
+  const addBtnRef = useRef(null);
   const [view, setView] = useState('main');       // 'main' | 'announcements'
   const viewRef = useRef('main');
   viewRef.current = view;
@@ -328,6 +337,9 @@ export default function GroupInfoPanel({
     { key: 'me', username: user?.username, photoUrl: user?.profile_photo_url, me: true },
     ...groupMembers.map((m, i) => ({ key: m.user_id || i, username: m.username || m.user_id?.slice(0, 8) || '?', photoUrl: m.photoUrl })),
   ];
+  // Friends who are not already in this group (task 20261003-web-reader-ios-parity).
+  const memberIdSet = new Set([user?.user_id, ...(contact.toUsers || []), ...groupMembers.map(m => m.user_id)]);
+  const addCandidates = (friends || []).filter(f => f && f.id && !memberIdSet.has(f.id));
   const items = gallery?.items || [];
   const fileItems = items.filter(i => i.kind === 'file');
   const mediaItems = items.filter(i => i.kind !== 'file');
@@ -354,7 +366,7 @@ export default function GroupInfoPanel({
             userId={userId} groupId={groupId}
             onBack={() => { setView('main'); setTimeout(() => announcementsRowRef.current?.focus(), 0); }}
             onGroupGone={() => onGroupGone?.()}
-            onUpgrade={() => { window.location.assign('/account'); }}
+            onUpgrade={goToPlans}
             onOpenLightbox={onOpenLightbox}
           />
         </div>
@@ -497,6 +509,11 @@ export default function GroupInfoPanel({
         {/* Members */}
         <section>
           <h3 className="group-info-label">Members · {memberList.length}</h3>
+          {onAddMembers && (
+            <button type="button" ref={addBtnRef} className="group-info-secondary-pill" onClick={() => setAddOpen(true)}>
+              Add friends
+            </button>
+          )}
           <div className={memberList.length > 8 ? 'group-info-members group-info-members-scroll' : 'group-info-members'}>
             {memberList.map((m) => (
               <div key={m.key} className="group-info-member">
@@ -556,6 +573,15 @@ export default function GroupInfoPanel({
           )}
         </section>
       </div>
+
+      {onAddMembers && (
+        <AddGroupMembersModal
+          open={addOpen}
+          onClose={() => { setAddOpen(false); setTimeout(() => addBtnRef.current?.focus(), 0); }}
+          candidates={addCandidates}
+          onAdd={(added) => onAddMembers(groupId, added)}
+        />
+      )}
 
       {undo && (
         <div className="group-info-toast" role="status">

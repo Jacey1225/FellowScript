@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import JoinWithLinkModal from './JoinWithLinkModal.jsx';
+import { useCapabilities } from '../hooks/useCapabilities.js';
+import { exploreEntryUrl } from '../lib/exploreEntry.js';
 import { Button, Avatar, Typography, Modal, Form, Checkbox, Spin, Dropdown, Radio, Input, message as antMessage } from 'antd';
 import {
   MessageOutlined, PlusOutlined, EditOutlined, DeleteOutlined, UserAddOutlined,
-  RobotOutlined, MoreOutlined, FlagOutlined, StopOutlined,
+  RobotOutlined, MoreOutlined, FlagOutlined, StopOutlined, CompassOutlined,
 } from '@ant-design/icons';
 
 const { Text } = Typography;
@@ -173,6 +175,11 @@ export default function ContactsPanel({
   const [editingGroup,   setEditingGroup]   = useState(null);
   const [reportTarget,   setReportTarget]   = useState(null);
   const [form]                              = Form.useForm();
+  const caps = useCapabilities();
+  // Task 20261003-web-reader-ios-parity (E1): iOS shows an Explore groups row
+  // when explorer_browse is on. Desktop has no /explore route, so this opens
+  // the https page in the system browser (same hand-off as Publish).
+  const exploreUrl = exploreEntryUrl(caps);
 
   const handleBlock = (contact) => {
     Modal.confirm({
@@ -241,6 +248,7 @@ export default function ContactsPanel({
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.55rem 0.8rem 0.25rem' }}>
           <Text style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: '0.52rem', letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(255,198,26,0.4)' }}>Friends</Text>
           <Button type="text" size="small" icon={<UserAddOutlined />} onClick={() => setShowAddFriend(v => !v)}
+            aria-label="Add a friend" aria-expanded={showAddFriend}
             style={{ color: 'rgba(255,198,26,0.5)', padding: '0 3px', height: 20 }} />
         </div>
         {showAddFriend && (
@@ -288,10 +296,21 @@ export default function ContactsPanel({
               style={{ color: 'rgba(255,198,26,0.7)', padding: '0 6px', minHeight: 44, fontSize: '0.62rem' }}>
               Join with a link
             </Button>
-            <Button type="text" size="small" icon={<PlusOutlined />} onClick={openNewGroup}
+            <Button type="text" size="small" icon={<PlusOutlined />} onClick={openNewGroup} aria-label="Create a group"
               style={{ color: 'rgba(255,198,26,0.5)', padding: '0 3px', height: 20 }} />
           </span>
         </div>
+        {exploreUrl && (
+          <button
+            type="button"
+            className="explore-groups-row"
+            onClick={() => { window.open(exploreUrl, '_blank', 'noopener,noreferrer'); }}
+          >
+            <CompassOutlined aria-hidden="true" />
+            <span className="explore-groups-row-text">Explore groups</span>
+            <span className="group-info-sr"> (opens in your browser)</span>
+          </button>
+        )}
         {groupList.length === 0
           ? <Text style={{ display: 'block', textAlign: 'center', padding: '0.6rem 0.5rem', color: 'rgba(242,242,242,0.2)', fontSize: '0.62rem' }}>No groups yet</Text>
           : groupList.map(([gid, g]) => {
