@@ -37,6 +37,10 @@ struct AccountView: View {
     @Environment(\.accessibilityReduceMotion) var reduceMotion
     @ObservedObject var upgradeCenter = UpgradePromptCenter.shared
     @StateObject var vm = AccountViewModel()
+    // Friend invite code surfaces (task 20261003-ios-friend-offer-code-redeem).
+    @StateObject var invite = InviteCodeViewModel()
+    @State var showInviteField = false
+    @State var codeCopied = false
     @ObservedObject var store = StoreKitManager.shared
 
     // Subscription: member-count picker for a new plan (1-8)
@@ -221,6 +225,8 @@ struct AccountView: View {
                 await store.syncEntitlements(userId: user.user_id, service: appState.service)
                 await vm.loadSubscription(userId: user.user_id)
                 await vm.loadRewardSummary(userId: user.user_id)
+                invite.service = appState.service
+                await invite.loadFriendCode(userId: user.user_id)
             }
         }
         .sheet(item: $activeSheet) { sheet in

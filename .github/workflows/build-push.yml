@@ -178,6 +178,20 @@ jobs:
       APPLE_PROMO_KEY_ID: "G6DRYNCNRS"
       APPLE_PROMO_KEY_PATH: "/tmp/ci-unused-apple-promo-key.p8"
       APPLE_PROMO_OFFERS: '{"com.fellowscript.access.one":"invite_reward_50_v2","com.fellowscript.access.two":"invite_reward_50_v2_2","com.fellowscript.access.three":"invite_reward_50_v2_3","com.fellowscript.access.four":"invite_reward_50_v2_4","com.fellowscript.access.five":"invite_reward_50_v2_5","com.fellowscript.access.six":"invite_reward_50_v2_6","com.fellowscript.access.seven":"invite_reward_50_v2_7","com.fellowscript.access.eight":"invite_reward_50_v2_8"}'
+      # validate_offer_codes_config() (task 20261003-ios-friend-offer-code-redeem)
+      # fails fast at boot like the validators above. Flag "false" => the ASC key
+      # file is never read, so these are throwaway CI values (not real secrets).
+      IOS_OFFER_CODES_ENABLED: "false"
+      IOS_OFFER_CODE_EXPIRY_DAYS: "30"
+      IOS_OFFER_CODE_RATE_LIMIT: "5/minute"
+      IOS_OFFER_CODE_IP_DAILY_CAP: "3"
+      IOS_OFFER_CODE_DAILY_MINT_CAP: "100"
+      APPLE_ASC_KEY_ID: "JZCLMWLW83"
+      APPLE_ASC_ISSUER_ID: "00000000-0000-0000-0000-000000000000"
+      APPLE_ASC_KEY_PATH: "/tmp/ci-unused-asc-key.p8"
+      APPLE_OFFER_CODE_ID: "ci-unused-offer-id"
+      APPLE_OFFER_CODE_REFERENCE_NAME: "friend_invite_50_new"
+      APPLE_APP_STORE_ID: "6791701454"
 
     steps:
       - name: Checkout

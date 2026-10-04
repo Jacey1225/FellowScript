@@ -313,6 +313,11 @@ protocol DataServiceProtocol {
     // (extension below) report "unavailable"; NetworkService supplies the real ones.
     func fetchRewardSummary(userId: String) async throws -> FSRewardSummary?
     func claimAppleReward(userId: String) async throws -> FSApplePromoSignature
+    // Friend invite codes + iOS offer-code redemption (task 20261003-ios-friend-offer-code-redeem).
+    // Default implementations (extension below) report "unavailable"; NetworkService supplies the real ones.
+    func fetchFriendCode(userId: String) async throws -> FSFriendCode?
+    func requestIosOfferCode(userId: String, code: String) async throws -> FSIosOfferCode
+    func signUp(username: String, email: String, password: String, termsAccepted: Bool, inviteCode: String?) async throws -> FSUser
 }
 
 extension DataServiceProtocol {
@@ -359,6 +364,13 @@ extension DataServiceProtocol {
     func fetchRewardSummary(userId: String) async throws -> FSRewardSummary? { nil }
     func claimAppleReward(userId: String) async throws -> FSApplePromoSignature {
         throw AppError.networkError("Rewards aren't available right now.")
+    }
+    func fetchFriendCode(userId: String) async throws -> FSFriendCode? { nil }
+    func requestIosOfferCode(userId: String, code: String) async throws -> FSIosOfferCode {
+        throw InviteCodeError.disabled
+    }
+    func signUp(username: String, email: String, password: String, termsAccepted: Bool, inviteCode: String?) async throws -> FSUser {
+        try await signUp(username: username, email: email, password: password, termsAccepted: termsAccepted)
     }
 }
 

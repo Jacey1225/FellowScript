@@ -211,6 +211,13 @@ async def lifespan(_: FastAPI):
     from backend.subscription.owner_rewards import validate_owner_rewards_config
     validate_owner_rewards_config()
 
+    # Eager iOS offer-code config validation (task 20261003-ios-friend-offer-code-redeem):
+    # IOS_OFFER_CODE* / APPLE_ASC_* / APPLE_OFFER_CODE_* / APPLE_APP_STORE_ID, no
+    # implicit defaults; the ASC .p8 is only loaded when IOS_OFFER_CODES_ENABLED=true.
+    # Deliberately not caught here.
+    from backend.subscription.apple_offer_codes import validate_offer_codes_config
+    validate_offer_codes_config()
+
     # Eager Bible data validation (task 20260927-esv-bible-source-migration,
     # revision 2) -- same rationale as every validate_*_config() call above.
     # `data/bible.json` is now generated from a vendored, pinned World

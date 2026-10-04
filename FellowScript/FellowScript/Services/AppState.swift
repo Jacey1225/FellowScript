@@ -249,8 +249,9 @@ final class AppState: ObservableObject {
         requestPushNotifications()
     }
 
-    func signUp(username: String, email: String, password: String, termsAccepted: Bool) async throws {
-        let user = try await service.signUp(username: username, email: email, password: password, termsAccepted: termsAccepted)
+    func signUp(username: String, email: String, password: String, termsAccepted: Bool, inviteCode: String? = nil) async throws {
+        let user = try await service.signUp(username: username, email: email, password: password,
+                                            termsAccepted: termsAccepted, inviteCode: inviteCode)
         persist(user)
         requestPushNotifications()
     }

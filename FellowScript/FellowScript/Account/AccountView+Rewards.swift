@@ -2,8 +2,9 @@
 // Shown only when the backend reports a reward summary (flag on) AND the user
 // has an earned reward on an Apple subscription. Stripe owners get the discount
 // automatically on the web, so nothing is shown for them here. Invitees who are
-// brand-new subscribers on iOS cannot receive a discount from a code (Apple
-// restriction); they subscribe on the web.
+// brand-new subscribers on iOS cannot get a promotional-offer discount from a
+// code (Apple restriction); when IOS_OFFER_CODES_ENABLED is on they redeem a
+// one-time Apple offer code instead (AccountView+Invite.swift).
 
 import SwiftUI
 

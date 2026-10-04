@@ -24,6 +24,9 @@ struct AuthView: View {
     // Guideline 1.2 EULA gate — required for all three account-creation
     // paths (password, Google, Apple), not just the plain sign-up button.
     @State private var termsAccepted = false
+    // Optional friend invite code, sent as `invite_code` at email signup only.
+    @State private var inviteCode = ""
+    @State private var showInviteCode = false
     @State private var pendingMfaUserId: String? = nil
     @State private var showForgotPassword = false
     @FocusState private var focusField: Field?
@@ -283,6 +286,27 @@ struct AuthView: View {
                             .padding(.top, Theme.spacingXS)
                             .accessibilityLabel("I agree to the Terms of Service, including its zero-tolerance policy for objectionable content and abusive behavior.")
                             .accessibilityAddTraits(termsAccepted ? [.isButton, .isSelected] : .isButton)
+
+                            // Optional invite code (task 20261003-ios-friend-offer-code-redeem).
+                            // A bad code never blocks signup and its validity is never shown.
+                            Button(action: { showInviteCode.toggle() }) {
+                                Text("Have an invite code?")
+                                    .font(.inter(Theme.fontSM)).foregroundColor(Theme.gold)
+                                    .frame(minHeight: 44)
+                            }
+                            .accessibilityIdentifier("signupInviteDisclosure")
+                            if showInviteCode {
+                                TextField("Invite code", text: $inviteCode)
+                                    .font(.inter(Theme.fontBody)).foregroundColor(Theme.parchment)
+                                    .textInputAutocapitalization(.characters)
+                                    .autocorrectionDisabled(true)
+                                    .keyboardType(.asciiCapable)
+                                    .padding(Theme.spacingSM)
+                                    .background(Theme.inputBg)
+                                    .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
+                                    .overlay(RoundedRectangle(cornerRadius: Theme.radius).stroke(Theme.borderGoldDim, lineWidth: 1))
+                                    .accessibilityIdentifier("signupInviteCodeField")
+                            }
                         }
                     }
                     .widgetCard()
@@ -323,7 +347,7 @@ struct AuthView: View {
     }
 
     private func clearForm() {
-        username = ""; email = ""; password = ""; errorMsg = ""; termsAccepted = false
+        username = ""; email = ""; password = ""; errorMsg = ""; termsAccepted = false; inviteCode = ""
     }
 
     private func signInWithGoogle() async {
@@ -418,7 +442,9 @@ struct AuthView: View {
             if isSignIn {
                 try await appState.signIn(username: username, password: password)
             } else {
-                try await appState.signUp(username: username, email: email, password: password, termsAccepted: termsAccepted)
+                let trimmedInvite = InviteCodeViewModel.normalize(inviteCode)
+                try await appState.signUp(username: username, email: email, password: password, termsAccepted: termsAccepted,
+                                          inviteCode: trimmedInvite.isEmpty ? nil : trimmedInvite)
             }
             onComplete?()
         } catch AppError.mfaRequired(let userId) {

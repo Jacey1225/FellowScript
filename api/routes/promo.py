@@ -2,6 +2,7 @@
 
   POST /promo/{user_id}/validate          authenticated, rate-limited, uniform result
   POST /promo/{user_id}/friend-code       authenticated; get-or-create the caller's invite code
+  POST /promo/{user_id}/ios-offer-code    authenticated; friend code -> one-time-use Apple offer code
   POST/GET/PATCH /admin/promo/creators..  admin only
   POST/GET/PATCH /admin/promo/codes..     admin only
   GET /admin/promo/report                 redemption counts per creator
@@ -31,6 +32,10 @@ from backend.rate_limiting import get_client_ip, limiter
 from backend.subscription import stripe_service
 from backend.subscription.promo import PromoError, PromoManager, promo_config, promo_enabled
 from backend.subscription.owner_rewards import RewardManager, rewards_config, rewards_enabled
+from backend.subscription.apple_offer_codes import (
+    OfferCodeDenied, OfferCodeManager, OfferCodeUnavailable, offer_codes_config, offer_codes_enabled,
+)
+from starlette.concurrency import run_in_threadpool
 
 logger = logging.getLogger(__name__)
 audit_logger = logging.getLogger("admin_audit")
@@ -60,6 +65,17 @@ def _rewards_not_limited() -> bool:
 
 def _rate() -> str:
     return promo_config().validate_rate_limit
+
+
+def _offer_rate() -> str:
+    try:
+        return offer_codes_config().rate_limit
+    except Exception:
+        return "100000/minute"   # unreachable in effect: exempt_when below
+
+
+def _offer_not_limited() -> bool:
+    return not offer_codes_enabled()
 
 
 def _not_limited() -> bool:
@@ -148,6 +164,50 @@ async def get_friend_code(
         db.close()
     return {"code": code, "link": f"{stripe_service._SITE}/?code={code}",
             "percent_off": promo_config().discount_percent}
+
+
+class IosOfferCodeBody(BaseModel):
+    code: str = Field(max_length=64)
+
+
+def _issue_offer_code(user_id: str, code: str, ip: str) -> dict:
+    db = OfferCodeManager()
+    try:
+        return db.request_code(user_id, code, ip)
+    finally:
+        db.close()
+
+
+@promo_router.post("/{user_id}/ios-offer-code")
+@limiter.limit(_offer_rate, exempt_when=_offer_not_limited)
+@limiter.limit(_offer_rate, key_func=_user_key, exempt_when=_offer_not_limited)
+async def ios_offer_code(
+    request: Request, response: Response, user_id: str, body: IosOfferCodeBody,
+    _: str = Depends(require_match("user_id")),
+) -> dict:
+    """Redeem a friend invite code on iOS: validate fully, then (only if valid)
+    mint ONE one-time-use Apple offer code for the caller and return it with a
+    redeem URL. Uniform 404 while IOS_OFFER_CODES_ENABLED is off (before auth).
+    Every validation failure is the identical 400 ``invalid_invite_code`` and makes
+    no App Store Connect call; if validation passes but no code can be issued
+    right now the answer is 503 and nothing is fabricated. Idempotent: a retry
+    returns the same batch's code and never mints a second one. The owner reward is
+    NOT credited here; only a verified Apple transaction credits it."""
+    if not offer_codes_enabled():
+        raise HTTPException(status_code=404, detail="Not found")
+    response.headers["Cache-Control"] = "no-store"
+    ip = get_client_ip(request)
+    try:
+        return await run_in_threadpool(_issue_offer_code, user_id, body.code, ip)
+    except OfferCodeDenied:
+        logger.info("ios offer code denied user=%s ip=%s", user_id, ip)
+        raise HTTPException(status_code=400, detail={"code": "invalid_invite_code",
+                                                     "message": "This invite code isn't valid."})
+    except OfferCodeUnavailable:
+        raise HTTPException(status_code=503, detail="Couldn't prepare your offer right now. Try again shortly.")
+    except Exception as e:
+        logger.error("ios offer code failed for %s: %s", user_id, type(e).__name__)
+        raise HTTPException(status_code=503, detail="Couldn't prepare your offer right now. Try again shortly.")
 
 
 def _email(db: PromoManager, user_id: str) -> str:

@@ -81,6 +81,7 @@ DDL_MODULES = (
     "threads",
     "join_requests",
     "home_messages",
+    "ios_offer_redemptions",
 )
 
 

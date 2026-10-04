@@ -15,6 +15,7 @@ from backend.subscription.promo import PromoManager, promo_config, promo_enabled
 from backend.subscription.owner_rewards import (
     RewardManager, credit_purchase_reward, reconcile_apple_offer, rewards_enabled,
 )
+from backend.subscription.apple_offer_codes import offer_codes_enabled, reconcile_offer_code
 
 subscription_router = APIRouter(prefix="/subscriptions")
 logger = logging.getLogger(__name__)
@@ -362,6 +363,8 @@ async def apple_sync(req: AppleSyncRequest, current_user: str = Depends(get_curr
         # here is logged and retried by the next sync.
         try:
             reconcile_apple_offer(req.user_id, payload)
+            # Friend-invite offer code (offerType 3): credits the owner reward.
+            reconcile_offer_code(req.user_id, payload)
         except Exception as e:
             logger.error("apple reward reconcile failed: %s", type(e).__name__)
         return db.get_user_subscription(req.user_id) or {"status": status}
@@ -398,7 +401,7 @@ async def apple_notifications(request: Request) -> dict:
     try:
         if ntype in ("DID_RENEW", "SUBSCRIBED", "DID_CHANGE_RENEWAL_STATUS", "OFFER_REDEEMED"):
             db.update_status_by_apple_txn(otxn, "active", _ms(txn.get("expiresDate")))
-            if rewards_enabled() and txn.get("offerIdentifier"):
+            if (rewards_enabled() or offer_codes_enabled()) and txn.get("offerIdentifier"):
                 # Raises on DB errors -> 500 below so Apple retries.
                 rm = RewardManager()
                 try:
@@ -406,6 +409,7 @@ async def apple_notifications(request: Request) -> dict:
                 finally:
                     rm.close()
                 reconcile_apple_offer(owner, txn)
+                reconcile_offer_code(owner, txn)
         elif ntype in ("EXPIRED", "REFUND", "REVOKE", "GRACE_PERIOD_EXPIRED"):
             db.cancel_by_apple_txn(otxn)
     except Exception as e:
