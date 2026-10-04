@@ -137,6 +137,9 @@ struct AccountView: View {
                         subscriptionSection
                             .id("subscriptionSection")
 
+                        // ── Invite a friend ────────────────────────────────────
+                        inviteCard
+
                         // ── Plan usage ─────────────────────────────────────────
                         usageSection
 
