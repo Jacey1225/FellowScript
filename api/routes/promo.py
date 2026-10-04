@@ -186,12 +186,12 @@ async def ios_offer_code(
     _: str = Depends(require_match("user_id")),
 ) -> dict:
     """Redeem a friend invite code on iOS: validate fully, then (only if valid)
-    mint ONE one-time-use Apple offer code for the caller and return it with a
-    redeem URL. Uniform 404 while IOS_OFFER_CODES_ENABLED is off (before auth).
+    hand the caller ONE one-time-use Apple offer code from the pre-created pool
+    (ASC batches are 500+ codes) and return it with a redeem URL. Uniform 404 while IOS_OFFER_CODES_ENABLED is off (before auth).
     Every validation failure is the identical 400 ``invalid_invite_code`` and makes
     no App Store Connect call; if validation passes but no code can be issued
     right now the answer is 503 and nothing is fabricated. Idempotent: a retry
-    returns the same batch's code and never mints a second one. The owner reward is
+    returns the same reserved index's code and never takes a second one. The owner reward is
     NOT credited here; only a verified Apple transaction credits it."""
     if not offer_codes_enabled():
         raise HTTPException(status_code=404, detail="Not found")

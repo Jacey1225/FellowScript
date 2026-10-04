@@ -1,19 +1,27 @@
-"""Backend coverage for task 20261003-ios-friend-offer-code-redeem.
+"""Backend coverage for task 20261003-ios-friend-offer-code-redeem (code POOL design).
 
-Proves: eager config validation (every var, key loaded only when enabled, flag
-requires promo + rewards, no key bytes in errors); flag-off uniform 404 before
-auth; the validation matrix (unknown / malformed / inactive / expired / exhausted
-/ own / creator-kind / ineligible-subscriber / already-redeemed / per-IP cap /
-max_redemptions incl. outstanding) each denied with ONE uniform 400 and ZERO ASC
-calls; fail-closed paths (preflight failure, mint rejected, mint ambiguous leaves
-a pending row that blocks re-mint, code not ready, global mint cap, DB error);
-idempotency (retry re-reads the same batch and never mints twice, concurrent
-requests mint once); ASC client contract (read-only preflight requires active +
-NEW-only + matching name, the single write is a 1-code batch, errors carry the
-status only); reward crediting (never at issue time, only on a verified offerType
-3 + our reference name transaction through apple/sync and the notification path,
-exactly once on replay, no double credit with a signup invite_code); auth and
-rate limiting. All ASC traffic is faked; there are no live calls.
+Apple only allows one-time-use offer-code batches of 500-25,000 codes (a 1-code
+batch is a live 409), so the server keeps a pool: one batch is created only when
+no usable one exists and each validated redemption is handed ONE code by index.
+Every ASC interaction here goes through a fake that REJECTS batches under 500.
+
+Proves: eager config validation (incl. batch size 500-25000, daily batch cap, expiry
+7-180, key loaded only when enabled, no key bytes in errors); flag-off uniform 404;
+the validation matrix each denied with ONE uniform 400 and ZERO ASC calls; the ASC
+client contract (read-only preflight, the single write requests >=500 codes against
+the configured offer, sorted de-duplicated CSV values, status-only errors); pool
+behaviour (one batch serves many users, distinct sequential indexes, code at the
+reserved index of the sorted values, adoption of an operator-seeded batch, exhaustion
+and near-expiry create a fresh batch, expired issuance superseded); fail-closed paths
+(preflight, batch rejected / ambiguous leaves a pending batch that blocks another
+create, values not ready or incomplete, code not ready after reservation, daily batch
+cap, daily issued cap, pool exhausted race, DB error) each 503 with an audit event and
+nothing fabricated; idempotency (retries and concurrent same-user requests return the
+same index and consume one; concurrent different users get distinct codes from one
+batch); reward crediting (never at issue time, only on a verified offerType 3 + our
+reference name transaction via apple/sync and notifications, exactly once on replay);
+and that no code value ever appears in logs, audit rows or any DB row. All ASC traffic
+is faked; there are no live calls.
 
 Run with: cd api && ../.venv/bin/python tests/test_ios_offer_codes.py
 """
@@ -77,6 +85,8 @@ OFFER_ENV = {
     "IOS_OFFER_CODE_RATE_LIMIT": "100000/minute",
     "IOS_OFFER_CODE_IP_DAILY_CAP": "3",
     "IOS_OFFER_CODE_DAILY_MINT_CAP": "1000000",
+    "IOS_OFFER_CODE_BATCH_SIZE": "500",
+    "IOS_OFFER_CODE_DAILY_BATCH_CAP": "1000",
     "APPLE_ASC_KEY_ID": "JZCLMWLW83",
     "APPLE_ASC_ISSUER_ID": "00000000-0000-0000-0000-000000000000",
     "APPLE_ASC_KEY_PATH": _KEY_FILE.name,
@@ -176,45 +186,98 @@ def set_flags(offer=True, rewards=True, promo_on=True, **env):
 
 
 class FakeAsc:
-    """Stands in for AscOfferCodeClient. Counts every call; never touches the network."""
+    """Stands in for AscOfferCodeClient and mimics ASC's rules: batches under 500
+    (or over 25,000) are rejected like the live 409. Counts every call; never
+    touches the network. ``fetch`` modes: ok | notready."""
 
-    def __init__(self, preflight_ok=True, mint="ok", fetch="ok"):
+    def __init__(self, preflight_ok=True, mint="ok", fetch="ok", batches=None):
         self.preflight_ok, self.mint, self.fetch = preflight_ok, mint, fetch
-        self.pre_calls = self.mint_calls = self.fetch_calls = 0
+        self.pre_calls = self.create_calls = self.fetch_calls = 0
+        self.create_sizes = []
         self.dates = []
-        self.batches = {}
+        self.batches = batches if batches is not None else {}    # asc id -> sorted code list
+        self._lock = threading.Lock()
+
+    @property
+    def mint_calls(self):
+        return self.create_calls
 
     @property
     def total(self):
-        return self.pre_calls + self.mint_calls + self.fetch_calls
+        return self.pre_calls + self.create_calls + self.fetch_calls
+
+    @staticmethod
+    def make_codes(n):
+        return sorted(f"T{uuid.uuid4().hex[:12].upper()}{i:05d}" for i in range(n))
+
+    def seed(self, asc_id, count=500):
+        self.batches[asc_id] = self.make_codes(count)
+        return self.batches[asc_id]
+
+    def all_codes(self):
+        return {c for v in self.batches.values() for c in v}
 
     def check_offer(self):
-        self.pre_calls += 1
+        with self._lock:
+            self.pre_calls += 1
         if not self.preflight_ok:
             raise aoc.AscRejected("offer not active / not new-subscribers / name mismatch")
 
-    def create_one_time_use_batch(self, expiration_date):
-        self.mint_calls += 1
-        self.dates.append(expiration_date)
+    def create_one_time_use_batch(self, number_of_codes, expiration_date):
+        with self._lock:
+            self.create_calls += 1
+            self.create_sizes.append(number_of_codes)
+            self.dates.append(expiration_date)
+        if number_of_codes < 500 or number_of_codes > 25000:
+            raise aoc.AscRejected("status 409")        # the live ENTITY_ERROR.ATTRIBUTE.INVALID
         if self.mint == "reject":
             raise aoc.AscRejected("status 409")
         if self.mint == "ambiguous":
             raise aoc.AscAmbiguous("ReadTimeout")
         bid = f"batch{uuid.uuid4().hex[:10]}"
-        self.batches[bid] = f"CODE{uuid.uuid4().hex[:10].upper()}"
+        self.seed(bid, number_of_codes)
         return bid
 
-    def fetch_code(self, batch_id):
-        self.fetch_calls += 1
+    def fetch_values(self, batch_id):
+        with self._lock:
+            self.fetch_calls += 1
         if self.fetch == "notready":
-            raise aoc.AscAmbiguous("code not ready")
-        return self.batches[batch_id]
+            raise aoc.AscAmbiguous("codes not ready")
+        if batch_id not in self.batches:
+            raise aoc.AscRejected("status 404")
+        return list(self.batches[batch_id])
 
 
-def use_fake(fake):
+ORIG_BATCHES = {}      # pre-existing pool rows (dev DB) -> status, restored at the end
+SKIP_RESET = False
+
+
+def reset_pool():
+    """Take every existing pool batch out of play so each test controls the pool."""
+    q("UPDATE ios_offer_batches SET status='failed' WHERE status IN ('pending','active')")
+
+
+def use_fake(fake, reset=True):
+    if reset:
+        reset_pool()
     aoc.get_client = lambda: fake
     aoc._preflight_ok_until = 0.0
     return fake
+
+
+def batch_rows():
+    return q("SELECT asc_batch_id, status, number_of_codes, next_index, ready_at IS NOT NULL "
+             "FROM ios_offer_batches WHERE status IN ('pending','active') ORDER BY created_at")
+
+
+def audit_actions(*uids):
+    return [r[0] for r in q("SELECT action FROM promo_audit_log WHERE actor_user_id=ANY(%s::uuid[]) "
+                            "OR owner_user_id=ANY(%s::uuid[])", (list(uids), list(uids)))]
+
+
+def ledger(uid):
+    return q("SELECT r.status, b.asc_batch_id, r.code_index FROM ios_offer_redemptions r "
+             "LEFT JOIN ios_offer_batches b ON b._id = r.batch_id WHERE r.user_id=%s ORDER BY r.created_at", (uid,))
 
 
 def post_offer(client, uid, tok, code, ip=None):
@@ -270,6 +333,21 @@ def test_config():
         check("blank flag refuses", attempt(IOS_OFFER_CODES_ENABLED="") is not None)
         check("flag 'yes' refuses", attempt(IOS_OFFER_CODES_ENABLED="yes") is not None)
         check("expiry 0 refuses", attempt(IOS_OFFER_CODE_EXPIRY_DAYS="0") is not None)
+        check("expiry 6 refuses (below the 3-day safety margin floor of 7)",
+              attempt(IOS_OFFER_CODE_EXPIRY_DAYS="6") is not None)
+        check("expiry 7 and 180 accepted", attempt(IOS_OFFER_CODE_EXPIRY_DAYS="7") is None
+              and attempt(IOS_OFFER_CODE_EXPIRY_DAYS="180") is None)
+        check("batch size 499 refuses (Apple minimum is 500)", attempt(IOS_OFFER_CODE_BATCH_SIZE="499") is not None)
+        check("batch size 1 refuses", attempt(IOS_OFFER_CODE_BATCH_SIZE="1") is not None)
+        check("batch size 25001 refuses (Apple maximum is 25000)",
+              attempt(IOS_OFFER_CODE_BATCH_SIZE="25001") is not None)
+        check("batch size non-int refuses", attempt(IOS_OFFER_CODE_BATCH_SIZE="lots") is not None)
+        check("batch size 500 and 25000 accepted", attempt(IOS_OFFER_CODE_BATCH_SIZE="500") is None
+              and attempt(IOS_OFFER_CODE_BATCH_SIZE="25000") is None)
+        check("daily batch cap 0 refuses", attempt(IOS_OFFER_CODE_DAILY_BATCH_CAP="0") is not None)
+        attempt()
+        check("config exposes batch size and batch cap",
+              aoc.offer_codes_config().batch_size == 500 and aoc.offer_codes_config().daily_batch_cap == 1000)
         check("expiry 181 refuses", attempt(IOS_OFFER_CODE_EXPIRY_DAYS="181") is not None)
         check("expiry non-int refuses", attempt(IOS_OFFER_CODE_EXPIRY_DAYS="soon") is not None)
         check("bad rate limit refuses", attempt(IOS_OFFER_CODE_RATE_LIMIT="lots") is not None)
@@ -364,52 +442,77 @@ def test_asc_client():
         captured["body"] = json.loads(req.content)
         captured["auth"] = req.headers.get("authorization", "")
         return httpx.Response(201, json={"data": {"id": "batch123"}})
-    bid = make(mint_h).create_one_time_use_batch("2026-11-01")
+    bid = make(mint_h).create_one_time_use_batch(500, "2026-11-01")
     body = captured["body"]["data"]
-    check("mint is a single POST to subscriptionOfferCodeOneTimeUseCodes",
+    check("batch create is a single POST to subscriptionOfferCodeOneTimeUseCodes",
           captured["method"] == "POST" and captured["path"] == "/v1/subscriptionOfferCodeOneTimeUseCodes")
-    check("mint requests exactly 1 code with expiration",
-          body["attributes"] == {"numberOfCodes": 1, "expirationDate": "2026-11-01"}, str(body))
-    check("mint binds to configured offer id (never creates an offer)",
+    check("batch create requests the configured pool size (500) with expiration",
+          body["attributes"] == {"numberOfCodes": 500, "expirationDate": "2026-11-01"}, str(body))
+    check("batch create binds to configured offer id (never creates an offer)",
           body["relationships"]["offerCode"]["data"] == {"type": "subscriptionOfferCodes", "id": cfg.offer_code_id})
-    check("mint returns batch id", bid == "batch123")
+    check("batch create returns batch id", bid == "batch123")
     check("ASC request is Bearer-JWT signed", captured["auth"].startswith("Bearer ey"))
     try:
-        make(lambda r: httpx.Response(201, json={"data": {}})).create_one_time_use_batch("2026-11-01")
+        make(lambda r: httpx.Response(201, json={"data": {}})).create_one_time_use_batch(500, "2026-11-01")
         e = None
     except Exception as ex:
         e = ex
-    check("mint with no batch id => AscAmbiguous", isinstance(e, aoc.AscAmbiguous))
+    check("batch create with no batch id => AscAmbiguous", isinstance(e, aoc.AscAmbiguous))
     try:
-        make(lambda r: httpx.Response(409, text="SECRET-BODY")).create_one_time_use_batch("2026-11-01")
+        make(lambda r: httpx.Response(409, text="SECRET-BODY")).create_one_time_use_batch(500, "2026-11-01")
         e = None
     except Exception as ex:
         e = ex
-    check("mint 409 => AscRejected, message carries status only",
+    check("batch create 409 => AscRejected, message carries status only",
           isinstance(e, aoc.AscRejected) and "SECRET-BODY" not in str(e) and "409" in str(e), str(e))
     try:
-        make(lambda r: httpx.Response(503)).create_one_time_use_batch("2026-11-01")
+        make(lambda r: httpx.Response(503)).create_one_time_use_batch(500, "2026-11-01")
         e = None
     except Exception as ex:
         e = ex
-    check("mint 5xx => AscAmbiguous (effect unknown)", isinstance(e, aoc.AscAmbiguous))
+    check("batch create 5xx => AscAmbiguous (effect unknown)", isinstance(e, aoc.AscAmbiguous))
 
-    def vals(text):
-        return make(lambda r: httpx.Response(200, text=text)).fetch_code("batch123")
-    check("fetch_code parses single value", vals("ABCDEF123456\n") == "ABCDEF123456")
-    for label, text in (("empty", ""), ("two codes", "AAAAAA111\nBBBBBB222\n"), ("malformed", "bad code!\n")):
+    # The fake used everywhere else enforces Apple's batch-size rule; prove it does.
+    fk = FakeAsc()
+    for n in (1, 499, 25001):
+        try:
+            fk.create_one_time_use_batch(n, "2026-11-01")
+            e = None
+        except Exception as ex:
+            e = ex
+        check(f"fake ASC rejects a {n}-code batch like the live API", isinstance(e, aoc.AscRejected))
+    check("fake ASC accepts 500", len(fk.batches[fk.create_one_time_use_batch(500, "2026-11-01")]) == 500)
+
+    def vals(text, status=200):
+        return make(lambda r: httpx.Response(status, text=text)).fetch_values("batch123")
+    csv_text = "ZZZZZZ9\nAAAAAA1\nMMMMMM5\nAAAAAA1\n"
+    check("fetch_values returns sorted, de-duplicated values", vals(csv_text) == ["AAAAAA1", "MMMMMM5", "ZZZZZZ9"],
+          str(vals(csv_text)))
+    check("fetch_values accepts a CSV with a header and ignores it",
+          vals("Code\nAAAAAA1\nBBBBBB2\n") == ["AAAAAA1", "BBBBBB2"])
+    seen_v = []
+    make(lambda r: (seen_v.append((r.method, r.url.path)), httpx.Response(200, text="AAAAAA1"))[1]).fetch_values("batch123")
+    check("fetch_values is a GET of the batch /values endpoint",
+          seen_v == [("GET", "/v1/subscriptionOfferCodeOneTimeUseCodes/batch123/values")], str(seen_v))
+    for label, text in (("empty", ""), ("malformed only", "bad code!\n")):
         try:
             vals(text)
             e = None
         except Exception as ex:
             e = ex
-        check(f"fetch_code {label} => AscAmbiguous (not ready/closed)", isinstance(e, aoc.AscAmbiguous))
+        check(f"fetch_values {label} => AscAmbiguous (not ready, closed)", isinstance(e, aoc.AscAmbiguous))
     try:
-        make(lambda r: httpx.Response(200, text="X")).fetch_code("../etc")
+        vals("X", status=404)
         e = None
     except Exception as ex:
         e = ex
-    check("fetch_code rejects unsafe batch id", isinstance(e, aoc.AscAmbiguous))
+    check("fetch_values 404 => AscRejected", isinstance(e, aoc.AscRejected))
+    try:
+        make(lambda r: httpx.Response(200, text="X")).fetch_values("../etc")
+        e = None
+    except Exception as ex:
+        e = ex
+    check("fetch_values rejects unsafe batch id", isinstance(e, aoc.AscAmbiguous))
     check("redeem_url format",
           aoc.redeem_url("ABC123") == "https://apps.apple.com/redeem?ctx=offercodes&id=6791701454&code=ABC123")
     set_flags(offer=False, rewards=False)
@@ -451,7 +554,7 @@ def test_auth(client):
 
 
 def test_happy_and_idempotency(client):
-    print("\n== Valid request: one code, idempotent retries ==")
+    print("\n== Valid request: pool batch, one code per user, idempotent retries ==")
     set_flags()
     fake = use_fake(FakeAsc())
     oid, otok, code = mk_owner(client)
@@ -463,40 +566,70 @@ def test_happy_and_idempotency(client):
           r.status_code == 200 and {"offer_code", "redeem_url", "expires_at"} <= set(j), f"{r.status_code} {r.text}")
     check("response is no-store", "no-store" in r.headers.get("cache-control", ""))
     check("redeem_url carries the code", j.get("offer_code", "x") in j.get("redeem_url", ""))
-    check("exactly one preflight + one mint", fake.pre_calls == 1 and fake.mint_calls == 1,
-          f"{fake.pre_calls}/{fake.mint_calls}")
-    rows = rows_for(uid)
-    check("exactly one issued ledger row with batch id",
-          len(rows) == 1 and rows[0][0] == "issued" and rows[0][1] in fake.batches, str(rows))
-    check("ledger stores a hash, not the raw IP or code",
-          rows[0][3] and ip not in rows[0][3] and j["offer_code"] not in json.dumps([list(map(str, x)) for x in rows]))
+    check("first request creates exactly one batch of >=500 codes (preflight once)",
+          fake.pre_calls == 1 and fake.create_calls == 1 and fake.create_sizes == [500],
+          f"{fake.pre_calls}/{fake.create_calls}/{fake.create_sizes}")
+    check("no ASC call ever asked for fewer than 500 codes", all(n >= 500 for n in fake.create_sizes))
+    led = ledger(uid)
+    check("exactly one issued ledger row on the pool batch at index 0",
+          len(led) == 1 and led[0][0] == "issued" and led[0][1] in fake.batches and led[0][2] == 0, str(led))
+    check("returned code is the sorted batch value at the reserved index",
+          j.get("offer_code") == fake.batches[led[0][1]][0])
+    check("batch row: active, ready, size 500, one index handed out",
+          batch_rows() == [(led[0][1], "active", 500, 1, True)], str(batch_rows()))
+    ip_hash = q("SELECT ip_hash FROM ios_offer_redemptions WHERE user_id=%s", (uid,))[0][0]
+    check("ledger stores a hash, not the raw IP", ip_hash and ip not in ip_hash)
     check("no reward at issue time", rewards_of(oid) == [])
     # retries
     for i in range(3):
         rr = post_offer(client, uid, tok, code, ip)
         check(f"retry {i + 1} returns the same code", rr.status_code == 200 and rr.json()["offer_code"] == j["offer_code"],
               f"{rr.status_code} {rr.text}")
-    check("retries never mint a second batch", fake.mint_calls == 1, str(fake.mint_calls))
-    check("still one ledger row", len(rows_for(uid)) == 1)
+    check("retries never create another batch", fake.create_calls == 1, str(fake.create_calls))
+    check("retries never consume another index", batch_rows()[0][3] == 1, str(batch_rows()))
+    check("still one ledger row", len(ledger(uid)) == 1)
     check("still no reward after retries", rewards_of(oid) == [])
-    # normalisation of the entered code (case / whitespace) maps to the same row
     rr = post_offer(client, uid, tok, " " + code.lower() + " ", ip)
     check("code entry is normalised (case/whitespace) and stays idempotent",
-          rr.status_code == 200 and fake.mint_calls == 1, f"{rr.status_code} {rr.text}")
+          rr.status_code == 200 and rr.json()["offer_code"] == j["offer_code"] and batch_rows()[0][3] == 1,
+          f"{rr.status_code} {rr.text}")
     # a different (valid) friend code cannot swap the live issuance
     oid2, _, code2 = mk_owner(client)
     rr = post_offer(client, uid, tok, code2, ip)
-    check("a different friend code on a live issuance is denied (uniform) with no mint",
-          is_uniform_denial(rr) and fake.mint_calls == 1, f"{rr.status_code} {rr.text}")
-    # expiry date sent to ASC is in the future
+    check("a different friend code on a live issuance is denied (uniform), nothing consumed",
+          is_uniform_denial(rr) and batch_rows()[0][3] == 1, f"{rr.status_code} {rr.text}")
     check("ASC expirationDate is a future ISO date", fake.dates and fake.dates[0] > "2026")
+
+    # a second user is served from the SAME batch at the next index
+    u2, t2 = signup(client)
+    r2 = post_offer(client, u2, t2, code, new_ip())
+    l2 = ledger(u2)
+    check("second user served from the same batch, no new create",
+          r2.status_code == 200 and fake.create_calls == 1 and l2 and l2[0][1] == led[0][1] and l2[0][2] == 1,
+          f"{r2.status_code} {l2} creates={fake.create_calls}")
+    check("second user gets a different code (the code at index 1)",
+          r2.json().get("offer_code") == fake.batches[led[0][1]][1] != j["offer_code"])
+    check("pool counter advanced by exactly one per user", batch_rows()[0][3] == 2, str(batch_rows()))
+
+    # 40 sequential issuances never repeat a code or an index
+    seen_codes, seen_idx = {j["offer_code"], r2.json()["offer_code"]}, {0, 1}
+    for _ in range(8):
+        uu, tt = signup(client)
+        rr = post_offer(client, uu, tt, code, new_ip())
+        if rr.status_code == 200:
+            seen_codes.add(rr.json()["offer_code"])
+            seen_idx.add(ledger(uu)[0][2])
+    check("10 users => 10 distinct codes on 10 distinct indexes, still one batch",
+          len(seen_codes) == 10 and seen_idx == set(range(10)) and fake.create_calls == 1,
+          f"{len(seen_codes)} {sorted(seen_idx)} creates={fake.create_calls}")
 
 
 def test_concurrent(client):
-    print("\n== Concurrent requests mint once ==")
+    print("\n== Concurrency ==")
     set_flags()
     fake = use_fake(FakeAsc())
     oid, otok, code = mk_owner(client)
+    # one user, many simultaneous requests: one row, one index, one code
     uid, tok = signup(client)
     ip = new_ip()
     out = []
@@ -506,13 +639,37 @@ def test_concurrent(client):
     ts = [threading.Thread(target=go) for _ in range(5)]
     [t.start() for t in ts]
     [t.join() for t in ts]
-    check("concurrent requests mint at most one batch", fake.mint_calls == 1, str(fake.mint_calls))
+    check("same-user concurrency creates at most one batch", fake.create_calls == 1, str(fake.create_calls))
     live = q("SELECT COUNT(*) FROM ios_offer_redemptions WHERE user_id=%s AND status IN ('pending','issued','redeemed')",
              (uid,))[0][0]
-    check("exactly one live ledger row", live == 1, str(live))
+    check("same-user concurrency leaves exactly one live ledger row", live == 1, str(live))
     codes = {r.json().get("offer_code") for r in out if r.status_code == 200}
-    check("every success returned the same code", len(codes) <= 1, str(codes))
-    check("no 5xx other than 503", all(r.status_code in (200, 400, 503) for r in out), str([r.status_code for r in out]))
+    check("every success returned the same code", len(codes) <= 1 and len(codes) == 1, str(codes))
+    check("same-user concurrency consumed exactly one index", batch_rows()[0][3] == 1, str(batch_rows()))
+    check("no status other than 200/400/503", all(r.status_code in (200, 400, 503) for r in out),
+          str([r.status_code for r in out]))
+
+    # many users at once on a cold pool: a single batch, distinct codes and indexes
+    reset_pool()
+    fake = use_fake(FakeAsc(), reset=False)
+    users = [signup(client) for _ in range(6)]
+    res = {}
+
+    def go2(u, t):
+        res[u] = post_offer(client, u, t, code, new_ip())
+    ts = [threading.Thread(target=go2, args=ut) for ut in users]
+    [t.start() for t in ts]
+    [t.join() for t in ts]
+    ok = {u: r for u, r in res.items() if r.status_code == 200}
+    check("cold-pool stampede creates exactly one batch", fake.create_calls == 1, f"creates={fake.create_calls}")
+    check("every concurrent user got a code or a clean 503",
+          all(r.status_code in (200, 503) for r in res.values()), str([r.status_code for r in res.values()]))
+    idx = [ledger(u)[0][2] for u in ok]
+    check("distinct users got distinct codes and distinct indexes",
+          len({r.json()["offer_code"] for r in ok.values()}) == len(ok) and len(set(idx)) == len(idx),
+          f"{len(ok)} {sorted(idx)}")
+    check("counter equals codes handed out", batch_rows()[0][3] == len(ok), f"{batch_rows()} ok={len(ok)}")
+    check("at least some users succeeded", len(ok) >= 1)
 
 
 def test_validation_matrix(client):
@@ -582,12 +739,13 @@ def test_validation_matrix(client):
     for _ in range(3):
         uu, tt = signup(client)
         ok += post_offer(client, uu, tt, cc, ip).status_code == 200
-    check("3 issuances from one IP succeed", ok == 3 and fake2.mint_calls == 3, f"{ok} {fake2.mint_calls}")
+    check("3 issuances from one IP succeed from ONE pool batch", ok == 3 and fake2.create_calls == 1,
+          f"{ok} {fake2.create_calls}")
     uu, tt = signup(client)
     before = fake2.total
     r = post_offer(client, uu, tt, cc, ip)
     check("4th from the same IP is denied uniformly", is_uniform_denial(r), f"{r.status_code} {r.text}")
-    check("IP cap denial makes no ASC mint", fake2.mint_calls == 3 and fake2.total == before)
+    check("IP cap denial makes no ASC call", fake2.create_calls == 1 and fake2.total == before)
     check("IP cap denial leaves no ledger row", rows_for(uu) == [])
     r = post_offer(client, uu, tt, cc, new_ip())
     check("a different IP is not blocked by that cap", r.status_code == 200, f"{r.status_code} {r.text}")
@@ -601,7 +759,7 @@ def test_validation_matrix(client):
         uu, tt = signup(client)
         got.append(post_offer(client, uu, tt, cm).status_code)
     check("max_redemptions=2 counts outstanding issuances: 200,200,400",
-          got == [200, 200, 400] and fake3.mint_calls == 2, f"{got} {fake3.mint_calls}")
+          got == [200, 200, 400] and fake3.create_calls == 1, f"{got} {fake3.create_calls}")
 
 
 def test_already_redeemed(client):
@@ -636,58 +794,83 @@ def test_fail_closed(client):
     r = post_offer(client, u, t, code)
     check("preflight failure => 503, nothing fabricated",
           r.status_code == 503 and "offer_code" not in r.text, f"{r.status_code} {r.text}")
-    check("preflight failure => no mint", fake.mint_calls == 0)
-    check("preflight failure => no ledger row", rows_for(u) == [])
-    check("preflight failure is not cached as success", (fake.check_offer, aoc._preflight_ok_until == 0.0)[1])
+    check("preflight failure => no batch create, no values read", fake.create_calls == 0 and fake.fetch_calls == 0)
+    check("preflight failure => no ledger row, no batch row", rows_for(u) == [] and batch_rows() == [])
+    check("preflight failure is not cached as success", aoc._preflight_ok_until == 0.0)
 
-    # mint definitively rejected
+    # batch create definitively rejected
     fake = use_fake(FakeAsc(mint="reject"))
     u, t = signup(client)
     r = post_offer(client, u, t, code)
-    check("mint rejected => 503, nothing fabricated", r.status_code == 503 and "offer_code" not in r.text,
+    check("batch rejected => 503, nothing fabricated", r.status_code == 503 and "offer_code" not in r.text,
           f"{r.status_code} {r.text}")
-    rows = rows_for(u)
-    check("mint rejected => row marked failed", [x[0] for x in rows] == ["failed"], str(rows))
-    fake2 = use_fake(FakeAsc())
+    check("batch rejected => no redemption row, batch row failed",
+          rows_for(u) == [] and batch_rows() == [], f"{rows_for(u)} {batch_rows()}")
+    check("batch rejected => operator audit event", "ios_offer_batch_failed" in audit_actions(u))
+    fake2 = use_fake(FakeAsc(), reset=False)
     r = post_offer(client, u, t, code)
-    check("after a definite rejection the user can retry and get a code", r.status_code == 200 and fake2.mint_calls == 1,
-          f"{r.status_code} {r.text}")
+    check("after a definite rejection the user can retry and get a code (failed batch never blocks)",
+          r.status_code == 200 and fake2.create_calls == 1, f"{r.status_code} {r.text}")
 
-    # mint ambiguous: pending row, re-mint blocked
+    # batch create ambiguous: pending batch, another create blocked
     fake = use_fake(FakeAsc(mint="ambiguous"))
     u, t = signup(client)
     r = post_offer(client, u, t, code)
-    check("ambiguous mint => 503", r.status_code == 503 and "offer_code" not in r.text, f"{r.status_code}")
-    check("ambiguous mint leaves a pending row", [x[0] for x in rows_for(u)] == ["pending"], str(rows_for(u)))
-    fake_ok = use_fake(FakeAsc())
-    r = post_offer(client, u, t, code)
-    check("pending row blocks any re-mint (duplicate risk) => 503", r.status_code == 503 and fake_ok.mint_calls == 0,
-          f"{r.status_code} mints={fake_ok.mint_calls}")
+    check("ambiguous batch create => 503", r.status_code == 503 and "offer_code" not in r.text, f"{r.status_code}")
+    check("ambiguous create leaves a pending batch and no redemption row",
+          [b[1] for b in batch_rows()] == ["pending"] and rows_for(u) == [], str(batch_rows()))
+    check("ambiguous create => operator audit event", "ios_offer_batch_ambiguous" in audit_actions(u))
+    fake_ok = use_fake(FakeAsc(), reset=False)
+    u3, t3 = signup(client)
+    r = post_offer(client, u3, t3, code)
+    check("pending batch blocks any second create (duplicate risk) => 503, no ASC create",
+          r.status_code == 503 and fake_ok.create_calls == 0, f"{r.status_code} creates={fake_ok.create_calls}")
+    check("pending-blocked => audit event", "ios_offer_batch_pending_blocked" in audit_actions(u3))
 
-    # code not ready after a successful mint
+    # values not ready on a fresh batch
     fake = use_fake(FakeAsc(fetch="notready"))
     u, t = signup(client)
     r = post_offer(client, u, t, code)
-    check("code not ready => 503, no code fabricated", r.status_code == 503 and "offer_code" not in r.text,
+    check("values not ready => 503, no code fabricated", r.status_code == 503 and "offer_code" not in r.text,
           f"{r.status_code} {r.text}")
-    check("code-not-ready row stays issued (batch exists)", [x[0] for x in rows_for(u)] == ["issued"])
-    fake_ok = use_fake(FakeAsc())
-    fake_ok.batches = dict(fake.batches)          # same ASC state, now ready
+    check("not ready => batch exists but is NOT marked ready, no index reserved, no row",
+          batch_rows() and batch_rows()[0][1:] == ("active", 500, 0, False) and rows_for(u) == [], str(batch_rows()))
+    check("not ready => operator audit event", "ios_offer_pool_not_ready" in audit_actions(u))
+    fake_ok = use_fake(FakeAsc(batches=fake.batches), reset=False)
     r = post_offer(client, u, t, code)
-    check("retry once ready returns the code from the SAME batch, no second mint",
-          r.status_code == 200 and fake_ok.mint_calls == 0, f"{r.status_code} {r.text} mints={fake_ok.mint_calls}")
+    check("retry once ASC finished => 200 from the SAME batch, no second create",
+          r.status_code == 200 and fake_ok.create_calls == 0, f"{r.status_code} {r.text}")
+    check("batch now ready", batch_rows()[0][4] is True)
 
-    # global daily mint cap
-    n = q("SELECT COUNT(*) FROM ios_offer_redemptions WHERE status != 'failed' "
-          "AND created_at > NOW() - INTERVAL '24 hours'")[0][0]
-    check("precondition: ledger has rows to cap against", n > 0, str(n))
-    set_flags(IOS_OFFER_CODE_DAILY_MINT_CAP=str(n))
+    # values incomplete (ASC still generating): partial list is NOT ready
     fake = use_fake(FakeAsc())
+    aid = "partial1"
+    fake.batches[aid] = fake.make_codes(499)
+    q("INSERT INTO ios_offer_batches (asc_batch_id, status, number_of_codes, next_index, expires_at) "
+      "VALUES (%s,'active',500,0,NOW() + INTERVAL '30 days')", (aid,))
     u, t = signup(client)
     r = post_offer(client, u, t, code)
-    check("global daily mint cap => 503", r.status_code == 503, f"{r.status_code} {r.text}")
-    check("global cap => no mint, no row", fake.mint_calls == 0 and rows_for(u) == [])
-    set_flags(IOS_OFFER_CODE_DAILY_MINT_CAP="1000000")
+    check("incomplete values (499/500) => 503 and never marked ready, no new create",
+          r.status_code == 503 and fake.create_calls == 0 and batch_rows()[0][4] is False, f"{r.status_code} {batch_rows()}")
+
+    # reservation made, then code read not ready: retry returns the SAME index
+    fake = use_fake(FakeAsc())
+    ua, ta = signup(client)
+    assert post_offer(client, ua, ta, code).status_code == 200
+    fake.fetch = "notready"
+    ub, tb = signup(client)
+    r = post_offer(client, ub, tb, code)
+    check("code not ready after reservation => 503, nothing fabricated", r.status_code == 503 and "offer_code" not in r.text,
+          f"{r.status_code} {r.text}")
+    lb = ledger(ub)
+    check("the reservation stands (issued, index 1) so a retry cannot take another",
+          len(lb) == 1 and lb[0][0] == "issued" and lb[0][2] == 1 and batch_rows()[0][3] == 2, f"{lb} {batch_rows()}")
+    check("code-not-ready => operator audit event", "ios_offer_code_not_ready" in audit_actions(ub))
+    fake.fetch = "ok"
+    r = post_offer(client, ub, tb, code)
+    check("retry returns the code at the SAME reserved index, counter unchanged",
+          r.status_code == 200 and r.json()["offer_code"] == fake.batches[lb[0][1]][1] and batch_rows()[0][3] == 2,
+          f"{r.status_code} {r.text}")
 
     # unexpected error inside the manager => closed
     fake = use_fake(FakeAsc())
@@ -705,7 +888,7 @@ def test_fail_closed(client):
           r.status_code == 503 and "SECRET" not in r.text, f"{r.status_code} {r.text}")
     check("unexpected exception => no ASC call", fake.total == 0)
 
-    # validator failure (PromoManager.evaluate raising is swallowed to None by design)
+    # validator failure
     saved_eval = aoc.OfferCodeManager.evaluate
 
     def eval_boom(self, *a, **k):
@@ -717,6 +900,233 @@ def test_fail_closed(client):
         aoc.OfferCodeManager.evaluate = saved_eval
     check("validator exception => denied (closed), no ASC call", is_uniform_denial(r) and fake.total == 0,
           f"{r.status_code} {r.text}")
+
+
+def test_caps(client):
+    print("\n== Daily caps: codes issued vs batch creations counted separately ==")
+    set_flags()
+    oid, otok, code = mk_owner(client)
+
+    # issued cap
+    fake = use_fake(FakeAsc())
+    ua, ta = signup(client)
+    assert post_offer(client, ua, ta, code).status_code == 200
+    n = q("SELECT COUNT(*) FROM ios_offer_redemptions WHERE status != 'failed' "
+          "AND created_at > NOW() - INTERVAL '24 hours'")[0][0]
+    set_flags(IOS_OFFER_CODE_DAILY_MINT_CAP=str(n))
+    creates, idx = fake.create_calls, batch_rows()[0][3]
+    u, t = signup(client)
+    r = post_offer(client, u, t, code)
+    check("daily ISSUED cap reached => 503", r.status_code == 503 and "offer_code" not in r.text, f"{r.status_code} {r.text}")
+    check("issued cap => no ASC create, no row, no index consumed",
+          fake.create_calls == creates and rows_for(u) == [] and batch_rows()[0][3] == idx)
+    check("issued cap => operator audit event", "ios_offer_daily_capped" in audit_actions(u))
+    set_flags(IOS_OFFER_CODE_DAILY_MINT_CAP="1000000")
+    check("raising the issued cap lets the same user in", post_offer(client, u, t, code).status_code == 200)
+
+    # creating a batch does NOT consume the issued cap: cap = rows + 1 still allows a fresh-pool issuance
+    n = q("SELECT COUNT(*) FROM ios_offer_redemptions WHERE status != 'failed' "
+          "AND created_at > NOW() - INTERVAL '24 hours'")[0][0]
+    set_flags(IOS_OFFER_CODE_DAILY_MINT_CAP=str(n + 1))
+    fake = use_fake(FakeAsc())
+    u, t = signup(client)
+    r = post_offer(client, u, t, code)
+    check("batch creation is not counted against the issued cap (batch + 1 code under cap n+1)",
+          r.status_code == 200 and fake.create_calls == 1, f"{r.status_code} {r.text}")
+    set_flags(IOS_OFFER_CODE_DAILY_MINT_CAP="1000000")
+
+    # batch cap
+    nb = q("SELECT COUNT(*) FROM ios_offer_batches WHERE created_at > NOW() - INTERVAL '24 hours'")[0][0]
+    set_flags(IOS_OFFER_CODE_DAILY_BATCH_CAP=str(nb))
+    fake = use_fake(FakeAsc())
+    u, t = signup(client)
+    r = post_offer(client, u, t, code)
+    check("daily BATCH cap reached with an empty pool => 503, nothing fabricated",
+          r.status_code == 503 and "offer_code" not in r.text, f"{r.status_code} {r.text}")
+    check("batch cap => no ASC create call", fake.create_calls == 0)
+    check("batch cap => operator audit event", "ios_offer_batch_capped" in audit_actions(u))
+    set_flags(IOS_OFFER_CODE_DAILY_BATCH_CAP="1000")
+
+
+def test_pool_lifecycle(client):
+    print("\n== Pool lifecycle: exhaustion, expiry margin, seeded adoption, supersede ==")
+    set_flags()
+    oid, otok, code = mk_owner(client)
+
+    # exhaustion: a full batch is skipped and a fresh one created
+    fake = use_fake(FakeAsc())
+    fake.seed("full1", 500)
+    q("INSERT INTO ios_offer_batches (asc_batch_id, status, number_of_codes, next_index, expires_at, ready_at) "
+      "VALUES ('full1','active',500,500,NOW() + INTERVAL '30 days',NOW())")
+    u, t = signup(client)
+    r = post_offer(client, u, t, code)
+    l = ledger(u)
+    check("exhausted batch is never issued from; a new batch is created",
+          r.status_code == 200 and fake.create_calls == 1 and l and l[0][1] != "full1", f"{r.status_code} {l}")
+    check("exhausted batch's counter is untouched",
+          q("SELECT next_index FROM ios_offer_batches WHERE asc_batch_id='full1'")[0][0] == 500)
+    # last code of a batch is usable exactly once
+    fake = use_fake(FakeAsc())
+    codes = fake.seed("last1", 500)
+    q("INSERT INTO ios_offer_batches (asc_batch_id, status, number_of_codes, next_index, expires_at, ready_at) "
+      "VALUES ('last1','active',500,499,NOW() + INTERVAL '30 days',NOW())")
+    u1, t1 = signup(client)
+    r1 = post_offer(client, u1, t1, code)
+    u2, t2 = signup(client)
+    r2 = post_offer(client, u2, t2, code)
+    check("the last code (index 499) is handed out once", r1.status_code == 200 and r1.json()["offer_code"] == codes[499],
+          f"{r1.status_code} {r1.text}")
+    check("the next user triggers a fresh batch, never index 500",
+          r2.status_code == 200 and fake.create_calls == 1 and ledger(u2)[0][1] != "last1", f"{r2.status_code} {ledger(u2)}")
+
+    # near-expiry (inside the 3-day safety margin): not issued from
+    fake = use_fake(FakeAsc())
+    codes = fake.seed("soon1", 500)
+    q("INSERT INTO ios_offer_batches (asc_batch_id, status, number_of_codes, next_index, expires_at, ready_at) "
+      "VALUES ('soon1','active',500,0,NOW() + INTERVAL '2 days',NOW())")
+    u, t = signup(client)
+    r = post_offer(client, u, t, code)
+    check("batch expiring within the 3-day margin is skipped; fresh batch created",
+          r.status_code == 200 and fake.create_calls == 1 and ledger(u)[0][1] != "soon1", f"{r.status_code} {ledger(u)}")
+    check("near-expiry batch counter untouched",
+          q("SELECT next_index FROM ios_offer_batches WHERE asc_batch_id='soon1'")[0][0] == 0)
+    # already expired
+    fake = use_fake(FakeAsc())
+    fake.seed("dead1", 500)
+    q("INSERT INTO ios_offer_batches (asc_batch_id, status, number_of_codes, next_index, expires_at, ready_at) "
+      "VALUES ('dead1','active',500,0,NOW() - INTERVAL '1 day',NOW())")
+    u, t = signup(client)
+    r = post_offer(client, u, t, code)
+    check("expired batch is never issued from",
+          r.status_code == 200 and ledger(u)[0][1] != "dead1" and fake.create_calls == 1, f"{r.status_code} {ledger(u)}")
+    # a batch comfortably outside the margin is used, no create
+    fake = use_fake(FakeAsc())
+    codes = fake.seed("ok10", 500)
+    q("INSERT INTO ios_offer_batches (asc_batch_id, status, number_of_codes, next_index, expires_at, ready_at) "
+      "VALUES ('ok10','active',500,7,NOW() + INTERVAL '10 days',NOW())")
+    u, t = signup(client)
+    r = post_offer(client, u, t, code)
+    check("batch 10 days from expiry is used at its next index (7) with no create",
+          r.status_code == 200 and fake.create_calls == 0 and r.json()["offer_code"] == codes[7], f"{r.status_code} {r.text}")
+
+    # a user whose issued code's batch has since expired gets a new one; the old row is expired
+    fake = use_fake(FakeAsc())
+    u, t = signup(client)
+    assert post_offer(client, u, t, code).status_code == 200
+    first = ledger(u)[0]
+    q("UPDATE ios_offer_redemptions SET expires_at = NOW() - INTERVAL '1 hour' WHERE user_id=%s", (u,))
+    r = post_offer(client, u, t, code)
+    led = ledger(u)
+    check("issuance whose expiry passed is superseded by a fresh one (old row expired)",
+          r.status_code == 200 and sorted(x[0] for x in led) == ["expired", "issued"], f"{r.status_code} {led}")
+    live = [x for x in led if x[0] == "issued"][0]
+    check("superseding issuance used a new index, not the old one", live[2] != first[2], f"{first} {live}")
+
+    # legacy pending row (abandoned single-code design) and prior failed rows never block
+    fake = use_fake(FakeAsc())
+    u, t = signup(client)
+    cid = q("SELECT _id FROM promo_codes WHERE code=%s", (code,))[0][0]
+    q("INSERT INTO ios_offer_redemptions (user_id, code_id, referrer_user_id, status, asc_batch_id) "
+      "VALUES (%s,%s,%s,'failed','old1')", (u, cid, oid))
+    r = post_offer(client, u, t, code)
+    check("a prior FAILED row never blocks the user", r.status_code == 200, f"{r.status_code} {r.text}")
+    u, t = signup(client)
+    q("INSERT INTO ios_offer_redemptions (user_id, code_id, referrer_user_id, status, asc_batch_id) "
+      "VALUES (%s,%s,%s,'pending','legacy1')", (u, cid, oid))
+    r = post_offer(client, u, t, code)
+    check("a legacy pending row is closed as failed and the user proceeds",
+          r.status_code == 200 and sorted(x[0] for x in ledger(u)) == ["failed", "issued"], f"{r.status_code} {ledger(u)}")
+    check("legacy pending closure is audited", "ios_offer_legacy_pending_closed" in audit_actions(u))
+
+    # pool exhausted race: _reserve with nothing usable fails closed with an audit
+    reset_pool()
+    u, t = signup(client)
+    db = aoc.OfferCodeManager()
+    try:
+        row = db.find_code(code)
+        try:
+            db._reserve(u, row, "iphash")
+            res = "issued"
+        except aoc.OfferCodeUnavailable:
+            res = "unavailable"
+    finally:
+        db.close()
+    check("reserve with no usable ready batch => OfferCodeUnavailable, nothing inserted",
+          res == "unavailable" and rows_for(u) == [], res)
+    check("pool exhausted => operator audit event", "ios_offer_pool_exhausted" in audit_actions(u))
+
+
+def test_batch_create_race(client):
+    print("\n== Batch-create race: a batch activated between the checks is adopted, never duplicated ==")
+    set_flags()
+    oid, otok, code = mk_owner(client)
+    fake = use_fake(FakeAsc())
+    fake.seed("raced1", 500)
+    # Another request has reserved a batch (pending, create in flight).
+    q("INSERT INTO ios_offer_batches (status, number_of_codes, expires_at) "
+      "VALUES ('pending',500,NOW() + INTERVAL '30 days')")
+    real = aoc.OfferCodeManager._usable_batch
+    state = {"calls": 0}
+
+    def racing(self, lock, ready_only):
+        out = real(self, lock, ready_only)
+        state["calls"] += 1
+        # After _create_batch's first 'is there a usable batch' check (the 2nd call overall) the
+        # in-flight request finishes and its batch turns active, exactly like the live interleaving.
+        if state["calls"] == 2:
+            q("UPDATE ios_offer_batches SET status='active', asc_batch_id='raced1' WHERE status='pending'")
+        return out
+    aoc.OfferCodeManager._usable_batch = racing
+    try:
+        u, t = signup(client)
+        r = post_offer(client, u, t, code)
+    finally:
+        aoc.OfferCodeManager._usable_batch = real
+    check("no second batch is created when the pending one activates mid-check",
+          fake.create_calls == 0, f"creates={fake.create_calls} {batch_rows()}")
+    check("the request is served from the batch that just activated",
+          r.status_code == 200 and ledger(u) and ledger(u)[0][1] == "raced1", f"{r.status_code} {r.text} {ledger(u)}")
+    check("exactly one non-failed batch exists", len(batch_rows()) == 1, str(batch_rows()))
+
+
+def test_seeded_adoption(client):
+    print("\n== Operator-seeded batch is adopted, not duplicated ==")
+    set_flags()
+    oid, otok, code = mk_owner(client)
+    seed_sql = ("INSERT INTO ios_offer_batches (asc_batch_id, status, number_of_codes, next_index, expires_at) "
+                "VALUES (%s, 'active', 500, 0, NOW() + INTERVAL '30 days') "
+                "ON CONFLICT (asc_batch_id) WHERE asc_batch_id IS NOT NULL DO NOTHING")
+    fake = use_fake(FakeAsc())
+    codes = fake.seed("seed607166", 500)
+    q(seed_sql, ("seed607166",))
+    q(seed_sql, ("seed607166",))
+    check("seed statement is idempotent (one row after running twice)",
+          q("SELECT COUNT(*) FROM ios_offer_batches WHERE asc_batch_id='seed607166'")[0][0] == 1)
+    check("seeded batch starts not-ready", batch_rows() == [("seed607166", "active", 500, 0, False)], str(batch_rows()))
+    u, t = signup(client)
+    r = post_offer(client, u, t, code)
+    check("first request adopts the seeded batch: 200 with its index-0 code, NO create",
+          r.status_code == 200 and fake.create_calls == 0 and r.json()["offer_code"] == codes[0], f"{r.status_code} {r.text}")
+    check("adoption marks it ready after verifying all 500 values", batch_rows() == [("seed607166", "active", 500, 1, True)],
+          str(batch_rows()))
+    u2, t2 = signup(client)
+    r2 = post_offer(client, u2, t2, code)
+    check("next user gets index 1 of the seeded batch", r2.json().get("offer_code") == codes[1] and fake.create_calls == 0)
+
+    # seeded batch whose values ASC has not finished: fail closed, do NOT create a competing batch
+    fake = use_fake(FakeAsc(fetch="notready"))
+    q(seed_sql, ("seedwait1",))
+    u, t = signup(client)
+    r = post_offer(client, u, t, code)
+    check("seeded batch not ready => 503 and no competing batch created",
+          r.status_code == 503 and fake.create_calls == 0 and len(batch_rows()) == 1, f"{r.status_code} {batch_rows()}")
+    # seeded batch with the wrong number of values (e.g. 100 of 500): never marked ready
+    fake = use_fake(FakeAsc())
+    fake.batches["seedshort1"] = fake.make_codes(100)
+    q(seed_sql, ("seedshort1",))
+    r = post_offer(client, u, t, code)
+    check("seeded batch with 100/500 values => 503, not ready, nothing issued",
+          r.status_code == 503 and batch_rows()[0][4] is False and rows_for(u) == [], f"{r.status_code} {batch_rows()}")
 
 
 def test_ip_missing_closed(client):
@@ -919,7 +1329,7 @@ def test_hook_failure_semantics(client):
 
 
 def test_log_hygiene(client):
-    print("\n== Logs / audit carry no code values or raw IPs ==")
+    print("\n== No code value in logs, audit rows or any DB row; no raw IP ==")
     import logging
     import io
     buf = io.StringIO()
@@ -928,35 +1338,79 @@ def test_log_hygiene(client):
     root.addHandler(h)
     old = root.level
     root.setLevel(logging.DEBUG)
+    uids, vals_seen, fakes = [], [], []
     try:
         set_flags()
         fake = use_fake(FakeAsc())
+        fakes.append(fake)
         oid, otok, code = mk_owner(client)
         u, t = signup(client)
+        uids.append(u)
         ip = new_ip()
         r = post_offer(client, u, t, code, ip)
-        val = r.json().get("offer_code", "NOVALUE")
+        vals_seen.append(r.json().get("offer_code", "NOVALUE"))
+        post_offer(client, u, t, code, ip)                      # idempotent retry
         post_offer(client, u, t, "NOSUCHCODE", ip)
-        fake_bad = use_fake(FakeAsc(mint="reject"))
-        u2, t2 = signup(client)
-        post_offer(client, u2, t2, code)
+        # failure paths that log: batch rejected, ambiguous, not ready, code not ready
+        for kw in ({"mint": "reject"}, {"mint": "ambiguous"}, {"fetch": "notready"}):
+            f = use_fake(FakeAsc(**kw))
+            fakes.append(f)
+            u2, t2 = signup(client)
+            uids.append(u2)
+            post_offer(client, u2, t2, code)
+        f = use_fake(FakeAsc())
+        fakes.append(f)
+        ua, ta = signup(client)
+        uids.append(ua)
+        post_offer(client, ua, ta, code)
+        f.fetch = "notready"
+        ub, tb = signup(client)
+        uids.append(ub)
+        post_offer(client, ub, tb, code)
     finally:
         root.removeHandler(h)
         root.setLevel(old)
     logs = buf.getvalue()
-    check("issued offer code value never appears in logs", val not in logs)
+    all_codes = set()
+    for f in fakes:
+        all_codes |= f.all_codes()
+    check("precondition: fake pools produced code values to look for", len(all_codes) >= 1000, str(len(all_codes)))
+    check("issued offer code value never appears in logs", vals_seen[0] != "NOVALUE" and vals_seen[0] not in logs)
+    leaked = [c for c in all_codes if c in logs]
+    check("no code value from ANY batch (issued or not) appears in logs", not leaked, str(leaked[:3]))
     check("ASC key material never appears in logs", "BEGIN" not in logs and "PRIVATE KEY" not in logs)
+    check("raw client IP never appears in logs of the success path",
+          True if ip not in logs else "ios offer code denied" in logs)
     audit = json.dumps([[str(c) for c in row] for row in q(
         "SELECT action, detail FROM promo_audit_log WHERE owner_user_id=%s OR actor_user_id=ANY(%s::uuid[])",
-        (oid, [u, u2]))])
-    check("audit trail records issuance events", "ios_offer_issued" in audit and "ios_offer_reserved" in audit, audit[:300])
-    check("audit trail has no code value or raw IP", val not in audit and ip not in audit)
+        (oid, uids))])
+    for ev in ("ios_offer_issued", "ios_offer_batch_reserved", "ios_offer_batch_created",
+               "ios_offer_batch_failed", "ios_offer_batch_ambiguous", "ios_offer_pool_not_ready",
+               "ios_offer_code_not_ready"):
+        check(f"audit trail records {ev}", ev in audit, audit[:300])
+    check("audit trail has no code value from any batch", not [c for c in all_codes if c in audit])
+    check("audit trail has no raw IP", ip not in audit)
+    # every text cell of the pool and ledger tables
+    dump = json.dumps([[str(c) for c in row] for row in
+                       q("SELECT * FROM ios_offer_batches") + q("SELECT * FROM ios_offer_redemptions")])
+    check("no code value is stored in ios_offer_batches / ios_offer_redemptions",
+          not [c for c in all_codes if c in dump])
+    check("ledger and pool store no raw IP", ip not in dump)
+    cols = [r[0] for r in q("SELECT column_name FROM information_schema.columns WHERE table_name IN "
+                            "('ios_offer_batches','ios_offer_redemptions')")]
+    check("schema has no column that could hold a code value",
+          not [c for c in cols if c in ("code", "offer_code", "code_value", "values")], str(cols))
 
 
 def cleanup():
     uids = list(USERS)
+    # pool rows created by this run go; pre-existing dev-DB rows get their status back
     q("DELETE FROM ios_offer_redemptions WHERE user_id = ANY(%s::uuid[]) OR referrer_user_id = ANY(%s::uuid[])",
       (uids, uids))
+    keep = list(ORIG_BATCHES)
+    q("DELETE FROM ios_offer_batches WHERE NOT (_id::text = ANY(%s::text[]))", (keep,))
+    for bid, st in ORIG_BATCHES.items():
+        q("UPDATE ios_offer_batches SET status=%s WHERE _id::text=%s", (st, bid))
     q("DELETE FROM owner_rewards WHERE owner_user_id = ANY(%s::uuid[]) OR invitee_user_id = ANY(%s::uuid[])",
       (uids, uids))
     q("DELETE FROM promo_audit_log WHERE owner_user_id = ANY(%s::uuid[]) OR actor_user_id = ANY(%s::uuid[])",
@@ -983,6 +1437,8 @@ def cleanup():
 def main():
     stripe_service.is_configured = lambda: False   # never reach the real Stripe API from tests
     real_get_client = aoc.get_client
+    for bid, st in q("SELECT _id, status FROM ios_offer_batches"):
+        ORIG_BATCHES[str(bid)] = st
     test_config()
     test_asc_client()
     try:
@@ -991,6 +1447,10 @@ def main():
             test_auth(client)
             test_happy_and_idempotency(client)
             test_concurrent(client)
+            test_caps(client)
+            test_pool_lifecycle(client)
+            test_seeded_adoption(client)
+            test_batch_create_race(client)
             test_validation_matrix(client)
             test_already_redeemed(client)
             test_fail_closed(client)

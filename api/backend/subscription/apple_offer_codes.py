@@ -9,33 +9,40 @@ iOS subscriber cannot get a first-month discount that way. Offer codes can targe
 2. The server re-validates under every rule (``PromoManager.evaluate``: code
    exists/active/unexpired/under cap, not the caller's own, caller is a new
    subscriber; plus friend-kind only, per-IP and global daily caps, outstanding
-   cap) and ONLY THEN asks App Store Connect for ONE one-time-use code
-   (``subscriptionOfferCodeOneTimeUseCodes``) against the pre-created offer.
-3. The code (and a redeem URL) goes back to the app, which opens Apple's redeem
-   sheet. Apple enforces new-subscriber eligibility again on its side.
+   cap) and ONLY THEN hands out ONE code from a POOL.
+3. Apple only allows one-time-use batches of 500-25,000 codes, so a batch of
+   ``IOS_OFFER_CODE_BATCH_SIZE`` codes is created (the one ASC write) only when no
+   usable batch exists. Per issuance the server atomically reserves the next index
+   of the batch (``ios_offer_batches.next_index``), reads the batch values from ASC
+   (generated asynchronously; "not ready" fails closed) and returns the code at that
+   index plus a redeem URL. The app opens Apple's redeem sheet. Apple enforces
+   new-subscriber eligibility again on its side.
 4. When Apple's verified transaction arrives (``/subscriptions/apple/sync`` or an
    App Store notification) carrying ``offerType == 3`` and our offer's reference
    name, the redemption row for THAT user is marked redeemed, a ``promo_redemptions``
    row is logged and the friend-code owner's reward is credited. Never at issue time.
 
-Everything fails closed: any validator/ASC error or ambiguity denies, and no code
-is ever fabricated. This module NEVER creates or modifies an ASC offer (the offer
-is created by hand in App Store Connect; ``check_offer`` is a read-only GET).
+Everything fails closed: any validator/ASC error, ambiguity, pool exhaustion, a
+batch inside the expiry safety margin, or values not ready denies with a 503 and an
+operator-visible ``promo_audit_log`` event; no code is ever fabricated. This module
+NEVER creates or modifies an ASC offer (the offer is created by hand in App Store
+Connect; ``check_offer`` is a read-only GET).
 
-Idempotency: ``ios_offer_redemptions`` allows one live row per user. A retry
-re-reads the SAME ASC batch's values (a GET) and never mints a second batch; a row
-left ``pending`` by an ambiguous ASC failure (timeout) blocks re-mint until an
-operator reconciles it (a duplicate-mint risk is worse than a stuck user). The code
-value is never stored or logged.
+Idempotency: ``ios_offer_redemptions`` allows one live row per user and each row
+owns one unique (batch, index). A retry re-reads the SAME index and never takes a
+second one. A batch create whose outcome is unknown stays ``pending`` and blocks
+another create for an hour. Code values are never stored or logged.
 
 Config (env, no implicit defaults, validated eagerly by
 ``validate_offer_codes_config()`` from main.py's lifespan; flag deploys OFF):
     IOS_OFFER_CODES_ENABLED          'true' | 'false'  (requires PROMO_CODES_ENABLED and
                                      OWNER_REWARDS_ENABLED when 'true')
-    IOS_OFFER_CODE_EXPIRY_DAYS       1-180, validity of a minted code
+    IOS_OFFER_CODE_EXPIRY_DAYS       7-180, validity of a pool batch / its codes
     IOS_OFFER_CODE_RATE_LIMIT        slowapi string, per IP and per user
     IOS_OFFER_CODE_IP_DAILY_CAP      max issuances per hashed client IP per 24h
-    IOS_OFFER_CODE_DAILY_MINT_CAP    max ASC mints in total per 24h (quota guard)
+    IOS_OFFER_CODE_DAILY_MINT_CAP    max codes ISSUED in total per 24h
+    IOS_OFFER_CODE_BATCH_SIZE        codes per pool batch, 500-25000 (Apple's limits)
+    IOS_OFFER_CODE_DAILY_BATCH_CAP   max ASC batch creations per 24h
     APPLE_ASC_KEY_ID                 App Store Connect API key id (10 chars)
     APPLE_ASC_ISSUER_ID              App Store Connect issuer id (UUID)
     APPLE_ASC_KEY_PATH               path to the ASC API .p8 (read only when enabled; never logged)
@@ -67,6 +74,11 @@ ASC_BASE = "https://api.appstoreconnect.apple.com"
 OFFER_TYPE_OFFER_CODE = 3          # StoreKit transaction offerType for an offer code
 _ASC_TIMEOUT = httpx.Timeout(10.0, connect=5.0)
 _PREFLIGHT_TTL_S = 600
+# Never hand out a code from a batch that expires within this margin (the user
+# needs time to open the redeem sheet) and don't pile a new batch request on a
+# pending one whose outcome is unknown for this long.
+_EXPIRY_SAFETY_MARGIN = timedelta(days=3)
+_PENDING_BATCH_BLOCK = timedelta(hours=1)
 _CODE_VALUE_RE = re.compile(r"^[A-Za-z0-9]{6,40}$")
 _KEY_ID_RE = re.compile(r"^[A-Z0-9]{10}$")
 _ASC_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
@@ -102,6 +114,8 @@ class OfferCodesConfig:
     rate_limit: str
     ip_daily_cap: int
     daily_mint_cap: int
+    batch_size: int
+    daily_batch_cap: int
     asc_key_id: str
     asc_issuer_id: str
     asc_key_path: str
@@ -148,7 +162,7 @@ def validate_offer_codes_config() -> None:
             "(no implicit default; deploy with 'false')."
         )
     enabled = raw_enabled.strip().lower() == "true"
-    expiry_days = _req_int("IOS_OFFER_CODE_EXPIRY_DAYS", 1, 180)
+    expiry_days = _req_int("IOS_OFFER_CODE_EXPIRY_DAYS", 7, 180)
     rl = _req("IOS_OFFER_CODE_RATE_LIMIT")
     try:
         from limits import parse
@@ -157,6 +171,8 @@ def validate_offer_codes_config() -> None:
         raise OfferCodesConfigError(f"IOS_OFFER_CODE_RATE_LIMIT ({rl!r}) is not a valid rate-limit string.")
     ip_cap = _req_int("IOS_OFFER_CODE_IP_DAILY_CAP", 1)
     mint_cap = _req_int("IOS_OFFER_CODE_DAILY_MINT_CAP", 1)
+    batch_size = _req_int("IOS_OFFER_CODE_BATCH_SIZE", 500, 25000)   # Apple's batch limits
+    batch_cap = _req_int("IOS_OFFER_CODE_DAILY_BATCH_CAP", 1)
     key_id = _req("APPLE_ASC_KEY_ID")
     if not _KEY_ID_RE.match(key_id):
         raise OfferCodesConfigError("APPLE_ASC_KEY_ID must be a 10-character App Store Connect key id.")
@@ -198,7 +214,7 @@ def validate_offer_codes_config() -> None:
             raise OfferCodesConfigError(
                 f"APPLE_ASC_KEY_PATH could not be loaded as an EC P-256 PEM key ({type(e).__name__})."
             )
-    _config = OfferCodesConfig(enabled, expiry_days, rl, ip_cap, mint_cap, key_id, issuer, key_path,
+    _config = OfferCodesConfig(enabled, expiry_days, rl, ip_cap, mint_cap, batch_size, batch_cap, key_id, issuer, key_path,
                                offer_id, ref, store_id, private_key)
 
 
@@ -219,7 +235,7 @@ def offer_codes_enabled() -> bool:
 
 class AscOfferCodeClient:
     """Minimal ASC client. Reads: offer preflight, batch values. The single write
-    is creating ONE one-time-use code batch against the configured offer; it never
+    is creating a one-time-use code batch (pool) against the configured offer; it never
     creates/edits/deletes an offer. Error messages carry the HTTP status only
     (never bodies, tokens, or code values)."""
 
@@ -261,10 +277,11 @@ class AscOfferCodeClient:
                 or not isinstance(elig, list) or set(elig) != {"NEW"}):
             raise AscRejected("offer not active / not new-subscribers / name mismatch")
 
-    def create_one_time_use_batch(self, expiration_date: str) -> str:
+    def create_one_time_use_batch(self, number_of_codes: int, expiration_date: str) -> str:
+        """Create ONE pool batch. Apple requires 500-25,000 codes per batch."""
         body = {"data": {
             "type": "subscriptionOfferCodeOneTimeUseCodes",
-            "attributes": {"numberOfCodes": 1, "expirationDate": expiration_date},
+            "attributes": {"numberOfCodes": number_of_codes, "expirationDate": expiration_date},
             "relationships": {"offerCode": {"data": {
                 "type": "subscriptionOfferCodes", "id": self._cfg.offer_code_id}}},
         }}
@@ -277,21 +294,22 @@ class AscOfferCodeClient:
             raise AscAmbiguous("missing batch id")
         return batch_id
 
-    def fetch_code(self, batch_id: str) -> str:
-        """The single code of a 1-code batch. Raises AscAmbiguous unless exactly
-        one well-formed value is returned (ASC generates asynchronously)."""
+    def fetch_values(self, batch_id: str) -> list[str]:
+        """All code values of a batch, de-duplicated and SORTED (so an index is
+        stable across fetches regardless of CSV order). ASC generates values
+        asynchronously: no usable values raises AscAmbiguous (not ready)."""
         if not _ASC_ID_RE.match(batch_id or ""):
             raise AscAmbiguous("bad batch id")
         resp = self._send("GET", f"/v1/subscriptionOfferCodeOneTimeUseCodes/{batch_id}/values")
-        values = []
+        values = set()
         for row in csv.reader(io.StringIO(resp.text)):
             for cell in row:
                 cell = cell.strip()
                 if cell and _CODE_VALUE_RE.match(cell):
-                    values.append(cell)
-        if len(values) != 1:
-            raise AscAmbiguous("code not ready")
-        return values[0]
+                    values.add(cell)
+        if not values:
+            raise AscAmbiguous("codes not ready")
+        return sorted(values)
 
 
 _client: AscOfferCodeClient | None = None
@@ -322,7 +340,8 @@ def redeem_url(code: str) -> str:
 # ── Ledger / manager ──────────────────────────────────────────────────────────
 
 class OfferCodeManager(RewardManager):
-    """DB access for ios_offer_redemptions. Inherits RewardManager (promo
+    """DB access for the offer-code pool (ios_offer_batches) and the per-user
+    ledger (ios_offer_redemptions). Inherits RewardManager (promo
     evaluate/log_redemption, reward ``_earn``, audit)."""
 
     def _lock(self, key: str) -> None:
@@ -331,10 +350,15 @@ class OfferCodeManager(RewardManager):
     def _email(self, user_id: str) -> str:
         return self._user_email(user_id)
 
-    def _fail(self, rid: str, why: str) -> None:
-        self.cur.execute("UPDATE ios_offer_redemptions SET status='failed' WHERE _id=%s AND status='pending'", (rid,))
-        self._audit("ios_offer_failed", actor=None, detail=f"{rid}:{why}")
-        self.conn.commit()
+    def _audit_safe(self, action: str, user_id: str | None, detail: str | None) -> None:
+        try:
+            self.conn.rollback()
+            self._audit(action, actor=user_id, detail=detail)
+            self.conn.commit()
+        except Exception:
+            self.conn.rollback()
+
+    # -- request path
 
     def request_code(self, user_id: str, raw_code, ip: str, client: AscOfferCodeClient | None = None) -> dict:
         """Validate fully, then issue (or re-read) the caller's one-time-use code.
@@ -342,6 +366,14 @@ class OfferCodeManager(RewardManager):
         Raises OfferCodeDenied for every validation failure (no ASC call made) and
         OfferCodeUnavailable when validation passed but no code can be returned
         now. Returns ``{"offer_code", "redeem_url", "expires_at"}``.
+
+        Stages (no network call ever runs while holding a lock):
+        1. validate + read-only offer preflight; if the user already holds an
+           issued index, re-read that SAME index's code (idempotent retry).
+        2. make sure a usable, ready pool batch exists (create one only if none).
+        3. under locks, re-check, reserve the next index atomically and insert
+           the user's row (unique per user and per (batch, index)).
+        4. read the batch values from ASC and take the code at the reserved index.
         """
         cfg = offer_codes_config()
         try:
@@ -353,8 +385,6 @@ class OfferCodeManager(RewardManager):
             if not row or row["kind"] != "friend" or not row["referrer_user_id"] or not ip_hash:
                 raise OfferCodeDenied()
 
-            # Read-only, cached offer preflight BEFORE taking any lock (a network
-            # call must never run while holding the global caps lock).
             client = client or get_client()
             try:
                 _preflight(client)
@@ -364,124 +394,235 @@ class OfferCodeManager(RewardManager):
                              e if isinstance(e, (AscRejected, AscAmbiguous)) else type(e).__name__)
                 raise OfferCodeUnavailable()
 
-            self._lock("ios_offer_user:" + user_id)
-            self.cur.execute(
-                "SELECT _id, status, asc_batch_id, expires_at, code_id FROM ios_offer_redemptions "
-                "WHERE user_id=%s AND status IN ('pending','issued','redeemed') FOR UPDATE", (user_id,))
-            live = self.cur.fetchone()
-            if live:
-                rid, status, batch_id, expires_at, live_code_id = str(live[0]), live[1], live[2], live[3], \
-                    str(live[4]) if live[4] else None
-                if status == "redeemed":
-                    self.conn.rollback()
-                    raise OfferCodeDenied()
-                if status == "pending":
-                    # Earlier attempt's ASC outcome unknown: never re-mint (duplicate risk).
-                    self._audit("ios_offer_pending_blocked", actor=user_id, detail=rid)
-                    self.conn.commit()
-                    raise OfferCodeUnavailable()
-                if expires_at and expires_at > datetime.now(timezone.utc):
-                    self.conn.rollback()
-                    if live_code_id != row["id"]:
-                        raise OfferCodeDenied()
-                    return self._reread(client, batch_id, expires_at)
-                self.cur.execute("UPDATE ios_offer_redemptions SET status='expired' WHERE _id=%s", (rid,))
-                self._audit("ios_offer_expired", actor=user_id, detail=rid)
-                # fall through: a fresh issuance replaces the lapsed one.
-
-            # Caps, checked and the row inserted under one global lock (race-safe).
-            self._lock("ios_offer_caps")
-            if row["max_redemptions"] is not None:
-                self.cur.execute(
-                    "SELECT COUNT(*) FROM ios_offer_redemptions WHERE code_id=%s AND status IN ('pending','issued')",
-                    (row["id"],))
-                if row["redemption_count"] + self.cur.fetchone()[0] >= row["max_redemptions"]:
-                    self.conn.rollback()
-                    raise OfferCodeDenied()
-            self.cur.execute(
-                "SELECT COUNT(*) FROM ios_offer_redemptions WHERE ip_hash=%s AND created_at > NOW() - INTERVAL '24 hours'",
-                (ip_hash,))
-            if self.cur.fetchone()[0] >= cfg.ip_daily_cap:
-                self._audit("ios_offer_ip_capped", actor=user_id, code=row["id"])
-                self.conn.commit()
-                raise OfferCodeDenied()
-            self.cur.execute(
-                "SELECT COUNT(*) FROM ios_offer_redemptions WHERE status != 'failed' "
-                "AND created_at > NOW() - INTERVAL '24 hours'")
-            if self.cur.fetchone()[0] >= cfg.daily_mint_cap:
-                self._audit("ios_offer_daily_capped", actor=user_id, code=row["id"])
-                self.conn.commit()
-                raise OfferCodeUnavailable()
+            live = self._locked_checks(user_id, row, ip_hash, cfg)
+            self.conn.rollback()      # release locks before any network call
         except (OfferCodeDenied, OfferCodeUnavailable):
+            self.conn.rollback()
             raise
         except Exception as e:
             self.conn.rollback()
             logger.error("ios offer validation failed (denying): %s", type(e).__name__)
             raise OfferCodeDenied()
+        if live is not None:
+            return self._code_for(client, user_id, live)
 
-        expires_on = (datetime.now(timezone.utc) + timedelta(days=cfg.expiry_days)).date()
         try:
-            self.cur.execute(
-                "INSERT INTO ios_offer_redemptions (user_id, code_id, referrer_user_id, ip_hash, expires_at) "
-                "VALUES (%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING RETURNING _id",
-                (user_id, row["id"], row["referrer_user_id"], ip_hash,
-                 datetime(expires_on.year, expires_on.month, expires_on.day, 23, 59, 59, tzinfo=timezone.utc)))
-            ins = self.cur.fetchone()
-            if ins is None:   # a concurrent request reserved it; never mint twice
-                self.conn.rollback()
-                raise OfferCodeUnavailable()
-            rid = str(ins[0])
-            self._audit("ios_offer_reserved", actor=user_id, code=row["id"], detail=rid)
-            self.conn.commit()
+            self._ensure_ready_batch(client, cfg, user_id)
         except OfferCodeUnavailable:
+            raise
+        except Exception as e:
+            self.conn.rollback()
+            logger.error("ios offer pool preparation failed (closed): %s", type(e).__name__)
+            raise OfferCodeUnavailable()
+
+        try:
+            live = self._locked_checks(user_id, row, ip_hash, cfg)
+            if live is not None:      # a concurrent request of the same user got there first
+                self.conn.rollback()
+            else:
+                live = self._reserve(user_id, row, ip_hash)
+        except OfferCodeUnavailable:
+            self.conn.rollback()
+            raise
+        except OfferCodeDenied:
+            self.conn.rollback()
             raise
         except Exception as e:
             self.conn.rollback()
             logger.error("ios offer reserve failed (closed): %s", type(e).__name__)
             raise OfferCodeUnavailable()
+        return self._code_for(client, user_id, live)
 
-        # The one external write. Definite rejection => nothing minted (row failed);
-        # ambiguous => leave 'pending' so it is never blindly retried.
-        try:
-            batch_id = client.create_one_time_use_batch(expires_on.isoformat())
-        except AscRejected as e:
-            logger.error("ASC rejected offer-code mint: %s", e)
-            self._fail(rid, "asc_rejected")
-            raise OfferCodeUnavailable()
-        except Exception as e:
-            logger.error("ASC offer-code mint outcome unknown (row left pending): %s", e)
-            self._audit_safe("ios_offer_mint_ambiguous", user_id, rid)
-            raise OfferCodeUnavailable()
-        try:
+    def _locked_checks(self, user_id: str, row: dict, ip_hash: str, cfg: OfferCodesConfig) -> dict | None:
+        """Take the user and caps locks (left held; caller commits/rolls back) and
+        evaluate the per-user ledger and caps. Returns the user's existing valid
+        ``issued`` row (to re-read) or None when a fresh issuance may proceed.
+        Raises OfferCodeDenied / OfferCodeUnavailable (after rolling back)."""
+        self._lock("ios_offer_user:" + user_id)
+        self.cur.execute(
+            "SELECT r._id, r.status, r.expires_at, r.code_id, r.code_index, b.asc_batch_id "
+            "FROM ios_offer_redemptions r LEFT JOIN ios_offer_batches b ON b._id = r.batch_id "
+            "WHERE r.user_id=%s AND r.status IN ('pending','issued','redeemed') FOR UPDATE OF r", (user_id,))
+        live = self.cur.fetchone()
+        if live:
+            rid, status, expires_at, live_code_id, code_index, asc_batch_id = (
+                str(live[0]), live[1], live[2], str(live[3]) if live[3] else None, live[4], live[5])
+            if status == "redeemed":
+                self.conn.rollback()
+                raise OfferCodeDenied()
+            if status == "pending":
+                # Legacy row from the abandoned single-code design: it never got
+                # a code (Apple rejects 1-code batches), so close it.
+                self.cur.execute("UPDATE ios_offer_redemptions SET status='failed' WHERE _id=%s", (rid,))
+                self._audit("ios_offer_legacy_pending_closed", actor=user_id, detail=rid)
+            elif expires_at and expires_at > datetime.now(timezone.utc) and asc_batch_id and code_index is not None:
+                if live_code_id != row["id"]:
+                    self.conn.rollback()
+                    raise OfferCodeDenied()
+                return {"rid": rid, "asc_batch_id": asc_batch_id, "code_index": code_index,
+                        "expires_at": expires_at}
+            else:
+                self.cur.execute("UPDATE ios_offer_redemptions SET status='expired' WHERE _id=%s", (rid,))
+                self._audit("ios_offer_expired", actor=user_id, detail=rid)
+
+        # Caps, evaluated under one global lock so concurrent requests can't overshoot.
+        self._lock("ios_offer_caps")
+        if row["max_redemptions"] is not None:
             self.cur.execute(
-                "UPDATE ios_offer_redemptions SET status='issued', asc_batch_id=%s, issued_at=NOW() "
-                "WHERE _id=%s AND status='pending'", (batch_id, rid))
-            self._audit("ios_offer_issued", actor=user_id, code=row["id"], detail=rid)
+                "SELECT COUNT(*) FROM ios_offer_redemptions WHERE code_id=%s AND status IN ('pending','issued')",
+                (row["id"],))
+            if row["redemption_count"] + self.cur.fetchone()[0] >= row["max_redemptions"]:
+                self.conn.rollback()
+                raise OfferCodeDenied()
+        self.cur.execute(
+            "SELECT COUNT(*) FROM ios_offer_redemptions WHERE ip_hash=%s AND created_at > NOW() - INTERVAL '24 hours'",
+            (ip_hash,))
+        if self.cur.fetchone()[0] >= cfg.ip_daily_cap:
+            self._audit("ios_offer_ip_capped", actor=user_id, code=row["id"])
+            self.conn.commit()
+            raise OfferCodeDenied()
+        # Cap on codes ISSUED (batch creations are capped separately).
+        self.cur.execute(
+            "SELECT COUNT(*) FROM ios_offer_redemptions WHERE status != 'failed' "
+            "AND created_at > NOW() - INTERVAL '24 hours'")
+        if self.cur.fetchone()[0] >= cfg.daily_mint_cap:
+            self._audit("ios_offer_daily_capped", actor=user_id, code=row["id"])
+            self.conn.commit()
+            raise OfferCodeUnavailable()
+        return None
+
+    def _usable_batch(self, lock: bool, ready_only: bool) -> dict | None:
+        self.cur.execute(
+            "SELECT _id, asc_batch_id, number_of_codes, next_index, expires_at, ready_at FROM ios_offer_batches "
+            "WHERE status='active' AND next_index < number_of_codes AND expires_at > NOW() + %s"
+            + (" AND ready_at IS NOT NULL" if ready_only else "")
+            + " ORDER BY (ready_at IS NULL), created_at LIMIT 1" + (" FOR UPDATE" if lock else ""),
+            (_EXPIRY_SAFETY_MARGIN,))
+        r = self.cur.fetchone()
+        if not r:
+            return None
+        return {"id": str(r[0]), "asc_batch_id": r[1], "n": r[2], "next_index": r[3],
+                "expires_at": r[4], "ready_at": r[5]}
+
+    def _ensure_ready_batch(self, client: AscOfferCodeClient, cfg: OfferCodesConfig, user_id: str) -> None:
+        """Guarantee a usable batch whose values ASC has finished generating.
+        Creates a batch only when no usable one exists; not-ready, exhaustion,
+        cap and ASC errors all fail closed (OfferCodeUnavailable) with an audit."""
+        batch = self._usable_batch(lock=False, ready_only=False)
+        self.conn.rollback()
+        if batch is None:
+            batch = self._create_batch(client, cfg, user_id)
+        if batch["ready_at"] is not None:
+            return
+        try:
+            values = client.fetch_values(batch["asc_batch_id"])
+            if len(values) != batch["n"]:
+                raise AscAmbiguous("values incomplete")
+        except Exception as e:
+            logger.error("ios offer batch values not ready (closed): %s",
+                         e if isinstance(e, (AscRejected, AscAmbiguous)) else type(e).__name__)
+            self._audit_safe("ios_offer_pool_not_ready", user_id, batch["id"])
+            raise OfferCodeUnavailable()
+        self.cur.execute("UPDATE ios_offer_batches SET ready_at=NOW() WHERE _id=%s AND ready_at IS NULL",
+                         (batch["id"],))
+        self.conn.commit()
+
+    def _create_batch(self, client: AscOfferCodeClient, cfg: OfferCodesConfig, user_id: str) -> dict:
+        """Create ONE pool batch at ASC (the only write to ASC). The row is
+        committed ``pending`` BEFORE the call so an ambiguous outcome is never
+        blindly retried and every attempt counts against the daily batch cap."""
+        self._lock("ios_offer_batch")
+        existing = self._usable_batch(lock=False, ready_only=False)
+        if existing:
+            self.conn.rollback()
+            return existing
+        self.cur.execute("SELECT 1 FROM ios_offer_batches WHERE status='pending' AND created_at > NOW() - %s LIMIT 1",
+                         (_PENDING_BATCH_BLOCK,))
+        if self.cur.fetchone():
+            self._audit("ios_offer_batch_pending_blocked", actor=user_id)
+            self.conn.commit()
+            raise OfferCodeUnavailable()
+        # The creator activates its batch without holding the batch lock, so it
+        # can flip pending->active between the two checks above; re-check.
+        existing = self._usable_batch(lock=False, ready_only=False)
+        if existing:
+            self.conn.rollback()
+            return existing
+        self.cur.execute("SELECT COUNT(*) FROM ios_offer_batches WHERE created_at > NOW() - INTERVAL '24 hours'")
+        if self.cur.fetchone()[0] >= cfg.daily_batch_cap:
+            self._audit("ios_offer_batch_capped", actor=user_id)
+            self.conn.commit()
+            raise OfferCodeUnavailable()
+        expires_on = (datetime.now(timezone.utc) + timedelta(days=cfg.expiry_days)).date()
+        expires_at = datetime(expires_on.year, expires_on.month, expires_on.day, 23, 59, 59, tzinfo=timezone.utc)
+        self.cur.execute(
+            "INSERT INTO ios_offer_batches (number_of_codes, expires_at) VALUES (%s,%s) RETURNING _id",
+            (cfg.batch_size, expires_at))
+        bid = str(self.cur.fetchone()[0])
+        self._audit("ios_offer_batch_reserved", actor=user_id, detail=bid)
+        self.conn.commit()      # releases the batch lock before the network call
+
+        try:
+            asc_id = client.create_one_time_use_batch(cfg.batch_size, expires_on.isoformat())
+        except AscRejected as e:
+            logger.error("ASC rejected offer-code batch: %s", e)
+            self.cur.execute("UPDATE ios_offer_batches SET status='failed' WHERE _id=%s AND status='pending'", (bid,))
+            self._audit("ios_offer_batch_failed", actor=user_id, detail=bid)
+            self.conn.commit()
+            raise OfferCodeUnavailable()
+        except Exception as e:
+            logger.error("ASC offer-code batch outcome unknown (row left pending): %s", e)
+            self._audit_safe("ios_offer_batch_ambiguous", user_id, bid)
+            raise OfferCodeUnavailable()
+        try:
+            self.cur.execute("UPDATE ios_offer_batches SET status='active', asc_batch_id=%s "
+                             "WHERE _id=%s AND status='pending'", (asc_id, bid))
+            self._audit("ios_offer_batch_created", actor=user_id, detail=bid)
             self.conn.commit()
         except Exception as e:
             self.conn.rollback()
-            logger.error("ios offer batch %s could not be recorded (left pending): %s", batch_id, type(e).__name__)
+            logger.error("ios offer batch %s could not be recorded (left pending): %s", bid, type(e).__name__)
             raise OfferCodeUnavailable()
-        return self._reread(client, batch_id, None, rid)
+        return {"id": bid, "asc_batch_id": asc_id, "n": cfg.batch_size, "next_index": 0,
+                "expires_at": expires_at, "ready_at": None}
 
-    def _audit_safe(self, action: str, user_id: str, rid: str) -> None:
-        try:
-            self.conn.rollback()
-            self._audit(action, actor=user_id, detail=rid)
+    def _reserve(self, user_id: str, row: dict, ip_hash: str) -> dict:
+        """Atomically take the next index of a ready batch and record it on the
+        user's row, in the caller's open transaction (locks already held)."""
+        self._lock("ios_offer_pool")
+        batch = self._usable_batch(lock=True, ready_only=True)
+        if batch is None:
+            self._audit("ios_offer_pool_exhausted", actor=user_id)
             self.conn.commit()
-        except Exception:
-            self.conn.rollback()
-
-    def _reread(self, client: AscOfferCodeClient, batch_id: str, expires_at, rid: str | None = None) -> dict:
-        try:
-            code = client.fetch_code(batch_id)
-        except Exception as e:
-            logger.error("ios offer code not available yet (closed): %s", e if isinstance(e, (AscRejected, AscAmbiguous)) else type(e).__name__)
             raise OfferCodeUnavailable()
-        if expires_at is None:
-            self.cur.execute("SELECT expires_at FROM ios_offer_redemptions WHERE asc_batch_id=%s", (batch_id,))
-            r = self.cur.fetchone()
-            expires_at = r[0] if r else None
+        index = batch["next_index"]
+        self.cur.execute("UPDATE ios_offer_batches SET next_index = next_index + 1 WHERE _id=%s", (batch["id"],))
+        self.cur.execute(
+            "INSERT INTO ios_offer_redemptions (user_id, code_id, referrer_user_id, ip_hash, status, "
+            "batch_id, code_index, asc_batch_id, expires_at, issued_at) "
+            "VALUES (%s,%s,%s,%s,'issued',%s,%s,%s,%s,NOW()) RETURNING _id",
+            (user_id, row["id"], row["referrer_user_id"], ip_hash, batch["id"], index,
+             batch["asc_batch_id"], batch["expires_at"]))
+        rid = str(self.cur.fetchone()[0])
+        self._audit("ios_offer_issued", actor=user_id, code=row["id"], detail=rid)
+        self.conn.commit()
+        return {"rid": rid, "asc_batch_id": batch["asc_batch_id"], "code_index": index,
+                "expires_at": batch["expires_at"]}
+
+    def _code_for(self, client: AscOfferCodeClient, user_id: str, live: dict) -> dict:
+        """Read the batch values from ASC and return the code at the user's
+        reserved index (deterministic: values are sorted). Not ready / short /
+        any ASC error fails closed; the reservation stays, so a retry gets the
+        same index."""
+        try:
+            values = client.fetch_values(live["asc_batch_id"])
+            code = values[live["code_index"]]
+        except Exception as e:
+            logger.error("ios offer code not available yet (closed): %s",
+                         e if isinstance(e, (AscRejected, AscAmbiguous)) else type(e).__name__)
+            self._audit_safe("ios_offer_code_not_ready", user_id, live["rid"])
+            raise OfferCodeUnavailable()
+        expires_at = live["expires_at"]
         return {"offer_code": code, "redeem_url": redeem_url(code),
                 "expires_at": expires_at.isoformat() if expires_at else None}
 
