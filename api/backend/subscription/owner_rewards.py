@@ -386,6 +386,39 @@ class RewardManager(PromoManager):
             ip_hash=_hash("ip:" + ip) if ip else None)
         return outcome, rid, owner_id
 
+    def _earn_friend_purchase(self, code_row: dict, buyer_id: str) -> tuple[str, str | None, str | None]:
+        """Credit the inviter when an invitee redeems their friend code at a
+        completed, signature-verified Stripe Checkout.
+
+        Shares the ``signup:<invitee>`` idempotency key (and the per-invitee /
+        per-email unique indexes, source 'signup') with ``earn_signup``, so an
+        invitee who both signed up with the code AND redeemed it can credit the
+        inviter at most once, in either order. Same eligibility as signup: owner
+        must hold a real paid individual plan, caps apply, self-referral denied.
+        The webhook has no client IP, so the per-IP cap is not applied here; the
+        redemption itself already required a paid, discounted first purchase by
+        a buyer with no paid history (see ``_log_promo_redemption``)."""
+        owner_id = code_row.get("referrer_user_id")
+        if not owner_id or not code_row.get("active"):
+            return "ignored", None, None
+        idem = f"signup:{buyer_id}"
+        # Replay / signup-already-credited fast path (clean no-op, no spurious
+        # skipped_* audit). The UNIQUE key + ON CONFLICT in _earn stay the
+        # race-safe guarantee.
+        self.cur.execute("SELECT 1 FROM owner_rewards WHERE idempotency_key = %s", (idem,))
+        if self.cur.fetchone():
+            self.conn.rollback()
+            return "duplicate", None, owner_id
+        norm = normalize_email(self._user_email(str(buyer_id)))
+        owner_norm = normalize_email(self._user_email(owner_id))
+        if str(owner_id) == str(buyer_id) or not norm or norm == owner_norm:
+            self.audit_event("reward_denied_self_referral", owner=owner_id, code=code_row["id"], detail="checkout")
+            return "denied_self_referral", None, owner_id
+        outcome, rid = self._earn(
+            owner_id=owner_id, source="signup", code_id=code_row["id"], code=code_row["code"],
+            idem=idem, invitee_id=str(buyer_id), email_hash=_hash(norm), ip_hash=None)
+        return outcome, rid, owner_id
+
     def resolve_owner_by_email(self, owner_email: str) -> str | None:
         """The one user whose account email equals the code's attached email
         (users.email is UNIQUE, but compare case-insensitively and fail closed on
@@ -395,7 +428,12 @@ class RewardManager(PromoManager):
         return str(rows[0][0]) if len(rows) == 1 else None
 
     def earn_purchase(self, code_row: dict, buyer_id: str, redemption_key: str) -> tuple[str, str | None, str | None]:
-        """Credit a creator-code owner for a logged (within-cap) purchase."""
+        """Credit a code owner for a logged (within-cap) purchase: the creator-code
+        owner (``purchase:<session>`` key) or, for a friend code redeemed at
+        Stripe Checkout, the inviter (``signup:<buyer>`` key, see
+        ``_earn_friend_purchase``)."""
+        if code_row.get("kind") == "friend":
+            return self._earn_friend_purchase(code_row, buyer_id)
         if code_row.get("kind") != "creator" or not code_row.get("creator_active", True):
             return "ignored", None, None
         idem = f"purchase:{redemption_key}"
@@ -659,7 +697,8 @@ def credit_signup_reward(invitee_id: str, invitee_email: str, raw_code, ip: str)
 
 
 def credit_purchase_reward(code_id: str, buyer_id: str, redemption_key: str) -> None:
-    """Credit the creator-code owner for a logged (within-cap) purchase.
+    """Credit the code owner for a logged (within-cap) purchase: creator-code
+    owner, or the friend-code inviter (shared ``signup:<buyer>`` key).
 
     Retry-safe: the reward is keyed ``purchase:<redemption_key>`` (UNIQUE), so
     calling this again for the same purchase (webhook replay) is a no-op once the

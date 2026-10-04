@@ -18,6 +18,7 @@ import AppNav from '../components/AppNav.jsx';
 import { useWarmCanvas } from '../hooks/useWarmCanvas.js';
 import AppBloom from '../components/AppBloom.jsx';
 import SubscriptionCard from '../components/SubscriptionCard.jsx';
+import RewardNotice from '../components/RewardNotice.jsx';
 import DonationButton from '../components/DonationButton.jsx';
 import Seo from '../components/Seo.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
@@ -1019,6 +1020,8 @@ export default function Account() {
               </div>
           }
         </Card>
+
+        <RewardNotice userId={user.user_id} />
 
         {/* Subscription */}
         <div id="subscription" tabIndex={-1} className="fs-sub-scope" style={{ animationDelay: '0.12s', animation: 'fadeUp 0.55s ease forwards', opacity: 0 }}>

@@ -76,4 +76,15 @@ describe('InviteFriends', () => {
     expect(t).toMatch(/individual plan/);
     expect(t).not.toMatch(/iPhone app under Account/);
   });
+  test('reward notice shown when earned > 0 and absent when none (web notice)', async () => {
+    fetchRewardSummary.mockResolvedValue({ percent_off: 50, earned: 1, claimed: 0, provider: 'apple' });
+    renderPage();
+    expect((await screen.findByTestId('reward-notice')).textContent).toMatch(/You earned 50% off your next month/);
+    cleanup();
+    sessionStorage.clear();
+    fetchRewardSummary.mockResolvedValue({ percent_off: 50, earned: 0, claimed: 0, provider: 'apple' });
+    renderPage();
+    await screen.findByTestId('reward-summary');
+    expect(screen.queryByTestId('reward-notice')).toBeNull();
+  });
 });

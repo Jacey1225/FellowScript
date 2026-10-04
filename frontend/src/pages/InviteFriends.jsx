@@ -5,6 +5,7 @@ import AppBloom from '../components/AppBloom.jsx';
 import AppNav from '../components/AppNav.jsx';
 import Seo from '../components/Seo.jsx';
 import FriendInviteCode from '../components/FriendInviteCode.jsx';
+import RewardNotice from '../components/RewardNotice.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import { fetchRewardSummary } from '../lib/ownerRewardsApi.js';
 
@@ -54,6 +55,7 @@ export default function InviteFriends() {
         <Title level={2} style={{ fontFamily: "'Playfair Display', serif", color: 'var(--parchment)', marginTop: 0 }}>
           Invite a friend
         </Title>
+        {rewards && <RewardNotice userId={user.user_id} summary={rewards} />}
         <div style={CARD_STYLE}>
           <FriendInviteCode userId={user.user_id} />
         </div>

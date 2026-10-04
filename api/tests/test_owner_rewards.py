@@ -1369,6 +1369,136 @@ def cleanup():
         pass
 
 
+def _friend_cid(code):
+    db = RewardManager()
+    try:
+        return db.find_code(code)["id"]
+    finally:
+        db.close()
+
+
+def test_friend_purchase(client):
+    print("\n== Friend-code Stripe purchase credits the inviter ==")
+    set_flags(True)
+    # 1. Apple inviter, web invitee redeems at checkout (no signup code) => one reward
+    owner, _ = signup(client)
+    give_sub(owner, "apple", otxn="otx_fp_1")
+    code = friend_code(owner)
+    cid = _friend_cid(code)
+    buyer, _ = signup(client)
+    sess, ev = _webhook_event(buyer, cid)
+    with WebhookStubs(ev):
+        r = _post_webhook(client)
+        check("friend-code checkout webhook 200", r.status_code == 200, r.text)
+        rs = rewards_of(owner)
+        check("friend-code purchase credits inviter once with signup:<invitee> key",
+              len(rs) == 1 and rs[0][0] == "earned" and rs[0][1] == "signup" and rs[0][4] == f"signup:{buyer}", str(rs))
+        for _ in range(2):
+            _post_webhook(client)
+        check("webhook replays idempotent", len(rewards_of(owner)) == 1)
+    summ = q("SELECT COUNT(*) FROM subscriptions WHERE user_id=%s", (buyer,))[0][0]
+    check("invitee plan still recorded", summ == 1)
+
+    # 2. signup WITH code, then redeem => one reward total
+    owner2, _ = signup(client)
+    give_sub(owner2, "stripe")
+    code2 = friend_code(owner2)
+    cid2 = _friend_cid(code2)
+    inv, _ = signup(client, invite=code2)
+    check("signup credited once", len(rewards_of(owner2)) == 1)
+    sess2, ev2 = _webhook_event(inv, cid2)
+    with WebhookStubs(ev2):
+        r = _post_webhook(client)
+        check("redeem after signup => 200", r.status_code == 200, r.text)
+    check("signup + redeem credits inviter once total", len(rewards_of(owner2)) == 1, str(rewards_of(owner2)))
+
+    # 3. redeem first, then signup-earn path for same invitee => still one
+    outcome = earn_signup(code, buyer, "x@example.com")[0]
+    check("signup earn after redeem => duplicate", outcome == "duplicate" and len(rewards_of(owner)) == 1, outcome)
+
+    # 4. self-referral
+    sess3, ev3 = _webhook_event(owner2, cid2)
+    before = len(rewards_of(owner2))
+    ow.credit_purchase_reward(cid2, owner2, sess3)
+    check("self-referral denied", len(rewards_of(owner2)) == before
+          and "reward_denied_self_referral" in audit_actions(owner2))
+
+    # 5. inviter without a paid plan => nothing
+    owner3, _ = signup(client)
+    cid3 = _friend_cid(friend_code(owner3))
+    b3, _ = signup(client)
+    _s, ev = _webhook_event(b3, cid3)
+    with WebhookStubs(ev):
+        r = _post_webhook(client)
+    check("inviter w/o paid plan: webhook 200, no reward", r.status_code == 200 and rewards_of(owner3) == [])
+    check("no-subscription skip audited", "reward_skipped_no_subscription" in audit_actions(owner3))
+
+    # 6. cap reached
+    owner4, _ = signup(client)
+    give_sub(owner4, "stripe")
+    cid4 = _friend_cid(friend_code(owner4))
+    cap = ow.rewards_config().cap_count
+    for _ in range(cap):
+        b, _ = signup(client)
+        ow.credit_purchase_reward(cid4, b, f"cs_{uuid.uuid4().hex[:8]}")
+    b, _ = signup(client)
+    ow.credit_purchase_reward(cid4, b, f"cs_{uuid.uuid4().hex[:8]}")
+    n = len(rewards_of(owner4))
+    check("cap enforced for friend purchase credits", n <= cap, str(n))
+
+    # 7. flag off => nothing
+    owner5, _ = signup(client)
+    give_sub(owner5, "stripe")
+    cid5 = _friend_cid(friend_code(owner5))
+    b5, _ = signup(client)
+    set_flags(False)
+    ow.credit_purchase_reward(cid5, b5, "cs_flagoff")
+    set_flags(True)
+    check("flag off: no friend purchase credit", rewards_of(owner5) == [])
+
+    # 8. inactive code => nothing
+    q("UPDATE promo_codes SET active=FALSE WHERE _id=%s", (cid5,))
+    ow.credit_purchase_reward(cid5, b5, "cs_inactive")
+    check("inactive friend code earns nothing", rewards_of(owner5) == [])
+
+    # 9. no credit without a verified completed event: bad signature => 400, nothing
+    owner6, _ = signup(client)
+    give_sub(owner6, "stripe")
+    cid6 = _friend_cid(friend_code(owner6))
+    b6, _ = signup(client)
+    o = (stripe_service.is_configured, stripe_service.construct_event)
+    stripe_service.is_configured = lambda: True
+
+    def bad(payload, sig):
+        raise ValueError("bad sig")
+    stripe_service.construct_event = bad
+    try:
+        r = _post_webhook(client)
+    finally:
+        stripe_service.is_configured, stripe_service.construct_event = o
+    check("unverified event => rejected, no reward", r.status_code == 400 and rewards_of(owner6) == [], str(r.status_code))
+
+    # 10. unpaid session => no redemption, no reward
+    _s, ev = _webhook_event(b6, cid6)
+    ev["data"]["object"]["payment_status"] = "unpaid"
+    with WebhookStubs(ev):
+        _post_webhook(client)
+    check("unpaid session => no reward", rewards_of(owner6) == [])
+
+    # 11. concurrent deliveries => exactly one
+    owner7, _ = signup(client)
+    give_sub(owner7, "apple", otxn="otx_fp_7")
+    cid7 = _friend_cid(friend_code(owner7))
+    b7, _ = signup(client)
+    _s, ev = _webhook_event(b7, cid7)
+    with WebhookStubs(ev):
+        ts = [threading.Thread(target=lambda: _post_webhook(client)) for _ in range(6)]
+        [t.start() for t in ts]
+        [t.join() for t in ts]
+        _post_webhook(client)
+    check("concurrent friend-purchase deliveries => one reward", len(rewards_of(owner7)) == 1, str(rewards_of(owner7)))
+
+
 def main():
     stripe_service.is_configured = lambda: False   # never reach the real Stripe API from tests
     test_config()
@@ -1383,6 +1513,7 @@ def main():
             test_concurrent_earn(client)
             test_purchase_earn(client)
             test_purchase_retry(client)
+            test_friend_purchase(client)
             test_stripe_apply(client)
             test_apple(client)
             test_admin(client, admin, user)
