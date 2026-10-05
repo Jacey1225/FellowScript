@@ -5,7 +5,7 @@
 .ex-main { position: relative; z-index: 1; max-width: 1200px; margin: 0 auto; padding: calc(var(--nav-h, 64px) + 1.5rem) clamp(16px, 4vw, 32px) 4rem; }
 .ex-head { margin-bottom: 1.25rem; }
 .ex-list-cta { display: inline-block; margin-top: .75rem; text-decoration: none; }
-.ex-h1 { font-family: 'Cormorant Garamond', Georgia, serif; font-weight: 600; font-size: clamp(2rem, 5vw, 3rem); line-height: 1.05; margin: 0 0 .35rem; color: var(--parchment, #F2F2F2); }
+.ex-h1 { font-family: 'Playfair Display', Georgia, serif; font-weight: 700; font-size: clamp(2rem, 5vw, 3rem); line-height: 1.05; margin: 0 0 .35rem; color: var(--parchment, #F2F2F2); }
 .ex-h1:focus { outline: none; }
 .ex-sub { margin: 0; font-family: 'Inter', sans-serif; color: rgba(242,242,242,.65); }
 
@@ -67,7 +67,7 @@ body.page-warm .ex-field select:focus, body.page-warm .ex-field textarea:focus {
 .ex-hero-banner { position: relative; aspect-ratio: 3 / 1; overflow: hidden; background: radial-gradient(ellipse 70% 120% at 20% 0%, rgba(224,154,48,.5), rgba(224,154,48,0) 70%), radial-gradient(ellipse 60% 100% at 100% 100%, rgba(255,198,26,.3), rgba(255,198,26,0) 70%), var(--card-bg-2, #232326); }
 .ex-hero-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .ex-hero-scrim { position: absolute; inset: 0; background: linear-gradient(to top, rgba(10,10,10,.82), rgba(10,10,10,.35) 55%, rgba(10,10,10,0)); }
-.ex-hero-title { position: absolute; left: 1rem; right: 1rem; bottom: .7rem; margin: 0; padding-left: 76px; font-family: 'Cormorant Garamond', Georgia, serif; font-weight: 600; font-size: 1.5rem; line-height: 1.1; color: #F2F2F2; text-shadow: 0 1px 2px rgba(0,0,0,.4); overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.ex-hero-title { position: absolute; left: 1rem; right: 1rem; bottom: .7rem; margin: 0; padding-left: 76px; font-family: 'Playfair Display', Georgia, serif; font-weight: 700; font-size: 1.5rem; line-height: 1.1; color: #F2F2F2; text-shadow: 0 1px 2px rgba(0,0,0,.4); overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .ex-hero-title:focus { outline: none; }
 .ex-hero-photo { position: absolute; left: 1rem; bottom: -1.25rem; width: 64px; height: 64px; border-radius: 50%; overflow: hidden; display: flex; align-items: center; justify-content: center; background: var(--card-bg-2, #232326); border: 2px solid var(--card-bg, #1A1A1C); font: 600 1.1rem 'Inter', sans-serif; color: var(--gold, #FFC61A); }
 .ex-hero-photo img { width: 100%; height: 100%; object-fit: cover; }
