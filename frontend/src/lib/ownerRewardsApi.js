@@ -38,10 +38,12 @@ const json = (method, body) => ({
   method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
 });
 
-// Admin: create a creator + code attached to ownerEmail. `code` omitted ->
+// Admin: create a creator + code attached to ownerEmail (optional). `code` omitted ->
 // the server generates a secure random one. Resolves { creator, code }.
 export function createCreatorCode({ name, notes, ownerEmail, code, maxRedemptions, expiresAt }) {
-  const body = { name, notes: notes || '', owner_email: ownerEmail };
+  const body = { name, notes: notes || '' };
+  // Blank email is allowed: the server creates the code inactive ("awaiting email").
+  if (ownerEmail) body.owner_email = ownerEmail;
   if (code) body.code = code;
   if (maxRedemptions) body.max_redemptions = maxRedemptions;
   if (expiresAt) body.expires_at = expiresAt;
@@ -63,6 +65,13 @@ export function deactivateCode(codeId) {
 // Admin: idempotent reactivate (expiry, cap and creator checks still apply at redemption).
 export function reactivateCode(codeId) {
   return request(`/admin/promo/codes/${encodeURIComponent(codeId)}/reactivate`, { method: 'POST' }, "Couldn't reactivate the code.");
+}
+
+// Admin: set (or, with a blank value, remove) the owner email on a code. Format is
+// validated server-side (422). Never activates the code; removing the email
+// deactivates it server-side. Resolves the updated code.
+export function updateCodeEmail(codeId, ownerEmail) {
+  return request(`/admin/promo/codes/${encodeURIComponent(codeId)}`, json('PATCH', { owner_email: ownerEmail || null }), "Couldn't save the email.");
 }
 
 // Admin: soft-delete a creator code (204, idempotent). Redemption history is kept.

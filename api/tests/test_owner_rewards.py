@@ -1166,6 +1166,150 @@ def test_admin(client, admin, user):
           in (401, 403))
 
 
+def test_awaiting_email(client, admin, user):
+    """Task 20261005-creator-promo-awaiting-email: creator codes created without an
+    owner email are inactive + flagged, can't be activated or redeemed until an
+    email is added, adding an email never auto-activates, removing it deactivates."""
+    print("\n== Creator code awaiting owner email (task 20261005) ==")
+    set_flags(True)
+    aid, atok = admin
+    uid, utok = user
+
+    def evaluable(text):
+        buyer, _ = signup(client)
+        db = RewardManager()
+        try:
+            return db.evaluate(buyer, text, 1, "b@example.com") is not None
+        finally:
+            db.close()
+
+    def row(cid):
+        return q("SELECT active, owner_email, requires_owner_email FROM promo_codes WHERE _id=%s", (cid,))[0]
+
+    # create without email (omitted and blank both accepted)
+    for label, body in (("omitted", {"name": "NoMailA", "notes": "n-a"}),
+                        ("blank", {"name": "NoMailB", "notes": "n-b", "owner_email": "  "})):
+        r = client.post("/admin/promo/creator-codes", json=body, headers=ip_hdr(atok))
+        check(f"create without email ({label}) => 201", r.status_code == 201, r.text)
+        out = r.json()
+        CREATORS.append(out["creator"]["id"])
+        code = out["code"]
+        check(f"({label}) code created DEACTIVATED, no email", code["active"] is False
+              and code["owner_email"] is None, str(code))
+        check(f"({label}) response flags awaiting_email", code.get("awaiting_email") is True, str(code))
+        check(f"({label}) name + notes saved", out["creator"]["name"] == body["name"]
+              and out["creator"].get("notes") == body["notes"], str(out["creator"]))
+        check(f"({label}) DB row inactive + requires_owner_email",
+              row(code["id"]) == (False, None, True), str(row(code["id"])))
+    cid, text = code["id"], code["code"]
+
+    # custom code string saved
+    custom = f"NOMAIL{uuid.uuid4().hex[:6]}".upper()
+    r = client.post("/admin/promo/creator-codes", json={"name": "NoMailC", "code": custom}, headers=ip_hdr(atok))
+    CREATORS.append(r.json()["creator"]["id"])
+    check("custom code string saved without email", r.status_code == 201 and r.json()["code"]["code"] == custom, r.text)
+
+    # exposed as awaiting in overview and list
+    ov = {x["id"]: x for x in client.get("/admin/promo/codes-overview", headers=ip_hdr(atok)).json()}
+    check("overview exposes awaiting_email true", ov[cid]["awaiting_email"] is True and ov[cid]["active"] is False)
+    lst = client.get("/admin/promo/codes", headers=ip_hdr(atok))
+    check("list_codes exposes awaiting_email", lst.status_code == 200 and
+          any(x["id"] == cid and x["awaiting_email"] is True for x in lst.json()))
+
+    # invalid email format => 422 (create + update), nothing persisted
+    bad = client.post("/admin/promo/creator-codes", json={"name": "BadMail", "owner_email": "not-an-email"},
+                      headers=ip_hdr(atok))
+    check("create with invalid email => 422", bad.status_code in (400, 422), str(bad.status_code))
+    check("invalid email create left no creator", q("SELECT COUNT(*) FROM creators WHERE name='BadMail'")[0][0] == 0)
+    r = client.patch(f"/admin/promo/codes/{cid}", json={"owner_email": "nope"}, headers=ip_hdr(atok))
+    check("PATCH invalid email => 422", r.status_code in (400, 422), str(r.status_code))
+    check("invalid email PATCH changed nothing", row(cid) == (False, None, True))
+
+    # activation blocked without email (all three entry points), stays inactive
+    for label, call in (
+        ("reactivate", lambda: client.post(f"/admin/promo/codes/{cid}/reactivate", headers=ip_hdr(atok))),
+        ("PATCH active=true", lambda: client.patch(f"/admin/promo/codes/{cid}", json={"active": True},
+                                                   headers=ip_hdr(atok))),
+        ("PATCH active=true + blank email", lambda: client.patch(
+            f"/admin/promo/codes/{cid}", json={"active": True, "owner_email": ""}, headers=ip_hdr(atok))),
+    ):
+        r = call()
+        check(f"{label} without email rejected 4xx", 400 <= r.status_code < 500, f"{r.status_code} {r.text}")
+        check(f"{label} left code inactive", row(cid)[0] is False)
+    check("unactivated awaiting code not redeemable", not evaluable(text))
+
+    # redemption fails closed even if active flag is flipped directly in the DB
+    q("UPDATE promo_codes SET active=TRUE WHERE _id=%s", (cid,))
+    check("active=true forced in DB but no email => still NOT redeemable (fail closed)", not evaluable(text))
+    sdb = promo.PromoManager()
+    try:
+        check("find_code carries requires_owner_email", sdb.find_code(text)["requires_owner_email"] is True)
+    finally:
+        sdb.close()
+    q("UPDATE promo_codes SET active=FALSE WHERE _id=%s", (cid,))
+
+    # add email: saved, normalized, NOT auto-activated, flag cleared in derived view
+    owner, _ = signup(client)
+    oemail = q("SELECT email FROM users WHERE _id=%s", (owner,))[0][0]
+    give_sub(owner)
+    r = client.patch(f"/admin/promo/codes/{cid}", json={"owner_email": oemail.upper()}, headers=ip_hdr(atok))
+    check("PATCH add valid email 200", r.status_code == 200, r.text)
+    check("email saved lowercase, awaiting_email cleared, code STILL inactive",
+          r.json()["owner_email"] == oemail.lower() and r.json()["awaiting_email"] is False
+          and r.json()["active"] is False, r.text)
+    check("DB: email set, not auto-activated", row(cid)[0] is False and row(cid)[1] == oemail.lower())
+    check("with email but still inactive: not redeemable", not evaluable(text))
+    ov = {x["id"]: x for x in client.get("/admin/promo/codes-overview", headers=ip_hdr(atok)).json()}
+    check("overview no longer awaiting after email added", ov[cid]["awaiting_email"] is False)
+
+    # activation now works (manual), and the code redeems
+    r = client.post(f"/admin/promo/codes/{cid}/reactivate", headers=ip_hdr(atok))
+    check("reactivate works after email added", r.status_code == 200 and r.json()["active"] is True, r.text)
+    check("activated code with email is redeemable", evaluable(text))
+
+    # removing the email deactivates the code and re-flags it
+    r = client.patch(f"/admin/promo/codes/{cid}", json={"owner_email": None}, headers=ip_hdr(atok))
+    check("PATCH owner_email null removes email", r.status_code == 200, r.text)
+    check("removing email forces active=false + awaiting", row(cid) == (False, None, True), str(row(cid)))
+    check("removed-email code not redeemable", not evaluable(text))
+    r = client.post(f"/admin/promo/codes/{cid}/reactivate", headers=ip_hdr(atok))
+    check("reactivate after email removal rejected", 400 <= r.status_code < 500 and row(cid)[0] is False, r.text)
+
+    # removing the email on an ACTIVE code in one call that also says active=true cannot slip through
+    r = client.patch(f"/admin/promo/codes/{cid}", json={"owner_email": oemail}, headers=ip_hdr(atok))
+    client.post(f"/admin/promo/codes/{cid}/reactivate", headers=ip_hdr(atok))
+    r = client.patch(f"/admin/promo/codes/{cid}", json={"owner_email": "", "active": True}, headers=ip_hdr(atok))
+    check("remove email + active=true in one PATCH ends inactive", row(cid)[0] is False and row(cid)[1] is None,
+          f"{r.status_code} {row(cid)}")
+
+    # audit trail: actions recorded, no email in detail
+    acts = q("SELECT action, detail FROM promo_audit_log WHERE code_id=%s", (cid,))
+    names = {a[0] for a in acts}
+    check("audit has promo_code_email_set and promo_code_email_removed",
+          {"promo_code_email_set", "promo_code_email_removed"} <= names, str(names))
+    check("audit detail contains no email", all("@" not in (a[1] or "") for a in acts))
+
+    # legacy / existing behaviour unchanged
+    legacy = client.post("/admin/promo/creator-codes", json={"name": "Legacy", "owner_email": oemail},
+                         headers=ip_hdr(atok)).json()
+    CREATORS.append(legacy["creator"]["id"])
+    lc = legacy["code"]
+    check("create WITH email still active, not flagged", lc["active"] is True and lc["awaiting_email"] is False
+          and row(lc["id"]) == (True, oemail.lower(), False))
+    check("code with email redeemable as before", evaluable(lc["code"]))
+    # legacy NULL-email code (flag FALSE, pre-existing rows) is grandfathered: still redeemable
+    q("UPDATE promo_codes SET owner_email=NULL WHERE _id=%s", (lc["id"],))
+    check("legacy NULL-email code (flag FALSE) still redeemable (unchanged)", evaluable(lc["code"]))
+    ov = {x["id"]: x for x in client.get("/admin/promo/codes-overview", headers=ip_hdr(atok)).json()}
+    check("legacy NULL-email code is not 'awaiting'", ov[lc["id"]]["awaiting_email"] is False)
+
+    # authz unchanged
+    check("PATCH owner_email non-admin denied", client.patch(f"/admin/promo/codes/{cid}", json={"owner_email": oemail},
+          headers=ip_hdr(utok)).status_code in (401, 403))
+    check("create without email anon denied", client.post("/admin/promo/creator-codes", json={"name": "x"},
+          headers=ip_hdr()).status_code in (401, 403))
+
+
 def test_audit_no_pii(client):
     print("\n== Audit log / ledger hygiene ==")
     rows = q("SELECT action, detail FROM promo_audit_log ORDER BY ts DESC LIMIT 500")
@@ -1518,6 +1662,7 @@ def main():
             test_apple(client)
             test_admin(client, admin, user)
             test_code_lifecycle(client, admin, user)
+            test_awaiting_email(client, admin, user)
             test_audit_no_pii(client)
             set_flags(False)
     finally:

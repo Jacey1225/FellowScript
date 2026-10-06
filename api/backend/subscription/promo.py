@@ -187,6 +187,8 @@ class PromoManager(DBManager):
                 return None
             if not row["active"]:
                 return None
+            if row["requires_owner_email"] and not row["owner_email"]:
+                return None  # fail closed: awaiting-email code is never redeemable
             if row["expires_at"] and row["expires_at"] <= datetime.now(timezone.utc):
                 return None
             if row["max_redemptions"] is not None and row["redemption_count"] >= row["max_redemptions"]:
@@ -205,7 +207,8 @@ class PromoManager(DBManager):
         """Code row by text. Soft-deleted codes are invisible unless asked for."""
         self.cur.execute(
             "SELECT p._id, p.code, p.kind, p.creator_id, p.referrer_user_id, p.active, "
-            "       p.max_redemptions, p.redemption_count, p.expires_at, COALESCE(c.active, TRUE) "
+            "       p.max_redemptions, p.redemption_count, p.expires_at, COALESCE(c.active, TRUE), "
+            "       p.requires_owner_email, p.owner_email "
             "FROM promo_codes p LEFT JOIN creators c ON c._id = p.creator_id WHERE p.code = %s"
             + ("" if include_deleted else " AND p.deleted_at IS NULL"),
             (code,),
@@ -219,6 +222,7 @@ class PromoManager(DBManager):
             "referrer_user_id": str(r[4]) if r[4] else None,
             "active": r[5], "max_redemptions": r[6], "redemption_count": r[7],
             "expires_at": r[8], "creator_active": r[9],
+            "requires_owner_email": bool(r[10]), "owner_email": r[11],
         }
 
     def get_code_by_id(self, code_id: str) -> dict | None:
@@ -345,10 +349,11 @@ class PromoManager(DBManager):
                 "creator_id": str(r[3]) if r[3] else None,
                 "referrer_user_id": str(r[4]) if r[4] else None,
                 "active": r[5], "max_redemptions": r[6], "redemption_count": r[7],
-                "expires_at": _iso(r[8]), "created_at": _iso(r[9]), "owner_email": r[10]}
+                "expires_at": _iso(r[8]), "created_at": _iso(r[9]), "owner_email": r[10],
+                "awaiting_email": bool(r[11]) and not r[10]}
 
     _CODE_COLS = ("_id, code, kind, creator_id, referrer_user_id, active, max_redemptions, "
-                  "redemption_count, expires_at, created_at, owner_email")
+                  "redemption_count, expires_at, created_at, owner_email, requires_owner_email")
 
     def create_creator_code(self, code: str, creator_id: str, max_redemptions: int | None,
                             expires_at, owner_email: str | None = None) -> dict:
@@ -373,21 +378,62 @@ class PromoManager(DBManager):
             raise PromoError(409, "code already exists")
         return self._code_dict(r)
 
-    def update_code(self, code_id: str, fields: dict) -> dict | None:
+    def update_code(self, code_id: str, fields: dict, actor_id: str | None = None) -> dict | None:
+        """Update a code. Creator codes that need an owner email (created blank,
+        or whose email was removed) can never be active without one: activating
+        is rejected (409) and removing the email forces active=false. Setting an
+        email never activates (manual activation). The email is never logged."""
         allowed = {k: v for k, v in fields.items() if k in ("active", "max_redemptions", "expires_at", "owner_email")}
         if not allowed:
             raise PromoError(422, "nothing to update")
         if "owner_email" in allowed and allowed["owner_email"] is not None:
-            allowed["owner_email"] = normalize_owner_email(allowed["owner_email"])
-            if not allowed["owner_email"]:
-                raise PromoError(422, "owner_email is not a valid email address")
-        sets = ", ".join(f"{k} = %s" for k in allowed)
-        self.cur.execute(
-            f"UPDATE promo_codes SET {sets} WHERE _id = %s AND deleted_at IS NULL RETURNING {self._CODE_COLS}",
-            [*allowed.values(), code_id])
-        r = self.cur.fetchone()
-        self.conn.commit()
-        return self._code_dict(r) if r else None
+            raw = allowed["owner_email"]
+            if isinstance(raw, str) and not raw.strip():
+                allowed["owner_email"] = None   # blank == remove
+            else:
+                allowed["owner_email"] = normalize_owner_email(raw)
+                if not allowed["owner_email"]:
+                    raise PromoError(422, "owner_email is not a valid email address")
+        try:
+            self.cur.execute(
+                "SELECT kind, owner_email, requires_owner_email, active FROM promo_codes "
+                "WHERE _id = %s AND deleted_at IS NULL FOR UPDATE", (code_id,))
+            cur_row = self.cur.fetchone()
+            if not cur_row:
+                self.conn.rollback()
+                return None
+            kind, cur_email, requires, _cur_active = cur_row
+            audit_action = None
+            if kind == "creator":
+                new_email = allowed["owner_email"] if "owner_email" in allowed else cur_email
+                if "owner_email" in allowed and new_email is None and cur_email is not None:
+                    requires = True
+                    allowed["requires_owner_email"] = True
+                    allowed["active"] = False        # removing the email deactivates
+                    audit_action = "promo_code_email_removed"
+                elif requires and not new_email:
+                    if allowed.get("active") is True:
+                        self.conn.rollback()
+                        raise PromoError(409, "owner email required before this code can be activated")
+                    allowed["active"] = False
+                if "owner_email" in allowed and new_email and new_email != cur_email:
+                    audit_action = "promo_code_email_set"
+            sets = ", ".join(f"{k} = %s" for k in allowed)
+            self.cur.execute(
+                f"UPDATE promo_codes SET {sets} WHERE _id = %s AND deleted_at IS NULL RETURNING {self._CODE_COLS}",
+                [*allowed.values(), code_id])
+            r = self.cur.fetchone()
+            if r and audit_action:
+                self.cur.execute(
+                    "INSERT INTO promo_audit_log (action, actor_user_id, code_id, detail) VALUES (%s,%s,%s,%s)",
+                    (audit_action, actor_id, code_id, ""))
+            self.conn.commit()
+            return self._code_dict(r) if r else None
+        except PromoError:
+            raise
+        except Exception:
+            self.conn.rollback()
+            raise
 
     def delete_code(self, code_id: str) -> bool:
         """Soft-delete a creator code (idempotent). Returns False if the code is
@@ -420,15 +466,18 @@ class PromoManager(DBManager):
             [*params, limit, offset])
         return [self._code_dict(r) for r in self.cur.fetchall()]
 
-    def create_creator_with_code(self, name: str, notes: str, owner_email: str, code: str | None,
+    def create_creator_with_code(self, name: str, notes: str, owner_email: str | None, code: str | None,
                                  max_redemptions: int | None, expires_at,
                                  actor_id: str | None = None) -> dict:
         """Admin one-shot: create a creator and a creator code attached to
         ``owner_email`` in ONE transaction. With no ``code`` a secure random one
         is generated (retried on the astronomically unlikely collision)."""
-        email = normalize_owner_email(owner_email)
-        if not email:
-            raise PromoError(422, "owner_email is not a valid email address")
+        email = None
+        if owner_email is not None and owner_email.strip():
+            email = normalize_owner_email(owner_email)
+            if not email:
+                raise PromoError(422, "owner_email is not a valid email address")
+        awaiting = email is None   # no email -> created deactivated, flagged awaiting
         norm = None
         if code is not None and code.strip():
             norm = normalize_code(code)
@@ -443,10 +492,11 @@ class PromoManager(DBManager):
             for _ in range(5 if norm is None else 1):
                 candidate = norm or generate_creator_code()
                 self.cur.execute(
-                    f"INSERT INTO promo_codes (code, kind, creator_id, max_redemptions, expires_at, owner_email) "
-                    f"VALUES (%s, 'creator', %s, %s, %s, %s) ON CONFLICT (code) DO NOTHING "
+                    f"INSERT INTO promo_codes (code, kind, creator_id, max_redemptions, expires_at, owner_email, active, requires_owner_email) "
+                    f"VALUES (%s, 'creator', %s, %s, %s, %s, %s, %s) ON CONFLICT (code) DO NOTHING "
                     f"RETURNING {self._CODE_COLS}",
-                    (candidate, creator["id"], max_redemptions, expires_at, email))
+                    (candidate, creator["id"], max_redemptions, expires_at, email,
+                     not awaiting, awaiting))
                 row = self.cur.fetchone()
                 if row:
                     break
@@ -481,7 +531,7 @@ class PromoManager(DBManager):
         self.cur.execute(
             "SELECT p._id, p.code, p.kind, p.active, p.owner_email, c.name, p.redemption_count, "
             " p.max_redemptions, p.expires_at, p.created_at, "
-            " COALESCE(rw.earned, 0), COALESCE(rw.claimed, 0) "
+            " COALESCE(rw.earned, 0), COALESCE(rw.claimed, 0), p.requires_owner_email "
             "FROM promo_codes p LEFT JOIN creators c ON c._id = p.creator_id "
             "LEFT JOIN (SELECT code_id, COUNT(*) AS earned, COUNT(*) FILTER (WHERE status='claimed') AS claimed "
             "           FROM owner_rewards WHERE code_id IS NOT NULL GROUP BY code_id) rw ON rw.code_id = p._id "
@@ -489,7 +539,8 @@ class PromoManager(DBManager):
         return [{"id": str(r[0]), "code": r[1], "kind": r[2], "active": r[3], "owner_email": r[4],
                  "creator_name": r[5], "redemption_count": r[6], "max_redemptions": r[7],
                  "expires_at": _iso(r[8]), "created_at": _iso(r[9]),
-                 "rewards_earned": r[10], "rewards_claimed": r[11]} for r in self.cur.fetchall()]
+                 "rewards_earned": r[10], "rewards_claimed": r[11],
+                 "awaiting_email": bool(r[12]) and not r[4]} for r in self.cur.fetchall()]
 
     # ── Admin: reporting ──────────────────────────────────────────────────────
 

@@ -241,6 +241,7 @@ class CodeCreate(BaseModel):
 
 class CodeUpdate(BaseModel):
     active: bool | None = None
+    owner_email: str | None = Field(default=None, max_length=255)   # blank/null removes it
     max_redemptions: int | None = Field(default=None, gt=0)
     expires_at: datetime | None = None
 
@@ -317,7 +318,7 @@ async def update_code(code_id: str, body: CodeUpdate, admin_id: str = Depends(re
         fields["expires_at"] = _utc(fields["expires_at"])
     db = PromoManager()
     try:
-        out = db.update_code(cid, fields)
+        out = db.update_code(cid, fields, admin_id)
     except PromoError as e:
         raise _http(e)
     finally:
@@ -336,7 +337,7 @@ rewards_admin_router = APIRouter(prefix="/admin/promo", dependencies=[Depends(_r
 class CreatorCodeCreate(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     notes: str = Field(default="", max_length=2000)
-    owner_email: str = Field(min_length=3, max_length=255)
+    owner_email: str | None = Field(default=None, max_length=255)   # blank -> awaiting email, inactive
     code: str | None = Field(default=None, max_length=64)   # omitted -> secure random
     max_redemptions: int | None = Field(default=None, gt=0)
     expires_at: datetime | None = None
@@ -377,10 +378,12 @@ async def deactivate_code(code_id: str, admin_id: str = Depends(require_admin)) 
     cid = _uuid(code_id)
     db = PromoManager()
     try:
-        out = db.update_code(cid, {"active": False})
+        out = db.update_code(cid, {"active": False}, admin_id)
         if out is None:
             raise HTTPException(status_code=404, detail="Not found")
         db.audit("promo_code_deactivate", admin_id, cid)
+    except PromoError as e:
+        raise _http(e)
     finally:
         db.close()
     _audit("promo_code_deactivate", admin_id, cid)
@@ -394,10 +397,12 @@ async def reactivate_code(code_id: str, admin_id: str = Depends(require_admin)) 
     cid = _uuid(code_id)
     db = PromoManager()
     try:
-        out = db.update_code(cid, {"active": True})
+        out = db.update_code(cid, {"active": True}, admin_id)
         if out is None:
             raise HTTPException(status_code=404, detail="Not found")
         db.audit("promo_code_reactivate", admin_id, cid)
+    except PromoError as e:
+        raise _http(e)
     finally:
         db.close()
     _audit("promo_code_reactivate", admin_id, cid)

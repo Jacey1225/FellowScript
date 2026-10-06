@@ -9,9 +9,9 @@ vi.mock('../context/AuthContext.jsx', () => ({ useAuth: () => mockAuth }));
 vi.mock('../components/AppNav.jsx', () => ({ default: () => null }));
 vi.mock('../lib/ownerRewardsApi.js', async () => {
   const actual = await vi.importActual('../lib/ownerRewardsApi.js');
-  return { ...actual, createCreatorCode: vi.fn(), listCodesOverview: vi.fn(), deactivateCode: vi.fn(), reactivateCode: vi.fn(), deleteCode: vi.fn() };
+  return { ...actual, createCreatorCode: vi.fn(), listCodesOverview: vi.fn(), deactivateCode: vi.fn(), reactivateCode: vi.fn(), deleteCode: vi.fn(), updateCodeEmail: vi.fn() };
 });
-import { createCreatorCode, listCodesOverview, deactivateCode, reactivateCode, deleteCode, OwnerRewardsApiError } from '../lib/ownerRewardsApi.js';
+import { createCreatorCode, listCodesOverview, deactivateCode, reactivateCode, deleteCode, updateCodeEmail, OwnerRewardsApiError } from '../lib/ownerRewardsApi.js';
 import AdminPromoCodes from './AdminPromoCodes.jsx';
 
 function Where() { const l = useLocation(); return <div data-testid="where">{l.pathname}</div>; }
@@ -32,7 +32,7 @@ const ROW = {
 
 beforeEach(() => {
   createCreatorCode.mockReset(); listCodesOverview.mockReset(); deactivateCode.mockReset();
-  reactivateCode.mockReset(); deleteCode.mockReset();
+  reactivateCode.mockReset(); deleteCode.mockReset(); updateCodeEmail.mockReset();
 });
 afterEach(() => cleanup());
 
@@ -176,5 +176,82 @@ describe('AdminPromoCodes', () => {
     renderPage();
     await screen.findByText('No codes yet.');
     expect(listCodesOverview).toHaveBeenCalledWith({ kind: undefined });
+  });
+
+  // Task 20261005-creator-promo-awaiting-email
+  const AWAIT = { ...ROW, owner_email: null, active: false, awaiting_email: true };
+
+  test('create with blank email is allowed and sends no ownerEmail', async () => {
+    listCodesOverview.mockResolvedValue([]);
+    createCreatorCode.mockResolvedValue({ creator: {}, code: { code: 'NOMAIL1' } });
+    renderPage();
+    await screen.findByText('No codes yet.');
+    fireEvent.change(document.getElementById('cc-name'), { target: { value: 'Cee' } });
+    fireEvent.click(screen.getByText('Create code'));
+    expect((await screen.findByTestId('created-code')).textContent).toBe('NOMAIL1');
+    expect(createCreatorCode).toHaveBeenCalledWith(expect.objectContaining({ name: 'Cee', ownerEmail: '' }));
+  });
+
+  test('awaiting row shows text Needs email badge and a disabled Activate with accessible explanation', async () => {
+    listCodesOverview.mockResolvedValue([AWAIT]);
+    renderPage();
+    await screen.findByText('CREATOR1');
+    expect(screen.getByText('Needs email')).toBeInTheDocument();
+    const btn = screen.getByLabelText('Activate CREATOR1');
+    expect(btn).toBeDisabled();
+    expect(btn.getAttribute('aria-describedby')).toBe('needs-email-c1');
+    expect(document.getElementById('needs-email-c1').textContent).toMatch(/owner email before this code can be activated/i);
+    fireEvent.click(btn);
+    expect(reactivateCode).not.toHaveBeenCalled();
+    expect(screen.queryByLabelText('Reactivate CREATOR1')).toBeNull();
+  });
+
+  test('rows with an email show no badge', async () => {
+    listCodesOverview.mockResolvedValue([ROW]);
+    renderPage();
+    await screen.findByText('CREATOR1');
+    expect(screen.queryByText('Needs email')).toBeNull();
+    expect(screen.queryByText('Add email')).toBeNull();
+  });
+
+  test('inline Add email validates format and does not call the API when invalid', async () => {
+    listCodesOverview.mockResolvedValue([AWAIT]);
+    renderPage();
+    await screen.findByText('CREATOR1');
+    fireEvent.click(screen.getByText('Add email'));
+    fireEvent.change(screen.getByLabelText('Owner email for CREATOR1'), { target: { value: 'bad' } });
+    fireEvent.submit(screen.getByLabelText('Add email for CREATOR1', { selector: 'form' }));
+    expect(await screen.findByText('Enter a valid email.')).toBeInTheDocument();
+    expect(updateCodeEmail).not.toHaveBeenCalled();
+  });
+
+  test('saving a valid email enables Activate but never auto-activates', async () => {
+    listCodesOverview.mockResolvedValueOnce([AWAIT]);
+    listCodesOverview.mockResolvedValue([{ ...AWAIT, owner_email: 'new@x.co', awaiting_email: false }]);
+    updateCodeEmail.mockResolvedValue({});
+    renderPage();
+    await screen.findByText('CREATOR1');
+    fireEvent.click(screen.getByText('Add email'));
+    fireEvent.change(screen.getByLabelText('Owner email for CREATOR1'), { target: { value: ' new@x.co ' } });
+    fireEvent.click(screen.getByText('Save email'));
+    await waitFor(() => expect(updateCodeEmail).toHaveBeenCalledWith('c1', 'new@x.co'));
+    const reactivate = await screen.findByLabelText('Reactivate CREATOR1');
+    expect(reactivate).toBeEnabled();
+    expect(screen.queryByText('Needs email')).toBeNull();
+    expect(screen.getByText('Inactive')).toBeInTheDocument();
+    expect(reactivateCode).not.toHaveBeenCalled();
+    expect(deactivateCode).not.toHaveBeenCalled();
+  });
+
+  test('Add email server error is shown and the badge stays', async () => {
+    listCodesOverview.mockResolvedValue([AWAIT]);
+    updateCodeEmail.mockRejectedValue(new OwnerRewardsApiError('owner_email is not a valid email address', 422));
+    renderPage();
+    await screen.findByText('CREATOR1');
+    fireEvent.click(screen.getByText('Add email'));
+    fireEvent.change(screen.getByLabelText('Owner email for CREATOR1'), { target: { value: 'a@b.co' } });
+    fireEvent.click(screen.getByText('Save email'));
+    expect(await screen.findByText('owner_email is not a valid email address')).toBeInTheDocument();
+    expect(screen.getByText('Needs email')).toBeInTheDocument();
   });
 });

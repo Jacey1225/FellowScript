@@ -1,7 +1,7 @@
 // Task 20261001-promo-owner-rewards testing: API wrappers throw, never fabricate.
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
-  createCreatorCode, listCodesOverview, deactivateCode, fetchRewardSummary, OwnerRewardsApiError,
+  createCreatorCode, listCodesOverview, deactivateCode, updateCodeEmail, fetchRewardSummary, OwnerRewardsApiError,
 } from './ownerRewardsApi.js';
 
 const ok = (body) => ({ ok: true, status: 200, json: async () => body });
@@ -73,5 +73,31 @@ describe('list / deactivate / summary', () => {
     fetch.mockResolvedValue(ok({ earned: 2 }));
     expect(await fetchRewardSummary('u 1')).toEqual({ earned: 2 });
     expect(fetch.mock.calls[0][0]).toMatch(/\/rewards\/u%201$/);
+  });
+});
+
+// Task 20261005-creator-promo-awaiting-email
+describe('optional owner email', () => {
+  test('createCreatorCode omits owner_email when blank', async () => {
+    fetch.mockResolvedValue(ok({}));
+    await createCreatorCode({ name: 'N', ownerEmail: '' });
+    expect(JSON.parse(fetch.mock.calls[0][1].body)).toEqual({ name: 'N', notes: '' });
+  });
+  test('updateCodeEmail PATCHes owner_email only (never active)', async () => {
+    fetch.mockResolvedValue(ok({ id: 'c1' }));
+    await updateCodeEmail('c 1', 'a@b.co');
+    const [url, opts] = fetch.mock.calls[0];
+    expect(url).toMatch(/\/admin\/promo\/codes\/c%201$/);
+    expect(opts.method).toBe('PATCH');
+    expect(JSON.parse(opts.body)).toEqual({ owner_email: 'a@b.co' });
+  });
+  test('updateCodeEmail blank sends null (remove)', async () => {
+    fetch.mockResolvedValue(ok({}));
+    await updateCodeEmail('c1', '');
+    expect(JSON.parse(fetch.mock.calls[0][1].body)).toEqual({ owner_email: null });
+  });
+  test('updateCodeEmail 422 throws with server detail', async () => {
+    fetch.mockResolvedValue(bad(422, { detail: 'owner_email is not a valid email address' }));
+    await expect(updateCodeEmail('c1', 'x')).rejects.toMatchObject({ status: 422, message: 'owner_email is not a valid email address' });
   });
 });

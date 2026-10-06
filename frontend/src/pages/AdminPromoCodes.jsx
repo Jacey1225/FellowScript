@@ -5,7 +5,7 @@ import { AdminPageHeader } from '../components/AdminShell.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import {
   createCreatorCode, listCodesOverview, deactivateCode,
-  reactivateCode, deleteCode,
+  reactivateCode, deleteCode, updateCodeEmail,
 } from '../lib/ownerRewardsApi.js';
 
 const { Text } = Typography;
@@ -23,6 +23,11 @@ const LABEL = {
   textTransform: 'uppercase', color: 'rgba(224,170,60,0.78)', display: 'block', marginBottom: 4,
 };
 const MUTED = { fontFamily: "'Inter', sans-serif", fontSize: '0.8rem', color: 'rgba(244,228,193,0.5)' };
+const SR_ONLY = {
+  position: 'absolute', width: 1, height: 1, padding: 0, margin: -1, overflow: 'hidden',
+  clip: 'rect(0,0,0,0)', whiteSpace: 'nowrap', border: 0,
+};
+const NEEDS_EMAIL_HINT = 'Add an owner email before this code can be activated.';
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // Task 20261001-promo-owner-rewards: admin page (/#/admin/promo) to create secure
@@ -47,6 +52,9 @@ export default function AdminPromoCodes() {
   const [formError, setFormError] = useState(null);
   const [created, setCreated] = useState(null); // { creator, code }
   const [busyId, setBusyId] = useState(null);
+  const [addingId, setAddingId] = useState(null);   // row id whose inline Add email is open
+  const [addEmail, setAddEmail] = useState('');
+  const [addError, setAddError] = useState(null);
 
   // 401 -> sign in, 403 -> home, 404 -> feature off. Returns true if handled.
   const handleAuthError = useCallback((err) => {
@@ -74,7 +82,7 @@ export default function AdminPromoCodes() {
     e.preventDefault();
     setFormError(null);
     if (!name.trim()) { setFormError('Enter a creator name.'); return; }
-    if (!EMAIL_RE.test(email.trim())) { setFormError('Enter a valid owner email.'); return; }
+    if (email.trim() && !EMAIL_RE.test(email.trim())) { setFormError('Enter a valid owner email.'); return; }
     setCreating(true);
     try {
       const out = await createCreatorCode({
@@ -103,6 +111,21 @@ export default function AdminPromoCodes() {
       setBusyId(null);
     }
   };
+  const saveEmail = async (row) => {
+    setAddError(null);
+    const v = addEmail.trim();
+    if (!EMAIL_RE.test(v)) { setAddError('Enter a valid email.'); return; }
+    setBusyId(row.id);
+    try {
+      await updateCodeEmail(row.id, v);   // does not activate; admin presses Activate
+      setAddingId(null); setAddEmail('');
+      await load();
+    } catch (err) {
+      if (!handleAuthError(err)) setAddError(err.message || "Couldn't save the email.");
+    } finally {
+      setBusyId(null);
+    }
+  };
   const deactivate = (row) => runAction(row, deactivateCode, "Couldn't deactivate the code.");
   const reactivate = (row) => runAction(row, reactivateCode, "Couldn't reactivate the code.");
   const remove = (row) => runAction(row, deleteCode, "Couldn't delete the code.");
@@ -127,6 +150,8 @@ export default function AdminPromoCodes() {
               <Text style={LABEL}>New creator code</Text>
               <p style={{ ...MUTED, margin: '0 0 0.8rem' }}>
                 Creates a creator and a secure random code attached to the owner email.
+                Leave the email blank to save the creator as awaiting email: the code stays
+                inactive until you add an email and activate it.
                 When someone buys with the code, the owner earns a reward if they hold a plan.
               </p>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.9rem' }}>
@@ -135,7 +160,7 @@ export default function AdminPromoCodes() {
                   <Input id="cc-name" value={name} maxLength={120} onChange={(e) => setName(e.target.value)} />
                 </div>
                 <div style={{ minWidth: 240, flex: 1 }}>
-                  <label htmlFor="cc-email" style={LABEL}>Owner email</label>
+                  <label htmlFor="cc-email" style={LABEL}>Owner email (optional)</label>
                   <Input id="cc-email" type="email" value={email} maxLength={255} onChange={(e) => setEmail(e.target.value)} />
                 </div>
                 <div style={{ minWidth: 160 }}>
@@ -187,7 +212,33 @@ export default function AdminPromoCodes() {
                             {r.code}{r.creator_name ? <div style={MUTED}>{r.creator_name}</div> : null}
                           </td>
                           <td style={{ padding: 8 }}>{r.kind}</td>
-                          <td style={{ padding: 8 }}>{r.owner_email || '—'}</td>
+                          <td style={{ padding: 8 }}>
+                            {r.owner_email || '—'}
+                            {r.awaiting_email && (
+                              <div style={{ marginTop: 4 }}>
+                                <Tag color="orange">Needs email</Tag>
+                                {addingId === r.id ? (
+                                  <form
+                                    onSubmit={(e) => { e.preventDefault(); saveEmail(r); }}
+                                    aria-label={`Add email for ${r.code}`}
+                                    style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6 }}
+                                  >
+                                    <Input
+                                      type="email" size="small" value={addEmail} maxLength={255} style={{ width: 200 }}
+                                      aria-label={`Owner email for ${r.code}`} onChange={(e) => setAddEmail(e.target.value)}
+                                    />
+                                    <Button size="small" type="primary" shape="round" htmlType="submit" loading={busyId === r.id}>Save email</Button>
+                                    <Button size="small" shape="round" onClick={() => { setAddingId(null); setAddEmail(''); setAddError(null); }}>Cancel</Button>
+                                    {addError && <Alert role="alert" type="error" showIcon message={addError} style={{ width: '100%', borderRadius: 8 }} />}
+                                  </form>
+                                ) : (
+                                  <Button size="small" type="link" onClick={() => { setAddingId(r.id); setAddEmail(''); setAddError(null); }} aria-label={`Add email for ${r.code}`}>
+                                    Add email
+                                  </Button>
+                                )}
+                              </div>
+                            )}
+                          </td>
                           <td style={{ padding: 8 }}>{r.redemption_count}{r.max_redemptions ? ` / ${r.max_redemptions}` : ''}</td>
                           <td style={{ padding: 8 }}>{r.rewards_earned} / {r.rewards_claimed}</td>
                           <td style={{ padding: 8 }}><Tag color={r.active ? 'gold' : 'default'}>{r.active ? 'Active' : 'Inactive'}</Tag></td>
@@ -197,6 +248,16 @@ export default function AdminPromoCodes() {
                                 <Button size="small" danger shape="round" loading={busyId === r.id} onClick={() => deactivate(r)} aria-label={`Deactivate ${r.code}`}>
                                   Deactivate
                                 </Button>
+                              ) : r.awaiting_email ? (
+                                <span
+                                  tabIndex={0} title={NEEDS_EMAIL_HINT} aria-describedby={`needs-email-${r.id}`}
+                                  style={{ display: 'inline-block' }}
+                                >
+                                  <Button size="small" shape="round" disabled aria-label={`Activate ${r.code}`} aria-describedby={`needs-email-${r.id}`}>
+                                    Activate
+                                  </Button>
+                                  <span id={`needs-email-${r.id}`} style={SR_ONLY}>{NEEDS_EMAIL_HINT}</span>
+                                </span>
                               ) : (
                                 <Button size="small" shape="round" loading={busyId === r.id} onClick={() => reactivate(r)} aria-label={`Reactivate ${r.code}`}>
                                   Reactivate

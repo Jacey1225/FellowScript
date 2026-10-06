@@ -692,6 +692,11 @@ def create_tables(cur):
     # only). Row + code text stay (UNIQUE keeps the text reserved) so redemptions,
     # owner_rewards and reporting joins on code_id keep working.
     cur.execute("ALTER TABLE promo_codes ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ")
+    # Task 20261005-creator-promo-awaiting-email: codes created without an owner
+    # email (or whose email was removed) are flagged and can't be active/redeemed
+    # until an email is set. Additive + idempotent; existing rows default FALSE
+    # (legacy behaviour unchanged).
+    cur.execute("ALTER TABLE promo_codes ADD COLUMN IF NOT EXISTS requires_owner_email BOOLEAN NOT NULL DEFAULT FALSE")
     # Reward ledger = source of truth. status earned -> claimed | expired.
     # idempotency_key UNIQUE (signup:<invitee id> / purchase:<redemption key>)
     # makes replays impossible; the partial unique indexes enforce one signup
