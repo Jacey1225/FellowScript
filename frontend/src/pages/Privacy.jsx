@@ -67,7 +67,7 @@ export default function Privacy() {
 
       <main style={S.main}>
         <h1 style={S.pageTitle}>Privacy Policy</h1>
-        <p style={S.effectiveDate}>Effective Date: June 1, 2025 &nbsp;&middot;&nbsp; Last Updated: July 27, 2026</p>
+        <p style={S.effectiveDate}>Effective Date: June 1, 2025 &nbsp;&middot;&nbsp; Last Updated: October 6, 2026</p>
 
         {/* 1 */}
         <div style={S.section}>
@@ -122,7 +122,8 @@ export default function Privacy() {
           <p style={{ ...S.p, marginTop: '0.75rem', marginBottom: '0.4rem' }}><strong style={S.strong}>Usage Information</strong></p>
           <ul style={S.ul}>
             <li style={S.li}>Your current Bible reading position (book and chapter) is saved locally on your device only, so the app can resume where you left off. It is not transmitted to or stored on our servers.</li>
-            <li style={S.li}>Standard server access logs (IP address, timestamp, and requested endpoint) generated automatically by our hosting infrastructure — used only for security monitoring and diagnosing technical issues. We do not operate any analytics or feature-interaction tracking system.</li>
+            <li style={S.li}>Standard server access logs (IP address, timestamp, and requested endpoint) generated automatically by our hosting infrastructure — used only for security monitoring and diagnosing technical issues.</li>
+            <li style={S.li}>On our website only, we use the Google tag (Google Ads) to measure the effectiveness of our advertising. It may set cookies or similar identifiers and send your IP address, the pages you visit, and ad-click information to Google. The FellowScript apps for iOS and macOS do not use this tag.</li>
           </ul>
 
           <p style={{ ...S.p, marginTop: '0.75rem', marginBottom: '0.4rem' }}><strong style={S.strong}>Information We Do NOT Collect</strong></p>
@@ -148,7 +149,7 @@ export default function Privacy() {
             <li style={S.li}>Send important account or service notices</li>
             <li style={S.li}>Diagnose technical issues and improve platform performance</li>
           </ul>
-          <p style={S.p}><strong style={S.strong}>We do not use your data for advertising, and we do not build advertising profiles.</strong> We do not engage in cross-context behavioral advertising.</p>
+          <p style={S.p}><strong style={S.strong}>We do not sell your data, and we do not use the content of your notes, messages or account to build advertising profiles.</strong> Website visit data collected by the Google tag is used only to measure and improve our advertising.</p>
         </div>
 
         {/* 4 */}
@@ -176,6 +177,7 @@ export default function Privacy() {
             <li style={S.li}><strong style={S.strong}>Sign-in providers:</strong> If you choose to sign in with <strong style={S.strong}>Apple</strong> or <strong style={S.strong}>Google</strong>, that provider authenticates you and shares a stable account identifier (and, on first authorization only, your name/email) with us, governed by Apple's or Google's own privacy policy.</li>
             <li style={S.li}><strong style={S.strong}>Apple push notifications:</strong> Push notification delivery is facilitated by Apple's APNs infrastructure. Apple receives your device token and notification payload to deliver notifications. Apple's handling of this data is governed by Apple's Privacy Policy.</li>
             <li style={S.li}><strong style={S.strong}>Email delivery:</strong> Password-reset links and two-factor authentication codes are sent via Amazon Simple Email Service (SES), part of the same AWS infrastructure described above. Only your email address and the message content (a reset link or one-time code) are transmitted for this purpose.</li>
+            <li style={S.li}><strong style={S.strong}>Google (Google Ads tag, website only):</strong> Google receives the technical and ad-interaction data described in Section 2, governed by Google's own privacy policy and its controls at myadcenter.google.com.</li>
             <li style={S.li}><strong style={S.strong}>Legal requirements:</strong> We may disclose information if required by law, court order, or to protect the rights, property, or safety of FellowScript, our users, or the public.</li>
           </ul>
         </div>
@@ -224,7 +226,7 @@ export default function Privacy() {
         {/* 10 */}
         <div style={S.section}>
           <h2 style={S.h2}>10. California Consumer Privacy Act (CCPA)</h2>
-          <p style={S.p}>If you are a California resident, you have additional rights under the CCPA including the right to know what personal information we collect, the right to request deletion, and the right to opt out of the sale of your personal information. We do not sell personal information. To exercise your rights, contact us at <a href="mailto:support@fellowscript.com" style={S.a}>support@fellowscript.com</a>.</p>
+          <p style={S.p}>If you are a California resident, you have additional rights under the CCPA including the right to know what personal information we collect, the right to request deletion, and the right to opt out of the sale of your personal information. We do not sell personal information. Our use of the Google tag may be considered "sharing" under California law. You can opt out by emailing support@fellowscript.com or by using your browser's Global Privacy Control. To exercise your rights, contact us at <a href="mailto:support@fellowscript.com" style={S.a}>support@fellowscript.com</a>.</p>
         </div>
 
         {/* 11 */}
