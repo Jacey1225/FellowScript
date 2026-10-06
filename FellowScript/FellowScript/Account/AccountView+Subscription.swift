@@ -104,7 +104,6 @@ extension AccountView {
                         ForEach(vm.subRequests) { requestRow($0) }
                     }
                 }
-                shareInviteSection
                 ownerRewardRow
                 Divider().background(Theme.borderGoldFaint)
                 managePlanRow(plan)
@@ -112,8 +111,6 @@ extension AccountView {
                 freePlanLimitsList
                 rowCaption("Start with a free 1-month trial — you won't be billed until it ends.")
                 memberCountPickerRow()
-                redeemInviteSection
-                shareInviteSection
                 if !vm.joinablePlans.isEmpty {
                     Divider().background(Theme.borderGoldFaint)
                     rowCaption("Join a Friend's Group Plan")

@@ -14,7 +14,6 @@ extension AccountView {
     @ViewBuilder
     var redeemInviteSection: some View {
         if !invite.redeemHidden {
-            Divider().background(Theme.borderGoldFaint)
             VStack(alignment: .leading, spacing: Theme.spacingXS) {
                 Button {
                     if reduceMotion { showInviteField.toggle() }
@@ -106,29 +105,19 @@ extension AccountView {
     @ViewBuilder
     var shareInviteSection: some View {
         if !invite.shareHidden {
-            Divider().background(Theme.borderGoldFaint)
-            VStack(alignment: .leading, spacing: Theme.spacingXS) {
-                Text("Share your invite code")
-                    .font(.playfair(18)).foregroundColor(Theme.parchment)
-                    .accessibilityAddTraits(.isHeader)
+            VStack(alignment: .leading, spacing: Theme.spacingSM) {
                 if let fc = invite.friendCode {
-                    Text("Friends get \(fc.percent_off)% off their first month. When they subscribe you earn a reward.")
+                    Text("Friends get \(fc.percent_off)% off their first month. You earn a reward when they subscribe.")
                         .font(.inter(Theme.fontSM)).foregroundColor(Theme.textSecondary)
-                    Text(fc.code)
-                        .font(.playfair(Theme.fontDisplayMD)).tracking(2)
-                        .foregroundColor(Theme.gold)
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity).padding(Theme.spacingSM)
-                        .background(Theme.inputBg)
-                        .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
-                        .overlay(RoundedRectangle(cornerRadius: Theme.radius).stroke(Theme.borderGold, lineWidth: 1))
-                        .accessibilityLabel("Your invite code, \(fc.code.map(String.init).joined(separator: " "))")
-                        .accessibilityIdentifier("inviteCodeValue")
-                    if invite.friendCodeFailed {
-                        Text("Couldn't refresh. Showing your saved code.")
-                            .font(.inter(Theme.fontXS)).foregroundColor(Theme.textSecondary)
-                    }
                     HStack(spacing: Theme.spacingSM) {
+                        Text(fc.code)
+                            .font(.inter(Theme.fontBody, weight: .semibold)).tracking(2)
+                            .foregroundColor(Theme.gold)
+                            .textSelection(.enabled)
+                            .lineLimit(1).minimumScaleFactor(0.7)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .accessibilityLabel("Your invite code, \(fc.code.map(String.init).joined(separator: " "))")
+                            .accessibilityIdentifier("inviteCodeValue")
                         Button {
                             UIPasteboard.general.string = fc.code
                             UINotificationFeedbackGenerator().notificationOccurred(.success)
@@ -138,19 +127,30 @@ extension AccountView {
                                 codeCopied = false
                             }
                         } label: {
-                            ghostPill(codeCopied ? "Copied" : "Copy code",
-                                      labelColor: codeCopied ? Theme.success : Theme.gold)
+                            Image(systemName: codeCopied ? "checkmark" : "doc.on.doc")
+                                .font(.system(size: 15, weight: .medium))
+                                .foregroundColor(codeCopied ? Theme.success : Theme.gold)
+                                .frame(width: 44, height: 44)
                         }
+                        .accessibilityLabel(codeCopied ? "Copied" : "Copy code")
                         .accessibilityIdentifier("copyInviteCodeButton")
-                        if let link = URL(string: fc.link) {
-                            ShareLink(item: link, message: Text("Join me on FellowScript, use my code \(fc.code)")) {
-                                gradientPill("Share link")
-                            }
-                            .accessibilityIdentifier("shareInviteLinkButton")
+                    }
+                    .padding(.leading, Theme.spacingSM)
+                    .background(Theme.inputBg)
+                    .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
+                    .overlay(RoundedRectangle(cornerRadius: Theme.radius).stroke(Theme.borderGoldDim, lineWidth: 1))
+                    if invite.friendCodeFailed {
+                        Text("Couldn't refresh. Showing your saved code.")
+                            .font(.inter(Theme.fontXS)).foregroundColor(Theme.textSecondary)
+                    }
+                    if let link = URL(string: fc.link) {
+                        ShareLink(item: link, message: Text("Join me on FellowScript, use my code \(fc.code)")) {
+                            gradientPill("Share link").frame(maxWidth: .infinity)
                         }
+                        .accessibilityIdentifier("shareInviteLinkButton")
                     }
                 } else if invite.friendCodeLoading {
-                    RoundedRectangle(cornerRadius: Theme.radius).fill(Theme.inputBg).frame(height: 56)
+                    RoundedRectangle(cornerRadius: Theme.radius).fill(Theme.inputBg).frame(height: 44)
                         .accessibilityHidden(true)
                 } else if invite.friendCodeFailed {
                     Text("Couldn't load your invite code.")
@@ -161,6 +161,29 @@ extension AccountView {
                 }
             }
             .accessibilityIdentifier("shareInviteSection")
+        }
+    }
+
+    // ── C. Card ─────────────────────────────────────────────────────────────
+
+    /// Standalone "Invite a Friend" card, placed between Subscription and Plan
+    /// Usage like every other Account section. Hidden when neither half applies.
+    @ViewBuilder
+    var inviteCard: some View {
+        let showRedeem = vm.subscription == nil && !invite.redeemHidden
+        let showShare = !invite.shareHidden
+        if !vm.subLoading && (showRedeem || showShare) {
+            VStack(alignment: .leading, spacing: Theme.spacingSM) {
+                sectionLabel("Invite a Friend")
+                    .accessibilityAddTraits(.isHeader)
+                if showShare { shareInviteSection }
+                if showRedeem {
+                    if showShare { Divider().background(Theme.borderGoldFaint) }
+                    redeemInviteSection
+                }
+            }
+            .padding(.horizontal, 18).padding(.vertical, 16)
+            .glassCard(cornerRadius: 20)
         }
     }
 }
