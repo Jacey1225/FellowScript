@@ -133,7 +133,7 @@ struct NotesListView: View {
                 isReadOnly: false
             ) { saved in
                 let uid = appState.currentUser?.user_id ?? ""
-                let ok = await vm.saveNote(saved, editingId: editingId, userId: uid)
+                let ok = await vm.saveNote(saved, editingId: editingId, userId: uid, authorUsername: appState.currentUser?.username ?? "")
                 if ok { return nil }
                 return vm.failedSaveMessage()
             }
@@ -167,7 +167,7 @@ struct NotesListView: View {
                 service:  vm.service
             ) { saved in
                 let uid = appState.currentUser?.user_id ?? ""
-                let ok = await vm.saveNote(saved, editingId: saved.id, userId: uid)
+                let ok = await vm.saveNote(saved, editingId: saved.id, userId: uid, authorUsername: appState.currentUser?.username ?? "")
                 if ok { return nil }
                 return vm.failedSaveMessage()
             }

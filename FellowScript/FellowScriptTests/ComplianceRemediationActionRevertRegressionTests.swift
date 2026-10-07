@@ -165,3 +165,35 @@ final class ChatViewModelFriendGroupActionRegressionTests: XCTestCase {
         XCTAssertNil(vm.groupActionError)
     }
 }
+
+// Regression: a group note just created/edited by the viewer was cached with
+// an empty `username`, so NotesListView.isAuthor (deny-by-default) hid Edit/
+// Delete on it until the next full reload.
+@MainActor
+final class NotesViewModelSaveNoteAuthorRegressionTests: XCTestCase {
+
+    func test_saveNote_groupNote_stampsAuthorUsername_soAuthorCanEditAndDelete() async {
+        let vm = NotesViewModel()
+        vm.service = ThrowingTestDataService()
+        var note = FSNote(id: "n1", user: "user-123", title: "T", text: "B")
+        note.group_id = "group-1"
+
+        let ok = await vm.saveNote(note, editingId: nil, userId: "user-123", authorUsername: "jacey")
+
+        XCTAssertTrue(ok)
+        let saved = vm.notes.values.first
+        XCTAssertEqual(saved?.username, "jacey")
+        XCTAssertTrue(NotesListView.isAuthor(of: saved!, currentUsername: "jacey"))
+    }
+
+    func test_saveNote_keepsExistingUsername() async {
+        let vm = NotesViewModel()
+        vm.service = ThrowingTestDataService()
+        var note = FSNote(id: "n1", user: "user-123", title: "T", text: "B")
+        note.group_id = "group-1"; note.username = "someone"
+
+        _ = await vm.saveNote(note, editingId: nil, userId: "user-123", authorUsername: "jacey")
+
+        XCTAssertEqual(vm.notes.values.first?.username, "someone")
+    }
+}

@@ -617,11 +617,18 @@ final class NotesViewModel: ObservableObject {
         return msg ?? "That note could not be saved. Please revise and try again."
     }
 
-    func saveNote(_ note: FSNote, editingId: String?, userId: String) async -> Bool {
+    // `authorUsername`: the list gates Edit/Delete on `note.username` matching
+    // the viewer (NotesListView.isAuthor, deny-by-default for an empty name),
+    // but the editor builds `note` without one. Stamping the saver's own
+    // username on the locally cached copy keeps a just-created group note
+    // editable until the next reload re-derives it from the server's
+    // `{username: {note_id: ...}}` grouping.
+    func saveNote(_ note: FSNote, editingId: String?, userId: String, authorUsername: String = "") async -> Bool {
         print("[VM] saveNote called — editingId=\(editingId ?? "nil") text.count=\(note.text.count)")
         do {
             let savedId = try await service.saveNote(note, editingId: editingId, userId: userId)
             var updated = note; updated.id = savedId
+            if updated.username.isEmpty { updated.username = authorUsername }
             notes[savedId] = updated
             print("[VM] saveNote succeeded — savedId=\(savedId)")
             return true
