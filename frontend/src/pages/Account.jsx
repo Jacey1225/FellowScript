@@ -19,6 +19,7 @@ import { useWarmCanvas } from '../hooks/useWarmCanvas.js';
 import AppBloom from '../components/AppBloom.jsx';
 import SubscriptionCard from '../components/SubscriptionCard.jsx';
 import RewardNotice from '../components/RewardNotice.jsx';
+import EmailVerifyNotice from '../components/EmailVerifyNotice.jsx';
 import DonationButton from '../components/DonationButton.jsx';
 import Seo from '../components/Seo.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
@@ -992,6 +993,8 @@ export default function Account() {
             {(data.email || user.email) && (
               <div className="fs-muted" style={{ color: 'rgba(244,228,193,0.45)' }}>{data.email || user.email}</div>
             )}
+            {/* Task 20261007-email-verification: hidden unless the feature is on and the email unverified. */}
+            {!profileLoading && <div style={{ marginTop: 8 }}><EmailVerifyNotice emailKey={data.email || user.email} /></div>}
             {data.profile_photo_url && !photoUploading && (
               <Button type="link" size="small" onClick={handleRemovePhoto}
                 style={{ padding: 0, height: 'auto', fontFamily: "'Lora', serif", fontSize: '0.72rem', color: 'rgba(244,228,193,0.4)' }}>

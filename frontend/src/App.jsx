@@ -7,6 +7,7 @@ import SignIn from './pages/SignIn.jsx';
 import ForgotPassword from './pages/ForgotPassword.jsx';
 import ResetPassword from './pages/ResetPassword.jsx';
 import VerifyMfa from './pages/VerifyMfa.jsx';
+import VerifyEmail from './pages/VerifyEmail.jsx';
 import Privacy from './pages/Privacy.jsx';
 import Terms from './pages/Terms.jsx';
 import Download from './pages/Download.jsx';
@@ -153,6 +154,8 @@ export default function App() {
           <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/reset-password"  element={<ResetPassword />} />
           <Route path="/verify-2fa"      element={<VerifyMfa />} />
+          {/* Task 20261007-email-verification: emailed verification link landing. */}
+          <Route path="/verify-email"    element={<VerifyEmail />} />
           <Route path="/privacy"   element={<Privacy />} />
           <Route path="/terms"     element={<Terms />} />
           {/* Hidden admin-only surface: not linked from AppNav or any other

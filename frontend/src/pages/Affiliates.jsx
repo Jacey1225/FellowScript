@@ -7,6 +7,7 @@ import {
 import AppBloom from '../components/AppBloom.jsx';
 import AppNav from '../components/AppNav.jsx';
 import Seo from '../components/Seo.jsx';
+import EmailVerifyNotice from '../components/EmailVerifyNotice.jsx';
 import AffiliateLineChart from '../components/AffiliateLineChart.jsx';
 import AffiliateResources, { RESOURCE_SECTIONS } from '../components/AffiliateResources.jsx';
 import { useWarmCanvas } from '../hooks/useWarmCanvas.js';
@@ -134,6 +135,9 @@ export default function Affiliates() {
     content = (
       <div style={CARD_STYLE}>
         <h2 style={LABEL}>Creator program</h2>
+        {/* The server answers the same 403 for non-creators and unverified
+            emails, so show the verify prompt whenever status says unverified. */}
+        <EmailVerifyNotice context="affiliates" />
         <p style={BODY}>This account isn't set up as a creator.</p>
         <p style={MUTED}>Sign in with the email your creator code is registered to, or contact FellowScript to join the program.</p>
         <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>

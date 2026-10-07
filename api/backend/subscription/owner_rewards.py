@@ -56,6 +56,7 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
+from backend.auth.email_verification import is_enabled as email_verification_enabled, user_email_verified
 from backend.subscription import apple_service
 from backend.subscription.promo import PromoError, PromoManager, normalize_code, promo_enabled
 
@@ -458,6 +459,13 @@ class RewardManager(PromoManager):
         if owner_id == str(buyer_id):
             self.audit_event("reward_denied_self_referral", owner=owner_id, code=code_row["id"], detail="purchase")
             return "denied_self_referral", None, owner_id
+        # The owner was resolved purely by email equality, so (when email
+        # verification is enabled) only an account that has proven ownership of
+        # that address may collect. Skipped, not lost: a webhook replay after the
+        # owner verifies re-attempts crediting (idempotent key).
+        if email_verification_enabled() and not user_email_verified(self.cur, owner_id):
+            self.audit_event("reward_skipped_unverified_owner", code=code_row["id"], detail="purchase")
+            return "skipped_unverified_owner", None, None
         outcome, rid = self._earn(
             owner_id=owner_id, source="purchase", code_id=code_row["id"], code=code_row["code"],
             idem=idem, invitee_id=None, email_hash=None, ip_hash=None)

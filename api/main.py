@@ -29,6 +29,10 @@ from routes.join_requests import join_requests_router
 from routes.flags_admin import flags_admin_router
 from routes.home_messages import home_message_router, home_messages_admin_router
 from routes.affiliates import affiliates_router
+from routes.email_verification import email_verification_router
+from backend.auth.email_verification import (
+    EmailVerificationManager, record_provider_verified, send_verification_email,
+)
 from routes.promo import promo_router, promo_admin_router, rewards_admin_router, rewards_router
 from schemas.subscription import NOTES_MAX_BODY_BYTES
 from schemas.users import SignUp, Login, UpdateUser, User, CURRENT_TERMS_VERSION
@@ -393,6 +397,7 @@ app.include_router(group_announcements_router)
 app.include_router(messages_delete_router)
 app.include_router(threads_router)
 app.include_router(invites_router)
+app.include_router(email_verification_router)
 app.include_router(capabilities_router)
 app.include_router(explorer_router)
 app.include_router(explorer_admin_router)
@@ -548,6 +553,9 @@ async def signup(request: Request, info: SignUp, response: Response) -> dict:
         sm.close()
     # Owner reward for a friend invite code (fail closed; never affects signup).
     credit_signup_reward(user.user_id, user.email, info.invite_code, get_client_ip(request))
+    # Email-ownership verification mail (no-op while the feature is off). Never
+    # blocks or fails signup/login: only email-linked privileges are gated.
+    send_verification_email(user.user_id, user.email)
     issue_session(response, user.user_id)
     return user.model_dump(exclude={"hash_pass"})
 
@@ -888,9 +896,24 @@ async def update_user(user_id: str, info: UpdateUser, _: str = Depends(require_m
     users = load_users()
     if user_id not in users:
         raise HTTPException(status_code=404, detail="User not found")
+    email_changed = False
     if info.username:
         users[user_id]["username"] = info.username
     if info.email:
+        if (info.email or "").strip().lower() != (users[user_id].get("email") or "").strip().lower():
+            # Changing the address drops verified state and spends outstanding
+            # links BEFORE the new email is saved, so a failure here leaves the
+            # old email in place and a success can never leave a stale verified
+            # flag on the new address (fail closed). Unconditional on the flag.
+            evm = EmailVerificationManager()
+            try:
+                evm.reset(user_id)
+            except Exception as e:
+                logger.error("update_user: failed to reset email verification for %s: %s", user_id, type(e).__name__)
+                raise HTTPException(status_code=500, detail="Failed to save profile changes") from e
+            finally:
+                evm.close()
+            email_changed = True
         users[user_id]["email"] = info.email
     # Any explicit username/email update resolves the "Apple never resupplies
     # this" prompt — the user has now set real values themselves.
@@ -911,6 +934,8 @@ async def update_user(user_id: str, info: UpdateUser, _: str = Depends(require_m
     except Exception as e:
         logger.error("update_user: failed to persist %s: %s", user_id, e)
         raise HTTPException(status_code=500, detail="Failed to save profile changes") from e
+    if email_changed:
+        send_verification_email(user_id, users[user_id]["email"])
     data = {k: v for k, v in users[user_id].items() if k != "hash_pass"}
     # Same raw-key-never-leaves-the-server treatment as GET /user/{user_id}
     # above -- this route can't itself change the photo (that's the
@@ -1052,11 +1077,19 @@ async def google_auth(request: Request, info: GoogleAuth, response: Response) ->
     # Match on the stable Google identifier first, then fall back to email so an
     # existing password/Apple account with the same address is linked, not duped.
     result = find_by_google_sub(users, sub) if sub else None
+    # Provider-asserted email ownership counts as verified only on this
+    # provider's own identity (sub match, or a brand-new account) -- never when
+    # an existing password account is merely linked by email, since whoever set
+    # that account's password may not own the address.
+    google_email_ok = str(token_data.get("email_verified", "")).lower() == "true"
+    matched_by_sub = result is not None
     if not result and email:
         result = find_by_email(users, email)
 
     if result:
         uid, data = result
+        provider_verified = (google_email_ok and matched_by_sub and not data.get("hash_pass")
+                             and (data.get("email") or "").lower() == email.lower())
         if data.get("suspended_at"):
             raise HTTPException(status_code=403, detail="This account has been suspended for violating our Terms of Service.")
         # Backfill google_sub on accounts first created via another provider.
@@ -1104,7 +1137,10 @@ async def google_auth(request: Request, info: GoogleAuth, response: Response) ->
             data = users[uid]
         else:
             data = user.model_dump(exclude={"user_id"})
+        provider_verified = google_email_ok
 
+    if provider_verified:
+        record_provider_verified(uid, email)
     issue_session(response, uid)
     result_data = {"user_id": uid, **{k: v for k, v in data.items() if k != "hash_pass"}}
     if data.get("terms_version") != CURRENT_TERMS_VERSION:
@@ -1149,11 +1185,23 @@ async def apple_auth(request: Request, info: AppleAuth, response: Response) -> d
     # Match on the stable Apple identifier first, then fall back to email so an
     # existing password/Google account with the same address is linked, not duped.
     result = find_by_apple_sub(users, sub)
+    # Verified only when Apple's SIGNED token asserts it for a real (non-relay)
+    # address that is the account's email; a client-supplied info.email, a
+    # private-relay address, or an email-link to an existing password account
+    # never counts (see the Google branch for why).
+    apple_email_ok = (
+        bool(claims.get("email"))
+        and str(claims.get("email_verified", "")).lower() == "true"
+        and str(claims.get("is_private_email", "")).lower() != "true"
+    )
+    matched_by_sub = result is not None
     if not result and email:
         result = find_by_email(users, email)
 
     if result:
         uid, data = result
+        provider_verified = (apple_email_ok and matched_by_sub and not data.get("hash_pass")
+                             and (data.get("email") or "").lower() == email.lower())
         if data.get("suspended_at"):
             raise HTTPException(status_code=403, detail="This account has been suspended for violating our Terms of Service.")
         # Backfill apple_sub on accounts first created via another provider.
@@ -1211,7 +1259,10 @@ async def apple_auth(request: Request, info: AppleAuth, response: Response) -> d
             sm.close()
         credit_signup_reward(uid, email, info.invite_code, get_client_ip(request))
         data = users[uid]
+        provider_verified = apple_email_ok
 
+    if provider_verified:
+        record_provider_verified(uid, email)
     issue_session(response, uid)
     result_data = {"user_id": uid, **{k: v for k, v in data.items() if k != "hash_pass"}}
     if data.get("terms_version") != CURRENT_TERMS_VERSION:

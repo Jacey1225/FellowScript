@@ -1,0 +1,13 @@
+{
+  "email_verification": {
+    "enabled": false,
+    "token_ttl_minutes": 60,
+    "resend_cooldown_seconds": 60,
+    "max_sends_per_day": 5,
+    "public_base_url": "https://fellowscript.com",
+    "verify_link_format": "{base}/#/verify-email?token={token}",
+    "rate_limit_verify": "10/minute",
+    "rate_limit_resend": "5/minute",
+    "rate_limit_status": "30/minute"
+  }
+}

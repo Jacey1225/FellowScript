@@ -6,7 +6,8 @@
 
 Uniform 404 (before auth) while the ``affiliates`` flag is off. Then 401 with no
 session and 403 (empty of data) unless the session user's account email is the
-owner email of an active creator code (see backend/subscription/affiliates.py).
+owner email of an active creator code AND (when email verification is enabled)
+that email is verified (uniform 403 otherwise; see backend/subscription/affiliates.py).
 Nothing is taken from the client except the resource ``key``, which is only ever
 looked up in the config manifest. No PII is logged; responses are aggregates only.
 Plain ``def`` handlers (threadpool).
@@ -17,6 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import FileResponse
 
 from backend.auth.dependencies import get_current_user
+from backend.auth.email_verification import verification_satisfied
 from backend.interactions import flags
 from backend.rate_limiting import limiter
 from backend.subscription.affiliates import AffiliateManager
@@ -42,6 +44,18 @@ def _rate() -> str:
 def _require_creator(request: Request) -> dict:
     """401 without a session; 403 unless the session user is an active creator."""
     user_id = get_current_user(request)
+    # Email-ownership gate (no-op while email verification is disabled). The
+    # affiliate is resolved from the account's email, so an unverified address
+    # must never reach it. Same 403 as "not a creator" (no creator-ness leak);
+    # any error evaluating verification denies.
+    try:
+        verified = verification_satisfied(user_id)
+    except Exception:
+        logger.error("affiliates: email verification check failed; denying")
+        verified = False
+    if not verified:
+        logger.info("affiliates denied (email unverified) user=%s", user_id)
+        raise HTTPException(status_code=403, detail="Forbidden")
     db = AffiliateManager()
     try:
         affiliate = db.resolve_affiliate(user_id)

@@ -75,6 +75,12 @@ def check_affiliates_config() -> None:
     validate_affiliates_config()
 
 
+def check_email_verification_config() -> None:
+    from backend.auth.email_verification_config import validate_email_verification_config
+
+    validate_email_verification_config()
+
+
 CHECKS = (
     check_flag_registry,
     check_chat_pagination_config,
@@ -86,6 +92,7 @@ CHECKS = (
     check_agent_chats_config,
     check_agent_chat_memory_config,
     check_affiliates_config,
+    check_email_verification_config,
 )
 
 

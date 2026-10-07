@@ -93,6 +93,36 @@ def password_reset_email(reset_link: str) -> tuple[str, str, str]:
     return subject, _wrap_html("Reset your FellowScript password", body_html), text_body
 
 
+def email_verification_email(verify_link: str, ttl_minutes: int) -> tuple[str, str, str]:
+    """Returns (subject, html_body, text_body) for the email-ownership verification link."""
+    subject = "Verify your FellowScript email address"
+    body_html = f"""
+      <p style="font-size:15px;line-height:1.6;color:#241a0d;">
+        Please confirm that this is your email address for your FellowScript account.
+      </p>
+      <p style="text-align:center;margin:28px 0;">
+        <a href="{verify_link}"
+           style="background:#a3690f;color:#ffffff;padding:12px 28px;
+                  border-radius:8px;text-decoration:none;font-size:15px;">
+          Verify your email
+        </a>
+      </p>
+      <p style="font-size:13px;line-height:1.6;color:#6b5d47;">
+        This link expires in {ttl_minutes} minutes and can only be used once. If you
+        didn't create or change a FellowScript account with this address, you can
+        safely ignore this email.
+      </p>
+    """
+    text_body = (
+        "Please confirm that this is your email address for your FellowScript account.\n\n"
+        f"Verify it here (expires in {ttl_minutes} minutes, single use): {verify_link}\n\n"
+        "If you didn't create or change a FellowScript account with this address, "
+        "you can safely ignore this email."
+        + _FOOTER_TEXT
+    )
+    return subject, _wrap_html("Verify your FellowScript email address", body_html), text_body
+
+
 def mfa_code_email(code: str) -> tuple[str, str, str]:
     """Returns (subject, html_body, text_body) for the 2FA login-code email."""
     subject = f"Your FellowScript verification code is {code}"
