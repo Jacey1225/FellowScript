@@ -37,6 +37,17 @@ os.environ["PROMO_CODES_ENABLED"] = "false"
 os.environ["PROMO_DISCOUNT_PERCENT"] = "50"
 os.environ["PROMO_VALIDATE_RATE_LIMIT"] = "1000/minute"
 
+# Throwaway EC key so validate_owner_rewards_config() finds a real PEM file on
+# CI runners, where APPLE_PROMO_KEY_PATH points at a file that does not exist.
+from cryptography.hazmat.primitives import serialization as _ser  # noqa: E402
+from cryptography.hazmat.primitives.asymmetric import ec as _ec  # noqa: E402
+
+_KEY_FILE = tempfile.NamedTemporaryFile(prefix="test-promo-key-", suffix=".p8", delete=False)
+_KEY_FILE.write(_ec.generate_private_key(_ec.SECP256R1()).private_bytes(
+    _ser.Encoding.PEM, _ser.PrivateFormat.PKCS8, _ser.NoEncryption()))
+_KEY_FILE.close()
+os.environ["APPLE_PROMO_KEY_PATH"] = _KEY_FILE.name
+
 from fastapi.testclient import TestClient  # noqa: E402
 
 import main as main_module  # noqa: E402

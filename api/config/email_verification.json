@@ -8,6 +8,8 @@
     "verify_link_format": "{base}/#/verify-email?token={token}",
     "rate_limit_verify": "10/minute",
     "rate_limit_resend": "5/minute",
-    "rate_limit_status": "30/minute"
+    "rate_limit_status": "30/minute",
+    "oauth_conflict_status": 409,
+    "oauth_conflict_message": "An account with this email already exists. Sign in with your email and password, verify your email address, then try signing in with this provider again."
   }
 }

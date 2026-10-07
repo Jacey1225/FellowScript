@@ -35,6 +35,8 @@ class EmailVerificationConfig:
     rate_limit_verify: str
     rate_limit_resend: str
     rate_limit_status: str
+    oauth_conflict_status: int
+    oauth_conflict_message: str
 
     def verify_link(self, token: str) -> str:
         return (self.verify_link_format
@@ -60,10 +62,12 @@ def _load() -> EmailVerificationConfig:
         CONFIG_PATH, SECTION,
         required_keys=("enabled", "token_ttl_minutes", "resend_cooldown_seconds", "max_sends_per_day",
                        "public_base_url", "verify_link_format",
-                       "rate_limit_verify", "rate_limit_resend", "rate_limit_status"),
+                       "rate_limit_verify", "rate_limit_resend", "rate_limit_status",
+                       "oauth_conflict_status", "oauth_conflict_message"),
         types={"enabled": bool, "token_ttl_minutes": int, "resend_cooldown_seconds": int,
                "max_sends_per_day": int, "public_base_url": str, "verify_link_format": str,
-               "rate_limit_verify": str, "rate_limit_resend": str, "rate_limit_status": str},
+               "rate_limit_verify": str, "rate_limit_resend": str, "rate_limit_status": str,
+               "oauth_conflict_status": int, "oauth_conflict_message": str},
         rate_keys=("rate_limit_verify", "rate_limit_resend", "rate_limit_status"),
     )
     base = raw["public_base_url"]
@@ -72,6 +76,11 @@ def _load() -> EmailVerificationConfig:
     fmt = raw["verify_link_format"]
     if "{base}" not in fmt or "{token}" not in fmt:
         raise _err("verify_link_format must contain {base} and {token}")
+    msg = raw["oauth_conflict_message"]
+    if not msg.strip() or len(msg) > 300:
+        raise _err("oauth_conflict_message must be a non-empty string of at most 300 characters")
+    if raw["oauth_conflict_status"] not in (401, 409):
+        raise _err("oauth_conflict_status must be 401 or 409")
     return EmailVerificationConfig(
         enabled=raw["enabled"],
         token_ttl_minutes=_int(raw["token_ttl_minutes"], "token_ttl_minutes", 5, 1440),
@@ -82,6 +91,8 @@ def _load() -> EmailVerificationConfig:
         rate_limit_verify=raw["rate_limit_verify"],
         rate_limit_resend=raw["rate_limit_resend"],
         rate_limit_status=raw["rate_limit_status"],
+        oauth_conflict_status=raw["oauth_conflict_status"],
+        oauth_conflict_message=msg,
     )
 
 

@@ -32,7 +32,9 @@ from routes.affiliates import affiliates_router
 from routes.email_verification import email_verification_router
 from backend.auth.email_verification import (
     EmailVerificationManager, record_provider_verified, send_verification_email,
+    is_enabled as email_verification_enabled, is_email_verified,
 )
+from backend.auth.email_verification_config import get_email_verification_config
 from routes.promo import promo_router, promo_admin_router, rewards_admin_router, rewards_router
 from schemas.subscription import NOTES_MAX_BODY_BYTES
 from schemas.users import SignUp, Login, UpdateUser, User, CURRENT_TERMS_VERSION
@@ -1041,6 +1043,25 @@ async def delete_user(user_id: str, _: str = Depends(require_match("user_id"))) 
         backup_db.close()
 
 
+def _oauth_email_link_blocked(uid: str) -> bool:
+    """Flag-on gate for the OAuth email-fallback link (task 20261007-auth-hardening).
+
+    True when linking a provider identity to the existing account ``uid`` by
+    email alone must be refused: the feature is on and that account's email is
+    not verified (anyone may have pre-registered the address with their own
+    password). Any lookup error propagates to a 500 (fail closed, no session).
+    Flag off: always False, behavior unchanged.
+    """
+    if not email_verification_enabled():
+        return False
+    return not is_email_verified(uid)
+
+
+def _oauth_conflict() -> HTTPException:
+    cfg = get_email_verification_config()
+    return HTTPException(status_code=cfg.oauth_conflict_status, detail=cfg.oauth_conflict_message)
+
+
 @app.post("/auth/google")
 async def google_auth(request: Request, info: GoogleAuth, response: Response) -> dict:
     async with httpx.AsyncClient() as client:
@@ -1085,6 +1106,11 @@ async def google_auth(request: Request, info: GoogleAuth, response: Response) ->
     matched_by_sub = result is not None
     if not result and email:
         result = find_by_email(users, email)
+        # Never link by email to an account whose email is unverified: the
+        # address may have been pre-registered by an attacker. No session issued.
+        if result and _oauth_email_link_blocked(result[0]):
+            logger.info("OAuth %s link refused: existing account email unverified (user %s)", "google", result[0])
+            raise _oauth_conflict()
 
     if result:
         uid, data = result
@@ -1197,6 +1223,11 @@ async def apple_auth(request: Request, info: AppleAuth, response: Response) -> d
     matched_by_sub = result is not None
     if not result and email:
         result = find_by_email(users, email)
+        # Never link by email to an account whose email is unverified: the
+        # address may have been pre-registered by an attacker. No session issued.
+        if result and _oauth_email_link_blocked(result[0]):
+            logger.info("OAuth %s link refused: existing account email unverified (user %s)", "apple", result[0])
+            raise _oauth_conflict()
 
     if result:
         uid, data = result

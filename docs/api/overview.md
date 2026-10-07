@@ -12,8 +12,8 @@ Base URL: `http://<ec2-host>:8000`
 |---|---|---|
 | POST | `/signup` | Register with `username`, `email`, `plain_pass`. Returns user object + sets `user_id` cookie. |
 | POST | `/login` | Authenticate with `username`, `plain_pass`. Returns user object + sets `user_id` cookie. |
-| POST | `/auth/google` | Exchange a Google ID token for a session. Find-or-create user. |
-| POST | `/auth/apple` | Verify an Apple identity JWT. Find-or-create user. |
+| POST | `/auth/google` | Exchange a Google ID token for a session. Find-or-create user. With `email_verification.enabled`, an email-only match to an unverified account returns the configured conflict status (409) with no session. |
+| POST | `/auth/apple` | Verify an Apple identity JWT. Find-or-create user. Same unverified-account conflict rule as `/auth/google`. |
 
 All signup paths automatically create a `plan_type='free'` subscription row for the new user.
 

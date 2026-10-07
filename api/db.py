@@ -202,25 +202,31 @@ def create_tables(cur):
     # fallback preserves today's production behavior for any deploy that
     # hasn't set ADMIN_SEED_EMAIL yet.
     _ADMIN_SEED_EMAIL = os.getenv("ADMIN_SEED_EMAIL", "jaceysimps@gmail.com")
-    cur.execute(
-        "UPDATE users SET is_admin = TRUE WHERE email = %s AND is_admin = FALSE "
-        # An admin who was deliberately revoked through the admin API (audit
-        # row exists) must not be silently re-promoted on the next boot.
-        "AND NOT EXISTS (SELECT 1 FROM admin_role_audit a "
-        "WHERE a.target_user_id = users._id AND a.action = 'revoke')",
-        (_ADMIN_SEED_EMAIL,),
-    )
-    if cur.rowcount == 0:
-        cur.execute("SELECT 1 FROM users WHERE email = %s", (_ADMIN_SEED_EMAIL,))
-        if cur.fetchone() is None:
-            # Real finding, not a silent no-op: surface loudly so a deploy
-            # doesn't quietly leave the app with zero admin accounts.
-            logger.warning(
-                "Admin seed: no user found with email %s -- is_admin was not "
-                "set for any account. Verify this is still the correct admin "
-                "account before assuming the admin page is reachable.",
-                _ADMIN_SEED_EMAIL,
-            )
+    # Task 20261007-auth-hardening: with the email_verification flag ON, the
+    # promotion is deferred until after apply_modules (users.email_verified does
+    # not exist yet at this point on a first flag-on boot) and requires a verified
+    # email -- see _gated_admin_seed. Flag OFF keeps the original statement below.
+    _admin_seed_gated = _admin_seed_gated_by_verification()
+    if not _admin_seed_gated:
+        cur.execute(
+            "UPDATE users SET is_admin = TRUE WHERE email = %s AND is_admin = FALSE "
+            # An admin who was deliberately revoked through the admin API (audit
+            # row exists) must not be silently re-promoted on the next boot.
+            "AND NOT EXISTS (SELECT 1 FROM admin_role_audit a "
+            "WHERE a.target_user_id = users._id AND a.action = 'revoke')",
+            (_ADMIN_SEED_EMAIL,),
+        )
+        if cur.rowcount == 0:
+            cur.execute("SELECT 1 FROM users WHERE email = %s", (_ADMIN_SEED_EMAIL,))
+            if cur.fetchone() is None:
+                # Real finding, not a silent no-op: surface loudly so a deploy
+                # doesn't quietly leave the app with zero admin accounts.
+                logger.warning(
+                    "Admin seed: no user found with email %s -- is_admin was not "
+                    "set for any account. Verify this is still the correct admin "
+                    "account before assuming the admin page is reachable.",
+                    _ADMIN_SEED_EMAIL,
+                )
 
     cur.execute(
         "CREATE TABLE IF NOT EXISTS groups"
@@ -1260,7 +1266,63 @@ def create_tables(cur):
     from schema_ddl import apply_modules
     apply_modules(cur, DDL_MODULES)
 
+    if _admin_seed_gated:
+        _gated_admin_seed(cur, _ADMIN_SEED_EMAIL)
+
     logger.info("All tables created.")
+
+
+def _admin_seed_gated_by_verification() -> bool:
+    """True when the admin seed must require a verified email (flag on).
+
+    Fails closed: if the flag cannot be read, treat it as on so an unverified
+    account is never promoted. Never raises, so boot cannot crash here.
+    """
+    try:
+        from backend.auth.email_verification_config import get_email_verification_config
+        return bool(get_email_verification_config().enabled)
+    except Exception:
+        logger.warning("Admin seed: email_verification config unreadable; "
+                       "promotion requires verified email (fail closed).")
+        return True
+
+
+def _gated_admin_seed(cur, seed_email: str) -> None:
+    """Flag-on admin seed: promote only a verified-email account.
+
+    Runs after the email_verification DDL module. Only ever touches
+    is_admin = FALSE rows (an existing admin is never demoted) and keeps the
+    revoke-audit guard. Any error (e.g. missing columns) rolls back to a
+    savepoint, promotes nothing, and never aborts boot. Logs carry no email.
+    """
+    try:
+        cur.execute("SAVEPOINT admin_seed_gated")
+        cur.execute(
+            "UPDATE users SET is_admin = TRUE WHERE email = %s AND is_admin = FALSE "
+            "AND email_verified = TRUE AND email_verified_hash IS NOT NULL "
+            "AND email_verified_hash = encode(sha256(convert_to(lower(btrim(email)), 'UTF8')), 'hex') "
+            "AND NOT EXISTS (SELECT 1 FROM admin_role_audit a "
+            "WHERE a.target_user_id = users._id AND a.action = 'revoke')",
+            (seed_email,),
+        )
+        promoted = cur.rowcount
+        cur.execute("RELEASE SAVEPOINT admin_seed_gated")
+    except Exception:
+        try:
+            cur.execute("ROLLBACK TO SAVEPOINT admin_seed_gated")
+        except Exception:
+            pass
+        logger.warning("Admin seed (verification-gated): check failed; no promotion (fail closed).")
+        return
+    if promoted == 0:
+        cur.execute("SELECT is_admin FROM users WHERE email = %s", (seed_email,))
+        row = cur.fetchone()
+        if row is None:
+            logger.warning("Admin seed (verification-gated): no matching account; "
+                           "is_admin was not set for any account.")
+        elif not row[0]:
+            logger.warning("Admin seed (verification-gated): matching account not promoted "
+                           "(email unverified or admin previously revoked).")
 
 
 BACKUP_DB_NAME = "fellowscript_backup"
