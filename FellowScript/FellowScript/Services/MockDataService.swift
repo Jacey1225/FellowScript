@@ -121,6 +121,10 @@ protocol DataServiceProtocol {
     // Agents (read)
     func fetchAgents(userId: String) async throws -> [FSAgent]
     func fetchAgentMessages(userId: String, agentId: String) async throws -> [FSAgentMessage]
+    // Multi-chat (flag `agent_chats`): list/create chats, and chat-scoped history.
+    func fetchAgentChats(userId: String, agentId: String) async throws -> [FSAgentChat]
+    func createAgentChat(userId: String, agentId: String) async throws -> FSAgentChat
+    func fetchAgentMessages(userId: String, agentId: String, chatId: String) async throws -> [FSAgentMessage]
     func fetchHeartbeats(userId: String, agentId: String) async throws -> [FSHeartbeat]
 
     // Agents (write)
@@ -796,6 +800,20 @@ final class MockDataService: DataServiceProtocol {
 
     func fetchAgentMessages(userId: String, agentId: String) async throws -> [FSAgentMessage] {
         Self.mockAgentMessages
+    }
+
+    static let mockAgentChats: [FSAgentChat] = [
+        FSAgentChat(id: "chat-001", title: "John chapter 1", createdAt: "2026-06-27T08:00:00", lastMessageAt: "2026-06-27T08:02:00")
+    ]
+
+    func fetchAgentChats(userId: String, agentId: String) async throws -> [FSAgentChat] { Self.mockAgentChats }
+
+    func createAgentChat(userId: String, agentId: String) async throws -> FSAgentChat {
+        FSAgentChat(id: UUID().uuidString)
+    }
+
+    func fetchAgentMessages(userId: String, agentId: String, chatId: String) async throws -> [FSAgentMessage] {
+        chatId == Self.mockAgentChats[0].id ? Self.mockAgentMessages : []
     }
 
     func fetchHeartbeats(userId: String, agentId: String) async throws -> [FSHeartbeat] {

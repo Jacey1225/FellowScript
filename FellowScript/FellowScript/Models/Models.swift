@@ -812,6 +812,38 @@ extension FSAgent {
     }
 }
 
+/// One chat between the user and an agent (flag `agent_chats`). Only what is
+/// needed to identify the chat and label it in the Chats sheet; messages reuse
+/// FSAgentMessage. Decoded from GET /agent/{user}/{agent}/chats.
+struct FSAgentChat: Identifiable, Codable, Equatable {
+    let id:            String
+    let title:         String
+    let createdAt:     String?
+    let lastMessageAt: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case id, title
+        case createdAt     = "created_at"
+        case lastMessageAt = "last_message_at"
+    }
+
+    init(id: String, title: String = "", createdAt: String? = nil, lastMessageAt: String? = nil) {
+        self.id = id; self.title = title
+        self.createdAt = createdAt; self.lastMessageAt = lastMessageAt
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id            = try c.decode(String.self, forKey: .id)
+        title         = (try? c.decodeIfPresent(String.self, forKey: .title)) ?? ""
+        createdAt     = try? c.decodeIfPresent(String.self, forKey: .createdAt)
+        lastMessageAt = try? c.decodeIfPresent(String.self, forKey: .lastMessageAt)
+    }
+
+    /// Row label: server auto-title, or "New chat" while still empty.
+    var displayTitle: String { title.isEmpty ? "New chat" : title }
+}
+
 struct FSAgentMessage: Identifiable, Codable {
     let id:        String
     let text:      String

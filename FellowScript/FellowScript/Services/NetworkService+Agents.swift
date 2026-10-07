@@ -69,6 +69,46 @@ extension NetworkService {
         }.sorted { $0.timestamp < $1.timestamp }
     }
 
+    // ── Agent multi-chat (flag `agent_chats`) ─────────────────────────────────
+    // GET  /agent/{userId}/{agentId}/chats           -> {"chats": [{id,title,created_at,last_message_at}]}
+    // POST /agent/{userId}/{agentId}/chats           -> the new chat (409 chat_limit at the cap)
+    // GET  /agent/{userId}/{agentId}/messages?chat_id=
+    // All three throw on failure (404 unknown/unowned chat included): never
+    // fabricate an empty list or a client-side chat.
+
+    private struct AgentChatsResponse: Decodable { let chats: [FSAgentChat] }
+
+    func fetchAgentChats(userId: String, agentId: String) async throws -> [FSAgentChat] {
+        let endpoint = "GET /agent/{user_id}/{agent_id}/chats"
+        let data = try await get("/agent/\(userId)/\(agentId)/chats")
+        guard let resp = decode(AgentChatsResponse.self, from: data, endpoint: endpoint) else {
+            RefreshDiagnostics.fetchOutcome(endpoint: endpoint, outcome: "decode-failure-thrown")
+            throw AppError.networkError("Could not read this agent's chats.")
+        }
+        RefreshDiagnostics.fetchOutcome(endpoint: endpoint, outcome: "success", count: resp.chats.count)
+        return resp.chats
+    }
+
+    func createAgentChat(userId: String, agentId: String) async throws -> FSAgentChat {
+        let data = try await checkedRequestRaw("/agent/\(userId)/\(agentId)/chats", method: "POST", jsonObject: [String: Any]())
+        guard let chat = decode(FSAgentChat.self, from: data, endpoint: "POST /agent/{user_id}/{agent_id}/chats") else {
+            throw AppError.networkError(extractErrorDetail(from: data) ?? "Could not start a new chat.")
+        }
+        return chat
+    }
+
+    func fetchAgentMessages(userId: String, agentId: String, chatId: String) async throws -> [FSAgentMessage] {
+        let endpoint = "GET /agent/{user_id}/{agent_id}/messages?chat_id"
+        let q = chatId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? chatId
+        let data = try await get("/agent/\(userId)/\(agentId)/messages?chat_id=\(q)")
+        guard let dict = decode([String: RawAgentMsg].self, from: data, endpoint: endpoint) else {
+            throw AppError.networkError("Could not read this chat.")
+        }
+        return dict.map { key, m in
+            FSAgentMessage(id: key, text: m.content, mine: m.title == "user", timestamp: m.timestamp ?? "")
+        }.sorted { $0.timestamp < $1.timestamp }
+    }
+
     func fetchHeartbeats(userId: String, agentId: String) async throws -> [FSHeartbeat] {
         let endpoint = "GET /agent/{user_id}/{agent_id}/heartbeats"
         let data = try await get("/agent/\(userId)/\(agentId)/heartbeats")

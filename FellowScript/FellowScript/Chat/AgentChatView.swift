@@ -22,12 +22,52 @@
 import SwiftUI
 import Combine
 
+// ── Last-visited chat (client-side, per user + agent) ────────────────────────
+// Stored in UserDefaults and validated against the fetched chat list on open
+// (AgentChatViewModel.loadChats), so a stale id falls back to the most recent
+// chat. Survives relaunch; no server field.
+struct AgentLastVisitedChatStore {
+    var defaults: UserDefaults = .standard
+
+    private func key(_ userId: String, _ agentId: String) -> String {
+        "agentLastChat.\(userId).\(agentId)"
+    }
+    func chatId(userId: String, agentId: String) -> String? {
+        defaults.string(forKey: key(userId, agentId))
+    }
+    func set(_ chatId: String, userId: String, agentId: String) {
+        defaults.set(chatId, forKey: key(userId, agentId))
+    }
+}
+
 // ── ViewModel (WebSocket + history) ──────────────────────────────────────────
 
 @MainActor
 final class AgentChatViewModel: ObservableObject {
     @Published var messages:   [FSAgentMessage] = []
     @Published var isThinking  = false
+    // Multi-chat (flag `agent_chats`). `chats` is the server list (most recent
+    // first); `activeChatId` is nil in legacy/flag-off mode, where the socket
+    // and history calls behave exactly as before.
+    @Published var chats: [FSAgentChat] = []
+    @Published var activeChatId: String? = nil
+    @Published var isLoadingChats = false
+    @Published var chatsError: String? = nil
+    @Published var isLoadingHistory = false
+    @Published var isCreatingChat = false
+    /// Surfaced as the "Couldn't Start Chat" alert.
+    @Published var createChatError: String? = nil
+    private(set) var chatsEnabled = false
+    // Chats with a send in flight; isThinking reflects the active chat only.
+    private var pendingChats = Set<String>()
+    private var service: DataServiceProtocol?
+    private let lastVisited: AgentLastVisitedChatStore
+
+    init(lastVisited: AgentLastVisitedChatStore = AgentLastVisitedChatStore()) {
+        self.lastVisited = lastVisited
+    }
+
+    var activeChat: FSAgentChat? { chats.first { $0.id == activeChatId } }
     // Surfaced in the view as a small "Reconnecting…" banner, same pattern as
     // ChatThreadViewModel. Previously receiveLoop() only re-armed itself in
     // the `.success` branch of wsTask.receive — on `.failure` (dropped
@@ -51,20 +91,110 @@ final class AgentChatViewModel: ObservableObject {
     // intentional cancel doesn't trigger a reconnect loop.
     private var isDisconnecting = false
 
-    func load(service: DataServiceProtocol, agentId: String, userId: String) async {
-        messages = (try? await service.fetchAgentMessages(userId: userId, agentId: agentId)) ?? []
+    func load(service: DataServiceProtocol, agentId: String, userId: String, chatsEnabled: Bool = false) async {
+        self.service = service
+        self.agentId = agentId
+        self.userId  = userId
+        self.chatsEnabled = chatsEnabled
+        if chatsEnabled {
+            await loadChats()
+            if activeChatId != nil {
+                await loadActiveHistory()
+            } else {
+                // Chat list unavailable: fall back to the legacy flat history
+                // (the server maps it to the default chat). Nothing is
+                // fabricated locally.
+                messages = (try? await service.fetchAgentMessages(userId: userId, agentId: agentId)) ?? []
+            }
+        } else {
+            messages = (try? await service.fetchAgentMessages(userId: userId, agentId: agentId)) ?? []
+        }
         connectWebSocket(wsBase: service.wsBase, agentId: agentId, userId: userId)
+    }
+
+    /// Fetches the chat list and picks the active chat: the stored
+    /// last-visited id if it is still in the list, otherwise the most recent.
+    /// On failure the previously shown list is kept (preserve-cache).
+    func loadChats() async {
+        guard let service else { return }
+        isLoadingChats = true
+        chatsError = nil
+        defer { isLoadingChats = false }
+        do {
+            let fetched = try await service.fetchAgentChats(userId: userId, agentId: agentId)
+            chats = fetched
+            if activeChatId == nil || !fetched.contains(where: { $0.id == activeChatId }) {
+                let stored = lastVisited.chatId(userId: userId, agentId: agentId)
+                activeChatId = fetched.first(where: { $0.id == stored })?.id ?? fetched.first?.id
+                if let id = activeChatId { lastVisited.set(id, userId: userId, agentId: agentId) }
+            }
+        } catch {
+            chatsError = "Couldn't load chats"
+        }
+    }
+
+    private func loadActiveHistory() async {
+        guard let service, let chatId = activeChatId else { return }
+        isLoadingHistory = true
+        defer { isLoadingHistory = false }
+        do {
+            let fetched = try await service.fetchAgentMessages(userId: userId, agentId: agentId, chatId: chatId)
+            // A newer switch may have happened while this fetch was in flight.
+            guard activeChatId == chatId else { return }
+            messages = fetched
+        } catch {
+            guard activeChatId == chatId else { return }
+            messages = []
+            sendError = "Couldn't load this chat."
+        }
+        refreshThinking()
+    }
+
+    /// Switch to an existing chat from the Chats sheet.
+    func selectChat(_ id: String) async {
+        guard chatsEnabled, id != activeChatId, chats.contains(where: { $0.id == id }) else { return }
+        activeChatId = id
+        lastVisited.set(id, userId: userId, agentId: agentId)
+        messages = []
+        refreshThinking()
+        await loadActiveHistory()
+    }
+
+    /// Create a new empty chat and make it active. On failure the current
+    /// chat stays active and `createChatError` is set.
+    func createChat() async {
+        guard chatsEnabled, !isCreatingChat, let service else { return }
+        isCreatingChat = true
+        defer { isCreatingChat = false }
+        do {
+            let chat = try await service.createAgentChat(userId: userId, agentId: agentId)
+            chats.insert(chat, at: 0)
+            activeChatId = chat.id
+            lastVisited.set(chat.id, userId: userId, agentId: agentId)
+            messages = []
+            refreshThinking()
+        } catch {
+            createChatError = error.localizedDescription
+        }
+    }
+
+    private func refreshThinking() {
+        isThinking = activeChatId.map { pendingChats.contains($0) } ?? !pendingChats.isEmpty
     }
 
     func sendMessage(text: String) {
         guard !text.isEmpty && !isThinking else { return }
         let iso = ISO8601DateFormatter().string(from: Date())
         messages.append(FSAgentMessage(id: UUID().uuidString, text: text, mine: true, timestamp: iso))
-        isThinking = true
-        let body = ["content": text]
+        let sendChat = activeChatId
+        pendingChats.insert(sendChat ?? "")
+        refreshThinking()
+        var body = ["content": text]
+        if let sendChat { body["chat_id"] = sendChat }
         guard let data = try? JSONSerialization.data(withJSONObject: body),
               let str  = String(data: data, encoding: .utf8) else {
-            isThinking = false
+            pendingChats.remove(sendChat ?? "")
+            refreshThinking()
             sendError = "Could not send message."
             return
         }
@@ -74,13 +204,14 @@ final class AgentChatViewModel: ObservableObject {
             // transcript looking sent, and isThinking spun for the full 30s
             // timeout with no indication anything went wrong.
             Task { @MainActor in
-                self.isThinking = false
+                self.pendingChats.remove(sendChat ?? "")
+                self.refreshThinking()
                 self.sendError  = "Message could not be sent: \(error.localizedDescription)"
             }
         }
         Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: 30_000_000_000)
-            if self?.isThinking == true { self?.isThinking = false }
+            if self?.pendingChats.remove(sendChat ?? "") != nil { self?.refreshThinking() }
         }
     }
 
@@ -95,7 +226,12 @@ final class AgentChatViewModel: ObservableObject {
         self.wsBase  = wsBase
         self.agentId = agentId
         self.userId  = userId
-        guard let url = URL(string: "\(wsBase)/agent/ws/\(agentId)/\(userId)") else { return }
+        var urlString = "\(wsBase)/agent/ws/\(agentId)/\(userId)"
+        if let chat = activeChatId,
+           let q = chat.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) {
+            urlString += "?chat_id=\(q)"
+        }
+        guard let url = URL(string: urlString) else { return }
         wsTask = URLSession.shared.webSocketTask(with: url)
         wsTask?.resume()
         isConnected = true
@@ -129,9 +265,9 @@ final class AgentChatViewModel: ObservableObject {
                         mine:      false,
                         timestamp: (json["timestamp"] as? String) ?? ISO8601DateFormatter().string(from: Date())
                     )
+                    let frameChat = json["chat_id"] as? String
                     Task { @MainActor in
-                        self.messages.append(reply)
-                        self.isThinking = false
+                        self.handleReply(reply, frameChat: frameChat)
                     }
                 }
                 // Keep listening regardless of whether this particular frame
@@ -145,6 +281,20 @@ final class AgentChatViewModel: ObservableObject {
                 Task { @MainActor in self.scheduleReconnect() }
             }
         }
+    }
+
+    /// Routes a reply frame. A frame for a different chat than the one on
+    /// screen is already persisted server-side, so it is not appended here
+    /// (it shows when that chat is opened); it only clears that chat's
+    /// pending state. Frames without a chat_id (legacy server) go to the
+    /// active chat.
+    func handleReply(_ reply: FSAgentMessage, frameChat: String?) {
+        let target = frameChat ?? activeChatId
+        pendingChats.remove(target ?? "")
+        if frameChat == nil || frameChat == activeChatId || activeChatId == nil {
+            messages.append(reply)
+        }
+        refreshThinking()
     }
 
     private func scheduleReconnect() {
@@ -172,6 +322,7 @@ struct AgentChatView: View {
 
     @StateObject private var vm = AgentChatViewModel()
     @State private var inputText = ""
+    @State private var showChatsSheet = false
     // Task 20260908-chat-scroll-to-bottom-on-open, second pass -- same
     // root cause/fix as ChatThreadView.swift: calling `proxy.scrollTo`
     // imperatively from inside `.task` right after an `await` continuation
@@ -230,6 +381,15 @@ struct AgentChatView: View {
                 ScrollViewReader { proxy in
                     ScrollView {
                         LazyVStack(alignment: .leading, spacing: Theme.spacingMD) {
+                            if vm.isLoadingHistory {
+                                ProgressView().tint(Theme.gold).scaleEffect(0.75)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.top, Theme.spacingXL)
+                                    .accessibilityLabel("Loading chat")
+                            } else if vm.chatsEnabled && vm.messages.isEmpty && !vm.isThinking {
+                                newChatEmptyState
+                                    .transition(.opacity)
+                            }
                             ForEach(vm.messages) { msg in
                                 AgentMessageBubble(message: msg, agentName: agent.displayLabel, userInitial: userInitial)
                                     .id(msg.id)
@@ -247,6 +407,7 @@ struct AgentChatView: View {
                         .padding(.horizontal, Theme.spacingMD)
                         .padding(.vertical, Theme.spacingSM)
                     }
+                    .motionAwareAnimation(.easeInOut(duration: 0.2), value: vm.activeChatId, reduceMotion: reduceMotion)
                     .onChange(of: vm.messages.count) { _ in
                         if let last = vm.messages.last {
                             withMotionAwareAnimation(.default, reduceMotion: reduceMotion) { proxy.scrollTo(last.id, anchor: .bottom) }
@@ -291,7 +452,8 @@ struct AgentChatView: View {
         .preferredColorScheme(.dark)
         .task {
             let uid = appState.currentUser?.user_id ?? ""
-            await vm.load(service: appState.service, agentId: agent.id, userId: uid)
+            await vm.load(service: appState.service, agentId: agent.id, userId: uid,
+                          chatsEnabled: appState.capabilities.isEnabled("agent_chats"))
             // Task 20260908-chat-scroll-to-bottom-on-open: unconditional
             // initial scroll -- same root cause as ChatThreadView.swift
             // (`.onChange(of: vm.messages.count)` above never fires when
@@ -308,6 +470,34 @@ struct AgentChatView: View {
             Button("OK", role: .cancel) { vm.sendError = nil }
         } message: {
             Text(vm.sendError ?? "")
+        }
+        .alert("Couldn't Start Chat", isPresented: Binding(
+            get: { vm.createChatError != nil },
+            set: { if !$0 { vm.createChatError = nil } }
+        )) {
+            Button("OK", role: .cancel) { vm.createChatError = nil }
+        } message: {
+            Text(vm.createChatError ?? "")
+        }
+        .sheet(isPresented: $showChatsSheet) {
+            AgentChatsSheet(
+                agentName: agent.displayLabel,
+                chats: vm.chats,
+                activeChatId: vm.activeChatId,
+                isLoading: vm.isLoadingChats,
+                loadError: vm.chatsError,
+                onSelect: { id in
+                    showChatsSheet = false
+                    Task { await vm.selectChat(id) }
+                },
+                onNewChat: {
+                    showChatsSheet = false
+                    Task { await vm.createChat() }
+                },
+                onRetry: { Task { await vm.loadChats() } }
+            )
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
         }
     }
 
@@ -334,11 +524,37 @@ struct AgentChatView: View {
                     .font(.inter(Theme.fontHeading, weight: .bold))
                     .foregroundColor(Theme.parchment)
                     .lineLimit(1)
+                    .layoutPriority(-1)
             }
             .accessibilityElement(children: .combine)
             .accessibilityLabel(agent.displayLabel)
 
             Spacer(minLength: 8)
+
+            // Multi-chat controls (flag `agent_chats`): Chats list, then New
+            // chat on the thumb-reachable trailing edge.
+            if vm.chatsEnabled {
+                HStack(spacing: 8) {
+                    RoundIconButton(systemIcon: "bubble.left.and.bubble.right") {
+                        showChatsSheet = true
+                        if vm.chatsError != nil { Task { await vm.loadChats() } }
+                    }
+                    .frame(minWidth: 44, minHeight: 44)
+                    .contentShape(Rectangle())
+                    .accessibilityLabel("Chats with \(agent.displayLabel)")
+                    .accessibilityHint("Opens list of your chats")
+
+                    RoundIconButton(systemIcon: "square.and.pencil") {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        Task { await vm.createChat() }
+                    }
+                    .frame(minWidth: 44, minHeight: 44)
+                    .contentShape(Rectangle())
+                    .opacity(vm.isCreatingChat ? 0.45 : 1)
+                    .disabled(vm.isCreatingChat)
+                    .accessibilityLabel("New chat with \(agent.displayLabel)")
+                }
+            }
         }
         .padding(.horizontal, Theme.spacingMD)
         .padding(.top, Theme.spacingSM)
@@ -346,6 +562,26 @@ struct AgentChatView: View {
         .overlay(alignment: .bottom) {
             Rectangle().fill(Theme.borderGoldFaint).frame(height: 1)
         }
+    }
+
+    // Quiet empty state for a brand-new chat; disappears on the first message.
+    private var newChatEmptyState: some View {
+        VStack(spacing: Theme.spacingSM) {
+            ZStack {
+                Circle().fill(Theme.gold.opacity(0.18))
+                Circle().stroke(Theme.borderGoldDim, lineWidth: 1)
+                Text(String(agent.displayLabel.prefix(1)).uppercased())
+                    .font(.system(size: 22, weight: .bold))
+                    .foregroundColor(Theme.gold)
+            }
+            .frame(width: 56, height: 56)
+            .accessibilityHidden(true)
+            Text("Ask \(agent.displayLabel) anything")
+                .font(.inter(Theme.fontSM))
+                .foregroundColor(Theme.textSecondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.top, Theme.spacingXL)
     }
 
     // ── Composer (mirrors ChatThreadView.composer) ─────────────────────────

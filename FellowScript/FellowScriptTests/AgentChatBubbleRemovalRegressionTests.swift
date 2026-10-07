@@ -78,7 +78,12 @@ final class AgentChatBubbleRemovalSourceTests: XCTestCase {
 
     func test_source_agentBranch_hasNoBubbleChrome() throws {
         let source = try readSource("FellowScript/Chat/AgentChatView.swift")
-        guard let elseRange = source.range(of: "} else {"),
+        // Anchor the else search on AgentMessageBubble's own `if message.mine {`
+        // (as the mine-branch test does): AgentChatViewModel (multi-chat,
+        // task 20261006-agent-multi-chat) now has earlier `} else {` blocks in
+        // the file, so a bare first-match search no longer finds the bubble.
+        guard let mineRange = source.range(of: "if message.mine {"),
+              let elseRange = source.range(of: "} else {", range: mineRange.upperBound..<source.endIndex),
               let frameRange = source.range(
                 // Cap widened 0.78 -> 0.90 by task 20260831-agent-chat-
                 // width-separator, then 0.90 -> 0.95 by task

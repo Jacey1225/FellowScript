@@ -17,6 +17,8 @@ from dotenv import load_dotenv
 from db import DBManager
 from backend.errors import SaveFailedError, TimelineGenerationError
 from backend.interactions.groups import GroupsManager
+from backend.interactions import flags
+from backend.interactions.agent_chats import AgentChatStore
 from fastapi import WebSocket
 from starlette.websockets import WebSocketDisconnect
 import json
@@ -1117,13 +1119,19 @@ class AgentManager(DBManager):
                 closes the socket -- this propagates into that existing
                 handler rather than needing its own.
         """
-        if not self.insertion(self.msg_table, {
+        row = {
             "title":     msg.title,
             "agent_id":  msg.agent_id,
             "user_id":   msg.user_id,
             "timestamp": msg.timestamp,
             "content":   msg.content,
-        }):
+        }
+        # chat_id "" = legacy/flag-off write (stored NULL, adopted into the
+        # default chat later); a real id was already ownership-checked by the
+        # caller via AgentChatStore.
+        if msg.chat_id:
+            row["chat_id"] = msg.chat_id
+        if not self.insertion(self.msg_table, row):
             raise SaveFailedError()
 
     def get_messages(self, agent_id: str) -> dict:
@@ -1166,7 +1174,7 @@ class AgentManager(DBManager):
         ))
         return response_text
 
-    async def connect_agent(self, agent_id: str, ws: WebSocket) -> None:
+    async def connect_agent(self, agent_id: str, ws: WebSocket, chat_id: Optional[str] = None) -> None:
         await ws.accept()
         if not self.owns_agent(agent_id):
             # agent_id is caller-supplied in the URL; without this, any
@@ -1174,6 +1182,23 @@ class AgentManager(DBManager):
             # persona/role prompt of) an agent they don't own.
             await ws.close(code=4403)
             return
+        # Multi-chat (flag agent_chats). Flag off: byte-for-byte legacy
+        # behavior (chat_id ignored ONLY when absent; a supplied chat_id with
+        # the flag off is refused, never silently dropped). Flag on: absent
+        # chat_id -> the default chat; a supplied one must belong to
+        # (caller, agent) or the socket closes 4404 (fail closed).
+        multi = flags.is_enabled("agent_chats", self.user_id)
+        store = AgentChatStore(self) if multi else None
+        active_chat = ""
+        if chat_id and not multi:
+            await ws.close(code=4404)
+            return
+        if multi:
+            resolved = store.resolve(agent_id, chat_id)
+            if resolved is None:
+                await ws.close(code=4404)
+                return
+            active_chat = resolved
         loop = asyncio.get_running_loop()
         agent_data = self.get_agent(agent_id) or {}
         agent_role = list(agent_data.values())[0].get("role", "") if agent_data else ""
@@ -1186,6 +1211,21 @@ class AgentManager(DBManager):
                 user_content = payload.get("content", "").strip()
                 if not user_content:
                     continue
+                msg_chat = active_chat
+                payload_chat = payload.get("chat_id")
+                if payload_chat and payload_chat != active_chat:
+                    # Per-send chat switch: re-validate ownership every time.
+                    resolved = store.resolve(agent_id, payload_chat) if multi else None
+                    if resolved is None:
+                        await ws.send_json({
+                            "role":      "error",
+                            "content":   "That chat could not be found.",
+                            "agent_id":  agent_id,
+                            "chat_id":   str(payload_chat)[:64],
+                            "timestamp": str(datetime.now()),
+                        })
+                        continue
+                    msg_chat = resolved
 
                 now_monotonic = time.monotonic()
                 while message_times and now_monotonic - message_times[0] > _CHAT_RATE_LIMIT_WINDOW_SECONDS:
@@ -1195,6 +1235,7 @@ class AgentManager(DBManager):
                         "role":      "error",
                         "content":   "You're sending messages too quickly. Please wait a moment and try again.",
                         "agent_id":  agent_id,
+                        "chat_id":   msg_chat,
                         "timestamp": str(datetime.now()),
                     })
                     continue
@@ -1203,9 +1244,11 @@ class AgentManager(DBManager):
                 user_ts = datetime.now()
                 # Persist user turn immediately so it survives even if the API call fails
                 self.save_agent_message(AgentMessages(
-                    chat_id="", agent_id=agent_id, user_id=self.user_id,
+                    chat_id=msg_chat, agent_id=agent_id, user_id=self.user_id,
                     content=user_content, title="user", timestamp=user_ts
                 ))
+                if msg_chat:
+                    store.touch(agent_id, msg_chat, user_content)
 
                 try:
                     response_text = await loop.run_in_executor(
@@ -1222,20 +1265,24 @@ class AgentManager(DBManager):
                         "role":      "error",
                         "content":   "I'm having trouble connecting right now. Please try again in a moment.",
                         "agent_id":  agent_id,
+                        "chat_id":   msg_chat,
                         "timestamp": str(user_ts),
                     })
                     continue
 
                 assistant_ts = datetime.now()
                 self.save_agent_message(AgentMessages(
-                    chat_id="", agent_id=agent_id, user_id=self.user_id,
+                    chat_id=msg_chat, agent_id=agent_id, user_id=self.user_id,
                     content=response_text, title="assistant", timestamp=assistant_ts
                 ))
+                if msg_chat:
+                    store.touch(agent_id, msg_chat)
 
                 await ws.send_json({
                     "role":      "assistant",
                     "content":   response_text,
                     "agent_id":  agent_id,
+                    "chat_id":   msg_chat,
                     "timestamp": str(assistant_ts),
                 })
 

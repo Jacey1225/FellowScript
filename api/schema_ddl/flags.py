@@ -12,6 +12,7 @@ SEED_FLAG_NAMES = (
     "explorer_browse",
     "join_requests",
     "join_request_push",
+    "agent_chats",
 )
 
 

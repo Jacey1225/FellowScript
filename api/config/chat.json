@@ -22,5 +22,11 @@
     "delete_rate": "30/minute",
     "restore_rate": "30/minute",
     "sweep_batch_size": 200
+  },
+  "agent_chats": {
+    "max_chats_per_agent": 50,
+    "title_max_length": 80,
+    "auto_title_length": 60,
+    "create_rate": "10/minute"
   }
 }

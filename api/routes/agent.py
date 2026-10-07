@@ -1,6 +1,10 @@
-from fastapi import APIRouter, HTTPException, WebSocket, Depends
+from fastapi import APIRouter, HTTPException, Request, Response, WebSocket, Depends
 from backend.interactions.agent import AgentManager, detect_leaked_action_json
 from backend.interactions.groups import GroupsManager
+from backend.interactions import flags
+from backend.interactions.agent_chats import AgentChatStore, ChatLimitError
+from backend.interactions.agent_chats_config import get_agent_chats_config
+from backend.rate_limiting import limiter
 from backend.errors import SaveFailedError, NoSummarizableContentError
 from backend.subscription.limits import check_limit, check_paid_only
 from backend.auth.dependencies import require_match, authenticate_ws
@@ -37,13 +41,14 @@ def _require_group_membership(user_id: str, group_id: str) -> None:
 
 @agent_router.websocket("/ws/{agent_id}/{user_id}")
 async def agent_ws_endpoint(agent_id: str, user_id: str, websocket: WebSocket):
+    # Optional ?chat_id= (flag agent_chats). Validated inside connect_agent.
     session_user = await authenticate_ws(websocket)
     if session_user is None or session_user != user_id:
         await websocket.close(code=4401)
         return
     db = AgentManager(user_id)
     try:
-        await db.connect_agent(agent_id, websocket)
+        await db.connect_agent(agent_id, websocket, websocket.query_params.get("chat_id"))
     finally:
         db.close()
 
@@ -107,11 +112,73 @@ async def delete_agent(user_id: str, agent_id: str, _: str = Depends(require_mat
 
 # ── Messages ──────────────────────────────────────────────────────────────────
 
-@agent_router.get("/{user_id}/{agent_id}/messages")
-async def get_messages(user_id: str, agent_id: str, _: str = Depends(require_match("user_id"))) -> dict:
+def _chat_not_found() -> HTTPException:
+    return HTTPException(status_code=404, detail={"code": "not_found", "message": "Not found"})
+
+
+def _create_chat_rate() -> str:
+    return get_agent_chats_config().create_rate
+
+
+def _chat_user_key(request: Request) -> str:
+    return f"agent-chats-user:{request.path_params.get('user_id')}"
+
+
+@agent_router.get("/{user_id}/{agent_id}/chats")
+def list_chats(user_id: str, agent_id: str, _: str = Depends(require_match("user_id"))) -> dict:
+    """Every chat between the caller and this agent, most recent first:
+    ``{"chats": [{id, title, created_at, last_message_at}]}``."""
+    if not flags.is_enabled("agent_chats", user_id):
+        raise _chat_not_found()
     db = AgentManager(user_id)
     try:
-        return db.get_messages(agent_id)
+        if not db.owns_agent(agent_id):
+            raise _chat_not_found()
+        return {"chats": AgentChatStore(db).list_chats(agent_id)}
+    finally:
+        db.close()
+
+
+@agent_router.post("/{user_id}/{agent_id}/chats", status_code=201)
+@limiter.shared_limit(_create_chat_rate, scope="agent_chat_create", key_func=_chat_user_key)
+def create_chat(request: Request, response: Response, user_id: str, agent_id: str,
+                _: str = Depends(require_match("user_id"))) -> dict:
+    """Start a new, empty chat with this agent. 409 ``chat_limit`` at the cap."""
+    if not flags.is_enabled("agent_chats", user_id):
+        raise _chat_not_found()
+    db = AgentManager(user_id)
+    try:
+        if not db.owns_agent(agent_id):
+            raise _chat_not_found()
+        try:
+            chat = AgentChatStore(db).create_chat(agent_id)
+        except ChatLimitError:
+            raise HTTPException(status_code=409, detail={"code": "chat_limit"})
+    finally:
+        db.close()
+    logger.info("AGENT_CHAT_CREATE user=%s agent=%s chat=%s", user_id, agent_id, chat["id"])
+    return chat
+
+
+@agent_router.get("/{user_id}/{agent_id}/messages")
+async def get_messages(user_id: str, agent_id: str, chat_id: str | None = None,
+                       _: str = Depends(require_match("user_id"))) -> dict:
+    """Flag off and no chat_id: legacy flat history, unchanged. Flag on:
+    absent chat_id -> the default chat; a chat_id must belong to (caller,
+    agent) or 404 (never a fallback). A chat_id with the flag off is 404."""
+    db = AgentManager(user_id)
+    try:
+        if not flags.is_enabled("agent_chats", user_id):
+            if chat_id:
+                raise _chat_not_found()
+            return db.get_messages(agent_id)
+        if not db.owns_agent(agent_id):
+            raise _chat_not_found()
+        store = AgentChatStore(db)
+        resolved = store.resolve(agent_id, chat_id)
+        if resolved is None:
+            raise _chat_not_found()
+        return store.get_messages(agent_id, resolved)
     finally:
         db.close()
 

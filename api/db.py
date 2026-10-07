@@ -82,6 +82,7 @@ DDL_MODULES = (
     "join_requests",
     "home_messages",
     "ios_offer_redemptions",
+    "agent_chats",
 )
 
 

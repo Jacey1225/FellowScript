@@ -471,6 +471,31 @@ final class ThrowingTestDataService: DataServiceProtocol {
         return try await MockDataService.shared.fetchAgentMessages(userId: userId, agentId: agentId)
     }
 
+    // Agent multi-chat seams (task 20261006-agent-multi-chat).
+    var agentChatsResult: [FSAgentChat] = []
+    var agentChatsError: Error?
+    var createAgentChatResult: FSAgentChat?
+    var createAgentChatError: Error?
+    var agentChatMessages: [String: [FSAgentMessage]] = [:]
+    var agentChatMessagesError: Error?
+    private(set) var fetchAgentMessagesChatIds: [String] = []
+
+    func fetchAgentChats(userId: String, agentId: String) async throws -> [FSAgentChat] {
+        if let agentChatsError { throw agentChatsError }
+        return agentChatsResult
+    }
+
+    func createAgentChat(userId: String, agentId: String) async throws -> FSAgentChat {
+        if let createAgentChatError { throw createAgentChatError }
+        return createAgentChatResult ?? FSAgentChat(id: UUID().uuidString)
+    }
+
+    func fetchAgentMessages(userId: String, agentId: String, chatId: String) async throws -> [FSAgentMessage] {
+        fetchAgentMessagesChatIds.append(chatId)
+        if let agentChatMessagesError { throw agentChatMessagesError }
+        return agentChatMessages[chatId] ?? []
+    }
+
     func fetchHeartbeats(userId: String, agentId: String) async throws -> [FSHeartbeat] {
         fetchHeartbeatsCallCount += 1
         fetchHeartbeatsCalledAgentIds.append(agentId)

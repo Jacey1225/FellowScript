@@ -103,6 +103,7 @@ register("explorer_publish")
 register("explorer_browse", no_canary=True)
 register("join_requests")
 register("join_request_push")
+register("agent_chats")
 
 
 def _load_snapshot() -> dict[str, tuple[str, frozenset[str]]]:
