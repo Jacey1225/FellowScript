@@ -254,4 +254,32 @@ describe('AdminPromoCodes', () => {
     expect(await screen.findByText('owner_email is not a valid email address')).toBeInTheDocument();
     expect(screen.getByText('Needs email')).toBeInTheDocument();
   });
+
+  test('Download CSV fetches all pages for the chosen kind and downloads a CSV', async () => {
+    const big = Array.from({ length: 500 }, (_, i) => ({ ...ROW, id: `p${i}`, code: `C${i}` }));
+    listCodesOverview.mockResolvedValueOnce([ROW]); // initial table load
+    listCodesOverview.mockResolvedValueOnce(big).mockResolvedValueOnce([{ ...ROW, id: 'last', code: '=EVIL' }]);
+    let blob;
+    const create = vi.fn((b) => { blob = b; return 'blob:x'; });
+    URL.createObjectURL = create; URL.revokeObjectURL = vi.fn();
+    renderPage();
+    await screen.findByText('CREATOR1');
+    fireEvent.click(screen.getByRole('button', { name: /download csv/i }));
+    await waitFor(() => expect(create).toHaveBeenCalled());
+    expect(listCodesOverview).toHaveBeenNthCalledWith(2, { kind: undefined, limit: 500, offset: 0 });
+    expect(listCodesOverview).toHaveBeenNthCalledWith(3, { kind: undefined, limit: 500, offset: 500 });
+    const text = await new Promise((res) => { const r = new FileReader(); r.onload = () => res(r.result); r.readAsText(blob); });
+    expect(text).toContain('Code,Kind,Creator name');
+    expect(text).toContain("'=EVIL");
+    expect(text.trim().split('\r\n')).toHaveLength(502);
+  });
+
+  test('CSV export error is shown inline', async () => {
+    listCodesOverview.mockResolvedValueOnce([ROW]);
+    listCodesOverview.mockRejectedValueOnce(new OwnerRewardsApiError('boom', 500));
+    renderPage();
+    await screen.findByText('CREATOR1');
+    fireEvent.click(screen.getByRole('button', { name: /download csv/i }));
+    expect(await screen.findByText('boom')).toBeInTheDocument();
+  });
 });

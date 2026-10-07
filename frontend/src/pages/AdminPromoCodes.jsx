@@ -7,6 +7,7 @@ import {
   createCreatorCode, listCodesOverview, deactivateCode,
   reactivateCode, deleteCode, updateCodeEmail,
 } from '../lib/ownerRewardsApi.js';
+import { codesToCsv, csvFilename, downloadCsv } from '../lib/promoCsv.js';
 
 const { Text } = Typography;
 
@@ -55,6 +56,8 @@ export default function AdminPromoCodes() {
   const [addingId, setAddingId] = useState(null);   // row id whose inline Add email is open
   const [addEmail, setAddEmail] = useState('');
   const [addError, setAddError] = useState(null);
+  const [exportKind, setExportKind] = useState('');
+  const [exporting, setExporting] = useState(false);
 
   // 401 -> sign in, 403 -> home, 404 -> feature off. Returns true if handled.
   const handleAuthError = useCallback((err) => {
@@ -126,6 +129,26 @@ export default function AdminPromoCodes() {
       setBusyId(null);
     }
   };
+  // Fetches every page (server caps a page at 500) for the chosen kind, then
+  // downloads one CSV. Independent of the on-screen filter.
+  const exportCsv = async () => {
+    setExporting(true);
+    setError(null);
+    try {
+      const PAGE = 500;
+      const all = [];
+      for (let offset = 0; ; offset += PAGE) {
+        const page = await listCodesOverview({ kind: exportKind || undefined, limit: PAGE, offset });
+        all.push(...page);
+        if (page.length < PAGE) break;
+      }
+      downloadCsv(codesToCsv(all), csvFilename(exportKind));
+    } catch (err) {
+      if (!handleAuthError(err)) setError(err.message || "Couldn't export codes.");
+    } finally {
+      setExporting(false);
+    }
+  };
   const deactivate = (row) => runAction(row, deactivateCode, "Couldn't deactivate the code.");
   const reactivate = (row) => runAction(row, reactivateCode, "Couldn't reactivate the code.");
   const remove = (row) => runAction(row, deleteCode, "Couldn't delete the code.");
@@ -187,10 +210,17 @@ export default function AdminPromoCodes() {
             <div style={CARD_STYLE}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.8rem', gap: 12, flexWrap: 'wrap' }}>
                 <Text style={{ ...LABEL, marginBottom: 0 }}>Codes</Text>
-                <Select
-                  aria-label="Filter by kind" value={kind} onChange={setKind} style={{ width: 160 }}
-                  options={[{ value: '', label: 'All kinds' }, { value: 'creator', label: 'Creator' }, { value: 'friend', label: 'Friend' }]}
-                />
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <Select
+                    aria-label="Filter by kind" value={kind} onChange={setKind} style={{ width: 160 }}
+                    options={[{ value: '', label: 'All kinds' }, { value: 'creator', label: 'Creator' }, { value: 'friend', label: 'Friend' }]}
+                  />
+                  <Select
+                    aria-label="Export kind" value={exportKind} onChange={setExportKind} style={{ width: 160 }}
+                    options={[{ value: '', label: 'All codes' }, { value: 'creator', label: 'Creator codes' }, { value: 'friend', label: 'Friend codes' }]}
+                  />
+                  <Button shape="round" loading={exporting} onClick={exportCsv}>Download CSV</Button>
+                </div>
               </div>
               {error && <Alert role="alert" type="error" showIcon message={error} style={{ marginBottom: '0.8rem', borderRadius: 8 }} />}
               {rows.length === 0 ? (
