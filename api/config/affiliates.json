@@ -1,0 +1,204 @@
+{
+  "affiliates": {
+    "commission_rate": 0.35,
+    "milestones": [
+      {
+        "subscribers": 50,
+        "bonus_cents": 10000
+      },
+      {
+        "subscribers": 100,
+        "bonus_cents": 25000
+      },
+      {
+        "subscribers": 500,
+        "bonus_cents": 150000
+      }
+    ],
+    "series_points": {
+      "day": 30,
+      "week": 26,
+      "month": 12
+    },
+    "public_base_url": "https://fellowscript.com",
+    "code_link_format": "{base}/?code={code}",
+    "rate_limit": "30/minute",
+    "resources": [
+      {
+        "key": "logo-lockup",
+        "section": "logos",
+        "label": "Lockup",
+        "file": "fellowscript-lockup.png",
+        "content_type": "image/png"
+      },
+      {
+        "key": "logo-mark",
+        "section": "logos",
+        "label": "Mark (1024 px)",
+        "file": "fellowscript-mark-1024.png",
+        "content_type": "image/png"
+      },
+      {
+        "key": "logo-app-icon",
+        "section": "logos",
+        "label": "App icon (1024 px)",
+        "file": "fellowscript-app-icon-1024.png",
+        "content_type": "image/png"
+      },
+      {
+        "key": "logo-mark-svg",
+        "section": "logos",
+        "label": "Mark (SVG)",
+        "file": "fellowscript-mark.svg",
+        "content_type": "image/svg+xml"
+      },
+      {
+        "key": "logo-app-icon-svg",
+        "section": "logos",
+        "label": "App icon (SVG)",
+        "file": "fellowscript-app-icon.svg",
+        "content_type": "image/svg+xml"
+      },
+      {
+        "key": "logo-plain",
+        "section": "logos",
+        "label": "Logo",
+        "file": "logo.png",
+        "content_type": "image/png"
+      },
+      {
+        "key": "guide-1",
+        "section": "guides",
+        "label": "Guide 1: Beginnings",
+        "file": "Ads/guide-1-beginnings.pdf",
+        "content_type": "application/pdf"
+      },
+      {
+        "key": "guide-2",
+        "section": "guides",
+        "label": "Guide 2: Rescue",
+        "file": "Ads/guide-2-rescue.pdf",
+        "content_type": "application/pdf"
+      },
+      {
+        "key": "guide-3",
+        "section": "guides",
+        "label": "Guide 3: Kings and Prophets",
+        "file": "Ads/guide-3-kings-and-prophets.pdf",
+        "content_type": "application/pdf"
+      },
+      {
+        "key": "guide-4",
+        "section": "guides",
+        "label": "Guide 4: Jesus",
+        "file": "Ads/guide-4-jesus.pdf",
+        "content_type": "application/pdf"
+      },
+      {
+        "key": "guide-5",
+        "section": "guides",
+        "label": "Guide 5: The Cross and the Church",
+        "file": "Ads/guide-5-cross-and-church.pdf",
+        "content_type": "application/pdf"
+      },
+      {
+        "key": "study-guide-full",
+        "section": "guides",
+        "label": "Full study guide",
+        "file": "Ads/study-guide-full.pdf",
+        "content_type": "application/pdf"
+      },
+      {
+        "key": "study-guide-tracker",
+        "section": "guides",
+        "label": "Reflection tracker",
+        "file": "Ads/study-guide-reflection-tracker.pdf",
+        "content_type": "application/pdf"
+      },
+      {
+        "key": "promo-package",
+        "section": "guides",
+        "label": "Promotion package",
+        "file": "Ads/FellowScript Promotion Package.pdf",
+        "content_type": "application/pdf"
+      },
+      {
+        "key": "ad-01",
+        "section": "ads",
+        "label": "Mini ad 1",
+        "file": "Ads/ad-01-promo-seat-land.png",
+        "content_type": "image/png"
+      },
+      {
+        "key": "ad-02",
+        "section": "ads",
+        "label": "Mini ad 2",
+        "file": "Ads/ad-02-promo-handoff-land.png",
+        "content_type": "image/png"
+      },
+      {
+        "key": "ad-03",
+        "section": "ads",
+        "label": "Mini ad 3",
+        "file": "Ads/ad-03-promo-seat-square.png",
+        "content_type": "image/png"
+      },
+      {
+        "key": "ad-04",
+        "section": "ads",
+        "label": "Mini ad 4",
+        "file": "Ads/ad-04-promo-papercut-square-parchment.png",
+        "content_type": "image/png"
+      },
+      {
+        "key": "ad-05",
+        "section": "ads",
+        "label": "Mini ad 5",
+        "file": "Ads/ad-05-promo-handoff-portrait.png",
+        "content_type": "image/png"
+      },
+      {
+        "key": "ad-06",
+        "section": "ads",
+        "label": "Mini ad 6",
+        "file": "Ads/ad-06-reader-land.png",
+        "content_type": "image/png"
+      },
+      {
+        "key": "ad-07",
+        "section": "ads",
+        "label": "Mini ad 7",
+        "file": "Ads/ad-07-prep-land.png",
+        "content_type": "image/png"
+      },
+      {
+        "key": "ad-08",
+        "section": "ads",
+        "label": "Mini ad 8",
+        "file": "Ads/ad-08-notes-square.png",
+        "content_type": "image/png"
+      },
+      {
+        "key": "ad-09",
+        "section": "ads",
+        "label": "Mini ad 9",
+        "file": "Ads/ad-09-checkin-square-parchment.png",
+        "content_type": "image/png"
+      },
+      {
+        "key": "ad-10",
+        "section": "ads",
+        "label": "Mini ad 10",
+        "file": "Ads/ad-10-brand-portrait.png",
+        "content_type": "image/png"
+      },
+      {
+        "key": "qr-site",
+        "section": "qr",
+        "label": "FellowScript QR code",
+        "file": "qrcode_406037842_8b00b4181f33173cf0fdd249e7b1733d (1).png",
+        "content_type": "image/png"
+      }
+    ]
+  }
+}

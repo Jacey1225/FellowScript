@@ -69,6 +69,12 @@ def check_home_messages_config() -> None:
     validate_home_messages_config()
 
 
+def check_affiliates_config() -> None:
+    from backend.subscription.affiliates_config import validate_affiliates_config
+
+    validate_affiliates_config()
+
+
 CHECKS = (
     check_flag_registry,
     check_chat_pagination_config,
@@ -79,6 +85,7 @@ CHECKS = (
     check_home_messages_config,
     check_agent_chats_config,
     check_agent_chat_memory_config,
+    check_affiliates_config,
 )
 
 

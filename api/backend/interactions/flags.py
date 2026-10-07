@@ -103,6 +103,8 @@ register("explorer_publish")
 register("explorer_browse", no_canary=True)
 register("join_requests")
 register("join_request_push")
+# Creator Affiliates page (task 20261007-affiliates-page): off/on only, exposed via no capability.
+register("affiliates", no_canary=True, exposed_in_capabilities=False)
 register("agent_chats")
 # Per-chat memory for agent chats (windowed history + rolling summary). Needs
 # agent_chats on too; server-side only, so not exposed in capabilities.

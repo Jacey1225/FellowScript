@@ -28,6 +28,7 @@ import AdminUserActions from './pages/AdminUserActions.jsx';
 import AdminTrends from './pages/AdminTrends.jsx';
 import AdminAccountActions from './pages/AdminAccountActions.jsx';
 import InviteFriends from './pages/InviteFriends.jsx';
+import Affiliates from './pages/Affiliates.jsx';
 import UpgradeModal from './components/UpgradeModal.jsx';
 import TermsGate from './components/TermsGate.jsx';
 
@@ -136,6 +137,7 @@ export default function App() {
           <Route path="/join/:token" element={<JoinInvite />} />
           {/* Task 20261001-promo-owner-rewards: signed-in user's invite link page. */}
           <Route path="/invite"    element={<InviteFriends />} />
+          <Route path="/affiliates" element={<Affiliates />} />
           {/* Task 20261001-explorer-listings step 9: public Explore browse
               pages (website only). Deliberately no MobileBlockGate (phones
               must reach it) and not on DESKTOP_ALLOWED_ROUTES. The Home/nav

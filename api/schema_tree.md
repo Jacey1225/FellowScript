@@ -126,6 +126,10 @@ group_join_requests     # module "join_requests": id UUID PK DEFAULT gen_random_
 home_messages           # module "home_messages": _id UUID PK DEFAULT gen_random_uuid(), text VARCHAR(500), enabled (default FALSE), starts_at/ends_at TIMESTAMPTZ (CHECK end > start),
                         #   priority INT, destination TEXT (CHECK 'none', reserved), created_at, updated_at, created_by/updated_by (text, no FK)
 # <!-- /HMS -->
+# <!-- AFF (20261007-affiliates-page) -->
+affiliate_milestones    # module "affiliate_milestones": PK (owner_email TEXT lowercased CHECK, tier_subscribers INT > 0), bonus_cents INT >= 0 (snapshot), earned_at TIMESTAMPTZ;
+                        #   no FKs (keyed by the creator-code owner email); makes an earned tier permanent (one-time per tier per affiliate); flag `affiliates` (off by default)
+# <!-- /AFF -->
 ```
 
 ---

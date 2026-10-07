@@ -2444,3 +2444,37 @@ body {
 .explore-groups-row:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
 .explore-groups-row-text { flex: 1; }
 @media (prefers-reduced-motion: reduce) { .explore-groups-row { transition: none; } }
+
+/* Creator affiliates page (task 20261007-affiliates-page) */
+.fs-aff {
+  position: relative; z-index: 1; max-width: 1300px; margin: 0 auto; width: 100%;
+  padding: calc(var(--nav-h) + 1.5rem) 2rem 5rem;
+}
+.fs-aff__cols { display: flex; gap: 1.5rem; align-items: flex-start; }
+.fs-aff__main { flex: 1; min-width: 0; order: 2; }
+.fs-aff__side {
+  order: 3; width: 240px; flex-shrink: 0; position: sticky; top: calc(var(--nav-h) + 1rem);
+  padding: 1rem 0.75rem; border-radius: 22px;
+  background: rgba(32,24,16,0.62); border: 1px solid rgba(200,134,26,0.22);
+  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+}
+.fs-aff__side ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.25rem; }
+.fs-aff__btn {
+  display: flex; align-items: center; gap: 0.75rem; width: 100%; min-height: 44px; padding: 0 1rem;
+  border-radius: 999px; border: 0; background: transparent; cursor: pointer; text-align: left;
+  font-family: 'Inter', sans-serif; font-size: 0.9rem; color: rgba(244,228,193,0.65);
+}
+.fs-aff__btn:hover { background: rgba(255,198,26,0.08); color: var(--parchment); }
+.fs-aff__btn[aria-pressed="true"] { background: var(--gold); color: var(--ink, #14110D); font-weight: 600; }
+.fs-aff__btn:focus-visible { outline: 2px solid var(--gold-light); outline-offset: 2px; }
+@media (max-width: 899px) {
+  .fs-aff { padding: calc(var(--nav-h) + 0.5rem) 1.5rem 4rem; }
+  .fs-aff__cols { flex-direction: column; gap: 0.75rem; }
+  .fs-aff__side { order: 1; width: 100%; position: static; padding: 0.5rem; border-radius: 999px; }
+  .fs-aff__side .fs-eyebrow { display: none; }
+  .fs-aff__side ul { flex-direction: row; overflow-x: auto; scrollbar-width: none; }
+  .fs-aff__side li { flex-shrink: 0; }
+  .fs-aff__btn { white-space: nowrap; }
+  .fs-aff__main { order: 2; width: 100%; }
+}
+@media (max-width: 600px) { .fs-aff { padding-left: 1rem; padding-right: 1rem; } }

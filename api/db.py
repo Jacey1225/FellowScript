@@ -83,6 +83,7 @@ DDL_MODULES = (
     "home_messages",
     "ios_offer_redemptions",
     "agent_chats",
+    "affiliate_milestones",
 )
 
 
