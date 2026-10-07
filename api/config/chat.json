@@ -28,5 +28,15 @@
     "title_max_length": 80,
     "auto_title_length": 60,
     "create_rate": "10/minute"
+  },
+  "agent_chat_memory": {
+    "window_messages": 20,
+    "summary_threshold": 20,
+    "summary_batch_max_messages": 60,
+    "message_max_chars": 4000,
+    "summary_max_chars": 4000,
+    "summary_max_tokens": 800,
+    "summary_model": "meta-llama/llama-3.1-8b-instruct",
+    "summary_timeout_seconds": 30
   }
 }

@@ -71,7 +71,7 @@ note_verses            → notes
 message_recipients     → messages, users
 agent_heartbeats       → agents, users
 agent_messages         → agents, users, agent_chats (chat_id, nullable = legacy)
-agent_chats            → agents, users (flag agent_chats; DDL module schema_ddl/agent_chats.py)
+agent_chats            → agents, users (flag agent_chats; DDL module schema_ddl/agent_chats.py; summary TEXT + summary_through_ts TIMESTAMPTZ added for flag agent_chat_memory, server-side only)
 subscription_request   → subscriptions, users
 ```
 

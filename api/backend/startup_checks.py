@@ -57,6 +57,12 @@ def check_agent_chats_config() -> None:
     validate_agent_chats_config()
 
 
+def check_agent_chat_memory_config() -> None:
+    from backend.interactions.agent_memory_config import validate_agent_memory_config
+
+    validate_agent_memory_config()
+
+
 def check_home_messages_config() -> None:
     from backend.interactions.home_messages_config import validate_home_messages_config
 
@@ -72,6 +78,7 @@ CHECKS = (
     check_join_requests_config,
     check_home_messages_config,
     check_agent_chats_config,
+    check_agent_chat_memory_config,
 )
 
 

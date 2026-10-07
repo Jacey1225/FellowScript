@@ -13,6 +13,7 @@ SEED_FLAG_NAMES = (
     "join_requests",
     "join_request_push",
     "agent_chats",
+    "agent_chat_memory",
 )
 
 

@@ -104,6 +104,9 @@ register("explorer_browse", no_canary=True)
 register("join_requests")
 register("join_request_push")
 register("agent_chats")
+# Per-chat memory for agent chats (windowed history + rolling summary). Needs
+# agent_chats on too; server-side only, so not exposed in capabilities.
+register("agent_chat_memory", exposed_in_capabilities=False)
 
 
 def _load_snapshot() -> dict[str, tuple[str, frozenset[str]]]:

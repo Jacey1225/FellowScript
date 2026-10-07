@@ -35,3 +35,8 @@ def apply(cur) -> None:
         "CREATE INDEX IF NOT EXISTS idx_agent_messages_legacy "
         "ON agent_messages (user_id, agent_id) WHERE chat_id IS NULL"
     )
+    # Server-side rolling summary (flag ``agent_chat_memory``). Never returned
+    # by any endpoint. ``summary_through_ts`` is the timestamp of the newest
+    # message folded into ``summary`` (NULL = nothing summarized yet).
+    cur.execute("ALTER TABLE agent_chats ADD COLUMN IF NOT EXISTS summary TEXT")
+    cur.execute("ALTER TABLE agent_chats ADD COLUMN IF NOT EXISTS summary_through_ts TIMESTAMPTZ")
