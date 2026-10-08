@@ -1,6 +1,6 @@
 {
   "email_verification": {
-    "enabled": false,
+    "enabled": true,
     "token_ttl_minutes": 60,
     "resend_cooldown_seconds": 60,
     "max_sends_per_day": 5,
