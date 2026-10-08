@@ -5,6 +5,12 @@ import { useParallaxBlobs } from '../hooks/useParallaxBlobs.js';
 import Seo from '../components/Seo.jsx';
 import { useExploreEnabled } from '../hooks/useExploreEnabled.js';
 import { SITE_URL } from '../config.js';
+// Task 20261008-homepage-reaching-section: the two halftone hands (OpenArt
+// source, already generated; recompressed to webp with alpha). Imported through
+// Vite so the prerender (SSR) build and the client build both emit the same
+// content-hashed /assets/ URL.
+import handLeftCream from '../assets/reaching/hand-left-cream.webp';
+import handRightAmber from '../assets/reaching/hand-right-amber.webp';
 import {
   HOME_SEO_PATH,
   HOME_SEO_TITLE,
@@ -111,6 +117,44 @@ function useRevealOnScroll(ref) {
   }, []);
 }
 
+// Task 20261008-homepage-reaching-section: the halftone hands drift a few px
+// toward each other as the section scrolls through the viewport. Tunables are
+// named constants (not scattered magic numbers). Scroll is rAF-throttled and
+// writes one CSS variable (--fs-drift, 0..1, eased) straight onto the section
+// -- DOM-first like useRevealOnScroll, no React re-render per scroll event.
+// Skipped entirely under prefers-reduced-motion (the CSS in the <style> block
+// also pins the hands static there as a backstop).
+const HAND_DRIFT_PX = 6;         // desktop travel per hand at full progress
+const HAND_DRIFT_PX_MOBILE = 3;  // 390px band: smaller travel
+
+function useHandDrift(ref) {
+  useEffect(() => {
+    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const el = ref.current;
+    if (!el) return;
+    let raf = 0;
+    const update = () => {
+      raf = 0;
+      const r = el.getBoundingClientRect();
+      const vh = window.innerHeight || 1;
+      // 0 as the section's top edge enters the bottom of the viewport, 1 as its
+      // bottom edge leaves the top.
+      const p = Math.min(1, Math.max(0, (vh - r.top) / (vh + r.height)));
+      const eased = p * p * (3 - 2 * p); // smoothstep: never linear
+      el.style.setProperty('--fs-drift', eased.toFixed(3));
+    };
+    const onScroll = () => { if (!raf) raf = window.requestAnimationFrame(update); };
+    update();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('resize', onScroll);
+    return () => {
+      window.removeEventListener('scroll', onScroll);
+      window.removeEventListener('resize', onScroll);
+      if (raf) window.cancelAnimationFrame(raf);
+    };
+  }, []);
+}
+
 // Purely decorative hand-drawn marker strokes (task
 // 20260921-homepage-family-section-redesign) — mined from the "French
 // Notez" hand-lettering reference for technique only, not the reference's
@@ -122,14 +166,14 @@ function useRevealOnScroll(ref) {
 // quote), never carries meaning on its own. `pathLength="1"` lets the CSS
 // draw-on animation below use simple 0–1 dasharray/dashoffset math
 // regardless of each path's actual geometry.
-function HandDrawnCircle({ style }) {
+function HandDrawnCircle({ style, className }) {
   return (
-    <svg aria-hidden="true" viewBox="0 0 176 64" style={{ position: 'absolute', pointerEvents: 'none', ...style }}>
+    <svg aria-hidden="true" className={className} viewBox="0 0 176 64" style={{ position: 'absolute', pointerEvents: 'none', ...style }}>
       <path
         className="hm-draw-path"
         pathLength="1"
         d="M20 42 C8 26 24 8 58 5 C98 2 142 8 158 24 C170 36 162 52 126 58 C90 64 42 60 22 48 C15 44 16 41 21 42"
-        fill="none" stroke={AMBER} strokeWidth="4.5" strokeLinecap="round" strokeLinejoin="round"
+        fill="none" stroke={AMBER} strokeWidth="4.8" strokeLinecap="round" strokeLinejoin="round"
       />
     </svg>
   );
@@ -137,7 +181,7 @@ function HandDrawnCircle({ style }) {
 
 function HandDrawnUnderline({ style }) {
   return (
-    <svg aria-hidden="true" viewBox="0 0 220 20" style={{ position: 'absolute', pointerEvents: 'none', ...style }}>
+    <svg aria-hidden="true" viewBox="0 0 220 20" preserveAspectRatio="none" style={{ position: 'absolute', pointerEvents: 'none', ...style }}>
       <path
         className="hm-draw-path"
         pathLength="1"
@@ -243,6 +287,7 @@ export default function Home() {
   // for the "Not just once a week" section — see useRevealOnScroll above.
   const familyRef = useRef(null);
   useRevealOnScroll(familyRef);
+  useHandDrift(familyRef);
 
   return (
     <div style={{ fontFamily: BODY_FONT, color: CREAM, background: INK, overflowX: 'hidden' }}>
@@ -265,6 +310,7 @@ export default function Home() {
              every element it would have revealed still renders fully visible
              and static even if that JS gate is ever bypassed or races. */
           .hm-family-reveal { opacity: 1 !important; transform: none !important; transition: none !important; }
+          .hm-reach-hand { transform: none !important; transition: none !important; }
         }
 
         /* Task 20260921-homepage-family-section-redesign — "Not just once a
@@ -290,7 +336,62 @@ export default function Home() {
           [data-fs-in-view="true"] .hm-draw-path { stroke-dashoffset: 0; }
         }
 
-        .hm-family-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: clamp(40px, 6vw, 90px); align-items: start; }
+        /* Task 20261008-homepage-reaching-section — "Reaching" composition.
+           Everything in the headline stage is sized in em off .hm-reach-stage's
+           font-size (the headline size), so the hands, scrim and bloom keep their
+           position relative to the headline at every width. Desktop fingertips
+           stop at the headline edge, about 755px apart at 1440 (not the ~100px
+           gap in the early spec text: hand art over white text fails contrast). */
+        .hm-reach { position: relative; overflow: hidden; background: ${INK}; border-top: 1px solid rgba(255,244,230,0.14); border-bottom: 1px solid rgba(255,244,230,0.14); padding: 56px clamp(20px, 5vw, 64px); --fs-drift-px: ${HAND_DRIFT_PX}px; }
+        .hm-reach-xgrid { position: absolute; inset: 0; opacity: 0.10; pointer-events: none; background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='140'><text x='70' y='72' font-size='9.6' text-anchor='middle' fill='%23FFF4E6' font-family='sans-serif'>x</text></svg>"); -webkit-mask-image: radial-gradient(ellipse 55% 50% at 50% 42%, transparent 70%, #000 100%); mask-image: radial-gradient(ellipse 55% 50% at 50% 42%, transparent 70%, #000 100%); }
+        .hm-reach-bandgrid { display: none; }
+        .hm-reach-grain { position: absolute; inset: 0; opacity: 0.04; mix-blend-mode: screen; pointer-events: none; background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence baseFrequency='.9' numOctaves='2'/></filter><rect width='200' height='200' filter='url(%23n)'/></svg>"); }
+        .hm-reach-plus { position: absolute; width: 10px; height: 10px; pointer-events: none; }
+        .hm-reach-plus::before, .hm-reach-plus::after { content: ''; position: absolute; background: rgba(255,244,230,0.4); }
+        .hm-reach-plus::before { left: 4.5px; top: 0; width: 1px; height: 10px; }
+        .hm-reach-plus::after { top: 4.5px; left: 0; height: 1px; width: 10px; }
+        .hm-reach-inner { position: relative; max-width: 1240px; margin: 0 auto; text-align: center; }
+        .hm-reach-eyebrow { font-family: ${HEAD_FONT}; font-size: 11.5px; letter-spacing: 0.26em; text-transform: uppercase; color: ${AMBER}; padding-bottom: 22px; border-bottom: 1px solid rgba(255,244,230,0.14); line-height: 1.6; }
+        .hm-reach-stage { position: relative; margin-top: 80px; font-size: clamp(40px, 7vw, 100px); }
+        .hm-reach-hands { position: absolute; inset: 0; pointer-events: none; display: block; }
+        .hm-reach-bloom { position: absolute; display: block; left: 50%; top: 2.47em; width: 8.4em; height: 8.4em; transform: translate(-50%, -50%); background: radial-gradient(circle, rgba(224,154,48,0.34), transparent 50%); }
+        .hm-reach-hand { position: absolute; display: block; height: auto; top: 2.74em; transition: transform 600ms cubic-bezier(0.22,1,0.36,1); will-change: transform; }
+        .hm-reach-hand-l { right: calc(50% + 3.9em); width: 7em; opacity: 0.8; transform: translate3d(calc(var(--fs-drift, 0) * var(--fs-drift-px)), 0, 0); }
+        .hm-reach-hand-r { left: calc(50% + 3.9em); width: 6em; opacity: 0.85; transform: translate3d(calc(var(--fs-drift, 0) * var(--fs-drift-px) * -1), 0, 0); }
+        .hm-reach-scrim { position: absolute; display: block; left: 50%; top: 50%; width: 7.6em; height: 4.2em; transform: translate(-50%, -50%); background: radial-gradient(ellipse at center, rgba(23,18,15,0.7) 0, rgba(23,18,15,0.6) 50%, transparent 74%); }
+        .hm-reach-bandfade { display: none; }
+        .hm-reach-h2 { position: relative; z-index: 1; font-family: ${HEAD_FONT}; font-size: 1em; line-height: 0.98; font-weight: 400; letter-spacing: -0.035em; margin: 0 auto; max-width: 9em; color: #FFF9F0; text-wrap: balance; }
+        .hm-reach-body { position: relative; z-index: 1; font-size: 16.5px; line-height: 1.7; color: rgba(255,243,228,0.7); margin: 60px auto 0; max-width: 36em; text-wrap: pretty; }
+        .hm-reach-pillrow { position: relative; z-index: 1; margin-top: 24px; }
+        .hm-reach-card { position: relative; z-index: 1; margin: 44px auto 0; width: min(640px, 100%); box-sizing: border-box; padding: 26px 30px 28px; border-radius: 20px; background: rgba(28,21,17,0.66); border: 1px solid rgba(255,244,230,0.18); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); box-shadow: 0 30px 70px -30px rgba(20,10,5,0.8); text-align: left; }
+        .hm-reach-quote { margin: 0 0 4px; font-family: ${HEAD_FONT}; font-size: 19px; line-height: 1.42; font-weight: 400; letter-spacing: -0.015em; color: #FFF9F0; }
+
+        /* 390px re-composition (not a shrink): hands become a 220px band under
+           the eyebrow, headline left-aligned below it (text never over art, so
+           no scrim), x-grid only inside the band, two corner marks. */
+        @media (max-width: 760px) {
+          .hm-reach { padding: 40px 24px 48px; --fs-drift-px: ${HAND_DRIFT_PX_MOBILE}px; }
+          .hm-reach-inner { text-align: left; }
+          .hm-reach-xgrid { display: none; }
+          .hm-reach-plus-tr, .hm-reach-plus-bl { display: none; }
+          .hm-reach-plus-tl { left: 12px !important; top: 12px !important; }
+          .hm-reach-plus-br { right: 12px !important; bottom: 12px !important; }
+          .hm-reach-stage { margin-top: 0; font-size: 40px; }
+          .hm-reach-hands { position: relative; inset: auto; height: 220px; margin: 0 -24px 26px; overflow: hidden; }
+          .hm-reach-bandgrid { display: block; position: absolute; inset: 0; opacity: 0.14; background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='96' height='96'><text x='48' y='49.7' font-size='8' text-anchor='middle' fill='%23FFF4E6' font-family='sans-serif'>x</text></svg>"); }
+          .hm-reach-bloom { top: 50%; width: 360px; height: 360px; background: radial-gradient(circle, rgba(224,154,48,0.34), transparent 60%); }
+          .hm-reach-hand { opacity: 0.7; }
+          .hm-reach-hand-l { top: 50px; right: calc(50% + 14px); width: 360px; }
+          .hm-reach-hand-r { top: 56px; left: calc(50% + 9px); width: 330px; }
+          .hm-reach-scrim { display: none; }
+          .hm-reach-circle { top: -46% !important; }
+          .hm-reach-bandfade { display: block; position: absolute; left: 0; right: 0; bottom: 0; height: 24px; background: linear-gradient(to bottom, transparent, ${INK}); }
+          .hm-reach-h2 { margin: 0; max-width: none; }
+          .hm-reach-body { font-size: 16px; margin: 34px 0 0; max-width: none; }
+          .hm-reach-pillrow { margin-top: 22px; }
+          .hm-reach-card { margin: 34px 0 0; width: auto; padding: 26px 22px 28px; }
+          .hm-reach-quote { font-size: 18px; line-height: 1.45; }
+        }
 
         .hm-nav-link { color: rgba(255,248,238,0.82); }
         .hm-nav-link:hover { color: #FFF8EE; }
@@ -392,67 +493,66 @@ export default function Home() {
           room for that. Purpose-built layout (not a text swap) — see
           design-notes.md for the full synthesis of the three visual
           references and the conflicts/resolutions between them. */}
-      <section ref={familyRef} style={{ padding: 'clamp(90px, 13vh, 180px) clamp(20px, 5vw, 64px)', background: INK }}>
-        <div style={{ maxWidth: 1240, margin: '0 auto' }}>
-          <div className="hm-family-reveal" style={{ fontFamily: HEAD_FONT, fontSize: 11.5, letterSpacing: '0.26em', textTransform: 'uppercase', color: AMBER, paddingBottom: 22, borderBottom: '1px solid rgba(255,244,230,0.14)', marginBottom: 56 }}>// NOT JUST ONCE A WEEK</div>
+      <section ref={familyRef} className="hm-reach">
+        {/* Decorative layers (all aria-hidden, no focusable content). If the
+            hand images fail to load they hide themselves and the x-grid, bloom
+            and all text stay intact. */}
+        <span aria-hidden="true" className="hm-reach-xgrid" />
+        <span aria-hidden="true" className="hm-reach-grain" />
+        <span aria-hidden="true" className="hm-reach-plus hm-reach-plus-tl" style={{ left: 24, top: 24 }} />
+        <span aria-hidden="true" className="hm-reach-plus hm-reach-plus-tr" style={{ right: 24, top: 24 }} />
+        <span aria-hidden="true" className="hm-reach-plus hm-reach-plus-bl" style={{ left: 24, bottom: 24 }} />
+        <span aria-hidden="true" className="hm-reach-plus hm-reach-plus-br" style={{ right: 24, bottom: 24 }} />
 
-          <div className="hm-family-grid">
-            {/* Left: headline + body + daily badge */}
-            <div>
-              {/* Offset color-block collage panels (webp #1's layered technique,
-                  mined for composition only — flat, sharp-cornered, no shadow,
-                  AMBER standing in for the reference's red/yellow accent per
-                  design-notes.md §Conflicts #1) sit behind the headline. */}
-              <div className="hm-family-reveal" style={{ position: 'relative' }}>
-                <span aria-hidden="true" style={{ position: 'absolute', left: -22, top: -16, width: '54%', height: '64%', background: 'rgba(232,163,85,0.13)', border: '1px solid rgba(232,163,85,0.3)', zIndex: 0 }} />
-                <span aria-hidden="true" style={{ position: 'absolute', right: '4%', bottom: -20, width: '34%', height: '42%', border: '1px solid rgba(255,244,230,0.22)', zIndex: 0 }} />
-                <h2 style={{ position: 'relative', zIndex: 1, fontFamily: HEAD_FONT, fontSize: 'clamp(40px, 6.5vw, 100px)', lineHeight: 0.98, fontWeight: 400, letterSpacing: '-0.035em', margin: '0 0 30px', maxWidth: '14em', color: '#FFF9F0', textWrap: 'balance' }}>
-                  Everyone gathered under Christ is called to live as{' '}
-                  <span style={{ position: 'relative', display: 'inline-block' }}>
-                    family
-                    <HandDrawnCircle style={{ left: '-10%', top: '-28%', width: '120%', height: '190%' }} />
-                  </span>.
-                </h2>
-              </div>
+        <div className="hm-reach-inner">
+          <div className="hm-family-reveal hm-reach-eyebrow">// NOT JUST ONCE A WEEK</div>
 
-              <p className="hm-family-reveal" style={{ position: 'relative', zIndex: 1, transitionDelay: '90ms', fontSize: 16.5, lineHeight: 1.7, color: 'rgba(255,243,228,0.7)', margin: '0 0 28px', maxWidth: '32em' }}>
-                Brothers and sisters don't show up for each other once a week — they show up every day in between. That daily rhythm, not the Sunday appointment, is the actual point. FellowScript exists to make room for it.
-              </p>
+          <div className="hm-family-reveal hm-reach-stage">
+            {/* Task 20261008-homepage-reaching-section: halftone hands reaching
+                toward the circled word (Variant 1 "Reaching"). Cream hand left,
+                amber hand right; purely decorative, so alt="" + aria-hidden. */}
+            <span aria-hidden="true" className="hm-reach-hands">
+              <span className="hm-reach-bandgrid" />
+              <span className="hm-reach-bloom" />
+              <img className="hm-reach-hand hm-reach-hand-l" src={handLeftCream} width="900" height="387" alt="" aria-hidden="true" decoding="async" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+              <img className="hm-reach-hand hm-reach-hand-r" src={handRightAmber} width="760" height="345" alt="" aria-hidden="true" decoding="async" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+              <span className="hm-reach-scrim" />
+              <span className="hm-reach-bandfade" />
+            </span>
+            <h2 className="hm-reach-h2">
+              Everyone gathered under Christ is called to live as{' '}
+              <span style={{ position: 'relative', display: 'inline-block' }}>
+                family
+                <HandDrawnCircle className="hm-reach-circle" style={{ left: '-17%', top: '-53.5%', width: '150%', height: '237%' }} />
+              </span>.
+            </h2>
+          </div>
 
-              {/* Simpler stand-in for the video reference's marquee/numbered-
-                  section device (the earlier Mon–Sun ticker was cut per the
-                  user's explicit direction) — the "daily, not weekly" claim
-                  is carried here as plain, static, always-visible text, same
-                  badge shape as the hero's "Now with scheduled devotions"
-                  pill above, for consistency rather than a competing device. */}
-              <div className="hm-family-reveal" style={{ transitionDelay: '160ms', display: 'inline-flex', alignItems: 'center', gap: 9, padding: '7px 15px 7px 12px', borderRadius: 999, background: 'rgba(232,163,85,0.12)', border: '1px solid rgba(232,163,85,0.32)' }}>
-                <span aria-hidden="true" style={{ width: 7, height: 7, borderRadius: '50%', background: AMBER }} />
-                <span style={{ fontSize: 12, letterSpacing: '0.04em', color: '#FFF3E2' }}>Every day — not just Sunday</span>
-              </div>
+          <p className="hm-family-reveal hm-reach-body" style={{ transitionDelay: '90ms' }}>
+            Brothers and sisters don't show up for each other once a week — they show up every day in between. That daily rhythm, not the Sunday appointment, is the actual point. FellowScript exists to make room for it.
+          </p>
+
+          <div className="hm-reach-pillrow">
+            <div className="hm-family-reveal" style={{ transitionDelay: '160ms', display: 'inline-flex', alignItems: 'center', gap: 9, padding: '7px 15px 7px 12px', borderRadius: 999, background: 'rgba(232,163,85,0.12)', border: '1px solid rgba(232,163,85,0.32)' }}>
+              <span aria-hidden="true" style={{ width: 7, height: 7, borderRadius: '50%', background: AMBER }} />
+              <span style={{ fontSize: 12, letterSpacing: '0.04em', color: '#FFF3E2' }}>Every day — not just Sunday</span>
             </div>
+          </div>
 
-            {/* Right: founder's-note card — reuses the hero verse card's glass
-                treatment so it reads as consistent with the rest of the page
-                rather than novel (design-notes.md §Elevation/texture). The
-                hand-drawn quote mark + underline are the one deliberately
-                "off-system" gesture in this kit, per the user's explicit
-                direction to lean into it as a genuine, felt part of the
-                section rather than a minimal/cuttable touch. Anonymous —
-                no name or initial attribution, per the user's explicit
-                approval. */}
-            <div className="hm-family-reveal" style={{ transitionDelay: '220ms', padding: '34px 32px 36px', borderRadius: 20, background: 'rgba(28,21,17,0.66)', border: '1px solid rgba(255,244,230,0.18)', backdropFilter: 'blur(18px)', boxShadow: '0 30px 70px -30px rgba(20,10,5,0.8)' }}>
-              <div style={{ fontFamily: HEAD_FONT, fontSize: 11, letterSpacing: '0.22em', textTransform: 'uppercase', color: '#F0C08A', marginBottom: 16 }}>// WHY WE BUILT THIS</div>
-              <div style={{ marginBottom: 6 }}>
-                <HandDrawnQuoteMark size={42} />
-              </div>
-              <blockquote style={{ margin: '0 0 4px', fontFamily: HEAD_FONT, fontSize: 21, lineHeight: 1.42, fontWeight: 400, letterSpacing: '-0.015em', color: '#FFF9F0' }}>
-                "I didn't build this to replace church. I built it because family doesn't clock out — I wanted somewhere for us to keep{' '}
-                <span style={{ position: 'relative', display: 'inline-block' }}>
-                  showing up for each other
-                  <HandDrawnUnderline style={{ left: '-2%', bottom: '-14%', width: '104%', height: '30%' }} />
-                </span>, every day of the week."
-              </blockquote>
+          {/* Founder's-note card — same glass treatment as the hero verse card.
+              Anonymous (no name/initial attribution), per the earlier approval. */}
+          <div className="hm-family-reveal hm-reach-card" style={{ transitionDelay: '220ms' }}>
+            <div style={{ fontFamily: HEAD_FONT, fontSize: 11, letterSpacing: '0.22em', textTransform: 'uppercase', color: '#F0C08A', marginBottom: 16 }}>// WHY WE BUILT THIS</div>
+            <div style={{ marginBottom: 6 }}>
+              <HandDrawnQuoteMark size={42} />
             </div>
+            <blockquote className="hm-reach-quote">
+              "I didn't build this to replace church. I built it because family doesn't clock out — I wanted somewhere for us to keep{' '}
+              <span style={{ position: 'relative', display: 'inline-block' }}>
+                showing up for each other
+                <HandDrawnUnderline style={{ left: '-2%', bottom: '-14%', width: '104%', height: '30%' }} />
+              </span>, every day of the week."
+            </blockquote>
           </div>
         </div>
       </section>
