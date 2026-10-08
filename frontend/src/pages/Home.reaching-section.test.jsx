@@ -69,16 +69,14 @@ describe('Home reaching section', () => {
     expect(section().querySelector('h2').textContent).toMatch(/live as family\./);
   });
 
-  test('gold circle around "family" is the enlarged one (150% wide, taller than the word)', () => {
+  test('gold circle around "family" is a fixed 400px wide, centered on the word', () => {
     renderHome();
     const circle = section().querySelector('svg.hm-reach-circle');
     expect(circle).toBeTruthy();
     expect(circle.getAttribute('aria-hidden')).toBe('true');
-    // Previously width 120%; ~28% larger => 150%.
-    expect(circle.style.width).toBe('150%');
-    expect(parseFloat(circle.style.width) / 120).toBeGreaterThanOrEqual(1.25);
-    expect(parseFloat(circle.style.width) / 120).toBeLessThanOrEqual(1.3);
-    expect(parseFloat(circle.style.height)).toBeGreaterThan(200);
+    expect(circle.style.width).toBe('400px');
+    expect(circle.style.left).toBe('50%');
+    expect(circle.style.top).toBe('50%');
     expect(circle.closest('span').textContent).toBe('family');
   });
 

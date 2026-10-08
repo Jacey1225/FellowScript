@@ -56,3 +56,14 @@ ssh -i fellowscript-ec2-key.pem ubuntu@44.216.136.112 "mkdir -p /var/www/html/do
 
 scp -i fellowscript-ec2-key.pem \
   frontend/dist/download/index.html ubuntu@44.216.136.112:/var/www/html/download/index.html
+
+# task 20261008-explore-page-indexable: the prerendered Explore landing page
+# (frontend/scripts/prerender.mjs writes dist/explore/index.html; robots is
+# "index, follow" only when built with VITE_EXPLORER_BROWSE on, else noindex).
+# Rebuild and redeploy when the server-side browse flag flips.
+# ops/nginx/explore-page.conf is a prepared, NOT applied, snippet. This script
+# does not touch nginx.
+ssh -i fellowscript-ec2-key.pem ubuntu@44.216.136.112 "mkdir -p /var/www/html/explore"
+
+scp -i fellowscript-ec2-key.pem \
+  frontend/dist/explore/index.html ubuntu@44.216.136.112:/var/www/html/explore/index.html

@@ -9,6 +9,9 @@ import ListingCard from '../components/explore/ListingCard.jsx';
 import FilterPanel, { countActiveFilters, MULTI_FACETS, SINGLE_FACETS } from '../components/explore/FilterPanel.jsx';
 import { labelFor } from '../components/explore/exploreLabels.js';
 import { fetchFilters, fetchListings } from '../lib/explorerApi.js';
+import { useExploreEnabled } from '../hooks/useExploreEnabled.js';
+import { EXPLORE_SEO_PATH, EXPLORE_SEO_TITLE, EXPLORE_SEO_DESCRIPTION, EXPLORE_SEO_IMAGE, exploreJsonLd } from '../seo/exploreSeo.js';
+import { SITE_URL } from '../config.js';
 import { useCountdown } from '../hooks/useCountdown.js';
 import '../styles/explore.css';
 
@@ -33,6 +36,9 @@ export function errorKind(err) {
 
 export default function Explore() {
   useWarmCanvas();
+  // Indexable only while the runtime browse flag probe reports on; any other
+  // state (pending, off, failed) is noindex.
+  const browseOn = useExploreEnabled();
   const [meta, setMeta] = useState(null);
   const [query, setQuery] = useState('');
   const [applied, setApplied] = useState({ q: '', filters: {}, includeFull: false });
@@ -146,7 +152,8 @@ export default function Explore() {
 
   return (
     <div className="ex-page">
-      <Seo title="Explore groups — FellowScript" description="Find a FellowScript group to join." path="/explore" noindex />
+      <Seo title={EXPLORE_SEO_TITLE} description={EXPLORE_SEO_DESCRIPTION} path={EXPLORE_SEO_PATH}
+        image={EXPLORE_SEO_IMAGE} jsonLd={browseOn ? exploreJsonLd(SITE_URL) : undefined} noindex={!browseOn} />
       <AppBloom variant="account" />
       <AppNav />
       <main className="ex-main">

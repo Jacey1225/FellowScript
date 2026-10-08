@@ -56,3 +56,26 @@ export function renderDownload() {
     </StaticRouter>
   );
 }
+
+// Task 20261008-explore-page-indexable: static shell for the Explore landing
+// page. Deliberately independent of Explore.jsx's runtime state: no listing
+// data, counts, or filter vocabulary (all API-backed); generic copy only. The
+// client bundle replaces it with the live route on load.
+export function renderExplore() {
+  return renderToStaticMarkup(
+    <main className="ex-main">
+      <header className="ex-head">
+        <h1 className="ex-h1">Explore groups</h1>
+        <p className="ex-sub">Find a group near your faith and season of life.</p>
+      </header>
+      <section aria-label="About Explore">
+        <p>
+          Explore lists FellowScript groups you can join. Search by name, or
+          filter by denomination, meeting format, how often the group meets,
+          and where it is.
+        </p>
+      </section>
+      <p className="ex-foot"><a href="/" className="ex-link">Back to home</a></p>
+    </main>
+  );
+}

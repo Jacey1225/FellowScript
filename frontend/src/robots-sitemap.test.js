@@ -36,7 +36,7 @@ describe('robots.txt', () => {
     expect(robots).toMatch(/^Allow:\s*\/download\/\s*$/m);
     expect(robots).toMatch(/^Disallow:\s*\/\s*$/m);
     const allows = Array.from(robots.matchAll(/^Allow:\s*(\S+)\s*$/gm)).map((m) => m[1]);
-    expect(allows.sort()).toEqual(['/$', '/download/', '/privacy', '/terms']);
+    expect(allows.sort()).toEqual(['/$', '/download/', '/explore/$', '/privacy', '/terms']);
   });
 
   test('explicitly names the known authenticated routes as disallowed', () => {
@@ -124,5 +124,28 @@ describe('deploy.sh downloads page step (task 20260930-downloads-page-indexable)
     expect(added).not.toMatch(/nginx (-|reload)|systemctl|rsync|--delete|rm -rf|sudo/);
     expect(added).toContain('mkdir -p /var/www/html/download');
     expect(added).toContain('frontend/dist/download/index.html');
+  });
+});
+
+// Task 20261008-explore-page-indexable.
+describe('explore landing page crawl posture', () => {
+  test('robots allows exact /explore/ only; authenticated sub-routes stay disallowed', () => {
+    expect(robots).toMatch(/^Allow:\s*\/explore\/\$\s*$/m);
+    expect(robots).not.toMatch(/^Allow:\s*\/explore\/?\s*$/m);
+    expect(robots).toMatch(/^Disallow:\s*\/explore\/manage\s*$/m);
+    expect(robots).toMatch(/^Disallow:\s*\/explore\/requests\s*$/m);
+    expect(robots).toMatch(/^Disallow:\s*\/\s*$/m);
+  });
+  test('source sitemap.xml has no explore entry (flag-off default; build injects when on)', () => {
+    expect(sitemap).not.toMatch(/explore/);
+  });
+  test('nginx snippet is prepared-only with exact-match locations; deploy.sh ships explore/index.html', () => {
+    const conf = fs.readFileSync(path.join(REPO_ROOT, 'ops/nginx/explore-page.conf'), 'utf8');
+    expect(conf).toMatch(/NOT APPLIED/i);
+    const locs = Array.from(conf.matchAll(/^\s*location\s+([^{]+)\{/gm)).map((m) => m[1].trim());
+    expect(locs.length).toBeGreaterThan(0);
+    for (const l of locs) expect(l).toMatch(/^=\s/);
+    expect(conf).not.toMatch(/proxy_pass|autoindex\s+on/);
+    expect(fs.readFileSync(path.join(REPO_ROOT, 'deploy.sh'), 'utf8')).toContain('explore/index.html');
   });
 });

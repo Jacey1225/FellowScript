@@ -384,7 +384,6 @@ export default function Home() {
           .hm-reach-hand-l { top: 50px; right: calc(50% + 14px); width: 360px; }
           .hm-reach-hand-r { top: 56px; left: calc(50% + 9px); width: 330px; }
           .hm-reach-scrim { display: none; }
-          .hm-reach-circle { top: -46% !important; }
           .hm-reach-bandfade { display: block; position: absolute; left: 0; right: 0; bottom: 0; height: 24px; background: linear-gradient(to bottom, transparent, ${INK}); }
           .hm-reach-h2 { margin: 0; max-width: none; }
           .hm-reach-body { font-size: 16px; margin: 34px 0 0; max-width: none; }
@@ -523,7 +522,7 @@ export default function Home() {
               Everyone gathered under Christ is called to live as{' '}
               <span style={{ position: 'relative', display: 'inline-block' }}>
                 family
-                <HandDrawnCircle className="hm-reach-circle" style={{ left: '-17%', top: '-53.5%', width: '150%', height: '237%' }} />
+                <HandDrawnCircle className="hm-reach-circle" style={{ left: '50%', top: '50%', transform: 'translate(-50%, -50%)', width: 400, maxWidth: 'calc(100vw - 48px)', height: 'auto' }} />
               </span>.
             </h2>
           </div>

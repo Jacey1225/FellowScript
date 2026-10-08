@@ -9,11 +9,11 @@ export function escapeText(value) {
   return String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-export function buildSeoTags({ title, description, canonical, ogImage, jsonLd }) {
+export function buildSeoTags({ title, description, canonical, ogImage, jsonLd, robots = 'index, follow' }) {
   return [
     `<meta name="description" content="${escapeAttr(description)}" data-rh="true">`,
     `<link rel="canonical" href="${escapeAttr(canonical)}" data-rh="true">`,
-    `<meta name="robots" content="index, follow" data-rh="true">`,
+    `<meta name="robots" content="${escapeAttr(robots)}" data-rh="true">`,
     `<meta property="og:type" content="website" data-rh="true">`,
     `<meta property="og:title" content="${escapeAttr(title)}" data-rh="true">`,
     `<meta property="og:description" content="${escapeAttr(description)}" data-rh="true">`,

@@ -29,6 +29,16 @@ import {
   DOWNLOAD_ROUTE,
   downloadJsonLd,
 } from '../src/seo/downloadSeo.js';
+import {
+  EXPLORE_SEO_PATH,
+  EXPLORE_SEO_TITLE,
+  EXPLORE_SEO_DESCRIPTION,
+  EXPLORE_SEO_IMAGE,
+  EXPLORE_ROUTE,
+  exploreJsonLd,
+  exploreRobots,
+  isExploreBrowseBuildFlagOn,
+} from '../src/seo/exploreSeo.js';
 import { buildSeoTags, escapeText } from '../src/seo/headTags.js';
 import path from 'node:path';
 import fs from 'node:fs';
@@ -68,7 +78,7 @@ async function main() {
   });
 
   const entryPath = path.resolve(ssrOutDir, 'entry-server.mjs');
-  const { renderHome, renderDownload } = await import(`${new URL(`file://${entryPath}`)}?t=${Date.now()}`);
+  const { renderHome, renderDownload, renderExplore } = await import(`${new URL(`file://${entryPath}`)}?t=${Date.now()}`);
   const homeHtml = renderHome();
 
   const html = fs.readFileSync(indexPath, 'utf-8');
@@ -110,12 +120,52 @@ async function main() {
   fs.mkdirSync(downloadDir, { recursive: true });
   fs.writeFileSync(path.join(downloadDir, 'index.html'), downloadHtml);
 
+  // Task 20261008-explore-page-indexable: third real-path page. Indexable only
+  // when VITE_EXPLORER_BROWSE is explicitly on at build time; otherwise the
+  // file is emitted noindex and not added to the sitemap. Rebuild when the
+  // server-side browse flag flips.
+  const exploreOn = isExploreBrowseBuildFlagOn(env.VITE_EXPLORER_BROWSE);
+  const exploreTags = buildSeoTags({
+    title: EXPLORE_SEO_TITLE,
+    description: EXPLORE_SEO_DESCRIPTION,
+    canonical: `${siteUrl}${EXPLORE_SEO_PATH}`,
+    ogImage: `${siteUrl}${EXPLORE_SEO_IMAGE}`,
+    jsonLd: exploreJsonLd(siteUrl),
+    robots: exploreRobots(exploreOn),
+  });
+  let exploreHtml = html
+    .split('\n')
+    .filter((line) => !line.includes('data-rh="true"') || line.includes('<title'))
+    .join('\n')
+    .replace(/<title data-rh="true">[^<]*<\/title>/, `<title data-rh="true">${escapeText(EXPLORE_SEO_TITLE)}</title>`)
+    .replace('</head>', `    ${exploreTags}\n  </head>`)
+    .replace(ROOT_DIV, `<div id="root">${renderExplore()}</div>`);
+  const exploreRouteScript = `<script>if(!location.hash){history.replaceState(null,'',location.pathname+location.search+'#${EXPLORE_ROUTE}');}</script>`;
+  exploreHtml = exploreHtml.replace('<script type="module"', `${exploreRouteScript}\n  <script type="module"`);
+  const exploreDir = path.resolve(root, 'dist', EXPLORE_SEO_PATH.replace(/^\/|\/$/g, ''));
+  fs.mkdirSync(exploreDir, { recursive: true });
+  fs.writeFileSync(path.join(exploreDir, 'index.html'), exploreHtml);
+
+  if (exploreOn) {
+    const sitemapPath = path.resolve(root, 'dist/sitemap.xml');
+    if (fs.existsSync(sitemapPath)) {
+      const sm = fs.readFileSync(sitemapPath, 'utf-8');
+      const loc = `${siteUrl}${EXPLORE_SEO_PATH}`;
+      if (!sm.includes(`<loc>${loc}</loc>`)) {
+        fs.writeFileSync(
+          sitemapPath,
+          sm.replace('</urlset>', `  <url>\n    <loc>${loc}</loc>\n    <changefreq>weekly</changefreq>\n    <priority>0.6</priority>\n  </url>\n</urlset>`)
+        );
+      }
+    }
+  }
+
   const withHome = html.replace(ROOT_DIV, `<div id="root">${homeHtml}</div>`);
   fs.writeFileSync(indexPath, withHome);
 
   fs.rmSync(ssrOutDir, { recursive: true, force: true });
 
-  console.log('[prerender] Home prerendered into dist/index.html; downloads page into dist/download/index.html');
+  console.log('[prerender] Home prerendered into dist/index.html; downloads page into dist/download/index.html; explore page into dist/explore/index.html (' + (exploreOn ? 'index' : 'noindex') + ')');
 }
 
 main().catch((err) => {

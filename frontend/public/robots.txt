@@ -68,6 +68,9 @@ Disallow: /verify-2fa
 Disallow: /
 Allow: /$
 Allow: /download/
+Allow: /explore/$
+Disallow: /explore/manage
+Disallow: /explore/requests
 Allow: /privacy
 Allow: /terms
 
