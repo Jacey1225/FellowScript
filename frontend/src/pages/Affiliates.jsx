@@ -174,6 +174,13 @@ export default function Affiliates() {
           </ul>
         </nav>
         <div className="fs-aff__main">
+          <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', maxWidth: 720, margin: '0 auto 1.25rem' }}>
+            <StatCard label="Active paying subscribers" testId="metric-subscribers"
+              value={new Intl.NumberFormat('en-US').format(m.active_paying_subscribers || 0)} sub="who joined with your code" />
+            <StatCard label="Earnings per month" testId="metric-earnings"
+              value={money(m.monthly_earnings_cents)} sub={`${rate} of their plan prices`} />
+          </div>
+
           <div style={CARD_STYLE}>
             <h2 style={LABEL}>Your program</h2>
             <p style={BODY}>
@@ -189,13 +196,6 @@ export default function Affiliates() {
             <p style={{ ...MUTED, margin: '0.5rem 0 0' }}>
               Disclose your partnership clearly when you promote FellowScript (for example, "affiliate link" or "#ad").
             </p>
-          </div>
-
-          <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', maxWidth: 720, margin: '0 auto 1.25rem' }}>
-            <StatCard label="Active paying subscribers" testId="metric-subscribers"
-              value={new Intl.NumberFormat('en-US').format(m.active_paying_subscribers || 0)} sub="who joined with your code" />
-            <StatCard label="Earnings per month" testId="metric-earnings"
-              value={money(m.monthly_earnings_cents)} sub={`${rate} of their plan prices`} />
           </div>
 
           <div style={CARD_STYLE}>
