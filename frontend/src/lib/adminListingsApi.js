@@ -21,13 +21,17 @@ async function request(path, options, fallback) {
   }
   if (!res.ok) {
     let message = fallback;
+    let code;
     try {
       const d = await res.json();
       const detail = d?.detail;
       if (typeof detail === 'string') message = detail;
       else if (typeof detail?.message === 'string') message = detail.message;
+      if (typeof detail?.code === 'string') code = detail.code;
     } catch { /* keep fallback */ }
-    throw new AdminListingsApiError(message, res.status);
+    const e = new AdminListingsApiError(message, res.status);
+    e.code = code;
+    throw e;
   }
   return res.json();
 }

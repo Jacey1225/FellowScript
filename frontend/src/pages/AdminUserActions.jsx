@@ -4,6 +4,8 @@ import { Spin, Alert, Button, Input, Pagination } from 'antd';
 import { AdminPageHeader } from '../components/AdminShell.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import { fetchUsers, grantAdmin, revokeAdmin } from '../lib/adminUsersApi.js';
+import { isMfaRequiredError } from '../lib/adminMfa.js';
+import { useAdminMfaRequired } from '../hooks/useAdminMfaRequired.js';
 
 const CARD_STYLE = {
   background: 'rgba(92,68,42,0.34)',
@@ -21,6 +23,7 @@ const MUTED = { fontFamily: "'Inter', sans-serif", fontSize: '0.8rem', color: 'r
 export default function AdminUserActions() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const endSessionForMfa = useAdminMfaRequired();
   const [input, setInput] = useState('');
   const [q, setQ] = useState('');
   const [page, setPage] = useState(1);
@@ -32,10 +35,11 @@ export default function AdminUserActions() {
   const [pending, setPending] = useState(null);
 
   const handleAuthError = useCallback((err) => {
+    if (isMfaRequiredError(err)) { endSessionForMfa(); return true; }
     if (err.status === 401) { navigate('/signin', { replace: true }); return true; }
     if (err.status === 403) { navigate('/', { replace: true }); return true; }
     return false;
-  }, [navigate]);
+  }, [navigate, endSessionForMfa]);
 
   const load = useCallback(async () => {
     if (!user) return;

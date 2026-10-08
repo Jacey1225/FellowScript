@@ -4,6 +4,8 @@ import { Spin, Alert, Button, Input, Switch, Tag } from 'antd';
 import {
   listHomeMessages, createHomeMessage, setHomeMessageEnabled, deleteHomeMessage,
 } from '../lib/adminHomeMessagesApi.js';
+import { isMfaRequiredError } from '../lib/adminMfa.js';
+import { useAdminMfaRequired } from '../hooks/useAdminMfaRequired.js';
 
 // Local copies of the sibling admin card constants (AdminUserActions).
 const CARD_STYLE = {
@@ -30,6 +32,7 @@ function clientProblem(text) {
 // as a React text child (never as HTML).
 export default function AdminHomeMessages() {
   const navigate = useNavigate();
+  const endSessionForMfa = useAdminMfaRequired();
   const [data, setData] = useState(null); // { items, text_max_length, max_enabled }
   const [loadError, setLoadError] = useState(null);
   const [error, setError] = useState(null);
@@ -41,10 +44,11 @@ export default function AdminHomeMessages() {
   const [pendingDelete, setPendingDelete] = useState(null);
 
   const handleAuthError = useCallback((err) => {
+    if (isMfaRequiredError(err)) { endSessionForMfa(); return true; }
     if (err.status === 401) { navigate('/signin', { replace: true }); return true; }
     if (err.status === 403) { navigate('/', { replace: true }); return true; }
     return false;
-  }, [navigate]);
+  }, [navigate, endSessionForMfa]);
 
   const load = useCallback(async () => {
     setLoadError(null);

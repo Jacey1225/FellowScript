@@ -466,7 +466,7 @@ Subscribed users (`plan_type != 'free'`, status `active`/`trialing`) are always 
 
 ## Monitoring (Error Detections)
 
-Read-only feed of CloudWatch error detections collected by the background watchdog job (see [Backend → Background Scheduler](../architecture/backend.md#background-scheduler)). Auth: **admin-only**. All routes require `require_admin` (session auth via the `session` cookie, plus an `is_admin` flag on the resolved `users` row) — `401` for no/invalid session, `403` for an authenticated caller who isn't flagged admin. This replaces the earlier any-authenticated-user placeholder.
+Read-only feed of CloudWatch error detections collected by the background watchdog job (see [Backend → Background Scheduler](../architecture/backend.md#background-scheduler)). Auth: **admin-only**. All routes require `require_admin` (session auth via the `session` cookie, plus an `is_admin` flag on the resolved `users` row) — `401` for no/invalid session, `403` for an authenticated caller who isn't flagged admin. **Admin 2FA (task `20261008-admin-require-2fa`):** every `require_admin` route also requires the admin's `mfa_enabled` to be true, read from the DB per request. An admin without 2FA gets `403` with `detail: {"code": "mfa_required", "message": ...}` (a structured object, distinct from the plain string `"Admin access required"` for non-admins). `POST /auth/mfa/disable` returns `403` for admin accounts. Recovery for a locked-out admin is a manual database fix. This replaces the earlier any-authenticated-user placeholder.
 
 | Method | Route | Description |
 |---|---|---|

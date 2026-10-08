@@ -59,7 +59,7 @@ def require_scratch_db():
 
 def make_user(label, is_admin=False):
     uid = str(uuid.uuid4())
-    sql("INSERT INTO users (_id, username, email, hash_pass, is_admin) VALUES (%s,%s,%s,'secret-hash',%s)",
+    sql("INSERT INTO users (_id, username, email, hash_pass, is_admin, mfa_enabled) VALUES (%s,%s,%s,'secret-hash',%s,TRUE)",
         (uid, f"au{TAG}_{label}", f"au{TAG}_{label}@example.com", is_admin))
     USERS.append(uid)
     return uid

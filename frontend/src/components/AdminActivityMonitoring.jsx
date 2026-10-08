@@ -9,6 +9,8 @@ import {
 import { API } from '../config.js';
 import { useIsDesktopViewport } from '../hooks/useIsDesktopViewport.js';
 import { useFocusTrap } from '../hooks/useFocusTrap.js';
+import { isMfaRequiredResponse } from '../lib/adminMfa.js';
+import { useAdminMfaRequired } from '../hooks/useAdminMfaRequired.js';
 
 const { Title, Text } = Typography;
 
@@ -353,6 +355,7 @@ function ChartBox({ state, onRetry, ariaLabel, onExpand, chart }) {
 // never block the other four.
 function MetricChartCard({ metricKey, label, refreshKey, isDesktop }) {
   const navigate = useNavigate();
+  const endSessionForMfa = useAdminMfaRequired();
   const [state, setState] = useState('loading'); // loading | ready | empty | error
   const [series, setSeries] = useState([]);
   const [ylabel, setYlabel] = useState('Avg per user');
@@ -363,6 +366,7 @@ function MetricChartCard({ metricKey, label, refreshKey, isDesktop }) {
     try {
       const res = await fetch(`${API}/activity-monitoring/data/${metricKey}`);
 
+      if (await isMfaRequiredResponse(res)) { endSessionForMfa(); return; }
       if (res.status === 401) { navigate('/signin', { replace: true }); return; }
       if (res.status === 403) { navigate('/', { replace: true }); return; }
 
@@ -375,7 +379,7 @@ function MetricChartCard({ metricKey, label, refreshKey, isDesktop }) {
     } catch {
       setState('error');
     }
-  }, [metricKey, navigate]);
+  }, [metricKey, navigate, endSessionForMfa]);
 
   useEffect(() => { fetchData(); }, [fetchData, refreshKey]);
 
@@ -411,6 +415,7 @@ function MetricChartCard({ metricKey, label, refreshKey, isDesktop }) {
 // for GET /activity-monitoring/data/visits.
 function VisitsChartCard({ refreshKey, isDesktop }) {
   const navigate = useNavigate();
+  const endSessionForMfa = useAdminMfaRequired();
   const [state, setState] = useState('loading'); // loading | ready | empty | error
   const [series, setSeries] = useState([]);
   const [expanded, setExpanded] = useState(false);
@@ -420,6 +425,7 @@ function VisitsChartCard({ refreshKey, isDesktop }) {
     try {
       const res = await fetch(`${API}/activity-monitoring/data/visits`);
 
+      if (await isMfaRequiredResponse(res)) { endSessionForMfa(); return; }
       if (res.status === 401) { navigate('/signin', { replace: true }); return; }
       if (res.status === 403) { navigate('/', { replace: true }); return; }
 
@@ -431,7 +437,7 @@ function VisitsChartCard({ refreshKey, isDesktop }) {
     } catch {
       setState('error');
     }
-  }, [navigate]);
+  }, [navigate, endSessionForMfa]);
 
   useEffect(() => { fetchData(); }, [fetchData, refreshKey]);
 

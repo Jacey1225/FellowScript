@@ -64,7 +64,7 @@ def make_user(is_admin=False, terms_version=CURRENT_TERMS_VERSION) -> str:
     try:
         dbm.insertion("users", {
             "_id": uid, "username": f"sf_{uid[:8]}", "email": f"sf_{uid[:8]}@example.com",
-            "hash_pass": "x", "is_admin": is_admin, "terms_version": terms_version,
+            "hash_pass": "x", "is_admin": is_admin, "mfa_enabled": is_admin, "terms_version": terms_version,
         })
     finally:
         dbm.close()

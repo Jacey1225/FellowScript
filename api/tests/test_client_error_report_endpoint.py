@@ -105,7 +105,7 @@ def make_user(is_admin: bool = False) -> str:
         dbm.insertion("users", {
             "_id": uid, "username": f"client_err_test_{uid[:8]}",
             "email": f"client_err_test_{uid[:8]}@example.com", "hash_pass": "x",
-            "is_admin": is_admin,
+            "is_admin": is_admin, "mfa_enabled": is_admin,
         })
     finally:
         dbm.close()

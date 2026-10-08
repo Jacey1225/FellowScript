@@ -63,8 +63,8 @@ UTC = timezone.utc
 
 def mk_user(is_admin):
     uid = str(uuid.uuid4())
-    sql("INSERT INTO users (_id, username, email, hash_pass, is_admin) VALUES (%s,%s,%s,'x',%s)",
-        (uid, f"hm_{uid[:8]}", f"hm_{uid[:8]}@example.com", is_admin))
+    sql("INSERT INTO users (_id, username, email, hash_pass, is_admin, mfa_enabled) VALUES (%s,%s,%s,'x',%s,%s)",
+        (uid, f"hm_{uid[:8]}", f"hm_{uid[:8]}@example.com", is_admin, is_admin))
     (ADMIN if is_admin else NON_ADMIN).append(uid)
     sm = SessionManager()
     try:

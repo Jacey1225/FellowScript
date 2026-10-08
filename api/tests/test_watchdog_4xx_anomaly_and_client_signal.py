@@ -446,7 +446,7 @@ def test_matched_signal_query_param_endtoend():
         dbm.insertion("users", {
             "_id": admin_uid, "username": f"matched_sig_admin_{admin_uid[:8]}",
             "email": f"matched_sig_admin_{admin_uid[:8]}@example.com", "hash_pass": "x",
-            "is_admin": True,
+            "is_admin": True, "mfa_enabled": True,
         })
     finally:
         dbm.close()

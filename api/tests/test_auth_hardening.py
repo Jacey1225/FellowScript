@@ -121,8 +121,8 @@ def make_user(label, email=None, password=True, verified=False, admin=False, sus
               google_sub=None, apple_sub=None):
     uid = str(uuid.uuid4())
     email = email or f"ah{TAG}_{label}@example.com"
-    q("INSERT INTO users (_id, username, email, hash_pass, is_admin) VALUES (%s,%s,%s,%s,%s)",
-      (uid, f"ah{TAG}_{label}", email, "attacker-set-hash" if password else "", admin))
+    q("INSERT INTO users (_id, username, email, hash_pass, is_admin, mfa_enabled) VALUES (%s,%s,%s,%s,%s,%s)",
+      (uid, f"ah{TAG}_{label}", email, "attacker-set-hash" if password else "", admin, admin))
     USERS.append(uid)
     if verified:
         mgr = ev.EmailVerificationManager()

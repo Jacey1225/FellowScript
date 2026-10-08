@@ -1,8 +1,16 @@
+import logging
+
 from fastapi import Request, HTTPException, WebSocket
 from backend.auth.sessions import SessionManager
 from db import DBManager
 
 SESSION_COOKIE = "session"
+
+logger = logging.getLogger(__name__)
+
+# Stable machine-readable code the web client matches on (403 detail.code).
+MFA_REQUIRED_CODE = "mfa_required"
+MFA_REQUIRED_MESSAGE = "Two-factor authentication is required for admin accounts. Enable it to continue."
 
 
 def get_current_user(request: Request) -> str:
@@ -67,6 +75,17 @@ def require_admin(request: Request) -> str:
     _, data = list(result.items())[0]
     if not data.get("is_admin"):
         raise HTTPException(status_code=403, detail="Admin access required")
+    # Admins must have 2FA. Fail closed: only an explicit True passes, so a
+    # missing/NULL/unexpected flag is treated as not enabled. Read from the DB
+    # per request (never cached on the session) so enabling takes effect
+    # immediately. The structured detail is distinct from the plain-string
+    # "Admin access required" 403 above.
+    if data.get("mfa_enabled") is not True:
+        logger.warning("admin access denied: mfa_required user_id=%s", user_id)
+        raise HTTPException(
+            status_code=403,
+            detail={"code": MFA_REQUIRED_CODE, "message": MFA_REQUIRED_MESSAGE},
+        )
     return user_id
 
 

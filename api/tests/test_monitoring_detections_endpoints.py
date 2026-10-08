@@ -54,7 +54,7 @@ def make_test_user(is_admin: bool = False) -> str:
         db.insertion("users", {
             "_id": uid, "username": f"monitor_test_{uid[:8]}",
             "email": f"monitor_test_{uid[:8]}@example.com", "hash_pass": "x",
-            "is_admin": is_admin,
+            "is_admin": is_admin, "mfa_enabled": is_admin,
         })
     finally:
         db.close()

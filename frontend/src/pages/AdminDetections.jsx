@@ -14,6 +14,8 @@ import { useIsDesktopViewport } from '../hooks/useIsDesktopViewport.js';
 import { useFocusTrap } from '../hooks/useFocusTrap.js';
 import { API } from '../config.js';
 import { fsTheme } from '../theme.js';
+import { isMfaRequiredResponse } from '../lib/adminMfa.js';
+import { useAdminMfaRequired } from '../hooks/useAdminMfaRequired.js';
 
 dayjs.extend(utc);
 dayjs.extend(relativeTime);
@@ -187,6 +189,7 @@ function ChipFilterStrip({ logGroup, dateRange, onLogGroupChange, onDateRangeCha
 export default function AdminDetections() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const endSessionForMfa = useAdminMfaRequired();
   const isDesktop = useIsDesktopViewport();
 
   // `checked` flips true once the first fetch resolves (success or non-auth
@@ -233,6 +236,7 @@ export default function AdminDetections() {
 
       const res = await fetch(`${API}/monitoring/detections?${params.toString()}`);
 
+      if (await isMfaRequiredResponse(res)) { endSessionForMfa(); return; }
       if (res.status === 401) { navigate('/signin', { replace: true }); return; }
       if (res.status === 403) { navigate('/', { replace: true }); return; }
 
@@ -249,7 +253,7 @@ export default function AdminDetections() {
       setListLoading(false);
       setChecked(true);
     }
-  }, [user, logGroup, dateRange, offset, navigate]);
+  }, [user, logGroup, dateRange, offset, navigate, endSessionForMfa]);
 
   useEffect(() => { fetchDetections(); }, [fetchDetections]);
 

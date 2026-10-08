@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import {
   Layout, Card, Form, Input, Button, Typography,
   Avatar, Spin, Alert, Divider,
@@ -175,6 +175,7 @@ export default function Account() {
   useWarmCanvas();
   const { user, signOut, updateUser } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [form] = Form.useForm();
 
   const [profileData,    setProfileData]    = useState(null);
@@ -692,7 +693,13 @@ export default function Account() {
         body: JSON.stringify({ plain_pass: mfaDisablePass }),
       });
       const data = await res.json();
-      if (!res.ok) { setMfaMsg({ type: 'error', text: data.detail || 'Incorrect password.' }); return; }
+      if (!res.ok) {
+        // 403 = admin account: 2FA is mandatory. Close the modal so the
+        // explanation (rendered above the toggle) is visible.
+        if (res.status === 403) { setMfaDisableModal(false); setMfaDisablePass(''); }
+        setMfaMsg({ type: 'error', text: data.detail || 'Incorrect password.' });
+        return;
+      }
       updateUser({ mfa_enabled: false });
       setProfileData(prev => ({ ...prev, mfa_enabled: false }));
       setMfaDisableModal(false);
@@ -1094,6 +1101,9 @@ export default function Account() {
           <Text className="fs-eyebrow" style={{ marginBottom: '1rem' }}>
             Two-Factor Authentication
           </Text>
+          {location.state?.setup2fa && !profileData?.mfa_enabled && !mfaMsg && (
+            <Alert type="warning" message="Two-factor authentication is required for admin accounts. Turn it on below to regain admin access." showIcon style={{ marginBottom: 16, borderRadius: 8 }} />
+          )}
           {mfaMsg && <Alert type={mfaMsg.type} message={mfaMsg.text} showIcon style={{ marginBottom: 16, borderRadius: 8 }} />}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem' }}>
             <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.82rem', color: 'rgba(244,228,193,0.6)', maxWidth: 340 }}>

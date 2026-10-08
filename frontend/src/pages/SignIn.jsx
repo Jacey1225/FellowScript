@@ -8,6 +8,7 @@ import { API } from '../config.js';
 import Seo from '../components/Seo.jsx';
 import { useWarmCanvas } from '../hooks/useWarmCanvas.js';
 import { postAuthPath } from '../lib/pendingInvite.js';
+import { hasMfaRequiredFlag, clearMfaRequiredFlag, MFA_SETUP_PATH, MFA_NOTICE_TEXT } from '../lib/adminMfa.js';
 
 const { Title, Text } = Typography;
 
@@ -56,6 +57,17 @@ export default function SignIn() {
       return;
     }
     signIn(data);
+    goAfterAuth();
+  };
+
+  // An admin bounced for missing 2FA lands on Account (to turn it on) after
+  // signing back in; everyone else follows the normal post-auth path.
+  const goAfterAuth = () => {
+    if (hasMfaRequiredFlag()) {
+      clearMfaRequiredFlag();
+      navigate(MFA_SETUP_PATH, { state: { setup2fa: true } });
+      return;
+    }
     navigate(postAuthPath());
   };
 
@@ -70,7 +82,7 @@ export default function SignIn() {
       setReacceptLoading(false);
       signIn(reaccept);
       setReaccept(null);
-      navigate(postAuthPath());
+      goAfterAuth();
     }
   };
 
@@ -188,6 +200,7 @@ export default function SignIn() {
       label: 'Sign In',
       children: (
         <Form form={siForm} layout="vertical" onFinish={handleSignin} style={{ marginTop: 8 }}>
+          {location.state?.mfaRequired && <Alert message={MFA_NOTICE_TEXT} type="warning" showIcon style={{ marginBottom: 16 }} />}
           {siError && <Alert message={siError} type="error" showIcon style={{ marginBottom: 16 }} />}
           <Form.Item name="username" rules={[{ required: true, message: 'Username required' }]}>
             <Input prefix={<UserOutlined />} placeholder="Username" />

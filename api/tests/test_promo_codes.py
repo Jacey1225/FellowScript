@@ -91,7 +91,7 @@ def signup(client, admin=False):
     uid = r.json()["user_id"]
     USERS.append(uid)
     if admin:
-        q("UPDATE users SET is_admin = TRUE WHERE _id = %s", (uid,))
+        q("UPDATE users SET is_admin = TRUE, mfa_enabled = TRUE WHERE _id = %s", (uid,))
     return uid, r.cookies.get("session")
 
 

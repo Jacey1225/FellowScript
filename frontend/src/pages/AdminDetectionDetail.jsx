@@ -10,6 +10,8 @@ import { useAuth } from '../context/AuthContext.jsx';
 import { API } from '../config.js';
 import { fsTheme } from '../theme.js';
 import { downloadRemediationMarkdown } from '../lib/remediationMarkdown.js';
+import { isMfaRequiredResponse } from '../lib/adminMfa.js';
+import { useAdminMfaRequired } from '../hooks/useAdminMfaRequired.js';
 
 dayjs.extend(utc);
 dayjs.extend(relativeTime);
@@ -70,6 +72,7 @@ export default function AdminDetectionDetail() {
   const { id } = useParams();
   const { user } = useAuth();
   const navigate = useNavigate();
+  const endSessionForMfa = useAdminMfaRequired();
 
   // Gate: this route's own GET /monitoring/detections/{id} fetch is the
   // check -- it must not assume the list page's gate already ran (a direct
@@ -96,6 +99,7 @@ export default function AdminDetectionDetail() {
     try {
       const res = await fetch(`${API}/monitoring/detections/${id}`);
 
+      if (await isMfaRequiredResponse(res)) { endSessionForMfa(); return; }
       if (res.status === 401) { navigate('/signin', { replace: true }); return; }
       if (res.status === 403) { navigate('/', { replace: true }); return; }
 
@@ -110,7 +114,7 @@ export default function AdminDetectionDetail() {
     } finally {
       setChecked(true);
     }
-  }, [user, id, navigate]);
+  }, [user, id, navigate, endSessionForMfa]);
 
   const fetchReport = useCallback(async () => {
     setReportLoading(true);

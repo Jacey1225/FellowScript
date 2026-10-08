@@ -718,12 +718,23 @@ async def mfa_disable(request: Request, info: MFADisable, user_id: str = Depends
 
     Raises:
         HTTPException 401: If the supplied password is wrong.
+        HTTPException 403: If the account is an admin (2FA is mandatory).
         HTTPException 404: If the user no longer exists.
     """
     users = load_users()
     data = users.get(user_id)
     if not data:
         raise HTTPException(status_code=404, detail="User not found")
+    # Admin accounts must keep 2FA on (enforced by require_admin). Checked
+    # against the DB row before the password check. Fail closed if the lookup
+    # can't confirm the account is a non-admin.
+    db = DBManager()
+    try:
+        row = db.lookup("users", {"_id": user_id})
+    finally:
+        db.close()
+    if not row or list(row.values())[0].get("is_admin") is not False:
+        raise HTTPException(status_code=403, detail="Two-factor authentication cannot be disabled on admin accounts")
     if not verify_password(info.plain_pass, data.get("hash_pass") or ""):
         raise HTTPException(status_code=401, detail="Incorrect password")
     mfa = MFAManager()

@@ -8,6 +8,8 @@ import {
   reactivateCode, deleteCode, updateCodeEmail,
 } from '../lib/ownerRewardsApi.js';
 import { codesToCsv, csvFilename, downloadCsv } from '../lib/promoCsv.js';
+import { isMfaRequiredError } from '../lib/adminMfa.js';
+import { useAdminMfaRequired } from '../hooks/useAdminMfaRequired.js';
 
 const { Text } = Typography;
 
@@ -39,6 +41,7 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 export default function AdminPromoCodes() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const endSessionForMfa = useAdminMfaRequired();
   const [checked, setChecked] = useState(false);
   const [unavailable, setUnavailable] = useState(false);
   const [rows, setRows] = useState([]);
@@ -61,11 +64,12 @@ export default function AdminPromoCodes() {
 
   // 401 -> sign in, 403 -> home, 404 -> feature off. Returns true if handled.
   const handleAuthError = useCallback((err) => {
+    if (isMfaRequiredError(err)) { endSessionForMfa(); return true; }
     if (err.status === 401) { navigate('/signin', { replace: true }); return true; }
     if (err.status === 403) { navigate('/', { replace: true }); return true; }
     if (err.status === 404) { setUnavailable(true); return true; }
     return false;
-  }, [navigate]);
+  }, [navigate, endSessionForMfa]);
 
   const load = useCallback(async () => {
     if (!user) return;

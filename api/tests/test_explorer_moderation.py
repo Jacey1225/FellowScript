@@ -93,9 +93,9 @@ def q(sql, params=(), fetch=True):
 
 def make_user(admin=False, suspended=False):
     uid = str(uuid.uuid4())
-    q("INSERT INTO users (_id, username, email, hash_pass, is_admin, suspended_at, terms_version) "
-      "VALUES (%s,%s,%s,'x',%s,%s,%s)",
-      (uid, f"xm_{uid[:8]}", f"xm_{uid[:8]}@example.com", admin, "2020-01-01" if suspended else None,
+    q("INSERT INTO users (_id, username, email, hash_pass, is_admin, mfa_enabled, suspended_at, terms_version) "
+      "VALUES (%s,%s,%s,'x',%s,%s,%s,%s)",
+      (uid, f"xm_{uid[:8]}", f"xm_{uid[:8]}@example.com", admin, admin, "2020-01-01" if suspended else None,
        CURRENT_TERMS_VERSION), fetch=False)
     USERS.append(uid)
     grant_paid(uid)  # Explorer publish is paid-only (20261002-free-plan-limits-ui)

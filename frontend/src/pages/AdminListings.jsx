@@ -7,6 +7,8 @@ import {
   QUEUE_STATUSES, REJECT_REASONS, HIDE_REASONS,
   fetchQueue, approveListing, rejectListing, hideListing, restoreListing, removeListing,
 } from '../lib/adminListingsApi.js';
+import { isMfaRequiredError } from '../lib/adminMfa.js';
+import { useAdminMfaRequired } from '../hooks/useAdminMfaRequired.js';
 
 const CARD_STYLE = {
   background: 'rgba(92,68,42,0.34)',
@@ -36,6 +38,7 @@ const place = (l) => [l.city, l.region, l.country].filter(Boolean).join(', ');
 export default function AdminListings() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const endSessionForMfa = useAdminMfaRequired();
   const [status, setStatus] = useState('pending_review');
   const [items, setItems] = useState(null);
   const [error, setError] = useState(null);
@@ -45,11 +48,12 @@ export default function AdminListings() {
   const [pending, setPending] = useState(null);
 
   const handleAuthError = useCallback((err) => {
+    if (isMfaRequiredError(err)) { endSessionForMfa(); return true; }
     if (err.status === 401) { navigate('/signin', { replace: true }); return true; }
     if (err.status === 403) { navigate('/', { replace: true }); return true; }
     if (err.status === 404) { setUnavailable(true); return true; }
     return false;
-  }, [navigate]);
+  }, [navigate, endSessionForMfa]);
 
   const load = useCallback(async () => {
     if (!user) return;

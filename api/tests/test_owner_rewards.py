@@ -131,7 +131,7 @@ def signup(client, admin=False, email=None, invite=None, ip=None):
       "email_verified_hash = encode(sha256(convert_to(lower(btrim(email)), 'UTF8')), 'hex') "
       "WHERE _id = %s", (uid,))
     if admin:
-        q("UPDATE users SET is_admin = TRUE WHERE _id = %s", (uid,))
+        q("UPDATE users SET is_admin = TRUE, mfa_enabled = TRUE WHERE _id = %s", (uid,))
     return uid, r.cookies.get("session")
 
 

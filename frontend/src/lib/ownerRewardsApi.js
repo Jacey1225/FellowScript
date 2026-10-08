@@ -24,11 +24,16 @@ async function request(path, options, fallback) {
   }
   if (!res.ok) {
     let message = fallback;
+    let code;
     try {
       const d = await res.json();
       if (typeof d?.detail === 'string') message = d.detail;
+      else if (typeof d?.detail?.message === 'string') message = d.detail.message;
+      if (typeof d?.detail?.code === 'string') code = d.detail.code;
     } catch { /* keep fallback */ }
-    throw new OwnerRewardsApiError(message, res.status);
+    const e = new OwnerRewardsApiError(message, res.status);
+    e.code = code;
+    throw e;
   }
   if (res.status === 204) return null;
   return res.json();

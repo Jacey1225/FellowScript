@@ -3,6 +3,8 @@ import { Typography, Button, Tag, Alert } from 'antd';
 import { CrownOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { API } from '../config.js';
+import { isMfaRequiredResponse } from '../lib/adminMfa.js';
+import { useAdminMfaRequired } from '../hooks/useAdminMfaRequired.js';
 
 const { Text } = Typography;
 
@@ -36,6 +38,7 @@ const CARD_STYLE = {
 // the same way AdminDetections.jsx's own fetch handles those statuses.
 export default function AdminMembershipGrant() {
   const navigate = useNavigate();
+  const endSessionForMfa = useAdminMfaRequired();
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null); // granted subscription dict, once obtained
   const [error, setError] = useState(null);
@@ -45,6 +48,7 @@ export default function AdminMembershipGrant() {
     setError(null);
     try {
       const res = await fetch(`${API}/subscriptions/admin/grant-individual`, { method: 'POST' });
+      if (await isMfaRequiredResponse(res)) { endSessionForMfa(); return; }
       if (res.status === 401) { navigate('/signin', { replace: true }); return; }
       if (res.status === 403) { navigate('/', { replace: true }); return; }
       if (!res.ok) {
