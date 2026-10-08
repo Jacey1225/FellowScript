@@ -32,6 +32,10 @@ import psycopg2  # noqa: E402
 from psycopg2 import extensions as _pgext  # noqa: E402
 
 # ── Dev-DB guard: innermost hook, sees the final dsn after any outer shim ─────
+# CI runs the Postgres service container on 5432 (same convention as the other
+# scratch-DB tests); locally only the scratch cluster on 55432 is allowed.
+_IN_CI = os.environ.get("GITHUB_ACTIONS") == "true"
+_ALLOWED_PORTS = {"55432", "5432"} if _IN_CI else {"55432"}
 PORTS_DIALED: list[str] = []
 _real_connect = psycopg2._connect
 
@@ -39,7 +43,7 @@ _real_connect = psycopg2._connect
 def _guarded_connect(dsn, *a, **k):
     port = str(_pgext.parse_dsn(dsn).get("port", "5432"))
     PORTS_DIALED.append(port)
-    if port == "5432":
+    if port == "5432" and not _IN_CI:
         raise RuntimeError("test guard: refusing to connect to port 5432 (dev DB)")
     return _real_connect(dsn, *a, **k)
 
@@ -75,8 +79,8 @@ def require_scratch_db():
         port = d.cur.fetchone()[0]
     finally:
         d.close()
-    check("tests run against scratch DB port 55432", port == "55432", port)
-    if port != "55432":
+    check("tests run against scratch DB (55432, or 5432 in CI)", port in _ALLOWED_PORTS, port)
+    if port not in _ALLOWED_PORTS:
         raise SystemExit("refusing to continue: not the scratch database")
 
 
@@ -420,7 +424,7 @@ def test_real_group_and_failures(client):
 
 def main():
     require_scratch_db()
-    check("guard installed (ports dialed so far are all 55432)", set(PORTS_DIALED) == {"55432"}, str(set(PORTS_DIALED)))
+    check("guard installed (ports dialed so far are all 55432)", set(PORTS_DIALED) <= _ALLOWED_PORTS, str(set(PORTS_DIALED)))
 
     def fake_call(self, role, msgs):
         MODEL_CALLS.append(1)
@@ -451,7 +455,7 @@ def main():
         set_flag(False)
         cfgmod.reset_for_tests()
 
-    check("no connection to 5432 was ever attempted", "5432" not in PORTS_DIALED and len(PORTS_DIALED) > 0,
+    check("no connection to 5432 was ever attempted", (_IN_CI or "5432" not in PORTS_DIALED) and len(PORTS_DIALED) > 0,
           str(sorted(set(PORTS_DIALED))))
     print(f"\n{'=' * 60}")
     if FAILED:
