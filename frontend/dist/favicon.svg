@@ -6,7 +6,8 @@
       <stop offset="1" stop-color="#E2A11A"></stop>
     </linearGradient>
   </defs>
-  <g fill="url(#fs)">
+  <rect width="120" height="120" rx="26" fill="#14110D"></rect>
+  <g fill="url(#fs)" transform="translate(60 61) scale(1.1) translate(-60 -61.5)">
     <path d="M60 94 C50 64 36 40 15 29 C31 30 50 39 60 58 C58 72 60 84 60 94 Z"></path>
     <path d="M60 94 C70 64 84 40 105 29 C89 30 70 39 60 58 C62 72 60 84 60 94 Z" opacity=".62"></path>
   </g>

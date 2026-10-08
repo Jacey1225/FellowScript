@@ -33,6 +33,25 @@ scp -i fellowscript-ec2-key.pem \
 scp -i fellowscript-ec2-key.pem \
   frontend/dist/og-image.png ubuntu@44.216.136.112:/var/www/html/og-image.png
 
+# task 20261008-stable-favicons-google: stable, unhashed favicon files for
+# Google's favicon crawler (frontend/public/, copied verbatim to dist/ root).
+# Shipped narrowly per file like the files above. Fixed root URLs; not under
+# /data/ (see the aliasing note above).
+scp -i fellowscript-ec2-key.pem \
+  frontend/dist/favicon.ico ubuntu@44.216.136.112:/var/www/html/favicon.ico
+
+scp -i fellowscript-ec2-key.pem \
+  frontend/dist/favicon.svg ubuntu@44.216.136.112:/var/www/html/favicon.svg
+
+scp -i fellowscript-ec2-key.pem \
+  frontend/dist/favicon-48x48.png ubuntu@44.216.136.112:/var/www/html/favicon-48x48.png
+
+scp -i fellowscript-ec2-key.pem \
+  frontend/dist/favicon-192x192.png ubuntu@44.216.136.112:/var/www/html/favicon-192x192.png
+
+scp -i fellowscript-ec2-key.pem \
+  frontend/dist/apple-touch-icon.png ubuntu@44.216.136.112:/var/www/html/apple-touch-icon.png
+
 # task 20260929-group-invite-links: the static invite landing page and the
 # Universal Links apple-app-site-association file (both copied verbatim from
 # frontend/public/ by Vite). They live at fixed paths under /var/www/html and
