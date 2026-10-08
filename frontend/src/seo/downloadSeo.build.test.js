@@ -56,7 +56,7 @@ describe('dist/download/index.html (raw, no JS)', () => {
     expect((dl.match(/<title/g) || []).length).toBe(1);
     expect((dl.match(/rel="canonical"/g) || []).length).toBe(1);
     expect(dl).not.toContain(`href="${SITE}/"`);
-    expect(dl).not.toMatch(/You don&#x27;t have to walk with God/);
+    expect(dl).not.toMatch(/Lead with confidence/);
   });
 
   test('body has real content with App Store and DMG links, not an empty shell', () => {
@@ -94,7 +94,7 @@ describe('dist/index.html (Home regression)', () => {
   test('keeps Home canonical, index/follow, prerendered hero, and no download-page tags', () => {
     expect(home).toContain(`href="${SITE}/"`);
     expect(home).toMatch(/name="robots"\s+content="index, follow"/);
-    expect(home).toMatch(/You don&#x27;t have to walk with God/);
+    expect(home).toMatch(/Lead with confidence/);
     expect(home).not.toContain(escTitle(DOWNLOAD_SEO_TITLE));
     expect(home).not.toContain(`href="${SITE}/download/"`.replace('href=', 'rel="canonical" href='));
     expect(home).not.toContain("#/download')");

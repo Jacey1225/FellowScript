@@ -81,6 +81,12 @@ def check_affiliates_config() -> None:
     validate_affiliates_config()
 
 
+def check_payout_encryption_keys() -> None:
+    from backend.subscription.payout_crypto import validate_payout_keys
+
+    validate_payout_keys()
+
+
 def check_email_verification_config() -> None:
     from backend.auth.email_verification_config import validate_email_verification_config
 
@@ -99,6 +105,7 @@ CHECKS = (
     check_agent_chat_memory_config,
     check_session_summary_fanout_config,
     check_affiliates_config,
+    check_payout_encryption_keys,
     check_email_verification_config,
 )
 

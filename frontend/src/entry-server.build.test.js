@@ -123,7 +123,7 @@ describe('production build — Home body content is real, not an empty shell (ta
   test("carries Home's real hero copy -- the actual headline and CTA, not placeholder text", () => {
     // renderToStaticMarkup HTML-escapes text content, so the apostrophe in
     // "don't" comes through as the numeric entity &#x27;, not a literal '.
-    expect(finalHtml).toMatch(/You don&#x27;t have to walk with God/);
+    expect(finalHtml).toMatch(/Lead with confidence/);
     expect(finalHtml).toContain('Beautiful Bible Reader');
     // Task 20260923-remove-open-app-button: the top-right header CTA (which
     // read "Get started" signed out, "Open app" signed in) was removed

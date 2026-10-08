@@ -330,6 +330,11 @@ async def report_client_error(
     Returns:
         None (204).
     """
+    # Payout-details calls (task 20261008-affiliate-payout-details): never log a
+    # client-supplied summary for them (it could carry a bank value); endpoint
+    # and status are enough to triage.
+    summary = "[omitted]" if "payouts" in (report.endpoint or "") or "affiliate-payouts" in (report.endpoint or "") \
+        else report.error_summary
     logger.error(
         "CLIENT_DECODE_FAILURE user_id=%s endpoint=%s client_app_version=%s "
         "http_status=%s error_summary=%s",
@@ -337,5 +342,5 @@ async def report_client_error(
         report.endpoint,
         report.client_app_version or "unknown",
         report.http_status,
-        report.error_summary,
+        summary,
     )

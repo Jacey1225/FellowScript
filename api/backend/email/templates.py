@@ -257,3 +257,52 @@ def listing_moderation_email(action: str, title: str, reason_label: str) -> tupl
         + _FOOTER_TEXT
     )
     return subject, _wrap_html(subject, body_html), text_body
+
+
+def payout_code_email(code: str) -> tuple[str, str, str]:
+    """(subject, html, text) for the payout-details re-authentication code."""
+    subject = f"Your FellowScript payout verification code is {code}"
+    body_html = f"""
+      <p style="font-size:15px;line-height:1.6;color:#241a0d;">
+        Use this code to confirm a change to your affiliate payout details:
+      </p>
+      <p style="text-align:center;margin:28px 0;font-size:32px;font-weight:bold;
+                letter-spacing:6px;color:#a3690f;">{code}</p>
+      <p style="font-size:13px;line-height:1.6;color:#6b5d47;">
+        This code expires in 5 minutes and can only be used once. If you didn't
+        request it, someone may have access to your account. Change your password
+        and contact support.
+      </p>
+    """
+    text_body = (
+        "Use this code to confirm a change to your affiliate payout details:\n\n"
+        f"    {code}\n\n"
+        "This code expires in 5 minutes and can only be used once. If you didn't "
+        "request it, someone may have access to your account. Change your password "
+        "and contact support."
+        + _FOOTER_TEXT
+    )
+    return subject, _wrap_html(f"Your payout verification code is {code}", body_html), text_body
+
+
+_PAYOUT_NOTICES = {
+    "saved": ("Your affiliate payout details were saved",
+              "Your affiliate payout details were just added or changed."),
+    "deleted": ("Your affiliate payout details were deleted",
+                "Your affiliate payout details were just deleted."),
+    "accessed": ("Your affiliate payout details were accessed for a payout",
+                 "FellowScript staff just viewed your affiliate payout details to send a payout."),
+}
+
+
+def payout_notice_email(kind: str) -> tuple[str, str, str]:
+    """(subject, html, text) tripwire notice. Never contains any payout value."""
+    subject, line = _PAYOUT_NOTICES[kind]
+    body_html = f"""
+      <p style="font-size:15px;line-height:1.6;color:#241a0d;">{line}</p>
+      <p style="font-size:13px;line-height:1.6;color:#6b5d47;">
+        If this wasn't you, change your password and contact support right away.
+      </p>
+    """
+    text_body = f"{line}\n\nIf this wasn't you, change your password and contact support right away." + _FOOTER_TEXT
+    return subject, _wrap_html(subject, body_html), text_body

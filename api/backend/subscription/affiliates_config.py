@@ -52,6 +52,32 @@ class Resource:
 
 
 @dataclass(frozen=True)
+class PayoutsConfig:
+    """Tunables for payout-details storage (task 20261008-affiliate-payout-details)."""
+    code_ttl_seconds: int          # emailed re-auth code lifetime
+    proof_ttl_seconds: int         # lifetime of the single-use proof after a successful re-auth
+    max_code_attempts: int         # wrong guesses allowed per issued code
+    lockout_failures: int          # failed re-auths per user within lockout_minutes => locked
+    lockout_minutes: int
+    code_issues_per_hour: int      # codes emailed per user per hour
+    retention_inactive_days: int   # hard-delete details untouched this long
+    reveal_per_hour: int           # admin reveals per admin per hour
+    max_body_bytes: int
+    read_rate: str
+    write_rate: str
+    reauth_rate: str
+    reveal_rate: str
+
+
+_PAYOUT_INT_BOUNDS = {
+    "code_ttl_seconds": (60, 900), "proof_ttl_seconds": (30, 300), "max_code_attempts": (1, 10),
+    "lockout_failures": (1, 20), "lockout_minutes": (1, 1440), "code_issues_per_hour": (1, 30),
+    "retention_inactive_days": (30, 3650), "reveal_per_hour": (1, 100), "max_body_bytes": (256, 8192),
+}
+_PAYOUT_RATE_KEYS = ("read_rate", "write_rate", "reauth_rate", "reveal_rate")
+
+
+@dataclass(frozen=True)
 class AffiliatesConfig:
     commission_rate: float
     milestones: tuple
@@ -60,6 +86,7 @@ class AffiliatesConfig:
     code_link_format: str
     rate_limit: str
     resources: tuple
+    payouts: PayoutsConfig
 
     def code_link(self, code: str) -> str:
         return self.code_link_format.replace("{base}", self.public_base_url.rstrip("/")).replace("{code}", code)
@@ -78,13 +105,32 @@ def _int(v, name: str, low: int, high: int) -> int:
     return v
 
 
+def _load_payouts(p: dict) -> PayoutsConfig:
+    want = sorted(list(_PAYOUT_INT_BOUNDS) + list(_PAYOUT_RATE_KEYS))
+    if sorted(p) != want:
+        raise _err(f"payouts must contain exactly {want}")
+    vals = {k: _int(p[k], f"payouts.{k}", lo, hi) for k, (lo, hi) in _PAYOUT_INT_BOUNDS.items()}
+    for k in _PAYOUT_RATE_KEYS:
+        if not isinstance(p[k], str):
+            raise _err(f"payouts.{k} must be a rate-limit string")
+        try:
+            _parse_rate(p[k])
+        except Exception:
+            raise _err(f"payouts.{k} is not a valid rate limit") from None
+        vals[k] = p[k]
+    if vals["proof_ttl_seconds"] > vals["code_ttl_seconds"]:
+        raise _err("payouts.proof_ttl_seconds must not exceed code_ttl_seconds")
+    return PayoutsConfig(**vals)
+
+
 def _load() -> AffiliatesConfig:
     raw = load_section(
         CONFIG_PATH, SECTION,
         required_keys=("commission_rate", "milestones", "series_points", "public_base_url",
-                       "code_link_format", "rate_limit", "resources"),
+                       "code_link_format", "rate_limit", "resources", "payouts"),
         types={"commission_rate": (int, float), "milestones": list, "series_points": dict,
-               "public_base_url": str, "code_link_format": str, "rate_limit": str, "resources": list},
+               "public_base_url": str, "code_link_format": str, "rate_limit": str, "resources": list,
+               "payouts": dict},
         rate_keys=("rate_limit",),
     )
     rate = raw["commission_rate"]
@@ -133,7 +179,9 @@ def _load() -> AffiliatesConfig:
             raise _err(f"resources[{i}] has an unsafe file path or empty label")
         resources.append(Resource(r["key"], r["section"], r["label"].strip(), r["file"], r["content_type"]))
 
-    return AffiliatesConfig(float(rate), tuple(milestones), points, base, fmt, raw["rate_limit"], tuple(resources))
+    payouts = _load_payouts(raw["payouts"])
+    return AffiliatesConfig(float(rate), tuple(milestones), points, base, fmt, raw["rate_limit"],
+                            tuple(resources), payouts)
 
 
 def get_affiliates_config() -> AffiliatesConfig:

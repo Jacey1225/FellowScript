@@ -105,6 +105,9 @@ register("join_requests")
 register("join_request_push")
 # Creator Affiliates page (task 20261007-affiliates-page): off/on only, exposed via no capability.
 register("affiliates", no_canary=True, exposed_in_capabilities=False)
+# Affiliate payout details (task 20261008-affiliate-payout-details): nested inside
+# ``affiliates``; off/on only, server-side only. Ships OFF.
+register("affiliate_payouts", no_canary=True, exposed_in_capabilities=False)
 register("agent_chats")
 # Per-chat memory for agent chats (windowed history + rolling summary). Needs
 # agent_chats on too; server-side only, so not exposed in capabilities.

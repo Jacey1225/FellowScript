@@ -23,6 +23,21 @@
     "public_base_url": "https://fellowscript.com",
     "code_link_format": "{base}/?code={code}",
     "rate_limit": "30/minute",
+    "payouts": {
+      "code_ttl_seconds": 300,
+      "proof_ttl_seconds": 300,
+      "max_code_attempts": 5,
+      "lockout_failures": 5,
+      "lockout_minutes": 15,
+      "code_issues_per_hour": 3,
+      "retention_inactive_days": 365,
+      "reveal_per_hour": 10,
+      "max_body_bytes": 2048,
+      "read_rate": "30/minute",
+      "write_rate": "10/minute",
+      "reauth_rate": "5/minute",
+      "reveal_rate": "10/hour"
+    },
     "resources": [
       {
         "key": "logo-lockup",

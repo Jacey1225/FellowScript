@@ -135,6 +135,27 @@ async def _reconcile_trials() -> None:
         sm.close()
 
 
+async def _purge_affiliate_payouts() -> None:
+    """Retention for affiliate payout details (task 20261008-affiliate-payout-details):
+    hard-delete inactive / orphaned details and stale re-auth proofs. Flag-gated;
+    logs counts only."""
+    from backend.interactions import flags
+    if not flags.is_enabled("affiliate_payouts"):
+        return
+    from backend.subscription.affiliate_payouts import PayoutManager
+    from backend.subscription.affiliates_config import get_affiliates_config
+    db = PayoutManager(get_affiliates_config().payouts)
+    try:
+        n = db.purge()
+        db.purge_proofs()
+        if n:
+            logger.info("Purged %d affiliate payout record(s) by retention", n)
+    except Exception as e:
+        logger.warning("affiliate payout retention failed (%s)", type(e).__name__)
+    finally:
+        db.close()
+
+
 async def _run_error_watchdog() -> None:
     """CloudWatch error-detection + context-assembly watchdog (see
     backend/monitoring/watchdog.py). Polls all 5 monitored log groups via
@@ -1240,6 +1261,8 @@ def start_scheduler() -> None:
     # owning user's local timezone rather than a fixed UTC date.
     scheduler.add_job(_run_nightly_backups, "cron", minute="*", id="backup_check",
                       replace_existing=True)
+    scheduler.add_job(_purge_affiliate_payouts, "cron", hour=4, minute=17,
+                      id="affiliate_payout_retention", replace_existing=True)
     scheduler.add_job(_fire_due_heartbeats, "interval", seconds=HEARTBEAT_POLL_INTERVAL_SECONDS,
                       id="heartbeat_fire", replace_existing=True)
     # Session time_start reminder push (task 20260904-session-push-notifications)

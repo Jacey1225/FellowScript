@@ -47,7 +47,7 @@ describe('dist/explore/index.html flag on', () => {
     expect(on.explore).toContain('name="twitter:card"');
     expect((on.explore.match(/<title/g) || []).length).toBe(1);
     expect((on.explore.match(/rel="canonical"/g) || []).length).toBe(1);
-    expect(on.explore).not.toMatch(/You don&#x27;t have to walk with God/);
+    expect(on.explore).not.toMatch(/Lead with confidence/);
   });
   test('body is real content, JSON-LD parses and matches source', () => {
     expect(on.explore).not.toContain('<div id="root"></div>');
@@ -91,7 +91,7 @@ describe('Home/Download regression', () => {
   test('Home keeps canonical, index/follow, hero; Download keeps its tags and has no explore tags', () => {
     expect(on.home).toContain(`href="${SITE}/"`);
     expect(on.home).toMatch(/name="robots"\s+content="index, follow"/);
-    expect(on.home).toMatch(/You don&#x27;t have to walk with God/);
+    expect(on.home).toMatch(/Lead with confidence/);
     expect(on.home).not.toContain("#/explore')");
     expect(on.download).toContain(`href="${SITE}/download/"`);
     expect(on.download).toMatch(/name="robots"\s+content="index, follow"/);

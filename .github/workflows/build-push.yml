@@ -147,6 +147,9 @@ jobs:
       # fails fast at app boot if INVITE_LINK_SECRET is unset or under 32
       # chars. Throwaway CI-only value, not the production secret.
       INVITE_LINK_SECRET: ci-only-invite-link-secret-0123456789abcdef
+      # payout_crypto.validate_payout_keys() fails the boot if this is unset or not
+      # '<id>:<base64 of 32 bytes>'. Clearly fake, CI-only key .
+      PAYOUT_ENCRYPTION_KEYS: "1:Y2ktb25seS1wYXlvdXQta2V5LTAxMjM0NTY3ODlhYmM="
       # validate_join_window_config() (task 20260920-session-join-window-gating)
       # fails fast at app boot the same way the validators above do -- same
       # rationale, same fix: a throwaway CI value so

@@ -29,6 +29,7 @@ from routes.join_requests import join_requests_router
 from routes.flags_admin import flags_admin_router
 from routes.home_messages import home_message_router, home_messages_admin_router
 from routes.affiliates import affiliates_router
+from routes.affiliate_payouts import payouts_router, admin_payouts_router
 from routes.email_verification import email_verification_router
 from backend.auth.email_verification import (
     EmailVerificationManager, record_provider_verified, send_verification_email,
@@ -408,6 +409,8 @@ app.include_router(flags_admin_router)
 app.include_router(home_message_router)
 app.include_router(home_messages_admin_router)
 app.include_router(affiliates_router)
+app.include_router(payouts_router)
+app.include_router(admin_payouts_router)
 
 main_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 user_path = "data/users.json"

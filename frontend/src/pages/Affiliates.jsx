@@ -9,6 +9,7 @@ import AppNav from '../components/AppNav.jsx';
 import Seo from '../components/Seo.jsx';
 import EmailVerifyNotice from '../components/EmailVerifyNotice.jsx';
 import AffiliateLineChart from '../components/AffiliateLineChart.jsx';
+import AffiliatePayouts from '../components/AffiliatePayouts.jsx';
 import AffiliateResources, { RESOURCE_SECTIONS } from '../components/AffiliateResources.jsx';
 import { useWarmCanvas } from '../hooks/useWarmCanvas.js';
 import { useAuth } from '../context/AuthContext.jsx';
@@ -185,7 +186,7 @@ export default function Affiliates() {
             <h2 style={LABEL}>Your program</h2>
             <p style={BODY}>
               You earn {rate} of the monthly plan price of every active paying subscriber who joined with your code, for as long as
-              they stay subscribed (lifetime), plus one-time bonuses at subscriber milestones. Payouts are handled manually by FellowScript.
+              they stay subscribed (lifetime), plus one-time bonuses at subscriber milestones. Payouts are sent manually by FellowScript; add your bank details under Payout details below.
             </p>
             {codes.map((c) => (
               <div key={c.code} style={{ display: 'flex', gap: '0.6rem', alignItems: 'center', marginBottom: 6 }}>
@@ -206,6 +207,8 @@ export default function Affiliates() {
             <AffiliateLineChart title="New subscribers" points={series} field="new" unit={unit} color="#e0aa3c" noun="new" />
             <AffiliateLineChart title="Total subscribers" points={series} field="total" unit={unit} color="rgba(244,228,193,0.85)" noun="total" />
           </div>
+
+          <AffiliatePayouts />
 
           <Milestones milestones={Array.isArray(data.milestones) ? data.milestones : []} count={m.active_paying_subscribers || 0} />
 

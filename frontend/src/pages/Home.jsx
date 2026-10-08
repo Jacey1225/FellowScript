@@ -441,7 +441,7 @@ export default function Home() {
             </div>
             <div style={{ fontFamily: HEAD_FONT, fontSize: 12, letterSpacing: '0.28em', textTransform: 'uppercase', color: '#F0C08A', marginBottom: 22 }}>// FELLOWSCRIPT</div>
             <h1 style={{ fontFamily: HEAD_FONT, fontSize: 'clamp(44px, 6.4vw, 104px)', lineHeight: 0.96, fontWeight: 400, letterSpacing: '-0.035em', color: '#FFF9F0', margin: '0 0 28px', textWrap: 'balance' }}>
-              You don't have to walk with God <span style={{ color: 'rgba(255,249,240,0.62)' }}>alone.</span>
+              Lead with confidence, <span style={{ color: 'rgba(255,249,240,0.62)' }}>gather in power.</span>
             </h1>
             <p style={{ fontSize: 'clamp(15px, 1.25vw, 19px)', lineHeight: 1.6, color: 'rgba(255,243,228,0.86)', maxWidth: '30em', margin: '0 0 40px' }}>
               A friendly AI companion, a daily rhythm, and people who show up with you — every single day.
