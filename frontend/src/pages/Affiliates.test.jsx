@@ -31,7 +31,7 @@ function renderPage() {
 const DATA = {
   v: 1,
   codes: [{ code: 'CEE1', active: true, link: 'https://fellowscript.com/?code=CEE1' }],
-  metrics: { active_paying_subscribers: 52, monthly_earnings_cents: 12345, commission_rate: 0.35 },
+  metrics: { active_paying_subscribers: 52, monthly_earnings_cents: 12345, commission_rate: 0.2 },
   series: {
     day: [{ t: '2026-03-01', new: 1, total: 1 }, { t: '2026-03-02', new: 3, total: 4 }, { t: '2026-03-03', new: 0, total: 4 }],
     week: [{ t: '2026-02-23', new: 4, total: 4 }, { t: '2026-03-02', new: 3, total: 7 }],
@@ -82,7 +82,7 @@ describe('Affiliates', () => {
     const { container } = renderPage();
     expect(await screen.findByTestId('metric-subscribers')).toHaveTextContent('52');
     expect(screen.getByTestId('metric-earnings')).toHaveTextContent('$123.45');
-    expect(screen.getAllByText(/35% of/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/20% of/).length).toBeGreaterThan(0);
     expect(container.querySelectorAll('circle').length).toBe(0);
     expect(screen.getByTestId('chart-new').querySelectorAll('path').length).toBe(1);
     expect(screen.getByTestId('chart-total').querySelectorAll('path').length).toBe(1);

@@ -177,8 +177,8 @@ export default function Affiliates() {
           <div style={CARD_STYLE}>
             <h2 style={LABEL}>Your program</h2>
             <p style={BODY}>
-              You earn {rate} of the monthly plan price of every active paying subscriber who joined with your code,
-              plus one-time bonuses at subscriber milestones. Payouts are handled manually by FellowScript.
+              You earn {rate} of the monthly plan price of every active paying subscriber who joined with your code, for as long as
+              they stay subscribed (lifetime), plus one-time bonuses at subscriber milestones. Payouts are handled manually by FellowScript.
             </p>
             {codes.map((c) => (
               <div key={c.code} style={{ display: 'flex', gap: '0.6rem', alignItems: 'center', marginBottom: 6 }}>

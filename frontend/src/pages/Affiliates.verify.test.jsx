@@ -65,7 +65,7 @@ describe('Affiliates verify-your-email state', () => {
   test('successful overview (verified creator) never asks for email status', async () => {
     getAffiliateOverview.mockReset();
     getAffiliateOverview.mockResolvedValue({
-      v: 1, codes: [], metrics: { active_paying_subscribers: 0, monthly_earnings_cents: 0, commission_rate: 0.35 },
+      v: 1, codes: [], metrics: { active_paying_subscribers: 0, monthly_earnings_cents: 0, commission_rate: 0.2 },
       series: { day: [], week: [], month: [] }, milestones: [],
     });
     getAffiliateResources.mockResolvedValue({ sections: {} });

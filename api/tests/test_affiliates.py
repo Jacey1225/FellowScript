@@ -255,8 +255,8 @@ def test_aggregates_and_privacy():
     body = r.json()
     m = body["metrics"]
     check("active paying = 3", m["active_paying_subscribers"] == 3, m)
-    check("earnings = 0.35 x 4500 = 1575", m["monthly_earnings_cents"] == 1575, m)
-    check("commission_rate echoed 0.35", m["commission_rate"] == 0.35, m)
+    check("earnings = 0.2 x 4500 = 900", m["monthly_earnings_cents"] == 900, m)
+    check("commission_rate echoed 0.2", m["commission_rate"] == 0.2, m)
     check("no-store cache header", r.headers.get("cache-control") == "no-store", r.headers.get("cache-control"))
     check("own code listed with link", body["codes"] == [{"code": code, "active": True,
           "link": f"https://fellowscript.com/?code={code}"}], body["codes"])
@@ -467,7 +467,7 @@ def test_config():
     def badct(c): c["resources"][0]["content_type"] = "text/html"
     check("html content type refused", attempt(badct) is not None)
     cfg = ac.get_affiliates_config()
-    check("loaded rate 0.35, 3 tiers", cfg.commission_rate == 0.35 and len(cfg.milestones) == 3)
+    check("loaded rate 0.2, 3 tiers", cfg.commission_rate == 0.2 and len(cfg.milestones) == 3)
 
 
 def test_no_pii_in_logs():
