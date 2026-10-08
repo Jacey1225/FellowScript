@@ -448,6 +448,15 @@ def create_tables(cur):
         "timestamp TIMESTAMPTZ DEFAULT NOW())"
     )
     cur.execute("ALTER TABLE notes ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()")
+    # Idempotency key for session-summary personal fan-out (task
+    # 20260908-session-summary-personal-fanout): "sessionsum:<session_id>:<user_id>".
+    # NULL for every other note, so the partial unique index only constrains
+    # fan-out summaries and a retried request cannot write a second copy.
+    cur.execute("ALTER TABLE notes ADD COLUMN IF NOT EXISTS summary_dedupe_key TEXT")
+    cur.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_notes_summary_dedupe_key "
+        "ON notes(summary_dedupe_key) WHERE summary_dedupe_key IS NOT NULL"
+    )
     # AgentManager.note_via_hb persists the LLM's self-reported "theme"
     # field here per note (see agent_prompt.txt's create_note schema), kept
     # as recorded metadata about the note. As of task

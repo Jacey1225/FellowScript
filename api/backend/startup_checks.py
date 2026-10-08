@@ -57,6 +57,12 @@ def check_agent_chats_config() -> None:
     validate_agent_chats_config()
 
 
+def check_session_summary_fanout_config() -> None:
+    from backend.interactions.session_summary_fanout_config import validate_session_summary_fanout_config
+
+    validate_session_summary_fanout_config()
+
+
 def check_agent_chat_memory_config() -> None:
     from backend.interactions.agent_memory_config import validate_agent_memory_config
 
@@ -91,6 +97,7 @@ CHECKS = (
     check_home_messages_config,
     check_agent_chats_config,
     check_agent_chat_memory_config,
+    check_session_summary_fanout_config,
     check_affiliates_config,
     check_email_verification_config,
 )

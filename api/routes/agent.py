@@ -4,6 +4,8 @@ from backend.interactions.groups import GroupsManager
 from backend.interactions import flags
 from backend.interactions.agent_chats import AgentChatStore, ChatLimitError
 from backend.interactions.agent_chats_config import get_agent_chats_config
+from backend.interactions import session_summary_fanout as fanout
+from backend.interactions.session_summary_fanout_config import is_fanout_enabled
 from backend.rate_limiting import limiter
 from backend.errors import SaveFailedError, NoSummarizableContentError
 from backend.subscription.limits import check_limit, check_paid_only
@@ -420,10 +422,37 @@ async def summarize_session(user_id: str, agent_id: str, body: dict, _: str = De
     #     in this file (`_require_group_membership`) -- a group_id the
     #     caller isn't a member of is rejected (403), not guessed/passed
     #     through, consistent with this route family's existing IDOR guard.
+    dm_key = group_id if (group_id and "|" in group_id) else None
     if group_id and "|" in group_id:
         group_id = None
     elif group_id:
         _require_group_membership(user_id, group_id)
+
+    # Personal fan-out (task 20260908-session-summary-personal-fanout): behind
+    # a config flag (default off). Only for a non-group session; a real-group
+    # session keeps its single group note untouched. Recipients are resolved
+    # server-side before the model call (403 for a non-participant of a
+    # persisted session); any doubt resolves to the caller only.
+    fan_recipients = None
+    fan_session_id = None
+    if group_id is None and is_fanout_enabled():
+        if not isinstance(session, dict):
+            session = {}
+        fan_session_id = fanout.valid_session_id(session.get("id"))
+        fan_recipients = fanout.resolve_recipients(user_id, dm_key, session)
+        if fan_session_id:
+            idem = AgentManager(user_id)
+            try:
+                have = fanout.existing_summary_notes(idem, fan_session_id, fan_recipients)
+            finally:
+                idem.close()
+            if all(r in have for r in fan_recipients):
+                # Retry of a fully-completed request: no model call, no new writes.
+                return {"ok": True, "note_id": have[user_id], "fanout": {"written": 0, "skipped": len(fan_recipients) - 1}}
+        else:
+            # No valid session id to key on: no dedupe for the caller and no
+            # fan-out to anyone else (fail closed).
+            fan_recipients = [user_id]
 
     title = session.get("title", "Untitled Session")
 
@@ -502,6 +531,14 @@ async def summarize_session(user_id: str, agent_id: str, body: dict, _: str = De
         # and is never truncated (throw-not-fabricate). The notes-count gate
         # above still applies; a later USER edit that grows it past the cap
         # falls under update_note's grandfather rule.
+        if fan_recipients is not None and fan_session_id:
+            note_title = f"Session Summary — {title}"
+            note_id, _ = fanout.insert_deduped_note(
+                db, fan_session_id, user_id, note_title, summary, notes_public, None)
+            counts = fanout.fan_out_to_others(db, fan_session_id, user_id, fan_recipients, note_title, summary)
+            logger.info("summarize fan-out session=%s written=%d skipped=%d",
+                        fan_session_id, counts["written"], counts["skipped"])
+            return {"ok": True, "note_id": note_id, "fanout": counts}
         note_id = str(uuid.uuid4())
         db.cur.execute(
             "INSERT INTO notes (_id, user_id, title, text, public, group_id, is_reply, timestamp) "

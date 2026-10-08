@@ -38,5 +38,9 @@
     "summary_max_tokens": 800,
     "summary_model": "meta-llama/llama-3.1-8b-instruct",
     "summary_timeout_seconds": 30
+  },
+  "session_summary_fanout": {
+    "enabled": false,
+    "max_recipients_per_session": 10
   }
 }
