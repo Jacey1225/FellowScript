@@ -177,7 +177,7 @@ def test_config():
     print("\n=== config: shipped default off, validation, fail-closed ===")
     cfgmod.reset_for_tests()
     c = cfgmod.get_session_summary_fanout_config()
-    check("shipped config: enabled is false", c.enabled is False, str(c))
+    check("shipped config: enabled is true (switched on 2026-10-08)", c.enabled is True, str(c))
     check("shipped config: cap is a positive int", isinstance(c.max_recipients_per_session, int) and c.max_recipients_per_session >= 1)
     orig = cfgmod.CONFIG_PATH
     try:

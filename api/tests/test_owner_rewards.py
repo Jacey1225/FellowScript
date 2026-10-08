@@ -125,6 +125,11 @@ def signup(client, admin=False, email=None, invite=None, ip=None):
     assert r.status_code == 201, f"signup failed {r.status_code} {r.text}"
     uid = r.json()["user_id"]
     USERS.append(uid)
+    # Email-verification flag is on in the shipped config: verification-gated
+    # paths require a verified email. Same hash as email_verification.email_hash.
+    q("UPDATE users SET email_verified = TRUE, email_verified_at = NOW(), "
+      "email_verified_hash = encode(sha256(convert_to(lower(btrim(email)), 'UTF8')), 'hex') "
+      "WHERE _id = %s", (uid,))
     if admin:
         q("UPDATE users SET is_admin = TRUE WHERE _id = %s", (uid,))
     return uid, r.cookies.get("session")

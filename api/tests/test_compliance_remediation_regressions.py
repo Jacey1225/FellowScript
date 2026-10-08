@@ -397,6 +397,13 @@ def test_l1_admin_seed_email_env_override():
     db = DBManager()
     try:
         db.insertion("users", {"_id": uid, "username": f"l1_{uid[:8]}", "email": decoy_email, "hash_pass": "x"})
+        # Flag-on admin seed only promotes a verified-email account (same hash
+        # as backend/auth/email_verification.py::email_hash).
+        db.cur.execute(
+            "UPDATE users SET email_verified = TRUE, email_verified_at = NOW(), "
+            "email_verified_hash = encode(sha256(convert_to(lower(btrim(email)), 'UTF8')), 'hex') "
+            "WHERE _id = %s", (uid,))
+        db.conn.commit()
     finally:
         db.close()
 

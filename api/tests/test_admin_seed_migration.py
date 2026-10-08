@@ -63,6 +63,7 @@ def _ensure_admin_target_exists() -> None:
     if existing:
         return
     _created_admin_target_uid = make_decoy_user(ADMIN_EMAIL, "admin_target_ci_seed")
+    _stamp_verified(_created_admin_target_uid)
 
 
 def _cleanup_admin_target_if_created() -> None:
@@ -95,6 +96,21 @@ def make_decoy_user(email: str, username_suffix: str) -> str:
     finally:
         dbm.close()
     return uid
+
+
+def _stamp_verified(uid: str) -> None:
+    """Mark the account's email verified (same hash as
+    backend/auth/email_verification.py::email_hash). The flag-on admin seed only
+    promotes a verified-email account, so the seed target must be verified."""
+    dbm = DBManager()
+    try:
+        dbm.cur.execute(
+            "UPDATE users SET email_verified = TRUE, email_verified_at = NOW(), "
+            "email_verified_hash = encode(sha256(convert_to(lower(btrim(email)), 'UTF8')), 'hex') "
+            "WHERE _id = %s", (uid,))
+        dbm.conn.commit()
+    finally:
+        dbm.close()
 
 
 def cleanup_user(uid: str):

@@ -512,7 +512,7 @@ def test_config_validation():
     print("-- config validation")
     path = evc.CONFIG_PATH
     good = json.loads(path.read_text())
-    check("shipped config ships enabled=false", BASE_CFG.enabled is False)
+    check("shipped config ships enabled=true (switched on 2026-10-08)", BASE_CFG.enabled is True)
     check("shipped config has oauth_conflict_status/message",
           BASE_CFG.oauth_conflict_status in (401, 409) and BASE_CFG.oauth_conflict_message.strip() != "")
 

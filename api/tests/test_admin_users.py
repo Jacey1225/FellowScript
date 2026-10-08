@@ -275,6 +275,11 @@ def run(client):
         seed_uid = str(uuid.uuid4())
         sql("INSERT INTO users (_id, username, email, hash_pass) VALUES (%s,%s,%s,'x')",
             (seed_uid, f"seed_{TAG}", seed_email))
+        # Flag-on admin seed only promotes a verified-email account (same hash
+        # as backend/auth/email_verification.py::email_hash).
+        sql("UPDATE users SET email_verified=TRUE, email_verified_at=NOW(), "
+            "email_verified_hash=encode(sha256(convert_to(lower(btrim(email)), 'UTF8')), 'hex') "
+            "WHERE _id=%s", (seed_uid,))
         created_seed = True
     prior = sql("SELECT is_admin FROM users WHERE _id=%s", (seed_uid,))[0][0]
     try:

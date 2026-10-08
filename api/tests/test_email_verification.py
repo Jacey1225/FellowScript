@@ -202,7 +202,7 @@ def test_ddl_and_config():
     finally:
         db.close()
 
-    check("shipped config ships enabled=false", BASE_CFG.enabled is False)
+    check("shipped config ships enabled=true (switched on 2026-10-08)", BASE_CFG.enabled is True)
     path = evc.CONFIG_PATH
     good = json.loads(path.read_text())
 
@@ -230,7 +230,7 @@ def test_ddl_and_config():
     bad("http base url rejected", lambda s: s.update(public_base_url="http://x.example"))
     bad("link format without token rejected", lambda s: s.update(verify_link_format="{base}/x"))
     evc.validate_email_verification_config()
-    check("shipped config validates", evc.get_email_verification_config().enabled is False)
+    check("shipped config validates", evc.get_email_verification_config().enabled is True)
     from backend import startup_checks
     check("startup check registered", startup_checks.check_email_verification_config in startup_checks.CHECKS)
 
