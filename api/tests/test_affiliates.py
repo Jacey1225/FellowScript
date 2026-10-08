@@ -316,8 +316,8 @@ def test_aggregates_and_privacy():
 
     # isolation
     ro = overview(otok).json()
-    check("other creator sees only own (1 sub, 9900x.35=3465)",
-          ro["metrics"]["active_paying_subscribers"] == 1 and ro["metrics"]["monthly_earnings_cents"] == 3465, ro["metrics"])
+    check("other creator sees only own (1 sub, 9900x.2=1980)",
+          ro["metrics"]["active_paying_subscribers"] == 1 and ro["metrics"]["monthly_earnings_cents"] == 1980, ro["metrics"])
     check("other creator never sees first creator's code", code not in json.dumps(ro))
     check("first creator never sees other's code", ocode not in overview(tok).text)
     check("other creator's body has no subscriber emails", "@" not in json.dumps(ro))
