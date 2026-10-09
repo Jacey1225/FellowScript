@@ -171,11 +171,10 @@ final class RepresentativeScreenKeyboardDismissSourceTests: XCTestCase {
     func test_mfaVerifyView_usesSharedModifier() throws { try assertUsesSharedModifier("FellowScript/Auth/MfaVerifyView.swift") }
     func test_forgotPasswordView_usesSharedModifier() throws { try assertUsesSharedModifier("FellowScript/Auth/ForgotPasswordView.swift") }
     func test_noteEditorView_usesSharedModifier() throws { try assertUsesSharedModifier("FellowScript/Notes/NoteEditorView.swift") }
-    // ReplyComposerSheet (the actual carrier of this modifier within the
-    // former NotesListView.swift monolith) moved to its own file in the
-    // compliance-readability-cleanup task's split (readability #6, 20260904-
-    // frontend-arch-sweep) -- same behavior, so this now points there.
-    func test_notesListView_usesSharedModifier() throws { try assertUsesSharedModifier("FellowScript/Notes/ReplyComposerSheet.swift") }
+    // The reply composer is now inline (task 20260909-reply-inline-editor), so
+    // the modifier's Notes carrier is NoteDetailView's ScrollView rather than
+    // the former ReplyComposerSheet.
+    func test_notesListView_usesSharedModifier() throws { try assertUsesSharedModifier("FellowScript/Notes/NoteDetailView.swift") }
     func test_chatRootView_usesSharedModifier() throws { try assertUsesSharedModifier("FellowScript/Chat/ChatRootView.swift") }
     func test_chatThreadView_usesSharedModifier() throws { try assertUsesSharedModifier("FellowScript/Chat/ChatThreadView.swift") }
     func test_agentChatView_usesSharedModifier() throws { try assertUsesSharedModifier("FellowScript/Chat/AgentChatView.swift") }

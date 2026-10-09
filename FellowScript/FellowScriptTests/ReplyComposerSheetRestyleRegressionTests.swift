@@ -95,8 +95,8 @@ final class ReplyComposerSheetRestyleRegressionTests: XCTestCase {
     }
 
     private func sheetBody(_ source: String) throws -> String {
-        guard let start = source.range(of: "struct ReplyComposerSheet: View {") else {
-            XCTFail("ReplyComposerSheet not found")
+        guard let start = source.range(of: "struct ReplyComposerInline: View {") else {
+            XCTFail("ReplyComposerInline not found")
             return ""
         }
         // The struct is the last declaration in the file, so its own closing
@@ -106,12 +106,14 @@ final class ReplyComposerSheetRestyleRegressionTests: XCTestCase {
 
     // MARK: - A. Visual migration onto the established submenu-sheet recipe
 
-    func test_usesWarmBloomBackground_notFlatBgPage() throws {
+    func test_inlineComposer_hasNoOwnBackground_inheritsHostPage() throws {
+        // Inline in NoteDetailView (task 20260909-reply-inline-editor): the
+        // warm-bloom ground belongs to the host page, not the composer.
         let body = try sheetBody(try componentSource())
-        XCTAssertTrue(body.contains(".warmBloomBackground()"),
-                      "ReplyComposerSheet must render on the shared warm-bloom-ground background")
         XCTAssertFalse(body.contains("Theme.bgPage"),
-                       "the old flat Theme.bgPage fill must be gone")
+                       "the old flat Theme.bgPage fill must stay gone")
+        XCTAssertFalse(body.contains("NavigationStack"),
+                       "the inline composer must not carry its own NavigationStack (no sheet chrome)")
     }
 
     func test_replyFieldIsWrappedInGlassCard_notFormSection() throws {
@@ -149,8 +151,10 @@ final class ReplyComposerSheetRestyleRegressionTests: XCTestCase {
         // explicit .padding(Theme.spacingMD) immediately before it, mirroring
         // NoteEditorView.swift's own body-field recipe exactly, or the
         // "REPLY" label/placeholder/cursor sit flush against the card edge.
+        // Whitespace-insensitive: indentation changed when the composer moved inline.
+        let squashed = body.components(separatedBy: .whitespacesAndNewlines).joined()
         XCTAssertTrue(
-            body.contains(".padding(Theme.spacingMD)\n                    .glassCard(cornerRadius: 20)"),
+            squashed.contains(".padding(Theme.spacingMD).glassCard(cornerRadius:20)"),
             "the reply-body VStack must carry .padding(Theme.spacingMD) immediately before .glassCard(cornerRadius: 20), matching NoteEditorView's body field inset"
         )
     }
@@ -161,8 +165,8 @@ final class ReplyComposerSheetRestyleRegressionTests: XCTestCase {
                        "must no longer use a plain string-literal Button(\"Cancel\") (picks up unstyled system Liquid Glass chrome)")
         XCTAssertTrue(body.contains("cancelGhostChip"),
                       "must use a ghost-chip Cancel label, matching EventSetupSheet's per-file-copy convention")
-        XCTAssertTrue(body.contains("Button(action: { dismiss() }) { cancelGhostChip }"),
-                      "Cancel must still call dismiss()")
+        XCTAssertTrue(body.contains("Button(action: { onClose() }) { cancelGhostChip }"),
+                      "Cancel must call onClose()")
         XCTAssertTrue(body.contains("Capsule().fill(Theme.parchment.opacity(0.06))"))
         XCTAssertTrue(body.contains("Capsule().stroke(Theme.parchment.opacity(0.12), lineWidth: 1)"))
     }
@@ -175,33 +179,12 @@ final class ReplyComposerSheetRestyleRegressionTests: XCTestCase {
                       "Post must use the shared gold-gradient PillButton recipe and keep the in-progress label swap")
     }
 
-    func test_toolbarItemsSuppressAutomaticGlassChrome() throws {
+    func test_noSheetToolbarChrome_inlineInstead() throws {
         let body = try sheetBody(try componentSource())
-        // Both custom ToolbarItems (leading Cancel, trailing Post) must carry
-        // the modifier so iOS 26's automatic Liquid Glass chrome doesn't
-        // double up against each item's own capsule/pill chrome — the same
-        // fix already applied to the other four sheets. Strip `//` line
-        // comments first (this file's own doc comment narrates the fix by
-        // name), matching NoteReplySectionTests.swift's established
-        // technique, so only live code references are counted.
-        let codeOnly = body
-            .split(separator: "\n", omittingEmptySubsequences: false)
-            .map { line -> Substring in
-                if let range = line.range(of: "//") { return line[..<range.lowerBound] }
-                return line
-            }
-            .joined(separator: "\n")
-        let occurrences = codeOnly.components(separatedBy: ".suppressAutomaticGlassChrome()").count - 1
-        XCTAssertEqual(occurrences, 2,
-                       "both the Cancel and Post ToolbarItems must carry .suppressAutomaticGlassChrome(), got \(occurrences) occurrence(s)")
-    }
-
-    func test_hasPrincipalTitleItem_decoupledFromToolbarWidths() throws {
-        let body = try sheetBody(try componentSource())
-        XCTAssertTrue(body.contains("ToolbarItem(placement: .principal)"),
-                      "\"Add a Reply\" must center via a `.principal` toolbar item, independent of the asymmetric Cancel/Post widths -- the exact shape that caused visible off-centering on the other four sheets")
-        XCTAssertTrue(body.contains(#"Text("Add a Reply")"#),
-                      "the `.principal` item must render the sheet's actual title text")
+        XCTAssertFalse(body.contains("ToolbarItem("), "inline composer has no navigation toolbar items")
+        XCTAssertFalse(body.contains("@Environment(\\.dismiss)"), "inline composer must not depend on sheet dismiss")
+        XCTAssertTrue(body.contains("postButton") && body.contains("cancelButton"),
+                      "Cancel and Post live in-view as ghost chip and gold pill")
     }
 
     // MARK: - B. No behavioral regression
@@ -241,20 +224,20 @@ final class ReplyComposerSheetRestyleRegressionTests: XCTestCase {
 
     func test_errorMessage_surfacesInlineWithoutDismissing_successDismisses() throws {
         let body = try sheetBody(try componentSource())
-        XCTAssertTrue(body.contains("if errorMessage == nil { dismiss() }"),
-                      "the sheet must only dismiss when onPost returns nil (success) -- a failure must keep the sheet open")
+        XCTAssertTrue(body.contains("if errorMessage == nil { onClose() }"),
+                      "the composer must only close when onPost returns nil (success) -- a failure must keep the sheet open")
         XCTAssertTrue(body.contains("if let errorMessage {"),
                       "a non-nil errorMessage must still be displayed inline")
         XCTAssertTrue(body.contains("Text(errorMessage)") && body.contains("foregroundColor(Theme.error)"),
                       "the inline error text must still use the error color token")
     }
 
-    func test_preservedModifiers_dismissesKeyboardAndDarkColorScheme() throws {
-        let body = try sheetBody(try componentSource())
-        XCTAssertTrue(body.contains(".dismissesKeyboardOnScrollAndTap()"),
-                      "the shared keyboard-dismiss convention must be preserved")
-        XCTAssertTrue(body.contains(".preferredColorScheme(.dark)"),
-                      "the sheet must still force dark color scheme")
+    func test_keyboardDismissAppliedByHostScrollView() throws {
+        // The shared modifier moved to NoteDetailView's ScrollView (the
+        // composer is now inline in that scroll content).
+        let host = try noteDetailViewSource()
+        XCTAssertTrue(host.contains(".dismissesKeyboardOnScrollAndTap()"),
+                      "NoteDetailView's scroll content must carry the shared keyboard-dismiss modifier")
     }
 
     func test_replyFieldKeepsAccessibilityLabel() throws {

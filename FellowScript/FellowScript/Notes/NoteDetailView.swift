@@ -156,6 +156,9 @@ struct NoteDetailView: View {
     @State private var repliesLoaded       = false
     @State private var showAllReplies      = false
     @State private var showReplyComposer   = false
+    // Inline reply composer (task 20260909-reply-inline-editor): VoiceOver
+    // focus returns to the "Add a reply" trigger when the composer is cancelled.
+    @AccessibilityFocusState private var replyTriggerFocused: Bool
     // Which reply (if any) is currently open in the shared NoteEditorView
     // (task 20260904-reply-edit-button). `.sheet(item:)` rather than a
     // second `showEditor`-style Bool + separately-tracked FSNote? pair --
@@ -209,6 +212,9 @@ struct NoteDetailView: View {
                     .ignoresSafeArea()
 
                 ScrollView {
+                    // ScrollViewReader scrolls the inline reply composer into
+                    // view when it opens (task 20260909-reply-inline-editor).
+                    ScrollViewReader { proxy in
                     // No glassCard wrapper (per Direction B) — body flows
                     // directly on the bloom background, full width, same
                     // structure as before, just re-themed.
@@ -245,6 +251,15 @@ struct NoteDetailView: View {
                             .frame(height: 1)
 
                         NoteHTMLView(html: note.text)
+
+                        // Inline reply composer (task 20260909-reply-inline-editor):
+                        // directly below the note body, replacing the former
+                        // ReplyComposerSheet sheet. Same postReplyDraft path.
+                        if isGroupNote && repliesLoaded && showReplyComposer {
+                            ReplyComposerInline(onPost: postReplyDraft, onClose: closeReplyComposer)
+                                .id(Self.replyComposerScrollID)
+                                .transition(reduceMotion ? .identity : .opacity.combined(with: .move(edge: .top)))
+                        }
 
                         // ── Replies (Option A "Continuation" — task
                         // 20260828-note-reply-continuation-ios). Group notes
@@ -311,16 +326,40 @@ struct NoteDetailView: View {
                             // this task), but this UI never newly exposes
                             // that path. Reachable in both the populated and
                             // zero-reply branches above.
-                            Button { showReplyComposer = true } label: {
-                                ghostPill("Add a reply")
-                                    .frame(minHeight: 44)
-                                    .contentShape(Rectangle())
+                            if !showReplyComposer {
+                                Button {
+                                    withMotionAwareAnimation(.spring(response: 0.35, dampingFraction: 0.85), reduceMotion: reduceMotion) {
+                                        showReplyComposer = true
+                                    }
+                                } label: {
+                                    ghostPill("Add a reply")
+                                        .frame(minHeight: 44)
+                                        .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("Add a reply")
+                                .accessibilityFocused($replyTriggerFocused)
                             }
-                            .buttonStyle(.plain)
                         }
                     }
                     .padding(Theme.spacingLG)
+                    .onChange(of: showReplyComposer) { _, open in
+                        guard open else { return }
+                        // Wait for layout and the keyboard (editor focuses
+                        // itself shortly after appearing), then centre it.
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
+                            if reduceMotion {
+                                proxy.scrollTo(Self.replyComposerScrollID, anchor: .center)
+                            } else {
+                                withAnimation(.easeInOut(duration: 0.3)) {
+                                    proxy.scrollTo(Self.replyComposerScrollID, anchor: .center)
+                                }
+                            }
+                        }
+                    }
+                    }
                 }
+                .dismissesKeyboardOnScrollAndTap()
                 // Content-edge feather (task
                 // 20260830-note-detail-scroll-fade-toolbar-bg): the user's
                 // actual ask, corrected from the prior
@@ -483,9 +522,6 @@ struct NoteDetailView: View {
                 .presentationDetents([.large])
                 .presentationCompactAdaptation(.fullScreenCover)
             }
-            .sheet(isPresented: $showReplyComposer) {
-                ReplyComposerSheet(onPost: postReplyDraft)
-            }
             // Reply Edit sheet (task 20260904-reply-edit-button): same
             // NoteEditorView/flow the parent note's own Edit uses above --
             // `note`/`noteId` are the tapped reply's, not the parent note's,
@@ -549,6 +585,17 @@ struct NoteDetailView: View {
         #if DEBUG
         .onReceive(inspection.notice) { self.inspection.visit(self, $0) }
         #endif
+    }
+
+    private static let replyComposerScrollID = "replyComposer"
+
+    /// Collapses the inline composer (Cancel or post success) and returns
+    /// VoiceOver focus to the "Add a reply" trigger.
+    private func closeReplyComposer() {
+        withMotionAwareAnimation(.easeInOut(duration: 0.25), reduceMotion: reduceMotion) {
+            showReplyComposer = false
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { replyTriggerFocused = true }
     }
 
     // ── Replies: data ──────────────────────────────────────────────────────

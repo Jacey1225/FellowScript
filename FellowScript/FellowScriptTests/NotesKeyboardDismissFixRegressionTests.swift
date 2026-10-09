@@ -183,21 +183,19 @@ final class NotesScreensStillUseSharedModifierTests: XCTestCase {
                        "NoteEditorView must still apply the shared modifier exactly once (covering the title TextField and body RichTextEditorView), not a bespoke per-field workaround")
     }
 
-    func test_notesListView_replyComposerSheet_stillAppliesSharedModifierExactlyOnce() throws {
-        // ReplyComposerSheet moved out of NotesListView.swift into its own
-        // file in the compliance-readability-cleanup task's split
-        // (readability #6, 20260904-frontend-arch-sweep) -- same type, same
-        // behavior, and no longer `private` since a sibling-file split
-        // requires at least internal visibility.
-        let source = try readSource("FellowScript/Notes/ReplyComposerSheet.swift")
-        guard let sheetRange = source.range(of: "struct ReplyComposerSheet: View {") else {
-            XCTFail("ReplyComposerSheet not found in ReplyComposerSheet.swift")
-            return
-        }
-        let sheetBody = String(source[sheetRange.upperBound...].prefix(12000))
-        let count = sheetBody.components(separatedBy: ".dismissesKeyboardOnScrollAndTap()").count - 1
-        XCTAssertEqual(count, 1,
-                       "ReplyComposerSheet must still apply the shared modifier exactly once (covering the reply body RichTextEditorView), not a bespoke per-field workaround")
+    func test_noteDetailView_inlineReplyComposer_sharedModifierAppliedExactlyOnce() throws {
+        // Task 20260909-reply-inline-editor: the reply composer is inline in
+        // NoteDetailView's ScrollView, so the single shared modifier lives
+        // there (covering the reply body RichTextEditorView); the composer
+        // file itself must not carry a bespoke one.
+        let host = try readSource("FellowScript/Notes/NoteDetailView.swift")
+        let hostCount = host.components(separatedBy: ".dismissesKeyboardOnScrollAndTap()").count - 1
+        XCTAssertEqual(hostCount, 1,
+                       "NoteDetailView must apply the shared modifier exactly once, covering the inline reply composer")
+        let composer = try readSource("FellowScript/Notes/ReplyComposerSheet.swift")
+        let composerCode = composer.split(separator: "\n").filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }.joined(separator: "\n")
+        XCTAssertFalse(composerCode.contains(".dismissesKeyboardOnScrollAndTap()"),
+                       "ReplyComposerInline must rely on the host scroll view's modifier, not a bespoke one")
     }
 }
 

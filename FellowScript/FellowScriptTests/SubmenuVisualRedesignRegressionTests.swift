@@ -148,7 +148,7 @@ final class SubmenuVisualRedesignRegressionTests: XCTestCase {
                            "\(path) must not have been swept into this task's shared-modifier adoption")
         }
 
-        // NoteDetailView (and ReplyComposerSheet, checked separately by its
+        // NoteDetailView (and the inline ReplyComposerInline, checked separately by its
         // own restyle regression suite) moved out of NotesListView.swift into
         // their own files in the compliance-readability-cleanup task's split
         // -- NoteDetailView.swift now contains nothing but this one struct,

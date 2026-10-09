@@ -237,7 +237,7 @@ final class NoteReplySectionTests: XCTestCase {
     }
 
     // MARK: 5 — "Add a reply" composer pill: present + tappable for a
-    // populated group note (opens ReplyComposerSheet; the sheet's own
+    // populated group note (opens the inline ReplyComposerInline; its own
     // internal Form/TextEditor content is `private` to NotesListView.swift
     // and not independently constructible from this test file, so this
     // proves presence/tap-wiring the same way the pre-existing Close-pill
@@ -350,7 +350,7 @@ final class NoteReplySectionTests: XCTestCase {
         let source = try componentSource()
         guard let outerStart = source.range(of: "if isGroupNote && repliesLoaded {"),
               let innerStart = source.range(of: "if !replies.isEmpty {", range: outerStart.upperBound..<source.endIndex),
-              let composerRange = source.range(of: "Button { showReplyComposer = true } label: {", range: outerStart.upperBound..<source.endIndex) else {
+              let composerRange = source.range(of: "ghostPill(\"Add a reply\")", range: outerStart.upperBound..<source.endIndex) else {
             XCTFail("could not locate the outer gate, inner non-empty check, and composer button to compare their positions")
             return
         }

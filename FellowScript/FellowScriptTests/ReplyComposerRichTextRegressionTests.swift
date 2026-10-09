@@ -197,7 +197,7 @@ final class ReplyComposerSheetWiringSourceTests: XCTestCase {
     /// match unrelated text elsewhere.
     private func replyComposerSection() throws -> String {
         let source = try componentSource()
-        guard let start = source.range(of: "struct ReplyComposerSheet: View {") else {
+        guard let start = source.range(of: "struct ReplyComposerInline: View {") else {
             XCTFail("could not locate ReplyComposerSheet to scope this check")
             return ""
         }
