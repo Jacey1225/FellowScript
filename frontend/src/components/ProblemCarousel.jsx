@@ -1,4 +1,14 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+
+// Isomorphic: layout effect on the client (sets the hidden entrance state
+// before first paint, so no visible-then-hidden flash), plain effect during
+// the prerender (never runs there anyway; avoids the SSR warning).
+const useIsoLayoutEffect = typeof window !== 'undefined' ? useLayoutEffect : useEffect;
+
+// Entrance timing (ms). Slots land back-to-front, ENTER_STAGGER apart.
+const ENTER_STAGGER = 150;
+const ENTER_COUNT_MS = 700;
+const ENTER_DONE_MS = ENTER_STAGGER * 2 + 700 + 150;
 
 // Task 20261008-homepage-problem-carousel: fanned-deck carousel. Data-driven
 // (slides are props, 1..N), SSR-safe (window/document only touched inside
@@ -101,23 +111,65 @@ export default function ProblemCarousel({ slides, ariaLabel = 'The problem' }) {
   const focusFront = useRef(false);
   const touch = useRef(null);
 
-  // Reveal-on-scroll fan (skipped under reduced motion). SSR / no-JS renders
-  // already fanned: the "pre" phase is only ever set from this effect.
-  useEffect(() => {
+  // Entrance (skipped under reduced motion): cards fly up from below in
+  // back-to-front sequence, stats count up. SSR / no-JS renders the resting
+  // fan with real numbers: "pre" is only ever set from this client-only layout
+  // effect (before first paint). "in" runs the staggered transitions, "done"
+  // (after they finish, or on the first interaction) removes the stagger
+  // delays so click-rotate and hover keep their normal timing.
+  const entering = useRef(false);
+  const finishEntrance = () => {
+    if (!entering.current) return;
+    entering.current = false;
+    const el = rootRef.current;
+    if (el && el.getAttribute('data-pc-phase') === 'in') el.setAttribute('data-pc-phase', 'done');
+  };
+  useIsoLayoutEffect(() => {
     if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return undefined;
     const el = rootRef.current;
     if (!el || !('IntersectionObserver' in window)) return undefined;
+    // Count-up targets: only the aria-hidden number text node; React's markup
+    // and the aria-live region are never touched.
+    const nums = Array.from(el.querySelectorAll('[data-pc-count]'));
+    const setNum = (node, v) => { if (node.firstChild) node.firstChild.nodeValue = String(v); };
+    nums.forEach((node) => setNum(node, 0));
     el.setAttribute('data-pc-phase', 'pre');
+    const timers = [];
+    const rafs = new Set();
+    const countUp = (node, delay) => {
+      const target = Number(node.getAttribute('data-pc-count'));
+      timers.push(setTimeout(() => {
+        const t0 = performance.now();
+        const step = (now) => {
+          const p = Math.min(1, (now - t0) / ENTER_COUNT_MS);
+          const eased = 1 - Math.pow(1 - p, 3);
+          setNum(node, p >= 1 ? target : Math.round(target * eased));
+          if (p < 1) rafs.add(requestAnimationFrame(step));
+        };
+        rafs.add(requestAnimationFrame(step));
+      }, delay));
+    };
     const io = new IntersectionObserver((entries) => {
       entries.forEach((entry) => {
-        if (entry.isIntersecting) {
-          el.setAttribute('data-pc-phase', 'in');
-          io.disconnect();
-        }
+        if (!entry.isIntersecting) return;
+        io.disconnect();
+        entering.current = true;
+        el.setAttribute('data-pc-phase', 'in');
+        nums.forEach((node) => {
+          const card = node.closest('.pc-card');
+          const slot = card ? Number(card.getAttribute('data-slot')) : 0;
+          countUp(node, Number.isNaN(slot) ? 0 : (2 - Math.min(2, slot)) * ENTER_STAGGER);
+        });
+        timers.push(setTimeout(finishEntrance, ENTER_DONE_MS));
       });
     }, { threshold: 0.2 });
     io.observe(el);
-    return () => io.disconnect();
+    return () => {
+      io.disconnect();
+      timers.forEach(clearTimeout);
+      rafs.forEach((id) => cancelAnimationFrame(id));
+      nums.forEach((node) => setNum(node, node.getAttribute('data-pc-count')));
+    };
   }, []);
 
   // After a back-card click, the clicked button unmounts (it becomes the front
@@ -130,7 +182,7 @@ export default function ProblemCarousel({ slides, ariaLabel = 'The problem' }) {
     }
   }, [active]);
 
-  const go = (i) => setActive(((i % n) + n) % n);
+  const go = (i) => { finishEntrance(); setActive(((i % n) + n) % n); };
   const next = () => go(active + 1);
   const prev = () => go(active - 1);
 
@@ -173,14 +225,19 @@ export default function ProblemCarousel({ slides, ariaLabel = 'The problem' }) {
       <style>{`
         .pc-root { --pc-ease: ${EASE}; }
         .pc-stage { display: grid; padding: 96px 0 24px 72px; }
-        .pc-card { grid-area: 1 / 1; position: relative; box-sizing: border-box; width: 100%; max-width: 880px; min-height: 560px; padding: 48px; border-radius: 22px; background: #1F1815; border: 1px solid rgba(255,244,230,0.16); box-shadow: 0 40px 90px -50px rgba(0,0,0,0.9); color: #FFF9F0; transform-origin: 20% 80%; touch-action: pan-y; transition: transform 420ms var(--pc-ease), opacity 420ms var(--pc-ease), background-color 220ms var(--pc-ease), border-color 220ms var(--pc-ease); outline: none; }
+        .pc-card { grid-area: 1 / 1; position: relative; box-sizing: border-box; width: 100%; max-width: 880px; min-height: 560px; padding: 48px; border-radius: 22px; background: #1F1815; border: 1px solid rgba(255,244,230,0.16); box-shadow: 0 40px 90px -50px rgba(0,0,0,0.9); color: #FFF9F0; transform-origin: 20% 80%; touch-action: pan-y; transition: transform 420ms var(--pc-ease), opacity 420ms var(--pc-ease), translate 420ms var(--pc-ease), background-color 220ms var(--pc-ease), border-color 220ms var(--pc-ease); outline: none; }
         .pc-card[data-slot="0"] { z-index: 3; background: ${INK}; }
         .pc-card[data-slot="1"] { z-index: 2; transform: translate(-36px,-46px) scale(.96) rotate(-1.5deg); }
         .pc-card[data-slot="2"] { z-index: 1; transform: translate(-72px,-92px) scale(.92) rotate(-3deg); }
         .pc-card[data-slot="far"] { z-index: 0; opacity: 0; pointer-events: none; transform: translate(-72px,-92px) scale(.92) rotate(-3deg); }
         .pc-card:focus-visible { box-shadow: 0 0 0 3px #FBF7F1, 0 0 0 6px ${AMBER}; }
-        .pc-root[data-pc-phase="pre"] .pc-card[data-slot="1"], .pc-root[data-pc-phase="pre"] .pc-card[data-slot="2"] { transform: none; opacity: 0; }
-        .pc-root[data-pc-phase="in"] .pc-card[data-slot="1"], .pc-root[data-pc-phase="in"] .pc-card[data-slot="2"] { transition-duration: 700ms; }
+        /* Entrance: the individual translate property composes with the slot transforms and hover transforms, so the resting fan is untouched. */
+        .pc-root { --pc-enter-y: 120px; }
+        .pc-root[data-pc-phase="pre"] .pc-card:not([data-slot="far"]) { translate: 0 var(--pc-enter-y); opacity: 0; }
+        .pc-root[data-pc-phase="in"] .pc-card:not([data-slot="far"]) { transition-property: transform, translate, opacity, background-color, border-color; transition-duration: 420ms, 700ms, 500ms, 220ms, 220ms; transition-timing-function: var(--pc-ease), cubic-bezier(0.16,1,0.3,1), var(--pc-ease), var(--pc-ease), var(--pc-ease); }
+        .pc-root[data-pc-phase="in"] .pc-card[data-slot="2"] { transition-delay: 0ms; }
+        .pc-root[data-pc-phase="in"] .pc-card[data-slot="1"] { transition-delay: ${ENTER_STAGGER}ms; }
+        .pc-root[data-pc-phase="in"] .pc-card[data-slot="0"] { transition-delay: ${ENTER_STAGGER * 2}ms; }
         @media (hover: hover) {
           .pc-card[data-slot="1"]:hover { transform: translate(-26px,-38px) scale(.98) rotate(-1.5deg); background: #241C18; }
           .pc-card[data-slot="2"]:hover { transform: translate(-62px,-84px) scale(.94) rotate(-3deg); background: #241C18; }
@@ -236,7 +293,7 @@ export default function ProblemCarousel({ slides, ariaLabel = 'The problem' }) {
           .pc-card[data-slot="1"] { transform: translateX(8px) scale(.96); }
           .pc-card[data-slot="2"] { transform: translateX(16px) scale(.92); }
           .pc-card[data-slot="far"] { transform: translateX(16px) scale(.92); }
-          .pc-root[data-pc-phase="pre"] .pc-card[data-slot="1"], .pc-root[data-pc-phase="pre"] .pc-card[data-slot="2"] { transform: none; }
+          .pc-root { --pc-enter-y: 60px; }
           @media (hover: hover) {
             .pc-card[data-slot="1"]:hover { transform: translateX(12px) scale(.96); }
             .pc-card[data-slot="2"]:hover { transform: translateX(20px) scale(.92); }
@@ -260,7 +317,7 @@ export default function ProblemCarousel({ slides, ariaLabel = 'The problem' }) {
         }
         @media (prefers-reduced-motion: reduce) {
           .pc-card, .pc-card * { transition: none !important; }
-          .pc-root[data-pc-phase] .pc-card[data-slot="1"], .pc-root[data-pc-phase] .pc-card[data-slot="2"] { opacity: 1; }
+          .pc-root[data-pc-phase] .pc-card:not([data-slot="far"]) { opacity: 1; translate: none; }
           .pc-card[data-slot="0"] { animation: pc-fade 120ms ease-out; }
           @media (hover: hover) {
             .pc-card[data-slot="1"]:hover, .pc-card[data-slot="2"]:hover { border-color: rgba(232,163,85,0.28); background: #1F1815; }
@@ -308,7 +365,7 @@ export default function ProblemCarousel({ slides, ariaLabel = 'The problem' }) {
                   <div className="pc-index">{`${pad2(i + 1)} / ${slide.label}`}</div>
                   <div className="pc-lead">
                     {slide.percent != null && (
-                      <div className="pc-num" aria-hidden="true">{slide.percent}<span className="pc-pct">%</span></div>
+                      <div className="pc-num" aria-hidden="true"><span data-pc-count={slide.percent}>{slide.percent}</span><span className="pc-pct">%</span></div>
                     )}
                     <p className={slide.percent != null ? 'pc-sentence' : 'pc-sentence pc-sentence-words'}>{slide.sentence}</p>
                     {slide.problem && <p className="pc-problem">{slide.problem}</p>}

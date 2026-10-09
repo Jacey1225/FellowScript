@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useLayoutEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useParallaxBlobs } from '../hooks/useParallaxBlobs.js';
@@ -102,6 +102,34 @@ function useRevealOnScroll(ref) {
         }
       });
     }, { threshold: 0.2, rootMargin: '0px 0px -8% 0px' });
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+}
+
+// Task 20261008-homepage-section-entrance-transitions: one-shot collage-style
+// entrance for the reaching section's hands + bloom. Progressive enhancement:
+// SSR / no-JS / reduced-motion render the final resting state; the hidden
+// "pre" state exists only because this layout effect sets data-fs-reach on the
+// section client-side before first paint (useLayoutEffect: no flash of
+// visible-then-hidden; isomorphic so the prerender does not warn). Own
+// observer at threshold 0.33 ("about a third visible"); plays once.
+const useIsoLayoutEffect = typeof window !== 'undefined' ? useLayoutEffect : useEffect;
+
+function useReachEntrance(ref) {
+  useIsoLayoutEffect(() => {
+    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return undefined;
+    const el = ref.current;
+    if (!el || !('IntersectionObserver' in window)) return undefined;
+    el.setAttribute('data-fs-reach', 'pre');
+    const io = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          el.setAttribute('data-fs-reach', 'in');
+          io.disconnect();
+        }
+      });
+    }, { threshold: 0.33 });
     io.observe(el);
     return () => io.disconnect();
   }, []);
@@ -279,6 +307,7 @@ export default function Home() {
   const familyRef = useRef(null);
   useRevealOnScroll(familyRef);
   useHandDrift(familyRef);
+  useReachEntrance(familyRef);
 
   return (
     <div style={{ fontFamily: BODY_FONT, color: CREAM, background: INK, overflowX: 'hidden' }}>
@@ -302,6 +331,9 @@ export default function Home() {
              and static even if that JS gate is ever bypassed or races. */
           .hm-family-reveal { opacity: 1 !important; transform: none !important; transition: none !important; }
           .hm-reach-hand { transform: none !important; transition: none !important; }
+          /* Entrance backstop: final state even if the JS gate is bypassed. */
+          .hm-reach-hand, .hm-reach-bloom { translate: none !important; rotate: none !important; }
+          .hm-reach[data-fs-reach] .hm-reach-bloom { opacity: 1 !important; transition: none !important; }
         }
 
         /* Task 20260921-homepage-family-section-redesign — "Not just once a
@@ -346,9 +378,16 @@ export default function Home() {
         .hm-reach-stage { position: relative; margin-top: 80px; font-size: clamp(40px, 7vw, 100px); }
         .hm-reach-hands { position: absolute; inset: 0; pointer-events: none; display: block; }
         .hm-reach-bloom { position: absolute; display: block; left: 50%; top: 2.47em; width: 8.4em; height: 8.4em; transform: translate(-50%, -50%); background: radial-gradient(circle, rgba(224,154,48,0.34), transparent 50%); }
-        .hm-reach-hand { position: absolute; display: block; height: auto; top: 2.74em; transition: transform 600ms cubic-bezier(0.22,1,0.36,1); will-change: transform; }
+        .hm-reach-hand { position: absolute; display: block; height: auto; top: 2.74em; transition: transform 600ms cubic-bezier(0.22,1,0.36,1); will-change: transform; translate: 0 0; rotate: 0deg; transition: transform 600ms cubic-bezier(0.22,1,0.36,1), translate 1000ms cubic-bezier(0.16,1,0.3,1), rotate 1000ms cubic-bezier(0.16,1,0.3,1); }
         .hm-reach-hand-l { right: calc(50% + 3.9em); width: 7em; opacity: 0.8; transform: translate3d(calc(var(--fs-drift, 0) * var(--fs-drift-px)), 0, 0); }
         .hm-reach-hand-r { left: calc(50% + 3.9em); width: 6em; opacity: 0.85; transform: translate3d(calc(var(--fs-drift, 0) * var(--fs-drift-px) * -1), 0, 0); }
+        /* Entrance (client-only; data-fs-reach is set after mount, never in SSR).
+           Individual translate/rotate compose with the drift transform above. */
+        .hm-reach { --hm-reach-travel: 50vw; }
+        .hm-reach-bloom { transition: opacity 450ms cubic-bezier(0.16,1,0.3,1) 650ms; }
+        .hm-reach[data-fs-reach="pre"] .hm-reach-bloom { opacity: 0; }
+        .hm-reach[data-fs-reach="pre"] .hm-reach-hand-l { translate: calc(var(--hm-reach-travel) * -1) 0; rotate: -9deg; }
+        .hm-reach[data-fs-reach="pre"] .hm-reach-hand-r { translate: var(--hm-reach-travel) 0; rotate: 9deg; }
         .hm-reach-scrim { position: absolute; display: block; left: 50%; top: 50%; width: 7.6em; height: 4.2em; transform: translate(-50%, -50%); background: radial-gradient(ellipse at center, rgba(23,18,15,0.7) 0, rgba(23,18,15,0.6) 50%, transparent 74%); }
         .hm-reach-bandfade { display: none; }
         .hm-reach-h2 { position: relative; z-index: 1; font-family: ${HEAD_FONT}; font-size: 1em; line-height: 0.98; font-weight: 400; letter-spacing: -0.035em; margin: 0 auto; max-width: 9em; color: #FFF9F0; text-wrap: balance; }
@@ -372,6 +411,7 @@ export default function Home() {
           .hm-reach-bandgrid { display: block; position: absolute; inset: 0; opacity: 0.14; background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='96' height='96'><text x='48' y='49.7' font-size='8' text-anchor='middle' fill='%23FFF4E6' font-family='sans-serif'>x</text></svg>"); }
           .hm-reach-bloom { top: 50%; width: 360px; height: 360px; background: radial-gradient(circle, rgba(224,154,48,0.34), transparent 60%); }
           .hm-reach-hand { opacity: 0.7; }
+          .hm-reach { --hm-reach-travel: 200px; }
           .hm-reach-hand-l { top: 50px; right: calc(50% + 14px); width: 360px; }
           .hm-reach-hand-r { top: 56px; left: calc(50% + 9px); width: 330px; }
           .hm-reach-scrim { display: none; }
