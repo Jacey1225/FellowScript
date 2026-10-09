@@ -3,7 +3,8 @@
 //         global.css (.bib-nav-*, .verse-span, .vnum, .chapter-card)
 // KEY STATE: curBook, curChapter, verses, highlights, bookmarks, fontSize, selectedVerse
 // INTERACTIONS: book/chapter picker sheet, font size cycle, bookmark popover,
-//               long-press verse → context menu (highlight, copy, add to note, share)
+//               long-press verse → context menu (highlight, copy, add to note, share);
+//               "Add to Note" opens a new-note editor sheet prefilled with the verse
 // DEPENDENCY: Theme.swift, Models.swift, AppState.swift
 
 import SwiftUI
@@ -325,6 +326,15 @@ final class BibleViewModel: ObservableObject {
     }
 }
 
+// Identifiable payload for the "Add to Note" sheet (sheet(item:) needs it).
+struct VerseNoteDraft: Identifiable {
+    let id = UUID()
+    let book: String
+    let chapter: Int
+    let verse: Int
+    let text: String
+}
+
 // ── Main Reader View ──────────────────────────────────────────────────────────
 struct BibleReaderView: View {
     @EnvironmentObject var appState: AppState
@@ -337,9 +347,15 @@ struct BibleReaderView: View {
     // is the only call site and always passes StartupCoordinator's shared
     // instance so this screen's `.task` sees already-loaded (or in-flight)
     // data instead of firing a second fetch (see BibleViewModel.hasLoadedOnce).
-    init(vm: BibleViewModel) {
+    // `notesVM` is StartupCoordinator's shared NotesViewModel (the same
+    // instance NotesListView uses) so a note created from "Add to Note"
+    // lands in the one notes cache -- no divergent copy.
+    init(vm: BibleViewModel, notesVM: NotesViewModel) {
         _vm = StateObject(wrappedValue: vm)
+        self.notesVM = notesVM
     }
+
+    private let notesVM: NotesViewModel
 
     // Reduce Motion (task 20260831-interaction-polish-conventions, preference
     // profile Q14.3) — read by the tap-outside-to-dismiss animation below.
@@ -359,7 +375,7 @@ struct BibleReaderView: View {
     @State private var showBookmarks     = false
     @State private var selectedVerse:    Int? = nil
     @State private var showHighlightFor: Int? = nil
-    @State private var showAddToNote:    (Int, String)? = nil
+    @State private var addToNoteTarget:  VerseNoteDraft? = nil
     @State private var pendingScrollVerse: Int? = nil
     @State private var contentOpacity:   Double = 1
 
@@ -707,6 +723,29 @@ struct BibleReaderView: View {
             pendingScrollVerse   = t.verse
             appState.pendingBibleNav = nil
         }
+        // "Add to Note": new-note editor prefilled with the long-pressed verse.
+        // Saves through the shared NotesViewModel (same path as NotesListView);
+        // on failure the editor stays open with the inline error / upgrade
+        // prompt and nothing is cached locally.
+        .sheet(item: $addToNoteTarget) { draft in
+            NoteEditorView(
+                note: nil,
+                noteId: nil,
+                isReadOnly: false,
+                initialVerse: VerseRef(book: draft.book, chapter: draft.chapter, verse: draft.verse),
+                initialBodyHTML: VerseNotePrefill.html(book: draft.book, chapter: draft.chapter,
+                                                       verse: draft.verse, text: draft.text)
+            ) { saved in
+                let uid = appState.currentUser?.user_id ?? ""
+                let ok = await notesVM.saveNote(saved, editingId: nil, userId: uid,
+                                                authorUsername: appState.currentUser?.username ?? "")
+                if ok { return nil }
+                return notesVM.failedSaveMessage()
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .fsOpenSubscriptionPlans)) { _ in
+            addToNoteTarget = nil
+        }
         .alert("Save Failed", isPresented: Binding(
             get: { vm.saveError != nil },
             set: { if !$0 { vm.saveError = nil } }
@@ -753,7 +792,9 @@ struct BibleReaderView: View {
         }
         .accessibilityLabel("Copy verse \(verse)")
 
-        Button(action: { showAddToNote = (verse, text) }) {
+        Button(action: {
+            addToNoteTarget = VerseNoteDraft(book: vm.curBook, chapter: vm.curChapter, verse: verse, text: text)
+        }) {
             Label("Add to Note", systemImage: "note.text.badge.plus")
         }
         .accessibilityLabel("Add verse \(verse) to note")

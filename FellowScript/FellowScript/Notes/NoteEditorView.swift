@@ -50,6 +50,24 @@ enum NoteLength {
     }
 }
 
+/// Builds the prefilled body for a note started from a single verse.
+/// The verse text is HTML-escaped; a missing/blank text yields "" (never a
+/// fabricated body).
+enum VerseNotePrefill {
+    static func html(book: String, chapter: Int, verse: Int, text: String) -> String {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !book.isEmpty, chapter > 0, verse > 0, !trimmed.isEmpty else { return "" }
+        return "<p>\(escape("\(book) \(chapter):\(verse)")) \u{2014} \(escape(trimmed))</p>"
+    }
+
+    static func escape(_ s: String) -> String {
+        s.replacingOccurrences(of: "&", with: "&amp;")
+         .replacingOccurrences(of: "<", with: "&lt;")
+         .replacingOccurrences(of: ">", with: "&gt;")
+         .replacingOccurrences(of: "\"", with: "&quot;")
+    }
+}
+
 struct NoteEditorView: View {
     let note:       FSNote?
     let noteId:     String?
@@ -58,6 +76,10 @@ struct NoteEditorView: View {
     // Returns nil on success (the editor dismisses), or an error message to
     // display inline (the editor stays open so the user can fix and retry —
     // e.g. a content-filter rejection needs the flagged text still visible).
+    // Optional prefill for a brand-new note (e.g. Bible reader "Add to Note").
+    // Ignored when editing an existing `note`.
+    var initialVerse:    VerseRef? = nil
+    var initialBodyHTML: String = ""
     var onSave:     ((FSNote) async -> String?)? = nil
 
     @Environment(\.dismiss) private var dismiss
@@ -283,7 +305,7 @@ struct NoteEditorView: View {
                                         .opacity(rtc.htmlOutput.isEmpty ? 1 : 0)
                                     RichTextEditorView(
                                         controller:  rtc,
-                                        initialHTML: note?.text ?? "",
+                                        initialHTML: note?.text ?? initialBodyHTML,
                                         placeholder: "Start writing…"
                                     )
                                     .frame(maxWidth: .infinity, minHeight: 220)
@@ -516,6 +538,7 @@ struct NoteEditorView: View {
             // Body text is loaded by RichTextEditorView(initialHTML:) in makeUIView —
             // no async dispatch needed.
         } else {
+            if let v = initialVerse { verseList = [v] }
             titleFocused = true
         }
     }

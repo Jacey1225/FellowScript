@@ -245,7 +245,7 @@ struct ContentView: View {
                 // screens for the first time doesn't fire a second,
                 // duplicate fetch (see NotesViewModel/BibleViewModel/
                 // ChatViewModel's hasLoadedOnce guard).
-                BibleReaderView(vm: startup.bibleVM)
+                BibleReaderView(vm: startup.bibleVM, notesVM: startup.notesVM)
                     .tag(Tab.bible)
                     .toolbar(.hidden, for: .tabBar)
                 NotesListView(vm: startup.notesVM)
