@@ -162,7 +162,7 @@ struct GroupAnnouncementsView: View {
         .listRowBackground(Color.clear)
         .listRowSeparator(.hidden)
         .listRowInsets(EdgeInsets(top: 6, leading: 20, bottom: 6, trailing: 20))
-        .swipeActions(edge: .leading, allowsFullSwipe: false) {
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
             if item.can_edit {
                 Button(role: .destructive) { vm.startDelete(item) } label: {
                     Label("Delete", systemImage: "trash")
