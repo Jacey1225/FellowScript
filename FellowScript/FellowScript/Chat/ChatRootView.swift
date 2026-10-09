@@ -504,11 +504,29 @@ struct ChatRootView: View {
                 noMatchesState
             } else {
                 List(filteredGroups) { contact in
-                    ContactRow(contact: contact)
+                    // Task 20261008-group-row-thread-dropdown: the row now
+                    // hosts an expandable inline thread list (chevron at the
+                    // card's bottom-right). Row-open tap + a11y label live
+                    // inside GroupRowWithThreads on the card only, so a thread
+                    // tap never opens the group chat; swipe actions stay here.
+                    GroupRowWithThreads(
+                        contact: contact,
+                        service: appState.service,
+                        userId: appState.currentUser?.user_id ?? "",
+                        accessibilityText: appState.hasUnread(contact)
+                            ? "Open group: \(contact.name), unread messages"
+                            : "Open group: \(contact.name)",
+                        onOpenChat: { activeContact = contact },
+                        onOpenThread: { thread in
+                            // ChatThreadView consumes pendingThreadOpen once
+                            // it has loaded (initial load + onChange).
+                            appState.pendingThreadOpen = PendingThreadOpen(groupId: contact.id, threadId: thread.id)
+                            activeContact = contact
+                        }
+                    )
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
                         .listRowInsets(EdgeInsets(top: 5, leading: 20, bottom: 5, trailing: 20))
-                        .onTapGesture { activeContact = contact }
                         .swipeActions(edge: .trailing) {
                             Button(role: .destructive) {
                                 vm.leaveGroup(id: contact.id, userId: appState.currentUser?.user_id ?? "")
@@ -537,13 +555,6 @@ struct ChatRootView: View {
                                 }
                             }
                         }
-                        // Task 20260913-chat-unread-badges: same fold-into-
-                        // existing-label treatment as friendsList above.
-                        .accessibilityLabel(
-                            appState.hasUnread(contact)
-                                ? "Open group: \(contact.name), unread messages"
-                                : "Open group: \(contact.name)"
-                        )
                 }
                 .listStyle(.plain)
                 // See friendsList's identical treatment above (task
@@ -969,6 +980,9 @@ struct ContactRow: View {
     // never get one, per the intake spec's scope.
     var nudgeState: NudgeUIState = .idle
     var onNudge: (() -> Void)? = nil
+    /// Extra trailing space for the text column so it never runs under an
+    /// overlaid control (the groups list's threads chevron).
+    var trailingReserve: CGFloat = 0
     @EnvironmentObject var appState: AppState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -1040,6 +1054,7 @@ struct ContactRow: View {
                         .lineLimit(1)
                 }
             }
+            .padding(.trailing, trailingReserve)
 
             // Task 20260922-chat-friend-nudge-button: friend-only, and only
             // when the caller actually wired a handler -- groupsList's call

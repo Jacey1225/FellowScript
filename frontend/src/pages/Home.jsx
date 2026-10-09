@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useParallaxBlobs } from '../hooks/useParallaxBlobs.js';
 import Seo from '../components/Seo.jsx';
+import ProblemCarousel from '../components/ProblemCarousel.jsx';
 import { useExploreEnabled } from '../hooks/useExploreEnabled.js';
 import { SITE_URL } from '../config.js';
 // Task 20261008-homepage-reaching-section: the two halftone hands (OpenArt
@@ -40,17 +41,6 @@ const HEAD_FONT = "'Schibsted Grotesk', sans-serif";
 const BODY_FONT = "'Hanken Grotesk', system-ui, sans-serif";
 
 // ── Small building blocks ─────────────────────────────────────────────────────
-
-// aria-hidden (task 20260909-website-seo semantic review): every use of Ico
-// on this page sits right next to a visible <h3> feature title conveying
-// the same information, so the icon itself is purely decorative.
-function Ico({ children, size = 20 }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      {children}
-    </svg>
-  );
-}
 
 // aria-hidden (task 20260909-website-seo semantic review): decorative bullet
 // mark -- every Check is immediately followed by the actual perk text.
@@ -203,36 +193,37 @@ function HandDrawnQuoteMark({ size = 46 }) {
 
 // ── Content (kept in sync with the real backend — dynamic 1-8 member group pricing) ──
 
-const features = [
+// Task 20261008-homepage-problem-carousel: every figure below is a survey
+// statistic with a visible source line; see
+// .claude/pipeline/20261008-homepage-problem-carousel/stats-verification.md.
+const problemSlides = [
   {
-    icon: <><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H19v15H6.5A2.5 2.5 0 0 0 4 20.5z" /><path d="M4 5.5v15" /></>,
-    title: 'Beautiful Bible Reader',
-    desc: 'Adjustable text size, navigate any book, and read distraction-free.',
+    id: 'private',
+    label: 'KEPT PRIVATE',
+    visual: 'ring',
+    percent: 56,
+    sentence: '56% of U.S. Christians say their spiritual life is entirely private.',
+    source: { text: 'Barna Group & The Navigators, 2022', href: 'https://www.barna.com/trends/stat-download-spiritual-lives/' },
+    solution: "FellowScript encourages a community that invites doubt, questions, struggles, shame and the emotions that can be a barrier to experiencing God's peace.",
   },
   {
-    icon: <><path d="M9 14l-3 3v3h4l9-9-4-4-6 6z" /><path d="M4 21h16" /></>,
-    title: 'Verse Highlights',
-    desc: 'Four distinct highlight colors, saved the moment you mark them.',
+    id: 'growth',
+    label: 'TIME AND RESOURCES',
+    visual: 'network',
+    percent: 34,
+    sentence: 'Only 34% of U.S. congregations grew by 5% or more between 2015 and 2020.',
+    problem: "Many churches struggle to grow their community, often because there isn't enough time and resources to organize.",
+    source: { text: 'Hartford Institute, Faith Communities Today, 2020', href: 'https://goodfaithmedia.org/most-u-s-faith-communities-are-small-with-declining-attendance/' },
+    solution: 'FellowScript gives churches a digital platform that organizes it all effortlessly by connecting people through an advanced, intelligent grouping system.',
   },
   {
-    icon: <><path d="M15 4l5 5L9 20H4v-5z" /><path d="M13.5 5.5l5 5" /></>,
-    title: 'Scripture Notes',
-    desc: 'Tie reflections to specific verses and build a personal library.',
-  },
-  {
-    icon: <path d="M12 3l2.4 5.6L20 11l-5.6 2.4L12 19l-2.4-5.6L4 11l5.6-2.4z" />,
-    title: 'Scheduled Devotions',
-    desc: 'Pick a time, and your AI study partner writes a devotion for you every day, even when the app is closed.',
-  },
-  {
-    icon: <><circle cx="9" cy="8" r="3.2" /><path d="M3 20c0-3.3 2.7-5.5 6-5.5s6 2.2 6 5.5" /><path d="M16 5.5a3 3 0 0 1 0 5.6" /><path d="M18 20c0-2.6-1-4.4-2.6-5.3" /></>,
-    title: 'Group Bible Study',
-    desc: 'Up to eight people in a shared reading space with real-time messaging.',
-  },
-  {
-    icon: <path d="M6 3h12v18l-6-4.5L6 21z" />,
-    title: 'Verse Bookmarks',
-    desc: 'Save any passage instantly and return to your own treasury.',
+    id: 'word',
+    label: 'IN THE WORD',
+    visual: 'waffle',
+    percent: 32,
+    sentence: 'Only 32% of Protestant churchgoers read the Bible every day.',
+    source: { text: 'LifeWay Research, 2019', href: 'https://thealabamabaptist.org/?p=102486' },
+    solution: 'FellowScript uses the people around you to keep each other connected in the word, with continuous accountability check-ins and effortless devotions to pick up on together.',
   },
 ];
 
@@ -569,24 +560,14 @@ export default function Home() {
         </section>
       )}
 
-      {/* ══ Everything you need ══ */}
+      {/* ══ The problem (task 20261008-homepage-problem-carousel) ══ */}
       <section style={{ padding: 'clamp(90px, 13vh, 180px) clamp(20px, 5vw, 64px)', background: LIGHT_BG, color: LIGHT_INK }}>
         <div style={{ maxWidth: 1240, margin: '0 auto' }}>
-          <div style={{ fontFamily: HEAD_FONT, fontSize: 11.5, letterSpacing: '0.26em', textTransform: 'uppercase', color: '#B4712C', paddingBottom: 22, borderBottom: '1px solid rgba(26,21,18,0.14)', marginBottom: 56 }}>// EVERYTHING YOU NEED</div>
-          <h2 style={{ fontFamily: HEAD_FONT, fontSize: 'clamp(34px, 5vw, 74px)', lineHeight: 1.02, fontWeight: 400, letterSpacing: '-0.03em', margin: '0 0 clamp(56px, 8vh, 104px)', maxWidth: '22em', color: LIGHT_INK }}>
-            Every tool for <span style={{ color: 'rgba(26,21,18,0.38)' }}>the journey,</span> in one place.
+          <div style={{ fontFamily: HEAD_FONT, fontSize: 11.5, letterSpacing: '0.26em', textTransform: 'uppercase', color: '#B4712C', paddingBottom: 22, borderBottom: '1px solid rgba(26,21,18,0.14)', marginBottom: 56 }}>// THE PROBLEM</div>
+          <h2 style={{ fontFamily: HEAD_FONT, fontSize: 'clamp(34px, 5vw, 74px)', lineHeight: 1.02, fontWeight: 400, letterSpacing: '-0.03em', margin: '0 0 clamp(24px, 4vh, 64px)', maxWidth: '22em', color: LIGHT_INK }}>
+            What gets in the way <span style={{ color: 'rgba(26,21,18,0.38)' }}>of growing together.</span>
           </h2>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 'clamp(18px, 2.2vw, 28px)' }}>
-            {features.map(({ icon, title, desc }) => (
-              <div key={title} style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: '32px 30px 36px', border: '1px solid rgba(26,21,18,0.13)', borderRadius: 18, background: '#FFFDFA' }}>
-                <span style={{ display: 'grid', placeItems: 'center', width: 42, height: 42, borderRadius: 12, background: 'rgba(232,163,85,0.2)', color: '#A9631F' }}>
-                  <Ico>{icon}</Ico>
-                </span>
-                <h3 style={{ fontFamily: HEAD_FONT, fontSize: 21, fontWeight: 500, letterSpacing: '-0.02em', margin: '4px 0 0', color: LIGHT_INK }}>{title}</h3>
-                <p style={{ fontSize: 15, lineHeight: 1.66, color: 'rgba(26,21,18,0.62)', margin: 0 }}>{desc}</p>
-              </div>
-            ))}
-          </div>
+          <ProblemCarousel slides={problemSlides} />
         </div>
       </section>
 

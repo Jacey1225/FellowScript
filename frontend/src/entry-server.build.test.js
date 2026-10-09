@@ -124,7 +124,9 @@ describe('production build — Home body content is real, not an empty shell (ta
     // renderToStaticMarkup HTML-escapes text content, so the apostrophe in
     // "don't" comes through as the numeric entity &#x27;, not a literal '.
     expect(finalHtml).toMatch(/Lead with confidence/);
-    expect(finalHtml).toContain('Beautiful Bible Reader');
+    expect(finalHtml).toContain('// THE PROBLEM');
+    expect(finalHtml).toContain('56% of U.S. Christians say their spiritual life is entirely private.');
+    expect(finalHtml).toContain('Hartford Institute, Faith Communities Today, 2020');
     // Task 20260923-remove-open-app-button: the top-right header CTA (which
     // read "Get started" signed out, "Open app" signed in) was removed
     // outright, so "Get started" no longer appears anywhere in the

@@ -931,6 +931,26 @@ final class MockDataService: DataServiceProtocol {
         Dictionary(uniqueKeysWithValues: targetIds.map { ($0, RingResult(sent: true, reason: nil)) })
     }
 
+    // UI-TESTING-THREADS (additive test-only launch argument, task
+    // 20261008-group-row-thread-dropdown): turns the `threads` capability on
+    // and serves stub thread titles so the Groups list's expandable thread
+    // dropdown can be driven in the simulator with no network. Without the
+    // argument the pre-existing behaviour (capabilities/threads throw ->
+    // fail closed) is unchanged.
+    private static var isUITestingThreads: Bool {
+        ProcessInfo.processInfo.arguments.contains("UI-TESTING-THREADS")
+    }
+    func fetchCapabilities() async throws -> FSCapabilities {
+        guard Self.isUITestingThreads else { throw AppError.networkError("Capabilities unavailable.") }
+        return FSCapabilities(features: ["threads": true], exploreLink: nil, termsCurrent: true)
+    }
+    func fetchThreads(userId: String, groupId: String, limit: Int, cursorTimestamp: String?, cursorId: String?) async throws -> FSThreadsPage {
+        guard Self.isUITestingThreads else { throw FSThreadsError.failed("Couldn't load threads.") }
+        let titles = ["Romans 8 discussion", "Prayer requests for this week", "Questions about tomorrow's session"]
+        let rows = titles.enumerated().map { FSThreadSummary(id: "thread-stub-\($0.offset)", title: $0.element) }
+        return FSThreadsPage(threads: rows, hasMore: false, cursorTimestamp: nil, cursorId: nil)
+    }
+
     // Subscriptions
     //
     // UI-TESTING-SUBSCRIBED (additive test-only launch argument, task:
