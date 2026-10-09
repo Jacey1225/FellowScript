@@ -29,6 +29,7 @@ struct NotesListView: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.accessibilityReduceMotion) var reduceMotion
     @StateObject var vm: NotesViewModel
+    @StateObject var hsm = HighlightSearchModel()
 
     // Required (no default): a bare `NotesViewModel()` default expression is
     // evaluated as MainActor-isolated under this project's default actor
@@ -73,6 +74,10 @@ struct NotesListView: View {
 
                     groupChips
                         .padding(.top, 14)
+                } else {
+                    highlightSearchField
+                        .padding(.horizontal, 20)
+                        .padding(.top, 14)
                 }
 
                 // Visible, warm, non-blocking signal for a background
@@ -111,7 +116,7 @@ struct NotesListView: View {
                 } else {
                     switch vm.activeTab {
                     case .notes:      notesTab
-                    case .highlights: highlightsTab
+                    case .highlights: highlightsTabContent
                     }
                 }
             }
@@ -119,6 +124,7 @@ struct NotesListView: View {
         .task {
             if let uid = appState.currentUser?.user_id {
                 vm.configureSearch(userId: uid)
+                hsm.configure(service: appState.service, userId: uid)
                 await vm.load(service: appState.service, userId: uid)
             }
         }

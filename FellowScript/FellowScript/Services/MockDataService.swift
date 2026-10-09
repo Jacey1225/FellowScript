@@ -112,6 +112,7 @@ protocol DataServiceProtocol {
     func fetchHighlights(userId: String) async throws -> [String: String]
     func saveHighlight(userId: String, book: String, chapter: Int, verse: Int, color: String) async throws
     func clearHighlight(userId: String, key: String) async throws
+    func searchHighlights(userId: String, query: String, limit: Int?, cursorTimestamp: String?, cursorId: String?, cursorKey: String?) async throws -> FSHighlightSearchPage
 
     // Bookmarks
     func fetchBookmarks(userId: String) async throws -> [String: String]

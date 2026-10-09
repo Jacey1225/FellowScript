@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends, Query
+from fastapi import APIRouter, HTTPException, Depends, Query, Request
 from schemas.users import Note
 from db import DBManager
 from backend.errors import SaveFailedError
@@ -12,6 +12,7 @@ from backend.interactions.attachments import generate_download_url
 from backend import content_store
 from backend.content_config import get_content_config
 from backend.interactions.note_search import scan_matches
+from backend.interactions.highlight_search import HighlightSearch
 from datetime import datetime
 import uuid
 import logging
@@ -78,6 +79,34 @@ async def get_highlights(user_id: str, _: str = Depends(require_match("user_id")
         return {row[0]: row[1] for row in db.cur.fetchall()}
     finally:
         db.close()
+
+
+@notes_router.get("/highlight/{user_id}/search")
+async def search_highlights(
+    request: Request,
+    user_id: str,
+    q: str = Query(..., description="Book, chapter ('John 3'), verse ('John 3:16') or friend username"),
+    limit: int | None = Query(default=None),
+    cursor_timestamp: str | None = Query(default=None),
+    cursor_id: str | None = Query(default=None),
+    cursor_key: str | None = Query(default=None),
+    _: str = Depends(require_match("user_id")),
+) -> dict:
+    """Search the viewer's own highlights plus accepted (unblocked) friends'.
+
+    Newest first, keyset-paginated. See backend/interactions/highlight_search.py
+    for matching and visibility rules. Query text is never logged.
+
+    Raises:
+        HTTPException 422: empty/over-long/NUL query or malformed cursor.
+    """
+    manager = HighlightSearch(user_id)
+    try:
+        params = {k: v for k, v in request.query_params.items()
+                  if k in ("cursor_timestamp", "cursor_id", "cursor_key")}
+        return manager.search(q, limit, params)
+    finally:
+        manager.close()
 
 
 @notes_router.post("/highlight/{user_id}")
