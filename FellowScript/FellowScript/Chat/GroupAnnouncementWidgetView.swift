@@ -183,8 +183,6 @@ struct AnnouncementWidgetCardBody: View {
     private var cardText: some View {
         HStack(alignment: .center, spacing: Theme.spacingSM) {
             VStack(alignment: .leading, spacing: 2) {
-                Text("ANNOUNCEMENT")
-                    .font(.inter(11, weight: .semibold)).tracking(0.66).foregroundColor(Theme.goldLight)
                 Text(item.title)
                     .font(.inter(17, weight: .semibold)).foregroundColor(AnnouncementTitleColor.bannerColor(item.title_color))
                     .lineLimit(2).multilineTextAlignment(.leading)

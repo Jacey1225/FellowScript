@@ -1,6 +1,6 @@
 // GroupAnnouncementDetailView.swift — read-only viewer for one announcement
-// (task 20260929-group-announcements). Top-right "Edit" (and a Delete menu, the
-// accessible alternative to swipe) only for users the server marked `can_edit`.
+// (task 20260929-group-announcements). Top-right "Edit" only for users the
+// server marked `can_edit`. Delete is list-swipe only (onDelete kept for callers).
 
 import SwiftUI
 
@@ -10,11 +10,14 @@ struct GroupAnnouncementDetailView: View {
     var onDelete: () -> Void
 
     var body: some View {
-        ZStack {
+        ZStack(alignment: .top) {
+            if let s = item.banner_url, let url = URL(string: s) {
+                bannerBackground(url)
+            }
             ScrollView {
                 VStack(alignment: .leading, spacing: Theme.spacingSM) {
-                    if let s = item.banner_url, let url = URL(string: s) {
-                        AnnouncementBannerImage(source: .url(url))
+                    if item.banner_url.flatMap(URL.init(string:)) != nil {
+                        Color.clear.frame(height: Self.bannerHeight * 0.45)
                     }
                     if !item.published {
                         Text("Scheduled for \(FSAnnouncementDates.display(item.publish_at))")
@@ -43,16 +46,36 @@ struct GroupAnnouncementDetailView: View {
         .toolbar {
             if item.can_edit {
                 ToolbarItemGroup(placement: .topBarTrailing) {
-                    Menu {
-                        Button(role: .destructive, action: onDelete) { Label("Delete", systemImage: "trash") }
-                    } label: {
-                        Image(systemName: "ellipsis.circle").foregroundColor(Theme.gold).frame(width: 44, height: 44)
-                    }
-                    .accessibilityLabel("More actions")
                     Button("Edit", action: onEdit)
                         .font(.inter(Theme.fontSM, weight: .semibold)).foregroundColor(Theme.gold)
                 }
             }
         }
+    }
+
+    private static let bannerHeight: CGFloat = 380
+
+    /// Full-bleed decorative banner behind the page, extended under the nav bar,
+    /// faded out at the bottom so no edge shows; a light scrim keeps text legible.
+    private func bannerBackground(_ url: URL) -> some View {
+        Color.clear
+            .frame(maxWidth: .infinity)
+            .frame(height: Self.bannerHeight)
+            .overlay {
+                AsyncImage(url: url) { phase in
+                    if let image = phase.image { image.resizable().scaledToFill() }
+                }
+            }
+            .clipped()
+            .overlay(Color.black.opacity(0.25))
+            .mask(
+                LinearGradient(stops: [.init(color: .black, location: 0),
+                                       .init(color: .black, location: 0.45),
+                                       .init(color: .clear, location: 1)],
+                               startPoint: .top, endPoint: .bottom)
+            )
+            .ignoresSafeArea(edges: .top)
+            .accessibilityHidden(true)
+            .allowsHitTesting(false)
     }
 }
