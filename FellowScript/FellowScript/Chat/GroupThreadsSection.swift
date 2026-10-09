@@ -165,7 +165,7 @@ struct GroupThreadsSection: View {
     @State private var renameText = ""
     @State private var deleting: FSThreadSummary?
     @State private var actionError: String?
-    @State private var revealedId: String?
+    @ScaledMetric(relativeTo: .body) private var rowHeight: CGFloat = 60
 
     init(context: GroupInfoSectionContext) {
         self.context = context
@@ -209,8 +209,17 @@ struct GroupThreadsSection: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            ForEach(vm.threads) { thread in
-                swipeableRow(thread)
+            if !vm.threads.isEmpty {
+                // A non-scrolling List (same as Notes) so native swipeActions
+                // work inside the sheet's ScrollView; height is rows * pitch.
+                List {
+                    ForEach(vm.threads) { thread in listRow(thread) }
+                }
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
+                .scrollDisabled(true)
+                .environment(\.defaultMinListRowHeight, 1)
+                .frame(height: CGFloat(vm.threads.count) * (rowHeight + Self.rowGap))
             }
 
             if vm.hasMore {
@@ -274,7 +283,6 @@ struct GroupThreadsSection: View {
 
     private func submitDelete(_ t: FSThreadSummary) {
         deleting = nil
-        revealedId = nil
         Task {
             do { try await vm.delete(t) }
             catch let e as FSThreadsError where e == .notFound {
@@ -284,60 +292,44 @@ struct GroupThreadsSection: View {
         }
     }
 
-    private static let revealWidth: CGFloat = 88
-
-    /// Row with swipe-left-to-delete (ScrollView content, so a small drag
-    /// gesture rather than List swipeActions), a long-press menu (Rename /
-    /// Delete) and VoiceOver custom actions as the accessible alternatives.
+    /// One List row. The list is the same native List + .swipeActions the Notes
+    /// list uses (NotesListView+List.notesList), so the swipe looks and behaves
+    /// identically: gold circular Delete action, full-swipe expansion, haptics,
+    /// tap-to-close. Delete only asks for confirmation (alert) because a thread
+    /// delete is permanent for everyone. Long-press menu and VoiceOver custom
+    /// actions are the other ways in.
     @ViewBuilder
-    private func swipeableRow(_ thread: FSThreadSummary) -> some View {
+    private func listRow(_ thread: FSThreadSummary) -> some View {
         let deletable = canDelete(thread)
         let renamable = canRename(thread)
-        let revealed = revealedId == thread.id
-        ZStack(alignment: .trailing) {
-            if deletable {
-                Button(role: .destructive) { deleting = thread } label: {
-                    Text("Delete")
-                        .font(.inter(Theme.fontXS, weight: .semibold)).foregroundColor(.white)
-                        .frame(width: Self.revealWidth).frame(maxHeight: .infinity)
-                        .background(Theme.error)
-                        .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
+        row(thread)
+            .modifier(ThreadRowAccessibilityActions(
+                rename: renamable ? { startRename(thread) } : nil,
+                delete: deletable ? { deleting = thread } : nil))
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
+            .listRowInsets(EdgeInsets(top: Self.rowGap / 2, leading: 0, bottom: Self.rowGap / 2, trailing: 0))
+            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                if deletable {
+                    Button(role: .destructive) { deleting = thread } label: {
+                        Label("Delete", systemImage: "trash")
+                    }
                 }
-                .buttonStyle(.plain)
-                .opacity(revealed ? 1 : 0)
-                .allowsHitTesting(revealed)
-                .accessibilityHidden(true)
             }
-            row(thread)
-                .modifier(ThreadRowAccessibilityActions(
-                    rename: renamable ? { startRename(thread) } : nil,
-                    delete: deletable ? { deleting = thread } : nil))
-                .offset(x: revealed ? -Self.revealWidth - 8 : 0)
-                .simultaneousGesture(
-                    DragGesture(minimumDistance: 24)
-                        .onEnded { g in
-                            guard deletable, abs(g.translation.width) > abs(g.translation.height) * 1.5 else { return }
-                            withAnimation(.easeOut(duration: 0.2)) {
-                                if g.translation.width < -40 { revealedId = thread.id }
-                                else if g.translation.width > 40, revealed { revealedId = nil }
-                            }
-                        }
-                )
-        }
-        .contextMenu {
-            if renamable {
-                Button { startRename(thread) } label: { Label("Rename", systemImage: "pencil") }
+            .contextMenu {
+                if renamable {
+                    Button { startRename(thread) } label: { Label("Rename", systemImage: "pencil") }
+                }
+                if deletable {
+                    Button(role: .destructive) { deleting = thread } label: { Label("Delete", systemImage: "trash") }
+                }
             }
-            if deletable {
-                Button(role: .destructive) { deleting = thread } label: { Label("Delete", systemImage: "trash") }
-            }
-        }
     }
 
+    private static let rowGap: CGFloat = 8
+
     private func row(_ thread: FSThreadSummary) -> some View {
-        // A tap gesture, not a Button: a Button fires on touch-up even after a
-        // horizontal drag ends inside it, which opened the thread on swipe.
-        // A tap gesture fails once the finger moves, so a swipe never opens it.
+        // Tap gesture like the Notes rows (NotesListView+List).
         Group {
             HStack(spacing: Theme.spacingSM) {
                 VStack(alignment: .leading, spacing: 2) {
@@ -363,18 +355,14 @@ struct GroupThreadsSection: View {
                     .accessibilityHidden(true)
             }
             .padding(Theme.spacingSM)
-            .frame(minHeight: 56)
+            .frame(height: rowHeight)
             .background(Color.white.opacity(0.045))
             .overlay(RoundedRectangle(cornerRadius: Theme.radius).stroke(Theme.borderGoldFaint, lineWidth: 1))
             .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
             .contentShape(Rectangle())
         }
         .onTapGesture {
-            if revealedId != nil {
-                withAnimation(.easeOut(duration: 0.2)) { revealedId = nil }
-            } else {
-                openThread?.run(thread)
-            }
+            openThread?.run(thread)
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(thread.title). \(snippet(thread)). \(replyLabel(thread))")
