@@ -4,6 +4,7 @@
   GET  /groups/{user_id}/{group_id}/threads                          list, keyset on (last_activity_at, id)
   GET  /groups/{user_id}/{group_id}/threads/{thread_id}/messages     one page of a thread's messages
   PUT  /groups/{user_id}/{group_id}/threads/{thread_id}              rename (creator only)
+  DELETE /groups/{user_id}/{group_id}/threads/{thread_id}            hard delete (creator or group owner)
 
 Rules: R-ROUTE (plain ``def``, runs in the threadpool); ``require_match``
 resolves the path user against the session first; every other denial (flag off
@@ -17,8 +18,10 @@ Sending to a thread is a WebSocket frame, see ``thread_send``. Behaviour lives
 in ``backend/interactions/threads.py``; the list route is in the same router so
 ``group_info.py`` stays untouched.
 """
+import logging
 import re
 
+import anyio.from_thread
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
 
@@ -28,12 +31,16 @@ from backend.interactions import flags, paging
 from backend.interactions.chat_config import get_pagination_config
 from backend.interactions.threads import (
     InvalidTitleError, LIST_MAX_PAGE_SIZE, LIST_PAGE_SIZE, ThreadLimitError, ThreadsManager, audit,
+    thread_deleted_frame,
 )
 from backend.interactions.threads_config import get_threads_config
 from backend.moderation.content_filter import ContentRejected, check_clean, rejection_message
+from backend.interactions.message_delete import fan_out
 from backend.rate_limiting import limiter
+from routes.messaging import manager as ws_manager
 
 threads_router = APIRouter(prefix="/groups")
+logger = logging.getLogger(__name__)
 
 _LIMIT_RE = re.compile(r"[+-]?[0-9]{1,64}", re.ASCII)
 
@@ -53,6 +60,10 @@ def _create_rate() -> str:
 
 def _read_rate() -> str:
     return get_pagination_config().rate_limits["messages_page"]
+
+
+def _delete_rate() -> str:
+    return get_threads_config().delete_rate
 
 
 def _user_key(request: Request) -> str:
@@ -207,3 +218,30 @@ def rename_thread(
         raise _not_found()
     audit("RENAME", user_id, group_id.lower(), result["id"])
     return result
+
+
+@threads_router.delete("/{user_id}/{group_id}/threads/{thread_id}", status_code=204)
+@limiter.shared_limit(_delete_rate, scope="thread_delete", key_func=_user_key)
+def delete_thread(
+    request: Request, user_id: str, group_id: str, thread_id: str,
+    _: str = Depends(require_match("user_id")),
+) -> Response:
+    """Hard-delete a thread and its messages. Only its creator or the group
+    owner may; every other case (including a repeat delete) is the uniform 404.
+    Members' open sockets get a ``thread_deleted`` frame; no push."""
+    if not flags.is_enabled("threads", user_id):
+        raise _not_found()
+    db = ThreadsManager(user_id)
+    try:
+        result = db.delete_thread(group_id, thread_id)
+        if result is None:
+            raise _not_found()
+        audit("DELETE", user_id, result["group_id"], result["id"])
+        recipients = db.frame_recipients(result["group_id"])
+    finally:
+        db.close()
+    try:
+        anyio.from_thread.run(fan_out, ws_manager, recipients, thread_deleted_frame(result["group_id"], result["id"]))
+    except Exception as e:  # noqa: BLE001 - the delete already committed
+        logger.warning("Thread-deleted fan-out failed: %s", type(e).__name__)
+    return Response(status_code=204)

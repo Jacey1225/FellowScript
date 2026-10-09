@@ -28,6 +28,7 @@ enum FSThreadsError: LocalizedError, Equatable {
 }
 
 private struct CreateThreadBody: Encodable { let message_id: String }
+private struct RenameThreadBody: Encodable { let title: String }
 private struct DeleteResponse: Decodable { let id: String; let undo_seconds: Int? }
 private struct ThreadsListResponse: Decodable {
     let threads: [FSThreadSummary]?
@@ -153,6 +154,23 @@ extension NetworkService {
         return page
     }
 
+    // PUT /groups/{u}/{g}/threads/{t}  body {title} -> summary (creator only; 404 otherwise)
+    func renameThread(userId: String, groupId: String, threadId: String, title: String) async throws -> FSThreadSummary {
+        let data = try await threadsSend("\(threadsBase(userId, groupId))/threads/\(encodeURIComponent(threadId))",
+                                         method: "PUT", body: RenameThreadBody(title: title),
+                                         fallback: "Couldn't rename that thread. Please try again.")
+        guard let summary = decode(FSThreadSummary.self, from: data, endpoint: "/groups/{id}/{id}/threads/{id}") else {
+            throw FSThreadsError.failed("Couldn't rename that thread. Please try again.")
+        }
+        return summary
+    }
+
+    // DELETE /groups/{u}/{g}/threads/{t} -> 204 (creator or group owner; hard delete; 404 otherwise)
+    func deleteThread(userId: String, groupId: String, threadId: String) async throws {
+        _ = try await threadsSend("\(threadsBase(userId, groupId))/threads/\(encodeURIComponent(threadId))",
+                                  method: "DELETE", fallback: "Couldn't delete that thread. Please try again.")
+    }
+
     // DELETE /groups/{u}/{g}/messages/{m} -> {id, undo_seconds}
     func deleteGroupMessage(userId: String, groupId: String, messageId: String) async throws -> FSMessageDeleteResult {
         let data = try await threadsSend("\(threadsBase(userId, groupId))/messages/\(encodeURIComponent(messageId))",
@@ -183,6 +201,12 @@ extension DataServiceProtocol {
         throw threadsUnsupported
     }
     func fetchThreadMessages(userId: String, groupId: String, threadId: String, limit: Int, cursor: FSMessageCursor?) async throws -> FSMessagePage {
+        throw threadsUnsupported
+    }
+    func renameThread(userId: String, groupId: String, threadId: String, title: String) async throws -> FSThreadSummary {
+        throw threadsUnsupported
+    }
+    func deleteThread(userId: String, groupId: String, threadId: String) async throws {
         throw threadsUnsupported
     }
     func deleteGroupMessage(userId: String, groupId: String, messageId: String) async throws -> FSMessageDeleteResult {

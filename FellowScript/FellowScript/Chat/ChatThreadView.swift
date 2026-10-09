@@ -577,6 +577,8 @@ final class ChatThreadViewModel: ObservableObject {
                 handleMessageDeleted(json)
             case "message_restored":
                 handleMessageRestored(json)
+            case "thread_deleted":
+                handleThreadDeleted(json)
             case "ping":
                 break // heartbeat -- no UI action
             default:
@@ -634,6 +636,30 @@ final class ChatThreadViewModel: ObservableObject {
         if messages.contains(where: { $0.id == msg.id }) { return }
         messages.append(msg)
         if var t = activeThread { t.replyCount += 1; activeThread = t }
+    }
+
+    /// Set when the open thread was deleted (by anyone, incl. this user) or
+    /// turned out not to exist; the view shows it once and clears it.
+    @Published var threadGoneNotice: String? = nil
+
+    /// `{type:"thread_deleted", thread_id, group_id}`: tell every list, and
+    /// leave the thread gracefully if it is the one being viewed.
+    private func handleThreadDeleted(_ json: [String: Any]) {
+        guard let tid = json["thread_id"] as? String, !tid.isEmpty, frameBelongsToCurrentGroup(json),
+              let gid = currentContact?.id else { return }
+        FSThreadChange(groupId: gid, threadId: tid, kind: .deleted).post()
+        dropThreadIfOpen(tid)
+    }
+
+    private func dropThreadIfOpen(_ tid: String) {
+        guard activeThread?.id.lowercased() == tid.lowercased() else { return }
+        closeThread()
+        threadGoneNotice = "That thread was deleted."
+    }
+
+    /// A rename elsewhere (info sheet): keep the open thread's header in step.
+    func applyThreadRename(threadId: String, title: String) {
+        if var t = activeThread, t.id == threadId { t.title = title; activeThread = t }
     }
 
     private func handleMessageDeleted(_ json: [String: Any]) {
@@ -749,6 +775,12 @@ final class ChatThreadViewModel: ObservableObject {
         } catch {
             guard generation == loadGeneration, activeThread?.id == thread.id else { return }
             print("[ChatThreadViewModel] thread load failed: \(error)")
+            if let e = error as? FSThreadsError, e == .notFound {
+                // Deleted (or never visible): leave non-alarmingly, drop it from lists.
+                FSThreadChange(groupId: contact.id, threadId: thread.id, kind: .deleted).post()
+                dropThreadIfOpen(thread.id)
+                return
+            }
             threadLoadFailed = true
         }
     }
@@ -1432,6 +1464,20 @@ struct ChatThreadView: View {
                 }
                 showSession = false
             })
+        }
+        .alert("Thread unavailable", isPresented: Binding(
+            get: { vm.threadGoneNotice != nil },
+            set: { if !$0 { vm.threadGoneNotice = nil } }
+        )) {
+            Button("OK", role: .cancel) { vm.threadGoneNotice = nil }
+        } message: {
+            Text(vm.threadGoneNotice ?? "")
+        }
+        .onReceive(NotificationCenter.default.publisher(for: FSThreadChange.notification)) { note in
+            if let c = FSThreadChange.from(note), case .renamed(let title) = c.kind,
+               c.groupId.lowercased() == contact.id.lowercased() {
+                vm.applyThreadRename(threadId: c.threadId, title: title)
+            }
         }
         .alert("Couldn't Add Members", isPresented: Binding(
             get: { membersErrorMsg != nil },

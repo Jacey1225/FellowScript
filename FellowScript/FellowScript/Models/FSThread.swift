@@ -230,3 +230,48 @@ func fsInsertRestored(_ current: [FSMessage], _ message: FSMessage) -> [FSMessag
     }
     return current + [message]
 }
+
+
+// ── Rename / delete (task 20261008-thread-rename-delete) ─────────────────────
+
+/// A change to one thread, broadcast so every list that shows it (group info
+/// section, group-list dropdown) and an open thread view stay consistent.
+struct FSThreadChange: Equatable {
+    enum Kind: Equatable { case renamed(String), deleted }
+    let groupId: String
+    let threadId: String
+    let kind: Kind
+
+    static let notification = Notification.Name("FSThreadChange")
+
+    func post() {
+        NotificationCenter.default.post(name: Self.notification, object: nil, userInfo: ["change": self])
+    }
+    static func from(_ note: Notification) -> FSThreadChange? {
+        note.userInfo?["change"] as? FSThreadChange
+    }
+}
+
+/// Display-side policy only. The server stays the authority (uniform 404).
+enum FSThreadPolicy {
+    /// Mirrors api/config/chat.json threads.title_max_length.
+    static let titleMaxLength = 80
+
+    /// Rename is creator-only; `created_by` on the list is a username.
+    static func canRename(_ t: FSThreadSummary, username: String?) -> Bool {
+        guard let u = username, !u.isEmpty, let c = t.createdBy, !c.isEmpty else { return false }
+        return u.lowercased() == c.lowercased()
+    }
+
+    /// Delete: the thread's creator or the group owner.
+    static func canDelete(_ t: FSThreadSummary, username: String?, isOwner: Bool) -> Bool {
+        isOwner || canRename(t, username: username)
+    }
+
+    /// Trimmed title, or nil when blank / over the server limit.
+    static func validTitle(_ raw: String) -> String? {
+        let t = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !t.isEmpty, t.count <= titleMaxLength, !t.contains("\u{0}") else { return nil }
+        return t
+    }
+}

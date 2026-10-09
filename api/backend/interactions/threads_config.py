@@ -31,6 +31,7 @@ class ThreadsConfig:
     max_threads_per_group: int
     create_rate: str
     send_rate: str
+    delete_rate: str
 
 
 @dataclass(frozen=True)
@@ -58,19 +59,19 @@ def _load_threads() -> ThreadsConfig:
         THREADS_SECTION,
         required_keys=(
             "title_max_length", "auto_title_length", "root_preview_length",
-            "max_threads_per_group", "create_rate", "send_rate",
+            "max_threads_per_group", "create_rate", "send_rate", "delete_rate",
         ),
         types={
             "title_max_length": int, "auto_title_length": int, "root_preview_length": int,
-            "max_threads_per_group": int, "create_rate": str, "send_rate": str,
+            "max_threads_per_group": int, "create_rate": str, "send_rate": str, "delete_rate": str,
         },
-        rate_keys=("create_rate", "send_rate"),
+        rate_keys=("create_rate", "send_rate", "delete_rate"),
     )
     title_max = _bounded(THREADS_SECTION, "title_max_length", raw["title_max_length"], 1, _MAX_TITLE_COLUMN)
     auto = _bounded(THREADS_SECTION, "auto_title_length", raw["auto_title_length"], 1, title_max)
     preview = _bounded(THREADS_SECTION, "root_preview_length", raw["root_preview_length"], 1, 1000)
     cap = _bounded(THREADS_SECTION, "max_threads_per_group", raw["max_threads_per_group"], 1, 100000)
-    return ThreadsConfig(title_max, auto, preview, cap, raw["create_rate"], raw["send_rate"])
+    return ThreadsConfig(title_max, auto, preview, cap, raw["create_rate"], raw["send_rate"], raw["delete_rate"])
 
 
 def _load_delete() -> MessageDeleteConfig:

@@ -1,7 +1,7 @@
 // Task 20261001-message-threads step 9: Threads section in the group info panel.
 import React from 'react';
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup, waitFor, act } from '@testing-library/react';
 
 vi.mock('../lib/threadsApi.js', async (orig) => ({ ...(await orig()), listThreads: vi.fn() }));
 import { listThreads } from '../lib/threadsApi.js';
@@ -64,6 +64,23 @@ describe('section', () => {
     expect(screen.getByRole('button', { name: /Title t1/ })).toBeInTheDocument();
     expect(await screen.findByRole('alert')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Title t1/ })).toBeInTheDocument();
+  });
+  test('fs:thread-deleted drops the row for this group and its cached copy; other groups are ignored', async () => {
+    listThreads.mockResolvedValueOnce(page([T('t1'), T('t2')]));
+    const { unmount } = render(<GroupThreadsSection userId="u1" groupId="g1" onOpenThread={vi.fn()} />);
+    await screen.findByRole('button', { name: /Title t1/ });
+    act(() => { window.dispatchEvent(new CustomEvent('fs:thread-deleted', { detail: { groupId: 'OTHER', threadId: 't1' } })); });
+    expect(screen.getByRole('button', { name: /Title t1/ })).toBeInTheDocument();
+    act(() => { window.dispatchEvent(new CustomEvent('fs:thread-deleted', { detail: { groupId: 'G1', threadId: 't1' } })); });
+    expect(screen.queryByRole('button', { name: /Title t1/ })).toBeNull();
+    expect(screen.getByRole('button', { name: /Title t2/ })).toBeInTheDocument();
+    unmount();
+    // remount with a failing refresh: the cache must no longer contain the deleted thread
+    listThreads.mockRejectedValueOnce(new Error('x'));
+    render(<GroupThreadsSection userId="u1" groupId="g1" onOpenThread={vi.fn()} />);
+    expect(screen.queryByRole('button', { name: /Title t1/ })).toBeNull();
+    expect(screen.getByRole('button', { name: /Title t2/ })).toBeInTheDocument();
+    await screen.findByRole('alert');
   });
   test('row label singular/plural', () => {
     expect(threadRowLabel({ title: 'A', reply_count: 1 })).toBe('A, 1 reply');

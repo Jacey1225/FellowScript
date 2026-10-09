@@ -53,10 +53,61 @@ final class GroupThreadsViewModel: ObservableObject {
     private let userId: String
     private var cacheKey: String { "threads:\(userId):\(groupId)" }
 
+    private var changeObserver: NSObjectProtocol?
+
     init(service: DataServiceProtocol, groupId: String, userId: String) {
         self.service = service
         self.groupId = groupId
         self.userId = userId
+        // Keep every list for this group (info section, group-list dropdown)
+        // consistent with renames/deletes made elsewhere or pushed by the WS.
+        changeObserver = NotificationCenter.default.addObserver(
+            forName: FSThreadChange.notification, object: nil, queue: .main) { [weak self] note in
+            guard let change = FSThreadChange.from(note) else { return }
+            Task { @MainActor in await self?.apply(change) }
+        }
+    }
+
+    deinit {
+        if let changeObserver { NotificationCenter.default.removeObserver(changeObserver) }
+    }
+
+    /// Applies a rename/delete to the in-memory rows and the persisted cache.
+    /// Idempotent; ignores other groups. Never touches load-failure state.
+    func apply(_ change: FSThreadChange) async {
+        guard change.groupId.lowercased() == groupId.lowercased() else { return }
+        var next = threads
+        switch change.kind {
+        case .deleted:
+            next.removeAll { $0.id == change.threadId }
+        case .renamed(let title):
+            guard let i = next.firstIndex(where: { $0.id == change.threadId }) else { return }
+            next[i].title = title
+        }
+        guard next != threads else { return }
+        threads = next
+        if loaded { await DiskCache.shared.save(next, forKey: cacheKey) }
+    }
+
+    /// Throws on failure (the shown rows are untouched). A 404 on delete means
+    /// the thread is already gone, so it is removed locally and reported as such.
+    func rename(_ thread: FSThreadSummary, to raw: String) async throws {
+        guard let title = FSThreadPolicy.validTitle(raw) else {
+            throw FSThreadsError.failed("Use a title of 1 to \(FSThreadPolicy.titleMaxLength) characters.")
+        }
+        let updated = try await service.renameThread(userId: userId, groupId: groupId, threadId: thread.id, title: title)
+        let newTitle = updated.title.isEmpty ? title : updated.title
+        FSThreadChange(groupId: groupId, threadId: thread.id, kind: .renamed(newTitle)).post()
+    }
+
+    func delete(_ thread: FSThreadSummary) async throws {
+        do {
+            try await service.deleteThread(userId: userId, groupId: groupId, threadId: thread.id)
+        } catch let e as FSThreadsError where e == .notFound {
+            FSThreadChange(groupId: groupId, threadId: thread.id, kind: .deleted).post()
+            throw e
+        }
+        FSThreadChange(groupId: groupId, threadId: thread.id, kind: .deleted).post()
     }
 
     func load() async {
@@ -109,6 +160,12 @@ struct GroupThreadsSection: View {
     let context: GroupInfoSectionContext
     @StateObject private var vm: GroupThreadsViewModel
     @Environment(\.fsOpenThread) private var openThread
+    @EnvironmentObject private var appState: AppState
+    @State private var renaming: FSThreadSummary?
+    @State private var renameText = ""
+    @State private var deleting: FSThreadSummary?
+    @State private var actionError: String?
+    @State private var revealedId: String?
 
     init(context: GroupInfoSectionContext) {
         self.context = context
@@ -153,7 +210,7 @@ struct GroupThreadsSection: View {
             }
 
             ForEach(vm.threads) { thread in
-                row(thread)
+                swipeableRow(thread)
             }
 
             if vm.hasMore {
@@ -170,13 +227,118 @@ struct GroupThreadsSection: View {
             }
         }
         .task { await vm.load() }
+        .alert("Rename thread", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
+            TextField("Thread title", text: $renameText)
+            Button("Save") { if let t = renaming { submitRename(t) } }
+            Button("Cancel", role: .cancel) { renaming = nil }
+        } message: {
+            Text("Up to \(FSThreadPolicy.titleMaxLength) characters.")
+        }
+        .alert("Delete this thread?", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } })) {
+            Button("Delete", role: .destructive) { if let t = deleting { submitDelete(t) } }
+            Button("Cancel", role: .cancel) { deleting = nil }
+        } message: {
+            Text("The thread and all its replies will be permanently deleted for everyone. This can't be undone.")
+        }
+        .alert("Thread", isPresented: Binding(get: { actionError != nil }, set: { if !$0 { actionError = nil } })) {
+            Button("OK", role: .cancel) { actionError = nil }
+        } message: {
+            Text(actionError ?? "")
+        }
         .accessibilityIdentifier("group-threads-section")
     }
 
+    // ── Rename / delete ───────────────────────────────────────────────────────
+    private var username: String? { appState.currentUser?.username }
+    private func canRename(_ t: FSThreadSummary) -> Bool { FSThreadPolicy.canRename(t, username: username) }
+    private func canDelete(_ t: FSThreadSummary) -> Bool {
+        FSThreadPolicy.canDelete(t, username: username, isOwner: context.isOwner)
+    }
+
+    private func startRename(_ t: FSThreadSummary) {
+        renameText = t.title
+        renaming = t
+    }
+
+    private func submitRename(_ t: FSThreadSummary) {
+        renaming = nil
+        Task {
+            do { try await vm.rename(t, to: renameText) }
+            catch let e as FSThreadsError where e == .notFound {
+                actionError = "You can't rename that thread, or it no longer exists."
+                await vm.load()
+            }
+            catch { actionError = (error as? LocalizedError)?.errorDescription ?? "Couldn't rename that thread." }
+        }
+    }
+
+    private func submitDelete(_ t: FSThreadSummary) {
+        deleting = nil
+        revealedId = nil
+        Task {
+            do { try await vm.delete(t) }
+            catch let e as FSThreadsError where e == .notFound {
+                actionError = "That thread is already gone."
+            }
+            catch { actionError = (error as? LocalizedError)?.errorDescription ?? "Couldn't delete that thread." }
+        }
+    }
+
+    private static let revealWidth: CGFloat = 88
+
+    /// Row with swipe-left-to-delete (ScrollView content, so a small drag
+    /// gesture rather than List swipeActions), a long-press menu (Rename /
+    /// Delete) and VoiceOver custom actions as the accessible alternatives.
+    @ViewBuilder
+    private func swipeableRow(_ thread: FSThreadSummary) -> some View {
+        let deletable = canDelete(thread)
+        let renamable = canRename(thread)
+        let revealed = revealedId == thread.id
+        ZStack(alignment: .trailing) {
+            if deletable {
+                Button(role: .destructive) { deleting = thread } label: {
+                    Text("Delete")
+                        .font(.inter(Theme.fontXS, weight: .semibold)).foregroundColor(.white)
+                        .frame(width: Self.revealWidth).frame(maxHeight: .infinity)
+                        .background(Theme.error)
+                        .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
+                }
+                .buttonStyle(.plain)
+                .opacity(revealed ? 1 : 0)
+                .allowsHitTesting(revealed)
+                .accessibilityHidden(true)
+            }
+            row(thread)
+                .modifier(ThreadRowAccessibilityActions(
+                    rename: renamable ? { startRename(thread) } : nil,
+                    delete: deletable ? { deleting = thread } : nil))
+                .offset(x: revealed ? -Self.revealWidth - 8 : 0)
+                .simultaneousGesture(
+                    DragGesture(minimumDistance: 24)
+                        .onEnded { g in
+                            guard deletable, abs(g.translation.width) > abs(g.translation.height) * 1.5 else { return }
+                            withAnimation(.easeOut(duration: 0.2)) {
+                                if g.translation.width < -40 { revealedId = thread.id }
+                                else if g.translation.width > 40, revealed { revealedId = nil }
+                            }
+                        }
+                )
+        }
+        .contextMenu {
+            if renamable {
+                Button { startRename(thread) } label: { Label("Rename", systemImage: "pencil") }
+            }
+            if deletable {
+                Button(role: .destructive) { deleting = thread } label: { Label("Delete", systemImage: "trash") }
+            }
+        }
+    }
+
     private func row(_ thread: FSThreadSummary) -> some View {
-        Button {
-            openThread?.run(thread)
-        } label: {
+        // A tap gesture, not a Button: a Button fires on touch-up even after a
+        // horizontal drag ends inside it, which opened the thread on swipe.
+        // A tap gesture fails once the finger moves, so a swipe never opens it.
+        Group {
             HStack(spacing: Theme.spacingSM) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(thread.title)
@@ -207,7 +369,13 @@ struct GroupThreadsSection: View {
             .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .onTapGesture {
+            if revealedId != nil {
+                withAnimation(.easeOut(duration: 0.2)) { revealedId = nil }
+            } else {
+                openThread?.run(thread)
+            }
+        }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(thread.title). \(snippet(thread)). \(replyLabel(thread))")
         .accessibilityHint("Opens this thread")
@@ -229,4 +397,25 @@ struct GroupThreadsSection: View {
         isVisible: { caps, _ in caps.isEnabled("threads") },
         makeView: { _, ctx in AnyView(GroupThreadsSection(context: ctx)) }
     )
+}
+
+
+/// VoiceOver alternatives to swipe and long-press; only offered when allowed.
+private struct ThreadRowAccessibilityActions: ViewModifier {
+    let rename: (() -> Void)?
+    let delete: (() -> Void)?
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        switch (rename, delete) {
+        case let (r?, d?):
+            content.accessibilityAction(named: "Rename thread", r).accessibilityAction(named: "Delete thread", d)
+        case let (r?, nil):
+            content.accessibilityAction(named: "Rename thread", r)
+        case let (nil, d?):
+            content.accessibilityAction(named: "Delete thread", d)
+        default:
+            content
+        }
+    }
 }

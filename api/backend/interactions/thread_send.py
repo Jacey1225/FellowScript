@@ -41,6 +41,7 @@ import logging
 import uuid
 
 import psycopg2
+import psycopg2.errors
 from fastapi import HTTPException
 from limits import parse as parse_rate
 
@@ -209,6 +210,11 @@ async def send_thread_message(manager, payload: dict) -> None:
             raise SaveFailedError()
     except SaveFailedError as e:
         await _reply(manager, sender, "message_not_saved", e.message)
+        return
+    except psycopg2.errors.ForeignKeyViolation:
+        # The thread was deleted between the guard and the insert.
+        _deny(sender, thread_id, "thread_deleted")
+        await _reply(manager, sender, "not_allowed", "Couldn't send your message.")
         return
     except Exception as e:  # noqa: BLE001 - e.g. the thread was removed with its group meanwhile
         if isinstance(e, (psycopg2.InterfaceError, psycopg2.OperationalError)):

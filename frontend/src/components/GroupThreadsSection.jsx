@@ -60,6 +60,20 @@ export default function GroupThreadsSection({ userId, groupId, onOpenThread: onO
     return () => { seqRef.current += 1; };
   }, [refresh]);
 
+  // thread_deleted WS frame (dispatched by useMessaging): drop the row and its
+  // cached copy so a deleted thread never lingers.
+  useEffect(() => {
+    const onDeleted = (e) => {
+      const d = e.detail || {};
+      if (String(d.groupId || '').toLowerCase() !== String(groupId).toLowerCase()) return;
+      const hit = threadsCache.get(groupId);
+      if (hit) threadsCache.set(groupId, { ...hit, rows: hit.rows.filter(t => t.id !== d.threadId) });
+      setRows(prev => (prev ? prev.filter(t => t.id !== d.threadId) : prev));
+    };
+    window.addEventListener('fs:thread-deleted', onDeleted);
+    return () => window.removeEventListener('fs:thread-deleted', onDeleted);
+  }, [groupId]);
+
   const loadMore = async () => {
     if (!cursor || loadingMore) return;
     setLoadingMore(true);

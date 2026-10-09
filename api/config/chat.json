@@ -14,7 +14,8 @@
     "root_preview_length": 140,
     "max_threads_per_group": 200,
     "create_rate": "10/minute",
-    "send_rate": "60/minute"
+    "send_rate": "60/minute",
+    "delete_rate": "10/minute"
   },
   "message_delete": {
     "undo_seconds": 10,

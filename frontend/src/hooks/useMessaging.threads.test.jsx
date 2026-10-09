@@ -228,6 +228,49 @@ describe('websocket delete/restore frames', () => {
     frame({ type: 'message_restored', group_id: 'g1', id: 'r1', body: 'x', sender: 'ada', created_at: ts(1) });
     expect(r.current.threadView.thread.root_deleted).toBe(false);
   });
+  // Task 20261008-thread-rename-delete: hard-deleted thread frame.
+  test('thread_deleted for the viewed thread leaves it, toasts, and tells open lists', async () => {
+    const r = await openGroup();
+    routes.push([(u) => u.includes('/threads/t1/messages?'), () => ok(pageBody([row('a', 1)], false))]);
+    await act(async () => { r.current.openThread(THREAD); });
+    expect(r.current.threadView).not.toBeNull();
+    const seen = [];
+    const on = (e) => seen.push(e.detail);
+    window.addEventListener('fs:thread-deleted', on);
+    try {
+      frame({ type: 'thread_deleted', thread_id: 't1', group_id: 'g1' });
+    } finally {
+      window.removeEventListener('fs:thread-deleted', on);
+    }
+    expect(r.current.threadView).toBeNull();
+    expect(r.current.threadMessages).toEqual([]);
+    expect(message.info).toHaveBeenCalledWith('That thread was deleted.');
+    expect(seen).toEqual([{ groupId: 'g1', threadId: 't1' }]);
+    expect(MockWebSocket.instances).toHaveLength(1);
+  });
+  test('thread_deleted for another thread or another group does not close the viewed thread', async () => {
+    const r = await openGroup();
+    routes.push([(u) => u.includes('/threads/t1/messages?'), () => ok(pageBody([], false))]);
+    await act(async () => { r.current.openThread(THREAD); });
+    const seen = [];
+    const on = (e) => seen.push(e.detail);
+    window.addEventListener('fs:thread-deleted', on);
+    try {
+      frame({ type: 'thread_deleted', thread_id: 'other', group_id: 'g1' });
+      frame({ type: 'thread_deleted', thread_id: 't1', group_id: 'OTHER-GROUP' });
+      frame({ type: 'thread_deleted', group_id: 'g1' });
+    } finally {
+      window.removeEventListener('fs:thread-deleted', on);
+    }
+    expect(r.current.threadView.thread.id).toBe('t1');
+    expect(message.info).not.toHaveBeenCalled();
+    expect(seen).toEqual([{ groupId: 'g1', threadId: 'other' }]);
+  });
+  test('thread_deleted is never rendered as a chat bubble', async () => {
+    const r = await openGroup([row('r1', 1)]);
+    frame({ type: 'thread_deleted', thread_id: 't1', group_id: 'g1' });
+    expect(r.current.messages.map((m) => m.id)).toEqual(['r1']);
+  });
   test('delete/thread frames are never rendered as chat bubbles', async () => {
     const r = await openGroup([row('r1', 1)]);
     frame({ type: 'message_deleted', id: 'zzz', group_id: 'g1' });

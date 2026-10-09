@@ -173,6 +173,8 @@ protocol DataServiceProtocol {
     func fetchThreads(userId: String, groupId: String, limit: Int, cursorTimestamp: String?, cursorId: String?) async throws -> FSThreadsPage
     func createThread(userId: String, groupId: String, messageId: String) async throws -> FSThreadSummary
     func fetchThreadMessages(userId: String, groupId: String, threadId: String, limit: Int, cursor: FSMessageCursor?) async throws -> FSMessagePage
+    func renameThread(userId: String, groupId: String, threadId: String, title: String) async throws -> FSThreadSummary
+    func deleteThread(userId: String, groupId: String, threadId: String) async throws
     func deleteGroupMessage(userId: String, groupId: String, messageId: String) async throws -> FSMessageDeleteResult
     func restoreGroupMessage(userId: String, groupId: String, messageId: String) async throws
 
@@ -947,7 +949,7 @@ final class MockDataService: DataServiceProtocol {
     func fetchThreads(userId: String, groupId: String, limit: Int, cursorTimestamp: String?, cursorId: String?) async throws -> FSThreadsPage {
         guard Self.isUITestingThreads else { throw FSThreadsError.failed("Couldn't load threads.") }
         let titles = ["Romans 8 discussion", "Prayer requests for this week", "Questions about tomorrow's session"]
-        let rows = titles.enumerated().map { FSThreadSummary(id: "thread-stub-\($0.offset)", title: $0.element) }
+        let rows = titles.enumerated().map { FSThreadSummary(id: "thread-stub-\($0.offset)", title: $0.element, createdBy: Self.mockUser.username) }
         return FSThreadsPage(threads: rows, hasMore: false, cursorTimestamp: nil, cursorId: nil)
     }
 

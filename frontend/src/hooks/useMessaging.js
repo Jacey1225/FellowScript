@@ -193,7 +193,7 @@ export function useMessaging({ user }) {
         // Task 20261001-message-threads: thread / delete frames go through a
         // callback ref (same style as sessionSignalCbRef); never a second
         // WebSocket. Not chat bubbles in their own right.
-        if (data.type === 'thread_message' || data.type === 'message_deleted' || data.type === 'message_restored') {
+        if (data.type === 'thread_message' || data.type === 'message_deleted' || data.type === 'message_restored' || data.type === 'thread_deleted') {
           threadFrameCbRef.current?.(data);
           return;
         }
@@ -622,6 +622,18 @@ export function useMessaging({ user }) {
       }
       return;
     }
+    if (data.type === 'thread_deleted') {
+      // Hard delete by the creator or group owner: drop it from any open list
+      // and leave the thread view if it is the one being viewed.
+      if (!sameGroup || typeof data.thread_id !== 'string') return;
+      window.dispatchEvent(new CustomEvent('fs:thread-deleted', { detail: { groupId: gid, threadId: data.thread_id } }));
+      const tv = threadViewRef.current;
+      if (tv && tv.thread.id === data.thread_id) {
+        resetThread();
+        message.info('That thread was deleted.');
+      }
+      return;
+    }
     if (data.type === 'thread_send_failed') {
       // The send did not land: drop the unacked optimistic bubble and give the
       // text back to the composer (never lose what the user typed).
@@ -634,7 +646,7 @@ export function useMessaging({ user }) {
         setRestoredDraft(prev => ({ tick: (prev ? prev.tick : 0) + 1, text: pending.text }));
       }
     }
-  }, []);
+  }, [resetThread]);
   useEffect(() => {
     threadFrameCbRef.current = handleThreadFrame;
     return () => { threadFrameCbRef.current = null; };

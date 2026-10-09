@@ -380,6 +380,79 @@ class ThreadsManager(DBManager):
         return {"id": row[0], "title": content_store.open_(row[0], content_store.F_THREAD_TITLE, row[1])} if row else None
 
 
+    # ---- delete --------------------------------------------------------
+
+    def delete_thread(self, group_id: str, thread_id: str) -> "dict | None":
+        """Hard-delete a thread with its messages and followers.
+
+        Allowed for the thread's creator or the group owner (``groups.creator_id``;
+        NULL means no owner path, fail closed), and only for a current,
+        non-suspended member. Returns ``{"id", "group_id"}`` or ``None`` for
+        every other case (unknown, already deleted, other group, not a member,
+        not authorized). The threads row is locked ``FOR UPDATE`` first, so a
+        concurrent send (whose insert takes a key-share lock on that row) waits
+        and then fails its foreign key. Author-owned attachment keys that no
+        other row references are queued to the S3 outbox in the same
+        transaction; the cascade removes the dependent rows.
+        """
+        from backend.interactions.lifecycle import enqueue_s3_deletes
+        from backend.interactions.send_guard import validate_attachment_key
+
+        gid, tid = canon(group_id), canon(thread_id)
+        if not (gid and tid and self.user_id):
+            return None
+        try:
+            if not is_current_member(self.cur, gid, self.user_id):
+                self._fail()
+                return None
+            self.cur.execute(
+                "SELECT t.created_by::text, g.creator_id::text FROM threads t "
+                "JOIN groups g ON g._id = t.group_id "
+                "WHERE t._id = %s::uuid AND t.group_id = %s::uuid FOR UPDATE OF t",
+                (tid, gid),
+            )
+            row = self.cur.fetchone()
+            if row is None:
+                self._fail()
+                return None
+            creator, owner = (row[0] or "").lower(), (row[1] or "").lower()
+            if self.user_id not in (creator, owner) or not self.user_id:
+                self._fail()
+                return None
+            self.cur.execute(
+                "SELECT DISTINCT tm.from_user::text, tm.attachment_kind, tm.attachment_key "
+                "FROM thread_messages tm WHERE tm.thread_id = %s::uuid AND tm.attachment_key IS NOT NULL "
+                "AND NOT EXISTS (SELECT 1 FROM messages m WHERE m.attachment_key = tm.attachment_key) "
+                "AND NOT EXISTS (SELECT 1 FROM thread_messages o WHERE o.attachment_key = tm.attachment_key "
+                "               AND o.thread_id <> tm.thread_id)",
+                (tid,),
+            )
+            keys = [k for author, kind, k in self.cur.fetchall() if author and validate_attachment_key(author, kind, k)]
+            self.cur.execute("DELETE FROM threads WHERE _id = %s::uuid", (tid,))
+            if keys:
+                enqueue_s3_deletes(self.cur, keys)
+            self.conn.commit()
+        except Exception:
+            self.conn.rollback()
+            raise
+        return {"id": tid, "group_id": gid}
+
+    def frame_recipients(self, group_id: str) -> list[str]:
+        """Live member ids of the group (the actor included, for their other
+        devices). Read-only."""
+        from backend.interactions.groups import live_member_ids
+        try:
+            return live_member_ids(self.cur, group_id)
+        finally:
+            self.conn.rollback()
+
+
+def thread_deleted_frame(group_id: str, thread_id: str) -> dict:
+    """Live frame; has ``type`` and neither ``from_user`` nor ``text`` and
+    carries no content, so older clients ignore it."""
+    return {"type": "thread_deleted", "thread_id": thread_id, "group_id": group_id}
+
+
 def audit(action: str, user_id: str, group_id: str, thread_id: str) -> None:
     """Ids only, never text."""
     logger.info("THREAD_%s user=%s group=%s thread=%s", action, user_id, group_id, thread_id)
