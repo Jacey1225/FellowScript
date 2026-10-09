@@ -74,11 +74,11 @@ describe('index.html — required webfonts are actually loaded (defect 3)', () =
 });
 
 describe('global.css — typography conformance (design tokens §4.3, ground-truth specs govern over the request\'s shorthand)', () => {
-  test('.nav-logo (wordmark) uses Cormorant Garamond, not Playfair Display', () => {
+  test('.nav-logo (wordmark) uses the homepage wordmark font, Schibsted Grotesk', () => {
     const css = readStripped('../styles/global.css');
     const match = css.match(/\.nav-logo\s*\{([^}]*)\}/);
     expect(match, 'expected a .nav-logo rule').toBeTruthy();
-    expect(match[1]).toMatch(/font-family:\s*'Cormorant Garamond'/);
+    expect(match[1]).toMatch(/font-family:\s*'Schibsted Grotesk'/);
   });
 
   test('.card-title (the "Chapter {N}" numeral) uses Cormorant Garamond, not Spectral', () => {

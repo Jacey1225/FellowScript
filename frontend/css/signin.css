@@ -47,18 +47,8 @@ main {
   margin-bottom: 2rem;
 }
 
-.card-logo .fellow {
-  font-family: 'Playfair Display', serif;
-  font-size: 1.4rem;
-  font-weight: 700;
-  color: #c8c0b8;
-}
-
-.card-logo .script {
-  font-family: 'IM Fell English', serif;
+.card-logo .fs-wordmark {
   font-size: 1.5rem;
-  font-style: italic;
-  color: var(--gold);
 }
 
 .card-divider {

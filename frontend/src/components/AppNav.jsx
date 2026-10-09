@@ -71,10 +71,7 @@ export default function AppNav() {
 
   return (
     <Header className={`fs-nav${isReaderRoute ? ' fs-nav--unified' : ''}`}>
-      <Link to={logoHref} className="nav-logo">
-        <span className="fellow">Fellow</span>
-        <span className="script">Script</span>
-      </Link>
+      <Link to={logoHref} className="nav-logo fs-wordmark">FellowScript</Link>
 
       {/* Right-side controls */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexShrink: 0 }}>
@@ -125,9 +122,7 @@ export default function AppNav() {
       </div>
 
       <Drawer
-        title={<Link to={logoHref} className="nav-logo" onClick={() => setDrawerOpen(false)}>
-          <span className="fellow">Fellow</span><span className="script">Script</span>
-        </Link>}
+        title={<Link to={logoHref} className="nav-logo fs-wordmark" onClick={() => setDrawerOpen(false)}>FellowScript</Link>}
         placement="right"
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}

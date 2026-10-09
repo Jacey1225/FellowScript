@@ -173,6 +173,19 @@ extension Font {
     }
 }
 
+/// Homepage wordmark: one run of "FellowScript", semibold, -0.01em tracking,
+/// #FFF8EE. Uses bundled Inter SemiBold (Schibsted Grotesk is not bundled).
+struct WordmarkText: View {
+    var size: CGFloat = Theme.fontDisplayLG
+    var body: some View {
+        Text("FellowScript")
+            .font(Font.interScaled(size, weight: .semibold, relativeTo: .largeTitle))
+            .tracking(-0.01 * size)
+            .foregroundColor(Color(hex: "#FFF8EE"))
+            .accessibilityLabel("FellowScript")
+    }
+}
+
 // ── Color from hex string ─────────────────────────────────────────────────────
 extension Color {
     init(hex: String) {

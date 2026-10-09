@@ -93,14 +93,7 @@ private struct OBWelcome: View {
                     .motionAwareAnimation(.spring(response: 0.7, dampingFraction: 0.72).delay(0.1), value: appeared, reduceMotion: reduceMotion)
 
                 VStack(spacing: 6) {
-                    HStack(spacing: 0) {
-                        Text("Fellow")
-                            .font(.playfair(Theme.fontDisplayLG))
-                            .foregroundColor(Theme.parchment)
-                        Text("Script")
-                            .font(.custom("Georgia-BoldItalic", size: Theme.fontDisplayLG))
-                            .foregroundColor(Theme.gold)
-                    }
+                    WordmarkText()
                     Text("A Digital Scripture Community")
                         .font(.inter(Theme.fontXXS))
                         .tracking(3)
@@ -532,15 +525,7 @@ private struct OBCta: View {
         VStack(spacing: 0) {
             Spacer()
             VStack(spacing: Theme.spacingSM) {
-                HStack(spacing: 0) {
-                    Text("Fellow")
-                        .font(.playfair(Theme.fontDisplayLG))
-                        .foregroundColor(Theme.parchment)
-                    Text("Script")
-                        .font(.custom("Georgia-BoldItalic", size: Theme.fontDisplayLG))
-                        .foregroundColor(Theme.gold)
-                }
-                .accessibilityLabel("FellowScript")
+                WordmarkText()
                 Text("A Digital Scripture Community")
                     .font(.inter(Theme.fontXS)).tracking(3).textCase(.uppercase)
                     .foregroundColor(Theme.parchment.opacity(0.50))

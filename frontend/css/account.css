@@ -342,8 +342,6 @@ body {
 @media (max-width: 640px) {
   :root { --nav-h: 52px; }
   .main-nav { padding: 0 1.1rem; }
-  .nav-logo .fellow { font-size: 1.25rem; }
-  .nav-logo .script { font-size: 1.3rem; }
   .nav-links { display: none; }
   .hamburger { display: flex; }
   .mobile-nav-drawer { display: block; }

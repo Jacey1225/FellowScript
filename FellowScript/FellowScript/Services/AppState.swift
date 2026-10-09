@@ -352,6 +352,11 @@ final class AppState: ObservableObject {
         UNUserNotificationCenter.current().getNotificationSettings { settings in
             switch settings.authorizationStatus {
             case .notDetermined:
+                // Task 20261008-post-tour-prompts: a brand-new install's system
+                // dialog is deferred to the post-tour pre-prompt (its "Enable
+                // notifications" lifts the deferral). Existing users are never
+                // deferred.
+                if PostTourPromptsStore().defersSystemPushDialog { return }
                 // First time — show the system permission dialog
                 UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
                     guard granted else { return }

@@ -257,23 +257,28 @@ body {
   border-bottom: none;
 }
 
-/* Cormorant Garamond (design tokens §4.3 — wordmark "Fellow"/"Script" rows),
-   not 'Playfair Display'. Scoped to .nav-logo only: Playfair Display stays
-   loaded/used elsewhere (Account/Admin/SignIn/Terms/Privacy Typography.Title
-   headings, theme.js's antd headerFontFamily) — those are separate,
-   unrelated usages of the same family name and are out of this fix's scope. */
+/* Shared wordmark: single run "FellowScript", same treatment as the Home.jsx
+   nav link (Schibsted Grotesk 600, -0.01em, #FFF8EE). Size is set per
+   placement; .nav-logo adds only the link layout. */
+.fs-wordmark {
+  font-family: 'Schibsted Grotesk', sans-serif;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: #FFF8EE;
+  font-style: normal;
+  text-decoration: none;
+  line-height: 1;
+}
 .nav-logo {
-  font-family: 'Cormorant Garamond', serif;
-  font-size: 1.45rem;
-  font-weight: 700;
-  letter-spacing: 0.02em;
+  font-family: 'Schibsted Grotesk', sans-serif;
+  font-size: 19px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: #FFF8EE;
   text-decoration: none;
   display: flex;
   align-items: baseline;
-  gap: 0;
 }
-.nav-logo .fellow { color: #F4E4C1; }
-.nav-logo .script { color: var(--gold); font-style: italic; }
 
 /* ── Ant Design Menu overrides for nav ── */
 .fs-nav .ant-menu {

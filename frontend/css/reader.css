@@ -1018,8 +1018,6 @@ html.light-mode .fs-value-input {
   /* Nav */
   .main-nav { padding: 0 1.1rem; height: var(--nav-h); }
   .nav-logo { flex: 1; }
-  .nav-logo .fellow { font-size: 1.25rem; }
-  .nav-logo .script { font-size: 1.3rem; }
   .nav-links { display: none; }
   .hamburger { display: flex; }
   .mobile-nav-drawer { display: block; }
@@ -2019,7 +2017,7 @@ html.light-mode .main-nav {
 html.light-mode .nav-links a { color: #4a2800; }
 html.light-mode .nav-links a:hover,
 html.light-mode .nav-links a.active { color: var(--gold-dim); }
-html.light-mode .nav-logo .fellow { color: #4a2800; }
+html.light-mode .nav-logo .fs-wordmark { color: #4a2800; }
 html.light-mode .mobile-nav-drawer {
   background: rgba(230,210,172,0.99);
   border-color: rgba(200,134,26,0.2);

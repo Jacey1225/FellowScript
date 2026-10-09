@@ -9,6 +9,8 @@ struct ContentView: View {
     @EnvironmentObject var appState: AppState
     @ObservedObject private var call = CallController.shared
     @StateObject private var startup = StartupCoordinator()
+    // Task 20261008-post-tour-prompts: first-run notifications + subscribe prompts.
+    @StateObject private var postTour = PostTourPromptsCoordinator()
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var selectedTab: Tab = .home
@@ -135,6 +137,20 @@ struct ContentView: View {
         .fullScreenCover(isPresented: .constant(!hasCompletedOnboarding)) {
             OnboardingView(onComplete: { hasCompletedOnboarding = true })
         }
+        // Task 20261008-post-tour-prompts: shown once after a new install's
+        // tour AND sign-in, when the main screen is ready (purchase needs a
+        // user id). Held back while any other cover could be up.
+        .fullScreenCover(item: $postTour.current) { prompt in
+            PostTourPromptHost(prompt: prompt, coordinator: postTour)
+                .environmentObject(appState)
+                .interactiveDismissDisabled()
+        }
+        .onAppear {
+            PostTourPromptsStore().armIfNeeded(onboardingCompleted: hasCompletedOnboarding)
+        }
+        .task(id: canPresentPostTourPrompts) {
+            if canPresentPostTourPrompts { await postTour.evaluate() }
+        }
         // Guideline 1.2: accounts that predate a material Terms change (e.g.
         // the zero-tolerance policy rewrite) must re-consent before continuing.
         .fullScreenCover(isPresented: $appState.termsReacceptRequired) {
@@ -195,6 +211,12 @@ struct ContentView: View {
         // LoadingScreenView / StartupCoordinator).
         .motionAwareAnimation(.easeOut(duration: 0.35), value: startup.isReady, reduceMotion: reduceMotion)
         .tint(Theme.gold)
+    }
+
+    private var canPresentPostTourPrompts: Bool {
+        hasCompletedOnboarding && appState.isAuthenticated && startup.isReady
+            && !appState.termsReacceptRequired && !appState.needsProfileCompletion
+            && appState.pendingInviteToken == nil
     }
 
     // ── Five destinations behind a floating pill tab bar ─────────────────────

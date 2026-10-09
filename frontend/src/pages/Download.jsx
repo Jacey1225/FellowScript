@@ -252,7 +252,7 @@ export default function Download({ snapshot = false }) {
         backdropFilter: 'blur(10px)',
       }}>
         <Link to="/" style={{ fontFamily: HEAD_FONT, fontSize: 19, fontWeight: 600, letterSpacing: '-0.01em', color: '#FFF8EE', textDecoration: 'none' }}>
-          <span>Fellow</span><span style={{ color: AMBER }}>Script</span>
+          FellowScript
         </Link>
         <Link to="/" style={{ fontSize: 13, color: 'rgba(255,244,230,0.55)', textDecoration: 'none' }}>&larr; Back to Home</Link>
       </header>

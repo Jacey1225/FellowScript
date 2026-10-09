@@ -248,9 +248,8 @@ export default function SignIn() {
       />
       <Card className="fs-signin-card" style={{ width: '100%', maxWidth: 420 }}>
         <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
-          <Title level={3} style={{ margin: 0, fontFamily: "'Playfair Display', serif" }}>
-            <span style={{ color: 'var(--parchment)' }}>Fellow</span>
-            <em style={{ color: 'var(--gold)' }}>Script</em>
+          <Title level={3} className="fs-wordmark" style={{ margin: 0, fontFamily: "'Schibsted Grotesk', sans-serif", fontWeight: 600, color: '#FFF8EE' }}>
+            FellowScript
           </Title>
           <div style={{ width: 40, height: 1, background: 'rgba(200,134,26,0.3)', margin: '1rem auto 0' }} />
         </div>

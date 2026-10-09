@@ -110,6 +110,9 @@ extension AccountView {
             Divider().background(Theme.borderGoldFaint)
             Button(action: {
                 guard !vm.agents.isEmpty else { return }
+                // Explicit user action (scheduling a devotion): lifts any
+                // first-run "Maybe later" deferral (task 20261008-post-tour-prompts).
+                PostTourPromptsStore().clearPushDeferral()
                 appState.requestPushNotifications()
                 activeSheet = .newEvent
             }) {

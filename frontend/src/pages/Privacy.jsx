@@ -11,9 +11,7 @@ const S = {
     padding: '0 2rem', height: 56,
     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
   },
-  navLogo: { textDecoration: 'none', fontFamily: "'Playfair Display', serif", fontSize: '1.25rem' },
-  fellow: { color: 'var(--parchment)' },
-  script: { color: 'var(--gold)', fontStyle: 'italic' },
+  navLogo: { textDecoration: 'none', fontSize: '1.25rem' },
   navBack: { color: 'rgba(244,228,193,0.45)', textDecoration: 'none', fontSize: '0.85rem' },
   main: { maxWidth: 760, margin: '0 auto', padding: '3rem 2rem 5rem' },
   pageTitle: {
@@ -59,9 +57,7 @@ export default function Privacy() {
         path="/privacy"
       />
       <nav style={S.nav}>
-        <Link to="/" style={S.navLogo}>
-          <span style={S.fellow}>Fellow</span><span style={S.script}>Script</span>
-        </Link>
+        <Link to="/" className="fs-wordmark" style={S.navLogo}>FellowScript</Link>
         <Link to="/" style={S.navBack}>&larr; Back to App</Link>
       </nav>
 

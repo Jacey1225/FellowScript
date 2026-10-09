@@ -43,15 +43,7 @@ struct AuthView: View {
 
                     // Brand logotype — mirrors SignIn.jsx title
                     VStack(spacing: Theme.spacingSM) {
-                        HStack(spacing: 0) {
-                            Text("Fellow")
-                                .font(.playfair(Theme.fontDisplayLG))
-                                .foregroundColor(Theme.parchment)
-                            Text("Script")
-                                .font(.custom("Georgia-BoldItalic", size: Theme.fontDisplayLG))
-                                .foregroundColor(Theme.gold)
-                        }
-                        .accessibilityLabel("FellowScript")
+                        WordmarkText()
 
                         Rectangle()
                             .fill(Theme.borderGold)
