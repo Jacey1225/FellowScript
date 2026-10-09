@@ -11,11 +11,8 @@
 //      five-stop LinearGradient "hero" backdrop — it now uses the same
 //      two-RadialGradient "bloom" treatment (identical hex/opacity/anchor/
 //      radius) every other screen (Account/Notes/Chat/Bible) already uses.
-//   2. HeroHeader's greeting text, which used to rely on that removed
-//      gradient's strong warm fill for contrast, was updated from a dark ink
-//      to Theme.parchment — the same token every other headline sitting
-//      directly on this exact bgPage+bloom background already uses — so
-//      legibility holds against the new, subtler background.
+//   2. (Superseded by task 20261008-home-wordmark-header) HeroHeader is gone,
+//      replaced by HomeWordmarkHeader; the greeting no longer exists.
 //
 // Following this project's established technique (see
 // BibleReaderConsistencyRegressionTests.swift) for pinning render-tree facts
@@ -74,31 +71,13 @@ final class DashboardBackgroundConsistencyRegressionTests: XCTestCase {
         }
     }
 
-    // MARK: - 2. HeroHeader's greeting text now uses Theme.parchment, not the
-    // old dark ink that relied on the removed gradient's warmth for contrast.
+    // MARK: - 2. The Home header is now HomeWordmarkHeader (task
+    // 20261008-home-wordmark-header); the old HeroHeader greeting is gone.
 
-    func test_source_heroHeader_greetingText_usesParchment_notOldDarkInk() throws {
+    func test_source_homeWordmarkHeader_usesWordmark_andHeroHeaderIsGone() throws {
         let source = try readSource("FellowScript/Dashboard/DashboardComponents.swift")
-        XCTAssertTrue(
-            source.contains("Text(headlineText)"),
-            "sanity check: the greeting Text call site must still exist"
-        )
-        // The greeting Text's foregroundColor must be Theme.parchment.
-        XCTAssertTrue(
-            source.contains("Text(headlineText)\n                    .font(Font.inter(effectiveSize, weight: .bold))\n                    .foregroundColor(Theme.parchment)"),
-            "HeroHeader's greeting text must use Theme.parchment (matching every other headline on this bgPage+bloom background), not the old dark ink that relied on the now-removed gradient for contrast"
-        )
-    }
-
-    func test_source_heroHeader_hasNoAvatar_headlineUsesFullWidth() throws {
-        // Owner request: the headline takes the whole row, so the identity
-        // avatar (decorative, and duplicated by the Account tab) is gone.
-        let source = try readSource("FellowScript/Dashboard/DashboardComponents.swift")
-        let start = try XCTUnwrap(source.range(of: "struct HeroHeader: View"))
-        let end = try XCTUnwrap(source.range(of: "// Mirrors activity.py's closed activity-type string set"))
-        let heroSource = String(source[start.lowerBound..<end.lowerBound])
-        XCTAssertFalse(heroSource.contains("AvatarView("), "HeroHeader must not render the profile avatar")
-        XCTAssertTrue(heroSource.contains(".frame(maxWidth: .infinity, alignment: .leading)"),
-                      "the headline row must span the full width")
+        XCTAssertFalse(source.contains("struct HeroHeader"), "HeroHeader was replaced by HomeWordmarkHeader")
+        XCTAssertTrue(source.contains("struct HomeWordmarkHeader: View"))
+        XCTAssertFalse(source.contains("Welcome Back, "), "the Welcome Back greeting must not return")
     }
 }

@@ -1010,6 +1010,40 @@ struct ChatThreadView: View {
     // for a prepend of older rows.
     @State private var lastTailId: String? = nil
 
+    // Task 20261009-chat-jump-to-latest: true while the viewport sits more than
+    // `jumpToLatestThreshold` above the end of the content. Purely local view
+    // state; the newest page is always resident in vm.messages (older pages
+    // only prepend), so scrolling to the last row reaches the newest message
+    // in both flag modes.
+    @State private var isAwayFromBottom = false
+    @ScaledMetric(relativeTo: .body) private var jumpButtonSize: CGFloat = 44
+    private let jumpToLatestThreshold: CGFloat = 120
+
+    private func jumpToLatestButton(proxy: ScrollViewProxy) -> some View {
+        Button {
+            guard let lastGroup = messageGroups.last else { return }
+            withMotionAwareAnimation(.easeOut(duration: 0.25), reduceMotion: reduceMotion) {
+                proxy.scrollTo(lastGroup.id, anchor: .bottom)
+            }
+        } label: {
+            Image(systemName: "chevron.down")
+                .font(.system(size: 16, weight: .bold))
+                .foregroundColor(Theme.gold)
+                .frame(width: jumpButtonSize, height: jumpButtonSize)
+                .background(Theme.bgPage)
+                .overlay(Circle().stroke(Theme.borderGold, lineWidth: 1))
+                .clipShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .frame(minWidth: 44, minHeight: 44)
+        .contentShape(Circle())
+        .padding(.trailing, Theme.spacingMD)
+        .padding(.bottom, Theme.spacingSM)
+        .accessibilityLabel("Jump to latest messages")
+        .accessibilityAddTraits(.isButton)
+        .transition(.opacity)
+    }
+
     private func requestOlderPage() {
         guard readyForInitialScroll, olderHeaderVisible,
               vm.pagingEnabled, vm.hasMoreOlder, !vm.isLoadingOlder, !vm.olderLoadFailed,
@@ -1175,6 +1209,20 @@ struct ChatThreadView: View {
                         }
                         .padding(.top, 4)
                         .padding(.bottom, Theme.spacingSM)
+                    }
+                    .onScrollGeometryChange(for: Bool.self) { geo in
+                        let distance = geo.contentSize.height + geo.contentInsets.bottom
+                            - geo.contentOffset.y - geo.containerSize.height
+                        return distance > jumpToLatestThreshold
+                    } action: { _, away in
+                        withMotionAwareAnimation(.easeOut(duration: 0.2), reduceMotion: reduceMotion) {
+                            isAwayFromBottom = away
+                        }
+                    }
+                    .overlay(alignment: .bottomTrailing) {
+                        if isAwayFromBottom && readyForInitialScroll && !messageGroups.isEmpty {
+                            jumpToLatestButton(proxy: proxy)
+                        }
                     }
                     .onChange(of: vm.messages.count) { _ in
                         recomputeMessageGroups()

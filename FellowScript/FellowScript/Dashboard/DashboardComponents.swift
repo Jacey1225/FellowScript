@@ -128,90 +128,22 @@ struct AvatarView: View {
     }
 }
 
-// ── Hero header + warm gradient ───────────────────────────────────────────────
-// Matches the approved mockup's header treatment: a single greeting line,
-// nothing above or below it (no "YOUR RHYTHM" eyebrow, no "Last read..."
-// subtitle — both existed pre-redesign and leaked through as stale internal
-// jargon). Keeps the existing time-of-day + live-username greeting logic
-// (arguably better product behavior than the mockup's hardcoded "Good
-// morning, friend" copy) since the mockup's actual requirement is the
-// *structure* (single line, no eyebrow/subtitle), not literal static text.
-struct HeroHeader: View {
-    let username: String
-    // Task 20260905-profile-photo: the viewer's own photo -- defaulted nil
-    // so any pre-existing preview/test call site that only supplies
-    // `username` keeps compiling and rendering the initials-only avatar
-    // unchanged.
-    var photoURL: String? = nil
-
-    // Task 20261002-home-announcement-headline: an admin-set announcement
-    // (nil = none) replaces the old time-of-day greeting as the larger
-    // headline. Every failure/empty path lands on the fallback below.
-    var announcement: String? = nil
-
-    @ScaledMetric(relativeTo: .largeTitle) private var headlineSize: CGFloat = 36
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    private var announcementText: String? { HomeMessageText.clean(announcement) }
-
-    /// "Welcome Back, <name>!" (or "Welcome Back!" when the name is blank).
-    var fallbackText: String {
-        let name = username.trimmingCharacters(in: .whitespacesAndNewlines)
-        return name.isEmpty ? "Welcome Back!" : "Welcome Back, \(name)!"
-    }
-
-    var headlineText: String { announcementText ?? fallbackText }
-
-    // Two tiers only: long announcements step down so ~120 chars sit in about
-    // three lines on a 390pt phone.
-    private var effectiveSize: CGFloat {
-        headlineText.count > 60 && announcementText != nil ? headlineSize * 0.85 : headlineSize
-    }
+// ── Home wordmark header ──────────────────────────────────────────────────────
+// Task 20261008-home-wordmark-header: a small "FellowScript" wordmark (same
+// Schibsted Grotesk SemiBold the website homepage nav uses) replaces the old
+// announcement / "Welcome Back" headline. Text only -- the backdrop is
+// provided by DashboardView so it can fade smoothly past this header. Lives
+// inside the page's scroll content, so it scrolls with the page.
+struct HomeWordmarkHeader: View {
+    static let baseSize: CGFloat = 17
 
     var body: some View {
-        // Text only — the backdrop is provided by DashboardView so it can
-        // fade smoothly past this header rather than ending on a hard edge.
-        //
-        // Task 20260901-dashboard-background-consistency: this greeting text
-        // used to be a dark ink (#2A1B0B), which relied on the bespoke,
-        // strong top-anchored linear "hero" gradient's bright warm fill for
-        // contrast. That gradient is gone (replaced with the same subtle
-        // two-RadialGradient bloom over Theme.bgPage every other screen
-        // uses), so dark-on-dark here would fail WCAG AA. Per the spec's
-        // explicit allowance ("adjust text color/weight only if needed to
-        // preserve [legibility], without reintroducing a bespoke background
-        // treatment"), swapping to Theme.parchment — the same token every
-        // other headline sitting directly on this exact bgPage+bloom
-        // background already uses (AccountView's profile name,
-        // FriendActivityHeroCard's activity headline, NoteResumeCard's
-        // title) — restores contrast (>14:1 against bare bgPage, >10:1 at
-        // the bloom's brightest point) without inventing a new treatment.
-        HStack(alignment: .top) {
-            VStack(alignment: .leading, spacing: 6) {
-                Text(headlineText)
-                    .font(Font.inter(effectiveSize, weight: .bold))
-                    .foregroundColor(Theme.parchment)
-                    .lineSpacing(2)
-                    .multilineTextAlignment(.leading)
-                    .lineLimit(announcementText != nil ? 4 : 2)
-                    .minimumScaleFactor(0.7)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .dynamicTypeSize(...DynamicTypeSize.accessibility2)
-                    .frame(minHeight: headlineSize * 2.6, alignment: .topLeading)
-                    .id(headlineText)
-                    .transition(.opacity)
-                    .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: headlineText)
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityLabel(headlineText)
-                    .accessibilityAddTraits(.isHeader)
-            }
-            // No identity avatar here: the headline takes the full width
-            // (the Account tab already shows the profile photo).
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 20)
-        .padding(.top, 14)
-        .padding(.bottom, 18)
+        WordmarkText(size: Self.baseSize, relativeTo: .headline)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 20)
+            .padding(.top, 14)
+            .padding(.bottom, 10)
+            .accessibilityAddTraits(.isHeader)
     }
 }
 

@@ -41,6 +41,21 @@ fonts (SF Pro Rounded / New York) despite their names.
   (introduced this task, replacing the retired `Font.lora()`, which rendered
   system New York despite its name): `Inter-Regular`, `Inter-SemiBold`, `Inter-Bold`.
 
+## Schibsted Grotesk
+
+- Files: `SchibstedGrotesk-SemiBold.ttf` (task `20261008-home-wordmark-header`)
+- Source: Google Fonts (`google/fonts` repo, `ofl/schibstedgrotesk`), static
+  600-weight instance delivered via the Google Fonts CSS v1 API (the repo only
+  publishes a variable font; same static-instance approach as above). Used for
+  the "FellowScript" wordmark (`WordmarkText`, Home header, sign-in, onboarding),
+  matching the website homepage.
+- License: **SIL Open Font License, Version 1.1** (full text:
+  `OFL-SchibstedGrotesk.txt`, fetched from `google/fonts` `ofl/schibstedgrotesk/OFL.txt`;
+  copyright "The Schibsted-Grotesk Project Authors"). Same permissions and
+  obligations as above: license text ships alongside the font, no endorsement implied.
+- PostScript name used by `Font.schibstedWordmark()`: `SchibstedGrotesk-SemiBold`
+  (verified from the file's `name` table; OS/2 weight 600, no `fvar` table, i.e. truly static).
+
 ## Verification method
 
 Each `.ttf` file's internal `name` table was inspected directly (via

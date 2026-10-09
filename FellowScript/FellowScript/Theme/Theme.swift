@@ -157,6 +157,12 @@ extension Font {
     static func inter(_ size: CGFloat, weight: Font.Weight = .regular) -> Font {
         .custom(interPostScriptName(for: weight), size: size)
     }
+    /// Schibsted Grotesk SemiBold (the website homepage wordmark face), scaled
+    /// with Dynamic Type. Static instance, PostScript name from the file's
+    /// `name` table; only the one weight the wordmark needs is bundled.
+    static func schibstedWordmark(_ size: CGFloat, relativeTo textStyle: Font.TextStyle = .largeTitle) -> Font {
+        .custom("SchibstedGrotesk-SemiBold", size: size, relativeTo: textStyle)
+    }
     static func verseRef(_ size: CGFloat) -> Font {
         .custom("PlayfairDisplay-Italic", size: size)
     }
@@ -174,12 +180,13 @@ extension Font {
 }
 
 /// Homepage wordmark: one run of "FellowScript", semibold, -0.01em tracking,
-/// #FFF8EE. Uses bundled Inter SemiBold (Schibsted Grotesk is not bundled).
+/// #FFF8EE, set in bundled Schibsted Grotesk SemiBold.
 struct WordmarkText: View {
     var size: CGFloat = Theme.fontDisplayLG
+    var relativeTo: Font.TextStyle = .largeTitle
     var body: some View {
         Text("FellowScript")
-            .font(Font.interScaled(size, weight: .semibold, relativeTo: .largeTitle))
+            .font(Font.schibstedWordmark(size, relativeTo: relativeTo))
             .tracking(-0.01 * size)
             .foregroundColor(Color(hex: "#FFF8EE"))
             .accessibilityLabel("FellowScript")
