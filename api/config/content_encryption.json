@@ -1,0 +1,11 @@
+{
+  "content_encryption": {
+    "search_batch_size": 200,
+    "search_scan_cap": 5000,
+    "group_search_scan_cap": 5000,
+    "backfill_batch_size": 200,
+    "backfill_throttle_ms": 250,
+    "backfill_statement_timeout_ms": 15000,
+    "backfill_lock_timeout_ms": 3000
+  }
+}

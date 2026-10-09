@@ -134,6 +134,11 @@ _PEM_BLOCK_RE = re.compile(
 # like names has no reliable regex shape and isn't attempted here; flagged
 # as a residual, lower-confidence gap in this step's review instead.
 _EMAIL_RE = re.compile(r"\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b")
+# Content-encryption backstops (task 20261008-content-encryption-at-rest): a stored
+# ciphertext token ("enc:v1:...") and the key-ring env var must never reach the
+# model prompt or a persisted detection even if some error text echoes them.
+_CONTENT_CIPHERTEXT_RE = re.compile(r"enc:v1:[A-Za-z0-9_\-=]+")
+_ENCRYPTION_KEYS_RE = re.compile(r"(?i)([A-Z_]*ENCRYPTION_KEYS)\s*[:=]\s*\S+")
 
 
 def _redact_text(text: str) -> str:
@@ -149,6 +154,8 @@ def _redact_text(text: str) -> str:
     text = _BEARER_RE.sub("Bearer [REDACTED]", text)
     text = _KEY_VALUE_SECRET_RE.sub(lambda m: f"{m.group(1)}=[REDACTED]", text)
     text = _EMAIL_RE.sub("[REDACTED_EMAIL]", text)
+    text = _CONTENT_CIPHERTEXT_RE.sub("[REDACTED_CIPHERTEXT]", text)
+    text = _ENCRYPTION_KEYS_RE.sub(r"\1=[REDACTED]", text)
     return text
 
 

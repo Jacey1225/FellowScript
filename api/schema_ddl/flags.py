@@ -16,6 +16,7 @@ SEED_FLAG_NAMES = (
     "agent_chat_memory",
     "affiliates",
     "affiliate_payouts",
+    "content_encryption_write",
 )
 
 

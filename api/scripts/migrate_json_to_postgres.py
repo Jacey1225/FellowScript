@@ -30,6 +30,7 @@ import uuid
 # import ...` below. Mirrors api/tests/_pathfix.py's fix for the same problem.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from backend import content_store
 from db import _connect, create_tables
 from schemas.users import User, Note
 from schemas.message import Group, Message
@@ -182,7 +183,9 @@ def insert_notes(cur, notes: dict):
         cur.execute(
             "INSERT INTO notes (_id, user_id, title, text, public, group_id, is_reply, parent_note_id, timestamp)"
             "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) ON CONFLICT DO NOTHING",
-            (note_id, note.user, note.title, note.text, note.public,
+            (note_id, note.user,
+             content_store.seal(note_id, content_store.F_NOTE_TITLE, note.title),
+             content_store.seal(note_id, content_store.F_NOTE_TEXT, note.text), note.public,
              group_id, note.is_reply, parent_note_id, note.timestamp)
         )
         for position, verse in enumerate(note.verses):
@@ -242,10 +245,11 @@ def insert_messages(cur, messages: list, valid_group_ids: set, valid_user_ids: s
         if from_user and from_user not in valid_user_ids:
             logger.warning("Message: from_user %s not found, skipping", msg.from_user)
             continue
+        new_id = str(uuid.uuid4())  # part of the encryption AAD, so chosen here
         cur.execute(
-            "INSERT INTO messages (from_user, group_id, text, timestamp)"
-            "VALUES (%s, %s, %s, %s) RETURNING _id",
-            (from_user, group_id, msg.text, msg.timestamp)
+            "INSERT INTO messages (_id, from_user, group_id, text, timestamp)"
+            "VALUES (%s, %s, %s, %s, %s) RETURNING _id",
+            (new_id, from_user, group_id, content_store.seal(new_id, content_store.F_MESSAGE_TEXT, msg.text), msg.timestamp)
         )
         row = cur.fetchone()
         if row:

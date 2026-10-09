@@ -1,4 +1,5 @@
 from fastapi import APIRouter, HTTPException, Request, Response, WebSocket, Depends
+from backend import content_store
 from backend.interactions.agent import AgentManager, detect_leaked_action_json
 from backend.interactions.groups import GroupsManager
 from backend.interactions import flags
@@ -543,7 +544,9 @@ async def summarize_session(user_id: str, agent_id: str, body: dict, _: str = De
         db.cur.execute(
             "INSERT INTO notes (_id, user_id, title, text, public, group_id, is_reply, timestamp) "
             "VALUES (%s,%s,%s,%s,%s,%s,%s,%s)",
-            (note_id, user_id, f"Session Summary — {title}", summary,
+            (note_id, user_id,
+             content_store.seal(note_id, content_store.F_NOTE_TITLE, f"Session Summary — {title}"),
+             content_store.seal(note_id, content_store.F_NOTE_TEXT, summary),
              notes_public, group_id or None, False, datetime.now())
         )
         db.conn.commit()

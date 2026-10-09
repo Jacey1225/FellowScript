@@ -11,6 +11,7 @@ import psycopg2
 from fastapi import WebSocket
 from schemas.message import Message, ATTACHMENT_KINDS
 from db import DBManager, _connect
+from backend import content_store
 from backend.errors import SaveFailedError
 from backend.interactions.attachments import generate_download_url
 from backend.interactions.chat_config import get_pagination_config
@@ -252,12 +253,17 @@ class ConnectionManager(DBManager):
                 same way rather than crashing the WebSocket connection.
         """
         try:
+            # The row id is chosen here (not by the column default) because it is
+            # part of the encryption AAD (task 20261008-content-encryption-at-rest).
+            new_id = str(uuid.uuid4())
             self._execute(
                 "INSERT INTO messages "
-                "(from_user, group_id, text, timestamp, attachment_kind, attachment_key, attachment_meta) "
-                "VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING _id, timestamp",
+                "(_id, from_user, group_id, text, timestamp, attachment_kind, attachment_key, attachment_meta) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING _id, timestamp",
                 (
-                    msg.from_user, msg.group_id or None, msg.text, clamp_message_timestamp(msg.timestamp),
+                    new_id, msg.from_user, msg.group_id or None,
+                    content_store.seal(new_id, content_store.F_MESSAGE_TEXT, msg.text),
+                    clamp_message_timestamp(msg.timestamp),
                     msg.attachment_kind, msg.attachment_key, json.dumps(msg.attachment_meta or {}),
                 )
             )

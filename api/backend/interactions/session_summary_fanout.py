@@ -16,6 +16,7 @@ from datetime import datetime
 
 from fastapi import HTTPException
 
+from backend import content_store
 from backend.interactions.devotion import DevotionManager
 from backend.interactions.session_summary_fanout_config import get_session_summary_fanout_config
 from backend.subscription.limits import check_limit, check_paid_only
@@ -128,7 +129,10 @@ def insert_deduped_note(db, session_id: str, owner_id: str, title: str, text: st
         "INSERT INTO notes (_id, user_id, title, text, public, group_id, is_reply, timestamp, summary_dedupe_key) "
         "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) "
         "ON CONFLICT (summary_dedupe_key) WHERE summary_dedupe_key IS NOT NULL DO NOTHING RETURNING _id",
-        (note_id, owner_id, title, text, public, group_id, False, datetime.now(), key),
+        (note_id, owner_id,
+         content_store.seal(note_id, content_store.F_NOTE_TITLE, title),
+         content_store.seal(note_id, content_store.F_NOTE_TEXT, text),
+         public, group_id, False, datetime.now(), key),
     )
     row = db.cur.fetchone()
     if row:

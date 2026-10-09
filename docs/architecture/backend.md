@@ -478,3 +478,82 @@ US/USD bank details an affiliate supplies for **manual** payout (no automated mo
 - **Hygiene.** Bodies are parsed by hand (no pydantic model, so FastAPI's 422 never echoes a submitted number); errors are fixed codes; every response including errors carries `Cache-Control: no-store`; `/monitoring/client-error` drops the client summary for payout endpoints. Audit table (`affiliate_payout_audit`) is append-only and value-free. Create/update/delete/reveal each email the account owner (never with values).
 - **Retention.** Daily job hard-deletes details inactive for `retention_inactive_days` or whose owner has no active creator code/user; audit rows are kept. Backups keep old ciphertext until they age out.
 - **Out of scope / note for the owner.** Tax reporting (W-9/1099) and breach-notification duties for holding bank details are not handled here.
+
+## Content encryption at rest (task 20261008-content-encryption-at-rest)
+
+Notes, chat messages and the text copies derived from them are stored as AES-256-GCM ciphertext in the existing columns (application-level field encryption). Code: `backend/content_crypto.py` (primitive, key ring), `backend/content_store.py` (the single read/write helper layer and the in-scope table registry), `backend/content_config.py` + `config/content_encryption.json` (tunables), `backend/interactions/note_search.py` (search), `backend/maintenance/content_migrate.py` (backfill / rollback / rotation), `backend/maintenance/content_reclaim.py` (proposed later step), `scripts/rotate_content_keys.py`, DDL `schema_ddl/content_encryption.py`, flag `content_encryption_write`.
+
+### What this protects, and what it does not
+
+- **Protects:** database dumps and backups (pg_dump files, the nightly `fellowscript_backup` database, snapshots), a stolen disk or volume, and anyone with database credentials but without the application key. Without the key ring they see `enc:v1:...` strings.
+- **Does NOT protect:** a compromised running API server or its environment (the process holds the key and decrypts every request); a malicious or compromised admin shell on the server; content in transit to APNs or to other users' sockets (push bodies and websocket frames are plaintext by design); report emails to support (a reported snippet is emailed in plaintext on purpose); attachment files in S3 (only their keys are stored in the DB; S3 encryption is a separate setting); search terms in request URLs (`...?q=` appears in access logs).
+- **Key loss = data loss.** Back the key ring up separately from the database. A database restore without the key is unreadable.
+- Not end-to-end, not per-user keys, no blind/searchable index (rejected: leaks equality/frequency, large surface for little gain at this scale).
+
+### Storage format and dual-read
+
+Ciphertext is `enc:v1:` + base64url(key id (1 byte) || nonce (12 bytes) || ciphertext || tag). The AAD is `<table>.<column>|<row id>` (lower-cased id), so a value cannot be replayed into another row, column or table. Plaintext that itself starts with `enc:` is stored with the escape prefix `enc:p:` so plaintext and ciphertext are never guessed apart. Reads (`content_store.open_`) are always dual: plaintext, `enc:p:` and `enc:v1:` all return the original text in either flag state. A ciphertext that cannot be authenticated raises `ContentDecryptError` (carries only field, row id, key id): the request fails, it never returns ciphertext, blank or invented text. The one exception is the friend-activity `note_preview`, which is omitted for an undecryptable note (never shown garbled).
+
+Writes encrypt only while the feature flag `content_encryption_write` (off/on only, ships OFF, fail-closed to off) is on. The row id is chosen by the application before the INSERT because it is part of the AAD (messages, thread messages, threads, agent messages get an application-generated uuid). `DBManager.insertion/lookup/update` seal and open the registered tables automatically; hand-written SQL sites call `content_store.seal/open_` directly. `DBManager.content_passthrough = True` (set by the backup copy) moves stored values verbatim.
+
+### Column scope (IN = ciphertext when the flag is on)
+
+| Table.column | Decision | Reason |
+|---|---|---|
+| notes.title, notes.text | IN | the content |
+| notes.theme | IN | LLM-derived free text about the note (never read back) |
+| messages.text | IN | the content (group and DM) |
+| messages.attachment_meta | OUT | provider id/url and file name metadata, no authored text; stays queryable |
+| thread_messages.text | IN | the content |
+| threads.root_preview | IN | plaintext copy of the root message text |
+| threads.title | IN | auto-derived from the root message text (or user typed) |
+| agent_messages.content | IN | AI chat turns |
+| agent_messages.title | OUT | it is the role marker (`user` / `assistant`), queried with `= ANY` |
+| agent_chats.title | IN | auto-derived from the first user message |
+| agent_chats.summary | IN | LLM rolling summary of the chat |
+| content_reports.content_snippet, detail | IN | frozen copy of reported text; the moderation tooling never reads them in SQL, and the support email carries the plaintext on purpose |
+| backup database `notes.title/text` | IN | copied verbatim from the primary (same row id, same AAD) so the backup holds ciphertext; also a backfill target |
+| group_announcements.title/description | OUT (deferred) | leader-authored broadcast to the whole group, also used by the push notifier and many list queries; candidate for a follow-up |
+| home_messages.text | OUT | admin-authored public copy |
+| devotions.title/prompts/verses | OUT (deferred) | session plan text; summaries of sessions are written as notes and are covered via notes |
+| agent_heartbeats.prompt/timeline_instruction | OUT (deferred) | agent configuration, not notes or messages |
+| message_recipients | OUT | ids only |
+| pending_s3_deletes, caches, queues | OUT | object keys only; no other persisted copy of message text (websocket fan-out and push payloads are in-memory) |
+| error_detections.message/context | not encrypted, scrubbed | derived from log lines; logs carry no content, and `_redact_text` / `_redact_db_error` also strip `enc:v1:` tokens and `*ENCRYPTION_KEYS` values |
+
+Legacy JSON files (`data/notes.json`, `data/messages.json`) are only read by the one-off `scripts/migrate_json_to_postgres.py`, which now seals what it inserts.
+
+### Schema
+
+Only the VARCHAR title columns that cannot hold the ~1.4x base64 overhead are widened to TEXT (`notes.title`, `threads.title`, `agent_chats.title`, backup `notes.title`): `ALTER COLUMN ... TYPE TEXT` from VARCHAR is metadata-only and a no-op once applied, so the DDL module is safe to run on every boot (applying it twice changes nothing). `messages.text` stays `NOT NULL` (ciphertext is never empty). A small `content_encryption_audit` table records every apply run. Index review: no index, constraint, ORDER BY, GROUP BY or LIKE touches an encrypted column (existing indexes: `idx_notes_user_timestamp`, `uq_notes_summary_dedupe_key`, the messages/thread paging indexes, `idx_agent_messages_chat`, `idx_threads_group_activity`, report status/user indexes, none on content). Size: ciphertext is `ceil((n + 29) / 3) * 4 + 7` characters, about 1.34x + 36 bytes per value; TOAST compression is lost on encrypted values (ciphertext does not compress), so large notes take more TOAST space. Per request cost: one AES-GCM decrypt per value (microseconds); list endpoints decrypt at most one page (15 notes, one chat page).
+
+### Search
+
+`GET /notes/{user_id}/search` and `GET /groups/{user_id}/{group_id}/notes/search` no longer use SQL `ILIKE` (there is none left on content). SQL still scopes the candidates (owner / group, non-reply, personal-only, block filter); `note_search.scan_matches` streams them newest-first in keyset batches (`search_batch_size`), decrypts, and keeps rows whose title or text contains the query (case-insensitive). Same ordering, same response shape. Changes: `%` and `_` are now ordinary characters (before, they were SQL wildcards by accident); matching uses Unicode case folding. Bounds: at most `search_scan_cap` (personal) / `group_search_scan_cap` (group) candidate rows are examined per request (default 5000); past that the search stops and returns the newest matches found so far, and logs one warning with counts. No truncation flag is added to the response (iOS and web unchanged). A row that cannot be decrypted fails the request (fail closed).
+
+### Configuration and key management
+
+- Env var `CONTENT_ENCRYPTION_KEYS` = `<id>:<base64 of 32 bytes>[,<id>:<key>...]`, id 1..255, first entry = current key. It is a separate ring from `PAYOUT_ENCRYPTION_KEYS`. Missing or malformed refuses to boot (`startup_checks.check_content_encryption_keys`, with a round-trip self-test per key); messages never contain key material. Secrets live only in env, never in `config/content_encryption.json`.
+- Tunables (`config/content_encryption.json`): `search_batch_size`, `search_scan_cap`, `group_search_scan_cap`, `backfill_batch_size`, `backfill_throttle_ms`, `backfill_statement_timeout_ms`, `backfill_lock_timeout_ms`. Every key required; bad file refuses to boot.
+- **Three places, key first.** (1) local `.env` (a dev key is already added, gitignored); (2) production `~/fellowscript/.env`; (3) `.github/workflows/build-push.yml` test env (done, clearly fake CI key). The key MUST be in the production `.env` BEFORE the image containing this change is pulled and restarted, even with the flag OFF, or the boot validation stops the API.
+
+### Runbook (nothing below has been run; every step needs the owner's go-ahead)
+
+1. **Generate the key on the server and back it up.** `python3 -c 'import os,base64;print(base64.b64encode(os.urandom(32)).decode())'`, add `CONTENT_ENCRYPTION_KEYS=1:<that>` to `~/fellowscript/.env`. Store a copy in the password manager, separate from the database backups.
+2. **Deploy.** Push, wait for the image build, then `docker compose pull && docker compose up -d` on the server (manual SSH, as usual). The flag is OFF: behavior is unchanged, reads already handle both forms. Confirm `docker logs fellowscript-api` shows a clean boot and the DDL widened the title columns.
+3. **Backup first.** `pg_dump -Fc fellowscript > fellowscript-pre-encrypt-$(date +%F).dump` and the same for `fellowscript_backup`; restore both into a scratch database and spot-check row counts. Record the dump label. The backfill refuses `--apply` without `--backup-confirmed "<label>"`.
+4. **Flip writes on.** `docker exec fellowscript-api python -m backend.admin_flags set content_encryption_write on` (takes effect within the 10 s flag cache). New and edited content is ciphertext from now on. Run the app and the iOS app against it before backfilling.
+5. **Backfill (dry run first).**
+   `docker exec fellowscript-api python -m backend.maintenance.content_migrate --mode encrypt --target primary` prints counts only. Then `--apply --backup-confirmed "<label>"`, then the same with `--target backup`. It is batched and throttled, resumable (`--resume`, checkpoint file), idempotent, verifies each value before and after writing (rolls the batch back on any mismatch), never touches a ciphertext that fails to authenticate (reports it, exit code 1), and writes `content_encryption_audit` rows plus a `.audit.jsonl` next to the checkpoint. Run during a quiet hour; a smoke run: `--max-rows 50`.
+6. **Verify.** Re-run the dry run: `changed=0` everywhere. Spot check in psql that `SELECT count(*) FROM notes WHERE text <> '' AND text NOT LIKE 'enc:v1:%'` is 0 (and the same for the other columns); exercise notes list/search, group chat, threads, agent chat in the apps.
+7. **Rollback.** Flag off stops new ciphertext; existing ciphertext stays readable (dual-read), so this alone is a safe stop. To return everything to plaintext: `... content_migrate --mode decrypt --target primary --apply --backup-confirmed "<label>"` (needs the key ring), then the same for `--target backup`. The pre-backfill dumps are the last-resort restore. Do not remove the key until the data is plaintext again or the dumps are the only copy you need.
+8. **Rotation.** Prepend `2:<new key>` (keep `1:`), restart, `python scripts/rotate_content_keys.py` (dry run) then `--apply --backup-confirmed "<label>"` (and `--target backup`), confirm it reports nothing left on key 1, then drop the old entry and restart.
+9. **Later, separate, proposed (not part of the deploy): reclaim plaintext remnants.** After a backfill the old plaintext still exists as dead tuples and in the pre-backfill dumps. `python -m backend.maintenance.content_reclaim` prints the plan; `--apply --i-understand-exclusive-lock` runs `VACUUM (FULL, ANALYZE)` per table (ACCESS EXCLUSIVE lock, needs free disk about the table size, maintenance window). Expiring the old dumps, WAL archives and snapshots is the operator's own decision. Do this only after the owner has confirmed the encrypted data reads correctly for a while.
+
+### Logging and error hygiene
+
+No code path logs or raises content: `ContentDecryptError` carries field, row id, key id only; the migration tooling prints counts and row ids only; `_redact_db_error` and the debug agent's `_redact_text` redact `enc:v1:` tokens and `*ENCRYPTION_KEYS` values as a backstop; two debug lines that logged a note title / filter term were removed. Residual: `/monitoring/client-error` still logs the client-supplied `error_summary` (client-truncated, documented as non-content) for non-payout endpoints.
+
+### iOS and web
+
+No API request or response schema changed (no edit under `api/schemas/` or any route signature; routes still return plaintext content), so neither client needs a change; the Swift code under `FellowScript/FellowScript/` and `frontend/` were not touched. Search results keep the same fields and order; the only visible change is that `%` / `_` in a search are literal.

@@ -7,9 +7,12 @@ import psycopg2 as sql
 from schemas.users import User
 from schemas.message import Group
 from db import DBManager, _redact_db_error
+from backend import content_store
+from backend.content_config import get_content_config
 from backend.errors import SaveFailedError
 from backend.interactions.attachments import generate_download_url
 from backend.interactions import lifecycle, paging
+from backend.interactions.note_search import scan_matches
 
 logger = logging.getLogger(__name__)
 
@@ -364,7 +367,7 @@ class GroupsManager(DBManager):
                 "id": str(_id),
                 "from_user": usernames.get(from_uid, ""),
                 "mine": from_uid.lower() == me,
-                "text": text,
+                "text": content_store.open_(_id, content_store.F_MESSAGE_TEXT, text),
                 "timestamp": paging.format_timestamp(ts),
                 "attachment_kind": kind,
                 "attachment_meta": meta,
@@ -412,7 +415,7 @@ class GroupsManager(DBManager):
                 )
                 cols = [desc[0] for desc in self.cur.description]
                 other_msgs = {
-                    row[0]: dict(zip(cols[1:], row[1:]))
+                    row[0]: content_store.open_row("messages", row[0], dict(zip(cols[1:], row[1:])))
                     for row in self.cur.fetchall()
                 }
         host_msgs: dict = {}
@@ -424,7 +427,10 @@ class GroupsManager(DBManager):
                 (self.user_id, self.group_id),
             )
             cols = [desc[0] for desc in self.cur.description]
-            host_msgs = {row[0]: dict(zip(cols[1:], row[1:])) for row in self.cur.fetchall()}
+            host_msgs = {
+                row[0]: content_store.open_row("messages", row[0], dict(zip(cols[1:], row[1:])))
+                for row in self.cur.fetchall()
+            }
         # Task 20260929-group-info-panel: never hand the stored photo_key to
         # the client -- resolve it to a fresh presigned GET at read time
         # (same rule as attachment_key in format_messages). New fields are
@@ -502,7 +508,7 @@ class GroupsManager(DBManager):
         )
         cols = [desc[0] for desc in self.cur.description]
         rows = self.cur.fetchall()
-        row_data = [(str(row[0]), dict(zip(cols[1:], row[1:]))) for row in rows]
+        row_data = [(str(row[0]), content_store.open_row("notes", row[0], dict(zip(cols[1:], row[1:])))) for row in rows]
         distinct_uids = {str(data.get("user_id")) for _, data in row_data if data.get("user_id")}
         username_map: dict[str, str] = {}
         # Task 20260905-profile-photo-avatar-gaps: mirrors friends.py's
@@ -555,8 +561,9 @@ class GroupsManager(DBManager):
         post-fetch Python filter).
 
         Args:
-            q: Keyword to match (ILIKE substring, case-insensitive) against
-                title or text.
+            q: Keyword to match (literal case-insensitive substring) against
+                title or text, after decryption in the app (bounded by
+                ``group_search_scan_cap``; see note_search.py).
 
         Returns:
             dict: ``{"notes": {username: {note_id: note data}}}``, newest
@@ -568,21 +575,26 @@ class GroupsManager(DBManager):
                 ``position``, ``[]`` when the note has none; task
                 20260908-group-notes-verses).
         """
-        pattern = f"%{q}%"
-        self.cur.execute(
+        # Title/text are ciphertext at rest: SQL scopes the candidates (group,
+        # non-reply, block filter), the app decrypts and filters
+        # (backend/interactions/note_search.py).
+        cols = ["_id", "user_id", "title", "text", "public", "group_id", "is_reply",
+                "parent_note_id", "timestamp", "created_at"]
+        rows, _truncated = scan_matches(
+            self.cur,
             "SELECT _id, user_id, title, text, public, group_id, is_reply, "
-            "parent_note_id, timestamp, created_at FROM notes "
-            "WHERE group_id = %s AND is_reply = false "
-            "AND (title ILIKE %s OR text ILIKE %s) "
+            "parent_note_id, timestamp, created_at FROM notes",
+            "group_id = %s AND is_reply = false "
             "AND user_id NOT IN ("
             "SELECT blocked_id FROM blocked_users WHERE blocker_id = %s "
             "UNION SELECT blocker_id FROM blocked_users WHERE blocked_id = %s"
-            ") "
-            "ORDER BY created_at DESC, _id DESC",
-            (self.group_id, pattern, pattern, self.user_id, self.user_id),
+            ")",
+            [self.group_id, self.user_id, self.user_id],
+            q,
+            idx_id=0, idx_created=9, idx_title=2, idx_text=3,
+            created_expr="created_at", id_expr="_id",
+            scan_cap=get_content_config().group_search_scan_cap,
         )
-        cols = [desc[0] for desc in self.cur.description]
-        rows = self.cur.fetchall()
         row_data = [(str(row[0]), dict(zip(cols[1:], row[1:]))) for row in rows]
         distinct_uids = {str(data.get("user_id")) for _, data in row_data if data.get("user_id")}
         username_map: dict[str, str] = {}
@@ -1126,7 +1138,7 @@ class GroupsManager(DBManager):
                 "meta": meta,
                 "from_user": usernames.get(str(r[1]), "") if r[1] else "",
                 "timestamp": r[3].isoformat() if r[3] else None,
-                "text": r[2] or "",
+                "text": content_store.open_(r[0], content_store.F_MESSAGE_TEXT, r[2]) or "",
             })
         last = rows[-1] if rows else None
         return {

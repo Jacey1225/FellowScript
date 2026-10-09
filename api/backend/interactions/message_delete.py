@@ -34,6 +34,7 @@ import logging
 import uuid
 
 from db import DBManager
+from backend import content_store
 from backend.interactions.attachments import generate_download_url
 from backend.interactions.lifecycle import enqueue_s3_deletes
 from backend.interactions.send_guard import validate_attachment_key
@@ -125,6 +126,9 @@ class MessageDeleteManager(DBManager):
         try:
             self.cur.execute(_RESTORE_SQL, (mid, gid, uid, get_message_delete_config().undo_seconds))
             row = self.cur.fetchone()
+            # Open BEFORE commit: a ciphertext that cannot be decrypted rolls the
+            # restore back instead of committing a restore nobody can broadcast.
+            body = content_store.open_(row[0], content_store.F_MESSAGE_TEXT, row[2]) if row else None
             self.conn.commit()
         except Exception:
             self.conn.rollback()
@@ -133,7 +137,7 @@ class MessageDeleteManager(DBManager):
             return None
         meta = row[7] if isinstance(row[7], dict) else {}
         return {
-            "id": row[0], "group_id": gid, "sender": row[1], "body": row[2],
+            "id": row[0], "group_id": gid, "sender": row[1], "body": body,
             "created_at": row[3], "seq": int(row[4]),
             "attachment_kind": row[5], "attachment_key": row[6], "attachment_meta": meta,
         }

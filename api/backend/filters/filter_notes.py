@@ -52,7 +52,7 @@ class Filters:
         logger.info("filtering %d uid(s): %s", len(self.notes), list(self.notes.keys()))
         for uid, nid, note, data in self.filter_note():
             if debug:
-                logger.debug("note title=%r user=%r verses=%s", note.title, note.user, note.verses)
+                logger.debug("note user=%r verses=%d", note.user, len(note.verses or []))
             if not predicate(note):
                 if debug:
                     logger.debug("  -> filtered out")
@@ -124,7 +124,7 @@ class Filters:
         Returns:
             dict: Notes whose title contains the given string.
         """
-        logger.info("filter_title: %s", title)
+        logger.info("filter_title applied")
         return self._collect(lambda note: title.lower() in note.title.lower())
 
 

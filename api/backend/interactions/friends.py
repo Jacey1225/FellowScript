@@ -3,6 +3,7 @@ import os
 from datetime import datetime, timezone as tzmod
 from schemas.users import User
 from db import DBManager
+from backend import content_store
 from backend.errors import SaveFailedError
 from backend.interactions.attachments import generate_download_url
 from backend.interactions.blocks import BlockManager
@@ -213,6 +214,23 @@ class FriendsManager(DBManager):
         ]
 
     @staticmethod
+    def _note_preview(note_id, title, text, ts) -> dict | None:
+        """Friend-feed note preview with title/text opened. A note that cannot be
+        decrypted is omitted (preview None), never shown as ciphertext or blank."""
+        if not note_id:
+            return None
+        try:
+            return {
+                "note_id": str(note_id),
+                "title": content_store.open_(note_id, content_store.F_NOTE_TITLE, title),
+                "text": content_store.open_(note_id, content_store.F_NOTE_TEXT, text),
+                "timestamp": str(ts),
+            }
+        except content_store.ContentDecryptError as e:
+            logger.warning("note preview skipped: field=%s row=%s key_id=%s", e.field, e.row_id, e.key_id)
+            return None
+
+    @staticmethod
     def _format_dm_row(from_username: str, row: tuple) -> dict:
         """Shape one ``messages`` row (as selected in ``read_friend``) into
         the dict the client expects, resolving ``attachment_key`` to a
@@ -221,7 +239,7 @@ class FriendsManager(DBManager):
         _id, text, timestamp, attachment_kind, attachment_key, attachment_meta = row
         return {
             "from_user": from_username,
-            "text": text,
+            "text": content_store.open_(_id, content_store.F_MESSAGE_TEXT, text),
             "timestamp": str(timestamp),
             "attachment_kind": attachment_kind,
             "attachment_meta": attachment_meta or {},
@@ -301,7 +319,7 @@ class FriendsManager(DBManager):
                 "id": str(_id),
                 "from_user": self.user.username if mine else friend_username,
                 "mine": mine,
-                "text": text,
+                "text": content_store.open_(_id, content_store.F_MESSAGE_TEXT, text),
                 "timestamp": paging.format_timestamp(ts),
                 "attachment_kind": kind,
                 "attachment_meta": meta,
@@ -548,10 +566,7 @@ class FriendsManager(DBManager):
                 "profile_photo_url": generate_download_url(profile_photo_key),
                 "last_active_at": str(last_active_at) if last_active_at else None,
                 "activity_type": last_activity_type,
-                "note_preview": (
-                    {"note_id": str(note_id), "title": note_title, "text": note_text, "timestamp": str(note_ts)}
-                    if note_id else None
-                ),
+                "note_preview": self._note_preview(note_id, note_title, note_text, note_ts),
                 "highlight_preview": highlight_preview,
             })
 

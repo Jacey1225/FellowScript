@@ -21,6 +21,11 @@ class BackupManager:
     def __init__(self) -> None:
         self.source = DBManager()
         self.dest = DBManager(dbname=BACKUP_DB_NAME)
+        # Copy stored values verbatim (task 20261008-content-encryption-at-rest):
+        # ciphertext stays ciphertext in the backup (same row id => same AAD, so
+        # it decrypts under the same key ring), and plaintext rows are copied as
+        # stored. The source SELECTs below are raw, so nothing is re-sealed.
+        self.dest.content_passthrough = True
 
     def close(self) -> None:
         self.source.close()

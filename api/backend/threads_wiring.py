@@ -14,6 +14,7 @@ tampered or shared key can never make the outbox delete someone else's object.
 """
 from __future__ import annotations
 
+from backend import content_store
 from backend.interactions import lifecycle, reports
 from backend.interactions.lifecycle import enqueue_s3_deletes
 from backend.moderation import removers
@@ -30,6 +31,7 @@ def resolve_thread_message(cur, content_id, reported_user_id):
     if not row:
         return None
     author, text = row
+    text = content_store.open_(content_id, content_store.F_THREAD_MESSAGE_TEXT, text)
     return (author if author else reported_user_id), text or "", str(content_id)
 
 

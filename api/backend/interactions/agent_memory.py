@@ -23,6 +23,7 @@ from typing import Callable, Optional
 
 import psycopg2
 
+from backend import content_store
 from backend.interactions.agent_memory_config import get_agent_memory_config
 
 logger = logging.getLogger(__name__)
@@ -73,9 +74,11 @@ class AgentMemoryStore:
                 (chat_id, self.user_id, agent_id),
             )
             row = cur.fetchone()
-            summary, through = (row[0], row[1]) if row else (None, None)
+            summary, through = (
+                (content_store.open_(chat_id, content_store.F_AGENT_CHAT_SUMMARY, row[0]), row[1]) if row else (None, None)
+            )
             cur.execute(
-                "SELECT title, content, timestamp FROM agent_messages "
+                "SELECT title, content, timestamp, _id FROM agent_messages "
                 "WHERE user_id = %s AND agent_id = %s AND chat_id = %s AND title = ANY(%s) "
                 "ORDER BY timestamp DESC, _id DESC LIMIT %s",
                 (self.user_id, agent_id, chat_id, list(_ROLES), cfg.window_messages),
@@ -89,7 +92,10 @@ class AgentMemoryStore:
         # Never repeat a turn the summary already covers.
         if through is not None:
             rows = [r for r in rows if r[2] > through]
-        history = [{"role": r[0], "content": _clip(r[1], cfg.message_max_chars)} for r in rows]
+        history = [
+            {"role": r[0], "content": _clip(content_store.open_(r[3], content_store.F_AGENT_CONTENT, r[1]), cfg.message_max_chars)}
+            for r in rows
+        ]
         use_summary = bool(summary) and through is not None
         return (summary if use_summary else None), history
 
@@ -117,7 +123,7 @@ def refresh_summary(
     if row is None:
         db.conn.rollback()
         return False
-    prev_summary, through = row
+    prev_summary, through = content_store.open_(chat_id, content_store.F_AGENT_CHAT_SUMMARY, row[0]), row[1]
     cur.execute(
         "SELECT COUNT(*) FROM agent_messages "
         "WHERE user_id = %s AND agent_id = %s AND chat_id = %s AND title = ANY(%s) "
@@ -132,7 +138,7 @@ def refresh_summary(
         return False
     take = min(foldable, cfg.summary_batch_max_messages)
     cur.execute(
-        "SELECT title, content, timestamp FROM agent_messages "
+        "SELECT title, content, timestamp, _id FROM agent_messages "
         "WHERE user_id = %s AND agent_id = %s AND chat_id = %s AND title = ANY(%s) "
         "AND (%s::timestamptz IS NULL OR timestamp > %s::timestamptz) "
         "ORDER BY timestamp ASC, _id ASC LIMIT %s",
@@ -150,7 +156,10 @@ def refresh_summary(
         batch.pop()
     if not batch:
         return False
-    turns = [{"role": r[0], "content": _clip(r[1], cfg.message_max_chars)} for r in batch]
+    turns = [
+        {"role": r[0], "content": _clip(content_store.open_(r[3], content_store.F_AGENT_CONTENT, r[1]), cfg.message_max_chars)}
+        for r in batch
+    ]
     new_summary = summarize(prev_summary, turns)
     if not isinstance(new_summary, str) or not new_summary.strip():
         raise ValueError("summarizer returned no summary")
@@ -160,7 +169,8 @@ def refresh_summary(
             "UPDATE agent_chats SET summary = %s, summary_through_ts = %s "
             "WHERE _id = %s AND user_id = %s AND agent_id = %s "
             "AND summary_through_ts IS NOT DISTINCT FROM %s::timestamptz",
-            (new_summary, batch[-1][2], chat_id, user_id, agent_id, through),
+            (content_store.seal(chat_id, content_store.F_AGENT_CHAT_SUMMARY, new_summary),
+             batch[-1][2], chat_id, user_id, agent_id, through),
         )
         advanced = cur.rowcount == 1
         db.conn.commit()

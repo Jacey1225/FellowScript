@@ -20,6 +20,7 @@ from typing import Optional
 
 import psycopg2
 
+from backend import content_store
 from backend.errors import SaveFailedError
 from backend.interactions.agent_chats_config import get_agent_chats_config
 
@@ -52,7 +53,7 @@ def make_title(text: str) -> str:
 def _row(r) -> dict:
     return {
         "id": str(r[0]),
-        "title": r[1] or "",
+        "title": content_store.open_(r[0], content_store.F_AGENT_CHAT_TITLE, r[1]) or "",
         "created_at": r[2].isoformat() if r[2] else None,
         "last_message_at": r[3].isoformat() if r[3] else None,
     }
@@ -79,14 +80,26 @@ class AgentChatStore:
                 (self.user_id, agent_id),
             )
             first_ts, last_ts = cur.fetchone()
+            # The default chat is auto-titled from the first user message. The
+            # content may be ciphertext, so the title is derived in the app
+            # (never LEFT(content, n) in SQL) and sealed under the chat id.
+            cur.execute(
+                "SELECT _id, content FROM agent_messages "
+                "WHERE user_id = %s AND agent_id = %s AND chat_id IS NULL AND title = 'user' "
+                "ORDER BY timestamp LIMIT 1",
+                (self.user_id, agent_id),
+            )
+            first_user = cur.fetchone()
+            auto_title = ""
+            if first_user is not None:
+                first_text = content_store.open_(first_user[0], content_store.F_AGENT_CONTENT, first_user[1]) or ""
+                auto_title = first_text[: get_agent_chats_config().auto_title_length]
             cur.execute(
                 "INSERT INTO agent_chats (_id, user_id, agent_id, title, created_at, last_message_at) "
-                "VALUES (%s, %s, %s, COALESCE((SELECT LEFT(content, %s) FROM agent_messages "
-                "WHERE user_id = %s AND agent_id = %s AND chat_id IS NULL AND title = 'user' "
-                "ORDER BY timestamp LIMIT 1), ''), COALESCE(%s, NOW()), COALESCE(%s, NOW())) "
+                "VALUES (%s, %s, %s, %s, COALESCE(%s, NOW()), COALESCE(%s, NOW())) "
                 "ON CONFLICT (_id) DO NOTHING",
-                (cid, self.user_id, agent_id, get_agent_chats_config().auto_title_length,
-                 self.user_id, agent_id, first_ts, last_ts),
+                (cid, self.user_id, agent_id,
+                 content_store.seal(cid, content_store.F_AGENT_CHAT_TITLE, auto_title), first_ts, last_ts),
             )
             if last_ts is not None:
                 cur.execute(
@@ -177,8 +190,8 @@ class AgentChatStore:
                 "UPDATE agent_chats SET last_message_at = NOW(), "
                 "title = CASE WHEN title = '' AND %s <> '' THEN %s ELSE title END "
                 "WHERE _id = %s AND user_id = %s AND agent_id = %s",
-                (make_title(first_user_text or ""), make_title(first_user_text or ""),
-                 chat_id, self.user_id, agent_id),
+                (content_store.seal(chat_id, content_store.F_AGENT_CHAT_TITLE, make_title(first_user_text or "")),) * 2
+                + (chat_id, self.user_id, agent_id),
             )
             self.db.conn.commit()
         except psycopg2.Error as e:

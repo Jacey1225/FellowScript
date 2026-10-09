@@ -108,6 +108,10 @@ register("affiliates", no_canary=True, exposed_in_capabilities=False)
 # Affiliate payout details (task 20261008-affiliate-payout-details): nested inside
 # ``affiliates``; off/on only, server-side only. Ships OFF.
 register("affiliate_payouts", no_canary=True, exposed_in_capabilities=False)
+# Content encryption at rest (task 20261008-content-encryption-at-rest): gates WRITE
+# encryption only; reads always handle plaintext and ciphertext. Off/on only,
+# server-side only, ships OFF.
+register("content_encryption_write", no_canary=True, exposed_in_capabilities=False)
 register("agent_chats")
 # Per-chat memory for agent chats (windowed history + rolling summary). Needs
 # agent_chats on too; server-side only, so not exposed in capabilities.

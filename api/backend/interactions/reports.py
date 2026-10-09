@@ -3,6 +3,7 @@ import os
 import uuid
 
 from db import DBManager
+from backend import content_store
 from backend.errors import SaveFailedError
 from backend.email.ses_client import send_email, EmailSendError
 from backend.email.templates import content_report_email
@@ -44,6 +45,8 @@ def _resolve_note(cur, content_id, reported_user_id):
     if not row:
         return reported_user_id, "", content_id
     uid, title, text = row
+    title = content_store.open_(content_id, content_store.F_NOTE_TITLE, title)
+    text = content_store.open_(content_id, content_store.F_NOTE_TEXT, text)
     return str(uid), f"{title}\n\n{text}".strip(), content_id
 
 
@@ -53,6 +56,7 @@ def _resolve_message(cur, content_id, reported_user_id):
     if not row:
         return reported_user_id, "", content_id
     uid, text = row
+    text = content_store.open_(content_id, content_store.F_MESSAGE_TEXT, text)
     return (str(uid) if uid else reported_user_id), text or "", content_id
 
 

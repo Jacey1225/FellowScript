@@ -38,11 +38,13 @@ from __future__ import annotations
 
 import json
 import logging
+import uuid
 
 import psycopg2
 from fastapi import HTTPException
 from limits import parse as parse_rate
 
+from backend import content_store
 from backend.errors import SaveFailedError
 from backend.interactions import flags
 from backend.interactions.attachments import generate_download_url
@@ -63,8 +65,8 @@ _RATE_SCOPE = "thread-send"
 
 _INSERT_SQL = (
     "WITH ins AS ("
-    " INSERT INTO thread_messages (thread_id, from_user, text, attachment_kind, attachment_key, attachment_meta) "
-    " VALUES (%s::uuid, %s::uuid, %s, %s, %s, %s::jsonb) RETURNING _id, created_at, seq), "
+    " INSERT INTO thread_messages (_id, thread_id, from_user, text, attachment_kind, attachment_key, attachment_meta) "
+    " VALUES (%s::uuid, %s::uuid, %s::uuid, %s, %s, %s, %s::jsonb) RETURNING _id, created_at, seq), "
     "bump AS (UPDATE threads SET last_activity_at = (SELECT created_at FROM ins) WHERE _id = %s::uuid), "
     "fol AS (INSERT INTO thread_followers (thread_id, user_id) VALUES (%s::uuid, %s::uuid) ON CONFLICT DO NOTHING) "
     "SELECT _id::text, created_at, seq FROM ins"
@@ -195,10 +197,12 @@ async def send_thread_message(manager, payload: dict) -> None:
         await _reply(manager, sender, "send_failed", "Couldn't send your message. Please try again.")
         return
 
+    new_mid = str(uuid.uuid4())  # chosen here: part of the encryption AAD
     try:
         manager._execute(
             _INSERT_SQL,
-            (thread_id, sender_id, text, kind, key, json.dumps(meta), thread_id, thread_id, sender_id),
+            (new_mid, thread_id, sender_id, content_store.seal(new_mid, content_store.F_THREAD_MESSAGE_TEXT, text),
+             kind, key, json.dumps(meta), thread_id, thread_id, sender_id),
         )
         saved = manager.cur.fetchone()
         if saved is None:

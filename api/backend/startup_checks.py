@@ -87,6 +87,18 @@ def check_payout_encryption_keys() -> None:
     validate_payout_keys()
 
 
+def check_content_encryption_keys() -> None:
+    from backend.content_crypto import validate_content_keys
+
+    validate_content_keys()
+
+
+def check_content_encryption_config() -> None:
+    from backend.content_config import validate_content_config
+
+    validate_content_config()
+
+
 def check_email_verification_config() -> None:
     from backend.auth.email_verification_config import validate_email_verification_config
 
@@ -106,6 +118,8 @@ CHECKS = (
     check_session_summary_fanout_config,
     check_affiliates_config,
     check_payout_encryption_keys,
+    check_content_encryption_keys,
+    check_content_encryption_config,
     check_email_verification_config,
 )
 

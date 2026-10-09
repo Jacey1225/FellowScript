@@ -9,6 +9,9 @@ from backend.interactions.bible_text import is_valid_reference
 from backend.auth.dependencies import get_current_user, require_match
 from backend.moderation.content_filter import check_clean, ContentRejected, rejection_message
 from backend.interactions.attachments import generate_download_url
+from backend import content_store
+from backend.content_config import get_content_config
+from backend.interactions.note_search import scan_matches
 from datetime import datetime
 import uuid
 import logging
@@ -377,8 +380,8 @@ async def get_notes(
             verses = [[r[1], r[2], r[3]] for r in db.cur.fetchall()]
             result[nid] = {
                 "user":       str(row[1] or ""),
-                "title":      row[2],
-                "text":       row[3],
+                "title":      content_store.open_(nid, content_store.F_NOTE_TITLE, row[2]),
+                "text":       content_store.open_(nid, content_store.F_NOTE_TEXT, row[3]),
                 "public":     row[4],
                 "group_id":   row[5] or "",
                 "is_reply":   row[6],
@@ -417,8 +420,9 @@ async def search_notes(
 
     Args:
         user_id: UUID of the notes' owner.
-        q: Keyword to match (ILIKE substring, case-insensitive) against
-            title or text.
+        q: Keyword to match (literal case-insensitive substring) against
+            title or text. Matching happens in the app after decryption
+            (bounded by ``search_scan_cap``; see backend/interactions/note_search.py).
 
     Returns:
         dict: ``{"notes": {note_id: note data}}``, newest first. Same
@@ -427,16 +431,19 @@ async def search_notes(
     """
     db = DBManager()
     try:
-        pattern = f"%{q}%"
-        db.cur.execute(
+        # Title/text are ciphertext at rest: SQL scopes the candidates, the app
+        # decrypts and filters (backend/interactions/note_search.py).
+        rows, _truncated = scan_matches(
+            db.cur,
             "SELECT n._id, n.user_id, n.title, n.text, n.public, n.group_id, n.is_reply, n.timestamp, n.created_at "
-            "FROM notes n "
-            "WHERE n.user_id = %s AND n.is_reply = false AND n.group_id IS NULL "
-            "AND (n.title ILIKE %s OR n.text ILIKE %s) "
-            "ORDER BY n.created_at DESC, n._id DESC",
-            (user_id, pattern, pattern),
+            "FROM notes n",
+            "n.user_id = %s AND n.is_reply = false AND n.group_id IS NULL",
+            [user_id],
+            q,
+            idx_id=0, idx_created=8, idx_title=2, idx_text=3,
+            created_expr="n.created_at", id_expr="n._id",
+            scan_cap=get_content_config().search_scan_cap,
         )
-        rows = db.cur.fetchall()
         result = {}
         for row in rows:
             nid = str(row[0])
@@ -642,9 +649,10 @@ async def update_note(user_id: str, note_id: str, note_dict: dict, _: str = Depe
         # and read its stored length in this same transaction so two racing
         # autosaves cannot both pass against a stale old_len; the lock is held
         # until db.update() commits (or the connection closes on rejection).
-        db.cur.execute("SELECT length(text) FROM notes WHERE _id = %s FOR UPDATE", (note_id,))
+        # Stored text may be ciphertext, so the length is of the opened text.
+        db.cur.execute("SELECT text FROM notes WHERE _id = %s FOR UPDATE", (note_id,))
         locked = db.cur.fetchone()
-        old_len = (locked[0] or 0) if locked else 0
+        old_len = len(content_store.open_(note_id, content_store.F_NOTE_TEXT, locked[0]) or "") if locked else 0
         chars_gate = check_note_chars(user_id, len(note.text or ""), old_len)
         if not chars_gate["allowed"]:
             raise HTTPException(status_code=403, detail=chars_gate)

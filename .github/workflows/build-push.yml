@@ -150,6 +150,10 @@ jobs:
       # payout_crypto.validate_payout_keys() fails the boot if this is unset or not
       # '<id>:<base64 of 32 bytes>'. Clearly fake, CI-only key .
       PAYOUT_ENCRYPTION_KEYS: "1:Y2ktb25seS1wYXlvdXQta2V5LTAxMjM0NTY3ODlhYmM="
+      # content_crypto.validate_content_keys() (task 20261008-content-encryption-at-rest)
+      # fails the boot the same way if this is unset or not '<id>:<base64 of 32 bytes>'.
+      # Clearly fake, CI-only key, distinct from the payout key (separate key rings).
+      CONTENT_ENCRYPTION_KEYS: "1:Y2ktb25seS1jb250ZW50LWtleS0wMTIzNDU2Nzg5YWI="
       # validate_join_window_config() (task 20260920-session-join-window-gating)
       # fails fast at app boot the same way the validators above do -- same
       # rationale, same fix: a throwaway CI value so

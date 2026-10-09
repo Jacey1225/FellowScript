@@ -2,8 +2,11 @@ import psycopg2 as sql
 import os
 import re
 import logging
+import uuid
 from typing import Any
 from dotenv import load_dotenv
+
+from backend import content_store
 
 load_dotenv()
 
@@ -49,6 +52,7 @@ logger = logging.getLogger(__name__)
 # to echo one back outside either of those two DETAIL shapes.
 _DB_ERROR_KEY_VALUE_RE = re.compile(r"(Key \([^)]*\)=\()[^)]*(\))")
 _DB_ERROR_FAILING_ROW_RE = re.compile(r"(Failing row contains \()[^)]*(\))")
+_DB_ERROR_CIPHERTEXT_RE = re.compile(r"enc:v1:[A-Za-z0-9_\-=]+")
 _DB_ERROR_EMAIL_RE = re.compile(r"\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b")
 
 
@@ -68,6 +72,7 @@ def _redact_db_error(e: sql.Error) -> str:
     text = _DB_ERROR_KEY_VALUE_RE.sub(r"\1[REDACTED]\2", text)
     text = _DB_ERROR_FAILING_ROW_RE.sub(r"\1[REDACTED_ROW]\2", text)
     text = _DB_ERROR_EMAIL_RE.sub("[REDACTED_EMAIL]", text)
+    text = _DB_ERROR_CIPHERTEXT_RE.sub("[REDACTED_CIPHERTEXT]", text)
     return text
 
 
@@ -86,6 +91,7 @@ DDL_MODULES = (
     "affiliate_milestones",
     "affiliate_payouts",
     "email_verification",
+    "content_encryption",
 )
 
 
@@ -1399,6 +1405,17 @@ def create_backup_tables(cur) -> None:
     cur.execute(
         "CREATE INDEX IF NOT EXISTS idx_backup_notes_user ON notes(user_id)"
     )
+    # Content encryption (task 20261008-content-encryption-at-rest): the backup
+    # copies the primary's stored value verbatim (ciphertext stays ciphertext),
+    # which does not fit VARCHAR(255). VARCHAR->TEXT is metadata-only and a no-op
+    # once applied (guarded so re-runs skip it).
+    cur.execute(
+        "SELECT data_type FROM information_schema.columns WHERE table_schema = current_schema() "
+        "AND table_name = 'notes' AND column_name = 'title'"
+    )
+    _title_col = cur.fetchone()
+    if _title_col is not None and _title_col[0] != "text":
+        cur.execute("ALTER TABLE notes ALTER COLUMN title TYPE TEXT")
     logger.info("Backup-database tables created.")
 
 
@@ -1413,6 +1430,11 @@ def _connect():
 
 
 class DBManager:
+    # True for tooling that must move stored values verbatim (the nightly backup
+    # copy keeps ciphertext as ciphertext). Content encryption funnel: see
+    # backend/content_store.py (task 20261008-content-encryption-at-rest).
+    content_passthrough = False
+
     def __init__(self, dbname: str = "fellowscript"):
         self.conn = sql.connect(
             host="localhost",
@@ -1460,6 +1482,10 @@ class DBManager:
         unexpected miss -- it ran without error and did exactly what was
         asked.
         """
+        if not self.content_passthrough and table in content_store.TABLE_COLUMNS:
+            if "_id" not in values and any(c in values for c in content_store.TABLE_COLUMNS[table]):
+                values = {"_id": str(uuid.uuid4()), **values}  # the id is part of the AAD
+            values = content_store.seal_values(table, values)
         cols = ", ".join(values.keys())
         placeholders = ", ".join(["%s"] * len(values))
         try:
@@ -1489,10 +1515,15 @@ class DBManager:
             if not self.cur.description:
                 return {}
             cols = [desc[0] for desc in self.cur.description]
-            return {
+            out = {
                 row[0]: dict(zip(cols[1:], row[1:]))
                 for row in self.cur.fetchall()
             }
+            if not self.content_passthrough and table in content_store.TABLE_COLUMNS:
+                # Dual-read; a ciphertext that fails to authenticate raises
+                # ContentDecryptError (not caught here: fail closed).
+                out = {rid: content_store.open_row(table, rid, r) for rid, r in out.items()}
+            return out
         except sql.Error as e:
             logger.error("Error looking up %s: %s", table, e)
             self.conn.rollback()
@@ -1544,6 +1575,12 @@ class DBManager:
         DB_WRITE_FAILURE for that no-op case, only for a real caught
         error.
         """
+        if not self.content_passthrough and table in content_store.TABLE_COLUMNS and any(
+            c in values for c in content_store.TABLE_COLUMNS[table]
+        ):
+            if "_id" not in conditions:
+                raise ValueError(f"update of encrypted columns on {table} must be keyed by _id")
+            values = content_store.seal_values(table, values, row_id=conditions["_id"])
         set_clause = ", ".join(f"{col} = %s" for col in values.keys())
         where_clause = " AND ".join(f"{col} = %s" for col in conditions.keys())
         params = list(values.values()) + list(conditions.values())

@@ -25,6 +25,7 @@ import logging
 import uuid
 
 from db import DBManager
+from backend import content_store
 from backend.interactions import paging
 from backend.interactions.attachments import generate_download_url
 from backend.interactions.groups import author_set
@@ -113,9 +114,9 @@ def _summary_row(row) -> dict:
     return {
         "id": row[0],
         "group_id": row[1],
-        "title": row[2],
+        "title": content_store.open_(row[0], content_store.F_THREAD_TITLE, row[2]),
         # A deleted root's text must not keep showing in the list.
-        "root_preview": None if root_deleted else row[3],
+        "root_preview": None if root_deleted else content_store.open_(row[0], content_store.F_THREAD_ROOT_PREVIEW, row[3]),
         "root_message_id": row[4],
         "root_deleted": root_deleted,
         "reply_count": int(row[6]),
@@ -200,14 +201,19 @@ class ThreadsManager(DBManager):
                 self._fail()
                 raise ThreadLimitError()
 
-            auto_title = _label_or_text(msg[1], msg[2], cfg.auto_title_length) or FALLBACK_TITLE
-            preview = _label_or_text(msg[1], msg[2], cfg.root_preview_length) or None
+            root_text = content_store.open_(mid, content_store.F_MESSAGE_TEXT, msg[1])
+            auto_title = _label_or_text(root_text, msg[2], cfg.auto_title_length) or FALLBACK_TITLE
+            preview = _label_or_text(root_text, msg[2], cfg.root_preview_length) or None
+            # The thread id is chosen here: it is part of the encryption AAD.
+            new_tid = str(uuid.uuid4())
             self.cur.execute(
-                "INSERT INTO threads (group_id, root_message_id, root_preview, root_author_id, title, created_by) "
-                "VALUES (%s::uuid, %s::uuid, %s, %s::uuid, %s, %s::uuid) "
+                "INSERT INTO threads (_id, group_id, root_message_id, root_preview, root_author_id, title, created_by) "
+                "VALUES (%s::uuid, %s::uuid, %s::uuid, %s, %s::uuid, %s, %s::uuid) "
                 "ON CONFLICT (root_message_id) WHERE root_message_id IS NOT NULL DO NOTHING "
                 "RETURNING _id::text",
-                (gid, mid, preview, msg[0], chosen or auto_title, self.user_id),
+                (new_tid, gid, mid,
+                 content_store.seal(new_tid, content_store.F_THREAD_ROOT_PREVIEW, preview), msg[0],
+                 content_store.seal(new_tid, content_store.F_THREAD_TITLE, chosen or auto_title), self.user_id),
             )
             row = self.cur.fetchone()
             created = row is not None
@@ -339,7 +345,7 @@ class ThreadsManager(DBManager):
                 "thread_id": tid,
                 "from_user": usernames.get(from_uid, ""),
                 "mine": from_uid.lower() == me,
-                "text": text,
+                "text": content_store.open_(_id, content_store.F_THREAD_MESSAGE_TEXT, text),
                 "timestamp": paging.format_timestamp(ts),
                 "attachment_kind": kind,
                 "attachment_meta": meta,
@@ -364,14 +370,14 @@ class ThreadsManager(DBManager):
             self.cur.execute(
                 "UPDATE threads SET title = %s WHERE _id = %s::uuid AND group_id = %s::uuid "
                 "AND created_by = %s::uuid RETURNING _id::text, title",
-                (new_title, tid, gid, self.user_id),
+                (content_store.seal(tid, content_store.F_THREAD_TITLE, new_title), tid, gid, self.user_id),
             )
             row = self.cur.fetchone()
             self.conn.commit()
         except Exception:
             self.conn.rollback()
             raise
-        return {"id": row[0], "title": row[1]} if row else None
+        return {"id": row[0], "title": content_store.open_(row[0], content_store.F_THREAD_TITLE, row[1])} if row else None
 
 
 def audit(action: str, user_id: str, group_id: str, thread_id: str) -> None:
