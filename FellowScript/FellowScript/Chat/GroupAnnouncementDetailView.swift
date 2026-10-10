@@ -8,9 +8,15 @@ struct GroupAnnouncementDetailView: View {
     let item: FSGroupAnnouncement
     var onEdit: () -> Void
     var onDelete: () -> Void
+    /// Part E: join (true) / leave (false) the RSVP. Nil = no RSVP action (count only).
+    var onRSVP: ((Bool) async throws -> FSGroupAnnouncement)? = nil
+
+    private var theme: AnnouncementBgTheme { AnnouncementBgTheme.resolve(item.bg_theme) }
 
     var body: some View {
         ZStack(alignment: .top) {
+            // Part D: the theme fills the page; the banner fades into it at the bottom.
+            if theme != .none { theme.fill.ignoresSafeArea().accessibilityHidden(true) }
             if let s = item.banner_url, let url = URL(string: s) {
                 bannerBackground(url)
             }
@@ -26,20 +32,22 @@ struct GroupAnnouncementDetailView: View {
                             .background(Theme.gold.opacity(0.12)).clipShape(Capsule())
                     }
                     Text(item.title)
-                        .font(.inter(Theme.fontHeading, weight: .semibold))
-                        .foregroundColor(AnnouncementTitleColor.surfaceColor(item.title_color, fallback: Theme.parchment))
+                        .font(AnnouncementTitleFont.resolve(item.title_font).font(Theme.fontHeading, relativeTo: .title2))
+                        .foregroundColor(AnnouncementTitleColor.surfaceColor(item.title_color, fallback: theme.readableText, surfaceHex: theme.surfaceHex))
                         .accessibilityAddTraits(.isHeader)
                     Text("By \(item.creator_username ?? "a member"), \(FSAnnouncementDates.display(item.publish_at))")
-                        .font(.inter(Theme.fontXS)).foregroundColor(Theme.parchment.opacity(0.6))
+                        .font(.inter(Theme.fontXS)).foregroundColor(theme.readableText.opacity(theme == .none ? 0.6 : 0.75))
                     Text(item.description)
-                        .font(.inter(Theme.fontSM)).foregroundColor(Theme.parchment.opacity(0.9))
+                        .font(.inter(Theme.fontSM)).foregroundColor(theme.readableText.opacity(0.9))
                         .fixedSize(horizontal: false, vertical: true)
+                    AnnouncementExtrasDetail(item: item, textColor: theme.readableText, onRSVP: onRSVP)
+                        .padding(.top, Theme.spacingSM)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(Theme.spacingMD)
             }
         }
-        .warmBloomBackground()
+        .background { if theme == .none { Color.clear.warmBloomBackground() } }
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)

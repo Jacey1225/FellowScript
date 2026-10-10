@@ -12,12 +12,12 @@ attached via create/update and re-validated against this group's prefix.
 import logging
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, StrictBool, StrictInt
 
 from backend.auth.dependencies import require_match
 from backend.interactions.announcement_banner import generate_announcement_banner_upload_policy
 from backend.interactions.announcements import (
-    ANNOUNCEMENTS_ENABLED, AnnouncementForbidden, AnnouncementNotFound,
+    ANNOUNCEMENTS_ENABLED, AnnouncementForbidden, AnnouncementFull, AnnouncementNotFound,
     AnnouncementsManager, parse_publish_at,
 )
 from backend.interactions.announcement_notifier import notify_on_create
@@ -30,12 +30,48 @@ group_announcements_router = APIRouter(prefix="/groups")
 logger = logging.getLogger(__name__)
 
 
+class LinkIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    url: str
+    label: str | None = None
+
+
+class PaymentHandleIn(BaseModel):
+    """Display-only host payment handle. Never processed by the app."""
+    model_config = ConfigDict(extra="forbid")
+    provider: str
+    handle: str
+
+
+EXTRA_FIELDS = ("links", "gallery_keys", "is_event", "payment_handles", "capacity")
+
+
+def _extra_fields(fields: dict) -> dict:
+    """Part E fields as plain JSON-shaped values (null/empty clears)."""
+    out = {}
+    for k in EXTRA_FIELDS:
+        if k in fields:
+            v = fields[k]
+            if k in ("links", "payment_handles") and v is not None:
+                v = [i.model_dump() if isinstance(i, BaseModel) else i for i in v]
+            out[k] = v
+    return out
+
+
 class AnnouncementCreateRequest(BaseModel):
     title: str
     description: str = ""
     banner_key: str | None = None
     publish_at: str | None = None  # ISO-8601 with offset; None = publish now
     title_color: str | None = None  # strict #RRGGBB; None = default parchment
+    title_font: str | None = None  # allowlisted key; flag-gated (422 while off)
+    bg_theme: str | None = None  # allowlisted key; flag-gated (422 while off)
+    # Part E attachments; each non-empty value is flag-gated (422 while off).
+    links: list[LinkIn] | None = None
+    gallery_keys: list[str] | None = None
+    is_event: StrictBool | None = None
+    payment_handles: list[PaymentHandleIn] | None = None
+    capacity: StrictInt | None = None
 
 
 class AnnouncementUpdateRequest(BaseModel):
@@ -45,6 +81,13 @@ class AnnouncementUpdateRequest(BaseModel):
     banner_key: str | None = None
     publish_at: str | None = None
     title_color: str | None = None  # null resets to default
+    title_font: str | None = None  # null resets; non-null needs flag + allowlist
+    bg_theme: str | None = None  # null resets; non-null needs flag + allowlist
+    links: list[LinkIn] | None = None  # null / [] clears
+    gallery_keys: list[str] | None = None
+    is_event: StrictBool | None = None
+    payment_handles: list[PaymentHandleIn] | None = None
+    capacity: StrictInt | None = None  # null clears (drops RSVPs)
 
 
 class BannerUploadUrlRequest(BaseModel):
@@ -108,14 +151,17 @@ async def create_announcement(
     """
     manager = _open(user_id, group_id)
     try:
-        _clean(title=body.title, description=body.description)
+        _clean(title=body.title, description=body.description,
+               **{f"link_label_{i}": (l.label or "") for i, l in enumerate(body.links or [])})
         publish_at = _publish_at(body.publish_at)
         gate = check_limit(user_id, "announcements")
         if not gate["allowed"]:
             raise HTTPException(status_code=403, detail=gate)
         try:
             created = manager.create_announcement(body.title, body.description, body.banner_key, publish_at,
-                                                title_color=body.title_color)
+                                                title_color=body.title_color,
+                                                title_font=body.title_font, bg_theme=body.bg_theme,
+                                                extra=_extra_fields({k: getattr(body, k) for k in body.model_fields_set}))
             # Group push runs after the response (off the request path); the
             # notifier claims atomically and never raises.
             background_tasks.add_task(notify_on_create, created["id"])
@@ -167,9 +213,11 @@ async def update_announcement(
     422 validation, content filter, or publish_at change after publishing.
     """
     fields = {k: getattr(body, k) for k in body.model_fields_set}
+    fields.update(_extra_fields(fields))
     manager = _open(user_id, group_id)
     try:
-        _clean(title=fields.get("title"), description=fields.get("description"))
+        _clean(title=fields.get("title"), description=fields.get("description"),
+               **{f"link_label_{i}": (l.get("label") or "") for i, l in enumerate(fields.get("links") or [])})
         if "publish_at" in fields:
             fields["publish_at"] = _publish_at(fields["publish_at"])
         try:
@@ -241,3 +289,59 @@ async def request_banner_upload_url(
     except AttachmentConfigError as e:
         logger.error("Announcement banner upload requested but not configured: %s", e)
         raise HTTPException(status_code=503, detail="Banner uploads are not available right now.")
+
+
+@group_announcements_router.post("/{user_id}/{group_id}/announcements/{announcement_id}/rsvp")
+@limiter.limit("30/minute")
+async def rsvp_join(
+    request: Request, user_id: str, group_id: str, announcement_id: str,
+    _: str = Depends(require_match("user_id")),
+) -> dict:
+    """Idempotent RSVP to a joinable announcement (not a group join). Returns
+    the announcement with the updated count.
+
+    Raises: 403 not a member; 404 not joinable / not visible / flag off;
+    409 full."""
+    manager = _open(user_id, group_id)
+    try:
+        return manager.rsvp_join(announcement_id)
+    except AnnouncementNotFound:
+        raise HTTPException(status_code=404, detail="Announcement not found")
+    except AnnouncementFull:
+        raise HTTPException(status_code=409, detail="This event is full")
+    finally:
+        manager.close()
+
+
+@group_announcements_router.delete("/{user_id}/{group_id}/announcements/{announcement_id}/rsvp")
+@limiter.limit("30/minute")
+async def rsvp_leave(
+    request: Request, user_id: str, group_id: str, announcement_id: str,
+    _: str = Depends(require_match("user_id")),
+) -> dict:
+    """Idempotent cancel. Raises: 403 not a member; 404."""
+    manager = _open(user_id, group_id)
+    try:
+        return manager.rsvp_leave(announcement_id)
+    except AnnouncementNotFound:
+        raise HTTPException(status_code=404, detail="Announcement not found")
+    finally:
+        manager.close()
+
+
+@group_announcements_router.get("/{user_id}/{group_id}/announcements/{announcement_id}/rsvps")
+async def list_rsvps(
+    user_id: str, group_id: str, announcement_id: str, _: str = Depends(require_match("user_id")),
+) -> dict:
+    """Attendee list for the host (announcement creator or group creator).
+
+    Raises: 403 not a member / not the host; 404."""
+    manager = _open(user_id, group_id)
+    try:
+        return manager.list_rsvps(announcement_id)
+    except AnnouncementNotFound:
+        raise HTTPException(status_code=404, detail="Announcement not found")
+    except AnnouncementForbidden:
+        raise HTTPException(status_code=403, detail="Only the host can see the attendee list")
+    finally:
+        manager.close()

@@ -121,6 +121,16 @@ register("agent_chat_memory", exposed_in_capabilities=False)
 # Emoji reactions on Bible verses (task 20261009-verse-reactions): optional emoji on
 # highlights. Gates server acceptance of emoji and the iOS UI. Ships OFF.
 register("verse_reactions")
+# Announcement title fonts and background themes (task 20261009-announcements-advanced,
+# parts C and D). Exposed in capabilities so the iOS form can hide the controls. Ship OFF.
+register("announcement_title_font")
+register("announcement_bg_theme")
+# Announcement attachments (task 20261009-announcements-advanced, part E): links,
+# gallery, event payment handles (display only), RSVP capacity. Ship OFF.
+register("announcement_links")
+register("announcement_gallery")
+register("announcement_payments")
+register("announcement_rsvp")
 
 
 def _load_snapshot() -> dict[str, tuple[str, frozenset[str]]]:

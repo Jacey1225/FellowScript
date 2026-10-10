@@ -18,6 +18,8 @@ protocol GroupAnnouncementsService {
     func deleteAnnouncement(userId: String, groupId: String, announcementId: String) async throws
     /// Presigned upload of a banner; returns the object key to attach on create/update.
     func uploadAnnouncementBanner(userId: String, groupId: String, data: Data, contentType: String) async throws -> String
+    /// Idempotent RSVP join / cancel (not a group join). Returns the announcement with fresh counts.
+    func rsvpAnnouncement(userId: String, groupId: String, announcementId: String, join: Bool) async throws -> FSGroupAnnouncement
 }
 
 private struct AnnouncementBannerUploadBody: Encodable {
@@ -79,6 +81,15 @@ extension NetworkService: GroupAnnouncementsService {
     // DELETE (soft delete server-side)
     func deleteAnnouncement(userId: String, groupId: String, announcementId: String) async throws {
         _ = try await request("\(announcementsPath(userId, groupId))/\(announcementId)", method: "DELETE")
+    }
+
+    // POST / DELETE …/announcements/{id}/rsvp → the updated announcement (409 = full)
+    func rsvpAnnouncement(userId: String, groupId: String, announcementId: String, join: Bool) async throws -> FSGroupAnnouncement {
+        let data = try await request("\(announcementsPath(userId, groupId))/\(announcementId)/rsvp", method: join ? "POST" : "DELETE")
+        guard let item = decode(FSGroupAnnouncement.self, from: data, endpoint: "/groups/{id}/{id}/announcements/{id}/rsvp") else {
+            throw AppError.networkError("Couldn't update your RSVP. Please try again.")
+        }
+        return item
     }
 
     // POST …/announcements/banner/upload-url, then presigned POST to S3.

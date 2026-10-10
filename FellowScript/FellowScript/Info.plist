@@ -104,6 +104,11 @@
 		<string>Inter-SemiBold.ttf</string>
 		<string>Inter-Bold.ttf</string>
 		<string>SchibstedGrotesk-SemiBold.ttf</string>
+		<string>Lora-SemiBold.ttf</string>
+		<string>Oswald-SemiBold.ttf</string>
+		<string>DancingScript-Bold.ttf</string>
+		<string>Nunito-ExtraBold.ttf</string>
+		<string>BebasNeue-Regular.ttf</string>
 	</array>
 	<key>CFBundleURLTypes</key>
 	<array>

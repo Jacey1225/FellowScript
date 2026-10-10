@@ -371,6 +371,36 @@ def create_tables(cur):
     cur.execute(
         "ALTER TABLE group_announcements ADD COLUMN IF NOT EXISTS title_color VARCHAR(7)"
     )
+    # Task 20261009-announcements-advanced (parts C, D): allowlisted font and
+    # background-theme keys (validated in the API layer, flag-gated). NULL =
+    # default look, so existing rows are untouched. Additive + idempotent.
+    cur.execute(
+        "ALTER TABLE group_announcements ADD COLUMN IF NOT EXISTS title_font VARCHAR(32)"
+    )
+    cur.execute(
+        "ALTER TABLE group_announcements ADD COLUMN IF NOT EXISTS bg_theme VARCHAR(32)"
+    )
+    # Task 20261009-announcements-advanced (part E): optional attachments.
+    # links / payment_handles are validated JSON arrays, gallery_keys an array
+    # of S3 object keys (never URLs), capacity NULL = not joinable. All flag
+    # gated in the API layer; NULL / defaults leave existing rows untouched.
+    # Additive + idempotent.
+    cur.execute("ALTER TABLE group_announcements ADD COLUMN IF NOT EXISTS links JSONB")
+    cur.execute("ALTER TABLE group_announcements ADD COLUMN IF NOT EXISTS gallery_keys JSONB")
+    cur.execute(
+        "ALTER TABLE group_announcements ADD COLUMN IF NOT EXISTS is_event BOOLEAN NOT NULL DEFAULT FALSE"
+    )
+    cur.execute("ALTER TABLE group_announcements ADD COLUMN IF NOT EXISTS payment_handles JSONB")
+    cur.execute("ALTER TABLE group_announcements ADD COLUMN IF NOT EXISTS capacity INTEGER")
+    # RSVPs: a sign-up for the announcement's event, NOT group membership.
+    # One row per (announcement, user); cascades with either side.
+    cur.execute(
+        "CREATE TABLE IF NOT EXISTS group_announcement_rsvps"
+        "(announcement_id UUID NOT NULL REFERENCES group_announcements(_id) ON DELETE CASCADE,"
+        "user_id UUID NOT NULL REFERENCES users(_id) ON DELETE CASCADE,"
+        "created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),"
+        "PRIMARY KEY (announcement_id, user_id))"
+    )
 
     # ── Level 1: depend on users / groups ──────────────────────────────────────
     cur.execute(

@@ -48,6 +48,17 @@ final class GroupAnnouncementWidgetViewModel: ObservableObject {
         }
     }
 
+    /// RSVP join / leave from the detail sheet; refreshes the widget's cached item too.
+    func rsvp(_ item: FSGroupAnnouncement, join: Bool) async throws -> FSGroupAnnouncement {
+        guard let service else { throw AppError.networkError("Announcements aren't available right now.") }
+        let updated = try await service.rsvpAnnouncement(userId: userId, groupId: groupId, announcementId: item.id, join: join)
+        if self.item?.id == updated.id {
+            self.item = updated
+            await DiskCache.shared.save(FSLatestAnnouncement(announcement: updated), forKey: cacheKey)
+        }
+        return updated
+    }
+
     func dismiss() {
         guard let id = item?.id else { return }
         UserDefaults.standard.set(id, forKey: dismissKey)
@@ -87,7 +98,8 @@ struct GroupAnnouncementWidgetView: View {
         .sheet(item: $viewing) { item in
             NavigationStack {
                 // Read-only here; edit/delete stay in the group info panel.
-                GroupAnnouncementDetailView(item: readOnly(item), onEdit: {}, onDelete: {})
+                GroupAnnouncementDetailView(item: readOnly(item), onEdit: {}, onDelete: {},
+                                            onRSVP: { join in try await vm.rsvp(item, join: join) })
                     .toolbar {
                         ToolbarItem(placement: .topBarLeading) {
                             Button("Close") { viewing = nil }
@@ -184,8 +196,8 @@ struct AnnouncementWidgetCardBody: View {
         HStack(alignment: .center, spacing: Theme.spacingSM) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(item.title)
-                    .font(.inter(17, weight: .semibold)).foregroundColor(AnnouncementTitleColor.bannerColor(item.title_color))
-                    .lineLimit(2).multilineTextAlignment(.leading)
+                    .font(AnnouncementTitleFont.resolve(item.title_font).font(17)).foregroundColor(AnnouncementTitleColor.bannerColor(item.title_color))
+                    .lineLimit(2).minimumScaleFactor(0.7).multilineTextAlignment(.leading)
                     .shadow(color: .black.opacity(0.6), radius: 1, x: 0, y: 1)
             }
             Spacer(minLength: 0)

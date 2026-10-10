@@ -121,6 +121,20 @@ final class GroupAnnouncementsViewModel: ObservableObject {
         try await svc().uploadAnnouncementBanner(userId: userId, groupId: groupId, data: data, contentType: contentType)
     }
 
+    /// RSVP join / leave. Throws so the detail view can roll its optimistic
+    /// count back; on success the cached item is replaced with the fresh one.
+    func rsvp(_ item: FSGroupAnnouncement, join: Bool) async throws -> FSGroupAnnouncement {
+        do {
+            let updated = try await svc().rsvpAnnouncement(userId: userId, groupId: groupId, announcementId: item.id, join: join)
+            if let idx = items.firstIndex(where: { $0.id == updated.id }) { items[idx] = updated }
+            await persist()
+            return updated
+        } catch {
+            if isNotMember(error) { removedFromGroup = true }
+            throw error
+        }
+    }
+
     // ── Delete with undo grace ───────────────────────────────────────────────
     func startDelete(_ item: FSGroupAnnouncement) {
         commitPendingDeletes()          // one grace window at a time

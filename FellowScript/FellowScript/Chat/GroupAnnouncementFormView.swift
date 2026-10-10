@@ -30,6 +30,10 @@ struct GroupAnnouncementFormView: View {
     var onDone: (FSGroupAnnouncement) -> Void
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.fsCapabilities) private var capabilities
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @FocusState private var focusedField: Field?
+    private enum Field { case title, message }
 
     @State private var title: String
     @State private var text: String
@@ -37,6 +41,13 @@ struct GroupAnnouncementFormView: View {
     @State private var when: Date
     @State private var banner: FSAnnouncementDraft.Banner = .unchanged
     @State private var titleColor: String?
+    @State private var titleFont: String?
+    @State private var bgTheme: String?
+    @State private var extras: AnnouncementExtrasDraft
+    @State private var extrasBusy = false
+    @State private var showStock = false
+    @State private var pendingStock: UIImage?
+    @State private var showTheme = false
     @State private var bannerImage: UIImage?
     @State private var bannerBusy = false
     @State private var bannerError: String?
@@ -55,6 +66,9 @@ struct GroupAnnouncementFormView: View {
         _title = State(initialValue: editing?.title ?? "")
         _text = State(initialValue: editing?.description ?? "")
         _titleColor = State(initialValue: AnnouncementTitleColor.normalized(editing?.title_color))
+        _titleFont = State(initialValue: editing?.title_font)
+        _bgTheme = State(initialValue: editing?.bg_theme)
+        _extras = State(initialValue: AnnouncementExtrasDraft(from: editing))
         let scheduled = editing.map { !$0.published } ?? false
         _schedule = State(initialValue: scheduled)
         _when = State(initialValue: editing.flatMap { FSAnnouncementDates.parse($0.publish_at) } ?? Date().addingTimeInterval(3600))
@@ -65,7 +79,16 @@ struct GroupAnnouncementFormView: View {
     private var canReschedule: Bool { editing == nil || editing?.published == false }
     private var trimmedTitle: String { title.trimmingCharacters(in: .whitespacesAndNewlines) }
     private var trimmedText: String { text.trimmingCharacters(in: .whitespacesAndNewlines) }
-    private var canSubmit: Bool { !trimmedTitle.isEmpty && !trimmedText.isEmpty && !saving && !bannerBusy }
+    private var canSubmit: Bool { !trimmedTitle.isEmpty && !trimmedText.isEmpty && !saving && !bannerBusy && !extrasBusy && extrasError == nil }
+    /// Server-gated controls: hidden (and never sent) while their flag is off.
+    private var fontsOn: Bool { capabilities.isEnabled(AnnouncementTitleFont.flagName) }
+    private var themesOn: Bool { capabilities.isEnabled(AnnouncementBgTheme.flagName) }
+    private var linksOn: Bool { capabilities.isEnabled(AnnouncementExtrasFlag.links) }
+    private var galleryOn: Bool { capabilities.isEnabled(AnnouncementExtrasFlag.gallery) }
+    private var paymentsOn: Bool { capabilities.isEnabled(AnnouncementExtrasFlag.payments) }
+    private var rsvpOn: Bool { capabilities.isEnabled(AnnouncementExtrasFlag.rsvp) }
+    private var extrasOn: Bool { linksOn || galleryOn || paymentsOn || rsvpOn }
+    private var extrasError: String? { extrasOn ? extras.blockingError(links: linksOn, payments: paymentsOn) : nil }
     private var submitLabel: String { isEditing ? "Save" : (schedule ? "Schedule" : "Post") }
 
     var body: some View {
@@ -74,10 +97,18 @@ struct GroupAnnouncementFormView: View {
                     ScrollView {
                     VStack(alignment: .leading, spacing: 20) {
                         bannerField
+                        if themesOn { themeStrip }
                         titleField
                         titleColorField
                         messageField
                         if canReschedule { publishField }
+                        if extrasOn {
+                            AnnouncementExtrasSection(
+                                extras: $extras, linksOn: linksOn, galleryOn: galleryOn, paymentsOn: paymentsOn, rsvpOn: rsvpOn,
+                                saving: saving, busy: $extrasBusy,
+                                upload: { data in try await vm.uploadBanner(data: data, contentType: "image/jpeg") },
+                                onChange: { dirty = true })
+                        }
                         if !isEditing, !gateHit, let g = vm.gate, g.unlimited != true {
                             Text("Free plan: \(g.limit ?? 1) announcement per week. Used \(g.used ?? 0) of \(g.limit ?? 1).")
                                 .font(.inter(Theme.fontXS)).foregroundColor(Theme.parchment.opacity(0.6))
@@ -104,7 +135,7 @@ struct GroupAnnouncementFormView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button { Task { await submit() } } label: {
-                        if saving { ProgressView().tint(Theme.gold) } else { Text(bannerBusy ? "Uploading…" : submitLabel).fontWeight(.bold) }
+                        if saving { ProgressView().tint(Theme.gold) } else { Text(bannerBusy || extrasBusy ? "Uploading…" : submitLabel).fontWeight(.bold) }
                     }
                     .foregroundColor(Theme.gold)
                     .disabled(!canSubmit)
@@ -119,6 +150,15 @@ struct GroupAnnouncementFormView: View {
         .presentationDetents([.large])
         .interactiveDismissDisabled(dirty)
         .onChange(of: pickerItem) { _, item in handlePicked(item) }
+        .sheet(isPresented: $showStock, onDismiss: {
+            // Open the crop step only after the sheet is gone (two covers can't overlap).
+            if let img = pendingStock { pendingStock = nil; bannerError = nil; cropImage = img }
+        }) {
+            AnnouncementStockPicker(photos: AnnouncementStockCatalog.shared) { pendingStock = $0 }
+        }
+        .sheet(isPresented: $showTheme) {
+            AnnouncementBgThemeSheet(key: $bgTheme) { dirty = true }
+        }
         .fullScreenCover(isPresented: Binding(get: { cropImage != nil }, set: { if !$0 { cropImage = nil } })) {
             if let cropImage {
                 AnnouncementBannerCropView(image: cropImage, onCancel: { self.cropImage = nil }) { jpeg in
@@ -153,53 +193,73 @@ struct GroupAnnouncementFormView: View {
     private var bannerField: some View {
         VStack(alignment: .leading, spacing: Theme.spacingXS) {
             label("Banner photo (optional)")
+            AnnouncementBannerTile(
+                item: previewItem, previewImage: bannerImage, hasBanner: hasBanner, busy: bannerBusy,
+                showStock: !AnnouncementStockCatalog.shared.isEmpty,
+                pickerItem: $pickerItem,
+                onStock: { showStock = true },
+                onRemove: { banner = .removed; bannerImage = nil; dirty = true }
+            )
+            if fontsOn {
+                AnnouncementTitleFontRow(key: $titleFont, sample: trimmedTitle) { dirty = true }
+                    .disabled(saving)
+            }
             if hasBanner {
-                Group {
-                    if let img = bannerImage { AnnouncementBannerImage(source: .image(img)) }
-                    else if let url = currentBannerURL { AnnouncementBannerImage(source: .url(url)) }
-                }
-                .overlay { if bannerBusy { ProgressView().tint(Theme.gold) } }
-                .opacity(bannerBusy ? 0.5 : 1)
-                HStack {
-                    Button { Task { await adjustCrop() } } label: {
-                        Text("Adjust crop").font(.inter(Theme.fontSM)).foregroundColor(Theme.gold).frame(minHeight: 44)
-                    }
-                    .disabled(bannerBusy)
-                    PhotosPicker(selection: $pickerItem, matching: .images) {
-                        Text("Replace photo").font(.inter(Theme.fontSM)).foregroundColor(Theme.gold).frame(minHeight: 44)
-                    }
-                    .disabled(bannerBusy)
-                    Button("Remove") { banner = .removed; bannerImage = nil; dirty = true }
-                        .font(.inter(Theme.fontSM)).foregroundColor(Theme.error).frame(minHeight: 44)
-                        .disabled(bannerBusy)
-                }
-            } else {
-                PhotosPicker(selection: $pickerItem, matching: .images) {
-                    VStack(spacing: 4) {
-                        if bannerBusy { ProgressView().tint(Theme.gold) }
-                        else { Text("Add banner photo").font(.inter(Theme.fontSM)).foregroundColor(Theme.gold) }
-                        Text(AnnouncementLimits.bannerHelper).font(.inter(Theme.fontXS)).foregroundColor(Theme.parchment.opacity(0.6))
-                    }
-                    .frame(maxWidth: .infinity)
-                    .aspectRatio(AnnouncementLimits.bannerAspect, contentMode: .fit)
-                    .overlay(RoundedRectangle(cornerRadius: Theme.radius).strokeBorder(Theme.borderGold, style: StrokeStyle(lineWidth: 1, dash: [6])))
+                Button { Task { await adjustCrop() } } label: {
+                    Text("Adjust crop").font(.inter(Theme.fontSM)).foregroundColor(Theme.gold).frame(minHeight: 44)
                 }
                 .disabled(bannerBusy)
-                .accessibilityLabel("Add banner photo")
             }
-            if let bannerError { Text(bannerError).font(.inter(Theme.fontXS)).foregroundColor(Theme.error) }
+            if bannerError != nil || hasBanner {
+                Text(bannerError ?? AnnouncementLimits.bannerHelper)
+                    .font(.inter(Theme.fontXS)).foregroundColor(bannerError == nil ? Theme.parchment.opacity(0.6) : Theme.error)
+            }
         }
+    }
+
+    /// Part D: live strip showing the theme under the banner, with the palette
+    /// button at its bottom left.
+    private var themeStrip: some View {
+        let theme = AnnouncementBgTheme.resolve(bgTheme)
+        return ZStack(alignment: .bottomLeading) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(trimmedTitle.isEmpty ? "Your title" : trimmedTitle)
+                    .font(AnnouncementTitleFont.resolve(titleFont).font(Theme.fontSM))
+                    .foregroundColor(AnnouncementTitleColor.surfaceColor(titleColor, fallback: theme.readableText, surfaceHex: theme.surfaceHex))
+                    .lineLimit(1)
+                Text(trimmedText.isEmpty ? "Your message appears here." : trimmedText)
+                    .font(.inter(Theme.fontXS)).foregroundColor(theme.readableText.opacity(0.85)).lineLimit(1)
+            }
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+            .padding(.horizontal, Theme.spacingMD).padding(.top, Theme.spacingSM).padding(.bottom, 52)
+            Button { showTheme = true } label: {
+                Image(systemName: "paintpalette")
+                    .font(.system(size: 17)).foregroundColor(Theme.parchment)
+                    .frame(width: 44, height: 44)
+                    .background(Circle().fill(Color.black.opacity(0.55)))
+                    .overlay(Circle().stroke(Color.white.opacity(0.25), lineWidth: 1))
+                    .contentShape(Circle())
+            }
+            .padding(Theme.spacingSM)
+            .accessibilityLabel("Background theme")
+            .accessibilityValue(theme.accessibilityName)
+        }
+        .background {
+            if theme == .none { Color.white.opacity(0.04) } else { theme.fill }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous).stroke(Color.white.opacity(0.28), lineWidth: 1))
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.25), value: bgTheme)
     }
 
     private var titleField: some View {
         VStack(alignment: .leading, spacing: Theme.spacingXS) {
             label("Title")
-            TextField("Title", text: $title)
+            TextField("Title", text: $title, prompt: Text("Title").foregroundColor(Theme.parchment.opacity(0.65)))
                 .font(.inter(Theme.fontSM)).foregroundColor(Theme.parchment)
                 .padding(.horizontal, Theme.spacingSM).frame(minHeight: 44)
-                .background(Theme.cardBg)
-                .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
-                .overlay(RoundedRectangle(cornerRadius: Theme.radius).stroke(Theme.borderGoldDim, lineWidth: 1))
+                .focused($focusedField, equals: .title)
+                .announcementTranslucentField(focused: focusedField == .title)
                 .disabled(saving)
                 .onChange(of: title) { _, v in
                     dirty = true
@@ -219,10 +279,6 @@ struct GroupAnnouncementFormView: View {
     private var titleColorField: some View {
         VStack(alignment: .leading, spacing: Theme.spacingXS) {
             label("Title color")
-            AnnouncementWidgetCardBody(item: previewItem, previewImage: bannerImage)
-                .allowsHitTesting(false)
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel("Preview of the announcement title in \(AnnouncementTitleColor.name(for: titleColor))")
             AnnouncementTitleColorPicker(hex: $titleColor) { dirty = true }
                 .disabled(saving)
         }
@@ -234,8 +290,11 @@ struct GroupAnnouncementFormView: View {
                             title: trimmedTitle.isEmpty ? "Your title" : trimmedTitle, description: "",
                             banner_url: (bannerImage == nil && banner == .unchanged) ? editing?.banner_url : nil,
                             publish_at: "", created_at: "", updated_at: "", published: true, can_edit: false,
-                            title_color: titleColor)
+                            title_color: titleColor, title_font: fontsOn ? titleFont : editing?.title_font,
+                            bg_theme: themeValue)
     }
+
+    private var themeValue: String? { themesOn ? bgTheme : editing?.bg_theme }
 
     private var messageField: some View {
         VStack(alignment: .leading, spacing: Theme.spacingXS) {
@@ -245,9 +304,8 @@ struct GroupAnnouncementFormView: View {
                 .scrollContentBackground(.hidden)
                 .padding(Theme.spacingXS)
                 .frame(minHeight: 120)
-                .background(Theme.cardBg)
-                .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
-                .overlay(RoundedRectangle(cornerRadius: Theme.radius).stroke(Theme.borderGoldDim, lineWidth: 1))
+                .focused($focusedField, equals: .message)
+                .announcementTranslucentField(focused: focusedField == .message)
                 .disabled(saving)
                 .onChange(of: text) { _, v in
                     dirty = true
@@ -368,6 +426,13 @@ struct GroupAnnouncementFormView: View {
         return .reset
     }
 
+    /// Same rule as the title color: send only what changed; explicit null resets.
+    private func keyChange(original: String?, chosen: String?) -> FSAnnouncementDraft.KeyChange {
+        if chosen == original { return .unchanged }
+        if let chosen { return .set(chosen) }
+        return .reset
+    }
+
     private func submit() async {
         guard canSubmit else { return }
         saving = true
@@ -376,6 +441,18 @@ struct GroupAnnouncementFormView: View {
         var draft = FSAnnouncementDraft(title: trimmedTitle, description: trimmedText, banner: banner)
         draft.includePublishAt = canReschedule
         draft.titleColor = titleColorChange
+        // Style keys are only touched while their server flag is on (else 422).
+        if fontsOn {
+            draft.titleFont = keyChange(original: AnnouncementTitleFont.resolve(editing?.title_font).storedKey,
+                                        chosen: AnnouncementTitleFont.resolve(titleFont).storedKey)
+        }
+        if themesOn {
+            draft.bgTheme = keyChange(original: AnnouncementBgTheme.resolve(editing?.bg_theme).storedKey,
+                                      chosen: AnnouncementBgTheme.resolve(bgTheme).storedKey)
+        }
+        if extrasOn {
+            extras.apply(to: &draft, original: editing, links: linksOn, gallery: galleryOn, payments: paymentsOn, rsvp: rsvpOn)
+        }
         if schedule { draft.publishAt = when }
         else if isEditing { draft.publishAt = Date() }   // update rejects a null publish_at
         do {

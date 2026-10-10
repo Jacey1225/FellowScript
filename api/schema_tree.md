@@ -130,6 +130,14 @@ home_messages           # module "home_messages": _id UUID PK DEFAULT gen_random
 affiliate_milestones    # module "affiliate_milestones": PK (owner_email TEXT lowercased CHECK, tier_subscribers INT > 0), bonus_cents INT >= 0 (snapshot), earned_at TIMESTAMPTZ;
                         #   no FKs (keyed by the creator-code owner email); makes an earned tier permanent (one-time per tier per affiliate); flag `affiliates` (off by default)
 # <!-- /AFF -->
+# <!-- ANA (20261009-announcements-advanced) -->
+group_announcements     # additive columns: title_font VARCHAR(32) NULL, bg_theme VARCHAR(32) NULL (allowlisted keys validated in the API layer; NULL = default);
+                        #   flags `announcement_title_font`, `announcement_bg_theme` (off by default); response keys omitted while the flag is off
+#   part E (attachments): additive columns links JSONB, gallery_keys JSONB (S3 keys under group-announcements/{group}/), is_event BOOLEAN NOT NULL DEFAULT FALSE,
+#   payment_handles JSONB (display-only provider+handle, no payment processing), capacity INTEGER NULL (NULL = not joinable); flags `announcement_links`,
+#   `announcement_gallery`, `announcement_payments`, `announcement_rsvp` (off by default); response keys omitted while their flag is off
+group_announcement_rsvps  # PK (announcement_id -> group_announcements ON DELETE CASCADE, user_id -> users ON DELETE CASCADE), created_at; an event sign-up, not group membership
+# <!-- /ANA -->
 ```
 
 ---

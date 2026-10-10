@@ -87,9 +87,9 @@ enum AnnouncementTitleColor {
 
     /// List-row / viewer color on the app surface: chosen color only when it
     /// meets AA against the surface; otherwise `fallback` (theme text color).
-    static func surfaceColor(_ hex: String?, fallback: Color) -> Color {
+    static func surfaceColor(_ hex: String?, fallback: Color, surfaceHex: String = darkSurfaceHex) -> Color {
         guard let n = normalized(hex), !isDefault(n),
-              let ratio = contrastRatio(n, darkSurfaceHex), ratio >= minContrast else { return fallback }
+              let ratio = contrastRatio(n, surfaceHex), ratio >= minContrast else { return fallback }
         return Color(hex: n)
     }
 

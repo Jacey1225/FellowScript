@@ -19,6 +19,12 @@ SEED_FLAG_NAMES = (
     "affiliates",
     "affiliate_payouts",
     "content_encryption_write",
+    "announcement_title_font",
+    "announcement_bg_theme",
+    "announcement_links",
+    "announcement_gallery",
+    "announcement_payments",
+    "announcement_rsvp",
 )
 
 

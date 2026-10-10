@@ -56,6 +56,30 @@ fonts (SF Pro Rounded / New York) despite their names.
 - PostScript name used by `Font.schibstedWordmark()`: `SchibstedGrotesk-SemiBold`
   (verified from the file's `name` table; OS/2 weight 600, no `fvar` table, i.e. truly static).
 
+## Announcement title fonts (task `20261009-announcements-advanced`)
+
+Five static instances added for the announcement title font picker. Source for
+all: Google Fonts, static TTF instances delivered via the Google Fonts CSS v1
+API (these families publish variable fonts in `google/fonts`; same
+static-instance approach as above), retrieved 2026-10-09. Each family's
+`OFL.txt` was fetched from `google/fonts` (`ofl/<family>/OFL.txt`) and checked
+to be SIL Open Font License 1.1. License text ships alongside each font; no
+endorsement is implied. Reserved Font Names (Lora, Dancing Script) are not
+modified or reused as the name of any derived font.
+
+| File | PostScript name (from `name` table) | License file | Copyright holder |
+|---|---|---|---|
+| `Lora-SemiBold.ttf` | `Lora-SemiBold` | `OFL-Lora.txt` | The Lora Project Authors |
+| `Oswald-SemiBold.ttf` | `Oswald-SemiBold` | `OFL-Oswald.txt` | The Oswald Project Authors |
+| `DancingScript-Bold.ttf` | `DancingScript-Bold` | `OFL-DancingScript.txt` | The Dancing Script Project Authors |
+| `Nunito-ExtraBold.ttf` | `NunitoExtraLight-ExtraBold` | `OFL-Nunito.txt` | The Nunito Project Authors |
+| `BebasNeue-Regular.ttf` | `BebasNeue-Regular` | `OFL-BebasNeue.txt` | Dharma Type |
+
+All five are truly static (no `fvar` table). The Nunito PostScript name is the
+odd value the upstream file really carries; `AnnouncementTitleFont` uses it
+verbatim. Load-tested in the app target (`UIFont(name:)` resolves for every
+face; see `AnnouncementTitleFont.allResolve`).
+
 ## Verification method
 
 Each `.ttf` file's internal `name` table was inspected directly (via
