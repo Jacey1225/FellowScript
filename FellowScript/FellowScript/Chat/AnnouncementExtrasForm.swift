@@ -60,6 +60,7 @@ struct AnnouncementExtrasSection: View {
     let galleryOn: Bool
     let paymentsOn: Bool
     let rsvpOn: Bool
+    var locationOn: Bool = false
     let saving: Bool
     @Binding var busy: Bool
     var upload: (Data) async throws -> String
@@ -70,12 +71,13 @@ struct AnnouncementExtrasSection: View {
     @State private var openGallery = false
     @State private var openPayments = false
     @State private var openSpots = false
+    @State private var openLocation = false
     @State private var picks: [PhotosPickerItem] = []
     @State private var galleryError: String?
     @Environment(\.dynamicTypeSize) private var typeSize
 
-    private var total: Int { extras.count(links: linksOn, gallery: galleryOn, payments: paymentsOn, rsvp: rsvpOn) }
-    private var blocking: String? { extras.blockingError(links: linksOn, payments: paymentsOn) }
+    private var total: Int { extras.count(links: linksOn, gallery: galleryOn, payments: paymentsOn, rsvp: rsvpOn, location: locationOn) }
+    private var blocking: String? { extras.blockingError(links: linksOn, payments: paymentsOn, location: locationOn) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.spacingXS) {
@@ -87,6 +89,7 @@ struct AnnouncementExtrasSection: View {
                     if galleryOn { galleryRow }
                     if paymentsOn { paymentsRow }
                     if rsvpOn { spotsRow }
+                    if locationOn { locationRow }
                     if let blocking {
                         Text(blocking).font(.inter(Theme.fontXS)).foregroundColor(Theme.error)
                     }
@@ -258,6 +261,26 @@ struct AnnouncementExtrasSection: View {
                 Text(AnnouncementExtrasLimits.paymentDisclaimer)
                     .font(.inter(Theme.fontXS)).foregroundColor(Theme.parchment.opacity(0.75))
                     .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    // ── Location ─────────────────────────────────────────────────────────────
+    private var locationRow: some View {
+        ExtrasDisclosure(title: "Location", summary: extras.cleanedLocation.isEmpty ? nil : "1", isOpen: $openLocation) {
+            VStack(alignment: .leading, spacing: Theme.spacingSM) {
+                TextField("Location", text: $extras.location, prompt: Text("Where is it? (optional)").foregroundColor(Theme.parchment.opacity(0.65)))
+                    .font(.inter(Theme.fontSM)).foregroundColor(Theme.parchment)
+                    .padding(.horizontal, Theme.spacingSM).frame(minHeight: 44)
+                    .announcementTranslucentField()
+                    .onChange(of: extras.location) { _, v in
+                        if v.count > AnnouncementExtrasLimits.maxLocationLength { extras.location = String(v.prefix(AnnouncementExtrasLimits.maxLocationLength)) }
+                        onChange()
+                    }
+                    .accessibilityLabel("Location")
+                    .accessibilityHint("Optional. Up to \(AnnouncementExtrasLimits.maxLocationLength) characters.")
+                Text("A place name or address. Tapping it opens Apple Maps.")
+                    .font(.inter(Theme.fontXS)).foregroundColor(Theme.parchment.opacity(0.6))
             }
         }
     }

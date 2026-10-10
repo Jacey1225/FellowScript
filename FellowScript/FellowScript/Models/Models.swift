@@ -601,6 +601,76 @@ struct FSAttachmentMeta: Codable, Equatable {
     }
 }
 
+/// What a reply quotes. `deleted` = the original is gone or not visible to the
+/// viewer: no text or author is sent, and the UI shows "Original message unavailable".
+struct FSReplyRef: Codable, Equatable {
+    let id: String
+    var text: String? = nil
+    var author: String? = nil
+    var authorId: String? = nil
+    var deleted: Bool = false
+
+    static let unavailableLabel = "Original message unavailable"
+
+    /// Builds from wire keys `reply_to_id`, `reply_to_text`, `reply_to_author`,
+    /// `reply_to_author_id`, `reply_to_deleted`. nil when there is no reply_to_id.
+    init?(wireId id: String?, text: String?, author: String?, authorId: String?, deleted: Bool?) {
+        guard let id, !id.isEmpty else { return nil }
+        self.id = id
+        self.deleted = deleted == true
+        self.text = self.deleted ? nil : text
+        self.author = self.deleted ? nil : author
+        self.authorId = self.deleted ? nil : authorId
+    }
+
+    init(id: String, text: String?, author: String?, authorId: String? = nil, deleted: Bool = false) {
+        self.id = id; self.text = text; self.author = author; self.authorId = authorId; self.deleted = deleted
+    }
+
+    /// From a live websocket frame / sender ack dictionary.
+    init?(frame json: [String: Any]) {
+        self.init(wireId: json["reply_to_id"] as? String, text: json["reply_to_text"] as? String,
+                  author: json["reply_to_author"] as? String, authorId: json["reply_to_author_id"] as? String,
+                  deleted: json["reply_to_deleted"] as? Bool)
+    }
+
+    /// "You" when the quoted message is the viewer's own.
+    func authorLabel(viewerId: String?) -> String {
+        if let viewerId, let authorId, authorId.lowercased() == viewerId.lowercased() { return "You" }
+        if let author, !author.isEmpty { return author }
+        return "Someone"
+    }
+
+    /// One short spoken/visible description of what is quoted.
+    func snippet() -> String {
+        if deleted { return Self.unavailableLabel }
+        let t = (text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        return t.isEmpty ? "Message" : t
+    }
+}
+
+extension FSMessage {
+    /// Max characters of the quoted snippet shown optimistically (server caps at 200).
+    static let replySnippetLimit = 200
+
+    /// A short description of this message for the composer bar and the
+    /// optimistic quote: its text, else the attachment kind.
+    var replyPreviewText: String {
+        let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !t.isEmpty { return String(t.prefix(Self.replySnippetLimit)) }
+        switch attachmentKindEnum {
+        case .image: return "Photo"
+        case .video: return "Video"
+        case .gif:   return "GIF"
+        case .file:  return "File"
+        case nil:    return "Message"
+        }
+    }
+
+    /// The label shown for this message's sender when quoting it.
+    var replyAuthorName: String { mine ? "You" : (sender.isEmpty ? "Them" : sender) }
+}
+
 struct FSMessage: Identifiable, Codable {
     let id:        String
     let text:      String
@@ -619,6 +689,10 @@ struct FSMessage: Identifiable, Codable {
     // server flag is off or the message has none (optional so previously
     // cached FSMessage JSON without the key still decodes).
     var reactions: [ReactionSummary]? = nil
+    // Task 20261010-announcement-location-chat-replies: the quoted label for a
+    // reply. Derived server-side at read time (nothing stored on the row); nil
+    // for ordinary messages, old payloads, and while chat_replies is off.
+    var reply: FSReplyRef? = nil
 
     // compile-errors #3 (20260904-frontend-arch-sweep): the wire value is a
     // plain String so it round-trips through Codable/JSON unchanged, but

@@ -201,6 +201,13 @@ struct MessageGroupRow: View {
     // Task 20261010-chat-reactions: nil (flag off, thread open, unsettled
     // message) hides the reaction row and chips entirely.
     var reactionsFor: ((FSMessage) -> MessageReactionConfig?)? = nil
+    // Task 20261010-announcement-location-chat-replies: returns the Reply action
+    // for a message that can be replied to (nil = swipe disabled), the viewer's
+    // user id (so a quote of their own message reads "You"), and a tap handler
+    // for the quoted label (a no-op in the caller when the original isn't loaded).
+    var replyFor: ((FSMessage) -> (() -> Void)?)? = nil
+    var currentUserId: String? = nil
+    var onJumpToReply: ((String) -> Void)? = nil
 
     /// Scroll anchor id for one message. Prefixed so it can never collide with
     /// a MessageDisplayGroup row id (a group's id IS its first message's id).
@@ -231,6 +238,7 @@ struct MessageGroupRow: View {
                 ForEach(group.messages) { message in
                     VStack(alignment: group.isOutgoing ? .trailing : .leading, spacing: 4) {
                         bubble(for: message)
+                            .modifier(SwipeToReply(onReply: replyFor?(message)))
                         if let cfg = reactionsFor?(message), let list = message.reactions, !list.isEmpty {
                             ReactionChipRow(reactions: list, alignment: group.isOutgoing ? .trailing : .leading) { r in
                                 cfg.onPick(r.emoji)
@@ -280,6 +288,8 @@ struct MessageGroupRow: View {
     @ViewBuilder
     private func bubble(for message: FSMessage) -> some View {
         let isMedia = ["image", "video", "gif"].contains(message.attachmentKind ?? "")
+        VStack(alignment: group.isOutgoing ? .trailing : .leading, spacing: 0) {
+            if let reply = message.reply { quotedLabel(reply) }
         Group {
             if let kind = message.attachmentKind, !kind.isEmpty {
                 // A caption riding alongside an attachment (`text` and
@@ -309,6 +319,7 @@ struct MessageGroupRow: View {
                     .padding(.vertical, 10)
             }
         }
+        }
         .background(
             group.isOutgoing
                 ? Theme.gold.opacity(0.18)
@@ -328,6 +339,49 @@ struct MessageGroupRow: View {
     /// per-kind label (design gate §4) — never both at once (an attachment
     /// message with `text` empty has nothing to append).
     private func accessibilityLabel(for message: FSMessage) -> String {
+        let base = baseAccessibilityLabel(for: message)
+        guard let reply = message.reply else { return base }
+        if reply.deleted { return "\(base). Reply to a message that is no longer available" }
+        return "\(base). Reply to \(reply.authorLabel(viewerId: currentUserId)): \(reply.snippet())"
+    }
+
+    /// Quoted original above a replied message's body. Deleted/hidden originals
+    /// show a neutral line with no text or author.
+    @ViewBuilder
+    private func quotedLabel(_ reply: FSReplyRef) -> some View {
+        let content = HStack(alignment: .top, spacing: 8) {
+            RoundedRectangle(cornerRadius: 1.5).fill(Theme.gold.opacity(0.7)).frame(width: 3)
+            VStack(alignment: .leading, spacing: 1) {
+                if reply.deleted {
+                    Text(FSReplyRef.unavailableLabel)
+                        .font(.inter(Theme.fontXS)).italic()
+                        .foregroundColor(Theme.textSecondary)
+                } else {
+                    Text(reply.authorLabel(viewerId: currentUserId))
+                        .font(.inter(Theme.fontXS, weight: .bold))
+                        .foregroundColor(Theme.gold)
+                        .lineLimit(1)
+                    Text(reply.snippet())
+                        .font(.inter(Theme.fontXS))
+                        .foregroundColor(Theme.textSecondary)
+                        .lineLimit(2)
+                }
+            }
+            .multilineTextAlignment(.leading)
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        .padding(.horizontal, 14)
+        .padding(.top, 10)
+        if reply.deleted || onJumpToReply == nil {
+            content.accessibilityHidden(true)
+        } else {
+            Button { onJumpToReply?(reply.id) } label: { content }
+                .buttonStyle(.plain)
+                .accessibilityHidden(true)   // VoiceOver uses the "Go to original message" action instead
+        }
+    }
+
+    private func baseAccessibilityLabel(for message: FSMessage) -> String {
         // compile-errors #3 (20260904-frontend-arch-sweep): switches on the
         // actual FSAttachmentKind enum (exhaustive, no default:) instead of
         // the raw wire string -- see FSMessage.attachmentKindEnum. An
@@ -377,6 +431,52 @@ struct MessageGroupRow: View {
         }
         .frame(width: 32, height: 32)
         .accessibilityHidden(true)
+    }
+}
+
+// ── Swipe to reply (task 20261010-announcement-location-chat-replies) ────────
+
+/// Rightward swipe on a bubble triggers Reply. Vertical scrolling and the
+/// long-press menu are unaffected (horizontal-dominant drags only). Under
+/// Reduce Motion the bubble does not move; the action still fires on release.
+private struct SwipeToReply: ViewModifier {
+    let onReply: (() -> Void)?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var dx: CGFloat = 0
+    @State private var armed = false
+    private let threshold: CGFloat = 56
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if let onReply {
+            content
+                .offset(x: reduceMotion ? 0 : dx)
+                .background(alignment: .leading) {
+                    Image(systemName: "arrowshape.turn.up.left")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(Theme.gold)
+                        .opacity(reduceMotion ? 0 : min(1, Double(dx / threshold)))
+                        .padding(.leading, 4)
+                        .accessibilityHidden(true)
+                }
+                .simultaneousGesture(
+                    DragGesture(minimumDistance: 20)
+                        .onChanged { v in
+                            let w = v.translation.width
+                            guard w > 0, abs(w) > abs(v.translation.height) * 1.5 else { return }
+                            dx = min(w, threshold * 1.3)
+                            if !armed, w >= threshold { armed = true; UIImpactFeedbackGenerator(style: .light).impactOccurred() }
+                        }
+                        .onEnded { v in
+                            let fire = armed && abs(v.translation.width) > abs(v.translation.height) * 1.5
+                            armed = false
+                            withMotionAwareAnimation(.easeOut(duration: 0.18), reduceMotion: reduceMotion) { dx = 0 }
+                            if fire { onReply() }
+                        }
+                )
+        } else {
+            content
+        }
     }
 }
 

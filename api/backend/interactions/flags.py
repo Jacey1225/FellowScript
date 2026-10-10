@@ -131,6 +131,9 @@ register("announcement_links")
 register("announcement_gallery")
 register("announcement_payments")
 register("announcement_rsvp")
+# Optional free-text announcement location (task 20261010-announcement-location-chat-replies).
+# Exposed in capabilities so the iOS form can hide the field. Ships OFF.
+register("announcement_location")
 # In-call screen share SENDING (task 20261009-session-ui-redesign). Client gate for the
 # Share Screen control; receiving content shares is always on. Ships OFF.
 register("screen_share_enabled")
@@ -143,6 +146,10 @@ register("discussion_rooms")
 # RECIPIENT. Exposed in capabilities so iOS can show the friend-highlight toggle. Ship OFF.
 register("message_reaction_push")
 register("friend_highlight_push")
+# Reply to a specific chat message (group + DM; task 20261010-announcement-location-chat-replies).
+# Gates server acceptance of ``reply_to`` on send and the reply fields in payloads/frames; exposed in
+# capabilities for the iOS UI. Canary allowed. Ships OFF.
+register("chat_replies")
 
 
 def _load_snapshot() -> dict[str, tuple[str, frozenset[str]]]:

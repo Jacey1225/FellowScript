@@ -321,8 +321,8 @@ final class AnnouncementAttachmentsTests: XCTestCase {
 
     func testEachFormRowAndSectionIsGatedBySourcePin() throws {
         let host = try readSource("FellowScript/Chat/GroupAnnouncementFormView.swift")
-        XCTAssertTrue(host.contains("private var extrasOn: Bool { linksOn || galleryOn || paymentsOn || rsvpOn }"))
-        XCTAssertTrue(host.contains("if extrasOn {\n                            AnnouncementExtrasSection("), "whole section absent when all four are off")
+        XCTAssertTrue(host.contains("private var extrasOn: Bool { linksOn || galleryOn || paymentsOn || rsvpOn || locationOn }"))
+        XCTAssertTrue(host.contains("if extrasOn {\n                            AnnouncementExtrasSection("), "whole section absent when all flags are off")
         XCTAssertTrue(host.contains("capabilities.isEnabled(AnnouncementExtrasFlag.links)"))
         XCTAssertTrue(host.contains("capabilities.isEnabled(AnnouncementExtrasFlag.gallery)"))
         XCTAssertTrue(host.contains("capabilities.isEnabled(AnnouncementExtrasFlag.payments)"))
@@ -409,7 +409,14 @@ final class AnnouncementAttachmentsTests: XCTestCase {
             let s = try readSource(f)
             XCTAssertFalse(s.contains("WKWebView"), "\(f) must not use WKWebView")
             XCTAssertFalse(s.contains("import WebKit"), "\(f) must not import WebKit")
-            XCTAssertFalse(s.contains("UIApplication.shared.open"), "\(f) must open links through the Safari sheet only")
+            // Location (task 20261010-announcement-location-chat-replies) opens a fixed
+            // maps.apple.com search URL built by AnnouncementLocationMaps, never a user link.
+            if !f.hasSuffix("AnnouncementExtrasDetail.swift") {
+                XCTAssertFalse(s.contains("UIApplication.shared.open"), "\(f) must open links through the Safari sheet only")
+            } else {
+                XCTAssertTrue(s.components(separatedBy: "UIApplication.shared.open").count - 1 <= 1, "only the Maps open is allowed")
+                XCTAssertTrue(s.contains("AnnouncementLocationMaps.url(for: place) { UIApplication.shared.open(url) }"))
+            }
             XCTAssertFalse(s.contains("openURL"), "\(f) must open links through the Safari sheet only")
         }
         let detail = try readSource("FellowScript/Chat/AnnouncementExtrasDetail.swift")

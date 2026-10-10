@@ -43,7 +43,7 @@ class PaymentHandleIn(BaseModel):
     handle: str
 
 
-EXTRA_FIELDS = ("links", "gallery_keys", "is_event", "payment_handles", "capacity")
+EXTRA_FIELDS = ("links", "gallery_keys", "is_event", "payment_handles", "capacity", "location")
 
 
 def _extra_fields(fields: dict) -> dict:
@@ -72,6 +72,7 @@ class AnnouncementCreateRequest(BaseModel):
     is_event: StrictBool | None = None
     payment_handles: list[PaymentHandleIn] | None = None
     capacity: StrictInt | None = None
+    location: str | None = None  # flag-gated (422 while off); blank/null = none
 
 
 class AnnouncementUpdateRequest(BaseModel):
@@ -88,6 +89,7 @@ class AnnouncementUpdateRequest(BaseModel):
     is_event: StrictBool | None = None
     payment_handles: list[PaymentHandleIn] | None = None
     capacity: StrictInt | None = None  # null clears (drops RSVPs)
+    location: str | None = None  # null / blank clears
 
 
 class BannerUploadUrlRequest(BaseModel):
@@ -151,7 +153,7 @@ async def create_announcement(
     """
     manager = _open(user_id, group_id)
     try:
-        _clean(title=body.title, description=body.description,
+        _clean(title=body.title, description=body.description, location=body.location,
                **{f"link_label_{i}": (l.label or "") for i, l in enumerate(body.links or [])})
         publish_at = _publish_at(body.publish_at)
         gate = check_limit(user_id, "announcements")
@@ -216,7 +218,7 @@ async def update_announcement(
     fields.update(_extra_fields(fields))
     manager = _open(user_id, group_id)
     try:
-        _clean(title=fields.get("title"), description=fields.get("description"),
+        _clean(title=fields.get("title"), description=fields.get("description"), location=fields.get("location"),
                **{f"link_label_{i}": (l.get("label") or "") for i, l in enumerate(fields.get("links") or [])})
         if "publish_at" in fields:
             fields["publish_at"] = _publish_at(fields["publish_at"])

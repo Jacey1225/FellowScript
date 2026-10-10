@@ -48,6 +48,9 @@ struct FSGroupAnnouncement: Codable, Identifiable, Equatable {
     var capacity:         Int? = nil
     var rsvp_count:       Int? = nil
     var rsvp_joined:      Bool? = nil
+    /// Optional free-text place (flag announcement_location). Omitted by the server
+    /// while the flag is off and in old payloads.
+    var location:         String? = nil
 }
 
 struct FSAnnouncementLink: Codable, Equatable, Identifiable {
@@ -134,6 +137,7 @@ struct FSAnnouncementDraft {
     var isEvent: Change<Bool> = .unchanged
     var paymentHandles: Change<[FSPaymentHandle]> = .unchanged
     var capacity: Change<Int> = .unchanged
+    var location: Change<String> = .unchanged
     var includePublishAt: Bool = true
     var publishAt: Date?        // nil + includePublishAt on create = publish now
 
@@ -189,6 +193,11 @@ struct FSAnnouncementDraft {
         case .unchanged: break
         case .clear: o["capacity"] = NSNull()
         case .set(let n): o["capacity"] = n
+        }
+        switch location {
+        case .unchanged: break
+        case .clear: o["location"] = NSNull()
+        case .set(let s): o["location"] = s
         }
         if includePublishAt {
             o["publish_at"] = publishAt.map(FSAnnouncementDates.string(from:)) ?? NSNull()

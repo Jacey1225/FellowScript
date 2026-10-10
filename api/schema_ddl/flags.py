@@ -25,10 +25,12 @@ SEED_FLAG_NAMES = (
     "announcement_gallery",
     "announcement_payments",
     "announcement_rsvp",
+    "announcement_location",
     "screen_share_enabled",
     "discussion_rooms",
     "message_reaction_push",
     "friend_highlight_push",
+    "chat_replies",
 )
 
 

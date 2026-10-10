@@ -13,6 +13,7 @@ from backend.errors import SaveFailedError
 from backend.interactions.attachments import generate_download_url
 from backend.interactions import lifecycle, paging
 from backend.interactions.message_reactions import attach_reactions
+from backend.interactions.message_replies import attach_replies
 from backend.interactions.note_search import scan_matches
 
 logger = logging.getLogger(__name__)
@@ -27,7 +28,9 @@ GROUP_TITLE_MAX_LENGTH = 255
 GALLERY_PAGE_SIZE = 24
 
 # messages columns added for paging / soft delete; never part of a response row.
-_INTERNAL_MESSAGE_COLUMNS = ("seq", "deleted_at", "deleted_by")
+# reply_to_id is stripped here and re-added (flag-gated, with the read-time label) by
+# ``message_replies.attach_replies``.
+_INTERNAL_MESSAGE_COLUMNS = ("seq", "deleted_at", "deleted_by", "reply_to_id")
 
 # Gallery ``kind`` filter values; anything else is rejected, never coerced.
 GALLERY_KINDS = frozenset({"image", "video", "gif", "file"})
@@ -256,6 +259,7 @@ class GroupsManager(DBManager):
             data["id"] = str(message_id)
             result.append(data)
         attach_reactions(self, result, self.user_id)
+        attach_replies(self, result, self.user_id)
         return result
 
     def _validate_new_member_ids(self, ids) -> dict[str, str]:
@@ -376,6 +380,7 @@ class GroupsManager(DBManager):
                 "attachment_url": generate_download_url(key) if key else None,
             })
         attach_reactions(self, messages, self.user_id)
+        attach_replies(self, messages, self.user_id)
         return {"messages": messages, "has_more": has_more, "next_cursor": next_cursor}
 
     def fetch_group(self, paged: bool = False) -> dict:

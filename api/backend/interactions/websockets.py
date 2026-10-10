@@ -14,6 +14,7 @@ from db import DBManager, _connect
 from backend import content_store
 from backend.errors import SaveFailedError
 from backend.interactions.attachments import generate_download_url
+from backend.interactions import flags, message_replies
 from backend.interactions.chat_config import get_pagination_config
 from backend.interactions.paging import format_timestamp
 from backend.interactions.push import send_push
@@ -227,7 +228,7 @@ class ConnectionManager(DBManager):
                 self._reconnect()
                 self.cur.execute(query, params)
 
-    def save_message(self, msg: Message) -> "tuple[str, str] | None":
+    def save_message(self, msg: Message, reply: "dict | None" = None) -> "tuple[str, str] | None":
         """Persist the message and its recipient links.
 
         Returns:
@@ -235,6 +236,8 @@ class ConnectionManager(DBManager):
             stored instant as ISO 8601 UTC with microseconds and a trailing
             ``Z``; ``None`` if the INSERT returned no row (callers must cope).
             The client timestamp is clamped first (``clamp_message_timestamp``).
+            ``reply`` is an already-validated target from
+            ``message_replies.resolve_reply`` (None for an ordinary message).
 
         Raises:
             SaveFailedError: If a ``message_recipients`` link fails to
@@ -258,13 +261,15 @@ class ConnectionManager(DBManager):
             new_id = str(uuid.uuid4())
             self._execute(
                 "INSERT INTO messages "
-                "(_id, from_user, group_id, text, timestamp, attachment_kind, attachment_key, attachment_meta) "
-                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING _id, timestamp",
+                "(_id, from_user, group_id, text, timestamp, attachment_kind, attachment_key, attachment_meta, "
+                "reply_to_id) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING _id, timestamp",
                 (
                     new_id, msg.from_user, msg.group_id or None,
                     content_store.seal(new_id, content_store.F_MESSAGE_TEXT, msg.text),
                     clamp_message_timestamp(msg.timestamp),
                     msg.attachment_kind, msg.attachment_key, json.dumps(msg.attachment_meta or {}),
+                    reply["reply_to_id"] if reply else None,
                 )
             )
         except (psycopg2.InterfaceError, psycopg2.OperationalError) as e:
@@ -571,8 +576,36 @@ class ConnectionManager(DBManager):
             # DM with a blocked relationship — drop entirely, no save/delivery.
             return
 
+        # Reply target (flag ``chat_replies``). The client sends only the target id;
+        # only the target id is stored and every refusal is one
+        # uniform frame. Flag off: the key is ignored and this is a plain message.
+        reply = None
+        reply_to = payload.get("reply_to")
+        if reply_to is not None and flags.is_enabled(message_replies.FLAG, from_user_id):
+            sender_ws = self.active_connections.get(from_user_id)
+            try:
+                reply = message_replies.resolve_reply(_GuardCursor(self), from_user_id, group_id, to_users, reply_to)
+            except message_replies.ReplyInvalid:
+                logger.info("reply rejected sender=%s kind=%s", from_user_id, "group" if group_id else "dm")
+                if sender_ws:
+                    await sender_ws.send_json({
+                        "type": "error",
+                        "reason": "reply_invalid",
+                        "detail": "That message can't be replied to.",
+                    })
+                return
+            except Exception as e:  # fail closed; infrastructure, retriable
+                logger.warning("reply resolution failed closed: %s", type(e).__name__)
+                if sender_ws:
+                    await sender_ws.send_json({
+                        "type": "error",
+                        "reason": "send_failed",
+                        "detail": "Couldn't send your message. Please try again.",
+                    })
+                return
+
         try:
-            saved = self.save_message(Message(**payload))
+            saved = self.save_message(Message(**payload), reply=reply) if reply else self.save_message(Message(**payload))
         except SaveFailedError as e:
             # Mirror the ContentRejected handling just above: no HTTP
             # response exists on this path, so tell the sender's own
@@ -618,6 +651,17 @@ class ConnectionManager(DBManager):
         if message_id is not None:
             # Omitted (never null) when there is no id.
             frame["id"] = message_id
+        # Reply label keys (derived, not stored) ride on frames to recipients who have
+        # the flag on; a recipient blocked with the original's author gets
+        # ``reply_to_deleted`` instead of that author's text. Fail closed on a lookup error.
+        reply_fields = message_replies.public_fields(reply) if reply else None
+        reply_blocked: set[str] = set()
+        if reply_fields:
+            try:
+                reply_blocked = message_replies.blocked_with(_GuardCursor(self), reply["reply_to_author_id"])
+            except Exception as e:
+                logger.warning("reply block lookup failed: %s", type(e).__name__)
+                reply_blocked = set(to_users)  # fail closed: nobody gets the author's text
 
         # Sender-only ack, after the commit: lets the sender replace its
         # optimistic bubble's local id in place. It carries a ``type`` and no
@@ -635,6 +679,7 @@ class ConnectionManager(DBManager):
                         "id": message_id,
                         "group_id": group_id or "",
                         "timestamp": saved[1],
+                        **(reply_fields or {}),
                     })
                 except Exception as e:
                     logger.warning("Ack send to %s failed: %s", from_user_id, type(e).__name__)
@@ -717,8 +762,12 @@ class ConnectionManager(DBManager):
                 # stale recipient socket would silently kill an unrelated,
                 # perfectly healthy connection. Evict the stale entry and
                 # fall through to the offline push path instead.
+                out_frame = frame
+                if reply_fields and flags.is_enabled(message_replies.FLAG, uid):
+                    out_frame = {**frame, **(message_replies.deleted_fields(reply["reply_to_id"])
+                                             if uid in reply_blocked else reply_fields)}
                 try:
-                    await ws.send_json(frame)
+                    await ws.send_json(out_frame)
                 except Exception as e:
                     logger.warning("Send to %s failed, evicting stale connection: %s", uid, e)
                     self.active_connections.pop(uid, None)

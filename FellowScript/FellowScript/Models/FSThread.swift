@@ -126,10 +126,12 @@ extension FSMessage {
 // ── Long-press action policy ──────────────────────────────────────────────────
 
 enum FSMessageActionKind: String, Equatable {
-    case startThread, copy, delete, report, block
+    case reply, goToOriginal, startThread, copy, delete, report, block
 
     var title: String {
         switch self {
+        case .reply:       return "Reply"
+        case .goToOriginal: return "Go to original message"
         case .startThread: return "Start thread"
         case .copy:        return "Copy"
         case .delete:      return "Delete"
@@ -140,6 +142,8 @@ enum FSMessageActionKind: String, Equatable {
 
     var systemImage: String {
         switch self {
+        case .reply:       return "arrowshape.turn.up.left"
+        case .goToOriginal: return "arrow.up.message"
         case .startThread: return "bubble.left.and.bubble.right"
         case .copy:        return "doc.on.doc"
         case .delete:      return "trash"
@@ -164,6 +168,11 @@ struct FSMessageActionContext: Equatable {
     /// The other participant's user id when it can be resolved (a group member
     /// by username, or the DM contact); nil hides Report/Block.
     var senderUserId: String?
+    /// Task 20261010-announcement-location-chat-replies: chat_replies capability
+    /// on (main chat only; thread replies are deferred).
+    var repliesEnabled: Bool = false
+    /// The quoted original of this message is in the loaded list.
+    var canJumpToOriginal: Bool = false
 }
 
 enum FSMessageActionPolicy {
@@ -179,6 +188,8 @@ enum FSMessageActionPolicy {
         var list: [FSMessageActionKind] = []
         let canThread = !ctx.inThread && ctx.isGroup && ctx.threadsEnabled && ctx.isSettled
         let canCopy = message.copyableText != nil
+        if ctx.repliesEnabled && !ctx.inThread && ctx.isSettled { list.append(.reply) }
+        if ctx.canJumpToOriginal && !ctx.inThread { list.append(.goToOriginal) }
         if message.mine {
             if canThread { list.append(.startThread) }
             if canCopy { list.append(.copy) }

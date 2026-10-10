@@ -14,6 +14,7 @@ enum AnnouncementExtrasFlag {
     static let gallery  = "announcement_gallery"
     static let payments = "announcement_payments"
     static let rsvp     = "announcement_rsvp"
+    static let location = "announcement_location"
 }
 
 enum AnnouncementExtrasLimits {
@@ -22,6 +23,7 @@ enum AnnouncementExtrasLimits {
     static let maxLabelLength = 60
     static let maxGallery = 6
     static let maxHandleLength = 64
+    static let maxLocationLength = 120
     static let capacityRange = 1...9999
     static let galleryLongEdge: CGFloat = 1600
     static let galleryJpegQuality: CGFloat = 0.85
@@ -80,6 +82,19 @@ enum AnnouncementLinkSafety {
     }
 }
 
+/// Builds an Apple Maps search URL for a free-text place. Search only; no
+/// geocoding or location permission.
+enum AnnouncementLocationMaps {
+    static func url(for place: String) -> URL? {
+        let q = place.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !q.isEmpty else { return nil }
+        var c = URLComponents()
+        c.scheme = "https"; c.host = "maps.apple.com"; c.path = "/"
+        c.queryItems = [URLQueryItem(name: "q", value: q)]
+        return c.url
+    }
+}
+
 struct AnnouncementExtrasDraft: Equatable {
     struct LinkRow: Identifiable, Equatable {
         let id = UUID()
@@ -100,6 +115,7 @@ struct AnnouncementExtrasDraft: Equatable {
     var handles: [String: String] = [:]
     var rsvpOn = false
     var capacity = 20
+    var location = ""
 
     init(from a: FSGroupAnnouncement?) {
         links = (a?.links ?? []).map { LinkRow(url: $0.url, label: $0.label ?? "") }
@@ -107,6 +123,7 @@ struct AnnouncementExtrasDraft: Equatable {
         isEvent = a?.is_event ?? false
         for h in a?.payment_handles ?? [] { handles[h.provider] = h.handle }
         if let c = a?.capacity { rsvpOn = true; capacity = c }
+        location = a?.location ?? ""
     }
 
     /// Rows with a non-empty URL, normalized for sending.
@@ -124,6 +141,11 @@ struct AnnouncementExtrasDraft: Equatable {
             let h = (handles[p.rawValue] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             return h.isEmpty ? nil : FSPaymentHandle(provider: p.rawValue, handle: h)
         }
+    }
+
+    /// Trimmed location for sending; empty means none.
+    var cleanedLocation: String {
+        String(location.trimmingCharacters(in: .whitespacesAndNewlines).prefix(AnnouncementExtrasLimits.maxLocationLength))
     }
 
     func linkError(_ row: LinkRow) -> String? {
@@ -144,30 +166,35 @@ struct AnnouncementExtrasDraft: Equatable {
     }
 
     /// First reason the section can't be saved as it stands, or nil.
-    func blockingError(links on: Bool, payments: Bool) -> String? {
+    func blockingError(links on: Bool, payments: Bool, location locOn: Bool = false) -> String? {
         if on {
             if links.contains(where: { linkError($0) != nil }) { return "Fix the highlighted link." }
         }
         if payments, isEvent, AnnouncementPaymentProvider.allCases.contains(where: { handleError($0) != nil }) {
             return "Fix the highlighted payment handle."
         }
+        if locOn, location.unicodeScalars.contains(where: { $0.properties.generalCategory == .control }) {
+            return "Location can't contain control characters."
+        }
         return nil
     }
 
     /// How many extras are filled in (shown as a badge on the collapsed row).
-    func count(links l: Bool, gallery g: Bool, payments p: Bool, rsvp r: Bool) -> Int {
+    func count(links l: Bool, gallery g: Bool, payments p: Bool, rsvp r: Bool, location loc: Bool = false) -> Int {
         var n = 0
         if l { n += cleanedLinks.count }
         if g { n += gallery.count }
         if p, isEvent { n += 1 }
         if r, rsvpOn { n += 1 }
+        if loc, !cleanedLocation.isEmpty { n += 1 }
         return n
     }
 
     /// Writes only what changed vs `original`, and only for enabled flags
     /// (a flag-off key sent to the server is a 422).
     func apply(to draft: inout FSAnnouncementDraft, original o: FSGroupAnnouncement?,
-               links linksOn: Bool, gallery galleryOn: Bool, payments paymentsOn: Bool, rsvp rsvpOn_: Bool) {
+               links linksOn: Bool, gallery galleryOn: Bool, payments paymentsOn: Bool, rsvp rsvpOn_: Bool,
+               location locationOn: Bool = false) {
         if linksOn {
             let cur = cleanedLinks
             let orig = (o?.links ?? []).map { FSAnnouncementLink(url: $0.url, label: ($0.label ?? "").isEmpty ? nil : $0.label) }
@@ -190,6 +217,11 @@ struct AnnouncementExtrasDraft: Equatable {
         if rsvpOn_ {
             let cur: Int? = rsvpOn ? min(max(capacity, AnnouncementExtrasLimits.capacityRange.lowerBound), AnnouncementExtrasLimits.capacityRange.upperBound) : nil
             if cur != o?.capacity { draft.capacity = cur.map { .set($0) } ?? .clear }
+        }
+        if locationOn {
+            let cur = cleanedLocation
+            let orig = (o?.location ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            if cur != orig { draft.location = cur.isEmpty ? .clear : .set(cur) }
         }
     }
 }

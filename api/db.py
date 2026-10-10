@@ -95,6 +95,7 @@ DDL_MODULES = (
     "content_encryption",
     "session_rooms",
     "reaction_highlight_push",
+    "message_replies",
 )
 
 
@@ -394,6 +395,9 @@ def create_tables(cur):
     )
     cur.execute("ALTER TABLE group_announcements ADD COLUMN IF NOT EXISTS payment_handles JSONB")
     cur.execute("ALTER TABLE group_announcements ADD COLUMN IF NOT EXISTS capacity INTEGER")
+    # Task 20261010-announcement-location-chat-replies: optional free-text
+    # location (validated + capped in the API layer, flag `announcement_location`).
+    cur.execute("ALTER TABLE group_announcements ADD COLUMN IF NOT EXISTS location TEXT")
     # RSVPs: a sign-up for the announcement's event, NOT group membership.
     # One row per (announcement, user); cascades with either side.
     cur.execute(

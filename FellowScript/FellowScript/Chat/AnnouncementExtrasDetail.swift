@@ -33,11 +33,17 @@ struct AnnouncementExtrasDetail: View {
         }
     }
 
+    private var locationText: String? {
+        let t = (item.location ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        return t.isEmpty ? nil : t
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.spacingMD) {
             if !gallery.isEmpty { galleryBlock }
             if !links.isEmpty { linksBlock }
             if !handles.isEmpty { paymentsBlock }
+            if let place = locationText { locationBlock(place) }
             if let cap = item.capacity { rsvpBlock(capacity: cap) }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -126,6 +132,31 @@ struct AnnouncementExtrasDetail: View {
                 .accessibilityHint("Opens in Safari")
                 .accessibilityAddTraits(.isLink)
             }
+        }
+    }
+
+    // ── Location ─────────────────────────────────────────────────────────────
+    private func locationBlock(_ place: String) -> some View {
+        VStack(alignment: .leading, spacing: Theme.spacingXS) {
+            heading("Location")
+            Button {
+                if let url = AnnouncementLocationMaps.url(for: place) { UIApplication.shared.open(url) }
+            } label: {
+                card {
+                    HStack(spacing: Theme.spacingSM) {
+                        Image(systemName: "mappin.and.ellipse").foregroundColor(Theme.gold)
+                        Text(place).font(.inter(Theme.fontSM, weight: .semibold)).foregroundColor(textColor)
+                            .multilineTextAlignment(.leading)
+                        Spacer(minLength: 0)
+                        Image(systemName: "arrow.up.right.square").foregroundColor(Theme.gold)
+                    }
+                    .frame(minHeight: 44)
+                }
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Location, \(place)")
+            .accessibilityHint("Opens in Apple Maps")
+            .accessibilityAddTraits(.isLink)
         }
     }
 

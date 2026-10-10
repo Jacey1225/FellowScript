@@ -37,6 +37,18 @@ struct RawMsg: Decodable {
     // Task 20261010-chat-reactions: [{emoji,count,viewer_reacted}]; absent
     // while the server flag is off.
     let reactions: [ReactionSummary]?
+    // Task 20261010-announcement-location-chat-replies: server-derived quote
+    // keys; absent for non-replies, old servers, and while chat_replies is off.
+    var reply_to_id: String? = nil
+    var reply_to_text: String? = nil
+    var reply_to_author: String? = nil
+    var reply_to_author_id: String? = nil
+    var reply_to_deleted: Bool? = nil
+
+    var reply: FSReplyRef? {
+        FSReplyRef(wireId: reply_to_id, text: reply_to_text, author: reply_to_author,
+                   authorId: reply_to_author_id, deleted: reply_to_deleted)
+    }
 }
 
 /// Task 20261001-chat-pagination: the `page` block of a paged history

@@ -136,6 +136,8 @@ group_announcements     # additive columns: title_font VARCHAR(32) NULL, bg_them
 #   part E (attachments): additive columns links JSONB, gallery_keys JSONB (S3 keys under group-announcements/{group}/), is_event BOOLEAN NOT NULL DEFAULT FALSE,
 #   payment_handles JSONB (display-only provider+handle, no payment processing), capacity INTEGER NULL (NULL = not joinable); flags `announcement_links`,
 #   `announcement_gallery`, `announcement_payments`, `announcement_rsvp` (off by default); response keys omitted while their flag is off
+#   location TEXT NULL (task 20261010-announcement-location-chat-replies; free text, API-capped at 120 chars, flag `announcement_location`, off by default)
+messages (module "message_replies", flag `chat_replies`, off by default)  # additive nullable reply_to_id UUID (no FK, no stored copy of the original: label text/author derived at read time; missing/hidden original = reply_to_deleted); partial index. thread_messages unchanged (deferred)
 group_announcement_rsvps  # PK (announcement_id -> group_announcements ON DELETE CASCADE, user_id -> users ON DELETE CASCADE), created_at; an event sign-up, not group membership
 # <!-- /ANA -->
 ```

@@ -42,7 +42,7 @@ ANNOUNCEMENT_WIDGET_WINDOW_DAYS = 7
 _COLUMNS = (
     "a._id, a.group_id, a.creator_id, u.username, a.title, a.description, a.banner_key, "
     "a.publish_at, a.created_at, a.updated_at, a.title_color, a.title_font, a.bg_theme, "
-    "a.links, a.gallery_keys, a.is_event, a.payment_handles, a.capacity"
+    "a.links, a.gallery_keys, a.is_event, a.payment_handles, a.capacity, a.location"
 )
 
 # Task 20261009-announcements-advanced (parts C and D). Server allowlists for the
@@ -64,6 +64,8 @@ LINKS_FLAG = "announcement_links"
 GALLERY_FLAG = "announcement_gallery"
 PAYMENTS_FLAG = "announcement_payments"
 RSVP_FLAG = "announcement_rsvp"
+# Optional free-text location (task 20261010-announcement-location-chat-replies). Ships OFF.
+LOCATION_FLAG = "announcement_location"
 _FROM = "FROM group_announcements a LEFT JOIN users u ON u._id = a.creator_id"
 
 
@@ -167,7 +169,7 @@ class AnnouncementsManager(GroupsManager):
     def _serialize(self, row: tuple, group_creator: str | None) -> dict:
         (aid, gid, creator, username, title, description, banner_key,
          publish_at, created_at, updated_at, title_color, title_font, bg_theme,
-         links, gallery_keys, is_event, payment_handles, capacity) = row
+         links, gallery_keys, is_event, payment_handles, capacity, location) = row
         creator_s = str(creator) if creator else None
         out = {
             "id": str(aid),
@@ -200,6 +202,8 @@ class AnnouncementsManager(GroupsManager):
             out["payment_handles"] = payment_handles or []
         if flags.is_enabled(RSVP_FLAG, self.user_id):
             out["capacity"] = capacity
+        if flags.is_enabled(LOCATION_FLAG, self.user_id):
+            out["location"] = location
         return out
 
     def _serialize_many(self, rows: list, group_creator: str | None) -> list[dict]:
@@ -277,6 +281,11 @@ class AnnouncementsManager(GroupsManager):
             if value is not None:
                 gated(RSVP_FLAG, "capacity")
             out["capacity"] = value
+        if "location" in given:
+            value = extras.normalize_location(given["location"])
+            if value is not None:
+                gated(LOCATION_FLAG, "location")
+            out["location"] = value
         return out
 
     def _checked_style(self, title_font, bg_theme, *, font_given: bool, theme_given: bool) -> dict:
@@ -381,12 +390,12 @@ class AnnouncementsManager(GroupsManager):
             self.cur.execute(
                 "INSERT INTO group_announcements "
                 "(group_id, creator_id, title, description, banner_key, publish_at, title_color, "
-                "title_font, bg_theme, links, gallery_keys, is_event, payment_handles, capacity) "
-                "VALUES (%s, %s, %s, %s, %s, COALESCE(%s, now()), %s, %s, %s, %s::jsonb, %s::jsonb, %s, %s::jsonb, %s) "
+                "title_font, bg_theme, links, gallery_keys, is_event, payment_handles, capacity, location) "
+                "VALUES (%s, %s, %s, %s, %s, COALESCE(%s, now()), %s, %s, %s, %s::jsonb, %s::jsonb, %s, %s::jsonb, %s, %s) "
                 "RETURNING _id",
                 (self.group_id, self.user_id, title, description, banner_key, publish_at, title_color,
                  style.get("title_font"), style.get("bg_theme"), ex.get("links"), ex.get("gallery_keys"),
-                 ex.get("is_event", False), ex.get("payment_handles"), ex.get("capacity")),
+                 ex.get("is_event", False), ex.get("payment_handles"), ex.get("capacity"), ex.get("location")),
             )
             new_id = self.cur.fetchone()[0]
             self.conn.commit()
@@ -419,7 +428,7 @@ class AnnouncementsManager(GroupsManager):
             font_given="title_font" in fields, theme_given="bg_theme" in fields))
         old_gallery = list(row[14] or [])
         ex = self._checked_extras(
-            {k: fields[k] for k in ("links", "gallery_keys", "is_event", "payment_handles", "capacity") if k in fields},
+            {k: fields[k] for k in ("links", "gallery_keys", "is_event", "payment_handles", "capacity", "location") if k in fields},
             {"is_event": bool(row[15]), "payment_handles": row[16]})
         sets.update(ex)
         if "publish_at" in fields:

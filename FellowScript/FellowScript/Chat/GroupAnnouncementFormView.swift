@@ -87,8 +87,9 @@ struct GroupAnnouncementFormView: View {
     private var galleryOn: Bool { capabilities.isEnabled(AnnouncementExtrasFlag.gallery) }
     private var paymentsOn: Bool { capabilities.isEnabled(AnnouncementExtrasFlag.payments) }
     private var rsvpOn: Bool { capabilities.isEnabled(AnnouncementExtrasFlag.rsvp) }
-    private var extrasOn: Bool { linksOn || galleryOn || paymentsOn || rsvpOn }
-    private var extrasError: String? { extrasOn ? extras.blockingError(links: linksOn, payments: paymentsOn) : nil }
+    private var locationOn: Bool { capabilities.isEnabled(AnnouncementExtrasFlag.location) }
+    private var extrasOn: Bool { linksOn || galleryOn || paymentsOn || rsvpOn || locationOn }
+    private var extrasError: String? { extrasOn ? extras.blockingError(links: linksOn, payments: paymentsOn, location: locationOn) : nil }
     private var submitLabel: String { isEditing ? "Save" : (schedule ? "Schedule" : "Post") }
 
     var body: some View {
@@ -104,7 +105,7 @@ struct GroupAnnouncementFormView: View {
                         if canReschedule { publishField }
                         if extrasOn {
                             AnnouncementExtrasSection(
-                                extras: $extras, linksOn: linksOn, galleryOn: galleryOn, paymentsOn: paymentsOn, rsvpOn: rsvpOn,
+                                extras: $extras, linksOn: linksOn, galleryOn: galleryOn, paymentsOn: paymentsOn, rsvpOn: rsvpOn, locationOn: locationOn,
                                 saving: saving, busy: $extrasBusy,
                                 upload: { data in try await vm.uploadBanner(data: data, contentType: "image/jpeg") },
                                 onChange: { dirty = true })
@@ -451,7 +452,7 @@ struct GroupAnnouncementFormView: View {
                                       chosen: AnnouncementBgTheme.resolve(bgTheme).storedKey)
         }
         if extrasOn {
-            extras.apply(to: &draft, original: editing, links: linksOn, gallery: galleryOn, payments: paymentsOn, rsvp: rsvpOn)
+            extras.apply(to: &draft, original: editing, links: linksOn, gallery: galleryOn, payments: paymentsOn, rsvp: rsvpOn, location: locationOn)
         }
         if schedule { draft.publishAt = when }
         else if isEditing { draft.publishAt = Date() }   // update rejects a null publish_at

@@ -8,9 +8,12 @@ and never coerces: bad input is rejected, not repaired.
   app never processes payments and never accepts card or bank account numbers.
   Handles are never logged by this module.
 * Capacity: bounded integer.
+* Location (task 20261010-announcement-location-chat-replies): one optional
+  free-text line, trimmed, capped, no control or bidi-override characters.
 """
 
 import re
+import unicodedata
 from urllib.parse import urlsplit
 
 MAX_LINKS = 5
@@ -22,6 +25,7 @@ MAX_PAYMENT_HANDLES = 4
 MAX_HANDLE_LENGTH = 64
 MIN_CAPACITY = 1
 MAX_CAPACITY = 9999
+MAX_LOCATION_LENGTH = 120
 
 PAYMENT_PROVIDERS = frozenset({"venmo", "cashapp", "paypal", "zelle"})
 
@@ -182,4 +186,27 @@ def normalize_capacity(value) -> int | None:
         raise ValueError("capacity must be a whole number")
     if not MIN_CAPACITY <= value <= MAX_CAPACITY:
         raise ValueError(f"capacity must be between {MIN_CAPACITY} and {MAX_CAPACITY}")
+    return value
+
+
+# Bidirectional overrides/isolates can visually reverse the text around them.
+_BIDI_CONTROLS = frozenset("\u202a\u202b\u202c\u202d\u202e\u2066\u2067\u2068\u2069")
+
+
+def normalize_location(value) -> str | None:
+    """``None`` / blank -> ``None`` (clears). Otherwise the trimmed text.
+
+    Rejected, never repaired: non-text, over ``MAX_LOCATION_LENGTH`` characters,
+    or any control (including newline/tab) or bidi-override character."""
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ValueError("location must be text")
+    value = value.strip()
+    if not value:
+        return None
+    if len(value) > MAX_LOCATION_LENGTH:
+        raise ValueError(f"location must be {MAX_LOCATION_LENGTH} characters or fewer")
+    if any(unicodedata.category(ch) == "Cc" or ch in _BIDI_CONTROLS for ch in value):
+        raise ValueError("location can't contain control characters")
     return value

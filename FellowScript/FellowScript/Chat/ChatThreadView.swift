@@ -329,7 +329,7 @@ final class ChatThreadViewModel: ObservableObject {
             id: message.id, text: message.text, mine: message.mine, sender: senderName,
             timestamp: message.timestamp, attachmentKind: message.attachmentKind,
             attachmentURL: message.attachmentURL, attachmentMeta: message.attachmentMeta,
-            reactions: message.reactions
+            reactions: message.reactions, reply: message.reply
         )
     }
 
@@ -351,7 +351,7 @@ final class ChatThreadViewModel: ObservableObject {
     /// `StagedAttachment` — the composer is responsible for driving the
     /// upload to completion (and disabling send until it is) before calling
     /// this, per design gate §3.
-    func sendMessage(text: String, attachment: StagedAttachment?, contact: FSContact, userId: String) {
+    func sendMessage(text: String, attachment: StagedAttachment?, contact: FSContact, userId: String, reply: FSReplyRef? = nil) {
         let iso = ISO8601DateFormatter().string(from: Date())
         let messageId = UUID().uuidString
         var body: [String: Any] = ["from_user": userId, "timestamp": iso, "text": text]
@@ -369,6 +369,8 @@ final class ChatThreadViewModel: ObservableObject {
                     "client_ref": messageId, "from_user": userId]
         } else {
             if pagingEnabled || ackEnabled { body["client_ref"] = messageId }
+            // Only the target id is sent; the server derives the quote.
+            if let reply { body["reply_to"] = reply.id }
             if contact.type == .group {
                 body["group_id"] = contact.id
                 body["to_users"] = contact.toUsers
@@ -413,7 +415,8 @@ final class ChatThreadViewModel: ObservableObject {
         // `attachmentURL`, so a gif renders correctly with neither.
         messages.append(FSMessage(
             id: messageId, text: text, mine: true, sender: "", timestamp: iso,
-            attachmentKind: attachmentKind, attachmentURL: nil, attachmentMeta: attachmentMeta
+            attachmentKind: attachmentKind, attachmentURL: nil, attachmentMeta: attachmentMeta,
+            reply: activeThread == nil ? reply : nil
         ))
         if let localPreview {
             localAttachmentPreviews[messageId] = localPreview
@@ -446,7 +449,7 @@ final class ChatThreadViewModel: ObservableObject {
         failedMessageIds.remove(messageId)
         localAttachmentPreviews.removeValue(forKey: messageId)
         pendingAttachmentByMessageId.removeValue(forKey: messageId)
-        sendMessage(text: failed.text, attachment: attachment, contact: contact, userId: userId)
+        sendMessage(text: failed.text, attachment: attachment, contact: contact, userId: userId, reply: failed.reply)
     }
 
     /// Correlates an inbound `{"type":"error",...}` frame to the oldest
@@ -464,6 +467,12 @@ final class ChatThreadViewModel: ObservableObject {
         print("[ChatThreadViewModel] send failed reason=\(reason ?? "unknown") detail=\(detail ?? "none")")
         guard !pendingSendIds.isEmpty else { return }
         let failedId = pendingSendIds.removeFirst()
+        if reason == "reply_invalid" {
+            // The quoted message can no longer be replied to. Drop the quote so
+            // a retry sends it as an ordinary message, and tell the view.
+            if let idx = messages.firstIndex(where: { $0.id == failedId }) { messages[idx].reply = nil }
+            replyInvalidSignal += 1
+        }
         if reason == "terms_reaccept_required" {
             termsGateSignal += 1
             if pendingAttachmentByMessageId[failedId] == nil,
@@ -489,16 +498,16 @@ final class ChatThreadViewModel: ObservableObject {
     /// only the open thread's list (and only if that thread is still open); an
     /// ack without it belongs to the main chat, which is the stash while a
     /// thread is open.
-    private func handleAck(clientRef: String, id: String, timestamp: String?, threadId: String?) {
+    private func handleAck(clientRef: String, id: String, timestamp: String?, threadId: String?, reply: FSReplyRef? = nil) {
         if let threadId {
             guard activeThread?.id == threadId else { return }
-            if Self.reconcile(&messages, clientRef: clientRef, id: id, timestamp: timestamp) { afterAck(clientRef: clientRef, id: id) }
+            if Self.reconcile(&messages, clientRef: clientRef, id: id, timestamp: timestamp, reply: reply) { afterAck(clientRef: clientRef, id: id) }
             return
         }
         if activeThread == nil {
-            if Self.reconcile(&messages, clientRef: clientRef, id: id, timestamp: timestamp) { afterAck(clientRef: clientRef, id: id) }
+            if Self.reconcile(&messages, clientRef: clientRef, id: id, timestamp: timestamp, reply: reply) { afterAck(clientRef: clientRef, id: id) }
         } else if var st = mainStash {
-            if Self.reconcile(&st.messages, clientRef: clientRef, id: id, timestamp: timestamp) {
+            if Self.reconcile(&st.messages, clientRef: clientRef, id: id, timestamp: timestamp, reply: reply) {
                 st.pendingSendIds.removeAll { $0 == clientRef }
                 st.failedMessageIds.remove(clientRef)
                 mainStash = st
@@ -518,7 +527,7 @@ final class ChatThreadViewModel: ObservableObject {
 
     /// Pure list half of the ack rule. Returns true when `list` held the
     /// optimistic bubble.
-    private static func reconcile(_ list: inout [FSMessage], clientRef: String, id: String, timestamp: String?) -> Bool {
+    private static func reconcile(_ list: inout [FSMessage], clientRef: String, id: String, timestamp: String?, reply: FSReplyRef? = nil) -> Bool {
         guard let idx = list.firstIndex(where: { $0.id == clientRef }) else { return false }
         if list.contains(where: { $0.id == id }) {
             list.remove(at: idx)
@@ -527,7 +536,8 @@ final class ChatThreadViewModel: ObservableObject {
             list[idx] = FSMessage(
                 id: id, text: old.text, mine: old.mine, sender: old.sender,
                 timestamp: (timestamp?.isEmpty == false ? timestamp! : old.timestamp),
-                attachmentKind: old.attachmentKind, attachmentURL: old.attachmentURL, attachmentMeta: old.attachmentMeta
+                attachmentKind: old.attachmentKind, attachmentURL: old.attachmentURL, attachmentMeta: old.attachmentMeta,
+                reply: reply ?? old.reply
             )
         }
         return true
@@ -568,7 +578,7 @@ final class ChatThreadViewModel: ObservableObject {
                 // message sent with client_ref. Never a bubble, never an error.
                 if let ref = json["client_ref"] as? String, let ackId = json["id"] as? String {
                     handleAck(clientRef: ref, id: ackId, timestamp: json["timestamp"] as? String,
-                              threadId: json["thread_id"] as? String)
+                              threadId: json["thread_id"] as? String, reply: FSReplyRef(frame: json))
                 }
             case "error":
                 handleSendError(reason: json["reason"] as? String, detail: json["detail"] as? String)
@@ -616,7 +626,8 @@ final class ChatThreadViewModel: ObservableObject {
             timestamp: (json["timestamp"] as? String) ?? "",
             attachmentKind: json["attachment_kind"] as? String,
             attachmentURL:  json["attachment_url"] as? String,
-            attachmentMeta: attachmentMeta
+            attachmentMeta: attachmentMeta,
+            reply: FSReplyRef(frame: json)
         )
         // Dedup by id (a live frame for a row a history fetch already
         // delivered must not render twice); a frame without an id always appends.
@@ -747,6 +758,8 @@ final class ChatThreadViewModel: ObservableObject {
     /// Bumped when a send hit terms_reaccept_required (the view refreshes
     /// capabilities, which raises the existing Updated Terms gate).
     @Published private(set) var termsGateSignal = 0
+    /// Bumped when a send was refused with reply_invalid (the view shows a one-line notice).
+    @Published private(set) var replyInvalidSignal = 0
     /// Text handed back to the composer after terms_reaccept_required.
     @Published var restoredDraft: String? = nil
     private var mainStash: MainChatStash? = nil
@@ -964,6 +977,10 @@ struct ChatThreadView: View {
     @State private var pendingThreadStart: FSMessage? = nil
     @AccessibilityFocusState private var threadTitleFocused: Bool
     @FocusState private var composerFocused: Bool
+    // Task 20261010-announcement-location-chat-replies: the message the composer
+    // is replying to, and a one-shot scroll request for a tapped quote.
+    @State private var replyTarget: FSMessage? = nil
+    @State private var jumpTarget: String? = nil
 
     // ── Sessions submenu (task 20260920-chat-sessions-submenu) ────────────────
     // Replaces the old always-visible inline SessionBanner + header
@@ -1236,7 +1253,10 @@ struct ChatThreadView: View {
                                             vm.retryFailedMessage(messageId, contact: contact, userId: uid)
                                         },
                                         actionsFor: { message in rowActions(for: message) },
-                                        reactionsFor: { message in reactionConfig(for: message) }
+                                        reactionsFor: { message in reactionConfig(for: message) },
+                                        replyFor: { message in replyHandler(for: message) },
+                                        currentUserId: appState.currentUser?.user_id,
+                                        onJumpToReply: { id in jumpTarget = id }
                                     )
                                         .id(row.id)
                                 case .dayDivider(_, let label):
@@ -1299,6 +1319,23 @@ struct ChatThreadView: View {
                         if let anchor = olderAnchorMessageId {
                             olderAnchorMessageId = nil
                             proxy.scrollTo(MessageGroupRow.anchorId(for: anchor), anchor: .top)
+                        }
+                    }
+                    // A tapped quote: scroll to the original when it is loaded.
+                    // Two steps because the lazy stack may not have built the
+                    // bubble yet; Reduce Motion gets no animation.
+                    .onChange(of: jumpTarget) { _, target in
+                        guard let target else { return }
+                        jumpTarget = nil
+                        guard let group = messageGroups.first(where: { g in g.messages.contains { $0.id == target } }) else { return }
+                        withMotionAwareAnimation(.easeInOut(duration: 0.25), reduceMotion: reduceMotion) {
+                            proxy.scrollTo(group.id, anchor: .center)
+                        }
+                        Task { @MainActor in
+                            try? await Task.sleep(nanoseconds: 300_000_000)
+                            withMotionAwareAnimation(.easeInOut(duration: 0.2), reduceMotion: reduceMotion) {
+                                proxy.scrollTo(MessageGroupRow.anchorId(for: target), anchor: .center)
+                            }
                         }
                     }
                     // An ack replaced a bubble's id in place (same count).
@@ -1664,15 +1701,47 @@ struct ChatThreadView: View {
             threadsEnabled: caps.isEnabled("threads"),
             messageDeleteEnabled: caps.isEnabled("message_delete"),
             isSettled: vm.isSettled(message),
-            senderUserId: vm.senderUserId(for: message)
+            senderUserId: vm.senderUserId(for: message),
+            repliesEnabled: repliesEnabled,
+            canJumpToOriginal: replyTargetLoaded(message)
         )
         return FSMessageActionPolicy.actions(for: message, in: ctx).map { kind in
             MessageRowAction(kind: kind) { performAction(kind, on: message) }
         }
     }
 
+    // ── Replies (task 20261010-announcement-location-chat-replies) ────────────
+
+    /// Chat replies show only with the server flag on and only in the main chat
+    /// (thread replies are deferred).
+    private var repliesEnabled: Bool {
+        appState.capabilities.isEnabled("chat_replies") && !vm.isThreadOpen
+    }
+
+    /// The Reply action for a message, or nil when it can't be replied to
+    /// (flag off, unsent, failed, or in a thread).
+    private func replyHandler(for message: FSMessage) -> (() -> Void)? {
+        guard repliesEnabled, vm.isSettled(message) else { return nil }
+        return { startReply(to: message) }
+    }
+
+    private func startReply(to message: FSMessage) {
+        replyTarget = message
+        composerFocused = true
+        UIAccessibility.post(notification: .announcement, argument: "Replying to \(message.replyAuthorName)")
+    }
+
+    private func replyTargetLoaded(_ message: FSMessage) -> Bool {
+        guard let reply = message.reply, !reply.deleted else { return false }
+        return vm.messages.contains { $0.id == reply.id }
+    }
+
     private func performAction(_ kind: FSMessageActionKind, on message: FSMessage) {
         switch kind {
+        case .reply:
+            startReply(to: message)
+        case .goToOriginal:
+            if let id = message.reply?.id { jumpTarget = id }
         case .copy:
             if let text = message.copyableText {
                 UIPasteboard.general.string = text
@@ -2176,6 +2245,9 @@ struct ChatThreadView: View {
                     onPickGif:        { showAttachSheet = false; showGifSheet = true }
                 )
             }
+            if let target = replyTarget, repliesEnabled {
+                replyBar(target)
+            }
             HStack(spacing: 10) {
                 attachButton
 
@@ -2231,6 +2303,38 @@ struct ChatThreadView: View {
                 stagedUploadState = attachment.uploadState
             }
         }
+        .onChange(of: vm.replyInvalidSignal) { _, _ in
+            showToast("That message can't be replied to. Tap yours to retry without the reply.", seconds: 4)
+        }
+        .onChange(of: vm.activeThread?.id) { _, newId in if newId != nil { replyTarget = nil } }
+    }
+
+    /// "Replying to <name>: <snippet>" with a cancel control.
+    private func replyBar(_ target: FSMessage) -> some View {
+        HStack(spacing: 8) {
+            RoundedRectangle(cornerRadius: 1.5).fill(Theme.gold.opacity(0.7)).frame(width: 3)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Replying to \(target.replyAuthorName)")
+                    .font(.inter(Theme.fontXS, weight: .bold)).foregroundColor(Theme.gold)
+                    .lineLimit(1)
+                Text(target.replyPreviewText)
+                    .font(.inter(Theme.fontXS)).foregroundColor(Theme.textSecondary)
+                    .lineLimit(1)
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Replying to \(target.replyAuthorName): \(target.replyPreviewText)")
+            Spacer(minLength: 0)
+            Button { replyTarget = nil } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 20)).foregroundColor(Theme.textSecondary)
+                    .frame(width: 44, height: 44).contentShape(Rectangle())
+            }
+            .accessibilityLabel("Cancel reply")
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        .padding(.horizontal, Theme.spacingMD)
+        .padding(.top, Theme.spacingXS)
     }
 
     // 44pt tap target over a visually-36pt glyph (design gate §1) — the
@@ -2346,7 +2450,11 @@ struct ChatThreadView: View {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard canSend, (!trimmed.isEmpty || stagedAttachment != nil) else { return }
         let uid = appState.currentUser?.user_id ?? ""
-        vm.sendMessage(text: trimmed, attachment: stagedAttachment, contact: contact, userId: uid)
+        let reply: FSReplyRef? = (replyTarget != nil && repliesEnabled)
+            ? replyTarget.map { FSReplyRef(id: $0.id, text: $0.replyPreviewText, author: $0.replyAuthorName, authorId: $0.mine ? uid : vm.senderUserId(for: $0)) }
+            : nil
+        vm.sendMessage(text: trimmed, attachment: stagedAttachment, contact: contact, userId: uid, reply: reply)
+        replyTarget = nil
         text = ""
         stagedAttachment = nil
         stagedUploadState = nil
