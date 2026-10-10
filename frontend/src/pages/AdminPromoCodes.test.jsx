@@ -9,9 +9,9 @@ vi.mock('../context/AuthContext.jsx', () => ({ useAuth: () => mockAuth }));
 vi.mock('../components/AppNav.jsx', () => ({ default: () => null }));
 vi.mock('../lib/ownerRewardsApi.js', async () => {
   const actual = await vi.importActual('../lib/ownerRewardsApi.js');
-  return { ...actual, createCreatorCode: vi.fn(), listCodesOverview: vi.fn(), deactivateCode: vi.fn(), reactivateCode: vi.fn(), deleteCode: vi.fn(), updateCodeEmail: vi.fn() };
+  return { ...actual, createCreatorCode: vi.fn(), listCodesOverview: vi.fn(), deactivateCode: vi.fn(), reactivateCode: vi.fn(), deleteCode: vi.fn(), updateCodeEmail: vi.fn(), updateCreator: vi.fn() };
 });
-import { createCreatorCode, listCodesOverview, deactivateCode, reactivateCode, deleteCode, updateCodeEmail, OwnerRewardsApiError } from '../lib/ownerRewardsApi.js';
+import { createCreatorCode, listCodesOverview, deactivateCode, reactivateCode, deleteCode, updateCodeEmail, updateCreator, OwnerRewardsApiError } from '../lib/ownerRewardsApi.js';
 import AdminPromoCodes from './AdminPromoCodes.jsx';
 
 function Where() { const l = useLocation(); return <div data-testid="where">{l.pathname}</div>; }
@@ -32,7 +32,7 @@ const ROW = {
 
 beforeEach(() => {
   createCreatorCode.mockReset(); listCodesOverview.mockReset(); deactivateCode.mockReset();
-  reactivateCode.mockReset(); deleteCode.mockReset(); updateCodeEmail.mockReset();
+  reactivateCode.mockReset(); deleteCode.mockReset(); updateCodeEmail.mockReset(); updateCreator.mockReset();
 });
 afterEach(() => cleanup());
 
@@ -281,5 +281,71 @@ describe('AdminPromoCodes', () => {
     await screen.findByText('CREATOR1');
     fireEvent.click(screen.getByRole('button', { name: /download csv/i }));
     expect(await screen.findByText('boom')).toBeInTheDocument();
+  });
+
+  describe('edit creator code', () => {
+    const EROW = { ...ROW, creator_id: 'cr1', creator_notes: 'old notes' };
+    async function openEditor() {
+      listCodesOverview.mockResolvedValue([EROW]);
+      renderPage();
+      fireEvent.click(await screen.findByLabelText('Edit CREATOR1'));
+      return await screen.findByLabelText('Creator name', { selector: '#ec-name' });
+    }
+
+    test('prefills and sends only changed fields', async () => {
+      const nameInput = await openEditor();
+      expect(nameInput.value).toBe('Cee');
+      expect(document.getElementById('ec-notes').value).toBe('old notes');
+      updateCreator.mockResolvedValue({});
+      fireEvent.change(nameInput, { target: { value: 'Cee Two' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+      await waitFor(() => expect(updateCreator).toHaveBeenCalledWith('cr1', { name: 'Cee Two' }));
+      expect(updateCodeEmail).not.toHaveBeenCalled();
+      await waitFor(() => expect(listCodesOverview.mock.calls.length).toBeGreaterThan(1));
+    });
+
+    test('email change calls updateCodeEmail only', async () => {
+      await openEditor();
+      updateCodeEmail.mockResolvedValue({});
+      fireEvent.change(document.getElementById('ec-email'), { target: { value: 'new@x.co' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+      await waitFor(() => expect(updateCodeEmail).toHaveBeenCalledWith('c1', 'new@x.co'));
+      expect(updateCreator).not.toHaveBeenCalled();
+    });
+
+    test('clearing email warns about deactivation', async () => {
+      await openEditor();
+      fireEvent.change(document.getElementById('ec-email'), { target: { value: '' } });
+      expect(await screen.findByText(/deactivates this code/)).toBeInTheDocument();
+    });
+
+    test('client validation blocks bad input without calling the API', async () => {
+      await openEditor();
+      fireEvent.change(document.getElementById('ec-email'), { target: { value: 'nope' } });
+      fireEvent.submit(document.getElementById('ec-email').closest('form'));
+      expect(await screen.findByText('Enter a valid owner email.')).toBeInTheDocument();
+      fireEvent.change(document.getElementById('ec-email'), { target: { value: 'own@x.co' } });
+      fireEvent.change(document.getElementById('ec-name'), { target: { value: '   ' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+      expect(await screen.findByText('Enter a creator name.')).toBeInTheDocument();
+      expect(updateCreator).not.toHaveBeenCalled();
+      expect(updateCodeEmail).not.toHaveBeenCalled();
+    });
+
+    test('server error shows inline and keeps the form open', async () => {
+      const nameInput = await openEditor();
+      updateCreator.mockRejectedValue(new OwnerRewardsApiError('Name is too long.', 422));
+      fireEvent.change(nameInput, { target: { value: 'Other' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+      expect(await screen.findByText('Name is too long.')).toBeInTheDocument();
+      expect(document.getElementById('ec-name')).toBeInTheDocument();
+    });
+
+    test('no Edit button for friend rows or rows without creator_id', async () => {
+      listCodesOverview.mockResolvedValue([{ ...ROW, kind: 'friend' }]);
+      renderPage();
+      await screen.findByText('CREATOR1');
+      expect(screen.queryByLabelText('Edit CREATOR1')).toBeNull();
+    });
   });
 });

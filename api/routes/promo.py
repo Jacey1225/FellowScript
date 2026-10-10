@@ -25,7 +25,7 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from backend.auth.dependencies import require_admin, require_match
 from backend.rate_limiting import get_client_ip, limiter
@@ -230,6 +230,17 @@ class CreatorUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=120)
     notes: str | None = Field(default=None, max_length=2000)
     active: bool | None = None
+
+    @field_validator("name")
+    @classmethod
+    def _name_not_blank(cls, v: str | None) -> str | None:
+        # Trim, and reject whitespace-only (create already strips).
+        if v is None:
+            return v
+        v = v.strip()
+        if not v:
+            raise ValueError("name must not be blank")
+        return v
 
 
 class CodeCreate(BaseModel):

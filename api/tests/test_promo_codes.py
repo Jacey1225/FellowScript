@@ -453,6 +453,23 @@ def test_admin_crud_and_report(client, admin, stubs):
           len(client.get(f"/admin/promo/redemptions?creator_id={cid}&limit=1", headers=ck(atok)).json()) == 1)
     r = client.patch(f"/admin/promo/codes/{row['id']}", json={"active": False}, headers=ck(atok))
     check("deactivate code", r.status_code == 200 and r.json()["active"] is False)
+    test_creator_edit(client, atok, cid, row)
+
+
+def test_creator_edit(client, atok, cid, row):
+    print("\n== Creator metadata edit ==")
+    before = q("SELECT code, kind, redemption_count, max_redemptions, expires_at, active FROM promo_codes WHERE _id=%s", (row['id'],))
+    r = client.patch(f"/admin/promo/creators/{cid}", json={"name": "  Renamed  ", "notes": "new notes"},
+                     headers=ck(atok))
+    check("edit name/notes -> 200, name trimmed", r.status_code == 200 and r.json()["name"] == "Renamed"
+          and r.json()["notes"] == "new notes", r.text)
+    for label, body in (("whitespace-only name", {"name": "   "}), ("empty name", {"name": ""}),
+                        ("name > 120", {"name": "x" * 121}), ("notes > 2000", {"notes": "x" * 2001})):
+        check(f"{label} -> 422", client.patch(f"/admin/promo/creators/{cid}", json=body,
+                                               headers=ck(atok)).status_code == 422)
+    after = q("SELECT code, kind, redemption_count, max_redemptions, expires_at, active FROM promo_codes WHERE _id=%s", (row['id'],))
+    check("edit leaves code/redemptions/caps/expiry/active unchanged", before == after, f"{before} vs {after}")
+    check("DB: creator name/notes updated", q("SELECT name, notes FROM creators WHERE _id=%s", (cid,))[0] == ("Renamed", "new notes"))
 
 
 def test_checkout(client, admin, stubs):

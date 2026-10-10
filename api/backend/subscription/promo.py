@@ -531,7 +531,8 @@ class PromoManager(DBManager):
         self.cur.execute(
             "SELECT p._id, p.code, p.kind, p.active, p.owner_email, c.name, p.redemption_count, "
             " p.max_redemptions, p.expires_at, p.created_at, "
-            " COALESCE(rw.earned, 0), COALESCE(rw.claimed, 0), p.requires_owner_email "
+            " COALESCE(rw.earned, 0), COALESCE(rw.claimed, 0), p.requires_owner_email, "
+            " p.creator_id, c.notes "
             "FROM promo_codes p LEFT JOIN creators c ON c._id = p.creator_id "
             "LEFT JOIN (SELECT code_id, COUNT(*) AS earned, COUNT(*) FILTER (WHERE status='claimed') AS claimed "
             "           FROM owner_rewards WHERE code_id IS NOT NULL GROUP BY code_id) rw ON rw.code_id = p._id "
@@ -540,7 +541,9 @@ class PromoManager(DBManager):
                  "creator_name": r[5], "redemption_count": r[6], "max_redemptions": r[7],
                  "expires_at": _iso(r[8]), "created_at": _iso(r[9]),
                  "rewards_earned": r[10], "rewards_claimed": r[11],
-                 "awaiting_email": bool(r[12]) and not r[4]} for r in self.cur.fetchall()]
+                 "awaiting_email": bool(r[12]) and not r[4],
+                 "creator_id": str(r[13]) if r[13] else None,
+                 "creator_notes": r[14]} for r in self.cur.fetchall()]
 
     # ── Admin: reporting ──────────────────────────────────────────────────────
 

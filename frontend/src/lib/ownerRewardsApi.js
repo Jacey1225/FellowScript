@@ -79,6 +79,12 @@ export function updateCodeEmail(codeId, ownerEmail) {
   return request(`/admin/promo/codes/${encodeURIComponent(codeId)}`, json('PATCH', { owner_email: ownerEmail || null }), "Couldn't save the email.");
 }
 
+// Admin: edit per-creator metadata (shared by all of that creator's codes). Send only
+// changed fields; the server validates name (1-120, not blank) and notes (max 2000) with 422.
+export function updateCreator(creatorId, fields) {
+  return request(`/admin/promo/creators/${encodeURIComponent(creatorId)}`, json('PATCH', fields), "Couldn't save the creator.");
+}
+
 // Admin: soft-delete a creator code (204, idempotent). Redemption history is kept.
 export function deleteCode(codeId) {
   return request(`/admin/promo/codes/${encodeURIComponent(codeId)}`, { method: 'DELETE' }, "Couldn't delete the code.");

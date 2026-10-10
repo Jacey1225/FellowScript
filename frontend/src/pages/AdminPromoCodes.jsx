@@ -1,11 +1,11 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Typography, Spin, Alert, Button, Input, InputNumber, Tag, Select, Popconfirm } from 'antd';
+import { Typography, Spin, Alert, Button, Input, InputNumber, Tag, Select, Popconfirm, Modal } from 'antd';
 import { AdminPageHeader } from '../components/AdminShell.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import {
   createCreatorCode, listCodesOverview, deactivateCode,
-  reactivateCode, deleteCode, updateCodeEmail,
+  reactivateCode, deleteCode, updateCodeEmail, updateCreator,
 } from '../lib/ownerRewardsApi.js';
 import { codesToCsv, csvFilename, downloadCsv } from '../lib/promoCsv.js';
 import { isMfaRequiredError } from '../lib/adminMfa.js';
@@ -31,6 +31,8 @@ const SR_ONLY = {
   clip: 'rect(0,0,0,0)', whiteSpace: 'nowrap', border: 0,
 };
 const NEEDS_EMAIL_HINT = 'Add an owner email before this code can be activated.';
+const NAME_MAX = 120;
+const NOTES_MAX = 2000;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // Task 20261001-promo-owner-rewards: admin page (/#/admin/promo) to create secure
@@ -59,6 +61,12 @@ export default function AdminPromoCodes() {
   const [addingId, setAddingId] = useState(null);   // row id whose inline Add email is open
   const [addEmail, setAddEmail] = useState('');
   const [addError, setAddError] = useState(null);
+  const [editRow, setEditRow] = useState(null);     // row being edited (creator-kind)
+  const [editName, setEditName] = useState('');
+  const [editEmail, setEditEmail] = useState('');
+  const [editNotes, setEditNotes] = useState('');
+  const [editError, setEditError] = useState(null);
+  const [editSaving, setEditSaving] = useState(false);
   const [exportKind, setExportKind] = useState('');
   const [exporting, setExporting] = useState(false);
 
@@ -131,6 +139,46 @@ export default function AdminPromoCodes() {
       if (!handleAuthError(err)) setAddError(err.message || "Couldn't save the email.");
     } finally {
       setBusyId(null);
+    }
+  };
+  const openEdit = (row) => {
+    setEditRow(row);
+    setEditName(row.creator_name || '');
+    setEditEmail(row.owner_email || '');
+    setEditNotes(row.creator_notes || '');
+    setEditError(null);
+  };
+  const closeEdit = () => { if (!editSaving) setEditRow(null); };
+  const removingEmail = !!(editRow?.owner_email) && !editEmail.trim();
+  const saveEdit = async (e) => {
+    e?.preventDefault();
+    setEditError(null);
+    const row = editRow;
+    const n = editName.trim();
+    const em = editEmail.trim();
+    const nt = editNotes.trim();
+    if (!n) { setEditError('Enter a creator name.'); return; }
+    if (n.length > NAME_MAX) { setEditError(`Name must be ${NAME_MAX} characters or fewer.`); return; }
+    if (nt.length > NOTES_MAX) { setEditError(`Notes must be ${NOTES_MAX} characters or fewer.`); return; }
+    if (em && !EMAIL_RE.test(em)) { setEditError('Enter a valid owner email.'); return; }
+    const creatorChanges = {};
+    if (n !== (row.creator_name || '')) creatorChanges.name = n;
+    if (nt !== (row.creator_notes || '')) creatorChanges.notes = nt;
+    const emailChanged = em !== (row.owner_email || '');
+    if (!Object.keys(creatorChanges).length && !emailChanged) { setEditRow(null); return; }
+    setEditSaving(true);
+    try {
+      if (Object.keys(creatorChanges).length) await updateCreator(row.creator_id, creatorChanges);
+      if (emailChanged) await updateCodeEmail(row.id, em);   // never activates; blank deactivates
+      setEditRow(null);
+      await load();
+    } catch (err) {
+      if (!handleAuthError(err)) {
+        setEditError(err.message || "Couldn't save the changes.");
+        load();   // a partial save (creator ok, email failed) should show on the list
+      }
+    } finally {
+      setEditSaving(false);
     }
   };
   // Fetches every page (server caps a page at 500) for the chosen kind, then
@@ -297,6 +345,11 @@ export default function AdminPromoCodes() {
                                   Reactivate
                                 </Button>
                               )}
+                              {r.kind === 'creator' && r.creator_id && (
+                                <Button size="small" shape="round" disabled={busyId === r.id} onClick={() => openEdit(r)} aria-label={`Edit ${r.code}`}>
+                                  Edit
+                                </Button>
+                              )}
                               {r.kind === 'creator' && (
                                 <Popconfirm
                                   title="Delete this code?"
@@ -318,6 +371,39 @@ export default function AdminPromoCodes() {
                 </div>
               )}
             </div>
+            <Modal
+              open={!!editRow} onCancel={closeEdit} title={editRow ? `Edit ${editRow.code}` : 'Edit'}
+              footer={null} destroyOnClose maskClosable={!editSaving}
+            >
+              {editRow && (
+                <form onSubmit={saveEdit} aria-label={`Edit creator code ${editRow.code}`}>
+                  <p style={{ ...MUTED, margin: '0 0 0.8rem' }}>
+                    Name and notes belong to the creator and apply to all of their codes.
+                    The owner email belongs to this code only. The code itself, redemptions, and rewards do not change.
+                  </p>
+                  <label htmlFor="ec-name" style={LABEL}>Creator name</label>
+                  <Input id="ec-name" value={editName} maxLength={NAME_MAX} onChange={(e) => setEditName(e.target.value)} />
+                  <label htmlFor="ec-email" style={{ ...LABEL, marginTop: 12 }}>Owner email (this code only)</label>
+                  <Input id="ec-email" type="email" value={editEmail} maxLength={255} onChange={(e) => setEditEmail(e.target.value)} />
+                  {removingEmail && (
+                    <Alert
+                      type="warning" showIcon style={{ marginTop: 8, borderRadius: 8 }}
+                      message="Removing the email deactivates this code until you add an email and activate it again."
+                    />
+                  )}
+                  {!removingEmail && !editRow.owner_email && (
+                    <p style={{ ...MUTED, margin: '6px 0 0' }}>Adding an email does not activate the code. Press Activate afterward.</p>
+                  )}
+                  <label htmlFor="ec-notes" style={{ ...LABEL, marginTop: 12 }}>Notes</label>
+                  <Input.TextArea id="ec-notes" rows={3} maxLength={NOTES_MAX} value={editNotes} onChange={(e) => setEditNotes(e.target.value)} />
+                  {editError && <Alert role="alert" type="error" showIcon message={editError} style={{ marginTop: '0.8rem', borderRadius: 8 }} />}
+                  <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: '1rem' }}>
+                    <Button shape="round" onClick={closeEdit} disabled={editSaving}>Cancel</Button>
+                    <Button type="primary" shape="round" htmlType="submit" loading={editSaving}>Save changes</Button>
+                  </div>
+                </form>
+              )}
+            </Modal>
           </>
         )}
     </div>

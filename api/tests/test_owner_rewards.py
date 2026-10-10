@@ -1129,6 +1129,8 @@ def test_admin(client, admin, user):
     row = next((x for x in ov.json() if x["id"] == code["id"]), None)
     check("overview row has email, counts", row and row["owner_email"] == "creator.one@example.com"
           and "redemption_count" in row and row["rewards_earned"] == 0 and row["rewards_claimed"] == 0, str(row))
+    check("overview exposes creator_id + creator_notes", row and row["creator_id"] == out["creator"]["id"]
+          and "creator_notes" in row, str(row))
     frow = next((x for x in client.get("/admin/promo/codes-overview?kind=friend&limit=500", headers=ip_hdr(atok)).json()
                  if x["kind"] == "friend" and x["rewards_earned"] >= 1), None)
     check("friend code overview shows reward counts", frow is not None)
