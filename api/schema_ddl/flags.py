@@ -9,6 +9,7 @@ SEED_FLAG_NAMES = (
     "threads",
     "message_delete",
     "message_reactions",
+    "verse_reactions",
     "explorer_publish",
     "explorer_browse",
     "join_requests",
