@@ -131,7 +131,7 @@ struct WaysToExploreSection: View {
         Group {
             if WaysToExplore.showsSection(dismissed: dismissed, cards: cards) {
                 VStack(alignment: .leading, spacing: Theme.spacingMD) {
-                    Text("Ways to explore")
+                    Text("Find your people")
                         .font(.interScaled(Theme.fontDisplayMD, weight: .bold, relativeTo: .title2))
                         .foregroundColor(Theme.textPrimary)
                         .accessibilityAddTraits(.isHeader)
@@ -142,16 +142,16 @@ struct WaysToExploreSection: View {
                         case .createGroup:
                             WaysToExploreCard(
                                 icon: "bubble.left.and.bubble.right",
-                                title: "Create a group",
-                                detail: "Start your own chat and invite members",
+                                title: "Start a group",
+                                detail: "Bring friends together in a chat of your own",
                                 hint: "Opens the new group form",
                                 identifier: "ways-to-explore-create-group"
                             ) { showAddGroup = true }
                         case .exploreGroups:
                             WaysToExploreCard(
                                 icon: "safari",
-                                title: "Explore groups",
-                                detail: "Discover trending and nearby groups",
+                                title: "Browse groups",
+                                detail: "See what is popular and close to you",
                                 hint: "Opens the community Explore page in a browser view",
                                 identifier: "ways-to-explore-explore-groups"
                             ) {
@@ -161,14 +161,14 @@ struct WaysToExploreSection: View {
                     }
 
                     Button(action: dismissSection) {
-                        Text("Not now")
+                        Text("Maybe later")
                             .font(.interScaled(Theme.fontBody, weight: .semibold, relativeTo: .body))
                             .foregroundColor(Theme.textSecondary)
                             .frame(maxWidth: .infinity, minHeight: 44)
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel("Not now")
+                    .accessibilityLabel("Maybe later")
                     .accessibilityHint("Hides this section")
                     .accessibilityIdentifier("ways-to-explore-not-now")
                 }
