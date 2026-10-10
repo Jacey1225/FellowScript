@@ -30,6 +30,9 @@ struct FSCapabilities: Decodable, Equatable {
     /// Chat reactions UI shows only when the flag is on AND the server sent a set.
     var messageReactionsEnabled: Bool { isEnabled("message_reactions") && !reactionEmoji.quick.isEmpty }
 
+    /// Task 20261010-reaction-highlight-push: friend-highlight push toggle shows only when the flag is on.
+    var friendHighlightPushEnabled: Bool { isEnabled("friend_highlight_push") }
+
     /// Fail-closed value: nothing enabled, terms treated as current.
     static let allOff = FSCapabilities(features: [:], exploreLink: nil, termsCurrent: true)
 

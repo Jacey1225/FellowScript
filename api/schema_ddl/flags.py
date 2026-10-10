@@ -27,6 +27,8 @@ SEED_FLAG_NAMES = (
     "announcement_rsvp",
     "screen_share_enabled",
     "discussion_rooms",
+    "message_reaction_push",
+    "friend_highlight_push",
 )
 
 

@@ -15,7 +15,7 @@ never fail the request. Behaviour lives in
 import logging
 
 import anyio.from_thread
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from backend.auth.dependencies import require_match
@@ -25,6 +25,7 @@ from backend.interactions.message_delete import fan_out
 from backend.interactions.message_reactions import (
     FLAG, MAX_EMOJI_LENGTH, MessageReactionsManager, is_allowed_emoji, reaction_frame, reaction_rate,
 )
+from backend.interactions.reaction_highlight_push import notify_message_reaction
 from backend.rate_limiting import limiter
 from routes.messaging import manager as ws_manager
 
@@ -68,7 +69,7 @@ def _finish(result: dict, user_id: str) -> dict:
 @message_reactions_router.post("/{user_id}/{message_id}")
 @limiter.shared_limit(reaction_rate, scope="message_reactions", key_func=_user_key)
 def add_reaction(
-    request: Request, user_id: str, message_id: str, body: ReactionRequest,
+    request: Request, background: BackgroundTasks, user_id: str, message_id: str, body: ReactionRequest,
     _: str = Depends(require_match("user_id")),
 ) -> dict:
     """Idempotently add the caller's reaction. Returns ``{emoji, count, viewer_reacted}``."""
@@ -85,6 +86,12 @@ def add_reaction(
         raise _not_found()
     if "cap" in result:
         raise HTTPException(status_code=409, detail={"code": result["cap"]})
+    if result["changed"]:
+        # Reaction push to the message author (flag message_reaction_push): post-commit,
+        # coalesced, best-effort. Removal never pushes.
+        background.add_task(
+            notify_message_reaction, result["message_id"], user_id, body.emoji, result["group_id"],
+        )
     return _finish(result, user_id)
 
 

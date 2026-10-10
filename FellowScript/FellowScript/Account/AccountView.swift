@@ -161,6 +161,11 @@ struct AccountView: View {
                         // ── Privacy & Safety ───────────────────────────────────
                         privacySafetySection
 
+                        // ── Notifications (task 20261010-reaction-highlight-push) ──
+                        if appState.capabilities.friendHighlightPushEnabled, let uid = appState.currentUser?.user_id {
+                            FriendHighlightPushSection(service: appState.service, userId: uid)
+                        }
+
                         // ── Legal ───────────────────────────────────────────────
                         legalSection
 

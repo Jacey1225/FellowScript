@@ -138,6 +138,11 @@ register("screen_share_enabled")
 # 20261009-discussion-rooms). Gates every /session-rooms route (flag off = uniform 404)
 # and the iOS UI via capabilities. Canary allowed. Ships OFF.
 register("discussion_rooms")
+# Push to a message author when someone reacts (coalesced), and push to friends when a
+# friend highlights a verse (task 20261010-reaction-highlight-push). Evaluated for the
+# RECIPIENT. Exposed in capabilities so iOS can show the friend-highlight toggle. Ship OFF.
+register("message_reaction_push")
+register("friend_highlight_push")
 
 
 def _load_snapshot() -> dict[str, tuple[str, frozenset[str]]]:

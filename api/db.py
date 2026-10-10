@@ -94,6 +94,7 @@ DDL_MODULES = (
     "email_verification",
     "content_encryption",
     "session_rooms",
+    "reaction_highlight_push",
 )
 
 

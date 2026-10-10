@@ -1,4 +1,5 @@
 from fastapi import APIRouter, HTTPException, Depends
+from pydantic import BaseModel, StrictBool
 from backend.auth.dependencies import require_match
 from db import DBManager
 import logging
@@ -67,5 +68,49 @@ async def register_voip_device_token(user_id: str, body: dict, _: str = Depends(
         logger.error("Error saving VoIP device token: %s", e)
         db.conn.rollback()
         raise HTTPException(status_code=500, detail="Failed to save token")
+    finally:
+        db.close()
+
+
+# ── Push preferences (task 20261010-reaction-highlight-push) ──────────────────
+#
+# Per-user opt-out for friend-highlight pushes. Default ON: a missing row means
+# on. Path user is matched against the session by require_match, so a caller can
+# only read or write their own setting. Not flag-gated (the stored value is
+# harmless while the push flag is off); iOS hides the toggle via capabilities.
+
+class PushPreferences(BaseModel):
+    friend_highlight: StrictBool
+
+
+@notification_router.get("/{user_id}/push-preferences")
+async def get_push_preferences(user_id: str, _: str = Depends(require_match("user_id"))) -> dict:
+    db = DBManager()
+    try:
+        db.cur.execute("SELECT friend_highlight FROM push_preferences WHERE user_id = %s", (user_id,))
+        row = db.cur.fetchone()
+        db.conn.rollback()
+        return {"friend_highlight": True if row is None else bool(row[0])}
+    finally:
+        db.close()
+
+
+@notification_router.put("/{user_id}/push-preferences")
+async def set_push_preferences(
+    user_id: str, body: PushPreferences, _: str = Depends(require_match("user_id")),
+) -> dict:
+    db = DBManager()
+    try:
+        db.cur.execute(
+            "INSERT INTO push_preferences (user_id, friend_highlight, updated_at) VALUES (%s, %s, NOW()) "
+            "ON CONFLICT (user_id) DO UPDATE SET friend_highlight = EXCLUDED.friend_highlight, updated_at = NOW()",
+            (user_id, body.friend_highlight),
+        )
+        db.conn.commit()
+        return {"friend_highlight": body.friend_highlight}
+    except Exception as e:
+        db.conn.rollback()
+        logger.error("Error saving push preferences: %s", type(e).__name__)
+        raise HTTPException(status_code=500, detail="Failed to save preferences")
     finally:
         db.close()

@@ -162,4 +162,21 @@ extension NetworkService {
         _ = try await checkedRequestRaw("/notification/\(userId)/voip-device-token", method: "POST",
                                  jsonObject: ["token": token])
     }
+
+    // Task 20261010-reaction-highlight-push: per-user friend-highlight push
+    // setting (default on server-side). Throws on any failure so the toggle
+    // can revert rather than show a state the server never saved.
+    func fetchFriendHighlightPush(userId: String) async throws -> Bool {
+        let data = try await request("/notification/\(encodeURIComponent(userId))/push-preferences", method: "GET")
+        guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let v = obj["friend_highlight"] as? Bool else {
+            throw AppError.networkError("Notification settings unavailable.")
+        }
+        return v
+    }
+
+    func setFriendHighlightPush(userId: String, enabled: Bool) async throws {
+        _ = try await checkedRequestRaw("/notification/\(encodeURIComponent(userId))/push-preferences", method: "PUT",
+                                        jsonObject: ["friend_highlight": enabled])
+    }
 }

@@ -101,6 +101,14 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
                                                                      threadId: data["thread_id"] as? String ?? ""))
         } else if action == "message", let groupId, !groupId.isEmpty {
             NotificationCenter.default.post(name: .sessionPushTapped, object: groupId)
+        } else if action == "message_reaction", let groupId, !groupId.isEmpty {
+            // Task 20261010-reaction-highlight-push: same group_id shape as a
+            // chat message push (group id or sorted DM room key), so it reuses
+            // the chat open path; the chat thread has no message anchor yet.
+            NotificationCenter.default.post(name: .sessionPushTapped, object: groupId)
+        } else if action == "friend_highlight", let target = FriendHighlightPushTarget(userInfo: data) {
+            // Identifiers only in the payload; opens the verse in the Bible tab.
+            NotificationCenter.default.post(name: .friendHighlightPushTapped, object: target)
         } else if data["devotion_id"] != nil, let groupId, !groupId.isEmpty {
             NotificationCenter.default.post(name: .sessionPushTapped, object: groupId)
         }
@@ -114,6 +122,24 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
 struct AnnouncementPushTarget {
     let groupId: String
     let announcementId: String
+}
+
+/// Task 20261010-reaction-highlight-push: `action: "friend_highlight"` payload
+/// (`book`, `chapter`, `verse`). Fails closed (nil) on anything malformed so a
+/// bad payload is inert on tap rather than navigating somewhere arbitrary.
+struct FriendHighlightPushTarget: Equatable {
+    let book: String
+    let chapter: Int
+    let verse: Int
+
+    init?(userInfo: [AnyHashable: Any]) {
+        guard let book = userInfo["book"] as? String, !book.isEmpty, book.count <= 64,
+              let chapter = userInfo["chapter"] as? Int, chapter > 0,
+              let verse = userInfo["verse"] as? Int, verse > 0 else { return nil }
+        self.book = book
+        self.chapter = chapter
+        self.verse = verse
+    }
 }
 
 struct ThreadPushTarget {
@@ -132,6 +158,7 @@ extension Notification.Name {
     static let ringPushTapped    = Notification.Name("ringPushTapped")
     static let announcementPushTapped = Notification.Name("announcementPushTapped")
     static let threadPushTapped = Notification.Name("threadPushTapped")
+    static let friendHighlightPushTapped = Notification.Name("friendHighlightPushTapped")
     // Task 20260916-callkit-voip-ring: posted by VoipCallManager
     // (PKPushRegistryDelegate) whenever PushKit issues/refreshes this
     // device's VoIP token -- mirrors .apnsTokenReceived's role for the
@@ -210,6 +237,11 @@ struct FellowScriptApp: App {
                 .onReceive(NotificationCenter.default.publisher(for: .announcementPushTapped)) { note in
                     if let target = note.object as? AnnouncementPushTarget {
                         appState.openAnnouncement(groupId: target.groupId, announcementId: target.announcementId)
+                    }
+                }
+                .onReceive(NotificationCenter.default.publisher(for: .friendHighlightPushTapped)) { note in
+                    if let t = note.object as? FriendHighlightPushTarget {
+                        appState.pendingBibleNav = BibleNavTarget(book: t.book, chapter: t.chapter, verse: t.verse)
                     }
                 }
                 .onReceive(NotificationCenter.default.publisher(for: .threadPushTapped)) { note in

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends, Query, Request
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Depends, Query, Request
 from schemas.users import Note
 from db import DBManager
 from backend.errors import SaveFailedError
@@ -14,6 +14,7 @@ from backend.content_config import get_content_config
 from backend.interactions.note_search import scan_matches
 from backend.interactions.highlight_search import HighlightSearch
 from backend.interactions.verse_reactions import validate_emoji, NEUTRAL_COLOR
+from backend.interactions.reaction_highlight_push import notify_friend_highlight
 from datetime import datetime
 import uuid
 import logging
@@ -120,7 +121,10 @@ async def search_highlights(
 
 
 @notes_router.post("/highlight/{user_id}")
-async def highlight_verse(user_id: str, verse: dict, _: str = Depends(require_match("user_id"))) -> dict:
+async def highlight_verse(
+    user_id: str, verse: dict, background: BackgroundTasks,
+    _: str = Depends(require_match("user_id")),
+) -> dict:
     book    = verse.get("book")
     chapter = verse.get("chapter")
     verse_n = verse.get("verse")
@@ -159,6 +163,9 @@ async def highlight_verse(user_id: str, verse: dict, _: str = Depends(require_ma
         ):
             raise SaveFailedError()
         _record_activity(user_id, VERSE_HIGHLIGHTED)
+        # Friend-highlight push (flag friend_highlight_push, per recipient): post-commit,
+        # best-effort, never fails this request.
+        background.add_task(notify_friend_highlight, user_id, str(book), chapter_i, verse_i)
         return {"key": key, "color": color, "emoji": emoji}
     finally:
         db.close()

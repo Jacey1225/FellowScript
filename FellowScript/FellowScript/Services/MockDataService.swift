@@ -50,6 +50,9 @@ protocol DataServiceProtocol {
     func logout() async throws
     /// Task 20261002-shared-foundation: GET /app/capabilities. Throws on any failure.
     func fetchCapabilities() async throws -> FSCapabilities
+    // Task 20261010-reaction-highlight-push: GET/PUT /notification/{id}/push-preferences.
+    func fetchFriendHighlightPush(userId: String) async throws -> Bool
+    func setFriendHighlightPush(userId: String, enabled: Bool) async throws
 
     // Two-factor authentication
     func verifyMfaLogin(userId: String, code: String) async throws -> FSUser
@@ -373,6 +376,12 @@ extension DataServiceProtocol {
 extension DataServiceProtocol {
     func fetchCapabilities() async throws -> FSCapabilities {
         throw AppError.networkError("Capabilities unavailable.")
+    }
+    func fetchFriendHighlightPush(userId: String) async throws -> Bool {
+        throw AppError.networkError("Notification settings unavailable.")
+    }
+    func setFriendHighlightPush(userId: String, enabled: Bool) async throws {
+        throw AppError.networkError("Notification settings unavailable.")
     }
 }
 
