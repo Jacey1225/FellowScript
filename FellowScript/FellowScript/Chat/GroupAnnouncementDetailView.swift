@@ -52,13 +52,31 @@ struct GroupAnnouncementDetailView: View {
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
         .toolbar {
-            if item.can_edit {
-                ToolbarItemGroup(placement: .topBarTrailing) {
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                ShareLink(item: Self.shareText(for: item)) {
+                    Image(systemName: "square.and.arrow.up")
+                        .font(.system(size: 17, weight: .semibold)).foregroundColor(Theme.gold)
+                        .frame(minWidth: 44, minHeight: 44)
+                        .contentShape(Rectangle())
+                }
+                .accessibilityLabel("Share announcement")
+                if item.can_edit {
                     Button("Edit", action: onEdit)
                         .font(.inter(Theme.fontSM, weight: .semibold)).foregroundColor(Theme.gold)
                 }
             }
         }
+    }
+
+    /// Plain-text share body: title, date/time, location when set. No link: there is
+    /// no announcement deep link, so none is invented. Scheduled ones say so.
+    static func shareText(for item: FSGroupAnnouncement) -> String {
+        var lines = [item.title]
+        let when = FSAnnouncementDates.display(item.publish_at)
+        if !when.isEmpty { lines.append(item.published ? when : "Scheduled for \(when)") }
+        let place = (item.location ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        if !place.isEmpty { lines.append(place) }
+        return lines.joined(separator: "\n")
     }
 
     private static let bannerHeight: CGFloat = 380

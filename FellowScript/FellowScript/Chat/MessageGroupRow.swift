@@ -436,39 +436,48 @@ struct MessageGroupRow: View {
 
 // ── Swipe to reply (task 20261010-announcement-location-chat-replies) ────────
 
-/// Rightward swipe on a bubble triggers Reply. Vertical scrolling and the
+/// Leftward swipe on a bubble triggers Reply. Vertical scrolling and the
 /// long-press menu are unaffected (horizontal-dominant drags only). Under
 /// Reduce Motion the bubble does not move; the action still fires on release.
+enum SwipeToReplyLogic {
+    static let threshold: CGFloat = 56
+    /// A drag counts only when leftward and clearly horizontal-dominant.
+    static func isReplyDrag(width w: CGFloat, height h: CGFloat) -> Bool { w < 0 && abs(w) > abs(h) * 1.5 }
+    static func offset(forWidth w: CGFloat) -> CGFloat { max(w, -threshold * 1.3) }
+    static func isArmed(width w: CGFloat) -> Bool { -w >= threshold }
+    static func shouldFire(armed: Bool, width w: CGFloat, height h: CGFloat) -> Bool { armed && abs(w) > abs(h) * 1.5 }
+}
+
 private struct SwipeToReply: ViewModifier {
     let onReply: (() -> Void)?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var dx: CGFloat = 0
     @State private var armed = false
-    private let threshold: CGFloat = 56
+    private let threshold = SwipeToReplyLogic.threshold
 
     @ViewBuilder
     func body(content: Content) -> some View {
         if let onReply {
             content
                 .offset(x: reduceMotion ? 0 : dx)
-                .background(alignment: .leading) {
+                .background(alignment: .trailing) {
                     Image(systemName: "arrowshape.turn.up.left")
                         .font(.system(size: 16, weight: .semibold))
                         .foregroundColor(Theme.gold)
-                        .opacity(reduceMotion ? 0 : min(1, Double(dx / threshold)))
-                        .padding(.leading, 4)
+                        .opacity(reduceMotion ? 0 : min(1, Double(-dx / threshold)))
+                        .padding(.trailing, 4)
                         .accessibilityHidden(true)
                 }
                 .simultaneousGesture(
                     DragGesture(minimumDistance: 20)
                         .onChanged { v in
                             let w = v.translation.width
-                            guard w > 0, abs(w) > abs(v.translation.height) * 1.5 else { return }
-                            dx = min(w, threshold * 1.3)
-                            if !armed, w >= threshold { armed = true; UIImpactFeedbackGenerator(style: .light).impactOccurred() }
+                            guard SwipeToReplyLogic.isReplyDrag(width: w, height: v.translation.height) else { return }
+                            dx = SwipeToReplyLogic.offset(forWidth: w)
+                            if !armed, SwipeToReplyLogic.isArmed(width: w) { armed = true; UIImpactFeedbackGenerator(style: .light).impactOccurred() }
                         }
                         .onEnded { v in
-                            let fire = armed && abs(v.translation.width) > abs(v.translation.height) * 1.5
+                            let fire = SwipeToReplyLogic.shouldFire(armed: armed, width: v.translation.width, height: v.translation.height)
                             armed = false
                             withMotionAwareAnimation(.easeOut(duration: 0.18), reduceMotion: reduceMotion) { dx = 0 }
                             if fire { onReply() }
