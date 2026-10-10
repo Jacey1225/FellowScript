@@ -250,6 +250,12 @@ struct MinimizedCallBar: View {
 
             Spacer(minLength: 8)
 
+            #if canImport(AmazonChimeSDK)
+            // Step 5: the "you are sharing" indicator + one-tap stop stays
+            // visible while the call UI is minimized.
+            MinimizedShareStopButton(manager: call.manager)
+            #endif
+
             Button { call.end() } label: {
                 ZStack {
                     Circle().fill(Color.red).frame(width: 34, height: 34)
@@ -281,6 +287,23 @@ final class ChimeCallManager: NSObject, ObservableObject {
     @Published var remoteTileIds: [Int] = []
     @Published var remoteAttendeeIds: [String] = []   // other participants (audio or video)
     @Published var startError:    String? = nil
+    // Task 20261009-session-ui-redesign: names + content-share (receive side).
+    @Published var tileAttendeeIds:   [Int: String] = [:]   // remote tileId -> attendeeId
+    @Published var externalUserIds:   [String: String] = [:] // attendeeId -> FellowScript user_id
+    @Published private(set) var contentShare = ContentShareState()
+    var contentShareTileId: Int? { contentShare.tileId }
+    /// True when the active content tile is MY OWN share (never render it back
+    /// at myself: hall of mirrors; see design-notes.md section 4).
+    var sharerIsSelf: Bool {
+        guard let sharer = contentShare.sharerAttendeeId, !myAttendeeId.isEmpty else { return false }
+        return sharer == myAttendeeId
+    }
+    // Task 20261009-session-ui-redesign step 5: whole-screen sharing (sending).
+    @Published private(set) var screenShare = ScreenShareState()
+    /// Warm, self-dismissing fail-soft notice (never raw technical text).
+    @Published var screenShareNotice: String? = nil
+    private var shareCoordinator: ChimeScreenShareCoordinator?
+    private var shareAwaitTimeout: DispatchWorkItem?
 
     private var meetingSession: DefaultMeetingSession?
     private var myAttendeeId:   String = ""
@@ -369,10 +392,89 @@ final class ChimeCallManager: NSObject, ObservableObject {
     }
 
     func leave() {
+        // Tear the share down first, while the meeting session can still stop the
+        // content share; also closes the socket so the extension ends its broadcast.
+        stopScreenShare(notify: false)
         meetingSession?.audioVideo.stop()
         meetingSession = nil
         isConnected = false; isMuted = false; isCameraOn = false
         localTileId = nil;   remoteTileIds = []; remoteAttendeeIds = []
+        tileAttendeeIds = [:]; externalUserIds = [:]; contentShare.reset()
+    }
+
+    // MARK: - Screen share (sending) ------------------------------------------
+
+    /// Prepares the receiver for the broadcast extension. Returns true when the
+    /// caller should present the system broadcast picker now. All failures are
+    /// fail-soft (warm notice, nothing left running).
+    @discardableResult
+    func beginScreenShare(flagEnabled: Bool) -> Bool {
+        let block = ScreenShareState.startBlock(
+            flagEnabled: flagEnabled, isConnected: isConnected,
+            someoneElseSharing: contentShareTileId != nil && !sharerIsSelf,
+            phase: screenShare.phase)
+        if let block {
+            if block == .someoneElseSharing { showScreenShareNotice(ScreenShareMessages.someoneElse) }
+            return false
+        }
+        guard let av = meetingSession?.audioVideo else { return false }
+        let coordinator = ChimeScreenShareCoordinator(audioVideo: av) { [weak self] event in
+            self?.handleScreenShare(event)
+        }
+        do {
+            try coordinator.beginListening()
+        } catch ScreenShareFrameReceiver.StartError.unavailable {
+            showScreenShareNotice(ScreenShareMessages.unavailableBuild)
+            return false
+        } catch {
+            showScreenShareNotice(ScreenShareMessages.couldNotStart)
+            return false
+        }
+        shareCoordinator = coordinator
+        screenShare.requestStart()
+        // The user may dismiss the picker without starting: don't wait forever.
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, self.screenShare.awaitTimedOut() else { return }
+            self.shareCoordinator?.stop(); self.shareCoordinator = nil
+        }
+        shareAwaitTimeout = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 45, execute: work)
+        return true
+    }
+
+    /// One-tap stop (pill, submenu row, minimized bar). Idempotent.
+    func stopScreenShare() { stopScreenShare(notify: false) }
+
+    private func stopScreenShare(notify: Bool) {
+        shareAwaitTimeout?.cancel(); shareAwaitTimeout = nil
+        let coordinator = shareCoordinator
+        shareCoordinator = nil
+        coordinator?.stop()
+        let wasLive = screenShare.ended()
+        if notify && wasLive { showScreenShareNotice(ScreenShareMessages.ended) }
+    }
+
+    private func handleScreenShare(_ event: ScreenShareEvent) {
+        guard shareCoordinator != nil else { return }   // stale callback after stop
+        switch event {
+        case .broadcastConnected:
+            screenShare.broadcastConnected()
+        case .shareStarted:
+            shareAwaitTimeout?.cancel(); shareAwaitTimeout = nil
+            screenShare.shareStarted()
+        case .shareStopped(let failed):
+            stopScreenShare(notify: false)
+            showScreenShareNotice(failed ? ScreenShareMessages.failedMidShare : ScreenShareMessages.ended)
+        case .broadcastEnded:
+            stopScreenShare(notify: true)
+        }
+    }
+
+    private func showScreenShareNotice(_ text: String) {
+        screenShareNotice = text
+        DispatchQueue.main.asyncAfter(deadline: .now() + 4) { [weak self] in
+            if self?.screenShareNotice == text { self?.screenShareNotice = nil }
+        }
     }
 
     func bindTile(tileId: Int, view: VideoRenderView) {
@@ -462,17 +564,24 @@ extension ChimeCallManager: AudioVideoObserver {
 extension ChimeCallManager: VideoTileObserver {
     func videoTileDidAdd(tileState: VideoTileState) {
         let id = tileState.tileId; let isLocal = tileState.isLocalTile
+        let isContent = tileState.isContent; let attendeeId = tileState.attendeeId
         DispatchQueue.main.async {
+            // A content share is never a camera bubble (task 20261009-session-ui-redesign).
+            if isContent { self.contentShare.tileAdded(tileId: id, attendeeId: attendeeId); return }
             if isLocal { self.localTileId = id }
-            else if !self.remoteTileIds.contains(id) { self.remoteTileIds.append(id) }
+            else {
+                self.tileAttendeeIds[id] = attendeeId
+                if !self.remoteTileIds.contains(id) { self.remoteTileIds.append(id) }
+            }
         }
     }
     func videoTileDidRemove(tileState: VideoTileState) {
         let id = tileState.tileId; let isLocal = tileState.isLocalTile
         DispatchQueue.main.async {
             self.meetingSession?.audioVideo.unbindVideoView(tileId: id)
+            if self.contentShare.tileId == id { self.contentShare.tileRemoved(tileId: id); return }
             if isLocal { self.localTileId = nil }
-            else { self.remoteTileIds.removeAll { $0 == id } }
+            else { self.remoteTileIds.removeAll { $0 == id }; self.tileAttendeeIds[id] = nil }
         }
     }
     // Added in newer AmazonChimeSDK — no-op implementations satisfy the protocol.
@@ -487,8 +596,11 @@ extension ChimeCallManager: RealtimeObserver {
     func attendeesDidJoin(attendeeInfo: [AttendeeInfo]) {
         DispatchQueue.main.async {
             for a in attendeeInfo where a.attendeeId != self.myAttendeeId
-                && !self.remoteAttendeeIds.contains(a.attendeeId) {
-                self.remoteAttendeeIds.append(a.attendeeId)
+                && !ContentShareAttendee.isContent(a.attendeeId) {
+                self.externalUserIds[a.attendeeId] = a.externalUserId
+                if !self.remoteAttendeeIds.contains(a.attendeeId) {
+                    self.remoteAttendeeIds.append(a.attendeeId)
+                }
             }
         }
     }
@@ -508,9 +620,10 @@ extension ChimeCallManager: RealtimeObserver {
 struct ChimeVideoTileView: UIViewRepresentable {
     let tileId:  Int
     let manager: ChimeCallManager
+    var contentMode: UIView.ContentMode = .scaleAspectFill
 
     func makeUIView(context: Context) -> DefaultVideoRenderView {
-        let v = DefaultVideoRenderView(); v.contentMode = .scaleAspectFill; return v
+        let v = DefaultVideoRenderView(); v.contentMode = contentMode; return v
     }
     func updateUIView(_ uiView: DefaultVideoRenderView, context: Context) {
         manager.bindTile(tileId: tileId, view: uiView)
@@ -522,14 +635,27 @@ struct ChimeVideoTileView: UIViewRepresentable {
 struct ChimeCallView: View {
     @ObservedObject private var call    = CallController.shared
     @ObservedObject private var manager = CallController.shared.manager
+    @Environment(\.fsCapabilities) private var capabilities
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     // Task 20260916-call-ring-members: presents RingMembersSheet (see
     // RingMembersSheet.swift), the member picker + multi-select ring action
     // this design spec's §2 describes.
     @State private var showRingSheet = false
+    // Task 20261009-session-ui-redesign: submenu + prompts-panel state, names, and
+    // on-screen tracking for the breathing background.
+    @State private var interactions = CallInteractionsState()
+    @State private var onScreen = true
+    // Step 5: bumped to present the system broadcast picker (see BroadcastPickerLauncher).
+    @State private var pickerTrigger = 0
+    @StateObject private var names = CallParticipantNames()
+    @ScaledMetric(relativeTo: .body) private var dockScale: CGFloat = 64
+
+    private let layoutSpring = Animation.spring(response: 0.45, dampingFraction: 0.86)
 
     var body: some View {
         ZStack {
-            chimeBackground
+            CallBreathingBackground(isVisible: call.isExpanded && onScreen)
             if let error = call.joinError ?? manager.startError {
                 VStack(spacing: 20) {
                     Image(systemName: "exclamationmark.triangle")
@@ -545,6 +671,16 @@ struct ChimeCallView: View {
                 callActiveBody
             }
         }
+        .background(BroadcastPickerLauncher(trigger: pickerTrigger).frame(width: 1, height: 1).allowsHitTesting(false))
+        .onAppear { onScreen = true; resolveNames() }
+        .onDisappear { onScreen = false }
+        .onReceive(manager.$externalUserIds) { _ in resolveNames() }
+        .onChange(of: manager.contentShareTileId) { old, new in
+            // Announce share start/stop to VoiceOver.
+            let who = manager.sharerIsSelf ? "You" : (sharerName ?? "Someone")
+            if old == nil, new != nil { AccessibilityNotification.Announcement("\(who) started sharing").post() }
+            if old != nil, new == nil { AccessibilityNotification.Announcement("Sharing stopped").post() }
+        }
         .sheet(isPresented: $showRingSheet) {
             if let session = call.session, let service = call.service {
                 RingMembersSheet(session: session, service: service, userId: call.userId)
@@ -552,119 +688,310 @@ struct ChimeCallView: View {
         }
     }
 
+    // MARK: Derived state
+
+    private var layoutMode: CallLayoutMode {
+        CallLayoutState.mode(promptsOpen: interactions.promptsOpen, contentShareTileId: manager.contentShareTileId)
+    }
+
+    private var contentKind: CallContentKind {
+        CallLayoutState.contentKind(promptsOpen: interactions.promptsOpen, contentShareTileId: manager.contentShareTileId)
+    }
+
+    private var bubbleItems: [CallBubbleItem] {
+        CallBubbleRoster.items(
+            localTileId: manager.localTileId, cameraOn: manager.isCameraOn,
+            remoteTileIds: manager.remoteTileIds, tileAttendee: manager.tileAttendeeIds,
+            remoteAttendeeIds: manager.remoteAttendeeIds, externalUserIds: manager.externalUserIds,
+            names: names.names)
+    }
+
+    private func displayName(forTile tile: Int) -> String? {
+        manager.tileAttendeeIds[tile].flatMap { manager.externalUserIds[$0] }.flatMap { names.names[$0] }
+    }
+
+    private var sharerName: String? {
+        manager.contentShare.sharerAttendeeId
+            .flatMap { manager.externalUserIds[$0] }.flatMap { names.names[$0] }
+    }
+
+    private func resolveNames() {
+        names.resolve(ids: Array(manager.externalUserIds.values), service: call.service, selfId: call.userId)
+    }
+
+    // MARK: Layout
+
     private var callActiveBody: some View {
         GeometryReader { geo in
+            let landscape = geo.size.width > geo.size.height
+            let compact = geo.size.height <= 667
+            let dockSize = min(compact ? dockScale * 56 / 64 : dockScale, 80)
+            let dockZone = dockSize + 32 + 12 + 16   // dock + padding + bottom gap + breathing room
+
             ZStack(alignment: .bottom) {
                 Group {
-                    if !manager.remoteTileIds.isEmpty {
-                        RemoteCameraField(manager: manager, containerSize: geo.size)
-                    } else if !manager.remoteAttendeeIds.isEmpty {
-                        audioParticipantsView
+                    if layoutMode == .field {
+                        fieldLayout(geo: geo, dockZone: dockZone)
+                            .transition(.opacity)
                     } else {
-                        waitingPlaceholder
+                        rowLayout(geo: geo, landscape: landscape, compact: compact, dockZone: dockZone)
+                            .transition(.opacity)
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .motionAwareAnimation(reduceMotion ? .easeInOut(duration: 0.15) : layoutSpring,
+                                      value: layoutMode, reduceMotion: false)
 
-                if manager.isCameraOn, let localId = manager.localTileId {
-                    // Self-PiP stays its own fixed, non-randomized element (design-notes.md
-                    // §2) -- only its fill changes, from flat black to the same glass tokens
-                    // as the new backdrop, so it doesn't read as a leftover flat-black chip
-                    // floating over the translucent field. Size/position/border/shadow unchanged.
-                    ChimeVideoTileView(tileId: localId, manager: manager)
-                        .frame(width: 96, height: 128)
-                        .background(Theme.bgPage.opacity(0.34))
-                        .background(.ultraThinMaterial)
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Theme.gold.opacity(0.40), lineWidth: 1))
-                        .shadow(color: .black.opacity(0.60), radius: 8)
-                        .frame(maxWidth: .infinity, alignment: .trailing)
-                        .padding(.trailing, 16).padding(.bottom, 152)
-                }
-                VStack { callHeader; Spacer() }
-                controlBar
+                dockStack(geo: geo, dockSize: dockSize, compact: compact)
             }
         }
     }
 
-    // Call-screen background (design-notes.md §1): a genuine `.ultraThinMaterial`
-    // blur, extending the same native-blur family already used by
-    // `DashboardComponents.glassCard` and `Theme.panelGlassTint` -- Ember Glass's
-    // "drop native blur" decision (task 20260827-ember-glass-chat-rewrite) was
-    // explicitly scoped to Chat surfaces ("Chat had zero native blur to begin
-    // with"), not codebase-wide, so this isn't an exception to that precedent.
-    // Built entirely from existing tokens/literals: `Theme.bgPage` as the warm
-    // dark base, plus the exact gold-glow radial-gradient recipe already used by
-    // `warmBloomBackground()` in Theme.swift (re-centered for a full-bleed call
-    // screen rather than that helper's sheet-tuned geometry), so the "glow"
-    // reads as on-brand gold bloom rather than the reference images' literal
-    // rainbow palette.
-    private var chimeBackground: some View {
-        ZStack {
-            Theme.bgPage
-            RadialGradient(colors: [Theme.gold.opacity(0.16), .clear],
-                           center: UnitPoint(x: 0.18, y: 0.20), startRadius: 10, endRadius: 420)
-            // "#B8761D" is the same literal warmBloomBackground() already uses for its
-            // second gradient stop -- no Theme constant names it, so it's repeated here
-            // rather than introducing a new color.
-            RadialGradient(colors: [Color(hex: "#B8761D").opacity(0.10), .clear],
-                           center: UnitPoint(x: 0.85, y: 0.75), startRadius: 10, endRadius: 380)
+    private func fieldLayout(geo: GeometryProxy, dockZone: CGFloat) -> some View {
+        ZStack(alignment: .bottom) {
+            Group {
+                if !manager.remoteTileIds.isEmpty {
+                    RemoteCameraField(manager: manager, containerSize: geo.size,
+                                      nameForTile: { displayName(forTile: $0) })
+                } else if !manager.remoteAttendeeIds.isEmpty {
+                    audioParticipantsView
+                } else {
+                    waitingPlaceholder
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            if manager.isCameraOn, let localId = manager.localTileId {
+                // Self-PiP stays its own fixed, non-randomized element (design-notes.md
+                // §2) -- raised to clear the new dock.
+                ChimeVideoTileView(tileId: localId, manager: manager)
+                    .frame(width: 96, height: 128)
+                    .background(Theme.bgPage.opacity(0.72))
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(Theme.gold.opacity(0.40), lineWidth: 1))
+                    .shadow(color: .black.opacity(0.60), radius: 8)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .padding(.trailing, 16).padding(.bottom, dockZone + 8)
+                    .accessibilityLabel("You, video on")
+            }
+            VStack { headerStack(topPadding: 56); Spacer() }
         }
-        .overlay(.ultraThinMaterial)
-        .overlay(Theme.bgPage.opacity(0.34))
-        .ignoresSafeArea()
+    }
+
+    private func rowLayout(geo: GeometryProxy, landscape: Bool, compact: Bool, dockZone: CGFloat) -> some View {
+        let bubbleDiameter: CGFloat = compact ? 56 : 72
+        let contentArea = CallContentArea(
+            kind: contentKind, prompts: CallPromptsSource.prompts(from: call.session),
+            shareTileId: manager.contentShareTileId, sharerName: sharerName, manager: manager,
+            sharerIsSelf: manager.sharerIsSelf, onStopSharing: { manager.stopScreenShare() },
+            isCompact: compact, onClosePrompts: { withMotionAwareAnimation(layoutSpring, reduceMotion: reduceMotion) { interactions.closePrompts() } })
+        return VStack(spacing: 0) {
+            headerStack(topPadding: compact || landscape ? 16 : 56)
+            if landscape {
+                HStack(alignment: .top, spacing: 12) {
+                    CallBubbleRow(items: bubbleItems, diameter: bubbleDiameter, vertical: true, manager: manager)
+                        .frame(width: max(geo.size.width * 0.30, bubbleDiameter + 40))
+                    contentArea.padding(.trailing, 16)
+                }
+                .padding(.leading, 16)
+                .padding(.bottom, dockZone)
+            } else {
+                CallBubbleRow(items: bubbleItems, diameter: bubbleDiameter, vertical: false, manager: manager)
+                    .padding(.vertical, 4)
+                contentArea
+                    .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, dockZone)
+            }
+        }
+    }
+
+    // MARK: Dock + submenu
+
+    private func dockStack(geo: GeometryProxy, dockSize: CGFloat, compact: Bool) -> some View {
+        ZStack(alignment: .bottom) {
+            if interactions.isExpanded {
+                // Invisible scrim: outside tap dismisses the menu without dimming.
+                Color.clear.contentShape(Rectangle())
+                    .onTapGesture { setMenu(expanded: false) }
+                    .accessibilityHidden(true)
+            }
+            VStack(spacing: 12) {
+                if interactions.isExpanded {
+                    CallSubmenu(rows: menuRows(), isCompact: compact,
+                                maxHeight: geo.size.height * (dynamicTypeSize.isAccessibilitySize ? 0.55 : 0.70),
+                                onEscape: { setMenu(expanded: false) })
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                        .padding(.trailing, max((geo.size.width - CallDock.width(buttonSize: dockSize)) / 2 + CallDock.padding, 16))
+                        .transition(reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .bottom)))
+                }
+                CallDock(isMuted: manager.isMuted, isExpanded: interactions.isExpanded, buttonSize: dockSize,
+                         onEnd: { call.end() },
+                         onToggleMenu: { setMenu(expanded: !interactions.isExpanded) })
+            }
+            .padding(.bottom, 12)
+        }
+    }
+
+    private func setMenu(expanded: Bool) {
+        withMotionAwareAnimation(.spring(response: 0.35, dampingFraction: 0.82), reduceMotion: reduceMotion) {
+            interactions.isExpanded = expanded
+        }
+    }
+
+    private func menuRows() -> [CallMenuRow] {
+        var rows: [CallMenuRow] = []
+        if canRing {
+            rows.append(CallMenuRow(
+                id: "ring", icon: "bell", title: "Ring", a11yLabel: "Ring members",
+                a11yHint: "Invites members to join the call",
+                action: { interactions.didTapActionItem(); showRingSheet = true }))
+        }
+        // The row stays reachable while a share is active even if the server flag
+        // flips off mid-call: stopping must always be possible.
+        if ScreenShareFlag.isEnabled(capabilities) || manager.screenShare.isActive {
+            let someoneElse = manager.contentShareTileId != nil && !manager.sharerIsSelf
+            let phase = manager.screenShare.phase
+            if phase == .sharing {
+                rows.append(CallMenuRow(
+                    id: "share", icon: "rectangle.on.rectangle.slash", title: "Stop sharing",
+                    tint: Theme.error.opacity(0.45),
+                    a11yLabel: "Stop sharing your screen",
+                    action: { interactions.didTapActionItem(); manager.stopScreenShare() }))
+            } else if phase != .idle {
+                rows.append(CallMenuRow(
+                    id: "share", icon: "rectangle.on.rectangle", title: "Share screen",
+                    caption: "Starting\u{2026}", enabled: false,
+                    a11yLabel: "Share screen", a11yValue: "Starting",
+                    action: { interactions.didTapActionItem() }))
+            } else {
+                rows.append(CallMenuRow(
+                    id: "share", icon: "rectangle.on.rectangle", title: "Share screen",
+                    caption: someoneElse ? "\(sharerName ?? "Someone") is sharing" : nil,
+                    enabled: ScreenShareFlag.sendingImplemented && !someoneElse && manager.isConnected,
+                    a11yLabel: "Share screen",
+                    a11yValue: someoneElse ? "\(sharerName ?? "Someone") is sharing" : nil,
+                    a11yHint: "Shares your whole screen with everyone in the call",
+                    action: {
+                        interactions.didTapActionItem()
+                        if manager.beginScreenShare(flagEnabled: ScreenShareFlag.isEnabled(capabilities)) {
+                            pickerTrigger += 1
+                        }
+                    }))
+            }
+        }
+        rows.append(CallMenuRow(
+            id: "prompts", icon: "text.bubble", title: "Prompts",
+            tint: interactions.promptsOpen ? Theme.gold.opacity(0.55) : Theme.goldDim.opacity(0.35),
+            a11yLabel: "Discussion prompts", a11yValue: interactions.promptsOpen ? "Showing" : "Hidden",
+            a11yHint: "Shows the session's discussion prompts on your screen",
+            action: { withMotionAwareAnimation(layoutSpring, reduceMotion: reduceMotion) { interactions.didTapPrompts() } }))
+        rows.append(CallMenuRow(
+            id: "camera", icon: manager.isCameraOn ? "video.fill" : "video.slash.fill",
+            title: manager.isCameraOn ? "Camera on" : "Camera off",
+            a11yLabel: "Camera", a11yValue: manager.isCameraOn ? "On" : "Off",
+            a11yHint: "Toggles your camera",
+            action: { interactions.didTapToggleItem(); manager.toggleCamera() }))
+        rows.append(CallMenuRow(
+            id: "mute", icon: manager.isMuted ? "mic.slash.fill" : "mic.fill",
+            title: manager.isMuted ? "Unmute" : "Mute",
+            tint: manager.isMuted ? Theme.error.opacity(0.45) : Theme.goldDim.opacity(0.35),
+            a11yLabel: "Microphone", a11yValue: manager.isMuted ? "Muted" : "On",
+            a11yHint: "Toggles your microphone",
+            action: { interactions.didTapToggleItem(); manager.toggleMute() }))
+        return rows
     }
 
     private var waitingPlaceholder: some View {
         VStack(spacing: 14) {
             Image(systemName: manager.isConnected ? "person.crop.circle.badge.clock" : "wifi")
-                .font(.system(size: 52, weight: .ultraLight)).foregroundColor(.white.opacity(0.22))
+                .font(.system(size: 52, weight: .ultraLight)).foregroundColor(Theme.textPrimary.opacity(0.30))
             Text(manager.isConnected ? "Waiting for others to join…" : "Connecting…")
-                .foregroundColor(.white.opacity(0.42)).font(.inter(Theme.fontSM))
+                .foregroundColor(Theme.textPrimary.opacity(0.85)).font(.inter(Theme.fontSM))
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    // Others are connected with audio but no camera — show a simple presence view.
+    // Others are connected with audio but no camera. With resolved names we show
+    // initial bubbles; otherwise the original waveform presence view is the fallback.
+    @ViewBuilder
     private var audioParticipantsView: some View {
-        let count = manager.remoteAttendeeIds.count
-        return VStack(spacing: 16) {
-            ZStack {
-                Circle().fill(Theme.gold.opacity(0.14)).frame(width: 96, height: 96)
-                Image(systemName: "waveform").font(.system(size: 40, weight: .light)).foregroundColor(Theme.gold)
+        let others = bubbleItems.filter { if case .audioOnly = $0.kind { return true } else { return false } }
+        if others.contains(where: { $0.name != nil }) {
+            ScrollView {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 96), spacing: 16)], spacing: 16) {
+                    ForEach(others) { CallBubbleView(item: $0, diameter: 84, manager: manager) }
+                }
+                .padding(.horizontal, 24).padding(.top, 140).padding(.bottom, 150)
             }
-            Text(count == 1 ? "1 person connected" : "\(count) people connected")
-                .foregroundColor(.white.opacity(0.80)).font(.inter(Theme.fontBody))
-            Text("Audio call in progress")
-                .foregroundColor(.white.opacity(0.42)).font(.inter(Theme.fontXS))
+        } else {
+            let count = manager.remoteAttendeeIds.count
+            VStack(spacing: 16) {
+                ZStack {
+                    Circle().fill(Theme.gold.opacity(0.14)).frame(width: 96, height: 96)
+                    Image(systemName: "waveform").font(.system(size: 40, weight: .light)).foregroundColor(Theme.gold)
+                }
+                Text(count == 1 ? "1 person connected" : "\(count) people connected")
+                    .foregroundColor(Theme.textPrimary).font(.inter(Theme.fontBody))
+                Text("Audio call in progress")
+                    .foregroundColor(Theme.textPrimary.opacity(0.85)).font(.inter(Theme.fontXS))
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private var callHeader: some View {
+    private func callHeader(topPadding: CGFloat) -> some View {
         HStack(spacing: 12) {
             // Minimize — keep the call running and return to the app.
             Button { call.minimize() } label: {
                 Image(systemName: "chevron.down")
                     .font(.system(size: 16, weight: .semibold)).foregroundColor(.white)
-                    .frame(width: 38, height: 38)
+                    .frame(width: 44, height: 44)
                     .background(Color.white.opacity(0.14)).clipShape(Circle())
             }
             .accessibilityLabel("Minimize call")
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(call.session?.title ?? "Study Session")
-                    .font(.inter(Theme.fontBody, weight: .semibold)).foregroundColor(.white)
-                HStack(spacing: 5) {
-                    Circle().fill(manager.isConnected ? Color.green : Color.orange).frame(width: 6, height: 6)
-                    Text(manager.isConnected ? "Connected" : "Connecting…")
-                        .font(.inter(Theme.fontXS)).foregroundColor(.white.opacity(0.52))
+                    .font(.inter(Theme.fontBody, weight: .semibold)).foregroundColor(Theme.textPrimary)
+                HStack(spacing: 8) {
+                    HStack(spacing: 5) {
+                        Circle().fill(manager.isConnected ? Color.green : Color.orange).frame(width: 6, height: 6)
+                        Text(manager.isConnected ? "Connected" : "Connecting…")
+                            .font(.inter(Theme.fontXS)).foregroundColor(Theme.textPrimary.opacity(0.85))
+                    }
+                    if manager.isMuted {
+                        HStack(spacing: 4) {
+                            Image(systemName: "mic.slash.fill").font(.system(size: 10))
+                            Text("Muted").font(.inter(Theme.fontXS, weight: .semibold))
+                        }
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 8).padding(.vertical, 2)
+                        .background(Capsule().fill(Theme.error.opacity(0.85)))
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel("Muted")
+                    }
                 }
             }
             Spacer()
         }
-        .padding(.horizontal, 20).padding(.top, 56).padding(.bottom, 16)
-        .background(LinearGradient(colors: [.black.opacity(0.80), .clear], startPoint: .top, endPoint: .bottom))
+        .padding(.horizontal, 20).padding(.top, topPadding).padding(.bottom, 16)
+        .background(LinearGradient(colors: [Theme.bgPage.opacity(0.80), .clear], startPoint: .top, endPoint: .bottom))
+    }
+
+    /// Header plus the pinned "Sharing your screen" pill (design-notes.md section 5)
+    /// and the fail-soft notice, so every layout shows them identically.
+    private func headerStack(topPadding: CGFloat) -> some View {
+        VStack(spacing: 0) {
+            callHeader(topPadding: topPadding)
+            if manager.screenShare.showsIndicator {
+                ScreenSharePill(onStop: { manager.stopScreenShare() })
+                    .padding(.bottom, 8)
+                    .frame(maxWidth: .infinity, alignment: .leading).padding(.leading, 20)
+            }
+            if let notice = manager.screenShareNotice {
+                ScreenShareNotice(text: notice).padding(.bottom, 8)
+                    .frame(maxWidth: .infinity, alignment: .leading).padding(.leading, 20)
+            }
+        }
     }
 
     // Task 20260916-call-ring-members, design-notes.md §1: the only
@@ -682,46 +1009,6 @@ struct ChimeCallView: View {
             return Set(session.group_id.split(separator: "|")).count > 1
         }
         return true
-    }
-
-    private var controlBar: some View {
-        HStack(spacing: 28) {
-            callButton(icon: "bell.fill", label: "Ring", active: true) { showRingSheet = true }
-                .disabled(!canRing)
-                .opacity(canRing ? 1 : 0.35)
-            callButton(icon: manager.isMuted ? "mic.slash.fill" : "mic.fill",
-                       label: manager.isMuted ? "Unmute" : "Mute",
-                       active: !manager.isMuted) { manager.toggleMute() }
-            callButton(icon: manager.isCameraOn ? "video.fill" : "video.slash.fill",
-                       label: manager.isCameraOn ? "Camera" : "Camera Off",
-                       active: manager.isCameraOn) { manager.toggleCamera() }
-            Button { call.end() } label: {
-                VStack(spacing: 6) {
-                    ZStack {
-                        Circle().fill(Color.red).frame(width: 62, height: 62)
-                        Image(systemName: "phone.down.fill").font(.system(size: 24)).foregroundColor(.white)
-                    }
-                    Text("End").font(.inter(Theme.fontXS)).foregroundColor(.white.opacity(0.65))
-                }
-            }
-            .accessibilityLabel("End call")
-        }
-        .padding(.horizontal, 32).padding(.top, 20).padding(.bottom, 44).frame(maxWidth: .infinity)
-        .background(LinearGradient(colors: [.clear, .black.opacity(0.90)], startPoint: .top, endPoint: .bottom))
-    }
-
-    @ViewBuilder
-    private func callButton(icon: String, label: String, active: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            VStack(spacing: 6) {
-                ZStack {
-                    Circle().fill(active ? Color.white.opacity(0.14) : Color.red.opacity(0.70)).frame(width: 58, height: 58)
-                    Image(systemName: icon).font(.system(size: 22, weight: .light)).foregroundColor(.white)
-                }
-                Text(label).font(.inter(Theme.fontXS)).foregroundColor(.white.opacity(0.65))
-            }
-        }
-        .accessibilityLabel(label)
     }
 }
 

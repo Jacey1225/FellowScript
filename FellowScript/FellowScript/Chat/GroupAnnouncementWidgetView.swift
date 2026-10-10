@@ -77,6 +77,7 @@ struct GroupAnnouncementWidgetView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @StateObject private var vm: GroupAnnouncementWidgetViewModel
     @State private var viewing: FSGroupAnnouncement?
+    @State private var dragX: CGFloat = 0
 
     init(service: DataServiceProtocol, groupId: String, userId: String) {
         _vm = StateObject(wrappedValue: GroupAnnouncementWidgetViewModel(service: service, groupId: groupId, userId: userId))
@@ -124,28 +125,56 @@ struct GroupAnnouncementWidgetView: View {
         if let item = await vm.fetch(id: pending.announcementId) { viewing = item }
     }
 
-    private func card(_ item: FSGroupAnnouncement) -> some View {
-        ZStack(alignment: .topTrailing) {
-            Button { viewing = item } label: { AnnouncementWidgetCardBody(item: item) }
-                .buttonStyle(AnnouncementCardPressStyle(reduceMotion: reduceMotion))
-                .accessibilityLabel("Announcement: \(item.title)")
-                .accessibilityHint("Opens the announcement")
-                .accessibilityAddTraits(.isButton)
+    /// Horizontal-dominant leftward drag past this distance (or a fast flick) dismisses.
+    private static let commitDistance: CGFloat = 96
+    private static let commitPredicted: CGFloat = 220
 
-            Button {
-                withMotionAwareAnimation(.easeIn(duration: 0.16), reduceMotion: reduceMotion) { vm.dismiss() }
-                UIAccessibility.post(notification: .announcement, argument: "Announcement dismissed")
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 11, weight: .bold)).foregroundColor(Theme.parchment)
-                    .frame(width: 24, height: 24)
-                    .background(Circle().fill(Color.black.opacity(0.6)))
-                    .frame(width: 44, height: 44)
-                    .contentShape(Rectangle())
+    private func dismissCard() {
+        withMotionAwareAnimation(.easeIn(duration: 0.16), reduceMotion: reduceMotion) { vm.dismiss() }
+        UIAccessibility.post(notification: .announcement, argument: "Announcement dismissed")
+    }
+
+    /// Swipe left to dismiss. Attached with `.simultaneousGesture` so the card's
+    /// tap-to-open Button and the chat's vertical scroll keep working; only a
+    /// horizontal-dominant leftward drag moves or dismisses the card.
+    private var swipeToDismiss: some Gesture {
+        DragGesture(minimumDistance: 16)
+            .onChanged { value in
+                let t = value.translation
+                guard !reduceMotion, abs(t.width) > abs(t.height) * 1.5, t.width < 0 else {
+                    if dragX != 0 { dragX = 0 }
+                    return
+                }
+                dragX = t.width
             }
-            .offset(x: 10, y: -10)
-            .accessibilityLabel("Dismiss announcement")
-        }
+            .onEnded { value in
+                let t = value.translation
+                let horizontal = abs(t.width) > abs(t.height) * 1.5
+                let commit = horizontal && t.width < 0
+                    && (t.width <= -Self.commitDistance || value.predictedEndTranslation.width <= -Self.commitPredicted)
+                if commit {
+                    withMotionAwareAnimation(.easeIn(duration: 0.2), reduceMotion: reduceMotion) {
+                        dragX = -400
+                        vm.dismiss()
+                    }
+                    UIAccessibility.post(notification: .announcement, argument: "Announcement dismissed")
+                } else {
+                    withMotionAwareAnimation(.easeOut(duration: 0.2), reduceMotion: reduceMotion) { dragX = 0 }
+                }
+            }
+    }
+
+    private func card(_ item: FSGroupAnnouncement) -> some View {
+        Button { viewing = item } label: { AnnouncementWidgetCardBody(item: item) }
+            .buttonStyle(AnnouncementCardPressStyle(reduceMotion: reduceMotion))
+            .accessibilityLabel("Announcement: \(item.title)")
+            .accessibilityHint("Opens the announcement")
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction(named: "Dismiss announcement") { dismissCard() }
+            .offset(x: dragX)
+            .opacity(1 - min(0.6, abs(dragX) / 400))
+            .simultaneousGesture(swipeToDismiss)
+            .onChange(of: vm.visibleItem?.id) { _, _ in dragX = 0 }
     }
 }
 

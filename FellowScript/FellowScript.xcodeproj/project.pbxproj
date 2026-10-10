@@ -10,6 +10,7 @@
 		377EC5283005745400971A07 /* AmazonChimeSDK in Frameworks */ = {isa = PBXBuildFile; productRef = AA0000000000000000000002 /* AmazonChimeSDK */; };
 		AA0000000000000000000005 /* ViewInspector in Frameworks */ = {isa = PBXBuildFile; productRef = AA0000000000000000000004 /* ViewInspector */; };
 		AA1111111111111111111002 /* FellowScript/FellowScript.storekit in Resources */ = {isa = PBXBuildFile; fileRef = AA1111111111111111111001 /* FellowScript/FellowScript.storekit */; };
+		AA400000000000000000000D /* FellowScriptBroadcast.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = AA4000000000000000000002 /* FellowScriptBroadcast.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -27,13 +28,35 @@
 			remoteGlobalIDString = 377EC3C52FF5BDB300971A07;
 			remoteInfo = FellowScript;
 		};
+		AA400000000000000000000F /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 377EC3BE2FF5BDB300971A07 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = AA4000000000000000000001;
+			remoteInfo = FellowScriptBroadcast;
+		};
 /* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		AA400000000000000000000C /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				AA400000000000000000000D /* FellowScriptBroadcast.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		377EC3C62FF5BDB300971A07 /* FellowScript.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = FellowScript.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		377EC3D32FF5BDB500971A07 /* FellowScriptTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FellowScriptTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		377EC3DD2FF5BDB500971A07 /* FellowScriptUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FellowScriptUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		AA1111111111111111111001 /* FellowScript/FellowScript.storekit */ = {isa = PBXFileReference; lastKnownFileType = text; path = FellowScript/FellowScript.storekit; sourceTree = "<group>"; };
+		AA4000000000000000000002 /* FellowScriptBroadcast.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = FellowScriptBroadcast.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -43,6 +66,13 @@
 				Info.plist,
 			);
 			target = 377EC3C52FF5BDB300971A07 /* FellowScript */;
+		};
+		AA4000000000000000000008 /* Exceptions for "FellowScriptBroadcast" folder in "FellowScriptBroadcast" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = AA4000000000000000000001 /* FellowScriptBroadcast */;
 		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
@@ -63,6 +93,19 @@
 		377EC3E02FF5BDB500971A07 /* FellowScriptUITests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = FellowScriptUITests;
+			sourceTree = "<group>";
+		};
+		AA4000000000000000000006 /* FellowScriptBroadcast */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				AA4000000000000000000008 /* Exceptions for "FellowScriptBroadcast" folder in "FellowScriptBroadcast" target */,
+			);
+			path = FellowScriptBroadcast;
+			sourceTree = "<group>";
+		};
+		AA4000000000000000000007 /* ScreenShareShared */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = ScreenShareShared;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -91,6 +134,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		AA4000000000000000000004 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -100,6 +150,8 @@
 				377EC3C82FF5BDB300971A07 /* FellowScript */,
 				377EC3D62FF5BDB500971A07 /* FellowScriptTests */,
 				377EC3E02FF5BDB500971A07 /* FellowScriptUITests */,
+				AA4000000000000000000006 /* FellowScriptBroadcast */,
+				AA4000000000000000000007 /* ScreenShareShared */,
 				377EC3C72FF5BDB300971A07 /* Products */,
 				AA1111111111111111111001 /* FellowScript/FellowScript.storekit */,
 			);
@@ -111,6 +163,7 @@
 				377EC3C62FF5BDB300971A07 /* FellowScript.app */,
 				377EC3D32FF5BDB500971A07 /* FellowScriptTests.xctest */,
 				377EC3DD2FF5BDB500971A07 /* FellowScriptUITests.xctest */,
+				AA4000000000000000000002 /* FellowScriptBroadcast.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -125,14 +178,17 @@
 				377EC3C22FF5BDB300971A07 /* Sources */,
 				377EC3C32FF5BDB300971A07 /* Frameworks */,
 				377EC3C42FF5BDB300971A07 /* Resources */,
+				AA400000000000000000000C /* Embed Foundation Extensions */,
 				AA3333333333333333333001 /* Patch AmazonChimeSDK Privacy Manifest */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				AA400000000000000000000E /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				377EC3C82FF5BDB300971A07 /* FellowScript */,
+				AA4000000000000000000007 /* ScreenShareShared */,
 			);
 			name = FellowScript;
 			packageProductDependencies = (
@@ -189,6 +245,29 @@
 			productReference = 377EC3DD2FF5BDB500971A07 /* FellowScriptUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
 		};
+		AA4000000000000000000001 /* FellowScriptBroadcast */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AA4000000000000000000009 /* Build configuration list for PBXNativeTarget "FellowScriptBroadcast" */;
+			buildPhases = (
+				AA4000000000000000000003 /* Sources */,
+				AA4000000000000000000004 /* Frameworks */,
+				AA4000000000000000000005 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				AA4000000000000000000006 /* FellowScriptBroadcast */,
+				AA4000000000000000000007 /* ScreenShareShared */,
+			);
+			name = FellowScriptBroadcast;
+			packageProductDependencies = (
+			);
+			productName = FellowScriptBroadcast;
+			productReference = AA4000000000000000000002 /* FellowScriptBroadcast.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -209,6 +288,9 @@
 					377EC3DC2FF5BDB500971A07 = {
 						CreatedOnToolsVersion = 26.6;
 						TestTargetID = 377EC3C52FF5BDB300971A07;
+					};
+					AA4000000000000000000001 = {
+						CreatedOnToolsVersion = 26.6;
 					};
 				};
 			};
@@ -233,6 +315,7 @@
 				377EC3C52FF5BDB300971A07 /* FellowScript */,
 				377EC3D22FF5BDB500971A07 /* FellowScriptTests */,
 				377EC3DC2FF5BDB500971A07 /* FellowScriptUITests */,
+				AA4000000000000000000001 /* FellowScriptBroadcast */,
 			);
 		};
 /* End PBXProject section */
@@ -254,6 +337,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		377EC3DB2FF5BDB500971A07 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AA4000000000000000000005 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -305,6 +395,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		AA4000000000000000000003 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -317,6 +414,11 @@
 			isa = PBXTargetDependency;
 			target = 377EC3C52FF5BDB300971A07 /* FellowScript */;
 			targetProxy = 377EC3DE2FF5BDB500971A07 /* PBXContainerItemProxy */;
+		};
+		AA400000000000000000000E /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = AA4000000000000000000001 /* FellowScriptBroadcast */;
+			targetProxy = AA400000000000000000000F /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -447,7 +549,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = FellowScript/FellowScript.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 96;
+				CURRENT_PROJECT_VERSION = 97;
 				DEVELOPMENT_TEAM = 886XPLVC69;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -488,7 +590,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = FellowScript/FellowScript.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 96;
+				CURRENT_PROJECT_VERSION = 97;
 				DEVELOPMENT_TEAM = 886XPLVC69;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -527,7 +629,7 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 96;
+				CURRENT_PROJECT_VERSION = 97;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				MARKETING_VERSION = 1.0;
@@ -548,7 +650,7 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 96;
+				CURRENT_PROJECT_VERSION = 97;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				MARKETING_VERSION = 1.0;
@@ -568,7 +670,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 96;
+				CURRENT_PROJECT_VERSION = 97;
 				GENERATE_INFOPLIST_FILE = YES;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = Jacey.FellowScriptUITests;
@@ -587,7 +689,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 96;
+				CURRENT_PROJECT_VERSION = 97;
 				GENERATE_INFOPLIST_FILE = YES;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = Jacey.FellowScriptUITests;
@@ -599,6 +701,60 @@
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				TEST_TARGET_NAME = FellowScript;
+			};
+			name = Release;
+		};
+		AA400000000000000000000A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = FellowScriptBroadcast/FellowScriptBroadcast.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 97;
+				DEVELOPMENT_TEAM = 886XPLVC69;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = FellowScriptBroadcast/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 2.9.8;
+				PRODUCT_BUNDLE_IDENTIFIER = com.fellowscript.app.BroadcastUpload;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		AA400000000000000000000B /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = FellowScriptBroadcast/FellowScriptBroadcast.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 97;
+				DEVELOPMENT_TEAM = 886XPLVC69;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = FellowScriptBroadcast/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 2.9.8;
+				PRODUCT_BUNDLE_IDENTIFIER = com.fellowscript.app.BroadcastUpload;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Release;
 		};
@@ -637,6 +793,15 @@
 			buildConfigurations = (
 				377EC3EE2FF5BDB500971A07 /* Debug */,
 				377EC3EF2FF5BDB500971A07 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		AA4000000000000000000009 /* Build configuration list for PBXNativeTarget "FellowScriptBroadcast" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AA400000000000000000000A /* Debug */,
+				AA400000000000000000000B /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

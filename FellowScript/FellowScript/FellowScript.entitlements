@@ -50,6 +50,20 @@
 	<array>
 		<string>applinks:fellowscript.com</string>
 	</array>
+	<!--
+	  Task 20261009-session-ui-redesign, step 5 (whole-screen sharing): the App
+	  Group shared with the FellowScriptBroadcast ReplayKit upload extension
+	  (bundle id com.fellowscript.app.BroadcastUpload). The extension writes
+	  downscaled frames to a Unix socket inside this group's container and the
+	  app forwards them to Chime. Requires the App Group to exist in the Apple
+	  Developer portal and be enabled on BOTH App IDs; until then signed
+	  (device/archive) builds fail at provisioning, simulator builds with
+	  signing off are unaffected. Nothing else is granted to the extension.
+	-->
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>group.com.fellowscript.app</string>
+	</array>
 	<key>com.apple.developer.applesignin</key>
 	<array>
 		<string>Default</string>

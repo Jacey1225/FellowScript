@@ -25,6 +25,9 @@ extension ChimeCallView {
     struct RemoteCameraField: View {
         @ObservedObject var manager: ChimeCallManager
         let containerSize: CGSize
+        /// Task 20261009-session-ui-redesign: resolved display name for a tile
+        /// (nil = unknown, no label). Name floats above the circle's top edge.
+        var nameForTile: (Int) -> String? = { _ in nil }
 
         @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -41,7 +44,7 @@ extension ChimeCallView {
         // Chrome the layout zone must never render under (design-notes.md §3
         // "Layout zone" -- callHeader's/controlBar's approximate reserved height).
         private let topChrome: CGFloat = 140
-        private let bottomChrome: CGFloat = 190
+        private let bottomChrome: CGFloat = 150  // task 20261009-session-ui-redesign: dock replaces the 190pt control bar
         private let floorDiameter: CGFloat = 64
         private let normalGap: CGFloat = 12
         private let relaxedGap: CGFloat = 6
@@ -99,6 +102,19 @@ extension ChimeCallView {
                 .overlay(Circle().stroke(Theme.gold.opacity(0.38), lineWidth: 1))
                 .topEdgeHighlight(Circle())
                 .shadow(color: .black.opacity(0.55), radius: 12)
+                .overlay(alignment: .top) {
+                    if let name = nameForTile(id) {
+                        Text(name)
+                            .font(.interScaled(Theme.fontXS, weight: .semibold, relativeTo: .caption))
+                            .foregroundColor(Theme.textPrimary).lineLimit(1).truncationMode(.tail)
+                            .padding(.horizontal, 8).padding(.vertical, 2)
+                            .background(Capsule().fill(Theme.bgPage.opacity(0.72)))
+                            .frame(maxWidth: diameter + 12)
+                            .offset(y: -12)   // 6pt above the top edge of the circle
+                    }
+                }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("\(nameForTile(id) ?? "Participant"), video on")
         }
 
         // Enter/exit motion (design-notes.md §4): eased, asymmetric (exit faster

@@ -125,11 +125,11 @@ final class RemoteCameraFieldLayoutRegressionTests: XCTestCase {
         let size = CGSize(width: 390, height: 844)
         let zone = field.computeZone(size: size, diameter: 152)
         // central70 alone would be insetBy(dx: 58.5, dy: 126.6) -> minY 126.6,
-        // maxY 717.4 -- but topChrome (140) and bottomChrome (190) are both
+        // maxY 717.4 -- but topChrome (140) and bottomChrome (150) are both
         // documented (design-notes.md §3) to win over a looser central-70%
-        // bound, so the real zone must be clamped to [140, 654].
+        // bound, so the real zone must be clamped to [140, 694].
         XCTAssertEqual(zone.minY, 140, accuracy: 0.5, "topChrome (140pt, callHeader's reserved height) must bound the zone's top")
-        XCTAssertEqual(zone.maxY, 654, accuracy: 0.5, "bottomChrome (190pt, controlBar's reserved height) must bound the zone's bottom")
+        XCTAssertEqual(zone.maxY, 694, accuracy: 0.5, "bottomChrome (150pt, the dock's reserved height after task 20261009-session-ui-redesign; was 190 for the old controlBar) must bound the zone's bottom")
         XCTAssertEqual(zone.minX, 390 * 0.15, accuracy: 0.5, "width isn't chrome-constrained -- full central-70% width")
         XCTAssertEqual(zone.maxX, 390 * 0.85, accuracy: 0.5)
     }
@@ -155,16 +155,17 @@ final class RemoteCameraFieldLayoutRegressionTests: XCTestCase {
         // (design-notes.md §3).
         let size = CGSize(width: 844, height: 500)
         let zone = field.computeZone(size: size, diameter: 152)
-        // Relaxed zone must equal the full chrome-safe band: [140, 310].
+        // Relaxed zone must equal the full chrome-safe band: [140, 350].
         XCTAssertEqual(zone.minY, 140, accuracy: 0.5)
-        XCTAssertEqual(zone.maxY, 310, accuracy: 0.5)
+        XCTAssertEqual(zone.maxY, 350, accuracy: 0.5)
         XCTAssertGreaterThan(zone.maxY, zone.minY, "the relaxed zone must still have positive height, never inverted")
     }
 
     /// Real-device edge case beyond frontend's own flagged scenario: on a
-    /// short-enough landscape height, topChrome (140) + bottomChrome (190) =
-    /// 330pt already exceeds the available height, so even the "relaxed"
-    /// safe band is inverted/zero-height *before* any packing is attempted.
+    /// short-enough landscape height, topChrome (140) + bottomChrome (150) =
+    /// 290pt leaves only a sliver of the available height (it was inverted at
+    /// 330pt before the dock replaced the 190pt control bar), so even the
+    /// "relaxed" safe band is too thin to pack a circle *before* any packing.
     /// This is exactly the shape of device FellowScript actually ships on
     /// (e.g. an iPhone SE-class landscape height, ~375pt) -- not a
     /// hypothetical. Documents current behavior so a future fix has a
@@ -173,10 +174,10 @@ final class RemoteCameraFieldLayoutRegressionTests: XCTestCase {
         let field = makeField()
         let size = CGSize(width: 812, height: 375) // iPhone SE-class landscape height
         let zone = field.computeZone(size: size, diameter: 152)
-        // topChrome (140) + bottomChrome (190) = 330 < 375, so there IS 45pt
+        // topChrome (140) + bottomChrome (150) = 290 < 375, so there IS 85pt
         // of nominal room, but that's far short of even one floor-diameter
         // (64pt) circle.
-        XCTAssertEqual(zone.height, 45, accuracy: 0.5)
+        XCTAssertEqual(zone.height, 85, accuracy: 0.5)
     }
 
     // MARK: - D. Fallback ladder: gap-relax -> size-shrink -> deterministic scan
@@ -272,7 +273,11 @@ final class RemoteCameraFieldLayoutRegressionTests: XCTestCase {
 
     func test_computeRelayout_join_keepsExistingPositions_placesOnlyNewIds() {
         let field = makeField()
-        let size = CGSize(width: 390, height: 844)
+        // Roomy canvas on purpose: random placement of a 4th 128pt tile into the
+        // tight 390x844 zone legitimately falls back to a full repack (documented
+        // in computeRelayout) about half the time, which made this test flaky
+        // (testing gate, step 7). The stable-positions rule is what's under test.
+        let size = CGSize(width: 700, height: 1400)
         let (before, beforeDiameter) = field.computeRelayout(
             currentPositions: [:], currentDiameter: 152, ids: [1, 2, 3], size: size, full: true
         )!
@@ -348,7 +353,7 @@ final class RemoteCameraFieldLayoutRegressionTests: XCTestCase {
         let r = afterDiameter / 2
         for p in pts {
             XCTAssertGreaterThanOrEqual(p.y - r, 140 - 0.5, "tile must not render under callHeader's chrome")
-            XCTAssertLessThanOrEqual(p.y + r, 390 - 190 + 0.5, "tile must not render under controlBar's chrome")
+            XCTAssertLessThanOrEqual(p.y + r, 390 - 150 + 0.5, "tile must not render under the dock's chrome")
         }
     }
 
