@@ -56,13 +56,19 @@ struct GroupAnnouncementDetailView: View {
                 ShareLink(item: Self.shareText(for: item)) {
                     Image(systemName: "square.and.arrow.up")
                         .font(.system(size: 17, weight: .semibold)).foregroundColor(Theme.gold)
-                        .frame(minWidth: 44, minHeight: 44)
+                        .frame(minWidth: 60, minHeight: 44)
                         .contentShape(Rectangle())
                 }
                 .accessibilityLabel("Share announcement")
                 if item.can_edit {
-                    Button("Edit", action: onEdit)
-                        .font(.inter(Theme.fontSM, weight: .semibold)).foregroundColor(Theme.gold)
+                    // Same minimum width as the share button so each half of the glass
+                    // pill centers its content (a bare text label sat off-center).
+                    Button(action: onEdit) {
+                        Text("Edit")
+                            .font(.inter(Theme.fontSM, weight: .semibold)).foregroundColor(Theme.gold)
+                            .frame(minWidth: 60, minHeight: 44)
+                            .contentShape(Rectangle())
+                    }
                 }
             }
         }

@@ -216,6 +216,8 @@ final class DashboardViewModel: ObservableObject {
 struct DashboardView: View {
     @EnvironmentObject var appState: AppState
     @StateObject private var vm: DashboardViewModel
+    // Shared ChatViewModel (injected by ContentView) for the Home create-group card.
+    @EnvironmentObject var chatVM: ChatViewModel
 
     // Required (no default): task 20260901-dashboard-stale-reload-ui moved
     // DashboardViewModel to be a StartupCoordinator-owned shared instance
@@ -344,6 +346,9 @@ struct DashboardView: View {
                             showNewNote = true
                         }
                     }
+
+                    WaysToExploreSection(chatVM: chatVM, userId: appState.currentUser?.user_id)
+                        .id(appState.currentUser?.user_id ?? "")
                 }
                 .padding(.bottom, 150) // clears the floating tab bar
             }

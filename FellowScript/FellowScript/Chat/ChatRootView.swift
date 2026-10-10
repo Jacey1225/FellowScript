@@ -168,24 +168,7 @@ struct ChatRootView: View {
         .sheet(isPresented: $showAddGroup) {
             AddGroupSheet(friends: vm.friends) { title, memberIds in
                 let uid = appState.currentUser?.user_id ?? ""
-                Task {
-                    do {
-                        try await appState.service.createGroup(
-                            userId: uid,
-                            groupId: UUID().uuidString,
-                            title: title,
-                            users: [uid] + memberIds
-                        )
-                        await vm.load(service: appState.service, userId: uid)
-                    } catch {
-                        // createGroup now uses checkedRequestRaw, so a rejected
-                        // create (e.g. the group_router content-filter 422 on a
-                        // disallowed title) throws instead of silently no-opping,
-                        // which previously left the user staring at an unchanged
-                        // groups list with no explanation (backend step 8 finding #1).
-                        vm.groupError = (error as? LocalizedError)?.errorDescription ?? "Could not create group."
-                    }
-                }
+                Task { await vm.createGroup(title: title, memberIds: memberIds, userId: uid, service: appState.service) }
             }
         }
         .sheet(isPresented: $showNewAgent) {
@@ -197,7 +180,7 @@ struct ChatRootView: View {
             }
         }
         .alert("Couldn't Create Group", isPresented: Binding(
-            get: { vm.groupError != nil },
+            get: { vm.showsGroupError(onHome: false) },
             set: { if !$0 { vm.groupError = nil } }
         )) {
             Button("OK", role: .cancel) { vm.groupError = nil }
@@ -723,6 +706,34 @@ final class ChatViewModel: ObservableObject {
     // Surfaces createGroup rejections (see ChatRootView's showAddGroup sheet)
     // instead of the previous silent `try?` no-op — backend step 8 finding #1.
     @Published var groupError: String? = nil
+    /// True when `groupError` came from the Home "Ways to explore" card, so only
+    /// Home's alert presents it (both tabs stay mounted in the TabView and
+    /// would otherwise both bind to the same error).
+    @Published var groupErrorFromHome = false
+
+    /// Alert gating: each surface only presents errors that it initiated.
+    func showsGroupError(onHome: Bool) -> Bool {
+        groupError != nil && groupErrorFromHome == onHome
+    }
+
+    /// Shared create-group path (Chat tab and the Home "Ways to explore" card).
+    /// A rejected create (e.g. the group_router content-filter 422 on a
+    /// disallowed title) surfaces via `groupError` instead of silently no-opping.
+    func createGroup(title: String, memberIds: [String], userId: String,
+                     service: DataServiceProtocol, fromHome: Bool = false) async {
+        do {
+            try await service.createGroup(
+                userId: userId,
+                groupId: UUID().uuidString,
+                title: title,
+                users: [userId] + memberIds
+            )
+            await load(service: service, userId: userId)
+        } catch {
+            groupErrorFromHome = fromHome
+            groupError = (error as? LocalizedError)?.errorDescription ?? "Could not create group."
+        }
+    }
     // Same pattern for createAgent — NetworkService.createAgent now uses
     // checkedRequestRaw and throws instead of fabricating a fake FSAgent with
     // a client-generated id on failure (backend step 11 finding #2).

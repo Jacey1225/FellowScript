@@ -237,6 +237,7 @@ struct ContentView: View {
                 // LoadingScreenView() }` structural swap tearing this whole
                 // subtree down and rebuilding it, same as its siblings.
                 DashboardView(vm: startup.dashboardVM)
+                    .environmentObject(startup.chatVM)
                     .tag(Tab.home)
                     .toolbar(.hidden, for: .tabBar)
                 // Pass StartupCoordinator's shared view-model instances —
