@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useId } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { Spin } from 'antd';
 import { useAuth } from '../context/AuthContext.jsx';
@@ -40,6 +40,47 @@ const CHIP_GROUPS = [
   ['life_stages', 'life_stages', 'Life stage'],
   ['languages', 'languages', 'Language'],
 ];
+
+const DETAIL_GROUPS = [
+  ...CHIP_GROUPS,
+  ['meeting_format', 'meeting_formats', 'Meeting format'],
+  ['frequency', 'frequencies', 'Frequency'],
+  ['gender_makeup', 'gender_makeup', 'Group makeup'],
+];
+
+// One "Details" button toggles every category group (collapsed by default).
+function DetailsDisclosure({ listing: l, vocab }) {
+  const [open, setOpen] = useState(false);
+  const panelId = useId();
+  const groups = DETAIL_GROUPS.map(([field, vocabKey, title]) => {
+    const raw = l[field];
+    const values = Array.isArray(raw) ? raw : (raw ? [raw] : []);
+    return { key: field, title, chips: values.map((s) => [s, labelFor(vocab, vocabKey, s)]) };
+  });
+  if (l.free_tags?.length > 0) groups.push({ key: 'free_tags', title: 'Tags', chips: l.free_tags.map((t) => [t, t]) });
+  const shown = groups.filter((g) => g.chips.length > 0);
+  if (!shown.length) return null;
+  return (
+    <div className="ex-details">
+      <button type="button" className="ex-details-btn" aria-expanded={open} aria-controls={panelId} onClick={() => setOpen((o) => !o)}>
+        <span>Details</span>
+        <span className="ex-details-caret" aria-hidden="true" />
+      </button>
+      <div id={panelId} className="ex-details-panel" hidden={!open}>
+        <div className="ex-details-grid">
+          {shown.map((g) => (
+            <div className="ex-chipgroup" key={g.key}>
+              <h2 className="ex-chipgroup-title">{g.title}</h2>
+              <ul className="ex-chip-row">
+                {g.chips.map(([k, label]) => <li className="ex-chip" key={k}>{label}</li>)}
+              </ul>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function ExploreListing() {
   useWarmCanvas();
@@ -113,27 +154,7 @@ export default function ExploreListing() {
                 <span className={`ex-seat ex-seat--${full ? 'full' : 'open'}`}>{full ? 'Full' : 'Open'}</span>
               </p>
             </div>
-            {[...CHIP_GROUPS, ['meeting_format', 'meeting_formats', 'Meeting format'], ['frequency', 'frequencies', 'Frequency'], ['gender_makeup', 'gender_makeup', 'Group makeup']].map(([field, vocabKey, title]) => {
-              const raw = l[field];
-              const values = Array.isArray(raw) ? raw : (raw ? [raw] : []);
-              if (!values.length) return null;
-              return (
-                <div className="ex-chipgroup" key={field}>
-                  <h2 className="ex-chipgroup-title">{title}</h2>
-                  <ul className="ex-chip-row">
-                    {values.map((s) => <li className="ex-chip" key={s}>{labelFor(vocab, vocabKey, s)}</li>)}
-                  </ul>
-                </div>
-              );
-            })}
-            {l.free_tags?.length > 0 && (
-              <div className="ex-chipgroup">
-                <h2 className="ex-chipgroup-title">Tags</h2>
-                <ul className="ex-chip-row">
-                  {l.free_tags.map((t) => <li className="ex-chip" key={t}>{t}</li>)}
-                </ul>
-              </div>
-            )}
+            <DetailsDisclosure listing={l} vocab={vocab} />
             <DescriptionBlocks blocks={l.description_blocks} />
           </div>
           <aside className="ex-detail-side" aria-label="Join">
