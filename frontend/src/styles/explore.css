@@ -54,7 +54,7 @@ body.page-warm .ex-field select:focus, body.page-warm .ex-field textarea:focus {
 .ex-card { display: block; height: 100%; color: inherit; text-decoration: none; background: var(--card-bg, #1A1A1C); border: 1px solid var(--card-border, rgba(255,255,255,.08)); border-radius: var(--radius-lg, 20px); overflow: hidden; transition: transform .15s ease, border-color .15s ease; }
 .ex-card:hover { transform: translateY(-2px); border-color: var(--card-border-strong, rgba(255,255,255,.14)); }
 .ex-card-body { padding: 2rem 1rem 1rem; display: flex; flex-direction: column; gap: .6rem; }
-.ex-card-summary { margin: 0; font: 400 .9rem/1.45 'Inter', sans-serif; color: rgba(242,242,242,.78); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.ex-card-summary { margin: 0; font: 600 .95rem/1.45 'Schibsted Grotesk', sans-serif; letter-spacing: -0.01em; color: rgba(242,242,242,.78); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .ex-chip-row { list-style: none; display: flex; flex-wrap: wrap; gap: .4rem; margin: 0; padding: 0; }
 .ex-card-status { display: flex; align-items: center; justify-content: space-between; gap: .5rem; font: 400 .8rem 'Inter', sans-serif; color: rgba(242,242,242,.6); }
 .ex-seat { display: inline-block; margin-left: .6rem; padding: .1rem .6rem; border-radius: 999px; font: 600 .72rem 'Inter', sans-serif; border: 1px solid var(--pill-border, rgba(255,255,255,.168)); }
@@ -73,9 +73,9 @@ body.page-warm .ex-field select:focus, body.page-warm .ex-field textarea:focus {
 .ex-hero-photo img { width: 100%; height: 100%; object-fit: cover; }
 .ex-hero--detail .ex-hero-banner { border-radius: var(--radius-lg, 20px) var(--radius-lg, 20px) 0 0; }
 .ex-hero--detail .ex-hero-title { font-size: clamp(1.7rem, 4vw, 2.6rem); padding-left: 112px; -webkit-line-clamp: 3; }
-.ex-hero--detail .ex-hero-banner { background: none; }
-.ex-hero--detail .ex-hero-banner::before { content: ''; position: absolute; inset: 0; background: radial-gradient(ellipse 70% 120% at 20% 0%, rgba(224,154,48,.5), rgba(224,154,48,0) 70%), radial-gradient(ellipse 60% 100% at 100% 100%, rgba(255,198,26,.3), rgba(255,198,26,0) 70%), var(--card-bg-2, #232326); }
-.ex-hero--detail .ex-hero-banner::before, .ex-hero--detail .ex-hero-img, .ex-hero--detail .ex-hero-scrim { -webkit-mask-image: linear-gradient(to bottom, #000 45%, transparent 100%); mask-image: linear-gradient(to bottom, #000 45%, transparent 100%); }
+.ex-hero--detail .ex-hero-banner, .ex-card .ex-hero .ex-hero-banner { background: none; }
+.ex-hero--detail .ex-hero-banner::before, .ex-card .ex-hero .ex-hero-banner::before { content: ''; position: absolute; inset: 0; background: radial-gradient(ellipse 70% 120% at 20% 0%, rgba(224,154,48,.5), rgba(224,154,48,0) 70%), radial-gradient(ellipse 60% 100% at 100% 100%, rgba(255,198,26,.3), rgba(255,198,26,0) 70%), var(--card-bg-2, #232326); }
+.ex-hero--detail .ex-hero-banner::before, .ex-card .ex-hero .ex-hero-banner::before, .ex-hero--detail .ex-hero-img, .ex-card .ex-hero .ex-hero-img, .ex-hero--detail .ex-hero-scrim, .ex-card .ex-hero .ex-hero-scrim { -webkit-mask-image: linear-gradient(to bottom, #000 45%, transparent 100%); mask-image: linear-gradient(to bottom, #000 45%, transparent 100%); }
 .ex-hero--detail .ex-hero-photo { width: 96px; height: 96px; font-size: 1.6rem; bottom: -2rem; }
 @media (max-width: 479px) { .ex-hero--detail .ex-hero-banner { aspect-ratio: 2 / 1; } }
 
