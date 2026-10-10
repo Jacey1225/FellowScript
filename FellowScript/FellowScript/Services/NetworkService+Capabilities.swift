@@ -11,10 +11,24 @@
 
 import Foundation
 
+/// Task 20261010-chat-reactions: server-owned reaction allowlist from
+/// `reaction_emoji` (empty lists while the message_reactions flag is off).
+struct FSReactionEmoji: Decodable, Equatable {
+    var quick: [String]
+    var more: [String]
+    static let none = FSReactionEmoji(quick: [], more: [])
+    /// Quick set first, then the rest without duplicates, for the full picker.
+    var all: [String] { quick + more.filter { !quick.contains($0) } }
+}
+
 struct FSCapabilities: Decodable, Equatable {
     var features: [String: Bool]
     var exploreLink: String?
     var termsCurrent: Bool
+    var reactionEmoji: FSReactionEmoji = .none
+
+    /// Chat reactions UI shows only when the flag is on AND the server sent a set.
+    var messageReactionsEnabled: Bool { isEnabled("message_reactions") && !reactionEmoji.quick.isEmpty }
 
     /// Fail-closed value: nothing enabled, terms treated as current.
     static let allOff = FSCapabilities(features: [:], exploreLink: nil, termsCurrent: true)
@@ -22,9 +36,10 @@ struct FSCapabilities: Decodable, Equatable {
     func isEnabled(_ name: String) -> Bool { features[name] == true }
 
     private struct Links: Decodable { let explore: String? }
-    private enum CodingKeys: String, CodingKey { case features, links, terms_current }
+    private enum CodingKeys: String, CodingKey { case features, links, terms_current, reaction_emoji }
 
-    init(features: [String: Bool], exploreLink: String?, termsCurrent: Bool) {
+    init(features: [String: Bool], exploreLink: String?, termsCurrent: Bool, reactionEmoji: FSReactionEmoji = .none) {
+        self.reactionEmoji = reactionEmoji
         self.features = features
         self.exploreLink = exploreLink
         self.termsCurrent = termsCurrent
@@ -39,6 +54,8 @@ struct FSCapabilities: Decodable, Equatable {
         let links = try? c.decodeIfPresent(Links.self, forKey: .links)
         self.features = features
         self.termsCurrent = termsCurrent
+        // Optional and lenient: a missing/odd block just leaves reactions hidden.
+        self.reactionEmoji = ((try? c.decodeIfPresent(FSReactionEmoji.self, forKey: .reaction_emoji)) ?? nil) ?? .none
         self.exploreLink = features["explorer_browse"] == true ? links?.explore : nil
     }
 }

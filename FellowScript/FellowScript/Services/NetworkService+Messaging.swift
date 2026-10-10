@@ -43,8 +43,8 @@ extension NetworkService {
     func fetchFriendMessages(userId: String, friendId: String) async throws -> [FSMessage] {
         let data = try await get("/friends/\(userId)/\(friendId)")
         guard let resp = decode(RawChatResponse.self, from: data) else { return [] }
-        let mine  = (resp.host_msgs  ?? []).map { m in FSMessage(id: m.id ?? UUID().uuidString, text: m.text ?? "", mine: true,  sender: "",       timestamp: m.timestamp ?? "", attachmentKind: m.attachment_kind, attachmentURL: m.attachment_url, attachmentMeta: m.attachment_meta) }
-        let theirs = (resp.other_msgs ?? []).map { m in FSMessage(id: m.id ?? UUID().uuidString, text: m.text ?? "", mine: false, sender: m.from_user ?? "", timestamp: m.timestamp ?? "", attachmentKind: m.attachment_kind, attachmentURL: m.attachment_url, attachmentMeta: m.attachment_meta) }
+        let mine  = (resp.host_msgs  ?? []).map { m in FSMessage(id: m.id ?? UUID().uuidString, text: m.text ?? "", mine: true,  sender: "",       timestamp: m.timestamp ?? "", attachmentKind: m.attachment_kind, attachmentURL: m.attachment_url, attachmentMeta: m.attachment_meta, reactions: m.reactions) }
+        let theirs = (resp.other_msgs ?? []).map { m in FSMessage(id: m.id ?? UUID().uuidString, text: m.text ?? "", mine: false, sender: m.from_user ?? "", timestamp: m.timestamp ?? "", attachmentKind: m.attachment_kind, attachmentURL: m.attachment_url, attachmentMeta: m.attachment_meta, reactions: m.reactions) }
         return (mine + theirs).sorted { $0.timestamp < $1.timestamp }
     }
 
@@ -52,8 +52,8 @@ extension NetworkService {
     func fetchGroupMessages(userId: String, groupId: String) async throws -> [FSMessage] {
         let data = try await get("/groups/\(userId)/\(groupId)")
         guard let resp = decode(RawGroupResponse.self, from: data) else { return [] }
-        let mine  = (resp.host_msgs  ?? []).map { m in FSMessage(id: m.id ?? UUID().uuidString, text: m.text ?? "", mine: true,  sender: "",          timestamp: m.timestamp ?? "", attachmentKind: m.attachment_kind, attachmentURL: m.attachment_url, attachmentMeta: m.attachment_meta) }
-        let theirs = (resp.other_msgs ?? []).map { m in FSMessage(id: m.id ?? UUID().uuidString, text: m.text ?? "", mine: false, sender: m.from_user ?? "", timestamp: m.timestamp ?? "", attachmentKind: m.attachment_kind, attachmentURL: m.attachment_url, attachmentMeta: m.attachment_meta) }
+        let mine  = (resp.host_msgs  ?? []).map { m in FSMessage(id: m.id ?? UUID().uuidString, text: m.text ?? "", mine: true,  sender: "",          timestamp: m.timestamp ?? "", attachmentKind: m.attachment_kind, attachmentURL: m.attachment_url, attachmentMeta: m.attachment_meta, reactions: m.reactions) }
+        let theirs = (resp.other_msgs ?? []).map { m in FSMessage(id: m.id ?? UUID().uuidString, text: m.text ?? "", mine: false, sender: m.from_user ?? "", timestamp: m.timestamp ?? "", attachmentKind: m.attachment_kind, attachmentURL: m.attachment_url, attachmentMeta: m.attachment_meta, reactions: m.reactions) }
         return (mine + theirs).sorted { $0.timestamp < $1.timestamp }
     }
 
@@ -120,7 +120,7 @@ extension NetworkService {
         return FSMessage(id: m.id ?? UUID().uuidString, text: m.text ?? "", mine: mine,
                          sender: mine ? "" : (m.from_user ?? ""), timestamp: m.timestamp,
                          attachmentKind: m.attachment_kind, attachmentURL: m.attachment_url,
-                         attachmentMeta: m.attachment_meta)
+                         attachmentMeta: m.attachment_meta, reactions: m.reactions)
     }
 
     private func legacyFriendMessages(from data: Data) -> [FSMessage] {
@@ -134,8 +134,8 @@ extension NetworkService {
     }
 
     private static func legacyMerge(host: [RawMsg]?, other: [RawMsg]?) -> [FSMessage] {
-        let mine   = (host  ?? []).map { m in FSMessage(id: m.id ?? UUID().uuidString, text: m.text ?? "", mine: true,  sender: "",             timestamp: m.timestamp, attachmentKind: m.attachment_kind, attachmentURL: m.attachment_url, attachmentMeta: m.attachment_meta) }
-        let theirs = (other ?? []).map { m in FSMessage(id: m.id ?? UUID().uuidString, text: m.text ?? "", mine: false, sender: m.from_user ?? "", timestamp: m.timestamp, attachmentKind: m.attachment_kind, attachmentURL: m.attachment_url, attachmentMeta: m.attachment_meta) }
+        let mine   = (host  ?? []).map { m in FSMessage(id: m.id ?? UUID().uuidString, text: m.text ?? "", mine: true,  sender: "",             timestamp: m.timestamp, attachmentKind: m.attachment_kind, attachmentURL: m.attachment_url, attachmentMeta: m.attachment_meta, reactions: m.reactions) }
+        let theirs = (other ?? []).map { m in FSMessage(id: m.id ?? UUID().uuidString, text: m.text ?? "", mine: false, sender: m.from_user ?? "", timestamp: m.timestamp, attachmentKind: m.attachment_kind, attachmentURL: m.attachment_url, attachmentMeta: m.attachment_meta, reactions: m.reactions) }
         return (mine + theirs).sorted { $0.timestamp < $1.timestamp }
     }
 

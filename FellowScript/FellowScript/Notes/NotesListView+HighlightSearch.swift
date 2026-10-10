@@ -83,11 +83,18 @@ struct HighlightSearchRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: Theme.spacingMD) {
-                Circle()
-                    .fill(Color(hex: result.color))
-                    .frame(width: 10, height: 10)
-                    .shadow(color: .black.opacity(0.30), radius: 2)
-                    .accessibilityHidden(true)
+                if result.color.uppercased() != VerseReactionEmoji.neutralColor || result.emoji == nil {
+                    Circle()
+                        .fill(Color(hex: result.color))
+                        .frame(width: 10, height: 10)
+                        .shadow(color: .black.opacity(0.30), radius: 2)
+                        .accessibilityHidden(true)
+                }
+                if let emoji = result.emoji, !emoji.isEmpty {
+                    Text(emoji)
+                        .font(.system(.body))
+                        .accessibilityHidden(true)
+                }
                 Text("\(result.book) \(result.chapter):\(result.verse)")
                     .font(.verseRef(Theme.fontBody))
                     .foregroundColor(Theme.gold)
@@ -114,5 +121,19 @@ struct HighlightSearchRow: View {
             }
         }
         .padding(.vertical, Theme.spacingXS)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(reactionLabel)
+    }
+
+    /// Only set when a reaction is present; plain rows keep their default combined label.
+    private var reactionLabel: String {
+        let ref = "\(result.book) \(result.chapter):\(result.verse)"
+        var parts = [ref]
+        if !result.is_self, let name = result.owner_username { parts.append(name) }
+        if let emoji = result.emoji, !emoji.isEmpty {
+            parts.append("reacted with \(VerseReactionEmoji.name(for: emoji))")
+        }
+        if let text = result.verse_text, !text.isEmpty { parts.append(text) }
+        return parts.joined(separator: ", ")
     }
 }

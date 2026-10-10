@@ -16,6 +16,8 @@ struct FSHighlightSearchResult: Identifiable, Decodable, Equatable {
     /// nil when the verse text couldn't be resolved; the row is still shown.
     let verse_text: String?
     let timestamp: String?
+    /// Verse reaction emoji (task 20261009-verse-reactions); nil for plain highlights.
+    var emoji: String? = nil
 
     /// owner + key: the same verse can be highlighted by several people.
     var id: String { "\(owner_id)|\(key)" }

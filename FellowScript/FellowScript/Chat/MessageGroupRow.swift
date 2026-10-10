@@ -198,6 +198,9 @@ struct MessageGroupRow: View {
     // actions for one message. nil / an empty result adds nothing, so every
     // other caller and a flags-off chat behave exactly as before.
     var actionsFor: ((FSMessage) -> [MessageRowAction])? = nil
+    // Task 20261010-chat-reactions: nil (flag off, thread open, unsettled
+    // message) hides the reaction row and chips entirely.
+    var reactionsFor: ((FSMessage) -> MessageReactionConfig?)? = nil
 
     /// Scroll anchor id for one message. Prefixed so it can never collide with
     /// a MessageDisplayGroup row id (a group's id IS its first message's id).
@@ -228,6 +231,11 @@ struct MessageGroupRow: View {
                 ForEach(group.messages) { message in
                     VStack(alignment: group.isOutgoing ? .trailing : .leading, spacing: 4) {
                         bubble(for: message)
+                        if let cfg = reactionsFor?(message), let list = message.reactions, !list.isEmpty {
+                            ReactionChipRow(reactions: list, alignment: group.isOutgoing ? .trailing : .leading) { r in
+                                cfg.onPick(r.emoji)
+                            }
+                        }
                         // Task 20260910-chat-message-disappear-reentry: reuses
                         // StagedAttachmentChipView's exact failed-upload
                         // pattern (MessageAttachments.swift) verbatim, per
@@ -313,7 +321,7 @@ struct MessageGroupRow: View {
         .clipShape(RoundedRectangle(cornerRadius: Theme.radiusLG))
         .topEdgeHighlight(RoundedRectangle(cornerRadius: Theme.radiusLG))
         .accessibilityLabel(accessibilityLabel(for: message))
-        .messageActions(actionsFor?(message) ?? [])
+        .messageActions(actionsFor?(message) ?? [], reactions: reactionsFor?(message))
     }
 
     /// Extends the pre-existing `"{sender}: {text}"` pattern with a
@@ -383,18 +391,32 @@ struct MessageRowAction: Identifiable {
     var id: String { kind.rawValue }
 }
 
+/// Task 20261010-chat-reactions: what the long-press menu needs to show the
+/// reaction row for one message. Built by ChatThreadView; no network here.
+struct MessageReactionConfig {
+    let quick: [String]
+    let selected: Set<String>
+    let onPick: (String) -> Void
+    let onMore: () -> Void
+}
+
 private struct MessageActionsModifier: ViewModifier {
     let actions: [MessageRowAction]
+    var reactions: MessageReactionConfig? = nil
 
     @ViewBuilder
     func body(content: Content) -> some View {
-        if actions.isEmpty {
+        if actions.isEmpty && reactions == nil {
             content
         } else {
             // System context menu: free preview, platform dismissal, and no
             // custom gesture, so link / image / video / GIF taps keep working.
             content
                 .contextMenu {
+                    // Reaction row sits above the existing actions.
+                    if let r = reactions {
+                        ReactionMenuSection(emojis: r.quick, selected: r.selected, onPick: r.onPick, onMore: r.onMore)
+                    }
                     ForEach(actions) { action in
                         Button(role: action.kind.isDestructive ? .destructive : nil, action: action.perform) {
                             Label(action.kind.title, systemImage: action.kind.systemImage)
@@ -402,6 +424,9 @@ private struct MessageActionsModifier: ViewModifier {
                     }
                 }
                 .accessibilityActions {
+                    if let r = reactions {
+                        reactionAccessibilityActions(emojis: r.quick, selected: r.selected, onPick: r.onPick, onMore: r.onMore)
+                    }
                     ForEach(actions) { action in
                         Button(action.kind.title, action: action.perform)
                     }
@@ -411,7 +436,7 @@ private struct MessageActionsModifier: ViewModifier {
 }
 
 extension View {
-    func messageActions(_ actions: [MessageRowAction]) -> some View {
-        modifier(MessageActionsModifier(actions: actions))
+    func messageActions(_ actions: [MessageRowAction], reactions: MessageReactionConfig? = nil) -> some View {
+        modifier(MessageActionsModifier(actions: actions, reactions: reactions))
     }
 }

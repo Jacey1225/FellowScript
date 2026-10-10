@@ -112,7 +112,7 @@ class HighlightSearch(DBManager):
             return paging.envelope("highlights", [], limit, False, None)
 
         sql = (
-            "SELECT h.user_id, u.username, h.key, h.color, "
+            "SELECT h.user_id, u.username, h.key, h.color, h.emoji, "
             "COALESCE(h.timestamp, 'epoch'::timestamptz) AS ts "
             "FROM highlights h JOIN users u ON u._id = h.user_id "
             "WHERE (h.user_id = %s OR ("
@@ -141,7 +141,7 @@ class HighlightSearch(DBManager):
         rows = rows[:limit]
 
         items = []
-        for owner_id, username, key, color, ts in rows:
+        for owner_id, username, key, color, emoji, ts in rows:
             parsed = parse_highlight_key(key)
             if not parsed:
                 continue
@@ -155,13 +155,14 @@ class HighlightSearch(DBManager):
                 "chapter": chapter,
                 "verse": verse,
                 "color": color,
+                "emoji": emoji,
                 "verse_text": verse_text(book, chapter, verse),
                 "timestamp": str(ts) if ts else None,
             })
 
         next_cursor = None
         if has_more and rows:
-            o, _u, k, _c, ts = rows[-1]
+            o, _u, k, _c, _e, ts = rows[-1]
             next_cursor = paging.encode_cursor(ts, None, o)
             next_cursor["next_cursor_key"] = k
         return paging.envelope("highlights", items, limit, has_more, next_cursor)

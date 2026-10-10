@@ -24,6 +24,9 @@
     "restore_rate": "30/minute",
     "sweep_batch_size": 200
   },
+  "message_reactions": {
+    "rate": "60/minute"
+  },
   "agent_chats": {
     "max_chats_per_agent": 50,
     "title_max_length": 80,

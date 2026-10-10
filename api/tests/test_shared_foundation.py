@@ -338,7 +338,7 @@ def main():
         check("capabilities 200 + Cache-Control no-store",
               r.status_code == 200 and r.headers.get("cache-control") == "no-store", r.headers)
         check("capabilities shape v/features/links/terms_current",
-              j["v"] == 1 and set(j) == {"v", "features", "links", "terms_current"}, j)
+              j["v"] == 1 and set(j) == {"v", "features", "links", "terms_current", "reaction_emoji"}, j)
         check("features keys come from the registry",
               set(j["features"]) == {n for n, s in flags.registry().items() if s.exposed_in_capabilities}, j["features"])
         check("features are booleans only", all(isinstance(v, bool) for v in j["features"].values()))

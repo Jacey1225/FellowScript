@@ -84,6 +84,7 @@ DDL_MODULES = (
     "chat_pagination",
     "listings",
     "threads",
+    "message_reactions",
     "join_requests",
     "home_messages",
     "ios_offer_redemptions",
@@ -433,6 +434,8 @@ def create_tables(cur):
     # already-highlighted verse, via its ON CONFLICT clause), so it reflects
     # last-written, not first-written.
     cur.execute("ALTER TABLE highlights ADD COLUMN IF NOT EXISTS timestamp TIMESTAMPTZ DEFAULT NOW()")
+    # Task 20261009-verse-reactions: optional emoji reaction on a highlight (NULL = plain highlight).
+    cur.execute("ALTER TABLE highlights ADD COLUMN IF NOT EXISTS emoji TEXT")
 
     cur.execute(
         "CREATE TABLE IF NOT EXISTS bookmarks"

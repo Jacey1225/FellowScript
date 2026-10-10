@@ -615,6 +615,10 @@ struct FSMessage: Identifiable, Codable {
     var attachmentKind: String?         = nil
     var attachmentURL:  String?         = nil
     var attachmentMeta: FSAttachmentMeta? = nil
+    // Task 20261010-chat-reactions: aggregated reactions. nil/absent when the
+    // server flag is off or the message has none (optional so previously
+    // cached FSMessage JSON without the key still decodes).
+    var reactions: [ReactionSummary]? = nil
 
     // compile-errors #3 (20260904-frontend-arch-sweep): the wire value is a
     // plain String so it round-trips through Codable/JSON unchanged, but

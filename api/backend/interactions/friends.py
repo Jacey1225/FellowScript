@@ -8,6 +8,7 @@ from backend.errors import SaveFailedError
 from backend.interactions.attachments import generate_download_url
 from backend.interactions.blocks import BlockManager
 from backend.interactions import paging
+from backend.interactions.message_reactions import attach_reactions
 from backend.interactions.bible_text import parse_highlight_key, verse_text
 
 logger = logging.getLogger(__name__)
@@ -325,6 +326,7 @@ class FriendsManager(DBManager):
                 "attachment_meta": meta,
                 "attachment_url": generate_download_url(key) if key else None,
             })
+        attach_reactions(self, messages, self.user_id)
         return {"messages": messages, "has_more": has_more, "next_cursor": next_cursor}
 
     def dm_page_for_route(self, friend_id: str, limit: int, cursor: "paging.Cursor | None" = None) -> dict:
@@ -401,6 +403,8 @@ class FriendsManager(DBManager):
         other_msgs = [
             self._format_dm_row(friend_data.get("username", ""), r) for r in self.cur.fetchall()
         ]
+        attach_reactions(self, host_msgs, self.user_id)
+        attach_reactions(self, other_msgs, self.user_id)
         # Same raw-key-never-leaves-the-server treatment as hash_pass just
         # below -- friend_data here is a raw `lookup()` row, so
         # profile_photo_key must be popped unconditionally and resolved to a

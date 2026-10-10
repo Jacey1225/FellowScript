@@ -8,6 +8,7 @@ SEED_FLAG_NAMES = (
     "chat_pagination_dm",
     "threads",
     "message_delete",
+    "message_reactions",
     "explorer_publish",
     "explorer_browse",
     "join_requests",

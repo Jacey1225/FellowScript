@@ -16,6 +16,7 @@ from backend.auth.dependencies import get_current_user
 from backend.auth.terms import terms_current
 from backend.interactions import flags
 from backend.interactions.invites_config import get_invites_config
+from backend.interactions.message_reactions import capability_emoji
 from db import DBManager
 
 capabilities_router = APIRouter(prefix="/app")
@@ -33,6 +34,7 @@ def get_capabilities(user_id: str = Depends(get_current_user)) -> JSONResponse:
     finally:
         db.close()
     return JSONResponse(
-        {"v": 1, "features": features, "links": {"explore": explore}, "terms_current": current},
+        {"v": 1, "features": features, "links": {"explore": explore}, "terms_current": current,
+         "reaction_emoji": capability_emoji(user_id)},
         headers={"Cache-Control": "no-store"},
     )

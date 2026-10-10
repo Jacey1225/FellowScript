@@ -112,6 +112,10 @@ protocol DataServiceProtocol {
     func fetchHighlights(userId: String) async throws -> [String: String]
     func saveHighlight(userId: String, book: String, chapter: Int, verse: Int, color: String) async throws
     func clearHighlight(userId: String, key: String) async throws
+    // Verse reactions (task 20261009-verse-reactions) -- NetworkService+Highlights.swift.
+    // Default implementations live there.
+    func fetchHighlightsWithReactions(userId: String) async throws -> [String: FSVerseHighlight]
+    func saveVerseReaction(userId: String, book: String, chapter: Int, verse: Int, color: String?, emoji: String) async throws
     func searchHighlights(userId: String, query: String, limit: Int?, cursorTimestamp: String?, cursorId: String?, cursorKey: String?) async throws -> FSHighlightSearchPage
 
     // Bookmarks
@@ -178,6 +182,11 @@ protocol DataServiceProtocol {
     func deleteThread(userId: String, groupId: String, threadId: String) async throws
     func deleteGroupMessage(userId: String, groupId: String, messageId: String) async throws -> FSMessageDeleteResult
     func restoreGroupMessage(userId: String, groupId: String, messageId: String) async throws
+
+    // Message reactions (task 20261010-chat-reactions) -- NetworkService+Reactions.swift.
+    // Default implementations throw there.
+    func addMessageReaction(userId: String, messageId: String, emoji: String) async throws -> ReactionSummary
+    func removeMessageReaction(userId: String, messageId: String, emoji: String) async throws -> ReactionSummary
 
     // Attachments (task 20260904-messaging-attachments): request a presigned
     // S3 POST policy, then upload the raw bytes directly to S3 with it — the

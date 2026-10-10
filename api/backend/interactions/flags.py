@@ -99,6 +99,8 @@ register("chat_pagination")
 register("chat_pagination_dm")
 register("threads")
 register("message_delete")
+# Chat message emoji reactions (task 20261010-chat-reactions). Ships OFF.
+register("message_reactions")
 register("explorer_publish")
 register("explorer_browse", no_canary=True)
 register("join_requests")
@@ -116,6 +118,9 @@ register("agent_chats")
 # Per-chat memory for agent chats (windowed history + rolling summary). Needs
 # agent_chats on too; server-side only, so not exposed in capabilities.
 register("agent_chat_memory", exposed_in_capabilities=False)
+# Emoji reactions on Bible verses (task 20261009-verse-reactions): optional emoji on
+# highlights. Gates server acceptance of emoji and the iOS UI. Ships OFF.
+register("verse_reactions")
 
 
 def _load_snapshot() -> dict[str, tuple[str, frozenset[str]]]:

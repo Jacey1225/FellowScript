@@ -13,6 +13,7 @@ from backend import content_store
 from backend.content_config import get_content_config
 from backend.interactions.note_search import scan_matches
 from backend.interactions.highlight_search import HighlightSearch
+from backend.interactions.verse_reactions import validate_emoji, NEUTRAL_COLOR
 from datetime import datetime
 import uuid
 import logging
@@ -70,11 +71,20 @@ def _can_view_note(note_data: dict, user_id: str) -> bool:
 # ── Highlights ────────────────────────────────────────────────────────────────
 
 @notes_router.get("/highlight/{user_id}")
-async def get_highlights(user_id: str, _: str = Depends(require_match("user_id"))) -> dict:
+async def get_highlights(
+    user_id: str,
+    include_emoji: bool = Query(default=False),
+    _: str = Depends(require_match("user_id")),
+) -> dict:
+    """Default shape ``{key: color}`` is unchanged for old clients; with
+    ``include_emoji=true`` it is ``{key: {"color": ..., "emoji": ... | null}}``."""
     db = DBManager()
     try:
         # highlights has a composite PK (user_id, key) with no _id column,
         # so lookup() would collapse all rows; use cursor for the read only.
+        if include_emoji:
+            db.cur.execute("SELECT key, color, emoji FROM highlights WHERE user_id = %s", (user_id,))
+            return {row[0]: {"color": row[1], "emoji": row[2]} for row in db.cur.fetchall()}
         db.cur.execute("SELECT key, color FROM highlights WHERE user_id = %s", (user_id,))
         return {row[0]: row[1] for row in db.cur.fetchall()}
     finally:
@@ -115,6 +125,9 @@ async def highlight_verse(user_id: str, verse: dict, _: str = Depends(require_ma
     chapter = verse.get("chapter")
     verse_n = verse.get("verse")
     color   = verse.get("color")
+    emoji   = validate_emoji(verse.get("emoji"), user_id)
+    if emoji and not color:
+        color = NEUTRAL_COLOR
     if not all([book, chapter, verse_n, color]):
         raise HTTPException(status_code=400, detail="book, chapter, verse, color required")
     # Reference must be a real (book, chapter, verse) per bible_text's loaded
@@ -141,12 +154,12 @@ async def highlight_verse(user_id: str, verse: dict, _: str = Depends(require_ma
         # never on an ON CONFLICT UPDATE.
         if not db.insertion(
             "highlights",
-            {"user_id": user_id, "key": key, "color": str(color), "timestamp": datetime.now()},
-            conflict="(user_id, key) DO UPDATE SET color = EXCLUDED.color, timestamp = EXCLUDED.timestamp",
+            {"user_id": user_id, "key": key, "color": str(color), "emoji": emoji, "timestamp": datetime.now()},
+            conflict="(user_id, key) DO UPDATE SET color = EXCLUDED.color, emoji = EXCLUDED.emoji, timestamp = EXCLUDED.timestamp",
         ):
             raise SaveFailedError()
         _record_activity(user_id, VERSE_HIGHLIGHTED)
-        return {"key": key, "color": color}
+        return {"key": key, "color": color, "emoji": emoji}
     finally:
         db.close()
 

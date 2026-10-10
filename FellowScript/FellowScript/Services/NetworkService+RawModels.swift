@@ -34,6 +34,9 @@ struct RawMsg: Decodable {
     // in `from_user`); legacy rows omit it and are split into host_msgs /
     // other_msgs instead.
     let mine: Bool?
+    // Task 20261010-chat-reactions: [{emoji,count,viewer_reacted}]; absent
+    // while the server flag is off.
+    let reactions: [ReactionSummary]?
 }
 
 /// Task 20261001-chat-pagination: the `page` block of a paged history

@@ -328,7 +328,8 @@ final class ChatThreadViewModel: ObservableObject {
         return FSMessage(
             id: message.id, text: message.text, mine: message.mine, sender: senderName,
             timestamp: message.timestamp, attachmentKind: message.attachmentKind,
-            attachmentURL: message.attachmentURL, attachmentMeta: message.attachmentMeta
+            attachmentURL: message.attachmentURL, attachmentMeta: message.attachmentMeta,
+            reactions: message.reactions
         )
     }
 
@@ -577,6 +578,8 @@ final class ChatThreadViewModel: ObservableObject {
                 handleMessageDeleted(json)
             case "message_restored":
                 handleMessageRestored(json)
+            case "reaction_updated":
+                handleReactionUpdated(json)
             case "thread_deleted":
                 handleThreadDeleted(json)
             case "ping":
@@ -676,6 +679,25 @@ final class ChatThreadViewModel: ObservableObject {
             t.rootPreview = msg.text
             activeThread = t
         }
+    }
+
+    /// Task 20261010-chat-reactions: someone else's reaction changed. Group
+    /// frames carry the group id; a DM frame carries the sorted "a|b" room key.
+    /// The viewer's own state is kept (the server never echoes the actor).
+    private func handleReactionUpdated(_ json: [String: Any]) {
+        guard let id = json["message_id"] as? String, let emoji = json["emoji"] as? String,
+              let count = json["count"] as? Int, frameBelongsToCurrentConversation(json) else { return }
+        mutateMain { list in
+            guard let idx = list.firstIndex(where: { $0.id == id }) else { return }
+            list[idx].reactions = ReactionSummary.updatingCount(list[idx].reactions ?? [], emoji: emoji, count: count)
+        }
+    }
+
+    private func frameBelongsToCurrentConversation(_ json: [String: Any]) -> Bool {
+        guard let contact = currentContact, let gid = (json["group_id"] as? String)?.lowercased() else { return false }
+        if contact.type == .group { return gid == contact.id.lowercased() }
+        let key = [wsUserId.lowercased(), contact.id.lowercased()].sorted().joined(separator: "|")
+        return gid == key
     }
 
     private func frameBelongsToCurrentGroup(_ json: [String: Any]) -> Bool {
@@ -855,6 +877,36 @@ final class ChatThreadViewModel: ObservableObject {
         }
     }
 
+    // ── Reactions (task 20261010-chat-reactions) ──────────────────────────────
+
+    /// Optimistically toggles the viewer's `emoji` on a main-chat message, then
+    /// reconciles with the server's count. On failure only that emoji's entry is
+    /// rolled back (other concurrent changes are kept) and the error is rethrown.
+    func toggleReaction(_ emoji: String, on message: FSMessage, service: DataServiceProtocol, userId: String) async throws {
+        guard !isThreadOpen, isSettled(message) else { return }
+        let before = messages.first(where: { $0.id == message.id })?.reactions
+            ?? mainStash?.messages.first(where: { $0.id == message.id })?.reactions ?? []
+        let prior = before.first(where: { $0.emoji == emoji })
+        let adding = !(prior?.viewerReacted ?? false)
+        setReactions(message.id) { ReactionSummary.toggled($0, emoji: emoji) }
+        do {
+            let result = adding
+                ? try await service.addMessageReaction(userId: userId, messageId: message.id, emoji: emoji)
+                : try await service.removeMessageReaction(userId: userId, messageId: message.id, emoji: emoji)
+            setReactions(message.id) { ReactionSummary.setting($0, emoji: emoji, to: result) }
+        } catch {
+            setReactions(message.id) { ReactionSummary.setting($0, emoji: emoji, to: prior) }
+            throw error
+        }
+    }
+
+    private func setReactions(_ messageId: String, _ change: ([ReactionSummary]) -> [ReactionSummary]) {
+        mutateMain { list in
+            guard let idx = list.firstIndex(where: { $0.id == messageId }) else { return }
+            list[idx].reactions = change(list[idx].reactions ?? [])
+        }
+    }
+
     // ── Action-menu support ───────────────────────────────────────────────────
 
     /// A message has a server id and is neither in flight nor failed.
@@ -904,6 +956,8 @@ struct ChatThreadView: View {
     // ── Message actions + threads (task 20261001-message-threads) ────────────
     @State private var toasts: [ChatToast] = []
     @State private var reportTarget: FSContact? = nil
+    // Task 20261010-chat-reactions: message whose full emoji picker is open.
+    @State private var reactionPickerMessage: FSMessage? = nil
     @State private var blockConfirmTarget: FSContact? = nil
     /// Main-chat message a Start thread is waiting to resume on after the
     /// Updated Terms gate is accepted.
@@ -1181,7 +1235,8 @@ struct ChatThreadView: View {
                                             let uid = appState.currentUser?.user_id ?? ""
                                             vm.retryFailedMessage(messageId, contact: contact, userId: uid)
                                         },
-                                        actionsFor: { message in rowActions(for: message) }
+                                        actionsFor: { message in rowActions(for: message) },
+                                        reactionsFor: { message in reactionConfig(for: message) }
                                     )
                                         .id(row.id)
                                 case .dayDivider(_, let label):
@@ -1442,6 +1497,12 @@ struct ChatThreadView: View {
                 openThread(summary)
             })
         }
+        .sheet(item: $reactionPickerMessage) { message in
+            ReactionPickerSheet(
+                emojis: appState.capabilities.reactionEmoji.all,
+                selected: Set((message.reactions ?? []).filter(\.viewerReacted).map(\.emoji))
+            ) { emoji in toggleReaction(emoji, on: message) }
+        }
         .sheet(item: $reportTarget) { target in
             ReportUserSheet(contact: target) { reason, detail in
                 Task {
@@ -1564,6 +1625,35 @@ struct ChatThreadView: View {
         guard appState.capabilities.isEnabled("threads") else { return }
         let uid = appState.currentUser?.user_id ?? ""
         await vm.openThread(id: pending.threadId, service: appState.service, contact: contact, userId: uid)
+    }
+
+    // ── Reactions (task 20261010-chat-reactions) ──────────────────────────────
+
+    /// nil hides the reaction UI: flag/allowlist off, a thread is open (thread
+    /// messages are deferred), or the message is not yet saved on the server.
+    private func reactionConfig(for message: FSMessage) -> MessageReactionConfig? {
+        let caps = appState.capabilities
+        guard caps.messageReactionsEnabled, !vm.isThreadOpen, vm.isSettled(message) else { return nil }
+        let selected = Set((message.reactions ?? []).filter(\.viewerReacted).map(\.emoji))
+        return MessageReactionConfig(
+            quick: caps.reactionEmoji.quick,
+            selected: selected,
+            onPick: { emoji in toggleReaction(emoji, on: message) },
+            onMore: { reactionPickerMessage = message }
+        )
+    }
+
+    private func toggleReaction(_ emoji: String, on message: FSMessage) {
+        let uid = appState.currentUser?.user_id ?? ""
+        Task {
+            do {
+                try await vm.toggleReaction(emoji, on: message, service: appState.service, userId: uid)
+            } catch {
+                // Rolled back by the view model; explicit, non-silent failure.
+                if (error as? FSReactionError) == .termsReacceptRequired { appState.refreshCapabilities(force: true) }
+                showToast((error as? LocalizedError)?.errorDescription ?? "Couldn't update your reaction. Please try again.", seconds: 4)
+            }
+        }
     }
 
     private func rowActions(for message: FSMessage) -> [MessageRowAction] {

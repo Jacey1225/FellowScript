@@ -21,6 +21,7 @@ final class BibleViewModel: ObservableObject {
     @Published var curChapter:  Int       = 1
     @Published var verses:      [(num: Int, text: String)] = []
     @Published var highlights:  [String: String]  = [:]  // "Book-ch-vs" → hex color
+    @Published var reactions:   [String: String]  = [:]  // "Book-ch-vs" → emoji (task 20261009-verse-reactions)
     @Published var bookmarks:   [String: String]  = [:]  // "Book-ch" → label
     @Published var isLoading    = true
     @Published var loadError    = false
@@ -131,7 +132,12 @@ final class BibleViewModel: ObservableObject {
     }
 
     private func loadUserData(userId: String) async {
-        if let hl = try? await service.fetchHighlights(userId: userId) { highlights = hl }
+        // Emoji-capable fetch (task 20261009-verse-reactions); on failure the
+        // existing cached highlights/reactions are kept untouched.
+        if let hl = try? await service.fetchHighlightsWithReactions(userId: userId) {
+            highlights = hl.mapValues(\.color)
+            reactions  = hl.compactMapValues(\.emoji)
+        }
         if let bm = try? await service.fetchBookmarks(userId: userId)   { bookmarks  = bm }
     }
 
@@ -139,7 +145,9 @@ final class BibleViewModel: ObservableObject {
         let book = curBook, chapter = curChapter
         let key = "\(book)-\(chapter)-\(verse)"
         let previous = highlights[key]
+        let previousReaction = reactions[key]
         setHighlight(verse: verse, color: color)   // optimistic
+        reactions.removeValue(forKey: key)          // a plain highlight clears the emoji server-side
         Task {
             do {
                 // saveHighlight now uses checkedRequestRaw (throws on 4xx/5xx)
@@ -149,6 +157,59 @@ final class BibleViewModel: ObservableObject {
                 try await service.saveHighlight(userId: userId, book: book, chapter: chapter, verse: verse, color: color)
             } catch {
                 if let previous { highlights[key] = previous } else { highlights.removeValue(forKey: key) }
+                if let previousReaction { reactions[key] = previousReaction }
+                saveError = error.localizedDescription
+            }
+        }
+    }
+
+    /// Reacts to a verse with `emoji`. Choosing the verse's current emoji again
+    /// removes the reaction (toggle). Keeps an existing highlight color; with no
+    /// color the server stores its neutral default.
+    func persistReaction(verse: Int, emoji: String, userId: String) {
+        let key = "\(curBook)-\(curChapter)-\(verse)"
+        if reactions[key] == emoji {
+            persistRemoveReaction(verse: verse, userId: userId)
+            return
+        }
+        let book = curBook, chapter = curChapter
+        let previous = highlights[key]
+        let previousReaction = reactions[key]
+        let color = previous.flatMap { $0.uppercased() == VerseReactionEmoji.neutralColor ? nil : $0 }
+        highlights[key] = color ?? VerseReactionEmoji.neutralColor   // optimistic
+        reactions[key] = emoji
+        Task {
+            do {
+                try await service.saveVerseReaction(userId: userId, book: book, chapter: chapter, verse: verse,
+                                                    color: color, emoji: emoji)
+            } catch {
+                if let previous { highlights[key] = previous } else { highlights.removeValue(forKey: key) }
+                if let previousReaction { reactions[key] = previousReaction } else { reactions.removeValue(forKey: key) }
+                saveError = error.localizedDescription
+            }
+        }
+    }
+
+    /// Removes only the emoji. A verse that also had a real highlight color keeps
+    /// it (re-saved as a plain highlight); an emoji-only verse is cleared entirely.
+    func persistRemoveReaction(verse: Int, userId: String) {
+        let key = "\(curBook)-\(curChapter)-\(verse)"
+        guard let previousReaction = reactions[key] else { return }
+        let book = curBook, chapter = curChapter
+        let previous = highlights[key]
+        reactions.removeValue(forKey: key)   // optimistic
+        let keptColor = previous.flatMap { $0.uppercased() == VerseReactionEmoji.neutralColor ? nil : $0 }
+        if keptColor == nil { highlights.removeValue(forKey: key) }
+        Task {
+            do {
+                if let keptColor {
+                    try await service.saveHighlight(userId: userId, book: book, chapter: chapter, verse: verse, color: keptColor)
+                } else {
+                    try await service.clearHighlight(userId: userId, key: key)
+                }
+            } catch {
+                reactions[key] = previousReaction
+                if let previous { highlights[key] = previous }
                 saveError = error.localizedDescription
             }
         }
@@ -158,12 +219,15 @@ final class BibleViewModel: ObservableObject {
         let book = curBook, chapter = curChapter
         let key = "\(book)-\(chapter)-\(verse)"
         let previous = highlights[key]
-        clearHighlight(verse: verse)   // optimistic
+        let previousReaction = reactions[key]
+        clearHighlight(verse: verse)   // optimistic (also drops any emoji: one row per verse)
+        reactions.removeValue(forKey: key)
         Task {
             do {
                 try await service.clearHighlight(userId: userId, key: key)
             } catch {
                 if let previous { highlights[key] = previous }
+                if let previousReaction { reactions[key] = previousReaction }
                 saveError = error.localizedDescription
             }
         }
@@ -259,6 +323,10 @@ final class BibleViewModel: ObservableObject {
 
     func isHighlighted(verse: Int) -> String? {
         return highlights["\(curBook)-\(curChapter)-\(verse)"]
+    }
+
+    func reaction(verse: Int) -> String? {
+        reactions["\(curBook)-\(curChapter)-\(verse)"]
     }
 
     func isBookmarked() -> Bool {
@@ -375,6 +443,7 @@ struct BibleReaderView: View {
     @State private var showBookmarks     = false
     @State private var selectedVerse:    Int? = nil
     @State private var showHighlightFor: Int? = nil
+    @State private var moreReactionsVerse: Int? = nil   // verse whose full reaction picker sheet is open
     @State private var addToNoteTarget:  VerseNoteDraft? = nil
     @State private var pendingScrollVerse: Int? = nil
     @State private var contentOpacity:   Double = 1
@@ -468,7 +537,8 @@ struct BibleReaderView: View {
                                             text:          v.text,
                                             fontSize:      fontSize,
                                             highlightHex:  vm.isHighlighted(verse: v.num),
-                                            isSelected:    selectedVerse == v.num
+                                            isSelected:    selectedVerse == v.num,
+                                            reactionEmoji: reactionsOn ? vm.reaction(verse: v.num) : nil
                                         )
                                         .id(v.num)
                                         // Task 20260924-bible-verse-tap-select-removal: a plain tap on
@@ -495,7 +565,16 @@ struct BibleReaderView: View {
                                         .contextMenu {
                                             verseContextMenu(verse: v.num, text: v.text)
                                         }
-                                        .accessibilityLabel("Verse \(v.num): \(v.text)")
+                                        .accessibilityLabel(verseAccessibilityLabel(v.num, v.text))
+                                        .accessibilityActions {
+                                            if reactionsOn {
+                                                reactionAccessibilityActions(
+                                                    emojis: VerseReactionEmoji.quick,
+                                                    selected: selectedReactionSet(v.num),
+                                                    onPick: { react(verse: v.num, emoji: $0) },
+                                                    onMore: { moreReactionsVerse = v.num })
+                                            }
+                                        }
                                     }
                                 }
                                 .padding(.bottom, 60)
@@ -743,6 +822,17 @@ struct BibleReaderView: View {
                 return notesVM.failedSaveMessage()
             }
         }
+        // Full 10-emoji picker (task 20261009-verse-reactions), opened from "More reactions".
+        .sheet(isPresented: Binding(
+            get: { moreReactionsVerse != nil },
+            set: { if !$0 { moreReactionsVerse = nil } }
+        )) {
+            if let verse = moreReactionsVerse {
+                ReactionPickerSheet(emojis: VerseReactionEmoji.allEmoji,
+                                    selected: selectedReactionSet(verse)) { react(verse: verse, emoji: $0) }
+                    .presentationDetents([.medium])
+            }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .fsOpenSubscriptionPlans)) { _ in
             addToNoteTarget = nil
         }
@@ -768,8 +858,45 @@ struct BibleReaderView: View {
         speechController.toggle(text, source: Self.dictationSource)
     }
 
+    /// Verse reactions are shown only when the `verse_reactions` flag is on (capabilities).
+    private var reactionsOn: Bool { appState.capabilities.isEnabled(VerseReactionEmoji.flagName) }
+
+    private func selectedReactionSet(_ verse: Int) -> Set<String> {
+        vm.reaction(verse: verse).map { [$0] } ?? []
+    }
+
+    private func react(verse: Int, emoji: String) {
+        vm.persistReaction(verse: verse, emoji: emoji, userId: appState.currentUser?.user_id ?? "")
+    }
+
+    private func verseAccessibilityLabel(_ num: Int, _ text: String) -> String {
+        var label = "Verse \(num): \(text)"
+        if reactionsOn, let emoji = vm.reaction(verse: num) {
+            label += ", reacted with \(VerseReactionEmoji.name(for: emoji))"
+        } else if vm.isHighlighted(verse: num) != nil {
+            label += ", highlighted"
+        }
+        return label
+    }
+
     @ViewBuilder
     private func verseContextMenu(verse: Int, text: String) -> some View {
+        if reactionsOn {
+            ReactionMenuSection(
+                emojis: VerseReactionEmoji.quick,
+                selected: selectedReactionSet(verse),
+                onPick: { react(verse: verse, emoji: $0) },
+                onMore: { moreReactionsVerse = verse })
+            if vm.reaction(verse: verse) != nil {
+                Button(role: .destructive) {
+                    vm.persistRemoveReaction(verse: verse, userId: appState.currentUser?.user_id ?? "")
+                } label: {
+                    Label("Remove Reaction", systemImage: "face.dashed")
+                }
+                .accessibilityLabel("Remove reaction from verse \(verse)")
+            }
+        }
+
         // Highlight sub-menu — 5 color swatches (matches HighlightPicker)
         Menu("Highlight") {
             ForEach(Theme.highlightHex, id: \.self) { hex in
@@ -929,6 +1056,11 @@ struct VerseRow: View {
     let fontSize:     CGFloat
     let highlightHex: String?
     let isSelected:   Bool
+    var reactionEmoji: String? = nil
+
+    @ScaledMetric(relativeTo: .body) private var badgeSize: CGFloat = 20
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var badgeShown = false
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 4) {
@@ -946,12 +1078,27 @@ struct VerseRow: View {
                 .foregroundColor(Theme.bibleText)
                 .lineSpacing(fontSize * 0.55)
                 .frame(maxWidth: .infinity, alignment: .leading)
+
+            // Reaction badge (task 20261009-verse-reactions): decorative; the
+            // spoken label is on the row and removal is via the menu.
+            if let emoji = reactionEmoji {
+                Text(emoji)
+                    .font(.system(size: badgeSize))
+                    .scaleEffect(reduceMotion || badgeShown ? 1 : 0.8)
+                    .accessibilityHidden(true)
+                    .onAppear {
+                        if reduceMotion { badgeShown = true }
+                        else { withAnimation(.easeOut(duration: 0.18)) { badgeShown = true } }
+                    }
+                    .onDisappear { badgeShown = false }
+            }
         }
         .padding(.horizontal, Theme.spacingLG)
         .padding(.vertical, 6)
         .background(
             Group {
-                if let hex = highlightHex {
+                // Emoji-only reactions store the neutral grey sentinel; never tint it.
+                if let hex = highlightHex, !(reactionEmoji != nil && hex.uppercased() == VerseReactionEmoji.neutralColor) {
                     Color(hex: hex).opacity(0.28)
                 } else if isSelected {
                     Theme.gold.opacity(0.10)
