@@ -603,7 +603,10 @@ final class CallSessionAccessibilityPinTests: XCTestCase {
     func test_dockButtons_haveLabelsHintsAndExpandedValue() throws {
         let dock = try dockSource()
         XCTAssertTrue(dock.contains(".accessibilityLabel(\"End call\")"))
-        XCTAssertTrue(dock.contains(".accessibilityHint(\"Leaves the session\")"))
+        // Rooms: the End hint is a parameter (default unchanged) so it can say
+        // "Leaves the room and the session" while in a room.
+        XCTAssertTrue(dock.contains("var endHint = \"Leaves the session\""))
+        XCTAssertTrue(dock.contains(".accessibilityHint(endHint)"))
         XCTAssertTrue(dock.contains(".accessibilityLabel(\"Session options\")"))
         XCTAssertTrue(dock.contains("\"Expanded\"") && dock.contains("\"Collapsed\""))
         XCTAssertTrue(dock.contains(".accessibilityHint(\"Double tap to show or hide options\")"))
@@ -621,9 +624,17 @@ final class CallSessionAccessibilityPinTests: XCTestCase {
         XCTAssertEqual(rows.components(separatedBy: "CallMenuRow(").count - 1,
                        rows.components(separatedBy: "a11yLabel:").count - 1,
                        "each CallMenuRow must set a11yLabel")
-        for label in ["Ring members", "Share screen", "Discussion prompts", "Camera", "Microphone"] {
+        for label in ["Ring members", "Discussion prompts", "Camera", "Microphone"] {
             XCTAssertTrue(rows.contains("a11yLabel: \"\(label)\""), "missing VoiceOver label: \(label)")
         }
+        // Share screen is intentionally out of the menu list. Rooms (task
+        // 20261009-discussion-rooms) has no hard-coded row: it is appended only
+        // through the gated roomsMenuRow() helper, so it is absent unless the
+        // discussion_rooms flag is on (non-DM) or the user is away from main.
+        XCTAssertFalse(rows.contains("a11yLabel: \"Share screen\""))
+        XCTAssertFalse(rows.contains("a11yLabel: \"Rooms\""), "no unconditional Rooms row in menuRows")
+        XCTAssertTrue(rows.contains("if let roomsRow = roomsMenuRow()"), "Rooms only via the gated helper")
+        XCTAssertTrue(view.contains("guard roomsAvailable || rooms.state.showsBackToMain else { return nil }"))
         // Toggled controls expose state.
         XCTAssertTrue(rows.contains("a11yValue: manager.isCameraOn ? \"On\" : \"Off\""))
         XCTAssertTrue(rows.contains("a11yValue: manager.isMuted ? \"Muted\" : \"On\""))
@@ -663,6 +674,51 @@ final class CallSessionAccessibilityPinTests: XCTestCase {
         XCTAssertTrue(view.contains("enabled: ScreenShareFlag.sendingImplemented && !someoneElse && manager.isConnected"))
         XCTAssertFalse(view.contains("\"Not available yet\""), "the placeholder state was removed when sending shipped")
         XCTAssertTrue(view.contains("is sharing\""))
+    }
+
+    // MARK: - Session call menu polish (source pins)
+
+    func test_promptsPanel_isTranslucent_noTitle_andKeepsA11y() throws {
+        let s = try callSource("FellowScript/Chat/ChimeCallView+Session.swift")
+        XCTAssertTrue(s.contains("Theme.bgPage.opacity(0.45)"))
+        XCTAssertFalse(s.contains("Theme.bgPage.opacity(0.80)"), "opaque panel fill must be gone")
+        XCTAssertFalse(s.contains("Text(\"Discussion Prompts\")"), "visible title removed")
+        XCTAssertFalse(s.contains("\"Discussion Prompts\""))
+        XCTAssertTrue(s.contains(".accessibilityLabel(kind == .prompts ? \"Discussion prompts\" : \"\")"))
+        XCTAssertTrue(s.contains(".accessibilityLabel(\"Close discussion prompts\")"))
+        XCTAssertTrue(s.contains(".frame(width: 44, height: 44)"))
+        XCTAssertTrue(s.contains("\"You are sharing\""), "share header kept")
+    }
+
+    func test_submenu_isCompactPopover() throws {
+        let s = try callSource("FellowScript/Chat/ChimeCallView+Session.swift")
+        guard let r = s.range(of: "struct CallSubmenu") else { XCTFail("CallSubmenu not found"); return }
+        let body = String(s[r.lowerBound...])
+        XCTAssertTrue(body.contains("minHeight: 44"))
+        XCTAssertTrue(body.contains("ViewThatFits"))
+        XCTAssertTrue(body.contains("ScrollView"))
+        XCTAssertTrue(body.contains(".accessibilityAction(.escape, onEscape)"))
+        XCTAssertTrue(body.contains("AccessibilityNotification.LayoutChanged().post()"))
+        XCTAssertTrue(body.contains("popoverMaxWidth"))
+    }
+
+    func test_menuPlacement_anchoredAboveEllipsis_dismissOnOutsideTap_reduceMotion() throws {
+        let v = try callSource("FellowScript/Chat/ChimeCallView.swift")
+        XCTAssertTrue(v.contains("CallDock.width(buttonSize: dockSize)"))
+        XCTAssertTrue(v.contains("CallDock.padding"))
+        XCTAssertTrue(v.contains(".frame(maxWidth: .infinity, alignment: .trailing)"))
+        XCTAssertTrue(v.contains(".onTapGesture { setMenu(expanded: false) }"))
+        XCTAssertTrue(v.contains("reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.9, anchor: .bottomTrailing))"))
+        XCTAssertTrue(v.contains("withMotionAwareAnimation(.easeOut(duration: 0.2), reduceMotion: reduceMotion)"))
+    }
+
+    func test_shareRow_hiddenFromMenu_butGatedCodeRemains() throws {
+        let v = try callSource("FellowScript/Chat/ChimeCallView.swift")
+        XCTAssertTrue(v.contains("private static let showsShareRow = false"))
+        XCTAssertTrue(v.contains("if Self.showsShareRow, let share = shareMenuRow() { rows.append(share) }"))
+        XCTAssertTrue(v.contains("private func shareMenuRow() -> CallMenuRow?"))
+        XCTAssertTrue(v.contains("ScreenShareFlag.isEnabled(capabilities)"))
+        XCTAssertTrue(v.contains("ScreenShareFlag.sendingImplemented"))
     }
 }
 

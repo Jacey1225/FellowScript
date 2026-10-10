@@ -17,6 +17,8 @@ struct CallDock: View {
     let buttonSize: CGFloat
     let onEnd: () -> Void
     let onToggleMenu: () -> Void
+    /// "Leaves the room and the session" while inside a discussion room.
+    var endHint = "Leaves the session"
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -37,7 +39,7 @@ struct CallDock: View {
                 .frame(width: buttonSize, height: buttonSize)
             }
             .accessibilityLabel("End call")
-            .accessibilityHint("Leaves the session")
+            .accessibilityHint(endHint)
 
             Button(action: onToggleMenu) {
                 ZStack {
@@ -91,6 +93,10 @@ struct CallMenuRow: Identifiable {
     let action: () -> Void
 }
 
+/// Compact popover anchored directly above the dock's ellipsis button (the
+/// caller trailing-aligns it to that button). One translucent rounded container
+/// holding compact rows; the row list stays data-driven, so adding an entry
+/// (e.g. a future Rooms row) is a one-element change in `menuRows()`.
 struct CallSubmenu: View {
     /// Top to bottom; the row nearest the dock (thumb) is last.
     let rows: [CallMenuRow]
@@ -98,15 +104,18 @@ struct CallSubmenu: View {
     let maxHeight: CGFloat
     let onEscape: () -> Void
 
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var shown = false
+    @ScaledMetric(relativeTo: .body) private var popoverMaxWidth: CGFloat = 250
+    private static let cornerRadius: CGFloat = 16
 
     var body: some View {
         ViewThatFits(in: .vertical) {
             stack
             ScrollView(showsIndicators: false) { stack }
         }
-        .frame(maxHeight: maxHeight)
+        .frame(maxWidth: popoverMaxWidth, maxHeight: maxHeight)
+        .background(RoundedRectangle(cornerRadius: Self.cornerRadius, style: .continuous).fill(Theme.bgPage.opacity(0.82)))
+        .overlay(RoundedRectangle(cornerRadius: Self.cornerRadius, style: .continuous).stroke(Theme.borderGold, lineWidth: 1))
+        .clipShape(RoundedRectangle(cornerRadius: Self.cornerRadius, style: .continuous))
         .accessibilityElement(children: .contain)
         .accessibilityAction(.escape, onEscape)
         .onAppear {
@@ -115,61 +124,54 @@ struct CallSubmenu: View {
     }
 
     private var stack: some View {
-        VStack(alignment: .trailing, spacing: 8) {
-            ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
-                rowView(row, index: index)
+        VStack(alignment: .leading, spacing: 2) {
+            ForEach(rows) { row in
+                rowView(row)
             }
         }
-        .padding(.vertical, 2)
+        .padding(6)
     }
 
-    private func rowView(_ row: CallMenuRow, index: Int) -> some View {
+    private func rowView(_ row: CallMenuRow) -> some View {
         Button(action: row.action) {
             HStack(spacing: 10) {
                 Image(systemName: row.icon)
-                    .font(.system(size: 20, weight: .regular))
+                    .font(.system(size: 18, weight: .regular))
                     .foregroundColor(Theme.textPrimary)
-                    .frame(width: 26)
+                    .frame(width: 24)
                 VStack(alignment: .leading, spacing: 1) {
                     HStack(spacing: 6) {
                         Text(row.title)
                             .font(.interScaled(Theme.fontSM, weight: .semibold, relativeTo: .subheadline))
-                            .foregroundColor(Theme.textPrimary).lineLimit(2)
+                            .foregroundColor(Theme.textPrimary)
+                            .fixedSize(horizontal: false, vertical: true)
                         if let word = row.stateWord {
                             Text(word)
                                 .font(.interScaled(Theme.fontXS, relativeTo: .caption))
-                                .foregroundColor(Theme.textPrimary.opacity(0.85)).lineLimit(1)
+                                .foregroundColor(Theme.textPrimary.opacity(0.85))
+                                .fixedSize(horizontal: false, vertical: true)
                         }
                     }
                     if let caption = row.caption {
                         Text(caption)
                             .font(.interScaled(Theme.fontXS, relativeTo: .caption))
-                            .foregroundColor(Theme.textPrimary.opacity(0.85)).lineLimit(2)
+                            .foregroundColor(Theme.textPrimary.opacity(0.85))
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
+                Spacer(minLength: 0)
             }
-            .padding(.horizontal, 16).padding(.vertical, 8)
-            .frame(minHeight: isCompact ? 48 : 56)
-            .background(Capsule().fill(Theme.bgPage.opacity(0.72)))
-            .background(Capsule().fill(row.tint))
-            .overlay(Capsule().stroke(Theme.borderGold, lineWidth: 1))
+            .padding(.horizontal, 12).padding(.vertical, 6)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(row.tint))
+            .contentShape(Rectangle())
             .opacity(row.enabled ? 1 : 0.55)
         }
+        .buttonStyle(.plain)
         .disabled(!row.enabled)
         .accessibilityLabel(row.a11yLabel)
         .accessibilityValue(row.a11yValue ?? "")
         .accessibilityHint(row.a11yHint ?? "")
-        // Rows rise in with a short stagger (opacity only under Reduce Motion).
-        .opacity(shown ? 1 : 0)
-        .scaleEffect(shown || reduceMotion ? 1 : 0.92)
-        .onAppear {
-            let delay = reduceMotion ? 0 : Double(rows.count - 1 - index) * 0.03
-            if reduceMotion {
-                withAnimation(.easeInOut(duration: 0.15)) { shown = true }
-            } else {
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.82).delay(delay)) { shown = true }
-            }
-        }
     }
 }
 
@@ -269,6 +271,8 @@ struct CallContentArea: View {
     var onStopSharing: () -> Void = {}
     let isCompact: Bool
     let onClosePrompts: () -> Void
+    /// Rooms inherit the main session's prompts; "From the main session" shows in a room.
+    var inheritedNote: String? = nil
 
     @State private var emphasized: Set<Int> = []   // local only, never synced
 
@@ -284,18 +288,32 @@ struct CallContentArea: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .background(RoundedRectangle(cornerRadius: Theme.radiusXL, style: .continuous).fill(Theme.bgPage.opacity(0.80)))
+        // Translucent, never solid: the breathing gold shows through. Text stays
+        // >= 9:1 (#F5EAD0 on the brightest background point, ~#483518 under this
+        // scrim, is darker still with the fill), well past the AA 4.5:1 floor.
+        .background(RoundedRectangle(cornerRadius: Theme.radiusXL, style: .continuous).fill(Theme.bgPage.opacity(0.45)))
         .overlay(RoundedRectangle(cornerRadius: Theme.radiusXL, style: .continuous).stroke(Theme.borderGold, lineWidth: 1))
         .topEdgeHighlight(RoundedRectangle(cornerRadius: Theme.radiusXL, style: .continuous))
         .clipShape(RoundedRectangle(cornerRadius: Theme.radiusXL, style: .continuous))
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(kind == .prompts ? "Discussion prompts" : "")
     }
 
     private var header: some View {
         HStack {
-            Text(kind == .share ? (sharerIsSelf ? "You are sharing" : "\(sharerName ?? "Someone") is sharing") : "Discussion Prompts")
-                .font(.playfair(Theme.fontHeading)).foregroundColor(Theme.goldLight)
-                .lineLimit(2)
-                .accessibilityAddTraits(.isHeader)
+            // The prompts panel has no visible title (the container carries the
+            // "Discussion prompts" VoiceOver label instead); share keeps its header.
+            if kind == .prompts, let note = inheritedNote {
+                Text(note)
+                    .font(.interScaled(Theme.fontXS, relativeTo: .caption))
+                    .foregroundColor(Theme.textPrimary.opacity(0.85))
+            }
+            if kind == .share {
+                Text(sharerIsSelf ? "You are sharing" : "\(sharerName ?? "Someone") is sharing")
+                    .font(.playfair(Theme.fontHeading)).foregroundColor(Theme.goldLight)
+                    .lineLimit(2)
+                    .accessibilityAddTraits(.isHeader)
+            }
             Spacer()
             if kind == .prompts {
                 Button(action: onClosePrompts) {

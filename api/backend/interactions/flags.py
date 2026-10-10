@@ -131,6 +131,13 @@ register("announcement_links")
 register("announcement_gallery")
 register("announcement_payments")
 register("announcement_rsvp")
+# In-call screen share SENDING (task 20261009-session-ui-redesign). Client gate for the
+# Share Screen control; receiving content shares is always on. Ships OFF.
+register("screen_share_enabled")
+# Discussion rooms: private breakout Chime meetings tied to a live session (task
+# 20261009-discussion-rooms). Gates every /session-rooms route (flag off = uniform 404)
+# and the iOS UI via capabilities. Canary allowed. Ships OFF.
+register("discussion_rooms")
 
 
 def _load_snapshot() -> dict[str, tuple[str, frozenset[str]]]:

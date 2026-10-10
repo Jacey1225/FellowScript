@@ -178,6 +178,13 @@ final class CallParticipantNames: ObservableObject {
     @Published private(set) var names: [String: String] = [:]
     private var inFlight = Set<String>()
 
+    /// Task 20261009-discussion-rooms: pre-fills names the room list already
+    /// carries so a room's bubbles are named immediately. Never overwrites a
+    /// resolved name.
+    func seed(_ pairs: [String: String]) {
+        for (id, name) in pairs where !id.isEmpty && !name.isEmpty && names[id] == nil { names[id] = name }
+    }
+
     func resolve(ids: [String], service: DataServiceProtocol?, selfId: String) {
         guard let service else { return }
         for id in ids where !id.isEmpty && id != selfId && names[id] == nil && !inFlight.contains(id) {

@@ -1,0 +1,22 @@
+{
+  "session_rooms": {
+    "max_members_per_room": 8,
+    "max_rooms_per_session": 6,
+    "max_creates_per_user_per_minute": 3,
+    "title_max_length": 40,
+    "max_invites_per_room": 50,
+    "member_stale_seconds": 90,
+    "empty_grace_seconds": 300,
+    "ended_retention_seconds": 86400,
+    "lock_timeout_ms": 3000,
+    "sweep_interval_seconds": 60,
+    "sweep_chime_checks_per_run": 5,
+    "rate_limits": {
+      "create": "6/minute",
+      "join": "20/minute",
+      "list": "60/minute",
+      "heartbeat": "30/minute",
+      "other": "30/minute"
+    }
+  }
+}

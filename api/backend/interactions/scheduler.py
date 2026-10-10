@@ -781,16 +781,33 @@ def _delete_session_if_still_candidate(db, session_id: str, chime_meeting_id: st
     to match either way -- the TOCTOU race protection this re-check exists
     for is unchanged.
     """
+    # Task 20261009-discussion-rooms: never delete a session that still has a live
+    # member in one of its rooms (checked atomically here, same statement as the
+    # DELETE; the main meeting being empty/reaped says nothing about room presence).
+    # Room rows cascade; their Chime meetings are collected first and torn down
+    # best-effort after a successful delete.
+    from backend.interactions import session_rooms as _rooms
+    from backend.interactions.session_rooms_config import get_session_rooms_config
+
+    stale = get_session_rooms_config().member_stale_seconds
+    db.cur.execute(
+        "SELECT chime_meeting_id FROM session_rooms WHERE session_id = %s AND chime_meeting_id <> ''",
+        (session_id,),
+    )
+    room_meetings = [r[0] for r in db.cur.fetchall()]
     db.cur.execute(
         "DELETE FROM devotions WHERE _id = %s "
         "AND recurring = FALSE "
         "AND time_end IS NOT NULL "
         "AND time_end <= NOW() - (%s * INTERVAL '1 second') "
-        "AND COALESCE(chime_meeting_id, '') = %s",
-        (session_id, SESSION_AUTO_DELETE_GRACE_SECONDS, chime_meeting_id),
+        "AND COALESCE(chime_meeting_id, '') = %s "
+        "AND NOT " + _rooms.session_room_occupied_sql("devotions._id"),
+        (session_id, SESSION_AUTO_DELETE_GRACE_SECONDS, chime_meeting_id, stale),
     )
     deleted = db.cur.rowcount > 0
     db.conn.commit()
+    if deleted and room_meetings:
+        _rooms.teardown_meetings_best_effort(room_meetings)
     return deleted
 
 
@@ -1051,14 +1068,26 @@ def _advance_recurring_session_if_still_candidate(
     repopulated with a real meeting id still fails to match either way --
     the TOCTOU race protection this re-check exists for is unchanged.
     """
+    # Task 20261009-discussion-rooms: a session with a live room member is not
+    # advanced out from under them (same atomic guard as the auto-delete); once it
+    # does advance, every room of the finished occurrence ends in the SAME
+    # transaction (the rooms sweeper tears down their Chime meetings).
+    from backend.interactions import session_rooms as _rooms
+    from backend.interactions.session_rooms_config import get_session_rooms_config
+
+    stale = get_session_rooms_config().member_stale_seconds
     db.cur.execute(
         "UPDATE devotions SET time_start = %s, time_end = %s, "
         "reminder_sent_at = NULL, chime_meeting_id = '', chime_meeting = '{}' "
         "WHERE _id = %s AND recurring = TRUE AND time_end = %s "
-        "AND COALESCE(chime_meeting_id, '') = %s",
-        (new_time_start, new_time_end, session_id, expected_time_end, expected_chime_meeting_id),
+        "AND COALESCE(chime_meeting_id, '') = %s "
+        "AND NOT " + _rooms.session_room_occupied_sql("devotions._id"),
+        (new_time_start, new_time_end, session_id, expected_time_end, expected_chime_meeting_id, stale),
     )
     advanced = db.cur.rowcount > 0
+    if advanced:
+        for stmt in _rooms.end_rooms_for_session_sql():
+            db.cur.execute(stmt, (session_id,))
     db.conn.commit()
     return advanced
 
@@ -1375,5 +1404,14 @@ def start_scheduler() -> None:
     )
     scheduler.add_job(run_join_request_sweeper_job, "interval", seconds=JOIN_REQUEST_SWEEP_INTERVAL,
                       id=JOIN_REQUEST_SWEEP_JOB_ID, replace_existing=True)
+    # Discussion rooms: end empty/orphaned rooms, delete their Chime meetings, purge
+    # old rows (R-SCHED: thin async job, DB + Chime work in an executor). Runs even
+    # while the discussion_rooms flag is off.
+    from backend.interactions.session_rooms_sweeper import (
+        JOB_ID as SESSION_ROOMS_SWEEP_JOB_ID, run_session_rooms_sweeper_job,
+    )
+    from backend.interactions.session_rooms_config import get_session_rooms_config as _rooms_cfg
+    scheduler.add_job(run_session_rooms_sweeper_job, "interval", seconds=_rooms_cfg().sweep_interval_seconds,
+                      id=SESSION_ROOMS_SWEEP_JOB_ID, replace_existing=True)
     scheduler.start()
     logger.info("Notification scheduler started — checking every minute")

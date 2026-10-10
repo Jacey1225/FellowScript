@@ -105,6 +105,12 @@ def check_email_verification_config() -> None:
     validate_email_verification_config()
 
 
+def check_session_rooms_config() -> None:
+    from backend.interactions.session_rooms_config import validate_session_rooms_config
+
+    validate_session_rooms_config()
+
+
 CHECKS = (
     check_flag_registry,
     check_chat_pagination_config,
@@ -121,6 +127,7 @@ CHECKS = (
     check_content_encryption_keys,
     check_content_encryption_config,
     check_email_verification_config,
+    check_session_rooms_config,
 )
 
 

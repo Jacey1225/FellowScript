@@ -7,6 +7,7 @@ from routes.messaging import ws_router, chime_router
 from routes.community import group_router, friend_router
 from routes.filtering import filter_router, sorting_router
 from routes.devotion import devo_router
+from routes.session_rooms import session_rooms_router
 from routes.agent import agent_router
 from routes.notifications import notification_router
 from routes.subscription import subscription_router
@@ -382,6 +383,7 @@ app.include_router(friend_router)
 app.include_router(filter_router)
 app.include_router(sorting_router)
 app.include_router(devo_router)
+app.include_router(session_rooms_router)
 app.include_router(agent_router)
 app.include_router(notification_router)
 app.include_router(subscription_router)

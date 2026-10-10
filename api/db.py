@@ -93,6 +93,7 @@ DDL_MODULES = (
     "affiliate_payouts",
     "email_verification",
     "content_encryption",
+    "session_rooms",
 )
 
 

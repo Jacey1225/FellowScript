@@ -993,7 +993,16 @@ final class ThrowingTestDataService: DataServiceProtocol {
         try await MockDataService.shared.registerVoipDeviceToken(userId: userId, token: token)
     }
 
+    // Task 20261009-discussion-rooms testing: scripted main join-call result
+    // (nil = forward to the mock as before) and the rooms API script used by
+    // the SessionRoomsServiceProtocol conformance in CallRoomStateTests.swift.
+    var joinCallResult: Result<ChimeJoinResponse, Error>?
+    var joinCallCount = 0
+    var roomsScript = RoomsScript()
+
     func joinCall(userId: String, sessionId: String) async throws -> ChimeJoinResponse {
+        joinCallCount += 1
+        if let r = joinCallResult { return try r.get() }
         return try await MockDataService.shared.joinCall(userId: userId, sessionId: sessionId)
     }
 

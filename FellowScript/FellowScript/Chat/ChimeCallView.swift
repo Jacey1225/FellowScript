@@ -57,6 +57,10 @@ final class CallController: ObservableObject {
     // summarizeNotice/AccountViewModel.eventFireMsg.
     @Published var ringDeliveryNotice: String? = nil
 
+    // Task 20261009-discussion-rooms: room-switch state + heartbeat. Never
+    // touches `session` (the MAIN session) or the CallKit call.
+    let rooms = CallRoomController()
+
     #if canImport(AmazonChimeSDK)
     let manager = ChimeCallManager()
     #endif
@@ -80,7 +84,10 @@ final class CallController: ObservableObject {
         self.userId     = userId
         self.joinError  = nil
         self.isExpanded = true
+        rooms.configure(service: service, userId: userId, sessionId: session.id)
+        rooms.onMainEnded = { [weak self] in self?.end() }
         #if canImport(AmazonChimeSDK)
+        rooms.switchMeeting = { [weak self] response in self?.manager.switchMeeting(response: response) }
         Task { @MainActor in
             do {
                 let resp = try await service.joinCall(userId: userId, sessionId: session.id)
@@ -103,6 +110,8 @@ final class CallController: ObservableObject {
         let endingService = service
         let endingUserId  = userId
 
+        // Best-effort room leave + heartbeat stop before teardown; never blocks ending.
+        rooms.callEnded()
         #if canImport(AmazonChimeSDK)
         manager.leave()
         #endif
@@ -227,6 +236,14 @@ struct MinimizedCallBar: View {
     static let bottomInset: CGFloat = 56
 
     @ObservedObject private var call = CallController.shared
+    @ObservedObject private var rooms = CallController.shared.rooms
+
+    private var subtitle: String {
+        if let name = rooms.state.currentRoomName ?? rooms.state.roomName, rooms.state.showsBackToMain {
+            return "In \(name) \u{00B7} tap to return"
+        }
+        return "Tap to return to call"
+    }
 
     var body: some View {
         HStack(spacing: 12) {
@@ -240,13 +257,16 @@ struct MinimizedCallBar: View {
                         Text(call.session?.title ?? "In call")
                             .font(.inter(Theme.fontSM, weight: .semibold))
                             .foregroundColor(.white).lineLimit(1)
-                        Text("Tap to return to call")
+                        Text(subtitle)
                             .font(.inter(Theme.fontXXS)).foregroundColor(.white.opacity(0.60))
+                            .lineLimit(1).truncationMode(.tail)
                     }
                 }
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Return to call \(call.session?.title ?? "")")
+            .accessibilityLabel(rooms.state.showsBackToMain
+                ? "Return to call \(call.session?.title ?? ""), in room \(rooms.state.currentRoomName ?? rooms.state.roomName ?? "")"
+                : "Return to call \(call.session?.title ?? "")")
 
             Spacer(minLength: 8)
 
@@ -307,6 +327,9 @@ final class ChimeCallManager: NSObject, ObservableObject {
 
     private var meetingSession: DefaultMeetingSession?
     private var myAttendeeId:   String = ""
+    // Task 20261009-discussion-rooms: mute / camera INTENT carried across a
+    // meeting swap, re-applied once the new audio session is up.
+    private var pendingCameraRestore = false
 
     func join(response: ChimeJoinResponse) {
         // Rebuild the SDK's meeting/attendee models from our Codable response,
@@ -368,6 +391,34 @@ final class ChimeCallManager: NSObject, ObservableObject {
                 }
             }
         }
+    }
+
+    /// Task 20261009-discussion-rooms: swaps the Chime meeting (main <-> room)
+    /// WITHOUT ending the call. Unlike `leave()` it keeps `isMuted` and camera
+    /// intent (mute must never silently flip to unmuted in a new room), and it
+    /// never touches AVAudioSession (Chime owns it; speaker routing is redone
+    /// by `audioSessionDidStart`). CallKit is not involved: the CXCall belongs
+    /// to the main session. The caller has ALREADY obtained `response` from the
+    /// backend, so a join failure can never reach this point.
+    func switchMeeting(response: ChimeJoinResponse) {
+        let wasSharing = screenShare.isActive
+        let cameraWasOn = isCameraOn
+        stopScreenShare(notify: false)
+        if wasSharing { showScreenShareNotice(RoomCopy.screenShareStopped) }
+        if let old = meetingSession {
+            // Silence the outgoing session's callbacks so its late stop events
+            // can't flip state while the new session connects.
+            old.audioVideo.removeAudioVideoObserver(observer: self)
+            old.audioVideo.removeVideoTileObserver(observer: self)
+            old.audioVideo.removeRealtimeObserver(observer: self)
+            old.audioVideo.stop()
+        }
+        meetingSession = nil
+        isConnected = false; isCameraOn = false
+        localTileId = nil; remoteTileIds = []; remoteAttendeeIds = []
+        tileAttendeeIds = [:]; externalUserIds = [:]; contentShare.reset()
+        pendingCameraRestore = cameraWasOn
+        join(response: response)
     }
 
     func toggleMute() {
@@ -530,6 +581,15 @@ extension ChimeCallManager: AudioVideoObserver {
                 .first(where: { $0.type == .audioBuiltInSpeaker }) {
                 self.meetingSession?.audioVideo.chooseAudioDevice(mediaDevice: speaker)
             }
+            // Re-apply intent carried across a room switch (see switchMeeting).
+            if self.isMuted { _ = self.meetingSession?.audioVideo.realtimeLocalMute() }
+            if self.pendingCameraRestore {
+                self.pendingCameraRestore = false
+                if let av = self.meetingSession?.audioVideo {
+                    do { try av.startLocalVideo(); self.isCameraOn = true }
+                    catch { print("Camera resume error: \(error.localizedDescription)") }
+                }
+            }
         }
     }
     // Task 20260916-call-background-persistence, Security Posture Q14
@@ -635,6 +695,8 @@ struct ChimeVideoTileView: UIViewRepresentable {
 struct ChimeCallView: View {
     @ObservedObject private var call    = CallController.shared
     @ObservedObject private var manager = CallController.shared.manager
+    // Task 20261009-discussion-rooms: room-switch state (see CallRoomController).
+    @ObservedObject private var rooms   = CallController.shared.rooms
     @Environment(\.fsCapabilities) private var capabilities
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -642,6 +704,7 @@ struct ChimeCallView: View {
     // RingMembersSheet.swift), the member picker + multi-select ring action
     // this design spec's §2 describes.
     @State private var showRingSheet = false
+    @State private var showRoomsSheet = false
     // Task 20261009-session-ui-redesign: submenu + prompts-panel state, names, and
     // on-screen tracking for the breathing background.
     @State private var interactions = CallInteractionsState()
@@ -675,6 +738,7 @@ struct ChimeCallView: View {
         .onAppear { onScreen = true; resolveNames() }
         .onDisappear { onScreen = false }
         .onReceive(manager.$externalUserIds) { _ in resolveNames() }
+        .onReceive(rooms.$seedNames) { names.seed($0) }
         .onChange(of: manager.contentShareTileId) { old, new in
             // Announce share start/stop to VoiceOver.
             let who = manager.sharerIsSelf ? "You" : (sharerName ?? "Someone")
@@ -684,6 +748,11 @@ struct ChimeCallView: View {
         .sheet(isPresented: $showRingSheet) {
             if let session = call.session, let service = call.service {
                 RingMembersSheet(session: session, service: service, userId: call.userId)
+            }
+        }
+        .sheet(isPresented: $showRoomsSheet) {
+            if let session = call.session {
+                RoomsSheet(session: session, rooms: rooms, userId: call.userId, service: call.service)
             }
         }
     }
@@ -784,7 +853,8 @@ struct ChimeCallView: View {
             kind: contentKind, prompts: CallPromptsSource.prompts(from: call.session),
             shareTileId: manager.contentShareTileId, sharerName: sharerName, manager: manager,
             sharerIsSelf: manager.sharerIsSelf, onStopSharing: { manager.stopScreenShare() },
-            isCompact: compact, onClosePrompts: { withMotionAwareAnimation(layoutSpring, reduceMotion: reduceMotion) { interactions.closePrompts() } })
+            isCompact: compact, onClosePrompts: { withMotionAwareAnimation(layoutSpring, reduceMotion: reduceMotion) { interactions.closePrompts() } },
+            inheritedNote: rooms.state.showsBackToMain ? "From the main session" : nil)
         return VStack(spacing: 0) {
             headerStack(topPadding: compact || landscape ? 16 : 56)
             if landscape {
@@ -816,54 +886,54 @@ struct ChimeCallView: View {
             }
             VStack(spacing: 12) {
                 if interactions.isExpanded {
+                    // Compact popover: trailing edge aligned with the ellipsis button
+                    // (right button of the centered dock), small gap above the dock.
                     CallSubmenu(rows: menuRows(), isCompact: compact,
                                 maxHeight: geo.size.height * (dynamicTypeSize.isAccessibilitySize ? 0.55 : 0.70),
                                 onEscape: { setMenu(expanded: false) })
                         .frame(maxWidth: .infinity, alignment: .trailing)
                         .padding(.trailing, max((geo.size.width - CallDock.width(buttonSize: dockSize)) / 2 + CallDock.padding, 16))
-                        .transition(reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .bottom)))
+                        // Reduce Motion: opacity only. Otherwise a short eased pop from the ellipsis corner.
+                        .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.9, anchor: .bottomTrailing)))
                 }
                 CallDock(isMuted: manager.isMuted, isExpanded: interactions.isExpanded, buttonSize: dockSize,
                          onEnd: { call.end() },
-                         onToggleMenu: { setMenu(expanded: !interactions.isExpanded) })
+                         onToggleMenu: { setMenu(expanded: !interactions.isExpanded) },
+                         endHint: rooms.state.showsBackToMain ? "Leaves the room and the session" : "Leaves the session")
             }
             .padding(.bottom, 12)
         }
     }
 
     private func setMenu(expanded: Bool) {
-        withMotionAwareAnimation(.spring(response: 0.35, dampingFraction: 0.82), reduceMotion: reduceMotion) {
+        withMotionAwareAnimation(.easeOut(duration: 0.2), reduceMotion: reduceMotion) {
             interactions.isExpanded = expanded
         }
     }
 
-    private func menuRows() -> [CallMenuRow] {
-        var rows: [CallMenuRow] = []
-        if canRing {
-            rows.append(CallMenuRow(
-                id: "ring", icon: "bell", title: "Ring", a11yLabel: "Ring members",
-                a11yHint: "Invites members to join the call",
-                action: { interactions.didTapActionItem(); showRingSheet = true }))
-        }
+    /// Intentionally not shown in the popover for now; flip to re-enable.
+    private static let showsShareRow = false
+
+    private func shareMenuRow() -> CallMenuRow? {
         // The row stays reachable while a share is active even if the server flag
         // flips off mid-call: stopping must always be possible.
         if ScreenShareFlag.isEnabled(capabilities) || manager.screenShare.isActive {
             let someoneElse = manager.contentShareTileId != nil && !manager.sharerIsSelf
             let phase = manager.screenShare.phase
             if phase == .sharing {
-                rows.append(CallMenuRow(
+                return CallMenuRow(
                     id: "share", icon: "rectangle.on.rectangle.slash", title: "Stop sharing",
                     tint: Theme.error.opacity(0.45),
                     a11yLabel: "Stop sharing your screen",
-                    action: { interactions.didTapActionItem(); manager.stopScreenShare() }))
+                    action: { interactions.didTapActionItem(); manager.stopScreenShare() })
             } else if phase != .idle {
-                rows.append(CallMenuRow(
+                return CallMenuRow(
                     id: "share", icon: "rectangle.on.rectangle", title: "Share screen",
                     caption: "Starting\u{2026}", enabled: false,
                     a11yLabel: "Share screen", a11yValue: "Starting",
-                    action: { interactions.didTapActionItem() }))
+                    action: { interactions.didTapActionItem() })
             } else {
-                rows.append(CallMenuRow(
+                return CallMenuRow(
                     id: "share", icon: "rectangle.on.rectangle", title: "Share screen",
                     caption: someoneElse ? "\(sharerName ?? "Someone") is sharing" : nil,
                     enabled: ScreenShareFlag.sendingImplemented && !someoneElse && manager.isConnected,
@@ -875,9 +945,57 @@ struct ChimeCallView: View {
                         if manager.beginScreenShare(flagEnabled: ScreenShareFlag.isEnabled(capabilities)) {
                             pickerTrigger += 1
                         }
-                    }))
+                    })
             }
         }
+        return nil
+    }
+
+    /// Rooms row gate: server flag on AND not a DM session (fail-closed).
+    private var roomsAvailable: Bool { RoomsFlag.isAvailable(capabilities, session: call.session) }
+
+    /// "Back to main" is reachable whenever the user is away from main, even if
+    /// the server flag flipped off mid-call: exits must always be reachable.
+    private func backToMainRow() -> CallMenuRow? {
+        guard rooms.state.showsBackToMain else { return nil }
+        let name = rooms.state.currentRoomName ?? "the room"
+        return CallMenuRow(
+            id: "back-to-main", icon: "arrow.uturn.backward", title: "Back to main",
+            caption: "Leaves \(name)", tint: Theme.goldDim.opacity(0.35),
+            enabled: { if case .returning = rooms.state { return false } else { return true } }(),
+            a11yLabel: "Back to main session", a11yHint: "Leaves \(name) and returns to the main audio",
+            action: { interactions.didTapActionItem(); Task { await rooms.returnToMain() } })
+    }
+
+    private func roomsMenuRow() -> CallMenuRow? {
+        guard roomsAvailable || rooms.state.showsBackToMain else { return nil }
+        let inRoom = rooms.state.showsBackToMain
+        let roomName = rooms.state.currentRoomName
+        let ready = manager.isConnected || inRoom
+        return CallMenuRow(
+            id: "rooms", icon: "person.2.wave.2.fill", title: "Rooms",
+            caption: inRoom ? "In \(roomName ?? "a room")" : (ready ? nil : "Connecting\u{2026}"),
+            tint: inRoom ? Theme.gold.opacity(0.55) : Theme.goldDim.opacity(0.35),
+            enabled: ready,
+            a11yLabel: "Rooms", a11yValue: inRoom ? "In \(roomName ?? "a room")" : "Not in a room",
+            a11yHint: "Opens the list of discussion rooms",
+            action: { interactions.didTapActionItem(); showRoomsSheet = true })
+    }
+
+    private func menuRows() -> [CallMenuRow] {
+        var rows: [CallMenuRow] = []
+        if let back = backToMainRow() { rows.append(back) }
+        if canRing {
+            rows.append(CallMenuRow(
+                id: "ring", icon: "bell", title: "Ring", a11yLabel: "Ring members",
+                a11yHint: "Invites members to join the call",
+                action: { interactions.didTapActionItem(); showRingSheet = true }))
+        }
+        // Rooms sits between Ring and Share (design-notes.md section 1). Screen
+        // share is intentionally out of the menu for now; its row logic and flag
+        // gating below are kept so re-enabling is a one-constant change.
+        if let roomsRow = roomsMenuRow() { rows.append(roomsRow) }
+        if Self.showsShareRow, let share = shareMenuRow() { rows.append(share) }
         rows.append(CallMenuRow(
             id: "prompts", icon: "text.bubble", title: "Prompts",
             tint: interactions.promptsOpen ? Theme.gold.opacity(0.55) : Theme.goldDim.opacity(0.35),
@@ -904,7 +1022,9 @@ struct ChimeCallView: View {
         VStack(spacing: 14) {
             Image(systemName: manager.isConnected ? "person.crop.circle.badge.clock" : "wifi")
                 .font(.system(size: 52, weight: .ultraLight)).foregroundColor(Theme.textPrimary.opacity(0.30))
-            Text(manager.isConnected ? "Waiting for others to join…" : "Connecting…")
+            Text(!manager.isConnected ? "Connecting…"
+                 : (rooms.state.isInRoom ? "You\u{2019}re the first one here. Others can join from Rooms."
+                                         : "Waiting for others to join…"))
                 .foregroundColor(Theme.textPrimary.opacity(0.85)).font(.inter(Theme.fontSM))
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -950,12 +1070,18 @@ struct ChimeCallView: View {
             .accessibilityLabel("Minimize call")
 
             VStack(alignment: .leading, spacing: 3) {
-                Text(call.session?.title ?? "Study Session")
+                Text(rooms.state.currentRoomName ?? call.session?.title ?? "Study Session")
                     .font(.inter(Theme.fontBody, weight: .semibold)).foregroundColor(Theme.textPrimary)
+                if let sub = roomSubline {
+                    Text(sub)
+                        .font(.inter(Theme.fontXS)).foregroundColor(Theme.textPrimary.opacity(0.85))
+                        .lineLimit(1).truncationMode(.tail)
+                        .accessibilityLabel(roomSublineA11y)
+                }
                 HStack(spacing: 8) {
                     HStack(spacing: 5) {
-                        Circle().fill(manager.isConnected ? Color.green : Color.orange).frame(width: 6, height: 6)
-                        Text(manager.isConnected ? "Connected" : "Connecting…")
+                        Circle().fill(headerConnected ? Color.green : Color.orange).frame(width: 6, height: 6)
+                        Text(headerConnectionText)
                             .font(.inter(Theme.fontXS)).foregroundColor(Theme.textPrimary.opacity(0.85))
                     }
                     if manager.isMuted {
@@ -977,6 +1103,27 @@ struct ChimeCallView: View {
         .background(LinearGradient(colors: [Theme.bgPage.opacity(0.80), .clear], startPoint: .top, endPoint: .bottom))
     }
 
+    private var headerConnected: Bool {
+        if case .returnFailed = rooms.state { return false }
+        return manager.isConnected
+    }
+
+    private var headerConnectionText: String {
+        if case .returnFailed = rooms.state { return "Reconnecting…" }
+        return manager.isConnected ? "Connected" : "Connecting…"
+    }
+
+    private var roomSubline: String? {
+        if case .joining(_, let name) = rooms.state { return "Joining \(name)\u{2026}" }
+        if rooms.state.showsBackToMain { return "In room \u{00B7} \(call.session?.title ?? "Session")" }
+        return nil
+    }
+
+    private var roomSublineA11y: String {
+        if case .joining(_, let name) = rooms.state { return "Joining \(name)" }
+        return "In room \(rooms.state.currentRoomName ?? ""), session \(call.session?.title ?? "")"
+    }
+
     /// Header plus the pinned "Sharing your screen" pill (design-notes.md section 5)
     /// and the fail-soft notice, so every layout shows them identically.
     private func headerStack(topPadding: CGFloat) -> some View {
@@ -990,6 +1137,30 @@ struct ChimeCallView: View {
             if let notice = manager.screenShareNotice {
                 ScreenShareNotice(text: notice).padding(.bottom, 8)
                     .frame(maxWidth: .infinity, alignment: .leading).padding(.leading, 20)
+            }
+            // Task 20261009-discussion-rooms: Back to main pill, notices, return-failed card.
+            if rooms.state.showsBackToMain {
+                BackToMainPill(isReturning: { if case .returning = rooms.state { return true } else { return false } }(),
+                               roomName: rooms.state.currentRoomName ?? "the room",
+                               onTap: { Task { await rooms.returnToMain() } })
+                    .padding(.bottom, 8)
+                    .frame(maxWidth: .infinity, alignment: .leading).padding(.leading, 20)
+                    .transition(reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .top)))
+            }
+            if case .returnFailed = rooms.state {
+                RoomReturnFailedCard(onRetry: { Task { await rooms.returnToMain() } }, onEnd: { call.end() })
+                    .padding(.bottom, 8).padding(.horizontal, 20)
+            }
+            if let notice = rooms.notice {
+                ScreenShareNotice(text: notice).padding(.bottom, 8)
+                    .frame(maxWidth: .infinity, alignment: .leading).padding(.leading, 20)
+            }
+            if rooms.state.isInRoom {
+                // Subtle in-room cue without new colors: a 2pt goldLight hairline
+                // directly above the participant bubbles.
+                Rectangle().fill(Theme.goldLight).frame(height: 2)
+                    .padding(.horizontal, 20).padding(.bottom, 6)
+                    .accessibilityHidden(true)
             }
         }
     }

@@ -396,6 +396,21 @@ async def ring_members(
         db.close()
 
 
+def _room_meeting_ids(session_id: str) -> list[str]:
+    """Room Chime meeting ids for a session about to be deleted. Never blocks the
+    delete: any failure (e.g. rooms not provisioned) yields no ids."""
+    try:
+        from backend.interactions.session_rooms import SessionRoomsManager
+        rooms = SessionRoomsManager()
+        try:
+            return rooms.session_room_meeting_ids(session_id)
+        finally:
+            rooms.close()
+    except Exception as e:
+        logger.warning("Room meeting lookup before session delete failed: %s", type(e).__name__)
+        return []
+
+
 @devo_router.delete("/")
 async def delete_devotion(req: DevotionRequest, current_user: str = Depends(get_current_user)) -> dict:
     if req.user_id != current_user:
@@ -408,7 +423,14 @@ async def delete_devotion(req: DevotionRequest, current_user: str = Depends(get_
             return {"ok": True}  # already gone — idempotent
         if str(session.creator_id) != str(req.user_id):
             raise HTTPException(status_code=403, detail="Only the session host can delete it.")
+        # Task 20261009-discussion-rooms: room rows cascade with the session; collect
+        # their Chime meetings first and tear them down best-effort afterwards.
+        room_meetings = _room_meeting_ids(req.devotion_id)
         db.remove_devotion(req.devotion_id)
+        if room_meetings:
+            from backend.interactions.session_rooms import teardown_meetings_best_effort
+            import asyncio
+            await asyncio.get_running_loop().run_in_executor(None, teardown_meetings_best_effort, room_meetings)
         return {"ok": True}
     finally:
         db.close()

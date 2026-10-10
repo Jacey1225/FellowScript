@@ -142,7 +142,11 @@ final class ChimeCallViewRedesignRegressionTests: XCTestCase {
         // Step 5: headerStack wraps callHeader (adds the pinned share pill + notice) and carries the same padding.
         XCTAssertTrue(source.contains("headerStack(topPadding: 56)"))
         XCTAssertTrue(source.contains("callHeader(topPadding: topPadding)"))
-        XCTAssertTrue(source.contains("Text(manager.isConnected ? \"Connected\" : \"Connecting…\")"))
+        // Task 20261009-discussion-rooms: the status text is now routed through
+        // headerConnectionText (adds "Reconnecting…" for a failed return-to-main);
+        // the main-session wording is unchanged.
+        XCTAssertTrue(source.contains("Text(headerConnectionText)"))
+        XCTAssertTrue(source.contains("return manager.isConnected ? \"Connected\" : \"Connecting…\""))
     }
 
     func test_minimizedCallBar_notTouchedByThisTask() throws {
@@ -172,7 +176,9 @@ final class ChimeCallViewRedesignRegressionTests: XCTestCase {
 
     func test_waitingPlaceholderAndAudioParticipantsView_contentUnchanged() throws {
         let source = try readSource("FellowScript/Chat/ChimeCallView.swift")
-        XCTAssertTrue(source.contains("Text(manager.isConnected ? \"Waiting for others to join…\" : \"Connecting…\")"))
+        // Rooms adds an in-room variant; the main-session copy is unchanged.
+        XCTAssertTrue(source.contains("Text(!manager.isConnected ? \"Connecting…\""))
+        XCTAssertTrue(source.contains(": \"Waiting for others to join…\"))"))
         XCTAssertTrue(source.contains("Text(count == 1 ? \"1 person connected\" : \"\\(count) people connected\")"))
         XCTAssertTrue(source.contains("Text(\"Audio call in progress\")"))
     }

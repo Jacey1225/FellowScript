@@ -251,6 +251,8 @@ struct FellowScriptApp: App {
                 #if canImport(AmazonChimeSDK)
                 CallController.shared.manager.handleAppForegrounded()
                 #endif
+                // Task 20261009-discussion-rooms: one immediate room heartbeat (no-op outside a room).
+                CallController.shared.rooms.appForegrounded()
             } else if phase == .background {
                 // Task 20260914-dictation-tts: per the intake spec's resolved
                 // open question, backgrounding stops dictation rather than

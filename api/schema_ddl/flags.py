@@ -25,6 +25,8 @@ SEED_FLAG_NAMES = (
     "announcement_gallery",
     "announcement_payments",
     "announcement_rsvp",
+    "screen_share_enabled",
+    "discussion_rooms",
 )
 
 
