@@ -714,9 +714,9 @@ final class CallSessionAccessibilityPinTests: XCTestCase {
         XCTAssertTrue(v.contains("withMotionAwareAnimation(.easeOut(duration: 0.2), reduceMotion: reduceMotion)"))
     }
 
-    func test_shareRow_hiddenFromMenu_butGatedCodeRemains() throws {
+    func test_shareRow_shownInMenu_gatedByFlag() throws {
         let v = try callSource("FellowScript/Chat/ChimeCallView.swift")
-        XCTAssertTrue(v.contains("private static let showsShareRow = false"))
+        XCTAssertTrue(v.contains("private static let showsShareRow = true"))
         XCTAssertTrue(v.contains("if Self.showsShareRow, let share = shareMenuRow() { rows.append(share) }"))
         XCTAssertTrue(v.contains("private func shareMenuRow() -> CallMenuRow?"))
         XCTAssertTrue(v.contains("ScreenShareFlag.isEnabled(capabilities)"))

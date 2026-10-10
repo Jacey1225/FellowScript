@@ -911,8 +911,8 @@ struct ChimeCallView: View {
         }
     }
 
-    /// Intentionally not shown in the popover for now; flip to re-enable.
-    private static let showsShareRow = false
+    /// Share screen row in the popover; gated by the screen_share_enabled flag.
+    private static let showsShareRow = true
 
     private func shareMenuRow() -> CallMenuRow? {
         // The row stays reachable while a share is active even if the server flag
