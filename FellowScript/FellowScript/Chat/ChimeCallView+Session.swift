@@ -105,17 +105,37 @@ struct CallSubmenu: View {
     let onEscape: () -> Void
 
     @ScaledMetric(relativeTo: .body) private var popoverMaxWidth: CGFloat = 250
-    private static let cornerRadius: CGFloat = 16
+    @ScaledMetric(relativeTo: .body) private var rowMinHeight: CGFloat = 44
+    private static let rowSpacing: CGFloat = 2
+    private static let stackPadding: CGFloat = 6
+    /// Rows shown at rest when the list scrolls; the half-visible 4th row signals scrolling.
+    private static let visibleRows: CGFloat = 3.5
+
+    /// Container height that reveals ~3.5 rows (scales with Dynamic Type via rowMinHeight).
+    private var scrollHeight: CGFloat {
+        let full = Self.visibleRows.rounded(.down)
+        let height = Self.stackPadding * 2 + Self.visibleRows * rowMinHeight + full * Self.rowSpacing
+        return min(height, maxHeight)
+    }
 
     var body: some View {
-        ViewThatFits(in: .vertical) {
-            stack
-            ScrollView(showsIndicators: false) { stack }
+        Group {
+            if CGFloat(rows.count) > Self.visibleRows {
+                ScrollView(showsIndicators: false) { stack }
+                    .frame(height: scrollHeight)
+            } else {
+                ViewThatFits(in: .vertical) {
+                    stack
+                    ScrollView(showsIndicators: false) { stack }
+                }
+                .frame(maxHeight: scrollHeight)
+            }
         }
-        .frame(maxWidth: popoverMaxWidth, maxHeight: maxHeight)
-        .background(RoundedRectangle(cornerRadius: Self.cornerRadius, style: .continuous).fill(Theme.bgPage.opacity(0.82)))
-        .overlay(RoundedRectangle(cornerRadius: Self.cornerRadius, style: .continuous).stroke(Theme.borderGold, lineWidth: 1))
-        .clipShape(RoundedRectangle(cornerRadius: Self.cornerRadius, style: .continuous))
+        .frame(maxWidth: popoverMaxWidth)
+        .background(.regularMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: Theme.radiusXL))
+        .overlay(RoundedRectangle(cornerRadius: Theme.radiusXL).stroke(Theme.borderGoldDim, lineWidth: 1))
+        .topEdgeHighlight(RoundedRectangle(cornerRadius: Theme.radiusXL))
         .accessibilityElement(children: .contain)
         .accessibilityAction(.escape, onEscape)
         .onAppear {
@@ -124,12 +144,12 @@ struct CallSubmenu: View {
     }
 
     private var stack: some View {
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: Self.rowSpacing) {
             ForEach(rows) { row in
                 rowView(row)
             }
         }
-        .padding(6)
+        .padding(Self.stackPadding)
     }
 
     private func rowView(_ row: CallMenuRow) -> some View {
@@ -162,7 +182,7 @@ struct CallSubmenu: View {
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, 12).padding(.vertical, 6)
-            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .frame(maxWidth: .infinity, minHeight: rowMinHeight, alignment: .leading)
             .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(row.tint))
             .contentShape(Rectangle())
             .opacity(row.enabled ? 1 : 0.55)

@@ -694,7 +694,9 @@ final class CallSessionAccessibilityPinTests: XCTestCase {
         let s = try callSource("FellowScript/Chat/ChimeCallView+Session.swift")
         guard let r = s.range(of: "struct CallSubmenu") else { XCTFail("CallSubmenu not found"); return }
         let body = String(s[r.lowerBound...])
-        XCTAssertTrue(body.contains("minHeight: 44"))
+        XCTAssertTrue(body.contains("minHeight: rowMinHeight"))
+        XCTAssertTrue(body.contains(".regularMaterial"))
+        XCTAssertTrue(body.contains("visibleRows: CGFloat = 3.5"))
         XCTAssertTrue(body.contains("ViewThatFits"))
         XCTAssertTrue(body.contains("ScrollView"))
         XCTAssertTrue(body.contains(".accessibilityAction(.escape, onEscape)"))
