@@ -1,10 +1,11 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Avatar, Button, Modal, Typography } from 'antd';
-import { AudioOutlined, PhoneOutlined, EditOutlined, DeleteOutlined, VideoCameraOutlined, CloseOutlined, BellOutlined } from '@ant-design/icons';
+import { AudioOutlined, AudioMutedOutlined, PhoneOutlined, EditOutlined, DeleteOutlined, CloseOutlined } from '@ant-design/icons';
 import { API } from '../config.js';
 import { useJoinWindow } from '../hooks/useJoinWindow.js';
 import { isSessionHost, JOIN_GRACE_MINUTES } from '../lib/sessionAccess.js';
 import RingMembersModal from './RingMembersModal.jsx';
+import SessionCallScreen, { resolveName } from './SessionCallScreen.jsx';
 
 const { Text } = Typography;
 
@@ -31,7 +32,7 @@ function useUsernames(participantIds) {
         const res = await fetch(`${API}/user/${uid}`);
         if (res.ok) {
           const d = await res.json();
-          setNames(prev => ({ ...prev, [uid]: d.username || uid.slice(0, 6) }));
+          if (d.username) setNames(prev => ({ ...prev, [uid]: d.username }));
         }
       } catch {}
     });
@@ -205,19 +206,21 @@ export function UpcomingCard({ session, user, activeSessionId, onJoin, onLeave, 
   );
 }
 
-export function ActiveCard({ session, user, ringCandidates, activeSessionId, talkingUserId, onJoin, onLeave, onEdit, onDelete, onNavigateVerse, videoEnabled, videoTiles = [], onToggleVideo, bindVideoTile, joinError, onClearJoinError }) {
+export function ActiveCard({ session, user, ringCandidates, friends, muted = false, onToggleMute, activeSessionId, talkingUserId, onJoin, onLeave, onEdit, onDelete, onNavigateVerse, videoEnabled, videoTiles = [], onToggleVideo, bindVideoTile, joinError, onClearJoinError }) {
   const isJoined = activeSessionId === session.id;
   const names    = useUsernames(session.participants || []);
   // Ring members (task 20261003-web-reader-ios-parity): only while joined.
   // sentRing remembers who was rung during this call across modal reopenings.
   const [ringOpen, setRingOpen] = useState(false);
   const sentRing = useRef(new Set());
-  const talkingName = talkingUserId
-    ? (talkingUserId === user?.user_id ? user?.username : names[talkingUserId] || talkingUserId?.slice(0, 6))
-    : null;
+  // Names come from the signed-in user, friends, then a fetched lookup. Unknown
+  // stays null so the UI shows a neutral glyph, never a raw id.
+  const nameOf = uid => resolveName(uid, { user, friends, fetched: names });
+  const talkingName = talkingUserId ? nameOf(talkingUserId) : null;
+  const canRing = Array.isArray(ringCandidates) && ringCandidates.length > 0;
 
   return (
-    <div style={islandStyle}>
+    <div className={isJoined ? 'call-card' : undefined} style={isJoined ? { ...islandStyle, background: undefined } : islandStyle}>
       <div style={{ padding: '0.6rem 0.75rem' }}>
 
         {/* Row 1: title + controls */}
@@ -226,37 +229,22 @@ export function ActiveCard({ session, user, ringCandidates, activeSessionId, tal
             <Text style={{ fontFamily: "'Inter', sans-serif", fontSize: '0.82rem', color: 'var(--parchment)', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {session.title}
             </Text>
-            {isJoined && Array.isArray(ringCandidates) && ringCandidates.length > 0 && (
-              <IconBtn icon={<BellOutlined />} title="Ring members" onClick={() => setRingOpen(true)} />
-            )}
-            {isJoined && (
-              <IconBtn
-                icon={<VideoCameraOutlined />}
-                title={videoEnabled ? 'Turn off camera' : 'Turn on camera'}
-                onClick={onToggleVideo}
-                active={videoEnabled}
-              />
-            )}
             <HostControls session={session} user={user} onEdit={onEdit} onDelete={onDelete} />
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexShrink: 0 }}>
+            {isJoined && muted && (
+              <span className="call-muted-pill" role="status">
+                <AudioMutedOutlined aria-hidden="true" /> Muted
+              </span>
+            )}
             {isJoined && talkingName && (
               <span style={{ display: 'flex', alignItems: 'center', gap: '0.22rem', fontSize: '0.62rem', color: 'var(--gold)' }}>
                 <AudioOutlined />
                 {talkingName}
               </span>
             )}
-            {isJoined ? (
-              <Button
-                size="small" danger onClick={onLeave}
-                style={{ fontSize: '0.62rem', height: 20, padding: '0 7px' }}
-              >
-                Leave
-              </Button>
-            ) : (
-              <JoinButton session={session} onJoin={onJoin} />
-            )}
+            {!isJoined && <JoinButton session={session} onJoin={onJoin} />}
           </div>
         </div>
 
@@ -282,15 +270,15 @@ export function ActiveCard({ session, user, ringCandidates, activeSessionId, tal
           </Text>
         </div>
 
-        {/* Row 2: participants */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.22rem', marginBottom: (session.verses || []).length ? '0.4rem' : 0, flexWrap: 'wrap' }}>
+        {/* Row 2: participants (call screen shows bubbles instead once joined) */}
+        {!isJoined && <div style={{ display: 'flex', alignItems: 'center', gap: '0.22rem', marginBottom: (session.verses || []).length ? '0.4rem' : 0, flexWrap: 'wrap' }}>
           {(session.participants || []).length === 0 ? (
             <Text style={{ fontSize: '0.6rem', color: 'rgba(242,242,242,0.25)', fontFamily: "'Inter', sans-serif", fontStyle: 'italic' }}>
               No one has joined yet
             </Text>
           ) : (
             (session.participants || []).map(uid => {
-              const name     = uid === user?.user_id ? user?.username : (names[uid] || uid.slice(0, 4));
+              const name     = nameOf(uid) || 'Member';
               const isTalking = talkingUserId === uid;
               return (
                 <div key={uid} title={name} style={{ position: 'relative' }}>
@@ -316,7 +304,25 @@ export function ActiveCard({ session, user, ringCandidates, activeSessionId, tal
               );
             })
           )}
-        </div>
+        </div>}
+
+        {isJoined && (
+          <SessionCallScreen
+            session={session}
+            user={user}
+            friends={friends}
+            fetchedNames={names}
+            talkingUserId={talkingUserId}
+            muted={muted}
+            onToggleMute={onToggleMute}
+            videoEnabled={videoEnabled}
+            onToggleVideo={onToggleVideo}
+            canRing={canRing}
+            inviteCandidates={ringCandidates}
+            onRing={() => setRingOpen(true)}
+            onLeave={onLeave}
+          />
+        )}
 
         {/* Row 2b: live video tiles */}
         {isJoined && videoTiles.length > 0 && (
@@ -339,7 +345,7 @@ export function ActiveCard({ session, user, ringCandidates, activeSessionId, tal
 
         {/* Row 3: verse links */}
         {(session.verses || []).length > 0 && (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.28rem', marginBottom: (isJoined && (session.prompts || []).length) ? '0.5rem' : 0 }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.28rem', marginBottom: 0 }}>
             {(session.verses || []).map(ref => {
               const { label, book, ch, vs } = parseVerseRef(ref);
               return (
@@ -362,22 +368,6 @@ export function ActiveCard({ session, user, ringCandidates, activeSessionId, tal
             })}
           </div>
         )}
-
-        {/* Row 4: discussion prompts (only when joined) */}
-        {isJoined && (session.prompts || []).length > 0 && (
-          <div style={{ marginTop: '0.4rem', paddingTop: '0.4rem', borderTop: '1px solid rgba(255,255,255,0.072)' }}>
-            <Text style={{ display: 'block', fontSize: '0.55rem', letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(255,198,26,0.45)', fontFamily: "'Inter', sans-serif", marginBottom: '0.3rem' }}>
-              Discussion Prompts
-            </Text>
-            <ol style={{ margin: 0, padding: '0 0 0 1.1rem', display: 'flex', flexDirection: 'column', gap: '0.28rem' }}>
-              {(session.prompts || []).map((p, i) => (
-                <li key={i} style={{ fontSize: '0.7rem', color: 'rgba(242,242,242,0.75)', fontFamily: "'Inter', sans-serif", lineHeight: 1.55 }}>
-                  {p}
-                </li>
-              ))}
-            </ol>
-          </div>
-        )}
       </div>
     </div>
   );
@@ -398,6 +388,7 @@ export default function SessionWidget({
   sessions, user, activeSessionId, talkingUserId,
   onJoin, onLeave, onEdit, onDelete, onNavigateVerse,
   videoEnabled, videoTiles, onToggleVideo, bindVideoTile,
+  muted, onToggleMute, friends, ringCandidates,
   joinError, onClearJoinError,
 }) {
   if (!sessions || sessions.length === 0) return null;
@@ -435,6 +426,10 @@ export default function SessionWidget({
             videoTiles={videoTiles}
             onToggleVideo={onToggleVideo}
             bindVideoTile={bindVideoTile}
+            muted={muted}
+            onToggleMute={onToggleMute}
+            friends={friends}
+            ringCandidates={ringCandidates}
             joinError={joinError}
             onClearJoinError={onClearJoinError}
           />

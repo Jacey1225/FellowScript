@@ -178,4 +178,37 @@ describe('ChatThread integration: groups only', () => {
     expect(api.fetchLatestAnnouncement).not.toHaveBeenCalled();
     expect(screen.queryByRole('region', { name: 'Latest announcement' })).toBeNull();
   });
+
+  describe('swipe-left dismiss (task 20261011-web-session-ui-parity)', () => {
+    const swipe = (el, dx, dy = 0, end = 'pointerUp') => {
+      fireEvent.pointerDown(el, { clientX: 300, clientY: 50, pointerType: 'touch' });
+      fireEvent.pointerMove(el, { clientX: 300 + dx / 2, clientY: 50 + dy / 2, pointerType: 'touch' });
+      fireEvent.pointerMove(el, { clientX: 300 + dx, clientY: 50 + dy, pointerType: 'touch' });
+      fireEvent[end](el, { clientX: 300 + dx, clientY: 50 + dy, pointerType: 'touch' });
+    };
+    const reduceMotion = () => { window.matchMedia = () => ({ matches: true, addEventListener() {}, removeEventListener() {} }); };
+
+    test('long left swipe dismisses and persists', async () => {
+      reduceMotion();
+      api.fetchLatestAnnouncement.mockResolvedValue({ announcement: mk('a') });
+      mount();
+      const region = await screen.findByRole('region', { name: 'Latest announcement' });
+      swipe(region, -120);
+      await waitFor(() => expect(screen.queryByRole('region', { name: 'Latest announcement' })).toBeNull());
+      expect(window.localStorage.getItem(dismissKey('u1', 'g1'))).toBe('a');
+    });
+
+    test('short swipe, right swipe, vertical drag, and cancel do not dismiss', async () => {
+      reduceMotion();
+      api.fetchLatestAnnouncement.mockResolvedValue({ announcement: mk('a') });
+      mount();
+      const region = await screen.findByRole('region', { name: 'Latest announcement' });
+      swipe(region, -30);
+      swipe(region, 150);
+      swipe(region, -20, 200);
+      swipe(region, -150, 0, 'pointerCancel');
+      expect(screen.getByRole('region', { name: 'Latest announcement' })).toBeTruthy();
+      expect(window.localStorage.getItem(dismissKey('u1', 'g1'))).toBeNull();
+    });
+  });
 });

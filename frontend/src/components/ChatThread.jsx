@@ -613,6 +613,7 @@ export default function ChatThread({
   joinError, onClearJoinError,
   onEditSession, onDeleteSession, onNavigateVerse,
   videoEnabled, videoTiles, onToggleVideo, bindVideoTile,
+  muted, onToggleMute,
   onGroupChanged, onGroupGone,
   // Task 20261001-chat-pagination: { paged, hasMore, loading, error,
   // loadedCount, loadedTick } for the open thread plus the older-page loader.
@@ -1005,6 +1006,9 @@ export default function ChatThread({
           videoTiles={videoTiles}
           onToggleVideo={onToggleVideo}
           bindVideoTile={bindVideoTile}
+          muted={muted}
+          onToggleMute={onToggleMute}
+          friends={friends}
           ringCandidates={ringCandidates}
         />}
       </div>
@@ -1047,6 +1051,9 @@ export default function ChatThread({
             videoTiles={videoTiles}
             onToggleVideo={onToggleVideo}
             bindVideoTile={bindVideoTile}
+            muted={muted}
+            onToggleMute={onToggleMute}
+            friends={friends}
             ringCandidates={ringCandidates}
           />
         ) : null;

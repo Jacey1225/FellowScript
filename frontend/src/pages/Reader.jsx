@@ -30,6 +30,7 @@ import { useHighlights }  from '../hooks/useHighlights.js';
 import { useNotes }       from '../hooks/useNotes.js';
 import { useMessaging }   from '../hooks/useMessaging.js';
 import { useSessions }    from '../hooks/useSessions.js';
+import { CallFeaturesContext } from '../context/CallFeaturesContext.jsx';
 import { useBookmarks }   from '../hooks/useBookmarks.js';
 
 // Registered once — dockview looks panels up by this id, matching PANEL_IDS.
@@ -101,6 +102,10 @@ export default function Reader() {
     joinError, clearJoinError,
     handleSignal,
     videoEnabled, videoTiles, toggleVideo, bindVideoTile,
+    muted, toggleMute,
+    sharePhase, contentTile, shareNotice, meetingPresence,
+    startScreenShare, stopScreenShare, clearShareNotice,
+    rooms: callRooms,
   } = useSessions({ user, wsRef, currentContact });
 
   const {
@@ -392,6 +397,7 @@ export default function Reader() {
     onOpenSessionCreator: () => openCreator(), onEditSession: openCreator, onDeleteSession: deleteSession,
     onNavigateVerse: handleNavigateVerse,
     videoEnabled, videoTiles, onToggleVideo: toggleVideo, bindVideoTile,
+    muted, onToggleMute: toggleMute,
     onGroupChanged: (patch) => { if (currentContact) applyGroupChange(currentContact.id, patch); },
     onGroupGone: (contact) => { if (contact) dropGroup(contact.id); },
     olderPage, onLoadOlder: loadOlder,
@@ -407,7 +413,20 @@ export default function Reader() {
        contactsLoaded, handleLoadContacts, sendMessage, requestUploadUrl, uploadToS3, searchGifs, browseGifs,
        sessions, activeSessionId, talkingUserId,
        joinSession, handleLeaveSession, joinError, clearJoinError, openCreator, deleteSession, handleNavigateVerse,
-       videoEnabled, videoTiles, toggleVideo, bindVideoTile]);
+       videoEnabled, videoTiles, toggleVideo, bindVideoTile, muted, toggleMute]);
+
+  // Task 20261011-web-session-screenshare-rooms: live-call extras for
+  // SessionCallScreen (gated again there by the server capabilities).
+  const callFeaturesValue = useMemo(() => ({
+    screenShare: {
+      phase: sharePhase, remoteShare: contentTile, notice: shareNotice,
+      start: startScreenShare, stop: stopScreenShare, clearNotice: clearShareNotice,
+    },
+    rooms: callRooms,
+    meetingPresence,
+    bindVideoTile,
+  }), [sharePhase, contentTile, shareNotice, startScreenShare, stopScreenShare, clearShareNotice,
+       callRooms, meetingPresence, bindVideoTile]);
 
   const agentChatPanelValue = useMemo(() => ({
     user, agents, agentMessages, activeAgent, agentThinking,
@@ -428,6 +447,7 @@ export default function Reader() {
     <NotesPanelContext.Provider value={notesPanelValue}>
     <HighlightsPanelContext.Provider value={highlightsPanelValue}>
     <MessagingPanelContext.Provider value={messagingPanelValue}>
+    <CallFeaturesContext.Provider value={callFeaturesValue}>
     <AgentChatPanelContext.Provider value={agentChatPanelValue}>
       <Layout style={{ minHeight: '100vh', background: 'transparent', overflow: 'hidden' }}>
         <AppBloom variant="reader" />
@@ -459,6 +479,7 @@ export default function Reader() {
 
       </Layout>
     </AgentChatPanelContext.Provider>
+    </CallFeaturesContext.Provider>
     </MessagingPanelContext.Provider>
     </HighlightsPanelContext.Provider>
     </NotesPanelContext.Provider>

@@ -15,6 +15,8 @@ import AnnouncementCardFace, { formatShortDate } from './AnnouncementCardFace.js
 // module cache and shows no error UI. If nothing was ever loaded, renders nothing.
 
 const EXIT_MS = 160;
+// Swipe-left to dismiss (parity with iOS). The X button stays as the keyboard path.
+const SWIPE_DISMISS_PX = 72;
 
 // Last-known-good announcement keyed by `${userId}:${groupId}` (null = none).
 const latestCache = new Map();
@@ -38,6 +40,8 @@ export default function GroupAnnouncementWidget({ userId, groupId, onAfterDismis
   const [leaving, setLeaving] = useState(false);
   const [viewing, setViewing] = useState(false);
   const cardRef = useRef(null);
+  const swipeRef = useRef(null);
+  const [dragX, setDragX] = useState(0);
   const [bannerFailed, setBannerFailed] = useState(false);
 
   const refresh = useCallback(() => {
@@ -80,6 +84,29 @@ export default function GroupAnnouncementWidget({ userId, groupId, onAfterDismis
     setTimeout(finish, EXIT_MS);
   };
 
+  const onPointerDown = (e) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    swipeRef.current = { x: e.clientX, y: e.clientY, active: false };
+  };
+  const onPointerMove = (e) => {
+    const st = swipeRef.current;
+    if (!st) return;
+    const dx = e.clientX - st.x;
+    const dy = e.clientY - st.y;
+    if (!st.active) {
+      if (Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy)) st.active = true; else return;
+    }
+    setDragX(Math.min(0, dx));
+  };
+  const onPointerEnd = (e) => {
+    const st = swipeRef.current;
+    swipeRef.current = null;
+    if (!st?.active) return;
+    const dx = e.clientX - st.x;
+    setDragX(0);
+    if (e.type === 'pointerup' && dx <= -SWIPE_DISMISS_PX) dismiss();
+  };
+
   const closeViewer = () => { setViewing(false); setTimeout(() => cardRef.current?.focus(), 0); };
 
   if (!item || item.published === false || item.id === dismissedId) return null;
@@ -93,7 +120,9 @@ export default function GroupAnnouncementWidget({ userId, groupId, onAfterDismis
     return merged;
   };
   return (
-    <section className={`announce-widget${leaving ? ' announce-widget-leaving' : ''}`} role="region" aria-label="Latest announcement">
+    <section className={`announce-widget${leaving ? ' announce-widget-leaving' : ''}`} role="region" aria-label="Latest announcement"
+      style={dragX ? { transform: `translateX(${dragX}px)`, opacity: Math.max(0.4, 1 + dragX / 300), touchAction: 'pan-y' } : { touchAction: 'pan-y' }}
+      onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerEnd} onPointerCancel={onPointerEnd}>
       <AnnouncementCardFace as="button" ref={cardRef} type="button"
         title={item.title} titleColor={item.title_color} titleFont={item.title_font} bgTheme={item.bg_theme}
         bannerUrl={showBanner ? item.banner_url : null} location={item.location} date={formatShortDate(item.publish_at)}
