@@ -210,15 +210,6 @@ function HandDrawnUnderline({ style }) {
   );
 }
 
-function HandDrawnQuoteMark({ size = 46 }) {
-  return (
-    <svg aria-hidden="true" width={size} height={size * 0.78} viewBox="0 0 60 46">
-      <path className="hm-draw-path" pathLength="1" d="M15 6 C4 11 1 23 7 33 C11 39 20 41 25 35" fill="none" stroke={AMBER} strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" />
-      <path className="hm-draw-path" pathLength="1" d="M43 6 C32 11 29 23 35 33 C39 39 48 41 53 35" fill="none" stroke={AMBER} strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
 // ── Content (kept in sync with the real backend — dynamic 1-8 member group pricing) ──
 
 // Task 20261008-homepage-problem-carousel: every figure below is a survey
@@ -569,20 +560,24 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Founder's-note card — same glass treatment as the hero verse card.
-              Anonymous (no name/initial attribution), per the earlier approval. */}
+          {/* What-FellowScript-provides card — same glass treatment as the hero
+              verse card; replaces the former founder's-note quote card. */}
           <div className="hm-family-reveal hm-reach-card" style={{ transitionDelay: '220ms' }}>
-            <div style={{ fontFamily: HEAD_FONT, fontSize: 11, letterSpacing: '0.22em', textTransform: 'uppercase', color: '#F0C08A', marginBottom: 16 }}>// WHY WE BUILT THIS</div>
-            <div style={{ marginBottom: 6 }}>
-              <HandDrawnQuoteMark size={42} />
-            </div>
-            <blockquote className="hm-reach-quote">
-              "I didn't build this to replace church. I built it because family doesn't clock out — I wanted somewhere for us to keep{' '}
-              <span style={{ position: 'relative', display: 'inline-block' }}>
-                showing up for each other
-                <HandDrawnUnderline style={{ left: '-2%', bottom: '-14%', width: '104%', height: '30%' }} />
-              </span>, every day of the week."
-            </blockquote>
+            <div style={{ fontFamily: HEAD_FONT, fontSize: 11, letterSpacing: '0.22em', textTransform: 'uppercase', color: '#F0C08A', marginBottom: 16 }}>// WHAT FELLOWSCRIPT PROVIDES</div>
+            <p className="hm-reach-quote" style={{ marginBottom: 16 }}>A platform for leaders and others to:</p>
+            <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {[
+                'Organize their small groups',
+                <>Get the resources to <span style={{ position: 'relative', display: 'inline-block' }}>stay in each other's lives<HandDrawnUnderline style={{ left: '-2%', bottom: '-14%', width: '104%', height: '30%' }} /></span></>,
+                'Keep up with everything going on',
+                'Nurture the kind of family that empowers its environment around them',
+              ].map((line, i) => (
+                <li key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 12, fontSize: 16, lineHeight: 1.45, color: 'rgba(255,243,228,0.86)' }}>
+                  <span aria-hidden="true" style={{ width: 7, height: 7, borderRadius: '50%', background: AMBER, marginTop: 8, flexShrink: 0 }} />
+                  <span>{line}</span>
+                </li>
+              ))}
+            </ul>
           </div>
         </div>
       </section>

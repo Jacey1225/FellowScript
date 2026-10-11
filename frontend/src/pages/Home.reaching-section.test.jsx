@@ -41,10 +41,9 @@ describe('Home reaching section', () => {
     expect(h2.textContent).toBe('Everyone gathered under Christ is called to live as family.');
     expect(s.textContent).toContain("Brothers and sisters don't show up for each other once a week — they show up every day in between. That daily rhythm, not the Sunday appointment, is the actual point. FellowScript exists to make room for it.");
     expect(s.textContent).toContain('Every day — not just Sunday');
-    expect(s.textContent).toContain('// WHY WE BUILT THIS');
-    expect(s.querySelector('blockquote').textContent).toBe(
-      "\"I didn't build this to replace church. I built it because family doesn't clock out — I wanted somewhere for us to keep showing up for each other, every day of the week.\""
-    );
+    expect(s.textContent).toContain('// WHAT FELLOWSCRIPT PROVIDES');
+    expect(s.textContent).toContain('A platform for leaders and others to:');
+    ['Organize their small groups', "Get the resources to stay in each other's lives", 'Keep up with everything going on', 'Nurture the kind of family that empowers its environment around them'].forEach((l) => expect(s.textContent).toContain(l));
   });
 
   test('both hands are alt-empty, aria-hidden, and unfocusable; section has no interactive content', () => {

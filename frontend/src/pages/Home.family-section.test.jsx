@@ -70,18 +70,14 @@ describe('Home — "Not just once a week" family section', () => {
     ).toBeTruthy();
   });
 
-  test('founder\'s-note card carries the first-person "why we built this" statement, fully anonymous', () => {
+  test('provides card defines what FellowScript provides, with no founder quote', () => {
     renderHome();
 
-    expect(screen.getByText('// WHY WE BUILT THIS')).toBeTruthy();
-    const quote = screen.getByText((_, node) =>
-      node?.tagName === 'BLOCKQUOTE' && /family doesn't clock out/i.test(node.textContent || '')
-    );
-    expect(quote).toBeTruthy();
-    // No name/initial attribution anywhere in the card (e.g. an em-dash
-    // credit line like '— Jacey' or '— J.') per the user's explicit
-    // anonymous-attribution approval.
-    expect(quote.textContent).not.toMatch(/—\s*[A-Z][a-zA-Z.]*\s*$/);
+    expect(screen.getByText('// WHAT FELLOWSCRIPT PROVIDES')).toBeTruthy();
+    expect(screen.queryByText('// WHY WE BUILT THIS')).toBeNull();
+    expect(screen.getByText('A platform for leaders and others to:')).toBeTruthy();
+    expect(screen.getByText((_, node) => node?.tagName === 'LI' && /Get the resources to stay in each other's lives/.test(node.textContent || ''))).toBeTruthy();
+    expect(screen.getByText('Nurture the kind of family that empowers its environment around them')).toBeTruthy();
   });
 
   test('every decorative element the section adds is aria-hidden', () => {
@@ -97,7 +93,7 @@ describe('Home — "Not just once a week" family section', () => {
     // The hand-drawn SVG accents (circle, underline, quote mark) are all
     // aria-hidden and carry no accessible text of their own.
     const svgs = section.querySelectorAll('svg[aria-hidden="true"]');
-    expect(svgs.length).toBeGreaterThanOrEqual(3);
+    expect(svgs.length).toBeGreaterThanOrEqual(2);
     svgs.forEach((svg) => expect(svg.textContent).toBe(''));
   });
 
