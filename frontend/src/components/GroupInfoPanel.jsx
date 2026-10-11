@@ -6,6 +6,7 @@ import {
   PlayCircleOutlined, DownloadOutlined, NotificationOutlined, RightOutlined,
 } from '@ant-design/icons';
 import { useFocusTrap } from '../hooks/useFocusTrap.js';
+import { useGroupInfoWidth } from '../hooks/useGroupInfoWidth.js';
 import {
   fetchGroupInfo, renameGroup, setGroupMuted, setGroupMaxMembers, uploadGroupPhoto,
   removeGroupPhoto, confirmGroupPhoto, fetchGroupGallery, GROUP_PHOTO_LIMITS,
@@ -99,6 +100,7 @@ export default function GroupInfoPanel({
   useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; clearTimeout(undoTimerRef.current); }; }, []);
 
   useFocusTrap(open && !wide, panelRef);
+  const resize = useGroupInfoWidth(panelRef, open && wide);
 
   const [info, setInfo] = useState(null);           // last server-confirmed info
   const [refreshError, setRefreshError] = useState(false);
@@ -351,7 +353,9 @@ export default function GroupInfoPanel({
       role="dialog"
       aria-modal={wide ? undefined : 'true'}
       aria-labelledby="group-info-heading"
+      style={wide ? { width: resize.width } : undefined}
     >
+      {wide && <div className={`group-info-resize${resize.dragging ? ' group-info-resize-active' : ''}`} {...resize.handleProps} />}
       {!wide && <div className="group-info-handle" aria-hidden="true" />}
       <div className="group-info-top">
         <h2 id="group-info-heading" ref={headingRef} tabIndex={-1} className="group-info-heading">Group info</h2>

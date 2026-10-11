@@ -226,12 +226,12 @@ describe('create / edit form', () => {
     fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Hi' } });
     fireEvent.change(screen.getByLabelText('Message'), { target: { value: 'There' } });
     fireEvent.click(screen.getByRole('radio', { name: 'Schedule' }));
-    expect(screen.getByText('Schedule', { selector: 'button.group-info-pill' }).closest('button')).toBeDisabled();
+    expect(screen.getByText('Schedule', { selector: 'button.ann-outline-pill' }).closest('button')).toBeDisabled();
     const future = new Date(Date.now() + 2 * 86400000);
     const pad = (n) => String(n).padStart(2, '0');
     const local = `${future.getFullYear()}-${pad(future.getMonth() + 1)}-${pad(future.getDate())}T10:30`;
     fireEvent.change(screen.getByLabelText('Publish date and time'), { target: { value: local } });
-    fireEvent.click(screen.getByText('Schedule', { selector: 'button.group-info-pill' }));
+    fireEvent.click(screen.getByText('Schedule', { selector: 'button.ann-outline-pill' }));
     await waitFor(() => expect(api.createAnnouncement).toHaveBeenCalled());
     expect(api.createAnnouncement.mock.calls[0][2].publish_at).toBe(new Date(local).toISOString());
   });
@@ -284,7 +284,7 @@ describe('create / edit form', () => {
     fireEvent.click(screen.getByText('Cancel', { selector: '.banner-cropper-bar button' }));
     expect(screen.queryByRole('dialog', { name: 'Crop banner' })).not.toBeInTheDocument();
     expect(api.uploadAnnouncementBanner).not.toHaveBeenCalled();
-    expect(screen.getByText('Add banner photo')).toBeInTheDocument();
+    expect(screen.getByText('Upload')).toBeInTheDocument();
   });
 
   test('banner: Escape while cropping closes only the cropper, not the form', async () => {

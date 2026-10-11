@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Spin } from 'antd';
+import { PictureOutlined, BgColorsOutlined } from '@ant-design/icons';
 import { ANNOUNCEMENT_LIMITS, uploadAnnouncementBanner } from '../lib/announcementsApi.js';
 import BannerCropper from './BannerCropper.jsx';
 import TitleColorPicker from './TitleColorPicker.jsx';
@@ -9,7 +10,7 @@ import AnnouncementCardFace, { formatShortDate } from './AnnouncementCardFace.js
 import {
   ANNOUNCEMENT_FLAGS as FLAG, BG_THEMES, BG_THEME_GRADIENTS, BG_THEME_SOLIDS, TITLE_FONTS, TITLE_FONT_KEYS, EXTRAS_LIMITS,
   PAYMENT_PROVIDERS, resolveBgTheme, bgThemeStoredKey, bgThemeCss, bgThemeLabel, resolveTitleFont, titleFontStoredKey,
-  titleFontLabel, titleFontStyle, parseLink, linkError, handleError, locationError,
+  titleFontLabel, titleFontStyle, bgThemeReadableText, titleColorOnTheme, parseLink, linkError, handleError, locationError,
 } from '../lib/announcementStyle.js';
 
 // Create/edit form for a group announcement (design-notes.md, "Create / edit
@@ -56,6 +57,7 @@ export default function GroupAnnouncementForm({ userId, groupId, item, gate, gat
   const [error, setError] = useState(null);
   const [touched, setTouched] = useState(false);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const [themeOpen, setThemeOpen] = useState(false);
   const fileRef = useRef(null);
   const mountedRef = useRef(true);
   useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
@@ -200,13 +202,17 @@ export default function GroupAnnouncementForm({ userId, groupId, item, gate, gat
     return () => document.removeEventListener('keydown', onKey);
   });
 
+  const stripTheme = showTheme ? resolveBgTheme(bgTheme) : 'none';
+  const stripText = stripTheme === 'none' ? undefined : bgThemeReadableText(stripTheme);
+  const stripStyle = stripTheme === 'none' ? undefined : { background: bgThemeCss(stripTheme), color: stripText };
+  const stripTitleColor = titleColor ? (stripTheme === 'none' ? titleColor : titleColorOnTheme(titleColor, stripTheme, stripText)) : stripText;
   const heading = editing ? 'Edit announcement' : 'New announcement';
   return (
     <div className="group-info-announcements-form-wrap">
       <div className="group-info-announcements-bar">
-        <button type="button" className="group-info-text-btn" onClick={cancel}>Cancel</button>
+        <button type="button" className="ann-outline-pill" onClick={cancel}>Cancel</button>
         <h3 ref={headingRef} tabIndex={-1} className="group-info-announcements-title">{heading}</h3>
-        <button type="button" className="group-info-pill" onClick={submit} disabled={!canSubmit}>
+        <button type="button" className="ann-outline-pill ann-outline-pill-post" onClick={submit} disabled={!canSubmit}>
           {saving ? <Spin size="small" /> : bannerBusy ? 'Uploading…' : (editing ? 'Save' : (mode === 'schedule' ? 'Schedule' : 'Post'))}
         </button>
       </div>
@@ -226,31 +232,79 @@ export default function GroupAnnouncementForm({ userId, groupId, item, gate, gat
       <form className="group-info-announcements-form" onSubmit={(e) => { e.preventDefault(); submit(); }}>
         <div className="group-info-announcements-field">
           <span className="group-info-label">Banner photo (optional)</span>
-          {currentBanner ? (
-            <div className="group-info-announcements-banner-preview">
-              <img src={currentBanner} alt="" />
-              {bannerBusy && <Spin className="group-info-avatar-spin" />}
-              <div className="group-info-announcements-banner-actions">
-                <button type="button" className="group-info-text-btn" disabled={bannerBusy} onClick={() => setCropSource({ url: currentBanner })}>Adjust crop</button>
-                <button type="button" className="group-info-text-btn" disabled={bannerBusy} onClick={() => fileRef.current?.click()}>Replace photo</button>
-                <button type="button" className="group-info-text-btn group-info-danger" disabled={bannerBusy}
-                  onClick={() => { setBannerKey(null); setBannerPreview(null); setTouched(true); }}>Remove</button>
-              </div>
+          <div className="ann-banner-tile">
+            <AnnouncementCardFace className="title-color-preview" as="div" role="img"
+              aria-label={`Preview of the announcement title in ${colorName(titleColor)}${showFont ? `, ${titleFontLabel(titleFont)} font` : ''}${showTheme ? `, ${bgThemeLabel(bgTheme)}` : ''}`}
+              title={trimmedTitle || 'Your title'} titleColor={titleColor} titleFont={showFont ? titleFont : item?.title_font}
+              bgTheme={showTheme ? bgTheme : item?.bg_theme} bannerUrl={currentBanner}
+              location={showLocation ? trimmedLocation : item?.location} date={formatShortDate(new Date().toISOString())} />
+            {bannerBusy && <Spin className="group-info-avatar-spin" />}
+            <div className="ann-banner-actions">
+              {currentBanner ? (
+                <>
+                  <button type="button" className="ann-glass-pill" disabled={bannerBusy} onClick={() => setCropSource({ url: currentBanner })}>Adjust crop</button>
+                  <button type="button" className="ann-glass-pill" disabled={bannerBusy} onClick={() => fileRef.current?.click()}>Replace photo</button>
+                  <button type="button" className="ann-glass-pill ann-glass-pill-danger" disabled={bannerBusy}
+                    onClick={() => { setBannerKey(null); setBannerPreview(null); setTouched(true); }}>Remove</button>
+                </>
+              ) : (
+                <button type="button" className="ann-glass-pill" disabled={bannerBusy} onClick={() => fileRef.current?.click()}>
+                  <PictureOutlined aria-hidden="true" /> Upload
+                </button>
+              )}
             </div>
-          ) : (
-            <button type="button" className="group-info-announcements-drop" disabled={bannerBusy} onClick={() => fileRef.current?.click()}>
-              {bannerBusy ? <Spin size="small" /> : <span>Add banner photo</span>}
-              <span className="group-info-helper">{ANNOUNCEMENT_LIMITS.bannerHelper}</span>
-            </button>
-          )}
+          </div>
+          {!currentBanner && <span className="group-info-helper">{ANNOUNCEMENT_LIMITS.bannerHelper}</span>}
           <input ref={fileRef} type="file" accept={ANNOUNCEMENT_LIMITS.bannerAccept.join(',')} className="hidden-file-input"
             aria-hidden="true" tabIndex={-1} data-testid="announcement-banner-input" onChange={onFile} />
           {bannerError && <p className="group-info-error" role="alert">{bannerError}</p>}
+
+          {showFont && (
+            <div className="ann-font-row" role="radiogroup" aria-label="Title font">
+              {TITLE_FONT_KEYS.map((k) => {
+                const selected = resolveTitleFont(titleFont) === k;
+                return (
+                  <button key={k} type="button" role="radio" aria-checked={selected} aria-label={titleFontLabel(k)} disabled={saving}
+                    className={`ann-font-chip${selected ? ' ann-font-chip-on' : ''}${k === 'default' ? '' : ' ann-font-chip-sample'}`}
+                    style={k === 'default' ? undefined : titleFontStyle(k)}
+                    onClick={() => { setTitleFont(titleFontStoredKey(k)); setTouched(true); }}>
+                    {k === 'default' ? 'Default' : 'Aa'}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          <div className="ann-theme-strip" style={stripStyle}>
+            <span className="ann-theme-strip-title" style={{ ...(showFont ? titleFontStyle(titleFont) : {}), color: stripTitleColor }}>{trimmedTitle || 'Your title'}</span>
+            <span className="ann-theme-strip-msg">{trimmedDesc || 'Your message appears here.'}</span>
+            {showTheme && (
+              <button type="button" className="ann-palette-btn" aria-label="Background theme" aria-expanded={themeOpen}
+                title={`Background theme: ${bgThemeLabel(bgTheme)}`} disabled={saving}
+                onClick={() => setThemeOpen((v) => !v)}><BgColorsOutlined aria-hidden="true" /></button>
+            )}
+          </div>
+          {showTheme && themeOpen && (
+            <div className="ann-theme-grid" role="radiogroup" aria-label="Background theme">
+              {['none', ...BG_THEME_GRADIENTS, ...BG_THEME_SOLIDS].map((k) => {
+                const selected = resolveBgTheme(bgTheme) === k;
+                return (
+                  <button key={k} type="button" role="radio" aria-checked={selected} aria-label={bgThemeLabel(k)} title={BG_THEMES[k].name}
+                    disabled={saving} className={`ann-theme-tile${selected ? ' ann-theme-tile-on' : ''}`}
+                    onClick={() => { setBgTheme(bgThemeStoredKey(k)); setTouched(true); }}>
+                    <span className="ann-theme-dot" style={bgThemeCss(k) ? { background: bgThemeCss(k) } : undefined}>
+                      {k === 'none' ? '∅' : (selected ? '✓' : '')}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         <div className="group-info-announcements-field">
           <label className="group-info-label" htmlFor="announcement-title">Title</label>
-          <input id="announcement-title" className="group-info-input" value={title} disabled={saving}
+          <input id="announcement-title" className="group-info-input" value={title} disabled={saving} placeholder="Title"
             maxLength={ANNOUNCEMENT_LIMITS.titleMax} aria-describedby="announcement-title-help"
             onChange={(e) => { setTitle(e.target.value); setTouched(true); }} />
           {title.length >= ANNOUNCEMENT_LIMITS.titleMax - 20 && <span className="group-info-counter">{title.length}/{ANNOUNCEMENT_LIMITS.titleMax}</span>}
@@ -258,55 +312,8 @@ export default function GroupAnnouncementForm({ userId, groupId, item, gate, gat
         </div>
 
         <div className="group-info-announcements-field">
-          <span className="group-info-label">Appearance</span>
-          <AnnouncementCardFace className="title-color-preview" as="div" role="img"
-            aria-label={`Preview of the announcement title in ${colorName(titleColor)}${showFont ? `, ${titleFontLabel(titleFont)} font` : ''}${showTheme ? `, ${bgThemeLabel(bgTheme)}` : ''}`}
-            title={trimmedTitle || 'Your title'} titleColor={titleColor} titleFont={showFont ? titleFont : item?.title_font}
-            bgTheme={showTheme ? bgTheme : item?.bg_theme} bannerUrl={currentBanner}
-            location={showLocation ? trimmedLocation : item?.location} date={formatShortDate(new Date().toISOString())} />
-
-          {showFont && (
-            <>
-              <span className="group-info-label ann-sublabel" id="announcement-font-label">Title font</span>
-              <div className="ann-font-row" role="radiogroup" aria-labelledby="announcement-font-label">
-                {TITLE_FONT_KEYS.map((k) => {
-                  const f = TITLE_FONTS[k];
-                  const selected = resolveTitleFont(titleFont) === k;
-                  return (
-                    <button key={k} type="button" role="radio" aria-checked={selected} aria-label={titleFontLabel(k)} disabled={saving}
-                      className={`ann-font-chip${selected ? ' ann-font-chip-on' : ''}`}
-                      style={k === 'default' ? undefined : titleFontStyle(k)}
-                      onClick={() => { setTitleFont(titleFontStoredKey(k)); setTouched(true); }}>
-                      {k === 'default' ? 'Default' : (trimmedTitle.slice(0, 12) || f.name)}
-                    </button>
-                  );
-                })}
-              </div>
-            </>
-          )}
-
-          <span className="group-info-label ann-sublabel">Title color</span>
+          <span className="group-info-label">Title color</span>
           <TitleColorPicker value={titleColor} disabled={saving} onChange={(c) => { setTitleColor(c); setTouched(true); }} />
-
-          {showTheme && (
-            <>
-              <span className="group-info-label ann-sublabel" id="announcement-theme-label">Background</span>
-              <div className="ann-theme-grid" role="radiogroup" aria-labelledby="announcement-theme-label">
-                {['none', ...BG_THEME_GRADIENTS, ...BG_THEME_SOLIDS].map((k) => {
-                  const selected = resolveBgTheme(bgTheme) === k;
-                  return (
-                    <button key={k} type="button" role="radio" aria-checked={selected} aria-label={bgThemeLabel(k)} title={BG_THEMES[k].name}
-                      disabled={saving} className={`ann-theme-tile${selected ? ' ann-theme-tile-on' : ''}`}
-                      onClick={() => { setBgTheme(bgThemeStoredKey(k)); setTouched(true); }}>
-                      <span className="ann-theme-dot" style={bgThemeCss(k) ? { background: bgThemeCss(k) } : undefined}>
-                        {k === 'none' ? '∅' : (selected ? '✓' : '')}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            </>
-          )}
         </div>
 
         <div className="group-info-announcements-field">

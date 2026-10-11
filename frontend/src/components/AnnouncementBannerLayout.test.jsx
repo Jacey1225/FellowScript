@@ -98,9 +98,9 @@ describe('widget: title and View render inside the clipped 3:1 frame with a scri
 });
 
 describe('list row: Notes card treatment + 3:1 banner strip', () => {
-  test('row is card-bg with a --card-border hairline, radius-md, Notes body padding; swipe clip container kept', () => {
+  test('row is transparent with a --card-border-strong outline, radius-md, Notes body padding; swipe clip container kept', () => {
     const row = rule('.group-info-announcements-row');
-    has(row, 'background: var(--card-bg)'); has(row, 'border: 1px solid var(--card-border)'); has(row, 'border-radius: var(--radius-md)');
+    has(row, 'background: transparent'); has(row, 'border: 1px solid var(--card-border-strong)'); has(row, 'border-radius: var(--radius-md)');
     has(rule('.group-info-announcements-open'), 'padding: 0.85rem 0.95rem'); // == .note-card .ant-card-body
     has(rule('.group-info-announcements-item'), 'overflow: hidden');
     has(rule('.group-info-announcements-item'), 'border-radius: var(--radius-md)');
