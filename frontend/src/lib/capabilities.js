@@ -14,19 +14,37 @@ export const CAPABILITIES_OFF = Object.freeze({
   features: Object.freeze({}),
   links: Object.freeze({ explore: null }),
   termsCurrent: true,
+  reactionEmoji: Object.freeze({ quick: Object.freeze([]), more: Object.freeze([]) }),
 });
+
+// Task 20261011-desktop-chat-replies-reactions. The server's reaction allowlist
+// ({quick, more}); the client never hardcodes emoji. Any malformed shape yields
+// the empty (fail closed) allowlist, so no reaction UI can appear from bad data.
+function parseReactionEmoji(raw) {
+  const empty = { quick: [], more: [] };
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return empty;
+  const clean = (list) => {
+    if (!Array.isArray(list)) return null;
+    if (!list.every((e) => typeof e === 'string' && e.length > 0)) return null;
+    return Array.from(new Set(list));
+  };
+  const quick = clean(raw.quick);
+  const more = clean(raw.more);
+  if (!quick || !more) return empty;
+  return { quick, more: more.filter((e) => !quick.includes(e)) };
+}
 
 // Returns the normalised capabilities, or null when the body is malformed.
 export function parseCapabilities(body) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) return null;
-  const { features, links, terms_current: termsCurrent } = body;
+  const { features, links, terms_current: termsCurrent, reaction_emoji: reactionEmoji } = body;
   if (!features || typeof features !== 'object' || Array.isArray(features)) return null;
   if (typeof termsCurrent !== 'boolean') return null;
   const out = {};
   Object.keys(features).forEach((k) => { out[k] = features[k] === true; });
   const explore = links && typeof links === 'object' && typeof links.explore === 'string' && out.explorer_browse
     ? links.explore : null;
-  return { features: out, links: { explore }, termsCurrent };
+  return { features: out, links: { explore }, termsCurrent, reactionEmoji: parseReactionEmoji(reactionEmoji) };
 }
 
 export async function fetchCapabilities() {

@@ -2743,3 +2743,99 @@ body {
   .call-share-dot, .call-share-area { animation: none; }
   .rooms-modal .rooms-seg { transition: none; }
 }
+
+/* ── Chat replies and reactions (task 20261011-desktop-chat-replies-reactions) ──
+   Existing glass tokens only; 44 px hit areas via the ::after expansion used by
+   .msg-more-btn; motion is ease-out 150 ms and falls back to a plain fade or
+   nothing under prefers-reduced-motion. */
+.msg-quick-actions { position: absolute; top: 2px; right: 34px; display: flex; gap: 4px; }
+.msg-quick-btn {
+  position: relative; width: 28px; height: 28px; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: none; border-radius: var(--radius-pill, 999px); cursor: pointer;
+  background: var(--card-bg-2); color: var(--parchment); font-size: 0.8rem;
+  opacity: 0; transition: opacity 0.15s ease-out;
+}
+.msg-quick-btn::after { content: ''; position: absolute; inset: -8px; }
+.msg-bubble-actionable:hover .msg-quick-btn,
+.msg-bubble-actionable:focus-within .msg-quick-btn,
+.msg-bubble-menu-open .msg-quick-btn,
+.msg-quick-btn:focus-visible { opacity: 1; }
+.msg-quick-btn:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+@media (hover: none) { .msg-bubble-actionable:not(:focus-within):not(.msg-bubble-menu-open) .msg-quick-btn { pointer-events: none; } }
+
+.msg-bubble[tabindex="-1"]:focus { outline: none; }
+.msg-bubble-jump { animation: msgJumpPulse 1.6s ease-out; box-shadow: 0 0 0 2px var(--gold); }
+@keyframes msgJumpPulse { 0% { box-shadow: 0 0 0 4px var(--gold); } 100% { box-shadow: 0 0 0 2px rgba(255,198,26,0.25); } }
+
+.msg-quote {
+  display: flex; flex-direction: column; gap: 1px; width: 100%; box-sizing: border-box;
+  margin: 0 0 0.3rem; padding: 0.25rem 0.5rem; text-align: left;
+  border: none; border-left: 2px solid var(--gold-dim); border-radius: var(--radius-sm);
+  background: rgba(255,255,255,0.06); color: rgba(242,242,242,0.75);
+  font-family: 'Inter', sans-serif; font-size: 0.7rem; line-height: 1.35;
+}
+.msg-quote-btn { cursor: pointer; position: relative; }
+.msg-quote-btn::after { content: ''; position: absolute; left: 0; right: 0; top: -6px; bottom: -6px; }
+.msg-quote-btn:hover { background: rgba(255,255,255,0.1); }
+.msg-quote-btn:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.msg-quote-author { color: var(--gold); font-weight: 600; font-size: 0.64rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.msg-quote-text { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; word-break: break-word; }
+.msg-quote-unavailable { font-style: italic; color: rgba(242,242,242,0.6); }
+
+.msg-reactions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 0.3rem; }
+.msg-reaction-chip {
+  position: relative; display: inline-flex; align-items: center; gap: 0.25rem;
+  min-height: 28px; padding: 0 0.5rem; cursor: pointer;
+  border: 1px solid var(--card-border-strong); border-radius: var(--radius-pill, 999px);
+  background: var(--card-bg-2); color: var(--parchment);
+  font-family: 'Inter', sans-serif; font-size: 0.75rem;
+}
+.msg-reaction-chip::after { content: ''; position: absolute; inset: -8px -4px; }
+.msg-reaction-chip-on { background: var(--pill-bg); border-color: rgba(255,198,26,0.5); color: var(--gold); }
+.msg-reaction-chip:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.msg-reaction-chip:disabled { cursor: default; opacity: 0.6; }
+.msg-reaction-count { font-variant-numeric: tabular-nums; }
+
+.msg-reaction-picker {
+  position: fixed; z-index: 400; max-width: min(320px, calc(100vw - 16px)); padding: 0.3rem;
+  display: flex; flex-direction: column; gap: 0.2rem;
+  background: var(--card-bg-2); border: 1px solid var(--card-border-strong); border-radius: var(--radius-md);
+  box-shadow: 0 8px 28px rgba(0,0,0,0.45);
+  animation: msgActionMenuIn 0.16s ease-out;
+}
+.msg-reaction-picker-reduced { animation: msgActionMenuFade 0.12s linear; }
+.msg-reaction-quick, .msg-reaction-grid { display: flex; flex-wrap: wrap; gap: 2px; }
+.msg-reaction-grid { max-height: 220px; overflow-y: auto; border-top: 1px solid var(--card-border-strong); padding-top: 0.2rem; }
+.msg-reaction-pick {
+  width: 44px; height: 44px; padding: 0; display: inline-flex; align-items: center; justify-content: center;
+  border: none; border-radius: var(--radius-sm); cursor: pointer; background: transparent;
+  color: var(--parchment); font-size: 1.3rem; line-height: 1;
+}
+.msg-reaction-more { font-family: 'Space Grotesk', sans-serif; font-size: 1.1rem; color: var(--gold); }
+.msg-reaction-pick:hover, .msg-reaction-pick:focus-visible { background: var(--pill-bg); outline: none; }
+.msg-reaction-pick:focus-visible { box-shadow: inset 0 0 0 2px var(--gold); }
+.msg-reaction-pick-on { background: var(--pill-bg); box-shadow: inset 0 0 0 1px rgba(255,198,26,0.5); }
+
+.reply-bar {
+  flex-shrink: 0; display: flex; align-items: center; gap: 0.5rem; margin: 0 0.8rem;
+  padding: 0.3rem 0.3rem 0.3rem 0.7rem; min-height: 44px; box-sizing: border-box;
+  border-left: 2px solid var(--gold-dim); border-radius: var(--radius-sm);
+  background: var(--pill-bg); animation: msgActionMenuFade 0.15s ease-out;
+}
+.reply-bar-main { flex: 1; min-width: 0; display: flex; flex-direction: column; font-family: 'Inter', sans-serif; }
+.reply-bar-title { font-size: 0.68rem; font-weight: 600; color: var(--gold); }
+.reply-bar-text { font-size: 0.74rem; color: rgba(242,242,242,0.8); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.reply-bar-cancel {
+  width: 44px; height: 44px; flex-shrink: 0; padding: 0; display: inline-flex; align-items: center; justify-content: center;
+  border: none; background: transparent; cursor: pointer; color: rgba(242,242,242,0.55); font-size: 1.1rem;
+}
+.reply-bar-cancel:hover { color: var(--parchment); }
+.reply-bar-cancel:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; border-radius: var(--radius-sm); }
+
+@media (prefers-reduced-motion: reduce) {
+  .msg-bubble-jump { animation: none; }
+  .msg-reaction-picker { animation: msgActionMenuFade 0.12s linear; }
+  .reply-bar { animation: none; }
+  .msg-quick-btn { transition: none; }
+}

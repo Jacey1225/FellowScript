@@ -8,6 +8,8 @@ import {
   newClientRef, parsePage, pageQuery,
   mergeOlder, mergeLive, reconcileAck, findLostAckMatch,
 } from '../lib/chatPaging.js';
+import { parseReactions, toggled, setting, updatingCount, addReaction, removeReaction } from '../lib/reactions.js';
+import { replyFromWire } from '../lib/replies.js';
 import {
   createThread, deleteGroupMessage, restoreGroupMessage, fetchThreadMessagesUrl,
   insertRestored, DEFAULT_UNDO_SECONDS,
@@ -133,7 +135,14 @@ export function useMessaging({ user }) {
       setRestoredDraft(prev => ({ tick: (prev ? prev.tick : 0) + 1, text: target.text }));
       return;
     }
-    setMessages(prev => prev.map(m => (m === target ? { ...m, failed: true, pending: false } : m)));
+    // A refused reply: the failed bubble sends again as a plain message.
+    const dropReply = reason === 'reply_invalid';
+    setMessages(prev => prev.map(m => {
+      if (m !== target) return m;
+      const next = { ...m, failed: true, pending: false };
+      if (dropReply) delete next.reply;
+      return next;
+    }));
   }, []);
 
   // ── WebSocket ──────────────────────────────────────────────────────────────
@@ -190,6 +199,14 @@ export function useMessaging({ user }) {
           }
           return;
         }
+        // Task 20261011-desktop-chat-replies-reactions: someone's reaction count
+        // changed. Carries a `type` and no from_user/text, so it can never be a
+        // bubble. Only the count moves; the viewer's own state is kept (it comes
+        // from the HTTP result), whoever the actor was.
+        if (data.type === 'reaction_updated') {
+          applyReactionFrame(data);
+          return;
+        }
         // Task 20261001-message-threads: thread / delete frames go through a
         // callback ref (same style as sessionSignalCbRef); never a second
         // WebSocket. Not chat bubbles in their own right.
@@ -223,7 +240,9 @@ export function useMessaging({ user }) {
           message.error({
             content: data.reason === 'terms_reaccept_required'
               ? 'Please review and accept the updated Terms to continue.'
-              : (data.detail || "Couldn't send that message. Please try again."),
+              : data.reason === 'reply_invalid'
+                ? "That message can't be replied to. Select yours to retry without the reply."
+                : (data.detail || "Couldn't send that message. Please try again."),
             key: 'fs-ws-send-error',
             duration: 4,
           });
@@ -267,6 +286,9 @@ export function useMessaging({ user }) {
             attachmentKind: data.attachment_kind || null,
             attachmentMeta: data.attachment_meta || null,
             attachmentUrl:  data.attachment_url || null,
+            // Reply label keys ride on the frame only when chat_replies is on
+            // for me; absent otherwise (plain message).
+            ...(replyFromWire(data) ? { reply: replyFromWire(data) } : {}),
           }));
         }
       } catch (err) {
@@ -725,6 +747,8 @@ export function useMessaging({ user }) {
           attachmentKind: m.attachment_kind || null,
           attachmentMeta: m.attachment_meta || null,
           attachmentUrl:  m.attachment_url || null,
+          ...(parseReactions(m.reactions) ? { reactions: parseReactions(m.reactions) } : {}),
+          ...(replyFromWire(m) ? { reply: replyFromWire(m) } : {}),
         })));
       }
     } catch (err) {
@@ -799,7 +823,7 @@ export function useMessaging({ user }) {
         if (!pg || token !== chatTokenRef.current) return;
         const match = findLostAckMatch(messagesRef.current, pendingMsg, pg.messages);
         if (match) {
-          setMessages(prev => reconcileAck(prev, { client_ref: clientRef, id: match.id, timestamp: match.timestamp }));
+          setMessages(prev => reconcileAck(prev, { client_ref: clientRef, id: match.id, timestamp: match.timestamp, reply: match.reply }));
         }
       } catch (err) {
         console.error('Lost-ack fallback fetch failed:', err);
@@ -815,8 +839,12 @@ export function useMessaging({ user }) {
   // preview_url/width/height for gif; width/height for image/video), and
   // `objectKey` is the S3 object key from a completed upload (image/video/
   // file only — always absent for gif, which never uploads bytes of ours).
-  const sendMessage = useCallback((text, attachment = null) => {
+  const sendMessage = useCallback((text, attachment = null, replyArg = null) => {
     if (!user || !currentContact) return;
+    // Replies exist only in the main conversation and only with chat_replies on
+    // (fail closed: no flag, no reply_to, no quote).
+    const reply = (replyArg && typeof replyArg.id === 'string' && replyArg.id
+      && !threadViewRef.current && capsRef.current?.isEnabled?.('chat_replies') === true) ? replyArg : null;
     if (!wsRef.current || wsRef.current.readyState !== 1) {
       // Not connected: never drop the text silently. Show it as a failed
       // bubble the user can retry once the connection is back.
@@ -826,6 +854,7 @@ export function useMessaging({ user }) {
         attachmentKind: attachment ? attachment.kind : null,
         attachmentMeta: attachment ? (attachment.meta || null) : null,
         attachmentUrl: (attachment && attachment.kind === 'gif') ? null : (attachment?.localUrl || null),
+        ...(reply ? { reply } : {}),
       }]);
       return;
     }
@@ -841,6 +870,7 @@ export function useMessaging({ user }) {
       payload.attachment_meta = attachment.meta || {};
       if (attachment.objectKey) payload.attachment_key = attachment.objectKey;
     }
+    if (reply) payload.reply_to = reply.id;
     // client_ref only on a thread that was opened paged (capability on), so a
     // server without pagination never sees the extra field and no ack is
     // awaited that cannot come.
@@ -860,6 +890,7 @@ export function useMessaging({ user }) {
       // entry; a gif renders correctly from attachmentMeta.url alone, same
       // as a real delivered/loaded message (design gate §4).
       attachmentUrl: (attachment && attachment.kind === 'gif') ? null : (attachment?.localUrl || null),
+      ...(reply ? { reply } : {}),
     }]);
   }, [user, currentContact, scheduleAckFallback]);
 
@@ -867,8 +898,79 @@ export function useMessaging({ user }) {
   const retryFailedMessage = useCallback((m) => {
     if (!m || !m.failed) return;
     setMessages(prev => prev.filter(x => x !== m));
-    sendMessage(m.text, m.retryAttachment || null);
+    sendMessage(m.text, m.retryAttachment || null, m.reply || null);
   }, [sendMessage]);
+
+  // ── Reactions (task 20261011-desktop-chat-replies-reactions) ───────────────
+  // Mirrors ChatThreadView.toggleReaction / handleReactionUpdated. Group and DM
+  // main-chat messages only (thread messages are deferred server-side).
+  const reactionsOn = () => capsRef.current?.isEnabled?.('message_reactions') === true
+    && (capsRef.current?.reactionEmoji?.quick?.length || 0) > 0;
+  const reactionInFlightRef = useRef(new Set());
+
+  const setReactionsFor = useCallback((messageId, change) => {
+    setMessages(prev => prev.map(m => (m.id === messageId ? { ...m, reactions: change(m.reactions || []) } : m)));
+  }, []);
+
+  // Does this frame's room key name the open conversation? Group frames carry
+  // the group id; a DM frame carries the sorted "a|b" room key.
+  const frameInCurrentConversation = (data) => {
+    const cc = currentContactRef.current;
+    if (!cc || !user || typeof data.group_id !== 'string') return false;
+    const gid = data.group_id.toLowerCase();
+    if (cc.type === 'group') return gid === String(cc.group_id || cc.id).toLowerCase();
+    return gid === [String(user.user_id).toLowerCase(), String(cc.id).toLowerCase()].sort().join('|');
+  };
+
+  const applyReactionFrame = (data) => {
+    if (!reactionsOn()) return;
+    if (typeof data.message_id !== 'string' || !data.message_id) return;
+    if (typeof data.emoji !== 'string' || !data.emoji) return;
+    if (!Number.isInteger(data.count) || data.count < 0) return;
+    if (threadViewRef.current) return;
+    if (!frameInCurrentConversation(data)) return;
+    setMessages(prev => {
+      const idx = prev.findIndex(m => m.id === data.message_id);
+      if (idx === -1) return prev;
+      const next = prev.slice();
+      next[idx] = { ...prev[idx], reactions: updatingCount(prev[idx].reactions || [], data.emoji, data.count) };
+      return next;
+    });
+  };
+
+  // Toggle the viewer's reaction on a settled message: optimistic change, then
+  // the server's summary replaces that one emoji; on any failure that emoji is
+  // rolled back and the reason shown. Resolves true on success.
+  const toggleReaction = useCallback(async (msg, emoji) => {
+    if (!user || !msg || !msg.id || msg.pending || msg.failed || typeof emoji !== 'string' || !emoji) return false;
+    if (!reactionsOn() || threadViewRef.current) return false;
+    const key = `${msg.id}|${emoji}`;
+    if (reactionInFlightRef.current.has(key)) return false;
+    const current = messagesRef.current.find(m => m.id === msg.id);
+    const before = (current && current.reactions) || [];
+    const prior = before.find(r => r.emoji === emoji) || null;
+    const adding = !(prior && prior.viewerReacted);
+    reactionInFlightRef.current.add(key);
+    setReactionsFor(msg.id, list => toggled(list, emoji));
+    try {
+      const result = adding
+        ? await addReaction(user.user_id, msg.id, emoji)
+        : await removeReaction(user.user_id, msg.id, emoji);
+      setReactionsFor(msg.id, list => setting(list, emoji, result));
+      return true;
+    } catch (err) {
+      setReactionsFor(msg.id, list => setting(list, emoji, prior));
+      if (err && err.kind === 'terms') capsRef.current?.refresh?.();
+      message.error({
+        content: (err && err.message) || "Couldn't update your reaction. Please try again.",
+        key: 'fs-reaction-error',
+        duration: 4,
+      });
+      return false;
+    } finally {
+      reactionInFlightRef.current.delete(key);
+    }
+  }, [user, setReactionsFor]);
 
   // ── Attachments (task 20260904-messaging-attachments) ─────────────────────
   // Wire contract per design-notes.md / backend step 2: request a presigned
@@ -1159,7 +1261,7 @@ export function useMessaging({ user }) {
     olderPage, loadOlder,
     threadView, threadMessages, threadPage, threadLoad, restoredDraft,
     openThread, closeThread, retryThread, loadOlderThread, startThread, sendThreadMessage,
-    deleteMessage, restoreMessage,
+    deleteMessage, restoreMessage, toggleReaction,
     wsRef, friendCache,
     connectWS, disconnectWS, setOnSessionSignal,
     loadContacts, openChat, closeChat, sendMessage, retryFailedMessage,

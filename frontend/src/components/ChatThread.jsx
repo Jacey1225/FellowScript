@@ -6,6 +6,7 @@ import {
   PictureOutlined, FileOutlined, SmileOutlined, PlayCircleOutlined,
   DownloadOutlined, CloseCircleFilled, SearchOutlined,
   BranchesOutlined, CopyOutlined, DeleteOutlined, ExclamationCircleOutlined,
+  RollbackOutlined, ArrowUpOutlined,
 } from '@ant-design/icons';
 import { SessionCard } from './SessionWidget.jsx';
 import SessionsMenu from './SessionsMenu.jsx';
@@ -15,6 +16,11 @@ import { ANNOUNCEMENTS_ENABLED } from '../lib/announcementsApi.js';
 import ActionableBubble from './MessageActionMenu.jsx';
 import { useCapabilities } from '../hooks/useCapabilities.js';
 import { DEFAULT_UNDO_SECONDS } from '../lib/threadsApi.js';
+import ReactionPicker, { rectOf } from './ReactionPicker.jsx';
+import { chipLabel } from '../lib/reactions.js';
+import {
+  REPLY_UNAVAILABLE_LABEL, replyPreviewText, replyAuthorName, replyAuthorLabel, replySnippet,
+} from '../lib/replies.js';
 
 const { Text } = Typography;
 
@@ -627,10 +633,25 @@ export default function ChatThread({
   onStartThread, onDeleteMessage, onRestoreMessage,
   // Task 20261003-web-reader-ios-parity: friends + add-members for group info.
   friends, onAddGroupMembers, onRetryMessage,
+  // Task 20261011-desktop-chat-replies-reactions: (message, emoji) => Promise<boolean>.
+  onToggleReaction,
 }) {
   const inThread = !!thread;
   const caps = useCapabilities();
   const features = (caps && caps.features) || {};
+  // Task 20261011-desktop-chat-replies-reactions. Both fail closed: absent or
+  // false server flags (and an empty allowlist) mean no chips, picker, quote
+  // affordances or Reply/React items; neither exists inside a thread.
+  const reactionEmoji = (caps && caps.reactionEmoji) || { quick: [], more: [] };
+  const reactionsOn = !inThread && features.message_reactions === true
+    && reactionEmoji.quick.length > 0 && typeof onToggleReaction === 'function';
+  const repliesOn = !inThread && features.chat_replies === true;
+  const [replyTarget, setReplyTarget] = useState(null);
+  const [picker, setPicker] = useState(null); // { id, anchor, align, returnEl }
+  const [jumpId, setJumpId] = useState(null);
+  const [announcement, setAnnouncement] = useState('');
+  const jumpTimerRef = useRef(null);
+  useEffect(() => () => clearTimeout(jumpTimerRef.current), []);
   const threadHeadingRef = useRef(null);
   const [undoToasts, setUndoToasts] = useState([]);
   const [text, setText]               = useState('');
@@ -735,6 +756,11 @@ export default function ChatThread({
 
   // A finished (or failed) older-page request never leaves a stale anchor.
   useEffect(() => { if (!loadingOlder) anchorRef.current = null; }, [loadingOlder]);
+
+  // A reply in progress never outlives its conversation or the server flag.
+  useEffect(() => { setReplyTarget(null); setPicker(null); }, [contact?.id]);
+  useEffect(() => { if (!repliesOn) setReplyTarget(null); }, [repliesOn]);
+  useEffect(() => { if (!reactionsOn) setPicker(null); }, [reactionsOn]);
 
   // A new thread starts clean.
   useEffect(() => {
@@ -849,7 +875,23 @@ export default function ChatThread({
     if (!canSend) return;
     const trimmed = text.trim();
     if (!trimmed && !staged) return;
-    if (staged) {
+    const reply = (repliesOn && replyTarget && replyTarget.id) ? {
+      id: replyTarget.id,
+      text: replyPreviewText(replyTarget),
+      author: replyAuthorName(replyTarget),
+      authorId: replyTarget.mine && user ? user.user_id : null,
+    } : null;
+    if (reply) {
+      // The reply rides as a third argument only when there is one, so every
+      // other send keeps its exact earlier call shape.
+      const attachment = staged ? {
+        kind: staged.kind,
+        meta: staged.meta,
+        objectKey: staged.objectKey,
+        localUrl: (staged.kind === 'image' || staged.kind === 'video') ? staged.previewUrl : null,
+      } : null;
+      onSend(trimmed, attachment, reply);
+    } else if (staged) {
       const attachment = {
         kind: staged.kind,
         meta: staged.meta,
@@ -867,7 +909,51 @@ export default function ChatThread({
     setText('');
     setStaged(null);
     setAttachmentError(null);
+    setReplyTarget(null);
   };
+
+  const startReply = useCallback((m) => {
+    setReplyTarget(m);
+    setAnnouncement(`Replying to ${replyAuthorName(m)}`);
+    messageInputRef.current?.focus?.();
+  }, []);
+
+  const cancelReply = useCallback(() => {
+    setReplyTarget(null);
+    setAnnouncement('Reply cancelled');
+    messageInputRef.current?.focus?.();
+  }, []);
+
+  // Scroll to a loaded original and highlight it briefly. Reduced motion: no
+  // smooth scroll, and the highlight is a static outline (CSS).
+  const jumpToMessage = useCallback((id) => {
+    const sc = scrollerRef.current;
+    if (!sc || !id) return false;
+    const el = Array.from(sc.querySelectorAll('[data-mid]')).find(e => e.getAttribute('data-mid') === id);
+    if (!el) return false;
+    el.scrollIntoView?.({ block: 'center', behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
+    el.focus?.({ preventScroll: true });
+    setJumpId(id);
+    setAnnouncement('Jumped to original message');
+    clearTimeout(jumpTimerRef.current);
+    jumpTimerRef.current = setTimeout(() => setJumpId(null), 1600);
+    return true;
+  }, []);
+
+  const openPicker = useCallback((m, bubbleEl) => {
+    if (!reactionsOn || !m.id) return;
+    const returnEl = bubbleEl?.querySelector?.('.msg-more-btn') || document.activeElement;
+    const mine = !!m.mine;
+    setPicker({ id: m.id, anchor: rectOf(bubbleEl), align: mine ? 'right' : 'left', returnEl });
+  }, [reactionsOn]);
+
+  const closePicker = useCallback((restoreFocus) => {
+    if (restoreFocus) picker?.returnEl?.focus?.({ preventScroll: true });
+    setPicker(null);
+  }, [picker]);
+
+  const bubbleElFor = (id) => Array.from(scrollerRef.current?.querySelectorAll('[data-mid]') || [])
+    .find(e => e.getAttribute('data-mid') === id) || null;
 
   const isGroup = contact?.type === 'group';
   // Who a joined caller can ring (task 20261003-web-reader-ios-parity):
@@ -896,7 +982,16 @@ export default function ChatThread({
 
   const actionsFor = (m) => {
     const list = [];
-    const settled = !!m.id && !m.pending;
+    const settled = !!m.id && !m.pending && !m.failed;
+    if (repliesOn && settled) {
+      list.push({ key: 'reply', label: 'Reply', icon: <RollbackOutlined />, onSelect: () => startReply(m) });
+    }
+    if (reactionsOn && settled) {
+      list.push({ key: 'react', label: 'React', icon: <SmileOutlined />, onSelect: () => openPicker(m, bubbleElFor(m.id)) });
+    }
+    if (repliesOn && m.reply && !m.reply.deleted && messages.some(x => x.id === m.reply.id)) {
+      list.push({ key: 'original', label: 'Go to original', icon: <ArrowUpOutlined />, onSelect: () => jumpToMessage(m.reply.id) });
+    }
     if (!inThread && isGroup && features.threads === true && settled && onStartThread) {
       list.push({ key: 'thread', label: 'Start thread', icon: <BranchesOutlined />, onSelect: () => onStartThread(m) });
     }
@@ -1071,7 +1166,7 @@ export default function ChatThread({
           aria-live="polite"
           style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap' }}
         >
-          {loadedAnnouncement}
+          {loadedAnnouncement || announcement}
         </div>
         {paged && loadingOlder && (
           <div style={{ textAlign: 'center', padding: '0.25rem 0' }} aria-label="Loading earlier messages">
@@ -1124,16 +1219,60 @@ export default function ChatThread({
             : m.attachmentKind === 'gif'   ? `${m.sender || 'You'}: GIF attachment`
             : m.attachmentKind === 'file'  ? `${m.sender || 'You'}: file attachment, ${m.attachmentMeta?.filename || 'file'}, download`
             : undefined;
+          const settled = !!m.id && !m.pending && !m.failed;
+          const reactions = (reactionsOn && Array.isArray(m.reactions)) ? m.reactions : [];
           return (
             <ActionableBubble
               key={m.key ?? `i${i}`}
               data-msg-id={m.key ?? undefined}
-              className={`msg-bubble ${m.mine ? 'sent' : 'received'} ${isMedia ? 'msg-bubble-media' : ''}${m.failed ? ' msg-bubble-failed' : ''}`}
+              data-mid={m.id ?? undefined}
+              tabIndex={(repliesOn && m.id) ? -1 : undefined}
+              className={`msg-bubble ${m.mine ? 'sent' : 'received'} ${isMedia ? 'msg-bubble-media' : ''}${m.failed ? ' msg-bubble-failed' : ''}${jumpId && m.id === jumpId ? ' msg-bubble-jump' : ''}`}
               aria-label={ariaLabel}
               mine={!!m.mine}
               actions={actionsFor(m)}
             >
+              {(repliesOn || reactionsOn) && settled && (
+                <div className="msg-quick-actions">
+                  {repliesOn && (
+                    <button type="button" className="msg-quick-btn" aria-label="Reply" onClick={() => startReply(m)}>
+                      <RollbackOutlined aria-hidden="true" />
+                    </button>
+                  )}
+                  {reactionsOn && (
+                    <button
+                      type="button" className="msg-quick-btn" aria-label="React"
+                      aria-haspopup="dialog" aria-expanded={picker?.id === m.id}
+                      onClick={(e) => openPicker(m, e.currentTarget.closest('[data-mid]'))}
+                    >
+                      <SmileOutlined aria-hidden="true" />
+                    </button>
+                  )}
+                </div>
+              )}
               {!m.mine && m.sender && !isMedia && <div className="msg-bubble-sender">{m.sender}</div>}
+              {repliesOn && m.reply && (() => {
+                const r = m.reply;
+                if (r.deleted) return <div className="msg-quote msg-quote-unavailable">{REPLY_UNAVAILABLE_LABEL}</div>;
+                const who = replyAuthorLabel(r, user?.user_id);
+                const snip = replySnippet(r);
+                const loaded = messages.some(x => x.id === r.id);
+                return loaded ? (
+                  <button
+                    type="button" className="msg-quote msg-quote-btn"
+                    aria-label={`Replying to ${who}: ${snip}. Go to original message`}
+                    onClick={() => jumpToMessage(r.id)}
+                  >
+                    <span className="msg-quote-author">{who}</span>
+                    <span className="msg-quote-text">{snip}</span>
+                  </button>
+                ) : (
+                  <div className="msg-quote">
+                    <span className="msg-quote-author">{who}</span>
+                    <span className="msg-quote-text">{snip}</span>
+                  </div>
+                );
+              })()}
               {m.attachmentKind ? <AttachmentContent message={m} /> : m.text}
               {m.attachmentKind && m.text && (
                 <div className={isMedia ? 'attachment-caption' : undefined}>{m.text}</div>
@@ -1151,6 +1290,23 @@ export default function ChatThread({
               ) : m.timestamp && (
                 <div className="msg-bubble-meta">
                   {new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </div>
+              )}
+              {reactions.length > 0 && (
+                <div className="msg-reactions" role="group" aria-label="Reactions">
+                  {reactions.map(r => (
+                    <button
+                      key={r.emoji} type="button"
+                      className={`msg-reaction-chip${r.viewerReacted ? ' msg-reaction-chip-on' : ''}`}
+                      aria-pressed={r.viewerReacted}
+                      aria-label={chipLabel(r)}
+                      disabled={!settled}
+                      onClick={() => onToggleReaction(m, r.emoji)}
+                    >
+                      <span aria-hidden="true">{r.emoji}</span>
+                      <span className="msg-reaction-count" aria-hidden="true">{r.count}</span>
+                    </button>
+                  ))}
                 </div>
               )}
             </ActionableBubble>
@@ -1180,6 +1336,25 @@ export default function ChatThread({
       )}
       {attachmentError && (
         <div style={{ padding: '0 0.9rem', color: 'rgba(242,242,242,0.55)', fontSize: '0.7rem' }}>{attachmentError}</div>
+      )}
+
+      {/* Reply preview (task 20261011-desktop-chat-replies-reactions) */}
+      {repliesOn && replyTarget && (
+        // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions
+        <div
+          className="reply-bar"
+          role="group"
+          aria-label={`Replying to ${replyAuthorName(replyTarget)}: ${replyPreviewText(replyTarget)}`}
+          onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); cancelReply(); } }}
+        >
+          <div className="reply-bar-main">
+            <span className="reply-bar-title">Replying to {replyAuthorName(replyTarget)}</span>
+            <span className="reply-bar-text">{replyPreviewText(replyTarget)}</span>
+          </div>
+          <button type="button" className="reply-bar-cancel" aria-label="Cancel reply" onClick={cancelReply}>
+            <CloseCircleFilled aria-hidden="true" />
+          </button>
+        </div>
       )}
 
       {/* Input */}
@@ -1227,6 +1402,7 @@ export default function ChatThread({
           value={text}
           onChange={e => setText(e.target.value)}
           onPressEnter={handleSend}
+          onKeyDown={(e) => { if (e.key === 'Escape' && replyTarget) { e.stopPropagation(); cancelReply(); } }}
           placeholder="Message…"
           className="chat-composer-input"
           style={{ flex: 1, borderRadius: 20, fontSize: '0.82rem' }}
@@ -1265,6 +1441,22 @@ export default function ChatThread({
           onClose={() => setPanelLightbox(null)}
         />
       )}
+
+      {reactionsOn && picker && (() => {
+        const target = messages.find(x => x.id === picker.id);
+        if (!target) return null;
+        return (
+          <ReactionPicker
+            anchor={picker.anchor}
+            align={picker.align}
+            quick={reactionEmoji.quick}
+            more={reactionEmoji.more}
+            selected={new Set((target.reactions || []).filter(r => r.viewerReacted).map(r => r.emoji))}
+            onClose={closePicker}
+            onPick={(emoji) => { closePicker(true); onToggleReaction(target, emoji); }}
+          />
+        );
+      })()}
 
       <GifSearchModal
         open={showGifSheet}

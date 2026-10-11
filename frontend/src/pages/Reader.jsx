@@ -90,7 +90,7 @@ export default function Reader() {
     olderPage, loadOlder,
     threadView, threadMessages, threadPage, threadLoad, restoredDraft,
     openThread, closeThread, retryThread, loadOlderThread, startThread, sendThreadMessage,
-    deleteMessage, restoreMessage,
+    deleteMessage, restoreMessage, toggleReaction,
   } = useMessaging({ user });
 
   const {
@@ -405,8 +405,8 @@ export default function Reader() {
     onOpenThread: openThread, onCloseThread: closeThread, onRetryThread: retryThread,
     onLoadOlderThread: loadOlderThread, onSendThreadMessage: sendThreadMessage,
     onStartThread: startThread, onDeleteMessage: deleteMessage, onRestoreMessage: restoreMessage,
-    onAddGroupMembers: addGroupMembers, onRetryMessage: retryFailedMessage,
-  }), [addGroupMembers, retryFailedMessage, threadView, threadMessages, threadPage, threadLoad, restoredDraft, openThread, closeThread, retryThread,
+    onAddGroupMembers: addGroupMembers, onRetryMessage: retryFailedMessage, onToggleReaction: toggleReaction,
+  }), [addGroupMembers, retryFailedMessage, toggleReaction, threadView, threadMessages, threadPage, threadLoad, restoredDraft, openThread, closeThread, retryThread,
        loadOlderThread, sendThreadMessage, startThread, deleteMessage, restoreMessage,
        olderPage, loadOlder, applyGroupChange, dropGroup, user, friends, msgGroups, currentContact, messages, groupMembers, handleOpenChat, handleCloseChat,
        addFriend, removeFriend, reportUser, blockUser, createGroup, updateGroup, leaveGroup,

@@ -12,6 +12,9 @@
 //  - A pending (not yet acked) bubble has no id and is never removed by a
 //    merge; only an ack, or the lost-ack fallback, resolves it.
 
+import { parseReactions } from './reactions.js';
+import { replyFromWire } from './replies.js';
+
 export const INITIAL_PAGE_LIMIT = 30;
 export const OLDER_PAGE_LIMIT = 30;
 export const ACK_FALLBACK_MS = 5000;
@@ -45,6 +48,12 @@ export function toMessage(row, mine) {
     attachmentUrl: row.attachment_url || null,
   };
   if (id) { msg.id = id; msg.key = id; }
+  // Task 20261011-desktop-chat-replies-reactions: only present while the
+  // server flags are on for the viewer (absent keys leave the shape unchanged).
+  const reactions = parseReactions(row.reactions);
+  if (reactions) msg.reactions = reactions;
+  const reply = replyFromWire(row);
+  if (reply) msg.reply = reply;
   return msg;
 }
 
@@ -105,11 +114,15 @@ export function reconcileAck(current, ack) {
   const dupe = current.some((m, i) => i !== idx && m.id === ack.id);
   if (dupe) return current.filter((_, i) => i !== idx);
   const next = current.slice();
+  // The ack carries the reply label keys (flag on); keep the optimistic quote
+  // when it carries none.
+  const reply = replyFromWire(ack) || ack.reply || current[idx].reply;
   next[idx] = {
     ...current[idx],
     id: ack.id,
     timestamp: ack.timestamp || current[idx].timestamp,
     pending: false,
+    ...(reply ? { reply } : {}),
   };
   return next;
 }

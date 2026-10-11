@@ -146,7 +146,7 @@ export default function ActionableBubble({ actions, mine, className, children, .
   }
 
   const onPointerDown = (e) => {
-    if (e.pointerType === 'mouse' || e.target.closest?.('a[href], .msg-more-btn')) return;
+    if (e.pointerType === 'mouse' || e.target.closest?.('a[href], .msg-more-btn, .msg-quick-btn, .msg-reaction-chip, .msg-quote-btn')) return;
     holdRef.current.x = e.clientX;
     holdRef.current.y = e.clientY;
     cancelHold();
