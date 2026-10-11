@@ -325,3 +325,13 @@ edit that AI-authored note (never whether it's visible — visibility is still
 ## Creation Date Storage
 
 `created_at` is set at INSERT time and never modified on edits. `timestamp` is bumped on every edit. The frontend sorts by `created_at` (falling back to `timestamp` for legacy notes) and displays `created_at` as the date label on each card.
+
+---
+
+## Sharing (iOS)
+
+Long-pressing a note row shows **Share** (also a VoiceOver custom action). The shared text is the note title, "Shared by <creator>", and a friend-request link (`https://fellowscript.com/u/<username>`). The body, preview, ids and timestamps are never included. If the creator can't be resolved to a valid username, Share is hidden. Long-pressing a highlight (Highlights tab or highlight search) or a verse in the reader shares the reference, the verse text and a link that opens the verse (`https://fellowscript.com/v/<book>/<chapter>/<verse>`).
+
+Share links open a confirm screen in the app and never send anything on their own: `/u/<username>` asks "Send a friend request to <username>?", `/g/<public_id>` shows the published group and a "Request to join" button (the host still approves). Parsing is strict and deny-by-default; anything that is not exactly one of these shapes is ignored. Username links are guessable and not revocable (a rename invalidates them). The landing pages, AASA entries and nginx snippets for these paths are prepared in the repo and are not applied to the server until confirmed.
+
+Group announcements share the group name, title and date plus the `/g/<public_id>` request-to-join link, only when the group has a published Explorer listing; the description, location, links and payment handles are never shared.

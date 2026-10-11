@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex, nofollow" />
+  <!-- The verse reference is in this page's URL: never send it as a Referer. -->
+  <meta name="referrer" content="no-referrer" />
+  <meta name="color-scheme" content="dark" />
+  <title>Bible verse — FellowScript</title>
+  <style>
+    :root { --ink: #17120f; --cream: #f6efe6; --gold: #ffc61a; --gold-dim: #c8861a; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; }
+    body {
+      min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 2rem 1rem;
+      background: radial-gradient(ellipse at 20% 10%, rgba(255,198,26,0.18), transparent 55%),
+                  radial-gradient(ellipse at 85% 90%, rgba(200,134,26,0.16), transparent 50%), var(--ink);
+      color: var(--cream); font-family: -apple-system, system-ui, 'Inter', sans-serif; text-align: center;
+    }
+    main { width: 100%; max-width: 420px; display: flex; flex-direction: column; align-items: center; gap: 1rem; }
+    .wordmark { font-family: 'Schibsted Grotesk', system-ui, sans-serif; font-size: 1.6rem; font-weight: 600; letter-spacing: -0.01em; color: #FFF8EE; margin: 0; }
+    h1 { margin: 0.5rem 0 0; font-family: 'Playfair Display', Georgia, serif; font-size: 1.5rem; outline: none; }
+    p { margin: 0; font-size: 0.9rem; line-height: 1.6; color: rgba(246,239,230,0.75); }
+    .pill, .ghost { display: inline-flex; align-items: center; justify-content: center; min-height: 48px; padding: 0 1.4rem; border-radius: 999px; text-decoration: none; font-weight: 600; }
+    .pill { width: 100%; color: var(--ink); background: linear-gradient(135deg, #ffdf6b, var(--gold) 60%, var(--gold-dim)); }
+    .ghost { color: var(--gold); border: 1px solid rgba(255,198,26,0.4); }
+    .pill:focus-visible, .ghost:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+    [hidden] { display: none !important; }
+  </style>
+</head>
+<body>
+  <main>
+    <p class="wordmark">FellowScript</p>
+    <section id="valid" hidden>
+      <h1 id="valid-heading" tabindex="-1">A verse was shared with you</h1>
+      <p id="ref"></p>
+      <p>Open this link in the FellowScript app to read it in context.</p>
+    </section>
+    <section id="invalid" hidden>
+      <h1 id="invalid-heading" tabindex="-1">This link isn't valid</h1>
+    </section>
+    <a id="appstore" class="pill" href="https://apps.apple.com/us/app/fellowscript-study-connect/id6791701454" hidden>Get the app</a>
+    <p id="helper" hidden>Already have the app? Open this link on your iPhone.</p>
+    <a id="home" class="ghost" href="/" hidden>Go to FellowScript</a>
+  </main>
+
+  <script>
+    // Canonical book slugs (lowercase, spaces become hyphens). The URL is only
+    // matched against this allowlist and digit bounds; the only text ever
+    // written to the page is a book name taken from this table via textContent,
+    // never a substring of the URL.
+    var BOOKS = {
+      "genesis": "Genesis",
+      "exodus": "Exodus",
+      "leviticus": "Leviticus",
+      "numbers": "Numbers",
+      "deuteronomy": "Deuteronomy",
+      "joshua": "Joshua",
+      "judges": "Judges",
+      "ruth": "Ruth",
+      "1-samuel": "1 Samuel",
+      "2-samuel": "2 Samuel",
+      "1-kings": "1 Kings",
+      "2-kings": "2 Kings",
+      "1-chronicles": "1 Chronicles",
+      "2-chronicles": "2 Chronicles",
+      "ezra": "Ezra",
+      "nehemiah": "Nehemiah",
+      "esther": "Esther",
+      "job": "Job",
+      "psalms": "Psalms",
+      "proverbs": "Proverbs",
+      "ecclesiastes": "Ecclesiastes",
+      "song-of-solomon": "Song of Solomon",
+      "isaiah": "Isaiah",
+      "jeremiah": "Jeremiah",
+      "lamentations": "Lamentations",
+      "ezekiel": "Ezekiel",
+      "daniel": "Daniel",
+      "hosea": "Hosea",
+      "joel": "Joel",
+      "amos": "Amos",
+      "obadiah": "Obadiah",
+      "jonah": "Jonah",
+      "micah": "Micah",
+      "nahum": "Nahum",
+      "habakkuk": "Habakkuk",
+      "zephaniah": "Zephaniah",
+      "haggai": "Haggai",
+      "zechariah": "Zechariah",
+      "malachi": "Malachi",
+      "matthew": "Matthew",
+      "mark": "Mark",
+      "luke": "Luke",
+      "john": "John",
+      "acts": "Acts",
+      "romans": "Romans",
+      "1-corinthians": "1 Corinthians",
+      "2-corinthians": "2 Corinthians",
+      "galatians": "Galatians",
+      "ephesians": "Ephesians",
+      "philippians": "Philippians",
+      "colossians": "Colossians",
+      "1-thessalonians": "1 Thessalonians",
+      "2-thessalonians": "2 Thessalonians",
+      "1-timothy": "1 Timothy",
+      "2-timothy": "2 Timothy",
+      "titus": "Titus",
+      "philemon": "Philemon",
+      "hebrews": "Hebrews",
+      "james": "James",
+      "1-peter": "1 Peter",
+      "2-peter": "2 Peter",
+      "1-john": "1 John",
+      "2-john": "2 John",
+      "3-john": "3 John",
+      "jude": "Jude",
+      "revelation": "Revelation"
+    };
+    (function () {
+      var m = /^\/v\/([a-z0-9-]{1,20})\/([1-9][0-9]{0,2})\/([1-9][0-9]{0,2})\/?$/.exec(window.location.pathname);
+      var show = function (id) { document.getElementById(id).hidden = false; };
+      var name = m && Object.prototype.hasOwnProperty.call(BOOKS, m[1]) ? BOOKS[m[1]] : null;
+      if (name) {
+        document.getElementById('ref').textContent = name + ' ' + Number(m[2]) + ':' + Number(m[3]);
+        show('valid'); show('appstore'); show('helper');
+        document.getElementById('valid-heading').focus();
+      } else {
+        show('invalid'); show('home');
+        document.getElementById('invalid-heading').focus();
+      }
+    })();
+  </script>
+</body>
+</html>

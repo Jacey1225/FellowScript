@@ -42,7 +42,7 @@ SINGLE_VOCAB_FIELDS = {
 }
 VOCAB_KEYS = tuple(sorted(set(ARRAY_VOCAB_FIELDS.values()) | set(SINGLE_VOCAB_FIELDS.values())))
 
-RATE_LIMIT_KEYS = ("list", "detail", "config", "owner_read", "owner_write", "report", "admin")
+RATE_LIMIT_KEYS = ("list", "detail", "config", "owner_read", "owner_write", "report", "admin", "share_link")
 
 _SLUG_RE = re.compile(r"^[a-z0-9_]{1,40}$")
 _CODE_RE = re.compile(r"^[a-z_]{1,32}$")

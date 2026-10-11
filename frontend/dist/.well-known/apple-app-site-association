@@ -4,7 +4,10 @@
       {
         "appIDs": ["886XPLVC69.com.fellowscript.app"],
         "components": [
-          { "/": "/join/*", "comment": "Group invite links" }
+          { "/": "/join/*", "comment": "Group invite links" },
+          { "/": "/u/*", "comment": "Friend request links (task 20261011-ios-share-notes-highlights)" },
+          { "/": "/v/*", "comment": "Verse links (task 20261011-ios-share-notes-highlights)" },
+          { "/": "/g/*", "comment": "Group request-to-join links (task 20261011-ios-share-notes-highlights)" }
         ]
       }
     ]

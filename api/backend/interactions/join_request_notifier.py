@@ -186,6 +186,88 @@ async def _deliver(prepare, request_id: str, kind: str) -> None:
         logger.warning("JOIN_REQUEST_PUSH kind=%s aborted reason=%s", kind, type(e).__name__)
 
 
+def _prepare_owner_email(request_id: str) -> dict | None:
+    """Everything the owner email needs (claim taken last), or None.
+
+    Independent of the push: its own flag (``join_request_email``, evaluated for
+    the OWNER) and its own ``owner_emailed_at`` claim, one email per group per
+    ``notify_window_minutes``. No owner email, a suspended or absent owner or a
+    mute means no email and no claim.
+    """
+    rid = canon(request_id)
+    if rid is None:
+        return None
+    window = get_join_requests_config().notify_window_minutes
+    db = DBManager()
+    try:
+        db.cur.execute(
+            "SELECT r.group_id::text, g.creator_id::text, g.title, u.username, r.note "
+            "FROM group_join_requests r JOIN groups g ON g._id = r.group_id "
+            "JOIN users u ON u._id = r.user_id WHERE r.id = %s AND r.status = 'pending'",
+            (rid,),
+        )
+        row = db.cur.fetchone()
+        db.conn.rollback()
+        if row is None or row[1] is None:
+            return None
+        group_id, owner_id, title, username, note = row
+        if not flags.is_enabled("join_request_email", owner_id):
+            return None
+        if not _owner_present(db, group_id, owner_id):
+            db.conn.rollback()
+            return None
+        db.conn.rollback()
+        if _owner_muted(db, group_id, owner_id):
+            return None
+        db.cur.execute("SELECT email FROM users WHERE _id = %s", (owner_id,))
+        erow = db.cur.fetchone()
+        db.conn.rollback()
+        to_email = erow[0] if erow and erow[0] else None
+        if not to_email:
+            return None
+        db.cur.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))", (f"jrq-email:{group_id}",))
+        db.cur.execute(
+            "UPDATE group_join_requests SET owner_emailed_at = NOW() "
+            "WHERE id = %s AND status = 'pending' AND owner_emailed_at IS NULL "
+            "AND NOT EXISTS (SELECT 1 FROM group_join_requests o WHERE o.group_id = %s "
+            "AND o.owner_emailed_at > NOW() - make_interval(mins => %s)) RETURNING 1",
+            (rid, group_id, window),
+        )
+        claimed = db.cur.fetchone()
+        db.conn.commit()
+        if not claimed:
+            return None
+        return {"to": to_email, "title": title or "", "name": username or "", "note": note}
+    except Exception:
+        db.conn.rollback()
+        raise
+    finally:
+        db.close()
+
+
+def _send_owner_email(prepared: dict) -> None:
+    from backend.email.ses_client import send_email
+    from backend.email.templates import join_request_owner_email
+
+    subject, html_body, text_body = join_request_owner_email(prepared["title"], prepared["name"], prepared["note"])
+    send_email(prepared["to"], subject, html_body, text_body)
+
+
+async def notify_owner_email_of_request(request_id: str) -> None:
+    """Background task after a request was created: email the owner. Never raises."""
+    try:
+        loop = asyncio.get_running_loop()
+        prepared = await loop.run_in_executor(None, _prepare_owner_email, request_id)
+        if not prepared:
+            return
+        try:
+            await loop.run_in_executor(None, _send_owner_email, prepared)
+        except Exception as e:  # noqa: BLE001 - isolated, counted, never raised
+            logger.warning("JOIN_REQUEST_EMAIL sent=0 failed=1 reason=%s", type(e).__name__)
+    except Exception as e:  # noqa: BLE001 - a notification must never break a request
+        logger.warning("JOIN_REQUEST_EMAIL aborted reason=%s", type(e).__name__)
+
+
 async def notify_owner_of_request(request_id: str) -> None:
     """Background task after a request was created. Never raises."""
     await _deliver(_prepare_owner_push, request_id, "owner")

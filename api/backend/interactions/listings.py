@@ -438,6 +438,28 @@ class ListingsManager(DBManager):
                 raise _not_found()
             return view
 
+    def share_link_public_id(self, group_id: str) -> str | None:
+        """The ``public_id`` of the group's listing for a MEMBER to share, or None.
+
+        None for every other case (not a member, bad group id, no listing, not
+        published, owner gone/suspended, requests closed) so the route can answer
+        one identical 404. Read only; membership is checked on the live
+        ``groups.users`` case-insensitively, like ``owner_present_sql``.
+        """
+        gid = _canon(group_id)
+        if gid is None or not self.user_id:
+            return None
+        self.cur.execute(
+            "SELECT gl.public_id FROM group_listings gl JOIN groups g ON g._id = gl.group_id "
+            f"WHERE gl.group_id = %s AND {public_where('gl')} AND gl.accepting_requests "
+            "AND EXISTS (SELECT 1 FROM unnest(g.users) _sl_m(member_id) "
+            "WHERE lower(_sl_m.member_id) = %s)",
+            (gid, self.user_id.lower()),
+        )
+        row = self.cur.fetchone()
+        self.conn.rollback()  # read only: end the transaction
+        return row[0] if row else None
+
     # -- writes -------------------------------------------------------------
 
     def save(self, group_id: str, data: Mapping[str, Any], accepting_requests: bool | None = None) -> dict:

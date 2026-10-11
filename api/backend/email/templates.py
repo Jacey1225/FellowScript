@@ -259,6 +259,38 @@ def listing_moderation_email(action: str, title: str, reason_label: str) -> tupl
     return subject, _wrap_html(subject, body_html), text_body
 
 
+def join_request_owner_email(group_title: str, requester_name: str, note: str | None) -> tuple[str, str, str]:
+    """Returns (subject, html_body, text_body) telling a group owner someone asked
+    to join. Only the group title, the requester's display name and the note
+    (all already visible to the owner in the app) appear. The subject is fixed
+    so no user text reaches a header; every user string is HTML-escaped."""
+    subject = "New request to join your group"
+    site = os.getenv("SITE_URL", "https://fellowscript.com")
+    title = group_title or "your group"
+    name = requester_name or "Someone"
+    note_html = (
+        f'<p style="font-size:14px;line-height:1.6;color:#241a0d;"><strong>Note:</strong> {html.escape(note)}</p>'
+        if note else ""
+    )
+    body_html = f"""
+      <p style="font-size:14px;line-height:1.6;color:#241a0d;">
+        {html.escape(name)} asked to join &ldquo;{html.escape(title)}&rdquo;.
+      </p>
+      {note_html}
+      <p style="font-size:14px;line-height:1.6;color:#241a0d;">
+        Open the app, go to Group Info, and approve or deny the request:
+        <a href="{html.escape(site)}" style="color:#a3690f;">{html.escape(site)}</a>
+      </p>
+    """
+    text_body = (
+        f"{name} asked to join \"{title}\".\n"
+        + (f"Note: {note}\n" if note else "")
+        + f"\nOpen the app, go to Group Info, and approve or deny the request: {site}"
+        + _FOOTER_TEXT
+    )
+    return subject, _wrap_html(subject, body_html), text_body
+
+
 def payout_code_email(code: str) -> tuple[str, str, str]:
     """(subject, html, text) for the payout-details re-authentication code."""
     subject = f"Your FellowScript payout verification code is {code}"

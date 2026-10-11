@@ -15,7 +15,9 @@ States: pending / approved / denied / withdrawn / expired. One PENDING request
 per (group, applicant) (partial unique index); decided rows stay for the
 cooldown and retention windows. ``block_reapply`` is the owner's per-request
 "do not let this person ask again". ``owner_notified_at`` is the atomic claim
-used to send at most one owner push per notify window.
+used to send at most one owner push per notify window;
+``owner_emailed_at`` is the independent claim for the owner email, so push and
+email never suppress each other.
 
 All statements are idempotent and run inside the boot transaction (the runner
 sets ``lock_timeout``), so never ``CREATE INDEX CONCURRENTLY`` here.
@@ -33,13 +35,15 @@ CREATE TABLE IF NOT EXISTS group_join_requests (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     decided_at TIMESTAMPTZ,
     decided_by UUID REFERENCES users(_id) ON DELETE SET NULL,
-    owner_notified_at TIMESTAMPTZ
+    owner_notified_at TIMESTAMPTZ,
+    owner_emailed_at TIMESTAMPTZ
 )
 """
 
 
 def apply(cur) -> None:
     cur.execute(_TABLE)
+    cur.execute("ALTER TABLE group_join_requests ADD COLUMN IF NOT EXISTS owner_emailed_at TIMESTAMPTZ")
     cur.execute(
         "CREATE UNIQUE INDEX IF NOT EXISTS uq_group_join_requests_pending "
         "ON group_join_requests (group_id, user_id) WHERE status = 'pending'"

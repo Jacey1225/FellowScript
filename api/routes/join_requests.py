@@ -119,6 +119,7 @@ def create_request(
         response.status_code = 200
     else:
         background.add_task(join_request_notifier.notify_owner_of_request, result["id"])
+        background.add_task(join_request_notifier.notify_owner_email_of_request, result["id"])
     return {k: v for k, v in result.items() if k != "created"}
 
 

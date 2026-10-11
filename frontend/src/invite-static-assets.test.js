@@ -12,13 +12,13 @@ const TOKEN = 'A'.repeat(43);
 
 describe('apple-app-site-association', () => {
   const raw = read('frontend/public/.well-known/apple-app-site-association');
-  test('is valid JSON with the right appID and only /join/*', () => {
+  test('is valid JSON with the right appID and /join/* first (share links add /u/* and /v/*, see share-links-static-assets.test.js)', () => {
     const j = JSON.parse(raw);
     expect(Object.keys(j)).toEqual(['applinks']);
     expect(j.applinks.details).toHaveLength(1);
     const d = j.applinks.details[0];
     expect(d.appIDs).toEqual(['886XPLVC69.com.fellowscript.app']);
-    expect(d.components.map((c) => c['/'])).toEqual(['/join/*']);
+    expect(d.components.map((c) => c['/'])).toEqual(['/join/*', '/u/*', '/v/*', '/g/*']);
   });
   test('file has no extension and the appID matches the app bundle id', () => {
     expect(fs.existsSync(path.join(root, 'frontend/public/.well-known/apple-app-site-association.json'))).toBe(false);
@@ -58,10 +58,10 @@ describe('entitlements + nginx + deploy', () => {
 
 describe('static landing page /join/<token>', () => {
   const html = read('frontend/public/join/index.html');
-  const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
+  const script = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1]).find((c) => c.includes('window.location.pathname'));
 
   function run(pathname) {
-    document.documentElement.innerHTML = html.replace(/<script>[\s\S]*?<\/script>/, '');
+    document.documentElement.innerHTML = html.replace(/<script>[\s\S]*?<\/script>/g, '');
     window.history.pushState({}, '', pathname);
     new Function(script)(); // eslint-disable-line no-new-func
     const $ = (id) => document.getElementById(id);

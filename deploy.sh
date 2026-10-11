@@ -86,3 +86,24 @@ ssh -i fellowscript-ec2-key.pem ubuntu@44.216.136.112 "mkdir -p /var/www/html/ex
 
 scp -i fellowscript-ec2-key.pem \
   frontend/dist/explore/index.html ubuntu@44.216.136.112:/var/www/html/explore/index.html
+
+# task 20261011-ios-share-notes-highlights: static landing pages for the
+# friend-request (/u/) and verse (/v/) share links (copied verbatim from
+# frontend/public/ by Vite; the AASA file above already carries /u/* and /v/*).
+# Serving them needs the SEPARATE, manual nginx change prepared in
+# ops/nginx/invite-links.conf, which needs explicit confirmation. This script
+# does not touch nginx.
+ssh -i fellowscript-ec2-key.pem ubuntu@44.216.136.112 "mkdir -p /var/www/html/u /var/www/html/v"
+
+scp -i fellowscript-ec2-key.pem \
+  frontend/dist/u/index.html ubuntu@44.216.136.112:/var/www/html/u/index.html
+
+scp -i fellowscript-ec2-key.pem \
+  frontend/dist/v/index.html ubuntu@44.216.136.112:/var/www/html/v/index.html
+
+# group request-to-join link page (/g/); nginx location is the separate manual
+# change in ops/nginx/invite-links.conf. This script does not touch nginx.
+ssh -i fellowscript-ec2-key.pem ubuntu@44.216.136.112 "mkdir -p /var/www/html/g"
+
+scp -i fellowscript-ec2-key.pem \
+  frontend/dist/g/index.html ubuntu@44.216.136.112:/var/www/html/g/index.html

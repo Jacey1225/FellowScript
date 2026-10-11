@@ -105,6 +105,8 @@ register("explorer_publish")
 register("explorer_browse", no_canary=True)
 register("join_requests")
 register("join_request_push")
+# Owner email on a new join request (task 20261011-join-requests-ios-email). Ships OFF.
+register("join_request_email")
 # Creator Affiliates page (task 20261007-affiliates-page): off/on only, exposed via no capability.
 register("affiliates", no_canary=True, exposed_in_capabilities=False)
 # Affiliate payout details (task 20261008-affiliate-payout-details): nested inside

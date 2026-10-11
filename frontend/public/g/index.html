@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex, nofollow" />
+  <!-- The group id is in this page's URL: never send it as a Referer. -->
+  <meta name="referrer" content="no-referrer" />
+  <meta name="color-scheme" content="dark" />
+  <title>Group link — FellowScript</title>
+  <style>
+    :root { --ink: #17120f; --cream: #f6efe6; --gold: #ffc61a; --gold-dim: #c8861a; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; }
+    body {
+      min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 2rem 1rem;
+      background: radial-gradient(ellipse at 20% 10%, rgba(255,198,26,0.18), transparent 55%),
+                  radial-gradient(ellipse at 85% 90%, rgba(200,134,26,0.16), transparent 50%), var(--ink);
+      color: var(--cream); font-family: -apple-system, system-ui, 'Inter', sans-serif; text-align: center;
+    }
+    main { width: 100%; max-width: 420px; display: flex; flex-direction: column; align-items: center; gap: 1rem; }
+    .wordmark { font-family: 'Schibsted Grotesk', system-ui, sans-serif; font-size: 1.6rem; font-weight: 600; letter-spacing: -0.01em; color: #FFF8EE; margin: 0; }
+    h1 { margin: 0.5rem 0 0; font-family: 'Playfair Display', Georgia, serif; font-size: 1.5rem; outline: none; }
+    p { margin: 0; font-size: 0.9rem; line-height: 1.6; color: rgba(246,239,230,0.75); }
+    .pill, .ghost { display: inline-flex; align-items: center; justify-content: center; min-height: 48px; padding: 0 1.4rem; border-radius: 999px; text-decoration: none; font-weight: 600; }
+    .pill { width: 100%; color: var(--ink); background: linear-gradient(135deg, #ffdf6b, var(--gold) 60%, var(--gold-dim)); }
+    .ghost { color: var(--gold); border: 1px solid rgba(255,198,26,0.4); }
+    .pill:focus-visible, .ghost:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+    [hidden] { display: none !important; }
+  </style>
+</head>
+<body>
+  <main>
+    <p class="wordmark">FellowScript</p>
+    <section id="valid" hidden>
+      <h1 id="valid-heading" tabindex="-1">Someone shared a FellowScript group with you</h1>
+      <p>Open this link in the FellowScript app to see the group and ask to join. You will always be asked to confirm first, and the host approves requests.</p>
+    </section>
+    <section id="invalid" hidden>
+      <h1 id="invalid-heading" tabindex="-1">This link isn't valid</h1>
+    </section>
+    <a id="appstore" class="pill" href="https://apps.apple.com/us/app/fellowscript-study-connect/id6791701454" hidden>Get the app</a>
+    <p id="helper" hidden>Already have the app? Open this link on your iPhone.</p>
+    <a id="home" class="ghost" href="/" hidden>Go to FellowScript</a>
+  </main>
+
+  <script>
+    // The URL is only matched against a strict allowlist. Nothing from it is
+    // ever inserted into the page, used as a redirect, or sent anywhere.
+    (function () {
+      var ok = /^\/g\/[0-9A-Za-z]{10}\/?$/.test(window.location.pathname);
+      var show = function (id) { document.getElementById(id).hidden = false; };
+      if (ok) {
+        show('valid'); show('appstore'); show('helper');
+        document.getElementById('valid-heading').focus();
+      } else {
+        show('invalid'); show('home');
+        document.getElementById('invalid-heading').focus();
+      }
+    })();
+  </script>
+</body>
+</html>

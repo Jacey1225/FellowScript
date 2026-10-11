@@ -14,6 +14,7 @@ SEED_FLAG_NAMES = (
     "explorer_browse",
     "join_requests",
     "join_request_push",
+    "join_request_email",
     "agent_chats",
     "agent_chat_memory",
     "affiliates",

@@ -4,6 +4,7 @@
   GET    /explorer/{user_id}/options                            vocabularies and limits for the owner form
   GET    /explorer/{user_id}/groups                             groups the caller created + listing status
   GET    /explorer/{user_id}/groups/{group_id}/listing          the caller's own listing
+  GET    /explorer/{user_id}/groups/{group_id}/share-link       MEMBER: the published listing's ``public_id``
   PUT    /explorer/{user_id}/groups/{group_id}/listing          create the draft / save fields
   POST   /explorer/{user_id}/groups/{group_id}/listing/submit   consent + adult attestation -> review
   POST   /explorer/{user_id}/groups/{group_id}/listing/unpublish
@@ -240,6 +241,39 @@ def get_my_listing(
         raise _http(e)
     finally:
         manager.close()
+
+
+class ShareLinkResponse(BaseModel):
+    """Exactly the listing ``public_id``; nothing else may ever be added."""
+    model_config = ConfigDict(extra="forbid")
+
+    public_id: str
+
+
+@explorer_router.get("/{user_id}/groups/{group_id}/share-link", response_model=ShareLinkResponse)
+@limiter.shared_limit(_rate("share_link"), scope="explorer_share_link", key_func=_user_key)
+@limiter.shared_limit(_rate("share_link"), scope="explorer_share_link_ip")
+def get_group_share_link(
+    request: Request, response: Response, user_id: str, group_id: str,
+    _: str = Depends(require_match("user_id")),
+) -> ShareLinkResponse:
+    """Member-only: the public_id behind a ``/g/<public_id>`` share link.
+
+    Every failure (flag off, not a member, no listing, not published, owner
+    gone, requests closed, malformed group id) is the SAME generic 404, so a
+    non-member cannot tell a real group or listing from a missing one. Grants
+    nothing: joining still needs the host-approved request flow."""
+    if not flags.is_enabled("explorer_browse", user_id):
+        raise _off()
+    manager = ListingsManager(user_id)
+    try:
+        public_id = manager.share_link_public_id(group_id)
+    finally:
+        manager.close()
+    if public_id is None:
+        raise _off()
+    response.headers["Cache-Control"] = "no-store"
+    return ShareLinkResponse(public_id=public_id)
 
 
 @explorer_router.put("/{user_id}/groups/{group_id}/listing")

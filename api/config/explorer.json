@@ -34,7 +34,8 @@
       "owner_read": "60/minute",
       "owner_write": "10/minute",
       "report": "10/minute",
-      "admin": "60/minute"
+      "admin": "60/minute",
+      "share_link": "30/minute"
     },
     "reject_reason_codes": ["inappropriate", "not_adults_only", "misleading", "spam", "duplicate", "incomplete", "other"],
     "hide_reason_codes": ["inappropriate", "not_adults_only", "misleading", "spam", "reported", "other"],

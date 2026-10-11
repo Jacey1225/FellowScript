@@ -20,7 +20,7 @@ from backend.rate_limiting import limiter
 from backend.registrations import load_all
 from db import DBManager
 
-FLAGS = ("join_requests", "explorer_browse", "join_request_push")
+FLAGS = ("join_requests", "explorer_browse", "join_request_push", "join_request_email")
 _SAVED_FLAGS: dict = {}
 _LISTINGS: list = []
 H = cookie
