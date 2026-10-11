@@ -14,6 +14,17 @@ struct BibleNavTarget: Equatable {
     let verse: Int
 }
 
+/// Validated share-link targets (see AppLink); Identifiable so ContentView can
+/// present each confirm screen with `.sheet(item:)`.
+struct PendingFriendLink: Identifiable, Equatable {
+    let username: String
+    var id: String { username }
+}
+struct PendingGroupLink: Identifiable, Equatable {
+    let publicId: String
+    var id: String { publicId }
+}
+
 @MainActor
 final class AppState: ObservableObject {
 
@@ -181,11 +192,53 @@ final class AppState: ObservableObject {
 
     // ── Invite links (task 20260929-group-invite-links) ──────────────────────
 
-    /// Entry point for onOpenURL / onContinueUserActivity. Non-invite URLs are
+    /// Entry point for onOpenURL / onContinueUserActivity. Only the exact invite
+    /// (/join) and share (/u, /v, /g) shapes are acted on; everything else is
     /// ignored. A newer link replaces any pending one (no silent merge).
     func handleIncomingURL(_ url: URL) {
-        guard let token = InviteLink.token(from: url) else { return }
-        setPendingInvite(token)
+        if let token = InviteLink.token(from: url) {
+            setPendingInvite(token)
+        } else if let link = AppLink.parse(url) {
+            routeShareLink(link)
+        }
+    }
+
+    // ── Share links (task 20261011-ios-share-notes-highlights) ───────────────
+
+    /// A friend / group link waiting for the confirm screen. Memory only; never
+    /// persisted and never logged. Presented by ContentView once the app is ready.
+    @Published var pendingFriendLink: PendingFriendLink? = nil
+    @Published var pendingGroupLink: PendingGroupLink? = nil
+    /// A verse link waiting for the main screen to be ready (then handed to the
+    /// existing `pendingBibleNav` path by ContentView).
+    @Published var pendingVerseLink: BibleNavTarget? = nil
+    /// A share link received while signed out: held in memory, released at sign-in.
+    private var deferredShareLink: AppLink?
+
+    /// Signed in: queue it for presentation. Signed out: hold it until auth.
+    /// Neither path sends anything; friend/group links only open a confirm screen.
+    func routeShareLink(_ link: AppLink) {
+        guard isAuthenticated else { deferredShareLink = link; return }
+        deferredShareLink = nil
+        switch link {
+        case .friend(let username): pendingFriendLink = PendingFriendLink(username: username)
+        case .group(let publicId):  pendingGroupLink = PendingGroupLink(publicId: publicId)
+        case .verse(let book, let chapter, let verse):
+            pendingVerseLink = BibleNavTarget(book: book, chapter: chapter, verse: verse)
+        }
+    }
+
+    /// Called when authentication completes.
+    func releaseDeferredShareLink() {
+        guard isAuthenticated, let link = deferredShareLink else { return }
+        routeShareLink(link)
+    }
+
+    func clearShareLinks() {
+        deferredShareLink = nil
+        pendingFriendLink = nil
+        pendingGroupLink = nil
+        pendingVerseLink = nil
     }
 
     func setPendingInvite(_ token: String) {
@@ -300,6 +353,7 @@ final class AppState: ObservableObject {
 
     func signOut() {
         clearPendingInvite()
+        clearShareLinks()
         storedUserId    = ""
         storedUsername  = ""
         storedEmail     = ""

@@ -137,6 +137,27 @@ struct ContentView: View {
         .fullScreenCover(isPresented: .constant(!hasCompletedOnboarding)) {
             OnboardingView(onComplete: { hasCompletedOnboarding = true })
         }
+        // Task 20261011-ios-share-notes-highlights: friend-request (/u) and
+        // request-to-join (/g) links open a confirm screen; nothing is sent until
+        // the person taps. Held back until the main screen is ready.
+        .sheet(item: Binding(
+            get: { shareLinkReady ? appState.pendingFriendLink : nil },
+            set: { if $0 == nil { appState.pendingFriendLink = nil } }
+        )) { link in
+            FriendLinkConfirmView(username: link.username, onClose: { appState.pendingFriendLink = nil })
+                .environmentObject(appState)
+        }
+        .sheet(item: Binding(
+            get: { shareLinkReady ? appState.pendingGroupLink : nil },
+            set: { if $0 == nil { appState.pendingGroupLink = nil } }
+        )) { link in
+            GroupLinkRequestView(publicId: link.publicId, onClose: { appState.pendingGroupLink = nil })
+                .environmentObject(appState)
+        }
+        // Verse links (/v): open the Bible at that verse via the existing
+        // pendingBibleNav path, once the main screen is ready.
+        .onChange(of: shareLinkReady) { _, _ in consumeVerseLink() }
+        .onChange(of: appState.pendingVerseLink) { _, _ in consumeVerseLink() }
         // Task 20261008-post-tour-prompts: shown once after a new install's
         // tour AND sign-in, when the main screen is ready (purchase needs a
         // user id). Held back while any other cover could be up.
@@ -198,6 +219,7 @@ struct ContentView: View {
         .onChange(of: appState.isAuthenticated) { _, authenticated in
             // A pending invite resumes at the join screen once auth completes.
             if authenticated { appState.inviteDeferredForAuth = false }
+            if authenticated { appState.releaseDeferredShareLink() }
             if authenticated, let uid = appState.currentUser?.user_id {
                 startup.start(service: appState.service, userId: uid)
             } else {
@@ -211,6 +233,25 @@ struct ContentView: View {
         // LoadingScreenView / StartupCoordinator).
         .motionAwareAnimation(.easeOut(duration: 0.35), value: startup.isReady, reduceMotion: reduceMotion)
         .tint(Theme.gold)
+    }
+
+    /// Friend / group / verse links present only on a ready, signed-in main screen
+    /// with no other blocking cover up.
+    private var shareLinkReady: Bool {
+        hasCompletedOnboarding && appState.isAuthenticated && startup.isReady
+            && !appState.termsReacceptRequired && !appState.needsProfileCompletion
+            && appState.pendingInviteToken == nil && postTour.current == nil
+    }
+
+    private func consumeVerseLink() {
+        guard shareLinkReady, let target = appState.pendingVerseLink else { return }
+        appState.pendingVerseLink = nil
+        selectedTab = .bible
+        // Give the Bible tab a moment to mount so its pendingBibleNav observer sees the change.
+        Task {
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            appState.pendingBibleNav = target
+        }
     }
 
     private var canPresentPostTourPrompts: Bool {
@@ -249,7 +290,7 @@ struct ContentView: View {
                 BibleReaderView(vm: startup.bibleVM, notesVM: startup.notesVM)
                     .tag(Tab.bible)
                     .toolbar(.hidden, for: .tabBar)
-                NotesListView(vm: startup.notesVM)
+                NotesListView(vm: startup.notesVM, bibleVM: startup.bibleVM)
                     .tag(Tab.notes)
                     .toolbar(.hidden, for: .tabBar)
                 ChatRootView(vm: startup.chatVM)

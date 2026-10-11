@@ -64,8 +64,23 @@ extension NotesListView {
                         appState.pendingBibleNav = BibleNavTarget(book: r.book, chapter: r.chapter, verse: r.verse)
                     }
                     .onAppear { hsm.loadMoreIfNeeded(current: r) }
+                    .contextMenu {
+                        if r.chapter > 0, r.verse > 0 {
+                            Button("Share", systemImage: "square.and.arrow.up") {
+                                shareHighlight(book: r.book, chapter: r.chapter, verse: r.verse, knownText: r.verse_text)
+                            }
+                            .accessibilityLabel("Share \(r.book) \(r.chapter):\(r.verse)")
+                        }
+                    }
                     .accessibilityLabel("Highlight in \(r.book) chapter \(r.chapter) verse \(r.verse)\(r.is_self ? "" : " by \(r.owner_username ?? "a friend")"). Tap to open in the Bible.")
                     .accessibilityAddTraits(.isButton)
+                    .accessibilityActions {
+                        if r.chapter > 0, r.verse > 0 {
+                            Button("Share \(r.book) \(r.chapter):\(r.verse)") {
+                                shareHighlight(book: r.book, chapter: r.chapter, verse: r.verse, knownText: r.verse_text)
+                            }
+                        }
+                    }
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)

@@ -516,10 +516,10 @@ final class MessageThreadsRegistryAndRoutingTests: XCTestCase {
 
     private let ctx = GroupInfoSectionContext(service: MockDataService.shared, groupId: "g", userId: "u", isOwner: false)
 
-    func test_registry_isOrderedPublish10_then_threads30() {
-        XCTAssertEqual(GroupInfoExtraSections.registry.count, 2)
+    func test_registry_isOrderedPublish10_joinRequests20_threads30() {
+        XCTAssertEqual(GroupInfoExtraSections.registry.count, 3)
         let sorted = GroupInfoExtraSections.registry.sorted { $0.order < $1.order }
-        XCTAssertEqual(sorted.map(\.order), [10, 30])
+        XCTAssertEqual(sorted.map(\.order), [10, 20, 30])
         XCTAssertEqual(sorted.last?.id, "threads")
         XCTAssertEqual(GroupThreadsSection.registration.order, 30)
     }

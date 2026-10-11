@@ -147,8 +147,9 @@ final class GroupInfoExtraSectionsTests: XCTestCase {
     func test_registry_publishAndThreadsRegistered_rendersNothingWhenAllOff() {
         // IOS#2 registered the owner-only Publish row at order 10; the
         // message-threads task (20261001-message-threads) added Threads at 30.
-        XCTAssertEqual(GroupInfoExtraSections.registry.map(\.id), ["publish", "threads"])
-        XCTAssertEqual(GroupInfoExtraSections.registry.map(\.order), [10, 30])
+        // The join-requests owner section (20261011-join-requests-ios-email) sits at 20.
+        XCTAssertEqual(GroupInfoExtraSections.registry.map(\.id), ["publish", "join_requests", "threads"])
+        XCTAssertEqual(GroupInfoExtraSections.registry.map(\.order), [10, 20, 30])
         XCTAssertTrue(GroupInfoExtraSections.visible(capabilities: .allOff, context: ctx).isEmpty)
     }
 
@@ -163,6 +164,79 @@ final class GroupInfoExtraSectionsTests: XCTestCase {
         let on = FSCapabilities(features: ["threads": true], exploreLink: nil, termsCurrent: true)
         XCTAssertEqual(GroupInfoExtraSections.visible(input, capabilities: on, context: ctx).map(\.id), ["b"])
         XCTAssertTrue(GroupInfoExtraSections.visible(input, capabilities: .allOff, context: ctx).isEmpty)
+    }
+
+    // MARK: Host tools placement / entry row (task 20261011-group-host-tools-subpage-ios)
+
+    private func ctx(owner: Bool) -> GroupInfoSectionContext {
+        GroupInfoSectionContext(service: MockDataService.shared, groupId: "g1", userId: "u", isOwner: owner)
+    }
+    private var flagsOn: FSCapabilities {
+        FSCapabilities(features: ["join_requests": true, "threads": true,
+                                  "explorer_browse": true, "explorer_publish": true],
+                       exploreLink: "https://\(ExploreEntry.defaultHost ?? "")/", termsCurrent: true)
+    }
+
+    func test_registry_placement_publishAndJoinRequestsAreHostTools_threadsMain() {
+        let p = Dictionary(uniqueKeysWithValues: GroupInfoExtraSections.registry.map { ($0.id, $0.placement) })
+        XCTAssertEqual(p["publish"], .hostTools)
+        XCTAssertEqual(p["join_requests"], .hostTools)
+        XCTAssertEqual(p["threads"], .main)
+    }
+
+    func test_owner_flagsOn_hostToolsHasPublishThenJoinRequests_mainOnlyThreads_noDuplicates() {
+        let c = ctx(owner: true)
+        let host = GroupInfoExtraSections.visible(placement: .hostTools, capabilities: flagsOn, context: c).map(\.id)
+        let main = GroupInfoExtraSections.visible(placement: .main, capabilities: flagsOn, context: c).map(\.id)
+        XCTAssertEqual(host, ["publish", "join_requests"])
+        XCTAssertEqual(main, ["threads"])
+        XCTAssertTrue(Set(host).isDisjoint(with: Set(main)))
+    }
+
+    func test_nonOwner_noHostToolSectionsVisible_mainUnchanged() {
+        let c = ctx(owner: false)
+        XCTAssertTrue(GroupInfoExtraSections.visible(placement: .hostTools, capabilities: flagsOn, context: c).isEmpty)
+        XCTAssertEqual(GroupInfoExtraSections.visible(placement: .main, capabilities: flagsOn, context: c).map(\.id), ["threads"])
+        // default (unfiltered) visible() unchanged: still includes threads only for non-owner
+        XCTAssertEqual(GroupInfoExtraSections.visible(capabilities: flagsOn, context: c).map(\.id), ["threads"])
+    }
+
+    func test_flagsOff_failClosed_noHostSections_forOwner() {
+        let c = ctx(owner: true)
+        XCTAssertTrue(GroupInfoExtraSections.visible(placement: .hostTools, capabilities: .allOff, context: c).isEmpty)
+        let joinOff = FSCapabilities(features: ["explorer_browse": true, "explorer_publish": true],
+                                     exploreLink: flagsOn.exploreLink, termsCurrent: true)
+        XCTAssertEqual(GroupInfoExtraSections.visible(placement: .hostTools, capabilities: joinOff, context: c).map(\.id), ["publish"])
+        let pubOff = FSCapabilities(features: ["join_requests": true], exploreLink: nil, termsCurrent: true)
+        XCTAssertEqual(GroupInfoExtraSections.visible(placement: .hostTools, capabilities: pubOff, context: c).map(\.id), ["join_requests"])
+    }
+
+    func test_entryRow_ownerOnly() {
+        XCTAssertTrue(GroupHostTools.showsEntryRow(isOwner: true, capabilities: flagsOn, context: ctx(owner: true)))
+        XCTAssertFalse(GroupHostTools.showsEntryRow(isOwner: false, capabilities: flagsOn, context: ctx(owner: false)))
+        XCTAssertFalse(GroupHostTools.showsEntryRow(isOwner: false, capabilities: .allOff, context: ctx(owner: false)))
+    }
+
+    func test_entryRow_owner_allFlagsOff_stillShowsViaMemberLimit() {
+        XCTAssertTrue(GroupHostTools.showsEntryRow(isOwner: true, capabilities: .allOff, context: ctx(owner: true)))
+    }
+
+    func test_entryRow_failClosed_whenNothingVisibleAndNoMemberLimit() {
+        // Registry empty: only the member-limit item can keep the row alive, and only for an owner.
+        XCTAssertTrue(GroupHostTools.hasMemberLimitItem(isOwner: true))
+        XCTAssertFalse(GroupHostTools.hasMemberLimitItem(isOwner: false))
+        XCTAssertFalse(GroupHostTools.showsEntryRow(isOwner: false, capabilities: flagsOn,
+                                                    context: ctx(owner: false), sections: []))
+    }
+
+    func test_visiblePlacement_sortsByOrderAndFiltersPlacement() {
+        func s(_ id: String, _ o: Int, _ pl: GroupInfoExtraSection.Placement) -> GroupInfoExtraSection {
+            GroupInfoExtraSection(id: id, order: o, isVisible: { _, _ in true },
+                                  makeView: { _, _ in AnyView(EmptyView()) }, placement: pl)
+        }
+        let input = [s("h2", 20, .hostTools), s("m", 5, .main), s("h1", 10, .hostTools)]
+        XCTAssertEqual(GroupInfoExtraSections.visible(input, placement: .hostTools, capabilities: .allOff, context: ctx(owner: true)).map(\.id), ["h1", "h2"])
+        XCTAssertEqual(GroupInfoExtraSections.visible(input, placement: .main, capabilities: .allOff, context: ctx(owner: true)).map(\.id), ["m"])
     }
 
     func test_environmentDefault_isAllOff() {

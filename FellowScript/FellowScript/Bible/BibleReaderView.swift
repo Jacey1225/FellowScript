@@ -270,6 +270,29 @@ final class BibleViewModel: ObservableObject {
         isLoading = false
     }
 
+    /// Text of one verse from the bundled Bible, without touching the reading
+    /// position (task 20261011-ios-share-notes-highlights). nil if the content
+    /// isn't loaded or the reference doesn't exist.
+    func verseText(book: String, chapter: Int, verse: Int) -> String? {
+        guard let raw = bibleData[book], !raw.isEmpty else { return nil }
+        let chList = raw.count == 1 ? raw : Array(raw.dropFirst())
+        let idx = chapter - 1
+        guard idx >= 0, idx < chList.count else { return nil }
+        return parseVerses(chList[idx]).first(where: { $0.num == verse })?.text
+    }
+
+    /// verseText, loading the bundled Bible first if the Bible tab hasn't yet. If a
+    /// load is already in flight elsewhere, waits briefly for it rather than failing.
+    func verseTextLoadingIfNeeded(book: String, chapter: Int, verse: Int) async -> String? {
+        if bibleData.isEmpty { await loadBibleContent() }
+        var tries = 0
+        while bibleData.isEmpty && tries < 15 {
+            try? await Task.sleep(nanoseconds: 200_000_000)
+            tries += 1
+        }
+        return verseText(book: book, chapter: chapter, verse: verse)
+    }
+
     func setBook(_ book: String) {
         curBook    = book
         curChapter = 1
@@ -445,6 +468,7 @@ struct BibleReaderView: View {
     @State private var showHighlightFor: Int? = nil
     @State private var moreReactionsVerse: Int? = nil   // verse whose full reaction picker sheet is open
     @State private var addToNoteTarget:  VerseNoteDraft? = nil
+    @State private var sharePayload:     SharePayload? = nil   // task 20261011-ios-share-notes-highlights
     @State private var pendingScrollVerse: Int? = nil
     @State private var contentOpacity:   Double = 1
 
@@ -567,6 +591,7 @@ struct BibleReaderView: View {
                                         }
                                         .accessibilityLabel(verseAccessibilityLabel(v.num, v.text))
                                         .accessibilityActions {
+                                            Button("Share verse \(v.num)") { shareVerse(verse: v.num, text: v.text) }
                                             if reactionsOn {
                                                 reactionAccessibilityActions(
                                                     emojis: VerseReactionEmoji.quick,
@@ -802,6 +827,8 @@ struct BibleReaderView: View {
             pendingScrollVerse   = t.verse
             appState.pendingBibleNav = nil
         }
+        // Share sheet for the long-press / VoiceOver Share verse action.
+        .shareSheet(item: $sharePayload)
         // "Add to Note": new-note editor prefilled with the long-pressed verse.
         // Saves through the shared NotesViewModel (same path as NotesListView);
         // on failure the editor stays open with the inline error / upgrade
@@ -926,17 +953,15 @@ struct BibleReaderView: View {
         }
         .accessibilityLabel("Add verse \(verse) to note")
 
-        Button(action: {
-            let ref = "\(vm.curBook) \(vm.curChapter):\(verse) — \(text)"
-            let av  = UIActivityViewController(activityItems: [ref], applicationActivities: nil)
-            UIApplication.shared.connectedScenes
-                .compactMap { $0 as? UIWindowScene }
-                .first?.windows.first?
-                .rootViewController?.present(av, animated: true)
-        }) {
+        Button(action: { shareVerse(verse: verse, text: text) }) {
             Label("Share", systemImage: "square.and.arrow.up")
         }
         .accessibilityLabel("Share verse \(verse)")
+    }
+
+    /// Opens the share sheet with reference + verse text + a link that opens the verse.
+    private func shareVerse(verse: Int, text: String) {
+        sharePayload = SharePayloads.verse(book: vm.curBook, chapter: vm.curChapter, verse: verse, text: text)
     }
 
     private func cycleFontSize() {

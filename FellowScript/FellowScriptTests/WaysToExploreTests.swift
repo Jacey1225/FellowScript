@@ -1,5 +1,5 @@
 // WaysToExploreTests.swift -- task 20261010-home-ways-to-explore.
-// Dismissal persistence/per-user scoping and card/section visibility logic.
+// Legacy-dismissal-ignored and card/section visibility logic (section is permanent).
 
 import XCTest
 @testable import FellowScript
@@ -13,20 +13,25 @@ final class WaysToExploreTests: XCTestCase {
         return d
     }
 
-    func test_key_isScopedByUserId() {
-        XCTAssertEqual(WaysToExplore.dismissedKey(userId: "u1"), "home.waysToExplore.dismissed.u1")
-        XCTAssertNotEqual(WaysToExplore.dismissedKey(userId: "u1"), WaysToExplore.dismissedKey(userId: "u2"))
+    func test_legacyKey_isScopedByUserId() {
+        XCTAssertEqual(WaysToExplore.legacyDismissedKey(userId: "u1"), "home.waysToExplore.dismissed.u1")
+        XCTAssertNotEqual(WaysToExplore.legacyDismissedKey(userId: "u1"), WaysToExplore.legacyDismissedKey(userId: "u2"))
     }
 
-    func test_notDismissedByDefault() {
-        XCTAssertFalse(WaysToExplore.isDismissed(userId: "u1", defaults: freshDefaults()))
-    }
-
-    func test_dismiss_persistsForThatUserOnly() {
+    func test_storedLegacyDismissal_doesNotHideSection() {
         let d = freshDefaults()
-        WaysToExplore.dismiss(userId: "u1", defaults: d)
-        XCTAssertTrue(WaysToExplore.isDismissed(userId: "u1", defaults: d))
-        XCTAssertFalse(WaysToExplore.isDismissed(userId: "u2", defaults: d))
+        d.set(true, forKey: WaysToExplore.legacyDismissedKey(userId: "u1"))
+        // The section's visibility depends only on its cards.
+        XCTAssertTrue(WaysToExplore.showsSection(cards: WaysToExplore.visibleCards(exploreURL: nil)))
+    }
+
+    func test_clearLegacyDismissal_removesOnlyThatUsersFlag() {
+        let d = freshDefaults()
+        d.set(true, forKey: WaysToExplore.legacyDismissedKey(userId: "u1"))
+        d.set(true, forKey: WaysToExplore.legacyDismissedKey(userId: "u2"))
+        WaysToExplore.clearLegacyDismissal(userId: "u1", defaults: d)
+        XCTAssertFalse(d.bool(forKey: WaysToExplore.legacyDismissedKey(userId: "u1")))
+        XCTAssertTrue(d.bool(forKey: WaysToExplore.legacyDismissedKey(userId: "u2")))
     }
 
     func test_visibleCards_exploreHiddenWithoutURL() {
@@ -38,10 +43,9 @@ final class WaysToExploreTests: XCTestCase {
         XCTAssertEqual(WaysToExplore.visibleCards(exploreURL: url), [.createGroup, .exploreGroups])
     }
 
-    func test_showsSection_hiddenWhenDismissedOrNoCards() {
-        XCTAssertTrue(WaysToExplore.showsSection(dismissed: false, cards: [.createGroup]))
-        XCTAssertFalse(WaysToExplore.showsSection(dismissed: true, cards: [.createGroup]))
-        XCTAssertFalse(WaysToExplore.showsSection(dismissed: false, cards: []))
+    func test_showsSection_onlyWhenCardsExist() {
+        XCTAssertTrue(WaysToExplore.showsSection(cards: [.createGroup]))
+        XCTAssertFalse(WaysToExplore.showsSection(cards: []))
     }
 
     func test_exploreCardHiddenWhenCapabilityOff() {

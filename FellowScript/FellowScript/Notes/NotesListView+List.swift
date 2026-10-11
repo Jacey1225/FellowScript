@@ -89,6 +89,10 @@ extension NotesListView {
                         }
                     }
                     .contextMenu {
+                        if let payload = noteSharePayload(note) {
+                            Button("Share", systemImage: "square.and.arrow.up") { sharePayload = payload }
+                                .accessibilityLabel("Share note \(noteShareName(note))")
+                        }
                         if canEdit(note) {
                             Button("Edit", systemImage: "pencil") {
                                 editingNote    = note
@@ -105,6 +109,11 @@ extension NotesListView {
                         }
                     }
                     .accessibilityLabel("Note: \(note.title.isEmpty ? "Untitled" : note.title). \(note.preview)")
+                    .accessibilityActions {
+                        if let payload = noteSharePayload(note) {
+                            Button("Share note \(noteShareName(note))") { sharePayload = payload }
+                        }
+                    }
             }
             if enablePagination && vm.isLoadingMore && vm.hasMoreForCurrentSegment {
                 HStack {
@@ -194,8 +203,23 @@ extension NotesListView {
                                 book: h.book, chapter: h.chapter, verse: h.verse
                             )
                         }
+                        .contextMenu {
+                            if h.chapter > 0, h.verse > 0 {
+                                Button("Share", systemImage: "square.and.arrow.up") {
+                                    shareHighlight(book: h.book, chapter: h.chapter, verse: h.verse, knownText: nil)
+                                }
+                                .accessibilityLabel("Share \(h.book) \(h.chapter):\(h.verse)")
+                            }
+                        }
                         .accessibilityLabel("Highlight in \(h.book) chapter \(h.chapter) verse \(h.verse). Tap to open in the Bible.")
                         .accessibilityAddTraits(.isButton)
+                        .accessibilityActions {
+                            if h.chapter > 0, h.verse > 0 {
+                                Button("Share \(h.book) \(h.chapter):\(h.verse)") {
+                                    shareHighlight(book: h.book, chapter: h.chapter, verse: h.verse, knownText: nil)
+                                }
+                            }
+                        }
                 }
                 .listStyle(.plain)
                 // See notesTab's identical treatment above (task

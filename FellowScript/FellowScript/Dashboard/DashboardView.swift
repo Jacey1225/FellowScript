@@ -165,11 +165,6 @@ final class DashboardViewModel: ObservableObject {
         RefreshDiagnostics.cacheWrite(key: "friendActivity:\(userId)", count: friendActivity.friends_active.count + friendActivity.check_in_candidates.count)
     }
 
-    var recentNote: (String, FSNote)? {
-        notes.max(by: { $0.value.timestamp < $1.value.timestamp })
-             .map { ($0.key, $0.value) }
-    }
-
     // Task 20260906-friend-nudges: CheckInRow's send action. Guards against a
     // double-tap mid-flight the same way openFriendNote's isLoadingFriendNote
     // guard does -- `.sending` is itself the re-entrancy lock, no separate
@@ -251,8 +246,8 @@ struct DashboardView: View {
         _vm = StateObject(wrappedValue: vm)
     }
 
-    @State private var showNewNote    = false
-    @State private var showResumeNote = false
+    @State private var showNewNote = false
+    @StateObject private var groupActivityVM = GroupActivityViewModel()
     // Task 20260903-friend-activity-note-navigation: presented via
     // `.sheet(item:)` exactly like NotesListView's own `detailNote`, in
     // place on Dashboard -- no tab switch, no new cross-tab navigation
@@ -339,13 +334,29 @@ struct DashboardView: View {
                         }
                     }
 
-                    NoteResumeCard(note: vm.recentNote?.1) {
-                        if vm.recentNote != nil {
-                            showResumeNote = true
-                        } else {
-                            showNewNote = true
-                        }
+                    // Group activity (task 20261011-home-group-activity-announcements):
+                    // replaces the latest-note resume card. Tap opens the group
+                    // chat, whose announcement widget presents the announcement.
+                    GroupActivitySection(vm: groupActivityVM) { item in
+                        appState.openAnnouncement(groupId: item.groupId, announcementId: item.announcement.id)
                     }
+
+                    // Quick-create "new note" (preserved per the confirmed
+                    // answers): the old note card was its only trigger, so it
+                    // lives here as an always-visible compact control.
+                    Button { showNewNote = true } label: {
+                        Label("New note", systemImage: "square.and.pencil")
+                            .font(.interScaled(Theme.fontSM, weight: .semibold, relativeTo: .subheadline))
+                            .foregroundColor(Theme.goldLight)
+                            .padding(.horizontal, Theme.spacingMD)
+                            .frame(minHeight: 44)
+                            .glassCard(cornerRadius: Theme.radiusXL)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.horizontal, 20)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityHint("Starts a new note")
+                    .accessibilityIdentifier("home-new-note-button")
 
                     WaysToExploreSection(chatVM: chatVM, userId: appState.currentUser?.user_id)
                         .id(appState.currentUser?.user_id ?? "")
@@ -362,6 +373,7 @@ struct DashboardView: View {
             .refreshable {
                 if let uid = appState.currentUser?.user_id {
                     await vm.load(service: appState.service, userId: uid)
+                    await groupActivityVM.load(service: appState.service, userId: uid, groups: chatVM.groups)
                 }
             }
         }
@@ -375,11 +387,11 @@ struct DashboardView: View {
                 await vm.saveNote(saved, editingId: nil, userId: appState.currentUser?.user_id ?? "")
             }
         }
-        .sheet(isPresented: $showResumeNote) {
-            if let recent = vm.recentNote {
-                NoteEditorView(note: recent.1, noteId: recent.0, isReadOnly: false) { saved in
-                    await vm.saveNote(saved, editingId: recent.0, userId: appState.currentUser?.user_id ?? "")
-                }
+        // Reload group activity on first appearance and whenever the user's
+        // group list changes (ChatViewModel loads it asynchronously).
+        .task(id: chatVM.groups.map(\.id)) {
+            if let uid = appState.currentUser?.user_id {
+                await groupActivityVM.load(service: appState.service, userId: uid, groups: chatVM.groups)
             }
         }
         // Task 20260903-friend-activity-note-navigation: mirrors
@@ -387,9 +399,7 @@ struct DashboardView: View {
         // on Dashboard, no tab switch. Saves go straight through
         // `appState.service` rather than `vm.saveNote` deliberately: this is
         // a friend's shared group note, not one of this screen's own
-        // `notes` (which back `recentNote`/NoteResumeCard) -- merging it
-        // into that dict would risk NoteResumeCard picking up a friend's
-        // note as "your" most recent note to resume.
+        // `notes` -- merging a friend's note into that dict would be wrong.
         .sheet(item: $friendNote) { note in
             NoteDetailView(
                 note:     note,

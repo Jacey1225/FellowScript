@@ -38,15 +38,23 @@ struct NotesListView: View {
     // is the only call site and always passes StartupCoordinator's shared
     // instance so this screen's `.task` sees already-loaded (or in-flight)
     // data instead of firing a second fetch (see NotesViewModel.hasLoadedOnce).
-    init(vm: NotesViewModel) {
+    init(vm: NotesViewModel, bibleVM: BibleViewModel? = nil) {
         _vm = StateObject(wrappedValue: vm)
+        self.bibleVM = bibleVM
     }
+
+    /// Task 20261011-ios-share-notes-highlights: StartupCoordinator's shared Bible
+    /// model, used only to look up verse text when sharing a highlight (nil = share
+    /// uses the text already on the row, if any).
+    let bibleVM: BibleViewModel?
 
     @State var showEditor       = false
     @State var editingNote:     FSNote?  = nil
     @State var editingId:       String?  = nil
     @State var editingGroupId:  String   = ""
     @State var detailNote:      FSNote?  = nil
+    @State var sharePayload:    SharePayload? = nil
+    @State var shareNotice:     String?  = nil
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -177,6 +185,15 @@ struct NotesListView: View {
                 if ok { return nil }
                 return vm.failedSaveMessage()
             }
+        }
+        .shareSheet(item: $sharePayload)
+        .alert("Couldn't share", isPresented: Binding(
+            get: { shareNotice != nil },
+            set: { if !$0 { shareNotice = nil } }
+        )) {
+            Button("OK") { shareNotice = nil }
+        } message: {
+            Text(shareNotice ?? "")
         }
         .alert("Save Failed", isPresented: Binding(
             get: { vm.saveError != nil },

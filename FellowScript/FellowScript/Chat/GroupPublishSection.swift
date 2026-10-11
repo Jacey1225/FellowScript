@@ -91,6 +91,7 @@ struct GroupPublishSection: View {
         isVisible: { caps, ctx in
             ExploreEntry.showsPublishRow(caps, isOwner: ctx.isOwner, groupId: ctx.groupId)
         },
-        makeView: { caps, ctx in AnyView(GroupPublishSection(capabilities: caps, context: ctx)) }
+        makeView: { caps, ctx in AnyView(GroupPublishSection(capabilities: caps, context: ctx)) },
+        placement: .hostTools
     )
 }

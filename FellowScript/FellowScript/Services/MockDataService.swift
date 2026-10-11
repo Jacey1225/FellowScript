@@ -186,6 +186,14 @@ protocol DataServiceProtocol {
     func deleteGroupMessage(userId: String, groupId: String, messageId: String) async throws -> FSMessageDeleteResult
     func restoreGroupMessage(userId: String, groupId: String, messageId: String) async throws
 
+    // Group join requests, owner side (task 20261011-join-requests-ios-email) --
+    // NetworkService+JoinRequests.swift. Default implementations throw there.
+    func fetchJoinRequests(userId: String, groupId: String) async throws -> FSJoinRequestsList
+    func approveJoinRequest(userId: String, groupId: String, requestId: String) async throws
+    func denyJoinRequest(userId: String, groupId: String, requestId: String, blockReapply: Bool) async throws -> Int
+    func undoDenyJoinRequest(userId: String, groupId: String, requestId: String) async throws
+    func setAcceptingJoinRequests(userId: String, groupId: String, accepting: Bool) async throws
+
     // Message reactions (task 20261010-chat-reactions) -- NetworkService+Reactions.swift.
     // Default implementations throw there.
     func addMessageReaction(userId: String, messageId: String, emoji: String) async throws -> ReactionSummary

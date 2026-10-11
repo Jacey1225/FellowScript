@@ -32,12 +32,18 @@ struct GroupInfoExtraSection {
     let order: Int
     let isVisible: (FSCapabilities, GroupInfoSectionContext) -> Bool
     let makeView: (FSCapabilities, GroupInfoSectionContext) -> AnyView
+    /// Where the section renders. Host-management sections live on the owner's
+    /// "Host tools" sub page instead of the main Group Info list.
+    var placement: Placement = .main
+
+    enum Placement { case main, hostTools }
 }
 
 enum GroupInfoExtraSections {
     /// Append-only table. Empty until a feature task registers a section.
     static let registry: [GroupInfoExtraSection] = [
         GroupPublishSection.registration,   // order 10: owner-only Publish to Explorer
+        GroupJoinRequestsSection.registration, // order 20: owner join requests (flag `join_requests`)
         GroupThreadsSection.registration,   // order 30: message threads (flag `threads`)
     ]
 
@@ -48,14 +54,24 @@ enum GroupInfoExtraSections {
             .sorted { $0.order < $1.order }
             .filter { $0.isVisible(capabilities, context) }
     }
+
+    /// Visible sections for one placement (same fail-closed gating).
+    static func visible(_ sections: [GroupInfoExtraSection] = registry,
+                        placement: GroupInfoExtraSection.Placement,
+                        capabilities: FSCapabilities,
+                        context: GroupInfoSectionContext) -> [GroupInfoExtraSection] {
+        visible(sections.filter { $0.placement == placement },
+                capabilities: capabilities, context: context)
+    }
 }
 
 struct GroupInfoExtraSectionsView: View {
     @Environment(\.fsCapabilities) private var capabilities
     let context: GroupInfoSectionContext
+    var placement: GroupInfoExtraSection.Placement = .main
 
     var body: some View {
-        let sections = GroupInfoExtraSections.visible(capabilities: capabilities, context: context)
+        let sections = GroupInfoExtraSections.visible(placement: placement, capabilities: capabilities, context: context)
         ForEach(sections, id: \.id) { section in
             section.makeView(capabilities, context)
         }

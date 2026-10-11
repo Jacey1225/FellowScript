@@ -307,12 +307,13 @@ struct GroupInfoSheet: View {
 
     @State private var editingName = false
     @State private var draftName = ""
-    @State private var capDraft = ""
     @State private var photoPickerItem: PhotosPickerItem?
     @State private var showPhotoActions = false
     @State private var showPhotoPicker = false
     @State private var viewerItem: FSGalleryItem?
     @State private var showAnnouncements = false
+    @State private var showHostTools = false
+    @Environment(\.fsCapabilities) private var fsCaps
     private let service: DataServiceProtocol
 
     init(contact: FSContact, user: FSUser?, service: DataServiceProtocol,
@@ -334,6 +335,10 @@ struct GroupInfoSheet: View {
         _vm = StateObject(wrappedValue: model)
     }
 
+    private var isOwner: Bool { vm.info?.is_owner ?? false }
+    private var sectionContext: GroupInfoSectionContext {
+        .init(service: service, groupId: contact.id, userId: user?.user_id ?? "", isOwner: isOwner)
+    }
     private var title: String { vm.info?.title ?? contact.name }
     private var photoURL: String? { vm.info != nil ? vm.info?.photo_url : contact.photoUrl }
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 4), count: 3)
@@ -349,16 +354,20 @@ struct GroupInfoSheet: View {
                         identityBlock
                         muteRow
                         if GroupAnnouncementsConfig.enabled { announcementsRow }
-                        // Task 20260929-group-invite-links: hides itself when the
-                        // backend feature flag is off (uniform 404 from list).
-                        InviteLinkSection(
-                            service: service, groupId: contact.id, userId: user?.user_id ?? "",
-                            onGroupGone: { dismiss(); onGroupGone() }
-                        )
+                        if isOwner {
+                            if GroupHostTools.showsEntryRow(isOwner: true, capabilities: fsCaps, context: sectionContext) {
+                                hostToolsRow
+                            }
+                        } else {
+                            // Task 20260929-group-invite-links: hides itself when the
+                            // backend feature flag is off (uniform 404 from list).
+                            InviteLinkSection(
+                                service: service, groupId: contact.id, userId: user?.user_id ?? "",
+                                onGroupGone: { dismiss(); onGroupGone() }
+                            )
+                        }
                         memberLimitSection
-                        GroupInfoExtraSectionsView(context: .init(
-                            service: service, groupId: contact.id, userId: user?.user_id ?? "",
-                            isOwner: vm.info?.is_owner ?? false))
+                        GroupInfoExtraSectionsView(context: sectionContext, placement: .main)
                         membersSection
                         sharedSection
                     }
@@ -375,6 +384,12 @@ struct GroupInfoSheet: View {
         .navigationDestination(isPresented: $showAnnouncements) {
             GroupAnnouncementsView(
                 service: service, groupId: contact.id, userId: user?.user_id ?? "",
+                onGroupGone: { dismiss(); onGroupGone() }
+            )
+        }
+        .navigationDestination(isPresented: $showHostTools) {
+            GroupHostToolsView(
+                vm: vm, service: service, context: sectionContext,
                 onGroupGone: { dismiss(); onGroupGone() }
             )
         }
@@ -574,56 +589,41 @@ struct GroupInfoSheet: View {
         .accessibilityLabel("Announcements")
     }
 
-    // Task 20260930-group-invite-permanent-member-cap. Owner edits the limit;
-    // everyone else sees it read-only (or nothing when there is none).
+    // Task 20260930-group-invite-permanent-member-cap. Owners edit the limit on
+    // the Host tools sub page; everyone else sees it read-only here.
     @ViewBuilder
     private var memberLimitSection: some View {
-        if let info = vm.info, info.is_owner || info.max_members != nil {
-            let current = info.max_members.map(String.init) ?? ""
+        if let info = vm.info, !info.is_owner, let cap = info.max_members {
             VStack(alignment: .leading, spacing: Theme.spacingXS) {
                 sectionLabel("Member limit")
-                if info.is_owner {
-                    Text("Most people allowed in this group. Leave blank for no limit.")
-                        .font(.inter(Theme.fontXS)).foregroundColor(Theme.textSecondary)
-                    TextField("No limit", text: $capDraft)
-                        .keyboardType(.numberPad)
-                        .font(.inter(Theme.fontSM))
-                        .foregroundColor(Theme.parchment)
-                        .padding(.horizontal, Theme.spacingSM)
-                        .frame(minHeight: 44)
-                        .background(Theme.cardBg)
-                        .clipShape(RoundedRectangle(cornerRadius: Theme.radius))
-                        .overlay(RoundedRectangle(cornerRadius: Theme.radius).stroke(Theme.borderGoldDim, lineWidth: 1))
-                        .disabled(vm.savingCap)
-                        .onChange(of: capDraft) { _, v in
-                            let digits = String(v.filter(\.isNumber).prefix(6))
-                            if digits != v { capDraft = digits }
-                            vm.capError = nil; vm.capSaved = false
-                        }
-                        .accessibilityLabel("Maximum members")
-                    if let ceiling = info.max_members_ceiling {
-                        Text("Up to \(ceiling). Not lower than the \(info.member_count ?? info.members.count) people here now.")
-                            .font(.inter(Theme.fontXS)).foregroundColor(Theme.textSecondary)
-                    }
-                    if let err = vm.capError { errorText(err) }
-                    if vm.capSaved {
-                        Text("Limit saved.").font(.inter(Theme.fontXS)).foregroundColor(Theme.textSecondary)
-                            .accessibilityLabel("Member limit saved")
-                    }
-                    PillButton(title: vm.savingCap ? "Saving…" : "Save limit") {
-                        let trimmed = capDraft.trimmingCharacters(in: .whitespaces)
-                        Task { _ = await vm.setMaxMembers(trimmed.isEmpty ? nil : Int(trimmed)) }
-                    }
-                    .disabled(vm.savingCap || capDraft.trimmingCharacters(in: .whitespaces) == current)
-                } else if let cap = info.max_members {
-                    Text("Up to \(cap) people can be in this group.")
-                        .font(.inter(Theme.fontXS)).foregroundColor(Theme.textSecondary)
-                }
+                Text("Up to \(cap) people can be in this group.")
+                    .font(.inter(Theme.fontXS)).foregroundColor(Theme.textSecondary)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .onAppear { capDraft = current }
-            .onChange(of: current) { _, v in capDraft = v }
         }
+    }
+
+    // Owner-only entry row -> Host tools sub page.
+    private var hostToolsRow: some View {
+        Button { showHostTools = true } label: {
+            HStack(spacing: Theme.spacingSM) {
+                Image(systemName: "slider.horizontal.3").foregroundColor(Theme.gold)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Host tools").font(.inter(Theme.fontSM)).foregroundColor(Theme.parchment)
+                    Text("Invite link, member limit, join requests, Explorer.")
+                        .font(.inter(Theme.fontXS)).foregroundColor(Theme.textSecondary)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13, weight: .semibold)).foregroundColor(Theme.textSecondary)
+            }
+            .padding(Theme.spacingSM)
+            .frame(minHeight: 56)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Host tools")
+        .accessibilityHint("Opens group management")
     }
 
     private var membersSection: some View {

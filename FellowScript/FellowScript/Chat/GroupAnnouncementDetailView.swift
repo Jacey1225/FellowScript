@@ -11,6 +11,10 @@ struct GroupAnnouncementDetailView: View {
     /// Part E: join (true) / leave (false) the RSVP. Nil = no RSVP action (count only).
     var onRSVP: ((Bool) async throws -> FSGroupAnnouncement)? = nil
 
+    @EnvironmentObject private var appState: AppState
+    @State private var sharePayload: SharePayload?
+    @State private var sharing: SharePayload?
+
     private var theme: AnnouncementBgTheme { AnnouncementBgTheme.resolve(item.bg_theme) }
 
     var body: some View {
@@ -51,15 +55,26 @@ struct GroupAnnouncementDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
+        .shareSheet(item: $sharing)
+        .task(id: "\(item.id)|\(item.published)|\(item.title)|\(item.publish_at)") {
+            sharePayload = nil
+            sharePayload = await AnnouncementShare.payload(for: item, appState: appState)
+        }
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
-                ShareLink(item: Self.shareText(for: item)) {
-                    Image(systemName: "square.and.arrow.up")
-                        .font(.system(size: 17, weight: .semibold)).foregroundColor(Theme.gold)
-                        .frame(minWidth: 60, minHeight: 44)
-                        .contentShape(Rectangle())
+                // Task 20261011-ios-share-notes-highlights: group name + title + date +
+                // a request-to-join link. Hidden unless the group has a published
+                // Explorer listing (never falls back to a group invite link).
+                if let payload = sharePayload {
+                    Button { sharing = payload } label: {
+                        Image(systemName: "square.and.arrow.up")
+                            .font(.system(size: 17, weight: .semibold)).foregroundColor(Theme.gold)
+                            .frame(minWidth: 60, minHeight: 44)
+                            .contentShape(Rectangle())
+                    }
+                    .accessibilityLabel("Share announcement \(item.title)")
+                    .accessibilityHint("Shares the group name, title, date and a link to ask to join.")
                 }
-                .accessibilityLabel("Share announcement")
                 if item.can_edit {
                     // Same minimum width as the share button so each half of the glass
                     // pill centers its content (a bare text label sat off-center).
@@ -74,8 +89,9 @@ struct GroupAnnouncementDetailView: View {
         }
     }
 
-    /// Plain-text share body: title, date/time, location when set. No link: there is
-    /// no announcement deep link, so none is invented. Scheduled ones say so.
+    /// Legacy plain-text body (title, date, location). No longer used by the Share
+    /// button, which now goes through SharePayloads.announcement (never includes
+    /// the location). Kept for its existing unit tests.
     static func shareText(for item: FSGroupAnnouncement) -> String {
         var lines = [item.title]
         let when = FSAnnouncementDates.display(item.publish_at)

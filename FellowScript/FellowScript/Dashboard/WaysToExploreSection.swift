@@ -1,9 +1,10 @@
-// WaysToExploreSection.swift -- dismissible "Ways to explore" section at the
-// bottom of the Home tab (task 20261010-home-ways-to-explore). Two large cards:
+// WaysToExploreSection.swift -- permanent "Ways to explore" section at the
+// bottom of the Home tab (task 20261010-home-ways-to-explore; made
+// non-dismissible by 20261011-home-group-activity-announcements). Two large cards:
 // "Create a group" (existing AddGroupSheet + ChatViewModel.createGroup) and
 // "Explore groups" (existing ExploreEntry/ExploreDestination Safari sheet,
-// hidden when explorer_browse is unavailable -- fail closed). "Not now" hides
-// the whole section and persists per user in UserDefaults.
+// hidden when explorer_browse is unavailable -- fail closed). The section
+// always shows (Create a group is unconditional); there is no dismiss control.
 
 import SwiftUI
 
@@ -16,16 +17,16 @@ enum WaysToExplore {
         case exploreGroups
     }
 
-    static func dismissedKey(userId: String) -> String {
+    /// Legacy "Maybe later"/"Not now" dismissal key. No longer read: a stored
+    /// value is ignored so previously dismissed users see the section again.
+    static func legacyDismissedKey(userId: String) -> String {
         "home.waysToExplore.dismissed.\(userId)"
     }
 
-    static func isDismissed(userId: String, defaults: UserDefaults = .standard) -> Bool {
-        defaults.bool(forKey: dismissedKey(userId: userId))
-    }
-
-    static func dismiss(userId: String, defaults: UserDefaults = .standard) {
-        defaults.set(true, forKey: dismissedKey(userId: userId))
+    /// Removes the obsolete per-user dismissal flag (housekeeping only; the
+    /// section never consults it).
+    static func clearLegacyDismissal(userId: String, defaults: UserDefaults = .standard) {
+        defaults.removeObject(forKey: legacyDismissedKey(userId: userId))
     }
 
     /// Cards to show, in order. Explore appears only with a usable browse URL.
@@ -35,9 +36,9 @@ enum WaysToExplore {
         return cards
     }
 
-    /// Section is shown unless dismissed or no cards remain.
-    static func showsSection(dismissed: Bool, cards: [Card]) -> Bool {
-        !dismissed && !cards.isEmpty
+    /// Section is shown whenever it has any card (always true: Create a group).
+    static func showsSection(cards: [Card]) -> Bool {
+        !cards.isEmpty
     }
 }
 
@@ -108,9 +109,7 @@ struct WaysToExploreCard: View {
 struct WaysToExploreSection: View {
     @ObservedObject var chatVM: ChatViewModel
     @EnvironmentObject private var appState: AppState
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    @State private var dismissed: Bool
     @State private var showAddGroup = false
     @State private var exploreDestination: ExploreDestination?
 
@@ -118,9 +117,7 @@ struct WaysToExploreSection: View {
 
     init(chatVM: ChatViewModel, userId: String? = nil) {
         self.chatVM = chatVM
-        let uid = userId ?? ""
-        self.userId = uid
-        _dismissed = State(initialValue: WaysToExplore.isDismissed(userId: uid))
+        self.userId = userId ?? ""
     }
 
     private var uid: String { appState.currentUser?.user_id ?? userId }
@@ -129,7 +126,7 @@ struct WaysToExploreSection: View {
         let exploreURL = ExploreEntry.browseURL(from: appState.capabilities)
         let cards = WaysToExplore.visibleCards(exploreURL: exploreURL)
         Group {
-            if WaysToExplore.showsSection(dismissed: dismissed, cards: cards) {
+            if WaysToExplore.showsSection(cards: cards) {
                 VStack(alignment: .leading, spacing: Theme.spacingMD) {
                     Text("Find your people")
                         .font(.interScaled(Theme.fontDisplayMD, weight: .bold, relativeTo: .title2))
@@ -159,24 +156,13 @@ struct WaysToExploreSection: View {
                             }
                         }
                     }
-
-                    Button(action: dismissSection) {
-                        Text("Maybe later")
-                            .font(.interScaled(Theme.fontBody, weight: .semibold, relativeTo: .body))
-                            .foregroundColor(Theme.textSecondary)
-                            .frame(maxWidth: .infinity, minHeight: 44)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Maybe later")
-                    .accessibilityHint("Hides this section")
-                    .accessibilityIdentifier("ways-to-explore-not-now")
                 }
                 .padding(.horizontal, 20)
                 .padding(.top, Theme.spacingLG)
                 .transition(.opacity)
             }
         }
+        .task { if !uid.isEmpty { WaysToExplore.clearLegacyDismissal(userId: uid) } }
         .exploreSafariSheet($exploreDestination)
         .sheet(isPresented: $showAddGroup) {
             AddGroupSheet(friends: chatVM.friends) { title, memberIds in
@@ -191,15 +177,6 @@ struct WaysToExploreSection: View {
             Button("OK", role: .cancel) { chatVM.groupError = nil }
         } message: {
             Text(chatVM.groupError ?? "")
-        }
-    }
-
-    private func dismissSection() {
-        WaysToExplore.dismiss(userId: uid)
-        if reduceMotion {
-            dismissed = true
-        } else {
-            withAnimation(.easeOut(duration: 0.25)) { dismissed = true }
         }
     }
 }
