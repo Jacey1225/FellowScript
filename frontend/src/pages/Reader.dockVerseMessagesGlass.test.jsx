@@ -71,15 +71,16 @@ describe('global.css — .chat-overlay (Messages panel background) glass restyle
     const body = match[1];
     expect(body).not.toMatch(/rgba\(8,5,2,0\.99\)/);
     expect(body).toMatch(/background:\s*rgba\(20,14,9,0\.4\)/);
-    expect(body).toMatch(/backdrop-filter:\s*blur\(10px\)\s*saturate\(150%\)/);
+    expect(body).toMatch(/backdrop-filter:\s*blur\(var\(--chat-glass-blur\)\)\s*saturate\(150%\)/);
   });
 
-  test('.chat-overlay blur (10px) is lighter than its .dv-groupview panel ancestor blur (16px), per the "nested glass gets a lighter blur than its parent" rule', () => {
+  test('.chat-overlay blur reads the shared --chat-glass-blur token (raised from 10px in task 20261010-web-desktop-polish)', () => {
     const cssDock = readStripped('../styles/reader-dock.css');
     expect(cssDock).toMatch(/--panel-glass-blur:\s*16px/);
     const cssGlobal = readStripped('../styles/global.css');
     const match = cssGlobal.match(/\.chat-overlay\s*\{([^}]*)\}/);
-    expect(match[1]).toMatch(/backdrop-filter:\s*blur\(10px\)/);
+    expect(match[1]).toMatch(/backdrop-filter:\s*blur\(var\(--chat-glass-blur\)\)/);
+    expect(parseInt(cssGlobal.match(/--chat-glass-blur:\s*(\d+)px/)[1], 10)).toBeGreaterThan(10);
   });
 });
 
@@ -104,16 +105,14 @@ describe('global.css — .msg-bubble frosted-glass restyle', () => {
     expect(received[1]).toMatch(/color:\s*rgba\(242,242,242,0\.8\)/);
   });
 
-  test('bubble blur (6px) is lighter than .chat-overlay (10px), which is lighter than .dv-groupview (16px) -- full nesting chain holds', () => {
+  test('bubble blur (6px) stays lighter than the .chat-overlay blur token', () => {
     const css = readStripped('../styles/global.css');
     const bubble = css.match(/\n\.msg-bubble\s*\{([^}]*)\}/)[1];
     const overlay = css.match(/\.chat-overlay\s*\{([^}]*)\}/)[1];
     const bubbleBlur = parseInt(bubble.match(/backdrop-filter:\s*blur\((\d+)px\)/)[1], 10);
-    const overlayBlur = parseInt(overlay.match(/backdrop-filter:\s*blur\((\d+)px\)/)[1], 10);
-    const cssDock = readStripped('../styles/reader-dock.css');
-    const panelBlur = parseInt(cssDock.match(/--panel-glass-blur:\s*(\d+)px/)[1], 10);
+    expect(overlay).toMatch(/backdrop-filter:\s*blur\(var\(--chat-glass-blur\)\)/);
+    const overlayBlur = parseInt(css.match(/--chat-glass-blur:\s*(\d+)px/)[1], 10);
     expect(bubbleBlur).toBeLessThan(overlayBlur);
-    expect(overlayBlur).toBeLessThan(panelBlur);
   });
 });
 

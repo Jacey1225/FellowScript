@@ -77,7 +77,10 @@ export function fetchLatestAnnouncement(userId, groupId) {
   return request(`${base(userId, groupId)}/latest`, undefined, "Couldn't load the latest announcement.");
 }
 
-// body: { title, description, banner_key?, publish_at? }
+// body: { title, description, banner_key?, publish_at?, title_color?, title_font?,
+// bg_theme?, links?, gallery_keys?, is_event?, payment_handles?, capacity?, location? }.
+// Flag-gated keys answer 422 while their server flag is off; callers only send
+// them when /app/capabilities says the flag is on, and surface any 422 message.
 export function createAnnouncement(userId, groupId, body) {
   return request(base(userId, groupId), json('POST', body), "That didn't save. Please try again.");
 }
@@ -87,13 +90,26 @@ export function updateAnnouncement(userId, groupId, announcementId, body) {
   return request(`${base(userId, groupId)}/${announcementId}`, json('PUT', body), "That didn't save. Please try again.");
 }
 
+// RSVP (not a group join). Both resolve to the updated announcement
+// ({ rsvp_count, rsvp_joined, ... }); 409 = full, 404 = not joinable.
+export function rsvpJoin(userId, groupId, announcementId) {
+  return request(`${base(userId, groupId)}/${announcementId}/rsvp`, { method: 'POST' },
+    "Couldn't update your RSVP. Please try again.");
+}
+
+export function rsvpLeave(userId, groupId, announcementId) {
+  return request(`${base(userId, groupId)}/${announcementId}/rsvp`, { method: 'DELETE' },
+    "Couldn't update your RSVP. Please try again.");
+}
+
 export function deleteAnnouncement(userId, groupId, announcementId) {
   return request(`${base(userId, groupId)}/${announcementId}`, { method: 'DELETE' },
     "That announcement couldn't be deleted. Please try again.");
 }
 
 // Presigned-POST flow (server never receives the bytes). Resolves to the
-// object key to send as `banner_key` on create/update.
+// object key to send as `banner_key` (or an entry of `gallery_keys`) on
+// create/update; gallery photos use the same policy and group-scoped prefix.
 export async function uploadAnnouncementBanner(userId, groupId, file) {
   if (file.size > ANNOUNCEMENT_LIMITS.bannerMaxBytes || !ANNOUNCEMENT_LIMITS.bannerAccept.includes(file.type)) {
     throw new AnnouncementsError(`Choose a JPG, PNG, or WebP under ${ANNOUNCEMENT_LIMITS.bannerMaxBytes / 1024 / 1024}MB.`, 0);

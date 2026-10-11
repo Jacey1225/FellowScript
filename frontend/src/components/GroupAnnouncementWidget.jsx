@@ -1,11 +1,15 @@
-import { bannerColor } from '../lib/announcementTitleColor.js';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { CloseOutlined } from '@ant-design/icons';
-import { fetchLatestAnnouncement, ANNOUNCEMENTS_ENABLED } from '../lib/announcementsApi.js';
+import { fetchLatestAnnouncement, rsvpJoin, rsvpLeave, ANNOUNCEMENTS_ENABLED } from '../lib/announcementsApi.js';
 import GroupAnnouncementViewer from './GroupAnnouncementViewer.jsx';
+import AnnouncementCardFace, { formatShortDate } from './AnnouncementCardFace.jsx';
 
 // Task 20260929-announcement-push-widget (design-notes.md). In-flow banner card
-// directly under the group chat header. Groups only (the caller decides).
+// directly under the group chat header, compact and right-aligned (task
+// 20261010-web-announcements-parity); honors bg_theme/title_font/title_color
+// and shows location + date. The detail dialog is portaled to <body> so no
+// clipped ancestor can cut it off. Groups only (the caller decides).
 // Failure behavior (throw-not-fabricate, preserve-cache-on-failed-refresh):
 // the fetch throws; a failed refresh keeps the last good announcement in the
 // module cache and shows no error UI. If nothing was ever loaded, renders nothing.
@@ -81,32 +85,33 @@ export default function GroupAnnouncementWidget({ userId, groupId, onAfterDismis
   if (!item || item.published === false || item.id === dismissedId) return null;
 
   const showBanner = !!item.banner_url && !bannerFailed;
+  const rsvp = async (join) => {
+    const updated = await (join ? rsvpJoin : rsvpLeave)(userId, groupId, item.id);
+    const merged = { ...item, ...updated };
+    latestCache.set(cacheKey, merged);
+    setItem(merged);
+    return merged;
+  };
   return (
     <section className={`announce-widget${leaving ? ' announce-widget-leaving' : ''}`} role="region" aria-label="Latest announcement">
-      <button ref={cardRef} type="button"
-        className={`announce-widget-card${showBanner ? '' : ' announce-widget-fallback'}`}
+      <AnnouncementCardFace as="button" ref={cardRef} type="button"
+        title={item.title} titleColor={item.title_color} titleFont={item.title_font} bgTheme={item.bg_theme}
+        bannerUrl={showBanner ? item.banner_url : null} location={item.location} date={formatShortDate(item.publish_at)}
+        onImgError={() => setBannerFailed(true)}
         aria-label={`Announcement: ${item.title}. Open`}
-        onClick={() => setViewing(true)}>
-        {showBanner && (
-          <img className="announce-widget-img" src={item.banner_url} alt="" loading="lazy" onError={() => setBannerFailed(true)} />
-        )}
-        <span className="announce-widget-scrim" aria-hidden="true" />
-        <span className="announce-widget-text">
-          <span className="announce-widget-label">ANNOUNCEMENT</span>
-          <span className="announce-widget-title" style={{ '--title-color': bannerColor(item.title_color) }}>{item.title}</span>
-        </span>
-      </button>
+        onClick={() => setViewing(true)} />
       <button type="button" className="announce-widget-dismiss" aria-label="Dismiss announcement" onClick={dismiss}>
         <span className="announce-widget-dismiss-chip"><CloseOutlined /></span>
       </button>
-      {viewing && (
+      {viewing && createPortal(
         <div className="group-info-scrim announce-widget-modal" role="dialog" aria-modal="true" aria-label="Announcement"
           onClick={(e) => { if (e.target === e.currentTarget) closeViewer(); }}>
           <div className="announce-widget-modal-body">
             {/* Edit/Delete stay in the group info panel; the widget viewer is read-only. */}
-            <GroupAnnouncementViewer item={{ ...item, can_edit: false }} onBack={closeViewer} />
+            <GroupAnnouncementViewer item={{ ...item, can_edit: false }} onBack={closeViewer} onRsvp={rsvp} />
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </section>
   );

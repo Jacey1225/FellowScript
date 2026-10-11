@@ -451,13 +451,14 @@ describe('GroupAnnouncementViewer', () => {
     expect(onBack).toHaveBeenCalled();
   });
 
-  test('scheduled chip shown for unpublished; banner opens lightbox', () => {
-    const onOpenLightbox = vi.fn();
-    render(<GroupAnnouncementViewer {...base} onOpenLightbox={onOpenLightbox}
+  test('scheduled chip shown for unpublished; banner is a decorative full-bleed background (not a button)', () => {
+    const { container } = render(<GroupAnnouncementViewer {...base}
       item={mk('a', { published: false, banner_url: 'https://x/b.png' })} />);
     expect(screen.getByText(/^Scheduled for/)).toBeInTheDocument();
-    fireEvent.click(screen.getByLabelText(/Banner for Title a/));
-    expect(onOpenLightbox).toHaveBeenCalledWith('image', 'https://x/b.png', expect.anything());
+    const bg = container.querySelector('.ann-detail-bg');
+    expect(bg.getAttribute('aria-hidden')).toBe('true');
+    expect(bg.querySelector('img').getAttribute('src')).toBe('https://x/b.png');
+    expect(screen.queryByLabelText(/Banner for Title a/)).toBeNull();
   });
 });
 

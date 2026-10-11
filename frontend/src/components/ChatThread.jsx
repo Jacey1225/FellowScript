@@ -1221,6 +1221,7 @@ export default function ChatThread({
           onChange={e => setText(e.target.value)}
           onPressEnter={handleSend}
           placeholder="Message…"
+          className="chat-composer-input"
           style={{ flex: 1, borderRadius: 20, fontSize: '0.82rem' }}
         />
         <Button

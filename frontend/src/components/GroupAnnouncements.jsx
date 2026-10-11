@@ -2,7 +2,7 @@ import { surfaceColor } from '../lib/announcementTitleColor.js';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { PlusOutlined, MoreOutlined } from '@ant-design/icons';
 import {
-  fetchAnnouncements, createAnnouncement, updateAnnouncement, deleteAnnouncement,
+  fetchAnnouncements, createAnnouncement, updateAnnouncement, deleteAnnouncement, rsvpJoin, rsvpLeave,
 } from '../lib/announcementsApi.js';
 import GroupAnnouncementForm from './GroupAnnouncementForm.jsx';
 import GroupAnnouncementViewer, { formatDateTime } from './GroupAnnouncementViewer.jsx';
@@ -225,6 +225,14 @@ export default function GroupAnnouncements({ userId, groupId, onBack, onGroupGon
     }
   };
 
+  // RSVP from the viewer: resolves to the merged announcement and keeps the list cache in step.
+  const rsvp = async (item, join) => {
+    const updated = await (join ? rsvpJoin : rsvpLeave)(userId, groupId, item.id);
+    const merged = { ...item, ...updated };
+    commit({ ...dataRef.current, announcements: (dataRef.current?.announcements || []).map(a => (a.id === item.id ? merged : a)) });
+    return merged;
+  };
+
   const goUpgrade = () => onUpgrade?.();
   const viewing = route.name === 'view' ? items.find(a => a.id === route.id) || (data?.announcements || []).find(a => a.id === route.id) : null;
 
@@ -249,6 +257,7 @@ export default function GroupAnnouncements({ userId, groupId, onBack, onGroupGon
         onEdit={(it) => setRoute({ name: 'form', item: it })}
         onDelete={startDelete}
         onOpenLightbox={onOpenLightbox}
+        onRsvp={(join) => rsvp(viewing, join)}
       />
     );
   }

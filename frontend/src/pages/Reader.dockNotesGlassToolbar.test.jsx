@@ -54,7 +54,9 @@ describe('reader-dock.css — .notes-filter-panel (Notes "Filter & Sort" popup) 
     const bg = /background:\s*(rgba\([^)]*\))/;
     const blur = /backdrop-filter:\s*(blur\([^)]*\)\s*saturate\([^)]*\))/;
     expect(filterMatch.match(bg)[1]).toBe(overlayMatch.match(bg)[1]);
-    expect(filterMatch.match(blur)[1]).toBe(overlayMatch.match(blur)[1]);
+    // Blur: .chat-overlay now reads the shared --chat-glass-blur token (task 20261010-web-desktop-polish); the Notes filter popup keeps its own 10px.
+    expect(filterMatch.match(blur)[1]).toBe('blur(10px) saturate(150%)');
+    expect(overlayMatch).toMatch(/saturate\(150%\)/);
   });
 });
 
