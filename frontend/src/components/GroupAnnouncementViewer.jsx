@@ -1,5 +1,6 @@
 import { surfaceColor } from '../lib/announcementTitleColor.js';
 import React, { useEffect, useState } from 'react';
+import { LeftOutlined, DeleteOutlined, EditOutlined } from '@ant-design/icons';
 import {
   bgThemeCss, bgThemeReadableText, resolveBgTheme, titleColorOnTheme, titleFontStyle,
 } from '../lib/announcementStyle.js';
@@ -48,12 +49,12 @@ export default function GroupAnnouncementViewer({ item, onBack, onEdit, onDelete
       )}
       <div className={`ann-detail-content${hasBanner ? ' ann-detail-has-banner' : ''}`}>
         <div className="group-info-announcements-bar">
-          <button type="button" className="group-info-text-btn ann-detail-back" onClick={onBack} aria-label="Back to announcements">Back</button>
+          <button type="button" className="ann-circle-btn ann-detail-back" onClick={onBack} aria-label="Back to announcements" title="Back"><LeftOutlined /></button>
           <span className="group-info-announcements-bar-spacer" />
           {item.can_edit && (
             <>
-              <button type="button" className="group-info-text-btn group-info-danger" onClick={() => onDelete(item)}>Delete</button>
-              <button type="button" className="group-info-pill" onClick={() => onEdit(item)}>Edit</button>
+              <button type="button" className="ann-circle-btn group-info-danger" onClick={() => onDelete(item)} aria-label="Delete" title="Delete"><DeleteOutlined /></button>
+              <button type="button" className="ann-circle-btn ann-circle-btn-primary" onClick={() => onEdit(item)} aria-label="Edit" title="Edit"><EditOutlined /></button>
             </>
           )}
         </div>

@@ -123,7 +123,7 @@ describe('GroupAnnouncements list', () => {
     mount();
     fireEvent.click(await screen.findByText('Title a'));
     expect(screen.getByRole('heading', { name: 'Title a' })).toBeInTheDocument();
-    expect(screen.getByText('Edit')).toBeInTheDocument();
+    expect(screen.getByLabelText('Edit')).toBeInTheDocument();
     fireEvent.click(screen.getByLabelText('Back to announcements'));
     await screen.findByText('Announcements');
   });
@@ -436,15 +436,15 @@ describe('GroupAnnouncementViewer', () => {
 
   test('hides Edit and Delete when not can_edit', () => {
     render(<GroupAnnouncementViewer {...base} item={mk('a', { can_edit: false })} />);
-    expect(screen.queryByText('Edit')).not.toBeInTheDocument();
-    expect(screen.queryByText('Delete')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Edit')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Delete')).not.toBeInTheDocument();
   });
 
   test('Edit and Delete call back with the item; Escape goes back', () => {
     const onEdit = vi.fn(); const onDelete = vi.fn(); const onBack = vi.fn();
     render(<GroupAnnouncementViewer {...base} onEdit={onEdit} onDelete={onDelete} onBack={onBack} />);
-    fireEvent.click(screen.getByText('Edit'));
-    fireEvent.click(screen.getByText('Delete'));
+    fireEvent.click(screen.getByLabelText('Edit'));
+    fireEvent.click(screen.getByLabelText('Delete'));
     expect(onEdit).toHaveBeenCalledWith(base.item);
     expect(onDelete).toHaveBeenCalledWith(base.item);
     fireEvent.keyDown(document, { key: 'Escape' });

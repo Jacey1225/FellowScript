@@ -2141,6 +2141,12 @@ body {
 .ann-detail-bg img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: center; }
 .ann-detail-bg::after { content: ''; position: absolute; inset: 0; background: rgba(0,0,0,0.25); }
 .ann-detail-content { position: relative; display: flex; flex-direction: column; gap: 0.75rem; padding: 0 1rem 1.5rem; min-width: 0; }
+.ann-circle-btn { width: 36px; height: 36px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; border: 1px solid rgba(255,198,26,0.35); background: rgba(20,14,9,0.45); color: var(--gold); font-size: 0.95rem; cursor: pointer; transition: background 0.15s, transform 0.15s; -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+.ann-circle-btn:hover { background: rgba(255,198,26,0.16); }
+.ann-circle-btn:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.ann-circle-btn.group-info-danger { color: #e8877e; border-color: rgba(232,135,126,0.4); }
+.ann-circle-btn-primary { border: none; color: var(--ink); background: linear-gradient(135deg, var(--gold-light), var(--gold) 60%, var(--gold-dim)); }
+.ann-circle-btn-primary:hover { background: linear-gradient(135deg, var(--gold-light), var(--gold) 60%, var(--gold-dim)); transform: scale(1.06); }
 .ann-detail-has-banner .group-info-announcements-bar + * { margin-top: 5.5rem; }
 .ann-detail-has-banner .ann-detail-back, .ann-detail-has-banner .group-info-danger { text-shadow: 0 1px 3px rgba(0,0,0,0.8); }
 .ann-detail-themed .group-info-announcements-body, .ann-detail-themed .ann-detail-by { color: inherit; opacity: 0.9; }
