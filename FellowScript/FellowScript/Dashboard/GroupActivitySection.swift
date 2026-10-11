@@ -212,13 +212,6 @@ struct GroupActivitySection: View {
         let state = vm.state
         if state != .hidden {
             VStack(alignment: .leading, spacing: Theme.spacingMD) {
-                Text("Group activity")
-                    .font(.interScaled(Theme.fontDisplayMD, weight: .bold, relativeTo: .title2))
-                    .foregroundColor(Theme.textPrimary)
-                    .padding(.horizontal, 20)
-                    .accessibilityAddTraits(.isHeader)
-                    .accessibilityIdentifier("group-activity-heading")
-
                 switch state {
                 case .content:
                     ScrollView(.horizontal, showsIndicators: false) {

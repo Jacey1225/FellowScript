@@ -204,29 +204,6 @@ enum SharePayloads {
         return t
     }
 
-    /// Note share: title + creator name + friend-request link, and nothing else
-    /// (never the body, preview, ids, group ids or timestamps). nil when the
-    /// creator can't be resolved to a valid username: no fabricated creator.
-    static func note(title: String, creatorUsername: String) -> SharePayload? {
-        guard let link = AppLink.friendURL(username: creatorUsername) else { return nil }
-        let t = clean(title, max: 120)
-        return SharePayload(text: [
-            t.isEmpty ? "A note on FellowScript" : "\u{201C}\(t)\u{201D}",
-            "Shared by \(creatorUsername) on FellowScript",
-            "Send them a friend request: \(link.absoluteString)",
-        ].joined(separator: "\n"))
-    }
-
-    /// Who wrote a note: the author name carried on the note, or the signed-in user for
-    /// their own notes. nil (hide Share) when neither resolves to a valid username.
-    static func noteCreator(noteUsername: String, noteUserId: String,
-                            currentUserId: String?, currentUsername: String?) -> String? {
-        if !noteUsername.isEmpty { return AppLink.isValidUsername(noteUsername) ? noteUsername : nil }
-        guard let me = currentUsername, AppLink.isValidUsername(me) else { return nil }
-        if noteUserId.isEmpty || noteUserId == currentUserId { return me }
-        return nil
-    }
-
     /// Verse share: reference + verse text + link that opens the verse. nil when the
     /// reference isn't a real one or there is no text.
     static func verse(book: String, chapter: Int, verse: Int, text: String) -> SharePayload? {

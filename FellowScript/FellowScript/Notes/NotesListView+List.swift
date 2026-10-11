@@ -89,10 +89,6 @@ extension NotesListView {
                         }
                     }
                     .contextMenu {
-                        if let payload = noteSharePayload(note) {
-                            Button("Share", systemImage: "square.and.arrow.up") { sharePayload = payload }
-                                .accessibilityLabel("Share note \(noteShareName(note))")
-                        }
                         if canEdit(note) {
                             Button("Edit", systemImage: "pencil") {
                                 editingNote    = note
@@ -109,11 +105,6 @@ extension NotesListView {
                         }
                     }
                     .accessibilityLabel("Note: \(note.title.isEmpty ? "Untitled" : note.title). \(note.preview)")
-                    .accessibilityActions {
-                        if let payload = noteSharePayload(note) {
-                            Button("Share note \(noteShareName(note))") { sharePayload = payload }
-                        }
-                    }
             }
             if enablePagination && vm.isLoadingMore && vm.hasMoreForCurrentSegment {
                 HStack {

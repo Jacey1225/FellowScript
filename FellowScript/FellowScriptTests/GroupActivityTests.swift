@@ -90,16 +90,17 @@ final class GroupActivityTests: XCTestCase {
         return try String(contentsOf: f, encoding: .utf8)
     }
 
-    func test_source_newNoteButtonWiredToEditorSheet() throws {
-        let src = try readSource("FellowScript/Dashboard/DashboardView.swift")
-        XCTAssertTrue(src.contains("home-new-note-button"))
-        XCTAssertTrue(src.contains("showNewNote = true"))
-        XCTAssertTrue(src.contains(".sheet(isPresented: $showNewNote)"))
-        XCTAssertTrue(src.contains("vm.saveNote("))
-        XCTAssertTrue(src.contains("GroupActivitySection("))
-        XCTAssertTrue(src.contains("appState.openAnnouncement(groupId:"))
-        XCTAssertFalse(src.contains("NoteResumeCard"))
-        XCTAssertFalse(src.contains("showResumeNote"))
+    func test_source_homeShowsOnlyAnnouncementRow_noHeaderNoNewNoteButton() throws {
+        let home = try readSource("FellowScript/Dashboard/DashboardView.swift")
+        XCTAssertTrue(home.contains("GroupActivitySection("))
+        XCTAssertTrue(home.contains("appState.openAnnouncement(groupId:"))
+        XCTAssertFalse(home.contains("home-new-note-button"))
+        XCTAssertFalse(home.contains("showNewNote"))
+        XCTAssertFalse(home.contains("NoteResumeCard"))
+        XCTAssertFalse(home.contains("showResumeNote"))
+        let section = try readSource("FellowScript/Dashboard/GroupActivitySection.swift")
+        XCTAssertFalse(section.contains("group-activity-heading"))
+        XCTAssertFalse(section.contains("Text(\"Group activity\")"))
     }
 
     func test_source_waysToExploreHasNoDismissControl() throws {

@@ -330,7 +330,7 @@ edit that AI-authored note (never whether it's visible — visibility is still
 
 ## Sharing (iOS)
 
-Long-pressing a note row shows **Share** (also a VoiceOver custom action). The shared text is the note title, "Shared by <creator>", and a friend-request link (`https://fellowscript.com/u/<username>`). The body, preview, ids and timestamps are never included. If the creator can't be resolved to a valid username, Share is hidden. Long-pressing a highlight (Highlights tab or highlight search) or a verse in the reader shares the reference, the verse text and a link that opens the verse (`https://fellowscript.com/v/<book>/<chapter>/<verse>`).
+Notes cannot be shared. Long-pressing a highlight (Highlights tab or highlight search) or a verse in the reader shares the reference, the verse text and a link that opens the verse (`https://fellowscript.com/v/<book>/<chapter>/<verse>`).
 
 Share links open a confirm screen in the app and never send anything on their own: `/u/<username>` asks "Send a friend request to <username>?", `/g/<public_id>` shows the published group and a "Request to join" button (the host still approves). Parsing is strict and deny-by-default; anything that is not exactly one of these shapes is ignored. Username links are guessable and not revocable (a rename invalidates them). The landing pages, AASA entries and nginx snippets for these paths are prepared in the repo and are not applied to the server until confirmed.
 

@@ -246,7 +246,6 @@ struct DashboardView: View {
         _vm = StateObject(wrappedValue: vm)
     }
 
-    @State private var showNewNote = false
     @StateObject private var groupActivityVM = GroupActivityViewModel()
     // Task 20260903-friend-activity-note-navigation: presented via
     // `.sheet(item:)` exactly like NotesListView's own `detailNote`, in
@@ -341,23 +340,6 @@ struct DashboardView: View {
                         appState.openAnnouncement(groupId: item.groupId, announcementId: item.announcement.id)
                     }
 
-                    // Quick-create "new note" (preserved per the confirmed
-                    // answers): the old note card was its only trigger, so it
-                    // lives here as an always-visible compact control.
-                    Button { showNewNote = true } label: {
-                        Label("New note", systemImage: "square.and.pencil")
-                            .font(.interScaled(Theme.fontSM, weight: .semibold, relativeTo: .subheadline))
-                            .foregroundColor(Theme.goldLight)
-                            .padding(.horizontal, Theme.spacingMD)
-                            .frame(minHeight: 44)
-                            .glassCard(cornerRadius: Theme.radiusXL)
-                    }
-                    .buttonStyle(.plain)
-                    .padding(.horizontal, 20)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .accessibilityHint("Starts a new note")
-                    .accessibilityIdentifier("home-new-note-button")
-
                     WaysToExploreSection(chatVM: chatVM, userId: appState.currentUser?.user_id)
                         .id(appState.currentUser?.user_id ?? "")
                 }
@@ -380,11 +362,6 @@ struct DashboardView: View {
         .task {
             if let uid = appState.currentUser?.user_id {
                 await vm.load(service: appState.service, userId: uid)
-            }
-        }
-        .sheet(isPresented: $showNewNote) {
-            NoteEditorView(note: nil, noteId: nil, isReadOnly: false) { saved in
-                await vm.saveNote(saved, editingId: nil, userId: appState.currentUser?.user_id ?? "")
             }
         }
         // Reload group activity on first appearance and whenever the user's
