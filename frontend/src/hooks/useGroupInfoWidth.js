@@ -34,17 +34,17 @@ function writeStored(n) {
 }
 
 // panelRef: the panel root; its offsetParent / parentElement is the host whose width bounds the panel.
-export function useGroupInfoWidth(panelRef, enabled = true) {
+export function useGroupInfoWidth(panelRef, enabled = true, hostRef = null) {
   const [raw, setRaw] = useState(readStored);
   const [hostWidth, setHostWidth] = useState(() => (typeof window !== 'undefined' ? window.innerWidth : 0));
   const [dragging, setDragging] = useState(false);
   const drag = useRef(null);
 
   const measureHost = useCallback(() => {
-    const host = panelRef.current?.parentElement;
+    const host = hostRef?.current || panelRef.current?.parentElement;
     const w = host?.clientWidth || window.innerWidth;
     setHostWidth(w);
-  }, [panelRef]);
+  }, [panelRef, hostRef]);
 
   useEffect(() => {
     if (!enabled) return undefined;

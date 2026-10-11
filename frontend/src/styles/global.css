@@ -1965,6 +1965,8 @@ body {
 .group-info-rename-actions { display: flex; justify-content: center; gap: 0.5rem; align-items: center; }
 .group-info-counter { align-self: flex-end; font-size: 0.68rem; color: rgba(242,242,242,0.6); }
 .group-info-input { min-height: 44px; border-radius: var(--radius-md); border: 1px solid var(--card-border-strong); background: transparent; color: var(--parchment); padding: 0 0.75rem; font-size: 0.9rem; font-family: 'Inter', sans-serif; }
+.group-info-limit-row { display: flex; align-items: center; gap: 0.6rem; }
+.group-info-limit-row .group-info-input { flex: 1; min-width: 0; }
 .group-info-input:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
 .group-info-pill, .group-info-secondary-pill { display: inline-flex; align-items: center; justify-content: center; gap: 0.35rem; flex-shrink: 0; white-space: nowrap; font-size: 0.85rem; line-height: 1.2; min-height: 44px; min-width: 88px; border-radius: 999px; cursor: pointer; font-family: 'Space Grotesk', sans-serif; font-weight: 600; padding: 0 1.2rem; transition: transform 0.15s; }
 .group-info-pill { border: none; color: var(--ink); background: linear-gradient(135deg, var(--gold-light), var(--gold) 60%, var(--gold-dim)); }

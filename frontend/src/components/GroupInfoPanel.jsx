@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { Avatar, Switch, Spin } from 'antd';
 import {
@@ -7,6 +7,7 @@ import {
 } from '@ant-design/icons';
 import { useFocusTrap } from '../hooks/useFocusTrap.js';
 import { useGroupInfoWidth } from '../hooks/useGroupInfoWidth.js';
+import { useHostRect } from '../hooks/useHostRect.js';
 import {
   fetchGroupInfo, renameGroup, setGroupMuted, setGroupMaxMembers, uploadGroupPhoto,
   removeGroupPhoto, confirmGroupPhoto, fetchGroupGallery, GROUP_PHOTO_LIMITS,
@@ -100,7 +101,16 @@ export default function GroupInfoPanel({
   useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; clearTimeout(undoTimerRef.current); }; }, []);
 
   useFocusTrap(open && !wide, panelRef);
-  const resize = useGroupInfoWidth(panelRef, open && wide);
+  // Wide layout: the panel is createPortal'd to document.body (like
+  // MessagingPanel's .chat-overlay) because ChatThread lives inside
+  // .chat-overlay, whose own backdrop-filter suppresses this panel's blur of
+  // the chat behind it. The anchor span sits in ChatThread's root so we can
+  // track that host's rect and keep `position: fixed` aligned over it.
+  const anchorRef = useRef(null);
+  const hostRef = useRef(null);
+  useLayoutEffect(() => { hostRef.current = anchorRef.current?.parentElement || null; });
+  const hostRect = useHostRect(open && wide, hostRef);
+  const resize = useGroupInfoWidth(panelRef, open && wide, hostRef);
 
   const [info, setInfo] = useState(null);           // last server-confirmed info
   const [refreshError, setRefreshError] = useState(false);
@@ -353,7 +363,14 @@ export default function GroupInfoPanel({
       role="dialog"
       aria-modal={wide ? undefined : 'true'}
       aria-labelledby="group-info-heading"
-      style={wide ? { width: resize.width } : undefined}
+      style={wide ? {
+        position: 'fixed',
+        top: hostRect?.top ?? 0,
+        height: hostRect?.height ?? '100%',
+        right: hostRect ? window.innerWidth - (hostRect.left + hostRect.width) : 0,
+        width: resize.width,
+        visibility: hostRect ? 'visible' : 'hidden',
+      } : undefined}
     >
       {wide && <div className={`group-info-resize${resize.dragging ? ' group-info-resize-active' : ''}`} {...resize.handleProps} />}
       {!wide && <div className="group-info-handle" aria-hidden="true" />}
@@ -481,21 +498,21 @@ export default function GroupInfoPanel({
                 <label htmlFor="group-max-members" className="group-info-helper">
                   Most people allowed in this group. Leave blank for no limit.
                 </label>
-                <input id="group-max-members" className="group-info-input" inputMode="numeric"
-                  value={capDraft} disabled={capSaving} placeholder="No limit"
-                  onChange={(e) => { setCapDraft(e.target.value); setCapError(null); setCapSaved(false); }}
-                  onKeyDown={(e) => { if (e.key === 'Enter') saveCap(); }}
-                  aria-invalid={!!capError} aria-describedby={capError ? 'group-max-members-error' : undefined} />
-                {info.max_members_ceiling != null && (
-                  <span className="group-info-helper">Up to {info.max_members_ceiling}. Not lower than the {memberList.length} {memberList.length === 1 ? 'person' : 'people'} here now.</span>
-                )}
-                {capError && <p id="group-max-members-error" className="group-info-error" role="alert">{capError}</p>}
-                <div className="group-info-rename-actions">
+                <div className="group-info-limit-row">
+                  <input id="group-max-members" className="group-info-input" inputMode="numeric"
+                    value={capDraft} disabled={capSaving} placeholder="No limit"
+                    onChange={(e) => { setCapDraft(e.target.value); setCapError(null); setCapSaved(false); }}
+                    onKeyDown={(e) => { if (e.key === 'Enter') saveCap(); }}
+                    aria-invalid={!!capError} aria-describedby={capError ? 'group-max-members-error' : undefined} />
                   <button type="button" className="group-info-pill" onClick={saveCap}
                     disabled={capSaving || capDraft.trim() === capInitial}>
                     {capSaving ? <Spin size="small" /> : 'Save limit'}
                   </button>
                 </div>
+                {info.max_members_ceiling != null && (
+                  <span className="group-info-helper">Up to {info.max_members_ceiling}. Not lower than the {memberList.length} {memberList.length === 1 ? 'person' : 'people'} here now.</span>
+                )}
+                {capError && <p id="group-max-members-error" className="group-info-error" role="alert">{capError}</p>}
                 <span className="group-info-sr" aria-live="polite">{capSaved ? 'Member limit saved' : ''}</span>
               </div>
             ) : (
@@ -596,7 +613,14 @@ export default function GroupInfoPanel({
     </div>
   );
 
-  if (wide) return body;
+  if (wide) {
+    return (
+      <>
+        <span ref={anchorRef} hidden aria-hidden="true" />
+        {open && createPortal(body, document.body)}
+      </>
+    );
+  }
   return createPortal(
     <>
       <div className="group-info-scrim" onClick={onClose} aria-hidden="true" />
