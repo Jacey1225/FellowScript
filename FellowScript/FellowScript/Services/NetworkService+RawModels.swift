@@ -44,6 +44,9 @@ struct RawMsg: Decodable {
     var reply_to_author: String? = nil
     var reply_to_author_id: String? = nil
     var reply_to_deleted: Bool? = nil
+    // Task 20261012-message-pins: absent while the server flag is off.
+    var pinned: Bool? = nil
+    var system_kind: String? = nil
 
     var reply: FSReplyRef? {
         FSReplyRef(wireId: reply_to_id, text: reply_to_text, author: reply_to_author,

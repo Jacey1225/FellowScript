@@ -28,7 +28,7 @@ const fail = (status, body = {}) => ({ ok: false, status, json: async () => body
 
 let refresh;
 const wrapper = ({ children }) => (
-  <CapabilitiesContext.Provider value={{ features: { threads: true, message_delete: true }, isEnabled: () => true, refresh }}>{children}</CapabilitiesContext.Provider>
+  <CapabilitiesContext.Provider value={{ features: { threads: true, message_delete: true }, isEnabled: (k) => k !== 'message_pins', refresh }}>{children}</CapabilitiesContext.Provider>
 );
 let urls; let routes;
 beforeEach(() => {

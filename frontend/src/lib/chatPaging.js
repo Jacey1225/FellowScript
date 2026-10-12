@@ -14,6 +14,7 @@
 
 import { parseReactions } from './reactions.js';
 import { replyFromWire } from './replies.js';
+import { pinFields } from './pins.js';
 
 export const INITIAL_PAGE_LIMIT = 30;
 export const OLDER_PAGE_LIMIT = 30;
@@ -54,6 +55,8 @@ export function toMessage(row, mine) {
   if (reactions) msg.reactions = reactions;
   const reply = replyFromWire(row);
   if (reply) msg.reply = reply;
+  // Task 20261012-message-pins: `pinned` / `system_kind` only while the flag is on.
+  Object.assign(msg, pinFields(row));
   return msg;
 }
 

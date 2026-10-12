@@ -199,6 +199,12 @@ protocol DataServiceProtocol {
     func addMessageReaction(userId: String, messageId: String, emoji: String) async throws -> ReactionSummary
     func removeMessageReaction(userId: String, messageId: String, emoji: String) async throws -> ReactionSummary
 
+    // Message pins (task 20261012-message-pins) -- NetworkService+Pins.swift.
+    // Default implementations throw there.
+    func pinMessage(userId: String, messageId: String) async throws
+    func unpinMessage(userId: String, messageId: String) async throws
+    func fetchPins(userId: String, contactId: String, isGroup: Bool, limit: Int, offset: Int) async throws -> FSPinPage
+
     // Attachments (task 20260904-messaging-attachments): request a presigned
     // S3 POST policy, then upload the raw bytes directly to S3 with it — the
     // server never receives them. GIF search is a thin authenticated proxy

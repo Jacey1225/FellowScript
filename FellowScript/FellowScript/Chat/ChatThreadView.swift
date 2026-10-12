@@ -329,7 +329,8 @@ final class ChatThreadViewModel: ObservableObject {
             id: message.id, text: message.text, mine: message.mine, sender: senderName,
             timestamp: message.timestamp, attachmentKind: message.attachmentKind,
             attachmentURL: message.attachmentURL, attachmentMeta: message.attachmentMeta,
-            reactions: message.reactions, reply: message.reply
+            reactions: message.reactions, reply: message.reply,
+            pinned: message.pinned, systemKind: message.systemKind
         )
     }
 
@@ -590,6 +591,8 @@ final class ChatThreadViewModel: ObservableObject {
                 handleMessageRestored(json)
             case "reaction_updated":
                 handleReactionUpdated(json)
+            case "pin_updated":
+                handlePinUpdated(json)
             case "thread_deleted":
                 handleThreadDeleted(json)
             case "ping":
@@ -627,7 +630,8 @@ final class ChatThreadViewModel: ObservableObject {
             attachmentKind: json["attachment_kind"] as? String,
             attachmentURL:  json["attachment_url"] as? String,
             attachmentMeta: attachmentMeta,
-            reply: FSReplyRef(frame: json)
+            reply: FSReplyRef(frame: json),
+            systemKind: json["system_kind"] as? String
         )
         // Dedup by id (a live frame for a row a history fetch already
         // delivered must not render twice); a frame without an id always appends.
@@ -920,6 +924,126 @@ final class ChatThreadViewModel: ObservableObject {
         }
     }
 
+    // ── Pins (task 20261012-message-pins) ─────────────────────────────────────
+
+    /// Pinned messages of this chat, newest pin first (server order), paged.
+    @Published private(set) var pins: [FSPinnedMessage] = []
+    /// Total pins in this chat (list response `count`), shown as the header badge.
+    @Published private(set) var pinCount = 0
+    @Published private(set) var pinsHasMore = false
+    @Published private(set) var pinsState: FSPinsLoadState = .idle
+    @Published private(set) var isLoadingMorePins = false
+    /// Bumped when a live pin_updated frame arrives so the view refreshes the count/list.
+    @Published private(set) var pinsRevision = 0
+    static let pinsPageLimit = 20
+    /// Upper bound on older pages fetched to reach a pinned message.
+    static let jumpMaxPages = 25
+
+    /// Loads the first page (reset) or the next page. `quiet` keeps the current
+    /// list/state on failure (used for the background badge refresh).
+    func loadPins(service: DataServiceProtocol, contact: FSContact, userId: String, reset: Bool, quiet: Bool = false) async {
+        if !reset && (isLoadingMorePins || !pinsHasMore) { return }
+        let offset = reset ? 0 : pins.count
+        if reset && !quiet { pinsState = .loading }
+        if !reset { isLoadingMorePins = true }
+        defer { if !reset { isLoadingMorePins = false } }
+        do {
+            let page = try await service.fetchPins(userId: userId, contactId: contact.id,
+                                                   isGroup: contact.type == .group,
+                                                   limit: Self.pinsPageLimit, offset: offset)
+            if reset {
+                pins = page.pins
+            } else {
+                let have = Set(pins.map(\.id))
+                pins += page.pins.filter { !have.contains($0.id) }
+            }
+            pinsHasMore = page.hasMore
+            pinCount = max(page.count, pins.count)
+            pinsState = .loaded
+        } catch {
+            if error as? FSPinError == .unavailable { pinsState = .unavailable; return }
+            if !quiet || pinsState == .idle { pinsState = reset ? .failed : pinsState }
+        }
+    }
+
+    /// Optimistically pins/unpins a main-chat message and reconciles with the
+    /// server; on failure the flag and badge are rolled back and the error is rethrown.
+    func togglePin(_ message: FSMessage, service: DataServiceProtocol, userId: String) async throws {
+        guard !isThreadOpen, isSettled(message), message.systemKind == nil else { return }
+        let wasPinned = (messages.first(where: { $0.id == message.id })
+            ?? mainStash?.messages.first(where: { $0.id == message.id }))?.pinned ?? message.pinned ?? false
+        setPinned(message.id, !wasPinned)
+        pinCount = max(0, pinCount + (wasPinned ? -1 : 1))
+        do {
+            if wasPinned {
+                try await service.unpinMessage(userId: userId, messageId: message.id)
+                pins.removeAll { $0.id == message.id }
+            } else {
+                try await service.pinMessage(userId: userId, messageId: message.id)
+            }
+            pinsRevision += 1
+        } catch {
+            setPinned(message.id, wasPinned)
+            pinCount = max(0, pinCount + (wasPinned ? 1 : -1))
+            throw error
+        }
+    }
+
+    /// Unpins from the Pinned list: the row leaves immediately and returns
+    /// (at its old position) if the server refuses.
+    func unpin(_ pin: FSPinnedMessage, service: DataServiceProtocol, userId: String) async throws {
+        guard let idx = pins.firstIndex(where: { $0.id == pin.id }) else { return }
+        let removed = pins.remove(at: idx)
+        pinCount = max(0, pinCount - 1)
+        setPinned(pin.id, false)
+        do {
+            try await service.unpinMessage(userId: userId, messageId: pin.id)
+        } catch {
+            if !pins.contains(where: { $0.id == removed.id }) { pins.insert(removed, at: min(idx, pins.count)) }
+            pinCount += 1
+            setPinned(pin.id, true)
+            throw error
+        }
+    }
+
+    /// Drops a pin row the server says no longer exists (a 404 on jump).
+    func removeStalePin(_ id: String) {
+        guard pins.contains(where: { $0.id == id }) else { return }
+        pins.removeAll { $0.id == id }
+        pinCount = max(0, pinCount - 1)
+        setPinned(id, false)
+    }
+
+    private func setPinned(_ messageId: String, _ pinned: Bool) {
+        mutateMain { list in
+            guard let idx = list.firstIndex(where: { $0.id == messageId }) else { return }
+            list[idx].pinned = pinned
+        }
+    }
+
+    /// `{type:"pin_updated", message_id, group_id, pinned, actor_id}`: members only,
+    /// sent on a real change. Updates the bubble glyph and asks the view to refresh.
+    private func handlePinUpdated(_ json: [String: Any]) {
+        guard let id = json["message_id"] as? String, let pinned = json["pinned"] as? Bool,
+              frameBelongsToCurrentConversation(json) else { return }
+        setPinned(id, pinned)
+        pinsRevision += 1
+    }
+
+    /// Pages older history in until `messageId` is in the loaded list. False
+    /// when it could not be reached (end of history, failure, or a thread is open).
+    func ensureLoaded(_ messageId: String, service: DataServiceProtocol, contact: FSContact, userId: String) async -> Bool {
+        guard !isThreadOpen else { return false }
+        var pages = 0
+        while !messages.contains(where: { $0.id == messageId }) {
+            guard pagingEnabled, hasMoreOlder, pages < Self.jumpMaxPages else { return false }
+            await loadOlder(service: service, contact: contact, userId: userId)
+            if olderLoadFailed { return false }
+            pages += 1
+        }
+        return true
+    }
+
     // ── Action-menu support ───────────────────────────────────────────────────
 
     /// A message has a server id and is neither in flight nor failed.
@@ -933,6 +1057,29 @@ final class ChatThreadViewModel: ObservableObject {
         guard !message.mine, let contact = currentContact else { return nil }
         if contact.type == .friend { return contact.id }
         return groupUsernameById.first(where: { $0.value == message.sender })?.key
+    }
+}
+
+/// Task 20261012-message-pins: Pinned list load state.
+enum FSPinsLoadState: Equatable { case idle, loading, loaded, failed, unavailable }
+
+private struct PinsPresentation: ViewModifier {
+    @Binding var showPinned: Bool
+    @ObservedObject var vm: ChatThreadViewModel
+    let contact: FSContact
+    let service: DataServiceProtocol
+    let userId: String
+    let flagOn: Bool
+    let onSelect: (FSPinnedMessage) -> Void
+    let onRefresh: () -> Void
+
+    func body(content: Content) -> some View {
+        content
+            .sheet(isPresented: $showPinned) {
+                PinnedMessagesSheet(vm: vm, contact: contact, service: service, userId: userId, onSelect: onSelect)
+            }
+            .onChange(of: vm.pinsRevision) { _, _ in onRefresh() }
+            .onChange(of: flagOn) { _, on in if on { onRefresh() } }
     }
 }
 
@@ -981,6 +1128,10 @@ struct ChatThreadView: View {
     // is replying to, and a one-shot scroll request for a tapped quote.
     @State private var replyTarget: FSMessage? = nil
     @State private var jumpTarget: String? = nil
+    // Task 20261012-message-pins: Pinned list sheet + the message briefly
+    // outlined after jumping to it.
+    @State private var showPinned: Bool = false
+    @State private var highlightedMessageId: String? = nil
 
     // ── Sessions submenu (task 20260920-chat-sessions-submenu) ────────────────
     // Replaces the old always-visible inline SessionBanner + header
@@ -1204,7 +1355,7 @@ struct ChatThreadView: View {
                     threadHeader
                     threadRootCard
                 } else {
-                    header
+                    header.modifier(pinsPresentation)
                 }
 
                 // Task 20260929-announcement-push-widget: groups only, directly under the header.
@@ -1256,7 +1407,8 @@ struct ChatThreadView: View {
                                         reactionsFor: { message in reactionConfig(for: message) },
                                         replyFor: { message in replyHandler(for: message) },
                                         currentUserId: appState.currentUser?.user_id,
-                                        onJumpToReply: { id in jumpTarget = id }
+                                        onJumpToReply: { id in jumpTarget = id },
+                                        highlightedMessageId: highlightedMessageId
                                     )
                                         .id(row.id)
                                 case .dayDivider(_, let label):
@@ -1447,6 +1599,7 @@ struct ChatThreadView: View {
             // to land on the exact same count (e.g. re-opening a thread with
             // no new messages since last time).
             recomputeMessageGroups()
+            refreshPinCount()
             // Task 20260908-chat-scroll-to-bottom-on-open: unconditional
             // initial scroll to the last row -- the reactive
             // `.onChange(of: vm.messages.count)` handler above only fires on
@@ -1693,6 +1846,89 @@ struct ChatThreadView: View {
         }
     }
 
+    // ── Pins (task 20261012-message-pins) ─────────────────────────────────────
+
+    /// Pin UI (header button, menu item) shows only with the flag on, in the
+    /// main chat, and until the server answers the uniform 404 (flag turned off).
+    private var pinsAvailable: Bool {
+        appState.capabilities.messagePinsEnabled && !vm.isThreadOpen && vm.pinsState != .unavailable
+    }
+
+    /// Pinned list sheet + count refresh triggers, attached to the header (not the
+    /// screen body) to keep the body's type-check cheap.
+    private var pinsPresentation: PinsPresentation {
+        PinsPresentation(
+            showPinned: $showPinned, vm: vm, contact: contact, service: appState.service,
+            userId: appState.currentUser?.user_id ?? "",
+            flagOn: appState.capabilities.messagePinsEnabled,
+            onSelect: { pin in jumpToPin(pin) },
+            onRefresh: { refreshPinCount() }
+        )
+    }
+
+    private func refreshPinCount() {
+        guard pinsAvailable else { return }
+        let uid = appState.currentUser?.user_id ?? ""
+        Task { await vm.loadPins(service: appState.service, contact: contact, userId: uid, reset: true, quiet: true) }
+    }
+
+    private func togglePin(_ message: FSMessage) {
+        let uid = appState.currentUser?.user_id ?? ""
+        Task {
+            do {
+                try await vm.togglePin(message, service: appState.service, userId: uid)
+            } catch {
+                if (error as? FSPinError) == .termsReacceptRequired { appState.refreshCapabilities(force: true) }
+                showToast((error as? LocalizedError)?.errorDescription ?? FSPinError.fallback, seconds: 4)
+            }
+        }
+    }
+
+    /// Tap on a Pinned row: close the list, load the message if it is outside
+    /// the paged window, scroll to it and outline it for 1.2 s.
+    private func jumpToPin(_ pin: FSPinnedMessage) {
+        showPinned = false
+        let uid = appState.currentUser?.user_id ?? ""
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 350_000_000)   // let the sheet finish dismissing
+            guard await vm.ensureLoaded(pin.id, service: appState.service, contact: contact, userId: uid) else {
+                showToast("Couldn't find that message. It may have been removed.", seconds: 4)
+                return
+            }
+            recomputeMessageGroups()
+            jumpTarget = pin.id
+            let who = pin.message.fromUser.isEmpty ? "someone" : pin.message.fromUser
+            UIAccessibility.post(notification: .announcement, argument: "Jumped to pinned message from \(who)")
+            withMotionAwareAnimation(.easeOut(duration: 0.2), reduceMotion: reduceMotion) { highlightedMessageId = pin.id }
+            try? await Task.sleep(nanoseconds: 1_200_000_000)
+            withMotionAwareAnimation(.easeOut(duration: 0.4), reduceMotion: reduceMotion) { highlightedMessageId = nil }
+        }
+    }
+
+    /// The pin button at the top right of the header, left of Sessions.
+    private var pinButton: some View {
+        ZStack(alignment: .topTrailing) {
+            RoundIconButton(systemIcon: "pin", diameter: 44) { showPinned = true }
+            if let badge = FSPinnedListCopy.badgeText(count: vm.pinCount) {
+                Text(badge)
+                    .font(.inter(Theme.fontXXS, weight: .bold))
+                    .foregroundColor(Theme.ink)
+                    .padding(.horizontal, 5)
+                    .frame(minWidth: 16, minHeight: 16)
+                    .background(Theme.gold)
+                    .clipShape(Capsule())
+                    .offset(x: 2, y: -2)
+                    .accessibilityHidden(true)
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityLabel("Pinned messages")
+        .accessibilityValue(FSPinnedListCopy.buttonValue(count: vm.pinCount) ?? "")
+        .accessibilityHint("Opens the list of pinned messages")
+        .accessibilityAction { showPinned = true }
+    }
+
     private func rowActions(for message: FSMessage) -> [MessageRowAction] {
         let caps = appState.capabilities
         let ctx = FSMessageActionContext(
@@ -1703,7 +1939,8 @@ struct ChatThreadView: View {
             isSettled: vm.isSettled(message),
             senderUserId: vm.senderUserId(for: message),
             repliesEnabled: repliesEnabled,
-            canJumpToOriginal: replyTargetLoaded(message)
+            canJumpToOriginal: replyTargetLoaded(message),
+            pinsEnabled: pinsAvailable
         )
         return FSMessageActionPolicy.actions(for: message, in: ctx).map { kind in
             MessageRowAction(kind: kind) { performAction(kind, on: message) }
@@ -1742,6 +1979,8 @@ struct ChatThreadView: View {
             startReply(to: message)
         case .goToOriginal:
             if let id = message.reply?.id { jumpTarget = id }
+        case .pin, .unpin:
+            togglePin(message)
         case .copy:
             if let text = message.copyableText {
                 UIPasteboard.general.string = text
@@ -1989,6 +2228,8 @@ struct ChatThreadView: View {
             .accessibilityHint(contact.type == .group ? "Opens group settings, members, and shared media" : "")
 
             Spacer(minLength: 8)
+
+            if pinsAvailable { pinButton }
 
             PillButton(title: "Sessions", systemIcon: "calendar") {
                 openSessionsMenu()

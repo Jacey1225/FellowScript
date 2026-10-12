@@ -25,7 +25,7 @@ export default function MessagingPanel() {
     threadView, threadMessages, threadPage, threadLoad, restoredDraft,
     onCloseThread, onRetryThread, onLoadOlderThread, onSendThreadMessage,
     onStartThread, onDeleteMessage, onRestoreMessage,
-    onAddGroupMembers, onRetryMessage, onToggleReaction,
+    onAddGroupMembers, onRetryMessage, onToggleReaction, pins,
   } = useMessagingPanel() || {};
   const inThread = !!threadView;
 
@@ -114,6 +114,7 @@ export default function MessagingPanel() {
             onAddGroupMembers={onAddGroupMembers}
             onRetryMessage={onRetryMessage}
             onToggleReaction={onToggleReaction}
+            pins={pins}
           />
         </div>,
         document.body,

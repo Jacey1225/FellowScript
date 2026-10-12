@@ -126,12 +126,14 @@ extension FSMessage {
 // ── Long-press action policy ──────────────────────────────────────────────────
 
 enum FSMessageActionKind: String, Equatable {
-    case reply, goToOriginal, startThread, copy, delete, report, block
+    case reply, goToOriginal, pin, unpin, startThread, copy, delete, report, block
 
     var title: String {
         switch self {
         case .reply:       return "Reply"
         case .goToOriginal: return "Go to original message"
+        case .pin:         return "Pin message"
+        case .unpin:       return "Unpin message"
         case .startThread: return "Start thread"
         case .copy:        return "Copy"
         case .delete:      return "Delete"
@@ -144,6 +146,8 @@ enum FSMessageActionKind: String, Equatable {
         switch self {
         case .reply:       return "arrowshape.turn.up.left"
         case .goToOriginal: return "arrow.up.message"
+        case .pin:         return "pin"
+        case .unpin:       return "pin.slash"
         case .startThread: return "bubble.left.and.bubble.right"
         case .copy:        return "doc.on.doc"
         case .delete:      return "trash"
@@ -173,6 +177,8 @@ struct FSMessageActionContext: Equatable {
     var repliesEnabled: Bool = false
     /// The quoted original of this message is in the loaded list.
     var canJumpToOriginal: Bool = false
+    /// Task 20261012-message-pins: message_pins capability on (main chat only).
+    var pinsEnabled: Bool = false
 }
 
 enum FSMessageActionPolicy {
@@ -190,6 +196,10 @@ enum FSMessageActionPolicy {
         let canCopy = message.copyableText != nil
         if ctx.repliesEnabled && !ctx.inThread && ctx.isSettled { list.append(.reply) }
         if ctx.canJumpToOriginal && !ctx.inThread { list.append(.goToOriginal) }
+        // Anyone in the chat can pin or unpin; never a system line.
+        if ctx.pinsEnabled && !ctx.inThread && ctx.isSettled && message.systemKind == nil {
+            list.append(message.pinned == true ? .unpin : .pin)
+        }
         if message.mine {
             if canThread { list.append(.startThread) }
             if canCopy { list.append(.copy) }

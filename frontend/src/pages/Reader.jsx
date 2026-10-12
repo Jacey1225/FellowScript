@@ -91,6 +91,7 @@ export default function Reader() {
     threadView, threadMessages, threadPage, threadLoad, restoredDraft,
     openThread, closeThread, retryThread, loadOlderThread, startThread, sendThreadMessage,
     deleteMessage, restoreMessage, toggleReaction,
+    pinList, pinsEnabled, loadPins, loadMorePins, togglePin, unpinFromList, ensureMessageLoaded,
   } = useMessaging({ user });
 
   const {
@@ -406,7 +407,11 @@ export default function Reader() {
     onLoadOlderThread: loadOlderThread, onSendThreadMessage: sendThreadMessage,
     onStartThread: startThread, onDeleteMessage: deleteMessage, onRestoreMessage: restoreMessage,
     onAddGroupMembers: addGroupMembers, onRetryMessage: retryFailedMessage, onToggleReaction: toggleReaction,
-  }), [addGroupMembers, retryFailedMessage, toggleReaction, threadView, threadMessages, threadPage, threadLoad, restoredDraft, openThread, closeThread, retryThread,
+    pins: {
+      enabled: pinsEnabled, list: pinList, onLoad: loadPins, onLoadMore: loadMorePins,
+      onToggle: togglePin, onUnpin: unpinFromList, ensureLoaded: ensureMessageLoaded,
+    },
+  }), [addGroupMembers, retryFailedMessage, toggleReaction, pinList, pinsEnabled, loadPins, loadMorePins, togglePin, unpinFromList, ensureMessageLoaded, threadView, threadMessages, threadPage, threadLoad, restoredDraft, openThread, closeThread, retryThread,
        loadOlderThread, sendThreadMessage, startThread, deleteMessage, restoreMessage,
        olderPage, loadOlder, applyGroupChange, dropGroup, user, friends, msgGroups, currentContact, messages, groupMembers, handleOpenChat, handleCloseChat,
        addFriend, removeFriend, reportUser, blockUser, createGroup, updateGroup, leaveGroup,

@@ -45,6 +45,9 @@ struct MessageDisplayGroup: Identifiable {
     // nil falls back to the existing initial-circle treatment in `avatar`
     // below, exactly like every other surface's fallback.
     var senderPhotoURL: String? = nil
+    // Task 20261012-message-pins: a server-generated system line ("X pinned a
+    // message"). Always a group of its own so it never merges with bubbles.
+    var isSystem: Bool = false
 }
 
 extension MessageDisplayGroup {
@@ -61,6 +64,7 @@ extension MessageDisplayGroup {
         var groups: [MessageDisplayGroup] = []
         for message in messages {
             if let lastIndex = groups.indices.last,
+               !groups[lastIndex].isSystem, message.systemKind == nil,
                groups[lastIndex].isOutgoing == message.mine,
                (message.mine || groups[lastIndex].messages.last?.sender == message.sender) {
                 groups[lastIndex] = MessageDisplayGroup(
@@ -83,7 +87,8 @@ extension MessageDisplayGroup {
                     isOutgoing:    message.mine,
                     date:          parseTimestamp(message.timestamp),
                     messages:      [message],
-                    senderPhotoURL: message.mine ? me?.profile_photo_url : photoByUsername[name]
+                    senderPhotoURL: message.mine ? me?.profile_photo_url : photoByUsername[name],
+                    isSystem:      message.systemKind != nil
                 ))
             }
         }
@@ -208,12 +213,53 @@ struct MessageGroupRow: View {
     var replyFor: ((FSMessage) -> (() -> Void)?)? = nil
     var currentUserId: String? = nil
     var onJumpToReply: ((String) -> Void)? = nil
+    // Task 20261012-message-pins: message briefly highlighted after a jump
+    // from the Pinned list (nil = none).
+    var highlightedMessageId: String? = nil
 
     /// Scroll anchor id for one message. Prefixed so it can never collide with
     /// a MessageDisplayGroup row id (a group's id IS its first message's id).
     static func anchorId(for messageId: String) -> String { "msg-anchor:\(messageId)" }
 
     var body: some View {
+        if group.isSystem, let line = group.messages.first {
+            systemLine(line)
+        } else {
+            groupBody
+        }
+    }
+
+    /// Task 20261012-message-pins: centered, muted, non-interactive line. The
+    /// text is built here ("NAME pinned a message") from the sender, never from
+    /// server text, so a line can only ever read as a pin notice.
+    @ViewBuilder
+    private func systemLine(_ message: FSMessage) -> some View {
+        let text = Self.systemLineText(for: message, senderName: group.senderName)
+        HStack(spacing: 6) {
+            Image(systemName: "pin.fill")
+                .font(.system(size: 10, weight: .semibold))
+            Text(text)
+                .font(.inter(Theme.fontXXS))
+                .multilineTextAlignment(.center)
+        }
+        .foregroundColor(Theme.textSecondary)
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, Theme.spacingMD)
+        .padding(.vertical, Theme.spacingXS)
+        .id(Self.anchorId(for: message.id))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(text)
+    }
+
+    /// "You pinned a message" for the viewer's own line, else "NAME pinned a
+    /// message". Unknown kinds fall back to the sender plus the server text.
+    static func systemLineText(for message: FSMessage, senderName: String) -> String {
+        let who = message.mine ? "You" : (senderName.isEmpty ? "Someone" : senderName)
+        if message.systemKind == "pin" { return "\(who) pinned a message" }
+        return message.text.isEmpty ? who : "\(who) \(message.text)"
+    }
+
+    private var groupBody: some View {
         HStack(alignment: .top, spacing: 12) {
             if group.isOutgoing { Spacer(minLength: 40) }
 
@@ -239,6 +285,12 @@ struct MessageGroupRow: View {
                     VStack(alignment: group.isOutgoing ? .trailing : .leading, spacing: 4) {
                         bubble(for: message)
                             .modifier(SwipeToReply(onReply: replyFor?(message)))
+                        if message.pinned == true {
+                            Image(systemName: "pin.fill")
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundColor(Theme.gold.opacity(0.55))
+                                .accessibilityHidden(true)
+                        }
                         if let cfg = reactionsFor?(message), let list = message.reactions, !list.isEmpty {
                             ReactionChipRow(reactions: list, alignment: group.isOutgoing ? .trailing : .leading) { r in
                                 cfg.onPick(r.emoji)
@@ -331,6 +383,11 @@ struct MessageGroupRow: View {
         )
         .clipShape(RoundedRectangle(cornerRadius: Theme.radiusLG))
         .topEdgeHighlight(RoundedRectangle(cornerRadius: Theme.radiusLG))
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.radiusLG)
+                .stroke(Theme.gold, lineWidth: 2)
+                .opacity(highlightedMessageId == message.id ? 1 : 0)
+        )
         .accessibilityLabel(accessibilityLabel(for: message))
         .messageActions(actionsFor?(message) ?? [], reactions: reactionsFor?(message))
     }
@@ -339,7 +396,8 @@ struct MessageGroupRow: View {
     /// per-kind label (design gate §4) — never both at once (an attachment
     /// message with `text` empty has nothing to append).
     private func accessibilityLabel(for message: FSMessage) -> String {
-        let base = baseAccessibilityLabel(for: message)
+        var base = baseAccessibilityLabel(for: message)
+        if message.pinned == true { base += ". Pinned" }
         guard let reply = message.reply else { return base }
         if reply.deleted { return "\(base). Reply to a message that is no longer available" }
         return "\(base). Reply to \(reply.authorLabel(viewerId: currentUserId)): \(reply.snippet())"

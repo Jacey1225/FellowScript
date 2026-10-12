@@ -11,6 +11,10 @@ import {
 import { parseReactions, toggled, setting, updatingCount, addReaction, removeReaction } from '../lib/reactions.js';
 import { replyFromWire } from '../lib/replies.js';
 import {
+  PIN_FEATURE, PIN_PAGE_LIMIT, PIN_LIST_ERROR, PinError, pinFields,
+  fetchPins, pinMessageRequest, unpinMessageRequest, withoutPin,
+} from '../lib/pins.js';
+import {
   createThread, deleteGroupMessage, restoreGroupMessage, fetchThreadMessagesUrl,
   insertRestored, DEFAULT_UNDO_SECONDS,
 } from '../lib/threadsApi.js';
@@ -145,6 +149,16 @@ export function useMessaging({ user }) {
     }));
   }, []);
 
+  // Task 20261012-message-pins: a live pin system line names its actor by
+  // username (the frame carries an id); ordinary frames keep the old behaviour.
+  const liveSenderName = (data, cc) => {
+    if (data.system_kind !== 'pin') return data.from_user || '';
+    const cached = memberCache.current[data.from_user];
+    if (cached && cached.username) return cached.username;
+    if (cc && cc.type === 'friend' && cc.name) return cc.name;
+    return '';
+  };
+
   // ── WebSocket ──────────────────────────────────────────────────────────────
 
   const connectWS = useCallback(() => {
@@ -205,6 +219,12 @@ export function useMessaging({ user }) {
         // from the HTTP result), whoever the actor was.
         if (data.type === 'reaction_updated') {
           applyReactionFrame(data);
+          return;
+        }
+        // Task 20261012-message-pins: someone pinned/unpinned. A `type` frame
+        // with no from_user/text, so it can never be a bubble.
+        if (data.type === 'pin_updated') {
+          applyPinFrame(data);
           return;
         }
         // Task 20261001-message-threads: thread / delete frames go through a
@@ -277,7 +297,7 @@ export function useMessaging({ user }) {
             text: data.text || '',
             mine: false,
             timestamp: data.timestamp,
-            sender: data.from_user || '',
+            sender: liveSenderName(data, cc),
             // Task 20260904-messaging-attachments: null/absent for an
             // ordinary text-only message. attachment_url (image/video/file
             // only) is a freshly presigned GET the server resolves at
@@ -289,6 +309,7 @@ export function useMessaging({ user }) {
             // Reply label keys ride on the frame only when chat_replies is on
             // for me; absent otherwise (plain message).
             ...(replyFromWire(data) ? { reply: replyFromWire(data) } : {}),
+            ...pinFields(data),
           }));
         }
       } catch (err) {
@@ -749,6 +770,7 @@ export function useMessaging({ user }) {
           attachmentUrl:  m.attachment_url || null,
           ...(parseReactions(m.reactions) ? { reactions: parseReactions(m.reactions) } : {}),
           ...(replyFromWire(m) ? { reply: replyFromWire(m) } : {}),
+          ...pinFields(m),
         })));
       }
     } catch (err) {
@@ -791,6 +813,9 @@ export function useMessaging({ user }) {
       st.cursor = pg.cursor;
       st.hasMore = pg.hasMore;
       st.loading = false;
+      // Keep the ref current now (not after the next render) so a caller that
+      // awaits this, like ensureMessageLoaded, sees the page immediately.
+      messagesRef.current = mergeOlder(messagesRef.current, pg.messages);
       setMessages(prev => mergeOlder(prev, pg.messages));
       setOlderPage(p => ({
         ...p, hasMore: pg.hasMore, loading: false, error: false,
@@ -971,6 +996,170 @@ export function useMessaging({ user }) {
       reactionInFlightRef.current.delete(key);
     }
   }, [user, setReactionsFor]);
+
+  // ── Pins (task 20261012-message-pins) ──────────────────────────────────────
+  // Flag-gated, fail closed. No cap on pins; the list is paged by offset.
+  // Group and DM main-chat messages only (never inside a thread view).
+  const pinsOn = () => capsRef.current?.isEnabled?.(PIN_FEATURE) === true;
+  const pinsFlagOn = pinsOn();
+  const [pinList, setPinList] = useState({ pins: [], count: 0, hasMore: false, status: 'idle', moreLoading: false });
+  const pinInFlightRef = useRef(new Set());
+  const pinListRef = useRef(pinList);
+  useEffect(() => { pinListRef.current = pinList; }, [pinList]);
+  const pinsTokenRef = useRef(0);
+
+  const loadPins = useCallback(async () => {
+    const cc = currentContactRef.current;
+    if (!user || !cc || !pinsOn()) return;
+    const token = ++pinsTokenRef.current;
+    setPinList(p => ({ ...p, status: p.pins.length ? p.status : 'loading' }));
+    try {
+      const res = await fetchPins(user.user_id, cc, { limit: PIN_PAGE_LIMIT, offset: 0 });
+      if (token !== pinsTokenRef.current) return;
+      setPinList({ pins: res.pins, count: res.count, hasMore: res.hasMore, status: 'ready', moreLoading: false });
+    } catch (err) {
+      if (token !== pinsTokenRef.current) return;
+      if (err instanceof PinError && err.kind === 'unavailable') {
+        // Flag turned off mid-session (or chat gone): hide quietly.
+        capsRef.current?.refresh?.();
+        setPinList({ pins: [], count: 0, hasMore: false, status: 'off', moreLoading: false });
+        return;
+      }
+      setPinList(p => ({ ...p, status: 'error', error: (err && err.message) || PIN_LIST_ERROR }));
+    }
+  }, [user]);
+
+  const loadMorePins = useCallback(async () => {
+    const cc = currentContactRef.current;
+    const cur = pinListRef.current;
+    if (!user || !cc || !pinsOn() || !cur.hasMore || cur.moreLoading) return;
+    const token = pinsTokenRef.current;
+    setPinList(p => ({ ...p, moreLoading: true }));
+    try {
+      const res = await fetchPins(user.user_id, cc, { limit: PIN_PAGE_LIMIT, offset: cur.pins.length });
+      if (token !== pinsTokenRef.current) return;
+      setPinList(p => {
+        const have = new Set(p.pins.map(x => x.messageId));
+        return {
+          ...p, pins: [...p.pins, ...res.pins.filter(x => !have.has(x.messageId))],
+          count: res.count, hasMore: res.hasMore, moreLoading: false,
+        };
+      });
+    } catch (err) {
+      if (token !== pinsTokenRef.current) return;
+      setPinList(p => ({ ...p, moreLoading: false }));
+      message.error({ content: (err && err.message) || PIN_LIST_ERROR, key: 'fs-pin-error', duration: 4 });
+    }
+  }, [user]);
+
+  // Fresh list per open conversation; cleared when it closes or the flag drops.
+  const contactKey = currentContact ? `${currentContact.type}|${currentContact.id}` : '';
+  useEffect(() => {
+    pinsTokenRef.current += 1;
+    setPinList({ pins: [], count: 0, hasMore: false, status: 'idle', moreLoading: false });
+    if (contactKey && pinsFlagOn) loadPins();
+  }, [contactKey, pinsFlagOn, loadPins]);
+
+  const setPinnedFlag = useCallback((messageId, pinned) => {
+    setMessages(prev => prev.map(m => (m.id === messageId ? { ...m, pinned } : m)));
+  }, []);
+
+  const pinFailure = (err) => {
+    if (err && err.kind === 'terms') capsRef.current?.refresh?.();
+    if (err && err.kind === 'unavailable') capsRef.current?.refresh?.();
+    message.error({ content: (err && err.message) || "That didn't go through. Please try again.", key: 'fs-pin-error', duration: 4 });
+  };
+
+  // Pin or unpin a settled message from its menu: optimistic glyph, then the
+  // server result; revert and show a warm line on failure. Resolves true on success.
+  const togglePin = useCallback(async (msg) => {
+    if (!user || !msg || !msg.id || msg.pending || msg.failed || msg.systemKind) return false;
+    if (!pinsOn() || threadViewRef.current) return false;
+    if (pinInFlightRef.current.has(msg.id)) return false;
+    const current = messagesRef.current.find(m => m.id === msg.id);
+    const wasPinned = !!(current && current.pinned);
+    pinInFlightRef.current.add(msg.id);
+    setPinnedFlag(msg.id, !wasPinned);
+    try {
+      const pinned = wasPinned
+        ? await unpinMessageRequest(user.user_id, msg.id)
+        : await pinMessageRequest(user.user_id, msg.id);
+      setPinnedFlag(msg.id, pinned);
+      loadPins();
+      return true;
+    } catch (err) {
+      setPinnedFlag(msg.id, wasPinned);
+      pinFailure(err);
+      return false;
+    } finally {
+      pinInFlightRef.current.delete(msg.id);
+    }
+  }, [user, setPinnedFlag, loadPins]);
+
+  // Unpin from the Pinned list: optimistic removal, row returns on failure.
+  const unpinFromList = useCallback(async (messageId) => {
+    if (!user || !messageId || !pinsOn()) return false;
+    if (pinInFlightRef.current.has(messageId)) return false;
+    const before = pinListRef.current;
+    const row = before.pins.find(p => p.messageId === messageId);
+    if (!row) return false;
+    pinInFlightRef.current.add(messageId);
+    setPinList(p => ({ ...p, pins: withoutPin(p.pins, messageId), count: Math.max(0, p.count - 1) }));
+    setPinnedFlag(messageId, false);
+    try {
+      await unpinMessageRequest(user.user_id, messageId);
+      return true;
+    } catch (err) {
+      if (err && err.kind === 'unavailable') {
+        // The message is gone: the row stays removed.
+        message.info({ content: err.message, key: 'fs-pin-error', duration: 4 });
+        return false;
+      }
+      setPinList(p => (p.pins.some(x => x.messageId === messageId) ? p : {
+        ...p, pins: [...p.pins, row].sort((a, b) => before.pins.indexOf(a) - before.pins.indexOf(b)),
+        count: p.count + 1,
+      }));
+      setPinnedFlag(messageId, true);
+      pinFailure(err);
+      return false;
+    } finally {
+      pinInFlightRef.current.delete(messageId);
+    }
+  }, [user, setPinnedFlag]);
+
+  // Someone else (or another device) pinned/unpinned in the open chat.
+  const applyPinFrame = (data) => {
+    if (!pinsOn()) return;
+    if (typeof data.message_id !== 'string' || !data.message_id || typeof data.pinned !== 'boolean') return;
+    if (threadViewRef.current) return;
+    if (!frameInCurrentConversation(data)) return;
+    setPinnedFlag(data.message_id, data.pinned);
+    if (data.pinned) { loadPins(); return; }
+    setPinList(p => (p.pins.some(x => x.messageId === data.message_id)
+      ? { ...p, pins: withoutPin(p.pins, data.message_id), count: Math.max(0, p.count - 1) }
+      : p));
+  };
+
+  // Make sure a message is in the loaded window, paging older history until it
+  // appears (bounded). Resolves true when it is loaded.
+  const MAX_FIND_PAGES = 25;
+  const ensureMessageLoaded = useCallback(async (messageId) => {
+    if (!messageId) return false;
+    const token = chatTokenRef.current;
+    for (let i = 0; i <= MAX_FIND_PAGES; i += 1) {
+      if (messagesRef.current.some(m => m.id === messageId)) return true;
+      if (token !== chatTokenRef.current) return false;
+      const st = pageRef.current;
+      if (!st.paged || !st.hasMore || !st.cursor) return false;
+      const cursorBefore = st.cursor;
+      // eslint-disable-next-line no-await-in-loop
+      await loadOlder();
+      // st is mutated in place: an unchanged cursor means the page did not
+      // land (error or already loading), so stop rather than spin.
+      if (pageRef.current.cursor === cursorBefore) return messagesRef.current.some(m => m.id === messageId);
+    }
+    return messagesRef.current.some(m => m.id === messageId);
+  }, [loadOlder]);
 
   // ── Attachments (task 20260904-messaging-attachments) ─────────────────────
   // Wire contract per design-notes.md / backend step 2: request a presigned
@@ -1262,6 +1451,7 @@ export function useMessaging({ user }) {
     threadView, threadMessages, threadPage, threadLoad, restoredDraft,
     openThread, closeThread, retryThread, loadOlderThread, startThread, sendThreadMessage,
     deleteMessage, restoreMessage, toggleReaction,
+    pinList, pinsEnabled: pinsFlagOn, loadPins, loadMorePins, togglePin, unpinFromList, ensureMessageLoaded,
     wsRef, friendCache,
     connectWS, disconnectWS, setOnSessionSignal,
     loadContacts, openChat, closeChat, sendMessage, retryFailedMessage,

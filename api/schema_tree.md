@@ -138,6 +138,9 @@ group_announcements     # additive columns: title_font VARCHAR(32) NULL, bg_them
 #   `announcement_gallery`, `announcement_payments`, `announcement_rsvp` (off by default); response keys omitted while their flag is off
 #   location TEXT NULL (task 20261010-announcement-location-chat-replies; free text, API-capped at 120 chars, flag `announcement_location`, off by default)
 messages (module "message_replies", flag `chat_replies`, off by default)  # additive nullable reply_to_id UUID (no FK, no stored copy of the original: label text/author derived at read time; missing/hidden original = reply_to_deleted); partial index. thread_messages unchanged (deferred)
+message_pins (module "message_pins", flag `message_pins`, off by default)  # PK message_id -> messages ON DELETE CASCADE, chat_key TEXT (group uuid or sorted "uidA|uidB" DM key), pinned_by -> users ON DELETE CASCADE, pinned_at; index (chat_key, pinned_at DESC); no cap; rows kept on soft delete
+message_pin_push_claims  # PK (chat_key, pinner_id -> users ON DELETE CASCADE), last_at; atomic throttle for the pin push + system line
+messages (module "message_pins")  # additive nullable system_kind TEXT ('pin' = server-generated "pinned a message" line, from_user = pinner)
 group_announcement_rsvps  # PK (announcement_id -> group_announcements ON DELETE CASCADE, user_id -> users ON DELETE CASCADE), created_at; an event sign-up, not group membership
 # <!-- /ANA -->
 ```

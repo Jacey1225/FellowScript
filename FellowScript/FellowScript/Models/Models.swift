@@ -693,6 +693,11 @@ struct FSMessage: Identifiable, Codable {
     // reply. Derived server-side at read time (nothing stored on the row); nil
     // for ordinary messages, old payloads, and while chat_replies is off.
     var reply: FSReplyRef? = nil
+    // Task 20261012-message-pins: true when the message is pinned (absent while
+    // the server flag is off) and the server-set kind of a system line ("pin").
+    // Optional so previously cached FSMessage JSON still decodes.
+    var pinned: Bool? = nil
+    var systemKind: String? = nil
 
     // compile-errors #3 (20260904-frontend-arch-sweep): the wire value is a
     // plain String so it round-trips through Codable/JSON unchanged, but

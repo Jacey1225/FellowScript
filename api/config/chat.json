@@ -27,6 +27,12 @@
   "message_reactions": {
     "rate": "60/minute"
   },
+  "message_pins": {
+    "rate": "60/minute",
+    "list_rate": "120/minute",
+    "notify_window_seconds": 60,
+    "max_page_size": 100
+  },
   "agent_chats": {
     "max_chats_per_agent": 50,
     "title_max_length": 80,

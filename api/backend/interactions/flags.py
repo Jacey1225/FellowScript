@@ -101,6 +101,8 @@ register("threads")
 register("message_delete")
 # Chat message emoji reactions (task 20261010-chat-reactions). Ships OFF.
 register("message_reactions")
+# Pinned messages in DMs and groups (task 20261012-message-pins). Ships OFF; never flipped by the pipeline.
+register("message_pins")
 register("explorer_publish")
 register("explorer_browse", no_canary=True)
 register("join_requests")

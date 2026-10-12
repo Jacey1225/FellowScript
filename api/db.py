@@ -96,6 +96,7 @@ DDL_MODULES = (
     "session_rooms",
     "reaction_highlight_push",
     "message_replies",
+    "message_pins",
 )
 
 

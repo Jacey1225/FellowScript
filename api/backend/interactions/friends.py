@@ -8,6 +8,7 @@ from backend.errors import SaveFailedError
 from backend.interactions.attachments import generate_download_url
 from backend.interactions.blocks import BlockManager
 from backend.interactions import paging
+from backend.interactions.message_pins import attach_pins
 from backend.interactions.message_reactions import attach_reactions
 from backend.interactions.message_replies import attach_replies
 from backend.interactions.bible_text import parse_highlight_key, verse_text
@@ -328,6 +329,7 @@ class FriendsManager(DBManager):
                 "attachment_url": generate_download_url(key) if key else None,
             })
         attach_reactions(self, messages, self.user_id)
+        attach_pins(self, messages, self.user_id)
         attach_replies(self, messages, self.user_id)
         return {"messages": messages, "has_more": has_more, "next_cursor": next_cursor}
 
@@ -407,6 +409,8 @@ class FriendsManager(DBManager):
         ]
         attach_reactions(self, host_msgs, self.user_id)
         attach_reactions(self, other_msgs, self.user_id)
+        attach_pins(self, host_msgs, self.user_id)
+        attach_pins(self, other_msgs, self.user_id)
         attach_replies(self, host_msgs, self.user_id)
         attach_replies(self, other_msgs, self.user_id)
         # Same raw-key-never-leaves-the-server treatment as hash_pass just

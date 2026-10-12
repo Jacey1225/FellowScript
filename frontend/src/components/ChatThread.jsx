@@ -6,7 +6,7 @@ import {
   PictureOutlined, FileOutlined, SmileOutlined, PlayCircleOutlined,
   DownloadOutlined, CloseCircleFilled, SearchOutlined,
   BranchesOutlined, CopyOutlined, DeleteOutlined, ExclamationCircleOutlined,
-  RollbackOutlined, ArrowUpOutlined,
+  RollbackOutlined, ArrowUpOutlined, PushpinOutlined,
 } from '@ant-design/icons';
 import { SessionCard } from './SessionWidget.jsx';
 import SessionsMenu from './SessionsMenu.jsx';
@@ -18,6 +18,8 @@ import { useCapabilities } from '../hooks/useCapabilities.js';
 import { DEFAULT_UNDO_SECONDS } from '../lib/threadsApi.js';
 import ReactionPicker, { rectOf } from './ReactionPicker.jsx';
 import { chipLabel } from '../lib/reactions.js';
+import PinnedMessagesPanel, { PinnedMessagesButton } from './PinnedMessagesPanel.jsx';
+import { systemLineText, PIN_NOT_FOUND_COPY } from '../lib/pins.js';
 import {
   REPLY_UNAVAILABLE_LABEL, replyPreviewText, replyAuthorName, replyAuthorLabel, replySnippet,
 } from '../lib/replies.js';
@@ -635,6 +637,9 @@ export default function ChatThread({
   friends, onAddGroupMembers, onRetryMessage,
   // Task 20261011-desktop-chat-replies-reactions: (message, emoji) => Promise<boolean>.
   onToggleReaction,
+  // Task 20261012-message-pins: { enabled, list, onLoad, onLoadMore, onToggle,
+  // onUnpin, ensureLoaded }. Absent or enabled=false means no pin UI at all.
+  pins,
 }) {
   const inThread = !!thread;
   const caps = useCapabilities();
@@ -646,6 +651,13 @@ export default function ChatThread({
   const reactionsOn = !inThread && features.message_reactions === true
     && reactionEmoji.quick.length > 0 && typeof onToggleReaction === 'function';
   const repliesOn = !inThread && features.chat_replies === true;
+  // Fails closed: needs the capability, the hook's own flag read, and a main
+  // chat (no pin UI inside a thread).
+  const pinsOn = !inThread && features.message_pins === true && !!pins && pins.enabled === true;
+  const [showPins, setShowPins] = useState(false);
+  const pinsBtnRef = useRef(null);
+  const [pendingJump, setPendingJump] = useState(null);
+  useEffect(() => { if (!pinsOn) setShowPins(false); }, [pinsOn]);
   const [replyTarget, setReplyTarget] = useState(null);
   const [picker, setPicker] = useState(null); // { id, anchor, align, returnEl }
   const [jumpId, setJumpId] = useState(null);
@@ -926,7 +938,7 @@ export default function ChatThread({
 
   // Scroll to a loaded original and highlight it briefly. Reduced motion: no
   // smooth scroll, and the highlight is a static outline (CSS).
-  const jumpToMessage = useCallback((id) => {
+  const jumpToMessage = useCallback((id, label = 'Jumped to original message') => {
     const sc = scrollerRef.current;
     if (!sc || !id) return false;
     const el = Array.from(sc.querySelectorAll('[data-mid]')).find(e => e.getAttribute('data-mid') === id);
@@ -934,11 +946,37 @@ export default function ChatThread({
     el.scrollIntoView?.({ block: 'center', behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
     el.focus?.({ preventScroll: true });
     setJumpId(id);
-    setAnnouncement('Jumped to original message');
+    setAnnouncement(label);
     clearTimeout(jumpTimerRef.current);
     jumpTimerRef.current = setTimeout(() => setJumpId(null), 1600);
     return true;
   }, []);
+
+  // Task 20261012-message-pins: once a pinned message that was outside the
+  // loaded window renders, jump to it.
+  useEffect(() => {
+    if (!pendingJump) return;
+    if (jumpToMessage(pendingJump.id, pendingJump.label)) setPendingJump(null);
+  }, [pendingJump, messages, jumpToMessage]);
+
+  const closePins = useCallback(() => {
+    setShowPins(false);
+    pinsBtnRef.current?.focus?.({ preventScroll: true });
+  }, []);
+
+  const jumpToPin = useCallback(async (pin) => {
+    const label = `Jumped to pinned message from ${pin.message.from || 'someone'}`;
+    setShowPins(false);
+    if (jumpToMessage(pin.messageId, label)) return;
+    setAnnouncement('Finding message…');
+    const found = pins?.ensureLoaded ? await pins.ensureLoaded(pin.messageId) : false;
+    if (!found) {
+      setAnnouncement(PIN_NOT_FOUND_COPY);
+      antMessage.info({ content: PIN_NOT_FOUND_COPY, key: 'fs-pin-jump', duration: 4 });
+      return;
+    }
+    setPendingJump({ id: pin.messageId, label });
+  }, [jumpToMessage, pins]);
 
   const openPicker = useCallback((m, bubbleEl) => {
     if (!reactionsOn || !m.id) return;
@@ -994,6 +1032,12 @@ export default function ChatThread({
     }
     if (!inThread && isGroup && features.threads === true && settled && onStartThread) {
       list.push({ key: 'thread', label: 'Start thread', icon: <BranchesOutlined />, onSelect: () => onStartThread(m) });
+    }
+    if (pinsOn && settled && !m.systemKind && typeof pins.onToggle === 'function') {
+      list.push({
+        key: 'pin', label: m.pinned ? 'Unpin message' : 'Pin message', icon: <PushpinOutlined />,
+        onSelect: () => pins.onToggle(m),
+      });
     }
     const copyText = copyTextFor(m);
     if (copyText) {
@@ -1084,6 +1128,17 @@ export default function ChatThread({
             {contact?.name}
           </Text>
         )}
+        {pinsOn && (
+          <PinnedMessagesButton
+            buttonRef={pinsBtnRef}
+            count={(pins.list && pins.list.count) || 0}
+            open={showPins}
+            onClick={() => {
+              if (!showPins && pins.onLoad) pins.onLoad();
+              setShowPins(!showPins);
+            }}
+          />
+        )}
         {!inThread && <SessionsMenu
           sessions={sessions}
           activeSessionId={activeSessionId}
@@ -1107,6 +1162,19 @@ export default function ChatThread({
           ringCandidates={ringCandidates}
         />}
       </div>
+
+      {pinsOn && showPins && (
+        <PinnedMessagesPanel
+          anchorRef={pinsBtnRef}
+          list={pins.list}
+          viewerId={user?.user_id}
+          onClose={closePins}
+          onJump={jumpToPin}
+          onUnpin={(p) => pins.onUnpin(p.messageId)}
+          onLoadMore={pins.onLoadMore}
+          onRetry={pins.onLoad}
+        />
+      )}
 
       {inThread && (
         <div className="thread-root-card" role="group" aria-label="Original message">
@@ -1213,6 +1281,15 @@ export default function ChatThread({
           if (!(m.text && String(m.text).trim()) && !m.attachmentKind && !m.timestamp) {
             return null;
           }
+          // Task 20261012-message-pins: server-generated "X pinned a message"
+          // line, rendered client-side from the sender; plain muted text.
+          if (m.systemKind === 'pin') {
+            return (
+              <div key={m.key ?? `i${i}`} data-msg-id={m.key ?? undefined} className="msg-system-line">
+                <PushpinOutlined aria-hidden="true" /> <span>{systemLineText(m)}</span>
+              </div>
+            );
+          }
           const isMedia = ['image', 'video', 'gif'].includes(m.attachmentKind);
           const ariaLabel = m.attachmentKind === 'image' ? `${m.sender || 'You'}: photo attachment`
             : m.attachmentKind === 'video' ? `${m.sender || 'You'}: video attachment, tap to play`
@@ -1290,6 +1367,9 @@ export default function ChatThread({
               ) : m.timestamp && (
                 <div className="msg-bubble-meta">
                   {new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  {pinsOn && m.pinned && (
+                    <PushpinOutlined className="msg-pinned-glyph" role="img" aria-label="Pinned" />
+                  )}
                 </div>
               )}
               {reactions.length > 0 && (

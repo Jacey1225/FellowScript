@@ -30,6 +30,10 @@ struct FSCapabilities: Decodable, Equatable {
     /// Chat reactions UI shows only when the flag is on AND the server sent a set.
     var messageReactionsEnabled: Bool { isEnabled("message_reactions") && !reactionEmoji.quick.isEmpty }
 
+    /// Task 20261012-message-pins: pin button, Pinned list and the Pin menu item
+    /// show only when the flag is on. Fail closed: a missing/odd value is off.
+    var messagePinsEnabled: Bool { isEnabled("message_pins") }
+
     /// Task 20261010-reaction-highlight-push: friend-highlight push toggle shows only when the flag is on.
     var friendHighlightPushEnabled: Bool { isEnabled("friend_highlight_push") }
 
