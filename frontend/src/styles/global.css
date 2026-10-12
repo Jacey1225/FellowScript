@@ -2844,7 +2844,8 @@ body {
    Existing tokens only. Header icon button sits left of Sessions; the list is a
    popover on desktop and a bottom sheet <= 640px. Motion eases out and drops to
    a plain fade (no translate, no highlight fade) under reduced motion. */
-.pins-row { display: flex; justify-content: flex-end; flex-shrink: 0; padding: 0 0.6rem; border-bottom: 1px solid rgba(255,255,255,0.06); }
+.pins-row { position: relative; height: 0; flex-shrink: 0; z-index: 5; }
+.pins-row .pins-header-btn { position: absolute; top: 6px; right: 12px; border-radius: 999px; background: var(--card-bg-2); border: 1px solid var(--card-border-strong); }
 .pins-header-btn {
   position: relative; flex-shrink: 0; width: 44px; height: 44px; padding: 0;
   display: inline-flex; align-items: center; justify-content: center;

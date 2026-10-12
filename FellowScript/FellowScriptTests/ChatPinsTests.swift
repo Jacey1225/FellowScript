@@ -384,8 +384,8 @@ final class ChatPinsSourcePinTests: XCTestCase {
     func test_pinButton_sitsInRowBelowHeader_andIsFlagGated() throws {
         let s = try src("Chat/ChatThreadView.swift")
         let header = try XCTUnwrap(s.range(of: "header.modifier(pinsPresentation)")?.lowerBound)
-        let pinRow = try XCTUnwrap(s.range(of: "HStack { Spacer(); pinButton }")?.lowerBound)
-        XCTAssertTrue(header < pinRow, "pin button is in its own row after (below) the header, not in the top bar")
+        let pinRow = try XCTUnwrap(s.range(of: "Color.clear.frame(height: 0)")?.lowerBound)
+        XCTAssertTrue(header < pinRow, "pin button floats over the messages after the header (zero-height layer), not in the top bar or its own row")
         XCTAssertFalse(s.contains("if pinsAvailable { pinButton }"), "no longer in the header bar")
         XCTAssertTrue(s.contains("appState.capabilities.messagePinsEnabled && !vm.isThreadOpen && vm.pinsState != .unavailable"),
                       "fail closed: flag, main chat, and not turned off mid-session")

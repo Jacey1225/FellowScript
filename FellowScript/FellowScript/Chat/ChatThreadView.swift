@@ -1356,9 +1356,16 @@ struct ChatThreadView: View {
                     threadRootCard
                 } else {
                     header.modifier(pinsPresentation)
+                    // Zero-height layer: the pin button floats over the top-right of the
+                    // messages (which scroll up to the header divider) instead of taking a row.
                     if pinsAvailable {
-                        HStack { Spacer(); pinButton }
-                            .padding(.horizontal, Theme.spacingMD)
+                        Color.clear.frame(height: 0)
+                            .overlay(alignment: .topTrailing) {
+                                pinButton
+                                    .padding(.top, Theme.spacingXS)
+                                    .padding(.trailing, Theme.spacingMD)
+                            }
+                            .zIndex(1)
                     }
                 }
 
