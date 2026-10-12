@@ -54,7 +54,7 @@ struct PinnedMessagesSheet: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                Theme.bgPage.ignoresSafeArea()
+                Theme.bgPage.opacity(0.25).ignoresSafeArea()
                 content
             }
             .navigationTitle(FSPinnedListCopy.title)
@@ -69,6 +69,7 @@ struct PinnedMessagesSheet: View {
         .preferredColorScheme(.dark)
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
+        .presentationBackground(.ultraThinMaterial)
         .task { await vm.loadPins(service: service, contact: contact, userId: userId, reset: true) }
         .onChange(of: vm.pinsState) { _, state in
             // Flag turned off mid-session (uniform 404): close silently.

@@ -1441,7 +1441,7 @@ export default function ChatThread({
       )}
 
       {/* Input */}
-      <div style={{ display: 'flex', gap: '0.4rem', padding: '0.65rem 0.8rem', flexShrink: 0, alignItems: 'flex-end' }}>
+      <div className="chat-input-bar" style={{ display: 'flex', gap: '0.4rem', padding: '0.65rem 0.8rem', flexShrink: 0, alignItems: 'flex-end' }}>
         <Popover
           open={showAttachMenu}
           onOpenChange={setShowAttachMenu}

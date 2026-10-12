@@ -2845,7 +2845,15 @@ body {
    popover on desktop and a bottom sheet <= 640px. Motion eases out and drops to
    a plain fade (no translate, no highlight fade) under reduced motion. */
 .pins-row { position: relative; height: 0; flex-shrink: 0; z-index: 5; }
-.pins-row .pins-header-btn { position: absolute; top: 6px; right: 12px; border-radius: 999px; background: var(--card-bg-2); border: 1px solid var(--card-border-strong); }
+.pins-row .pins-header-btn { position: absolute; top: 6px; right: 12px; border-radius: 999px; background: rgba(24,14,6,0.35); border: 1px solid var(--card-border-strong); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); }
+.chat-input-bar { position: relative; z-index: 2; margin-top: -28px; padding-top: calc(0.65rem + 28px) !important; }
+.chat-input-bar::before {
+  content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none;
+  background: rgba(24,14,6,0.3);
+  -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 45%);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 45%);
+}
 .pins-header-btn {
   position: relative; flex-shrink: 0; width: 44px; height: 44px; padding: 0;
   display: inline-flex; align-items: center; justify-content: center;
@@ -2863,7 +2871,8 @@ body {
 .pins-panel {
   position: fixed; z-index: 400; width: 340px; max-width: calc(100vw - 16px); max-height: 60vh;
   display: flex; flex-direction: column; box-sizing: border-box;
-  background: var(--card-bg-2); border: 1px solid var(--card-border-strong); border-radius: var(--radius-md);
+  background: rgba(24,14,6,0.55); -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px);
+  border: 1px solid var(--card-border-strong); border-radius: var(--radius-md);
   box-shadow: 0 8px 28px rgba(0,0,0,0.45); color: var(--parchment); font-family: 'Inter', sans-serif;
   animation: pinsIn 0.18s ease-out;
 }

@@ -1919,7 +1919,17 @@ struct ChatThreadView: View {
     /// The pin button: right-aligned row directly under the header, below Sessions.
     private var pinButton: some View {
         ZStack(alignment: .topTrailing) {
-            RoundIconButton(systemIcon: "pin", diameter: 44) { showPinned = true }
+            Button { showPinned = true } label: {
+                Image(systemName: "pin")
+                    .font(.system(size: 44 * 0.4, weight: .semibold))
+                    .foregroundColor(Theme.gold)
+                    .frame(width: 44, height: 44)
+                    .background(.ultraThinMaterial, in: Circle())
+                    .background(Theme.bgPage.opacity(0.25), in: Circle())
+                    .overlay(Circle().stroke(Theme.borderGold, lineWidth: 1))
+                    .topEdgeHighlight(Circle())
+            }
+            .buttonStyle(.plain)
             if let badge = FSPinnedListCopy.badgeText(count: vm.pinCount) {
                 Text(badge)
                     .font(.inter(Theme.fontXXS, weight: .bold))
@@ -2531,7 +2541,24 @@ struct ChatThreadView: View {
             .padding(.top, Theme.spacingSM)
             .padding(.bottom, Theme.spacingMD)
         }
-        .background(Theme.bgPage.opacity(0.55))
+        // Translucent blurred composer: messages scroll underneath, and the top edge fades
+        // out (mask) instead of ending in a hard divider line.
+        .background(alignment: .bottom) {
+            ZStack {
+                Rectangle().fill(.ultraThinMaterial)
+                Rectangle().fill(Theme.bgPage.opacity(0.28))
+            }
+            .mask(
+                LinearGradient(stops: [
+                    .init(color: .clear, location: 0),
+                    .init(color: .black.opacity(0.85), location: 0.38),
+                    .init(color: .black, location: 0.6),
+                ], startPoint: .top, endPoint: .bottom)
+            )
+            .padding(.top, -28)
+            .ignoresSafeArea(edges: .bottom)
+            .allowsHitTesting(false)
+        }
         .sheet(isPresented: $showPhotoVideoPicker) {
             PhotoVideoPicker(
                 onPicked: { attachment in handlePicked(attachment) },
