@@ -1356,6 +1356,10 @@ struct ChatThreadView: View {
                     threadRootCard
                 } else {
                     header.modifier(pinsPresentation)
+                    if pinsAvailable {
+                        HStack { Spacer(); pinButton }
+                            .padding(.horizontal, Theme.spacingMD)
+                    }
                 }
 
                 // Task 20260929-announcement-push-widget: groups only, directly under the header.
@@ -1905,7 +1909,7 @@ struct ChatThreadView: View {
         }
     }
 
-    /// The pin button at the top right of the header, left of Sessions.
+    /// The pin button: right-aligned row directly under the header, below Sessions.
     private var pinButton: some View {
         ZStack(alignment: .topTrailing) {
             RoundIconButton(systemIcon: "pin", diameter: 44) { showPinned = true }
@@ -2228,8 +2232,6 @@ struct ChatThreadView: View {
             .accessibilityHint(contact.type == .group ? "Opens group settings, members, and shared media" : "")
 
             Spacer(minLength: 8)
-
-            if pinsAvailable { pinButton }
 
             PillButton(title: "Sessions", systemIcon: "calendar") {
                 openSessionsMenu()

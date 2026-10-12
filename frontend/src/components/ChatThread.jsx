@@ -1128,17 +1128,6 @@ export default function ChatThread({
             {contact?.name}
           </Text>
         )}
-        {pinsOn && (
-          <PinnedMessagesButton
-            buttonRef={pinsBtnRef}
-            count={(pins.list && pins.list.count) || 0}
-            open={showPins}
-            onClick={() => {
-              if (!showPins && pins.onLoad) pins.onLoad();
-              setShowPins(!showPins);
-            }}
-          />
-        )}
         {!inThread && <SessionsMenu
           sessions={sessions}
           activeSessionId={activeSessionId}
@@ -1162,6 +1151,20 @@ export default function ChatThread({
           ringCandidates={ringCandidates}
         />}
       </div>
+
+      {pinsOn && (
+        <div className="pins-row">
+          <PinnedMessagesButton
+            buttonRef={pinsBtnRef}
+            count={(pins.list && pins.list.count) || 0}
+            open={showPins}
+            onClick={() => {
+              if (!showPins && pins.onLoad) pins.onLoad();
+              setShowPins(!showPins);
+            }}
+          />
+        </div>
+      )}
 
       {pinsOn && showPins && (
         <PinnedMessagesPanel
