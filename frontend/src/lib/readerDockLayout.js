@@ -12,8 +12,29 @@ export const PANEL_IDS = {
   AGENT_CHAT: 'agent-chat',
 };
 
-export const LAYOUT_STORAGE_KEY = 'fs_reader_layout_v1';
-export const LAYOUT_VERSION = 1;
+// Per-user persistence (20261011-reader-tab-drag-docks). The record lives under
+// `fs_reader_layout_v2:<userId|guest>` so one browser profile keeps a separate
+// arrangement per account. The legacy global v1 key is deliberately never read:
+// it has no owner, so applying it to a named user could leak another account's
+// arrangement (fail closed).
+export const LAYOUT_STORAGE_PREFIX = 'fs_reader_layout_v2';
+export const LEGACY_LAYOUT_STORAGE_KEY = 'fs_reader_layout_v1';
+export const LAYOUT_VERSION = 2;
+export const GUEST_LAYOUT_USER = 'guest';
+
+const USER_ID_RE = /^[A-Za-z0-9_-]{1,128}$/;
+const DOCK_SIDES = ['left', 'right', 'top', 'bottom'];
+const SIDE_TO_DIRECTION = { left: 'left', right: 'right', top: 'above', bottom: 'below' };
+const ALL_PANEL_IDS = Object.values(PANEL_IDS);
+
+/** Storage key for a user id; anything missing or unsafe maps to the guest key. */
+export function layoutStorageKey(userId) {
+  const id = userId == null ? '' : String(userId);
+  return `${LAYOUT_STORAGE_PREFIX}:${USER_ID_RE.test(id) ? id : GUEST_LAYOUT_USER}`;
+}
+
+// Kept for callers that only know the signed-out/guest record.
+export const LAYOUT_STORAGE_KEY = layoutStorageKey(null);
 
 // Display titles per panel id — kept alongside PANEL_IDS (rather than only
 // inline in buildDefaultLayout's addPanel calls) so the left dock rail
@@ -68,29 +89,127 @@ export function buildDefaultLayout(api) {
   api.getPanel(PANEL_IDS.BIBLE)?.api.setActive();
 }
 
-export function loadSavedLayout(api) {
+const isPlainObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+
+/**
+ * Saved layout is untrusted input: only accept dockview JSON whose panels are
+ * exactly known Reader panels. Closed panels are legitimate (the rail reopens
+ * them), so a subset is fine; an empty/unknown set is not.
+ */
+export function isValidSavedLayout(layout) {
+  if (!isPlainObject(layout) || !isPlainObject(layout.grid) || !isPlainObject(layout.panels)) return false;
+  const ids = Object.keys(layout.panels);
+  if (ids.length === 0) return false;
+  return ids.every((id) => {
+    const p = layout.panels[id];
+    return ALL_PANEL_IDS.includes(id) && isPlainObject(p) && p.id === id && p.contentComponent === id;
+  });
+}
+
+function sanitizeLastDock(raw) {
+  const out = {};
+  if (!isPlainObject(raw)) return out;
+  for (const id of ALL_PANEL_IDS) {
+    const e = raw[id];
+    if (!isPlainObject(e)) continue;
+    const side = DOCK_SIDES.includes(e.side) ? e.side : null;
+    const tabmates = Array.isArray(e.tabmates)
+      ? e.tabmates.filter((t) => ALL_PANEL_IDS.includes(t) && t !== id)
+      : [];
+    if (side || tabmates.length) out[id] = { side, tabmates };
+  }
+  return out;
+}
+
+function readRecord(userId) {
   try {
-    const raw = localStorage.getItem(LAYOUT_STORAGE_KEY);
-    if (!raw) return false;
+    const raw = localStorage.getItem(layoutStorageKey(userId));
+    if (!raw) return null;
     const parsed = JSON.parse(raw);
-    if (!parsed || parsed.version !== LAYOUT_VERSION || !parsed.layout) return false;
-    api.fromJSON(parsed.layout);
+    if (!isPlainObject(parsed) || parsed.version !== LAYOUT_VERSION) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+/** Last-known dock per panel id for this user ({} when none/invalid). */
+export function loadLastDock(userId) {
+  return sanitizeLastDock(readRecord(userId)?.lastDock);
+}
+
+/**
+ * Where a panel currently lives: the other panels tabbed with it, and (for a
+ * panel alone in its group) which grid edge its group touches. Edge detection
+ * uses live group rects; when layout has no size (e.g. jsdom) side stays null
+ * and reopen falls back to the default position.
+ */
+function describeDock(api, panel) {
+  const group = panel.group;
+  const tabmates = (group?.panels || []).map((p) => p.id).filter((pid) => pid !== panel.id);
+  let side = null;
+  try {
+    const rects = api.groups.map((g) => g.element.getBoundingClientRect());
+    const r = group.element.getBoundingClientRect();
+    const minL = Math.min(...rects.map((x) => x.left));
+    const maxR = Math.max(...rects.map((x) => x.right));
+    const minT = Math.min(...rects.map((x) => x.top));
+    const maxB = Math.max(...rects.map((x) => x.bottom));
+    const spansW = r.width >= (maxR - minL) - 2;
+    const spansH = r.height >= (maxB - minT) - 2;
+    if (maxR - minL > 0 && maxB - minT > 0 && api.groups.length > 1) {
+      if (spansH && !spansW) side = r.left <= minL + 2 ? 'left' : (r.right >= maxR - 2 ? 'right' : null);
+      else if (spansW && !spansH) side = r.bottom >= maxB - 2 ? 'bottom' : (r.top <= minT + 2 ? 'top' : null);
+    }
+  } catch {}
+  return { side, tabmates };
+}
+
+function writeRecord(api, userId, lastDock) {
+  try {
+    localStorage.setItem(
+      layoutStorageKey(userId),
+      JSON.stringify({ version: LAYOUT_VERSION, layout: api.toJSON(), lastDock }),
+    );
+  } catch {}
+}
+
+/**
+ * Restores this user's saved layout. Returns false (caller builds the default)
+ * on anything missing, stale, corrupt, or failing validation; a half-applied
+ * fromJSON is cleared first so the default builds on an empty api.
+ */
+export function loadSavedLayout(api, userId) {
+  try {
+    const parsed = readRecord(userId);
+    if (!parsed || !isValidSavedLayout(parsed.layout)) return false;
+    try {
+      api.fromJSON(parsed.layout);
+    } catch {
+      try { api.clear(); } catch {}
+      return false;
+    }
     return true;
   } catch {
     return false;
   }
 }
 
-export function saveLayout(api) {
-  try {
-    localStorage.setItem(LAYOUT_STORAGE_KEY, JSON.stringify({ version: LAYOUT_VERSION, layout: api.toJSON() }));
-  } catch {}
+/**
+ * Saves the live layout. lastDock entries for panels still open are refreshed;
+ * entries for closed panels are carried over from the previous record so
+ * reopenPanel can send them back where they were.
+ */
+export function saveLayout(api, userId) {
+  const lastDock = loadLastDock(userId);
+  for (const panel of api.panels) lastDock[panel.id] = describeDock(api, panel);
+  writeRecord(api, userId, lastDock);
 }
 
-export function resetLayout(api) {
+export function resetLayout(api, userId) {
   api.clear();
   buildDefaultLayout(api);
-  saveLayout(api);
+  writeRecord(api, userId, {});
 }
 
 /**
@@ -105,9 +224,29 @@ export function resetLayout(api) {
  * closed. No-op if the panel is already open (rail reopen and rail
  * reveal-a-background-tab share this one entry point in Reader.jsx).
  */
-export function reopenPanel(api, id) {
+export function reopenPanel(api, id, userId) {
   if (api.getPanel(id)) return;
   const opts = { id, component: id, title: PANEL_TITLES[id] };
+
+  // Prefer the dock the panel was last seen in: tabbed with a still-open
+  // former tab mate, else the grid edge it occupied; otherwise fall through
+  // to the default position rules below.
+  const last = loadLastDock(userId)[id];
+  if (last) {
+    const mate = last.tabmates.map((pid) => api.getPanel(pid)).find(Boolean);
+    if (mate) {
+      opts.position = { direction: 'within', referencePanel: mate.id };
+    } else if (last.side && api.panels.length > 0) {
+      opts.position = { direction: SIDE_TO_DIRECTION[last.side] };
+      if (last.side === 'bottom' || last.side === 'top') opts.initialHeight = 260;
+      else opts.initialWidth = 420;
+    }
+    if (opts.position) {
+      api.addPanel(opts);
+      api.getPanel(id)?.api.setActive();
+      return;
+    }
+  }
 
   if (id === PANEL_IDS.BIBLE) {
     const anchor = api.getPanel(PANEL_IDS.NOTES) || api.getPanel(PANEL_IDS.HIGHLIGHTS) || api.getPanel(PANEL_IDS.MESSAGING);

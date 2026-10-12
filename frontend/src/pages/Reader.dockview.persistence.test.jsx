@@ -22,7 +22,7 @@ import { describe, test, expect, beforeAll, beforeEach, vi } from 'vitest';
 import { render, act, cleanup } from '@testing-library/react';
 import { DockviewReact } from 'dockview-react';
 import {
-  PANEL_IDS, buildDefaultLayout, loadSavedLayout, saveLayout, resetLayout, LAYOUT_STORAGE_KEY,
+  PANEL_IDS, buildDefaultLayout, loadSavedLayout, saveLayout, resetLayout, LAYOUT_STORAGE_KEY, LAYOUT_VERSION,
 } from '../lib/readerDockLayout.js';
 
 beforeAll(() => {
@@ -109,7 +109,7 @@ describe('Reader dockview — tab-reorder drag persists across a reload', () => 
     const raw = localStorage.getItem(LAYOUT_STORAGE_KEY);
     expect(raw, 'expected onDidLayoutChange to have triggered a debounced saveLayout()').toBeTruthy();
     const parsed = JSON.parse(raw);
-    expect(parsed.version).toBe(1);
+    expect(parsed.version).toBe(LAYOUT_VERSION);
 
     // Simulate a full page reload: unmount, remount fresh, and let
     // loadSavedLayout restore from the same localStorage key Reader.jsx uses.
@@ -191,6 +191,6 @@ describe('Reader dockview — Reset Layout restores and re-persists the default 
     const raw = localStorage.getItem(LAYOUT_STORAGE_KEY);
     expect(raw).toBeTruthy();
     const parsed = JSON.parse(raw);
-    expect(parsed.version).toBe(1);
+    expect(parsed.version).toBe(LAYOUT_VERSION);
   });
 });

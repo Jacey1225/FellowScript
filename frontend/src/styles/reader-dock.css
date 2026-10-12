@@ -67,6 +67,7 @@
   --dv-inactivegroup-hiddenpanel-tab-color:      rgba(242,242,242,0.25);
   --dv-drag-over-background-color:               rgba(255,198,26,0.14);
   --dv-drag-over-border-color:                   var(--gold);
+  --dv-drag-over-border:                         1px solid var(--gold);
   --dv-icon-hover-background-color:              rgba(255,198,26,0.15);
   --dv-tabs-and-actions-container-font-size:     0.72rem;
   --dv-tabs-and-actions-container-height:        44px;
@@ -598,4 +599,21 @@
    test for no functional reason. */
 .chat-overlay {
   --border-glass: rgba(237,230,214,0.10);
+}
+
+
+/* ── Drag-to-dock feedback (20261011-reader-tab-drag-docks) ─────────────────
+   Drop-zone preview uses the existing gold drag-over tokens (set on
+   .dockview-theme-abyss above) with dockview's own eased transitions; the
+   rounded corners match the group framing. Reduced motion snaps the preview
+   instead of animating it. */
+.dockview-theme-abyss .dv-drop-target > .dv-drop-target-dropzone > .dv-drop-target-selection,
+.dockview-theme-abyss .dv-drop-target-container .dv-drop-target-anchor {
+  border-radius: 12px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .dockview-theme-abyss .dv-drop-target,
+  .dockview-theme-abyss .dv-drop-target-container {
+    --dv-transition-duration: 0ms;
+  }
 }

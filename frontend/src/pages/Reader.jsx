@@ -42,6 +42,14 @@ const PANEL_COMPONENTS = {
   [PANEL_IDS.AGENT_CHAT]: AgentChatPanelComponent,
 };
 
+// Edge drop zones (drag a tab to the left/right/bottom/top of the workspace to
+// dock it there as its own group). Explicit pixel sizes so the zones are wide
+// enough to hit and the preview shows a real dock-sized region.
+const DOCK_EDGE_DROP_MODEL = {
+  size:           { value: 280, type: 'pixels' },
+  activationSize: { value: 56,  type: 'pixels' },
+};
+
 // ── Main Reader ───────────────────────────────────────────────────────────────
 // Desktop-only. Mobile devices are turned away before this ever mounts (see
 // MobileBlockGate in App.jsx) — this used to also carry a parallel mobile
@@ -142,6 +150,11 @@ export default function Reader() {
   // dockview panel add/remove/activate. railDisposablesRef holds the three
   // DockviewApi subscriptions this drives, disposed alongside the existing
   // layout-change one on unmount/re-ready.
+  // Per-user layout record key (null -> guest). Read through a ref so the
+  // stable dockview callbacks always see the current user.
+  const layoutUserId = user?.user_id ?? null;
+  const layoutUserRef = useRef(layoutUserId);
+  layoutUserRef.current = layoutUserId;
   const [openPanelIds, setOpenPanelIds]   = useState(() => new Set());
   const [activePanelId, setActivePanelId] = useState(null);
   const railDisposablesRef = useRef([]);
@@ -313,13 +326,13 @@ export default function Reader() {
   const handleDockviewReady = useCallback((event) => {
     const api = event.api;
     dockviewApiRef.current = api;
-    const loaded = loadSavedLayout(api);
+    const loaded = loadSavedLayout(api, layoutUserRef.current);
     if (!loaded) buildDefaultLayout(api);
 
     disposableRef.current?.dispose();
     disposableRef.current = api.onDidLayoutChange(() => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-      saveTimerRef.current = setTimeout(() => saveLayout(api), 400);
+      saveTimerRef.current = setTimeout(() => saveLayout(api, layoutUserRef.current), 400);
     });
 
     // Left dock rail (item 3) — mirror the live layout's open panels +
@@ -347,7 +360,7 @@ export default function Reader() {
     if (!api) return;
     const panel = api.getPanel(id);
     if (panel) panel.api.setActive();
-    else reopenPanel(api, id);
+    else reopenPanel(api, id, layoutUserRef.current);
   }, []);
 
   // ── Derived ─────────────────────────────────────────────────────────────────
@@ -468,6 +481,7 @@ export default function Reader() {
             components={PANEL_COMPONENTS}
             onReady={handleDockviewReady}
             disableFloatingGroups
+            dndEdges={DOCK_EDGE_DROP_MODEL}
           />
         </div>
 
