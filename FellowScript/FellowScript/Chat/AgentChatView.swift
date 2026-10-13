@@ -335,6 +335,38 @@ struct AgentChatView: View {
     // handlers, inside the ScrollViewReader's own closure where `proxy` is
     // directly in scope.
     @State private var readyForInitialScroll = false
+    // Task 20261013-ios-chat-initial-scroll-bottom: same one-shot scrollTo
+    // defect as ChatThreadView (estimated LazyVStack heights, no re-pin as
+    // markdown bubbles size). Uses the same pure pin state machine.
+    @State private var pin = ChatBottomPin()
+    @State private var userScrolling = false
+    @State private var lastMetrics = ChatScrollMetrics()
+    @State private var repinSuppressed = false
+    @State private var settleTask: Task<Void, Never>? = nil
+    private static let bottomSentinelId = "agent-chat-bottom-sentinel"
+
+    private func pinToBottom(_ proxy: ScrollViewProxy) {
+        proxy.scrollTo(Self.bottomSentinelId, anchor: .bottom)
+    }
+
+    private func settleBottomPin(proxy: ScrollViewProxy) {
+        settleTask?.cancel()
+        settleTask = Task { @MainActor in
+            var previousHeight: CGFloat = -1
+            for _ in 0..<12 {
+                guard pin.isPinned, !Task.isCancelled else { return }
+                pinToBottom(proxy)
+                try? await Task.sleep(nanoseconds: 100_000_000)
+                guard pin.isPinned, !Task.isCancelled else { return }
+                let m = lastMetrics
+                if m.distanceFromBottom <= ChatBottomPin.settledTolerance, m.contentHeight == previousHeight {
+                    pin.markBottomEstablished()
+                    return
+                }
+                previousHeight = m.contentHeight
+            }
+        }
+    }
 
     private var userInitial: String {
         let name = appState.currentUser?.username ?? ""
@@ -403,14 +435,39 @@ struct AgentChatView: View {
                                 .padding(.leading, Theme.spacingMD)
                                 .id("thinking")
                             }
+                            Color.clear.frame(height: 1).id(Self.bottomSentinelId)
                         }
                         .padding(.horizontal, Theme.spacingMD)
                         .padding(.vertical, Theme.spacingSM)
                     }
+                    .onScrollPhaseChange { _, phase in
+                        userScrolling = (phase == .tracking || phase == .interacting || phase == .decelerating)
+                    }
+                    .onScrollGeometryChange(for: ChatScrollMetrics.self) { geo in
+                        ChatScrollMetrics(
+                            contentHeight: geo.contentSize.height + geo.contentInsets.bottom,
+                            containerHeight: geo.containerSize.height,
+                            distanceFromBottom: geo.contentSize.height + geo.contentInsets.bottom
+                                - geo.contentOffset.y - geo.containerSize.height)
+                    } action: { old, new in
+                        lastMetrics = new
+                        let action = pin.scrollGeometryChanged(old: old, new: new, userDriven: userScrolling)
+                        if action == .repin, !repinSuppressed { pinToBottom(proxy) }
+                    }
                     .motionAwareAnimation(.easeInOut(duration: 0.2), value: vm.activeChatId, reduceMotion: reduceMotion)
                     .onChange(of: vm.messages.count) { _ in
                         if let last = vm.messages.last {
+                            // Still loading: snap; the pin owns the final position.
+                            guard pin.loadFinished else { pinToBottom(proxy); return }
+                            repinSuppressed = true
                             withMotionAwareAnimation(.default, reduceMotion: reduceMotion) { proxy.scrollTo(last.id, anchor: .bottom) }
+                            Task { @MainActor in
+                                try? await Task.sleep(nanoseconds: 400_000_000)
+                                repinSuppressed = false
+                                if pin.isPinned, lastMetrics.distanceFromBottom > ChatBottomPin.settledTolerance {
+                                    pinToBottom(proxy)
+                                }
+                            }
                         }
                     }
                     .onChange(of: vm.isThinking) { t in
@@ -420,8 +477,10 @@ struct AgentChatView: View {
                     // declaration above. Snapped, not animated, same
                     // reasoning as ChatThreadView.swift's matching handler.
                     .onChange(of: readyForInitialScroll) { ready in
-                        guard ready, let last = vm.messages.last else { return }
-                        proxy.scrollTo(last.id, anchor: .bottom)
+                        guard ready else { return }
+                        pin.loadDidFinish()
+                        pinToBottom(proxy)
+                        settleBottomPin(proxy: proxy)
                     }
                 }
             }

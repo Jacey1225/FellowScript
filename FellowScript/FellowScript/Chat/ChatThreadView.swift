@@ -1252,6 +1252,54 @@ struct ChatThreadView: View {
     // for a prepend of older rows.
     @State private var lastTailId: String? = nil
 
+    // Task 20261013-ios-chat-initial-scroll-bottom: deterministic bottom pin.
+    // ROOT CAUSE (replaces the one-shot scrollTo): a single scrollTo against a
+    // LazyVStack lands at the bottom implied by ESTIMATED row heights; rows
+    // then realize at real heights (images, shared verse/note cards,
+    // reactions, quotes), content grows, and nothing re-pinned. The cache
+    // render, the fresh-fetch swap (animated count-handler scrolls) and the
+    // older-page auto-load (which re-anchored to the top of the old first
+    // row) all raced that one scroll. Now: `pin` (pure state machine, see
+    // ChatBottomPin.swift) re-pins non-animated on every content/container
+    // height change until the reader drags away, and older pages are gated
+    // until the bottom is established.
+    @State private var pin = ChatBottomPin()
+    @State private var userScrolling = false
+    @State private var lastMetrics = ChatScrollMetrics()
+    // True while an animated new-message scroll is in flight, so the
+    // geometry re-pin does not cut the animation short.
+    @State private var repinSuppressed = false
+    @State private var settleTask: Task<Void, Never>? = nil
+    private static let bottomSentinelId = "chat-bottom-sentinel"
+
+    /// Snaps to the real bottom (never animated).
+    private func pinToBottom(_ proxy: ScrollViewProxy) {
+        proxy.scrollTo(Self.bottomSentinelId, anchor: .bottom)
+    }
+
+    /// Holds the bottom pin until the content height is stable and the list
+    /// rests at the bottom, then opens the older-page gate. Bounded: after the
+    /// last attempt the gate stays closed until the reader scrolls themselves.
+    private func settleBottomPin(proxy: ScrollViewProxy) {
+        settleTask?.cancel()
+        settleTask = Task { @MainActor in
+            var previousHeight: CGFloat = -1
+            for _ in 0..<12 {
+                guard pin.isPinned, !Task.isCancelled else { return }
+                pinToBottom(proxy)
+                try? await Task.sleep(nanoseconds: 100_000_000)
+                guard pin.isPinned, !Task.isCancelled else { return }
+                let m = lastMetrics
+                if m.distanceFromBottom <= ChatBottomPin.settledTolerance, m.contentHeight == previousHeight {
+                    pin.markBottomEstablished()
+                    requestOlderPage()
+                    return
+                }
+                previousHeight = m.contentHeight
+            }
+        }
+    }
+
     // Task 20261009-chat-jump-to-latest: true while the viewport sits more than
     // `jumpToLatestThreshold` above the end of the content. Purely local view
     // state; the newest page is always resident in vm.messages (older pages
@@ -1287,7 +1335,7 @@ struct ChatThreadView: View {
     }
 
     private func requestOlderPage() {
-        guard readyForInitialScroll, olderHeaderVisible,
+        guard pin.allowsOlderPageLoad, olderHeaderVisible,
               vm.pagingEnabled, vm.hasMoreOlder, !vm.isLoadingOlder, !vm.olderLoadFailed,
               let uid = appState.currentUser?.user_id else { return }
         olderAnchorMessageId = vm.messages.first?.id
@@ -1464,18 +1512,34 @@ struct ChatThreadView: View {
                                     Color.clear.frame(height: Theme.spacingSM)
                                 }
                             }
+                            // Bottom pin target. Carries the list's bottom
+                            // padding so scrolling to it reaches the true end.
+                            Color.clear.frame(height: Theme.spacingSM)
+                                .id(Self.bottomSentinelId)
                         }
                         .padding(.top, 4)
-                        .padding(.bottom, Theme.spacingSM)
                     }
-                    .onScrollGeometryChange(for: Bool.self) { geo in
-                        let distance = geo.contentSize.height + geo.contentInsets.bottom
-                            - geo.contentOffset.y - geo.containerSize.height
-                        return distance > jumpToLatestThreshold
-                    } action: { _, away in
-                        withMotionAwareAnimation(.easeOut(duration: 0.2), reduceMotion: reduceMotion) {
-                            isAwayFromBottom = away
+                    .onScrollPhaseChange { _, phase in
+                        userScrolling = (phase == .tracking || phase == .interacting || phase == .decelerating)
+                    }
+                    .onScrollGeometryChange(for: ChatScrollMetrics.self) { geo in
+                        ChatScrollMetrics(
+                            contentHeight: geo.contentSize.height + geo.contentInsets.bottom,
+                            containerHeight: geo.containerSize.height,
+                            distanceFromBottom: geo.contentSize.height + geo.contentInsets.bottom
+                                - geo.contentOffset.y - geo.containerSize.height)
+                    } action: { old, new in
+                        lastMetrics = new
+                        let away = new.distanceFromBottom > jumpToLatestThreshold
+                        if away != isAwayFromBottom {
+                            withMotionAwareAnimation(.easeOut(duration: 0.2), reduceMotion: reduceMotion) {
+                                isAwayFromBottom = away
+                            }
                         }
+                        let action = pin.scrollGeometryChanged(old: old, new: new, userDriven: userScrolling)
+                        if action == .repin, !repinSuppressed { pinToBottom(proxy) }
+                        // Reader took over (or came back): older-page gate may have opened.
+                        if pin.allowsOlderPageLoad, olderHeaderVisible { requestOlderPage() }
                     }
                     .overlay(alignment: .bottomTrailing) {
                         if isAwayFromBottom && readyForInitialScroll && !messageGroups.isEmpty {
@@ -1492,15 +1556,33 @@ struct ChatThreadView: View {
                         let tailId = vm.messages.last?.id
                         defer { lastTailId = tailId }
                         guard tailId != lastTailId, let lastGroup = messageGroups.last else { return }
+                        // Still loading (cache render / fresh-fetch swap): snap,
+                        // never animate; the pin and the ready handler own the
+                        // final position.
+                        guard pin.loadFinished else { pinToBottom(proxy); return }
+                        repinSuppressed = true
                         withMotionAwareAnimation(.default, reduceMotion: reduceMotion) { proxy.scrollTo(lastGroup.id, anchor: .bottom) }
+                        Task { @MainActor in
+                            try? await Task.sleep(nanoseconds: 400_000_000)
+                            repinSuppressed = false
+                            if pin.isPinned, lastMetrics.distanceFromBottom > ChatBottomPin.settledTolerance {
+                                pinToBottom(proxy)
+                            }
+                        }
                     }
                     // An older page merged: keep the reader on the message
                     // they were looking at (by message id; never animated, so
                     // Reduce Motion needs no special case).
                     .onChange(of: vm.olderMergeToken) { _ in
                         recomputeMessageGroups()
-                        if let anchor = olderAnchorMessageId {
-                            olderAnchorMessageId = nil
+                        let anchor = olderAnchorMessageId
+                        olderAnchorMessageId = nil
+                        if pin.isPinned {
+                            // Reader is on the newest message (short thread whose
+                            // header was on screen): the prepend must not disturb
+                            // the bottom pin.
+                            pinToBottom(proxy)
+                        } else if let anchor {
                             proxy.scrollTo(MessageGroupRow.anchorId(for: anchor), anchor: .top)
                         }
                     }
@@ -1532,9 +1614,9 @@ struct ChatThreadView: View {
                     .onChange(of: vm.activeThread?.id) { newId in
                         recomputeMessageGroups()
                         lastTailId = vm.messages.last?.id
-                        if let lastGroup = messageGroups.last {
-                            proxy.scrollTo(lastGroup.id, anchor: .bottom)
-                        }
+                        pin.beginReposition()
+                        pinToBottom(proxy)
+                        settleBottomPin(proxy: proxy)
                         if newId != nil {
                             // VoiceOver lands on the thread title; the composer
                             // stays one swipe away.
@@ -1550,15 +1632,14 @@ struct ChatThreadView: View {
                     // than being called imperatively from `.task`). Snapped,
                     // not animated -- see `.task` below for why.
                     .onChange(of: readyForInitialScroll) { ready in
-                        guard ready, let lastGroup = messageGroups.last else { return }
+                        guard ready else { return }
                         lastTailId = vm.messages.last?.id
-                        proxy.scrollTo(lastGroup.id, anchor: .bottom)
-                        // Short threads keep the header on screen after the
-                        // snap; re-check once the scroll has settled.
-                        Task {
-                            try? await Task.sleep(nanoseconds: 200_000_000)
-                            requestOlderPage()
-                        }
+                        pin.loadDidFinish()
+                        pinToBottom(proxy)
+                        // Hold the pin until content height is stable, then
+                        // open the older-page gate (short threads keep the
+                        // header on screen and load older pages from here).
+                        settleBottomPin(proxy: proxy)
                     }
                 }
             }

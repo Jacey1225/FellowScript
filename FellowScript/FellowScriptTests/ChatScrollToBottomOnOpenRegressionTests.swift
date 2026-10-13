@@ -156,16 +156,25 @@ final class ChatScrollToBottomOnOpenRegressionTests: XCTestCase {
                        "the initial scroll must no longer be invoked imperatively from .task -- that was the second bug")
         XCTAssertFalse(source.contains("scrollProxy?.scrollTo(lastGroup.id, anchor: .bottom)"),
                        "the initial scroll must not be a direct unguarded scrollProxy call vulnerable to either ordering races or transaction-boundary no-ops")
+        // Task 20261013-ios-chat-initial-scroll-bottom: the one-shot scrollTo
+        // against estimated heights was replaced by the ChatBottomPin state
+        // machine (sentinel target + geometry re-pin + bounded settle loop).
+        XCTAssertFalse(source.contains("guard ready, let lastGroup = messageGroups.last else { return }\n                        proxy.scrollTo(lastGroup.id, anchor: .bottom)"),
+                       "the ready handler must not regress to a one-shot scrollTo against the last group's estimated height")
+        XCTAssertTrue(source.contains("pin.loadDidFinish()") && source.contains("settleBottomPin(proxy: proxy)"),
+                      "the ready handler must hand off to the bottom pin and its settle loop")
+        XCTAssertTrue(source.contains("proxy.scrollTo(Self.bottomSentinelId, anchor: .bottom)"),
+                      "the pin must target the bottom sentinel, not a row whose height is only an estimate")
 
         // The actual scroll must live in .onChange(of: readyForInitialScroll),
         // inside the ScrollViewReader closure where `proxy` is directly in
         // scope, guarded against an empty list (no force-unwrap).
         XCTAssertTrue(source.contains(".onChange(of: readyForInitialScroll) { ready in"),
                       "the initial scroll must be driven by onChange(of: readyForInitialScroll), the same synchronous mechanism as the working new-message case")
-        XCTAssertTrue(source.contains("guard ready, let lastGroup = messageGroups.last else { return }"),
-                      "the onChange handler must bail out cleanly (not force-unwrap) on an empty list")
-        XCTAssertTrue(source.contains("proxy.scrollTo(lastGroup.id, anchor: .bottom)"),
-                      "the onChange handler must actually perform the scroll using the in-scope proxy")
+        XCTAssertTrue(source.contains("guard ready else { return }"),
+                      "the onChange handler must bail out cleanly when not ready")
+        XCTAssertTrue(source.contains("pinToBottom(proxy)"),
+                      "the onChange handler must actually perform the pin using the in-scope proxy")
 
         // The reactive path must remain present and unregressed: still
         // gated behind an actual count change, and still animated.
@@ -192,10 +201,12 @@ final class ChatScrollToBottomOnOpenRegressionTests: XCTestCase {
 
         XCTAssertTrue(source.contains(".onChange(of: readyForInitialScroll) { ready in"),
                       "the initial scroll must be driven by onChange(of: readyForInitialScroll), the same synchronous mechanism as the working new-message case")
-        XCTAssertTrue(source.contains("guard ready, let last = vm.messages.last else { return }"),
-                      "the onChange handler must bail out cleanly (not force-unwrap) on an empty list")
-        XCTAssertTrue(source.contains("proxy.scrollTo(last.id, anchor: .bottom)\n                    }"),
-                      "the onChange handler must actually perform the scroll using the in-scope proxy")
+        XCTAssertTrue(source.contains("guard ready else { return }"),
+                      "the onChange handler must bail out cleanly when not ready")
+        XCTAssertTrue(source.contains("pin.loadDidFinish()") && source.contains("settleBottomPin(proxy: proxy)"),
+                      "the ready handler must hand off to the bottom pin and its settle loop")
+        XCTAssertTrue(source.contains("proxy.scrollTo(Self.bottomSentinelId, anchor: .bottom)"),
+                      "the pin must target the bottom sentinel, not a row whose height is only an estimate")
 
         // Reactive paths (new message, and the isThinking indicator) remain
         // unregressed.
