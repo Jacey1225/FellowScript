@@ -346,7 +346,6 @@ struct ShareToChatSheet: View {
 
     var body: some View {
         ZStack {
-            Theme.bgPage.ignoresSafeArea()
             ScrollView {
                 VStack(alignment: .leading, spacing: Theme.spacingMD) {
                     HStack {
@@ -378,6 +377,7 @@ struct ShareToChatSheet: View {
                 .padding(Theme.spacingMD)
             }
         }
+        .warmBloomBackground()
         .preferredColorScheme(.dark)
         .task { await load() }
     }

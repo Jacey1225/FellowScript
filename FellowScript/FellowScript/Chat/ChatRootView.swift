@@ -154,6 +154,12 @@ struct ChatRootView: View {
             ChatThreadView(contact: contact, user: appState.currentUser)
                 .upgradePrompt(onSubscribe: { activeContact = nil })
         }
+        // A shared-verse tap inside the thread sheet switches to the Bible tab
+        // (ContentView); the sheet would otherwise stay up over the Chat tab and
+        // hide the result, so close it when a Bible navigation is requested.
+        .onChange(of: appState.pendingBibleNav) { _, target in
+            if target != nil { activeContact = nil }
+        }
         .sheet(item: $activeAgent) { agent in
             AgentChatView(agent: agent)
         }

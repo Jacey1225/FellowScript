@@ -157,7 +157,7 @@ struct NotificationSettingsView: View {
             .padding(.top, Theme.spacingMD)
             .padding(.bottom, 150)
         }
-        .background(Theme.bgPage)
+        .warmBloomBackground()
         .navigationTitle("Notifications")
         .navigationBarTitleDisplayMode(.inline)
         .task { await model.load() }

@@ -475,6 +475,15 @@ struct BibleReaderView: View {
 
     private var fontSize: CGFloat { Theme.bibleFontSizes[min(fontSizeIndex, Theme.bibleFontSizes.count - 1)] }
 
+    /// Applies and clears `appState.pendingBibleNav` (book/chapter + scroll to verse).
+    private func consumePendingBibleNav() {
+        guard let t = appState.pendingBibleNav else { return }
+        vm.setBook(t.book)
+        vm.setChapter(t.chapter)
+        pendingScrollVerse = t.verse
+        appState.pendingBibleNav = nil
+    }
+
     var body: some View {
         NavigationStack {
             ZStack(alignment: .top) {
@@ -814,6 +823,13 @@ struct BibleReaderView: View {
             // or StartupCoordinator's preload race, so the 4.2MB parse only
             // happens once this screen (the Bible tab) has actually appeared.
             await vm.loadBibleContent()
+            // A pendingBibleNav set before this tab was first mounted (TabView
+            // lazy-mounts) never triggers the onChange below, so consume it
+            // here once the chapter content (and its ScrollViewReader) exists.
+            if appState.pendingBibleNav != nil {
+                try? await Task.sleep(nanoseconds: 250_000_000)
+                consumePendingBibleNav()
+            }
         }
         // Task 20260914-dictation-tts: stops playback when this screen
         // itself leaves the view hierarchy — fires on every tab switch away
@@ -825,11 +841,8 @@ struct BibleReaderView: View {
             speechController.stop()
         }
         .onChange(of: appState.pendingBibleNav) { _, target in
-            guard let t = target else { return }
-            vm.setBook(t.book)
-            vm.setChapter(t.chapter)
-            pendingScrollVerse   = t.verse
-            appState.pendingBibleNav = nil
+            guard target != nil else { return }
+            consumePendingBibleNav()
         }
         // Share sheet for the long-press / VoiceOver Share verse action.
         .shareSheet(item: $sharePayload)
