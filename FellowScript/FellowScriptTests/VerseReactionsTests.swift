@@ -360,4 +360,16 @@ final class VerseReactionSourcePinTests: XCTestCase {
         XCTAssertTrue(s.contains(#"parts.append("reacted with \(VerseReactionEmoji.name(for: emoji))")"#))
         XCTAssertTrue(s.contains(".accessibilityLabel(reactionLabel)"))
     }
+
+    func test_reader_plusOpensFullVerseGrid_samePersistPath_withinAllowlist() throws {
+        let s = try readSource("FellowScript/Bible/BibleReaderView.swift")
+        XCTAssertTrue(s.contains("selectedReactionSet(verse)) { react(verse: verse, emoji: $0) }"),
+                      "grid pick goes through the same react path as the quick row")
+        XCTAssertTrue(s.contains("onMore: { moreReactionsVerse = verse }"))
+        XCTAssertEqual(VerseReactionEmoji.allEmoji.count, 10, "closed backend allowlist of 10")
+        XCTAssertEqual(Set(VerseReactionEmoji.allEmoji).count, 10)
+        XCTAssertTrue(Set(VerseReactionEmoji.quick).isSubset(of: Set(VerseReactionEmoji.allEmoji)),
+                      "quick row never offers an emoji outside the allowlist")
+        XCTAssertGreaterThan(VerseReactionEmoji.allEmoji.count, VerseReactionEmoji.quick.count)
+    }
 }

@@ -469,4 +469,44 @@ final class ChatReactionsSourcePinTests: XCTestCase {
             XCTAssertFalse(s.contains(banned), "shared component must not reference \(banned)")
         }
     }
+
+    // ── Plus affordance (20261013-ios-reaction-picker-plus) ───────────────────
+
+    func test_menuSection_plusLivesInsidePalette_noStandaloneMoreRow() throws {
+        let s = try src("Shared/ReactionPicker.swift")
+        guard let start = s.range(of: "struct ReactionMenuSection: View"),
+              let end = s.range(of: "/// VoiceOver custom actions") else { return XCTFail("section not found") }
+        let body = String(s[start.lowerBound..<end.lowerBound])
+        guard let cgStart = body.range(of: "ControlGroup {"),
+              let cgEnd = body.range(of: ".controlGroupStyle(.palette)") else { return XCTFail("palette not found") }
+        let inside = String(body[cgStart.upperBound..<cgEnd.lowerBound])
+        XCTAssertTrue(inside.contains("if let onMore"), "plus is hosted inside the palette")
+        XCTAssertTrue(inside.contains("systemImage: \"plus\""), "plus icon")
+        XCTAssertTrue(inside.contains("Label(\"More reactions\""), "VoiceOver label kept")
+        let after = String(body[cgEnd.upperBound...])
+        XCTAssertFalse(after.contains("More reactions"), "no separate More reactions row after the palette")
+        XCTAssertFalse(after.contains("face.smiling"), "old More reactions icon removed")
+        XCTAssertFalse(s.contains("face.smiling"))
+    }
+
+    func test_voiceOver_moreReactionsActionKept_andPickerSheetPicksViaOnPick() throws {
+        let s = try src("Shared/ReactionPicker.swift")
+        XCTAssertTrue(s.contains("Button(\"More reactions\", action: onMore)"))
+        guard let r = s.range(of: "struct ReactionPickerSheet: View") else { return XCTFail() }
+        let sheet = String(s[r.lowerBound...])
+        XCTAssertTrue(sheet.contains("onPick(emoji)\n                            dismiss()"), "pick reacts then dismisses")
+        XCTAssertTrue(sheet.contains("selected.contains(emoji)"), "selected state shown in grid")
+    }
+
+    func test_chat_gridPick_usesSameToggleReactionPath_andCapabilitiesAll() throws {
+        let s = try src("Chat/ChatThreadView.swift")
+        XCTAssertTrue(s.contains("emojis: appState.capabilities.reactionEmoji.all"))
+        XCTAssertTrue(s.contains(") { emoji in toggleReaction(emoji, on: message) }"))
+        XCTAssertTrue(s.contains("onMore: { reactionPickerMessage = message }"))
+    }
+
+    func test_chatEmoji_all_isQuickPlusMore() {
+        let e = FSReactionEmoji(quick: ["👍", "❤️"], more: ["🔥", "👏"])
+        XCTAssertEqual(e.all, ["👍", "❤️", "🔥", "👏"])
+    }
 }

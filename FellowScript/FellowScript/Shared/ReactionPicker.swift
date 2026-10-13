@@ -272,7 +272,8 @@ struct ReactionQuickRow: View {
 }
 
 /// The quick row for use inside a `.contextMenu { }`: a palette control group of
-/// emoji images (selected ones are marked) followed by a "More reactions…" item.
+/// emoji images (selected ones are marked) ending in a trailing plus item that
+/// opens the full picker.
 struct ReactionMenuSection: View {
     let emojis: [String]
     let selected: Set<String>
@@ -293,13 +294,15 @@ struct ReactionMenuSection: View {
                         }
                     }
                 }
+                // Trailing plus item: last entry of the palette itself (no separate
+                // "More reactions" row). Opens the full picker sheet.
+                if let onMore {
+                    Button(action: onMore) {
+                        Label("More reactions", systemImage: "plus")
+                    }
+                }
             }
             .controlGroupStyle(.palette)
-        }
-        if let onMore {
-            Button(action: onMore) {
-                Label("More reactions", systemImage: "face.smiling")
-            }
         }
     }
 }
