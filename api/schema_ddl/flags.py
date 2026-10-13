@@ -32,6 +32,7 @@ SEED_FLAG_NAMES = (
     "message_reaction_push",
     "friend_highlight_push",
     "chat_replies",
+    "chat_shared_objects",
 )
 
 
