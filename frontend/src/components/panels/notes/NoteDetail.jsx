@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Button, Input, Typography, Spin, Divider } from 'antd';
-import { ArrowLeftOutlined } from '@ant-design/icons';
+import { ArrowLeftOutlined, SendOutlined } from '@ant-design/icons';
 import { NoteBody } from '../../RichText.jsx';
 import VerseChip from './VerseChip.jsx';
 import { validVerses } from './noteFormat.js';
@@ -9,7 +9,7 @@ const { TextArea } = Input;
 const { Text } = Typography;
 
 // ── Note detail ───────────────────────────────────────────────────────────────
-export default function NoteDetail({ note, noteId, onBack, canReply, onReply, replies, repliesLoading, onNavigateVerse }) {
+export default function NoteDetail({ note, noteId, onBack, canReply, onReply, replies, repliesLoading, onNavigateVerse, onShare }) {
   const [replyText, setReplyText] = useState('');
   const [replying,  setReplying]  = useState(false);
   const verses = validVerses(note?.verses);
@@ -30,6 +30,10 @@ export default function NoteDetail({ note, noteId, onBack, canReply, onReply, re
         <Text strong style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: '0.95rem', color: 'var(--parchment)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {note?.title || 'Note'}
         </Text>
+        {onShare && (
+          <Button type="text" size="small" icon={<SendOutlined />} onClick={() => onShare(noteId)}
+            aria-label="Send in chat" title="Send in chat" style={{ color: 'rgba(255,198,26,0.6)', padding: '0 4px' }} />
+        )}
       </div>
       <div style={{ flex: 1, overflowY: 'auto', padding: '0.85rem 0.6rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
         <NoteBody html={note?.text} />

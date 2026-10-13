@@ -7,6 +7,7 @@ import NoteCard from './notes/NoteCard.jsx';
 import NoteDetail from './notes/NoteDetail.jsx';
 import FilterPanel from './notes/FilterPanel.jsx';
 import { validVerses } from './notes/noteFormat.js';
+import { canShareNote } from '../../lib/sharedObjects.js';
 
 const { Title, Text } = Typography;
 
@@ -31,6 +32,7 @@ export default function NotesPanel() {
     noteCharInfo, loadNoteCharLimit,
     applyFilter, clearFilter,
     books, chapterCount, verseCount,
+    onShareNote,
   } = useNotesPanel() || {};
 
   const [editorOpen,   setEditorOpen]   = useState(false);
@@ -87,6 +89,16 @@ export default function NotesPanel() {
       setReplies(Array.isArray(r) ? r : []);
       setRepliesLoading(false);
     }
+  };
+
+  // Owner info for the open note (group notes list carries the username).
+  const detailOwner = () => {
+    if (!currentGroupId) return {};
+    const me = user?.username || '';
+    for (const [uname, map] of Object.entries(notes.group || {})) {
+      if (map && map[detailId]) return { owner: uname, isOwn: uname === me };
+    }
+    return {};
   };
 
   const closeDetail = () => { setDetailId(null); setDetailNote(null); setReplies([]); };
@@ -198,6 +210,7 @@ export default function NotesPanel() {
             onReply={postReply}
             replies={replies} repliesLoading={repliesLoading}
             onNavigateVerse={onNavigateVerse}
+            onShare={onShareNote && canShareNote(detailNote, detailOwner()) ? (nid) => onShareNote(nid, detailNote) : undefined}
           />
         : <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.7rem', padding: verseList.length ? '0.5rem 0.4rem' : 0 }}>
             {groupLoading && currentGroupId && verseList.length === 0
@@ -237,7 +250,8 @@ export default function NotesPanel() {
                       <div key={id} style={{ paddingLeft: '0.85rem' }}>
                         <NoteCard id={id} note={note} owner={owner} isOwn={isOwn}
                           onEdit={openEditor} onDelete={handleDelete} onOpen={openDetail}
-                          onNavigateVerse={onNavigateVerse} />
+                          onNavigateVerse={onNavigateVerse}
+                          onShare={onShareNote && canShareNote(note, { owner, isOwn }) ? (nid) => onShareNote(nid, note) : undefined} />
                       </div>
                     )),
                   ]);

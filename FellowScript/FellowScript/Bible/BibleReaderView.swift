@@ -469,6 +469,7 @@ struct BibleReaderView: View {
     @State private var moreReactionsVerse: Int? = nil   // verse whose full reaction picker sheet is open
     @State private var addToNoteTarget:  VerseNoteDraft? = nil
     @State private var sharePayload:     SharePayload? = nil   // task 20261011-ios-share-notes-highlights
+    @State private var chatShare:        ChatShareDraft? = nil // task 20261012-share-verses-notes-in-chat
     @State private var pendingScrollVerse: Int? = nil
     @State private var contentOpacity:   Double = 1
 
@@ -592,6 +593,9 @@ struct BibleReaderView: View {
                                         .accessibilityLabel(verseAccessibilityLabel(v.num, v.text))
                                         .accessibilityActions {
                                             Button("Share verse \(v.num)") { shareVerse(verse: v.num, text: v.text) }
+                                            if appState.capabilities.sharedObjectsEnabled {
+                                                Button("Send verse \(v.num) in chat") { sendVerseInChat(verse: v.num, text: v.text) }
+                                            }
                                             if reactionsOn {
                                                 reactionAccessibilityActions(
                                                     emojis: VerseReactionEmoji.quick,
@@ -829,6 +833,7 @@ struct BibleReaderView: View {
         }
         // Share sheet for the long-press / VoiceOver Share verse action.
         .shareSheet(item: $sharePayload)
+        .chatShareSheet(item: $chatShare)
         // "Add to Note": new-note editor prefilled with the long-pressed verse.
         // Saves through the shared NotesViewModel (same path as NotesListView);
         // on failure the editor stays open with the inline error / upgrade
@@ -957,6 +962,18 @@ struct BibleReaderView: View {
             Label("Share", systemImage: "square.and.arrow.up")
         }
         .accessibilityLabel("Share verse \(verse)")
+
+        if appState.capabilities.sharedObjectsEnabled {
+            Button(action: { sendVerseInChat(verse: verse, text: text) }) {
+                Label("Send in Chat", systemImage: "paperplane")
+            }
+            .accessibilityLabel("Send verse \(verse) in chat")
+        }
+    }
+
+    /// Opens the recipient picker; the server rebuilds the verse text (WEB) on send.
+    private func sendVerseInChat(verse: Int, text: String) {
+        chatShare = ChatShareDraft(payload: .verse(book: vm.curBook, chapter: vm.curChapter, verse: verse, text: text))
     }
 
     /// Opens the share sheet with reference + verse text + a link that opens the verse.

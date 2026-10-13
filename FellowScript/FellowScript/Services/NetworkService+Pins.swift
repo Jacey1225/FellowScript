@@ -95,6 +95,8 @@ nonisolated struct FSPinnedMessage: Decodable, Equatable, Identifiable {
         case .video: return "Video"
         case .gif:   return "GIF"
         case .file:  return "File"
+        case .sharedVerse: return "Verse"
+        case .sharedNote:  return "Note"
         case nil:    return "Message"
         }
     }

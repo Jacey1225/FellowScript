@@ -103,6 +103,8 @@ final class StagedAttachment: ObservableObject, Identifiable {
             if let width  { meta["width"]  = width }
             if let height { meta["height"] = height }
             return meta
+        case .sharedVerse, .sharedNote:
+            return [:]   // never staged from the composer
         }
     }
 }
@@ -698,6 +700,8 @@ struct StagedAttachmentChipView: View {
         case .video: return "Video"
         case .file:  return attachment.fileName ?? "File"
         case .gif:   return "GIF"
+        case .sharedVerse: return "Verse"
+        case .sharedNote:  return "Note"
         }
     }
 
@@ -734,6 +738,7 @@ enum AttachmentErrorCopy {
         case .video: return "Videos can be up to 250MB."
         case .file:  return "Files can be up to 50MB."
         case .gif:   return "That GIF couldn't be sent."
+        case .sharedVerse, .sharedNote: return "That couldn't be sent."
         }
     }
 }
@@ -848,6 +853,7 @@ struct AttachmentContentView: View {
                 case .video: videoContent
                 case .gif:   gifContent
                 case .file:  fileContent
+                case .sharedVerse, .sharedNote: SharedObjectContentView(message: message)
                 }
             } else {
                 EmptyView()

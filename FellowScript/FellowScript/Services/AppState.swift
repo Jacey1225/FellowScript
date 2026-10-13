@@ -32,6 +32,10 @@ final class AppState: ObservableObject {
     @Published var isAuthenticated = false
     @Published var pendingBibleNav: BibleNavTarget? = nil
     @Published var pendingChatContact: FSContact? = nil   // set to open a chat from another tab
+    /// Task 20261012-share-verses-notes-in-chat: a verse/note picked for "Send in
+    /// chat". The chat thread for `contact` sends it over the one chat socket
+    /// once it has loaded, then clears this. Memory only.
+    @Published var pendingChatShare: PendingChatShare? = nil
     /// Task 20260929-announcement-push-widget: set by an announcement push tap;
     /// the group's chat widget consumes it (opens the viewer) once mounted.
     @Published var pendingAnnouncementOpen: PendingAnnouncementOpen? = nil
@@ -239,6 +243,7 @@ final class AppState: ObservableObject {
         pendingFriendLink = nil
         pendingGroupLink = nil
         pendingVerseLink = nil
+        pendingChatShare = nil
     }
 
     func setPendingInvite(_ token: String) {

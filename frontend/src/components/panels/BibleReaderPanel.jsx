@@ -24,6 +24,7 @@ export default function BibleReaderPanel() {
     onNavigate, onPrev, onNext, onVerseSelected,
     applyHighlights, setHighlight, clearHighlight,
     bookmarks, addBookmark, removeBookmark,
+    onShareVerse,
   } = useBibleReaderPanel() || {};
 
   const scrollRef   = useRef(null);
@@ -106,6 +107,13 @@ export default function BibleReaderPanel() {
     lastSpanRef.current?.classList.remove('active'); lastSpanRef.current = null;
   }, [selectedVerse, clearHighlight]);
 
+  const handleShareVerse = useCallback(() => {
+    if (!selectedVerse || !onShareVerse) return;
+    onShareVerse(curBook, curChapter, selectedVerse);
+    setPickerVisible(false);
+    lastSpanRef.current?.classList.remove('active'); lastSpanRef.current = null;
+  }, [selectedVerse, onShareVerse, curBook, curChapter]);
+
   const chCount = getChapterCount ? getChapterCount(curBook) : 0;
 
   return (
@@ -155,6 +163,7 @@ export default function BibleReaderPanel() {
       <HighlightPicker
         visible={pickerVisible} position={pickerPos}
         onColor={handleHighlightColor} onClear={handleClearHighlight}
+        onShare={onShareVerse ? handleShareVerse : undefined}
       />
     </div>
   );

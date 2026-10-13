@@ -339,7 +339,8 @@ struct MessageGroupRow: View {
     /// padding (edge-to-edge media); `file` and plain text keep it.
     @ViewBuilder
     private func bubble(for message: FSMessage) -> some View {
-        let isMedia = ["image", "video", "gif"].contains(message.attachmentKind ?? "")
+        let isShared = message.attachmentKindEnum?.isShared == true
+        let isMedia = isShared || ["image", "video", "gif"].contains(message.attachmentKind ?? "")
         VStack(alignment: group.isOutgoing ? .trailing : .leading, spacing: 0) {
             if let reply = message.reply { quotedLabel(reply) }
         Group {
@@ -352,7 +353,9 @@ struct MessageGroupRow: View {
                     AttachmentContentView(message: message, localPreview: localAttachmentPreviews[message.id])
                         .padding(isMedia ? 0 : 14)
                         .padding(.vertical, isMedia ? 0 : 10)
-                    if !message.text.isEmpty {
+                    // A shared verse/note's `text` is only the old-client
+                    // fallback line; the widget/card already shows everything.
+                    if !message.text.isEmpty && !isShared {
                         Text(message.text)
                             .font(.inter(Theme.fontBody))
                             .foregroundColor(Theme.parchment)
@@ -453,6 +456,8 @@ struct MessageGroupRow: View {
         case .video: return "\(group.senderName): video attachment, tap to play"
         case .gif:   return "\(group.senderName): GIF attachment"
         case .file:  return "\(group.senderName): file attachment, \(message.attachmentMeta?.filename ?? "file"), double tap to download"
+        case .sharedVerse: return SharedObjectText.verseAccessibilityLabel(message, sender: group.senderName)
+        case .sharedNote:  return SharedObjectText.noteAccessibilityLabel(message, sender: group.senderName)
         }
     }
 

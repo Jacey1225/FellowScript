@@ -24,6 +24,11 @@ import {
 } from '../lib/readerDockLayout.js';
 
 import { useAuth }        from '../context/AuthContext.jsx';
+import { useCapabilities } from '../hooks/useCapabilities.js';
+import ShareToChatModal from '../components/ShareToChatModal.jsx';
+import { SharedVerseWidget, SharedNoteCard } from '../components/SharedObjects.jsx';
+import { SHARED_FEATURE, verseAttachment, noteAttachment } from '../lib/sharedObjects.js';
+import { stripHtml } from '../components/RichText.jsx';
 import { useAgentChat }  from '../hooks/useAgentChat.js';
 import { useBible }       from '../hooks/useBible.js';
 import { useHighlights }  from '../hooks/useHighlights.js';
@@ -363,6 +368,64 @@ export default function Reader() {
     else reopenPanel(api, id, layoutUserRef.current);
   }, []);
 
+  // ── Send in chat (task 20261012-share-verses-notes-in-chat) ────────────────
+  // Fails closed: with the server flag off no entry point is offered. The
+  // picker opens the chosen chat, then sends once its history has loaded (an
+  // earlier send would be wiped by the history replace).
+  const caps = useCapabilities();
+  const shareEnabled = !!user && ((caps && caps.features) || {})[SHARED_FEATURE] === true;
+  const [shareReq, setShareReq] = useState(null); // { attachment, preview }
+  const [shareTick, setShareTick] = useState(0);
+  const pendingShareRef = useRef(null);
+
+  const requestVerseShare = useCallback((book, chapter, verse) => {
+    if (!contactsLoaded) handleLoadContacts();
+    const raw = (typeof document !== 'undefined' && document.getElementById(`vs${verse}`)?.textContent) || '';
+    const text = raw.replace(/^\s*\d+\s*/, '').trim();
+    setShareReq({
+      attachment: verseAttachment(book, chapter, verse),
+      preview: (
+        <SharedVerseWidget
+          message={{ mine: true, attachmentMeta: { book, chapter, verse, reference: `${book} ${chapter}:${verse}`, text } }}
+        />
+      ),
+    });
+  }, [contactsLoaded, handleLoadContacts]);
+
+  const requestNoteShare = useCallback((noteId, note) => {
+    if (!contactsLoaded) handleLoadContacts();
+    setShareReq({
+      attachment: noteAttachment(noteId),
+      preview: (
+        <SharedNoteCard
+          message={{
+            mine: true,
+            attachmentMeta: {
+              note_id: noteId, title: note?.title || '', preview: stripHtml(note?.text || '').slice(0, 160),
+              timestamp: note?.created_at || note?.timestamp || '', is_group_note: !!currentGroupId,
+            },
+          }}
+        />
+      ),
+    });
+  }, [contactsLoaded, handleLoadContacts, currentGroupId]);
+
+  const performShare = useCallback(async (contact) => {
+    if (!shareReq) return;
+    pendingShareRef.current = { contactId: contact.id, attachment: shareReq.attachment };
+    setShareReq(null);
+    handleRailSelect(PANEL_IDS.MESSAGING);
+    await handleOpenChat(contact);
+    setShareTick(t => t + 1);
+  }, [shareReq, handleOpenChat, handleRailSelect]);
+
+  useEffect(() => {
+    const p = pendingShareRef.current;
+    if (!p || !currentContact || currentContact.id !== p.contactId) return;
+    pendingShareRef.current = null;
+    sendMessage('', p.attachment);
+  }, [shareTick, currentContact, sendMessage]);
+
   // ── Derived ─────────────────────────────────────────────────────────────────
   const preamble = getPreamble(curBook, null);
   const chCount  = chapterCount(curBook, null);
@@ -377,7 +440,8 @@ export default function Reader() {
     onVerseSelected: setCurVerse,
     applyHighlights, setHighlight, clearHighlight,
     bookmarks, addBookmark, removeBookmark,
-  }), [user, curBook, curChapter, curVerse, books, chapterHTML, loading, loadError, preamble,
+    onShareVerse: shareEnabled ? requestVerseShare : undefined,
+  }), [shareEnabled, requestVerseShare, user, curBook, curChapter, curVerse, books, chapterHTML, loading, loadError, preamble,
        getChapterCount, verseCount, handleNavigate, handlePrev, handleNext,
        applyHighlights, setHighlight, clearHighlight, bookmarks, addBookmark, removeBookmark]);
 
@@ -388,7 +452,8 @@ export default function Reader() {
     noteCharInfo, loadNoteCharLimit,
     applyFilter, clearFilter,
     books, chapterCount: getChapterCount, verseCount,
-  }), [noteCharInfo, loadNoteCharLimit, user, currentGroupId, groups, handleGroupChange, handleNavigateVerse, notesData, groupLoading,
+    onShareNote: shareEnabled ? requestNoteShare : undefined,
+  }), [shareEnabled, requestNoteShare, noteCharInfo, loadNoteCharLimit, user, currentGroupId, groups, handleGroupChange, handleNavigateVerse, notesData, groupLoading,
        filterActive, saveNote, deleteNote, postReply, loadDetailReplies, applyFilter, clearFilter,
        books, getChapterCount, verseCount]);
 
@@ -484,6 +549,18 @@ export default function Reader() {
             dndEdges={DOCK_EDGE_DROP_MODEL}
           />
         </div>
+
+        {shareReq && (
+          <ShareToChatModal
+            open
+            onClose={() => setShareReq(null)}
+            preview={shareReq.preview}
+            friends={friends}
+            groups={msgGroups}
+            loaded={contactsLoaded}
+            onSend={performShare}
+          />
+        )}
 
         <SessionCreator
           open={showCreator}

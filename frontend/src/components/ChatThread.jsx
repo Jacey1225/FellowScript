@@ -14,6 +14,8 @@ import GroupInfoPanel from './GroupInfoPanel.jsx';
 import GroupAnnouncementWidget from './GroupAnnouncementWidget.jsx';
 import { ANNOUNCEMENTS_ENABLED } from '../lib/announcementsApi.js';
 import ActionableBubble from './MessageActionMenu.jsx';
+import { SharedVerseWidget, SharedNoteCard, SharedNoteModal, sharedAriaLabel } from './SharedObjects.jsx';
+import { isSharedKind, KIND_VERSE, KIND_NOTE } from '../lib/sharedObjects.js';
 import { useCapabilities } from '../hooks/useCapabilities.js';
 import { DEFAULT_UNDO_SECONDS } from '../lib/threadsApi.js';
 import ReactionPicker, { rectOf } from './ReactionPicker.jsx';
@@ -677,6 +679,7 @@ export default function ChatThread({
   const [showGifSheet, setShowGifSheet]     = useState(false);
   const [staged, setStaged]                 = useState(null); // { kind, file, previewUrl, fileName, meta, uploadState, objectKey }
   const [attachmentError, setAttachmentError] = useState(null);
+  const [openNote, setOpenNote] = useState(null); // shared note message being viewed read-only
   const endRef = useRef(null);
   const photoVideoInputRef = useRef(null);
   const fileInputRef       = useRef(null);
@@ -1298,7 +1301,8 @@ export default function ChatThread({
             : m.attachmentKind === 'video' ? `${m.sender || 'You'}: video attachment, tap to play`
             : m.attachmentKind === 'gif'   ? `${m.sender || 'You'}: GIF attachment`
             : m.attachmentKind === 'file'  ? `${m.sender || 'You'}: file attachment, ${m.attachmentMeta?.filename || 'file'}, download`
-            : undefined;
+            : sharedAriaLabel(m);
+          const isShared = isSharedKind(m.attachmentKind);
           const settled = !!m.id && !m.pending && !m.failed;
           const reactions = (reactionsOn && Array.isArray(m.reactions)) ? m.reactions : [];
           return (
@@ -1307,7 +1311,7 @@ export default function ChatThread({
               data-msg-id={m.key ?? undefined}
               data-mid={m.id ?? undefined}
               tabIndex={(repliesOn && m.id) ? -1 : undefined}
-              className={`msg-bubble ${m.mine ? 'sent' : 'received'} ${isMedia ? 'msg-bubble-media' : ''}${m.failed ? ' msg-bubble-failed' : ''}${jumpId && m.id === jumpId ? ' msg-bubble-jump' : ''}`}
+              className={`msg-bubble ${m.mine ? 'sent' : 'received'} ${isMedia ? 'msg-bubble-media' : ''}${isShared ? ' msg-bubble-shared' : ''}${m.failed ? ' msg-bubble-failed' : ''}${jumpId && m.id === jumpId ? ' msg-bubble-jump' : ''}`}
               aria-label={ariaLabel}
               mine={!!m.mine}
               actions={actionsFor(m)}
@@ -1353,8 +1357,12 @@ export default function ChatThread({
                   </div>
                 );
               })()}
-              {m.attachmentKind ? <AttachmentContent message={m} /> : m.text}
-              {m.attachmentKind && m.text && (
+              {m.attachmentKind === KIND_VERSE
+                ? <SharedVerseWidget message={m} onNavigateVerse={onNavigateVerse} />
+                : m.attachmentKind === KIND_NOTE
+                  ? <SharedNoteCard message={m} onOpen={setOpenNote} />
+                  : m.attachmentKind ? <AttachmentContent message={m} /> : m.text}
+              {m.attachmentKind && m.text && !isShared && (
                 <div className={isMedia ? 'attachment-caption' : undefined}>{m.text}</div>
               )}
               {m.failed ? (
@@ -1540,6 +1548,16 @@ export default function ChatThread({
           />
         );
       })()}
+
+      {openNote && (
+        <SharedNoteModal
+          message={openNote}
+          userId={user?.user_id}
+          threadLabel={contact?.name}
+          onClose={() => setOpenNote(null)}
+          onNavigateVerse={onNavigateVerse}
+        />
+      )}
 
       <GifSearchModal
         open={showGifSheet}

@@ -34,6 +34,10 @@ struct FSCapabilities: Decodable, Equatable {
     /// show only when the flag is on. Fail closed: a missing/odd value is off.
     var messagePinsEnabled: Bool { isEnabled("message_pins") }
 
+    /// Task 20261012-share-verses-notes-in-chat: "Send in chat" entry points and
+    /// the verse/note widgets' send path show only when the flag is on.
+    var sharedObjectsEnabled: Bool { isEnabled("chat_shared_objects") }
+
     /// Task 20261010-reaction-highlight-push: friend-highlight push toggle shows only when the flag is on.
     var friendHighlightPushEnabled: Bool { isEnabled("friend_highlight_push") }
 

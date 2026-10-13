@@ -54,6 +54,7 @@ struct NotesListView: View {
     @State var editingGroupId:  String   = ""
     @State var detailNote:      FSNote?  = nil
     @State var sharePayload:    SharePayload? = nil
+    @State var chatShare:       ChatShareDraft? = nil   // task 20261012-share-verses-notes-in-chat
     @State var shareNotice:     String?  = nil
 
     var body: some View {
@@ -178,7 +179,8 @@ struct NotesListView: View {
                 note:     note,
                 userId:   appState.currentUser?.user_id ?? "",
                 username: appState.currentUser?.username ?? "",
-                service:  vm.service
+                service:  vm.service,
+                onSendInChat: canSendInChat(note) ? { sendInChatFromDetail(note) } : nil
             ) { saved in
                 let uid = appState.currentUser?.user_id ?? ""
                 let ok = await vm.saveNote(saved, editingId: saved.id, userId: uid, authorUsername: appState.currentUser?.username ?? "")
@@ -187,6 +189,7 @@ struct NotesListView: View {
             }
         }
         .shareSheet(item: $sharePayload)
+        .chatShareSheet(item: $chatShare)
         .alert("Couldn't share", isPresented: Binding(
             get: { shareNotice != nil },
             set: { if !$0 { shareNotice = nil } }

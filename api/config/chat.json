@@ -33,6 +33,12 @@
     "notify_window_seconds": 60,
     "max_page_size": 100
   },
+  "shared_objects": {
+    "note_title_max_chars": 80,
+    "note_preview_max_chars": 160,
+    "verse_max_range": 6,
+    "view_rate": "60/minute"
+  },
   "agent_chats": {
     "max_chats_per_agent": 50,
     "title_max_length": 80,

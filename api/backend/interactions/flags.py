@@ -103,6 +103,8 @@ register("message_delete")
 register("message_reactions")
 # Pinned messages in DMs and groups (task 20261012-message-pins). Ships OFF; never flipped by the pipeline.
 register("message_pins")
+# Verse and note shares in DMs/groups (task 20261012-share-verses-notes-in-chat). Ships OFF; never flipped by the pipeline.
+register("chat_shared_objects")
 register("explorer_publish")
 register("explorer_browse", no_canary=True)
 register("join_requests")

@@ -90,6 +90,9 @@ final class ChatThreadViewModel: ObservableObject {
     // discipline (never actively pruned; load() replacing `messages`
     // wholesale is the natural reset point).
     private var pendingAttachmentByMessageId: [String: StagedAttachment] = [:]
+    /// Same idea for verse/note shares (task 20261012-share-verses-notes-in-chat),
+    /// so a failed share can be retried as a share rather than as plain text.
+    private var pendingSharedByMessageId: [String: SharedPayload] = [:]
 
     // ── Pagination (task 20261001-chat-pagination) ───────────────────────────
     // Behavioural reference: the web client (frontend/src/lib/chatPaging.js,
@@ -352,7 +355,7 @@ final class ChatThreadViewModel: ObservableObject {
     /// `StagedAttachment` — the composer is responsible for driving the
     /// upload to completion (and disabling send until it is) before calling
     /// this, per design gate §3.
-    func sendMessage(text: String, attachment: StagedAttachment?, contact: FSContact, userId: String, reply: FSReplyRef? = nil) {
+    func sendMessage(text: String, attachment: StagedAttachment?, contact: FSContact, userId: String, reply: FSReplyRef? = nil, shared: SharedPayload? = nil) {
         let iso = ISO8601DateFormatter().string(from: Date())
         let messageId = UUID().uuidString
         var body: [String: Any] = ["from_user": userId, "timestamp": iso, "text": text]
@@ -399,11 +402,26 @@ final class ChatThreadViewModel: ObservableObject {
                 attachmentMeta = FSAttachmentMeta(filename: attachment.fileName)
             case .image, .video:
                 attachmentMeta = FSAttachmentMeta(width: attachment.width, height: attachment.height)
+            case .sharedVerse, .sharedNote:
+                break   // never staged from the composer
             }
             if case .uploaded(let objectKey) = attachment.uploadState {
                 body["attachment_key"] = objectKey
             }
             localPreview = LocalAttachmentPreview(image: attachment.image, videoURL: attachment.videoURL)
+        }
+
+        // Task 20261012-share-verses-notes-in-chat: a verse/note share rides the
+        // same frame as an attachment but carries no object key. The server
+        // rebuilds the payload and the fallback text; this is only the request
+        // (verse reference / note id) plus a local echo built from what the
+        // sender already has.
+        if let shared {
+            attachmentKind = shared.kind.rawValue
+            body["attachment_kind"] = shared.kind.rawValue
+            body["attachment_meta"] = shared.outgoingMeta
+            attachmentMeta = shared.localMeta
+            pendingSharedByMessageId[messageId] = shared
         }
 
         if let data = try? JSONSerialization.data(withJSONObject: body),
@@ -450,7 +468,8 @@ final class ChatThreadViewModel: ObservableObject {
         failedMessageIds.remove(messageId)
         localAttachmentPreviews.removeValue(forKey: messageId)
         pendingAttachmentByMessageId.removeValue(forKey: messageId)
-        sendMessage(text: failed.text, attachment: attachment, contact: contact, userId: userId, reply: failed.reply)
+        let shared = pendingSharedByMessageId.removeValue(forKey: messageId)
+        sendMessage(text: failed.text, attachment: attachment, contact: contact, userId: userId, reply: failed.reply, shared: shared)
     }
 
     /// Correlates an inbound `{"type":"error",...}` frame to the oldest
@@ -476,7 +495,7 @@ final class ChatThreadViewModel: ObservableObject {
         }
         if reason == "terms_reaccept_required" {
             termsGateSignal += 1
-            if pendingAttachmentByMessageId[failedId] == nil,
+            if pendingAttachmentByMessageId[failedId] == nil, pendingSharedByMessageId[failedId] == nil,
                let idx = messages.firstIndex(where: { $0.id == failedId }) {
                 restoredDraft = messages[idx].text
                 messages.remove(at: idx)
@@ -521,6 +540,7 @@ final class ChatThreadViewModel: ObservableObject {
     private func afterAck(clientRef: String, id: String) {
         pendingSendIds.removeAll { $0 == clientRef }
         pendingAttachmentByMessageId.removeValue(forKey: clientRef)
+        pendingSharedByMessageId.removeValue(forKey: clientRef)
         failedMessageIds.remove(clientRef)
         if let preview = localAttachmentPreviews.removeValue(forKey: clientRef) { localAttachmentPreviews[id] = preview }
         ackRevision += 1
@@ -1634,10 +1654,14 @@ struct ChatThreadView: View {
                 let (contacts, _) = (try? await appState.service.fetchContacts(userId: uid)) ?? ([], [:])
                 friends = contacts.filter { $0.type == .friend }
             }
+            consumePendingChatShare()
             // Task 20261001-message-threads: a thread push tap opened this
             // group chat first; now open the thread inside it.
             await consumePendingThreadOpen()
         }
+        // Task 20261012-share-verses-notes-in-chat: "Send in chat" picked this
+        // already-open chat (the .task above covers a freshly opened one).
+        .onChange(of: appState.pendingChatShare) { _, _ in consumePendingChatShare() }
         // A thread push tapped while this group's chat is already open.
         .onChange(of: appState.pendingThreadOpen) { _, _ in
             Task { await consumePendingThreadOpen() }
@@ -2677,7 +2701,7 @@ struct ChatThreadView: View {
         case .image: maxBytes = 15  * 1024 * 1024
         case .video: maxBytes = 250 * 1024 * 1024
         case .file:  maxBytes = 50  * 1024 * 1024
-        case .gif:   return nil
+        case .gif, .sharedVerse, .sharedNote: return nil
         }
         guard data.count <= maxBytes else {
             return AttachmentErrorCopy.forOversize(kind: attachment.kind)
@@ -2721,6 +2745,17 @@ struct ChatThreadView: View {
                 }
             }
         }
+    }
+
+    /// Sends a verse/note picked through "Send in chat" once this chat is loaded
+    /// and showing its main conversation (not an open thread). One-shot.
+    private func consumePendingChatShare() {
+        guard readyForInitialScroll, !vm.isThreadOpen,
+              let pending = appState.pendingChatShare, pending.contact.id == contact.id else { return }
+        appState.pendingChatShare = nil
+        let uid = appState.currentUser?.user_id ?? ""
+        vm.sendMessage(text: pending.payload.fallbackText, attachment: nil, contact: contact,
+                       userId: uid, shared: pending.payload)
     }
 
     private func sendMessage() {

@@ -39,6 +39,14 @@ struct NoteDetailView: View {
     var username: String              = ""
     var service:  DataServiceProtocol = MockDataService.shared
 
+    // Task 20261012-share-verses-notes-in-chat. `readOnly` is the view of a
+    // note opened from a chat share: no Edit, no replies, no send-in-chat. The
+    // banner names who shared it. `onSendInChat` (nil hides the button) is set
+    // by the notes list for a note the viewer may share.
+    var readOnly:     Bool          = false
+    var sharedBanner: String?       = nil
+    var onSendInChat: (() -> Void)? = nil
+
     // Returns nil on success, or an error message on failure (mirrors
     // NoteEditorView.onSave so a content-filter rejection keeps both sheets open).
     let onSave: (FSNote) async -> String?
@@ -106,6 +114,7 @@ struct NoteDetailView: View {
     // NoteRow.showsAuthorChip's same fallback -- the public-flag branch below
     // is purely additive on top of that, never a way around it.
     internal var canEdit: Bool {
+        if readOnly { return false }
         guard !note.group_id.isEmpty else { return true }
         if note.public { return true }
         guard !note.username.isEmpty, !username.isEmpty else { return false }
@@ -240,6 +249,10 @@ struct NoteDetailView: View {
                                     .font(.interScaled(Theme.fontSM, weight: .semibold))
                                     .foregroundColor(Theme.textPrimary)
                             }
+                        }
+
+                        if readOnly {
+                            readOnlyBanner
                         }
 
                         if !note.formattedTimestamp.isEmpty {
@@ -443,6 +456,12 @@ struct NoteDetailView: View {
                         dictationIconPill
                     }
                     .buttonStyle(.plain)
+                    if let onSendInChat, !readOnly {
+                        Button(action: onSendInChat) {
+                            sendInChatIconPill
+                        }
+                        .buttonStyle(.plain)
+                    }
                     if canEdit {
                         Button(action: editAction) {
                             gradientPill("Edit", compact: true)
@@ -817,6 +836,38 @@ struct NoteDetailView: View {
     // a secondary, non-destructive, always-available action (closer to
     // Close than to the primary Edit CTA), and using Edit's own gradient
     // here would read as a second primary action competing with it.
+    private var sendInChatIconPill: some View {
+        Image(systemName: "paperplane")
+            .font(.inter(Theme.fontSM))
+            .foregroundColor(Theme.textSecondary)
+            .frame(width: 32, height: 32)
+            .background(Capsule().fill(Theme.parchment.opacity(0.04)))
+            .overlay(Capsule().stroke(Theme.parchment.opacity(0.14), lineWidth: 1))
+            .accessibilityLabel("Send in chat")
+    }
+
+    /// "Read only" capsule plus who shared it (shared-note view only).
+    private var readOnlyBanner: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 5) {
+                Image(systemName: "lock.fill").font(.system(size: 10, weight: .bold))
+                Text("Read only").font(.system(size: 11, weight: .bold))
+            }
+            .foregroundColor(Theme.goldLight)
+            .padding(.horizontal, 10).padding(.vertical, 4)
+            .background(Theme.gold.opacity(0.14))
+            .overlay(Capsule().stroke(Theme.gold.opacity(0.32), lineWidth: 1))
+            .clipShape(Capsule())
+            if let sharedBanner, !sharedBanner.isEmpty {
+                Text(sharedBanner)
+                    .font(.inter(Theme.fontSM))
+                    .foregroundColor(Theme.textMuted)
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Read only. \(sharedBanner ?? "")")
+    }
+
     private var dictationIconPill: some View {
         Image(systemName: isSpeakingNote ? "speaker.wave.2.fill" : "speaker.wave.2")
             .symbolEffect(.variableColor.iterative, isActive: isSpeakingNote && !reduceMotion)

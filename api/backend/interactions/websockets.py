@@ -10,6 +10,7 @@ from datetime import datetime, timedelta, timezone
 import psycopg2
 from fastapi import WebSocket
 from schemas.message import Message, ATTACHMENT_KINDS
+from backend.interactions import shared_objects
 from db import DBManager, _connect
 from backend import content_store
 from backend.errors import SaveFailedError
@@ -50,6 +51,8 @@ _ATTACHMENT_PUSH_LABELS = {
     "video": "🎥 Video",
     "file":  "📎 File",
     "gif":   "GIF",
+    "shared_verse": "Shared a verse",
+    "shared_note":  "Shared a note",
 }
 
 
@@ -464,13 +467,19 @@ class ConnectionManager(DBManager):
         attachment_key  = payload.get("attachment_key")
         attachment_meta = payload.get("attachment_meta") or {}
         if attachment_kind is not None:
-            if attachment_kind not in ATTACHMENT_KINDS:
+            if attachment_kind not in ATTACHMENT_KINDS and attachment_kind not in shared_objects.SHARED_KINDS:
                 logger.warning(
                     "Dropping message from %s: unrecognized attachment_kind=%r",
                     from_user_id, attachment_kind,
                 )
                 return
-            if attachment_kind == "gif":
+            if attachment_kind in shared_objects.SHARED_KINDS:
+                # Verse/note shares carry no object key; the stored payload is
+                # rebuilt server-side after authorization (see below).
+                if attachment_key or not isinstance(attachment_meta, dict):
+                    logger.warning("Dropping message from %s: malformed %s", from_user_id, attachment_kind)
+                    return
+            elif attachment_kind == "gif":
                 # GIFs never populate attachment_key (no upload of our own) --
                 # the provider's url must be present in attachment_meta instead.
                 if not attachment_meta.get("url"):
@@ -576,6 +585,32 @@ class ConnectionManager(DBManager):
         if not group_id and any(uid in blocked_relationships for uid in to_users):
             # DM with a blocked relationship — drop entirely, no save/delivery.
             return
+
+        # Verse / note shares (flag ``chat_shared_objects``): the stored payload and
+        # the old-client fallback text are built HERE from validated input, never
+        # copied from the client frame. Every refusal is the uniform not_allowed.
+        if attachment_kind in shared_objects.SHARED_KINDS:
+            sender_ws = self.active_connections.get(from_user_id)
+            try:
+                if not flags.is_enabled(shared_objects.FLAG, from_user_id):
+                    raise shared_objects.ShareRejected("flag_off")
+                attachment_meta, text = shared_objects.resolve_share(
+                    self, str(uuid.UUID(from_user_id)), attachment_kind, attachment_meta)
+            except shared_objects.ShareRejected as e:
+                logger.info("share rejected sender=%s kind=%s cause=%s", from_user_id, attachment_kind, e)
+                if sender_ws:
+                    await sender_ws.send_json({"type": "error", "reason": "not_allowed",
+                                               "detail": "Couldn't send your message."})
+                return
+            except Exception as e:  # noqa: BLE001 - fail closed, retriable
+                logger.warning("share resolution failed closed: %s", type(e).__name__)
+                if sender_ws:
+                    await sender_ws.send_json({"type": "error", "reason": "send_failed",
+                                               "detail": "Couldn't send your message. Please try again."})
+                return
+            payload["text"] = text
+            payload["attachment_meta"] = attachment_meta
+            payload["attachment_key"] = None
 
         # Reply target (flag ``chat_replies``). The client sends only the target id;
         # only the target id is stored and every refusal is one

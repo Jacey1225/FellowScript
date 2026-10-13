@@ -88,7 +88,18 @@ extension NotesListView {
                             }
                         }
                     }
+                    .swipeActions(edge: .leading, allowsFullSwipe: false) {
+                        if canSendInChat(note) {
+                            Button { sendInChat(note) } label: {
+                                Label("Send in chat", systemImage: "paperplane")
+                            }
+                            .tint(Theme.gold)
+                        }
+                    }
                     .contextMenu {
+                        if canSendInChat(note) {
+                            Button("Send in Chat", systemImage: "paperplane") { sendInChat(note) }
+                        }
                         if canEdit(note) {
                             Button("Edit", systemImage: "pencil") {
                                 editingNote    = note
@@ -300,6 +311,26 @@ extension NotesListView {
     // (edit-permission) on -- the server enforces the identical split
     // between update_note's new non-owner branch and delete_note's
     // still-owner-only gate; this only drives which affordance(s) appear.
+    // Task 20261012-share-verses-notes-in-chat: a note may go into a chat only
+    // when the viewer wrote it, or it is a group note editable by the whole
+    // group (public). Same split the server enforces; flag-gated; never replies.
+    func canSendInChat(_ note: FSNote) -> Bool {
+        appState.capabilities.sharedObjectsEnabled && !note.is_reply && canEdit(note)
+    }
+
+    func sendInChat(_ note: FSNote) {
+        chatShare = ChatShareDraft(payload: .note(note, ownerUsername: note.username))
+    }
+
+    /// The picker can't stack on the detail sheet: close it, then present.
+    func sendInChatFromDetail(_ note: FSNote) {
+        detailNote = nil
+        Task {
+            try? await Task.sleep(nanoseconds: 450_000_000)
+            sendInChat(note)
+        }
+    }
+
     func canEdit(_ note: FSNote) -> Bool {
         canDelete(note) || (!note.group_id.isEmpty && note.public)
     }

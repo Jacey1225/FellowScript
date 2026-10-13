@@ -99,9 +99,10 @@ final class FriendInviteOfferCodeTests: XCTestCase {
         stub(200, #"{"code":"MINE42","link":"https://fellowscript.com/?code=MINE42","percent_off":50}"#)
         let fc = try await NetworkService.shared.fetchFriendCode(userId: "u1")
         XCTAssertEqual(fc, FSFriendCode(code: "MINE42", link: "https://fellowscript.com/?code=MINE42", percent_off: 50))
-        let req = try XCTUnwrap(StubURLProtocol.requestLog.last)
+        // The previous test's decode-failure beacon (/monitoring/client-error) can land after this
+        // test's setUp reset; select the friend-code request by path rather than taking `.last`.
+        let req = try XCTUnwrap(StubURLProtocol.requestLog.last { $0.path == "/api/promo/u1/friend-code" })
         XCTAssertEqual(req.method, "POST")
-        XCTAssertEqual(req.path, "/api/promo/u1/friend-code")
     }
 
     func test_friendCode_404_returnsNil() async throws {

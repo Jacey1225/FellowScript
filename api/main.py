@@ -23,6 +23,7 @@ from routes.group_announcements import group_announcements_router
 from routes.messages_delete import messages_delete_router
 from routes.message_reactions import message_reactions_router
 from routes.message_pins import message_pins_router
+from routes.shared_objects import shared_objects_router
 from routes.threads import threads_router
 from routes.invites import invites_router
 from routes.app_capabilities import capabilities_router
@@ -404,6 +405,7 @@ app.include_router(group_announcements_router)
 app.include_router(messages_delete_router)
 app.include_router(message_reactions_router)
 app.include_router(message_pins_router)
+app.include_router(shared_objects_router)
 app.include_router(threads_router)
 app.include_router(invites_router)
 app.include_router(email_verification_router)

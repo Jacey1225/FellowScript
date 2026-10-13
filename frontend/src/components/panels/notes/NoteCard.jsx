@@ -1,13 +1,13 @@
 import React from 'react';
 import { Button, Typography, Tag } from 'antd';
-import { EditOutlined, DeleteOutlined } from '@ant-design/icons';
+import { EditOutlined, DeleteOutlined, SendOutlined } from '@ant-design/icons';
 import VerseChip from './VerseChip.jsx';
 import { fmtDate, validVerses, stripHtml } from './noteFormat.js';
 
 const { Text } = Typography;
 
 // ── Note card ─────────────────────────────────────────────────────────────────
-export default function NoteCard({ id, note, owner, isOwn, onEdit, onDelete, onOpen, onNavigateVerse }) {
+export default function NoteCard({ id, note, owner, isOwn, onEdit, onDelete, onOpen, onNavigateVerse, onShare }) {
   const verses  = validVerses(note.verses);
   // A personal note (no owner label shown) is always the caller's own, and
   // an author can always edit/delete their own note. A non-owner group
@@ -37,8 +37,13 @@ export default function NoteCard({ id, note, owner, isOwn, onEdit, onDelete, onO
           {owner && note.public && <Tag style={{ marginLeft: 6, fontSize: '0.52rem', letterSpacing: '0.12em' }}>Editable</Tag>}
           {owner && <Tag color="gold" style={{ marginLeft: 4, fontSize: '0.52rem' }}>{owner}</Tag>}
         </Text>
-        {(canEdit || canDelete) && (
+        {(canEdit || canDelete || onShare) && (
           <div style={{ display: 'flex', gap: 2, flexShrink: 0 }} onClick={e => e.stopPropagation()}>
+            {onShare && (
+              <Button type="text" size="small" icon={<SendOutlined />} onClick={() => onShare(id)}
+                aria-label="Send in chat" title="Send in chat"
+                style={{ color: 'rgba(255,198,26,0.45)', padding: '0 4px' }} />
+            )}
             {canEdit && (
               <Button type="text" size="small" icon={<EditOutlined />} onClick={() => onEdit(id)}
                 style={{ color: 'rgba(255,198,26,0.45)', padding: '0 4px' }} />

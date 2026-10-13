@@ -591,6 +591,24 @@ struct FSAttachmentMeta: Codable, Equatable {
     var previewUrl: String? = nil
     var width:      Int?    = nil
     var height:     Int?    = nil
+    // Task 20261012-share-verses-notes-in-chat: `shared_verse` / `shared_note`
+    // payloads, built server-side. Verse: book/chapter/verse/verse_end/
+    // reference/text/translation. Note (send-time snapshot): note_id/title/
+    // preview/timestamp/is_group_note/owner_username/owner_id.
+    var book:          String? = nil
+    var chapter:       Int?    = nil
+    var verse:         Int?    = nil
+    var verseEnd:      Int?    = nil
+    var reference:     String? = nil
+    var text:          String? = nil
+    var translation:   String? = nil
+    var noteId:        String? = nil
+    var title:         String? = nil
+    var preview:       String? = nil
+    var timestamp:     String? = nil
+    var isGroupNote:   Bool?   = nil
+    var ownerUsername: String? = nil
+    var ownerId:       String? = nil
 
     enum CodingKeys: String, CodingKey {
         case filename
@@ -598,6 +616,14 @@ struct FSAttachmentMeta: Codable, Equatable {
         case previewUrl = "preview_url"
         case width
         case height
+        case book, chapter, verse
+        case verseEnd = "verse_end"
+        case reference, text, translation
+        case noteId = "note_id"
+        case title, preview, timestamp
+        case isGroupNote = "is_group_note"
+        case ownerUsername = "owner_username"
+        case ownerId = "owner_id"
     }
 }
 
@@ -663,6 +689,8 @@ extension FSMessage {
         case .video: return "Video"
         case .gif:   return "GIF"
         case .file:  return "File"
+        case .sharedVerse: return "Verse"
+        case .sharedNote:  return "Note"
         case nil:    return "Message"
         }
     }
@@ -729,6 +757,13 @@ struct FSMessage: Identifiable, Codable {
 /// both the composer's picker and the thread's renderer key off.
 enum FSAttachmentKind: String {
     case image, video, file, gif
+    // Task 20261012-share-verses-notes-in-chat: structured chat shares. No
+    // object key; the payload rides in `attachment_meta` (built server-side)
+    // and `text` is only the old-client fallback line.
+    case sharedVerse = "shared_verse"
+    case sharedNote  = "shared_note"
+
+    var isShared: Bool { self == .sharedVerse || self == .sharedNote }
 }
 
 /// `POST /message/upload-url/{user_id}` response — a presigned S3 POST

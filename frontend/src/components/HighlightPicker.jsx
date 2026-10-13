@@ -5,7 +5,7 @@ const COLORS = [
   '#F5C842', '#E8861A', '#4CAF78', '#E0607E', '#5B9BD5',
 ];
 
-export default function HighlightPicker({ visible, position, onColor, onClear }) {
+export default function HighlightPicker({ visible, position, onColor, onClear, onShare }) {
   if (!visible) return null;
 
   return (
@@ -25,6 +25,12 @@ export default function HighlightPicker({ visible, position, onColor, onClear })
       ))}
       <div className="hl-divider" />
       <button className="hl-clear" onClick={onClear} title="Clear highlight">✕</button>
+      {onShare && (
+        <>
+          <div className="hl-divider" />
+          <button type="button" className="hl-send" onClick={onShare} style={{ color: 'var(--gold)' }}>Send in chat</button>
+        </>
+      )}
     </div>
   );
 }
