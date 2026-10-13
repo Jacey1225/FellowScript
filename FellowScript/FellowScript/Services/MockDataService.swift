@@ -53,6 +53,9 @@ protocol DataServiceProtocol {
     // Task 20261010-reaction-highlight-push: GET/PUT /notification/{id}/push-preferences.
     func fetchFriendHighlightPush(userId: String) async throws -> Bool
     func setFriendHighlightPush(userId: String, enabled: Bool) async throws
+    // Task 20261012-notification-settings: full per-type map.
+    func fetchPushPreferences(userId: String) async throws -> [String: Bool]
+    func setPushPreference(userId: String, key: String, enabled: Bool) async throws -> [String: Bool]
 
     // Two-factor authentication
     func verifyMfaLogin(userId: String, code: String) async throws -> FSUser
@@ -395,6 +398,12 @@ extension DataServiceProtocol {
         throw AppError.networkError("Notification settings unavailable.")
     }
     func setFriendHighlightPush(userId: String, enabled: Bool) async throws {
+        throw AppError.networkError("Notification settings unavailable.")
+    }
+    func fetchPushPreferences(userId: String) async throws -> [String: Bool] {
+        throw AppError.networkError("Notification settings unavailable.")
+    }
+    func setPushPreference(userId: String, key: String, enabled: Bool) async throws -> [String: Bool] {
         throw AppError.networkError("Notification settings unavailable.")
     }
 }

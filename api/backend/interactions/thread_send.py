@@ -51,6 +51,7 @@ from backend.interactions import flags
 from backend.interactions.attachments import generate_download_url
 from backend.interactions.paging import format_timestamp
 from backend.interactions.push import send_push
+from backend.interactions.push_preferences import async_disabled_user_ids
 from backend.interactions.send_guard import resolve_main_chat_recipients, validate_attachment_key
 from backend.interactions.threads import canon
 from backend.interactions.threads_config import get_threads_config
@@ -298,6 +299,10 @@ async def _deliver(manager, sender_id, sender, group_id, thread_id, recipients, 
                 muted = {str(r[0]).lower() for r in manager.cur.fetchall()}
             except Exception as e:  # noqa: BLE001 - fails open (a muted follower may get a push)
                 logger.warning("Thread group-mute lookup failed: %s", type(e).__name__)
+
+    if followers:
+        # Task 20261012-notification-settings: "messages" opt-out (fails open).
+        followers -= await async_disabled_user_ids(followers, "messages")
 
     if msg["text"]:
         body = msg["text"] if len(msg["text"]) <= 100 else msg["text"][:97] + "…"

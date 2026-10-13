@@ -93,6 +93,7 @@ struct AccountView: View {
     }
 
     @State var showBlockedUsers = false
+    @State var showNotificationSettings = false
 
     // Two-factor authentication (email code)
     @State var mfaEnabled = false
@@ -161,10 +162,8 @@ struct AccountView: View {
                         // ── Privacy & Safety ───────────────────────────────────
                         privacySafetySection
 
-                        // ── Notifications (task 20261010-reaction-highlight-push) ──
-                        if appState.capabilities.friendHighlightPushEnabled, let uid = appState.currentUser?.user_id {
-                            FriendHighlightPushSection(service: appState.service, userId: uid)
-                        }
+                        // ── Notifications (task 20261012-notification-settings) ──
+                        notificationsSection
 
                         // ── Legal ───────────────────────────────────────────────
                         legalSection
@@ -205,6 +204,11 @@ struct AccountView: View {
             .navigationBarTitleDisplayMode(.large)
             .navigationDestination(isPresented: $showBlockedUsers) {
                 BlockedUsersView(userId: appState.currentUser?.user_id ?? "", service: appState.service)
+            }
+            .navigationDestination(isPresented: $showNotificationSettings) {
+                NotificationSettingsView(userId: appState.currentUser?.user_id ?? "",
+                                         service: appState.service,
+                                         capabilities: appState.capabilities)
             }
         }
         // Shared keyboard-dismiss convention (task

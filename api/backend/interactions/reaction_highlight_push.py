@@ -35,6 +35,7 @@ import logging
 import uuid
 
 from backend.interactions import flags
+from backend.interactions.push_preferences import is_push_enabled
 from db import DBManager
 
 logger = logging.getLogger(__name__)
@@ -80,6 +81,9 @@ def _prepare_reaction(message_id: str, reactor_id: str, emoji: str, group_id: st
             return None
         author, msg_group = row[0].lower(), row[1]
         if author == reactor or not flags.is_enabled(REACTION_FLAG, author):
+            db.conn.rollback()
+            return None
+        if not is_push_enabled(author, "reactions"):  # task 20261012-notification-settings
             db.conn.rollback()
             return None
         db.cur.execute(

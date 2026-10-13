@@ -10,7 +10,7 @@ import {
   LogoutOutlined, DeleteOutlined, RobotOutlined,
   PlusOutlined, ThunderboltOutlined, EditOutlined,
   CheckOutlined, CloseOutlined, CalendarOutlined, TeamOutlined,
-  CameraOutlined, LeftOutlined,
+  CameraOutlined, LeftOutlined, RightOutlined, BellOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
@@ -1112,6 +1112,28 @@ export default function Account() {
             <Switch checked={!!profileData?.mfa_enabled} loading={mfaLoading} onChange={handleMfaToggle} />
           </div>
         </Card>
+
+        {/* Hidden in the desktop shell: /account/notifications is not on the
+            closed DESKTOP_ALLOWED_ROUTES allowlist (task 20261012-notification-settings). */}
+        {!isDesktopApp() && (
+          <Card style={{ ...CARD_STYLE, animationDelay: '0.21s', animation: 'fadeUp 0.55s ease forwards', opacity: 0 }}>
+            <Link
+              to="/account/notifications"
+              aria-label="Notifications settings"
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', textDecoration: 'none' }}
+            >
+              <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <Text className="fs-eyebrow" style={{ marginBottom: 0 }}>
+                  <BellOutlined aria-hidden="true" style={{ marginRight: 8 }} />Notifications
+                </Text>
+                <Text style={{ fontFamily: "'Lora', serif", fontSize: '0.82rem', color: 'rgba(244,228,193,0.6)' }}>
+                  Choose which push notifications you receive.
+                </Text>
+              </span>
+              <RightOutlined aria-hidden="true" style={{ color: 'rgba(200,134,26,0.7)' }} />
+            </Link>
+          </Card>
+        )}
 
         {/* Blocked users */}
         <Card style={{ ...CARD_STYLE, animationDelay: '0.22s', animation: 'fadeUp 0.55s ease forwards', opacity: 0 }}>

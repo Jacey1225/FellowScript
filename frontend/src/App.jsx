@@ -3,6 +3,7 @@ import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Home from './pages/Home.jsx';
 import Reader from './pages/Reader.jsx';
 import Account from './pages/Account.jsx';
+import NotificationSettings from './pages/NotificationSettings.jsx';
 import SignIn from './pages/SignIn.jsx';
 import ForgotPassword from './pages/ForgotPassword.jsx';
 import ResetPassword from './pages/ResetPassword.jsx';
@@ -132,6 +133,8 @@ export default function App() {
               the Tauri shell should ever navigate into (design-notes.md §6). */}
           <Route path="/download"  element={<Download />} />
           <Route path="/account"   element={<Account />} />
+          {/* Task 20261012-notification-settings: push-type toggles sub-page. */}
+          <Route path="/account/notifications" element={<NotificationSettings />} />
           {/* Task 20260929-group-invite-links: join-by-link confirmation.
               Public (preview works signed out); allowed on desktop via
               desktopScope.js's DESKTOP_ALLOWED_ROUTE_PATTERNS. */}

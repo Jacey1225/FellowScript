@@ -37,6 +37,7 @@ import logging
 import uuid
 from datetime import datetime, timezone
 
+from backend.interactions.push_preferences import disabled_user_ids
 from db import DBManager
 
 logger = logging.getLogger(__name__)
@@ -172,6 +173,9 @@ def _recipients(db: DBManager, group_id: str, creator_id: str | None) -> tuple[s
         )
         excluded |= {str(r[0]) for r in db.cur.fetchall()}
 
+    # Task 20261012-notification-settings: "announcements" opt-out (fails open).
+    opted_out = disabled_user_ids(users, "announcements")
+    excluded |= {u for u in users if u.lower() in opted_out}
     eligible = [u for u in users if u not in excluded]
     if not eligible:
         return group_title, []

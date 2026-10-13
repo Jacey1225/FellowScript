@@ -18,6 +18,7 @@ from backend.interactions import flags, message_replies
 from backend.interactions.chat_config import get_pagination_config
 from backend.interactions.paging import format_timestamp
 from backend.interactions.push import send_push
+from backend.interactions.push_preferences import async_disabled_user_ids
 from backend.interactions.send_guard import authorize_send, Drop, Reject, SendDecision, Unavailable
 from backend.moderation.content_filter import check_clean, ContentRejected, rejection_message
 
@@ -738,6 +739,14 @@ class ConnectionManager(DBManager):
             except Exception as e:
                 logger.error("Group-mute lookup failed for group %s: %s", group_id, e)
 
+        # Task 20261012-notification-settings: per-type opt-out ("messages").
+        # Like mute, only the offline push is suppressed; fails open.
+        pref_off: set[str] = set()
+        if device_tokens:
+            offline = [u for u in device_tokens if self.active_connections.get(u) is None]
+            if offline:
+                pref_off = await async_disabled_user_ids(offline, "messages")
+
         for uid in to_users:
             if uid in blocked_relationships:
                 # Group message: still persisted for other members, but skip
@@ -791,6 +800,8 @@ class ConnectionManager(DBManager):
                     token = device_tokens.get(uid)
                     if token and uid in muted_uids:
                         token = None  # muted: skip the push, keep in-thread delivery
+                    if token and str(uid).lower() in pref_off:
+                        token = None  # opted out of message pushes
                     if token:
                         if text:
                             body = text if len(text) <= 100 else text[:97] + "…"

@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException, Depends
-from pydantic import BaseModel, StrictBool
+from pydantic import BaseModel, ConfigDict, StrictBool, model_validator
 from backend.auth.dependencies import require_match
+from backend.interactions import push_preferences as push_prefs
 from db import DBManager
 import logging
 
@@ -72,45 +73,56 @@ async def register_voip_device_token(user_id: str, body: dict, _: str = Depends(
         db.close()
 
 
-# ── Push preferences (task 20261010-reaction-highlight-push) ──────────────────
+# ── Push preferences (tasks 20261010-reaction-highlight-push, 20261012-notification-settings) ──
 #
-# Per-user opt-out for friend-highlight pushes. Default ON: a missing row means
-# on. Path user is matched against the session by require_match, so a caller can
-# only read or write their own setting. Not flag-gated (the stored value is
-# harmless while the push flag is off); iOS hides the toggle via capabilities.
+# Per-user opt-out per push type (keys: backend.interactions.push_preferences.PUSH_TYPES;
+# grouping and the essential, non-toggleable pushes are documented there). Default
+# ON: a missing row or column value means on. The path user is matched against
+# the session by require_match, so a caller can only read or write their own
+# settings. Not flag-gated (stored values are harmless while a push flag is
+# off); clients hide a type via /app/capabilities. GET returns every known key
+# as a flat {key: bool} map, so the original {"friend_highlight": bool} client
+# keeps working. PUT takes any non-empty subset of known keys (strict bool,
+# unknown keys rejected with 422) and returns the full resulting map.
 
 class PushPreferences(BaseModel):
-    friend_highlight: StrictBool
+    model_config = ConfigDict(extra="forbid")
+
+    messages: StrictBool | None = None
+    pins: StrictBool | None = None
+    reactions: StrictBool | None = None
+    friend_highlight: StrictBool | None = None
+    announcements: StrictBool | None = None
+    session_reminders: StrictBool | None = None
+    reminders: StrictBool | None = None
+    friend_activity: StrictBool | None = None
+    join_requests: StrictBool | None = None
+
+    @model_validator(mode="after")
+    def _at_least_one(self):
+        if not self.model_fields_set or all(getattr(self, f) is None for f in self.model_fields_set):
+            raise ValueError("at least one preference is required")
+        if any(getattr(self, f) is None for f in self.model_fields_set):
+            raise ValueError("preference values must be booleans")
+        return self
 
 
 @notification_router.get("/{user_id}/push-preferences")
 async def get_push_preferences(user_id: str, _: str = Depends(require_match("user_id"))) -> dict:
-    db = DBManager()
     try:
-        db.cur.execute("SELECT friend_highlight FROM push_preferences WHERE user_id = %s", (user_id,))
-        row = db.cur.fetchone()
-        db.conn.rollback()
-        return {"friend_highlight": True if row is None else bool(row[0])}
-    finally:
-        db.close()
+        return push_prefs.get_preferences(user_id)
+    except Exception as e:
+        logger.error("Error loading push preferences: %s", type(e).__name__)
+        raise HTTPException(status_code=500, detail="Failed to load preferences")
 
 
 @notification_router.put("/{user_id}/push-preferences")
 async def set_push_preferences(
     user_id: str, body: PushPreferences, _: str = Depends(require_match("user_id")),
 ) -> dict:
-    db = DBManager()
+    updates = {f: getattr(body, f) for f in body.model_fields_set}
     try:
-        db.cur.execute(
-            "INSERT INTO push_preferences (user_id, friend_highlight, updated_at) VALUES (%s, %s, NOW()) "
-            "ON CONFLICT (user_id) DO UPDATE SET friend_highlight = EXCLUDED.friend_highlight, updated_at = NOW()",
-            (user_id, body.friend_highlight),
-        )
-        db.conn.commit()
-        return {"friend_highlight": body.friend_highlight}
+        return push_prefs.set_preferences(user_id, updates)
     except Exception as e:
-        db.conn.rollback()
         logger.error("Error saving push preferences: %s", type(e).__name__)
         raise HTTPException(status_code=500, detail="Failed to save preferences")
-    finally:
-        db.close()

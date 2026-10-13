@@ -20,6 +20,7 @@ import logging
 
 from backend.interactions import flags
 from backend.interactions.message_reactions import _canon
+from backend.interactions.push_preferences import disabled_user_ids
 from db import DBManager
 
 logger = logging.getLogger(__name__)
@@ -69,10 +70,11 @@ def _prepare(chat_key: str, pinner_id: str, message_id: str, recipients: list[st
             except Exception:  # noqa: BLE001 - mute is a comfort pref: fail open like chat push
                 db.conn.rollback()
         db.conn.rollback()
+        pref_off = disabled_user_ids(ids, "pins")  # task 20261012-notification-settings; fails open
         out = []
         for rid in ids:
             token = tokens.get(rid)
-            if not token or rid in blocked or rid in muted or not flags.is_enabled(FLAG, rid):
+            if not token or rid in blocked or rid in muted or rid in pref_off or not flags.is_enabled(FLAG, rid):
                 continue
             out.append({
                 "token": token, "title": name, "body": "pinned a message",

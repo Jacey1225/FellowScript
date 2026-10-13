@@ -97,6 +97,7 @@ DDL_MODULES = (
     "reaction_highlight_push",
     "message_replies",
     "message_pins",
+    "notification_preferences",
 )
 
 

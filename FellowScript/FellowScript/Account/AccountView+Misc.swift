@@ -30,6 +30,28 @@ extension AccountView {
         .glassCard(cornerRadius: 20)
     }
 
+    /// Task 20261012-notification-settings: entry row to the Notifications sub-page.
+    var notificationsSection: some View {
+        VStack(alignment: .leading, spacing: Theme.spacingSM) {
+            sectionLabel("Notifications")
+            Button(action: { showNotificationSettings = true }) {
+                HStack {
+                    Label("Notification settings", systemImage: "bell")
+                        .font(.inter(Theme.fontBody))
+                        .foregroundColor(Theme.parchment)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption)
+                        .foregroundColor(Theme.textMuted)
+                }
+            }
+            .accessibilityLabel("Notification settings")
+            .accessibilityHint("Choose which push notifications you receive")
+        }
+        .padding(.horizontal, 18).padding(.vertical, 16)
+        .glassCard(cornerRadius: 20)
+    }
+
     var legalSection: some View {
         VStack(alignment: .leading, spacing: Theme.spacingSM) {
             sectionLabel("Legal")

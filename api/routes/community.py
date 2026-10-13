@@ -7,6 +7,7 @@ from backend.interactions.groups import (
 )
 from backend.interactions.friends import  FriendsManager, is_nudge_enabled
 from backend.interactions.push import send_push
+from backend.interactions.push_preferences import async_is_push_enabled
 from backend.interactions import flags, paging
 from backend.interactions.chat_config import get_pagination_config
 from backend.auth.dependencies import require_match
@@ -686,6 +687,11 @@ async def nudge_friend(
                 status_code=status_by_reason.get(check["reason"], 403),
                 detail=check["error"],
             )
+        # Task 20261012-notification-settings: recipient opted out of
+        # "friend_activity" pushes. Same response as an unreachable friend so
+        # the sender cannot read the recipient's settings; no slot is claimed.
+        if not await async_is_push_enabled(friend_id, "friend_activity"):
+            raise HTTPException(status_code=404, detail="This friend can't be reached right now")
         if not manager.claim_nudge_slot(friend_id):
             raise HTTPException(
                 status_code=429,

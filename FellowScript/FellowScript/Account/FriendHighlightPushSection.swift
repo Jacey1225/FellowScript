@@ -1,5 +1,6 @@
 // FriendHighlightPushSection.swift -- task 20261010-reaction-highlight-push.
-// Account-tab toggle for "friend highlight" pushes (GET/PUT
+// Model for the (now superseded by NotificationSettingsView, task
+// 20261012-notification-settings) Account-tab toggle for "friend highlight" pushes (GET/PUT
 // /notification/{id}/push-preferences). Rendered only when the server's
 // `friend_highlight_push` capability is on (AccountView+Misc.swift), so it is
 // hidden while the flag is off. Throw-not-fabricate: the switch only shows the
@@ -45,46 +46,5 @@ final class FriendHighlightPushModel: ObservableObject {
         } catch {
             errorMessage = "Couldn't save. Please try again."
         }
-    }
-}
-
-struct FriendHighlightPushSection: View {
-    @StateObject private var model: FriendHighlightPushModel
-
-    init(service: DataServiceProtocol, userId: String) {
-        _model = StateObject(wrappedValue: FriendHighlightPushModel(service: service, userId: userId))
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: Theme.spacingSM) {
-            Text("NOTIFICATIONS")
-                .font(.inter(Theme.fontXS, weight: .semibold))
-                .foregroundColor(Theme.textMuted)
-                .accessibilityAddTraits(.isHeader)
-            Toggle(isOn: Binding(get: { model.enabled },
-                                 set: { v in Task { await model.set(v) } })) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Friend highlights")
-                        .font(.inter(Theme.fontBody))
-                        .foregroundColor(Theme.parchment)
-                    Text("Notify me when a friend highlights a verse")
-                        .font(.inter(Theme.fontXS))
-                        .foregroundColor(Theme.textMuted)
-                }
-            }
-            .tint(Theme.gold)
-            .disabled(!model.loaded || model.saving)
-            .accessibilityLabel("Friend highlight notifications")
-            .accessibilityHint("Turns notifications for friends' verse highlights on or off")
-            if let msg = model.errorMessage {
-                Text(msg)
-                    .font(.inter(Theme.fontXS))
-                    .foregroundColor(.red)
-                    .accessibilityLabel(msg)
-            }
-        }
-        .padding(.horizontal, 18).padding(.vertical, 16)
-        .glassCard(cornerRadius: 20)
-        .task { await model.load() }
     }
 }

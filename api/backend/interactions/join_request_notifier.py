@@ -38,6 +38,7 @@ import logging
 from backend.interactions import flags
 from backend.interactions.join_requests import canon
 from backend.interactions.join_requests_config import get_join_requests_config
+from backend.interactions.push_preferences import is_push_enabled
 from db import DBManager
 
 logger = logging.getLogger(__name__)
@@ -102,6 +103,8 @@ def _prepare_owner_push(request_id: str) -> dict | None:
             return None
         group_id, owner_id, title = row
         if not flags.is_enabled("join_request_push", owner_id):
+            return None
+        if not is_push_enabled(owner_id, "join_requests"):  # task 20261012-notification-settings
             return None
         if not _owner_present(db, group_id, owner_id):
             db.conn.rollback()

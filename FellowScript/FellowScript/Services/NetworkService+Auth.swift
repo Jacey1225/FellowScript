@@ -179,4 +179,32 @@ extension NetworkService {
         _ = try await checkedRequestRaw("/notification/\(encodeURIComponent(userId))/push-preferences", method: "PUT",
                                         jsonObject: ["friend_highlight": enabled])
     }
+
+    // Task 20261012-notification-settings: full per-type push preference map
+    // (GET/PUT /notification/{id}/push-preferences). Throws on any failure or
+    // a body missing a requested key; never fabricates a value.
+    func fetchPushPreferences(userId: String) async throws -> [String: Bool] {
+        let data = try await request("/notification/\(encodeURIComponent(userId))/push-preferences", method: "GET")
+        return try Self.parsePushPreferences(data)
+    }
+
+    func setPushPreference(userId: String, key: String, enabled: Bool) async throws -> [String: Bool] {
+        let data = try await checkedRequestRaw("/notification/\(encodeURIComponent(userId))/push-preferences", method: "PUT",
+                                               jsonObject: [key: enabled])
+        return try Self.parsePushPreferences(data)
+    }
+
+    static func parsePushPreferences(_ data: Data) throws -> [String: Bool] {
+        guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw AppError.networkError("Notification settings unavailable.")
+        }
+        var out: [String: Bool] = [:]
+        for t in NotificationPushType.all {
+            guard let v = obj[t.key] as? Bool else {
+                throw AppError.networkError("Notification settings unavailable.")
+            }
+            out[t.key] = v
+        }
+        return out
+    }
 }

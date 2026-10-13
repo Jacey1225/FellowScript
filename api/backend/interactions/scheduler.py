@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone as tzmod
 from zoneinfo import ZoneInfo
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from db import DBManager
+from backend.interactions.push_preferences import async_disabled_user_ids, async_is_push_enabled
 from backend.subscription.subscriptions import SubscriptionsManager
 from backend.monitoring.watchdog import WATCHDOG_POLL_INTERVAL_SECONDS
 
@@ -194,8 +195,11 @@ async def _midday_no_activity_reminder() -> None:
 
     am = ActivityManager()
     try:
-        for user_id, tzname, last_activity, midday_sent, _guilt_sent, token in am.users_with_tokens():
-            if not token:
+        rows = am.users_with_tokens()
+        # Task 20261012-notification-settings: "reminders" opt-out (fails open).
+        reminders_off = await async_disabled_user_ids([r[0] for r in rows], "reminders")
+        for user_id, tzname, last_activity, midday_sent, _guilt_sent, token in rows:
+            if not token or str(user_id).lower() in reminders_off:
                 continue
             try:
                 local = datetime.now(tzmod.utc).astimezone(ZoneInfo(tzname or "UTC"))
@@ -235,8 +239,10 @@ async def _guilt_no_activity_reminder() -> None:
     am = ActivityManager()
     try:
         now = datetime.now(tzmod.utc)
-        for user_id, _tz, last_activity, _midday_sent, guilt_sent, token in am.users_with_tokens():
-            if not token or last_activity is None:
+        rows = am.users_with_tokens()
+        reminders_off = await async_disabled_user_ids([r[0] for r in rows], "reminders")
+        for user_id, _tz, last_activity, _midday_sent, guilt_sent, token in rows:
+            if not token or last_activity is None or str(user_id).lower() in reminders_off:
                 continue
             if now - last_activity <= INACTIVITY_THRESHOLD:
                 continue
@@ -332,10 +338,15 @@ async def _friend_went_active_notify() -> None:
         ):
             tokens_by_user.setdefault(str(user_id), []).append((friend_id, token))
 
+        # Task 20261012-notification-settings: "friend_activity" opt-out (fails open).
+        friend_activity_off = await async_disabled_user_ids(
+            [fid for pairs in tokens_by_user.values() for fid, _ in pairs], "friend_activity",
+        )
+
         for user_id, username, became_active_at, last_activity_type in pending:
             body = _compose_body(am, user_id, username, last_activity_type)
             for friend_id, token in tokens_by_user.get(str(user_id), []):
-                if not token:
+                if not token or str(friend_id).lower() in friend_activity_off:
                     continue
                 try:
                     await send_push(token, "Friend Activity", body)
@@ -503,6 +514,8 @@ async def _fire_due_heartbeats() -> None:
                 )
                 if not token:
                     continue
+                if not await async_is_push_enabled(user_id, "reminders"):
+                    continue  # task 20261012-notification-settings: opted out
 
                 title = agent_name or "Scheduled Event"
                 # No prompt/note content in the alert -- a remote push transits
@@ -648,13 +661,15 @@ async def _fire_due_session_reminders() -> None:
                 tokens = await loop.run_in_executor(
                     None, functools.partial(db.device_tokens_bulk, members)
                 )
+                # Task 20261012-notification-settings: "session_reminders" opt-out.
+                sr_off = await async_disabled_user_ids(members, "session_reminders")
 
                 session_title = session.get("title") or ""
                 body = f'"{session_title}" is starting now.' if session_title \
                     else "Your scheduled session is starting now."
                 for uid in members:
                     token = tokens.get(uid)
-                    if not token:
+                    if not token or str(uid).lower() in sr_off:
                         continue
                     try:
                         await send_push(

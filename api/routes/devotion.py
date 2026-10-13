@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends, Request
 from schemas.devotion import DevotionRequest, DevotionPlan, RingRequest
+from backend.interactions.push_preferences import async_disabled_user_ids
 from backend.interactions.devotion import DevotionManager, is_ring_enabled, is_ring_voip_enabled, ring_timeout_seconds
 from backend.auth.dependencies import get_current_user, require_match
 from backend.moderation.content_filter import check_clean, ContentRejected, rejection_message
@@ -46,9 +47,11 @@ async def _notify_session_created(db: DevotionManager, devotion: DevotionPlan, s
     creator_name = db.get_username(creator_id) or "Someone"
     body = f'{creator_name} scheduled a new session: "{devotion.title}".' if devotion.title \
         else f"{creator_name} scheduled a new session."
+    # Task 20261012-notification-settings: "session_reminders" opt-out (fails open).
+    sr_off = await async_disabled_user_ids(members, "session_reminders")
     for uid in members:
         token = tokens.get(uid)
-        if not token:
+        if not token or str(uid).lower() in sr_off:
             continue
         try:
             await send_push(
