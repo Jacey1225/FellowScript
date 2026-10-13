@@ -32,6 +32,12 @@ exactly one note, never the author's others, and the payload carries no reply
 or reshare capability. Deleting the message revokes the grant; restoring it
 restores the grant. The note itself is a live view (later edits are visible).
 
+Preview text: note ``text`` is rich-text HTML, so ``build_note`` reduces it to plain text
+(``html_text.html_to_text``, stdlib parser) BEFORE clipping; the snapshot and the fallback
+line never carry markup. Rows stored before this fix are cleaned at READ time
+(``html_text.clean_shared_note_meta``, applied where DM/group history is serialized), so no
+migration or backfill is needed and the stored rows are left untouched.
+
 Logs carry ids only.
 """
 from __future__ import annotations
@@ -45,6 +51,7 @@ from backend.interactions import flags
 from backend.interactions.bible_text import is_valid_reference, verse_text
 from backend.interactions.chat_config import CONFIG_PATH
 from backend.interactions.groups import live_member_ids
+from backend.interactions.html_text import html_to_text
 from backend.interactions.message_reactions import MessageReactionsManager, _canon
 
 logger = logging.getLogger(__name__)
@@ -140,7 +147,7 @@ def build_note(mgr, sender_id: str, meta) -> tuple[dict, str]:
     if note is None or not sender_may_share_note(mgr, sender_id, note):
         raise ShareRejected("note_not_shareable")  # uniform: missing and forbidden look the same
     cfg = _config()
-    title = _clip(note.get("title"), cfg["note_title_max_chars"]) or "Untitled note"
+    title = _clip(html_to_text(note.get("title")), cfg["note_title_max_chars"]) or "Untitled note"
     ts = note.get("timestamp") or note.get("created_at")
     owner = str(note.get("user_id") or "").lower()
     mgr.cur.execute("SELECT username FROM users WHERE _id = %s::uuid", (owner,))
@@ -148,7 +155,7 @@ def build_note(mgr, sender_id: str, meta) -> tuple[dict, str]:
     out = {
         "note_id": nid,
         "title": title,
-        "preview": _clip(note.get("text"), cfg["note_preview_max_chars"]),
+        "preview": _clip(html_to_text(note.get("text")), cfg["note_preview_max_chars"]),
         "timestamp": ts.isoformat() if hasattr(ts, "isoformat") else str(ts or ""),
         "is_group_note": bool(note.get("group_id")),
         "owner_username": row[0] if row else "",

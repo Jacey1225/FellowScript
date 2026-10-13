@@ -11,6 +11,7 @@ from backend import content_store
 from backend.content_config import get_content_config
 from backend.errors import SaveFailedError
 from backend.interactions.attachments import generate_download_url
+from backend.interactions.html_text import clean_shared_note_meta
 from backend.interactions import lifecycle, paging
 from backend.interactions.message_pins import attach_pins
 from backend.interactions.message_reactions import attach_reactions
@@ -378,7 +379,7 @@ class GroupsManager(DBManager):
                 "text": content_store.open_(_id, content_store.F_MESSAGE_TEXT, text),
                 "timestamp": paging.format_timestamp(ts),
                 "attachment_kind": kind,
-                "attachment_meta": meta,
+                "attachment_meta": clean_shared_note_meta(kind, meta),
                 "attachment_url": generate_download_url(key) if key else None,
             })
         attach_reactions(self, messages, self.user_id)

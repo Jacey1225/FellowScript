@@ -177,6 +177,94 @@ struct SharedVerseWidget: View {
 
 // ── Note card (NoteRow look) ─────────────────────────────────────────────────
 
+/// Defense-in-depth: the server strips markup from note previews, but older
+/// stored rows, cached messages, or an un-deployed server can still carry rich
+/// text HTML. Strips tags (script/style content dropped, block tags become
+/// spaces), decodes common entities, and collapses whitespace. Pure string work.
+enum SharedNotePreview {
+    private static let blockTags: Set<String> = [
+        "p", "div", "br", "li", "ul", "ol", "tr", "td", "th", "blockquote", "pre", "hr",
+        "h1", "h2", "h3", "h4", "h5", "h6", "section", "article", "table",
+    ]
+
+    static func plainText(_ raw: String?) -> String {
+        guard let raw = raw, !raw.isEmpty else { return "" }
+        guard raw.contains("<") || raw.contains("&") else {
+            return collapse(raw)
+        }
+        var out = ""
+        var skipUntil: String? = nil   // closing tag name for script/style
+        var i = raw.startIndex
+        while i < raw.endIndex {
+            let c = raw[i]
+            if c == "<" {
+                // A tag starts only before a letter, "/" or "!"; otherwise literal "<".
+                let next = raw.index(after: i)
+                let startsTag = next < raw.endIndex && (raw[next].isLetter || raw[next] == "/" || raw[next] == "!")
+                if startsTag {
+                    if let close = raw[next...].firstIndex(of: ">") {
+                        var inner = raw[next..<close].lowercased()
+                        let isClosing = inner.hasPrefix("/")
+                        if isClosing { inner.removeFirst() }
+                        let name = String(inner.prefix { $0.isLetter || $0.isNumber })
+                        if let want = skipUntil {
+                            if isClosing && name == want { skipUntil = nil }
+                        } else if !isClosing && (name == "script" || name == "style") && !inner.hasSuffix("/") {
+                            skipUntil = name
+                        } else if blockTags.contains(name) {
+                            out.append(" ")
+                        }
+                        i = raw.index(after: close)
+                        continue
+                    } else {
+                        // Unclosed tag: drop the remainder rather than leak markup.
+                        break
+                    }
+                }
+            }
+            if skipUntil == nil { out.append(c) }
+            i = raw.index(after: i)
+        }
+        return collapse(decodeEntities(out))
+    }
+
+    private static func collapse(_ s: String) -> String {
+        s.split(whereSeparator: { $0.isWhitespace || $0 == "\u{00A0}" }).joined(separator: " ")
+    }
+
+    private static let named: [String: String] = [
+        "amp": "&", "lt": "<", "gt": ">", "quot": "\"", "apos": "'", "nbsp": " ",
+        "mdash": "\u{2014}", "ndash": "\u{2013}", "hellip": "\u{2026}",
+        "ldquo": "\u{201C}", "rdquo": "\u{201D}", "lsquo": "\u{2018}", "rsquo": "\u{2019}",
+    ]
+
+    private static func decodeEntities(_ s: String) -> String {
+        guard s.contains("&") else { return s }
+        var out = ""
+        var i = s.startIndex
+        while i < s.endIndex {
+            if s[i] == "&", let semi = s[i...].prefix(12).firstIndex(of: ";") {
+                let body = String(s[s.index(after: i)..<semi])
+                var rep: String? = named[body.lowercased()]
+                if rep == nil, body.hasPrefix("#") {
+                    let num = body.dropFirst()
+                    let code: UInt32? = (num.hasPrefix("x") || num.hasPrefix("X"))
+                        ? UInt32(num.dropFirst(), radix: 16) : UInt32(num)
+                    if let code = code, let sc = Unicode.Scalar(code) { rep = String(Character(sc)) }
+                }
+                if let rep = rep {
+                    out.append(rep)
+                    i = s.index(after: semi)
+                    continue
+                }
+            }
+            out.append(s[i])
+            i = s.index(after: i)
+        }
+        return out
+    }
+}
+
 struct SharedNoteCard: View {
     let meta: FSAttachmentMeta
     var unavailable = false
@@ -208,7 +296,7 @@ struct SharedNoteCard: View {
                     .font(.system(size: 13))
                     .foregroundColor(Theme.parchment.opacity(0.62))
             } else {
-                Text((meta.preview ?? "").isEmpty ? "No content" : meta.preview ?? "")
+                Text(SharedNotePreview.plainText(meta.preview).isEmpty ? "No content" : SharedNotePreview.plainText(meta.preview))
                     .font(.system(size: 13))
                     .foregroundColor(Theme.parchment.opacity(0.62))
                     .lineLimit(2)

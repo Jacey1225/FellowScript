@@ -146,6 +146,11 @@ describe('stripHtml — plain-text extraction used for note card previews', () =
     expect(stripHtml('<p>hello <b>world</b></p>')).toBe('hello world');
   });
 
+  test('drops script/style content, decodes entities, separates blocks', () => {
+    expect(stripHtml('<p>a &amp; b</p><p>c</p><script>alert(1)</script>')).toBe('a & b c');
+    expect(stripHtml('<img src=x onerror=alert(1)>ok')).toBe('ok');
+  });
+
   test('empty/null input returns empty string', () => {
     expect(stripHtml('')).toBe('');
     expect(stripHtml(null)).toBe('');

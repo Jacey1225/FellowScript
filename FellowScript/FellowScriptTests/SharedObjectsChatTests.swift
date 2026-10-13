@@ -439,3 +439,29 @@ final class SharedObjectsSendTests: XCTestCase {
         }
     }
 }
+
+
+// MARK: - Note preview HTML stripping (task 20261013-shared-note-preview-html-leak)
+
+final class SharedNotePreviewTests: XCTestCase {
+    func test_stripsBoldTagFromScreenshotCase() {
+        XCTAssertEqual(SharedNotePreview.plainText("<b>Matthew 28:19 \u{2014} Go and make disciples...</b>"),
+                       "Matthew 28:19 \u{2014} Go and make disciples...")
+    }
+    func test_blockTagsBecomeSpacesAndEntitiesDecode() {
+        XCTAssertEqual(SharedNotePreview.plainText("<p>a &amp; b</p><p>it&#39;s&nbsp;ok</p>line<br>two"),
+                       "a & b it's ok line two")
+    }
+    func test_scriptAndStyleContentDropped() {
+        XCTAssertEqual(SharedNotePreview.plainText("hi<script>alert(1)</script><style>p{}</style>there"), "hithere")
+    }
+    func test_imgOnerrorAndUnclosedTagsInert() {
+        XCTAssertEqual(SharedNotePreview.plainText("x<img src=x onerror=alert(1)>y"), "xy")
+        XCTAssertEqual(SharedNotePreview.plainText("safe <b onclick=\"x"), "safe")
+    }
+    func test_plainTextAndLiteralLessThanPreserved() {
+        XCTAssertEqual(SharedNotePreview.plainText("1 < 2 and  3"), "1 < 2 and 3")
+        XCTAssertEqual(SharedNotePreview.plainText(nil), "")
+        XCTAssertEqual(SharedNotePreview.plainText("<p></p>"), "")
+    }
+}

@@ -7,6 +7,7 @@ from backend import content_store
 from backend.errors import SaveFailedError
 from backend.interactions.attachments import generate_download_url
 from backend.interactions.blocks import BlockManager
+from backend.interactions.html_text import clean_shared_note_meta
 from backend.interactions import paging
 from backend.interactions.message_pins import attach_pins
 from backend.interactions.message_reactions import attach_reactions
@@ -245,7 +246,7 @@ class FriendsManager(DBManager):
             "text": content_store.open_(_id, content_store.F_MESSAGE_TEXT, text),
             "timestamp": str(timestamp),
             "attachment_kind": attachment_kind,
-            "attachment_meta": attachment_meta or {},
+            "attachment_meta": clean_shared_note_meta(attachment_kind, attachment_meta or {}),
             "attachment_url": generate_download_url(attachment_key) if attachment_key else None,
             # Additive stable id (string UUID); every other key is unchanged.
             "id": str(_id),
@@ -325,7 +326,7 @@ class FriendsManager(DBManager):
                 "text": content_store.open_(_id, content_store.F_MESSAGE_TEXT, text),
                 "timestamp": paging.format_timestamp(ts),
                 "attachment_kind": kind,
-                "attachment_meta": meta,
+                "attachment_meta": clean_shared_note_meta(kind, meta),
                 "attachment_url": generate_download_url(key) if key else None,
             })
         attach_reactions(self, messages, self.user_id)

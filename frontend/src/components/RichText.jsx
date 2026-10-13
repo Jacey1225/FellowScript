@@ -127,9 +127,13 @@ export function sanitizeNoteHtml(html) {
  */
 export function stripHtml(html) {
   if (!html) return '';
-  const el = document.createElement('div');
-  el.innerHTML = html;
-  return el.textContent || '';
+  // DOMParser builds an inert document: <img onerror> never fetches and no
+  // script runs, unlike innerHTML on an element attached to the live document.
+  const doc = new DOMParser().parseFromString(String(html), 'text/html');
+  doc.querySelectorAll('script,style').forEach((n) => n.remove());
+  // Separate block-level content so adjacent paragraphs do not run together.
+  doc.querySelectorAll('p,div,br,li,h1,h2,h3,h4,h5,h6,blockquote,tr').forEach((n) => n.append(' '));
+  return (doc.body.textContent || '').replace(/\s+/g, ' ').trim();
 }
 
 // ── Scripture reference detection ─────────────────────────────────────────────
