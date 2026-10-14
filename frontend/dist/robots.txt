@@ -73,5 +73,6 @@ Disallow: /explore/manage
 Disallow: /explore/requests
 Allow: /privacy
 Allow: /terms
+Allow: /sitemap.xml
 
 Sitemap: https://fellowscript.com/sitemap.xml

@@ -36,7 +36,7 @@ describe('robots.txt', () => {
     expect(robots).toMatch(/^Allow:\s*\/download\/\s*$/m);
     expect(robots).toMatch(/^Disallow:\s*\/\s*$/m);
     const allows = Array.from(robots.matchAll(/^Allow:\s*(\S+)\s*$/gm)).map((m) => m[1]);
-    expect(allows.sort()).toEqual(['/$', '/download/', '/explore/$', '/privacy', '/terms']);
+    expect(allows.sort()).toEqual(['/$', '/download/', '/explore/$', '/privacy', '/sitemap.xml', '/terms']);
   });
 
   test('explicitly names the known authenticated routes as disallowed', () => {
