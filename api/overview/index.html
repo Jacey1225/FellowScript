@@ -13,7 +13,7 @@
       
       
       
-        <link rel="prev" href="../../architecture/ghcr-deploy-plan/">
+        <link rel="prev" href="../../architecture/price-cut-runbook/">
       
       
       
@@ -537,6 +537,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../design/agent-chats/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agent Chats
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -792,6 +820,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/price-cut-runbook/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Price Cut Runbook
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -1000,6 +1056,39 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#message-ids-acks-and-timestamps-task-20261001-chat-pagination-backend-1a" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Message ids, acks and timestamps (task 20261001-chat-pagination, backend 1a)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#group-chat-history-paging-task-20261001-chat-pagination-backend-1b" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Group chat history paging (task 20261001-chat-pagination, backend 1b)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#direct-message-history-paging-task-20261001-chat-pagination-backend-step-4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Direct message history paging (task 20261001-chat-pagination, backend step 4)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#attachments-task-20260904-messaging-attachments" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1023,6 +1112,23 @@
       
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="Subscriptions">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#promo-codes-creator-friend-invite-codes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Promo codes (creator + friend invite codes)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -1107,6 +1213,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Monitoring (Error Detections)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#admin-user-actions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Admin user actions
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1114,6 +1237,67 @@
     <span class="md-ellipsis">
       
         Activity Monitoring
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#app-capabilities-and-feature-flags-task-20261002-shared-foundation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        App capabilities and feature flags (task 20261002-shared-foundation)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#explorer-listings-owner-routes-task-20261001-explorer-listings-backend-a" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Explorer listings: owner routes (task 20261001-explorer-listings, backend A)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Explorer listings: owner routes (task 20261001-explorer-listings, backend A)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#explorer-public-browse-api-backend-b-signed-out" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Explorer public browse API (backend B, signed out)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#message-threads-and-message-delete-task-20261001-message-threads" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Message threads and message delete (task 20261001-message-threads)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#join-requests-task-20261001-explorer-join-requests" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Join requests (task 20261001-explorer-join-requests)
       
     </span>
   </a>
@@ -1172,12 +1356,12 @@
 <tr>
 <td>POST</td>
 <td><code>/auth/google</code></td>
-<td>Exchange a Google ID token for a session. Find-or-create user.</td>
+<td>Exchange a Google ID token for a session. Find-or-create user. With <code>email_verification.enabled</code>, an email-only match to an unverified account returns the configured conflict status (409) with no session.</td>
 </tr>
 <tr>
 <td>POST</td>
 <td><code>/auth/apple</code></td>
-<td>Verify an Apple identity JWT. Find-or-create user.</td>
+<td>Verify an Apple identity JWT. Find-or-create user. Same unverified-account conflict rule as <code>/auth/google</code>.</td>
 </tr>
 </tbody>
 </table>
@@ -1403,8 +1587,48 @@ may still be populated.</p>
 <td><code>/groups/{group_id}/highlights</code></td>
 <td>All highlights in the group</td>
 </tr>
+<tr>
+<td>POST</td>
+<td><code>/invites/preview</code></td>
+<td>Public, per-IP rate limited. Body <code>{token}</code>. Returns <code>{kind, group_name, photo_url, inviter_username, member_count}</code> for a usable invite link; every unusable token gets the same 404 <code>{detail:{code:"not_found"}}</code>.</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/invites/{user_id}/redeem</code></td>
+<td>Join a group via invite token (body <code>{token}</code>). Idempotent for existing members. Errors (<code>detail.code</code>): <code>not_found</code> 404, <code>expired</code>/<code>revoked</code> 410, <code>full</code> 409, <code>blocked</code> 403 (generic).</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/invites/{user_id}/groups/{group_id}</code></td>
+<td>Any member creates a link (optional <code>expires_in_days</code>, <code>max_uses</code> from the configured allowed sets). Returns the plaintext <code>token</code>/<code>url</code> once only.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/invites/{user_id}/groups/{group_id}</code></td>
+<td>Active links (metadata only, own links; all for the group creator) plus create options.</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/invites/{user_id}/groups/{group_id}/reset</code></td>
+<td>Revoke every active link the caller may revoke.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/invites/{user_id}/{invite_id}/reveal</code></td>
+<td>Authenticated, <code>no-store</code>, rate limited. Re-shows an active group link (<code>{invite_id, url}</code>) to its creator or the group creator. Every failure (unknown, revoked, expired, legacy link created before reveal existed, subscription link, not authorized) is the same 404 <code>not_found</code>. List items carry <code>revealable</code> (bool).</td>
+</tr>
+<tr>
+<td>DELETE</td>
+<td><code>/invites/{user_id}/{invite_id}</code></td>
+<td>Revoke one link (its creator or the group creator).</td>
+</tr>
 </tbody>
 </table>
+<!-- shared-foundation -->
+<p><strong>Member-list behaviour change (task 20261002-shared-foundation).</strong> <code>PUT /groups/{user_id}/{group_id}</code> silently drops ids that are already in the group's stored member list but no longer exist as users (clients that echo the raw array keep working). Any NEW id must be a UUID of an existing, non-suspended user; otherwise the route answers <code>422 { "detail": { "code": "invalid_member", "message": ... } }</code>, with an identical body for malformed, unknown and suspended ids. This is a change for build-78 clients: adding a new member who is suspended now returns 422 where it was accepted before. <code>POST /groups/{user_id}</code> applies the same check to every supplied member id (the creator's own id always passes). Deleting an account (<code>DELETE /user/{user_id}</code>) now removes that id from every group's member list; a group whose last member deletes their account is deleted. Deleting or emptying a group queues its photo and announcement banner objects for deletion (no response change).</p>
+<p><strong>Listed-group guard (task 20261001-explorer-listings).</strong> While a group has a listing in review, published or hidden, <code>PUT /groups/{user_id}/{group_id}</code> answers <code>409 { "detail": { "code": "owner_only", ... } }</code> for an addition of members by anyone but the group's creator and for any change that removes the creator from the member list. Groups without a listing behave exactly as before (build-78 clients keep working for them). Renaming a listed group never changes its listing.</p>
+<p><strong>Reports (<code>POST /reports/</code>).</strong> <code>content_type</code> also accepts <code>group_listing</code> and <code>thread_message</code>. A malformed <code>content_id</code> answers <code>422</code> (it used to be a 500; <code>group_listing</code> ids are 10-character alphanumeric public ids, every other type takes a UUID). Content that cannot be found for a listing or thread type answers <code>404</code> and nothing is stored; the five original types keep their lenient behaviour. The stored <code>content_id</code> is the canonical internal id.</p>
+<p><strong>Explorer listing moderation.</strong> Reports on a listing send its 10-character <code>public_id</code>; the server stores the listing's internal id and a snapshot (title, summary, description, status, public id; at most 5000 characters). A listing report is limited per reporter (<code>listings.rate_limits.report</code>, <code>429</code> over the limit). When the listing has reports from <code>report_auto_hide_threshold</code> distinct reporters it is hidden (reason <code>reported</code>) and the owner is emailed. Admin endpoints (<code>require_admin</code>): <code>GET /admin/explorer/listings/queue?status=</code>, <code>POST /admin/explorer/listings/{public_id}/approve|reject|hide|restore</code> (<code>reject</code> and <code>hide</code> take <code>{"reason_code": ...}</code> from the configured lists and email the owner), <code>DELETE /admin/explorer/listings/{public_id}</code>. CLI: <code>python -m backend.admin_listings hide &lt;public_id&gt; [--reason CODE]</code>, <code>restore &lt;public_id&gt;</code>, <code>hide-all</code> (rollback lever, reason <code>bulk</code>); <code>python -m backend.moderation.admin_actions resolve &lt;report_id&gt; --remove-content</code> removes a reported listing and <code>--eject</code> also hides the suspended owner's listings at once.</p>
 <hr />
 <h2 id="friends">Friends</h2>
 <table>
@@ -1504,6 +1728,31 @@ may still be populated.</p>
 </tbody>
 </table>
 <p>REST history: <code>GET /message/messages/{host_user}/?guest_user=...</code> returns past DMs between two users; group history comes back from <code>GroupsManager</code>'s group-read call.</p>
+<h3 id="message-ids-acks-and-timestamps-task-20261001-chat-pagination-backend-1a">Message ids, acks and timestamps (task 20261001-chat-pagination, backend 1a)</h3>
+<ul>
+<li>Every history row (group and DM) and every delivered chat frame carries <code>id</code> (string UUID). It is additive: existing clients ignore it. The frame omits <code>id</code> rather than sending null if the server could not read the stored id.</li>
+<li>A sender may add an optional <code>client_ref</code> (1-64 characters from <code>A-Za-z0-9_-</code>) to a chat payload. When it is valid, the server answers on the sender's own socket only, after the message is stored: <code>{"type":"ack","client_ref":...,"id":...,"group_id":...,"timestamp":...}</code> (<code>group_id</code> is empty for a DM, <code>timestamp</code> is ISO 8601 UTC with microseconds). The ack has no <code>from_user</code> or <code>text</code>, so it never renders as a bubble. An invalid or missing <code>client_ref</code> is ignored: the message is still saved, with no ack.</li>
+<li>Timestamps: the client timestamp stays the primary sort key. A value that does not parse, or is later than now plus <code>future_timestamp_skew_seconds</code> (default 300), is stored as the server time. Recipient frames keep the client's original string when it was accepted unchanged; a clamped value is relayed as whole-second <code>...Z</code>. Past timestamps are never changed.</li>
+<li>Ties are broken by <code>messages.seq</code> (server sequence <code>messages_seq</code>; rows from before the migration read as 0), then by id.</li>
+<li>Soft-deleted rows (<code>deleted_at</code> set) are excluded from the history reads. Legacy responses are otherwise unchanged.</li>
+<li>Tunables live in <code>api/config/chat.json</code>, section <code>pagination</code> (all keys required; the server refuses to boot on a bad file). The paged group endpoints below are gated by the <code>chat_pagination</code> feature flag.</li>
+</ul>
+<h3 id="group-chat-history-paging-task-20261001-chat-pagination-backend-1b">Group chat history paging (task 20261001-chat-pagination, backend 1b)</h3>
+<p>Opt-in and flag-gated (<code>chat_pagination</code>, off by default; clients read <code>GET /app/capabilities</code> and send <code>limit</code> only when it is true).</p>
+<ul>
+<li><code>GET /groups/{user_id}/{group_id}?limit=N</code>: with the flag on for the caller, the response is <code>{group, members, messages, page}</code> where <code>messages</code> is the newest page, oldest-first, and <code>host_msgs</code>/<code>other_msgs</code> are omitted. With no <code>limit</code>, or with the flag off (or an older server), the response is the legacy <code>{group, members, host_msgs, other_msgs}</code> shape; a client treats a missing <code>page</code> key as full history. <code>limit</code> must be an integer of at least 1 (otherwise <code>422</code>, only while the flag is on); a value above <code>max_page_size</code> is clamped. <code>403</code> for a non-member.</li>
+<li><code>GET /groups/{user_id}/{group_id}/messages?limit=&amp;cursor_timestamp=&amp;cursor_seq=&amp;cursor_id=</code>: one older page, <code>{messages, page}</code>. While the flag is off for the caller this answers <code>404</code>. Order of checks: session, <code>user_id</code> match, flag (<code>404</code>), membership (<code>403</code>), <code>limit</code> and cursor (<code>422</code>, before any SQL), then the query. Rate limited by <code>pagination.rate_limits.messages_page</code> in <code>api/config/chat.json</code>.</li>
+<li><code>page</code> is <code>{limit, has_more, next_cursor_timestamp, next_cursor_seq, next_cursor_id}</code>. Pass the three <code>next_cursor_*</code> values back as <code>cursor_timestamp</code>, <code>cursor_seq</code> and <code>cursor_id</code> (timestamp and id together or neither; seq optional, default 0). They are null when <code>has_more</code> is false.</li>
+<li>Row shape: <code>{id, from_user (username), mine, text, timestamp (ISO 8601 UTC, microseconds, Z), attachment_kind, attachment_meta, attachment_url}</code>. <code>attachment_url</code> is a fresh short-lived presigned GET (null when there is no stored attachment); the stored key is never returned.</li>
+<li>Pages are ordered <code>timestamp DESC, seq DESC, id DESC</code> with a keyset predicate, so inserts and deletes never shift older pages. Only the caller's own messages and those of current, unblocked members are returned (blocking is filtered in SQL, so a page never shrinks), and soft-deleted rows are excluded.</li>
+</ul>
+<h3 id="direct-message-history-paging-task-20261001-chat-pagination-backend-step-4">Direct message history paging (task 20261001-chat-pagination, backend step 4)</h3>
+<p>Same opt-in contract and page envelope as group paging, behind its own flag <code>chat_pagination_dm</code> (off by default; capability <code>features.chat_pagination_dm</code>).</p>
+<ul>
+<li><code>GET /friends/{user_id}/{friend_id}?limit=N</code> and <code>GET /message/messages/{host_user}/?guest_user=...&amp;limit=N</code> (use <code>limit=1</code> for a last-message preview): with the flag on for the caller the response carries <code>friend</code> (or the existing <code>payload</code> wrapper) plus <code>messages</code> and <code>page</code> instead of <code>host_msgs</code>/<code>other_msgs</code>. Without <code>limit</code>, or with the flag off, the legacy shape is unchanged.</li>
+<li><code>GET /friends/{user_id}/{friend_id}/messages?limit=&amp;cursor_timestamp=&amp;cursor_seq=&amp;cursor_id=</code>: one older page, <code>{messages, page}</code>. <code>404</code> while the flag is off, and the same <code>404</code> as the legacy read for an unknown or blocked friend; <code>422</code> for a bad <code>limit</code> or cursor (before any SQL). Rate limited by <code>pagination.rate_limits.messages_page</code>.</li>
+<li>Rows use the group row shape (<code>mine</code> is true for the caller's own messages). Only messages exchanged between the two users are returned (<code>group_id IS NULL</code>, joined through <code>message_recipients</code>), and soft-deleted rows are excluded. Index: <code>idx_messages_dm_page</code>.</li>
+</ul>
 <h3 id="attachments-task-20260904-messaging-attachments">Attachments (task 20260904-messaging-attachments)</h3>
 <p>A message may carry an attachment instead of (or alongside) <code>text</code> — send/receive payloads gain three optional fields:</p>
 <pre><code class="language-json">{
@@ -1562,7 +1811,7 @@ may still be populated.</p>
 <tr>
 <td>POST</td>
 <td><code>/subscriptions/checkout</code></td>
-<td>Create a Stripe Checkout session (web). Body: <code>{user_id, member_count}</code> (1-8) — price is looked up server-side by count</td>
+<td>Create a Stripe Checkout session (web). Body: <code>{user_id, member_count, promo_code?}</code> (1-8) — price is looked up server-side by count. With <code>PROMO_CODES_ENABLED</code> on, an optional <code>promo_code</code> is re-validated server-side and applies the first-month coupon; any invalid code returns a uniform <code>400 {code: "invalid_promo_code"}</code> and creates no session. Ignored while the flag is off</td>
 </tr>
 <tr>
 <td>POST</td>
@@ -1588,6 +1837,69 @@ may still be populated.</p>
 <td>POST</td>
 <td><code>/subscriptions/admin/grant-individual</code></td>
 <td><strong>Admin-only</strong> (<code>require_admin</code>; <code>401</code>/<code>403</code> semantics as below). No body — the target is always the calling admin, never a client-supplied user. Grants the caller a free, active, individual-tier membership (<code>plan_type='individual'</code>, <code>provider='admin_comp'</code>, $0, no Stripe/Apple billing) with the same unlimited access a paying individual subscriber gets. Idempotent — calling it again returns the same existing grant rather than creating a duplicate. Never expires (not subject to the <code>EXPIRY_GRACE_DAYS</code> lapse sweep). Every grant is recorded in the <code>admin_audit</code> log. Returns the resulting subscription, same shape as <code>GET /{subscription_id}</code>.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="promo-codes-creator-friend-invite-codes">Promo codes (creator + friend invite codes)</h3>
+<p>Feature-flagged by <code>PROMO_CODES_ENABLED</code> (default off). While off, every route below answers a uniform <code>404</code> (before auth). Details: <code>docs/architecture/backend.md</code> "Promo codes".</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Route</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>POST</td>
+<td><code>/promo/{user_id}/validate</code></td>
+<td>Authenticated, rate-limited (<code>PROMO_VALIDATE_RATE_LIMIT</code>, per IP and per user). Body <code>{code, member_count?}</code>. Returns <code>{valid: true, percent_off}</code> or the identical <code>{valid: false}</code> for every failure. Creates nothing, logs nothing</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/promo/{user_id}/friend-code</code></td>
+<td>Authenticated. Get-or-create the caller's personal invite code. Returns <code>{code, link, percent_off}</code></td>
+</tr>
+<tr>
+<td>POST/GET</td>
+<td><code>/admin/promo/creators</code></td>
+<td><strong>Admin-only.</strong> Create / list creators (<code>name</code>, <code>notes</code>, <code>active</code>)</td>
+</tr>
+<tr>
+<td>PATCH</td>
+<td><code>/admin/promo/creators/{id}</code></td>
+<td><strong>Admin-only.</strong> Update or deactivate a creator</td>
+</tr>
+<tr>
+<td>POST/GET</td>
+<td><code>/admin/promo/codes</code></td>
+<td><strong>Admin-only.</strong> Create creator codes (<code>code</code>, <code>creator_id</code>, optional <code>max_redemptions</code>, <code>expires_at</code>) / list (<code>kind</code>, <code>creator_id</code>, paging)</td>
+</tr>
+<tr>
+<td>PATCH</td>
+<td><code>/admin/promo/codes/{id}</code></td>
+<td><strong>Admin-only.</strong> Activate/deactivate, change cap or expiry</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/admin/promo/codes/{id}/reactivate</code></td>
+<td><strong>Admin-only</strong> (owner-rewards flag). Set a code active again; idempotent; 404 if deleted</td>
+</tr>
+<tr>
+<td>DELETE</td>
+<td><code>/admin/promo/codes/{id}</code></td>
+<td><strong>Admin-only</strong> (owner-rewards flag). Soft-delete a creator code (204, idempotent); keeps redemption history; friend codes 422</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/admin/promo/report</code></td>
+<td><strong>Admin-only.</strong> Completed redemptions per creator (+ <code>over_cap_redemptions</code>)</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/admin/promo/redemptions</code></td>
+<td><strong>Admin-only.</strong> Redemption list (<code>creator_id</code>, <code>kind</code>, paging)</td>
 </tr>
 </tbody>
 </table>
@@ -1730,12 +2042,27 @@ screen.</p>
 <tr>
 <td>POST</td>
 <td><code>/agent/{user_id}/heartbeat</code></td>
-<td>Trigger an AI check-in event (enforces free-tier cap)</td>
+<td>Trigger a scheduled devotion (enforces free-tier cap)</td>
 </tr>
 <tr>
 <td>POST</td>
 <td><code>/agent/{user_id}/{agent_id}/summarize</code></td>
 <td>Summarize a study session (body: <code>{session, group_id}</code>) and save the result as a note titled <code>Session Summary — {title}</code>. Enforces the same free-tier <code>notes</code> cap as note creation</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/agent/{user_id}/{agent_id}/chats</code></td>
+<td>List the agent's chats, most recent first. Flag <code>agent_chats</code>; <code>404</code> when off. See <a href="../../design/agent-chats/">Agent Chats</a></td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/agent/{user_id}/{agent_id}/chats</code></td>
+<td>Create a chat. <code>201</code>, or <code>409</code> <code>chat_limit</code> at 50 chats. Flag <code>agent_chats</code></td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/agent/{user_id}/{agent_id}/messages</code></td>
+<td>History; optional <code>chat_id</code> query scopes it to one chat (unknown chat is <code>404</code>)</td>
 </tr>
 </tbody>
 </table>
@@ -1809,7 +2136,7 @@ into <code>notes.text</code>.</p>
 </table>
 <hr />
 <h2 id="monitoring-error-detections">Monitoring (Error Detections)</h2>
-<p>Read-only feed of CloudWatch error detections collected by the background watchdog job (see <a href="../../architecture/backend/#background-scheduler">Backend → Background Scheduler</a>). Auth: <strong>admin-only</strong>. All routes require <code>require_admin</code> (session auth via the <code>session</code> cookie, plus an <code>is_admin</code> flag on the resolved <code>users</code> row) — <code>401</code> for no/invalid session, <code>403</code> for an authenticated caller who isn't flagged admin. This replaces the earlier any-authenticated-user placeholder.</p>
+<p>Read-only feed of CloudWatch error detections collected by the background watchdog job (see <a href="../../architecture/backend/#background-scheduler">Backend → Background Scheduler</a>). Auth: <strong>admin-only</strong>. All routes require <code>require_admin</code> (session auth via the <code>session</code> cookie, plus an <code>is_admin</code> flag on the resolved <code>users</code> row) — <code>401</code> for no/invalid session, <code>403</code> for an authenticated caller who isn't flagged admin. <strong>Admin 2FA (task <code>20261008-admin-require-2fa</code>):</strong> every <code>require_admin</code> route also requires the admin's <code>mfa_enabled</code> to be true, read from the DB per request. An admin without 2FA gets <code>403</code> with <code>detail: {"code": "mfa_required", "message": ...}</code> (a structured object, distinct from the plain string <code>"Admin access required"</code> for non-admins). <code>POST /auth/mfa/disable</code> returns <code>403</code> for admin accounts. Recovery for a locked-out admin is a manual database fix. This replaces the earlier any-authenticated-user placeholder.</p>
 <table>
 <thead>
 <tr>
@@ -1846,6 +2173,35 @@ into <code>notes.text</code>.</p>
 </tr>
 </tbody>
 </table>
+<h3 id="admin-user-actions">Admin user actions</h3>
+<p>All routes require an admin session (<code>require_admin</code>: <code>401</code> no session, <code>403</code> non-admin) and return <code>Cache-Control: no-store</code>. Rate limits and page sizes come from <code>api/config/admin_users.json</code>.</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Path</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GET</td>
+<td><code>/admin/users</code></td>
+<td>Search/paginate users. Query: <code>q</code> (case-insensitive partial match on username or email, max length from config), <code>page</code> (from 1), <code>page_size</code> (capped server-side). Returns <code>{ users: [{ id, username, email, is_admin }], total, page, page_size }</code>; nothing else about a user is exposed.</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/admin/users/{user_id}/grant-admin</code></td>
+<td>Grant admin. Returns <code>{ id, is_admin, changed }</code>; <code>changed: false</code> if already admin (no audit row). <code>404</code> unknown or malformed id.</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/admin/users/{user_id}/revoke-admin</code></td>
+<td>Revoke admin. <code>409</code> (<code>cannot_revoke_self</code>/<code>last_admin</code>) with no state change; <code>changed: false</code> if not an admin. <code>404</code> unknown id.</td>
+</tr>
+</tbody>
+</table>
+<p>Each real role change writes one <code>admin_role_audit</code> row (actor, target, action, previous/new value, timestamp) in the same transaction, plus an <code>admin_audit</code> log line. Changes are serialized by a transaction-scoped advisory lock so concurrent revokes cannot remove the last admin. The <code>ADMIN_SEED_EMAIL</code> boot seed will not re-promote an account that has an audited revoke.</p>
 <p>Nothing under <code>/monitoring</code> executes, queues, or takes any action against the server — this surface (including the debugging agent) is strictly read-only/reporting. The debugging agent (<code>backend/monitoring/debug_agent.py</code>) reads a detection's <code>message</code> + <code>context</code>, redacts anything shaped like a secret/credential/API key/connection-string password before it reaches the OpenRouter prompt, and produces a root-cause + remediation-narrative write-up — a recommendation for a human operator, never a record of an action taken. It reuses <code>AgentManager</code>'s existing OpenRouter credential/wiring (<code>backend/interactions/agent.py</code>) rather than a second isolated key. It runs automatically once per newly-persisted detection (from the watchdog's poll cycle) and routes <code>error_detections.status</code> to <code>"diagnosed"</code> on success; the <code>POST</code> route above lets the admin page trigger a rerun.</p>
 <h2 id="activity-monitoring">Activity Monitoring</h2>
 <p>A second, separate admin panel (task <code>20260918-admin-activity-monitoring</code>, extended by <code>20260919-activity-monitoring-interactive-charts</code>) from the CloudWatch console above — average per-user activity and website-visit trends. One endpoint is intentionally public; the rest are <strong>admin-only</strong> (<code>require_admin</code>, same <code>401</code>/<code>403</code> semantics as Monitoring above). The same underlying series is available two ways: pre-rendered matplotlib PNGs (<code>/plots/*</code>), or raw JSON (<code>/data/*</code>) for a client-side interactive chart.</p>
@@ -1892,6 +2248,250 @@ into <code>notes.text</code>.</p>
 </tbody>
 </table>
 <p>Every admin GET above logs one <code>admin_action</code> audit line (<code>action=view_activity_monitoring</code>) via the same <code>admin_audit</code> logger <code>/monitoring</code> uses. The average-per-user denominator is the current total user count (not a historically accurate per-day cohort) — a deliberate snapshot-dashboard simplification, not a billing-grade calculation. The <code>/data/*</code> endpoints carry exactly the same (day, value) resolution the <code>/plots/*</code> images already visually encode — no raw per-row data, device IDs, or per-user breakdowns — so the JSON surface discloses nothing beyond what the PNG already showed. See <a href="../../architecture/data/#visits">Data → <code>visits</code></a> for the schema.</p>
+<hr />
+<h2 id="app-capabilities-and-feature-flags-task-20261002-shared-foundation">App capabilities and feature flags (task 20261002-shared-foundation)</h2>
+<!-- shared-foundation -->
+<p>Ships inert: every flag seeds <code>off</code>, so nothing user-visible changes until a flag is flipped (only by the owner, never by the build pipeline).</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Route</th>
+<th>Auth</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GET</td>
+<td><code>/app/capabilities</code></td>
+<td>Session (<code>get_current_user</code>; no user id in the path)</td>
+<td><code>{ "v": 1, "features": { &lt;flag&gt;: bool, ... }, "links": { "explore": string \| null }, "terms_current": bool }</code>, <code>Cache-Control: no-store</code>. <code>features</code> has one boolean per flag the server exposes, evaluated for the calling user (canary lists applied); <code>links.explore</code> is non-null only when <code>explorer_browse</code> is on; <code>terms_current</code> is true when the user's accepted Terms version equals the current one. No ids, canary lists or state names are returned. <code>401</code> without a session. Clients treat any non-200, network error or malformed body as "all features off, <code>terms_current</code> true".</td>
+</tr>
+<tr>
+<td>PUT</td>
+<td><code>/admin/flags/{name}</code></td>
+<td>Admin (<code>require_admin</code>)</td>
+<td>Body <code>{ "state": "off" \| "canary" \| "on", "canary_user_ids": [uuid, ...] \| omitted }</code>. Omitting the list keeps the stored one. <code>404</code> unknown flag; <code>422</code> invalid state, a canary list containing anything that is not an existing user id, or <code>canary</code> on <code>explorer_browse</code> (off/on only). <code>401</code>/<code>403</code> for non-admins. Emits one INFO audit line <code>FLAG_CHANGE name=&lt;n&gt; state=&lt;s&gt; actor=&lt;user_id&gt; canary_count=&lt;k&gt;</code>. The flag cache is 10 s per process; this route invalidates it immediately.</td>
+</tr>
+</tbody>
+</table>
+<p>Without a deploy the owner can also run <code>docker exec fellowscript-api python -m backend.admin_flags list</code> or <code>... set &lt;name&gt; &lt;off|canary|on&gt; [--canary id,id]</code> (takes effect within 10 s).</p>
+<p>Routes that create new user-generated content for later features answer <code>403 { "detail": { "code": "terms_reaccept_required" } }</code> when the user has not accepted the current Terms (<code>backend/auth/terms.py</code>).</p>
+<p><strong>Paging convention (shared cursor codec, <code>backend/interactions/paging.py</code>).</strong> Keyset lists take <code>limit</code>, <code>cursor_timestamp</code> (ISO 8601; normalised to UTC <code>Z</code> with microseconds), optional <code>cursor_seq</code> (integer &gt;= 0) and <code>cursor_id</code>; timestamp and id come together or neither; any malformed value answers <code>422 { "detail": { "code": "invalid_cursor" } }</code> before any query. Responses are <code>{ "&lt;items&gt;": [...], "page": { "limit", "has_more", "next_cursor_timestamp", "next_cursor_seq", "next_cursor_id" } }</code> with the <code>next_cursor_*</code> fields null unless <code>has_more</code>.</p>
+<hr />
+<h2 id="explorer-listings-owner-routes-task-20261001-explorer-listings-backend-a">Explorer listings: owner routes (task 20261001-explorer-listings, backend A)</h2>
+<!-- explorer-listings -->
+<p>Ships inert: every route below answers a uniform <code>404 { "detail": { "code": "not_found" } }</code> while the <code>explorer_publish</code> flag is off for the caller (and nothing user-visible changes). Authenticated routes use <code>require_match("user_id")</code>; writes also answer <code>403 terms_reaccept_required</code> for a stale Terms version. Listing text is public once published, so it is moderated: every listing goes to <code>pending_review</code> and an admin approves it (config <code>require_approval</code>), text fields pass the content filter and a youth-term list (listings are for adults 18 and over), and the owner attests to being an adult and consents to publication. A listing is public only while its group's creator exists, is still a member and is not suspended. Reports and admin routes are added in a later step.</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Route</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GET</td>
+<td><code>/explorer/config</code></td>
+<td>PUBLIC probe, always <code>200 { "browse": bool }</code> (false when <code>explorer_browse</code> is off or the flag read fails), <code>Cache-Control: public, max-age=30</code>. Never 404. Rate limited per IP plus a global backstop.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/explorer/{user_id}/options</code></td>
+<td>Vocabularies (denominations, goals, practices, hobbies, age ranges, life stages, languages, gender makeup, meeting formats, frequencies), field limits, <code>block_types</code>, country codes, <code>consent_version</code>, <code>support_email</code>. From <code>api/config/explorer.json</code>.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/explorer/{user_id}/groups</code></td>
+<td>Groups the caller created: <code>{ "groups": [{ "group_id", "title", "listing": { "public_id", "status", "accepting_requests", "reject_reason_code", "hidden_reason_code" } \| null }], "listing_cap", "listings_used" }</code>.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/explorer/{user_id}/groups/{group_id}/share-link</code></td>
+<td>Member-only (any member, not just the creator; needs <code>explorer_browse</code> on for the caller). <code>200 { "public_id": string }</code> and nothing else, <code>Cache-Control: no-store</code>, for building a <code>/g/&lt;public_id&gt;</code> share link. Every other case (not a member, unknown or malformed group id, listing not published, owner gone or suspended, requests closed, flag off) is the same generic <code>404 { "detail": { "code": "not_found" } }</code>. Rate limited per user and per IP (<code>listings.rate_limits.share_link</code>). The link grants nothing: joining still goes through the host-approved request flow. A public_id only dies on unpublish; republishing revives old links.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/explorer/{user_id}/groups/{group_id}/listing</code></td>
+<td>The caller's own listing (all fields, <code>status</code>, reason codes, consent info). <code>404</code> unless the caller created the group, is still a member and is not suspended (same 404 for any other group).</td>
+</tr>
+<tr>
+<td>PUT</td>
+<td><code>/explorer/{user_id}/groups/{group_id}/listing</code></td>
+<td>First call creates the draft (title prefilled from the group title when omitted; cap of 3 listings per owner, <code>409 listing_cap_reached</code>), later calls update. Every field optional: omitted = unchanged, <code>null</code> = cleared. Fields: <code>title</code>, <code>summary</code>, <code>description_blocks</code> (typed blocks; <code>text</code> blocks only for now, restricted Markdown), <code>denominations</code>, <code>goals</code>, <code>practices</code>, <code>hobbies</code>, <code>age_ranges</code>, <code>life_stages</code>, <code>languages</code> (slugs from the vocabulary), <code>free_tags</code>, <code>gender_makeup</code>, <code>meeting_format</code>, <code>frequency</code>, <code>country</code> (ISO 3166-1 alpha-2), <code>region</code>, <code>city</code>, <code>church_name</code>, <code>accepting_requests</code>. <code>422</code> codes: <code>invalid_vocab</code>, <code>too_many_values</code>, <code>too_long</code>, <code>invalid_text</code>, <code>html_not_allowed</code>, <code>links_not_allowed</code>, <code>invalid_link</code>, <code>link_blocked</code>, <code>media_not_supported</code>, <code>invalid_block</code>, <code>youth_not_supported</code>, <code>content_rejected</code> (with <code>field</code>). A change to title, summary, description, church name or free tags sends a published listing back to <code>pending_review</code>; filter-only edits do not. Never publishes by itself.</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/explorer/{user_id}/groups/{group_id}/listing/submit</code></td>
+<td>Body <code>{ "consent": true, "adult_attested": true, "accepting_requests": bool? }</code> (<code>422 consent_required</code> / <code>adult_attestation_required</code> / <code>title_required</code>). Moves draft, rejected or unpublished to <code>pending_review</code> (an unpublished listing whose approved text is unchanged goes straight back to <code>published</code>). <code>accepting_requests</code> omitted leaves the stored value, which is closed for a new listing. <code>409 hidden_by_admin</code> when hidden.</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/explorer/{user_id}/groups/{group_id}/listing/unpublish</code></td>
+<td><code>published</code> or <code>pending_review</code> to <code>unpublished</code>, immediately.</td>
+</tr>
+<tr>
+<td>DELETE</td>
+<td><code>/explorer/{user_id}/groups/{group_id}/listing</code></td>
+<td>Hard delete (<code>204</code>).</td>
+</tr>
+</tbody>
+</table>
+<h3 id="explorer-public-browse-api-backend-b-signed-out">Explorer public browse API (backend B, signed out)</h3>
+<p>No session. Answers a uniform <code>404 { "detail": { "code": "not_found" } }</code> while <code>explorer_browse</code> is off. Per-IP rate limit plus a key-less global backstop; when the dedicated public thread pool is saturated or a query exceeds <code>public_query_timeout_ms</code> the answer is <code>429 { "detail": { "code": "busy" } }</code> with <code>Retry-After</code> (never 5xx). Successful responses carry <code>Cache-Control: public, max-age=60</code>. The only identifier is the 10-character <code>public_id</code>; responses never contain group ids, user ids, usernames, member lists, emails or invite state. URL shapes are frozen for join-requests and iOS.</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Path</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GET</td>
+<td><code>/explorer/filters</code></td>
+<td>Signed-out filter vocabulary: <code>{ "vocab": { denominations, goals, practices, hobbies, age_ranges, life_stages, languages, gender_makeup, meeting_formats, frequencies: [{slug,label}] }, "countries": [ISO codes], "size_buckets": [label], "limits": {...}, "support_email" }</code>.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/explorer/listings</code></td>
+<td><code>{ "listings": [card], "page": { limit, has_more, next_cursor_timestamp, next_cursor_seq: null, next_cursor_id } }</code>, newest first on <code>(published_at, public_id)</code>; <code>next_cursor_id</code> is a <code>public_id</code>. Query: <code>q</code> (text filter, max 80 chars, no relevance sort), facet filters <code>denominations goals practices hobbies age_ranges life_stages languages</code> (repeat or comma separate; any value within a facet, all facets must match; max 5 values, max 10 filters), <code>gender_makeup meeting_format frequency</code> (one slug), <code>country</code> (ISO), <code>region</code>/<code>city</code> (prefix), <code>include_full</code> (default false hides full groups), <code>limit</code> (default 12, max 24), <code>cursor_timestamp</code> + <code>cursor_id</code>. <code>422 invalid_filter</code> (with <code>field</code>) or <code>invalid_cursor</code> before any SQL. No totals.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/explorer/listings/{public_id}</code></td>
+<td>One listing: the card fields plus <code>description_blocks</code> and <code>requestable</code>. Unknown, unpublished or hidden: the same 404.</td>
+</tr>
+</tbody>
+</table>
+<p>A card holds <code>public_id, title, summary</code>, the facet arrays, <code>country, region, city, church_name, size_bucket, seats ("open" or "full"), published_at</code>.</p>
+<p>Statuses: <code>draft</code>, <code>pending_review</code>, <code>published</code>, <code>unpublished</code>, <code>hidden</code>, <code>rejected</code>. Deleting the group, the owner leaving, or the owner's account being deleted removes or hides the listing.</p>
+<hr />
+<h2 id="message-threads-and-message-delete-task-20261001-message-threads">Message threads and message delete (task 20261001-message-threads)</h2>
+<!-- THR (20261001-message-threads) -->
+<p>Gated by flags <code>threads</code> and <code>message_delete</code> (off by default; clients read them from <code>GET /app/capabilities</code>). While a flag is off for the caller every route below answers the same <code>404 { "detail": { "code": "not_found" } }</code>, as do an unknown id, a non-member, a thread or message of another group and any other denial. All paths need the session user in <code>{user_id}</code>.</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Route</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>DELETE</td>
+<td><code>/groups/{user_id}/{group_id}/messages/{message_id}</code></td>
+<td>Soft-delete your own group message (<code>message_delete</code>). Returns <code>{ "id", "undo_seconds" }</code>. Not gated by terms.</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/groups/{user_id}/{group_id}/messages/{message_id}/restore</code></td>
+<td>Undo your own delete within <code>undo_seconds</code> (10). Returns <code>{ "id" }</code>.</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/groups/{user_id}/{group_id}/threads</code></td>
+<td>Start the thread on a message, or open the one that exists. Body <code>{ "message_id", "title"? }</code> (blank title is auto-generated, max 80 characters, content filtered: <code>422</code>). <code>201</code> when created, <code>200</code> when it already existed. Returns <code>{ id, group_id, title, root_preview, root_message_id, root_deleted, reply_count, last_activity_at, created_by (username), created }</code>. <code>403 { "code": "terms_reaccept_required" }</code> when Terms are stale, <code>409 { "code": "thread_limit" }</code> at the per-group cap.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/groups/{user_id}/{group_id}/threads?limit=&amp;cursor_timestamp=&amp;cursor_id=</code></td>
+<td>Threads, most recently active first (default 20, max 50). <code>{ "threads": [{ id, title, root_preview (null when the root is deleted), root_deleted, reply_count, last_activity_at, created_by }], "page": {...} }</code>. Keyset on <code>(last_activity_at, id)</code>: <code>next_cursor_seq</code> is always null and clients omit <code>cursor_seq</code> (sending it is <code>422</code>). Threads by creators in a block relationship with the caller are excluded.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/groups/{user_id}/{group_id}/threads/{thread_id}/messages?limit=&amp;cursor_timestamp=&amp;cursor_seq=&amp;cursor_id=</code></td>
+<td>One page of a thread's messages: the same <code>{ messages, page }</code> envelope, ordering, cursor rules and row shape as the main chat page (<code>{id, from_user, mine, text, timestamp, attachment_kind, attachment_meta, attachment_url}</code>) plus <code>thread_id</code> on each row. Only messages by the caller and current, unblocked members.</td>
+</tr>
+<tr>
+<td>PUT</td>
+<td><code>/groups/{user_id}/{group_id}/threads/{thread_id}</code></td>
+<td>Rename (creator only). Body <code>{ "title" }</code>. Returns <code>{ "id", "title" }</code>.</td>
+</tr>
+<tr>
+<td>DELETE</td>
+<td><code>/groups/{user_id}/{group_id}/threads/{thread_id}</code></td>
+<td>Hard-delete a thread with its messages and followers (thread creator or the group owner, <code>groups.creator_id</code>; a group with no owner allows only the thread creator). <code>204</code> on success; every other case, including a repeat delete, is the uniform <code>404</code>. Rate scope <code>thread_delete</code> (<code>threads.delete_rate</code>). Open sockets of current members get <code>{ "type": "thread_deleted", "thread_id", "group_id" }</code>; no push.</td>
+</tr>
+</tbody>
+</table>
+<p>Sending is a WebSocket frame on the existing socket: <code>{ "type": "thread_message", "thread_id", "text", "client_ref"?, "attachment_kind"?, "attachment_key"?, "attachment_meta"? }</code>. The server derives the group and recipients from <code>thread_id</code> and ignores any <code>group_id</code>, <code>to_users</code> or <code>from_user</code> in the frame. The sender gets <code>{ "type": "ack", "client_ref", "id", "group_id", "thread_id", "timestamp" }</code>; members get <code>{ "type": "thread_message", "thread_id", "group_id", "id", "sender", "body", "created_at", "seq", "attachment_kind", "attachment_meta", "attachment_url" }</code> (no <code>from_user</code>, no <code>text</code>). Errors arrive as <code>{ "type": "error", "reason": ... }</code> with <code>not_allowed</code>, <code>rate_limited</code>, <code>terms_reaccept_required</code>, <code>message_rejected</code>, <code>send_failed</code> or <code>message_not_saved</code>. Other new frames, sent to online members: <code>{ "type": "message_deleted", id, group_id, deleted_at }</code> and <code>{ "type": "message_restored", id, group_id, sender, body, created_at, seq, attachment_* }</code>. Push for a thread message goes only to followers and carries <code>{ "action": "thread_message", "group_id", "thread_id" }</code>.</p>
+<p>Reports: <code>POST /reports/</code> with <code>content_type: "thread_message"</code> takes the thread message's <code>id</code>; an unknown id is <code>404</code> and stores nothing.</p>
+<!-- /THR -->
+
+<h2 id="join-requests-task-20261001-explorer-join-requests">Join requests (task 20261001-explorer-join-requests)</h2>
+<!-- JRQ (20261001-explorer-join-requests) -->
+<p>Gated by flag <code>join_requests</code> (off by default; clients read it from <code>GET /app/capabilities</code> as <code>features.join_requests</code>). While the flag is off for the caller every route below answers the same <code>404 { "detail": { "code": "not_found" } }</code>, as do an unknown id, a listing that cannot be requested and any caller who is not the group's owner. All paths need the session user in <code>{user_id}</code>. Every wait on a row lock is bounded; on timeout the route answers <code>409 { "code": "busy" }</code>.</p>
+<p>Requester routes:</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Route</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>POST</td>
+<td><code>/join-requests/{user_id}/listings/{public_id}/request</code></td>
+<td>Ask to join a published listing (public id only, never a group id). Body <code>{ "note"? }</code> (plain text, 280 characters, content filtered: <code>422 invalid_note</code> or <code>422 note_rejected</code>). <code>201 { "status": "pending", "id", "created_at" }</code> when created; <code>200</code> for an idempotent repeat or <code>{ "status": "already_member" }</code> (given only to a member). Needs <code>explorer_browse</code> on, an accepting listing whose owner is also inside the flag, and current Terms (<code>403 { "code": "terms_reaccept_required" }</code>). <code>403 { "code": "cannot_request" }</code> is one generic answer for a block, cooldown after a denial, an owner "do not ask again", a pending or daily cap, or a suspended account. Anything else that cannot be requested is <code>404</code>.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/join-requests/{user_id}/requests?public_id=</code></td>
+<td>Your own requests, newest first: <code>{ "requests": [{ id, status, created_at, public_id, title, group_id? }], "already_member"? }</code>. <code>status</code> is <code>pending</code>, <code>approved</code>, <code>not_approved</code> (denied and expired look the same) or <code>withdrawn</code>. <code>group_id</code> appears only for an approved request while you are still a member. <code>already_member</code> appears when <code>public_id</code> is given.</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/join-requests/{user_id}/requests/{request_id}/withdraw</code></td>
+<td>Withdraw your own pending request. <code>{ "status": "withdrawn" }</code>; repeating is <code>200</code>; a decided request is <code>409 not_pending</code>.</td>
+</tr>
+</tbody>
+</table>
+<p>Owner routes (group owner only: creator, still a member, not suspended; everyone else gets <code>404</code>):</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Route</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GET</td>
+<td><code>/join-requests/{user_id}/groups/{group_id}/requests</code></td>
+<td><code>{ "accepting_requests": bool \| null, "pending_count", "requests": [{ id, applicant_user_id, username, profile_photo_url, note, created_at }] }</code>, newest first. <code>accepting_requests</code> is null when the group has no listing. <code>applicant_user_id</code> is for Report and Block only.</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/join-requests/{user_id}/groups/{group_id}/requests/{request_id}/approve</code></td>
+<td>Adds the applicant to the group in one transaction (member cap and blocks re-checked). <code>{ "status": "approved", "already_member" }</code>; repeating is <code>200</code>. <code>409 group_full</code> leaves the request pending; <code>409 no_longer_available</code> (blocked or suspended applicant; the request is expired); <code>409 not_pending</code>.</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/join-requests/{user_id}/groups/{group_id}/requests/{request_id}/deny</code></td>
+<td>Body <code>{ "block_reapply"?: bool }</code>. <code>{ "status": "denied", "undo_seconds" }</code>. The applicant is not notified and cannot ask again for the cooldown (14 days), or ever with <code>block_reapply</code>.</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/join-requests/{user_id}/groups/{group_id}/requests/{request_id}/undo-deny</code></td>
+<td>Restore your own denial inside <code>undo_seconds</code> (10, server clock): <code>{ "status": "pending" }</code>, else <code>409 not_undoable</code>.</td>
+</tr>
+<tr>
+<td>PUT</td>
+<td><code>/join-requests/{user_id}/groups/{group_id}/accepting</code></td>
+<td>Body <code>{ "accepting": true\|false }</code> (strict booleans). Switches intake of NEW requests for the group's listing; pending requests are untouched. <code>{ "accepting" }</code>. <code>404</code> when the group has no listing. Works while <code>explorer_browse</code> is off.</td>
+</tr>
+</tbody>
+</table>
+<p>Push (flag <code>join_request_push</code>, evaluated for the owner): the owner gets at most one <code>join_request</code> push per group per 30 minutes with generic text, and the applicant gets one when approved; data <code>{ "action": "join_request", "group_id" }</code>. Notes, usernames and ids never appear in push text.</p>
+<!-- /JRQ -->
 
 
 

@@ -365,6 +365,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Core Features">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#naming-user-facing-term-vs-internal-identifiers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Naming: user-facing term vs. internal identifiers
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -615,6 +632,34 @@
     
   
     Account
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="design/agent-chats/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agent Chats
   
 
     
@@ -883,6 +928,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="architecture/price-cut-runbook/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Price Cut Runbook
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -980,16 +1053,16 @@
 <td>Collaborative devotion plans shared across a group</td>
 </tr>
 <tr>
-<td>AI Agent</td>
-<td>Daily check-in heartbeats with AI-generated devotional prompts</td>
+<td>Scheduled devotions</td>
+<td>Pick a time and a prompt; every day at that time your AI study partner writes a devotion for you, even when the app is closed (internal name: agent heartbeats)</td>
 </tr>
 <tr>
 <td>Notifications</td>
-<td>In-app notifications for group activity and agent events</td>
+<td>In-app notifications for group activity and your scheduled devotions</td>
 </tr>
 <tr>
 <td>Subscriptions</td>
-<td>Free tier (limited notes/events) + Individual and Group paid plans via Stripe (web) or Apple IAP (iOS)</td>
+<td>Free tier (5 notes per week, 1 scheduled devotion in total) + Individual and Group paid plans via Stripe (web) or Apple IAP (iOS)</td>
 </tr>
 <tr>
 <td>Account</td>
@@ -997,6 +1070,40 @@
 </tr>
 </tbody>
 </table>
+<h3 id="naming-user-facing-term-vs-internal-identifiers">Naming: user-facing term vs. internal identifiers</h3>
+<p>Users see "scheduled devotions". The internal names below are public identifiers (API
+routes and fields, database columns, Swift/JS symbols, analytics keys) and are deliberately
+<strong>not</strong> renamed, so older app builds keep working.</p>
+<table>
+<thead>
+<tr>
+<th>User-facing term</th>
+<th>Internal identifier</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Scheduled devotions (usage meter label, plan limit)</td>
+<td><code>agent_events</code> (usage/limit resource key)</td>
+</tr>
+<tr>
+<td>A single scheduled devotion</td>
+<td><code>agent_heartbeats</code> row, <code>FSHeartbeat</code> / <code>heartbeats</code> in client code</td>
+</tr>
+<tr>
+<td>Create, edit, delete, "write it now"</td>
+<td><code>/agent/{user_id}/...heartbeat...</code> routes (e.g. <code>commit_heartbeat</code>)</td>
+</tr>
+<tr>
+<td>Free plan: 1 scheduled devotion in total, paid plans unlimited</td>
+<td><code>FREE_LIMITS["agent_events"] = 1</code></td>
+</tr>
+</tbody>
+</table>
+<p>Copy guidelines: label "Scheduled devotions", sentence "scheduled devotion", creation button
+"New scheduled devotion". Avoid "agent", "event", "heartbeat" and "automation" in user-facing text
+for this feature. Examples to use: morning devotion, evening prayer prompt, weekly recap,
+reading-plan check-in.</p>
 <hr />
 <h2 id="pages-web">Pages (Web)</h2>
 <table>

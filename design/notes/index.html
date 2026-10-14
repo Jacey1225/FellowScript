@@ -760,10 +760,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#ai-generated-note-edit-permission-scheduled-events" class="md-nav__link">
+  <a href="#ai-generated-note-edit-permission-scheduled-devotions" class="md-nav__link">
     <span class="md-ellipsis">
       
-        AI-Generated Note Edit Permission (Scheduled Events)
+        AI-Generated Note Edit Permission (Scheduled Devotions)
       
     </span>
   </a>
@@ -775,6 +775,17 @@
     <span class="md-ellipsis">
       
         Creation Date Storage
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sharing-ios" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sharing (iOS)
       
     </span>
   </a>
@@ -833,6 +844,34 @@
     
   
     Account
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../agent-chats/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agent Chats
   
 
     
@@ -1088,6 +1127,34 @@
     
   
     GHCR Server-Side Deploy Plan
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/price-cut-runbook/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Price Cut Runbook
   
 
     
@@ -1422,8 +1489,8 @@ endpoint or editor:</p>
   parent note's edit flow.</li>
 </ul>
 <hr />
-<h2 id="ai-generated-note-edit-permission-scheduled-events">AI-Generated Note Edit Permission (Scheduled Events)</h2>
-<p>Scheduled agent "heartbeat" events (<code>AgentHeartbeats</code>, configured via iOS's
+<h2 id="ai-generated-note-edit-permission-scheduled-devotions">AI-Generated Note Edit Permission (Scheduled Devotions)</h2>
+<p>Scheduled devotions (internal: agent "heartbeat" events, <code>AgentHeartbeats</code>, configured via iOS's
 <code>EventSetupSheet</code>) can be tied to a group, so the note the agent generates on
 fire inherits that group's <code>group_id</code>. A dedicated "EDIT PERMISSION" toggle
 on the event's Details screen — shown only once a group is selected, mirroring
@@ -1437,6 +1504,11 @@ edit that AI-authored note (never whether it's visible — visibility is still
 <hr />
 <h2 id="creation-date-storage">Creation Date Storage</h2>
 <p><code>created_at</code> is set at INSERT time and never modified on edits. <code>timestamp</code> is bumped on every edit. The frontend sorts by <code>created_at</code> (falling back to <code>timestamp</code> for legacy notes) and displays <code>created_at</code> as the date label on each card.</p>
+<hr />
+<h2 id="sharing-ios">Sharing (iOS)</h2>
+<p>Notes cannot be shared. Long-pressing a highlight (Highlights tab or highlight search) or a verse in the reader shares the reference, the verse text and a link that opens the verse (<code>https://fellowscript.com/v/&lt;book&gt;/&lt;chapter&gt;/&lt;verse&gt;</code>).</p>
+<p>Share links open a confirm screen in the app and never send anything on their own: <code>/u/&lt;username&gt;</code> asks "Send a friend request to <username>?", <code>/g/&lt;public_id&gt;</code> shows the published group and a "Request to join" button (the host still approves). Parsing is strict and deny-by-default; anything that is not exactly one of these shapes is ignored. Username links are guessable and not revocable (a rename invalidates them). The landing pages, AASA entries and nginx snippets for these paths are prepared in the repo and are not applied to the server until confirmed.</p>
+<p>Group announcements share the group name, title and date plus the <code>/g/&lt;public_id&gt;</code> request-to-join link, only when the group has a published Explorer listing; the description, location, links and payment handles are never shared.</p>
 
 
 

@@ -539,6 +539,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../design/agent-chats/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agent Chats
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -858,6 +886,56 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#group-invite-links-task-20260929-group-invite-links" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Group invite links (task 20260929-group-invite-links)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#owner-rewards-ui-task-20261001-promo-owner-rewards" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Owner rewards UI (task 20261001-promo-owner-rewards)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Owner rewards UI (task 20261001-promo-owner-rewards)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#ios-claim-reward-apple-owners" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        iOS: claim reward (Apple owners)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#capabilities-and-updated-terms-gate-task-20261002-shared-foundation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Capabilities and Updated Terms gate (task 20261002-shared-foundation)
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -979,6 +1057,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../price-cut-runbook/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Price Cut Runbook
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -1062,6 +1168,11 @@
 <td><code>/download</code></td>
 <td><code>pages/Download.jsx</code></td>
 <td>Public "get the app" page — see "Reader-nav leak fix: the <code>/download</code> page" below.</td>
+</tr>
+<tr>
+<td><code>/join/:token</code></td>
+<td><code>pages/JoinInvite.jsx</code></td>
+<td>Join-by-link confirmation for group invite links (task <code>20260929-group-invite-links</code>). Public preview (group, inviter, member count) works signed out; joining needs a session. Signed-out users get "Sign in to join" / "Create an account" with the token held in <code>sessionStorage</code> (<code>lib/pendingInvite.js</code>, 24h expiry, consumed once). Allowed in the desktop shell via <code>DESKTOP_ALLOWED_ROUTE_PATTERNS</code>.</td>
 </tr>
 <tr>
 <td><code>/account</code></td>
@@ -1164,6 +1275,14 @@
 <td>Shared building blocks used by both the desktop panels above and the mobile fullscreen overlays. <code>ChatThread.jsx</code> (task <code>20260904-messaging-attachments</code>, restyled <code>20260904-attach-picker-layout-polish</code>) also owns the composer's plus-icon attach affordance (an antd <code>Popover</code> anchored above the text field, its content a single row of gold-pill options — Photo &amp; Video / File / GIF), the GIF-search <code>Modal</code> (<code>GET /message/gif-search</code>, debounced), the staged pre-send attachment preview chip (direct-to-S3 upload via <code>POST /message/upload-url/{user_id}</code>, manual tap-to-retry on failure), and per-<code>attachment_kind</code> rendering inside the existing <code>.msg-bubble</code> container. <code>useMessaging.js</code> gained <code>requestUploadUrl</code>/<code>uploadToS3</code>/<code>searchGifs</code> and threads <code>attachmentKind</code>/<code>attachmentMeta</code>/<code>attachmentUrl</code> through <code>sendMessage</code>, the WS <code>onmessage</code> handler, and <code>openChat</code>'s history load.</td>
 </tr>
 <tr>
+<td><code>GroupInfoPanel.jsx</code> / <code>lib/groupInfoApi.js</code></td>
+<td>Group info panel (task <code>20260929-group-info-panel</code>), groups only. <code>ChatThread.jsx</code>'s group header is a single button (avatar + name) that opens it, replacing the old inline <code>showMembers</code> strip; the member list now lives inside the panel. 320px side panel at &gt;=768px, portaled bottom sheet below. Rename, group photo (presigned upload/confirm, remove with 8s undo via the <code>restore_key</code> the backend returns), per-user mute switch (shows only the last server-confirmed state), members, and a paged gallery (All/Photos/Videos/GIFs/Files chips, explicit Load more, existing lightbox). All calls in <code>lib/groupInfoApi.js</code> throw on failure; last-good info/gallery are kept in module-level caches so a failed refresh never blanks the panel. <code>useMessaging.js</code> gained <code>applyGroupChange</code>/<code>dropGroup</code> (list row, header, and cached row update after a server-confirmed change; 403 drops the group) and group rows now carry <code>photoUrl</code>.</td>
+</tr>
+<tr>
+<td><code>GroupAnnouncements.jsx</code> / <code>GroupAnnouncementForm.jsx</code> / <code>GroupAnnouncementViewer.jsx</code> / <code>lib/announcementsApi.js</code></td>
+<td>Group announcements sub-view (task <code>20260929-group-announcements</code>), hosted in <code>GroupInfoPanel</code> via an Announcements entry row (in-panel navigation; Esc/Back return one level). List (cache-first, failed refresh keeps the cached list with a Retry banner), New button, create/edit form (banner via presigned upload, Now/Schedule), viewer with Edit for <code>can_edit</code> users, delete with 8s undo (deferred server DELETE, flushed on close) via touch swipe-right or the kebab menu. Free-limit 403 (<code>err.gate</code>) or <code>gate.allowed === false</code> shows an upgrade card that keeps the draft.</td>
+</tr>
+<tr>
 <td><code>BibleNavigator.jsx</code></td>
 <td>Book + chapter picker (search + scroll)</td>
 </tr>
@@ -1192,35 +1311,19 @@
 <td>Displays current plan (free tier vs. paid), usage limits, upgrade prompt</td>
 </tr>
 <tr>
-<td><code>SessionWidget.jsx</code></td>
-<td>Devotion session UI</td>
-</tr>
-<tr>
-<td><code>SessionCreator.jsx</code></td>
-<td>Create a new devotion plan</td>
-</tr>
-<tr>
-<td><code>DonationButton.jsx</code></td>
-<td>One-time donation flow</td>
-</tr>
-<tr>
-<td><code>AdminMembershipGrant.jsx</code></td>
-<td>Task <code>20260914-admin-free-membership</code>. Rendered at the top of <code>/admin</code> (<code>AdminDetections.jsx</code>), alongside — not inside — the CloudWatch detection feed's own state. A single plainly-labeled "Grant free individual membership" button that calls <code>POST /subscriptions/admin/grant-individual</code> (<code>require_admin</code>; no body — the target is always the calling admin) and shows the resulting active/<code>admin_comp</code> membership state in place of the button, with minimal inline loading/success/error feedback (no novel interaction pattern, per the design notes for that task). A 401/403 from the call (session lapsed/demoted between page load and click) redirects the same way <code>AdminDetections.jsx</code>'s own fetch does.</td>
-</tr>
-<tr>
-<td><code>AdminActivityMonitoring.jsx</code></td>
-<td>Task <code>20260918-admin-activity-monitoring</code>, made interactive by <code>20260919-activity-monitoring-interactive-charts</code>. Rendered on <code>/admin</code> (<code>AdminDetections.jsx</code>) directly below <code>AdminMembershipGrant.jsx</code>, fully self-contained (own state, own requests). Shows five interactive Recharts <code>&lt;LineChart&gt;</code>s fed by <code>fetch()</code> calls to the <code>require_admin</code>-gated <code>GET /activity-monitoring/data/{notes,highlights,logins,messages}</code> and <code>GET /activity-monitoring/data/visits</code> JSON endpoints (the earlier PNG endpoints are unused by the frontend as of this task), over a trailing-30-day window: four "average per user" cards in a 2-column desktop / 1-column mobile grid, plus a full-width visits card (raw pageviews vs. unique-device visitors, two lines, color+shape dual-encoded) below them. Hovering any chart shows a custom dark/gold tooltip with the exact date and value(s); clicking a chart opens it larger in a click-to-expand overlay — a centered fade/scale modal (reusing the <code>.attachment-lightbox-overlay</code> CSS family's motion) on desktop, or the existing <code>.mobile-overlay</code> fullscreen slide-up treatment on small viewports, both with <code>useFocusTrap</code>/Escape-to-close/<code>role="dialog"</code> semantics matching <code>DetectionDetailOverlay</code>. A manual "Refresh" button re-fetches all five series — this remains a point-in-time snapshot, not a polling dashboard. Each chart card manages its own independent loading/error+retry/empty state (401/403 redirect to <code>/signin</code>/<code>/</code>, matching <code>AdminDetections.jsx</code>'s own fetch convention) so one failed chart never blocks the other four. All chart-draw and expand/collapse motion is skipped under <code>prefers-reduced-motion: reduce</code>.</td>
-</tr>
-<tr>
-<td><code>AdminGate.jsx</code></td>
-<td>Wraps the two hidden <code>/admin*</code> routes. Handles only the synchronous "no session at all" redirect to <code>/signin</code>; the 401 (session expired)/403 (non-admin) cases are handled by each admin page's own first data fetch, since there's no client-visible <code>is_admin</code> field to check ahead of time — defense-in-depth UX only, not a security boundary.</td>
-</tr>
-<tr>
-<td><code>DetectionDetailOverlay.jsx</code></td>
-<td>Mobile-only (≤1024px) "list-overlay drawer" for a detection's detail, rendered by <code>AdminDetections.jsx</code> and reusing the <code>.mobile-overlay</code> slide-up CSS class. Duplicates (rather than shares) <code>AdminDetectionDetail.jsx</code>'s fetch/rerun-report logic so that page's desktop behavior stays untouched. Splits content into an antd <code>Segmented</code> "Error"/"Report" toggle (a status dot on "Report" indicates whether one has been generated) instead of stacking both cards, since a phone screen doesn't have room for both at once. Its Report panel has the same icon-only "Download Remediation Instructions" button as the desktop page (also duplicated rather than shared, calling the same <code>lib/remediationMarkdown.js</code> helper and audit endpoint independently).</td>
+<td><code>FriendInviteCode.jsx</code></td>
+<td>Friend invite code (get on demand, copy, share) shown by <code>SubscriptionCard</code> only when the promo flag is on</td>
 </tr>
 </tbody>
 </table>
+<p>Promo codes (task 20260930-creator-friend-codes): <code>lib/promoCode.js</code> captures a shared <code>/?code=XYZ</code> link before React mounts (kept in localStorage for 7 days, stripped from the URL) and <code>SubscriptionCard</code> prefills it. Whether the promo UI shows is learned from the server (<code>POST /promo/{user}/validate</code> answers 404 while <code>PROMO_CODES_ENABLED</code> is off, so the field and invite section stay hidden). The field is offered for single-member plans only, any failure shows one uniform message, and the server re-validates at checkout. There is no free trial in the web purchase flow: the buyer is billed at once, or the first month is discounted when a code is applied.
+| <code>SessionWidget.jsx</code> | Devotion session UI |
+| <code>SessionCreator.jsx</code> | Create a new devotion plan |
+| <code>DonationButton.jsx</code> | One-time donation flow |
+| <code>AdminMembershipGrant.jsx</code> | Task <code>20260914-admin-free-membership</code>. Rendered at the top of <code>/admin</code> (<code>AdminDetections.jsx</code>), alongside — not inside — the CloudWatch detection feed's own state. A single plainly-labeled "Grant free individual membership" button that calls <code>POST /subscriptions/admin/grant-individual</code> (<code>require_admin</code>; no body — the target is always the calling admin) and shows the resulting active/<code>admin_comp</code> membership state in place of the button, with minimal inline loading/success/error feedback (no novel interaction pattern, per the design notes for that task). A 401/403 from the call (session lapsed/demoted between page load and click) redirects the same way <code>AdminDetections.jsx</code>'s own fetch does. |
+| <code>AdminActivityMonitoring.jsx</code> | Task <code>20260918-admin-activity-monitoring</code>, made interactive by <code>20260919-activity-monitoring-interactive-charts</code>. Rendered on <code>/admin</code> (<code>AdminDetections.jsx</code>) directly below <code>AdminMembershipGrant.jsx</code>, fully self-contained (own state, own requests). Shows five interactive Recharts <code>&lt;LineChart&gt;</code>s fed by <code>fetch()</code> calls to the <code>require_admin</code>-gated <code>GET /activity-monitoring/data/{notes,highlights,logins,messages}</code> and <code>GET /activity-monitoring/data/visits</code> JSON endpoints (the earlier PNG endpoints are unused by the frontend as of this task), over a trailing-30-day window: four "average per user" cards in a 2-column desktop / 1-column mobile grid, plus a full-width visits card (raw pageviews vs. unique-device visitors, two lines, color+shape dual-encoded) below them. Hovering any chart shows a custom dark/gold tooltip with the exact date and value(s); clicking a chart opens it larger in a click-to-expand overlay — a centered fade/scale modal (reusing the <code>.attachment-lightbox-overlay</code> CSS family's motion) on desktop, or the existing <code>.mobile-overlay</code> fullscreen slide-up treatment on small viewports, both with <code>useFocusTrap</code>/Escape-to-close/<code>role="dialog"</code> semantics matching <code>DetectionDetailOverlay</code>. A manual "Refresh" button re-fetches all five series — this remains a point-in-time snapshot, not a polling dashboard. Each chart card manages its own independent loading/error+retry/empty state (401/403 redirect to <code>/signin</code>/<code>/</code>, matching <code>AdminDetections.jsx</code>'s own fetch convention) so one failed chart never blocks the other four. All chart-draw and expand/collapse motion is skipped under <code>prefers-reduced-motion: reduce</code>. |
+| <code>AdminGate.jsx</code> | Wraps the two hidden <code>/admin*</code> routes. Handles only the synchronous "no session at all" redirect to <code>/signin</code>; the 401 (session expired)/403 (non-admin) cases are handled by each admin page's own first data fetch, since there's no client-visible <code>is_admin</code> field to check ahead of time — defense-in-depth UX only, not a security boundary. |
+| <code>DetectionDetailOverlay.jsx</code> | Mobile-only (≤1024px) "list-overlay drawer" for a detection's detail, rendered by <code>AdminDetections.jsx</code> and reusing the <code>.mobile-overlay</code> slide-up CSS class. Duplicates (rather than shares) <code>AdminDetectionDetail.jsx</code>'s fetch/rerun-report logic so that page's desktop behavior stays untouched. Splits content into an antd <code>Segmented</code> "Error"/"Report" toggle (a status dot on "Report" indicates whether one has been generated) instead of stacking both cards, since a phone screen doesn't have room for both at once. Its Report panel has the same icon-only "Download Remediation Instructions" button as the desktop page (also duplicated rather than shared, calling the same <code>lib/remediationMarkdown.js</code> helper and audit endpoint independently). |</p>
 <hr />
 <h2 id="state-and-auth">State and Auth</h2>
 <p><code>context/AuthContext.jsx</code> provides <code>useAuth()</code> across the app. It exposes:
@@ -1285,6 +1388,18 @@
 <td>Message thread (header, grouped bubbles, composer), session banner/detail, and <code>SessionCreatorSheet</code> — the bottom-sheet scheduling flow. Warm-dark-bloom restyle (matching <code>ChatRootView.swift</code>'s existing redesign) backed by <code>Theme.swift</code> tokens; same WebSocket/<code>NetworkService</code> data flow as before. <code>SessionCreatorSheet</code>'s duration control is a fixed 15/30/45/60-minute segmented picker (<code>Chat/SegmentedDurationControl.swift</code>) rather than the previous free 5-minute-step picker — <code>time_end</code> is still computed client-side from <code>time_start</code> + the selected duration, since <code>FSSession</code> has no duration field of its own. The header's "Sessions" pill (task <code>20260920-chat-sessions-submenu</code>) opens a floating submenu card (<code>sessionsMenuOverlay</code>/<code>sessionsMenuCard</code>) listing every session for the chat (upcoming soonest-first, past most-recent-first), with a "Schedule new session" action and tap-through to the existing <code>SessionDetailSheet</code>, replacing the old always-visible inline <code>SessionBanner</code> (its struct definition and dedicated tests remain, just no longer instantiated here). Task <code>20260920-sessions-menu-background-blur</code>: the submenu's full-screen backdrop is <code>Color.clear</code> (an invisible tap-outside-to-dismiss catcher), not a blur — only the card itself carries the translucent <code>.regularMaterial</code> glass treatment, so the chat thread behind the open submenu stays fully visible and unblurred.</td>
 </tr>
 <tr>
+<td><code>Chat/GroupInfoSheet.swift</code></td>
+<td>Group info sheet (task <code>20260929-group-info-panel</code>), opened from <code>ChatThreadView</code>'s group header (replaces the inline <code>showMembers</code> strip; <code>GroupMembersPanel</code> is reused inside the sheet, its Add chip dismisses the sheet then opens <code>AddGroupMembersSheet</code>). <code>GroupInfoViewModel</code> drives rename, group photo (PhotosPicker, presigned upload, remove with 8s undo), server-confirmed mute toggle, and a paged gallery with filter chips; info and first-page gallery are cached via <code>DiskCache</code> and a failed refresh keeps them. New <code>NetworkService+GroupInfo.swift</code> methods are declared on <code>DataServiceProtocol</code> with throwing default implementations so existing conformers compile.</td>
+</tr>
+<tr>
+<td><code>Chat/ChatSocketOwner.swift</code>, <code>Chat/GroupThreadsSection.swift</code>, <code>Models/FSThread.swift</code>, <code>Services/NetworkService+Threads.swift</code></td>
+<td>Message threads and message delete on iOS (task <code>20261001-message-threads</code> step 10), gated on <code>capabilities.features.threads</code> / <code>message_delete</code> (false or missing = nothing rendered, no behaviour change). <code>ChatSocketOwner</code> is the websocket lifecycle extracted from <code>ChatThreadViewModel</code> (same backoff and background/foreground rules). The server keeps ONE websocket per user, so a thread is a mode of the same view model (<code>activeThread</code>), never a second socket: opening a thread stashes the main chat's list and paging state, loads the thread's own pages into the same fields, and Back restores the stash; main-chat frames that arrive meanwhile go to the stash. Frames handled on that one socket: <code>thread_message</code>, <code>message_deleted</code>, <code>message_restored</code>, <code>ack</code> (a <code>thread_id</code> ack reconciles the open thread only) and <code>error</code> (<code>terms_reaccept_required</code> returns the typed text to the composer and raises the Updated Terms gate). Long-press is the native <code>.contextMenu</code> plus matching VoiceOver custom actions (<code>FSMessageActionPolicy</code>): main-chat own message Start thread / Copy / Delete (10 s Undo toast through the restore route, optimistic with rollback), others' messages Copy / Start thread / Report / Block, thread messages Copy only. <code>GroupThreadsSection</code> is registered at order 30 in <code>GroupInfoExtraSections</code> (skeleton, empty, error + Retry with last-good rows kept via <code>DiskCache</code>, Show more by keyset cursor); a row tap opens the thread through the <code>fsOpenThread</code> environment action. Thread header shows Back to the group, the title and a pinned root card ("Original message deleted" when the root is deleted). Push <code>action: thread_message</code> opens the group chat, then the thread (<code>AppState.openThread</code>).</td>
+</tr>
+<tr>
+<td><code>Chat/GroupAnnouncements*.swift</code> / <code>NetworkService+Announcements.swift</code> / <code>Models/FSGroupAnnouncement.swift</code></td>
+<td>Group announcements (task <code>20260929-group-announcements</code>), pushed from <code>GroupInfoSheet</code>'s NavigationStack. List with trailing-edge (swipe-left) delete + 8s undo (plus accessibility actions and a Delete menu in the viewer), detail with top-right Edit, form sheet (banner tile with bottom-left Upload and Stock photos pills, translucent title/message fields, Now/Schedule). Task <code>20261009-announcements-advanced</code> adds a bundled 32-photo nature set (<code>Resources/NatureBanners/</code>, CC0, provenance in <code>CREDITS.md</code>, picked in <code>AnnouncementStockPicker</code> and sent through the same crop and upload path), an 8-font title picker (<code>AnnouncementTitleFont</code>, 5 new OFL fonts in <code>Fonts/</code>) and a 12-preset background theme palette (<code>AnnouncementBgTheme</code>); the font and theme controls show only when the <code>announcement_title_font</code> / <code>announcement_bg_theme</code> capability flags are on. Part E adds a collapsed "Add extras (optional)" section at the bottom of the form (<code>AnnouncementExtrasForm</code>, rows gated by <code>announcement_links</code> / <code>announcement_gallery</code> / <code>announcement_payments</code> / <code>announcement_rsvp</code>): up to 5 web links, up to 6 gallery photos (downscaled JPEG through the banner upload endpoint), display-only event payment handles (Venmo, Cash App, PayPal, Zelle) with a "paid outside the app" disclaimer, and RSVP capacity. The detail view (<code>AnnouncementExtrasDetail</code>) hides each block when empty, opens links only in <code>SFSafariViewController</code> with the host shown (and a warning for internationalized hosts), and shows "N of M going" with optimistic join/cancel that rolls back on failure; RSVP never changes group membership. Network calls sit behind a separate <code>GroupAnnouncementsService</code> protocol that <code>NetworkService</code> adopts (not added to <code>DataServiceProtocol</code>); <code>.limitReached</code> shows the upgrade card, whose See plans posts <code>.fsOpenSubscriptionPlans</code> (ContentView switches to the Account tab).</td>
+</tr>
+<tr>
 <td><code>Chat/PillButton.swift</code>, <code>Chat/MessageGroupRow.swift</code>, <code>Chat/SegmentedDurationControl.swift</code>, <code>Chat/ChipToggle.swift</code></td>
 <td>Shared restyled Chat components (amber-gradient pill buttons, Slack-style grouped message rows, the duration segmented control, chip toggles) — per-feature component files, no separate shared <code>Theme/Components/</code> folder</td>
 </tr>
@@ -1329,6 +1444,33 @@
 <li><strong>Pull-to-refresh</strong> — native <code>.refreshable</code>, wired to each screen's existing reload method. Applied to <code>NotesListView</code> (notes + highlights tabs), <code>DashboardView</code>, <code>ChatRootView</code> (friends/groups/agents lists), <code>AccountView</code>, and <code>BlockedUsersView</code>. <code>NotesViewModel</code>, <code>ChatViewModel</code> gained a <code>refresh(service:userId:)</code> entry point that bypasses their <code>hasLoadedOnce</code> startup-dedup guard and skips the full-screen loading-spinner branch, so an already-populated list stays on screen (under SwiftUI's own native refresh spinner) instead of being replaced mid-refresh. Not applied to <code>BibleReaderView</code> (static bundled chapter content, no "new data since cache" concept) or the live WebSocket chat threads (<code>ChatThreadView</code>/<code>AgentChatView</code> — no existing older-message pagination for an overscroll gesture to drive).</li>
 <li><strong>Keyboard dismiss on scroll or tap</strong> — <code>View.dismissesKeyboardOnScrollAndTap()</code> composes <code>.scrollDismissesKeyboard(.interactively)</code> with a tap gesture that resigns first responder app-wide. Applied to every screen with text input (Auth, Account, Chat composers/search/sheets, Notes editor/reply sheet, MFA/report/event sheets). Reconciles <code>NoteEditorView</code>'s prior one-off <code>.scrollDismissesKeyboard(.interactively)</code> onto this same shared modifier. Two fixes for the same underlying defect (a tap meant to reposition the cursor inside an already-focused text field instead dismissed the keyboard) live on top of this base mechanism: task <code>20260903-message-composer-keyboard-dismiss</code> reordered the modifier ahead of <code>.safeAreaInset</code> in <code>ChatThreadView</code>/<code>AgentChatView</code> so their composer sits outside its attached subtree entirely; task <code>20260904-notes-keyboard-dismiss-fix</code> then replaced the tap side's implementation itself — <code>KeyboardResignTapGesture</code>, a <code>UIGestureRecognizerRepresentable</code>-backed <code>UITapGestureRecognizer</code> (iOS 18+) rather than a plain SwiftUI <code>TapGesture</code> — so its <code>UIGestureRecognizerDelegate</code> can decline to recognize a tap landing on/inside an active <code>UITextField</code>/<code>UITextView</code> (via the extracted, directly-tested <code>isOrIsNestedInTextInputControl</code> helper), fixing <code>NoteEditorView</code>'s title/body and <code>ReplyComposerSheet</code>'s reply body, which have no <code>.safeAreaInset</code> sibling boundary to exploit the way Chat's composer does. <code>cancelsTouchesInView = false</code> plus a <code>shouldRecognizeSimultaneouslyWith</code> delegate hook returning <code>true</code> preserve the original "never blocks or steals a tap meant for a button/list row underneath it" guarantee.</li>
 <li><strong>Tap-outside-to-dismiss</strong> — <code>Theme.TapOutsideDismissCatcher</code>, a near-zero-opacity full-screen tap catcher placed behind a custom <code>ZStack</code>-based overlay's own content. Applied to <code>BibleReaderView</code>'s book/chapter nav dropdown (<code>BibleNavDropdown</code>) — the only custom overlay of this kind in the app; native <code>.sheet</code>/<code>.popover</code> presentations already dismiss on background tap by default and need no help here.</li>
+</ul>
+<hr />
+<h2 id="group-invite-links-task-20260929-group-invite-links">Group invite links (task <code>20260929-group-invite-links</code>)</h2>
+<p>Backend: <code>api/routes/invites.py</code> (feature flag <code>api/config/invites.json</code> <code>enabled</code>, ships <code>false</code>). Clients treat the uniform 404 as "feature unavailable": <code>components/InviteLinkSection.jsx</code> (inside <code>GroupInfoPanel.jsx</code>) hides itself, and <code>pages/JoinInvite.jsx</code> shows the generic invalid-link screen.</p>
+<ul>
+<li>Task <code>20261001-group-invite-permanent-member-cap</code>: group links never expire (<code>expires_at</code> is null; no expiry picker for groups, rows read "Never expires"; legacy links still show their expiry; subscription links unchanged). <code>GroupInfoPanel.jsx</code> / iOS <code>GroupInfoSheet.swift</code> show a "Member limit" field (owner edits via <code>PUT /groups/{u}/{g}/max-members</code>, <code>setGroupMaxMembers</code>; others see it read-only). A 409 <code>group_full</code> on redeem renders "This group is full." in <code>JoinInvite.jsx</code> and iOS <code>JoinInviteView.swift</code>.</li>
+<li><code>lib/invitesApi.js</code>: API wrappers, <code>parseInviteInput</code> (URL or bare token, host must be fellowscript.com, 43-char url-safe token), <code>InviteApiError</code> with <code>status</code>/<code>code</code>.</li>
+<li><code>lib/pendingInvite.js</code>: pending token in <code>sessionStorage</code>; <code>postAuthPath()</code> sends SignIn/VerifyMfa back to <code>/join/&lt;token&gt;</code> instead of <code>/reader</code>. Cleared on sign-out.</li>
+<li>Plaintext link exists only in <code>InviteLinkSection</code> component state right after creation; the list is metadata only.</li>
+<li>Desktop: <code>components/JoinWithLinkModal.jsx</code> (paste a link or token) beside the Groups header in <code>ContactsPanel.jsx</code>; after a join, <code>Reader.jsx</code> opens the group once (<code>fs_open_group</code>).</li>
+<li>Static landing page <code>frontend/public/join/index.html</code> (validated token, fixed same-origin <code>/#/join/&lt;token&gt;</code> link) and <code>frontend/public/.well-known/apple-app-site-association</code> (appID <code>886XPLVC69.com.fellowscript.app</code>, path <code>/join/*</code>). <code>deploy.sh</code> ships both; the nginx rules are prepared in <code>ops/nginx/invite-links.conf</code> and are NOT applied by any script.</li>
+</ul>
+<h2 id="owner-rewards-ui-task-20261001-promo-owner-rewards">Owner rewards UI (task <code>20261001-promo-owner-rewards</code>)</h2>
+<p>All of it sits behind the backend <code>OWNER_REWARDS_ENABLED</code> flag (default OFF). With the flag off the API answers a uniform 404 and every surface below hides itself or shows a neutral "not available" notice. Nothing in the client grants a reward or discount; the server decides everything.</p>
+<ul>
+<li><strong><code>/#/admin/promo</code></strong> (<code>pages/AdminPromoCodes.jsx</code>, wrapped in <code>AdminGate</code>, linked from <code>/admin</code>). Admin creates a creator plus a secure random code attached to an owner email (<code>POST /admin/promo/creator-codes</code>), lists codes with owner email, redemption count and rewards earned/claimed (<code>GET /admin/promo/codes-overview</code>), and manages each code's lifecycle: deactivate (<code>POST /admin/promo/codes/{id}/deactivate</code>), reactivate (<code>POST .../reactivate</code>) and, for creator codes only, delete behind a confirmation popover (<code>DELETE /admin/promo/codes/{id}</code>, soft delete that keeps redemption history). All are idempotent; friend codes show no Delete button. 401 redirects to sign-in, 403 to home, 404 shows the "not enabled" notice. <code>require_admin</code> on the server is the real enforcement.</li>
+<li><strong><code>/#/invite</code></strong> (<code>pages/InviteFriends.jsx</code>, signed-in only). Reuses <code>FriendInviteCode</code> (<code>POST /promo/{user_id}/friend-code</code>) to generate or retrieve the user's invite code/link, and shows reward counts from <code>GET /rewards/{user_id}</code> (best-effort; hidden on any failure). Notes that friends new to paid plans who subscribe on iPhone cannot use a code there and should subscribe on the web.</li>
+<li><strong>Reward notice</strong> (<code>components/RewardNotice.jsx</code>). Web counterpart of the iOS "You earned N% off your next month" notice, rendered on Account (above the subscription card, self-fetching) and <code>/#/invite</code> (reusing the page's summary). Shown only when <code>earned &gt; 0</code>; Apple owners are told to open the iPhone app and tap Claim reward, Stripe owners that it applies to the next invoice automatically. Dismissible per browser session (sessionStorage, re-shows when the earned count changes); hidden on 404 or any error. Display only.</li>
+<li>API wrappers live in <code>lib/ownerRewardsApi.js</code> (throw on any failure).</li>
+</ul>
+<h3 id="ios-claim-reward-apple-owners">iOS: claim reward (Apple owners)</h3>
+<p>Stripe owners get the discount automatically on their next invoice, so iOS shows a claim row only for Apple subscribers (<code>reward.provider == "apple"</code> with <code>earned &gt; 0</code>). <code>AccountView+Rewards.swift</code> renders it inside the subscription card; <code>AccountViewModel.loadRewardSummary</code>/<code>claimReward</code> drive it; <code>NetworkService+Rewards.swift</code> calls <code>GET /rewards/{id}</code> and <code>POST /rewards/{id}/apple/claim</code>. <code>StoreKitManager.claimOwnerReward</code> purchases the server-signed offer with <code>Product.PurchaseOption.promotionalOffer(...)</code> plus <code>.appAccountToken(applicationUsername)</code>, then forwards the verified transaction to <code>/subscriptions/apple/sync</code>, where the backend marks the reward claimed. A failed sync leaves the transaction unfinished so <code>syncEntitlements()</code> retries it. Limitation: a brand-new iOS subscriber cannot get a discount from a code (Apple restriction); they use the web.</p>
+<h2 id="capabilities-and-updated-terms-gate-task-20261002-shared-foundation">Capabilities and Updated Terms gate (task <code>20261002-shared-foundation</code>)</h2>
+<p>Both clients read <code>GET /app/capabilities</code> (session auth, <code>{v, features, links, terms_current}</code>) once per launch, sign-in and foreground return. It fails closed: any non-200, network error, timeout or malformed body means every feature is off and <code>terms_current</code> is treated as true, so a missing endpoint never traps a user behind the Terms gate.</p>
+<ul>
+<li><strong>Web:</strong> <code>lib/capabilities.js</code> (never throws), <code>context/CapabilitiesContext.jsx</code> (provider mounted in <code>main.jsx</code>, hook <code>hooks/useCapabilities.js</code>), <code>components/TermsGate.jsx</code> (the same "Our Terms of Service have been updated" modal <code>SignIn.jsx</code> shows, posting <code>POST /user/{user_id}/accept-terms</code>, shown when <code>terms_current</code> is false). <code>components/groupInfoSections.js</code> is a data registry of extra <code>GroupInfoPanel</code> sections rendered once between Member limit and Members (reserved orders: publish 10, join_requests 20, threads 30); an empty registry renders nothing.</li>
+<li><strong>iOS:</strong> <code>Services/NetworkService+Capabilities.swift</code> (throws on any failure or decode error), <code>AppState.capabilities</code> (all-off on error; raises the existing <code>termsReacceptRequired</code> gate when <code>terms_current</code> is false), and <code>Chat/GroupInfoExtraSections.swift</code> (same registry for <code>GroupInfoSheet</code>, capabilities passed through the <code>fsCapabilities</code> environment value).</li>
 </ul>
 
 

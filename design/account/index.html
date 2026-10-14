@@ -16,7 +16,7 @@
         <link rel="prev" href="../community/">
       
       
-        <link rel="next" href="../../architecture/overview/">
+        <link rel="next" href="../agent-chats/">
       
       
         
@@ -639,10 +639,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#events" class="md-nav__link">
+  <a href="#scheduled-devotions-internal-events-heartbeats" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Events
+        Scheduled devotions (internal: Events / heartbeats)
       
     </span>
   </a>
@@ -669,6 +669,34 @@
   
 </nav>
       
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../agent-chats/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agent Chats
+  
+
+    
+  </span>
+  
+  
+
+      </a>
     </li>
   
 
@@ -929,6 +957,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/price-cut-runbook/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Price Cut Runbook
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -1026,16 +1082,17 @@ uses native push/pop navigation.</p>
 </table>
 <p>There is only one paid tier — <strong>Group</strong> (1-8 members), priced by member count. There is no
 separate "individual" plan; a 1-member group plan covers that case.</p>
-<p>Upgrade prompt: "Upgrade to unlock unlimited notes, AI check-ins, and notifications."</p>
+<p>Upgrade prompt: "Upgrade to unlock unlimited notes, scheduled devotions, and notifications. Free includes 1 scheduled devotion; paid plans let you have as many as you like, such as one for morning and one for bedtime."</p>
 <p>Clicking <strong>Upgrade</strong> on web opens a Stripe Checkout session (<code>POST /subscriptions/stripe/checkout</code>). On iOS, tapping the plan tile triggers StoreKit 2 (<code>StoreKitManager</code>).</p>
 <p><strong>"What's included" disclosure (iOS)</strong> — both the active-subscriber row and the pre-purchase
 member-count picker include a tappable "What's included" row (<code>chevron.down</code>/<code>chevron.up</code>)
-that expands in place to list the plan's benefits: unlimited notes, unlimited agent events,
+that expands in place to list the plan's benefits: unlimited notes, unlimited scheduled devotions (wire name <code>agent_events</code>),
 and shared group access for up to the selected/purchased member count. (The former "unlimited
 agent notifications" line was removed 2026-08-26 along with the user-authored notification
 feature — see the Notifications note below.) Free-tier caps shown in each line are read live
 from <code>AccountViewModel.usage</code>
-(<code>FSUsage</code>, mirroring the backend's <code>FREE_LIMITS</code>/<code>NOTES_WINDOW_DAYS</code>) so they never drift out
+(<code>FSUsage</code>, mirroring the backend's <code>FREE_LIMITS</code>/<code>NOTES_WINDOW_DAYS</code>) so they never drift out</p>
+<p>The usage endpoint also returns <code>note_chars: {unlimited, limit}</code> — the caller's per-plan per-note character limit (<code>FREE_NOTE_CHAR_LIMIT</code> 30,000 for free, <code>PAID_NOTE_CHAR_LIMIT</code> 100,000 for paid; <code>unlimited</code> is always false). The note editor reads <code>limit</code> from here for its counter; over-limit writes get a 403 with <code>resource: "note_chars"</code>. Free users see the upgrade prompt; paid users (already on the top plan) see only the limit message, no upgrade CTA. AI-generated notes are exempt; existing over-cap notes can only shrink.
 of sync with server-enforced limits; a static fallback covers the brief window before usage
 loads. Collapsed by default in both states, matching the app's existing progressive-disclosure
 pattern (e.g. <code>seatCountEditRow</code>).</p>
@@ -1047,9 +1104,12 @@ pattern (e.g. <code>seatCountEditRow</code>).</p>
 <li><strong>iOS</strong>: <code>NetworkService.deleteUser(userId:)</code> is awaited first; <code>signOut()</code> is called after on <code>MainActor</code> (no race condition).</li>
 </ul>
 <p>The delete endpoint manually removes owned notes, nulls message and devotion author fields, then deletes the user row. All remaining related rows (subscriptions, highlights, bookmarks, agents) cascade automatically via FK constraints.</p>
-<h3 id="events">Events</h3>
-<p>Each event row lists one scheduled agent heartbeat (recurring AI check-in that generates and
-saves a note when it fires). Edit/Delete are reachable via a long-press context menu on both
+<h3 id="scheduled-devotions-internal-events-heartbeats">Scheduled devotions (internal: Events / heartbeats)</h3>
+<p>User-facing term (renamed from "Events" / "Agent events"): "scheduled devotions". Each row lists one
+scheduled devotion (internal name: agent heartbeat): every day at the chosen time your AI study
+partner writes a devotion and saves it as a note, even when the app is closed. Free plan includes 1 in total;
+paid plans: as many as you like. Code, routes and analytics keep the internal names (see the naming table in
+<code>docs/index.md</code>). Edit/Delete are reachable via a long-press context menu on both
 platforms.</p>
 <p><strong>Manual "execute now" trigger (iOS only, 2026-09-01; force-fire, 2026-09-01).</strong> Each <code>EventRow</code>
 also has an always-visible yellow play-button that fires that specific heartbeat immediately, via
