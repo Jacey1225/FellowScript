@@ -163,6 +163,11 @@ protocol DataServiceProtocol {
     // progress"} — it can no longer mean "already fired today".
     func commitHeartbeat(userId: String, agentId: String, heartbeatId: String, prompt: String) async throws -> [String: String]
     func summarizeSession(userId: String, agentId: String, session: FSSession, groupId: String) async throws
+    /// Same request, but reports whether the server answered `deferred: true`
+    /// (another paid attendee still counted present, so no note yet). The
+    /// default implementation (below) calls `summarizeSession` and reports
+    /// false, so mocks need no change.
+    func summarizeSessionReportingDeferral(userId: String, agentId: String, session: FSSession, groupId: String) async throws -> Bool
 
     // Contacts + messages
     func fetchContacts(userId: String) async throws -> ([FSContact], [String: FSGroup])

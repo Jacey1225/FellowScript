@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends, Request
+from fastapi import APIRouter, HTTPException, Depends, Request, Response
 from schemas.devotion import DevotionRequest, DevotionPlan, RingRequest
 from backend.interactions.push_preferences import async_disabled_user_ids
 from backend.interactions.devotion import DevotionManager, is_ring_enabled, is_ring_voip_enabled, ring_timeout_seconds
@@ -7,6 +7,7 @@ from backend.moderation.content_filter import check_clean, ContentRejected, reje
 from backend.rate_limiting import limiter
 from backend.subscription.limits import LimitsManager
 import boto3
+from backend.interactions.session_call_transcription import join_transcription_fields
 import logging
 import uuid
 from botocore.exceptions import ClientError
@@ -414,6 +415,22 @@ def _room_meeting_ids(session_id: str) -> list[str]:
         return []
 
 
+def _teardown_transcription(session, session_id: str) -> None:
+    """Call teardown: drop any transient transcript and stop transcription. Never raises."""
+    try:
+        from backend.interactions import session_transcript as st
+        was_active = st.is_active(session_id)
+        st.discard(session_id)
+        from backend.interactions import session_relay
+        session_relay.clear(session_id)
+        meeting_id = getattr(session, "chime_meeting_id", "") or ""
+        if was_active and meeting_id:
+            from backend.interactions import chime_meetings
+            chime_meetings.stop_transcription(meeting_id)
+    except Exception as e:
+        logger.warning("transcription teardown failed for session %s: %s", session_id, type(e).__name__)
+
+
 @devo_router.delete("/")
 async def delete_devotion(req: DevotionRequest, current_user: str = Depends(get_current_user)) -> dict:
     if req.user_id != current_user:
@@ -429,6 +446,7 @@ async def delete_devotion(req: DevotionRequest, current_user: str = Depends(get_
         # Task 20261009-discussion-rooms: room rows cascade with the session; collect
         # their Chime meetings first and tear them down best-effort afterwards.
         room_meetings = _room_meeting_ids(req.devotion_id)
+        _teardown_transcription(session, req.devotion_id)
         db.remove_devotion(req.devotion_id)
         if room_meetings:
             from backend.interactions.session_rooms import teardown_meetings_best_effort
@@ -544,6 +562,145 @@ async def join_call(session_id: str, user_id: str, _: str = Depends(require_matc
                 )
                 raise HTTPException(status_code=500, detail=_CHIME_ERROR_DETAIL)
 
-        return {"Meeting": meeting_data, "Attendee": attendee_resp["Attendee"]}
+        return {
+            "Meeting": meeting_data,
+            "Attendee": attendee_resp["Attendee"],
+            **join_transcription_fields(session_id, chime_meeting_id, user_id, str(session.get("creator_id") or "")),
+        }
+    finally:
+        db.close()
+
+
+# --- Live-call transcript relay (task 20261013-session-call-live-transcript-summary, step 2) ---
+#
+# Chime sends transcript text only to attendee clients. The ONE client the
+# server designates (session_relay.designated_relay) forwards it here. Nothing
+# below logs, echoes or stores transcript text anywhere but session_transcript.
+
+def _transcription_rate(which: str):
+    def _get() -> str:
+        try:
+            from backend.interactions.session_transcription_config import get_session_transcription_config
+            cfg = get_session_transcription_config()
+            return cfg.ingest_rate_limit if which == "ingest" else cfg.relay_status_rate_limit
+        except Exception:
+            return "1/minute"  # fail closed on a bad config
+    return _get
+
+
+def _require_transcription_enabled() -> None:
+    from backend.interactions.session_transcription_config import is_transcription_enabled
+    if not is_transcription_enabled():
+        raise HTTPException(status_code=404, detail="Not found")
+
+
+def _authorized_session(db: DevotionManager, session_id: str, user_id: str) -> dict:
+    session = db.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if not db.is_authorized(session, user_id):
+        raise HTTPException(status_code=403, detail="Not authorized")
+    return session
+
+
+@devo_router.post("/transcript/relay-status")
+@limiter.limit(_transcription_rate("status"))
+async def transcript_relay_status(request: Request, response: Response, session_id: str, user_id: str,
+                                  _: str = Depends(require_match("user_id"))) -> dict:
+    """Heartbeat plus relay re-evaluation. Every participant in the call polls
+    this every ``poll_seconds``; it keeps them "present" and tells them whether
+    they are now the relay (the creator dropped, or came back)."""
+    _require_transcription_enabled()
+    from backend.interactions import session_relay, session_transcript as st
+    from backend.interactions.session_call_transcription import is_relay
+    from backend.interactions.session_transcription_config import get_session_transcription_config
+    response.headers["Cache-Control"] = "no-store"
+    db = DevotionManager()
+    try:
+        session = _authorized_session(db, session_id, user_id)
+    finally:
+        db.close()
+    active = st.is_active(session_id)
+    in_call = session_relay.touch(session_id, user_id)
+    return {
+        "transcription_active": active,
+        "transcript_relay": bool(active and in_call and is_relay(session_id, str(session.get("creator_id") or ""), user_id)),
+        "poll_seconds": get_session_transcription_config().relay_poll_interval_seconds,
+    }
+
+
+@devo_router.post("/transcript/leave")
+async def transcript_leave(session_id: str, user_id: str, _: str = Depends(require_match("user_id"))) -> dict:
+    """Best-effort: the caller left the call, so the relay role can pass on
+    immediately instead of after the stale window. Idempotent."""
+    from backend.interactions import session_relay
+    session_relay.record_leave(session_id, user_id)
+    return {"ok": True}
+
+
+@devo_router.post("/transcript/ingest")
+@limiter.limit(_transcription_rate("ingest"))
+async def ingest_transcript(request: Request, response: Response, session_id: str, user_id: str,
+                            _: str = Depends(require_match("user_id"))) -> dict:
+    """Relay-only, text-only transcript intake. An empty ``segments`` list is a
+    valid heartbeat. Error responses never echo any part of the request body."""
+    _require_transcription_enabled()
+    from pydantic import ValidationError
+    from schemas.transcript import TranscriptIngestRequest
+    from backend.interactions import session_relay, session_transcript as st
+    from backend.interactions.session_call_transcription import is_relay
+    from backend.interactions.session_transcription_config import get_session_transcription_config
+
+    response.headers["Cache-Control"] = "no-store"
+    cfg = get_session_transcription_config()
+    try:
+        declared = int(request.headers.get("content-length") or 0)
+    except ValueError:
+        declared = 0
+    if declared > cfg.ingest_max_body_bytes:  # reject before buffering the body
+        raise HTTPException(status_code=413, detail="Request too large")
+    raw = await request.body()
+    if len(raw) > cfg.ingest_max_body_bytes:
+        raise HTTPException(status_code=413, detail="Request too large")
+    try:
+        body = TranscriptIngestRequest.model_validate_json(raw)
+    except ValidationError:
+        raise HTTPException(status_code=422, detail="Invalid request")  # generic: pydantic errors embed the input
+    if len(body.segments) > cfg.ingest_max_segments or any(len(x.text) > cfg.ingest_max_segment_chars for x in body.segments):
+        raise HTTPException(status_code=413, detail="Request too large")
+
+    db = DevotionManager()
+    try:
+        session = _authorized_session(db, session_id, user_id)
+        if not st.is_active(session_id):
+            raise HTTPException(status_code=409, detail="Transcription is not active")
+        from backend.subscription.limits import check_paid_only
+        try:
+            paid = check_paid_only(user_id, "session_summaries")["allowed"]
+        except Exception:
+            paid = False  # fail closed
+        if not paid:
+            raise HTTPException(status_code=403, detail="Not allowed")
+        if not session_relay.touch(session_id, user_id) or not is_relay(
+                session_id, str(session.get("creator_id") or ""), user_id):
+            raise HTTPException(status_code=403, detail="Not the transcript relay")
+        if not session_relay.allow_ingest_request(session_id):
+            raise HTTPException(status_code=429, detail="Too many requests")
+
+        in_call = set(session_relay.present_users(session_id))
+        labels: dict[str, str] = {}
+        accepted = 0
+        for seg in body.segments:
+            text = " ".join(seg.text.split())  # one line: a segment can't forge another speaker's line
+            text = text.replace("<", "(").replace(">", ")")  # can't close the <transcript> delimiter in the summary prompt
+            if not text:
+                continue
+            sid = seg.speaker_id or ""
+            if sid not in labels:
+                name = db.get_username(sid) if sid in in_call else ""
+                labels[sid] = " ".join((name or "").split())[:40] or "Participant"
+            if st.ingest(session_id, labels[sid], text):
+                accepted += 1
+        return {"accepted": accepted}
     finally:
         db.close()

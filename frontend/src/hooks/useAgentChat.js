@@ -4,6 +4,10 @@ import { API, WS_BASE } from '../config.js';
 import { handleBlockedResponse } from '../lib/upgradePrompt.js';
 import { compareTimestamps } from '../utils.js';
 
+// Deferred-summary retry: server presence goes stale after 45 s, so retry ~50 s apart.
+const SUMMARIZE_DEFER_RETRY_MS = 50_000;
+const SUMMARIZE_DEFER_MAX_RETRIES = 2;
+
 export function useAgentChat({ user, onNoteSaved }) {
   const [agents,               setAgents]               = useState([]);
   const [agentMessages,        setAgentMessages]        = useState([]);
@@ -284,25 +288,61 @@ export function useAgentChat({ user, onNoteSaved }) {
     return false;
   }, [user, agents, loadHeartbeats]);
 
-  const summarizeSession = useCallback(async (agentId, sessionData, groupId) => {
+  // Task 20261013-session-call-live-transcript-summary (bounce 2): the server
+  // answers {ok: true, deferred: true} (no note yet) while another paid
+  // attendee still counts as present. A ghost attendee goes stale after 45 s,
+  // so retry the same request a couple of times just past that window. The
+  // retry timers live here (not in a component that unmounts on leave); if the
+  // tab is closed they are simply lost. Retries are silent and never re-flush
+  // the transcript tail (that happens before the first call).
+  const postSummarize = useCallback(async (userId, agentId, sessionData, groupId) => {
+    const res = await fetch(`${API}/agent/${userId}/${agentId}/summarize`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session: sessionData, group_id: groupId }),
+    });
+    let deferred = false;
+    if (res.ok) {
+      try { deferred = (await res.json())?.deferred === true; } catch { deferred = false; }
+    }
+    return { res, deferred };
+  }, []);
+
+  const summarizeSession = useCallback(async (agentId, sessionData, groupId, onGenerated) => {
     if (!user) return false;
+    const userId = user.user_id;
     try {
-      const res = await fetch(`${API}/agent/${user.user_id}/${agentId}/summarize`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ session: sessionData, group_id: groupId }),
-      });
+      const { res, deferred } = await postSummarize(userId, agentId, sessionData, groupId);
       if (!res.ok) {
         if (await handleBlockedResponse(res)) return false;
         message.error('Could not summarize that session. Please try again.');
+        return false;
       }
-      return res.ok;
+      if (deferred) {
+        let attempt = 0;
+        const retry = () => {
+          attempt += 1;
+          setTimeout(async () => {
+            try {
+              const r = await postSummarize(userId, agentId, sessionData, groupId);
+              if (!r.res.ok) return;                       // non-retryable: give up silently
+              if (r.deferred) {
+                if (attempt < SUMMARIZE_DEFER_MAX_RETRIES) retry();
+                return;
+              }
+              if (typeof onGenerated === 'function') onGenerated();
+            } catch { /* network error on a silent retry: give up */ }
+          }, SUMMARIZE_DEFER_RETRY_MS);
+        };
+        retry();
+      }
+      return true;
     } catch (err) {
       console.error('Failed to summarize session:', err);
       message.error('Could not summarize that session. Check your connection and try again.');
     }
     return false;
-  }, [user]);
+  }, [user, postSummarize]);
 
   return {
     agents, agentMessages, activeAgent, agentThinking, agentWsRef,

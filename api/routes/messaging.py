@@ -12,6 +12,7 @@ from backend.rate_limiting import limiter
 from schemas.message import UploadUrlRequest
 from botocore.exceptions import ClientError
 import boto3
+from backend.interactions.session_call_transcription import join_transcription_fields
 import logging
 import uuid
 import json
@@ -219,6 +220,10 @@ async def join_meeting(session_id: str, user_id: str, _: str = Depends(require_m
             raise HTTPException(status_code=400, detail="No active meeting for this session")
         attendee, new_meeting = _create_attendee(db, session_id, chime_meeting_id, user_id)
         result: dict = {"Attendee": attendee}
+        # Same consent + relay signals as /devotions/join-call (web/desktop use this path).
+        result.update(join_transcription_fields(
+            session_id, (new_meeting or {}).get("MeetingId") or chime_meeting_id, user_id,
+            str(session.get("creator_id") or "")))
         if new_meeting is not None:
             # The cached meeting had been torn down and was transparently
             # recreated -- surface the fresh Meeting so a caller relying on

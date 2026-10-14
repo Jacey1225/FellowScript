@@ -251,8 +251,24 @@ extension NetworkService {
     }
 
     func summarizeSession(userId: String, agentId: String, session: FSSession, groupId: String) async throws {
+        _ = try await summarizeSessionReportingDeferral(userId: userId, agentId: agentId, session: session, groupId: groupId)
+    }
+
+    func summarizeSessionReportingDeferral(userId: String, agentId: String, session: FSSession, groupId: String) async throws -> Bool {
         // checked — see updateAgent above.
-        _ = try await checkedRequestRaw("/agent/\(userId)/\(agentId)/summarize", method: "POST",
+        let data = try await checkedRequestRaw("/agent/\(userId)/\(agentId)/summarize", method: "POST",
                                   jsonObject: ["session": try jsonObject(session), "group_id": groupId])
+        // Task 20261013-session-call-live-transcript-summary (bounce 2):
+        // {"ok": true, "deferred": true} means "not generated yet".
+        if let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           obj["deferred"] as? Bool == true { return true }
+        return false
+    }
+}
+
+extension DataServiceProtocol {
+    func summarizeSessionReportingDeferral(userId: String, agentId: String, session: FSSession, groupId: String) async throws -> Bool {
+        try await summarizeSession(userId: userId, agentId: agentId, session: session, groupId: groupId)
+        return false
     }
 }

@@ -11,6 +11,7 @@ import {
 } from '../lib/screenShareState.js';
 import { ROOM_COPY, isBusy, roomsAvailable, showsBackToMain, stateRoomName } from '../lib/callRoomState.js';
 import SessionRoomsModal from './SessionRoomsModal.jsx';
+import { TRANSCRIPT_CONSENT_COPY } from '../lib/transcriptRelay.js';
 
 // Joined-state call screen for the desktop Session card (task
 // 20261011-web-session-ui-parity). Mirrors iOS ChimeCallView(+Session): bottom
@@ -146,7 +147,7 @@ export default function SessionCallScreen({
   canRing, onRing, onLeave, inviteCandidates,
 }) {
   const { isEnabled } = useCapabilities();
-  const { screenShare, rooms, meetingPresence, bindVideoTile } = useCallFeatures();
+  const { screenShare, rooms, meetingPresence, bindVideoTile, transcriptionActive } = useCallFeatures();
   const [menuOpen, setMenuOpen] = useState(false);
   const [promptsOpen, setPromptsOpen] = useState(false);
   const [roomsOpen, setRoomsOpen] = useState(false);
@@ -268,13 +269,22 @@ export default function SessionCallScreen({
   const notice = screenShare?.notice || rooms?.notice || null;
   const dismissNotice = () => { screenShare?.clearNotice?.(); rooms?.clearNotice?.(); };
   const live = [liveText, rooms?.announcement].filter(Boolean).join('. ');
+  // Consent banner: informational and persistent while the MAIN call is being
+  // transcribed (a discussion room is a separate meeting and is not).
+  const showTranscriptBanner = !!transcriptionActive && !inRoomView;
 
   return (
     <div className="call-screen">
       <div className="visually-hidden" role="status" aria-live="polite">{live}</div>
 
-      {(sharingSelf || inRoomView || notice) && (
+      {(sharingSelf || inRoomView || notice || showTranscriptBanner) && (
         <div className="call-status-stack">
+          {showTranscriptBanner && (
+            <div className="call-transcript-banner" role="status">
+              <AudioOutlined aria-hidden="true" />
+              <span>{TRANSCRIPT_CONSENT_COPY}</span>
+            </div>
+          )}
           {sharingSelf && <SharePill onStop={screenShare.stop} />}
           {inRoomView && rooms.state.kind !== 'returnFailed' && (
             <div className="call-room-row">

@@ -1,0 +1,17 @@
+{
+  "session_transcription": {
+    "enabled": false,
+    "language_code": "en-US",
+    "max_transcript_chars": 24000,
+    "min_transcript_chars": 200,
+    "ttl_seconds": 21600,
+    "ingest_max_body_bytes": 16384,
+    "ingest_max_segments": 40,
+    "ingest_max_segment_chars": 1000,
+    "ingest_max_requests_per_minute": 30,
+    "ingest_rate_limit": "60/minute",
+    "relay_status_rate_limit": "30/minute",
+    "relay_stale_seconds": 45,
+    "relay_poll_interval_seconds": 15
+  }
+}

@@ -357,6 +357,43 @@ async def delete_heartbeat(user_id: str, agent_id: str, heartbeat_id: str, _: st
 
 # ── Session summarization ─────────────────────────────────────────────────────
 
+def _authorized_transcript(user_id: str, session) -> tuple[str | None, str | None]:
+    """Transient call transcript for this session, or (None, None).
+
+    Fail closed: flag off, no/invalid session id, session unknown, caller not
+    authorized for it, too little text, or any error all mean "no transcript"
+    (the caller falls back to the prompts/verses summary). Never logs text.
+    """
+    from backend.interactions import session_transcript as st
+    from backend.interactions.session_transcription_config import (
+        get_session_transcription_config, is_transcription_enabled)
+    try:
+        if not is_transcription_enabled() or not isinstance(session, dict):
+            return None, None
+        sid = fanout.valid_session_id(session.get("id"))
+        if not sid:
+            return None, None
+        from backend.interactions.devotion import DevotionManager
+        dm = DevotionManager()
+        try:
+            row = dm.get_session(sid)
+            if not row or not dm.is_authorized(row, user_id):
+                return None, None
+        finally:
+            dm.close()
+        text = st.transcript_for_summary(sid)
+        return (text, sid) if text else (None, sid)
+    except Exception as e:
+        logger.warning("transcript lookup skipped: %s", type(e).__name__)
+        return None, None
+
+
+def _discard_transcript(session_id: str | None) -> None:
+    if session_id:
+        from backend.interactions import session_transcript as st
+        st.discard(session_id)
+
+
 @agent_router.post("/{user_id}/{agent_id}/summarize", status_code=201)
 async def summarize_session(user_id: str, agent_id: str, body: dict, _: str = Depends(require_match("user_id"))) -> dict:
     # The summary is persisted as a note, so it counts against the same weekly
@@ -395,7 +432,19 @@ async def summarize_session(user_id: str, agent_id: str, body: dict, _: str = De
     # fabricated non-answer. Having just one of prompts/verses is still real
     # content worth summarizing (e.g. a session with only scripture
     # references logged, no discussion prompts).
-    if not prompts and not verses:
+    transcript, transcript_session_id = _authorized_transcript(user_id, session)
+    # Call-end semantics (task 20260913 bounce 1): while the call is being
+    # transcribed and another paid attendee is still present, an early
+    # leaver's request is a no-op. It must not consume the transcript, write a
+    # note, or use the sessionsum dedupe key; the last leaver's request (or one
+    # after the session is deleted, which clears presence) produces the summary.
+    # Sessions with transcription off/inactive are unaffected.
+    if transcript_session_id:
+        from backend.interactions import session_transcript as _st
+        from backend.interactions.session_call_transcription import other_paid_attendees_present
+        if _st.is_active(transcript_session_id) and other_paid_attendees_present(transcript_session_id, user_id):
+            return {"ok": True, "deferred": True}
+    if not prompts and not verses and not transcript:
         raise NoSummarizableContentError()
 
     group_id = body.get("group_id") or None
@@ -449,6 +498,7 @@ async def summarize_session(user_id: str, agent_id: str, body: dict, _: str = De
                 idem.close()
             if all(r in have for r in fan_recipients):
                 # Retry of a fully-completed request: no model call, no new writes.
+                _discard_transcript(transcript_session_id)
                 return {"ok": True, "note_id": have[user_id], "fanout": {"written": 0, "skipped": len(fan_recipients) - 1}}
         else:
             # No valid session id to key on: no dedupe for the caller and no
@@ -463,6 +513,17 @@ async def summarize_session(user_id: str, agent_id: str, body: dict, _: str = De
     if prompts:
         prompt_lines.append("Discussion prompts covered:")
         prompt_lines.extend(f"  - {p}" for p in prompts)
+    if transcript:
+        # Visible only to the model for this one call (never logged, stored or returned).
+        prompt_lines += [
+            "",
+            "Transcript of the live call (speaker-attributed, may be incomplete or "
+            "contain recognition errors). Base the summary on what was actually said; "
+            "do not invent anything that is not in the transcript or the context above:",
+            "<transcript>",
+            transcript,
+            "</transcript>",
+        ]
     prompt_lines += [
         "",
         "Write a concise summary covering key scriptural insights, main takeaways, "
@@ -490,7 +551,9 @@ async def summarize_session(user_id: str, agent_id: str, body: dict, _: str = De
         try:
             summary = db._call_api(agent_role, [{"role": "user", "content": "\n".join(prompt_lines)}])
         except Exception as e:
-            logger.error("OpenRouter session-summary error for agent %s: %s", agent_id, e)
+            # Transcript is deliberately KEPT here (TTL-bounded) so a retry can still
+            # use it; the error text is not logged if it could echo the prompt.
+            logger.error("OpenRouter session-summary error for agent %s: %s", agent_id, type(e).__name__)
             raise HTTPException(status_code=502, detail="Could not generate session summary.")
 
         # Bug fix (task 20260915-session-summary-note-fixes): defensive
@@ -511,8 +574,8 @@ async def summarize_session(user_id: str, agent_id: str, body: dict, _: str = De
                 summary = salvaged
             else:
                 logger.error(
-                    "summarize_session got an unsalvageable leaked action block for agent %s: %.200s",
-                    agent_id, summary,
+                    "summarize_session got an unsalvageable leaked action block for agent %s (len=%d)",
+                    agent_id, len(summary),
                 )
                 raise HTTPException(status_code=502, detail="Could not generate session summary.")
 
@@ -532,6 +595,8 @@ async def summarize_session(user_id: str, agent_id: str, body: dict, _: str = De
         # and is never truncated (throw-not-fabricate). The notes-count gate
         # above still applies; a later USER edit that grows it past the cap
         # falls under update_note's grandfather rule.
+        # Summary generated and valid: the raw transcript is no longer needed.
+        _discard_transcript(transcript_session_id)
         if fan_recipients is not None and fan_session_id:
             note_title = f"Session Summary — {title}"
             note_id, _ = fanout.insert_deduped_note(

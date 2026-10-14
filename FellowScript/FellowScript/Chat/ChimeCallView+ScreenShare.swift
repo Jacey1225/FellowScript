@@ -54,6 +54,27 @@ struct ScreenShareNotice: View {
     }
 }
 
+/// Task 20261013-session-call-live-transcript-summary: informational consent
+/// banner (a trust signal, not decoration). Not dismissible while the call is
+/// being transcribed; an objector's option is to leave the call.
+struct TranscriptConsentBanner: View {
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "waveform").font(.system(size: 12, weight: .semibold))
+                .foregroundColor(Theme.goldDim).accessibilityHidden(true)
+            Text(TranscriptCopy.consent)
+                .font(.interScaled(Theme.fontXS, relativeTo: .caption))
+                .foregroundColor(Theme.textPrimary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.horizontal, 12).padding(.vertical, 8)
+        .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Theme.bgPage.opacity(0.85)))
+        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Theme.borderGold, lineWidth: 1))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(TranscriptCopy.consent)
+    }
+}
+
 /// Shown in the content area while MY OWN share is the active content tile.
 struct YourShareBody: View {
     let onStop: () -> Void

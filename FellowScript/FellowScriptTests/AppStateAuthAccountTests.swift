@@ -635,6 +635,19 @@ final class ThrowingTestDataService: DataServiceProtocol {
         try await MockDataService.shared.summarizeSession(userId: userId, agentId: agentId, session: session, groupId: groupId)
     }
 
+    // Task 20261013-session-call-live-transcript-summary: scripted "deferred"
+    // answers for summarizeSessionReportingDeferral (consumed in order; when
+    // empty the answer is false = generated). Each call also counts as a
+    // summarize request via summarizeSession.
+    var summarizeDeferralScript: [Bool] = []
+    private(set) var summarizeDeferralCallTimes: [Date] = []
+
+    func summarizeSessionReportingDeferral(userId: String, agentId: String, session: FSSession, groupId: String) async throws -> Bool {
+        summarizeDeferralCallTimes.append(Date())
+        try await summarizeSession(userId: userId, agentId: agentId, session: session, groupId: groupId)
+        return summarizeDeferralScript.isEmpty ? false : summarizeDeferralScript.removeFirst()
+    }
+
     // Controllable / observable (task 20260823-app-loading-screen, testing
     // step) — used by StartupCoordinatorTests to prove the startup-readiness
     // gate (a) doesn't hang when one data source's fetch throws (NotesViewModel

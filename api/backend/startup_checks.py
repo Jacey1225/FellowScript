@@ -63,6 +63,12 @@ def check_session_summary_fanout_config() -> None:
     validate_session_summary_fanout_config()
 
 
+def check_session_transcription_config() -> None:
+    from backend.interactions.session_transcription_config import validate_session_transcription_config
+
+    validate_session_transcription_config()
+
+
 def check_agent_chat_memory_config() -> None:
     from backend.interactions.agent_memory_config import validate_agent_memory_config
 
@@ -122,6 +128,7 @@ CHECKS = (
     check_agent_chats_config,
     check_agent_chat_memory_config,
     check_session_summary_fanout_config,
+    check_session_transcription_config,
     check_affiliates_config,
     check_payout_encryption_keys,
     check_content_encryption_keys,

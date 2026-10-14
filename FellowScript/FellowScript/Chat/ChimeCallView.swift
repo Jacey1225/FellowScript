@@ -87,6 +87,8 @@ final class CallController: ObservableObject {
         rooms.configure(service: service, userId: userId, sessionId: session.id)
         rooms.onMainEnded = { [weak self] in self?.end() }
         #if canImport(AmazonChimeSDK)
+        manager.configureTranscript(service: service as? TranscriptRelayServiceProtocol,
+                                    userId: userId, sessionId: session.id)
         rooms.switchMeeting = { [weak self] response in self?.manager.switchMeeting(response: response) }
         Task { @MainActor in
             do {
@@ -112,26 +114,39 @@ final class CallController: ObservableObject {
 
         // Best-effort room leave + heartbeat stop before teardown; never blocks ending.
         rooms.callEnded()
+        // Detach the transcript relay BEFORE leaving so its buffered tail can
+        // still be sent (below) ahead of the summarize request.
         #if canImport(AmazonChimeSDK)
+        let finishingRelay = manager.detachTranscriptRelay()
         manager.leave()
+        #else
+        let finishingRelay: TranscriptRelay? = nil
         #endif
         session = nil; isExpanded = false; joinError = nil
         service = nil; userId = ""
         sentRingTargets = []
 
-        maybeSummarize(session: endingSession, service: endingService, userId: endingUserId)
+        // Task 20261013-session-call-live-transcript-summary: ONE trigger rule
+        // on every client: whoever ends the call asks for a summary. The
+        // server dedupes (sessionsum:<session>:<user>) and the first request
+        // consumes the transcript, so extra triggers cost no extra LLM call.
+        Task { @MainActor in
+            await finishingRelay?.stop(flushRemaining: true)
+            maybeSummarize(session: endingSession, service: endingService, userId: endingUserId)
+        }
     }
 
     // Fire-and-forget: kicked off only after the synchronous teardown above
     // has already completed, so a slow or failing summarize call can never
-    // block/delay leaving the call. Only the session's *creator* triggers a
-    // summary -- a group call has no per-session uniqueness constraint on the
-    // notes table, so letting every participant's own call.end() summarize
-    // independently would mint one duplicate "Session Summary — {title}"
-    // note per participant still on the call when it ends.
+    // block/delay leaving the call. Every participant whose session has
+    // summaries enabled asks for one (same rule as web); the server dedupes
+    // per (session, user) so a repeated request never re-calls the model or
+    // double-writes a note.
+    private static let summarizeDeferMaxRetries = 2
+    private static let summarizeDeferRetryNanos: UInt64 = 50_000_000_000   // ~50 s > 45 s stale window
+
     private func maybeSummarize(session: FSSession?, service: DataServiceProtocol?, userId: String) {
-        guard let session, session.summarize, let service, !userId.isEmpty,
-              !session.creator_id.isEmpty, session.creator_id == userId else { return }
+        guard let session, session.summarize, let service, !userId.isEmpty else { return }
         Task { @MainActor in
             // Task 20260923-session-summary-call-failure: `stage` records
             // which of the two awaits below was in flight when/if the catch
@@ -144,8 +159,25 @@ final class CallController: ObservableObject {
             do {
                 let agentId = try await Self.resolveAgentId(userId: userId, service: service)
                 stage = "summarize-request"
-                try await service.summarizeSession(userId: userId, agentId: agentId,
-                                                    session: session, groupId: session.group_id)
+                let deferred = try await service.summarizeSessionReportingDeferral(
+                    userId: userId, agentId: agentId, session: session, groupId: session.group_id)
+                if deferred {
+                    // Bounce 2: another (possibly ghost) attendee still counted
+                    // present server-side. Retry the same request, silently,
+                    // just past the 45 s stale window. Owned by this
+                    // app-level controller's unstructured Task, so it outlives
+                    // the call view; lost if the app is backgrounded/killed.
+                    // No transcript re-flush happens here.
+                    // Retries are fully silent: any error or cancellation just stops.
+                    do {
+                        for _ in 0..<Self.summarizeDeferMaxRetries {
+                            try await Task.sleep(nanoseconds: Self.summarizeDeferRetryNanos)
+                            let again = try await service.summarizeSessionReportingDeferral(
+                                userId: userId, agentId: agentId, session: session, groupId: session.group_id)
+                            if !again { break }
+                        }
+                    } catch { }
+                }
             } catch {
                 // Free plan: session summaries are subscribers-only. The shared
                 // upgrade prompt replaces the generic "couldn't put together" toast.
@@ -327,6 +359,13 @@ final class ChimeCallManager: NSObject, ObservableObject {
 
     private var meetingSession: DefaultMeetingSession?
     private var myAttendeeId:   String = ""
+    // Task 20261013-session-call-live-transcript-summary: true while the server
+    // is transcribing the MAIN call (consent banner for every participant).
+    @Published var transcriptionActive = false
+    private var transcriptService: TranscriptRelayServiceProtocol?
+    private var transcriptUserId = ""
+    private var transcriptSessionId = ""
+    private var transcriptRelay: TranscriptRelay?
     // Task 20261009-discussion-rooms: mute / camera INTENT carried across a
     // meeting swap, re-applied once the new audio session is up.
     private var pendingCameraRestore = false
@@ -367,6 +406,7 @@ final class ChimeCallManager: NSObject, ObservableObject {
         // RealtimeObserver tracks the roster — without it, audio-only participants
         // are invisible and the UI wrongly shows "no one has joined".
         meetingSession?.audioVideo.addRealtimeObserver(observer: self)
+        startTranscriptRelay(for: response)
 
         // audioVideo.start() throws PermissionError.audioPermissionError unless
         // microphone access is already granted — which would leave the call stuck
@@ -411,8 +451,11 @@ final class ChimeCallManager: NSObject, ObservableObject {
             old.audioVideo.removeAudioVideoObserver(observer: self)
             old.audioVideo.removeVideoTileObserver(observer: self)
             old.audioVideo.removeRealtimeObserver(observer: self)
+            old.audioVideo.removeRealtimeTranscriptEventObserver?(observer: self)
             old.audioVideo.stop()
         }
+        // Flush-and-stop the relay of the meeting being left (a room is not transcribed).
+        if let relay = detachTranscriptRelay() { Task { @MainActor in await relay.stop(flushRemaining: true) } }
         meetingSession = nil
         isConnected = false; isCameraOn = false
         localTileId = nil; remoteTileIds = []; remoteAttendeeIds = []
@@ -446,11 +489,47 @@ final class ChimeCallManager: NSObject, ObservableObject {
         // Tear the share down first, while the meeting session can still stop the
         // content share; also closes the socket so the extension ends its broadcast.
         stopScreenShare(notify: false)
+        // Normally CallController.end() already detached the relay to flush it;
+        // this covers any other leave path (no flush, just stop).
+        if let relay = detachTranscriptRelay() { Task { @MainActor in await relay.stop() } }
         meetingSession?.audioVideo.stop()
         meetingSession = nil
         isConnected = false; isMuted = false; isCameraOn = false
         localTileId = nil;   remoteTileIds = []; remoteAttendeeIds = []
         tileAttendeeIds = [:]; externalUserIds = [:]; contentShare.reset()
+    }
+
+    // MARK: - Live transcript relay --------------------------------------------
+
+    func configureTranscript(service: TranscriptRelayServiceProtocol?, userId: String, sessionId: String) {
+        transcriptService = service; transcriptUserId = userId; transcriptSessionId = sessionId
+    }
+
+    /// Main-call join only: a response without transcription fields (a room's
+    /// meeting, an older server) or a service that cannot relay means no banner
+    /// and no relay (fail closed; the summary falls back to the prompts).
+    private func startTranscriptRelay(for response: ChimeJoinResponse) {
+        guard let state = TranscriptJoinState(response), let service = transcriptService,
+              !transcriptUserId.isEmpty, !transcriptSessionId.isEmpty else {
+            transcriptionActive = false
+            return
+        }
+        let relay = TranscriptRelay(service: service, userId: transcriptUserId,
+                                    sessionId: transcriptSessionId, initial: state)
+        relay.onStatus = { [weak self] active, _ in self?.transcriptionActive = active }
+        transcriptRelay = relay
+        meetingSession?.audioVideo.addRealtimeTranscriptEventObserver?(observer: self)
+        relay.start()
+    }
+
+    /// Hands the relay to the caller (to flush and stop) and unhooks the SDK observer.
+    func detachTranscriptRelay() -> TranscriptRelay? {
+        meetingSession?.audioVideo.removeRealtimeTranscriptEventObserver?(observer: self)
+        let relay = transcriptRelay
+        transcriptRelay = nil
+        transcriptionActive = false
+        relay?.onStatus = nil
+        return relay
     }
 
     // MARK: - Screen share (sending) ------------------------------------------
@@ -673,6 +752,23 @@ extension ChimeCallManager: RealtimeObserver {
     func attendeesDidUnmute(attendeeInfo: [AttendeeInfo]) {}
     func volumeDidChange(volumeUpdates: [VolumeUpdate]) {}
     func signalStrengthDidChange(signalUpdates: [SignalUpdate]) {}
+}
+
+// MARK: - TranscriptEventObserver (live transcript relay)
+// Callbacks arrive on SDK threads: only value types leave this method, and no
+// transcript text is logged. Every client receives events; the relay object
+// ignores them unless this client is the server-designated relay.
+
+extension ChimeCallManager: TranscriptEventObserver {
+    func transcriptEventDidReceive(transcriptEvent: TranscriptEvent) {
+        guard let transcript = transcriptEvent as? Transcript else { return }
+        let inputs = transcript.results.map { r -> TranscriptResultInput in
+            let alt = r.alternatives.first
+            let speaker = alt?.items.first(where: { !$0.attendee.externalUserId.isEmpty })?.attendee.externalUserId
+            return TranscriptResultInput(isPartial: r.isPartial, text: alt?.transcript ?? "", speakerId: speaker)
+        }
+        DispatchQueue.main.async { [weak self] in self?.transcriptRelay?.handle(inputs) }
+    }
 }
 
 // MARK: - Video tile UIViewRepresentable
@@ -1137,6 +1233,12 @@ struct ChimeCallView: View {
             if let notice = manager.screenShareNotice {
                 ScreenShareNotice(text: notice).padding(.bottom, 8)
                     .frame(maxWidth: .infinity, alignment: .leading).padding(.leading, 20)
+            }
+            // Task 20261013-session-call-live-transcript-summary: persistent
+            // consent banner for everyone while the main call is transcribed.
+            if manager.transcriptionActive {
+                TranscriptConsentBanner().padding(.bottom, 8)
+                    .padding(.horizontal, 20)
             }
             // Task 20261009-discussion-rooms: Back to main pill, notices, return-failed card.
             if rooms.state.showsBackToMain {

@@ -13,6 +13,9 @@ import {
   SCREEN_SHARE_COPY, classifyCaptureError, contentOwnerId, isDisplayCaptureSupported,
 } from '../lib/screenShareState.js';
 import { useCallRooms } from './useCallRooms.js';
+import {
+  createTranscriptRelay, makeTranscriptRequest, transcriptionFromJoin,
+} from '../lib/transcriptRelay.js';
 
 const SHARE_NOTICE_MS = 6000;
 
@@ -51,6 +54,9 @@ export function useSessions({ user, wsRef, currentContact }) {
   // External user ids present in the CURRENT Chime meeting (drives the room
   // bubbles; the main session uses the server participant list instead).
   const [meetingPresence, setMeetingPresence] = useState([]);
+  // True while the server is transcribing the MAIN call (drives the consent
+  // banner for every participant, including late joiners).
+  const [transcriptionActive, setTranscriptionActive] = useState(false);
 
   const sessionsRef       = useRef([]);
   const activeIdRef       = useRef(null);
@@ -69,6 +75,9 @@ export function useSessions({ user, wsRef, currentContact }) {
   const shareNoticeTimer  = useRef(null);
   const contentTileRef    = useRef(null);
   const leaveSessionRef   = useRef(null);
+  const transcriptRelayRef = useRef(null);  // createTranscriptRelay controller (main call only)
+  const transcriptCbRef   = useRef(null);   // Chime transcript-event subscription
+  const mainTranscriptionRef = useRef(null); // join fields from the last fetchMainMeeting
 
   useEffect(() => { sessionsRef.current = sessions; },           [sessions]);
   useEffect(() => { activeIdRef.current = activeSessionId; },    [activeSessionId]);
@@ -249,7 +258,7 @@ export function useSessions({ user, wsRef, currentContact }) {
   // Builds and starts a Chime meeting session from Meeting/Attendee data.
   // `broadcastTalking` is true for the main session only: a room must not
   // light up the "talking" indicator for people in the main session.
-  const startMeeting = useCallback(async (meetingData, attendeeData, { sessionId, broadcastTalking }) => {
+  const startMeeting = useCallback(async (meetingData, attendeeData, { sessionId, broadcastTalking, transcription = null }) => {
     // 4. Build the Chime meeting session
     const logger           = new ConsoleLogger('FellowScript', LogLevel.WARN);
     const deviceController = new DefaultDeviceController(logger);
@@ -308,6 +317,27 @@ export function useSessions({ user, wsRef, currentContact }) {
     presenceCbRef.current = presenceCb;
     session.audioVideo.realtimeSubscribeToAttendeeIdPresence(presenceCb);
 
+    // Live transcript relay: main call only (a discussion room is a separate,
+    // untranscribed meeting). Every client subscribes and polls so the consent
+    // banner is accurate; only the server-designated relay forwards text.
+    if (transcription && sessionId && user) {
+      try {
+        const relay = createTranscriptRelay({
+          request: makeTranscriptRequest({ api: API, fetchFn: (...a) => fetch(...a), sessionId, userId: user.user_id }),
+          initial: transcription,
+          onStatus: ({ active }) => setTranscriptionActive(active),
+        });
+        transcriptRelayRef.current = relay;
+        const cb = (ev) => relay.handleEvent(ev);
+        transcriptCbRef.current = cb;
+        session.audioVideo.transcriptionController.subscribeToTranscriptEvent(cb);
+        relay.start();
+      } catch (err) {
+        // Fail soft: the summary falls back to the prompts-based behavior.
+        console.error('Failed to start the transcript relay:', err?.name || 'error');
+      }
+    }
+
     // 8. Start the Chime audio/video session
     session.audioVideo.start();
 
@@ -359,11 +389,28 @@ export function useSessions({ user, wsRef, currentContact }) {
     session.audioVideo.addContentShareObserver(contentObserver);
   }, [user, wsRef, setPhase, endScreenShare]);
 
+  // Stops the transcript relay (optionally sending what is still buffered).
+  // Never throws; never touches text outside the relay.
+  const stopTranscriptRelay = useCallback(async ({ flushRemaining = false } = {}) => {
+    const relay = transcriptRelayRef.current;
+    const cb = transcriptCbRef.current;
+    transcriptRelayRef.current = null;
+    transcriptCbRef.current = null;
+    setTranscriptionActive(false);
+    if (cb) {
+      try { chimeSession.current?.audioVideo.transcriptionController.unsubscribeFromTranscriptEvent(cb); } catch (err) { console.error('Failed to unsubscribe from transcript events:', err?.name || 'error'); }
+    }
+    if (relay) {
+      try { await relay.stop({ flushRemaining }); } catch (err) { console.error('Failed to stop the transcript relay:', err?.name || 'error'); }
+    }
+  }, []);
+
   // Tears down the current Chime meeting and everything bound to it. Used by
   // leave and by room switches. Never throws.
   const teardownMeeting = useCallback(async () => {
     clearTimeout(talkStopTimer.current);
     endScreenShare();
+    await stopTranscriptRelay({ flushRemaining: true });
 
     // Stop video if active. These are hardware-teardown calls on a session
     // that's being discarded either way -- log for a trail, but there's
@@ -405,7 +452,7 @@ export function useSessions({ user, wsRef, currentContact }) {
       chimeAudioEl.current.remove();
       chimeAudioEl.current = null;
     }
-  }, [endScreenShare]);
+  }, [endScreenShare, stopTranscriptRelay]);
 
   // Fresh MAIN meeting + attendee (same endpoints as joinSession). Throws on
   // any failure; callers decide the copy (throw-not-fabricate).
@@ -419,8 +466,10 @@ export function useSessions({ user, wsRef, currentContact }) {
       { method: 'POST' }
     );
     if (!attendeeRes.ok) throw new Error('attendee');
-    const Attendee = (await attendeeRes.json()).Attendee;
+    const attendeeBody = await attendeeRes.json();
+    const Attendee = attendeeBody.Attendee;
     if (!Meeting || !Attendee) throw new Error('shape');
+    mainTranscriptionRef.current = transcriptionFromJoin(attendeeBody);
     return { Meeting, Attendee };
   }, [user]);
 
@@ -433,7 +482,10 @@ export function useSessions({ user, wsRef, currentContact }) {
     const wasMuted = mutedRef.current;
     if (sharePhaseRef.current !== 'idle') endScreenShare({ notice: SCREEN_SHARE_COPY.changedRooms });
     await teardownMeeting();
-    await startMeeting(meeting, attendee, { sessionId, broadcastTalking: !room });
+    await startMeeting(meeting, attendee, {
+      sessionId, broadcastTalking: !room,
+      transcription: room ? null : mainTranscriptionRef.current,
+    });
     if (wasMuted) {
       try {
         chimeSession.current?.audioVideo.realtimeMuteLocalAudio();
@@ -627,7 +679,7 @@ export function useSessions({ user, wsRef, currentContact }) {
     }
 
     // 2. Get or create the Chime meeting for this session
-    let meetingData, attendeeData;
+    let meetingData, attendeeData, transcription = null;
     try {
       const meetingRes = await fetch(`${API}/chime/${encodeURIComponent(sessionId)}`, { method: 'POST' });
       if (!meetingRes.ok) {
@@ -651,7 +703,9 @@ export function useSessions({ user, wsRef, currentContact }) {
         setJoinError({ sessionId, message: 'Could not join the call. Please try again.' });
         return;
       }
-      attendeeData = (await attendeeRes.json()).Attendee;
+      const attendeeBody = await attendeeRes.json();
+      attendeeData = attendeeBody.Attendee;
+      transcription = transcriptionFromJoin(attendeeBody);
     } catch (err) {
       console.error('Failed to create Chime attendee token:', err);
       setJoinError({ sessionId, message: 'Could not reach the server to join the call.' });
@@ -660,7 +714,7 @@ export function useSessions({ user, wsRef, currentContact }) {
 
     // 4-9. Build and start the Chime meeting session (shared with room switches)
     try {
-      await startMeeting(meetingData, attendeeData, { sessionId, broadcastTalking: true });
+      await startMeeting(meetingData, attendeeData, { sessionId, broadcastTalking: true, transcription });
     } catch (err) {
       // Same surface as the other join failures: explicit, retryable.
       console.error('Failed to start the Chime meeting session:', err);
@@ -785,6 +839,9 @@ export function useSessions({ user, wsRef, currentContact }) {
       const stream = screenStreamRef.current;
       screenStreamRef.current = null;
       if (stream) stream.getTracks().forEach(t => { try { t.onended = null; t.stop(); } catch (err) { console.error('Failed to stop a screen capture track on unmount:', err); } });
+      const unmountRelay = transcriptRelayRef.current;
+      transcriptRelayRef.current = null;
+      if (unmountRelay) unmountRelay.stop().catch(() => {});
       if (chimeSession.current) {
         // Component is unmounting -- nothing left to surface to, but still
         // worth a console trail if hardware teardown fails.
@@ -808,7 +865,7 @@ export function useSessions({ user, wsRef, currentContact }) {
     videoEnabled, videoTiles, toggleVideo, bindVideoTile,
     muted, toggleMute,
     // Screen share + discussion rooms (task 20261011-web-session-screenshare-rooms)
-    sharePhase, contentTile, shareNotice, meetingPresence,
+    sharePhase, contentTile, shareNotice, meetingPresence, transcriptionActive,
     startScreenShare, stopScreenShare, clearShareNotice,
     rooms,
   };

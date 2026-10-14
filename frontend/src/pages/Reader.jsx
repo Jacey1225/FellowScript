@@ -117,7 +117,7 @@ export default function Reader() {
     handleSignal,
     videoEnabled, videoTiles, toggleVideo, bindVideoTile,
     muted, toggleMute,
-    sharePhase, contentTile, shareNotice, meetingPresence,
+    sharePhase, contentTile, shareNotice, meetingPresence, transcriptionActive,
     startScreenShare, stopScreenShare, clearShareNotice,
     rooms: callRooms,
   } = useSessions({ user, wsRef, currentContact });
@@ -321,7 +321,7 @@ export default function Reader() {
       const enabledAgent = agents.find(a => a.enabled !== false);
       if (enabledAgent) {
         const groupId = currentContact?.group_id || currentContact?.id || '';
-        await summarizeSession(enabledAgent.id, session, groupId);
+        await summarizeSession(enabledAgent.id, session, groupId, loadNotes);
         loadNotes();
       }
     }
@@ -508,8 +508,9 @@ export default function Reader() {
     rooms: callRooms,
     meetingPresence,
     bindVideoTile,
+    transcriptionActive,
   }), [sharePhase, contentTile, shareNotice, startScreenShare, stopScreenShare, clearShareNotice,
-       callRooms, meetingPresence, bindVideoTile]);
+       callRooms, meetingPresence, bindVideoTile, transcriptionActive]);
 
   const agentChatPanelValue = useMemo(() => ({
     user, agents, agentMessages, activeAgent, agentThinking,

@@ -63,7 +63,7 @@ export default function Privacy() {
 
       <main style={S.main}>
         <h1 style={S.pageTitle}>Privacy Policy</h1>
-        <p style={S.effectiveDate}>Effective Date: June 1, 2025 &nbsp;&middot;&nbsp; Last Updated: October 6, 2026</p>
+        <p style={S.effectiveDate}>Effective Date: June 1, 2025 &nbsp;&middot;&nbsp; Last Updated: October 14, 2026</p>
 
         {/* 1 */}
         <div style={S.section}>
@@ -115,6 +115,13 @@ export default function Privacy() {
             <li style={S.li}>Device type and operating system version (collected for compatibility and debugging purposes only)</li>
           </ul>
 
+          <p style={{ ...S.p, marginTop: '0.75rem', marginBottom: '0.4rem' }}><strong style={S.strong}>Voice Data from Session Calls (Session Summaries)</strong></p>
+          <ul style={S.ul}>
+            <li style={S.li}>If a group or friend session call has Session Summaries turned on and a participant has a paid plan, the call's speech is transcribed live (by Amazon Transcribe, through Amazon Chime) so we can write a summary. Everyone in the call sees a notice on screen when this is active.</li>
+            <li style={S.li}>The audio itself is not recorded or stored. The transcribed text is held only temporarily in our server's memory, is never written to our database or logs, and is deleted as soon as the summary is generated or the session ends.</li>
+            <li style={S.li}>To write the summary, the transcribed text is sent to our AI infrastructure provider (OpenRouter). Only the resulting summary is kept, saved as a note in your account. The transcript is not shown to anyone.</li>
+          </ul>
+
           <p style={{ ...S.p, marginTop: '0.75rem', marginBottom: '0.4rem' }}><strong style={S.strong}>Usage Information</strong></p>
           <ul style={S.ul}>
             <li style={S.li}>Your current Bible reading position (book and chapter) is saved locally on your device only, so the app can resume where you left off. It is not transmitted to or stored on our servers.</li>
@@ -126,7 +133,7 @@ export default function Privacy() {
           <ul style={S.ul}>
             <li style={S.li}>Location data of any kind</li>
             <li style={S.li}>Contacts or address book data</li>
-            <li style={S.li}>Camera or microphone data (except during optional video call sessions, which are not recorded)</li>
+            <li style={S.li}>Camera or microphone data (except during optional video call sessions, which are not recorded, and the temporary live transcription used for Session Summaries described above)</li>
             <li style={S.li}>Advertising identifiers (IDFA or GAID)</li>
             <li style={S.li}>Browsing history outside of the Service</li>
           </ul>
@@ -141,6 +148,7 @@ export default function Privacy() {
             <li style={S.li}>Sync your notes, highlights, and reading progress across sessions</li>
             <li style={S.li}>Enable community features (group messaging, shared highlights, friend connections)</li>
             <li style={S.li}>Power AI-assisted Bible study features via our AI infrastructure provider</li>
+            <li style={S.li}>Write Session Summaries from the live transcription of session calls (paid feature, when turned on for the session)</li>
             <li style={S.li}>Send push notifications you have configured (reminders, devotionals, chat messages)</li>
             <li style={S.li}>Send important account or service notices</li>
             <li style={S.li}>Diagnose technical issues and improve platform performance</li>
@@ -236,7 +244,7 @@ export default function Privacy() {
         <div style={S.section}>
           <h2 style={S.h2}>12. Third-Party Links and Services</h2>
           <p style={S.p}>The Service may reference Bible translations or external theological resources. These third-party websites operate under their own privacy policies and we are not responsible for their practices.</p>
-          <p style={S.p}>Our video calling feature is powered by Amazon Chime SDK. Audio and video streams during calls are not recorded or stored by FellowScript.</p>
+          <p style={S.p}>Our video calling feature is powered by Amazon Chime SDK. Audio and video streams during calls are not recorded or stored by FellowScript. When Session Summaries are active, speech is transcribed live by Amazon Transcribe (an AWS service); the transcribed text is processed as described in Section 2 and deleted once the summary is generated.</p>
         </div>
 
         {/* 13 */}

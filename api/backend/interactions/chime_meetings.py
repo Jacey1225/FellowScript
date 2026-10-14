@@ -127,3 +127,46 @@ def delete_meeting(meeting_id: str) -> bool:
     except Exception as e:
         logger.warning("Chime delete_meeting failed for a room meeting: %s", e)
         return False
+
+
+def start_transcription(meeting_id: str, language_code: str) -> bool:
+    """Start Chime meeting transcription (Amazon Transcribe). True if running
+    afterwards (a ConflictException means it already is). Never raises; fails
+    closed (False) on anything else. Needs chime:StartMeetingTranscription and
+    transcribe:StartStreamTranscription (IAM change proposed, not applied).
+    NOTE: Chime delivers the resulting text to attendee clients, not the server.
+    """
+    try:
+        chime.start_meeting_transcription(
+            MeetingId=meeting_id,
+            TranscriptionConfiguration={
+                "EngineTranscribeSettings": {"LanguageCode": language_code, "Region": MEDIA_REGION}
+            },
+        )
+        return True
+    except ClientError as e:
+        if e.response.get("Error", {}).get("Code") == "ConflictException":
+            return True
+        logger.warning("Chime start_meeting_transcription failed: %s", e.response.get("Error", {}).get("Code"))
+        return False
+    except Exception as e:
+        logger.warning("Chime start_meeting_transcription failed: %s", type(e).__name__)
+        return False
+
+
+def stop_transcription(meeting_id: str) -> bool:
+    """Best-effort stop. Never raises."""
+    if not meeting_id:
+        return True
+    try:
+        chime.stop_meeting_transcription(MeetingId=meeting_id)
+        return True
+    except ClientError as e:
+        code = e.response.get("Error", {}).get("Code")
+        if code in ("NotFoundException", "ConflictException"):
+            return True
+        logger.warning("Chime stop_meeting_transcription failed: %s", code)
+        return False
+    except Exception as e:
+        logger.warning("Chime stop_meeting_transcription failed: %s", type(e).__name__)
+        return False

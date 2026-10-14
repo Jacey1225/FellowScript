@@ -25,4 +25,10 @@ struct ChimeAttendeeInfo: Codable {
 struct ChimeJoinResponse: Codable {
     let Meeting:  ChimeMeetingInfo
     let Attendee: ChimeAttendeeInfo
+    // Task 20261013-session-call-live-transcript-summary: present on the main
+    // join-call response only (nil on a discussion room's meeting, and on an
+    // older server). nil/false means no consent banner and no relay.
+    var transcription_active:      Bool? = nil   // banner signal, true for late joiners too
+    var transcript_relay:          Bool? = nil   // this caller is the designated relay right now
+    var transcript_poll_seconds:   Int?  = nil   // relay-status poll interval
 }

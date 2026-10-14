@@ -215,7 +215,7 @@ final class CallControllerSummarizeDiagnosticsRegressionTests: XCTestCase {
         guard let stageAdvanceRange = afterResolve.range(of: "stage = \"summarize-request\"") else {
             XCTFail("THE FIX: stage must advance to \"summarize-request\" only after resolveAgentId returns"); return
         }
-        guard let summarizeCallRange = afterResolve.range(of: "try await service.summarizeSession(") else {
+        guard let summarizeCallRange = afterResolve.range(of: "try await service.summarizeSessionReportingDeferral(") else {
             XCTFail("could not locate the summarizeSession call"); return
         }
         XCTAssertTrue(stageAdvanceRange.lowerBound < summarizeCallRange.lowerBound,

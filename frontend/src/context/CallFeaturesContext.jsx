@@ -9,7 +9,10 @@ import { createContext, useContext } from 'react';
 // screen then shows neither feature, the fail-closed default. The server
 // feature flags (screen_share_enabled, discussion_rooms) are checked
 // separately via CapabilitiesContext.
-export const CallFeaturesContext = createContext({ screenShare: null, rooms: null, meetingPresence: [], bindVideoTile: null });
+//
+// transcriptionActive (task 20261013-session-call-live-transcript-summary):
+// true while the server is transcribing the main call; drives the consent banner.
+export const CallFeaturesContext = createContext({ screenShare: null, rooms: null, meetingPresence: [], bindVideoTile: null, transcriptionActive: false });
 
 export function useCallFeatures() {
   return useContext(CallFeaturesContext);

@@ -11,8 +11,9 @@
 // 1. summarize:true + ended by the creator -> summarizeSession invoked
 //    exactly once, with the correct userId/agentId/session/groupId.
 // 2. summarize:false (or default) -> summarizeSession is never invoked.
-// 3. summarize:true but ended by a non-creator participant -> never invoked
-//    (the group-call dedup guard).
+// 3. (updated by task 20261013-session-call-live-transcript-summary) the
+//    creator-only guard was removed on purpose: any participant ending the
+//    call asks for a summary and the server dedupes/defers.
 // 4. Zero-agents case -> resolveAgentId auto-creates one via createAgent
 //    (role: "") and that id is the one summarizeSession is called with.
 // 5. A summarize failure (network error / quota / LLM 502) doesn't
@@ -93,12 +94,15 @@ final class CallControllerSummarizeRegressionTests: XCTestCase {
                         "agent resolution should never even run when summarize is off")
     }
 
-    /// Group-call dedup guard: summarize:true but the user ending the call is
-    /// NOT the session's creator -> must not invoke summarizeSession (a
-    /// different participant's own end() firing this too would mint a
-    /// duplicate note, since notes has no per-session uniqueness constraint).
-    func test_end_doesNotInvokeSummarizeSession_whenEndedByNonCreatorParticipant() async throws {
+    /// Task 20261013-session-call-live-transcript-summary: the creator-only
+    /// check was removed deliberately (one trigger rule on every client: iOS
+    /// now matches web, where any participant leaving asks for a summary). A
+    /// non-creator ending the call therefore DOES ask the server, which
+    /// dedupes per (session, user) and defers early leavers. Previously this
+    /// test asserted the opposite (zero calls).
+    func test_end_invokesSummarizeSession_whenEndedByNonCreatorParticipant() async throws {
         let service = ThrowingTestDataService()
+        service.fetchAgentsResult = [FSAgent(id: "agent-2", user_id: "user-2", role: "", enabled: true, chats: [])]
         let session = makeSession(summarize: true, creatorId: "user-1")
 
         let call = CallController.shared
@@ -106,7 +110,65 @@ final class CallControllerSummarizeRegressionTests: XCTestCase {
         call.end()
         try await Task.sleep(nanoseconds: 300_000_000)
 
-        XCTAssertEqual(service.summarizeSessionCallCount, 0)
+        XCTAssertEqual(service.summarizeSessionCallCount, 1,
+                       "any participant ending the call asks for a summary (the server dedupes)")
+        XCTAssertEqual(service.lastSummarizeSessionArgs?.userId, "user-2")
+        XCTAssertEqual(service.lastSummarizeSessionArgs?.agentId, "agent-2")
+    }
+
+    /// summarize:true with a session that has an empty creator id (older
+    /// sessions) still summarizes: the creator is no longer part of the gate.
+    func test_end_invokesSummarizeSession_whenCreatorIdEmpty() async throws {
+        let service = ThrowingTestDataService()
+        service.fetchAgentsResult = [FSAgent(id: "agent-3", user_id: "user-9", role: "", enabled: true, chats: [])]
+        let session = makeSession(summarize: true, creatorId: "")
+
+        let call = CallController.shared
+        call.start(session: session, service: service, userId: "user-9")
+        call.end()
+        try await Task.sleep(nanoseconds: 300_000_000)
+
+        XCTAssertEqual(service.summarizeSessionCallCount, 1)
+    }
+
+    /// A normal (non-deferred) response is exactly one request: no retry loop.
+    func test_end_nonDeferredResponse_doesNotRetry() async throws {
+        let service = ThrowingTestDataService()
+        service.fetchAgentsResult = [FSAgent(id: "agent-1", user_id: "user-1", role: "", enabled: true, chats: [])]
+        service.summarizeDeferralScript = [false]
+        let session = makeSession(summarize: true, creatorId: "user-1")
+
+        let call = CallController.shared
+        call.start(session: session, service: service, userId: "user-1")
+        call.end()
+        try await Task.sleep(nanoseconds: 600_000_000)
+
+        XCTAssertEqual(service.summarizeDeferralCallTimes.count, 1)
+        XCTAssertNil(call.summarizeNotice)
+    }
+
+    /// Deferred answer (another paid attendee still present server-side): the
+    /// SAME request is re-sent after the ~50 s retry delay (just past the
+    /// server's 45 s stale window), silently, and stops once generated. Real
+    /// time on purpose: the delay is a private static constant.
+    func test_end_deferredResponse_retriesSilentlyAfterDelay_thenStops() async throws {
+        let service = ThrowingTestDataService()
+        service.fetchAgentsResult = [FSAgent(id: "agent-1", user_id: "user-1", role: "", enabled: true, chats: [])]
+        service.summarizeDeferralScript = [true, false]
+        let session = makeSession(summarize: true, creatorId: "user-1", groupId: "group-7")
+
+        let call = CallController.shared
+        call.start(session: session, service: service, userId: "user-1")
+        call.end()
+        try await Task.sleep(nanoseconds: 1_000_000_000)
+        XCTAssertEqual(service.summarizeDeferralCallTimes.count, 1, "no immediate retry")
+        try await Task.sleep(nanoseconds: 52_000_000_000)
+
+        XCTAssertEqual(service.summarizeDeferralCallTimes.count, 2, "one silent retry after the delay, then stop")
+        let t = service.summarizeDeferralCallTimes
+        XCTAssertGreaterThanOrEqual(t[1].timeIntervalSince(t[0]), 49.0, "retry waits past the 45 s server stale window")
+        XCTAssertEqual(service.lastSummarizeSessionArgs?.groupId, "group-7", "retry is the same request")
+        XCTAssertNil(call.summarizeNotice, "retries are silent")
     }
 
     /// Zero-agents case: resolveAgentId must auto-create one (role: "", no
