@@ -5,6 +5,7 @@ import {
   EditOutlined, CloseOutlined, RobotOutlined,
 } from '@ant-design/icons';
 import { AgentMessage } from './RichText.jsx';
+import AgentChatSwitcher from './AgentChatSwitcher.jsx';
 
 const { Text } = Typography;
 
@@ -17,7 +18,8 @@ function agentLabel(agent) {
 
 // ── Agent chat thread ─────────────────────────────────────────────────────────
 
-export default function AgentChatThread({ agent, messages, user, onBack, onSend, agentThinking, curBook, curChapter, curVerse, allNotes, onNavigateVerse }) {
+// chatUi: optional multi-chat bundle (flag `agent_chats`). Absent = legacy UI, unchanged.
+export default function AgentChatThread({ chatUi, agent, messages, user, onBack, onSend, agentThinking, curBook, curChapter, curVerse, allNotes, onNavigateVerse }) {
   const [text,           setText]           = useState('');
   const [context,        setContext]        = useState([]);
   const [notePickerOpen, setNotePickerOpen] = useState(false);
@@ -66,17 +68,33 @@ export default function AgentChatThread({ agent, messages, user, onBack, onSend,
         <Text strong style={{ fontFamily: "'Inter', sans-serif", fontSize: '0.88rem', color: 'var(--parchment)', flex: 1 }}>
           {agentLabel(agent)}
         </Text>
+        {chatUi && <AgentChatSwitcher chatUi={chatUi} agentName={agentLabel(agent)} />}
       </div>
+
+      {chatUi && (chatUi.createChatError || chatUi.historyError) && (
+        <div role="status" aria-live="polite" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.35rem 1rem', fontSize: '0.72rem', fontFamily: "'Inter', sans-serif", color: 'rgba(242,242,242,0.75)', background: 'rgba(255,198,26,0.06)', borderBottom: '1px solid rgba(255,255,255,0.06)', flexShrink: 0 }}>
+          <span style={{ flex: 1 }}>{chatUi.createChatError || chatUi.historyError}</span>
+          {chatUi.historyError && !chatUi.createChatError && chatUi.historyError !== 'That chat is no longer available.' && (
+            <Button size="small" type="text" onClick={chatUi.onRetryHistory} style={{ color: 'rgba(255,198,26,0.8)' }}>Try again</Button>
+          )}
+          <CloseOutlined aria-label="Dismiss" role="button" tabIndex={0} onClick={chatUi.onClearChatErrors}
+            onKeyDown={e => { if (e.key === 'Enter') chatUi.onClearChatErrors(); }}
+            style={{ cursor: 'pointer', fontSize: '0.6rem' }} />
+        </div>
+      )}
 
       {/* Messages */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '0.75rem 0.85rem', display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
-        {messages.length === 0 && !agentThinking && (
+        {chatUi?.historyLoading && messages.length === 0 && (
+          <div role="status" aria-label="Loading chat" style={{ textAlign: 'center', padding: '2rem' }}><Spin size="small" /></div>
+        )}
+        {messages.length === 0 && !agentThinking && !(chatUi && (chatUi.historyLoading || chatUi.historyError)) && (
           <div style={{ textAlign: 'center', padding: '2.5rem 1rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.7rem' }}>
             <div style={{ width: 42, height: 42, borderRadius: '50%', background: 'rgba(255,198,26,0.07)', border: '1px solid rgba(255,255,255,0.108)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <RobotOutlined style={{ color: 'rgba(255,198,26,0.4)', fontSize: '1.1rem' }} />
             </div>
             <Text style={{ fontSize: '0.72rem', color: 'rgba(242,242,242,0.22)', fontFamily: "'Inter', sans-serif", fontStyle: 'italic' }}>
-              Your spiritual guide is ready. Ask anything.
+              {chatUi ? `Ask ${agentLabel(agent)} anything` : 'Your spiritual guide is ready. Ask anything.'}
             </Text>
           </div>
         )}

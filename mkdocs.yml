@@ -26,6 +26,7 @@ nav:
     - Notes: design/notes.md
     - Community: design/community.md
     - Account: design/account.md
+    - Agent Chats: design/agent-chats.md
   - Architecture:
     - System Overview: architecture/overview.md
     - Backend: architecture/backend.md

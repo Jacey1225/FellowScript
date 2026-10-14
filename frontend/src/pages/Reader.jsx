@@ -122,11 +122,18 @@ export default function Reader() {
     rooms: callRooms,
   } = useSessions({ user, wsRef, currentContact });
 
+  // Flag `agent_chats` (capability, fails closed): multiple chats per agent.
+  const agentCaps = useCapabilities();
+  const agentChatsEnabled = !!user && !!agentCaps?.isEnabled?.('agent_chats');
+
   const {
     agents, agentMessages, activeAgent, agentThinking,
     loadAgents, openAgentChat, closeAgentChat, sendAgentMessage,
     createAgent, summarizeSession,
-  } = useAgentChat({ user, onNoteSaved: loadNotes });
+    chats, chatsLoading, chatsError, activeChatId, createChatError, creatingChat,
+    historyError, historyLoading,
+    selectChat, createChat, refreshChats, retryHistory, clearChatErrors,
+  } = useAgentChat({ user, onNoteSaved: loadNotes, multiChat: agentChatsEnabled });
 
   const { bookmarks, loadBookmarks, addBookmark, removeBookmark } = useBookmarks({ user });
 
@@ -516,9 +523,15 @@ export default function Reader() {
     user, agents, agentMessages, activeAgent, agentThinking,
     onOpenAgent: handleOpenAgent, onCloseAgent: handleCloseAgent, onNewAgent: handleNewAgent,
     sendAgentMessage,
+    multiChat: agentChatsEnabled, chats, chatsLoading, chatsError, activeChatId,
+    createChatError, creatingChat, historyError, historyLoading,
+    onSelectChat: selectChat, onCreateChat: createChat, onRefreshChats: refreshChats,
+    onRetryHistory: retryHistory, onClearChatErrors: clearChatErrors,
     curBook, curChapter, curVerse, allNotes, onNavigateVerse: handleNavigateVerse,
   }), [user, agents, agentMessages, activeAgent, agentThinking, handleOpenAgent, handleCloseAgent,
-       handleNewAgent, sendAgentMessage, curBook, curChapter, curVerse, allNotes, handleNavigateVerse]);
+       handleNewAgent, sendAgentMessage, agentChatsEnabled, chats, chatsLoading, chatsError,
+       activeChatId, createChatError, creatingChat, historyError, historyLoading,
+       selectChat, createChat, refreshChats, retryHistory, clearChatErrors, curBook, curChapter, curVerse, allNotes, handleNavigateVerse]);
 
   return (
     <BibleReaderPanelContext.Provider value={bibleReaderPanelValue}>

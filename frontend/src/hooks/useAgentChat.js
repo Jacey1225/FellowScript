@@ -3,22 +3,57 @@ import { message } from 'antd';
 import { API, WS_BASE } from '../config.js';
 import { handleBlockedResponse } from '../lib/upgradePrompt.js';
 import { compareTimestamps } from '../utils.js';
+import {
+  AgentChatHttpError, createChatErrorMessage, pickInitialChatId, readLastChat, writeLastChat,
+} from '../lib/agentChats.js';
 
 // Deferred-summary retry: server presence goes stale after 45 s, so retry ~50 s apart.
 const SUMMARIZE_DEFER_RETRY_MS = 50_000;
 const SUMMARIZE_DEFER_MAX_RETRIES = 2;
 
-export function useAgentChat({ user, onNoteSaved }) {
+// Pending-send key for the legacy (flag off) single chat.
+const LEGACY_CHAT_KEY = '';
+
+function mapHistory(data) {
+  return Object.entries(data).map(([, m]) => ({
+    text:      m.content,
+    mine:      m.title === 'user',
+    timestamp: m.timestamp,
+    sender:    m.title === 'user' ? '' : 'Agent',
+  })).sort(compareTimestamps);
+}
+
+// multiChat = capability `agent_chats`. Off: the legacy single flat chat, no
+// chat_id anywhere. On: per-agent chat list, chat-scoped history and socket.
+export function useAgentChat({ user, onNoteSaved, multiChat = false }) {
   const [agents,               setAgents]               = useState([]);
   const [agentMessages,        setAgentMessages]        = useState([]);
   const [activeAgent,          setActiveAgent]          = useState(null);
-  const [agentThinking,        setAgentThinking]        = useState(false);
+  const [pendingChats,         setPendingChats]         = useState(() => new Set());
+  const [chats,                setChats]                = useState([]);
+  const [chatsLoaded,          setChatsLoaded]          = useState(false);
+  const [chatsLoading,         setChatsLoading]         = useState(false);
+  const [chatsError,           setChatsError]           = useState(null);
+  const [activeChatId,         setActiveChatId]         = useState(null);
+  const [createChatError,      setCreateChatError]      = useState(null);
+  const [creatingChat,         setCreatingChat]         = useState(false);
+  const [historyError,         setHistoryError]         = useState(null);
+  const [historyLoading,       setHistoryLoading]       = useState(false);
   const [heartbeats,           setHeartbeats]           = useState([]);
   const [pendingNotifications, setPendingNotifications] = useState([]);
   const agentWsRef     = useRef(null);
   const heartbeatsRef  = useRef([]);
   const firedTodayRef  = useRef(new Set());
   const onNoteSavedRef = useRef(onNoteSaved);
+  // Mirrors of state read inside socket/async callbacks.
+  const activeAgentRef = useRef(null);
+  const activeChatRef  = useRef(null);
+  const multiChatRef   = useRef(multiChat);
+  const historySeqRef  = useRef(0);   // stale-response guard for history fetches
+  const chatsSeqRef    = useRef(0);   // stale-response guard for list fetches
+  // Per-chat transcript cache so a failed refresh keeps the prior messages.
+  const messageCacheRef = useRef(new Map());
+  multiChatRef.current = multiChat;
 
   useEffect(() => { heartbeatsRef.current  = heartbeats;  }, [heartbeats]);
   useEffect(() => { onNoteSavedRef.current = onNoteSaved; }, [onNoteSaved]);
@@ -140,15 +175,31 @@ export function useAgentChat({ user, onNoteSaved }) {
     return () => clearInterval(id);
   }, [user]);
 
+  // ── Pending ("thinking") tracking, per chat ───────────────────────────────
+
+  const setPending = useCallback((chatKey, on) => {
+    setPendingChats(prev => {
+      if (prev.has(chatKey) === on) return prev;
+      const next = new Set(prev);
+      if (on) next.add(chatKey); else next.delete(chatKey);
+      return next;
+    });
+  }, []);
+
   // ── WebSocket ─────────────────────────────────────────────────────────────
 
-  const connectAgentWS = useCallback((agentId) => {
+  const connectAgentWS = useCallback((agentId, chatId) => {
     if (agentWsRef.current) agentWsRef.current.close();
-    agentWsRef.current = new WebSocket(`${WS_BASE}/agent/ws/${agentId}/${user.user_id}`);
-    agentWsRef.current.onmessage = (e) => {
+    const key = chatId || LEGACY_CHAT_KEY;
+    const qs = chatId ? `?chat_id=${encodeURIComponent(chatId)}` : '';
+    const ws = new WebSocket(`${WS_BASE}/agent/ws/${agentId}/${user.user_id}${qs}`);
+    agentWsRef.current = ws;
+    ws.onmessage = (e) => {
       try {
         const data = JSON.parse(e.data);
-        setAgentThinking(false);
+        // A frame tagged for another chat never touches this transcript.
+        if (multiChatRef.current && data.chat_id && data.chat_id !== key) return;
+        setPending(key, false);
         setAgentMessages(prev => [...prev, {
           text:      data.content,
           mine:      false,
@@ -161,53 +212,221 @@ export function useAgentChat({ user, onNoteSaved }) {
         console.error('Failed to parse incoming agent WS message:', err);
       }
     };
-    agentWsRef.current.onclose = () => setAgentThinking(false);
-  }, [user]);
+    ws.onclose = () => setPending(key, false);
+  }, [user, setPending]);
 
   const disconnectAgentWS = useCallback(() => {
     if (agentWsRef.current) { agentWsRef.current.close(); agentWsRef.current = null; }
   }, []);
 
+  // ── Chats (flag agent_chats) ──────────────────────────────────────────────
+
+  const fetchChatList = useCallback(async (agentId) => {
+    const res = await fetch(`${API}/agent/${user.user_id}/${agentId}/chats`);
+    if (!res.ok) throw new AgentChatHttpError(res.status);
+    const data = await res.json();
+    return Array.isArray(data?.chats) ? data.chats : [];
+  }, [user]);
+
+  // Load one chat's history. Throws nothing: sets historyError and keeps the
+  // cached transcript instead (never shows a failed load as an empty chat).
+  // Returns 'ok' | 'not_found' | 'error' | 'stale'.
+  const loadHistory = useCallback(async (agentId, chatId) => {
+    const seq = ++historySeqRef.current;
+    setHistoryLoading(true);
+    setHistoryError(null);
+    const qs = chatId ? `?chat_id=${encodeURIComponent(chatId)}` : '';
+    try {
+      const res = await fetch(`${API}/agent/${user.user_id}/${agentId}/messages${qs}`);
+      if (seq !== historySeqRef.current) return 'stale';
+      if (!res.ok) {
+        setHistoryLoading(false);
+        if (res.status === 404 && chatId) return 'not_found';
+        setHistoryError("Couldn't load this chat. Try again");
+        return 'error';
+      }
+      const data = await res.json();
+      if (seq !== historySeqRef.current) return 'stale';
+      const msgs = mapHistory(data);
+      messageCacheRef.current.set(chatId || LEGACY_CHAT_KEY, msgs);
+      setAgentMessages(msgs);
+      setHistoryLoading(false);
+      return 'ok';
+    } catch (err) {
+      if (seq !== historySeqRef.current) return 'stale';
+      console.error('Failed to load agent chat history:', err);
+      setHistoryLoading(false);
+      setHistoryError("Couldn't load this chat. Try again");
+      return 'error';
+    }
+  }, [user]);
+
+  const activateChat = useCallback(async (agent, chatId) => {
+    activeChatRef.current = chatId;
+    setActiveChatId(chatId);
+    if (chatId) writeLastChat(user.user_id, agent.id, chatId);
+    setAgentMessages(messageCacheRef.current.get(chatId || LEGACY_CHAT_KEY) || []);
+    connectAgentWS(agent.id, chatId);
+    return loadHistory(agent.id, chatId);
+  }, [user, connectAgentWS, loadHistory]);
+
+  // Re-fetch the list. A failed refresh keeps the existing list and sets
+  // chatsError; it never blanks or fabricates chats. Returns the list or null.
+  const refreshChats = useCallback(async (agent) => {
+    const target = agent || activeAgentRef.current;
+    if (!user || !target) return null;
+    const seq = ++chatsSeqRef.current;
+    setChatsLoading(true);
+    try {
+      const list = await fetchChatList(target.id);
+      if (seq !== chatsSeqRef.current || activeAgentRef.current?.id !== target.id) return null;
+      setChats(list);
+      setChatsLoaded(true);
+      setChatsError(null);
+      setChatsLoading(false);
+      return list;
+    } catch (err) {
+      if (seq !== chatsSeqRef.current) return null;
+      console.error('Failed to load agent chats:', err);
+      setChatsError("Couldn't load chats");
+      setChatsLoading(false);
+      return null;
+    }
+  }, [user, fetchChatList]);
+
+  const selectChat = useCallback(async (chatId) => {
+    const agent = activeAgentRef.current;
+    if (!agent || !chatId || chatId === activeChatRef.current) return;
+    setCreateChatError(null);
+    const result = await activateChat(agent, chatId);
+    if (result === 'not_found') {
+      // Foreign/unknown chat: say so, refetch, fall back (never a fallback by the server).
+      setHistoryError('That chat is no longer available.');
+      const list = await refreshChats(agent);
+      if (list && activeAgentRef.current?.id === agent.id) {
+        const fallback = pickInitialChatId(list, readLastChat(user.user_id, agent.id));
+        if (fallback && fallback !== chatId) await activateChat(agent, fallback);
+      }
+    }
+  }, [user, activateChat, refreshChats]);
+
+  const createChat = useCallback(async () => {
+    const agent = activeAgentRef.current;
+    if (!user || !agent || creatingChat) return null;
+    setCreatingChat(true);
+    setCreateChatError(null);
+    try {
+      const res = await fetch(`${API}/agent/${user.user_id}/${agent.id}/chats`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
+      });
+      if (!res.ok) {
+        let code = null;
+        try { const body = await res.json(); code = body?.detail?.code || body?.code || null; } catch { /* no body */ }
+        throw new AgentChatHttpError(res.status, code);
+      }
+      const chat = await res.json();
+      if (activeAgentRef.current?.id !== agent.id) return null;
+      setChats(prev => [chat, ...prev.filter(c => c.id !== chat.id)]);
+      messageCacheRef.current.set(chat.id, []);
+      setHistoryError(null);
+      activeChatRef.current = chat.id;
+      setActiveChatId(chat.id);
+      writeLastChat(user.user_id, agent.id, chat.id);
+      setAgentMessages([]);
+      connectAgentWS(agent.id, chat.id);
+      return chat;
+    } catch (err) {
+      console.error('Failed to create agent chat:', err);
+      // Current chat stays active; no chat is invented client-side.
+      setCreateChatError(createChatErrorMessage(err, agent.name || 'this agent'));
+      return null;
+    } finally {
+      setCreatingChat(false);
+    }
+  }, [user, creatingChat, connectAgentWS]);
+
+  const retryHistory = useCallback(() => {
+    const agent = activeAgentRef.current;
+    if (agent) loadHistory(agent.id, activeChatRef.current);
+  }, [loadHistory]);
+
+  const clearChatErrors = useCallback(() => {
+    setCreateChatError(null);
+    setHistoryError(null);
+  }, []);
+
+  const resetChatState = useCallback(() => {
+    chatsSeqRef.current += 1;
+    historySeqRef.current += 1;
+    activeChatRef.current = null;
+    messageCacheRef.current = new Map();
+    setChats([]);
+    setChatsLoaded(false);
+    setChatsLoading(false);
+    setChatsError(null);
+    setActiveChatId(null);
+    setCreateChatError(null);
+    setHistoryError(null);
+    setHistoryLoading(false);
+  }, []);
+
   // ── Open / close ──────────────────────────────────────────────────────────
 
   const openAgentChat = useCallback(async (agent) => {
+    activeAgentRef.current = agent;
     setActiveAgent(agent);
     setAgentMessages([]);
-    try {
-      const res = await fetch(`${API}/agent/${user.user_id}/${agent.id}/messages`);
-      if (res.ok) {
-        const data = await res.json();
-        const msgs = Object.entries(data).map(([, m]) => ({
-          text:      m.content,
-          mine:      m.title === 'user',
-          timestamp: m.timestamp,
-          sender:    m.title === 'user' ? '' : 'Agent',
-        })).sort(compareTimestamps);
-        setAgentMessages(msgs);
+    resetChatState();
+
+    if (!multiChatRef.current) {
+      // Legacy single flat chat: unchanged (no chat_id, no chat UI).
+      try {
+        const res = await fetch(`${API}/agent/${user.user_id}/${agent.id}/messages`);
+        if (res.ok) {
+          const data = await res.json();
+          setAgentMessages(mapHistory(data));
+        }
+      } catch (err) {
+        console.error('Failed to load agent chat history:', err);
+        message.error('Could not load that conversation. Check your connection and try again.');
       }
-    } catch (err) {
-      console.error('Failed to load agent chat history:', err);
-      message.error('Could not load that conversation. Check your connection and try again.');
+      connectAgentWS(agent.id);
+      return;
     }
-    connectAgentWS(agent.id);
-  }, [user, connectAgentWS]);
+
+    const list = await refreshChats(agent);
+    if (activeAgentRef.current?.id !== agent.id) return;
+    if (list === null) {
+      // List failed: chatsError is set. Absent chat_id is the server's default
+      // chat, so history and sends still work without inventing a chat.
+      await activateChat(agent, null);
+      return;
+    }
+    await activateChat(agent, pickInitialChatId(list, readLastChat(user.user_id, agent.id)));
+  }, [user, resetChatState, refreshChats, activateChat, connectAgentWS]);
 
   const closeAgentChat = useCallback(() => {
+    activeAgentRef.current = null;
     setActiveAgent(null);
     setAgentMessages([]);
+    resetChatState();
     disconnectAgentWS();
-  }, [disconnectAgentWS]);
+  }, [disconnectAgentWS, resetChatState]);
 
   // ── Send ──────────────────────────────────────────────────────────────────
 
   const sendAgentMessage = useCallback((content) => {
     if (!agentWsRef.current || agentWsRef.current.readyState !== 1) return;
-    agentWsRef.current.send(JSON.stringify({ content }));
+    const chatId = multiChatRef.current ? activeChatRef.current : null;
+    const frame = chatId ? { content, chat_id: chatId } : { content };
+    agentWsRef.current.send(JSON.stringify(frame));
     setAgentMessages(prev => [...prev, {
       text: content, mine: true, timestamp: new Date().toISOString(), sender: '',
     }]);
-    setAgentThinking(true);
-  }, []);
+    setPending(chatId || LEGACY_CHAT_KEY, true);
+  }, [setPending]);
 
   // ── CRUD ──────────────────────────────────────────────────────────────────
 
@@ -344,8 +563,14 @@ export function useAgentChat({ user, onNoteSaved }) {
     return false;
   }, [user, postSummarize]);
 
+  // Thinking reflects only the active chat.
+  const agentThinking = pendingChats.has(activeChatId || LEGACY_CHAT_KEY);
+
   return {
     agents, agentMessages, activeAgent, agentThinking, agentWsRef,
+    multiChat, chats, chatsLoaded, chatsLoading, chatsError, activeChatId,
+    createChatError, creatingChat, historyError, historyLoading,
+    selectChat, createChat, refreshChats, retryHistory, clearChatErrors,
     heartbeats, pendingNotifications,
     loadAgents, loadHeartbeats, openAgentChat, closeAgentChat, sendAgentMessage,
     createAgent, updateAgent, deleteAgent, addHeartbeat, summarizeSession,

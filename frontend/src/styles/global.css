@@ -3019,3 +3019,8 @@ button.shared-note-card:focus-visible { outline: 2px solid var(--gold); outline-
 
 /* Live transcript consent banner (task 20261013-session-call-live-transcript-summary). Functional trust signal, not decoration. */
 .call-transcript-banner { display: flex; align-items: center; gap: 0.5rem; padding: 0.4rem 0.75rem; border-radius: var(--radius-pill); background: rgba(18,13,5,0.85); border: 1px solid rgba(255,198,26,0.45); font-family: 'Inter', sans-serif; font-size: 0.72rem; color: rgba(242,242,242,0.92); }
+
+/* Agent Chat dock: icon-only Chats button on very narrow panels. */
+@media (max-width: 360px) {
+  .agent-chats-label { display: none; }
+}

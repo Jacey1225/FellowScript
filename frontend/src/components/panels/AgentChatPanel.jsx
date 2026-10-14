@@ -43,7 +43,17 @@ export default function AgentChatPanel() {
     user, agents, agentMessages, activeAgent, agentThinking,
     onOpenAgent, onCloseAgent, onNewAgent, sendAgentMessage,
     curBook, curChapter, curVerse, allNotes, onNavigateVerse,
+    multiChat, chats, chatsLoading, chatsError, activeChatId, createChatError, creatingChat,
+    historyError, historyLoading,
+    onSelectChat, onCreateChat, onRefreshChats, onRetryHistory, onClearChatErrors,
   } = useAgentChatPanel() || {};
+
+  // Multi-chat bundle (flag `agent_chats`); undefined keeps the legacy thread.
+  const chatUi = multiChat ? {
+    chats: chats || [], chatsLoading, chatsError, activeChatId, createChatError, creatingChat,
+    historyError, historyLoading,
+    onSelectChat, onCreateChat, onRefreshChats, onRetryHistory, onClearChatErrors,
+  } : undefined;
 
   const enabledAgents = (agents || []).filter(a => a.enabled !== false);
 
@@ -66,6 +76,7 @@ export default function AgentChatPanel() {
       <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
         {activeAgent ? (
           <AgentChatThread
+            chatUi={chatUi}
             agent={activeAgent}
             messages={agentMessages || []}
             user={user}

@@ -398,6 +398,9 @@ screen.
 | PUT | `/agent/{user_id}` | Update agent config (frequency, tone, etc.) |
 | POST | `/agent/{user_id}/heartbeat` | Trigger a scheduled devotion (enforces free-tier cap) |
 | POST | `/agent/{user_id}/{agent_id}/summarize` | Summarize a study session (body: `{session, group_id}`) and save the result as a note titled `Session Summary — {title}`. Enforces the same free-tier `notes` cap as note creation |
+| GET | `/agent/{user_id}/{agent_id}/chats` | List the agent's chats, most recent first. Flag `agent_chats`; `404` when off. See [Agent Chats](../design/agent-chats.md) |
+| POST | `/agent/{user_id}/{agent_id}/chats` | Create a chat. `201`, or `409` `chat_limit` at 50 chats. Flag `agent_chats` |
+| GET | `/agent/{user_id}/{agent_id}/messages` | History; optional `chat_id` query scopes it to one chat (unknown chat is `404`) |
 
 Task 20260907-session-summary-wireup wired this endpoint up end-to-end: a
 session created with its "Summarize" toggle on (`devotions.summarize`, see
