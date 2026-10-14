@@ -182,9 +182,9 @@ def test_config_ships_disabled_and_validates():
     print("\n=== config: ships disabled, fail closed, validated ===")
     path = cfgmod.CONFIG_PATH
     raw = json.loads(path.read_text())["session_transcription"]
-    check("shipped config has enabled=false", raw["enabled"] is False)
+    check("shipped config has enabled=true (turned on 2026-10-14)", raw["enabled"] is True)
     cfgmod.reset_for_tests()
-    check("is_transcription_enabled() False with shipped config", cfgmod.is_transcription_enabled() is False)
+    check("is_transcription_enabled() True with shipped config", cfgmod.is_transcription_enabled() is True)
     check("stale window >= 2x poll interval in shipped config",
           raw["relay_stale_seconds"] >= 2 * raw["relay_poll_interval_seconds"])
     # Missing section -> fail closed.

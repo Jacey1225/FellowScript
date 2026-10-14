@@ -1,6 +1,6 @@
 {
   "session_transcription": {
-    "enabled": false,
+    "enabled": true,
     "language_code": "en-US",
     "max_transcript_chars": 24000,
     "min_transcript_chars": 200,
