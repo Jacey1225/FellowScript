@@ -55,7 +55,8 @@ private struct WaysToExploreCardStyle: ButtonStyle {
 }
 
 struct WaysToExploreCard: View {
-    let icon: String
+    let icon: String?
+    var fsIcon: FSIcon? = nil
     let title: String
     let detail: String
     let hint: String
@@ -65,13 +66,19 @@ struct WaysToExploreCard: View {
     var body: some View {
         Button(action: action) {
             HStack(alignment: .center, spacing: Theme.spacingMD) {
-                Image(systemName: icon)
-                    .font(.system(size: 22, weight: .semibold))
-                    .foregroundColor(Theme.goldLight)
-                    .frame(width: 52, height: 52)
-                    .background(Circle().fill(Theme.gold.opacity(0.16)))
-                    .overlay(Circle().stroke(Theme.gold.opacity(0.4), lineWidth: 1))
-                    .accessibilityHidden(true)
+                if let fsIcon {
+                    fsIcon.image
+                        .frame(width: 52, height: 52)
+                        .accessibilityHidden(true)
+                } else {
+                    Image(systemName: icon ?? "questionmark")
+                        .font(.system(size: 22, weight: .semibold))
+                        .foregroundColor(Theme.goldLight)
+                        .frame(width: 52, height: 52)
+                        .background(Circle().fill(Theme.gold.opacity(0.16)))
+                        .overlay(Circle().stroke(Theme.gold.opacity(0.4), lineWidth: 1))
+                        .accessibilityHidden(true)
+                }
                 VStack(alignment: .leading, spacing: Theme.spacingXS) {
                     Text(title)
                         .font(.interScaled(Theme.fontHeading, weight: .bold, relativeTo: .headline))
@@ -138,7 +145,7 @@ struct WaysToExploreSection: View {
                         switch card {
                         case .createGroup:
                             WaysToExploreCard(
-                                icon: "bubble.left.and.bubble.right",
+                                icon: nil, fsIcon: .createGroup,
                                 title: "Start a group",
                                 detail: "Bring friends together in a chat of your own",
                                 hint: "Opens the new group form",
@@ -146,7 +153,7 @@ struct WaysToExploreSection: View {
                             ) { showAddGroup = true }
                         case .exploreGroups:
                             WaysToExploreCard(
-                                icon: "safari",
+                                icon: nil, fsIcon: .browseGroups,
                                 title: "Browse groups",
                                 detail: "See what is popular and close to you",
                                 hint: "Opens the community Explore page in a browser view",

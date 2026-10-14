@@ -227,9 +227,16 @@ struct GroupActivitySection: View {
                         .frame(maxWidth: .infinity, minHeight: 44)
                         .accessibilityLabel("Loading group activity")
                 case .empty:
-                    Text("No announcements from your groups yet.")
-                        .font(.interScaled(Theme.fontSM, relativeTo: .subheadline))
-                        .foregroundColor(Theme.textSecondary)
+                    VStack(spacing: Theme.spacingSM) {
+                        FSIcon.noAnnouncements.image
+                            .frame(width: 64, height: 64)
+                            .accessibilityHidden(true)
+                        Text("No announcements from your groups yet.")
+                            .font(.interScaled(Theme.fontSM, relativeTo: .subheadline))
+                            .foregroundColor(Theme.textSecondary)
+                            .multilineTextAlignment(.center)
+                    }
+                    .frame(maxWidth: .infinity)
                         .padding(.horizontal, 20)
                         .accessibilityIdentifier("group-activity-empty")
                 case .hidden:

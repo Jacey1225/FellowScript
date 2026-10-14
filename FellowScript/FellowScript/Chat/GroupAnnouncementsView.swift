@@ -119,9 +119,14 @@ struct GroupAnnouncementsView: View {
             .padding(Theme.spacingMD)
             Spacer()
         } else if vm.loaded && vm.visibleItems.isEmpty {
-            Text("No announcements yet.")
-                .font(.inter(Theme.fontSM)).foregroundColor(Theme.parchment.opacity(0.6))
-                .frame(maxWidth: .infinity).padding(.top, Theme.spacingLG)
+            VStack(spacing: Theme.spacingSM) {
+                FSIcon.noAnnouncements.image
+                    .frame(width: 64, height: 64)
+                    .accessibilityHidden(true)
+                Text("No announcements yet.")
+                    .font(.inter(Theme.fontSM)).foregroundColor(Theme.parchment.opacity(0.6))
+            }
+            .frame(maxWidth: .infinity).padding(.top, Theme.spacingLG)
             Spacer()
         } else {
             list
