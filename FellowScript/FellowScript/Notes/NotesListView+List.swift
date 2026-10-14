@@ -64,11 +64,76 @@ extension NotesListView {
     @ViewBuilder
     func notesList(_ items: [(String, FSNote)], enablePagination: Bool) -> some View {
         List {
+            if embedded {
+                ForEach(noteBookGroups(items), id: \.title) { group in
+                    Section {
+                        ForEach(group.items, id: \.0) { id, note in
+                            noteListRow(id: id, note: note, items: items, enablePagination: enablePagination)
+                        }
+                    } header: {
+                        Text(group.title)
+                            .font(.inter(Theme.fontHeading, weight: .bold))
+                            .foregroundColor(Theme.textGoldMuted)
+                            .textCase(nil)
+                            .padding(.top, 6)
+                            .accessibilityAddTraits(.isHeader)
+                    }
+                    .listSectionSeparator(.hidden)
+                }
+            } else {
             ForEach(items, id: \.0) { id, note in
-                NoteRow(note: note)
+                noteListRow(id: id, note: note, items: items, enablePagination: enablePagination)
+            }
+            }
+            if enablePagination && vm.isLoadingMore && vm.hasMoreForCurrentSegment {
+                HStack {
+                    Spacer()
+                    ProgressView().tint(Theme.gold)
+                    Spacer()
+                }
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+                .accessibilityLabel("Loading more notes")
+            }
+        }
+        .listStyle(.plain)
+        .refreshable {
+            await vm.refresh(service: appState.service, userId: appState.currentUser?.user_id ?? "")
+        }
+        .scrollContentBackground(.hidden)
+        .contentMargins(.top, Theme.spacingSM, for: .scrollContent)
+        .contentMargins(.bottom, embedded ? 20 : 100, for: .scrollContent)
+        .scrollTopEdgeFeather()
+        .padding(.top, Theme.spacingLG)
+    }
+
+    /// Notes grouped under their first verse's book heading (screenshot 1);
+    /// notes without a verse go under "General". Group order follows list order.
+    func noteBookGroups(_ items: [(String, FSNote)]) -> [(title: String, items: [(String, FSNote)])] {
+        var order: [String] = []
+        var buckets: [String: [(String, FSNote)]] = [:]
+        for item in items {
+            let title = item.1.verses.first(where: { $0.count >= 3 })?.first?.asString ?? "General"
+            if buckets[title] == nil { order.append(title) }
+            buckets[title, default: []].append(item)
+        }
+        return order.map { (title: $0, items: buckets[$0] ?? []) }
+    }
+
+    @ViewBuilder
+    func noteListRow(id: String, note: FSNote, items: [(String, FSNote)], enablePagination: Bool) -> some View {
+                NoteRow(note: note, card: embedded,
+                        onSend: embedded && canSendInChat(note) ? { sendInChat(note) } : nil,
+                        onEdit: embedded && canEdit(note) ? {
+                            editingNote = note; editingId = id; editingGroupId = note.group_id; showEditor = true
+                        } : nil,
+                        onDelete: embedded && canDelete(note) ? {
+                            let uid = appState.currentUser?.user_id ?? ""
+                            Task { await vm.deleteNote(id: id, userId: uid, isOwnNote: true) }
+                        } : nil)
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
-                    .listRowInsets(EdgeInsets(top: 6, leading: 20, bottom: 6, trailing: 20))
+                    .listRowInsets(EdgeInsets(top: 6, leading: embedded ? 12 : 20, bottom: 6, trailing: embedded ? 12 : 20))
                     .onTapGesture { detailNote = note }
                     .onAppear {
                         // Bottom-of-list trigger for the next backend-capped page
@@ -116,59 +181,6 @@ extension NotesListView {
                         }
                     }
                     .accessibilityLabel("Note: \(note.title.isEmpty ? "Untitled" : note.title). \(note.preview)")
-            }
-            if enablePagination && vm.isLoadingMore && vm.hasMoreForCurrentSegment {
-                HStack {
-                    Spacer()
-                    ProgressView().tint(Theme.gold)
-                    Spacer()
-                }
-                .listRowBackground(Color.clear)
-                .listRowSeparator(.hidden)
-                .accessibilityLabel("Loading more notes")
-            }
-        }
-        .listStyle(.plain)
-        // Pull-to-refresh (task 20260831-interaction-polish-conventions):
-        // wired straight to NotesViewModel's existing reload method
-        // (its new `refresh()` entry point — see that method's own
-        // comment for why this isn't just `vm.load()` again). Both
-        // tabs below share this same view model/underlying fetch, so
-        // either tab's `.refreshable` refreshes notes, highlights,
-        // and groups together.
-        .refreshable {
-            await vm.refresh(service: appState.service, userId: appState.currentUser?.user_id ?? "")
-        }
-        .scrollContentBackground(.hidden)
-        // Breathing room + top-edge feather (task
-        // 20260831-notes-messages-list-scroll-blur): groupChips sits
-        // directly above this List with no gap, so rows scrolling up
-        // used to hit a hard clip flush against the chip row -- a
-        // live scrolled-state screenshot showed a card visibly
-        // colliding with/reading as overlapping the chips, not just
-        // "unblurred." `.contentMargins(.top:)` alone only offsets
-        // the AT-REST position (scrollOffset 0); it does not create
-        // a persistent gap once scrolled, since content still
-        // travels all the way to the List's own top-edge frame
-        // boundary while scrolling. The real fix needs both halves:
-        // the `.padding(.top:)` below (OUTSIDE the List, after the
-        // mask) moves the List's own clipping frame a genuine,
-        // scroll-independent Theme.spacingLG away from groupChips,
-        // so even a fully-scrolled row's top edge stays clear of the
-        // chip row -- no overlap, ever, regardless of scroll offset.
-        // `.contentMargins(.top:)` keeps a smaller matching inset so
-        // the first row also isn't flush against the List's own
-        // (now further-away) top edge at rest. scrollTopEdgeFeather
-        // (Theme.swift) adapts NoteDetailView's ScrollView `.mask`
-        // precedent for List so rows fade out smoothly as they
-        // approach that inner top edge while scrolling, instead of
-        // hard-clipping there. Neither of these is a background
-        // overlay/panel -- both operate on the List's own frame/
-        // alpha, nothing new is drawn behind or in front of it.
-        .contentMargins(.top, Theme.spacingSM, for: .scrollContent)
-        .contentMargins(.bottom, 100, for: .scrollContent)
-        .scrollTopEdgeFeather()
-        .padding(.top, Theme.spacingLG)
     }
 
     // ── Highlights tab ────────────────────────────────────────────────────────
@@ -193,10 +205,10 @@ extension NotesListView {
                 .accessibilityLabel("No highlights yet. Long-press a verse while reading to highlight it.")
             } else {
                 List(vm.sortedHighlights) { h in
-                    HighlightRow(highlight: h)
+                    HighlightRow(highlight: h, compact: embedded)
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
-                        .listRowInsets(EdgeInsets(top: 4, leading: 20, bottom: 4, trailing: 20))
+                        .listRowInsets(EdgeInsets(top: 4, leading: embedded ? 12 : 20, bottom: 4, trailing: embedded ? 12 : 20))
                         .contentShape(Rectangle())
                         .onTapGesture {
                             // Only navigate for a properly parsed reference.

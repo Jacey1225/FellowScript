@@ -157,10 +157,13 @@ final class ChatNudgeButtonCircleRemovalSourceTests: XCTestCase {
 
 final class ChatNudgeButtonCircleRemovalRenderTests: XCTestCase {
 
-    func test_idleState_rendersBellIcon_enabledAndAccessible() throws {
+    func test_idleState_rendersKnockGlyph_enabledAndAccessible() throws {
         let sut = ChatNudgeButton(friendName: "Sam", nudgeState: .idle, onTap: {})
-        let image = try sut.inspect().find(ViewType.Image.self)
-        XCTAssertEqual(try image.actualImage().name(), "bell.fill")
+        // Knock glyph (flat variant) replaced the bell.fill SF Symbol.
+        let knock = try sut.inspect().find(KnockGlyph.self).actualView()
+        XCTAssertTrue(knock.flat)
+        XCTAssertEqual(knock.flatColor, Theme.goldLight)
+        XCTAssertThrowsError(try sut.inspect().find(ViewType.Image.self))
 
         let button = try sut.inspect().find(ViewType.Button.self)
         XCTAssertFalse(try button.isDisabled(), "idle must remain tappable")
@@ -197,12 +200,14 @@ final class ChatNudgeButtonCircleRemovalRenderTests: XCTestCase {
         XCTAssertEqual(try button.accessibilityLabel().string(), "Nudge sent to Sam")
     }
 
-    func test_failedState_rendersBellIcon_stillTappable_forRetry() throws {
+    func test_failedState_rendersKnockGlyph_stillTappable_forRetry() throws {
         // .failed is the one outcome that must stay tappable (invites an
         // immediate retry) — unchanged by the circle removal.
         let sut = ChatNudgeButton(friendName: "Sam", nudgeState: .failed, onTap: {})
-        let image = try sut.inspect().find(ViewType.Image.self)
-        XCTAssertEqual(try image.actualImage().name(), "bell.fill")
+        // Failed state tints the flat Knock glyph with Theme.error.
+        let knock = try sut.inspect().find(KnockGlyph.self).actualView()
+        XCTAssertTrue(knock.flat)
+        XCTAssertEqual(knock.flatColor, Theme.error)
 
         let button = try sut.inspect().find(ViewType.Button.self)
         XCTAssertFalse(try button.isDisabled(), ".failed must remain tappable to invite an immediate retry")

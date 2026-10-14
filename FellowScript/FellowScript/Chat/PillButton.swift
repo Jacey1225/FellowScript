@@ -22,6 +22,8 @@ struct PillButton: View {
     let title: String
     var systemIcon: String? = nil
     var textColor: Color = Theme.ink
+    /// Optional fill override (iPad workspace tinted pill); nil = gold gradient.
+    var fill: AnyShapeStyle? = nil
     var action: () -> Void
 
     var body: some View {
@@ -37,8 +39,9 @@ struct PillButton: View {
             .foregroundColor(textColor)
             .padding(.horizontal, 18)
             .padding(.vertical, 10)
-            .background(Theme.goldGradient)
+            .background(fill ?? AnyShapeStyle(Theme.goldGradient))
             .clipShape(Capsule())
+            .overlay { if fill != nil { Capsule().stroke(Theme.borderGoldDim, lineWidth: 1) } }
             .topEdgeHighlight(Capsule())
         }
         .buttonStyle(.plain)

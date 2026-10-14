@@ -38,10 +38,24 @@ struct NotesListView: View {
     // is the only call site and always passes StartupCoordinator's shared
     // instance so this screen's `.task` sees already-loaded (or in-flight)
     // data instead of firing a second fetch (see NotesViewModel.hasLoadedOnce).
-    init(vm: NotesViewModel, bibleVM: BibleViewModel? = nil) {
+    init(vm: NotesViewModel, bibleVM: BibleViewModel? = nil, embedded: Bool = false, fixedTab: NotesViewModel.NoteTab? = nil) {
         _vm = StateObject(wrappedValue: vm)
         self.bibleVM = bibleVM
+        self.embedded = embedded
+        self.fixedTab = fixedTab
     }
+
+    /// iPad workspace: Notes and Highlights are separate dock tabs and may be
+    /// visible at once, so each pins its own tab instead of sharing `vm.activeTab`.
+    let fixedTab: NotesViewModel.NoteTab?
+    var shownTab: NotesViewModel.NoteTab { fixedTab ?? vm.activeTab }
+    /// Embedded search field is collapsed behind a header icon.
+    @State var showEmbeddedSearch = false
+    @State var refreshDismissed = false
+
+    /// iPad workspace hosts this inside a tabbed panel whose tab strip already
+    /// selects Notes vs Highlights, so the in-view toggle is hidden there.
+    let embedded: Bool
 
     /// Task 20261011-ios-share-notes-highlights: StartupCoordinator's shared Bible
     /// model, used only to look up verse text when sharing a highlight (nil = share
@@ -59,6 +73,7 @@ struct NotesListView: View {
 
     var body: some View {
         ZStack(alignment: .top) {
+            if !embedded {
             Theme.bgPage.ignoresSafeArea()
 
             // Warm bloom ground (shared visual language with the Dashboard).
@@ -68,25 +83,32 @@ struct NotesListView: View {
             RadialGradient(colors: [Color(hex: "#B8761D").opacity(0.12), .clear],
                            center: UnitPoint(x: 0.92, y: 0.60), startRadius: 10, endRadius: 340)
                 .ignoresSafeArea()
+            }
 
             VStack(spacing: 0) {
                 header
 
-                notesHighlightsToggle
-                    .padding(.horizontal, 20)
-                    .padding(.top, 16)
-
-                if vm.activeTab == .notes {
-                    NotesSearchField(text: $vm.searchText, isSearching: vm.isSearching)
+                if !embedded {
+                    notesHighlightsToggle
                         .padding(.horizontal, 20)
-                        .padding(.top, 14)
+                        .padding(.top, 16)
+                }
 
-                    groupChips
-                        .padding(.top, 14)
-                } else {
+                if shownTab == .notes {
+                    if !embedded || showEmbeddedSearch {
+                        NotesSearchField(text: $vm.searchText, isSearching: vm.isSearching)
+                            .padding(.horizontal, embedded ? 14 : 20)
+                            .padding(.top, embedded ? 6 : 14)
+                    }
+
+                    if !embedded {
+                        groupChips
+                            .padding(.top, 14)
+                    }
+                } else if !embedded || showEmbeddedSearch {
                     highlightSearchField
-                        .padding(.horizontal, 20)
-                        .padding(.top, 14)
+                        .padding(.horizontal, embedded ? 14 : 20)
+                        .padding(.top, embedded ? 6 : 14)
                 }
 
                 // Visible, warm, non-blocking signal for a background
@@ -104,7 +126,30 @@ struct NotesListView: View {
                 // stays useful for logs/tests but reads as too technical for
                 // this screen. Pull-to-refresh (already present) is the
                 // retry path; no new control is added.
-                if vm.refreshError != nil {
+                if vm.refreshError != nil && embedded {
+                    // iPad workspace: slim dismissible inline row so a background
+                    // refresh hiccup does not dominate the dock.
+                    if !refreshDismissed {
+                        HStack(spacing: 8) {
+                            Text("Some notes couldn\u{2019}t be refreshed just now.")
+                                .font(.inter(Theme.fontXS)).foregroundColor(Theme.error).lineLimit(1)
+                            Spacer(minLength: 0)
+                            Button { refreshDismissed = true } label: {
+                                Image(systemName: "xmark").font(.system(size: 10, weight: .bold)).foregroundColor(Theme.error)
+                                    .frame(width: 32, height: 32).contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Dismiss")
+                        }
+                        .padding(.leading, 12)
+                        .frame(height: 32)
+                        .background(Theme.error.opacity(0.12))
+                        .clipShape(RoundedRectangle(cornerRadius: Theme.radiusSM))
+                        .padding(.horizontal, 14).padding(.top, 6)
+                        .accessibilityElement(children: .combine)
+                        .accessibilityLabel("Some notes couldn't be refreshed just now. Showing what's already loaded.")
+                    }
+                } else if vm.refreshError != nil {
                     Text("Some notes couldn\u{2019}t be refreshed just now — showing what\u{2019}s already loaded. Pull down to try again.")
                         .font(.inter(Theme.fontSM))
                         .foregroundColor(Theme.error)
@@ -123,7 +168,7 @@ struct NotesListView: View {
                     ProgressView().tint(Theme.gold)
                     Spacer()
                 } else {
-                    switch vm.activeTab {
+                    switch shownTab {
                     case .notes:      notesTab
                     case .highlights: highlightsTabContent
                     }

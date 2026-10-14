@@ -58,6 +58,12 @@ struct NotesSearchField: View {
 // ── Note row (mirrors NoteCard in NotesSidebar.jsx) ───────────────────────────
 struct NoteRow: View {
     let note: FSNote
+    /// iPad workspace card variant (screenshot 1): thin-border card, small title,
+    /// trailing send/edit/delete icons, italic reference chips, date bottom right.
+    var card: Bool = false
+    var onSend: (() -> Void)? = nil
+    var onEdit: (() -> Void)? = nil
+    var onDelete: (() -> Void)? = nil
 
     // Author chip shows only for group-segment notes with a successfully
     // captured author username — never for Personal notes (always the
@@ -76,6 +82,73 @@ struct NoteRow: View {
     private var showsEditableIndicator: Bool { !note.group_id.isEmpty && note.public }
 
     var body: some View {
+        if card { cardBody } else { phoneBody }
+    }
+
+    private var cardBody: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 4) {
+                Text(note.title.isEmpty ? "Untitled" : note.title)
+                    .font(.inter(Theme.fontSM, weight: .bold))
+                    .foregroundColor(Theme.parchment)
+                    .lineLimit(1)
+                Spacer(minLength: 4)
+                if showsAuthorChip {
+                    Text(note.username)
+                        .font(.inter(Theme.fontXXS, weight: .bold))
+                        .foregroundColor(Theme.parchment.opacity(0.75)).lineLimit(1)
+                }
+                cardIcon("paperplane", "Send in chat", onSend)
+                cardIcon("pencil", "Edit note", onEdit)
+                cardIcon("trash", "Delete note", onDelete)
+            }
+            let validVerses = note.verses.filter { $0.count >= 3 }
+            if !validVerses.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(Array(validVerses.enumerated()), id: \.offset) { _, v in
+                            Text(verseLabel(v))
+                                .font(.verseRef(Theme.fontXS))
+                                .foregroundColor(Theme.goldLight)
+                                .padding(.horizontal, 10).padding(.vertical, 3)
+                                .background(Capsule().fill(Theme.gold.opacity(0.15)))
+                        }
+                    }
+                }
+            }
+            Text(note.preview.isEmpty ? "No content" : note.preview)
+                .font(.inter(Theme.fontSM))
+                .foregroundColor(Theme.textSecondary)
+                .lineLimit(3)
+            HStack {
+                Spacer()
+                Text(note.formattedTimestamp)
+                    .font(.inter(Theme.fontXS))
+                    .foregroundColor(Theme.textSecondary)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous).fill(Theme.cardGlassGray))
+        .overlay(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous).stroke(Theme.borderGray, lineWidth: 1))
+    }
+
+    @ViewBuilder
+    private func cardIcon(_ name: String, _ label: String, _ action: (() -> Void)?) -> some View {
+        if let action {
+            Button(action: action) {
+                Image(systemName: name)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(Theme.textGoldMuted)
+                    .frame(width: 32, height: 32)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(label)
+        }
+    }
+
+    private var phoneBody: some View {
         VStack(alignment: .leading, spacing: 9) {
             HStack {
                 Text(note.title.isEmpty ? "Untitled" : note.title)
@@ -165,8 +238,31 @@ struct NoteRow: View {
 // ── Highlight row (mirrors HighlightCard) ─────────────────────────────────────
 struct HighlightRow: View {
     let highlight: FSHighlight
+    /// iPad workspace dense row (screenshot 2): 8pt dot, italic reference, glass fill.
+    var compact: Bool = false
 
     var body: some View {
+        if compact { compactBody } else { phoneBody }
+    }
+
+    private var compactBody: some View {
+        HStack(spacing: 10) {
+            Circle().fill(Color(hex: highlight.color)).frame(width: 8, height: 8)
+                .accessibilityHidden(true)
+            Text("\(highlight.book) \(highlight.chapter):\(highlight.verse)")
+                .font(.verseRef(Theme.fontSM))
+                .foregroundColor(Theme.goldLight)
+            Spacer()
+            if let name = highlight.username {
+                Text(name).font(.inter(Theme.fontXXS)).foregroundColor(Theme.gold.opacity(0.8))
+            }
+        }
+        .padding(.horizontal, 12)
+        .frame(minHeight: 44)
+        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Theme.cardGlassGray))
+    }
+
+    private var phoneBody: some View {
         HStack(spacing: Theme.spacingMD) {
             Circle()
                 .fill(Color(hex: highlight.color))

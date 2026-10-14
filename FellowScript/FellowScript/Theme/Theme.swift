@@ -47,6 +47,9 @@ enum Theme {
     static let borderGoldDim   = Color(hex: "#D4922A").opacity(0.18)
     static let borderGoldFaint = Color(hex: "#D4922A").opacity(0.12)
     static let borderDanger    = Color(hex: "#DC3232").opacity(0.25)
+    // iPad note cards / highlight rows: neutral translucent gray (no brown tint).
+    static let cardGlassGray   = Color(hex: "#9A9A9A").opacity(0.16)
+    static let borderGray      = Color.white.opacity(0.14)
 
     // ── Text ──────────────────────────────────────────────────────────────────
     static let textPrimary    = Color(hex: "#F5EAD0")

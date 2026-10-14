@@ -624,7 +624,7 @@ struct CheckInRow: View {
     private var iconName: String {
         switch nudgeState {
         case .sent, .rateLimited: return "checkmark"
-        default:                  return "bell.fill"
+        default:                  return "checkmark"
         }
     }
 
@@ -660,10 +660,13 @@ struct CheckInRow: View {
                                 Group {
                                     if nudgeState == .sending {
                                         ProgressView().tint(Theme.goldLight)
-                                    } else {
+                                    } else if nudgeState == .sent || nudgeState == .rateLimited {
                                         Image(systemName: iconName)
                                             .font(.system(size: 17))
                                             .foregroundColor(Theme.goldLight)
+                                    } else {
+                                        KnockGlyph(size: 40)
+                                            .accessibilityHidden(true)
                                     }
                                 }
                             )
@@ -719,4 +722,79 @@ private func activityTimeLabel(_ date: Date) -> String {
     let f = DateFormatter()
     f.timeStyle = .short
     return "\(activityDayLabel(date)) · \(f.string(from: date))"
+}
+
+
+// ── Knock glyph ─────────────────────────────────────────────────────────────────
+// SQUIDWARD's gold "Knock" nudge icon (design 20261013-fellowscript-checkin-
+// button-icon-concepts, revision-knock-gold), drawn natively in a 96-unit
+// space so it stays crisp at every size and needs no asset-format workaround
+// for the original SVG's gradients/blur. `flat: true` is the bare-button
+// variant (single `flatColor` silhouette, no glow/highlight/ticks tint), so
+// callers can drive the failed-state tint through `flatColor` exactly like
+// the old SF Symbol's foregroundColor. Dark-ground colors only: both current
+// nudge sites sit on dark surfaces, so the light-ground deeper-gold variant
+// is intentionally not shipped.
+struct KnockGlyph: View {
+    let size: CGFloat
+    var flat: Bool = false
+    var flatColor: Color = Theme.goldLight
+
+    var body: some View {
+        let u = size / 96
+        let pillW = 36 * u, pillH = 68 * u
+        ZStack(alignment: .topLeading) {
+            if !flat {
+                RoundedRectangle(cornerRadius: 18 * u)
+                    .fill(Color(hex: "#EDAB3C"))
+                    .frame(width: pillW, height: pillH)
+                    .blur(radius: 9 * u)
+                    .opacity(0.15)
+                    .offset(x: 24 * u, y: 14 * u)
+            }
+            // Highlight circle (centre (58,38) r12) pokes out past the pill's
+            // right edge (x=60): a translucent copy sits behind the pill so the
+            // overhang is see-through over the background, per the design SVG.
+            Circle()
+                .fill(flat
+                    ? AnyShapeStyle(flatColor.opacity(0.6))
+                    : AnyShapeStyle(LinearGradient(
+                        colors: [Color(hex: "#F0AE40"), Color(hex: "#B07820")],
+                        startPoint: .topLeading, endPoint: .bottomTrailing).opacity(0.6)))
+                .frame(width: 24 * u, height: 24 * u)
+                .offset(x: 46 * u, y: 26 * u)
+            // Pill with the highlight circle clipped to it (circle centre
+            // (58,38) r12 in the 96-unit space, i.e. local (34,24) in the pill).
+            ZStack(alignment: .topLeading) {
+                Rectangle().fill(flat
+                    ? AnyShapeStyle(flatColor)
+                    : AnyShapeStyle(LinearGradient(
+                        colors: [Color(hex: "#EDAB3C"), Color(hex: "#D4922A"), Color(hex: "#B8761D")],
+                        startPoint: .topLeading, endPoint: .bottomTrailing)))
+                    .opacity(flat ? 1 : 0.88)
+                Circle()
+                    .fill(flat ? Color.white.opacity(0.28) : Color(hex: "#F5C060").opacity(0.9))
+                    .frame(width: 24 * u, height: 24 * u)
+                    .offset(x: 22 * u, y: 12 * u)
+            }
+            .frame(width: pillW, height: pillH, alignment: .topLeading)
+            .clipShape(RoundedRectangle(cornerRadius: 18 * u))
+            .offset(x: 24 * u, y: 14 * u)
+            KnockTicks()
+                .stroke(flat ? flatColor : Color(hex: "#F5EAD0").opacity(0.9),
+                        style: StrokeStyle(lineWidth: 3 * u, lineCap: .round, lineJoin: .round))
+                .frame(width: size, height: size)
+        }
+        .frame(width: size, height: size, alignment: .topLeading)
+    }
+}
+
+private struct KnockTicks: Shape {
+    func path(in rect: CGRect) -> Path {
+        let u = rect.width / 96
+        var p = Path()
+        p.move(to: CGPoint(x: 62 * u, y: 22 * u)); p.addLine(to: CGPoint(x: 64 * u, y: 16 * u))
+        p.move(to: CGPoint(x: 70 * u, y: 26 * u)); p.addLine(to: CGPoint(x: 74 * u, y: 21 * u))
+        return p
+    }
 }

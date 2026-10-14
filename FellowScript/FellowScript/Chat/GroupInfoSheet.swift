@@ -304,6 +304,13 @@ struct GroupInfoSheet: View {
     @StateObject private var vm: GroupInfoViewModel
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// iPad workspace: hosted inline in the right panel instead of a sheet.
+    /// When set, closing calls this instead of dismissing a presentation.
+    var onClose: (() -> Void)? = nil
+
+    private func closeSelf() {
+        if let onClose { onClose() } else { dismiss() }
+    }
 
     @State private var editingName = false
     @State private var draftName = ""
@@ -321,7 +328,9 @@ struct GroupInfoSheet: View {
          onTitleChanged: @escaping (String) -> Void,
          onPhotoChanged: @escaping (String?) -> Void,
          onAddMembers: (() -> Void)? = nil,
+         onClose: (() -> Void)? = nil,
          onGroupGone: @escaping () -> Void) {
+        self.onClose = onClose
         self.contact = contact
         self.user = user
         self.memberNames = memberNames
@@ -363,7 +372,7 @@ struct GroupInfoSheet: View {
                             // backend feature flag is off (uniform 404 from list).
                             InviteLinkSection(
                                 service: service, groupId: contact.id, userId: user?.user_id ?? "",
-                                onGroupGone: { dismiss(); onGroupGone() }
+                                onGroupGone: { closeSelf(); onGroupGone() }
                             )
                         }
                         memberLimitSection
@@ -384,19 +393,19 @@ struct GroupInfoSheet: View {
         .navigationDestination(isPresented: $showAnnouncements) {
             GroupAnnouncementsView(
                 service: service, groupId: contact.id, userId: user?.user_id ?? "",
-                onGroupGone: { dismiss(); onGroupGone() }
+                onGroupGone: { closeSelf(); onGroupGone() }
             )
         }
         .navigationDestination(isPresented: $showHostTools) {
             GroupHostToolsView(
                 vm: vm, service: service, context: sectionContext,
-                onGroupGone: { dismiss(); onGroupGone() }
+                onGroupGone: { closeSelf(); onGroupGone() }
             )
         }
         }
         // "See plans" on the announcements limit card: close the sheet so the
         // Account tab (switched by ContentView) is visible.
-        .onReceive(NotificationCenter.default.publisher(for: .fsOpenSubscriptionPlans)) { _ in dismiss() }
+        .onReceive(NotificationCenter.default.publisher(for: .fsOpenSubscriptionPlans)) { _ in closeSelf() }
         // Free-plan publish pre-check shows the shared prompt above this sheet.
         .upgradePrompt()
         .preferredColorScheme(.dark)
@@ -405,7 +414,7 @@ struct GroupInfoSheet: View {
         .task { await vm.loadInfo() }
         .task { await vm.loadGalleryFirstPage() }
         .onChange(of: vm.removedFromGroup) { _, gone in
-            if gone { dismiss(); onGroupGone() }
+            if gone { closeSelf(); onGroupGone() }
         }
         .onChange(of: photoPickerItem) { _, item in handlePicked(item) }
         .photosPicker(isPresented: $showPhotoPicker, selection: $photoPickerItem, matching: .images, photoLibrary: .shared())
@@ -425,7 +434,7 @@ struct GroupInfoSheet: View {
                 .foregroundColor(Theme.gold.opacity(0.85))
                 .accessibilityAddTraits(.isHeader)
             Spacer()
-            Button { dismiss() } label: {
+            Button { closeSelf() } label: {
                 Image(systemName: "xmark")
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundColor(Theme.gold)
@@ -632,7 +641,7 @@ struct GroupInfoSheet: View {
                 memberNames: memberNames,
                 user: user,
                 photoByUsername: photoByUsername,
-                onAddTapped: onAddMembers.map { add in { dismiss(); DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { add() } } }
+                onAddTapped: onAddMembers.map { add in { closeSelf(); DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { add() } } }
             )
         }
     }

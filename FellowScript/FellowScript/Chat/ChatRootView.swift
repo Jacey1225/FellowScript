@@ -23,6 +23,9 @@ struct ChatRootView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var exploreDestination: ExploreDestination?
     @StateObject private var vm: ChatViewModel
+    /// iPad workspace: hosted in the right panel (no big header/segments/own
+    /// background, compact friends/groups list, thread opens inline).
+    private let embedded: Bool
 
     // Required (no default): a bare `ChatViewModel()` default expression is
     // evaluated as MainActor-isolated under this project's default actor
@@ -31,8 +34,9 @@ struct ChatRootView: View {
     // is the only call site and always passes StartupCoordinator's shared
     // instance so this screen's `.task` sees already-loaded (or in-flight)
     // data instead of firing a second fetch (see ChatViewModel.hasLoadedOnce).
-    init(vm: ChatViewModel) {
+    init(vm: ChatViewModel, embedded: Bool = false) {
         _vm = StateObject(wrappedValue: vm)
+        self.embedded = embedded
     }
 
     @State private var selectedSegment = 0
@@ -59,6 +63,7 @@ struct ChatRootView: View {
 
     var body: some View {
         ZStack(alignment: .top) {
+            if !embedded {
             Theme.bgPage.ignoresSafeArea()
 
             // Warm bloom ground (shared visual language with Dashboard/Notes).
@@ -68,7 +73,11 @@ struct ChatRootView: View {
             RadialGradient(colors: [Color(hex: "#B8761D").opacity(0.12), .clear],
                            center: UnitPoint(x: 0.92, y: 0.60), startRadius: 10, endRadius: 340)
                 .ignoresSafeArea()
+            }
 
+            if embedded {
+                embeddedContent
+            } else {
             VStack(spacing: 0) {
                 header
 
@@ -100,6 +109,7 @@ struct ChatRootView: View {
                         }
                     }
                 }
+            }
             }
         }
         // Shared keyboard-dismiss convention (task
@@ -150,7 +160,7 @@ struct ChatRootView: View {
             }
         }
         .exploreSafariSheet($exploreDestination)
-        .sheet(item: $activeContact) { contact in
+        .sheet(item: embedded ? .constant(nil) : $activeContact) { contact in
             ChatThreadView(contact: contact, user: appState.currentUser)
                 .upgradePrompt(onSubscribe: { activeContact = nil })
         }
@@ -232,6 +242,188 @@ struct ChatRootView: View {
             Button("OK", role: .cancel) { vm.groupActionError = nil }
         } message: {
             Text(vm.groupActionError ?? "")
+        }
+    }
+
+    // ── iPad workspace (embedded) ───────────────────────────────────────────────
+    // Compact FRIENDS / GROUPS list (screenshot 3); a tapped row opens the
+    // thread inline in the same panel (screenshots 4, 9) instead of a sheet.
+    @ViewBuilder
+    private var embeddedContent: some View {
+        if let contact = activeContact {
+            ChatThreadView(contact: contact, user: appState.currentUser, embedded: true,
+                           onClose: { activeContact = nil })
+                .id(contact.id)
+                .upgradePrompt(onSubscribe: { activeContact = nil })
+        } else if vm.isLoading {
+            loadingView
+        } else {
+            embeddedList
+        }
+    }
+
+    private func sectionLabel(_ title: String) -> some View {
+        Text(title)
+            .font(.inter(Theme.fontXXS, weight: .bold)).tracking(3)
+            .foregroundColor(Theme.goldLight)
+            .accessibilityAddTraits(.isHeader)
+    }
+
+    private func sectionIconButton(_ icon: String, label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: icon)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(Theme.goldLight)
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
+    }
+
+    private var embeddedList: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    sectionLabel("FRIENDS")
+                    Spacer()
+                    sectionIconButton("person.badge.plus", label: "Add friend") { showAddFriend = true }
+                }
+                if vm.friends.isEmpty {
+                    Text("No friends yet.")
+                        .font(.inter(Theme.fontSM)).foregroundColor(Theme.textSecondary)
+                        .padding(.vertical, 8)
+                }
+                ForEach(vm.friends) { contact in
+                    embeddedRow(contact)
+                }
+
+                HStack {
+                    sectionLabel("GROUPS")
+                    Spacer()
+                    sectionIconButton("plus", label: "New group") { showAddGroup = true }
+                }
+                .padding(.top, 14)
+                if let exploreURL = ExploreEntry.browseURL(from: appState.capabilities) {
+                    ExploreEntryRow { exploreDestination = ExploreDestination(url: exploreURL) }
+                        .padding(.bottom, 6)
+                }
+                if vm.groups.isEmpty {
+                    Text("No groups yet.")
+                        .font(.inter(Theme.fontSM)).foregroundColor(Theme.textSecondary)
+                        .padding(.vertical, 8)
+                }
+                ForEach(vm.groups) { contact in
+                    embeddedRow(contact)
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.bottom, 20)
+        }
+        .refreshable {
+            await vm.refresh(service: appState.service, userId: appState.currentUser?.user_id ?? "")
+        }
+        // Same report / block / delete-group flows as the phone lists (those
+        // modifiers live on friendsList/groupsList, which this variant replaces).
+        .sheet(item: $reportTarget) { contact in
+            ReportUserSheet(contact: contact) { reason, detail in
+                Task {
+                    do {
+                        try await appState.service.reportUser(reportedUserId: contact.id, reason: reason, detail: detail)
+                    } catch {
+                        reportError = (error as? LocalizedError)?.errorDescription
+                            ?? "Could not send report. Please try again."
+                    }
+                }
+                reportTarget = nil
+            }
+        }
+        .confirmationDialog(
+            "Block \(blockConfirmTarget?.name ?? "this user")?",
+            isPresented: Binding(get: { blockConfirmTarget != nil }, set: { if !$0 { blockConfirmTarget = nil } }),
+            titleVisibility: .visible
+        ) {
+            Button("Block", role: .destructive) {
+                guard let contact = blockConfirmTarget else { return }
+                let uid = appState.currentUser?.user_id ?? ""
+                vm.friends.removeAll { $0.id == contact.id }
+                Task {
+                    do {
+                        try await appState.service.blockUser(userId: uid, blockedId: contact.id)
+                    } catch {
+                        if !vm.friends.contains(where: { $0.id == contact.id }) { vm.friends.append(contact) }
+                        blockError = (error as? LocalizedError)?.errorDescription
+                            ?? "Could not block this user. Please try again."
+                    }
+                }
+                blockConfirmTarget = nil
+            }
+            Button("Cancel", role: .cancel) { blockConfirmTarget = nil }
+        } message: {
+            Text("They won't be able to contact you or add you as a friend, and their existing content will be removed from your view. We'll be notified so we can review the situation.")
+        }
+        .confirmationDialog(
+            "Delete \(deleteGroupConfirmTarget?.name ?? "this group")?",
+            isPresented: Binding(get: { deleteGroupConfirmTarget != nil }, set: { if !$0 { deleteGroupConfirmTarget = nil } }),
+            titleVisibility: .visible
+        ) {
+            Button("Delete Group", role: .destructive) {
+                guard let contact = deleteGroupConfirmTarget else { return }
+                vm.deleteGroup(id: contact.id, userId: appState.currentUser?.user_id ?? "")
+                deleteGroupConfirmTarget = nil
+            }
+            Button("Cancel", role: .cancel) { deleteGroupConfirmTarget = nil }
+        } message: {
+            Text("This permanently deletes the group for everyone in it, including its notes, messages, devotions, and sessions. This can't be undone.")
+        }
+        .alert("Couldn't Delete Group", isPresented: Binding(
+            get: { vm.deleteGroupActionError != nil },
+            set: { if !$0 { vm.deleteGroupActionError = nil } }
+        )) {
+            Button("OK", role: .cancel) { vm.deleteGroupActionError = nil }
+        } message: {
+            Text(vm.deleteGroupActionError ?? "")
+        }
+    }
+
+    private func embeddedRow(_ contact: FSContact) -> some View {
+        HStack(spacing: 0) {
+            Button { activeContact = contact } label: {
+                ContactRow(contact: contact, compact: true)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(
+                appState.hasUnread(contact)
+                    ? "Chat with \(contact.name), unread messages"
+                    : "Chat with \(contact.name)"
+            )
+            Menu {
+                if contact.type == .friend {
+                    Button("Remove", systemImage: "person.badge.minus", role: .destructive) {
+                        vm.removeFriend(id: contact.id, userId: appState.currentUser?.user_id ?? "")
+                    }
+                    Button("Block", systemImage: "hand.raised.fill") { blockConfirmTarget = contact }
+                    Button("Report", systemImage: "flag.fill") { reportTarget = contact }
+                } else {
+                    Button("Leave", systemImage: "rectangle.portrait.and.arrow.right", role: .destructive) {
+                        vm.leaveGroup(id: contact.id, userId: appState.currentUser?.user_id ?? "")
+                    }
+                    if isGroupDeletable(contact) {
+                        Button("Delete Group", systemImage: "trash.fill", role: .destructive) {
+                            deleteGroupConfirmTarget = contact
+                        }
+                    }
+                }
+            } label: {
+                Image(systemName: "ellipsis")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(Theme.textSecondary)
+                    .rotationEffect(.degrees(90))
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .accessibilityLabel("More actions for \(contact.name)")
         }
     }
 
@@ -1000,10 +1192,43 @@ struct ContactRow: View {
     /// Extra trailing space for the text column so it never runs under an
     /// overlaid control (the groups list's threads chevron).
     var trailingReserve: CGFloat = 0
+    /// iPad workspace list row: 32pt avatar + name only, no card (screenshot 3).
+    var compact: Bool = false
     @EnvironmentObject var appState: AppState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
+        if compact { compactBody } else { fullBody }
+    }
+
+    private var compactBody: some View {
+        HStack(spacing: 10) {
+            AvatarView(
+                initial: String(contact.name.prefix(1)).uppercased(),
+                photoURL: contact.photoUrl,
+                diameter: WorkspaceLayout.compactRowAvatar,
+                fillColor: Theme.gold.opacity(0.2),
+                textColor: Theme.goldLight
+            )
+            .overlay(alignment: .topLeading) {
+                if appState.hasUnread(contact) {
+                    Circle().fill(Theme.error).frame(width: 10, height: 10)
+                        .overlay(Circle().stroke(Theme.bgPage, lineWidth: 2))
+                }
+            }
+            .accessibilityHidden(true)
+            Text(contact.name)
+                .font(.inter(Theme.fontSM, weight: .semibold))
+                .foregroundColor(Theme.parchment)
+                .lineLimit(1)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 8)
+        .frame(minHeight: 44)
+        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.clear))
+    }
+
+    private var fullBody: some View {
         HStack(spacing: 13) {
             // Task 20260905-profile-photo-avatar-gaps: `contact.photoUrl` is
             // already populated for a friend contact (nil for a group,
@@ -1108,7 +1333,7 @@ struct ChatNudgeButton: View {
     private var iconName: String {
         switch nudgeState {
         case .sent, .rateLimited: return "checkmark"
-        default:                  return "bell.fill"
+        default:                  return "checkmark"
         }
     }
 
@@ -1147,10 +1372,17 @@ struct ChatNudgeButton: View {
             Group {
                 if nudgeState == .sending {
                     ProgressView().tint(Theme.goldLight).scaleEffect(0.65)
-                } else {
+                } else if nudgeState == .sent || nudgeState == .rateLimited {
                     Image(systemName: iconName)
                         .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(nudgeState == .failed ? Theme.error : Theme.goldLight)
+                        .foregroundColor(Theme.goldLight)
+                } else {
+                    // Flat "Knock" glyph (SQUIDWARD, revision-knock-gold);
+                    // flatColor carries the failed-state tint like the old
+                    // SF Symbol's foregroundColor did.
+                    KnockGlyph(size: 22, flat: true,
+                               flatColor: nudgeState == .failed ? Theme.error : Theme.goldLight)
+                        .accessibilityHidden(true)
                 }
             }
             // Circle removal must not silently shrink the tappable region

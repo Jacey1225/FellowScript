@@ -67,7 +67,8 @@ final class NoteDetailViewDirectionBTests: XCTestCase {
             // button instead of the old plain Button("Edit").
             XCTAssertTrue(try view.actualView().showEditor)
         }
-        ViewHosting.host(view: sut)
+        // NoteEditorView (presented by the Edit sheet) needs @EnvironmentObject AppState; without it the leaked sheet crashes the host in a later test.
+        ViewHosting.host(view: sut.environmentObject(AppState(service: MockDataService.shared)))
         defer { ViewHosting.expel() }
         wait(for: [exp], timeout: 1)
     }

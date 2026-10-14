@@ -441,10 +441,16 @@ struct BibleReaderView: View {
     // `notesVM` is StartupCoordinator's shared NotesViewModel (the same
     // instance NotesListView uses) so a note created from "Add to Note"
     // lands in the one notes cache -- no divergent copy.
-    init(vm: BibleViewModel, notesVM: NotesViewModel) {
+    init(vm: BibleViewModel, notesVM: NotesViewModel, embedded: Bool = false) {
         _vm = StateObject(wrappedValue: vm)
         self.notesVM = notesVM
+        self.embedded = embedded
     }
+
+    /// iPad workspace: hosted in the Bible panel. Hides the system nav bar,
+    /// shows the toolbar as in-body pills (Genesis / A A / Bookmarks) and a
+    /// roman-numeral chapter heading. Phone call site leaves this false.
+    private let embedded: Bool
 
     private let notesVM: NotesViewModel
 
@@ -484,9 +490,86 @@ struct BibleReaderView: View {
         appState.pendingBibleNav = nil
     }
 
+    // iPad workspace toolbar (screenshot 1): "Genesis 1 v" pill, "A A" font-size
+    // pill (gold fill), "Bookmarks N" pill, read-aloud toggle. Same actions as
+    // the phone nav-bar toolbar below.
+    private var embeddedToolbar: some View {
+        HStack(spacing: 8) {
+            Button {
+                withAnimation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.9)) { showNavSheet.toggle() }
+            } label: {
+                HStack(spacing: 6) {
+                    Text("\(vm.curBook) \u{00B7} \(vm.curChapter)")
+                        .font(.inter(Theme.fontSM, weight: .semibold)).foregroundColor(Theme.parchment)
+                    Image(systemName: "chevron.down").font(.caption2).foregroundColor(Theme.goldLight)
+                }
+                .padding(.horizontal, 14).frame(minHeight: 36)
+                .overlay { Capsule().stroke(Theme.borderGold, lineWidth: 1) }
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Navigate to book and chapter")
+
+            Button(action: cycleFontSize) {
+                HStack(spacing: 2) {
+                    Text("A").font(.inter(Theme.fontXS, weight: .bold))
+                    Text("A").font(.inter(Theme.fontBody, weight: .bold))
+                }
+                .foregroundColor(Theme.ink)
+                .padding(.horizontal, 14).frame(minHeight: 36)
+                .background(Capsule().fill(Theme.goldGradient))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Change font size: current \(Theme.bibleFontLabels[fontSizeIndex])")
+
+            Menu {
+                Button {
+                    vm.persistToggleBookmark(userId: appState.currentUser?.user_id ?? "")
+                } label: {
+                    Label(vm.isBookmarked() ? "Remove Bookmark" : "Add Bookmark",
+                          systemImage: vm.isBookmarked() ? "bookmark.slash" : "bookmark")
+                }
+                Menu("View Bookmarks") {
+                    if vm.bookmarks.isEmpty {
+                        Text("No bookmarks yet")
+                    } else {
+                        ForEach(vm.bookmarks.keys.sorted().map { FSBookmark.from(key: $0, label: vm.bookmarks[$0] ?? "") }, id: \.id) { bm in
+                            Button("\(bm.book) \(bm.chapter)") { vm.setBook(bm.book); vm.setChapter(bm.chapter) }
+                        }
+                    }
+                }
+            } label: {
+                HStack(spacing: 6) {
+                    Text("Bookmarks").font(.inter(Theme.fontSM, weight: .semibold))
+                    if !vm.bookmarks.isEmpty {
+                        Text("\(vm.bookmarks.count)").font(.inter(Theme.fontXS, weight: .bold)).foregroundColor(Theme.goldLight)
+                    }
+                }
+                .foregroundColor(Theme.parchment)
+                .padding(.horizontal, 14).frame(minHeight: 36)
+                .overlay { Capsule().stroke(Theme.borderGold, lineWidth: 1) }
+            }
+            .accessibilityLabel("Bookmark options")
+
+            Spacer(minLength: 0)
+
+            Button(action: toggleDictation) {
+                Image(systemName: isSpeakingChapter ? "speaker.wave.2.fill" : "speaker.wave.2")
+                    .foregroundColor(isSpeakingChapter ? Theme.gold : Theme.parchment)
+                    .frame(width: 44, height: 44)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(isSpeakingChapter ? "Stop reading" : "Read chapter aloud")
+        }
+        .padding(.horizontal, 12)
+        .padding(.bottom, 4)
+    }
+
     var body: some View {
         NavigationStack {
+            VStack(spacing: 0) {
+            if embedded { embeddedToolbar }
             ZStack(alignment: .top) {
+                if !embedded {
                 Theme.bgPage.ignoresSafeArea()
 
                 // Warm bloom ground (shared visual language with
@@ -502,6 +585,7 @@ struct BibleReaderView: View {
                 RadialGradient(colors: [Color(hex: "#B8761D").opacity(0.12), .clear],
                                center: UnitPoint(x: 0.92, y: 0.60), startRadius: 10, endRadius: 340)
                     .ignoresSafeArea()
+                }
 
                 if vm.isLoading {
                     ProgressView()
@@ -555,9 +639,14 @@ struct BibleReaderView: View {
                                             .font(.inter(Theme.fontXXS))
                                             .tracking(5)
                                             .foregroundColor(Theme.goldDim)
-                                        Text("Chapter \(vm.curChapter)")
-                                            .font(.playfair(Theme.fontDisplayXL))
+                                        Text("Chapter \(embedded ? WorkspaceLayout.roman(vm.curChapter) : String(vm.curChapter))")
+                                            .font(.playfair(embedded ? WorkspaceLayout.chapterHeadingSize : Theme.fontDisplayXL))
                                             .foregroundColor(Theme.bibleText)
+                                        if embedded {
+                                            Rectangle().fill(Theme.borderGoldDim).frame(height: 1)
+                                                .padding(.top, Theme.spacingSM)
+                                                .accessibilityHidden(true)
+                                        }
                                     }
                                     .id("chapterTop")
                                     .padding(.horizontal, Theme.spacingLG)
@@ -572,7 +661,8 @@ struct BibleReaderView: View {
                                             fontSize:      fontSize,
                                             highlightHex:  vm.isHighlighted(verse: v.num),
                                             isSelected:    selectedVerse == v.num,
-                                            reactionEmoji: reactionsOn ? vm.reaction(verse: v.num) : nil
+                                            reactionEmoji: reactionsOn ? vm.reaction(verse: v.num) : nil,
+                                            inlineFill:    embedded
                                         )
                                         .id(v.num)
                                         // Task 20260924-bible-verse-tap-select-removal: a plain tap on
@@ -616,6 +706,8 @@ struct BibleReaderView: View {
                                     }
                                 }
                                 .padding(.bottom, 60)
+                                .frame(maxWidth: embedded ? WorkspaceLayout.bibleColumnMaxWidth : .infinity, alignment: .leading)
+                                .frame(maxWidth: .infinity, alignment: .leading)
                             }
                             .onChange(of: vm.curChapter) { _, _ in
                                 proxy.scrollTo("chapterTop", anchor: .top)
@@ -698,6 +790,8 @@ struct BibleReaderView: View {
             // ones this task's new interaction actually drives.
             .animation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.9), value: showNavSheet)
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar(embedded ? .hidden : .visible, for: .navigationBar)
+            .containerBackground(embedded ? Color.clear : Theme.bgPage, for: .navigation)
             .toolbar {
                 // .sharedBackgroundVisibility(.hidden) (task
                 // 20260830-bible-reader-live-fix): confirmed live (Simulator
@@ -801,6 +895,7 @@ struct BibleReaderView: View {
                     .accessibilityLabel(isSpeakingChapter ? "Stop reading" : "Read chapter aloud")
                 }
                 .suppressAutomaticGlassChrome()
+            }
             }
         }
         // No pull-to-refresh on this screen (task
@@ -1112,10 +1207,26 @@ struct VerseRow: View {
     let highlightHex: String?
     let isSelected:   Bool
     var reactionEmoji: String? = nil
+    /// iPad/embedded only: paint the highlight as an inline, text-hugging fill
+    /// (continuous across wrapped lines, square edges) instead of a row band.
+    var inlineFill: Bool = false
 
     @ScaledMetric(relativeTo: .body) private var badgeSize: CGFloat = 20
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var badgeShown = false
+
+    /// Highlight hex to paint inline (iPad path only); nil otherwise.
+    private var inlineHex: String? {
+        guard inlineFill, let hex = highlightHex,
+              !(reactionEmoji != nil && hex.uppercased() == VerseReactionEmoji.neutralColor) else { return nil }
+        return hex
+    }
+
+    private var verseText: AttributedString {
+        var a = AttributedString(text)
+        if let hex = inlineHex { a.backgroundColor = Color(hex: hex).opacity(0.22) }
+        return a
+    }
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 4) {
@@ -1128,10 +1239,10 @@ struct VerseRow: View {
                 .accessibilityHidden(true)
 
             // Verse text
-            Text(text)
+            Text(verseText)
                 .font(.inter(fontSize))
                 .foregroundColor(Theme.bibleText)
-                .lineSpacing(fontSize * 0.55)
+                .lineSpacing(fontSize * (inlineHex != nil ? 0.30 : 0.55))
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             // Reaction badge (task 20261009-verse-reactions): decorative; the
@@ -1153,7 +1264,9 @@ struct VerseRow: View {
         .background(
             Group {
                 // Emoji-only reactions store the neutral grey sentinel; never tint it.
-                if let hex = highlightHex, !(reactionEmoji != nil && hex.uppercased() == VerseReactionEmoji.neutralColor) {
+                if inlineHex != nil {
+                    Color.clear
+                } else if let hex = highlightHex, !(reactionEmoji != nil && hex.uppercased() == VerseReactionEmoji.neutralColor) {
                     Color(hex: hex).opacity(0.28)
                 } else if isSelected {
                     Theme.gold.opacity(0.10)

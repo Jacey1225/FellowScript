@@ -119,11 +119,29 @@ final class StagedAttachment: ObservableObject, Identifiable {
 // now its own gold `PillButton` (icon + title) laid out in a single
 // horizontal row instead of a stacked column of plain list rows.
 struct AttachPickerRow: View {
+    /// iPad workspace: pills sit in a dark rounded capsule group (screenshot 8).
+    var grouped: Bool = false
     var onPickPhotoVideo: () -> Void
     var onPickFile:       () -> Void
     var onPickGif:        () -> Void
 
     var body: some View {
+        if grouped {
+            HStack(spacing: Theme.spacingSM) {
+                pill(title: "Photo & Video", systemIcon: "photo.on.rectangle", action: onPickPhotoVideo)
+                pill(title: "File", systemIcon: "doc", action: onPickFile)
+                pill(title: "GIF", systemIcon: "face.smiling", action: onPickGif)
+            }
+            .padding(Theme.spacingSM)
+            .background(RoundedRectangle(cornerRadius: WorkspaceLayout.attachGroupRadius, style: .continuous)
+                .fill(Theme.cardBg.opacity(0.95)))
+            .overlay(RoundedRectangle(cornerRadius: WorkspaceLayout.attachGroupRadius, style: .continuous)
+                .stroke(Theme.borderGoldFaint, lineWidth: 1))
+            .shadow(color: .black.opacity(0.35), radius: 12, x: 0, y: 6)
+            .padding(.horizontal, Theme.spacingMD)
+            .padding(.bottom, Theme.spacingSM)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        } else {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: Theme.spacingSM) {
                 pill(title: "Photo & Video", systemIcon: "photo.on.rectangle", action: onPickPhotoVideo)
@@ -134,6 +152,7 @@ struct AttachPickerRow: View {
         }
         .padding(.top, Theme.spacingXS)
         .padding(.bottom, Theme.spacingSM)
+        }
     }
 
     // 44pt minimum tap target (Q14) over PillButton's own visually-shorter

@@ -14,6 +14,11 @@ struct ContentView: View {
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var selectedTab: Tab = .home
+    // iPad workspace (task 20261013-ipad-adaptive-desktop-mirror): regular width
+    // gets the desktop-style shell, compact width keeps the tab UI. State lives
+    // here so it survives size-class / rotation flips.
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @StateObject private var workspace = WorkspaceState()
 
     enum Tab: Int {
         case home, bible, notes, chat, account
@@ -266,7 +271,18 @@ struct ContentView: View {
     // native chrome and overlays FloatingTabBar. The custom bar floats over the
     // content on purpose (mini-player style); DashboardView adds bottom padding
     // to clear it.
+    @ViewBuilder
     private var mainTabView: some View {
+        switch WorkspaceLayoutMode.resolve(sizeClass: horizontalSizeClass,
+                                           flagEnabled: WorkspaceLayout.isFeatureEnabled()) {
+        case .workspace:
+            WorkspaceView(state: workspace, startup: startup)
+        case .phoneTabs:
+            phoneTabView
+        }
+    }
+
+    private var phoneTabView: some View {
         ZStack(alignment: .bottom) {
             TabView(selection: $selectedTab) {
                 // Task 20260901-dashboard-stale-reload-ui: now passes

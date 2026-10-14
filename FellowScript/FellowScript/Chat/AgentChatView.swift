@@ -316,6 +316,9 @@ final class AgentChatViewModel: ObservableObject {
 
 struct AgentChatView: View {
     let agent: FSAgent
+    /// iPad workspace hosts this view inline (not presented), so the back arrow
+    /// calls this instead of the environment `dismiss`. nil = presented as a sheet.
+    var onBack: (() -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @EnvironmentObject var appState: AppState
@@ -566,8 +569,14 @@ struct AgentChatView: View {
     // ChatThreadView.header's exact visual language otherwise. ──────────────
     private var header: some View {
         HStack(spacing: 14) {
-            RoundIconButton(systemIcon: "chevron.left") { dismiss() }
-                .accessibilityLabel("Go back")
+            if let onBack {
+                // iPad workspace: hosted inline, so back returns to the agent picker.
+                RoundIconButton(systemIcon: "chevron.left") { onBack() }
+                    .accessibilityLabel("Go back")
+            } else {
+                RoundIconButton(systemIcon: "chevron.left") { dismiss() }
+                    .accessibilityLabel("Go back")
+            }
 
             HStack(spacing: 12) {
                 ZStack {

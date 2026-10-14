@@ -134,6 +134,8 @@ struct AgentChatsSheet: View {
                     }
                 }
                 .padding(Theme.spacingMD)
+                .frame(maxWidth: 560)  // keep rows from stretching in wide iPad sheets
+                .frame(maxWidth: .infinity)
             }
         }
     }

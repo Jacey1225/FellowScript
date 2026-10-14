@@ -166,9 +166,11 @@ final class ReplyEditAuthorOnlyGateTests: XCTestCase {
             XCTAssertEqual(buttons.count, 1)
             XCTAssertNoThrow(try buttons[0].tap(), "tapping the reply author's own Edit pill must not throw")
         }
-        ViewHosting.host(view: sut)
+        // NoteEditorView (presented by the Edit sheet) needs @EnvironmentObject AppState; without it the leaked sheet crashes the host in a later test.
+        ViewHosting.host(view: sut.environmentObject(AppState(service: MockDataService.shared)))
         defer { ViewHosting.expel() }
-        wait(for: [exp], timeout: 2)
+        // Generous timeout: the tap now really presents NoteEditorView (with AppState), which is slow to build.
+        wait(for: [exp], timeout: 15)
     }
 
     // MARK: 7 — Source-pinned regression guard: the reply-save closure must

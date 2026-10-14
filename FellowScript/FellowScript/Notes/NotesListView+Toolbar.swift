@@ -12,7 +12,83 @@ extension NotesListView {
     // ── Header: filter/sort menu · title · new note ───────────────────────────
     // The reference's hamburger opens the (already-built) sort/visibility menu
     // rather than a non-existent side menu, so no functionality is lost.
+    @ViewBuilder
     var header: some View {
+        if embedded { embeddedHeader } else { phoneHeader }
+    }
+
+    // iPad workspace header (screenshots 1-2): bold section title, filter icon,
+    // "Personal" scope dropdown (notes only; highlights are not group-scoped)
+    // and a gold "+ New" capsule.
+    var embeddedHeader: some View {
+        HStack(spacing: 10) {
+            Text(shownTab == .notes ? "NOTES" : "HIGHLIGHTS")
+                .font(.inter(Theme.fontBody, weight: .heavy)).tracking(1)
+                .foregroundColor(Theme.parchment)
+                .accessibilityAddTraits(.isHeader)
+            if shownTab == .notes {
+                Menu {
+                    Section("Sort") {
+                        ForEach(NotesViewModel.SortOrder.allCases, id: \.self) { order in
+                            Button(action: { vm.sortOrder = order }) {
+                                Label(order.rawValue, systemImage: vm.sortOrder == order ? "checkmark" : "arrow.up.arrow.down")
+                            }
+                        }
+                    }
+                    if vm.isFiltered {
+                        Divider()
+                        Button(role: .destructive, action: { vm.resetFilters() }) {
+                            Label("Clear Filters", systemImage: "xmark.circle")
+                        }
+                    }
+                } label: {
+                    Image(systemName: "line.3.horizontal.decrease")
+                        .foregroundColor(vm.isFiltered ? Theme.goldLight : Theme.textSecondary)
+                        .frame(width: 44, height: 44)
+                }
+                .accessibilityLabel("Filter and sort notes")
+            }
+            Button {
+                showEmbeddedSearch.toggle()
+            } label: {
+                Image(systemName: "magnifyingglass")
+                    .foregroundColor(showEmbeddedSearch ? Theme.goldLight : Theme.textSecondary)
+                    .frame(width: 44, height: 44)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(showEmbeddedSearch ? "Hide search" : "Search \(shownTab == .notes ? "notes" : "highlights")")
+            Spacer()
+            if shownTab == .notes {
+                Menu {
+                    Button("Personal") { vm.currentGroupId = nil }
+                    ForEach(vm.groups) { group in
+                        Button(group.title) { vm.currentGroupId = group.id }
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Text(vm.currentGroupName).font(.inter(Theme.fontSM, weight: .semibold)).lineLimit(1).fixedSize()
+                        Image(systemName: "chevron.down").font(.caption2)
+                    }
+                    .foregroundColor(Theme.parchment)
+                    .padding(.horizontal, 14).frame(minHeight: 36)
+                    .overlay(Capsule().stroke(Theme.borderGold, lineWidth: 1))
+                }
+                .accessibilityLabel("Notes scope: \(vm.currentGroupName)")
+                Button(action: startNewNote) {
+                    Text("+ New")
+                        .font(.inter(Theme.fontSM, weight: .bold)).foregroundColor(Theme.ink)
+                        .padding(.horizontal, 16).frame(minHeight: 36)
+                        .background(Capsule().fill(Theme.goldGradient))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Create new note")
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.top, 4)
+    }
+
+    var phoneHeader: some View {
         HStack {
             Menu {
                 Section("Sort") {

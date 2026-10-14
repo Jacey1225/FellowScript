@@ -1090,12 +1090,14 @@ private struct PinsPresentation: ViewModifier {
     let service: DataServiceProtocol
     let userId: String
     let flagOn: Bool
+    /// iPad workspace: the list opens as a popover from the pin button instead.
+    var embedded: Bool = false
     let onSelect: (FSPinnedMessage) -> Void
     let onRefresh: () -> Void
 
     func body(content: Content) -> some View {
         content
-            .sheet(isPresented: $showPinned) {
+            .sheet(isPresented: embedded ? .constant(false) : $showPinned) {
                 PinnedMessagesSheet(vm: vm, contact: contact, service: service, userId: userId, onSelect: onSelect)
             }
             .onChange(of: vm.pinsRevision) { _, _ in onRefresh() }
@@ -1108,6 +1110,11 @@ private struct PinsPresentation: ViewModifier {
 struct ChatThreadView: View {
     let contact: FSContact
     let user:    FSUser?
+    /// iPad workspace: hosted inline in the right panel (no sheet chrome, no own
+    /// background, popovers/inline Group Info). Phone call sites leave this false.
+    var embedded: Bool = false
+    /// Back action when embedded (a hosted view has no presentation to dismiss).
+    var onClose: (() -> Void)? = nil
 
     @EnvironmentObject var appState: AppState
     @StateObject private var vm = ChatThreadViewModel()
@@ -1406,6 +1413,7 @@ struct ChatThreadView: View {
 
     var body: some View {
         ZStack {
+            if !embedded {
             Theme.bgPage.ignoresSafeArea()
 
             // Warm bloom ground (shared visual language with ChatRootView/
@@ -1417,6 +1425,7 @@ struct ChatThreadView: View {
             RadialGradient(colors: [Color(hex: "#B8761D").opacity(0.12), .clear],
                            center: UnitPoint(x: 0.92, y: 0.60), startRadius: 10, endRadius: 340)
                 .ignoresSafeArea()
+            }
 
             VStack(spacing: 0) {
                 if vm.isThreadOpen {
@@ -1689,6 +1698,14 @@ struct ChatThreadView: View {
                 sessionsMenuOverlay
                     .zIndex(1)
             }
+
+            // iPad workspace: Group Info replaces the thread inside the right
+            // panel (push with X to close) instead of a phone-style sheet.
+            if embedded && showGroupInfo {
+                inlineGroupInfo
+                    .transition(reduceMotion ? .opacity : .move(edge: .trailing))
+                    .zIndex(2)
+            }
         }
         .preferredColorScheme(.dark)
         .task {
@@ -1783,26 +1800,10 @@ struct ChatThreadView: View {
                 vm.handleAppForegrounded()
             }
         }
-        .sheet(isPresented: $showGroupInfo) {
-            GroupInfoSheet(
-                contact: contact,
-                user: appState.currentUser,
-                service: appState.service,
-                memberNames: memberNames,
-                photoByUsername: vm.photoByUsername,
-                onTitleChanged: { groupTitleOverride = $0 },
-                onPhotoChanged: { groupPhotoOverride = .some($0) },
-                onAddMembers: { showAddMembers = true },
-                onGroupGone: { dismiss() }
-            )
-            // Task 20261001-message-threads: the Threads section opens a thread
-            // through this closure (it closes the sheet and switches this view
-            // model into thread mode on its one socket).
-            .environment(\.fsOpenThread, FSOpenThreadAction { summary in
-                showGroupInfo = false
-                openThread(summary)
-            })
+        .sheet(isPresented: embedded ? .constant(false) : $showGroupInfo) {
+            groupInfoView(inline: false)
         }
+        .animation(reduceMotion ? nil : .spring(response: 0.28, dampingFraction: 0.85), value: showGroupInfo)
         .sheet(item: $reactionPickerMessage) { message in
             ReactionPickerSheet(
                 emojis: appState.capabilities.reactionEmoji.all,
@@ -1879,6 +1880,7 @@ struct ChatThreadView: View {
                 }
                 showSession = false
             })
+            .modifier(WorkspaceFormSizing(enabled: embedded))
         }
         .alert("Thread unavailable", isPresented: Binding(
             get: { vm.threadGoneNotice != nil },
@@ -1977,6 +1979,7 @@ struct ChatThreadView: View {
             showPinned: $showPinned, vm: vm, contact: contact, service: appState.service,
             userId: appState.currentUser?.user_id ?? "",
             flagOn: appState.capabilities.messagePinsEnabled,
+            embedded: embedded,
             onSelect: { pin in jumpToPin(pin) },
             onRefresh: { refreshPinCount() }
         )
@@ -2035,6 +2038,14 @@ struct ChatThreadView: View {
                     .topEdgeHighlight(Circle())
             }
             .buttonStyle(.plain)
+            // iPad workspace: Pinned opens as a popover under the pin button.
+            .popover(isPresented: embedded ? $showPinned : .constant(false), arrowEdge: .top) {
+                PinnedMessagesSheet(vm: vm, contact: contact, service: appState.service,
+                                    userId: appState.currentUser?.user_id ?? "",
+                                    onSelect: { pin in jumpToPin(pin) })
+                    .frame(width: WorkspaceLayout.popoverWidth, height: WorkspaceLayout.pinnedPopoverHeight)
+                    .presentationCompactAdaptation(.popover)
+            }
             if let badge = FSPinnedListCopy.badgeText(count: vm.pinCount) {
                 Text(badge)
                     .font(.inter(Theme.fontXXS, weight: .bold))
@@ -2307,6 +2318,35 @@ struct ChatThreadView: View {
     // screen can share the exact same visual language (round icon button,
     // serif identity label, amber-gradient pill) as the rest of the restyled
     // Chat surfaces.
+    /// Group Info content, shared by the phone sheet and the iPad inline panel.
+    private func groupInfoView(inline: Bool) -> some View {
+        GroupInfoSheet(
+            contact: contact,
+            user: appState.currentUser,
+            service: appState.service,
+            memberNames: memberNames,
+            photoByUsername: vm.photoByUsername,
+            onTitleChanged: { groupTitleOverride = $0 },
+            onPhotoChanged: { groupPhotoOverride = .some($0) },
+            onAddMembers: { showAddMembers = true },
+            onClose: inline ? { showGroupInfo = false } : nil,
+            onGroupGone: { goBack() }
+        )
+        // Task 20261001-message-threads: the Threads section opens a thread
+        // through this closure (it closes the panel and switches this view
+        // model into thread mode on its one socket).
+        .environment(\.fsOpenThread, FSOpenThreadAction { summary in
+            showGroupInfo = false
+            openThread(summary)
+        })
+    }
+
+    private var inlineGroupInfo: some View {
+        groupInfoView(inline: true)
+            .background(Theme.bgPage.opacity(0.96))
+    }
+
+    private func goBack() { if let onClose { onClose() } else { dismiss() } }
     private var displayName: String { groupTitleOverride ?? contact.name }
     private var displayPhotoURL: String? {
         if let override = groupPhotoOverride { return override }
@@ -2315,7 +2355,7 @@ struct ChatThreadView: View {
 
     private var header: some View {
         HStack(spacing: 14) {
-            RoundIconButton(systemIcon: "chevron.left") { dismiss() }
+            RoundIconButton(systemIcon: "chevron.left") { goBack() }
                 .accessibilityLabel("Go back")
 
             Button(action: {
@@ -2330,7 +2370,7 @@ struct ChatThreadView: View {
                     AvatarView(
                         initial: String(displayName.prefix(1)).uppercased(),
                         photoURL: displayPhotoURL,
-                        diameter: 38,
+                        diameter: embedded ? WorkspaceLayout.threadAvatarSize : 38,
                         fillColor: Theme.gold.opacity(0.18),
                         textColor: Theme.gold
                     )
@@ -2355,10 +2395,19 @@ struct ChatThreadView: View {
 
             Spacer(minLength: 8)
 
-            PillButton(title: "Sessions", systemIcon: "calendar") {
-                openSessionsMenu()
+            if embedded {
+                PillButton(title: "Sessions", systemIcon: "phone",
+                           textColor: Theme.goldLight,
+                           fill: AnyShapeStyle(Theme.gold.opacity(0.12))) {
+                    openSessionsMenu()
+                }
+                .accessibilityLabel("View and schedule study sessions")
+            } else {
+                PillButton(title: "Sessions", systemIcon: "calendar") {
+                    openSessionsMenu()
+                }
+                .accessibilityLabel("View and schedule study sessions")
             }
-            .accessibilityLabel("View and schedule study sessions")
         }
         .padding(.horizontal, Theme.spacingMD)
         .padding(.top, Theme.spacingSM)
@@ -2459,9 +2508,11 @@ struct ChatThreadView: View {
     private var sessionsMenuCard: some View {
         VStack(alignment: .leading, spacing: Theme.spacingSM) {
             HStack {
-                Text("Sessions")
-                    .font(.inter(Theme.fontSM, weight: .bold))
-                    .foregroundColor(Theme.parchment)
+                Text(embedded ? "SESSIONS" : "Sessions")
+                    .font(.inter(embedded ? Theme.fontXS : Theme.fontSM, weight: .bold))
+                    .tracking(embedded ? 3 : 0)
+                    .foregroundColor(embedded ? Theme.goldLight : Theme.parchment)
+                    .accessibilityAddTraits(.isHeader)
                 Spacer()
                 Button {
                     closeSessionsMenu()
@@ -2482,14 +2533,17 @@ struct ChatThreadView: View {
                 showSession = true
             } label: {
                 HStack(spacing: 6) {
-                    Image(systemName: "plus.circle.fill")
-                        .font(.system(size: 14, weight: .semibold))
-                    Text("Schedule new session")
+                    if !embedded {
+                        Image(systemName: "plus.circle.fill")
+                            .font(.system(size: 14, weight: .semibold))
+                    }
+                    Text(embedded ? "+ Schedule session" : "Schedule new session")
                         .font(.inter(Theme.fontSM, weight: .bold))
                 }
                 .foregroundColor(Theme.ink)
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 10)
+                .frame(minHeight: embedded ? 44 : 0)
+                .padding(.vertical, embedded ? 0 : 10)
                 .background(Theme.goldGradient)
                 .clipShape(Capsule())
                 .topEdgeHighlight(Capsule())
@@ -2503,7 +2557,7 @@ struct ChatThreadView: View {
                 // Empty state kept minimal/on-brand per preference profile
                 // rather than an invented illustrated treatment -- still
                 // surfaces the schedule action above.
-                Text("No sessions scheduled yet.")
+                Text(embedded ? "No sessions scheduled." : "No sessions scheduled yet.")
                     .font(.inter(Theme.fontXS))
                     .foregroundColor(Theme.textSecondary)
                     .frame(maxWidth: .infinity, alignment: .center)
@@ -2535,7 +2589,7 @@ struct ChatThreadView: View {
             }
         }
         .padding(Theme.spacingMD)
-        .frame(width: 300)
+        .frame(width: WorkspaceLayout.popoverWidth)
         .background(.regularMaterial)
         .clipShape(RoundedRectangle(cornerRadius: Theme.radiusXL))
         .overlay(RoundedRectangle(cornerRadius: Theme.radiusXL).stroke(Theme.borderGoldDim, lineWidth: 1))
@@ -2605,6 +2659,7 @@ struct ChatThreadView: View {
             // from-the-bottom `.sheet` — see AttachPickerRow's doc comment.
             if showAttachSheet {
                 AttachPickerRow(
+                    grouped: embedded,
                     onPickPhotoVideo: { showAttachSheet = false; showPhotoVideoPicker = true },
                     onPickFile:       { showAttachSheet = false; showDocumentPicker = true },
                     onPickGif:        { showAttachSheet = false; showGifSheet = true }
