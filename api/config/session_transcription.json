@@ -3,7 +3,7 @@
     "enabled": true,
     "language_code": "en-US",
     "max_transcript_chars": 24000,
-    "min_transcript_chars": 200,
+    "min_transcript_chars": 60,
     "ttl_seconds": 21600,
     "ingest_max_body_bytes": 16384,
     "ingest_max_segments": 40,

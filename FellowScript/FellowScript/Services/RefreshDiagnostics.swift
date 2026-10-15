@@ -258,11 +258,14 @@ enum RefreshDiagnostics {
     /// local resolution failure is distinguishable from the summarize
     /// endpoint itself failing. `errorClass` is
     /// `CallController.summarizeErrorClass`'s own coarse, non-PII label
-    /// ("notes-cap-403", "not-group-member-403", "llm-generation-502", or
+    /// ("notes-cap-403", "not-group-member-403", "llm-generation-502",
+    /// "no-summarizable-content-422", or
     /// this file's own `errorClass(_:)` for everything else) — see that
     /// function for exactly what it does and does not match on. The
     /// warm-toned `summarizeNotice` toast text shown to the user is
-    /// unchanged by this (UI/UX Q17.3) — this is diagnostics-only.
+    /// unchanged by this (UI/UX Q17.3) — this is diagnostics-only. The same
+    /// stage + errorClass pair is also beaconed to the server (non-paywall,
+    /// non-cancellation only) via `NetworkService.reportSummarizeFailure`.
     static func summarizeOutcome(stage: String, errorClass: String) {
         emit("[summarize] stage=\(stage) errorClass=\(errorClass) ts=\(ts())")
     }

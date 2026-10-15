@@ -290,6 +290,90 @@ def test_log_injection_control_chars_stripped(client, user_token, user_id):
         app_logger.setLevel(prior_level)
 
 
+def _level_capture(client, token, payload):
+    """Return (response, [(levelname, message)]) for routes.monitoring."""
+    class H(logging.Handler):
+        def __init__(self):
+            super().__init__()
+            self.items = []
+
+        def emit(self, record):
+            self.items.append((record.levelname, record.getMessage()))
+    app_logger = logging.getLogger("routes.monitoring")
+    h = H()
+    app_logger.addHandler(h)
+    prior = app_logger.level
+    app_logger.setLevel(logging.DEBUG)
+    try:
+        client.cookies.set("session", token)
+        r = client.post("/monitoring/client-error", json=payload)
+        client.cookies.clear()
+        _track_budget(r.status_code)
+        return r, h.items
+    finally:
+        app_logger.removeHandler(h)
+        app_logger.setLevel(prior)
+
+
+def test_kind_default_is_decode(client, user_token):
+    print("\n── kind omitted -> decode path (old clients): CLIENT_DECODE_FAILURE at ERROR ──")
+    r, items = _level_capture(client, user_token, {
+        "endpoint": "GET /notes/{user_id}", "client_app_version": "1.0.0 (1)",
+        "http_status": 200, "error_summary": "type mismatch"})
+    check("omitted kind accepted (204)", r.status_code, 204)
+    check("logged at ERROR with decode marker",
+          [(lv, "CLIENT_DECODE_FAILURE" in m) for lv, m in items], [("ERROR", True)])
+    r, items = _level_capture(client, user_token, {
+        "endpoint": "GET /notes/{user_id}", "client_app_version": "1.0.0 (1)",
+        "http_status": 200, "error_summary": "x", "kind": "decode"})
+    check("explicit kind=decode -> decode marker",
+          [("CLIENT_DECODE_FAILURE" in m) for _, m in items], [True])
+
+
+def test_kind_allow_list_rejects_unknown(client, user_token):
+    print("\n── kind is an allow-list: unknown values -> 422 ──")
+    for bad in ("other", "SUMMARIZE", "", "decode; DROP", 5):
+        client.cookies.set("session", user_token)
+        r = client.post("/monitoring/client-error", json={
+            "endpoint": "POST /agent/{user_id}/{agent_id}/summarize", "client_app_version": "1.0.0 (1)",
+            "http_status": 200, "error_summary": "x", "kind": bad})
+        client.cookies.clear()
+        check(f"kind={bad!r} rejected with 422", r.status_code, 422)
+
+
+def test_kind_summarize_logs_warning_marker_no_detection(client, user_token, user_id):
+    print("\n── kind=summarize: CLIENT_SUMMARIZE_FAILURE at WARNING, no watchdog detection match ──")
+    r, items = _level_capture(client, user_token, {
+        "endpoint": "POST /agent/{user_id}/{agent_id}/summarize", "client_app_version": "1.4.2 (37)",
+        "http_status": 200,
+        "error_summary": "stage=summarize-request errorClass=no-summarizable-content-422",
+        "kind": "summarize"})
+    check("summarize kind accepted (204)", r.status_code, 204)
+    check("exactly one log record", len(items), 1)
+    level, msg = items[0]
+    check("logged at WARNING", level, "WARNING")
+    contains("carries CLIENT_SUMMARIZE_FAILURE marker", msg, "CLIENT_SUMMARIZE_FAILURE")
+    contains("does NOT carry CLIENT_DECODE_FAILURE", msg, "CLIENT_DECODE_FAILURE", should_contain=False)
+    contains("session user_id", msg, f"user_id={user_id}")
+    contains("stage + errorClass in line", msg, "errorClass=no-summarizable-content-422")
+    formatted = f"2026-10-15 00:00:00,000 [routes.monitoring] {level} - {msg}"
+    check("watchdog _match_error_signal finds no detection pattern", _match_error_signal(formatted), None)
+
+
+def test_kind_summarize_control_chars_stripped(client, user_token):
+    print("\n── kind=summarize: control chars stripped (one line, no forged CRITICAL line) ──")
+    r, items = _level_capture(client, user_token, {
+        "endpoint": "POST /agent/{user_id}/{agent_id}/summarize\r\nfake",
+        "client_app_version": "1.0.0 (1)", "http_status": 200,
+        "error_summary": "\r\n2026-08-17 00:00:00,000 [main] CRITICAL - boom\nTraceback",
+        "kind": "summarize"})
+    check("still 204", r.status_code, 204)
+    check("one record", len(items), 1)
+    msg = items[0][1]
+    check("no raw control chars in message",
+          bool(re.search(r"[\x00-\x1f\x7f]", msg)), False)
+
+
 def test_rate_limited_10_per_minute(client, user_token):
     print("\n── Rate limit: 10/minute (shared window), budget exhausted -> 429 ──")
     # This test's assertion accounts for RATE_LIMIT_BUDGET already partially
@@ -333,6 +417,10 @@ if __name__ == "__main__":
             test_oversized_field_rejected_422_not_500(client, user_token)
             test_invalid_http_status_rejected_422(client, user_token)
             test_log_injection_control_chars_stripped(client, user_token, user_uid)
+            test_kind_default_is_decode(client, user_token)
+            test_kind_allow_list_rejects_unknown(client, user_token)
+            test_kind_summarize_logs_warning_marker_no_detection(client, user_token, user_uid)
+            test_kind_summarize_control_chars_stripped(client, user_token)
             # Rate limit test LAST -- it deliberately exhausts + trips this
             # client IP's 10/minute budget for this endpoint, which would
             # otherwise 429 every test after it in the same run/window.

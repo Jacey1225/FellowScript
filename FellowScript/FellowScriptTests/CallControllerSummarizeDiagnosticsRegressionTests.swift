@@ -232,7 +232,7 @@ final class CallControllerSummarizeDiagnosticsRegressionTests: XCTestCase {
             XCTFail("could not locate maybeSummarize's catch block"); return
         }
         let afterCatch = source[catchRange.upperBound...]
-        guard let diagnosticRange = afterCatch.range(of: "RefreshDiagnostics.summarizeOutcome(stage: stage, errorClass: Self.summarizeErrorClass(error))") else {
+        guard let diagnosticRange = afterCatch.range(of: "RefreshDiagnostics.summarizeOutcome(stage: stage, errorClass: errorClass)") else {
             XCTFail("THE FIX: the catch block must call RefreshDiagnostics.summarizeOutcome with the tracked stage and classified error"); return
         }
         guard let noticeRange = afterCatch.range(of: "self.showSummarizeNotice(") else {
@@ -262,6 +262,15 @@ final class CallControllerSummarizeDiagnosticsRegressionTests: XCTestCase {
         XCTAssertTrue(clientSource.contains(#"detail == "Could not generate session summary.""#),
                       "THE FIX: summarizeErrorClass must match the LLM-generation detail string verbatim")
         XCTAssertTrue(clientSource.contains(#"return "llm-generation-502""#))
+
+        let errorsSource = try String(contentsOf: URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("api/backend/errors.py"), encoding: .utf8)
+        XCTAssertTrue(errorsSource.contains(#"message: str = "This session doesn't have any content to summarize.""#),
+                      "sanity check: NoSummarizableContentError's default detail moved — update both sides together")
+        XCTAssertTrue(clientSource.contains(#"detail == "This session doesn't have any content to summarize.""#),
+                      "THE FIX: summarizeErrorClass must match the no-summarizable-content detail string verbatim")
+        XCTAssertTrue(clientSource.contains(#"return "no-summarizable-content-422""#))
     }
 
     /// The pre-existing notes-cap 403 (`AppError.limitReached`) must still be

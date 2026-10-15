@@ -182,7 +182,13 @@ final class CallController: ObservableObject {
                 // Free plan: session summaries are subscribers-only. The shared
                 // upgrade prompt replaces the generic "couldn't put together" toast.
                 if UpgradePromptCenter.shared.present(for: error) { return }
-                RefreshDiagnostics.summarizeOutcome(stage: stage, errorClass: Self.summarizeErrorClass(error))
+                let errorClass = Self.summarizeErrorClass(error)
+                RefreshDiagnostics.summarizeOutcome(stage: stage, errorClass: errorClass)
+                // Best-effort server-side signal (fire-and-forget; a cancelled
+                // call/task is not a failure worth reporting). Fixed strings only.
+                if !RefreshDiagnostics.isCancellation(error) {
+                    (service as? NetworkService)?.reportSummarizeFailure(stage: stage, errorClass: errorClass)
+                }
                 self.showSummarizeNotice(
                     "We couldn't put together your session summary this time — check back in your notes in a bit."
                 )
@@ -207,6 +213,7 @@ final class CallController: ObservableObject {
         if case AppError.networkError(let detail) = error {
             if detail == "Not a member of this group" { return "not-group-member-403" }
             if detail == "Could not generate session summary." { return "llm-generation-502" }
+            if detail == "This session doesn't have any content to summarize." { return "no-summarizable-content-422" }
         }
         if case AppError.limitReached = error { return "notes-cap-403" }
         return RefreshDiagnostics.errorClass(error)

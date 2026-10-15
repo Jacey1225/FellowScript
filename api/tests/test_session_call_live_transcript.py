@@ -247,6 +247,26 @@ def test_store_cap_fallback_discard():
     st.discard(sid)
 
 
+def test_min_transcript_chars_boundary_59_60():
+    print("\n=== min_transcript_chars boundary (shipped value 60) ===")
+    set_enabled(True)
+    cfg = cfgmod.get_session_transcription_config()
+    check("shipped min_transcript_chars is 60", cfg.min_transcript_chars == 60, str(cfg.min_transcript_chars))
+    sid = str(uuid.uuid4())
+    st.ingest(sid, "Ann", "a" * 59)
+    check("59 spoken chars -> None (fallback)", st.transcript_for_summary(sid) is None)
+    st.discard(sid)
+    st.ingest(sid, "Ann", "a" * 60)
+    t = st.transcript_for_summary(sid)
+    check("60 spoken chars -> transcript returned", t is not None and "a" * 60 in t)
+    st.discard(sid)
+    st.ingest(sid, "Ann", "a" * 30)
+    st.ingest(sid, "Bob", "b" * 30)
+    check("30+30 across speakers (=60) -> transcript returned", st.transcript_for_summary(sid) is not None)
+    st.discard(sid)
+    check("empty transcript still None", st.transcript_for_summary(sid) is None)
+
+
 def test_relay_rule():
     print("\n=== session_relay designated-relay rule ===")
     relay.reset_for_tests()
@@ -742,6 +762,8 @@ def main():
     test_config_ships_disabled_and_validates()
     set_enabled(True)
     test_store_cap_fallback_discard()
+    set_enabled(True)
+    test_min_transcript_chars_boundary_59_60()
     test_relay_rule()
     test_chime_wrappers_never_raise()
     orig_call = agent_module.AgentManager._call_api

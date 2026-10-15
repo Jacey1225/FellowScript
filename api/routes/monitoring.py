@@ -323,9 +323,14 @@ async def report_client_error(
     bounded the same way other write endpoints on this router are
     (`backend.rate_limiting.limiter`).
 
+    `report.kind` (allow-listed: "decode" default, "summarize") selects the
+    marker. "summarize" (session-summary failures; fixed stage/errorClass
+    strings only) logs `CLIENT_SUMMARIZE_FAILURE` at WARNING so it is
+    greppable in /fellowscript/app without creating watchdog detections.
+
     Args:
         request: FastAPI request object (required by the rate limiter).
-        report: endpoint, client_app_version, http_status, error_summary.
+        report: endpoint, client_app_version, http_status, error_summary, kind.
 
     Returns:
         None (204).
@@ -335,6 +340,21 @@ async def report_client_error(
     # and status are enough to triage.
     summary = "[omitted]" if "payouts" in (report.endpoint or "") or "affiliate-payouts" in (report.endpoint or "") \
         else report.error_summary
+    if report.kind == "summarize":
+        # Session-summary failure beacon: WARNING (not ERROR) so expected
+        # 422/502/403 outcomes stay out of the watchdog's error_level /
+        # client_decode_failure detection patterns, but the line still lands
+        # in /fellowscript/app and is greppable by its own marker.
+        logger.warning(
+            "CLIENT_SUMMARIZE_FAILURE user_id=%s endpoint=%s client_app_version=%s "
+            "http_status=%s error_summary=%s",
+            user_id,
+            report.endpoint,
+            report.client_app_version or "unknown",
+            report.http_status,
+            summary,
+        )
+        return
     logger.error(
         "CLIENT_DECODE_FAILURE user_id=%s endpoint=%s client_app_version=%s "
         "http_status=%s error_summary=%s",

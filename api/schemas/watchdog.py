@@ -9,7 +9,7 @@ write-capable action in this step.
 import re
 import uuid
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -122,6 +122,13 @@ class ClientErrorReport(BaseModel):
     client_app_version: str = Field(default="", max_length=50, description="Client build identifier, e.g. '1.4.2 (37)' -- key signal for distinguishing an out-of-date build from a genuine current-code bug")
     http_status: int | None = Field(default=None, ge=100, le=599)
     error_summary: str = Field(default="", max_length=500, description="Short, client-truncated decode-error description -- never the raw response body")
+    kind: Literal["decode", "summarize"] = Field(
+        default="decode",
+        description=(
+            "Beacon type. 'decode' (default, all older app builds) = a response failed to decode; "
+            "'summarize' = a session-summary request failed (fixed stage/errorClass strings in error_summary)."
+        ),
+    )
 
     # security step 2 of this workflow: these three fields are formatted
     # straight into a single logger.error(...) line in routes/monitoring.py,

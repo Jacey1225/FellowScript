@@ -275,6 +275,26 @@ final class NetworkService: DataServiceProtocol {
         }
     }
 
+    /// Fire-and-forget beacon for a post-call session-summary failure, sent to
+    /// the same authenticated `POST /monitoring/client-error` endpoint with
+    /// `kind: "summarize"` so the server logs CLIENT_SUMMARIZE_FAILURE (a
+    /// distinct marker, not a decode-failure detection). Sends only fixed
+    /// short strings: the stage and coarse error class from
+    /// `ChimeCallView.summarizeErrorClass` -- never user content, server
+    /// detail text, or response bodies. Best-effort (`try?`): a beacon
+    /// failure never surfaces to or blocks the caller.
+    func reportSummarizeFailure(stage: String, errorClass: String) {
+        let version = currentAppVersion()
+        Task {
+            _ = try? await requestRaw("/monitoring/client-error", method: "POST", jsonObject: [
+                "endpoint": "POST /agent/{user_id}/{agent_id}/summarize",
+                "client_app_version": version,
+                "error_summary": String("stage=\(stage) errorClass=\(errorClass)".prefix(500)),
+                "kind": "summarize",
+            ])
+        }
+    }
+
     /// FastAPI's `detail` is a plain string for our own `HTTPException(...)` raises,
     /// but a pydantic field_validator rejection (e.g. SignUp's terms_accepted check)
     /// surfaces as the framework's default array shape:
