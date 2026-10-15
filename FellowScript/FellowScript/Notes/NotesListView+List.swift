@@ -337,6 +337,8 @@ extension NotesListView {
     /// The picker can't stack on the detail sheet: close it, then present.
     func sendInChatFromDetail(_ note: FSNote) {
         detailNote = nil
+        // Inline detail (iPad): nothing to dismiss first, no sheet to stack on.
+        if inlineDetail { sendInChat(note); return }
         Task {
             try? await Task.sleep(nanoseconds: 450_000_000)
             sendInChat(note)

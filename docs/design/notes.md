@@ -260,6 +260,16 @@ Bible Reader's button; playback stops automatically when the sheet is
 dismissed, the app backgrounds, or dictation starts on the Bible screen
 instead (one shared synthesizer app-wide).
 
+#### iPad inline detail
+
+In the iPad workspace Notes panel (regular width), tapping a note shows the
+detail inline in the panel instead of a centered sheet: a header with a Back
+arrow, the title and the Read-aloud / Send in chat / Edit actions, then the
+same body, replies and inline reply composer. Back returns to the list with
+scroll and loaded notes intact. Edit and Edit-reply swap to the inline editor
+and Send in chat opens the picker directly, so no sheets stack. iPhone and
+compact width (including Slide Over) keep the sheet.
+
 #### Reply composer (`ReplyComposerSheet`)
 
 The reply input presented from `NoteDetailView` ("Add a Reply") carries the

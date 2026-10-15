@@ -28,6 +28,7 @@ import Combine
 struct NotesListView: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.accessibilityReduceMotion) var reduceMotion
+    @Environment(\.horizontalSizeClass) var horizontalSizeClass
     @StateObject var vm: NotesViewModel
     @StateObject var hsm = HighlightSearchModel()
 
@@ -221,8 +222,11 @@ struct NotesListView: View {
                 }
             }
             }
+
+            inlineDetailLayer
         }
-        .preference(key: InlineNoteEditorShowingKey.self, value: embedded && showEditor)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: detailNote?.id)
+        .preference(key: InlineNoteEditorShowingKey.self, value: embedded && (showEditor || inlineDetailShowing))
         .onAppear { consumePendingNoteDraft() }
         .onChange(of: appState.pendingNoteDraft?.id) { _, _ in consumePendingNoteDraft() }
         .task {
@@ -253,51 +257,10 @@ struct NotesListView: View {
             showEditor = false
             detailNote = nil
         }
-        .sheet(item: $detailNote) { note in
-            // `editingId: saved.id` (not the outer `note.id`) -- task
-            // 20260904-reply-edit-button: this closure now backs both the
-            // parent note's own Edit flow AND NoteDetailView's new per-reply
-            // Edit flow, which passes a *different* note (the reply) through
-            // to `saved`. `NoteEditorView.handleSave` always stamps
-            // `saved.id` from whichever `noteId` it was opened with (see
-            // NoteEditorView.swift), so `saved.id` already correctly
-            // identifies the row actually being edited -- the parent note's
-            // own id when editing the parent, or a reply's real row id
-            // (surfaced by backend step 1 / NetworkService.fetchReplies) when
-            // editing a reply. Closing over the outer `note.id` instead would
-            // silently PUT every reply edit onto the parent note's row
-            // (found during intake verification), so this is a required fix,
-            // not a stylistic one -- `saved.id` and `note.id` were previously
-            // always equal for the parent-note-only case this closure used
-            // to serve, so this is a no-op change for that existing flow.
-            NoteDetailView(
-                note:     note,
-                userId:   appState.currentUser?.user_id ?? "",
-                username: appState.currentUser?.username ?? "",
-                service:  vm.service,
-                onSendInChat: canSendInChat(note) ? { sendInChatFromDetail(note) } : nil,
-                onEditInline: embedded ? {
-                    editingNote    = note
-                    editingId      = note.id
-                    editingGroupId = note.group_id
-                    inlineDraft    = nil
-                    inlineIsReply  = false
-                    showEditor     = true
-                } : nil,
-                onEditReplyInline: embedded ? { reply in
-                    editingNote    = reply
-                    editingId      = reply.id
-                    editingGroupId = note.group_id
-                    inlineDraft    = nil
-                    inlineIsReply  = true
-                    showEditor     = true
-                } : nil
-            ) { saved in
-                let uid = appState.currentUser?.user_id ?? ""
-                let ok = await vm.saveNote(saved, editingId: saved.id, userId: uid, authorUsername: appState.currentUser?.username ?? "")
-                if ok { return nil }
-                return vm.failedSaveMessage()
-            }
+        // iPhone/compact keep the sheet; iPad regular width shows the detail inline
+        // (see `inlineDetailLayer` in NotesListView+InlineDetail.swift).
+        .sheet(item: inlineDetail ? Binding<FSNote?>.constant(nil) : $detailNote) { note in
+            detailView(for: note, inline: false)
         }
         .shareSheet(item: $sharePayload)
         .chatShareSheet(item: $chatShare)

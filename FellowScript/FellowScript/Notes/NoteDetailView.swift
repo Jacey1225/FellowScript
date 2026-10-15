@@ -51,6 +51,12 @@ struct NoteDetailView: View {
     var onEditInline: (() -> Void)? = nil
     /// iPad workspace: editing a reply closes this sheet and edits it inline in the Notes panel.
     var onEditReplyInline: ((FSNote) -> Void)? = nil
+    /// iPad workspace: render inside the Notes panel (plain header with a Back
+    /// button, no NavigationStack, no sheet chrome) instead of as a sheet.
+    /// `onBack` returns to the list. iPhone/compact keep `inline == false`.
+    var inline: Bool = false
+    var onBack: (() -> Void)? = nil
+    @AccessibilityFocusState private var backFocused: Bool
 
     // Returns nil on success, or an error message on failure (mirrors
     // NoteEditorView.onSave so a content-filter rejection keeps both sheets open).
@@ -91,7 +97,7 @@ struct NoteDetailView: View {
     // call lets tests still exercise the real dismiss()/showEditor wiring
     // without simulating a tap through that now-unreachable wrapper. No
     // runtime behavior difference from the previous inline closures.
-    internal func closeAction() { dismiss() }
+    internal func closeAction() { if inline { onBack?() } else { dismiss() } }
     internal func editAction()  {
         if let onEditInline { onEditInline(); dismiss() } else { showEditor = true }
     }
@@ -213,6 +219,34 @@ struct NoteDetailView: View {
     #endif
 
     var body: some View {
+        Group {
+            if inline { inlineBody } else { sheetBody }
+        }
+        .preferredColorScheme(.dark)
+        .onAppear { didAppear?(self) }
+        // Task 20260914-dictation-tts: stops playback when this sheet is
+        // dismissed (Close, swipe-to-dismiss, or programmatic dismiss()) —
+        // this view is always presented via `.sheet`, so onDisappear fires
+        // reliably on every dismissal, unlike BibleReaderView's persistent
+        // tab (see that screen's own onDisappear comment for why its case
+        // needed separate reasoning).
+        .onDisappear {
+            speechController.stop()
+        }
+        // Group notes only -- see isGroupNote. `.task(id:)` re-fires if the
+        // sheet is ever re-hosted for a different note (item-presented
+        // sheets already tear down/rebuild per note, but id: is a cheap,
+        // correct guard either way) and is a no-op for a personal note.
+        .task(id: note.id) {
+            await loadReplies()
+        }
+        #if DEBUG
+        .onReceive(inspection.notice) { self.inspection.visit(self, $0) }
+        #endif
+    }
+
+    /// Sheet presentation (iPhone, compact width): NavigationStack with Close/Edit toolbar pills.
+    @ViewBuilder private var sheetBody: some View {
         NavigationStack {
             ZStack {
                 Theme.bgPage.ignoresSafeArea()
@@ -227,159 +261,7 @@ struct NoteDetailView: View {
                                center: UnitPoint(x: 0.92, y: 0.60), startRadius: 10, endRadius: 340)
                     .ignoresSafeArea()
 
-                ScrollView {
-                    // ScrollViewReader scrolls the inline reply composer into
-                    // view when it opens (task 20260909-reply-inline-editor).
-                    ScrollViewReader { proxy in
-                    // No glassCard wrapper (per Direction B) — body flows
-                    // directly on the bloom background, full width, same
-                    // structure as before, just re-themed.
-                    VStack(alignment: .leading, spacing: Theme.spacingMD) {
-                        Text(note.title.isEmpty ? "Untitled" : note.title)
-                            .font(.playfair(Theme.fontDisplayMD))
-                            .foregroundColor(Theme.parchment)
-
-                        // Task 20260905-profile-photo: author indicator for
-                        // a note opened that wasn't authored by the viewer
-                        // (today, only reachable via the Friend Activity
-                        // note-preview flow -- DashboardView.openFriendNote
-                        // -> GET /notes/{user_id}/note/{note_id}, the one
-                        // note-fetch path that resolves both `username` and
-                        // `profile_photo_url` server-side). A viewer's own
-                        // note (the far more common case) never shows this --
-                        // same "no chip for yourself" convention as NoteRow's
-                        // showsAuthorChip.
-                        if showsParentAuthorChip {
-                            HStack(spacing: 8) {
-                                replyMonogram(note.username, photoURL: note.profile_photo_url)
-                                Text(note.username)
-                                    .font(.interScaled(Theme.fontSM, weight: .semibold))
-                                    .foregroundColor(Theme.textPrimary)
-                            }
-                        }
-
-                        if readOnly {
-                            readOnlyBanner
-                        }
-
-                        if !note.formattedTimestamp.isEmpty {
-                            sectionLabel(note.formattedTimestamp)
-                        }
-
-                        Rectangle()
-                            .fill(Theme.goldGradient)
-                            .frame(height: 1)
-
-                        NoteHTMLView(html: note.text)
-
-                        // Inline reply composer (task 20260909-reply-inline-editor):
-                        // directly below the note body, replacing the former
-                        // ReplyComposerSheet sheet. Same postReplyDraft path.
-                        if isGroupNote && repliesLoaded && showReplyComposer {
-                            ReplyComposerInline(onPost: postReplyDraft, onClose: closeReplyComposer)
-                                .id(Self.replyComposerScrollID)
-                                .transition(reduceMotion ? .identity : .opacity.combined(with: .move(edge: .top)))
-                        }
-
-                        // ── Replies (Option A "Continuation" — task
-                        // 20260828-note-reply-continuation-ios). Group notes
-                        // only, per mid-task product-intent correction: a
-                        // personal note (group_id empty) renders exactly as
-                        // it did before this task, no fetch, no section.
-                        // Also gated on repliesLoaded so a still-in-flight
-                        // fetch never flashes "REPLIES · 0" -- an
-                        // unresolved/absent state behaves like the empty
-                        // state, and neither branch below renders before
-                        // repliesLoaded is true. Reply UI is earned by
-                        // content, never rendered speculatively.
-                        //
-                        // Zero-replies empty state (task
-                        // 20260829-notes-first-reply-empty-state): the prior
-                        // task's own gating made a zero-reply group note
-                        // render nothing at all below the note body -- no
-                        // way to start the first reply, despite the backend
-                        // write path already handling that case fine. The
-                        // hairline/label/card-list/"See all" machinery below
-                        // stays gated on !replies.isEmpty exactly as before
-                        // (still correctly earned-by-content), but the
-                        // composer entry point itself is no longer inside
-                        // that same gate -- it now always renders once a
-                        // group note's replies have loaded, with a minimal
-                        // muted line standing in for the earned content when
-                        // there isn't any yet. Per the UI/UX preference
-                        // profile's empty-state guidance (minimal, not
-                        // illustrated), this reuses ghostPill/
-                        // showReplyComposer/postReplyDraft verbatim rather
-                        // than introducing anything new.
-                        if isGroupNote && repliesLoaded {
-                            if !replies.isEmpty {
-                                Rectangle()
-                                    .fill(Theme.goldGradient)
-                                    .frame(height: 1)
-
-                                repliesSectionLabel(replies.count)
-
-                                VStack(alignment: .leading, spacing: Theme.spacingMD) {
-                                    ForEach(displayedReplies) { reply in
-                                        replyCard(reply)
-                                    }
-                                }
-
-                                if replies.count > 5 && !showAllReplies {
-                                    Button { showAllReplies = true } label: {
-                                        ghostPill("See all \(replies.count)")
-                                            .frame(minHeight: 44)
-                                            .contentShape(Rectangle())
-                                    }
-                                    .buttonStyle(.plain)
-                                }
-                            } else {
-                                Text("No replies yet.")
-                                    .font(.inter(Theme.fontSM))
-                                    .foregroundColor(Theme.textMuted)
-                            }
-
-                            // Composer affordance is likewise group-notes-only
-                            // -- POST /notes/reply/{note_id} technically
-                            // already accepts replies to personal notes
-                            // (pre-existing backend behavior, unrelated to
-                            // this task), but this UI never newly exposes
-                            // that path. Reachable in both the populated and
-                            // zero-reply branches above.
-                            if !showReplyComposer {
-                                Button {
-                                    withMotionAwareAnimation(.spring(response: 0.35, dampingFraction: 0.85), reduceMotion: reduceMotion) {
-                                        showReplyComposer = true
-                                    }
-                                } label: {
-                                    ghostPill("Add a reply")
-                                        .frame(minHeight: 44)
-                                        .contentShape(Rectangle())
-                                }
-                                .buttonStyle(.plain)
-                                .accessibilityLabel("Add a reply")
-                                .accessibilityFocused($replyTriggerFocused)
-                            }
-                        }
-                    }
-                    .padding(Theme.spacingLG)
-                    .onChange(of: showReplyComposer) { _, open in
-                        guard open else { return }
-                        // Wait for layout and the keyboard (editor focuses
-                        // itself shortly after appearing), then centre it.
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
-                            if reduceMotion {
-                                proxy.scrollTo(Self.replyComposerScrollID, anchor: .center)
-                            } else {
-                                withAnimation(.easeInOut(duration: 0.3)) {
-                                    proxy.scrollTo(Self.replyComposerScrollID, anchor: .center)
-                                }
-                            }
-                        }
-                    }
-                    }
-                }
-                .dismissesKeyboardOnScrollAndTap()
+                detailScroll
                 // Content-edge feather (task
                 // 20260830-note-detail-scroll-fade-toolbar-bg): the user's
                 // actual ask, corrected from the prior
@@ -590,28 +472,214 @@ struct NoteDetailView: View {
                 .presentationCompactAdaptation(.fullScreenCover)
             }
         }
-        .preferredColorScheme(.dark)
-        .onAppear { didAppear?(self) }
-        // Task 20260914-dictation-tts: stops playback when this sheet is
-        // dismissed (Close, swipe-to-dismiss, or programmatic dismiss()) —
-        // this view is always presented via `.sheet`, so onDisappear fires
-        // reliably on every dismissal, unlike BibleReaderView's persistent
-        // tab (see that screen's own onDisappear comment for why its case
-        // needed separate reasoning).
-        .onDisappear {
-            speechController.stop()
-        }
-        // Group notes only -- see isGroupNote. `.task(id:)` re-fires if the
-        // sheet is ever re-hosted for a different note (item-presented
-        // sheets already tear down/rebuild per note, but id: is a cheap,
-        // correct guard either way) and is a no-op for a personal note.
-        .task(id: note.id) {
-            await loadReplies()
-        }
-        #if DEBUG
-        .onReceive(inspection.notice) { self.inspection.visit(self, $0) }
-        #endif
     }
+
+    /// Inline presentation (iPad Notes panel): header with Back + title + actions,
+    /// then the same scrolling content. Theme tokens only, no raw hex backgrounds.
+    private var inlineBody: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: Theme.spacingSM) {
+                Button(action: closeAction) {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundColor(Theme.gold)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Back to notes")
+                .accessibilityFocused($backFocused)
+
+                Text(note.title.isEmpty ? "Untitled" : note.title)
+                    .font(.inter(Theme.fontBody, weight: .semibold))
+                    .foregroundColor(Theme.textPrimary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityAddTraits(.isHeader)
+
+                Button(action: toggleDictation) { dictationIconPill }
+                    .buttonStyle(.plain)
+                    .frame(minWidth: 44, minHeight: 44)
+                if let onSendInChat, !readOnly {
+                    Button(action: onSendInChat) { sendInChatIconPill }
+                        .buttonStyle(.plain)
+                        .frame(minWidth: 44, minHeight: 44)
+                }
+                if canEdit {
+                    Button(action: editAction) { gradientPill("Edit", compact: true) }
+                        .buttonStyle(.plain)
+                        .frame(minHeight: 44)
+                }
+            }
+            .padding(.horizontal, Theme.spacingSM)
+            Rectangle().fill(Theme.borderGold).frame(height: 1)
+            detailScroll
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Theme.bgPage)
+        .onAppear {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { backFocused = true }
+        }
+    }
+
+    /// The scrolling note content, shared by the sheet and the inline (iPad panel) layouts.
+    private var detailScroll: some View {
+                ScrollView {
+                    // ScrollViewReader scrolls the inline reply composer into
+                    // view when it opens (task 20260909-reply-inline-editor).
+                    ScrollViewReader { proxy in
+                    // No glassCard wrapper (per Direction B) — body flows
+                    // directly on the bloom background, full width, same
+                    // structure as before, just re-themed.
+                    VStack(alignment: .leading, spacing: Theme.spacingMD) {
+                        Text(note.title.isEmpty ? "Untitled" : note.title)
+                            .font(.playfair(Theme.fontDisplayMD))
+                            .foregroundColor(Theme.parchment)
+
+                        // Task 20260905-profile-photo: author indicator for
+                        // a note opened that wasn't authored by the viewer
+                        // (today, only reachable via the Friend Activity
+                        // note-preview flow -- DashboardView.openFriendNote
+                        // -> GET /notes/{user_id}/note/{note_id}, the one
+                        // note-fetch path that resolves both `username` and
+                        // `profile_photo_url` server-side). A viewer's own
+                        // note (the far more common case) never shows this --
+                        // same "no chip for yourself" convention as NoteRow's
+                        // showsAuthorChip.
+                        if showsParentAuthorChip {
+                            HStack(spacing: 8) {
+                                replyMonogram(note.username, photoURL: note.profile_photo_url)
+                                Text(note.username)
+                                    .font(.interScaled(Theme.fontSM, weight: .semibold))
+                                    .foregroundColor(Theme.textPrimary)
+                            }
+                        }
+
+                        if readOnly {
+                            readOnlyBanner
+                        }
+
+                        if !note.formattedTimestamp.isEmpty {
+                            sectionLabel(note.formattedTimestamp)
+                        }
+
+                        Rectangle()
+                            .fill(Theme.goldGradient)
+                            .frame(height: 1)
+
+                        NoteHTMLView(html: note.text)
+
+                        // Inline reply composer (task 20260909-reply-inline-editor):
+                        // directly below the note body, replacing the former
+                        // ReplyComposerSheet sheet. Same postReplyDraft path.
+                        if isGroupNote && repliesLoaded && showReplyComposer {
+                            ReplyComposerInline(onPost: postReplyDraft, onClose: closeReplyComposer)
+                                .id(Self.replyComposerScrollID)
+                                .transition(reduceMotion ? .identity : .opacity.combined(with: .move(edge: .top)))
+                        }
+
+                        // ── Replies (Option A "Continuation" — task
+                        // 20260828-note-reply-continuation-ios). Group notes
+                        // only, per mid-task product-intent correction: a
+                        // personal note (group_id empty) renders exactly as
+                        // it did before this task, no fetch, no section.
+                        // Also gated on repliesLoaded so a still-in-flight
+                        // fetch never flashes "REPLIES · 0" -- an
+                        // unresolved/absent state behaves like the empty
+                        // state, and neither branch below renders before
+                        // repliesLoaded is true. Reply UI is earned by
+                        // content, never rendered speculatively.
+                        //
+                        // Zero-replies empty state (task
+                        // 20260829-notes-first-reply-empty-state): the prior
+                        // task's own gating made a zero-reply group note
+                        // render nothing at all below the note body -- no
+                        // way to start the first reply, despite the backend
+                        // write path already handling that case fine. The
+                        // hairline/label/card-list/"See all" machinery below
+                        // stays gated on !replies.isEmpty exactly as before
+                        // (still correctly earned-by-content), but the
+                        // composer entry point itself is no longer inside
+                        // that same gate -- it now always renders once a
+                        // group note's replies have loaded, with a minimal
+                        // muted line standing in for the earned content when
+                        // there isn't any yet. Per the UI/UX preference
+                        // profile's empty-state guidance (minimal, not
+                        // illustrated), this reuses ghostPill/
+                        // showReplyComposer/postReplyDraft verbatim rather
+                        // than introducing anything new.
+                        if isGroupNote && repliesLoaded {
+                            if !replies.isEmpty {
+                                Rectangle()
+                                    .fill(Theme.goldGradient)
+                                    .frame(height: 1)
+
+                                repliesSectionLabel(replies.count)
+
+                                VStack(alignment: .leading, spacing: Theme.spacingMD) {
+                                    ForEach(displayedReplies) { reply in
+                                        replyCard(reply)
+                                    }
+                                }
+
+                                if replies.count > 5 && !showAllReplies {
+                                    Button { showAllReplies = true } label: {
+                                        ghostPill("See all \(replies.count)")
+                                            .frame(minHeight: 44)
+                                            .contentShape(Rectangle())
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            } else {
+                                Text("No replies yet.")
+                                    .font(.inter(Theme.fontSM))
+                                    .foregroundColor(Theme.textMuted)
+                            }
+
+                            // Composer affordance is likewise group-notes-only
+                            // -- POST /notes/reply/{note_id} technically
+                            // already accepts replies to personal notes
+                            // (pre-existing backend behavior, unrelated to
+                            // this task), but this UI never newly exposes
+                            // that path. Reachable in both the populated and
+                            // zero-reply branches above.
+                            if !showReplyComposer {
+                                Button {
+                                    withMotionAwareAnimation(.spring(response: 0.35, dampingFraction: 0.85), reduceMotion: reduceMotion) {
+                                        showReplyComposer = true
+                                    }
+                                } label: {
+                                    ghostPill("Add a reply")
+                                        .frame(minHeight: 44)
+                                        .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("Add a reply")
+                                .accessibilityFocused($replyTriggerFocused)
+                            }
+                        }
+                    }
+                    .padding(Theme.spacingLG)
+                    .onChange(of: showReplyComposer) { _, open in
+                        guard open else { return }
+                        // Wait for layout and the keyboard (editor focuses
+                        // itself shortly after appearing), then centre it.
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
+                            if reduceMotion {
+                                proxy.scrollTo(Self.replyComposerScrollID, anchor: .center)
+                            } else {
+                                withAnimation(.easeInOut(duration: 0.3)) {
+                                    proxy.scrollTo(Self.replyComposerScrollID, anchor: .center)
+                                }
+                            }
+                        }
+                    }
+                    }
+                }
+                .dismissesKeyboardOnScrollAndTap()
+    }
+
 
     private static let replyComposerScrollID = "replyComposer"
 
